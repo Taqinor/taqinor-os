@@ -56,7 +56,9 @@ def parse_name(
     ``{}`` (jamais une erreur)."""
     if not name:
         return {}
-    fields = parse_convention(convention, delimiter=delimiter)
+    # La convention (``DATE_FORMAT_HOOK_ANGLE``) est TOUJOURS séparée par ``_`` —
+    # jamais par le ``delimiter`` du NOM (qui, lui, peut valoir ``-``, etc.).
+    fields = parse_convention(convention)
     if not fields:
         return {}
     segments = str(name).split(delimiter)

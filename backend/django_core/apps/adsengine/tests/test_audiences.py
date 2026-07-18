@@ -122,6 +122,10 @@ class Adsdeep57ConsentGateTests(SimpleTestCase):
 
 @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
 class Adsdeep57UploadTests(SimpleTestCase):
+    # test_no_connection_reports_cleanly résout le client via _client_for →
+    # MetaConnection.objects (lecture DB) ; on l'autorise explicitement.
+    databases = {'default'}
+
     def test_raw_pii_never_in_payload_only_hashes(self):
         client = RecordingClient()
         summary = aud.sync_crm_custom_audience(

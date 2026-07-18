@@ -132,7 +132,7 @@ class IgPublishClientTests(SimpleTestCase):
         def handler(request):
             url = str(request.url)
             calls.append((request.method, url))
-            if url.endswith('/content_publishing_limit'):
+            if '/content_publishing_limit' in url:
                 return httpx.Response(200, json={'data': [
                     {'quota_usage': 1, 'config': {'quota_total': 50}}]})
             if url.endswith('/ig-1/media'):
@@ -151,7 +151,7 @@ class IgPublishClientTests(SimpleTestCase):
         self.assertEqual(result['quota'], {'used': 1, 'total': 50})
         # L'ordre : quota → media (create) → status → media_publish.
         urls = [u for _, u in calls]
-        self.assertTrue(urls[0].endswith('/content_publishing_limit'))
+        self.assertIn('/content_publishing_limit', urls[0])
         self.assertTrue(any(u.endswith('/ig-1/media') for u in urls))
         self.assertTrue(urls[-1].endswith('/media_publish'))
 
@@ -161,7 +161,7 @@ class IgPublishClientTests(SimpleTestCase):
         def handler(request):
             url = str(request.url)
             calls.append(url)
-            if url.endswith('/content_publishing_limit'):
+            if '/content_publishing_limit' in url:
                 return httpx.Response(200, json={'data': [
                     {'quota_usage': 50, 'config': {'quota_total': 50}}]})
             return httpx.Response(200, json={'id': 'never'})
@@ -175,7 +175,7 @@ class IgPublishClientTests(SimpleTestCase):
     def test_container_error_status_raises(self):
         def handler(request):
             url = str(request.url)
-            if url.endswith('/content_publishing_limit'):
+            if '/content_publishing_limit' in url:
                 return httpx.Response(200, json={'data': [
                     {'quota_usage': 0, 'config': {'quota_total': 50}}]})
             if url.endswith('/ig-1/media'):
@@ -221,7 +221,7 @@ class IgServiceTests(TestCase):
 
         def handler(request):
             url = str(request.url)
-            if url.endswith('/content_publishing_limit'):
+            if '/content_publishing_limit' in url:
                 return httpx.Response(200, json={'data': [
                     {'quota_usage': 4, 'config': {'quota_total': 50}}]})
             if url.endswith('/ig-1/media'):
@@ -247,7 +247,7 @@ class IgServiceTests(TestCase):
             self.company, media_type='IMAGE', image_url='https://img/x.jpg')
 
         def handler(request):
-            if str(request.url).endswith('/content_publishing_limit'):
+            if '/content_publishing_limit' in str(request.url):
                 return httpx.Response(200, json={'data': [
                     {'quota_usage': 50, 'config': {'quota_total': 50}}]})
             return httpx.Response(200, json={'id': 'never'})

@@ -517,9 +517,10 @@ def dashboard_v2_metrics(company, *, as_of=None,
             'sparkline': _sparkline(conv_daily, start_date, as_of),
         },
         'mer': {
-            'spend': str(total_spend),
+            # Montants monétaires rendus à 2 décimales (jamais '120.0').
+            'spend': str(total_spend.quantize(Decimal('0.01'))),
             'spend_currency': spend_currency,
-            'signed_ca_mad': str(total_signed_ca),
+            'signed_ca_mad': str(total_signed_ca.quantize(Decimal('0.01'))),
             'signed_ca_currency': 'MAD',
             'mer_ratio': mer_ratio,
             'odoo_configured': signed_ca['configured'],

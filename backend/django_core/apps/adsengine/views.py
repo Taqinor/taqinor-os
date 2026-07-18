@@ -434,7 +434,8 @@ class ExperimentViewSet(AdsengineViewSet):
                 .order_by('-created_at', '-id'))
         return Response(DecisionLogSerializer(logs, many=True).data)
 
-    @action(detail=True, methods=['post'], url_path='sync-ad-study')
+    @action(detail=True, methods=['post'], url_path='sync-ad-study',
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
     def sync_ad_study(self, request, pk=None):
         """ADSDEEP34 — Lit (LECTURE SEULE côté Meta) les résultats de l'étude
         A/B native liée à cette expérience (``experiment.meta_study_id``) et
