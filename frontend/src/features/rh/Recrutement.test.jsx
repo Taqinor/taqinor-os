@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import rhApi from '../../api/rhApi'
@@ -7,7 +7,10 @@ import Recrutement from './Recrutement.jsx'
 
 /* XRH17-23 / ZRH7-9 — ATS complet : smoke de rendu + présence des nouveaux
    onglets (Vivier / Statistiques / Gabarits) branchés sur les endpoints ATS.
-   Le module ne doit jamais planter au chargement, même quand tout est vide. */
+   Le module ne doit jamais planter au chargement, même quand tout est vide.
+   WIR34 — « Nouveau candidat » et « Nouveau modèle » câblent respectivement
+   `rhApi.createCandidature` et `rhApi.createModeleEvaluation` (jusqu'ici
+   définis sans appelant). */
 
 vi.mock('../../api/rhApi', () => {
   const empty = () => Promise.resolve({ data: [] })
@@ -24,6 +27,8 @@ vi.mock('../../api/rhApi', () => {
       getCampagnesEvaluation: vi.fn(empty),
       getEvaluationsEmploye: vi.fn(empty),
       getSanctions: vi.fn(empty),
+      createCandidature: vi.fn(),
+      createModeleEvaluation: vi.fn(),
     },
   }
 })
@@ -59,5 +64,41 @@ describe('Recrutement — ATS (XRH17-23)', () => {
     expect(screen.getByRole('radio', { name: 'Vivier' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Statistiques' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Gabarits' })).toBeInTheDocument()
+  })
+
+  it('crée une candidature manuelle via rhApi.createCandidature (WIR34)', async () => {
+    rhApi.getOuverturesPoste.mockResolvedValue({ data: [{ id: 5, intitule: 'Technicien PV' }] })
+    rhApi.createCandidature.mockResolvedValueOnce({ data: { id: 1 } })
+    renderRecrutement()
+    await screen.findByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nouveau candidat/ }))
+    expect(screen.getByText('Nouveau candidat')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Poste visé'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Nom du candidat'), { target: { value: 'Yassine Amrani' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Créer la candidature' }))
+
+    await waitFor(() => expect(rhApi.createCandidature).toHaveBeenCalledWith(
+      expect.objectContaining({ ouverture: '5', nom: 'Yassine Amrani' }),
+    ))
+  })
+
+  it('crée un gabarit d’évaluation via rhApi.createModeleEvaluation (WIR34)', async () => {
+    rhApi.createModeleEvaluation.mockResolvedValueOnce({ data: { id: 1 } })
+    renderRecrutement()
+    await screen.findByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Gabarits' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Nouveau modèle/ }))
+    expect(screen.getByText('Nouveau modèle d’évaluation')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Nom du modèle'), { target: { value: 'Entretien annuel' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Créer le modèle' }))
+
+    await waitFor(() => expect(rhApi.createModeleEvaluation).toHaveBeenCalledWith(
+      expect.objectContaining({ nom: 'Entretien annuel', questions: [] }),
+    ))
   })
 })

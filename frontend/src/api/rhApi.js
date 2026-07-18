@@ -173,11 +173,21 @@ const rhApi = {
 
   // ── UX25 — Compétences, habilitations & formation ──
   getCompetences: (params) => api.get('/rh/competences/', { params }),
+  // WIR36 — wrapper d'écriture manquant (ViewSet full CRUD, aucun appelant).
+  createCompetence: (data) => api.post('/rh/competences/', data),
   getCompetencesEmploye: (params) =>
     api.get('/rh/competences-employe/', { params }),
+  // WIR36 — idem : évaluation de compétence d'un employé (matrice).
+  createCompetenceEmploye: (data) => api.post('/rh/competences-employe/', data),
   getHabilitations: (params) => api.get('/rh/habilitations/', { params }),
+  // WIR36 — idem : habilitation électrique par employé.
+  createHabilitation: (data) => api.post('/rh/habilitations/', data),
   getCertifications: (params) => api.get('/rh/certifications/', { params }),
+  // WIR36 — idem : certification spécifique par employé.
+  createCertification: (data) => api.post('/rh/certifications/', data),
   getVisitesMedicales: (params) => api.get('/rh/visites-medicales/', { params }),
+  // WIR36 — idem : visite médicale du travail (aptitude).
+  createVisiteMedicale: (data) => api.post('/rh/visites-medicales/', data),
   getSessionsFormation: (params) => api.get('/rh/sessions-formation/', { params }),
   marquerSessionRealisee: (id, data) =>
     api.post(`/rh/sessions-formation/${id}/marquer-realisee/`, data ?? {}),
@@ -279,8 +289,14 @@ const rhApi = {
 
   // ── UX27 — HSE RH ──
   getAccidentsTravail: (params) => api.get('/rh/accidents-travail/', { params }),
+  // WIR36 — wrapper d'écriture manquant (ViewSet full CRUD, aucun appelant).
+  createAccidentTravail: (data) => api.post('/rh/accidents-travail/', data),
   getPresquAccidents: (params) => api.get('/rh/presqu-accidents/', { params }),
+  // WIR36 — idem : presqu'accident (near-miss).
+  createPresquAccident: (data) => api.post('/rh/presqu-accidents/', data),
   getCauseriesSecurite: (params) => api.get('/rh/causeries-securite/', { params }),
+  // WIR36 — idem : causerie de sécurité (toolbox talk).
+  createCauserieSecurite: (data) => api.post('/rh/causeries-securite/', data),
   getAnalysesRisques: (params) =>
     api.get('/rh/analyses-risques-chantier/', { params }),
   validerAnalyseRisques: (id, data) =>
