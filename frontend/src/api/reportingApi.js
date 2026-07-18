@@ -126,6 +126,10 @@ const reportingApi = {
   // XFSM17 — scorecard coaching par technicien vs moyenne équipe.
   technicienScorecard: (params) =>
     api.get('/reporting/insights/technicien-scorecard/', { params }),
+  // WIR22 — contrôle d'intégrité inter-documents (YSERV13) : anomalies
+  // détectées AUJOURD'HUI, sans attendre la notification Beat hebdomadaire
+  // ni lire les logs serveur. Réservé responsable/admin (backend).
+  integriteInsight: () => api.get('/reporting/insights/integrite/'),
 }
 
 export default reportingApi
