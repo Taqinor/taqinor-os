@@ -749,3 +749,54 @@ export function toCsv(headers, rows) {
   for (const r of (rows || [])) lines.push((r || []).map(esc).join(','))
   return lines.join('\n')
 }
+
+// ── ADSDEEP66 — Fenêtres/limites de données Meta (bandeau `DataWindowNotice`) ─
+// Doctrine (« pas de plafond silencieux ») : un écran qui affiche un nombre
+// borné dans le temps DOIT dire sa fenêtre. Fenêtre (jours) + messages FR par
+// type ; les mois sont convertis en jours à raison de 30 j/mois (approximation
+// d'affichage — jamais une date exacte). Constante pure — vit ici (et non dans
+// `DataWindowNotice.jsx`) pour que ce dernier reste un fichier de COMPOSANTS
+// uniquement (contrainte react-refresh/only-export-components).
+export const DATA_WINDOWS = {
+  leads: {
+    windowDays: 90,
+    message:
+      'Meta efface les leads après 90 jours — l’historique complet vit dans l’ERP/Odoo.',
+    warnMessage:
+      'Attention : certains leads approchent la fenêtre de 90 jours — ' +
+      'synchronisez avant leur suppression côté Meta.',
+  },
+  insights: {
+    windowDays: 37 * 30,
+    message:
+      'Meta ne conserve les insights détaillés que 37 mois glissants — ' +
+      'au-delà, l’historique n’est plus interrogeable côté Meta.',
+    warnMessage:
+      'Attention : la fenêtre de 37 mois d’insights Meta approche sa limite ' +
+      '— exportez l’historique avant la purge.',
+  },
+  uniques: {
+    windowDays: 13 * 30,
+    message:
+      'Les métriques UNIQUES (portée/reach, fréquence) ne sont disponibles ' +
+      'que sur 13 mois glissants côté Meta.',
+    warnMessage:
+      'Attention : la fenêtre de 13 mois des métriques uniques approche sa limite.',
+  },
+  breakdowns: {
+    windowDays: 28,
+    message:
+      'Les ventilations d’audience/diffusion (âge, placement, région, heure) ' +
+      'sont synchronisées sur une fenêtre glissante de 28 jours.',
+    warnMessage:
+      'Attention : la synchronisation des ventilations approche la limite de 28 jours.',
+  },
+  retention: {
+    windowDays: 13 * 30,
+    message:
+      'Meta ne conserve les données brutes que 13 mois — au-delà, seul ' +
+      'l’historique ERP/Odoo fait foi.',
+    warnMessage:
+      'Attention : des données approchent la limite de rétention Meta (13 mois).',
+  },
+}

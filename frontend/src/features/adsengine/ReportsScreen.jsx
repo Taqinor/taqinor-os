@@ -5,6 +5,7 @@ import {
   normalizeVariants, normalizeFunnel, normalizeCohorts, normalizeLeaderboard,
   normalizeScatter, toCsv, formatMAD, formatNumber, formatPercent,
 } from './adsengine'
+import DataWindowNotice from './DataWindowNotice'
 
 /* ============================================================================
    ENG45 — Drill-downs reporting (consomme ENG33).
@@ -132,6 +133,9 @@ export default function ReportsScreen() {
       {tab === 'apercu' && (
         loading ? <p className="page-loading">Chargement…</p> : (
           <div style={{ display: 'grid', gap: '1.25rem' }}>
+            {/* ADSDEEP66 — variantes/entonnoir/cohortes dérivent des insights
+                Meta, disponibles 37 mois glissants seulement. */}
+            <DataWindowNotice kind="insights" />
             {/* Table des variantes */}
             <section className="ae-reports-variants" data-testid="ae-reports-variants">
               <h3 style={{ margin: '0 0 0.6rem' }}>Variantes</h3>

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { RefreshCw, ChevronRight } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { formatMoney, formatNumber, rankCreatives } from './adsengine'
+import DataWindowNotice from './DataWindowNotice'
 
 /* ============================================================================
    ENG24 — Écran « Campagnes » (miroirs Meta) du moteur publicitaire.
@@ -109,6 +110,10 @@ export default function CampaignsScreen() {
       </div>
 
       {msg && <p data-testid="ae-camp-msg" style={{ color: '#475569', margin: '0 0 0.75rem' }}>{msg}</p>}
+
+      {/* ADSDEEP66 — les comptes de leads affichés ici sont bornés à la
+          fenêtre Meta 90 j (au-delà, seul l'ERP/Odoo fait foi). */}
+      <DataWindowNotice kind="leads" />
 
       {/* Liste des miroirs (niveau 1 — campagnes) */}
       {loading
