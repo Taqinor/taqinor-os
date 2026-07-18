@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { LogOut, FileDown, CheckCircle2, Printer } from 'lucide-react'
+import { LogOut, FileDown, CheckCircle2, Printer, Pencil } from 'lucide-react'
 import { RecordShell } from '../../ui/module'
 import {
   DefinitionList, EmptyState, Skeleton, Badge, toast,
@@ -66,6 +66,8 @@ export default function EmployeDetail() {
   const [error, setError] = useState(null)
   const [subLoading, setSubLoading] = useState(true)
   const [sortieOpen, setSortieOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [departements, setDepartements] = useState([])
   const [reloadTick, setReloadTick] = useState(0)
 
   useEffect(() => {
@@ -118,6 +120,16 @@ export default function EmployeDetail() {
     })
     return () => { vivant = false }
   }, [id, canSalaires, reloadTick])
+
+  // WIR33 — départements pour le sélecteur du formulaire d'édition (une fois,
+  // indépendant du dossier consulté).
+  useEffect(() => {
+    let vivant = true
+    rhApi.getDepartements()
+      .then((res) => { if (vivant) setDepartements(unwrap(res.data)) })
+      .catch(() => { /* non bloquant — le champ reste optionnel */ })
+    return () => { vivant = false }
+  }, [])
 
   const recharger = () => setReloadTick((t) => t + 1)
 
@@ -397,6 +409,15 @@ export default function EmployeDetail() {
         <Printer size={15} strokeWidth={1.75} aria-hidden="true" />
         Imprimer
       </Button>
+      {/* WIR33 — édition du dossier (nom/prénom/poste/département/contrat) ;
+          les champs sensibles (CNSS/CIMR/AMO/situation familiale) restent
+          édités séparément. */}
+      {!estSorti && (
+        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+          <Pencil size={15} strokeWidth={1.75} aria-hidden="true" />
+          Modifier
+        </Button>
+      )}
       {estSorti ? (
         <Button variant="outline" size="sm" onClick={telechargerCertificat}>
           <FileDown size={15} strokeWidth={1.75} aria-hidden="true" />
@@ -433,7 +454,125 @@ export default function EmployeDetail() {
           onSaved={() => { setSortieOpen(false); recharger() }}
         />
       )}
+      {editOpen && (
+        <EditEmployeDialog
+          employe={emp}
+          departements={departements}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => { setEditOpen(false); recharger() }}
+        />
+      )}
     </div>
+  )
+}
+
+// TypeContrat.choices côté serveur (DossierEmploye) — voir EmployeList.jsx.
+const TYPE_CONTRAT_OPTIONS = [
+  { value: 'cdi', label: 'CDI' },
+  { value: 'cdd', label: 'CDD' },
+  { value: 'anapec', label: 'ANAPEC' },
+  { value: 'stage', label: 'Stage' },
+  { value: 'interim', label: 'Intérim' },
+]
+
+/* ── WIR33 — Édition du dossier employé (champs non sensibles) ── */
+function EditEmployeDialog({ employe, departements, onClose, onSaved }) {
+  const [nom, setNom] = useState(employe.nom || '')
+  const [prenom, setPrenom] = useState(employe.prenom || '')
+  const [poste, setPoste] = useState(employe.poste || '')
+  const [departement, setDepartement] = useState(employe.departement ? String(employe.departement) : '')
+  const [typeContrat, setTypeContrat] = useState(employe.type_contrat || 'cdi')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  // VX168 — garde de fermeture : dialogue d'édition, initial = valeurs de départ.
+  const dirty = nom !== (employe.nom || '') || prenom !== (employe.prenom || '')
+    || poste !== (employe.poste || '')
+    || departement !== (employe.departement ? String(employe.departement) : '')
+    || typeContrat !== (employe.type_contrat || 'cdi')
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const valide = Boolean(nom.trim() && prenom.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.updateEmploye(employe.id, {
+        nom: nom.trim(),
+        prenom: prenom.trim(),
+        poste: poste || '',
+        departement: departement || null,
+        type_contrat: typeContrat,
+      })
+      toast.success('Dossier employé mis à jour.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.nom || 'Mise à jour impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Modifier le dossier — {employe.matricule}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ed-nom">Nom</Label>
+              <Input id="ed-nom" autoFocus value={nom} onChange={(e) => setNom(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ed-prenom">Prénom</Label>
+              <Input id="ed-prenom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ed-poste">Poste</Label>
+            <Input id="ed-poste" value={poste} onChange={(e) => setPoste(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ed-departement">Département</Label>
+              <select
+                id="ed-departement"
+                value={departement}
+                onChange={(e) => setDepartement(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Aucun —</option>
+                {departements.map((d) => <option key={d.id} value={d.id}>{d.nom}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ed-contrat">Type de contrat</Label>
+              <select
+                id="ed-contrat"
+                value={typeContrat}
+                onChange={(e) => setTypeContrat(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                {TYPE_CONTRAT_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
