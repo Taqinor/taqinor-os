@@ -196,6 +196,25 @@ const adsengineApi = {
       api.post(`/adsengine/commentaires/${id}/reponse-privee/`, payload),
   },
 
+  // ── ADSDEEP55/56 — Instagram (compte Business relié) ──
+  // Routeur backend FR : « instagram ». Légende LECTURE SEULE (immuable) ;
+  // publication via le flux container (quota 50/24 h surfacé) ; toute écriture
+  // passe par une proposition EngineAction (règle #3).
+  instagram: {
+    media: (params) => api.get('/adsengine/instagram/medias/', { params }),
+    quota: () => api.get('/adsengine/instagram/quota/'),
+    proposePublish: (payload) => api.post('/adsengine/instagram/publier/', payload),
+    comments: (params) => api.get('/adsengine/instagram/commentaires/', { params }),
+    proposeHideComment: (id, payload) =>
+      api.post(`/adsengine/instagram/commentaires/${id}/masquer/`, payload),
+    proposeReplyComment: (id, payload) =>
+      api.post(`/adsengine/instagram/commentaires/${id}/repondre/`, payload),
+    proposeDeleteComment: (id) =>
+      api.post(`/adsengine/instagram/commentaires/${id}/supprimer/`),
+    proposeToggleComments: (mediaId, payload) =>
+      api.post(`/adsengine/instagram/medias/${mediaId}/commentaires-actif/`, payload),
+  },
+
   // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──
   backlog: {
     // File par campagne : runway, diversité de hooks, lots de recombinaisons.
