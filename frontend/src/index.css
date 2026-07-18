@@ -6638,3 +6638,53 @@ textarea.form-control {
   color: var(--info);
   text-decoration: underline;
 }
+
+/* ── LW16 : StageControl — rangée d'étapes + pourrissement (rotting) ───────── */
+
+.lw-stage {
+  margin-bottom: 0.85rem;
+}
+.lw-stage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.lw-stage-pill {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  line-height: 0;
+}
+.lw-stage-pill--ghost {
+  cursor: pointer;
+  border-radius: 9999px;
+  opacity: 0.75;
+  transition: opacity var(--motion-fast) var(--ease-standard);
+}
+.lw-stage-pill--ghost:hover {
+  opacity: 1;
+}
+.lw-stage-pill--current {
+  cursor: default;
+}
+/* Ancienneté d'étape : neutre par défaut, chauffe avec la rampe rotting. */
+.lw-stage-since {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.lw-stage-since--warning {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  color: var(--warning);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+}
+.lw-stage-since--danger {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}

@@ -5,6 +5,7 @@ import {
 import { initials } from '../../../ui/Avatar'
 import { normalizeMaPhone } from '../../../lib/format'
 import AssigneePicker from '../../../components/AssigneePicker'
+import StageControl from './StageControl'
 import { getField } from './draftCore'
 
 // LW15 — Date locale « YYYY-MM-DD » depuis l'objet Date du DatePicker (jamais
@@ -104,6 +105,14 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           {sub && <p className="lw-rail-sub">{sub}</p>}
         </div>
       </header>
+
+      {/* Étape + pourrissement (LW16) — le changement passe par le moteur
+          (onAction('change-stage')) ; SIGNED ouvre la signature. */}
+      <StageControl
+        state={state}
+        onChangeStage={(key) => onAction('change-stage', key)}
+        onSigne={() => onAction('signe')}
+      />
 
       {/* Contact cliquable */}
       {(callPhone || email || hasGps) && (
