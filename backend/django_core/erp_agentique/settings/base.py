@@ -878,6 +878,8 @@ CELERY_TASK_ROUTES = {
     'innovation.feedback_digest_run': {'queue': 'scheduled'},
     # NTEDU40 — relance réinscription (notifie l'administration, quotidien).
     'education.relancer_reinscriptions': {'queue': 'scheduled'},
+    # WIR5/FLOTTE16 — génération quotidienne des échéances d'entretien flotte.
+    'flotte.generer_echeances_entretien_quotidien': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

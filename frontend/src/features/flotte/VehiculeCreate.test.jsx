@@ -21,6 +21,8 @@ beforeAll(() => {
 
 const vehiculesCreate = vi.fn(() => Promise.resolve({ data: { id: 1 } }))
 const vehiculesList = vi.fn(() => Promise.resolve({ data: [] }))
+const enginsCreate = vi.fn(() => Promise.resolve({ data: { id: 1 } }))
+const enginsList = vi.fn(() => Promise.resolve({ data: [] }))
 const modelesList = vi.fn(() => Promise.resolve({
   data: [{ id: 9, marque: 'Renault', modele: 'Kangoo', energie: 'diesel', puissance_fiscale: 5, valeur_catalogue: 180000 }],
 }))
@@ -28,7 +30,7 @@ const modelesList = vi.fn(() => Promise.resolve({
 vi.mock('../../api/flotteApi', () => ({
   default: {
     vehicules: { create: (...args) => vehiculesCreate(...args), list: (...args) => vehiculesList(...args) },
-    engins: { list: () => Promise.resolve({ data: [] }) },
+    engins: { create: (...args) => enginsCreate(...args), list: (...args) => enginsList(...args) },
     modelesVehicule: { list: (...args) => modelesList(...args) },
   },
 }))
@@ -73,5 +75,22 @@ describe('VehiculeCreateDialog (XFLT12)', () => {
     await user.selectOptions(screen.getByLabelText('Modèle de référence (catalogue)'), '9')
 
     expect(screen.getByLabelText('Marque')).toHaveValue('Dacia')
+  })
+})
+
+describe('EnginCreateDialog (WIR40)', () => {
+  it('bascule sur « Engins » et crée un engin via le CRUD `engins/`', async () => {
+    const user = userEvent.setup()
+    withProviders(<VehiculesList />)
+
+    await user.click(screen.getByRole('radio', { name: 'Engins' }))
+    await user.click(await screen.findByRole('button', { name: 'Nouvel engin' }))
+
+    await user.type(screen.getByLabelText('Désignation'), 'Nacelle Genie Z-45')
+    await user.click(screen.getByRole('button', { name: 'Créer' }))
+
+    await waitFor(() => expect(enginsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ nom: 'Nacelle Genie Z-45', type_engin: 'nacelle' }),
+    ))
   })
 })

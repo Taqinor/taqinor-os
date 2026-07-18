@@ -21,7 +21,7 @@ beforeAll(() => {
 
 const {
   changerStatut, ceder, vehiculeHistorique, vehiculeLedger, contratsList,
-  actifsList, detenteursCourants, remisesList, empty,
+  actifsList, detenteursCourants, remisesList, remisesCreate, conducteursList, empty,
 } = vi.hoisted(() => ({
   changerStatut: vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'actif' } })),
   ceder: vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'vendu' } })),
@@ -33,6 +33,8 @@ const {
     data: [{ type: 'cle', type_display: 'Clé', conducteur_id: 1, conducteur_nom: 'Karim', date_remise: '2026-06-01' }],
   })),
   remisesList: vi.fn(() => Promise.resolve({ data: [] })),
+  remisesCreate: vi.fn(() => Promise.resolve({ data: { id: 5 } })),
+  conducteursList: vi.fn(() => Promise.resolve({ data: [{ id: 1, nom: 'Karim' }] })),
   empty: () => Promise.resolve({ data: null }),
 }))
 
@@ -51,7 +53,11 @@ vi.mock('../../api/flotteApi', () => ({
       list: (...args) => actifsList(...args),
       detenteursCourants: (...args) => detenteursCourants(...args),
     },
-    remisesAccessoire: { list: (...args) => remisesList(...args) },
+    remisesAccessoire: {
+      list: (...args) => remisesList(...args),
+      create: (...args) => remisesCreate(...args),
+    },
+    conducteurs: { list: (...args) => conducteursList(...args) },
   },
 }))
 
@@ -134,5 +140,24 @@ describe('VehiculeDetail — Accessoires (XFLT20)', () => {
     await waitFor(() => expect(detenteursCourants).toHaveBeenCalledWith(77))
     await waitFor(() => expect(remisesList).toHaveBeenCalledWith({ actif_flotte: 77 }))
     await waitFor(() => expect(screen.getByText('Karim', { exact: false })).toBeInTheDocument())
+  })
+})
+
+describe('VehiculeDetail — Accessoires (WIR47 remise)', () => {
+  it('enregistre la remise d’un accessoire à un conducteur depuis l’onglet', async () => {
+    const user = userEvent.setup()
+    withProviders(<VehiculeDetail vehicule={VEHICULE} onClose={() => {}} />)
+
+    await user.click(screen.getByRole('tab', { name: 'Accessoires' }))
+    await waitFor(() => expect(detenteursCourants).toHaveBeenCalledWith(77))
+
+    await user.click(await screen.findByRole('button', { name: 'Remettre un accessoire' }))
+    await user.selectOptions(screen.getByLabelText('Conducteur'), '1')
+    await user.type(screen.getByLabelText('Date de remise'), '2026-08-01')
+    await user.click(screen.getByRole('button', { name: 'Remettre' }))
+
+    await waitFor(() => expect(remisesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ actif_flotte: 77, type_accessoire: 'cle', conducteur: 1, date_remise: '2026-08-01' }),
+    ))
   })
 })

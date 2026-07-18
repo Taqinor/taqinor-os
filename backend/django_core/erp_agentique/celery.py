@@ -582,6 +582,14 @@ app.conf.beat_schedule = {
         'task': 'education.relancer_reinscriptions',
         'schedule': crontab(hour=7, minute=50),
     },
+    # WIR5/FLOTTE16 — génère réellement les échéances d'entretien flotte
+    # (avant cette entrée : ni beat ni bouton, seule la commande manage
+    # fonctionnait — l'onglet Échéances et le KPI « entretien » du Cockpit
+    # Flotte restaient silencieusement vides). Quotidien, heure creuse.
+    'flotte-generer-echeances-entretien-quotidien': {
+        'task': 'flotte.generer_echeances_entretien_quotidien',
+        'schedule': crontab(hour=6, minute=45),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

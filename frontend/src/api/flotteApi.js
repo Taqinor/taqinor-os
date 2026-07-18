@@ -87,7 +87,12 @@ const flotteApi = {
         actif_flotte_ids: actifFlotteIds,
       }),
   },
-  echeancesEntretien: crud('echeances-entretien'),
+  echeancesEntretien: {
+    ...crud('echeances-entretien'),
+    // WIR5/FLOTTE16 — déclenche la génération des échéances dues depuis les
+    // plans actifs (miroir du beat quotidien `flotte.tasks`).
+    generer: (params) => api.post('/flotte/echeances-entretien/generer/', null, { params }),
+  },
   garages: crud('garages'),
   // XFLT14 — garanties véhicule & pièces.
   garanties: crud('garanties'),
@@ -127,7 +132,11 @@ const flotteApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   },
-  cartes: crud('cartes'),
+  cartes: {
+    ...crud('cartes'),
+    // FLOTTE14/WIR6 — pleins suspects (km incohérent / fraude / plafond dépassé).
+    anomalies: (params) => api.get('/flotte/cartes/anomalies/', { params }),
+  },
   sinistres: crud('sinistres'),
   infractions: crud('infractions'),
   relevesTelematiques: crud('releves-telematiques'),

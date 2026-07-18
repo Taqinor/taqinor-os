@@ -210,6 +210,36 @@ class ConducteurApiTests(TestCase):
         self.assertEqual(resp.data['date_expiration'], '2025-03-01')
         self.assertEqual(resp.data['telephone'], '0600000000')
 
+    def test_create_with_xflt27_fields(self):
+        """WIR4 — les 4 champs XFLT27 (carte de conducteur professionnel +
+        formation continue NARSA) sont écrits ET exposés par l'API."""
+        api = auth(self.admin_a)
+        resp = api.post(URL, {
+            'nom': 'Chauffeur Poids Lourd',
+            'carte_conducteur_pro_numero': 'CCP-000123',
+            'carte_conducteur_pro_expiration': '2027-01-01',
+            'formation_continue_narsa_date': '2026-01-01',
+            'formation_continue_narsa_validite': '2031-01-01',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['carte_conducteur_pro_numero'], 'CCP-000123')
+        self.assertEqual(resp.data['carte_conducteur_pro_expiration'], '2027-01-01')
+        self.assertEqual(resp.data['formation_continue_narsa_date'], '2026-01-01')
+        self.assertEqual(resp.data['formation_continue_narsa_validite'], '2031-01-01')
+        c = Conducteur.objects.get(id=resp.data['id'])
+        self.assertEqual(c.carte_conducteur_pro_numero, 'CCP-000123')
+
+    def test_create_with_employe_id(self):
+        """Le lien vers le dossier employé RH (id numérique, string-FK) est
+        accepté et exposé sans exiger de compte ERP (`user`)."""
+        api = auth(self.admin_a)
+        resp = api.post(URL, {
+            'nom': 'Lié RH',
+            'employe_id': 42,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['employe_id'], 42)
+
     # ── Isolation multi-tenant ────────────────────────────────────────────────
 
     def test_tenant_isolation_list(self):
