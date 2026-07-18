@@ -57,6 +57,9 @@ export default function Recrutement() {
   const [promesseFor, setPromesseFor] = useState(null)
   const [entretienFor, setEntretienFor] = useState(null)
   const [comparatifFor, setComparatifFor] = useState(null)
+  // WIR34 — nouveau candidat + nouveau modèle d'évaluation (ZRH7).
+  const [candidatOpen, setCandidatOpen] = useState(false)
+  const [modeleOpen, setModeleOpen] = useState(false)
 
   const recharger = () => {
     let vivant = true
@@ -305,6 +308,7 @@ export default function Recrutement() {
             searchable exportName="ouvertures-poste" emptyTitle="Aucune ouverture" emptyDescription="Aucun poste ouvert." />
           <ListShell title="Candidatures" columns={candidatureColumns} rows={candidatures} loading={loading} error={error}
             searchable rowActions={candidatureActions} exportName="candidatures"
+            actions={<Button onClick={() => setCandidatOpen(true)}><UserPlus size={15} strokeWidth={1.75} aria-hidden="true" />Nouveau candidat</Button>}
             emptyTitle="Aucune candidature" emptyDescription="Aucune candidature reçue." />
         </div>
       )}
@@ -321,6 +325,7 @@ export default function Recrutement() {
             emptyTitle="Aucun gabarit" emptyDescription="Aucun gabarit d’email de recrutement." />
           <ListShell title="Modèles d’évaluation" columns={modeleEvalColumns} rows={modelesEval} loading={loading} error={error}
             searchable exportName="modeles-evaluation"
+            actions={<Button onClick={() => setModeleOpen(true)}><FileSignature size={15} strokeWidth={1.75} aria-hidden="true" />Nouveau modèle</Button>}
             emptyTitle="Aucun modèle" emptyDescription="Aucun modèle d’évaluation réutilisable." />
         </div>
       )}
@@ -363,6 +368,19 @@ export default function Recrutement() {
         <ComparatifDialog
           candidature={comparatifFor}
           onClose={() => setComparatifFor(null)}
+        />
+      )}
+      {candidatOpen && (
+        <CandidatDialog
+          ouvertures={postes}
+          onClose={() => setCandidatOpen(false)}
+          onSaved={() => { setCandidatOpen(false); recharger() }}
+        />
+      )}
+      {modeleOpen && (
+        <ModeleEvaluationDialog
+          onClose={() => setModeleOpen(false)}
+          onSaved={() => { setModeleOpen(false); recharger() }}
         />
       )}
     </div>
@@ -574,6 +592,176 @@ function ComparatifDialog({ candidature, onClose }) {
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR34 — Ajouter un candidat manuellement (CV optionnel) ── */
+function CandidatDialog({ ouvertures, onClose, onSaved }) {
+  const [ouverture, setOuverture] = useState('')
+  const [nom, setNom] = useState('')
+  const [email, setEmail] = useState('')
+  const [telephone, setTelephone] = useState('')
+  const [source, setSource] = useState('')
+  const [cv, setCv] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(ouverture || nom || email || telephone || source || cv)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const valide = Boolean(ouverture && nom.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      let payload
+      // CV optionnel : multipart uniquement si un fichier est joint.
+      if (cv) {
+        const fd = new FormData()
+        fd.append('ouverture', ouverture)
+        fd.append('nom', nom.trim())
+        if (email) fd.append('email', email)
+        if (telephone) fd.append('telephone', telephone)
+        if (source) fd.append('source', source)
+        fd.append('cv_fichier', cv)
+        payload = fd
+      } else {
+        payload = { ouverture, nom: nom.trim(), email: email || '', telephone: telephone || '', source: source || '' }
+      }
+      await rhApi.createCandidature(payload)
+      toast.success('Candidature créée.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.ouverture || data?.nom
+        || 'Création de la candidature impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouveau candidat</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cd-ouverture">Poste visé</Label>
+            <select
+              id="cd-ouverture"
+              value={ouverture}
+              onChange={(e) => setOuverture(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+            >
+              <option value="">— Choisir —</option>
+              {ouvertures.map((p) => <option key={p.id} value={p.id}>{p.intitule}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cd-nom">Nom du candidat</Label>
+            <Input id="cd-nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cd-email">Email</Label>
+              <Input id="cd-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cd-telephone">Téléphone</Label>
+              <Input id="cd-telephone" value={telephone} onChange={(e) => setTelephone(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cd-source">Source (LinkedIn, ANAPEC, cooptation…)</Label>
+            <Input id="cd-source" value={source} onChange={(e) => setSource(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cd-cv">CV (optionnel)</Label>
+            <input id="cd-cv" type="file" onChange={(e) => setCv(e.target.files?.[0] ?? null)} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>
+              {saving ? 'Création…' : 'Créer la candidature'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR34 (ZRH7) — Créer un modèle d'évaluation réutilisable ── */
+function ModeleEvaluationDialog({ onClose, onSaved }) {
+  const [nom, setNom] = useState('')
+  const [questionsTexte, setQuestionsTexte] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
+  const dirty = Boolean(nom || questionsTexte)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const valide = Boolean(nom.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      // Une question par ligne — libellé texte libre, réponse texte, cible
+      // employé (le cas le plus courant ; ciblage manager/type via l'API RH
+      // reste possible en édition ultérieure).
+      const questions = questionsTexte
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((libelle) => ({ libelle, type: 'texte', cible: 'employe' }))
+      await rhApi.createModeleEvaluation({ nom: nom.trim(), questions })
+      toast.success('Modèle d’évaluation créé.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.nom || 'Création du modèle impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouveau modèle d’évaluation</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="me-nom">Nom du modèle</Label>
+            <Input id="me-nom" autoFocus value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Ex. Entretien annuel — Technicien" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="me-questions">Questions (une par ligne)</Label>
+            <Textarea id="me-questions" value={questionsTexte} onChange={(e) => setQuestionsTexte(e.target.value)} rows={5}
+              placeholder={'Ex.\nQuels objectifs ont été atteints ?\nQuels points à améliorer ?'} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>
+              {saving ? 'Création…' : 'Créer le modèle'}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
