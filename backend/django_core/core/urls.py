@@ -47,6 +47,8 @@ from .views import (
     TenantThemeViewSet,
     TenantUsageSnapshotViewSet,
     TrashViewSet,
+    WorkflowDefinitionViewSet,
+    WorkflowStepDefinitionViewSet,
     WorkflowTemplateViewSet,
     db_stats_view,
     health_live,
@@ -60,6 +62,12 @@ router = DefaultRouter()
 router.register(r'jobs', ScheduledJobViewSet, basename='scheduled-job')
 router.register(r'workflow-templates', WorkflowTemplateViewSet,
                 basename='workflow-template')
+# WIR51 — CRUD serveur des définitions de workflow (FG366) + étapes imbriquées,
+# company forcée côté serveur (comble le GAP BACKEND de l'écran Workflows).
+router.register(r'workflow-definitions', WorkflowDefinitionViewSet,
+                basename='workflow-definition')
+router.register(r'workflow-step-definitions', WorkflowStepDefinitionViewSet,
+                basename='workflow-step-definition')
 # FG381 — dashboards sans-code (CRUD multi-tenant, scoping perso/partagé).
 router.register(r'dashboards', DashboardViewSet, basename='dashboard')
 # FG370 — paiement carte en ligne d'une facture (CMI / Payzone, gated).

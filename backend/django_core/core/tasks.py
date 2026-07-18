@@ -183,3 +183,19 @@ def purge_idempotency_records_task():
         created_at__lt=cutoff).delete()
     logger.info('core.purge_idempotency_records: supprimés=%d', deleted)
     return {'deleted': deleted}
+
+
+@shared_task(name='core.escalate_workflow_sla')
+def escalate_workflow_sla_task():
+    """FG366 / WIR50 — escalade HORAIRE des étapes de workflow au SLA dépassé.
+
+    La commande ``escalate_workflow_sla`` documentait « à câbler sur Celery
+    Beat » sans y figurer : une ``WorkflowStepInstance`` en attente dont
+    l'échéance SLA est passée n'était jamais escaladée automatiquement.
+    Enveloppe fine : délègue à la commande homonyme (balayage PAR SOCIÉTÉ,
+    ``sla_echeance < now``), idempotente."""
+    from django.core.management import call_command
+
+    call_command('escalate_workflow_sla')
+    logger.info('core.escalate_workflow_sla: balayage terminé.')
+    return {'ok': True}

@@ -250,6 +250,10 @@ const templatesList = vi.fn()
 const templatesInstaller = vi.fn()
 const instancesListPending = vi.fn()
 const instancesDecider = vi.fn()
+const definitionsList = vi.fn()
+const definitionsCreate = vi.fn()
+const definitionsUpdate = vi.fn()
+const definitionsRemove = vi.fn()
 
 vi.mock('../../api/coreApi', () => ({
   default: {
@@ -257,6 +261,12 @@ vi.mock('../../api/coreApi', () => ({
     workflowTemplates: {
       list: (...a) => templatesList(...a),
       installer: (...a) => templatesInstaller(...a),
+    },
+    workflowDefinitions: {
+      list: (...a) => definitionsList(...a),
+      create: (...a) => definitionsCreate(...a),
+      update: (...a) => definitionsUpdate(...a),
+      remove: (...a) => definitionsRemove(...a),
     },
     workflowInstances: {
       listPending: (...a) => instancesListPending(...a),
@@ -284,6 +294,15 @@ beforeEach(() => {
   templatesInstaller.mockResolvedValue({ data: { code: 'x', nom: 'X', nb_etapes: 3 } })
   instancesListPending.mockResolvedValue({ data: { items: [], total: 0 } })
   instancesDecider.mockResolvedValue({ data: { detail: 'ok' } })
+  definitionsList.mockResolvedValue({ data: [] })
+  definitionsCreate.mockResolvedValue({
+    data: {
+      id: 1, nom: 'Validation devis', description: '',
+      steps: [{ id: 1 }, { id: 2 }, { id: 3 }],
+    },
+  })
+  definitionsUpdate.mockResolvedValue({ data: { id: 1, steps: [] } })
+  definitionsRemove.mockResolvedValue({ data: {} })
 })
 
 describe('TachesPlanifieesScreen (FG368)', () => {
