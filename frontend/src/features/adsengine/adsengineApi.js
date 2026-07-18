@@ -215,6 +215,20 @@ const adsengineApi = {
       api.post(`/adsengine/instagram/medias/${mediaId}/commentaires-actif/`, payload),
   },
 
+  // ── ADSDEEP59 — Audiences d'engagement (picker du composeur d'adset) ──
+  // NON gated consentement : aucune donnée CRM n'est envoyée (objets Meta-side).
+  // L'estimation d'audience est montrée AVANT usage (dossier §5).
+  audiences: {
+    // Catalogue des presets (openers/dropoff/submitted, page, IG) + rétention.
+    engagementPresets: () => api.get('/adsengine/audiences/engagement/'),
+    // Crée une audience d'engagement ({ preset_key, name?, source_id? }).
+    createEngagement: (payload) =>
+      api.post('/adsengine/audiences/engagement/', payload),
+    // Estimation d'audience avant usage ({ targeting_spec, optimization_goal? }).
+    deliveryEstimate: (payload) =>
+      api.post('/adsengine/audiences/delivery-estimate/', payload),
+  },
+
   // ── ENG27/ENG41 — Backlog par campagne (CreativeGenerationBatch) ──
   backlog: {
     // File par campagne : runway, diversité de hooks, lots de recombinaisons.

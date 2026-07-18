@@ -196,6 +196,77 @@ class CostPerSignatureView(APIView):
         return Response(cost_per_signature_summary(company))
 
 
+class EngagementAudienceView(APIView):
+    """ADSDEEP59 — Audiences d'engagement (picker du composeur d'adset).
+
+    ``GET  /api/django/adsengine/audiences/engagement/`` — catalogue des presets
+    (openers/dropoff/submitted, page_engaged, IG engaged) + rétention (dossier
+    §3). Gaté ``adsengine_view``.
+    ``POST /api/django/adsengine/audiences/engagement/`` — crée une audience
+    d'engagement (``{preset_key, name?, source_id?}``). Gaté ``adsengine_manage``.
+
+    NON gated par le consentement Custom Audience : une audience d'engagement est
+    un objet Meta-side (interactions formulaire/Page/IG) — AUCUNE donnée CRM n'est
+    envoyée. Company-scopé (le client Meta est résolu depuis la connexion de la
+    société de l'utilisateur).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_view'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        from .audiences import engagement_preset_catalog
+        return Response({'presets': engagement_preset_catalog()})
+
+    def post(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_manage'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        preset_key = (request.data or {}).get('preset_key')
+        if not preset_key:
+            return Response({'detail': 'preset_key requis.'}, status=400)
+        from .audiences import create_engagement_audience
+        try:
+            result = create_engagement_audience(
+                company, preset_key=preset_key,
+                name=(request.data or {}).get('name'),
+                source_id=(request.data or {}).get('source_id'))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(result)
+
+
+class AudienceDeliveryEstimateView(APIView):
+    """ADSDEEP59 — Estimation d'audience AVANT usage (dossier §5), montrée dans le
+    picker avant de créer/utiliser une audience.
+
+    ``POST /api/django/adsengine/audiences/delivery-estimate/`` avec
+    ``{targeting_spec, optimization_goal?}`` — LECTURE SEULE (aucune mutation,
+    aucune donnée CRM) → gaté ``adsengine_view``. Company-scopé.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_view'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        targeting_spec = (request.data or {}).get('targeting_spec')
+        if not targeting_spec:
+            return Response({'detail': 'targeting_spec requis.'}, status=400)
+        from .audiences import engagement_delivery_estimate
+        result = engagement_delivery_estimate(
+            company, targeting_spec=targeting_spec,
+            optimization_goal=(
+                (request.data or {}).get('optimization_goal') or 'REACH'))
+        return Response(result)
+
+
 class AdsengineViewSet(CompanyScopedModelViewSet):
     """Base des ViewSets du moteur publicitaire.
 

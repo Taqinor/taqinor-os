@@ -16,6 +16,7 @@ from .views import (
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
     CommentCountsView, CommentDeleteView, CommentHideView, CommentListView,
     CommentPrivateReplyView, CommentReplyView,
+    AudienceDeliveryEstimateView, EngagementAudienceView,
     CostPerSignatureView, CreativeLeaderboardView, CreativeScatterView,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
@@ -175,5 +176,12 @@ urlpatterns = [
     path('instagram/medias/<str:media_meta_id>/commentaires-actif/',
          InstagramMediaToggleCommentsView.as_view(),
          name='adsengine-ig-media-toggle-comments'),
+    # ADSDEEP59 — audiences d'engagement (picker composeur d'adset) + estimation
+    # d'audience avant usage. NON gated consentement (aucune donnée CRM envoyée).
+    path('audiences/engagement/', EngagementAudienceView.as_view(),
+         name='adsengine-audiences-engagement'),
+    path('audiences/delivery-estimate/',
+         AudienceDeliveryEstimateView.as_view(),
+         name='adsengine-audiences-delivery-estimate'),
     path('', include(router.urls)),
 ]

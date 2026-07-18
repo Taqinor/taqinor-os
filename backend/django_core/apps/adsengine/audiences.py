@@ -374,3 +374,146 @@ def lookalike_delivery_status(company, audience_id, *, client=None):
         'approximate_count': data.get('approximate_count_lower_bound'),
         'ready': ready,
     }
+
+
+# ── ADSDEEP59 — Audiences d'engagement (NON gated : aucune donnée CRM) ────────
+# Objets purement Meta-side : les interactions (formulaire/Page/IG) vivent déjà
+# côté Meta, rien n'est envoyé depuis le CRM → pas de consentement 1st-party.
+_DAY_SECONDS = 86400
+
+# Rétentions dossier §3 : formulaires lead 90 j ; Page / IG 730 j.
+ENGAGEMENT_PRESETS = {
+    'lead_opened': {
+        'label': 'Formulaire ouvert (non soumis)',
+        'source_type': 'lead',
+        'event': 'lead_generation_opened',
+        'retention_days': 90,
+    },
+    'lead_dropoff': {
+        'label': 'Formulaire abandonné',
+        'source_type': 'lead',
+        'event': 'lead_generation_dropoff',
+        'retention_days': 90,
+    },
+    'lead_submitted': {
+        'label': 'Formulaire soumis',
+        'source_type': 'lead',
+        'event': 'lead_generation_submitted',
+        'retention_days': 90,
+    },
+    'page_engaged': {
+        'label': 'A interagi avec la Page',
+        'source_type': 'page',
+        'event': 'page_engaged',
+        'retention_days': 730,
+    },
+    'ig_engaged': {
+        'label': 'A interagi avec le compte Instagram',
+        'source_type': 'ig_business',
+        'event': 'ig_business_profile_engaged',
+        'retention_days': 730,
+    },
+}
+
+
+def engagement_preset_catalog():
+    """ADSDEEP59 — Catalogue des audiences d'engagement (pour le picker du
+    composeur d'adset). Aucune donnée CRM — objets Meta-side. Expose la rétention
+    (dossier §3) pour que l'UI l'affiche avant usage."""
+    return [
+        {
+            'key': key,
+            'label': preset['label'],
+            'source_type': preset['source_type'],
+            'event': preset['event'],
+            'retention_days': preset['retention_days'],
+        }
+        for key, preset in ENGAGEMENT_PRESETS.items()
+    ]
+
+
+def _engagement_rule(preset, source_id):
+    """Construit la ``rule`` d'engagement (event_sources typé + rétention +
+    filtre sur l'événement)."""
+    return {
+        'inclusions': {
+            'operator': 'or',
+            'rules': [{
+                'event_sources': [{
+                    'type': preset['source_type'],
+                    'id': str(source_id),
+                }],
+                'retention_seconds': preset['retention_days'] * _DAY_SECONDS,
+                'filter': {
+                    'operator': 'and',
+                    'filters': [{
+                        'field': 'event',
+                        'operator': 'eq',
+                        'value': preset['event'],
+                    }],
+                },
+            }],
+        },
+    }
+
+
+def _default_source_id(client, source_type):
+    """Source par défaut d'un preset d'engagement, résolue depuis la connexion :
+    ``ig_user_id`` pour IG, ``page_id`` pour la Page ET les formulaires lead (les
+    lead forms vivent sous la Page)."""
+    if source_type == 'ig_business':
+        return getattr(client, 'ig_user_id', None)
+    return getattr(client, 'page_id', None)
+
+
+def create_engagement_audience(company, *, preset_key, name=None,
+                               source_id=None, client=None):
+    """ADSDEEP59 — Crée une audience d'engagement. NON gated : AUCUNE donnée CRM
+    n'est envoyée (l'audience dérive des interactions déjà côté Meta).
+
+    ``preset_key`` ∈ :data:`ENGAGEMENT_PRESETS`. ``source_id`` (id de Page / lead
+    form / compte IG) est résolu depuis la connexion si absent. Renvoie
+    ``{'preset', 'audience_id', 'retention_days', 'error'?}``."""
+    preset = ENGAGEMENT_PRESETS.get(preset_key)
+    if preset is None:
+        raise ValueError(f"Preset d'engagement inconnu : {preset_key}")
+
+    client = client or _client_for(company)
+    if client is None:
+        return {'preset': preset_key, 'audience_id': '',
+                'error': 'no_connection'}
+    src = source_id or _default_source_id(client, preset['source_type'])
+    if not src:
+        return {'preset': preset_key, 'audience_id': '', 'error': 'no_source'}
+
+    from .meta_client import MetaError
+    rule = _engagement_rule(preset, src)
+    audience_name = name or f"Engagement — {preset['label']}"
+    try:
+        created = client.create_engagement_audience(
+            name=audience_name, rule=rule)
+        return {
+            'preset': preset_key,
+            'audience_id': str((created or {}).get('id') or ''),
+            'retention_days': preset['retention_days'],
+        }
+    except MetaError as exc:
+        return {'preset': preset_key, 'audience_id': '',
+                'error': str(exc)[:255]}
+
+
+def engagement_delivery_estimate(company, *, targeting_spec,
+                                 optimization_goal='REACH', client=None):
+    """ADSDEEP59 — Estimation d'audience AVANT usage (dossier §5) — montrée dans
+    le picker avant de créer/utiliser une audience. LECTURE SEULE, aucune donnée
+    CRM. Renvoie ``{'estimate': {...}}`` ou ``{'error': ...}``."""
+    client = client or _client_for(company)
+    if client is None:
+        return {'error': 'no_connection'}
+    from .meta_client import MetaError
+    try:
+        estimate = client.get_delivery_estimate(
+            targeting_spec=targeting_spec, optimization_goal=optimization_goal)
+        return {'estimate': estimate}
+    except MetaError as exc:
+        return {'error': str(exc)[:255]}
