@@ -17,7 +17,16 @@ def _qx24_refresh_etude_on_ligne_change(sender, instance, **kwargs):
 
     Best-effort ; ne bloque jamais une écriture de ligne. No-op si le devis lié
     n'a pas d'économies stockées (rien à dériver)."""
-    devis = getattr(instance, 'devis', None)
+    # ``instance.devis`` LÈVE ``Devis.DoesNotExist`` (pas ``AttributeError``) quand
+    # le devis parent est déjà supprimé — cas d'une suppression EN CASCADE
+    # (post_delete de la ligne alors que le devis a été collecté d'abord, ex.
+    # reset_demo_company NTDMO6). ``getattr(..., None)`` n'attrape PAS
+    # ``DoesNotExist`` : on l'attrape explicitement pour rester best-effort.
+    from django.core.exceptions import ObjectDoesNotExist
+    try:
+        devis = instance.devis
+    except ObjectDoesNotExist:
+        return
     if devis is None:
         return
     try:

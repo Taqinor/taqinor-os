@@ -869,15 +869,7 @@ def _run_demo_reset(slug):
     except Exception:
         # Pas de Celery (ou pas de task) → exécution synchrone immédiate.
         pass
-    try:
-        call_command('reset_demo_company', slug=slug, force=True, verbosity=0)
-    except Exception:
-        # NTDMO7 — trace complète sur stderr (le logger django.request ne
-        # journalise que le message « Internal Server Error »). Permet de
-        # localiser la source exacte du 500 côté endpoint reset-demo.
-        import traceback
-        traceback.print_exc()
-        raise
+    call_command('reset_demo_company', slug=slug, force=True, verbosity=0)
 
 
 class CompanyViewSet(viewsets.ModelViewSet):
