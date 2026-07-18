@@ -149,9 +149,10 @@ def fmt(n) -> str:
 # RETIRÉE sur décision fondateur : trois garanties traçables aux fiches
 # produit, rien de plus.
 WARRANTIES = [
+    ("2", "ans", "Installation", "main-d'œuvre TAQINOR"),
     ("10", "ans", "Onduleur", "garantie fabricant"),
     ("12", "ans", "Panneaux", "garantie produit"),
-    ("30", "ans", "Performance", "87,4 % de rendement garanti"),
+    ("30", "ans", "Performance", "87,4 % garanti"),
 ]
 
 # French name particles that stay lowercase inside a name.

@@ -211,6 +211,9 @@ def build(ctx) -> str:
         # QRES45 — mini-grand-livre à 3 lignes : crédit / économies / reste en
         # poche (la juxtaposition qui vend, chiffrée — jamais promise).
         _ledger = ""
+        # QRES64 — contenu SANS enveloppe : la cellule <td class="p3-tdfin">
+        # porte les styles de la carte (le tableau à rowspan aligne les bas
+        # des deux colonnes, quel que soit le côté le plus haut).
         if _eco_mois > _mens:
             _reste = _eco_mois - _mens
             _ledger = (
@@ -221,19 +224,17 @@ def build(ctx) -> str:
                 '<div class="p3-fin-row p3-fin-net"><span>Dans votre poche'
                 f'</span><span>≈ +{theme.fmt(_reste)} MAD/mois</span></div>')
             fin_card_html = (
-                '<div class="p3-fincard">'
                 '<div class="p3-fin-k">Financement possible</div>'
                 f'{_ledger}'
                 f'<div class="p3-fin-s">sur {_duree_ans} ans ({_prog}) — '
-                'indicatif, à confirmer avec votre banque.</div></div>')
+                'indicatif, à confirmer avec votre banque.</div>')
         else:
             fin_card_html = (
-                '<div class="p3-fincard">'
                 '<div class="p3-fin-k">Financement possible</div>'
                 f'<div class="p3-fin-v">≈ {_mens_txt} '
                 '<small>MAD/mois</small></div>'
                 f'<div class="p3-fin-s">sur {_duree_ans} ans ({_prog}) — '
-                'indicatif, à confirmer avec votre banque.</div></div>')
+                'indicatif, à confirmer avec votre banque.</div>')
     # QG7 — contact du conseiller (créateur du devis) : nom + tél, ajouté comme
     # ligne de conditions (données seulement). Repli société géré côté builder.
     seller = d.get("seller") or {}
@@ -261,6 +262,31 @@ def build(ctx) -> str:
         f'<div class="p3-step-s">{s}</div></div>'
         for n, t, s in steps
     )
+
+    # QRES64 — colonnes Conditions / Étapes(+Financement) en VRAI tableau
+    # HTML : la carte Conditions (rowspan) court sur toute la hauteur de la
+    # rangée et la carte Financement partage sa ligne de base — les quatre
+    # coins des colonnes s'alignent quel que soit le côté le plus haut.
+    _cols_head = (
+        '<colgroup><col><col class="p3-cgap"><col></colgroup>'
+        '<tr class="p3-crh">'
+        '<td><div class="p3-h">Conditions</div></td><td></td>'
+        '<td><div class="p3-h">Prochaines étapes</div></td></tr>')
+    if fin_card_html:
+        cols_html = (
+            f'<table class="p3-cols p3-block" cellspacing="0">{_cols_head}'
+            f'<tr><td class="p3-tdcard" rowspan="3">{cond_html}</td><td></td>'
+            f'<td class="p3-tdcard"><div class="p3-steps">{steps_html}</div>'
+            '</td></tr>'
+            '<tr class="p3-rgap"><td></td><td></td></tr>'
+            f'<tr><td></td><td class="p3-tdfin">{fin_card_html}</td></tr>'
+            '</table>')
+    else:
+        cols_html = (
+            f'<table class="p3-cols p3-block" cellspacing="0">{_cols_head}'
+            f'<tr><td class="p3-tdcard">{cond_html}</td><td></td>'
+            f'<td class="p3-tdcard"><div class="p3-steps">{steps_html}</div>'
+            '</td></tr></table>')
 
     # QX5 — « Option choisie » : deux cases seulement pour un vrai devis à deux
     # options ; mono-option → on nomme l'unique option (aucune case fantôme).
@@ -376,12 +402,23 @@ def build(ctx) -> str:
   font-weight:600; }}
 
 /* Conditions + steps side by side */
-.p3-cols {{ display:flex; gap:12px; align-items:flex-start; }}
-.p3-col {{ flex:1; }}
+/* QRES64 — colonnes Conditions / Étapes+Financement en VRAI tableau :
+   hauteurs égales par construction, carte Conditions en rowspan sur toute
+   la rangée, carte Financement ancrée sur la MÊME ligne de base — plus
+   jamais de bas de colonnes en escalier (défaut relevé par le fondateur). */
+.p3-cols {{ width:100%; border-collapse:separate; border-spacing:0;
+  table-layout:fixed; }}
+.p3-cgap {{ width:12px; }}
+.p3-crh td {{ padding:0; }}
+.p3-tdcard {{ border:1px solid {C['line']}; border-radius:11px;
+  background:{C['paper']}; padding:12px 14px; vertical-align:top; }}
+.p3-rgap td {{ height:9px; }}
+.p3-tdfin {{ border:1px solid {C['gold']}; background:#FFFCF5;
+  border-radius:11px; padding:9px 14px 10px; vertical-align:top; }}
 .p3-card {{ border:1px solid {C['line']}; border-radius:11px;
   background:{C['paper']}; padding:12px 14px; }}
 /* QRES26 — profondeur matière commune aux blocs de la page 3. */
-.p3-card, .p3-fincard, .p3-accord, .p3-cta, .p3-val {{
+.p3-card, .p3-tdcard, .p3-tdfin, .p3-accord, .p3-cta, .p3-val {{
   box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05); }}
 .p3-cond-row {{ padding:4.6px 0; border-bottom:1px dashed {C['line_soft']}; }}
 .p3-cond-row:last-child {{ border-bottom:none; padding-bottom:1px; }}
@@ -501,17 +538,7 @@ def build(ctx) -> str:
     <div class="p3-trust">{trust_html}</div>
   </div>
 
-  <div class="p3-cols p3-block">
-    <div class="p3-col">
-      <div class="p3-h">Conditions</div>
-      <div class="p3-card">{cond_html}</div>
-    </div>
-    <div class="p3-col">
-      <div class="p3-h">Prochaines étapes</div>
-      <div class="p3-card"><div class="p3-steps">{steps_html}</div></div>
-      {fin_card_html}
-    </div>
-  </div>
+  {cols_html}
 
   <div class="qj" data-w="40"></div>
   <div class="p3-accord">
