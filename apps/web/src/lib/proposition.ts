@@ -97,6 +97,14 @@ export interface ProposalQuote {
    *  absent → l'accroche comparative est masquée, jamais inventée. */
   factures_mensuelles?: number[] | null;
   etude?: Record<string, unknown>;
+  /**
+   * WPROP1 — conditions de paiement par jalons (backend `payment_terms`,
+   * décision propriétaire 30/60/10 résidentiel). Optionnel : absent → le bloc
+   * conditions dégrade sans jalons, jamais de pourcentages inventés.
+   */
+  payment_terms?: { acompte?: number; materiel?: number; solde?: number } | null;
+  /** WPROP1 — note TVA composée par le builder (« TVA : 10% panneaux… »). */
+  tva_note?: string | null;
 }
 
 /** Totaux d'options agrégés au niveau racine du contrat. */
@@ -198,6 +206,10 @@ export interface ProposalResponse {
     name?: string | null;
     /** URL de la photo du vendeur. */
     photo_url?: string | null;
+    /** Nom du vendeur tel que servi par le backend actuel (`seller.nom`). */
+    nom?: string | null;
+    /** WPROP1 — téléphone du conseiller (backend `seller.telephone`). */
+    telephone?: string | null;
   } | null;
 }
 
@@ -2493,3 +2505,119 @@ export const MONTHS_SHORT: Record<PropLang, string[]> = {
   en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
   ar: ['ينا', 'فبر', 'مار', 'أبر', 'ماي', 'يون', 'يول', 'غشت', 'شت', 'أكت', 'نون', 'دجن'],
 };
+
+/* ── WPROP1 — le jumeau interactif du PDF résidentiel ────────────────────────
+   Helpers ADDITIFS (aucun export existant modifié — 20 fichiers vitest les
+   épinglent). Le calcul économique reste 100 % backend (eco_*, roi_*,
+   factures_mensuelles) : ces fonctions COMPOSENT, elles n'inventent rien. */
+
+/**
+ * WPROP1 — slug de la fiche technique /produits/<slug> d'une ligne d'équipement.
+ * Port MOT À MOT du classifieur du moteur PDF (`quote_engine/residential/
+ * theme.py fiche_slug`) : mêmes mots-clés, mêmes priorités, mêmes replis — le
+ * web et le papier pointent la MÊME fiche pour la même ligne. '' = pas de
+ * fiche connue (lignes TAQINOR : structures, installation, transport…).
+ */
+export function ficheSlugForItem(designation: string, marque?: string | null): string {
+  const blob = `${designation ?? ''} ${marque ?? ''}`.toLowerCase();
+  if (blob.includes('panneau') || blob.includes('panel')) {
+    return blob.includes('jinko') ? 'jinko-710' : 'canadian-solar-710';
+  }
+  if (blob.includes('onduleur') || blob.includes('inverter')) {
+    if (blob.includes('hybride') || blob.includes('hybrid')) return 'onduleur-deye-hybride';
+    return 'onduleur-huawei-reseau';
+  }
+  if (blob.includes('batterie') || blob.includes('battery')) return 'batterie-dyness';
+  if (blob.includes('smart meter') || blob.includes('compteur')) {
+    return blob.includes('huawei') ? 'smart-meter-huawei' : '';
+  }
+  if (blob.includes('dongle') || blob.includes('wifi')) {
+    return blob.includes('huawei') ? 'wifi-dongle-huawei' : '';
+  }
+  return '';
+}
+
+/**
+ * WPROP1 — tiroir de détail SPÉCIAL d'une ligne sans fiche produit :
+ * 'tableau' (Tableau de protection AC/DC — squelette de spécification que le
+ * fondateur remplira) ou 'installation' (l'équipe qui pose + l'ingénieur qui
+ * supervise + la garantie d'installation 2 ans). null = pas de tiroir spécial.
+ */
+export function specialDrawerKind(designation: string): 'tableau' | 'installation' | null {
+  const d = String(designation ?? '').toLowerCase();
+  if (/tableau|coffret|ac\/dc|ac dc/.test(d)) return 'tableau';
+  if (/installation|main d[’']œuvre|main d[’']oeuvre|\bpose\b/.test(d)) return 'installation';
+  return null;
+}
+
+/** WPROP1 — l'accroche argent du héros (le « −X % » du PDF), 100 % backend. */
+export interface HeroHook {
+  /** Facture mensuelle actuelle (moyenne des 12 factures backend), MAD. */
+  billBefore: number;
+  /** Facture mensuelle estimée APRÈS solaire (facture − économies/12), MAD. */
+  billAfter: number;
+  /** Réduction de facture en % (arrondie, bornée 1..99). */
+  cutPercent: number;
+  /** Part de la facture couverte par les économies (0..1, pour la donut). */
+  coverageShare: number;
+}
+
+/**
+ * WPROP1 — calcule l'accroche « −X % sur votre facture » depuis les SEULS
+ * chiffres backend : moyenne de `quote.factures_mensuelles` + `eco_*_ann` de
+ * l'option. null si les factures manquent ou si l'économie n'est pas exploitable
+ * (l'accroche est alors MASQUÉE — jamais un pourcentage inventé, WJ83).
+ */
+export function heroHook(
+  p: Pick<ProposalResponse, 'quote'>,
+  option: OptionKey,
+): HeroHook | null {
+  const bills = p?.quote?.factures_mensuelles;
+  if (!Array.isArray(bills)) return null;
+  const valid = bills.filter((b) => typeof b === 'number' && Number.isFinite(b) && b > 0);
+  if (valid.length < 6) return null;
+  const billBefore = Math.round(valid.reduce((a, b) => a + b, 0) / valid.length);
+  const ecoAnn = option === 'avec_batterie' ? p.quote?.eco_a_ann : p.quote?.eco_s_ann;
+  if (typeof ecoAnn !== 'number' || !Number.isFinite(ecoAnn) || ecoAnn <= 0) return null;
+  const ecoMonthly = ecoAnn / 12;
+  if (billBefore <= 0) return null;
+  const billAfter = Math.max(0, Math.round(billBefore - ecoMonthly));
+  const cutPercent = Math.min(99, Math.max(1, Math.round((ecoMonthly / billBefore) * 100)));
+  const coverageShare = Math.min(1, ecoMonthly / billBefore);
+  return { billBefore, billAfter, cutPercent, coverageShare };
+}
+
+/** WPROP1 — grand-livre financement : économies − crédit = dans votre poche. */
+export interface FinancingLedger {
+  ecoMonthly: number;
+  creditMonthly: number;
+  net: number;
+}
+
+/**
+ * WPROP1 — compose le grand-livre mensuel (le « Dans votre poche » du PDF)
+ * depuis l'économie annuelle backend et la mensualité de crédit backend.
+ * null si l'un des deux manque — le bloc dégrade, rien n'est inventé. Un net
+ * négatif est renvoyé TEL QUEL (rendu honnête, jamais masqué).
+ */
+export function financingLedger(
+  ecoAnn: number | null | undefined,
+  creditMonthly: number | null | undefined,
+): FinancingLedger | null {
+  if (typeof ecoAnn !== 'number' || !Number.isFinite(ecoAnn) || ecoAnn <= 0) return null;
+  if (typeof creditMonthly !== 'number' || !Number.isFinite(creditMonthly) || creditMonthly <= 0) {
+    return null;
+  }
+  const ecoMonthly = Math.round(ecoAnn / 12);
+  return { ecoMonthly, creditMonthly: Math.round(creditMonthly), net: ecoMonthly - Math.round(creditMonthly) };
+}
+
+/**
+ * WPROP1 — total HT d'une ligne d'équipement (P.U. HT × quantité), pour la
+ * colonne « Total HT » du tableau (le payload ne porte pas ce produit).
+ */
+export function itemTotalHt(it: Pick<ProposalItem, 'prix_unit_ht' | 'quantite'>): number {
+  const pu = typeof it?.prix_unit_ht === 'number' ? it.prix_unit_ht : 0;
+  const q = typeof it?.quantite === 'number' ? it.quantite : 0;
+  return Math.round(pu * q);
+}
