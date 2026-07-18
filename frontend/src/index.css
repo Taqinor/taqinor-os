@@ -6399,3 +6399,124 @@ textarea.form-control {
     border-top: 1px solid var(--border);
   }
 }
+
+/* ── LW11 : centre (nav-chips sticky, sections repliables, port des champs) ── */
+
+/* Nav-chips horizontaux STICKY en tête du centre (scroll-spy). */
+.lw-secnav {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  overflow-x: auto;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.lw-secnav-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+.lw-secnav-chip:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 10%, transparent);
+}
+.lw-secnav-chip[aria-current="true"] {
+  color: var(--foreground);
+  font-weight: 600;
+  background: color-mix(in oklch, var(--module-accent-azur) 14%, transparent);
+  border-color: color-mix(in oklch, var(--module-accent-azur) 30%, transparent);
+}
+.lw-secnav-icon {
+  flex: 0 0 auto;
+}
+
+/* Pile des sections. */
+.lw-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+/* Une section = une carte à liseré, jamais flottante au repos. */
+.lw-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.lw-section-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--foreground);
+  border-radius: var(--radius-md);
+}
+.lw-section-head:hover {
+  background: color-mix(in oklch, var(--muted-foreground) 6%, transparent);
+}
+.lw-section-icon {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+.lw-section-title {
+  flex: 1 1 auto;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.lw-section-chevron {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.lw-section-body {
+  padding: 0 0.85rem 0.85rem;
+}
+
+/* Bannière doublon live (VX239) + lien — tones sémantiques, jamais de hex. */
+.lw-dup-warning {
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--foreground);
+  border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+}
+.lw-dup-link {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--info);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+.lw-gps-link {
+  color: var(--info);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+.lw-gps-link:hover {
+  text-decoration: underline;
+}
