@@ -5,6 +5,7 @@ import {
   reducer, initState, getField, isDirty, dirtyKeys, isSuggested,
   toPayload, currentFields,
 } from './draftCore'
+import { getPrefetched } from './leadPrefetch'
 
 // LW9/LW12 — Hook moteur d'état du Lead Workspace : branche les effets (PATCH
 // réseau, debounce d'autosauvegarde, miroir sessionStorage, garde stale,
@@ -46,11 +47,24 @@ function clearMirror(id) {
   try { window.sessionStorage.removeItem(MIRROR_PREFIX + id) } catch { /* best-effort */ }
 }
 
+// LW24 — voisin déjà pré-chargé en idle (cf. leadPrefetch.js) : premier rendu
+// INSTANTANÉ avec la donnée COMPLÈTE en cache, superposée à la ligne partielle
+// reçue (le cache gagne sur les clés qu'il connaît). Le GET frais repart
+// TOUJOURS en arrière-plan et remplace via SET_SERVER — ce cache n'est jamais
+// la source de vérité.
+function withPrefetched(lead, mode) {
+  const id = lead && lead.id != null ? lead.id : null
+  if (mode !== 'edit' || id == null) return lead
+  const cached = getPrefetched(id)
+  return cached ? { ...lead, ...cached } : lead
+}
+
 export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUserId = null, onSaved } = {}) {
   const [state, dispatch] = useReducer(reducer, undefined, () => {
-    const id = lead && lead.id != null ? lead.id : null
+    const effectiveLead = withPrefetched(lead, mode)
+    const id = effectiveLead && effectiveLead.id != null ? effectiveLead.id : null
     const restoredDraft = (mode === 'edit' && id != null) ? readMirror(id) : null
-    return initState({ lead, mode, currentUserId, lastVille: readLastVille(), restoredDraft })
+    return initState({ lead: effectiveLead, mode, currentUserId, lastVille: readLastVille(), restoredDraft })
   })
 
   // Refs pour des callbacks STABLES (jamais de closure périmée ni de timer de
@@ -200,10 +214,14 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     loadedRef.current = id
     loadedModeRef.current = mode
     const restoredDraft = (mode === 'edit' && id != null) ? readMirror(id) : null
-    openedAtRef.current = leadRef.current && leadRef.current.date_modification
+    // LW24 — navigation J/K vers un voisin déjà pré-chargé : premier rendu
+    // instantané avec la donnée complète en cache (cf. withPrefetched
+    // ci-dessus) au lieu de la seule ligne partielle de `leadsQueue`.
+    const effectiveLead = withPrefetched(leadRef.current, mode)
+    openedAtRef.current = effectiveLead && effectiveLead.date_modification
     dispatch({
       type: 'LOAD_LEAD',
-      payload: { lead: leadRef.current, mode, currentUserId, lastVille: readLastVille(), restoredDraft },
+      payload: { lead: effectiveLead, mode, currentUserId, lastVille: readLastVille(), restoredDraft },
     })
     // On lit `leadRef.current` (jamais `lead` directement) pour ne recharger
     // qu'à un VRAI changement d'id/mode (un simple re-rendu du parent ne doit

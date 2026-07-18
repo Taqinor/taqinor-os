@@ -16,6 +16,7 @@ import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
 import { isTypingTarget } from '../../../providers/shortcuts'
 import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
+import { schedulePrefetch } from './leadPrefetch'
 import { getField } from './draftCore'
 import IdentityRail from './IdentityRail'
 import SectionsPane from './SectionsPane'
@@ -186,6 +187,17 @@ export default function LeadWorkspace({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [mode, leadsQueue, onNavigateLead, goToLead, nextInQueue, prevInQueue])
+
+  // ── LW24 : pré-chargement en idle des voisins de file (J/K instantané) ────
+  // Se contente d'ALIMENTER le cache module-level (leadPrefetch.js) — la
+  // CONSOMMATION (premier rendu instantané) vit dans useLeadDraft.js
+  // (LOAD_LEAD). Annulé proprement si la file change avant le déclenchement.
+  useEffect(() => {
+    if (mode !== 'edit' || !leadsQueue) return undefined
+    const ids = [prevInQueue?.id, nextInQueue?.id].filter((id) => id != null)
+    if (!ids.length) return undefined
+    return schedulePrefetch(ids, (id) => crmApi.getLead(id).then((r) => r.data))
+  }, [mode, leadsQueue, prevInQueue, nextInQueue])
 
   // ── LW23 : registre de raccourcis propre (a/d/n/1-4) ──────────────────────
   // `a` archiver (leaveGuard déjà structurel dans doArchive), `d` focus le
