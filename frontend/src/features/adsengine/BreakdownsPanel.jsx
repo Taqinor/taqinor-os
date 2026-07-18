@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Users, LayoutGrid, MapPin, Clock } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { formatMAD, formatNumber } from './adsengine'
+import DataWindowNotice from './DataWindowNotice'
 
 /* ============================================================================
    ADSDEEP10 — Panneau « Audience & diffusion » (onglet du détail campagne/ad).
@@ -61,6 +62,8 @@ export default function BreakdownsPanel({ objectType = 'campaign', objectId }) {
   return (
     <div data-testid="ae-breakdowns-panel">
       <h3>Audience &amp; diffusion</h3>
+      {/* ADSDEEP66 — les ventilations ne sont synchronisées que sur 28 j. */}
+      <DataWindowNotice kind="breakdowns" />
       {!hasAny && (
         <p data-testid="ae-breakdowns-empty">
           Aucune ventilation disponible pour cet objet.

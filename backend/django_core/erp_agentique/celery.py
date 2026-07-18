@@ -437,6 +437,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.generate_weekly_brief',
         'schedule': crontab(hour=6, minute=50, day_of_week=1),
     },
+    # ADSDEEP62 — digest QUOTIDIEN FR (dépense/conversations/leads/signatures/
+    # alertes actives/top ad de la veille), après le brief. NO-OP propre sans
+    # campagne synchronisée ; opt-out par utilisateur respecté (EventType.DIGEST).
+    'adsengine-daily-ads-digest': {
+        'task': 'adsengine.daily_ads_digest',
+        'schedule': crontab(hour=6, minute=58),
+    },
     # ADSENG15 — boucle CRITIQUE du Gardien (toutes les 6 h) : garde-fous
     # sécurité (zéro-diffusion, ad refusée, pic/chute de dépense). JAMAIS
     # sub-horaire (rate limits Meta scalés au spend, dd-guardian §A9).
@@ -449,6 +456,13 @@ app.conf.beat_schedule = {
     'adsengine-evaluate-optimization-rules': {
         'task': 'adsengine.evaluate_optimization_rules',
         'schedule': crontab(hour=6, minute=55),
+    },
+    # ADSDEEP42 — boucle QUART-HORAIRE du Gardien : évalue les règles opt-in
+    # (RulePolicy.cadence_minutes>0), bornée par le budgeteur de rate-limit
+    # ADSDEEP5 (jamais un 613). NO-OP tant qu'aucune règle n'a opté.
+    'adsengine-evaluate-quarter-hourly': {
+        'task': 'adsengine.evaluate_quarter_hourly',
+        'schedule': crontab(minute='*/15'),
     },
     # ADSENG35 — boucle du FlightRunner (quotidienne, après le gardien de 06:55).
     # NO-OP par défaut : ne tourne que pour les sociétés ayant ACTIVÉ le mode
@@ -468,6 +482,13 @@ app.conf.beat_schedule = {
     'adsengine-pull-meta-leads': {
         'task': 'adsengine.pull_meta_leads',
         'schedule': crontab(hour=7, minute=25),
+    },
+    # ADSDEEP27 — boucle de retour CAPI « signatures » (CRM Dataset Meta) : push
+    # QUOTIDIEN de l'événement signed_contract par deal signé Odoo, idempotent
+    # (marqueur CapiOdooEvent). NO-OP propre sans CAPI_CRM_DATASET_ID + token.
+    'adsengine-emit-capi-signatures': {
+        'task': 'adsengine.emit_capi_signatures',
+        'schedule': crontab(hour=7, minute=35),
     },
     # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
     # Best-effort, une alerte par jour et par société (dédup), no-op tant que

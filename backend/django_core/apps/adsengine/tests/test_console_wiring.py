@@ -21,8 +21,9 @@ from authentication.models import Company
 from apps.roles.models import Role
 
 from apps.adsengine.models import (
-    AdCampaignMirror, CreativeAsset, CreativeGenerationBatch, DecisionLog,
-    EngineAlert, Experiment, GuardrailConfig, InsightSnapshot, MetaConnection,
+    AdCampaignMirror, AdMirror, AdSetMirror, CreativeAsset,
+    CreativeGenerationBatch, DecisionLog, EngineAlert, Experiment,
+    GuardrailConfig, InsightSnapshot, MetaConnection,
     ReconciliationSnapshot, WeeklyBrief,
 )
 
@@ -72,6 +73,19 @@ class ConsoleWiringTests(TestCase):
             company=cls.company, content_type=ct, object_id=cls.campaign.pk,
             date=datetime.date.today(), spend='120.00', results=6,
             frequency='1.80', cpl='20.00')
+
+        # ADSDEEP60 — hiérarchie Campagne → Ad set → Ad (badge apprentissage).
+        cls.adset = AdSetMirror.objects.create(
+            company=cls.company, meta_id='as-1', name='Ad set A',
+            status='ACTIVE', budget=4000, campaign=cls.campaign,
+            learning_status=AdSetMirror.LearningStatus.LEARNING)
+        cls.ad = AdMirror.objects.create(
+            company=cls.company, meta_id='ad-1', name='Ad A',
+            status='ACTIVE', adset=cls.adset)
+        ad_ct = ContentType.objects.get_for_model(AdMirror)
+        InsightSnapshot.objects.create(
+            company=cls.company, content_type=ad_ct, object_id=cls.ad.pk,
+            date=datetime.date.today(), spend='30.00', results=2)
 
         cls.brief = WeeklyBrief.objects.create(
             company=cls.company,
@@ -216,6 +230,56 @@ class ConsoleWiringTests(TestCase):
         resp = auth(self.viewer).get(f'{BASE}/metrics/dashboard/')
         self.assertEqual(resp.data['currency'], 'USD')
 
+    # ── ADSDEEP61 — Dashboard v2 (conversations réelles + MER mixte) ──────────
+    def test_dashboard_v2_shape_and_window(self):
+        from apps.adsengine.models import CtwaReferral
+        from django.utils import timezone
+
+        CtwaReferral.objects.create(
+            company=self.company, wa_message_id='wa-1', ad_id='ad-1',
+            ts=timezone.now())
+        CtwaReferral.objects.create(
+            company=self.company, wa_message_id='wa-2', ad_id='ad-1',
+            ts=timezone.now())
+        resp = auth(self.viewer).get(f'{BASE}/metrics/dashboard-v2/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['window_days'], 14)
+        self.assertEqual(resp.data['conversations']['total'], 2)
+        self.assertEqual(len(resp.data['conversations']['sparkline']), 14)
+        self.assertEqual(resp.data['mer']['spend'], '120.00')
+        self.assertFalse(resp.data['mer']['odoo_configured'])
+        self.assertEqual(resp.data['mer']['signed_ca_mad'], '0')
+        self.assertEqual(len(resp.data['mer']['spend_sparkline']), 14)
+        self.assertEqual(len(resp.data['mer']['signed_ca_sparkline']), 14)
+
+    def test_dashboard_v2_never_blends_cross_currency_mer(self):
+        """Doctrine devise-compte : dépense Meta en USD + CA signé Odoo en MAD
+        -> AUCUN ratio calculé (jamais une conversion implicite)."""
+        MetaConnection.objects.update_or_create(
+            company=self.company, defaults={'currency': 'USD'})
+        from unittest import mock
+        with mock.patch(
+                'apps.adsengine.odoo_client.is_configured',
+                return_value=True), \
+                mock.patch(
+                    'apps.adsengine.odoo_selectors.signed_deals',
+                    return_value=[{
+                        'phone_norm': '212600000000', 'amount_mad': '5000',
+                        'date': datetime.date.today().isoformat(),
+                        'source_name': 'Client X', 'origin': 'sale_order',
+                        'lead_id': None}]):
+            resp = auth(self.viewer).get(f'{BASE}/metrics/dashboard-v2/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['mer']['spend_currency'], 'USD')
+        self.assertEqual(resp.data['mer']['signed_ca_currency'], 'MAD')
+        self.assertEqual(resp.data['mer']['signed_ca_mad'], '5000')
+        self.assertIsNone(resp.data['mer']['mer_ratio'])  # jamais fabriqué
+        self.assertTrue(resp.data['mer']['odoo_configured'])
+
+    def test_dashboard_v2_requires_view_permission(self):
+        resp = auth(self.nobody).get(f'{BASE}/metrics/dashboard-v2/')
+        self.assertEqual(resp.status_code, 403)
+
     def test_connection_status_includes_currency(self):
         MetaConnection.objects.update_or_create(
             company=self.company,
@@ -315,6 +379,64 @@ class ConsoleWiringTests(TestCase):
         resp = auth(self.manager).post(
             f'{BASE}/campaigns/', {'meta_id': 'x'}, format='json')
         self.assertEqual(resp.status_code, 405)
+
+    # ── ADSDEEP60 — Hiérarchie Campagne → Ad sets → Ads ───────────────────────
+    def test_campaign_hierarchy_shape_and_scoping(self):
+        resp = auth(self.viewer).get(
+            f'{BASE}/campaigns/{self.campaign.pk}/hierarchie/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['name'], 'Campagne A')
+        adsets = resp.data['adsets']
+        self.assertEqual(len(adsets), 1)
+        adset = adsets[0]
+        self.assertEqual(adset['name'], 'Ad set A')
+        self.assertEqual(adset['statut_display'], 'Active')
+        self.assertEqual(adset['budget_quotidien_mad'], '40.00')
+        self.assertEqual(adset['learning_badge']['label'], 'En apprentissage')
+        self.assertTrue(adset['learning_badge']['is_learning'])
+        ads = adset['ads']
+        self.assertEqual(len(ads), 1)
+        self.assertEqual(ads[0]['name'], 'Ad A')
+        self.assertEqual(ads[0]['depense_mad'], '30.00')
+        self.assertEqual(ads[0]['nb_leads'], 2)
+
+    def test_campaign_hierarchy_scoped_to_company(self):
+        other_campaign = AdCampaignMirror.objects.get(
+            company=self.other, meta_id='other-cmp')
+        resp = auth(self.viewer).get(
+            f'{BASE}/campaigns/{other_campaign.pk}/hierarchie/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_campaign_hierarchy_requires_view_permission(self):
+        resp = auth(self.nobody).get(
+            f'{BASE}/campaigns/{self.campaign.pk}/hierarchie/')
+        self.assertEqual(resp.status_code, 403)
+
+    # ── ADSDEEP22 — Cockpit par ad ─────────────────────────────────────────────
+    def test_ads_cockpit_shape_and_scoping(self):
+        from apps.adsengine.models import MetaLeadMirror
+        MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='lg-1', ad_id=self.ad.meta_id)
+
+        resp = auth(self.viewer).get(f'{BASE}/metrics/ads-cockpit/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rows = resp.data
+        self.assertIsInstance(rows, list)
+        row = next(r for r in rows if r['meta_id'] == 'ad-1')
+        self.assertEqual(row['nom'], 'Ad A')
+        self.assertEqual(row['statut_display'], 'Active')
+        self.assertEqual(row['learning_badge']['label'], 'En apprentissage')
+        self.assertEqual(row['depense_mad'], '30.00')
+        self.assertEqual(row['nb_leads'], 1)  # MetaLeadMirror réel
+        self.assertEqual(row['cpl_mad'], '30.00')  # 30/1
+        self.assertEqual(row['signatures'], 0)  # Odoo non configuré en test
+        self.assertFalse(row['odoo_configured'])
+        self.assertIn('fatigue', row)
+        self.assertIn('conversations', row)
+
+    def test_ads_cockpit_requires_view_permission(self):
+        resp = auth(self.nobody).get(f'{BASE}/metrics/ads-cockpit/')
+        self.assertEqual(resp.status_code, 403)
 
     # ── ENG27 — Variantes (à la demande) ─────────────────────────────────────
     def test_variantes_action_noop_without_key(self):

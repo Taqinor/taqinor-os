@@ -254,6 +254,230 @@ RULE_TEMPLATES = {
         'editable_params': ['max_rank_gap', 'min_qualified_leads'],
         'default_params': {'max_rank_gap': 1, 'min_qualified_leads': 10},
     },
+    # ══════════════════════════════════════════════════════════════════════
+    # ADSDEEP38 — VOCABULAIRE DE CONDITIONS v2 (barre Bïrch, benchmark §1).
+    # ----------------------------------------------------------------------
+    # Sept gabarits FR PARAMÉTRÉS (jamais un builder anglais libre — même
+    # doctrine catalogue-fixe que ci-dessus) qui couvrent : toutes les
+    # métriques snapshot + dérivées (CPL, coût/conversation, CTR lien,
+    # rétention vidéo, fréquence), les COMPARAISONS DE FENÊTRES (« CPA 3 j >
+    # CPA 7 j × 1,2 »), le CLASSEMENT top/bottom-N, et des opérateurs riches
+    # (gt/lt/ratio_gt/rank_top). Chaque gabarit porte un bloc ``v2`` que
+    # ``rules_engine`` lit pour choisir l'évaluateur + la métrique (jamais de
+    # logique dupliquée en base). Tous ALERTE-SEULE par défaut (``action``
+    # None) : les ACTIONS de règle (budget/stop-loss/duplication) atterrissent
+    # en ADSDEEP40, propose-first et plafonnées learning-safe. Le hint
+    # ``v2['action']`` PRÉ-DÉCLARE l'intention d'action (surf-scaling) que
+    # ADSDEEP40 câble — inerte tant que 40 n'a pas livré l'acteur.
+    # ══════════════════════════════════════════════════════════════════════
+    # 9) Régression CPA — coût par lead court terme vs long terme (fenêtres
+    #    comparées). CPL(court) > CPL(long) × facteur ⇒ dégradation.
+    'cpa_window_regression': {
+        'label_fr': 'Régression CPA — coût/lead court terme vs long terme',
+        'severity': SEVERITY_WARNING,
+        'cadence': CADENCE_DAILY,
+        'scope': 'campaign',
+        'detector': None,
+        'action': None,  # alerte seule (l'action budget/pause vient d'ADSDEEP40)
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'cost_per_lead_mad',
+                'scope': 'campaign',
+                'operator': 'ratio_gt',
+                'compare_window': {
+                    'short': {'type': 'trailing_days', 'param': 'short_days'},
+                    'long': {'type': 'trailing_days', 'param': 'long_days'},
+                    'factor_param': 'regression_factor',
+                },
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'alert_info',
+            }],
+        },
+        'editable_params': [
+            'short_days', 'long_days', 'regression_factor', 'min_samples'],
+        'default_params': {
+            'short_days': 3, 'long_days': 7, 'regression_factor': 1.2,
+            'min_samples': 3},
+        'v2': {'evaluator': 'window_regression', 'metric': 'cpl',
+               'direction': 'up'},
+    },
+    # 10) Coût par conversation WhatsApp au plafond (dépense / conversations).
+    'cost_per_conversation_high': {
+        'label_fr': 'Coût par conversation WhatsApp au plafond',
+        'severity': SEVERITY_WARNING,
+        'cadence': CADENCE_DAILY,
+        'scope': 'campaign',
+        'detector': None,
+        'action': None,
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'cost_per_conversation_mad',
+                'scope': 'campaign',
+                'operator': 'gt',
+                'value_param': 'threshold_mad',
+                'window': {'type': 'trailing_days', 'param': 'window_days'},
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'alert_info',
+            }],
+        },
+        'editable_params': ['threshold_mad', 'window_days', 'min_samples'],
+        'default_params': {
+            'threshold_mad': 50, 'window_days': 7, 'min_samples': 3},
+        'v2': {'evaluator': 'threshold', 'metric': 'cost_per_conversation',
+               'operator': 'gt', 'threshold_param': 'threshold_mad'},
+    },
+    # 11) CTR lien faible (clics sur lien / impressions) — signal créatif tôt.
+    'link_ctr_low': {
+        'label_fr': 'CTR lien faible (clics sur lien / impressions)',
+        'severity': SEVERITY_INFO,
+        'cadence': CADENCE_DAILY,
+        'scope': 'ad',
+        'detector': None,
+        'action': None,
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'link_ctr',
+                'scope': 'ad',
+                'operator': 'lt',
+                'value_param': 'min_ctr',
+                'window': {'type': 'trailing_days', 'param': 'window_days'},
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'skip',
+            }],
+        },
+        'editable_params': ['min_ctr', 'window_days', 'min_samples'],
+        'default_params': {
+            'min_ctr': 0.005, 'window_days': 7, 'min_samples': 3},
+        'v2': {'evaluator': 'threshold', 'metric': 'ctr_link',
+               'operator': 'lt', 'threshold_param': 'min_ctr'},
+    },
+    # 12) Rétention vidéo faible (vues 6 s / impressions) — fatigue/hook faible.
+    #     Utilise la métrique vidéo RÉELLE ``s6`` (video_6_sec_watched_actions) —
+    #     jamais un champ « 3 s » inexistant (dossier insights-api §3).
+    'hold_rate_low': {
+        'label_fr': 'Rétention vidéo faible (vues 6 s / impressions)',
+        'severity': SEVERITY_INFO,
+        'cadence': CADENCE_WEEKLY,
+        'scope': 'ad',
+        'detector': None,
+        'action': None,
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'hold_rate',
+                'scope': 'ad',
+                'operator': 'lt',
+                'value_param': 'min_hold_rate',
+                'window': {'type': 'trailing_days', 'param': 'window_days'},
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'skip',
+            }],
+        },
+        'editable_params': ['min_hold_rate', 'window_days', 'min_samples'],
+        'default_params': {
+            'min_hold_rate': 0.15, 'window_days': 14, 'min_samples': 3},
+        'v2': {'evaluator': 'threshold', 'metric': 'hold_rate',
+               'operator': 'lt', 'threshold_param': 'min_hold_rate'},
+    },
+    # 13) Top dépensiers sans résultat (CLASSEMENT top-N par dépense). Les N
+    #     campagnes qui dépensent le PLUS mais restent sous le plancher de
+    #     résultats ⇒ argent gaspillé (benchmark : ranking top/bottom-N).
+    'top_spend_low_result': {
+        'label_fr': 'Top dépensiers sans résultat (classement top-N)',
+        'severity': SEVERITY_WARNING,
+        'cadence': CADENCE_DAILY,
+        'scope': 'campaign',
+        'detector': None,
+        'action': None,
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'spend',
+                'scope': 'campaign',
+                'operator': 'rank_top',
+                'rank': {'by': 'spend', 'order': 'desc', 'n_param': 'top_n'},
+                'value_param': 'min_results',
+                'window': {'type': 'trailing_days', 'param': 'window_days'},
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'skip',
+            }],
+        },
+        'editable_params': [
+            'top_n', 'min_results', 'window_days', 'min_samples'],
+        'default_params': {
+            'top_n': 3, 'min_results': 1, 'window_days': 7, 'min_samples': 3},
+        'v2': {'evaluator': 'rank_low_result'},
+    },
+    # 14) Fréquence en hausse — court terme vs long terme (fenêtres comparées) :
+    #     frequence(court) > frequence(long) × facteur ⇒ saturation qui monte.
+    'frequency_ratio_regression': {
+        'label_fr': 'Fréquence en hausse — court terme vs long terme',
+        'severity': SEVERITY_WARNING,
+        'cadence': CADENCE_DAILY,
+        'scope': 'adset',
+        'detector': None,
+        'action': None,
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'frequency',
+                'scope': 'adset',
+                'operator': 'ratio_gt',
+                'compare_window': {
+                    'short': {'type': 'trailing_days', 'param': 'short_days'},
+                    'long': {'type': 'trailing_days', 'param': 'long_days'},
+                    'factor_param': 'regression_factor',
+                },
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'alert_info',
+            }],
+        },
+        'editable_params': [
+            'short_days', 'long_days', 'regression_factor', 'min_samples'],
+        'default_params': {
+            'short_days': 3, 'long_days': 7, 'regression_factor': 1.15,
+            'min_samples': 3},
+        'v2': {'evaluator': 'window_regression', 'metric': 'frequency',
+               'direction': 'up'},
+    },
+    # 15) Surf-scaling — le CPL s'AMÉLIORE (court terme < long terme × facteur) :
+    #     candidat à une montée de budget learning-safe. Alerte seule ici ;
+    #     ADSDEEP40 câble l'ACTION budget +% (plafonnée ≤ 20 %, propose-first)
+    #     via le hint ``v2['action']``.
+    'surf_scale_budget': {
+        'label_fr': 'Surf-scaling — CPL en amélioration (candidat montée budget)',
+        'severity': SEVERITY_INFO,
+        'cadence': CADENCE_DAILY,
+        'scope': 'adset',
+        'detector': None,
+        'action': None,  # ADSDEEP40 : l'acteur budget lit v2['action'].
+        'conditions': {
+            'logic': 'all',
+            'conditions': [{
+                'field': 'cost_per_lead_mad',
+                'scope': 'adset',
+                'operator': 'ratio_lt',
+                'compare_window': {
+                    'short': {'type': 'trailing_days', 'param': 'short_days'},
+                    'long': {'type': 'trailing_days', 'param': 'long_days'},
+                    'factor_param': 'improve_factor',
+                },
+                'min_samples_param': 'min_samples',
+                'on_insufficient_data': 'skip',
+            }],
+        },
+        'editable_params': [
+            'short_days', 'long_days', 'improve_factor', 'scale_pct',
+            'min_samples'],
+        'default_params': {
+            'short_days': 3, 'long_days': 7, 'improve_factor': 0.9,
+            'scale_pct': 20, 'min_samples': 3},
+        'v2': {'evaluator': 'window_regression', 'metric': 'cpl',
+               'direction': 'down', 'action': 'budget_scale_up'},
+    },
 }
 
 
@@ -358,4 +582,113 @@ def seed_default_policies(company, *, created_by=None):
         )
         if was_created:
             created.append(_)
+    return created
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# ADSDEEP41 — « Stratégies » : bundles de RulePolicy prêts à activer (barre
+# Bïrch « Strategies », benchmark §1). Chaque bundle regroupe des templates du
+# catalogue FIXE (jamais une nouvelle logique) autour d'un objectif, avec une
+# phrase de doc fondateur. Le seed est IDEMPOTENT et crée les RulePolicy
+# DÉSACTIVÉES (``enabled=False`` + ``dry_run=True`` + ``mode=propose``) : le
+# fondateur ACTIVE un bundle en connaissance de cause — jamais rien ne tourne
+# tant qu'il n'a pas opté. Aucun bundle ne réactive/dé-pause quoi que ce soit
+# (invariant permanent règle #3).
+# ══════════════════════════════════════════════════════════════════════════
+STRATEGIES = {
+    'surf_scaling': {
+        'label_fr': 'Surf-scaling — monter le budget des gagnants (learning-safe)',
+        'doc_fr': (
+            "Quand le coût par lead d'un ad set s'améliore sur 3 jours vs 7 jours, "
+            "propose une hausse de budget plafonnée à 20 % (jamais un reset "
+            "d'apprentissage)."),
+        'templates': [{'template_key': 'surf_scale_budget', 'params': {}}],
+    },
+    'stop_loss': {
+        'label_fr': 'Stop-loss — couper les campagnes trop chères',
+        'doc_fr': (
+            "Met en pause (proposition) toute campagne dont le coût par lead dépasse "
+            "ton plafond dur sur la fenêtre — jamais de réactivation automatique."),
+        'templates': [{'template_key': 'stop_loss_cpl', 'params': {}}],
+    },
+    'rotation_fatigue': {
+        'label_fr': 'Rotation anti-fatigue — rafraîchir les créatifs usés',
+        'doc_fr': (
+            "Repère la fatigue créative (fréquence en hausse, rétention vidéo et CTR "
+            "lien en baisse) et propose de faire tourner une nouvelle création avant "
+            "l'effondrement des performances."),
+        'templates': [
+            {'template_key': 'frequency_high', 'params': {}},
+            {'template_key': 'frequency_ratio_regression', 'params': {}},
+            {'template_key': 'hold_rate_low', 'params': {}},
+            {'template_key': 'link_ctr_low', 'params': {}},
+        ],
+    },
+    'dayparting_overlay': {
+        'label_fr': 'Overlay dayparting — garde-fous de coût aux heures de diffusion',
+        'doc_fr': (
+            "À poser en complément d'un horaire de diffusion (composeur dayparting) : "
+            "surveille le coût par conversation et les gros dépensiers sans résultat "
+            "pour que les heures actives ne brûlent pas le budget."),
+        'templates': [
+            {'template_key': 'cost_per_conversation_high', 'params': {}},
+            {'template_key': 'top_spend_low_result', 'params': {}},
+        ],
+    },
+}
+
+
+def strategy_keys():
+    """Clés des bundles « Stratégies » (ordre stable d'insertion)."""
+    return list(STRATEGIES.keys())
+
+
+def get_strategy(strategy_key):
+    """Métadonnées d'un bundle, ou ``None`` si la clé est inconnue."""
+    return STRATEGIES.get(strategy_key)
+
+
+def strategy_choices():
+    """Paires (clé, libellé FR) des bundles (pour l'UI)."""
+    return [(k, STRATEGIES[k]['label_fr']) for k in STRATEGIES]
+
+
+def seed_strategies(company, *, created_by=None):
+    """ADSDEEP41 — Seed IDEMPOTENT des bundles « Stratégies » pour ``company``.
+
+    Pour chaque template référencé par un bundle, crée (ou laisse tel quel) la
+    ``RulePolicy`` correspondante en DÉFAUT SÛR : ``enabled=False`` +
+    ``dry_run=True`` + ``mode='propose'`` (aucun bundle ne tourne tant que le
+    fondateur ne l'a pas activé). ``get_or_create`` sur ``(company, template_key)``
+    (contrainte unique) — deux exécutions ne créent JAMAIS de doublon, et un
+    template partagé par deux bundles ne mappe qu'UNE ``RulePolicy``. Ne modifie
+    jamais une policy déjà présente (additif). Renvoie la liste des ``RulePolicy``
+    créées (vide au 2e passage)."""
+    from .models import RulePolicy
+
+    created = []
+    for bundle in STRATEGIES.values():
+        for item in bundle['templates']:
+            key = item['template_key']
+            tpl = RULE_TEMPLATES.get(key)
+            if tpl is None:
+                continue  # bundle jamais désaligné du catalogue (garde défensive)
+            params = dict(tpl['default_params'])
+            params.update(item.get('params') or {})
+            policy, was_created = RulePolicy.objects.get_or_create(
+                company=company, template_key=key,
+                defaults={
+                    'enabled': False,
+                    'dry_run': True,
+                    'mode': RulePolicy.Mode.PROPOSE,
+                    'conditions': tpl['conditions'],
+                    'params': params,
+                    'cadence_hours': (
+                        6 if tpl['cadence'] == CADENCE_CRITICAL else 24),
+                    'cooldown_hours': 0,
+                    'created_by': created_by,
+                },
+            )
+            if was_created:
+                created.append(policy)
     return created

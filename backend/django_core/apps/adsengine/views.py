@@ -17,21 +17,24 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AdCampaignMirror, AnomalyEvent, ArmDailyStat, CreativeAsset,
-    CreativeBacklogItem, CreativeGenerationBatch, CreativePolicy, DecisionLog,
-    EngineAction, EngineAlert, Experiment, ExperimentArm, FlightPhase,
-    FlightPlan, GuardrailConfig, MetaConnection, PacingState,
-    ReconciliationSnapshot, RulePolicy, WeeklyBrief,
+    AdCampaignMirror, AnomalyEvent, ArmDailyStat, CommentMirror,
+    CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
+    CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
+    ExperimentArm, FlightPhase, FlightPlan, GuardrailConfig,
+    InstagramCommentMirror, InstagramMediaMirror, InstagramPublishJob,
+    MetaConnection, PacingState, ReconciliationSnapshot, RulePolicy,
+    WeeklyBrief,
 )
 from .serializers import (
     AdCampaignMirrorSerializer, AnomalyEventSerializer, ArmDailyStatSerializer,
-    CreativeAssetSerializer, CreativeBacklogItemSerializer,
-    CreativeGenerationBatchSerializer, CreativePolicySerializer,
-    DecisionLogSerializer, EngineActionSerializer, EngineAlertSerializer,
-    ExperimentArmSerializer, ExperimentSerializer, FlightPhaseSerializer,
-    FlightPlanSerializer, GuardrailConfigSerializer, MetaConnectionSerializer,
-    PacingStateSerializer, ReconciliationSnapshotSerializer,
-    RulePolicySerializer,
+    CommentMirrorSerializer, CreativeAssetSerializer,
+    CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
+    CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
+    EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
+    FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
+    InstagramCommentMirrorSerializer, InstagramMediaMirrorSerializer,
+    MetaConnectionSerializer, PacingStateSerializer,
+    ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
 
 
@@ -191,6 +194,77 @@ class CostPerSignatureView(APIView):
         if company is None:
             return Response({'detail': 'Aucune société.'}, status=400)
         return Response(cost_per_signature_summary(company))
+
+
+class EngagementAudienceView(APIView):
+    """ADSDEEP59 — Audiences d'engagement (picker du composeur d'adset).
+
+    ``GET  /api/django/adsengine/audiences/engagement/`` — catalogue des presets
+    (openers/dropoff/submitted, page_engaged, IG engaged) + rétention (dossier
+    §3). Gaté ``adsengine_view``.
+    ``POST /api/django/adsengine/audiences/engagement/`` — crée une audience
+    d'engagement (``{preset_key, name?, source_id?}``). Gaté ``adsengine_manage``.
+
+    NON gated par le consentement Custom Audience : une audience d'engagement est
+    un objet Meta-side (interactions formulaire/Page/IG) — AUCUNE donnée CRM n'est
+    envoyée. Company-scopé (le client Meta est résolu depuis la connexion de la
+    société de l'utilisateur).
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_view'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        from .audiences import engagement_preset_catalog
+        return Response({'presets': engagement_preset_catalog()})
+
+    def post(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_manage'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        preset_key = (request.data or {}).get('preset_key')
+        if not preset_key:
+            return Response({'detail': 'preset_key requis.'}, status=400)
+        from .audiences import create_engagement_audience
+        try:
+            result = create_engagement_audience(
+                company, preset_key=preset_key,
+                name=(request.data or {}).get('name'),
+                source_id=(request.data or {}).get('source_id'))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(result)
+
+
+class AudienceDeliveryEstimateView(APIView):
+    """ADSDEEP59 — Estimation d'audience AVANT usage (dossier §5), montrée dans le
+    picker avant de créer/utiliser une audience.
+
+    ``POST /api/django/adsengine/audiences/delivery-estimate/`` avec
+    ``{targeting_spec, optimization_goal?}`` — LECTURE SEULE (aucune mutation,
+    aucune donnée CRM) → gaté ``adsengine_view``. Company-scopé.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_view'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        targeting_spec = (request.data or {}).get('targeting_spec')
+        if not targeting_spec:
+            return Response({'detail': 'targeting_spec requis.'}, status=400)
+        from .audiences import engagement_delivery_estimate
+        result = engagement_delivery_estimate(
+            company, targeting_spec=targeting_spec,
+            optimization_goal=(
+                (request.data or {}).get('optimization_goal') or 'REACH'))
+        return Response(result)
 
 
 class AdsengineViewSet(CompanyScopedModelViewSet):
@@ -360,6 +434,39 @@ class ExperimentViewSet(AdsengineViewSet):
                 .order_by('-created_at', '-id'))
         return Response(DecisionLogSerializer(logs, many=True).data)
 
+    @action(detail=True, methods=['post'], url_path='sync-ad-study',
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def sync_ad_study(self, request, pk=None):
+        """ADSDEEP34 — Lit (LECTURE SEULE côté Meta) les résultats de l'étude
+        A/B native liée à cette expérience (``experiment.meta_study_id``) et
+        journalise un ``DecisionLog``. Écriture → ``adsengine_manage`` (hérité :
+        cette action DÉCLENCHE un appel externe même si Meta n'y écrit rien).
+        404 structuré si l'expérience ne porte encore aucun ``meta_study_id``."""
+        from .meta_client import MetaClient
+        from .models import MetaConnection
+        from .serializers import DecisionLogSerializer as _DLS
+        from .services import sync_ad_study_results
+
+        experiment = self.get_object()  # borné société
+        if not experiment.meta_study_id:
+            return Response(
+                {'detail': "Aucune étude native (meta_study_id) liée à cette "
+                           "expérience."}, status=404)
+        connection = MetaConnection.objects.filter(
+            company=experiment.company, enabled=True).first()
+        if connection is None:
+            return Response(
+                {'detail': 'Aucune connexion Meta active.'}, status=400)
+        client = MetaClient.from_connection(connection)
+        try:
+            log = sync_ad_study_results(experiment, client=client)
+        except Exception as exc:  # panne réseau/API Meta → jamais une 500 nue
+            return Response({'detail': str(exc)}, status=502)
+        if log is None:
+            return Response(
+                {'detail': "Aucune étude native liée."}, status=404)
+        return Response(_DLS(log).data)
+
 
 class ExperimentArmViewSet(AdsengineViewSet):
     """ADSENG3 — CRUD des bras d'expérience (créatifs candidats)."""
@@ -516,6 +623,38 @@ class RulePolicyViewSet(AdsengineViewSet):
             f"({scope}). Simulation : rien n'est appliqué.")
         return Response(
             {'resume_fr': resume_fr, 'objets_touches': objets_touches})
+
+    # ADSDEEP43 — Journal d'exécution ENRICHI des règles de la société : pour
+    # chaque règle, la dernière passe avec — par entité surveillée — le verdict de
+    # condition (valeurs comparées, ``condition_fr``) et le delta de l'action
+    # proposée (``action``) — le « pourquoi » de chaque déclenchement, rendu sur
+    # l'écran Règles. Lecture ``adsengine_view``.
+    @action(detail=False, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def journal(self, request):
+        from . import rule_templates as rt
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        items = []
+        policies = (RulePolicy.objects
+                    .filter(company=company)
+                    .order_by('-last_evaluated_at', 'template_key'))
+        for p in policies:
+            tpl = rt.get_template(p.template_key)
+            lr = p.last_result or {}
+            items.append({
+                'id': p.pk,
+                'template_key': p.template_key,
+                'label_fr': tpl['label_fr'] if tpl else p.template_key,
+                'enabled': p.enabled,
+                'dry_run': p.dry_run,
+                'last_evaluated_at': p.last_evaluated_at,
+                'evaluated': lr.get('evaluated', False),
+                'fired': lr.get('fired', False),
+                'findings': lr.get('findings', []),
+            })
+        return Response({'results': items})
 
 
 class AnomalyEventViewSet(AdsengineViewSet):
@@ -980,6 +1119,60 @@ _CONN_CRED_KEYS = ('app_id', 'app_secret', 'access_token')
 _CONN_COLUMN_KEYS = ('ad_account_id', 'page_id', 'pixel_id')
 
 
+class CreativeLeaderboardView(APIView):
+    """ADSDEEP47 — Classement créatif spend-weighted par ``?dimension=`` (hook
+    par défaut, angle/format sinon). ``?debut=&fin=`` (dates ISO) bornent la
+    période (défaut : 30 jours glissants)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import creative_leaderboard
+        dimension = request.query_params.get('dimension', 'hook')
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        data = creative_leaderboard(
+            company, dimension=dimension, date_start=debut, date_end=fin)
+        return Response(data)
+
+
+class CreativeScatterView(APIView):
+    """ADSDEEP47 — Nuage de points hook rate × dépense (quadrants FR « pépites
+    cachées »/« gouffres »/« gagnants confirmés »/« à surveiller »).
+    ``?debut=&fin=`` bornent la période (défaut : 30 jours glissants)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import creative_scatter
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        data = creative_scatter(company, date_start=debut, date_end=fin)
+        return Response(data)
+
+
+class AccountAuditView(APIView):
+    """ADSDEEP63 — Audit de compte à la demande (Madgicx-style, FR) :
+    structure/naming, fragmentation budgétaire, fatigue créative, tracking
+    (pixel/CAPI/UTM), fenêtres de données. 100 % LECTURE, company-scopé, gaté
+    ``adsengine_view`` (même permission que les autres vues reporting)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .audit import run_account_audit
+        return Response(run_account_audit(company))
+
+
 class MetaConnectionStatusView(APIView):
     """ENG22 — Statut de connexion (GET) + enregistrement des identifiants
     (POST). Les identifiants sont **write-only** : un GET ne renvoie JAMAIS un
@@ -1284,6 +1477,23 @@ class MetricsPacingView(APIView):
         })
 
 
+class MetricsDashboardV2View(APIView):
+    """ADSDEEP61 — Tuiles du « Dashboard v2 » : conversations WhatsApp RÉELLES
+    (CTWA) + MER mixte (dépense Meta vs CA signé Odoo, DEUX devises côte à
+    côte — jamais convertie), chacune avec une sparkline quotidienne sur 14
+    jours. Dérivé (aucune écriture) via ``metrics.dashboard_v2_metrics``.
+    Lecture ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import dashboard_v2_metrics
+        return Response(dashboard_v2_metrics(company))
+
+
 class ReconciliationListView(APIView):
     """ENG31/ENG42 — Liste des instantanés de réconciliation (Meta vs ERP).
     Company-scopé ; lecture ``adsengine_view``. Les chiffres sont des comptes de
@@ -1428,6 +1638,37 @@ class AdCampaignMirrorViewSet(AdsengineViewSet):
             for v in data['variants']
         ]
         return Response(items)
+
+    @action(detail=True, methods=['get'], url_path='hierarchie',
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def hierarchy(self, request, pk=None):
+        """ADSDEEP60 — Hiérarchie navigable Campagne → Ad sets → Ads (3
+        niveaux) pour l'écran Campagnes : statuts/budgets/dépenses/leads par
+        niveau + badge d'apprentissage par ad set (ADSDEEP32). ``get_object``
+        hérité borne déjà la campagne à la société de l'utilisateur (404 sinon)
+        — lecture ``adsengine_view``, aucune écriture."""
+        campaign = self.get_object()
+        from .models import AdMirror, AdSetMirror
+        from .serializers import AdMirrorSerializer, AdSetMirrorSerializer
+
+        adsets = list(AdSetMirror.objects.filter(
+            company_id=campaign.company_id, campaign=campaign)
+            .order_by('-created_at'))
+        ads = list(AdMirror.objects.filter(
+            company_id=campaign.company_id, adset__in=adsets)
+            .order_by('-created_at')) if adsets else []
+        ads_by_adset = {}
+        for ad in ads:
+            ads_by_adset.setdefault(ad.adset_id, []).append(ad)
+
+        data = AdCampaignMirrorSerializer(campaign).data
+        data['adsets'] = []
+        for adset in adsets:
+            adset_data = AdSetMirrorSerializer(adset).data
+            adset_data['ads'] = AdMirrorSerializer(
+                ads_by_adset.get(adset.id, []), many=True).data
+            data['adsets'].append(adset_data)
+        return Response(data)
 
 
 # ── ENG36/ENG44 — Simulations (rejeu visuel — SHELL de scénario) ──────────────
@@ -1809,3 +2050,403 @@ class RealLeadsView(APIView):
             return err
         from .metrics import real_lead_counts
         return Response(real_lead_counts(company))
+
+
+class ConversationsPerAdView(APIView):
+    """ADSDEEP25 — Conversations WhatsApp RÉELLES par ad + signatures jointes.
+
+    ``GET /api/django/adsengine/metrics/conversations-per-ad/`` — company-scopé,
+    gaté ``adsengine_view``. Compte les ``CtwaReferral`` (webhook Cloud API
+    ADSDEEP24) par ad et joint les signatures par téléphone : « cette ad a
+    produit N conversations, M signées » — complément RÉEL de la métrique
+    agrégée ``conversations`` de Meta. Aucun secret."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import conversations_per_ad
+        return Response(conversations_per_ad(company))
+
+
+class AdsCockpitView(APIView):
+    """ADSDEEP22 — Cockpit par ad (écran-console quotidien du fondateur) :
+    une ligne par ad combinant miniature créatif, dépense, conversations,
+    leads réels, CPL, signatures + coût/signature (Odoo), fréquence, badge de
+    fatigue (ADSDEEP45) et statut + apprentissage (ADSDEEP32).
+
+    ``GET /api/django/adsengine/metrics/ads-cockpit/`` — company-scopé, gaté
+    ``adsengine_view``. Dérivé (aucune écriture) via
+    ``metrics.ads_cockpit_rows``, qui ne fait que COMBINER les métriques déjà
+    construites (ADSDEEP19/20/25/32/44/45) — aucune logique métier réécrite."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import ads_cockpit_rows
+        return Response(ads_cockpit_rows(company))
+
+
+# ══ ADSDEEP53/54 — Boîte de réception des commentaires (câblage front↔back) ═══
+# Vues MINCES : lecture des miroirs company-scopée + chaque action inline ne
+# fait que PROPOSER une ``EngineAction`` via les fonctions ``propose_*`` DÉJÀ
+# construites de ``services.py`` (règle #3 — jamais d'écriture directe Meta ici).
+
+def _truthy_param(value):
+    """``?flag=1|true|yes`` → bool ; absent/vide → None (filtre non appliqué)."""
+    if value is None or value == '':
+        return None
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'oui')
+
+
+class CommentListView(APIView):
+    """ADSDEEP53 — Liste des commentaires (posts + dark posts) miroités.
+
+    ``GET /api/django/adsengine/commentaires/?ad_id=&post_id=&hidden=&unanswered=``
+    — company-scopé, gaté ``adsengine_view``. ``ad_id``/``post_id`` filtrent sur
+    l'objet commenté (``object_meta_id`` + ``source`` associée) ; ``hidden`` et
+    ``unanswered`` sont des booléens optionnels."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        qs = CommentMirror.objects.filter(company=company)
+        ad_id = request.query_params.get('ad_id')
+        if ad_id:
+            qs = qs.filter(object_meta_id=ad_id, source=CommentMirror.Source.AD)
+        post_id = request.query_params.get('post_id')
+        if post_id:
+            qs = qs.filter(
+                object_meta_id=post_id, source=CommentMirror.Source.POST)
+        hidden = _truthy_param(request.query_params.get('hidden'))
+        if hidden is not None:
+            qs = qs.filter(is_hidden=hidden)
+        unanswered = _truthy_param(request.query_params.get('unanswered'))
+        if unanswered:
+            qs = qs.filter(answered=False)
+        return Response(CommentMirrorSerializer(qs, many=True).data)
+
+
+class CommentCountsView(APIView):
+    """ADSDEEP53 — Compteurs pour le cockpit : totaux + détail PAR objet commenté
+    (masqués, non répondus). Company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        qs = CommentMirror.objects.filter(company=company)
+        total = qs.count()
+        hidden = qs.filter(is_hidden=True).count()
+        unanswered = qs.filter(answered=False, is_hidden=False).count()
+        par_objet_map = {}
+        for c in qs:
+            key = c.object_meta_id or ''
+            slot = par_objet_map.setdefault(key, {
+                'object_meta_id': key, 'source': c.source,
+                'total': 0, 'hidden': 0, 'unanswered': 0,
+            })
+            slot['total'] += 1
+            if c.is_hidden:
+                slot['hidden'] += 1
+            if not c.answered and not c.is_hidden:
+                slot['unanswered'] += 1
+        return Response({
+            'total': total, 'hidden': hidden, 'unanswered': unanswered,
+            'par_objet': list(par_objet_map.values()),
+        })
+
+
+def _get_comment_or_404(company, comment_id):
+    return CommentMirror.objects.filter(company=company, pk=comment_id).first()
+
+
+class CommentHideView(APIView):
+    """ADSDEEP53 — Propose de masquer/démasquer un commentaire. Réutilise
+    ``services.propose_hide_comment``. Écriture ``adsengine_manage`` ;
+    company-scopé (un commentaire d'une autre société → 404)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_hide_comment
+        hidden = request.data.get('hidden', True)
+        try:
+            action = propose_hide_comment(
+                company, comment=comment, hidden=bool(hidden))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class CommentReplyView(APIView):
+    """ADSDEEP53 — Propose une réponse PUBLIQUE. Réutilise
+    ``services.propose_reply_comment``. Écriture ``adsengine_manage`` ;
+    company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_reply_comment
+        try:
+            action = propose_reply_comment(
+                company, comment=comment,
+                message=request.data.get('message', ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class CommentDeleteView(APIView):
+    """ADSDEEP53 — Propose la SUPPRESSION d'un commentaire. Réutilise
+    ``services.propose_delete_comment``. Écriture ``adsengine_manage`` ;
+    company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_delete_comment
+        try:
+            action = propose_delete_comment(company, comment=comment)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class CommentPrivateReplyView(APIView):
+    """ADSDEEP53 — Propose une réponse PRIVÉE (DM). Réutilise
+    ``services.propose_private_reply`` (garde-fou 1/commentaire/7 jours déjà
+    appliqué côté service). Écriture ``adsengine_manage`` ; company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_private_reply
+        try:
+            action = propose_private_reply(
+                company, comment=comment,
+                message=request.data.get('message', ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+# ══ ADSDEEP55/56 — Instagram (câblage front↔back) ═════════════════════════════
+
+class InstagramMediaListView(APIView):
+    """ADSDEEP55/56 — Liste des médias Instagram miroités. Company-scopé, gaté
+    ``adsengine_view``. La ``caption`` reste LECTURE SEULE (immuable)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        qs = InstagramMediaMirror.objects.filter(company=company)
+        return Response(InstagramMediaMirrorSerializer(qs, many=True).data)
+
+
+class InstagramQuotaView(APIView):
+    """ADSDEEP56 — État du quota de publication IG (50/24 h), lu depuis le
+    DERNIER ``InstagramPublishJob`` journalisé (jamais un appel Meta live —
+    lecture seule de l'état déjà connu, dossier organic-posts-ig §4).
+    Company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        latest = (InstagramPublishJob.objects
+                  .filter(company=company, quota_total__isnull=False)
+                  .order_by('-created_at')
+                  .first())
+        used = latest.quota_used if latest else None
+        total = latest.quota_total if latest else None
+        remaining = (
+            max(total - used, 0)
+            if (isinstance(used, int) and isinstance(total, int)) else None)
+        return Response({'used': used, 'total': total, 'remaining': remaining})
+
+
+class InstagramPublishView(APIView):
+    """ADSDEEP55 — Propose la PUBLICATION d'un média Instagram (flux container).
+    Réutilise ``services.propose_publish_ig``. Écriture ``adsengine_manage``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from .services import propose_publish_ig
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            action = propose_publish_ig(
+                company,
+                media_type=data.get('media_type', ''),
+                image_url=data.get('image_url', '') or '',
+                video_url=data.get('video_url', '') or '',
+                caption=data.get('caption', '') or '',
+                alt_text=data.get('alt_text', '') or '',
+                scheduled_at=data.get('scheduled_at'))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class InstagramCommentListView(APIView):
+    """ADSDEEP55 — Liste des commentaires Instagram miroités. ``?media_id=``
+    filtre optionnellement sur un média. Company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        qs = InstagramCommentMirror.objects.filter(company=company)
+        media_id = request.query_params.get('media_id')
+        if media_id:
+            qs = qs.filter(media_meta_id=media_id)
+        return Response(InstagramCommentMirrorSerializer(qs, many=True).data)
+
+
+def _get_ig_comment_or_404(company, comment_id):
+    return InstagramCommentMirror.objects.filter(
+        company=company, pk=comment_id).first()
+
+
+class InstagramCommentHideView(APIView):
+    """ADSDEEP55 — Propose de masquer/démasquer un commentaire Instagram.
+    Réutilise ``services.propose_hide_ig_comment``. Écriture
+    ``adsengine_manage`` ; company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_ig_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_hide_ig_comment
+        hidden = request.data.get('hidden', True)
+        try:
+            action = propose_hide_ig_comment(
+                company, comment=comment, hidden=bool(hidden))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class InstagramCommentReplyView(APIView):
+    """ADSDEEP55 — Propose une réponse à un commentaire Instagram. Réutilise
+    ``services.propose_reply_ig_comment``. Écriture ``adsengine_manage`` ;
+    company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_ig_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_reply_ig_comment
+        try:
+            action = propose_reply_ig_comment(
+                company, comment=comment,
+                message=request.data.get('message', ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class InstagramCommentDeleteView(APIView):
+    """ADSDEEP55 — Propose la suppression d'un commentaire Instagram. Réutilise
+    ``services.propose_delete_ig_comment``. Écriture ``adsengine_manage`` ;
+    company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_ig_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_delete_ig_comment
+        try:
+            action = propose_delete_ig_comment(company, comment=comment)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class InstagramMediaToggleCommentsView(APIView):
+    """ADSDEEP55 — Propose de couper/rouvrir les commentaires d'un média IG
+    (SEUL champ écrivable d'un média). Réutilise
+    ``services.propose_toggle_ig_comments``. Écriture ``adsengine_manage`` ;
+    company-scopé (média d'une autre société → 404).
+
+    ``media_meta_id`` est l'ID Meta du média (``InstagramMediaMirror.meta_id``,
+    tel que le front l'envoie — ``m.meta_id``), jamais la pk locale."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, media_meta_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        media = InstagramMediaMirror.objects.filter(
+            company=company, meta_id=media_meta_id).first()
+        if media is None:
+            return Response({'detail': 'Média introuvable.'}, status=404)
+        from .services import propose_toggle_ig_comments
+        enabled = request.data.get('enabled', True)
+        try:
+            action = propose_toggle_ig_comments(
+                company, media=media, enabled=bool(enabled))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)

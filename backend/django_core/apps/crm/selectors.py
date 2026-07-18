@@ -83,6 +83,56 @@ def normalize_phone_key(value):
     return crm_services.normalize_phone(value)
 
 
+def find_lead_id_by_phone(company, phone):
+    """ADSDEEP24 — id du lead vivant de ``company`` dont le téléphone (ou
+    WhatsApp) correspond au numéro donné, normalisé via la MÊME clé QW10 que
+    ``normalize_phone_key``, ou None.
+
+    Point d'entrée cross-app LECTURE SEULE pour ``apps.adsengine`` (le webhook
+    WhatsApp Cloud API CTWA rattache une conversation entrante au lead par
+    téléphone) — jamais un import de ``apps.crm.models`` côté adsengine. Renvoie
+    le lead le plus récemment créé en cas de doublon ; None si le numéro est
+    vide ou introuvable."""
+    from . import services as crm_services
+    from .models import Lead
+
+    key = crm_services.normalize_phone(phone)
+    if not key:
+        return None
+    for lead in (Lead.objects
+                 .filter(company=company, is_archived=False)
+                 .only('id', 'telephone', 'whatsapp')
+                 .order_by('-id')):
+        if (crm_services.normalize_phone(lead.telephone) == key
+                or crm_services.normalize_phone(lead.whatsapp) == key):
+            return lead.id
+    return None
+
+
+def signed_lead_phone_keys(company):
+    """ADSDEEP25 — ``set`` des clés téléphone NORMALISÉES (QW10) des leads au
+    stade SIGNÉ de la société.
+
+    Point d'entrée cross-app SANCTIONNÉ pour ``apps.adsengine`` (métrique
+    conversations-par-ad CTWA : rapproche une conversation WhatsApp entrante
+    d'une signature par téléphone) — jamais un import de ``apps.crm.models``
+    côté adsengine, et le stade SIGNÉ vient de ``STAGES.py`` (jamais codé en
+    dur, règle #2). Lecture seule, scopée société ; ignore les numéros vides.
+    Renvoie un ``set`` de clés non vides."""
+    from . import services as crm_services
+    from . import stages as stage_mod
+    from .models import Lead
+
+    keys = set()
+    for tel in (Lead.objects
+                .filter(company=company, stage=stage_mod.SIGNED)
+                .values_list('telephone', flat=True)):
+        key = crm_services.normalize_phone(tel)
+        if key:
+            keys.add(key)
+    return keys
+
+
 def signed_leads_for_campaigns(company, utm_campaigns):
     """ENG10 — Leads SIGNÉS attribués par ``utm_campaign``, avec traçabilité.
 
