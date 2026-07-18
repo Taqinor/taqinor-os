@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Badge, Button, Spinner, EmptyState,
-  toast,
+  toast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Label, Input, confirmLeaveIfDirty,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
@@ -105,8 +106,134 @@ function AnomaliesCard() {
   )
 }
 
+// WIR43 — Création/édition d'une carte carburant : `CartesTab` était lecture
+// seule malgré un backend full CRUD. `carte` fourni = édition (PATCH),
+// absent = création (POST).
+function CarteCarburantDialog({ carte, vehicules = [], conducteurs = [], onClose, onSaved }) {
+  const [numero, setNumero] = useState(carte?.numero || '')
+  const [vehiculeId, setVehiculeId] = useState(carte?.vehicule ? String(carte.vehicule) : '')
+  const [conducteurId, setConducteurId] = useState(carte?.conducteur ? String(carte.conducteur) : '')
+  const [plafond, setPlafond] = useState(carte?.plafond != null ? String(carte.plafond) : '')
+  const [notes, setNotes] = useState(carte?.notes || '')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(numero.trim())
+  const dirty = carte
+    ? Boolean(
+      numero !== (carte.numero || '') || vehiculeId !== (carte.vehicule ? String(carte.vehicule) : '')
+      || conducteurId !== (carte.conducteur ? String(carte.conducteur) : '')
+      || plafond !== (carte.plafond != null ? String(carte.plafond) : '') || notes !== (carte.notes || ''),
+    )
+    : Boolean(numero || vehiculeId || conducteurId || plafond || notes)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    const payload = {
+      numero: numero.trim(),
+      vehicule: vehiculeId ? Number(vehiculeId) : null,
+      conducteur: conducteurId ? Number(conducteurId) : null,
+      plafond: plafond === '' ? undefined : Number(plafond),
+      notes,
+    }
+    try {
+      if (carte) {
+        await flotteApi.cartes.update(carte.id, payload)
+      } else {
+        await flotteApi.cartes.create(payload)
+      }
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.plafond
+        || data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{carte ? 'Modifier la carte carburant' : 'Nouvelle carte carburant'}</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="carte-numero">N° carte</Label>
+            <Input id="carte-numero" autoFocus value={numero} onChange={(e) => setNumero(e.target.value)} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="carte-vehicule">Véhicule (option.)</Label>
+              <select
+                id="carte-vehicule"
+                value={vehiculeId}
+                onChange={(e) => setVehiculeId(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Non rattaché —</option>
+                {vehicules.map((v) => (
+                  <option key={v.id} value={v.id}>{v.immatriculation}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="carte-conducteur">Conducteur (option.)</Label>
+              <select
+                id="carte-conducteur"
+                value={conducteurId}
+                onChange={(e) => setConducteurId(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Non rattaché —</option>
+                {conducteurs.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nom}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="carte-plafond">Plafond (MAD, option.)</Label>
+            <Input id="carte-plafond" type="number" step="any" value={plafond} onChange={(e) => setPlafond(e.target.value)} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="carte-notes">Notes</Label>
+            <Input id="carte-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Enregistrement…' : carte ? 'Enregistrer' : 'Créer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CartesTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.cartes.list, {})
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.cartes.list, {})
+  const { data: vehicules } = useFlotteResource(flotteApi.vehicules.list, {})
+  const { data: conducteurs } = useFlotteResource(flotteApi.conducteurs.list, {})
+  const [editing, setEditing] = useState(null) // carte en édition, ou {} pour création
   const columns = useMemo(() => [
     { id: 'numero', header: 'N° carte', width: 160, accessor: (r) => r.numero, cell: (v) => (v ? <span className="font-mono text-xs">{v}</span> : '—') },
     { id: 'vehicule', header: 'Véhicule', width: 160, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
@@ -120,11 +247,28 @@ function CartesTab() {
       cell: (_v, r) => (r.actif ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>),
     },
   ], [])
+
+  const actions = (
+    <Button onClick={() => setEditing({})}>Nouvelle carte</Button>
+  )
+  const rowActions = (row) => [
+    { id: 'modifier', label: 'Modifier', onClick: () => setEditing(row) },
+  ]
+
   return (
     <div className="flex flex-col gap-4">
       <AnomaliesCard />
-      <ListShell title="Cartes carburant" columns={columns} rows={data} loading={loading} error={error}
+      <ListShell title="Cartes carburant" actions={actions} rowActions={rowActions} columns={columns} rows={data} loading={loading} error={error}
         exportName="cartes-carburant" emptyTitle="Aucune carte" emptyDescription="Aucune carte carburant enregistrée." />
+      {editing && (
+        <CarteCarburantDialog
+          carte={editing.id ? editing : null}
+          vehicules={vehicules}
+          conducteurs={conducteurs}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); reload(); toast.success(editing.id ? 'Carte modifiée.' : 'Carte créée.') }}
+        />
+      )}
     </div>
   )
 }
