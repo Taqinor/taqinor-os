@@ -118,6 +118,26 @@ test('normalizeMaPhone: format wa.me 212XXXXXXXXX ou null', () => {
   assert.equal(normalizeMaPhone('abc'), null)
 })
 
+// LW7 (recon 05 P2#6) — avant, TOUTE suite de chiffres passait
+// (`normalizeMaPhone('123')` renvoyait « 212123 ») : leadPhoneOk/waPhoneOk
+// étaient vrais pour du bruit, le bouton WhatsApp s'armait sur un numéro
+// invalide et l'envoi partait au 400 serveur. La validation est désormais
+// alignée sur canonicalPhoneMA : 9 chiffres locaux commençant par 5/6/7.
+test('LW7 : normalizeMaPhone rejette (null) tout ce qui n\'est pas un numéro marocain valide', () => {
+  assert.equal(normalizeMaPhone('123'), null) // trop court, bruit
+  assert.equal(normalizeMaPhone('0812345678'), null) // préfixe local 8 : ni 5, 6 ni 7
+  assert.equal(normalizeMaPhone('06123456789'), null) // trop long (10 chiffres locaux)
+  assert.equal(normalizeMaPhone('0612345'), null) // trop court (7 chiffres locaux)
+  // formats valides, y compris avec espaces/parenthèses/indicatif complet.
+  assert.equal(normalizeMaPhone('+212 6 12 34 56 78'), '212612345678')
+  assert.equal(normalizeMaPhone('0512345678'), '212512345678') // fixe (5) valide aussi
+  assert.equal(normalizeMaPhone('0712345678'), '212712345678')
+  // alignée sur canonicalPhoneMA : un numéro que canonicalPhoneMA rejette
+  // (renvoyé tel quel, sans le former en « +212… ») est aussi null ici.
+  assert.equal(canonicalPhoneMA('0812345678'), '0812345678')
+  assert.equal(normalizeMaPhone('0812345678'), null)
+})
+
 // VX122 — finesse française : espace fine insécable (U+202F) devant : ; ! ?
 test('nbsp: espace fine insécable devant la ponctuation double', () => {
   assert.equal(nbsp('Priorité :'), 'Priorité :')
