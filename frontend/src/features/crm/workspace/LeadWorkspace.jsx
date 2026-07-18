@@ -17,6 +17,7 @@ import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
 import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { isTypingTarget } from '../../../providers/shortcuts'
 import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
+import { pushRecentEntity } from '../../../providers/commandActions'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
 import { schedulePrefetch } from './leadPrefetch'
 import { getField } from './draftCore'
@@ -46,6 +47,31 @@ const lireCreerUnAutre = () => {
 }
 const ecrireCreerUnAutre = (v) => {
   try { localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0') } catch { /* best-effort */ }
+}
+
+// LW26 — registre MINIMAL « Aller à la section … » de la palette ⌘K : miroir
+// des id/label STABLES du registre de SectionsPane.jsx (id/label seulement —
+// SectionsPane possède la STRUCTURE, cf. « Do NOT touch » de cette lane ;
+// les sections CONDITIONNELLES — pompage/origine web — n'y figurent pas,
+// simplification assumée). `[data-nav-id]`/`.lw-section-head` sont des hooks
+// DOM stables (même patron que `.ap-trigger` pour l'AssigneePicker).
+const SECTION_JUMP_TARGETS = [
+  { id: 'contact', label: 'Aller à : Contact' },
+  { id: 'pipeline', label: 'Aller à : Suivi commercial' },
+  { id: 'energie', label: 'Aller à : Profil énergétique' },
+  { id: 'toiture', label: 'Aller à : Toiture & site' },
+  { id: 'visite', label: 'Aller à : Visite technique' },
+  { id: 'divers', label: 'Aller à : Compléments' },
+]
+
+function goToSection(id) {
+  const el = document.querySelector(`.lw-center [data-nav-id="${id}"]`)
+  if (!el) return
+  // Déplie la section si elle est repliée (même logique que SectionsPane.jumpTo,
+  // rejouée depuis l'extérieur via le hook DOM stable — jamais un import de
+  // l'état interne de SectionsPane).
+  el.querySelector('.lw-section-head[aria-expanded="false"]')?.click()
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 // Chip d'état de sauvegarde (autosauvegarde D2). Jamais de spinner bloquant.
@@ -222,6 +248,57 @@ export default function LeadWorkspace({
   }, [mode, leadId, loadFresh])
   const { showSkeleton } = useDelayedLoading(leadLoading)
 
+  // ── LW26 : actions contextuelles ⌘K tant que CE lead est ouvert ───────────
+  // `taqinor:lead-workspace-actions` (posé/retiré au mount/unmount, motif de
+  // `taqinor:command-palette` déjà en place) — providers/CommandPalette.jsx
+  // les fusionne dans sa propre liste. « Envoyer les devis WhatsApp » et
+  // « Épingler une note » n'ont pas ENCORE de surface concrète tant que le
+  // rail contexte (LW19-LW21, ContextRail toujours un placeholder à ce jour)
+  // n'a pas ses onglets — même patron d'événement `lw:open-*` que le
+  // raccourci « n » ci-dessous, DOCUMENTÉ pour cette lane-là (voir rapport).
+  const paletteActions = useMemo(() => {
+    if (mode !== 'edit' || !leadId) return []
+    return [
+      {
+        id: 'lw-wa-devis',
+        label: 'Envoyer les devis par WhatsApp',
+        run: () => window.dispatchEvent(new CustomEvent('lw:open-whatsapp-composer', { detail: { leadId } })),
+      },
+      { id: 'lw-devis-auto', label: 'Devis automatique', run: () => onAction('open-devis', 'auto') },
+      {
+        id: 'lw-archive',
+        label: leadArchived ? 'Restaurer le lead' : 'Archiver le lead',
+        run: () => onAction('archive'),
+      },
+      { id: 'lw-convert', label: 'Convertir en client', run: () => onAction('convert') },
+      {
+        id: 'lw-note',
+        label: 'Épingler une note',
+        run: () => window.dispatchEvent(new CustomEvent('lw:open-note-composer', { detail: { leadId } })),
+      },
+      ...SECTION_JUMP_TARGETS.map((s) => ({
+        id: `lw-goto-${s.id}`, label: s.label, run: () => goToSection(s.id),
+      })),
+    ]
+  }, [mode, leadId, leadArchived, onAction])
+
+  useEffect(() => {
+    if (!paletteActions.length) return undefined
+    window.dispatchEvent(new CustomEvent('taqinor:lead-workspace-actions', { detail: { actions: paletteActions } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('taqinor:lead-workspace-actions', { detail: { actions: [] } }))
+    }
+  }, [paletteActions])
+
+  // `pushRecentEntity` à l'OUVERTURE uniquement (jamais à chaque frappe du
+  // nom) : `nomTitreRef` lu à l'exécution de l'effet, hors deps — patron déjà
+  // établi par `stateRef`/`leadRef` dans useLeadDraft.js.
+  const nomTitreRef = useRef('')
+  useEffect(() => {
+    if (mode !== 'edit' || !leadId) return
+    pushRecentEntity({ type: 'lead', id: leadId, label: nomTitreRef.current })
+  }, [mode, leadId])
+
   // ── LW23 : registre de raccourcis propre (a/d/n/1-4) ──────────────────────
   // `a` archiver (leaveGuard déjà structurel dans doArchive), `d` focus le
   // picker Responsable de l'IdentityRail (hook DOM stable `.ap-trigger` —
@@ -295,6 +372,9 @@ export default function LeadWorkspace({
   const nomTitre = mode === 'edit'
     ? `Lead — ${getField(state, 'nom') || ''} ${getField(state, 'prenom') || ''}`.trim()
     : 'Nouveau lead'
+  // LW26 — tenu à jour à CHAQUE rendu (jamais une dépendance d'effet, cf.
+  // pushRecentEntity ci-dessus : seul l'effet « ouverture » le LIT).
+  useEffect(() => { nomTitreRef.current = nomTitre })
 
   // ── Rendu du contenu (partagé dialog / sheet / page) ──────────────────────
   const renderBody = (TitleComp) => (
