@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
-import { Tabs, TabsList, TabsTrigger, TabsContent, Badge, Button, toast } from '../../ui'
+import {
+  Tabs, TabsList, TabsTrigger, TabsContent, Badge, Button, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Label, Input, Textarea, confirmLeaveIfDirty,
+} from '../../ui'
 import { ListShell, EcheanceCenter } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
 import { formatDate, formatNumber } from '../../lib/format'
@@ -23,9 +27,125 @@ import PlanRolloutDialog from './PlanRolloutDialog'
    internes (jamais des prix client ni des prix d'achat/marge).
    ========================================================================== */
 
+// WIR42 — Dialogue de création d'un plan d'entretien (`PlanEntretienViewSet`
+// full CRUD) : avant cette dialogue, seul « Dupliquer sur… » existait — le
+// tout premier plan d'un type d'actif n'avait aucun chemin de création.
+function PlanEntretienDialog({ actifs = [], onClose, onSaved }) {
+  const [actifFlotte, setActifFlotte] = useState('')
+  const [typeEntretien, setTypeEntretien] = useState('')
+  const [intervalleKm, setIntervalleKm] = useState('')
+  const [intervalleJours, setIntervalleJours] = useState('')
+  const [intervalleHeures, setIntervalleHeures] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(
+    actifFlotte && typeEntretien.trim()
+    && (intervalleKm || intervalleJours || intervalleHeures),
+  )
+  const dirty = Boolean(
+    actifFlotte || typeEntretien || intervalleKm || intervalleJours
+    || intervalleHeures || notes,
+  )
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await flotteApi.plansEntretien.create({
+        actif_flotte: Number(actifFlotte),
+        type_entretien: typeEntretien.trim(),
+        intervalle_km: intervalleKm === '' ? undefined : Number(intervalleKm),
+        intervalle_jours: intervalleJours === '' ? undefined : Number(intervalleJours),
+        intervalle_heures: intervalleHeures === '' ? undefined : Number(intervalleHeures),
+        notes,
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouveau plan d’entretien</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="plan-actif">Actif (véhicule ou engin)</Label>
+            <select
+              id="plan-actif"
+              autoFocus
+              value={actifFlotte}
+              onChange={(e) => setActifFlotte(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+            >
+              <option value="">— Choisir —</option>
+              {actifs.map((a) => (
+                <option key={a.id} value={a.id}>{a.label || `#${a.id}`}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="plan-type">Type d’entretien</Label>
+            <Input id="plan-type" value={typeEntretien} onChange={(e) => setTypeEntretien(e.target.value)} placeholder="Ex. : vidange" />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="plan-interv-km">Intervalle (km)</Label>
+              <Input id="plan-interv-km" type="number" step="any" value={intervalleKm} onChange={(e) => setIntervalleKm(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="plan-interv-jours">Intervalle (jours)</Label>
+              <Input id="plan-interv-jours" type="number" step="any" value={intervalleJours} onChange={(e) => setIntervalleJours(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="plan-interv-heures">Intervalle (heures)</Label>
+              <Input id="plan-interv-heures" type="number" step="any" value={intervalleHeures} onChange={(e) => setIntervalleHeures(e.target.value)} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Au moins un intervalle (km / jours / heures) est requis.</p>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="plan-notes">Notes</Label>
+            <Textarea id="plan-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+          </div>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Enregistrement…' : 'Créer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function PlansTab({ actifs }) {
   const { data, loading, error, reload } = useFlotteResource(flotteApi.plansEntretien.list, {})
   const [rolloutPlan, setRolloutPlan] = useState(null)
+  const [showForm, setShowForm] = useState(false)
 
   const columns = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 200, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
@@ -46,10 +166,15 @@ function PlansTab({ actifs }) {
     { id: 'rollout', label: 'Dupliquer sur…', onClick: () => setRolloutPlan(row) },
   ]
 
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouveau plan</Button>
+  )
+
   return (
     <>
       <ListShell
         title="Plans d’entretien préventif"
+        actions={actions}
         columns={columns}
         rows={data}
         loading={loading}
@@ -65,6 +190,13 @@ function PlansTab({ actifs }) {
           actifs={actifs}
           onClose={() => setRolloutPlan(null)}
           onSaved={() => { reload(); toast.success('Plan dupliqué.') }}
+        />
+      )}
+      {showForm && (
+        <PlanEntretienDialog
+          actifs={actifs}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Plan créé.') }}
         />
       )}
     </>

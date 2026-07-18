@@ -20,6 +20,7 @@ beforeAll(() => {
 
 const {
   empty, signalementsCreate, garagesCreate, approuver, ordresList, generer,
+  plansCreate,
 } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   signalementsCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
@@ -33,12 +34,13 @@ const {
     }],
   }),
   generer: vi.fn(() => Promise.resolve({ data: { nb_creees: 2, nb_existantes: 0, nb_plans_due: 2, echeances: [] } })),
+  plansCreate: vi.fn(() => Promise.resolve({ data: { id: 4 } })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
     actifs: { list: () => Promise.resolve({ data: [{ id: 1, label: '12345-A-6' }] }) },
-    plansEntretien: { list: empty },
+    plansEntretien: { list: empty, create: (...args) => plansCreate(...args) },
     echeancesEntretien: { list: empty, generer: (...args) => generer(...args) },
     garages: { list: empty, create: (...args) => garagesCreate(...args) },
     ordresReparation: {
@@ -75,6 +77,25 @@ describe('EntretienScreen — Échéances (WIR5 génération)', () => {
     await user.click(await screen.findByRole('button', { name: 'Générer les échéances' }))
 
     await waitFor(() => expect(generer).toHaveBeenCalled())
+  })
+})
+
+describe('EntretienScreen — Plans (WIR42 création)', () => {
+  it('crée un premier plan d’entretien depuis l’onglet Plans', async () => {
+    const user = userEvent.setup()
+    withProviders(<EntretienScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Plans' }))
+    await user.click(await screen.findByRole('button', { name: 'Nouveau plan' }))
+
+    await user.selectOptions(screen.getByLabelText('Actif (véhicule ou engin)'), '1')
+    await user.type(screen.getByLabelText('Type d’entretien'), 'vidange')
+    await user.type(screen.getByLabelText('Intervalle (km)'), '10000')
+    await user.click(screen.getByRole('button', { name: 'Créer' }))
+
+    await waitFor(() => expect(plansCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ actif_flotte: 1, type_entretien: 'vidange', intervalle_km: 10000 }),
+    ))
   })
 })
 
