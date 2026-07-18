@@ -5,6 +5,7 @@ import {
   normalizeRuleTemplate, normalizeDryRun, normalizeAnomalies, normalizeAlerts,
   alertTone,
 } from './adsengine'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    ENG43 — Écran « Règles & anomalies ».
@@ -217,7 +218,7 @@ export default function RulesScreen() {
                         </span>
                         {j.last_evaluated_at && (
                           <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '0.8rem' }}>
-                            {new Date(j.last_evaluated_at).toLocaleString('fr-FR')}
+                            {formatDateTime(j.last_evaluated_at)}
                           </span>
                         )}
                       </div>
