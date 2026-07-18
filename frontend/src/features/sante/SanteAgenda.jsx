@@ -74,6 +74,24 @@ export default function SanteAgenda() {
     }
   }
 
+  // WIR53 — annulation depuis l'agenda (NTSAN37) : délai + pénalité éventuelle
+  // sont calculés côté serveur, jamais ici. Annulation déclenchée depuis
+  // l'écran interne = à l'initiative de la clinique.
+  const annuler = async (rdv) => {
+    if (!window.confirm('Annuler ce rendez-vous ?')) return
+    try {
+      const res = await santeApi.rendezvous.annuler(rdv.id, 'clinique')
+      toast[res.data?.penalite_applicable ? 'error' : 'success'](
+        res.data?.penalite_applicable
+          ? 'Rendez-vous annulé — pénalité applicable (délai dépassé).'
+          : 'Rendez-vous annulé.')
+      load()
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      toast.error(detail || "Impossible d'annuler ce rendez-vous.")
+    }
+  }
+
   return (
     <div className="sante-agenda">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
@@ -131,6 +149,15 @@ export default function SanteAgenda() {
                   <GripVertical size={14} strokeWidth={1.75} aria-hidden="true" />
                   <span>{formatHeure(rdv.date_heure_debut)}</span>
                   <span>{rdv.patient_nom || rdv.patient}</span>
+                  {rdv.statut !== 'annule' && rdv.statut !== 'termine' && (
+                    <Button
+                      variant="ghost" size="sm"
+                      onClick={() => annuler(rdv)}
+                      aria-label="Annuler ce rendez-vous"
+                    >
+                      Annuler
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

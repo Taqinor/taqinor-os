@@ -68,6 +68,9 @@ const Territoires = lazy(() => import('./Territoires'))
 // WIR14/NTCRM13 — Playbooks (CRUD des playbooks/étapes/tâches par stage) —
 // même gating responsable/admin que les autres écrans de configuration CRM.
 const Playbooks = lazy(() => import('./Playbooks'))
+// WIR8 — Paramètres → Hôtellerie : taxe de séjour (singleton société, réservé
+// responsable/admin — reflète `IsResponsableOrAdmin` côté backend).
+const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
 
 const config = {
   key: 'parametres',
@@ -89,6 +92,7 @@ const config = {
     { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/territoires', component: Territoires, roles: ['responsable', 'admin'] },
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
+    { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     {
       path: '/journal',
       component: Journal,

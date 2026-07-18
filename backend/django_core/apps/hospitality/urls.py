@@ -3,9 +3,9 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ChambreViewSet, EvenementBanquetViewSet, FolioViewSet,
-    MainCouranteViewSet, PlanTarifaireViewSet, RecetteViewSet,
-    ReservationViewSet, SalleEvenementViewSet, TableauBordView,
-    TacheMenageViewSet, TypeChambreViewSet,
+    MainCouranteViewSet, ParametresTaxeSejourView, PlanTarifaireViewSet,
+    RecetteViewSet, ReservationViewSet, SalleEvenementViewSet,
+    TableauBordView, TacheMenageViewSet, TypeChambreViewSet,
 )
 
 router = DefaultRouter()
@@ -22,5 +22,9 @@ router.register(r'evenements', EvenementBanquetViewSet)
 
 urlpatterns = [
     path('tableau-bord/', TableauBordView.as_view(), name='hospitality-tableau-bord'),
+    # WIR8 — singleton, jamais via le router DRF (pas de collection CRUD).
+    path(
+        'parametres-taxe-sejour/', ParametresTaxeSejourView.as_view(),
+        name='hospitality-parametres-taxe-sejour'),
     path('', include(router.urls)),
 ]
