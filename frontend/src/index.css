@@ -6319,6 +6319,11 @@ textarea.form-control {
 .lw-body--edit {
   display: grid;
   grid-template-columns: 288px minmax(0, 1fr) 384px;
+  /* Rangée BORNÉE à la hauteur du corps : sans ça, la rangée implicite grandit
+     avec le contenu et chaque zone ne peut plus défiler indépendamment (piège
+     de la classe P0). Avec min-height:0 sur .lw-body, cette rangée fixe donne
+     à chaque .lw-zone une hauteur définie → overflow-y:auto opérant. */
+  grid-template-rows: minmax(0, 1fr);
 }
 .lw-body--create {
   display: block;
