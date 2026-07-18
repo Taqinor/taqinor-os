@@ -624,6 +624,23 @@ class CompanyProfile(models.Model):
                   'Désactiver masque ces panneaux (la saisie manuelle reste '
                   'disponible).')
 
+    # ── WIR24 — Écritures comptables automatiques (réglage PAR SOCIÉTÉ) ────
+    # L'auto-passation des écritures ventes/achats (facture/paiement/avoir) est
+    # câblée et idempotente sur ``core.events`` (apps/compta/receivers.py) mais
+    # n'était gardée que par le réglage GLOBAL ``COMPTA_AUTO_ECRITURES`` (défaut
+    # False) — aucun interrupteur in-app. Ce drapeau l'active pour CETTE société
+    # sans toucher les autres. Défaut False = comportement historique inchangé
+    # (rien n'est passé au grand livre tant que ni le global ni ce drapeau ne
+    # sont actifs). Le réglage global reste un interrupteur MAÎTRE : s'il est
+    # True, l'auto-génération est active pour toutes les sociétés (rétro-compat).
+    comptabilite_auto_ecritures = models.BooleanField(
+        default=False,
+        verbose_name='Écritures comptables automatiques',
+        help_text="Passe automatiquement au grand livre l'écriture de chaque "
+                  'facture, paiement et avoir émis (partie double, idempotent). '
+                  "Désactivé par défaut : aucune écriture n'est générée tant que "
+                  "ce réglage n'est pas activé.")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

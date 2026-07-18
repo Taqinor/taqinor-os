@@ -262,6 +262,14 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         date_fin = params.get('date_fin')
         if date_fin:
             qs = qs.filter(date_ecriture__lte=date_fin)
+        # WIR24 — le détail d'un document source (facture/paiement/avoir) pointe
+        # vers son écriture GL via ce filtre (?source_type=&source_id=).
+        source_type = params.get('source_type')
+        if source_type:
+            qs = qs.filter(source_type=source_type)
+        source_id = params.get('source_id')
+        if source_id:
+            qs = qs.filter(source_id=source_id)
         return qs
 
     def perform_create(self, serializer):

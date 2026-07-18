@@ -612,6 +612,20 @@ app.conf.beat_schedule = {
         'task': 'core.escalate_workflow_sla',
         'schedule': crontab(minute=20),
     },
+    # WIR25 (XACC8) — génère les écritures dues des abonnements récurrents
+    # (loyers/abonnements) en brouillon, quotidien, heure creuse. Idempotent
+    # par période (rejouer le même jour ne crée rien) ; no-op sans abonnement.
+    'compta-generer-ecritures-recurrentes': {
+        'task': 'compta.generer_ecritures_recurrentes',
+        'schedule': crontab(hour=2, minute=15),
+    },
+    # WIR25 (NTMAR15) — rappels d'échéance fiscale (CNSS/taxe pro/TVA/IS…)
+    # N jours avant la date limite, quotidien, heure creuse matinale.
+    # Idempotent via rappel_envoye_le (pas de double envoi le même jour).
+    'fiscal-rappels-fiscaux': {
+        'task': 'fiscal.rappels_fiscaux',
+        'schedule': crontab(hour=6, minute=40),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
