@@ -1,12 +1,12 @@
 import { DefinitionList } from '../../../../ui'
-import { getField } from '../draftCore'
+import { getField, WEB_ORIGIN_FIELDS } from '../draftCore'
 import CustomFieldsInput from '../../../../components/CustomFieldsInput'
 
 // Champs d'origine web (taqinor.ma) en LECTURE SEULE : capturés par le site,
 // jamais édités ici. La section est masquée si tous sont vides (SectionsPane).
-export const WEB_ORIGIN_FIELDS = [
-  'bill_range_bucket', 'roi_band', 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid',
-]
+// WEB_ORIGIN_FIELDS vit dans draftCore.js (module logique pur) : exporter une
+// constante depuis un fichier de composants casse react-refresh (lint CI).
+
 const WEB_ORIGIN_LABELS = {
   bill_range_bucket: 'Tranche de facture (site)',
   roi_band: 'Estimation ROI (site)',

@@ -1,15 +1,15 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { createElement, useState, useRef, useEffect, useCallback } from 'react'
 import {
   User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe, FileText,
 } from 'lucide-react'
 import { ErrorBoundary } from '../../../ui'
-import { getField } from './draftCore'
+import { getField, WEB_ORIGIN_FIELDS } from './draftCore'
 import SectionContact from './sections/SectionContact'
 import SectionPipeline from './sections/SectionPipeline'
 import SectionEnergie, { SectionPompage } from './sections/SectionEnergie'
 import SectionSite from './sections/SectionSite'
 import SectionVisite from './sections/SectionVisite'
-import SectionDivers, { SectionOrigine, WEB_ORIGIN_FIELDS } from './sections/SectionDivers'
+import SectionDivers, { SectionOrigine } from './sections/SectionDivers'
 
 // LW11 — Le centre : registre de sections + nav-chips sticky (scroll-spy rAF,
 // aria-current), repli persisté par section, wrapper `<form>` en création.
@@ -168,7 +168,9 @@ export default function SectionsPane({
             collapsed={!!collapsed[id]}
             onToggle={() => toggle(id)}
           >
-            <Comp {...sectionProps} />
+            {/* createElement explicite — même faux positif compilateur que
+                LeadWorkspace (balise JSX dynamique « jamais utilisée »). */}
+            {createElement(Comp, sectionProps)}
           </WorkspaceSection>
         ))}
       </div>

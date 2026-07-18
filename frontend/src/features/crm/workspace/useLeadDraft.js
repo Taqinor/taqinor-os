@@ -56,11 +56,16 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   // Refs pour des callbacks STABLES (jamais de closure périmée ni de timer de
   // debounce réarmé à chaque rendu du parent).
   const stateRef = useRef(state)
-  stateRef.current = state
   const leadRef = useRef(lead)
-  leadRef.current = lead
   const onSavedRef = useRef(onSaved)
-  onSavedRef.current = onSaved
+  // Rafraîchis en EFFET (jamais pendant le rendu — react-hooks/refs, lint CI).
+  // Les lecteurs (debounce, leaveGuard, timers) tournent tous APRÈS commit,
+  // donc voient toujours la dernière valeur committée.
+  useEffect(() => {
+    stateRef.current = state
+    leadRef.current = lead
+    onSavedRef.current = onSaved
+  })
   // Fraîcheur VX243c : `date_modification` connu à l'ouverture (ou après notre
   // dernière écriture réussie).
   const openedAtRef = useRef(lead && lead.date_modification)
@@ -203,26 +208,29 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     // On lit `leadRef.current` (jamais `lead` directement) pour ne recharger
     // qu'à un VRAI changement d'id/mode (un simple re-rendu du parent ne doit
     // pas clobberer les éditions en cours — cf. commentaire liveLead LeadForm).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.id, mode, currentUserId])
 
   // ── Autosauvegarde débouncée (édition seulement) ─────────────────────────
+  // `dirty` dérivé des seules tranches listées en deps — jamais `state` entier
+  // (exhaustive-deps) : le timer de debounce ne doit se réarmer QUE quand le
+  // draft bouge réellement, pas quand saveState/stale/composer changent.
+  const draftDirty = Object.keys(state.draft).length > 0
   useEffect(() => {
     if (state.mode !== 'edit') return undefined
-    if (!isDirty(state) || state.inflight) return undefined
+    if (!draftDirty || state.inflight) return undefined
     const t = setTimeout(() => { flush({}) }, AUTOSAVE_DEBOUNCE_MS)
     return () => clearTimeout(t)
-  }, [state.mode, state.draft, state.inflight, flush])
+  }, [state.mode, state.draft, draftDirty, state.inflight, flush])
 
   // ── Miroir sessionStorage (défense anti-perte) ───────────────────────────
   useEffect(() => {
     if (state.mode !== 'edit' || state.leadId == null) return
-    if (isDirty(state) || state.composer.note) {
+    if (draftDirty || state.composer.note) {
       writeMirror(state.leadId, { draft: state.draft, note: state.composer.note })
     } else {
       clearMirror(state.leadId)
     }
-  }, [state.mode, state.leadId, state.draft, state.composer.note])
+  }, [state.mode, state.leadId, state.draft, draftDirty, state.composer.note])
 
   return {
     state,

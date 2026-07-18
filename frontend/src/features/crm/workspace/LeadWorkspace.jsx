@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { createElement, useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import api from '../../../api/axios'
@@ -77,6 +77,11 @@ export default function LeadWorkspace({
 
   const draft = useLeadDraft(lead, { mode, currentUserId, onSaved })
   const { state, field, setField, saveState, leaveGuard } = draft
+  // Primitives STABLES hoistées : le compilateur React (lint v7) refuse de
+  // préserver un useCallback dont les deps mêlent optional-chaining et objet
+  // entier — on ne dépend que de scalaires.
+  const leadId = lead?.id ?? null
+  const leadArchived = !!lead?.is_archived
   const { errors, setErrors, setFromResponse } = useServerFieldErrors()
 
   // ── Données de référence (partagées avec les rails / sections) ────────────
@@ -93,15 +98,15 @@ export default function LeadWorkspace({
   }, [])
 
   const refreshHistorique = useCallback(() => {
-    if (!lead?.id) return
-    api.get(`/crm/leads/${lead.id}/historique/`).then((r) => setHistorique(r.data)).catch(() => {})
-  }, [lead?.id])
+    if (!leadId) return
+    api.get(`/crm/leads/${leadId}/historique/`).then((r) => setHistorique(r.data)).catch(() => {})
+  }, [leadId])
 
   useEffect(() => {
-    if (mode !== 'edit' || !lead?.id) return
+    if (mode !== 'edit' || !leadId) return
     refreshHistorique()
-    crmApi.getLeadDuplicates(lead.id).then((r) => setDups(r.data)).catch(() => {})
-  }, [mode, lead?.id, refreshHistorique])
+    crmApi.getLeadDuplicates(leadId).then((r) => setDups(r.data)).catch(() => {})
+  }, [mode, leadId, refreshHistorique])
 
   // ── Satellites (dialogues) ────────────────────────────────────────────────
   const [devisPanel, setDevisPanel] = useState(null)
@@ -123,17 +128,17 @@ export default function LeadWorkspace({
   // Archivage : passe TOUJOURS par leaveGuard (flush d'abord) — l'archivage ne
   // peut plus structurellement jeter des éditions non sauvées (tue P1#3).
   const doArchive = useCallback(() => {
-    if (!lead?.id) return
+    if (!leadId) return
     leaveGuard(async () => {
       setArchiveBusy(true)
       try {
-        if (lead.is_archived) await dispatch(restoreLead(lead.id)).unwrap()
-        else await dispatch(archiveLead(lead.id)).unwrap()
+        if (leadArchived) await dispatch(restoreLead(leadId)).unwrap()
+        else await dispatch(archiveLead(leadId)).unwrap()
         onSaved?.()
         onClose?.()
       } catch { /* silencieux */ } finally { setArchiveBusy(false) }
     })
-  }, [lead?.id, lead?.is_archived, leaveGuard, dispatch, onSaved, onClose])
+  }, [leadId, leadArchived, leaveGuard, dispatch, onSaved, onClose])
 
   // Contrat d'action des rails (IdentityRail/ContextRail — autres lanes) :
   // toutes les sorties/points de mutation passent par ici.
@@ -144,14 +149,14 @@ export default function LeadWorkspace({
       case 'plan': return setPlanOpen(true)
       case 'signe': return setSigneOpen(true)
       case 'toiture-3d':
-        return leaveGuard(() => { if (lead?.id) navigate(`/devis-design/${lead.id}`) })
+        return leaveGuard(() => { if (leadId) navigate(`/devis-design/${leadId}`) })
       case 'open-devis': return setDevisPanel(payload || 'auto')
       case 'view-devis': setPanelDevisId(payload); return setDevisPanel('view')
       case 'refresh': return draft.refreshServer()
       case 'close': return leaveGuard(onClose)
       default: return undefined
     }
-  }, [doArchive, leaveGuard, lead?.id, navigate, draft, onClose])
+  }, [doArchive, leaveGuard, leadId, navigate, draft, onClose])
 
   // ── File de rafale (◀▶ + J/K), gardée par leaveGuard (draft flushé) ───────
   const queueIndex = (leadsQueue && mode === 'edit')
@@ -256,12 +261,18 @@ export default function LeadWorkspace({
               </IconButton>
             </span>
           )}
-          <TitleComp className="modal-title lw-title">
-            {nomTitre}
-            {mode === 'edit' && lead?.is_archived && (
-              <span className="lw-archived-badge">Archivé</span>
-            )}
-          </TitleComp>
+          {/* createElement explicite : le pipeline compilateur+no-unused-vars
+              perd la référence du paramètre quand il est utilisé comme balise
+              JSX dynamique (faux positif « TitleComp is never used ») —
+              l'appel de fonction direct est, lui, toujours compté. */}
+          {createElement(
+            TitleComp,
+            { className: 'modal-title lw-title' },
+            nomTitre,
+            (mode === 'edit' && lead?.is_archived)
+              ? <span key="arch" className="lw-archived-badge">Archivé</span>
+              : null,
+          )}
         </div>
         <div className="lw-topbar-right">
           {mode === 'edit' && <SaveChip saveState={saveState} onRetry={draft.retry} />}
@@ -291,7 +302,7 @@ export default function LeadWorkspace({
 
       <div className={`lw-body ${mode === 'create' ? 'lw-body--create' : 'lw-body--edit'}`}>
         {mode === 'edit' && (
-          <IdentityRail state={state} onAction={onAction} users={users} />
+          <IdentityRail state={state} onAction={onAction} users={users} archiveBusy={archiveBusy} />
         )}
         <SectionsPane
           state={state}

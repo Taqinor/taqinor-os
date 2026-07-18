@@ -317,3 +317,11 @@ export function reducer(state, action) {
 }
 
 export default reducer
+
+// Champs d'origine web (taqinor.ma) en LECTURE SEULE — capturés par le site,
+// jamais édités dans la fiche. Vit ICI (module logique pur) et non dans
+// SectionDivers.jsx : exporter une constante depuis un fichier de composants
+// casse la règle react-refresh/only-export-components du lint CI.
+export const WEB_ORIGIN_FIELDS = [
+  'bill_range_bucket', 'roi_band', 'utm_source', 'utm_medium', 'utm_campaign', 'fbclid',
+]
