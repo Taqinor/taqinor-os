@@ -59,6 +59,7 @@ export default function OrgChartTab({ clientId }) {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     loadContacts()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId])
