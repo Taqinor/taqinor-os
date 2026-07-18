@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe,
-  FileText, Clock, Paperclip, GitMerge, History, Lightbulb,
+  FileText, Clock, Paperclip, GitMerge, History, Lightbulb, ListChecks,
 } from 'lucide-react'
 import { createLead, updateLead, archiveLead, restoreLead } from '../../features/crm/store/crmSlice'
 import api from '../../api/axios'
@@ -22,6 +22,9 @@ import CustomFieldsInput from '../../components/CustomFieldsInput'
 import ChatterTimeline, { parseMarketingTouch } from '../../components/ChatterTimeline'
 import AppointmentBooker from './leads/AppointmentBooker'
 import LeadDevisPanel from './leads/LeadDevisPanel'
+// WIR14/NTCRM13 — checklist du playbook (progression auto-générée à chaque
+// changement de stage, apps/crm/receivers.py:151) — jusqu'ici invisible.
+import PlaybookChecklistPanel from './leads/PlaybookChecklistPanel'
 import SigneDialog from './leads/SigneDialog'
 import PlanActiviteDialog from './leads/PlanActiviteDialog'
 import ConvertirClientDialog from './leads/ConvertirClientDialog'
@@ -141,6 +144,7 @@ const NAV_ICONS = {
   visite: ClipboardList,
   origine: Globe,
   devis: FileText,
+  playbook: ListChecks,
   activites: Clock,
   pieces: Paperclip,
   doublons: GitMerge,
@@ -188,7 +192,7 @@ const buildNavSections = ({ agricole, isEdit, hasWebOrigin, dupCount = 0 }) => {
   secs.push(['toiture', 'Toiture & site'], ['visite', 'Visite'])
   if (hasWebOrigin) secs.push(['origine', 'Origine web'])
   if (isEdit) secs.push(
-    ['devis', 'Devis'], ['activites', 'Activités'],
+    ['devis', 'Devis'], ['playbook', 'Playbook'], ['activites', 'Activités'],
     ['pieces', 'Pièces jointes'], ['doublons', 'Doublons', dupCount || null],
     ['historique', 'Historique'])
   return secs
@@ -1863,6 +1867,15 @@ export default function LeadForm({
                     </table>
                   </>
                 )}
+              </Sec>
+            )}
+
+            {/* ── Playbook (NTCRM13) — checklist de la progression auto- ── */}
+            {/* ── générée par apps/crm/receivers.py:151 à chaque changement */}
+            {/* ── de stage, jusqu'ici invisible depuis la fiche lead.     ── */}
+            {isEdit && (
+              <Sec id="playbook" title="Playbook">
+                <PlaybookChecklistPanel leadId={lead.id} />
               </Sec>
             )}
 
