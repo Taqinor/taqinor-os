@@ -6715,3 +6715,38 @@ textarea.form-control {
   align-items: center;
   gap: 0.4rem;
 }
+
+/* ── LW22 : barre d'envoi WhatsApp multi-devis FR/Darija. ─────────────────── */
+
+.lw-context-wa-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
+.lw-context-wa-langue {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.lw-context-wa-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--muted);
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 0.82rem;
+  margin: 0;
+}
+.lw-context-wa-links {
+  margin: 0.5rem 0 0;
+  padding-left: 1rem;
+}
+.lw-context-wa-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
