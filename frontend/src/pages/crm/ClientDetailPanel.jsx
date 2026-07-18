@@ -5,11 +5,13 @@ import ventesApi from '../../api/ventesApi'
 import {
   Badge, Button, Spinner, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+  Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { Table } from '../reporting/Table'
 import ClientRgpdActions from './ClientRgpdActions'
 import OwnerChain from '../../components/OwnerChain'
+import OrgChartTab from './clients/OrgChartTab'
 import { formatMAD } from '../../lib/format'
 import { telHref, waHref } from '../../lib/contactLinks'
 
@@ -150,80 +152,94 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
               )}
             </div>
           )}
-          {loading && (
-            <p className="page-loading"><Spinner /> Chargement des documents…</p>
-          )}
-          {error && (
-            <p className="page-error">
-              Impossible de charger les documents — réessayez.
-            </p>
-          )}
-          {/* XSAL9 — hiérarchie de comptes : filiales + rollup CA groupe. */}
-          {consolidation && consolidation.filiales.length > 0 && (
-            <section className="mb-4">
-              <h4 className="font-medium mb-2">
-                Filiales <span className="count-badge">{consolidation.filiales.length}</span>
-              </h4>
-              <p className="text-sm mb-2">
-                CA groupe (devis) : <strong>{formatMAD(consolidation.ca_devis_total)}</strong>
-                {' · '}CA groupe (factures) : <strong>{formatMAD(consolidation.ca_factures_total)}</strong>
-              </p>
-              <ul className="text-sm">
-                {consolidation.filiales.map((f) => (
-                  <li key={f.id}>{f.nom}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {client.parent_id != null && (
-            <p className="text-sm text-muted-foreground mb-4">
-              Filiale de la société mère #{client.parent_id}.
-            </p>
-          )}
-          {/* VX216(c) — chaîne de responsabilité, uniquement quand elle est
-              SANS AMBIGUÏTÉ (un client peut avoir plusieurs devis/chantiers —
-              on ne devine jamais lequel). L'endpoint fiche client n'expose ni
-              lead ni ticket SAV : chaîne partielle (Devis · Chantier), jamais
-              un lien inventé. */}
-          {data && data.devis?.length === 1 && data.chantiers?.length === 1 && (
-            <OwnerChain
-              className="mb-4"
-              devis={{ id: data.devis[0].id, nom: data.devis[0].reference }}
-              chantier={{ id: data.chantiers[0].id, nom: data.chantiers[0].reference }}
-            />
-          )}
-          {data && (
-            <>
-              <DocTable
-                titre="Devis"
-                rows={data.devis}
-                withTotal
-                withDate
-                emptyLabel="Aucun devis lié."
-              />
-              <DocTable
-                titre="Factures"
-                rows={data.factures}
-                withTotal
-                withDate
-                emptyLabel="Aucune facture liée."
-                renderActions={(f) => (
-                  f.statut_key === 'en_retard' ? (
-                    <Button size="sm" variant="outline" disabled={waBusy}
-                            onClick={() => relancerWhatsApp(f)}
-                            title="Relancer par WhatsApp">
-                      <MessageCircle className="size-4" /> Relancer
-                    </Button>
-                  ) : null
-                )}
-              />
-              <DocTable
-                titre="Chantiers"
-                rows={data.chantiers}
-                emptyLabel="Aucun chantier lié."
-              />
-            </>
-          )}
+          {/* WIR12 — onglet Organigramme (ContactClient) à côté des documents,
+              chacun gardant son propre chargement (l'onglet Organigramme ne
+              fetch qu'à l'activation, via son propre effect interne). */}
+          <Tabs defaultValue="documents">
+            <TabsList>
+              <TabsTrigger value="documents">Documents</TabsTrigger>
+              <TabsTrigger value="organigramme">Organigramme</TabsTrigger>
+            </TabsList>
+            <TabsContent value="documents">
+              {loading && (
+                <p className="page-loading"><Spinner /> Chargement des documents…</p>
+              )}
+              {error && (
+                <p className="page-error">
+                  Impossible de charger les documents — réessayez.
+                </p>
+              )}
+              {/* XSAL9 — hiérarchie de comptes : filiales + rollup CA groupe. */}
+              {consolidation && consolidation.filiales.length > 0 && (
+                <section className="mb-4">
+                  <h4 className="font-medium mb-2">
+                    Filiales <span className="count-badge">{consolidation.filiales.length}</span>
+                  </h4>
+                  <p className="text-sm mb-2">
+                    CA groupe (devis) : <strong>{formatMAD(consolidation.ca_devis_total)}</strong>
+                    {' · '}CA groupe (factures) : <strong>{formatMAD(consolidation.ca_factures_total)}</strong>
+                  </p>
+                  <ul className="text-sm">
+                    {consolidation.filiales.map((f) => (
+                      <li key={f.id}>{f.nom}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {client.parent_id != null && (
+                <p className="text-sm text-muted-foreground mb-4">
+                  Filiale de la société mère #{client.parent_id}.
+                </p>
+              )}
+              {/* VX216(c) — chaîne de responsabilité, uniquement quand elle est
+                  SANS AMBIGUÏTÉ (un client peut avoir plusieurs devis/chantiers —
+                  on ne devine jamais lequel). L'endpoint fiche client n'expose ni
+                  lead ni ticket SAV : chaîne partielle (Devis · Chantier), jamais
+                  un lien inventé. */}
+              {data && data.devis?.length === 1 && data.chantiers?.length === 1 && (
+                <OwnerChain
+                  className="mb-4"
+                  devis={{ id: data.devis[0].id, nom: data.devis[0].reference }}
+                  chantier={{ id: data.chantiers[0].id, nom: data.chantiers[0].reference }}
+                />
+              )}
+              {data && (
+                <>
+                  <DocTable
+                    titre="Devis"
+                    rows={data.devis}
+                    withTotal
+                    withDate
+                    emptyLabel="Aucun devis lié."
+                  />
+                  <DocTable
+                    titre="Factures"
+                    rows={data.factures}
+                    withTotal
+                    withDate
+                    emptyLabel="Aucune facture liée."
+                    renderActions={(f) => (
+                      f.statut_key === 'en_retard' ? (
+                        <Button size="sm" variant="outline" disabled={waBusy}
+                                onClick={() => relancerWhatsApp(f)}
+                                title="Relancer par WhatsApp">
+                          <MessageCircle className="size-4" /> Relancer
+                        </Button>
+                      ) : null
+                    )}
+                  />
+                  <DocTable
+                    titre="Chantiers"
+                    rows={data.chantiers}
+                    emptyLabel="Aucun chantier lié."
+                  />
+                </>
+              )}
+            </TabsContent>
+            <TabsContent value="organigramme">
+              <OrgChartTab clientId={client.id} />
+            </TabsContent>
+          </Tabs>
         </div>
         <div className="modal-footer">
           {/* WR9/FG26 — export d'accès du sujet + anonymisation (gatés rôle). */}
