@@ -30,6 +30,8 @@ _APP_URLS = [
     path('contact/', include('apps.contact.urls')),
     path('installations/', include('apps.installations.urls')),
     path('sav/', include('apps.sav.urls')),
+    # NTDMO13 — onboarding produit (checklist « Premiers pas »).
+    path('onboarding/', include('apps.onboarding.urls')),
     path('outillage/', include('apps.outillage.urls')),
     path('ged/', include('apps.ged.urls')),
     path('core/', include('core.urls')),  # FG368 — jobs Celery Beat
@@ -96,6 +98,13 @@ _APP_URLS = [
     path('identity/', include('apps.identity.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
+    # NTCRM1 — Moteur de territoires (règles d'affectation round-robin).
+    path('territoires/', include('apps.territoires.urls')),
+    # NTCRM8 — Contacts multi-rôles par client (organigramme d'achat).
+    path('contacts/', include('apps.contacts.urls')),
+    # Groupe NTCPQ — CPQ enterprise (options/contraintes, règles, offres
+    # groupées, prix contractuels, approbations de remise, configurateur).
+    path('cpq/', include('apps.cpq.urls')),
     # Groupe NTPRO — Vertical immobilier & facilities.
     path('immobilier/', include('apps.immobilier.urls')),
     # Groupe NTHOT — Vertical hôtellerie & restauration.

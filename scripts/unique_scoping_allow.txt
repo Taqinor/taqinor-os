@@ -16,3 +16,10 @@ backend/django_core/apps/crm/models.py::Lead(company,external_system,external_id
 # company FK, reviewed global-by-design in tenant_exempt_models.txt); its `code`
 # is legitimately globally unique across the shared registry, not tenant data.
 backend/django_core/apps/extensions/models.py::ExtensionPackage.code
+#
+# NTDMO11 — onboarding.OnboardingChecklistItem is a GLOBAL « Premiers pas »
+# catalogue (company FK nullable; company=None = item partagé par toutes les
+# sociétés, seedé une fois via migration). Its stable `key` is legitimately
+# globally unique across the shared catalogue, not per-tenant business data —
+# same rationale as extensions.ExtensionPackage.code above.
+backend/django_core/apps/onboarding/models.py::OnboardingChecklistItem.key

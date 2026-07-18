@@ -9,6 +9,12 @@
 # Rebased 2026-07-12 (wave-6 fold): 104 file:line entries remapped for shifted/relocated pre-existing FKs (compta insertion of XPLT20 models pushed lines down; crm gained ODX13-relocated partenaire models; kb +12 / notifications +6). Same FK set, no new CASCADE.
 # Rebased 2026-07-16 (quote-journey v2): 31 crm/models.py entries remapped (+18)
 # after the Lead web_questionnaire/web_estimate insertion. Same FK set, no new CASCADE.
+# Rebased 2026-07-17 (NTDMO CI fix): 2 pre-existing SET_NULL_ON_TENANT_FIELD
+# entries remapped (authentication/models.py CustomUser.company +ventes/models.py
+# ParametrageRelanceClient.responsable — same FKs as the 2026-07-12 YDATA3 review,
+# just shifted by unrelated line insertions elsewhere in each file). No new SET_NULL.
+backend/django_core/authentication/models.py:182
+backend/django_core/apps/ventes/models.py:950
 backend/django_core/apps/achats/models.py:115
 backend/django_core/apps/achats/models.py:271
 backend/django_core/apps/achats/models.py:378

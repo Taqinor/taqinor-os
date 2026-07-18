@@ -14,7 +14,7 @@
    `recordsApi.getAttachments`) injectées dans le fil, triées avec le reste
    par date — pas un onglet séparé. */
 import Avatar from './Avatar'
-import { Pencil, Paperclip } from 'lucide-react'
+import { Pencil, Paperclip, Megaphone } from 'lucide-react'
 
 // FG30/QX27 — libellés FR du résultat d'un appel/e-mail journalisé (miroir de
 // LeadActivity.OUTCOMES côté serveur, apps/crm/models.py). Rapatrié ici
@@ -29,6 +29,23 @@ export const OUTCOME_LABELS = {
 // Logs automatiques de champ ('creation'/'modification') vs notes manuelles
 // et événements métier — sert à la distinction visuelle discrète/pleine.
 const AUTO_LOG_KINDS = new Set(['creation', 'modification'])
+
+// NTMKT11 — Touches marketing (XMKT16, `crm.services.noter_touche_marketing`)
+// s'écrivent en `kind='note'` — il n'existe PAS de `kind` dédié côté backend
+// ni de FK vers la campagne/séquence sur `LeadActivity` (contrainte connue,
+// suivie séparément). Le SEUL signal fiable et STABLE côté serveur est le
+// format du texte, identique sur tous les points d'écriture
+// (`apps/compta/services.py` : `f'Campagne « {campagne.nom} » envoyée'` /
+// `... ouverte` / `... cliquée`, `f'Séquence « {sequence.nom} » ...'`) —
+// jamais un heuristique inventé ici, une lecture directe du format réel.
+const MARKETING_TOUCH_RE = /^(Campagne|Séquence) « (.+?) » /
+
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (testable au node)
+export function parseMarketingTouch(body) {
+  const m = body ? MARKETING_TOUCH_RE.exec(body) : null
+  if (!m) return null
+  return { type: m[1] === 'Campagne' ? 'campagne' : 'sequence', nom: m[2] }
+}
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -76,8 +93,30 @@ function groupByDay(feed) {
   return groups
 }
 
-function ActivityLine({ a }) {
+function ActivityLine({ a, resolveMarketingLink }) {
   if (a.kind === 'note') {
+    // NTMKT11 — touche marketing (campagne/séquence) : icône dédiée + lien
+    // cliquable vers l'écran source quand résolu (voir `resolveMarketingLink`,
+    // fourni par `LeadForm.jsx` depuis la liste marketing déjà chargée —
+    // aucun appel réseau ici, présentation pure inchangée).
+    const touche = parseMarketingTouch(a.body)
+    if (touche) {
+      const href = resolveMarketingLink?.(touche.type, touche.nom)
+      return (
+        <span>
+          <Megaphone size={12} className="chatter-marketing-icon" aria-hidden="true" />
+          {' '}<strong>Marketing&nbsp;:</strong> {a.body}
+          {href && (
+            <>
+              {' '}
+              <a href={href} className="chatter-marketing-link">
+                Voir {touche.type === 'campagne' ? 'la campagne' : 'la séquence'}
+              </a>
+            </>
+          )}
+        </span>
+      )
+    }
     return (
       <span>
         📝 <strong>Note&nbsp;:</strong> {a.body}
@@ -157,8 +196,16 @@ function ActivityLine({ a }) {
  *                              `recordsApi.getAttachments`) injectées dans le
  *                              fil au lieu d'un onglet séparé.
  * @param {string} [emptyLabel] Message si le fil est vide.
+ * @param {Function} [resolveMarketingLink] NTMKT11 — `(type, nom) => url|null`
+ *                              résout le lien cliquable d'une touche marketing
+ *                              (campagne/séquence) reconnue dans une note —
+ *                              non fourni = pas de lien (comportement actuel
+ *                              inchangé pour tout autre appelant).
  */
-export default function ChatterTimeline({ entries, attachments, emptyLabel = 'Aucune activité pour le moment.' }) {
+export default function ChatterTimeline({
+  entries, attachments, emptyLabel = 'Aucune activité pour le moment.',
+  resolveMarketingLink,
+}) {
   const feed = buildFeed(entries, attachments)
   if (feed.length === 0) {
     return <p className="gen-hint chatter-empty">{emptyLabel}</p>
@@ -193,18 +240,20 @@ export default function ChatterTimeline({ entries, attachments, emptyLabel = 'Au
             }
             const isNote = item.kind === 'note'
             const isAutoLog = AUTO_LOG_KINDS.has(item.kind)
+            const isMarketing = isNote && !!parseMarketingTouch(item.body)
             const classes = [
               'chatter-item',
               `chatter-${item.kind}`,
               isNote ? 'chatter-item-note' : '',
               isAutoLog ? 'chatter-item-autolog' : '',
+              isMarketing ? 'chatter-item-marketing' : '',
             ].filter(Boolean).join(' ')
             return (
               <div key={item.id} className={classes}>
                 <Avatar name={item.user_nom} size={24} />
                 <div className="chatter-item-body">
                   {isAutoLog && <Pencil size={11} className="chatter-autolog-icon" aria-hidden="true" />}
-                  <ActivityLine a={item} />
+                  <ActivityLine a={item} resolveMarketingLink={resolveMarketingLink} />
                   {item.bulk && <span className="chatter-bulk">en masse</span>}
                   <span className="chatter-meta">
                     — par {item.user_nom ?? '?'} · {timeAgo(item.__at)}

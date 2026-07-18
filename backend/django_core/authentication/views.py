@@ -857,10 +857,74 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 # ── Gestion des entreprises (superuser uniquement) ─────────────
+def _run_demo_reset(slug):
+    """NTDMO7 — lance ``reset_demo_company`` en tâche Celery best-effort, avec
+    repli SYNCHRONE si Celery est absent/non configuré. Ne lève jamais côté
+    requête pour une erreur d'enqueue : dans ce cas on exécute en synchrone."""
+    from django.core.management import call_command
+    try:
+        from authentication.tasks import reset_demo_company_task
+        reset_demo_company_task.delay(slug)
+        return
+    except Exception:
+        # Pas de Celery (ou pas de task) → exécution synchrone immédiate.
+        pass
+    call_command('reset_demo_company', slug=slug, force=True, verbosity=0)
+
+
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all().order_by('date_creation')
     serializer_class = CompanySerializer
     permission_classes = [permissions.IsAdminUser]
+
+    def perform_update(self, serializer):
+        # NTDMO10 — le mode présentation ne peut être activé/modifié QUE sur une
+        # société de démonstration (jamais sur une société réelle, même par un
+        # admin). ``est_demo`` reste read-only côté sérialiseur (NTDMO8).
+        company = self.get_object()
+        if ('mode_presentation_actif' in serializer.validated_data
+                and not company.est_demo):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Le mode présentation n'est disponible que sur une société de "
+                "démonstration.")
+        serializer.save()
+
+    @action(detail=True, methods=['post'], url_path='reset-demo')
+    def reset_demo(self, request, pk=None):
+        """NTDMO7 — réinitialise les données de démonstration d'une société.
+
+        403 si la société n'est pas une société de DÉMONSTRATION
+        (``est_demo=False``). Invoque ``reset_demo_company`` (best-effort en
+        tâche Celery, sinon synchrone) puis notifie l'utilisateur in-app.
+        """
+        company = self.get_object()
+        if not company.est_demo:
+            return Response(
+                {'detail': "Cette société n'est pas une société de "
+                           "démonstration."},
+                status=status.HTTP_403_FORBIDDEN)
+
+        slug = company.slug
+        # Le reset purge la société démo ET ses utilisateurs — dont l'admin
+        # agissant (``request.user``) et sa société. Après la purge,
+        # ``request.user`` est un objet FANTÔME (PK supprimée) : tout code du
+        # cycle de requête qui lit ``request.user.company`` (ex. le middleware
+        # d'observabilité côté réponse : ``getattr(user, 'company', None)`` — qui
+        # NE rattrape PAS ``Company.DoesNotExist``) lèverait → 500.
+        #   1) On efface l'acteur d'audit AVANT la purge : sinon les signaux CRUD
+        #      déclenchés pendant le reset écriraient un journal avec une FK
+        #      acteur supprimée.
+        #   2) On repasse ``request.user`` en ANONYME APRÈS : le reste de la pile
+        #      (middlewares de réponse) ne touche alors jamais l'utilisateur
+        #      supprimé. Pas de notification in-app : sa cible n'existe plus.
+        from apps.audit import recorder
+        from django.contrib.auth.models import AnonymousUser
+        recorder.end_request()
+        _run_demo_reset(slug)
+        request.user = AnonymousUser()
+        return Response({'detail': 'Données de démonstration réinitialisées.',
+                         'slug': slug})
 
 
 # ── Double authentification (2FA TOTP) — opt-in par utilisateur (N96) ──────

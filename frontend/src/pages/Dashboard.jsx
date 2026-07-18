@@ -8,6 +8,8 @@ const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsA
 // VX36 — bannière de prise en main (autonome : se masque si terminé/rejeté),
 // visible dès le premier login en haut du Dashboard.
 const OnboardingBanner = lazy(() => import('../components/OnboardingBanner'))
+// NTDMO13 — widget « Premiers pas » (checklist onboarding, autonome).
+const PremiersPasWidget = lazy(() => import('../components/PremiersPasWidget'))
 // NTUX11 — historique de navigation récente unifié (autonome : ne rend rien
 // si aucune entité récente).
 const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntitiesWidget'))
@@ -780,6 +782,11 @@ export function Component() {
           « ne plus afficher »). En tête, visible au premier login. */}
       <Suspense fallback={null}>
         <OnboardingBanner />
+      </Suspense>
+
+      {/* NTDMO13 — widget « Premiers pas » (checklist, se masque à 100 %). */}
+      <Suspense fallback={null}>
+        <PremiersPasWidget />
       </Suspense>
 
       {/* VX27 — bandeau « aujourd'hui » : les signaux du jour, cliquables. Se

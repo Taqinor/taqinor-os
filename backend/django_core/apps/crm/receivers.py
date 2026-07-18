@@ -13,13 +13,16 @@ import logging
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from core.events import devis_accepted, devis_refused, devis_sent, ticket_resolu
+from core.events import (
+    devis_accepted, devis_refused, devis_sent, lead_stage_changed, ticket_resolu,
+)
 
 from .models import LeadActivity
 from .services import (
     _CONTACT_KINDS,
     avancer_stage_new_vers_contacted,
     avancer_stage_pour_devis,
+    generer_playbook_progress,
     signaler_mismatch_signe_sur_refus,
 )
 
@@ -143,6 +146,21 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
         return  # uniquement un contact MANUEL d'un utilisateur (pas auto/système)
     lead = instance.lead
     avancer_stage_new_vers_contacted(lead, instance.user)
+
+
+@receiver(lead_stage_changed, dispatch_uid="crm_generate_playbook_progress_on_stage_change")
+def _generer_playbook_progress_on_stage_change(sender, lead, old_stage,
+                                               new_stage, user, **kwargs):
+    """NTCRM12 — À CHAQUE changement d'étape d'un lead, génère la progression
+    des tâches obligatoires/optionnelles du(des) playbook(s) actif(s) portant
+    une étape sur ``new_stage``. Best-effort : ne bloque jamais la transition
+    de stage déjà actée par l'émetteur."""
+    try:
+        generer_playbook_progress(lead, new_stage)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'NTCRM12: génération de la progression playbook échouée '
+            'pour le lead #%s', getattr(lead, 'pk', '?'), exc_info=True)
 
 
 @receiver(ticket_resolu, dispatch_uid="crm_chatter_on_ticket_resolu")

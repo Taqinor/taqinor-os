@@ -39,6 +39,10 @@ const NotificationsPreferences = lazy(() => import('../../pages/parametres/Notif
 // reflète `IsResponsableOrAdmin` côté backend).
 const KpiAlertesPage = lazy(() => import('../../pages/parametres/KpiAlertesPage'))
 const Journal = lazy(() => import('../../pages/Journal'))
+// NTMKT10 — Paramètres → Marketing : domaine d'envoi SPF/DKIM/DMARC (XMKT33).
+// Composant déposé sous `features/parametres/` (pas `pages/parametres/`) —
+// Files list de NTMKT10 dans docs/plans/PLAN_CRM_VENTES.md.
+const DomaineEnvoi = lazy(() => import('./DomaineEnvoi'))
 // NTUX23 — rapport « configuration des vues actives » (réservé responsable/
 // admin, reflète `IsResponsableOrAdmin` côté backend — `toutes-company/`/
 // `export-xlsx/` de SavedViewViewSet).
@@ -52,6 +56,7 @@ const config = {
     { path: '/parametres/export', component: ExportSauvegarde },
     { path: '/parametres/notifications', component: NotificationsPreferences },
     { path: '/parametres/alertes-kpi', component: KpiAlertesPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/marketing', component: DomaineEnvoi, roles: ['responsable', 'admin'] },
     { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['responsable', 'admin'] },
     {
       path: '/journal',

@@ -45,6 +45,27 @@ class Company(models.Model):
     # champ (voir NTDATA46) au lieu de re-modéliser le consentement.
     benchmarking_opt_in = models.BooleanField(
         'Consentement benchmarking anonymisé', default=False)
+    # ── NTDMO8 — Démo & mode présentation (additifs, défaut False) ──────────
+    # ``est_demo`` : True pour un tenant de DÉMONSTRATION créé par
+    # ``seed_demo_company`` (NTDMO1). Jamais posé via l'API publique — gate des
+    # fonctionnalités démo (reset-demo NTDMO7, widgets démo, mode présentation).
+    est_demo = models.BooleanField(
+        'Société de démonstration', default=False,
+        help_text="True pour un tenant de démonstration (seed_demo_company). "
+                  "Jamais posé via l'API publique.")
+    # ``mode_presentation_actif`` : masque les PII (email/téléphone/adresse) en
+    # LECTURE pour une démo devant prospect (NTDMO9/10). Additif, défaut False →
+    # AUCUNE société n'est affectée tant qu'il reste False (non-régression
+    # totale). Togglable par un admin d'une société démo uniquement.
+    # NOTE (NTDMO8) : le plan situait ce drapeau sur ``CompanyProfile`` ; il vit
+    # ici sur ``Company`` car la lane Démo n'écrit que dans ``authentication``
+    # (CompanyProfile est dans ``apps.parametres``). NTDMO9 lit
+    # ``request.user.company.mode_presentation_actif``.
+    mode_presentation_actif = models.BooleanField(
+        'Mode présentation actif', default=False,
+        help_text="Quand True, masque les coordonnées PII des clients/leads en "
+                  "LECTURE seule (jamais en écriture, jamais les factures). "
+                  "Réservé aux sociétés démo.")
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -538,14 +559,14 @@ class UserSession(models.Model):
 
     company = models.ForeignKey(
         Company,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='user_sessions',
         null=True,
         blank=True,
     )
     user = models.ForeignKey(
         'authentication.CustomUser',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: lié à l'utilisateur
         related_name='sessions',
     )
     # Identifiant du jeton de rafraîchissement (claim ``jti``) — sert à relier la

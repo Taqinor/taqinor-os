@@ -950,8 +950,11 @@ def _map_and_link_lead(raw, data, company):
                 '(lead #%s) : %s', lead.pk, _exc)
     else:
         # Responsable par défaut de la société (Paramètres) si configuré.
+        # NTCRM1 — le moteur de territoires est consulté EN PREMIER (via
+        # lead_attrs=fields) ; repli sur XSAL11 round-robin si aucun match.
         from .services import default_responsable_for
-        fields.setdefault('owner', default_responsable_for(company))
+        fields.setdefault(
+            'owner', default_responsable_for(company, lead_attrs=fields))
         lead = Lead.objects.create(company=company, **fields)
         created = True
         LeadActivity.objects.create(

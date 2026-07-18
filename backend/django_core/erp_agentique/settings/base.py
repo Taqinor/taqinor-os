@@ -177,6 +177,24 @@ INSTALLED_APPS = [
     # propose→approuve→applique, création TOUJOURS PAUSED). App satellite
     # multi-société ; tout no-ope sans token/clé configuré.
     'apps.adsengine',
+    # Groupe NTDMO — Onboarding produit (checklist « Premiers pas », tours).
+    # App légère : catalogue d'items global + avancement company-scopé, auto-
+    # complété via le bus core.events (jamais d'import cross-app des modèles).
+    'apps.onboarding',
+    # NTCRM1 — Moteur de territoires (règles d'affectation round-robin par
+    # territoire géo/segment/secteur). Additif, company-scopé, aucune
+    # dépendance sur les modèles crm (lecture/écriture via imports fonction-
+    # locaux + selectors.py côté crm, jamais un import module-level).
+    'apps.territoires',
+    # NTCRM8 — Contacts multi-rôles par client (organigramme d'achat).
+    # Additif : ContactClient référence crm.Client par FK STRING, ne retire
+    # rien aux champs contact existants sur Client (comportement inchangé).
+    'apps.contacts',
+    # Groupe NTCPQ — CPQ (Configure-Price-Quote) enterprise : options/
+    # contraintes produit, moteur de règles, offres groupées, listes de prix
+    # multi-segment, approbations de remise, configurateur guidé, clauses/CGV.
+    # App satellite en aval de ventes ; string-FK vers ventes/stock/crm.
+    'apps.cpq',
     # NTAGR1 — Vertical Agriculture (exploitations, parcelles, campagnes
     # culturales, intrants, main d'œuvre saisonnière). Multi-société,
     # additif ; intrants liés à apps.stock via string-ref (jamais dupliqué).
@@ -753,6 +771,8 @@ CELERY_TASK_ROUTES = {
     'ventes.releve_mensuel_reminders': {'queue': 'scheduled'},
     'crm.appointment_reminders': {'queue': 'scheduled'},
     'crm.recycler_leads_non_travailles': {'queue': 'scheduled'},
+    # NTCRM6 — snapshot forecast hebdomadaire (beat, tâche planifiée).
+    'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
     'notifications.daily_digest': {'queue': 'scheduled'},
     'notifications.weekly_digest': {'queue': 'scheduled'},
     'notifications.sweep_daily': {'queue': 'scheduled'},

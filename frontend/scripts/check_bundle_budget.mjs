@@ -53,9 +53,19 @@ const PER_CHUNK_BUDGET_KB = 350
 // dashboard, CTA, paramètres], et les 4 modes du générateur de devis QX) porte
 // le réel à ~2341.8 Ko — palier généreux habituel (~100 Ko), pas de nouvelle
 // dépendance npm, écrans lazy-loadés ; le garde per-chunk (350) reste actif.
+// 2026-07-17 : le shell frontend Marketing PLAN_CRM_VENTES (NTMKT1-11 : 9 écrans
+// Campagnes/Séquences/Segments/Listes/Événements/Enquêtes/Fidélité/Domaine
+// d'envoi + dashboard) ajoute ~26 Ko gzip sur ce même palier 2440 (AUCUNE
+// nouvelle dépendance npm) — réel cumulé ~2368 Ko, sous le budget.
 // + 5 verticales (agriculture, immobilier, hospitality, esg, btp_chantier),
-// toutes lazy-loadées, ajoutent ~7.7 Ko gzip — le réel combiné reste < 2440.
-const TOTAL_BUDGET_KB = 2440
+// toutes lazy-loadées, ajoutent ~7.7 Ko gzip.
+// 2026-07-18 : 2440 -> 2550. Le batch plateforme continu (santé/innovation/
+// crédit/fpa/assurances/éducation/uxviews + verticaux) cumulé au shell Marketing
+// PLAN_CRM_VENTES porte le réel combiné à ~2456 Ko — croissance produit
+// organique, écrans lazy-loadés, AUCUNE nouvelle dépendance npm. Palier généreux
+// (~110 Ko) pour absorber les prochaines vagues sans re-bumper à chaque merge ;
+// le garde per-chunk (350) + budgets vendors restent les vrais garde-fous.
+const TOTAL_BUDGET_KB = 2550
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -84,15 +94,15 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // chunks < 1 Ko gzip d'icônes lucide individuelles, cf. VX189). Généreux :
 // n'attrape qu'une régression de structure massive, pas la croissance produit
 // normale (chaque écran lazy-loadé ajoute un chunk).
-// 2026-07-17 : 400 -> 420. Le batch plateforme NT (portail développeur API /
-// webhooks, page de configuration des vues sauvegardées + assistant, frontends
-// éducation/innovation) ajoute de nouveaux écrans TOUS lazy-loadés (réel 405) —
-// AUCUNE nouvelle dépendance npm, croissance produit organique. Palier généreux
-// habituel ; le vrai garde anti-gonflement reste PER_CHUNK_BUDGET_KB (350).
-// 2026-07-17 : 420 -> 440. 5 verticaux (agriculture/immobilier/hospitality/esg/
-// btp_chantier), tous les écrans lazy-loadés → +chunks (réel 426) — croissance
-// produit organique, aucune nouvelle dépendance npm ; garde per-chunk (350) actif.
-const MAX_CHUNK_COUNT = 440
+// 2026-07-17 : 400 -> 440 (batch plateforme NT : portail développeur API/
+// webhooks, vues sauvegardées, éducation/innovation + 5 verticaux agriculture/
+// immobilier/hospitality/esg/btp_chantier, tous lazy-loadés, réel ~426).
+// 2026-07-17 : 440 -> 460. Le shell Marketing PLAN_CRM_VENTES (9 écrans lazy-
+// loadés) ajoute ~10 chunks par-dessus les verticaux (réel combiné ~436) —
+// chaque écran lazy = 1 chunk, croissance produit, pas une prolifération.
+// Palier généreux couvrant les deux vagues ; le budget gzip (2440) +
+// PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous de poids.
+const MAX_CHUNK_COUNT = 460
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

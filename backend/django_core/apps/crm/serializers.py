@@ -1,8 +1,10 @@
 from rest_framework import serializers
 from .models import (
     Appointment, Client, ConcurrentPerte, EquipeCommerciale,
-    EtapePlanActivite, Lead, LeadActivity, MessageTemplate,
-    ObjectifCommercial, Parrainage, PlanActivite, PointContact, SiteProfile,
+    EtapePlanActivite, ForecastEntry, ForecastSnapshot, Lead, LeadActivity,
+    LeadPlaybookProgress, MessageTemplate, ObjectifCommercial, Parrainage,
+    PlanActivite, PlanCompte, Playbook, PlaybookEtape,
+    PlaybookTache, PointContact, RevueCompte, SiteProfile,
     WebsiteLeadPayload,
 )
 from .devis_auto import champs_manquants, message_manquants
@@ -906,3 +908,116 @@ class EquipeCommercialeSerializer(serializers.ModelSerializer):
             'membres', 'nb_membres', 'actif', 'date_creation',
         ]
         read_only_fields = ['company', 'date_creation']
+
+
+# ── NTCRM4 — Catégories de forecast ──────────────────────────────────────────
+
+class ForecastEntrySerializer(serializers.ModelSerializer):
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    montant_effectif = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    owner_id = serializers.IntegerField(source='lead.owner_id', read_only=True)
+
+    class Meta:
+        model = ForecastEntry
+        fields = [
+            'id', 'lead', 'categorie', 'categorie_display', 'montant_prevu',
+            'montant_effectif', 'owner_id', 'commentaire',
+            'mis_a_jour_par', 'mis_a_jour_le',
+        ]
+        read_only_fields = ['mis_a_jour_par', 'mis_a_jour_le']
+
+
+class ForecastSnapshotSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ForecastSnapshot
+        fields = [
+            'id', 'semaine_iso', 'categorie', 'montant_total', 'nb_leads',
+            'owner', 'created_at',
+        ]
+        read_only_fields = fields
+
+
+# ── NTCRM10 — Plan de compte ─────────────────────────────────────────────────
+# ARC8 — l'historique (chatter) d'un PlanCompte est sérialisé par
+# records.serializers.ChatterActivitySerializer (records.Activity), plus aucun
+# serializer *Activity maison ici.
+
+
+class RevueCompteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RevueCompte
+        fields = [
+            'id', 'plan', 'date_revue', 'participants', 'decisions',
+            'prochaine_action', 'prochaine_action_date', 'created_by',
+            'created_at',
+        ]
+        read_only_fields = ['created_by', 'created_at']
+
+
+class PlanCompteSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    revues = RevueCompteSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlanCompte
+        fields = [
+            'id', 'client', 'objectifs_strategiques', 'potentiel_estime',
+            'concurrents_presents', 'swot_forces', 'swot_faiblesses',
+            'swot_opportunites', 'swot_menaces', 'prochaine_revue', 'statut',
+            'statut_display', 'created_by', 'mis_a_jour_par', 'revues',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'mis_a_jour_par', 'date_creation', 'date_modification',
+        ]
+
+
+# ── NTCRM12 — Playbooks de vente par étape ───────────────────────────────────
+
+class PlaybookTacheSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaybookTache
+        fields = ['id', 'etape', 'libelle', 'obligatoire', 'ordre']
+
+
+class PlaybookEtapeSerializer(serializers.ModelSerializer):
+    stage_display = serializers.SerializerMethodField()
+    taches = PlaybookTacheSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlaybookEtape
+        fields = ['id', 'playbook', 'stage', 'stage_display', 'ordre', 'taches']
+
+    def get_stage_display(self, obj):
+        from . import stages
+        return stages.STAGE_LABELS.get(obj.stage, obj.stage)
+
+
+class PlaybookSerializer(serializers.ModelSerializer):
+    etapes = PlaybookEtapeSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Playbook
+        fields = ['id', 'nom', 'actif', 'bloquant', 'etapes', 'date_creation']
+        read_only_fields = ['date_creation']
+
+
+class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
+    tache_libelle = serializers.CharField(source='tache.libelle', read_only=True)
+    tache_obligatoire = serializers.BooleanField(
+        source='tache.obligatoire', read_only=True)
+    etape_stage = serializers.CharField(source='tache.etape.stage', read_only=True)
+    fait_par_nom = serializers.CharField(
+        source='fait_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = LeadPlaybookProgress
+        fields = [
+            'id', 'lead', 'tache', 'tache_libelle', 'tache_obligatoire',
+            'etape_stage', 'fait', 'fait_par', 'fait_par_nom', 'fait_le',
+            'created_at',
+        ]
+        read_only_fields = ['fait_par', 'fait_le', 'created_at']

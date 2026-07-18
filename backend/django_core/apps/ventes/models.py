@@ -313,6 +313,14 @@ class Devis(models.Model):
     def total_ttc(self):
         return self.total_ht + self.total_tva
 
+    @property
+    def approbation_remise_en_attente(self):
+        """NTCPQ8 — True si une étape d'approbation de remise (cpq) est encore
+        en attente pour ce devis. Lecture cross-app cpq via sélecteur (import
+        local, aucun couplage au niveau module)."""
+        from apps.cpq.selectors import premiere_etape_en_attente
+        return premiere_etape_en_attente(self) is not None
+
 
 class LigneDevis(models.Model):
     # ── XSAL14 — Type de ligne : produit (défaut) / section / note ────────────
@@ -322,7 +330,8 @@ class LigneDevis(models.Model):
         NOTE = 'note', 'Note'
 
     devis = models.ForeignKey(
-        Devis, on_delete=models.CASCADE, related_name='lignes'
+        Devis, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='lignes'
     )
     # XSAL14 — nullable : une ligne de section/note ne porte NI produit NI prix
     # NI quantité. Les lignes produit historiques restent renseignées (additif,
@@ -441,10 +450,11 @@ class DevisActivity(models.Model):
         NOTE = 'note', 'Note'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='devis_activities')
     devis = models.ForeignKey(
-        Devis, on_delete=models.CASCADE, related_name='activites')
+        Devis, on_delete=models.CASCADE,  # on_delete: chatter sans objet si devis supprimé
+        related_name='activites')
     kind = models.CharField(max_length=15, choices=Kind.choices)
     field = models.CharField(max_length=100, blank=True, null=True)
     field_label = models.CharField(max_length=150, blank=True, null=True)
@@ -479,10 +489,11 @@ class FactureActivity(models.Model):
         NOTE = 'note', 'Note'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='facture_activities')
     facture = models.ForeignKey(
-        'facturation.Facture', on_delete=models.CASCADE, related_name='activites')
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: chatter sans objet si facture supprimée
+        related_name='activites')
     kind = models.CharField(max_length=15, choices=Kind.choices)
     field = models.CharField(max_length=100, blank=True, null=True)
     field_label = models.CharField(max_length=150, blank=True, null=True)
@@ -516,11 +527,12 @@ class ProformaDocument(models.Model):
     tracer les émissions dans le chatter du devis — il ne devient JAMAIS une
     facture réelle (la conversion reste `generer-facture`, inchangée)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='proforma_documents')
     reference = models.CharField(max_length=50)
     devis = models.ForeignKey(
-        'Devis', on_delete=models.CASCADE, related_name='proformas')
+        'Devis', on_delete=models.CASCADE,  # on_delete: proforma sans objet si devis supprimé
+        related_name='proformas')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name='proformas_creees')
@@ -546,10 +558,11 @@ class FactureSource(models.Model):
     sous-total HT de ce document dans la facture regroupée (sert au sous-titre
     « Devis DV-… » sur le PDF)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='facture_sources')
     facture = models.ForeignKey(
-        'facturation.Facture', on_delete=models.CASCADE, related_name='sources')
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: source sans objet si facture supprimée
+        related_name='sources')
     devis = models.ForeignKey(
         'Devis', on_delete=models.PROTECT, related_name='factures_sources')
     sous_total_ht = models.DecimalField(max_digits=12, decimal_places=2)
@@ -572,7 +585,7 @@ class BonCommande(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True,
         blank=True,
         related_name='bons_commande',
@@ -705,12 +718,14 @@ class AffectationPaiement(models.Model):
     des affectations d'un paiement ne peut jamais dépasser son montant (garde
     posée côté service — jamais de sur-affectation)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='affectations_paiement')
     paiement = models.ForeignKey(
-        'facturation.Paiement', on_delete=models.CASCADE, related_name='affectations')
+        'facturation.Paiement', on_delete=models.CASCADE,  # on_delete: affectation sans objet si paiement supprimé
+        related_name='affectations')
     facture = models.ForeignKey(
-        'facturation.Facture', on_delete=models.CASCADE, related_name='affectations_paiement')
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: affectation sans objet si facture supprimée
+        related_name='affectations_paiement')
     montant = models.DecimalField(max_digits=12, decimal_places=2)
     date_affectation = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
@@ -737,7 +752,7 @@ class NoteDebit(models.Model):
         ANNULEE = 'annulee', 'Annulée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='notes_debit')
     reference = models.CharField(max_length=50)
     facture = models.ForeignKey(
@@ -802,7 +817,8 @@ class NoteDebit(models.Model):
 
 class LigneNoteDebit(models.Model):
     note_debit = models.ForeignKey(
-        NoteDebit, on_delete=models.CASCADE, related_name='lignes')
+        NoteDebit, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_note_debit')
@@ -843,10 +859,11 @@ class RetenueSubie(models.Model):
         RAS_IS = 'ras_is', 'RAS IS'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='retenues_subies')
     facture = models.ForeignKey(
-        'facturation.Facture', on_delete=models.CASCADE, related_name='retenues_subies')
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: retenue sans objet si facture supprimée
+        related_name='retenues_subies')
     # Paiement qui a déclenché la constatation de la retenue (le paiement
     # partiel + la retenue soldent ensemble la facture). Optionnel : la
     # retenue peut être saisie avant ou après le paiement lui-même.
@@ -891,7 +908,8 @@ class PromessePaiement(models.Model):
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='promesses_paiement')
     facture = models.ForeignKey(
-        'facturation.Facture', on_delete=models.CASCADE, related_name='promesses_paiement')
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: promesse sans objet si facture supprimée
+        related_name='promesses_paiement')
     montant_promis = models.DecimalField(max_digits=12, decimal_places=2)
     date_promise = models.DateField()
     note = models.TextField(blank=True, default='')
@@ -924,10 +942,10 @@ class ParametrageRelanceClient(models.Model):
         MANUEL = 'manuel', 'Manuel'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='parametrages_relance')
     client = models.OneToOneField(
-        'crm.Client', on_delete=models.CASCADE,
+        'crm.Client', on_delete=models.CASCADE,  # on_delete: paramétrage sans objet si client supprimé
         related_name='parametrage_relance')
     responsable = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -965,7 +983,7 @@ class EmailLog(models.Model):
         RECU = 'recu', 'Reçu'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='email_logs')
     direction = models.CharField(
         max_length=10, choices=Direction.choices, default=Direction.SORTANT)
@@ -974,13 +992,16 @@ class EmailLog(models.Model):
     # Cible du fil : client et/ou document. Tous optionnels — un email entrant
     # peut n'être rattaché qu'au client si aucune référence document n'est lue.
     client = models.ForeignKey(
-        'crm.Client', on_delete=models.CASCADE, null=True, blank=True,
+        'crm.Client', on_delete=models.CASCADE,  # on_delete: log sans objet si client supprimé
+        null=True, blank=True,
         related_name='email_logs')
     devis = models.ForeignKey(
-        Devis, on_delete=models.CASCADE, null=True, blank=True,
+        Devis, on_delete=models.CASCADE,  # on_delete: log sans objet si devis supprimé
+        null=True, blank=True,
         related_name='email_logs')
     facture = models.ForeignKey(
-        'facturation.Facture', on_delete=models.CASCADE, null=True, blank=True,
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: log sans objet si facture supprimée
+        null=True, blank=True,
         related_name='email_logs')
     to_email = models.CharField(max_length=254, blank=True, default='')
     from_email = models.CharField(max_length=254, blank=True, default='')
@@ -1032,16 +1053,18 @@ class ShareLink(models.Model):
     aucune autre donnée accessible, jamais de prix d'achat ni de marge (le PDF
     client ne les contient pas)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='share_links')
     token = models.CharField(
         max_length=64, unique=True, default=_default_share_token,
         editable=False)
     devis = models.ForeignKey(
-        Devis, on_delete=models.CASCADE, null=True, blank=True,
+        Devis, on_delete=models.CASCADE,  # on_delete: lien sans objet si devis supprimé
+        null=True, blank=True,
         related_name='share_links')
     facture = models.ForeignKey(
-        'facturation.Facture', on_delete=models.CASCADE, null=True, blank=True,
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: lien sans objet si facture supprimée
+        null=True, blank=True,
         related_name='share_links')
     # QS3 — lien tokenisé vers le PDF d'un Bon de Commande FOURNISSEUR (stock).
     # String-FK (ventes → stock) : ventes n'importe pas les modèles de stock.
@@ -1049,7 +1072,7 @@ class ShareLink(models.Model):
     # PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR — le jeton reste
     # imprévisible + expirant, et le lien n'est JAMAIS exposé dans l'UI client.
     bon_commande_fournisseur = models.ForeignKey(
-        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,
+        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,  # on_delete: lien sans objet si BC fournisseur supprimé
         null=True, blank=True, related_name='share_links')
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(default=_default_share_expiry)
@@ -1181,10 +1204,11 @@ class PaymentLink(models.Model):
         ANNULE = 'annule', 'Annulé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='payment_links')
     facture = models.ForeignKey(
-        'facturation.Facture', on_delete=models.CASCADE, related_name='payment_links')
+        'facturation.Facture', on_delete=models.CASCADE,  # on_delete: lien sans objet si facture supprimée
+        related_name='payment_links')
     token = models.CharField(
         max_length=64, unique=True, default=_default_payment_token,
         editable=False)
@@ -1242,13 +1266,13 @@ class DevisSignature(models.Model):
     """
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True,
         related_name='devis_signatures',
     )
     devis = models.OneToOneField(
         Devis,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: signature sans objet si devis supprimé
         related_name='signature',
     )
     signataire_nom = models.CharField(max_length=150)
@@ -1361,7 +1385,7 @@ class DevisPreset(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='devis_presets',
         verbose_name='Société',
     )
@@ -1460,7 +1484,7 @@ class DevisNudgeLog(models.Model):
     )
     devis = models.ForeignKey(
         Devis,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: relance sans objet si devis supprimé
         related_name='nudge_logs',
     )
     niveau = models.PositiveSmallIntegerField(
@@ -1523,15 +1547,17 @@ class RoofLayout(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='ventes_roof_layouts',
         verbose_name='Société',
     )
     # Un calepinage est rattaché à un devis (le devis porte déjà la société).
-    # SET_NULL pour qu'un calepinage survive à la suppression d'un brouillon.
+    # SET_NULL pour qu'un calepinage survive à la suppression d'un brouillon
+    # (le champ était déjà nullable — le on_delete ne correspondait pas à
+    # l'intention documentée ci-dessus ; corrigé pour matcher).
     devis = models.ForeignKey(
         'ventes.Devis',
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name='ventes_roof_layouts',
         null=True, blank=True,
         verbose_name='Devis',
@@ -1729,14 +1755,14 @@ class FicheTechnique(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='ventes_fiches_techniques',
         verbose_name='Société',
     )
     # Un produit du catalogue porte au plus UNE fiche normalisée par société.
     produit = models.ForeignKey(
         'stock.Produit',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: fiche sans objet si produit supprimé
         related_name='fiches_techniques',
         verbose_name='Produit',
     )
@@ -1847,7 +1873,7 @@ class RemiseEncaissement(models.Model):
         VALIDEE = 'validee', 'Validée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='remises_encaissement')
     technicien = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
@@ -1898,7 +1924,8 @@ class LigneRemiseEncaissement(models.Model):
     Une fois la remise clôturée, ses lignes sont VERROUILLÉES (aucune
     modification/suppression — appliqué côté service)."""
     remise = models.ForeignKey(
-        RemiseEncaissement, on_delete=models.CASCADE, related_name='lignes')
+        RemiseEncaissement, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='lignes')
     paiement = models.ForeignKey(
         'facturation.Paiement', on_delete=models.PROTECT,
         related_name='lignes_remise_encaissement')
@@ -1926,7 +1953,7 @@ class MandatPaiement(models.Model):
         REVOQUE = 'revoque', 'Révoqué'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='mandats_paiement')
     client = models.ForeignKey(
         'crm.Client', on_delete=models.PROTECT,
@@ -1969,10 +1996,10 @@ class TentativeDebitMandat(models.Model):
         ECHEC = 'echec', 'Échec'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='tentatives_debit_mandat')
     mandat = models.ForeignKey(
-        MandatPaiement, on_delete=models.CASCADE,
+        MandatPaiement, on_delete=models.CASCADE,  # on_delete: tentative sans objet si mandat supprimé
         related_name='tentatives')
     periode = models.CharField(max_length=20)
     statut = models.CharField(max_length=10, choices=Statut.choices)
@@ -2000,10 +2027,15 @@ class ListePrix(models.Model):
     toujours HT/TTC selon le mode du générateur — cette liste ne porte que le
     prix unitaire choisi par le vendeur, jamais ``prix_achat``."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='listes_prix')
     nom = models.CharField(max_length=150)
     devise = models.CharField(max_length=10, default='MAD')
+    # NTCPQ4 — segmentation multi-segment : choix libre référentiel (ex.
+    # Résidentiel / Industriel / Revendeur). Vide = liste par défaut (aucun
+    # segment ciblé). La résolution de prix (services.prix_applicable) retient
+    # la liste dont le segment correspond au client, hors listes expirées.
+    segment_client = models.CharField(max_length=100, blank=True, default='')
     date_debut = models.DateField(null=True, blank=True)
     date_fin = models.DateField(null=True, blank=True)
     archived = models.BooleanField(default=False)
@@ -2038,9 +2070,10 @@ class LignePrixListe(models.Model):
     liaison directe entre modèles de domaine). Unique (liste, produit) :
     un produit n'a qu'un seul prix par liste."""
     liste = models.ForeignKey(
-        ListePrix, on_delete=models.CASCADE, related_name='lignes')
+        ListePrix, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='lignes')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: ligne sans objet si produit supprimé
         related_name='lignes_liste_prix')
     prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
 
@@ -2070,9 +2103,11 @@ class RegleListePrix(models.Model):
         FORMULE_SUR_PRIX_VENTE = 'formule_sur_prix_vente', 'Formule sur prix de vente'
 
     liste = models.ForeignKey(
-        ListePrix, on_delete=models.CASCADE, related_name='regles')
+        ListePrix, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='regles')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE, null=True, blank=True,
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: règle sans objet si produit supprimé
+        null=True, blank=True,
         related_name='regles_liste_prix')
     categorie_nom = models.CharField(max_length=150, blank=True, default='')
     marque = models.CharField(max_length=100, blank=True, default='')
@@ -2138,10 +2173,11 @@ class PlanCommission(models.Model):
         PAR_KWC = 'par_kwc', 'MAD par kWc installé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='plans_commission')
     owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True,
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: lié à l'utilisateur
+        null=True,
         blank=True, related_name='plans_commission',
         help_text='Vide = plan par défaut de la société.')
     base = models.CharField(max_length=20, choices=Base.choices)
@@ -2196,10 +2232,11 @@ class LivraisonBC(models.Model):
     demande depuis l'ensemble des livraisons du BC — jamais stockés en dur
     pour rester toujours cohérents avec ``LigneDevis.quantite`` source."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='livraisons_bc')
     bon_commande = models.ForeignKey(
-        BonCommande, on_delete=models.CASCADE, related_name='livraisons')
+        BonCommande, on_delete=models.CASCADE,  # on_delete: livraison sans objet si BC supprimé
+        related_name='livraisons')
     date_livraison = models.DateField()
     note = models.CharField(max_length=255, blank=True, default='')
     created_by = models.ForeignKey(
@@ -2221,9 +2258,10 @@ class LigneLivraisonBC(models.Model):
     livraison partielle. ``ligne_devis`` référence la ligne du devis source
     du BC (même app, FK directe autorisée)."""
     livraison = models.ForeignKey(
-        LivraisonBC, on_delete=models.CASCADE, related_name='lignes')
+        LivraisonBC, on_delete=models.CASCADE,  # on_delete: composant du parent
+        related_name='lignes')
     ligne_devis = models.ForeignKey(
-        LigneDevis, on_delete=models.CASCADE,
+        LigneDevis, on_delete=models.CASCADE,  # on_delete: décompte sans objet si ligne devis supprimée
         related_name='lignes_livraison_bc')
     quantite_livree = models.DecimalField(max_digits=10, decimal_places=2)
 

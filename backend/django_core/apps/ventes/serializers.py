@@ -127,6 +127,14 @@ class DevisSerializer(serializers.ModelSerializer):
     # pour un aperçu au survol dans la liste des devis. None si pas de lead.
     lead_facture_hiver = serializers.SerializerMethodField()
     lead_type_installation = serializers.SerializerMethodField()
+    # NTCPQ6 — drapeau INTERNE « marge sous seuil » (staff only, jamais côté
+    # client). Comme marge_snapshot, la CLÉ elle-même est retirée du payload
+    # pour tout rendu non authentifié (voir to_representation).
+    marge_sous_seuil = serializers.SerializerMethodField()
+
+    def get_marge_sous_seuil(self, obj):
+        from apps.cpq.selectors import devis_marge_sous_seuil
+        return devis_marge_sous_seuil(obj)
 
     def get_lead_facture_hiver(self, obj):
         return str(obj.lead.facture_hiver) if obj.lead_id and \
@@ -427,6 +435,9 @@ class DevisSerializer(serializers.ModelSerializer):
         is_auth = bool(user is not None and getattr(user, 'is_authenticated', False))
         if not is_auth:
             data.pop('marge_snapshot', None)
+            # NTCPQ6 — la clé marge_sous_seuil (dérivée de prix_achat) ne doit
+            # jamais fuiter hors d'un rendu interne authentifié (règle #4).
+            data.pop('marge_sous_seuil', None)
         return data
 
     class Meta:

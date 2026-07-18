@@ -12,7 +12,9 @@ from rest_framework.test import APIRequestFactory
 
 from authentication.models import Company
 from apps.roles.models import Role
-from core.serializer_mixins import SensitiveFieldMaskMixin
+from core.serializer_mixins import (
+    SensitiveFieldMaskMixin, SerializerMaskMixin,
+)
 
 User = get_user_model()
 
@@ -80,3 +82,69 @@ class SensitiveFieldMaskMixinTests(TestCase):
         # Le champ est retiré, pas mis à None.
         self.assertNotIn("prix_achat", data)
         self.assertIsNotNone(data.get("prix_achat", "sentinel"))
+
+
+# ── NTDMO9 — SerializerMaskMixin : masquage PII en mode présentation ─────────
+class _Contact:
+    def __init__(self, email, telephone, adresse, ville):
+        self.email = email
+        self.telephone = telephone
+        self.adresse = adresse
+        self.ville = ville
+
+
+class _ContactSerializer(SerializerMaskMixin, serializers.Serializer):
+    email = serializers.CharField()
+    telephone = serializers.CharField()
+    adresse = serializers.CharField()
+    ville = serializers.CharField()
+
+
+class SerializerMaskMixinNTDMO9Tests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.obj = _Contact('k@x.ma', '+212612345678', '12 rue X', 'Casablanca')
+
+    def _req(self, user):
+        r = Request(APIRequestFactory().get('/'))
+        r.user = user
+        return r
+
+    def _user(self, company):
+        return User.objects.create_user(
+            username=f'u-{company.slug}', password='x', company=company)
+
+    def test_masks_when_demo_presentation_active(self):
+        company = Company.objects.create(
+            nom='Démo9', slug='demo9', est_demo=True,
+            mode_presentation_actif=True)
+        data = _ContactSerializer(
+            self.obj, context={'request': self._req(self._user(company))}).data
+        self.assertEqual(data['email'], '***@***')
+        self.assertEqual(data['telephone'], '06 ** ** ** **')
+        self.assertNotEqual(data['adresse'], '12 rue X')
+        # La ville n'est JAMAIS masquée.
+        self.assertEqual(data['ville'], 'Casablanca')
+
+    def test_byte_identical_when_flag_false(self):
+        company = Company.objects.create(
+            nom='Démo-off', slug='demo9off', est_demo=True,
+            mode_presentation_actif=False)
+        data = _ContactSerializer(
+            self.obj, context={'request': self._req(self._user(company))}).data
+        self.assertEqual(data['email'], 'k@x.ma')
+        self.assertEqual(data['telephone'], '+212612345678')
+        self.assertEqual(data['adresse'], '12 rue X')
+
+    def test_non_demo_company_never_masked_even_if_flag_manipulated(self):
+        # Société RÉELLE (est_demo=False) avec le drapeau manipulé à True.
+        company = Company.objects.create(
+            nom='Réelle9', slug='reelle9', est_demo=False,
+            mode_presentation_actif=True)
+        data = _ContactSerializer(
+            self.obj, context={'request': self._req(self._user(company))}).data
+        self.assertEqual(data['email'], 'k@x.ma')  # jamais masqué
+
+    def test_not_masked_without_request(self):
+        data = _ContactSerializer(self.obj).data
+        self.assertEqual(data['email'], 'k@x.ma')

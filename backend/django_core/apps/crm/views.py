@@ -8,9 +8,11 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
-    Appointment, Client, ConcurrentPerte, EquipeCommerciale, Lead, LeadTag,
+    Appointment, Client, ConcurrentPerte, EquipeCommerciale,
+    ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
-    PlanActivite, PointContact, SiteProfile, WebsiteLeadPayload,
+    PlanActivite, PlanCompte, Playbook, PlaybookEtape,
+    PlaybookTache, PointContact, RevueCompte, SiteProfile, WebsiteLeadPayload,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -20,7 +22,12 @@ from .serializers import (
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
     PlanActiviteSerializer, PointContactSerializer, SiteProfileSerializer,
     EquipeCommercialeSerializer, WebsiteLeadPayloadSerializer,
+    ForecastEntrySerializer, ForecastSnapshotSerializer,
+    PlanCompteSerializer, RevueCompteSerializer,
+    PlaybookSerializer, PlaybookEtapeSerializer, PlaybookTacheSerializer,
+    LeadPlaybookProgressSerializer,
 )
+from apps.records.views import ChatterViewSetMixin
 from . import activity
 from .services import default_responsable_for
 from .devis_auto import champs_manquants, message_manquants
@@ -576,7 +583,9 @@ class LeadViewSet(CompanyScopedModelViewSet):
             if user.record_scope() != 'all':
                 extra['owner'] = user
             else:
-                default = default_responsable_for(user.company)
+                # NTCRM1 — territoire consulté en premier, repli XSAL11.
+                default = default_responsable_for(
+                    user.company, lead_attrs=serializer.validated_data)
                 if default is not None:
                     extra['owner'] = default
         serializer.save(**extra)
@@ -595,12 +604,17 @@ class LeadViewSet(CompanyScopedModelViewSet):
         new_lead.updated_by = self.request.user
         new_lead.save(update_fields=['updated_by'])
         activity.log_changes(old, new_lead, self.request.user)
-        from .services import sync_relance_activity, maybe_set_first_contacted_at, recompute_lead_score
+        from .services import (
+            _emit_stage_changed, maybe_set_first_contacted_at,
+            recompute_lead_score, sync_relance_activity,
+        )
         sync_relance_activity(new_lead, self.request.user)
         # FG28 — Pose first_contacted_at à la première sortie de l'étape NEW.
         maybe_set_first_contacted_at(old, new_lead)
         # QJ6 — Recalcule et persiste le score après chaque mise à jour.
         recompute_lead_score(new_lead)
+        # NTCRM12 — édition manuelle de l'étape depuis l'écran lead.
+        _emit_stage_changed(new_lead, old.stage, new_lead.stage, self.request.user)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique', 'duplicates',
@@ -2001,3 +2015,269 @@ class PointContactViewSet(CompanyScopedModelViewSet):
             'timeline': PointContactSerializer(
                 summary['timeline'], many=True).data,
         })
+
+
+# ── NTCRM4 — Catégories de forecast ──────────────────────────────────────────
+
+class ForecastEntryViewSet(CompanyScopedModelViewSet):
+    """CRUD des catégorisations forecast (commit/best-case/pipeline/omis).
+
+    Routes :
+      GET/POST  /crm/forecast-entries/?owner=&categorie=&periode=
+      GET/PATCH /crm/forecast-entries/{id}/
+    La réponse liste inclut ``totaux_par_categorie`` (somme des montants
+    effectifs des lignes filtrées, par catégorie)."""
+    queryset = ForecastEntry.objects.select_related('lead', 'lead__owner')
+    serializer_class = ForecastEntrySerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        owner = self.request.query_params.get('owner')
+        if owner:
+            qs = qs.filter(lead__owner_id=owner)
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        periode = self.request.query_params.get('periode')  # 'YYYY-MM'
+        if periode and '-' in periode:
+            year, month = periode.split('-', 1)
+            try:
+                qs = qs.filter(
+                    lead__date_cloture_prevue__year=int(year),
+                    lead__date_cloture_prevue__month=int(month))
+            except ValueError:
+                pass
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            mis_a_jour_par=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(mis_a_jour_par=self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        from decimal import Decimal
+        response = super().list(request, *args, **kwargs)
+        totaux = {}
+        for entry in self.filter_queryset(self.get_queryset()):
+            totaux[entry.categorie] = (
+                totaux.get(entry.categorie, Decimal('0'))
+                + (entry.montant_effectif or Decimal('0')))
+        if isinstance(response.data, dict) and 'results' in response.data:
+            response.data['totaux_par_categorie'] = totaux
+        else:
+            response.data = {
+                'results': response.data, 'totaux_par_categorie': totaux}
+        return response
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def forecast_rollup_view(request):
+    """NTCRM5 — Roll-up hiérarchique du forecast : ``?periode=YYYY-MM&
+    equipe=<id>``. Un Responsable/manager (non Admin) ne voit QUE les équipes
+    qu'il dirige (``EquipeCommerciale.responsable``) ; un Admin/Directeur voit
+    tout. ``?equipe=<id>`` restreint la réponse à cette équipe précise."""
+    user = request.user
+    if not user.company_id:
+        return Response({'equipes': [], 'total_societe': {}})
+    periode = None
+    periode_param = request.query_params.get('periode')
+    if periode_param and '-' in periode_param:
+        year, month = periode_param.split('-', 1)
+        try:
+            periode = {
+                'period_type': 'month', 'period_year': int(year),
+                'period_month': int(month),
+            }
+        except ValueError:
+            periode = None
+    manager = None if getattr(user, 'is_admin_role', False) else user
+    from .selectors import forecast_rollup
+    data = forecast_rollup(user.company, periode=periode, manager=manager)
+    equipe_id = request.query_params.get('equipe')
+    if equipe_id:
+        try:
+            equipe_id = int(equipe_id)
+        except ValueError:
+            equipe_id = None
+        data = {
+            **data,
+            'equipes': [e for e in data['equipes'] if e['equipe_id'] == equipe_id],
+        }
+    return Response(data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def forecast_historique_view(request):
+    """NTCRM6 — Série de snapshots hebdomadaires : ``?owner=&semaines=12``.
+    ``owner`` vide = snapshots SOCIÉTÉ (owner=None) ; sinon un commercial
+    donné. Renvoie la série ordonnée chronologiquement pour un graphe
+    d'évolution (glissement visible)."""
+    user = request.user
+    if not user.company_id:
+        return Response({'series': []})
+    owner = request.query_params.get('owner')
+    try:
+        semaines = int(request.query_params.get('semaines') or 12)
+    except ValueError:
+        semaines = 12
+    qs = ForecastSnapshot.objects.filter(company=user.company)
+    qs = qs.filter(owner_id=owner) if owner else qs.filter(owner__isnull=True)
+    qs = qs.order_by('-semaine_iso')[:max(1, semaines)]
+    data = list(reversed(ForecastSnapshotSerializer(qs, many=True).data))
+    return Response({'series': data})
+
+
+# ── NTCRM10 — Plan de compte ─────────────────────────────────────────────────
+
+class PlanCompteViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
+    """NTCRM10 — Plan de compte. ARC8 : l'historique (chatter) converge sur
+    ``records.Activity`` — création + changements de champ suivis journalisés
+    via ``records.services`` (le « mail.thread » maison), jamais un modèle
+    ``*Activity`` local. Le mixin ``ChatterViewSetMixin`` ajoute en plus les
+    actions génériques ``chatter/historique`` (GET) et ``chatter/noter`` (POST)."""
+    queryset = PlanCompte.objects.select_related('client')
+    serializer_class = PlanCompteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['historique']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        instance = serializer.save(
+            company=self.request.user.company, created_by=self.request.user,
+            mis_a_jour_par=self.request.user)
+        log_activity(
+            instance, Activity.Kind.CREATION, user=self.request.user,
+            body=f'Plan de compte créé pour {instance.client}.')
+
+    def perform_update(self, serializer):
+        from apps.records.services import log_field_change
+        old = PlanCompte.objects.get(pk=serializer.instance.pk)
+        instance = serializer.save(mis_a_jour_par=self.request.user)
+        tracked = [
+            'objectifs_strategiques', 'potentiel_estime', 'concurrents_presents',
+            'prochaine_revue', 'statut',
+        ]
+        for field in tracked:
+            old_val, new_val = getattr(old, field), getattr(instance, field)
+            if old_val != new_val:
+                log_field_change(
+                    instance, field,
+                    str(old_val) if old_val is not None else '',
+                    str(new_val) if new_val is not None else '',
+                    user=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+        plan = self.get_object()
+        qs = chatter_qs(plan, company=request.user.company)
+        return Response(ChatterActivitySerializer(qs, many=True).data)
+
+
+class RevueCompteViewSet(CompanyScopedModelViewSet):
+    queryset = RevueCompte.objects.select_related('plan')
+    serializer_class = RevueCompteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(plan__company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+
+# ── NTCRM12 — Playbooks de vente par étape ───────────────────────────────────
+
+class PlaybookViewSet(CompanyScopedModelViewSet):
+    queryset = Playbook.objects.prefetch_related('etapes__taches')
+    serializer_class = PlaybookSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class PlaybookEtapeViewSet(CompanyScopedModelViewSet):
+    queryset = PlaybookEtape.objects.select_related('playbook').prefetch_related('taches')
+    serializer_class = PlaybookEtapeSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            playbook__company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+
+class PlaybookTacheViewSet(CompanyScopedModelViewSet):
+    queryset = PlaybookTache.objects.select_related('etape__playbook')
+    serializer_class = PlaybookTacheSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            etape__playbook__company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAnyRole])
+def lead_playbook_view(request, lead_id):
+    """NTCRM12 — ``GET`` : progression playbook du lead (toutes les tâches
+    générées pour son étape courante ou une étape antérieure). ``POST``
+    ``{'tache': <id>, 'fait': true}`` : coche/décoche UNE tâche, pose
+    l'acteur+la date côté serveur (jamais silencieux)."""
+    lead = Lead.objects.filter(pk=lead_id, company=request.user.company).first()
+    if lead is None:
+        return Response({'detail': 'Lead introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        progress = lead.playbook_progress.select_related(
+            'tache', 'tache__etape', 'fait_par').all()
+        return Response(LeadPlaybookProgressSerializer(progress, many=True).data)
+
+    tache_id = request.data.get('tache')
+    fait = bool(request.data.get('fait', True))
+    progress = LeadPlaybookProgress.objects.filter(
+        lead=lead, tache_id=tache_id).first()
+    if progress is None:
+        return Response(
+            {'detail': 'Tâche de playbook introuvable pour ce lead.'},
+            status=status.HTTP_404_NOT_FOUND)
+    from django.utils import timezone as _tz
+    progress.fait = fait
+    progress.fait_par = request.user if fait else None
+    progress.fait_le = _tz.now() if fait else None
+    progress.save(update_fields=['fait', 'fait_par', 'fait_le'])
+    return Response(LeadPlaybookProgressSerializer(progress).data)

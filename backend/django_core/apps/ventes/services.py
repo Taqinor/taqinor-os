@@ -1631,6 +1631,21 @@ def refresh_marge_snapshot(devis):
                        getattr(devis, 'reference', '?'), exc)
 
 
+def verifier_devis_envoyable(devis):
+    """NTCPQ7 — lève ``ValidationError`` si une étape d'approbation de remise
+    est encore ``en_attente`` (blocage envoi/génération PDF).
+
+    Lecture cross-app cpq via import LOCAL (aucun cycle au niveau module).
+    Aucune étape en attente ⇒ ne lève rien (comportement inchangé)."""
+    from rest_framework.exceptions import ValidationError
+    from apps.cpq.selectors import premiere_etape_en_attente
+    etape = premiere_etape_en_attente(devis)
+    if etape is not None:
+        raise ValidationError({'statut': (
+            f"Approbation de remise en attente (étape {etape.niveau}) : "
+            "l'envoi est bloqué tant qu'elle n'est pas approuvée.")})
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 
@@ -1664,6 +1679,10 @@ def mark_devis_sent(*, devis, user=None):
     # must stay put (the guard the test pins).
     if devis.statut != Devis.Statut.BROUILLON:
         return devis
+
+    # NTCPQ7 — bloque l'envoi tant qu'une étape d'approbation de remise reste
+    # en attente (matrice à paliers, remplace/étend le seuil unique T17).
+    verifier_devis_envoyable(devis)
 
     ancien = devis.statut
     devis.statut = Devis.Statut.ENVOYE
@@ -4185,6 +4204,56 @@ def _appliquer_regle(regle, prix_base):
     return _round2(prix_base)  # pragma: no cover - défensif, type inconnu
 
 
+def _prix_contractuel(client, produit):
+    """NTCPQ5 — Prix contractuel actif pour un couple client/produit.
+
+    Lecture cross-app cpq via import LOCAL (aucun import de cpq.models au niveau
+    module ; évite tout cycle ventes↔cpq). Renvoie l'instance ``PrixContractuel``
+    active la plus récente, ou ``None``."""
+    if client is None or produit is None:
+        return None
+    company_id = getattr(client, 'company_id', None)
+    if company_id is None:
+        return None
+    from apps.cpq.models import PrixContractuel
+    candidates = PrixContractuel.objects.filter(
+        company_id=company_id, client_id=client.id, produit_id=produit.id,
+    ).order_by('-date_creation')
+    for candidate in candidates:
+        if candidate.est_actif:
+            return candidate
+    return None
+
+
+def _resolve_liste_prix(client):
+    """NTCPQ4 — Sélectionne la liste de prix applicable à un client.
+
+    Priorité : liste explicitement assignée au client (``client.liste_prix``)
+    si elle est active > liste de la société correspondant au SEGMENT du client
+    (la plus récente active) > aucune. Les listes hors fenêtre de validité ou
+    archivées (``est_active`` False) ne sont JAMAIS retenues, même si leur
+    segment correspond au client (NTCPQ4). Renvoie une ``ListePrix`` active ou
+    ``None``."""
+    if client is None:
+        return None
+    liste = getattr(client, 'liste_prix', None)
+    if liste is not None and liste.est_active:
+        return liste
+    # Segment du client : champ dédié s'il existe, sinon type de client.
+    segment = (getattr(client, 'segment_client', '')
+               or getattr(client, 'type_client', '') or '')
+    company_id = getattr(client, 'company_id', None)
+    if segment and company_id is not None:
+        from apps.ventes.models import ListePrix
+        candidates = ListePrix.objects.filter(
+            company_id=company_id, segment_client=segment, archived=False,
+        ).order_by('-created_at')
+        for candidate in candidates:
+            if candidate.est_active:
+                return candidate
+    return None
+
+
 def prix_applicable(*, produit, client=None, quantite=1):
     """XSAL1/XSAL2 — Prix unitaire résolu pour un produit/client/quantité.
 
@@ -4203,8 +4272,18 @@ def prix_applicable(*, produit, client=None, quantite=1):
     quantite = Decimal(str(quantite or 1))
     prix_standard = produit.prix_vente
 
-    liste = getattr(client, 'liste_prix', None) if client is not None else None
-    if liste is None or not liste.est_active:
+    # NTCPQ5 — priorité 1 : prix contractuel négocié (client + produit). Écrase
+    # toute liste de prix générique (segment/assignée) pour ce couple.
+    contractuel = _prix_contractuel(client, produit)
+    if contractuel is not None:
+        return {
+            'prix': contractuel.prix_ht,
+            'source': 'contractuel',
+            'liste_nom': contractuel.motif or None,
+        }
+
+    liste = _resolve_liste_prix(client)
+    if liste is None:
         return {'prix': prix_standard, 'source': 'standard', 'liste_nom': None}
 
     regles = list(liste.regles.filter(actif=True).select_related('produit'))

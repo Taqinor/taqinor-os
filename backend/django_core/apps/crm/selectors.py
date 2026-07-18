@@ -1776,6 +1776,133 @@ def reporting_lead_rows(company, *, date_start=None, date_end=None):
     return rows
 
 
+def lead_criteria_for_territoire(company, lead_id):
+    """NTCRM1 — Contexte plat de matching territoire pour un lead réel,
+    exposé aux AUTRES apps (``apps.territoires.views``) au lieu d'un import
+    direct de ``apps.crm.models`` — jamais cross-tenant : ``None`` si le lead
+    n'existe pas ou appartient à une autre société."""
+    from .models import Lead
+
+    try:
+        lead = Lead.objects.get(pk=lead_id, company=company)
+    except (Lead.DoesNotExist, ValueError, TypeError):
+        return None
+    return {
+        'ville': lead.ville,
+        'type_installation': lead.type_installation,
+        'montant_estime': lead.montant_estime,
+        'canal': lead.canal,
+    }
+
+
+def forecast_rollup(company, periode=None, manager=None):
+    """NTCRM5 — Roll-up hiérarchique du forecast : par commercial → par
+    équipe (``EquipeCommerciale`` existant, FG39 voisin) → total société.
+
+    ``periode`` (optionnel) : ``{'period_type': 'month'|'quarter'|'year',
+    'period_year': int, 'period_month': int|None, 'period_quarter': int|None}``
+    — restreint aux leads dont ``date_cloture_prevue`` tombe dans cette
+    fenêtre ; ``None`` = tous les leads (comportement par défaut). ``manager``
+    (optionnel, un ``CustomUser``) : restreint aux équipes qu'il dirige
+    (``EquipeCommerciale.responsable``) — sans lui, agrège TOUTES les équipes
+    de la société (vue Directeur).
+
+    AUCUNE duplication avec ``ObjectifCommercial`` (FG39) : le roll-up
+    AGRÈGE les montants forecast des ``ForecastEntry`` (NTCRM4, repli sur le
+    devis actif le plus récent puis ``Lead.montant_estime``) ; l'objectif
+    reste la cible séparée, comparée en sortie via ``ecart_vs_objectif``
+    (somme des cibles CA_SIGNE individuelles des membres de l'équipe pour la
+    même période, si au moins une existe — sinon ``None``, jamais fabriqué).
+    """
+    from decimal import Decimal
+
+    from .models import EquipeCommerciale, ForecastEntry, ObjectifCommercial
+
+    def _in_periode(lead):
+        if periode is None:
+            return True
+        d = lead.date_cloture_prevue
+        if d is None:
+            return False
+        if d.year != periode.get('period_year'):
+            return False
+        ptype = periode.get('period_type', 'month')
+        if ptype == 'month':
+            return d.month == periode.get('period_month')
+        if ptype == 'quarter':
+            quarter = (d.month - 1) // 3 + 1
+            return quarter == periode.get('period_quarter')
+        return True  # 'year' — l'année a déjà matché ci-dessus
+
+    entries = (
+        ForecastEntry.objects.filter(company=company)
+        .select_related('lead', 'lead__owner')
+    )
+
+    by_owner = {}  # owner_id -> {'nom': str, 'totals': {categorie: Decimal}}
+    for entry in entries:
+        lead = entry.lead
+        owner = getattr(lead, 'owner', None)
+        if owner is None or not _in_periode(lead):
+            continue
+        bucket = by_owner.setdefault(
+            owner.id, {'owner_id': owner.id, 'nom': owner.username, 'totals': {}})
+        bucket['totals'][entry.categorie] = (
+            bucket['totals'].get(entry.categorie, Decimal('0'))
+            + (entry.montant_effectif or Decimal('0')))
+
+    equipes_qs = EquipeCommerciale.objects.filter(company=company, actif=True)
+    if manager is not None:
+        equipes_qs = equipes_qs.filter(responsable=manager)
+
+    def _cible_equipe(membre_ids):
+        """Somme des cibles CA_SIGNE individuelles des membres pour la
+        période demandée (None si aucune n'existe — jamais fabriquée)."""
+        qs = ObjectifCommercial.objects.filter(
+            company=company, owner_id__in=membre_ids,
+            metric=ObjectifCommercial.Metric.CA_SIGNE)
+        if periode is not None:
+            qs = qs.filter(
+                period_type=periode.get('period_type', 'month'),
+                period_year=periode.get('period_year'))
+            if periode.get('period_type', 'month') == 'month':
+                qs = qs.filter(period_month=periode.get('period_month'))
+            elif periode.get('period_type') == 'quarter':
+                qs = qs.filter(period_quarter=periode.get('period_quarter'))
+        cibles = list(qs.values_list('cible', flat=True))
+        return sum(cibles) if cibles else None
+
+    equipes_out = []
+    # Total société = TOUS les commerciaux avec un forecast, appartenant ou
+    # non à une équipe (jamais restreint aux seules équipes retournées quand
+    # `manager` filtre — le total société reste le total société).
+    total_societe = {}
+    for com in by_owner.values():
+        for cat, amt in com['totals'].items():
+            total_societe[cat] = total_societe.get(cat, Decimal('0')) + amt
+
+    for equipe in equipes_qs.prefetch_related('membres'):
+        membre_ids = list(equipe.membres.values_list('id', flat=True))
+        commerciaux = [by_owner[uid] for uid in membre_ids if uid in by_owner]
+        totals = {}
+        for com in commerciaux:
+            for cat, amt in com['totals'].items():
+                totals[cat] = totals.get(cat, Decimal('0')) + amt
+        cible = _cible_equipe(membre_ids)
+        total_equipe = sum(totals.values()) if totals else Decimal('0')
+        equipes_out.append({
+            'equipe_id': equipe.id,
+            'nom': equipe.nom,
+            'commerciaux': commerciaux,
+            'totals': totals,
+            'total': total_equipe,
+            'cible_objectif': cible,
+            'ecart_vs_objectif': (total_equipe - cible) if cible is not None else None,
+        })
+
+    return {'equipes': equipes_out, 'total_societe': total_societe}
+
+
 def revenu_pipeline_pondere_par_mois(company, mois_debut, mois_fin):
     """NTFPA11 — revenu prévisionnel PONDÉRÉ-PROBABILITÉ du pipeline CRM,
     agrégé par mois de clôture prévue (``Lead.date_cloture_prevue``).

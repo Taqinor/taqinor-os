@@ -189,6 +189,12 @@ app.conf.beat_schedule = {
         'task': 'crm.escalader_rappels_demandes',
         'schedule': crontab(minute='*/30'),
     },
+    # NTCRM6 — snapshot forecast hebdomadaire (glissement visible dans le
+    # temps) ; idempotent (upsert par semaine ISO + owner), lundi tôt matin.
+    'crm-snapshot-forecast-hebdo': {
+        'task': 'crm.snapshot_forecast_hebdo',
+        'schedule': crontab(hour=5, minute=0, day_of_week=1),
+    },
     # XPLT6 — évalue les alertes de seuil sur KPI agrégés (dédup interne).
     'reporting-evaluate-kpi-alertes': {
         'task': 'reporting.evaluate_kpi_alertes',
