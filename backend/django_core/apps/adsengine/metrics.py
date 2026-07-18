@@ -21,6 +21,7 @@ déterministe et testable sur fixtures.
 """
 from __future__ import annotations
 
+import datetime
 from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
@@ -385,4 +386,149 @@ def cost_per_signature_summary(company):
         'cost_per_signature': (str(global_cps) if global_cps is not None
                                else None),
         'campagnes': per_campaign,
+    }
+
+
+# ── ADSDEEP61 — Dashboard v2 : tuiles conversations + MER mixte ───────────────
+# Doctrine (règle #7 devise-compte, dd-treasury) : la dépense Meta et le CA
+# signé Odoo sont dans DEUX devises DIFFÉRENTES (compte pub souvent en USD, CA
+# Odoo toujours en MAD). Un « blended MER » qui les DIVISERAIT l'un par
+# l'autre fabriquerait un ratio faux (conversion silencieuse implicite) —
+# JAMAIS fait ici : les deux chiffres sont renvoyés CÔTE À CÔTE, à comparer,
+# jamais combinés en un seul nombre.
+DASHBOARD_V2_WINDOW_DAYS = 14
+
+
+def _sparkline(daily_map, start_date, end_date):
+    """Liste ordonnée ``[{date, value}]`` pour CHAQUE jour de
+    ``start_date..end_date`` inclus — un jour sans donnée vaut 0 (jamais un
+    trou silencieux dans le graphique, la sparkline reste continue)."""
+    points = []
+    day = start_date
+    while day <= end_date:
+        raw = daily_map.get(day, 0)
+        value = float(raw) if isinstance(raw, Decimal) else raw
+        points.append({'date': day.isoformat(), 'value': value})
+        day += datetime.timedelta(days=1)
+    return points
+
+
+def _ctwa_daily_counts(company, start_date, end_date):
+    """Compte de conversations CTWA RÉELLES (``CtwaReferral``, ADSDEEP24) par
+    JOUR d'horodatage (``ts``), borné à la fenêtre. Contrairement à
+    ``InsightSnapshot.conversations`` (agrégat Meta), ce compte vient des
+    messages entrants réels reçus sur le webhook Cloud API."""
+    from .models import CtwaReferral
+
+    daily = {}
+    qs = (CtwaReferral.objects
+          .filter(company=company, ts__date__gte=start_date,
+                  ts__date__lte=end_date)
+          .exclude(ad_id='')
+          .only('ts'))
+    for ref in qs:
+        if not ref.ts:
+            continue
+        d = ref.ts.date()
+        daily[d] = daily.get(d, 0) + 1
+    return daily
+
+
+def _signed_ca_daily(company, start_date, end_date):
+    """CA signé Odoo (MAD) par JOUR sur la fenêtre : ``{configured, daily}``.
+    Ne lève JAMAIS (dégradation propre comme le reste du module Odoo) —
+    ``configured=False`` si le connecteur n'est pas branché, ``daily={}`` si la
+    lecture Odoo échoue."""
+    from .odoo_client import is_configured
+
+    if not is_configured():
+        return {'configured': False, 'daily': {}}
+    try:
+        from .odoo_selectors import signed_deals
+        deals = signed_deals(since=start_date)
+    except Exception:  # noqa: BLE001 — jamais un 500 sur une panne Odoo
+        return {'configured': True, 'daily': {}}
+
+    daily = {}
+    for deal in deals:
+        raw_date = deal.get('date')
+        try:
+            d = datetime.date.fromisoformat(str(raw_date)[:10])
+        except (TypeError, ValueError):
+            continue
+        if d < start_date or d > end_date:
+            continue
+        amount = deal.get('amount_mad')
+        if amount is None:
+            continue
+        daily[d] = daily.get(d, Decimal('0')) + Decimal(str(amount))
+    return {'configured': True, 'daily': daily}
+
+
+def dashboard_v2_metrics(company, *, as_of=None,
+                         window_days=DASHBOARD_V2_WINDOW_DAYS):
+    """ADSDEEP61 — Tuiles du Dashboard v2 (fenêtre glissante, 14 jours par
+    défaut, INCLUSIVE ``as_of - (window_days-1) .. as_of``) :
+
+    - ``conversations`` : compte RÉEL de conversations WhatsApp (CTWA,
+      ADSDEEP24/25) + sparkline quotidienne.
+    - ``mer`` : dépense Meta (devise du COMPTE — ``spend_currency``) et CA
+      signé Odoo (``signed_ca_mad``, toujours MAD) rendus CÔTE À CÔTE avec
+      leur propre sparkline — AUCUNE conversion, AUCUN ratio inter-devises
+      fabriqué ici (dd-treasury règle #7 ; ``mer_ratio`` reste ``None`` si les
+      deux devises diffèrent, seul cas où un blended MER a un sens réel).
+
+    Toutes les valeurs viennent de miroirs/instantanés déjà persistés — rien
+    n'est inventé, un tenant sans historique reçoit des zéros explicites."""
+    from .pacing import load_daily_spend
+
+    as_of = as_of or datetime.date.today()
+    start_date = as_of - datetime.timedelta(days=window_days - 1)
+
+    conv_daily = _ctwa_daily_counts(company, start_date, as_of)
+    spend_daily_float = load_daily_spend(company, start_date, as_of)
+    spend_daily = {d: Decimal(str(v)) for d, v in spend_daily_float.items()}
+
+    signed_ca = _signed_ca_daily(company, start_date, as_of)
+    signed_ca_daily = signed_ca['daily']
+
+    from .models import MetaConnection
+    conn = MetaConnection.objects.filter(company=company).first()
+    spend_currency = (conn.currency if conn else '') or 'MAD'
+
+    total_conversations = sum(conv_daily.values())
+    total_spend = sum(spend_daily.values(), Decimal('0'))
+    total_signed_ca = sum(signed_ca_daily.values(), Decimal('0'))
+
+    # Un blended MER (CA / dépense) n'a un sens que dans UNE SEULE devise —
+    # sinon ce serait diviser des MAD par des USD (conversion silencieuse
+    # implicite, interdite). Calculable UNIQUEMENT si le compte Meta est déjà
+    # en MAD (aucune conversion requise).
+    mer_ratio = None
+    if spend_currency == 'MAD' and total_spend > 0:
+        mer_ratio = str(total_signed_ca / total_spend)
+
+    return {
+        'window_days': window_days,
+        'since': start_date.isoformat(),
+        'until': as_of.isoformat(),
+        'conversations': {
+            'total': total_conversations,
+            'sparkline': _sparkline(conv_daily, start_date, as_of),
+        },
+        'mer': {
+            'spend': str(total_spend),
+            'spend_currency': spend_currency,
+            'signed_ca_mad': str(total_signed_ca),
+            'signed_ca_currency': 'MAD',
+            'mer_ratio': mer_ratio,
+            'odoo_configured': signed_ca['configured'],
+            'spend_sparkline': _sparkline(spend_daily, start_date, as_of),
+            'signed_ca_sparkline': _sparkline(
+                signed_ca_daily, start_date, as_of),
+            'note': ("Dépense en devise du compte Meta, CA signé en MAD "
+                     "(Odoo) — jamais convertie automatiquement : comparer "
+                     "les deux chiffres, ne jamais les diviser l'un par "
+                     "l'autre si les devises diffèrent."),
+        },
     }

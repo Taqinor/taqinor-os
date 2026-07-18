@@ -1460,6 +1460,23 @@ class MetricsPacingView(APIView):
         })
 
 
+class MetricsDashboardV2View(APIView):
+    """ADSDEEP61 — Tuiles du « Dashboard v2 » : conversations WhatsApp RÉELLES
+    (CTWA) + MER mixte (dépense Meta vs CA signé Odoo, DEUX devises côte à
+    côte — jamais convertie), chacune avec une sparkline quotidienne sur 14
+    jours. Dérivé (aucune écriture) via ``metrics.dashboard_v2_metrics``.
+    Lecture ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import dashboard_v2_metrics
+        return Response(dashboard_v2_metrics(company))
+
+
 class ReconciliationListView(APIView):
     """ENG31/ENG42 — Liste des instantanés de réconciliation (Meta vs ERP).
     Company-scopé ; lecture ``adsengine_view``. Les chiffres sont des comptes de

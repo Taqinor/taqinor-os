@@ -42,6 +42,9 @@ const adsengineApi = {
   // ── ENG10/ENG23 — Métriques du dashboard « un chiffre » ──
   metrics: {
     dashboard: (params) => api.get('/adsengine/metrics/dashboard/', { params }),
+    // ADSDEEP61 — Dashboard v2 : conversations réelles + MER mixte (2 devises,
+    // sparklines 14 j).
+    dashboardV2: (params) => api.get('/adsengine/metrics/dashboard-v2/', { params }),
     // Drill-down : la liste des leads réels derrière un chiffre (traçabilité).
     leads: (metric, params) =>
       api.get('/adsengine/metrics/leads/', { params: { metric, ...params } }),

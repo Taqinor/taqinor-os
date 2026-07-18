@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom'
 import { Bell, ExternalLink } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
-  formatMAD, formatMoney, formatRatio, formatPercent, normalizeAlerts,
-  alertTone, normalizePacing, pacingStateTone, normalizeReconciliation,
-  reconStatusTone,
+  formatMAD, formatMoney, formatNumber, formatRatio, formatPercent,
+  normalizeAlerts, alertTone, normalizePacing, pacingStateTone,
+  normalizeReconciliation, reconStatusTone,
 } from './adsengine'
 
 /* ============================================================================
@@ -29,7 +29,43 @@ import {
    - Réconciliation (ENG31) : écart Meta-vs-ERP par campagne + statut, chaque
      ligne cliquable vers son détail. Ces vues sont chargées PARESSEUSEMENT (au
      clic sur l'onglet) — la vue d'ensemble reste inchangée.
+
+   ADSDEEP61 — « Dashboard v2 » : deux tuiles ADDITIVES sous la grille héro de
+   la vue d'ensemble (aucun nouvel onglet) — conversations WhatsApp RÉELLES
+   (CTWA) et MER mixte. Le MER montre la dépense Meta (devise du COMPTE) et le
+   CA signé Odoo (MAD) CÔTE À CÔTE : ce sont deux devises différentes, JAMAIS
+   converties/fusionnées en un seul chiffre côté front — le ratio n'est affiché
+   QUE si l'API le renvoie déjà (elle ne le calcule elle-même que si les deux
+   montants partagent la même devise). Chaque tuile porte une sparkline 14 j
+   (``metrics.dashboardV2``, endpoint optionnel — absent en test unitaire des
+   autres écrans, d'où le garde `?.`).
    ========================================================================== */
+
+// ADSDEEP61 — mini sparkline SVG (pure, sans dépendance de charting) pour les
+// tuiles du Dashboard v2. ``points`` = [{date, value}], jamais vide ici (le
+// backend renvoie toujours 14 points, un jour sans donnée valant 0).
+function Sparkline({ points, testId, label }) {
+  if (!points || points.length === 0) return null
+  const values = points.map(p => Number(p.value) || 0)
+  const max = Math.max(...values, 0)
+  const min = Math.min(...values, 0)
+  const range = (max - min) || 1
+  const w = 100
+  const h = 28
+  const step = points.length > 1 ? w / (points.length - 1) : 0
+  const coords = points.map((p, i) => {
+    const x = i * step
+    const y = h - ((values[i] - min) / range) * h
+    return `${x},${Number.isFinite(y) ? y : h}`
+  }).join(' ')
+  return (
+    <svg data-testid={testId} role="img" width="100%" height="28" viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none" style={{ display: 'block', marginTop: '0.4rem' }}
+      aria-label={label || `Évolution sur ${points.length} jours`}>
+      <polyline points={coords} fill="none" stroke="#2563eb" strokeWidth="2" />
+    </svg>
+  )
+}
 
 // Définition des chiffres cliquables. `metric` = clé passée à metrics.leads().
 // `fmt` = 'mad' (montant) | 'ratio' (décimal). Le héro est marqué `hero`.
@@ -54,6 +90,8 @@ const TABS = [
 
 export default function DashboardScreen() {
   const [metrics, setMetrics] = useState(null)
+  // ADSDEEP61 — tuiles Dashboard v2 (conversations + MER mixte), optionnelles.
+  const [v2, setV2] = useState(null)
   const [alerts, setAlerts] = useState([])
   const [drill, setDrill] = useState(null) // { metric, label }
   const [leads, setLeads] = useState([])
@@ -75,6 +113,14 @@ export default function DashboardScreen() {
     adsengineApi.alerts.list()
       .then(r => setAlerts(normalizeAlerts(r.data)))
       .catch(() => setAlerts([]))
+    // ADSDEEP61 — Dashboard v2 (endpoint optionnel : garde `?.` pour ne pas
+    // casser les écrans/tests qui mockent une API `metrics` réduite).
+    const dashboardV2Fn = adsengineApi.metrics?.dashboardV2
+    if (dashboardV2Fn) {
+      dashboardV2Fn()
+        .then(r => setV2(r.data || null))
+        .catch(() => setV2(null))
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -175,6 +221,62 @@ export default function DashboardScreen() {
               </button>
             ))}
           </div>
+
+          {/* ADSDEEP61 — Dashboard v2 : conversations réelles + MER mixte */}
+          {v2 && (
+            <section className="ae-dashboard-v2" data-testid="ae-dv2" style={{ marginBottom: '1.25rem' }}>
+              <div style={{ display: 'grid', gap: '1rem',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+                <div className="card" data-testid="ae-dv2-conversations"
+                  style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                    Conversations WhatsApp ({v2.window_days} j)
+                  </div>
+                  <div data-testid="ae-dv2-conversations-total" style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+                    {formatNumber(v2.conversations?.total)}
+                  </div>
+                  <Sparkline points={v2.conversations?.sparkline} testId="ae-dv2-conversations-sparkline"
+                    label={`Conversations par jour sur ${v2.window_days} jours`} />
+                </div>
+
+                <div className="card" data-testid="ae-dv2-mer"
+                  style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>MER mixte ({v2.window_days} j)</div>
+                  <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.2rem 0.6rem',
+                    margin: '0.35rem 0 0', fontSize: '1.05rem' }}>
+                    <dt style={{ color: '#64748b', fontWeight: 400 }}>Dépense Meta</dt>
+                    <dd style={{ margin: 0, fontWeight: 700 }} data-testid="ae-dv2-mer-spend">
+                      {formatMoney(v2.mer?.spend, v2.mer?.spend_currency)}
+                    </dd>
+                    <dt style={{ color: '#64748b', fontWeight: 400 }}>CA signé (Odoo)</dt>
+                    <dd style={{ margin: 0, fontWeight: 700 }} data-testid="ae-dv2-mer-ca">
+                      {formatMoney(v2.mer?.signed_ca_mad, v2.mer?.signed_ca_currency || 'MAD')}
+                    </dd>
+                  </dl>
+                  {/* Le ratio n'est affiché QUE si l'API le fournit déjà (même
+                      devise) — jamais recalculé/converti côté front. */}
+                  {v2.mer?.mer_ratio != null && (
+                    <div data-testid="ae-dv2-mer-ratio" style={{ fontSize: '0.85rem', marginTop: '0.2rem' }}>
+                      MER : {formatRatio(v2.mer.mer_ratio)}
+                    </div>
+                  )}
+                  <p data-testid="ae-dv2-mer-note" style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0.4rem 0 0' }}>
+                    {v2.mer?.note}
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <Sparkline points={v2.mer?.spend_sparkline} testId="ae-dv2-mer-spend-sparkline"
+                        label={`Dépense Meta par jour sur ${v2.window_days} jours`} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <Sparkline points={v2.mer?.signed_ca_sparkline} testId="ae-dv2-mer-ca-sparkline"
+                        label={`CA signé Odoo par jour sur ${v2.window_days} jours`} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Panneau de drill-down : les leads réels derrière le chiffre */}
           {drill && (

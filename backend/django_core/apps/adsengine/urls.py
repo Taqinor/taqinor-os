@@ -28,7 +28,8 @@ from .views import (
     InstagramMediaListView, InstagramMediaToggleCommentsView,
     InstagramPublishView, InstagramQuotaView, MediaResolveView,
     MetaConnectionHealthView,
-    MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardView,
+    MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
+    MetricsDashboardView,
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
@@ -92,6 +93,9 @@ urlpatterns = [
          name='adsengine-metrics-leads'),
     path('metrics/pacing/', MetricsPacingView.as_view(),
          name='adsengine-metrics-pacing'),
+    # ADSDEEP61 — Dashboard v2 : conversations réelles + MER mixte (2 devises).
+    path('metrics/dashboard-v2/', MetricsDashboardV2View.as_view(),
+         name='adsengine-metrics-dashboard-v2'),
     # ENG42 — réconciliation (liste reshaped pour l'écran).
     path('reconciliation/', ReconciliationListView.as_view(),
          name='adsengine-reconciliation'),

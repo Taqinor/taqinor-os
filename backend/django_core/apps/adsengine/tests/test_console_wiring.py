@@ -230,6 +230,56 @@ class ConsoleWiringTests(TestCase):
         resp = auth(self.viewer).get(f'{BASE}/metrics/dashboard/')
         self.assertEqual(resp.data['currency'], 'USD')
 
+    # ── ADSDEEP61 — Dashboard v2 (conversations réelles + MER mixte) ──────────
+    def test_dashboard_v2_shape_and_window(self):
+        from apps.adsengine.models import CtwaReferral
+        from django.utils import timezone
+
+        CtwaReferral.objects.create(
+            company=self.company, wa_message_id='wa-1', ad_id='ad-1',
+            ts=timezone.now())
+        CtwaReferral.objects.create(
+            company=self.company, wa_message_id='wa-2', ad_id='ad-1',
+            ts=timezone.now())
+        resp = auth(self.viewer).get(f'{BASE}/metrics/dashboard-v2/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['window_days'], 14)
+        self.assertEqual(resp.data['conversations']['total'], 2)
+        self.assertEqual(len(resp.data['conversations']['sparkline']), 14)
+        self.assertEqual(resp.data['mer']['spend'], '120.00')
+        self.assertFalse(resp.data['mer']['odoo_configured'])
+        self.assertEqual(resp.data['mer']['signed_ca_mad'], '0')
+        self.assertEqual(len(resp.data['mer']['spend_sparkline']), 14)
+        self.assertEqual(len(resp.data['mer']['signed_ca_sparkline']), 14)
+
+    def test_dashboard_v2_never_blends_cross_currency_mer(self):
+        """Doctrine devise-compte : dépense Meta en USD + CA signé Odoo en MAD
+        -> AUCUN ratio calculé (jamais une conversion implicite)."""
+        MetaConnection.objects.update_or_create(
+            company=self.company, defaults={'currency': 'USD'})
+        from unittest import mock
+        with mock.patch(
+                'apps.adsengine.odoo_client.is_configured',
+                return_value=True), \
+                mock.patch(
+                    'apps.adsengine.odoo_selectors.signed_deals',
+                    return_value=[{
+                        'phone_norm': '212600000000', 'amount_mad': '5000',
+                        'date': datetime.date.today().isoformat(),
+                        'source_name': 'Client X', 'origin': 'sale_order',
+                        'lead_id': None}]):
+            resp = auth(self.viewer).get(f'{BASE}/metrics/dashboard-v2/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['mer']['spend_currency'], 'USD')
+        self.assertEqual(resp.data['mer']['signed_ca_currency'], 'MAD')
+        self.assertEqual(resp.data['mer']['signed_ca_mad'], '5000')
+        self.assertIsNone(resp.data['mer']['mer_ratio'])  # jamais fabriqué
+        self.assertTrue(resp.data['mer']['odoo_configured'])
+
+    def test_dashboard_v2_requires_view_permission(self):
+        resp = auth(self.nobody).get(f'{BASE}/metrics/dashboard-v2/')
+        self.assertEqual(resp.status_code, 403)
+
     def test_connection_status_includes_currency(self):
         MetaConnection.objects.update_or_create(
             company=self.company,
