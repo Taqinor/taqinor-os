@@ -62,6 +62,7 @@ describe('Playbooks (NTCRM13)', () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/crm/playbook-etapes/', expect.objectContaining({ playbook: 2 }),
     ))
-    expect(await screen.findByText('Devis envoyé')).toBeInTheDocument()
+    // Le libellé de stage figure dans le <option> ET l'en-tête d'étape.
+    expect((await screen.findAllByText('Devis envoyé')).length).toBeGreaterThan(0)
   })
 })

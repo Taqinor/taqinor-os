@@ -87,13 +87,16 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
   }))
 
   // ── NTMKT3 — configuration du test A/B (XMKT14) ──
-  const abActif = !!(form.ab_test && (form.ab_test.objet_b || form.ab_test.corps_b))
+  // Actif = présence d'une config A/B (jamais la troncature des valeurs : les
+  // champs objet_b/corps_b sont seedés VIDES à l'activation → tester leur
+  // vérité laisserait abActif=false juste après avoir activé le test).
+  const abActif = Object.keys(form.ab_test || {}).length > 0
   const setAbField = (champ) => (e) => setForm(f => ({
     ...f, ab_test: { ...f.ab_test, [champ]: e.target.value },
   }))
   const toggleAb = () => setForm(f => ({
     ...f,
-    ab_test: (f.ab_test && (f.ab_test.objet_b || f.ab_test.corps_b))
+    ab_test: Object.keys(f.ab_test || {}).length > 0
       ? {}
       : {
         objet_b: '', corps_b: '', pct_echantillon: 20, fenetre_heures: 4,

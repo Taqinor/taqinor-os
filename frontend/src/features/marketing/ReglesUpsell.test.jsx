@@ -33,7 +33,9 @@ describe('ReglesUpsell', () => {
   it('affiche les règles existantes', async () => {
     render(<ReglesUpsell />)
     expect(await screen.findByText('Batterie 5kWh')).toBeInTheDocument()
-    expect(screen.getByText('Client sans batterie')).toBeInTheDocument()
+    // « Client sans batterie » figure dans le <select> du formulaire ET dans la
+    // ligne de règle → requête non-ambiguë via getAllByText.
+    expect(screen.getAllByText('Client sans batterie').length).toBeGreaterThan(0)
   })
 
   it('créer une règle appelle create() puis recharge', async () => {

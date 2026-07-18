@@ -29,7 +29,7 @@ describe('emptyForm / formFromCampagne', () => {
   it('emptyForm renvoie un formulaire vide, canal email par défaut', () => {
     expect(emptyForm()).toEqual({
       nom: '', canal: 'email', objet: '', corps: '', planifiee_le: '',
-      listes: [], variantes_langue: {},
+      listes: [], variantes_langue: {}, ab_test: {},
     })
   })
 
@@ -114,6 +114,9 @@ describe('CampagneForm — test A/B (NTMKT3)', () => {
   it('désactiver le toggle après édition efface la config A/B', async () => {
     const onSave = vi.fn().mockResolvedValue()
     render(<CampagneForm initial={emptyForm()} onSave={onSave} editing={false} />)
+    // `nom` est requis : sans lui, jsdom bloque la soumission (onSave jamais
+    // appelé) — on le renseigne comme dans le test d'activation ci-dessus.
+    fireEvent.change(screen.getByTestId('campagne-nom'), { target: { value: 'Test AB' } })
     fireEvent.click(screen.getByTestId('campagne-ab-toggle'))
     fireEvent.change(screen.getByTestId('campagne-ab-objet-b'), { target: { value: 'Objet B' } })
     fireEvent.click(screen.getByTestId('campagne-ab-toggle')) // désactive

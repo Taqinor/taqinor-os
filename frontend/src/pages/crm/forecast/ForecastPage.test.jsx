@@ -57,6 +57,8 @@ describe('ForecastPage (NTCRM7)', () => {
     ))
     // Second GET (reload) reflects the updated total — no window.location change.
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2))
-    expect(await screen.findByText('25000')).toBeInTheDocument()
+    // Un seul commercial ⇒ total de ligne ≡ sous-total d'équipe : « 25000 »
+    // apparaît deux fois → requête non-ambiguë.
+    expect((await screen.findAllByText('25000')).length).toBeGreaterThan(0)
   })
 })

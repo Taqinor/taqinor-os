@@ -56,7 +56,8 @@ describe('Territoires (NTCRM3)', () => {
       '/territoires/regles/',
       expect.objectContaining({ territoire: 1 }),
     ))
-    expect(await screen.findByText('Sud — résidentiel')).toBeInTheDocument()
+    // Le nom du territoire figure à plusieurs endroits (liste + sélection).
+    expect((await screen.findAllByText('Sud — résidentiel')).length).toBeGreaterThan(0)
   })
 
   it('simulates an address against a territoire via resoudre/ without navigating away', async () => {
