@@ -805,6 +805,11 @@ CELERY_TASK_ROUTES = {
     'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},
     # WIR30 — pré-alerte SLA (J-x) + escalade à la violation.
     'sav.scan_sla_pre_alerts_and_escalations_quotidien': {'queue': 'scheduled'},
+    # WIR50 — commandes périodiques de sécurité/gouvernance (break-glass échu,
+    # comptes dormants, escalade SLA workflow) planifiées au beat.
+    'identity.revoke_expired_break_glass': {'queue': 'scheduled'},
+    'authentication.desactiver_comptes_dormants': {'queue': 'scheduled'},
+    'core.escalate_workflow_sla': {'queue': 'scheduled'},
     'stock.recompute_reordering': {'queue': 'scheduled'},
     'core.dump_database': {'queue': 'scheduled'},
     'core.restore_drill': {'queue': 'scheduled'},
