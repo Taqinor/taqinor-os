@@ -17,6 +17,13 @@ const auditApi = {
     api.get(`/audit/objets/${contentType}/${objectId}/as-of/`, {
       params: date ? { date } : {},
     }),
+  // WIR18 — onglet « Sécurité » du Journal (connexion/déconnexion/échec/
+  // alerte), FG23, mêmes filtres que le Journal global (user/from/to/search).
+  getSecurityEvents: (params) => api.get('/audit/security/', { params }),
+  // NTSEC15 — export CSV des évènements de sécurité, gated côté serveur
+  // `IsAdminRole` (Directeur/Administrateur) : 403 pour tout autre rôle.
+  exportSecurityEvents: (params) =>
+    api.get('/audit/security/export/', { params, responseType: 'blob' }),
 }
 
 export default auditApi

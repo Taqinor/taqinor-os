@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useHasPermission } from '../hooks/useHasPermission'
-import { History } from 'lucide-react'
+import { useHasPermission, useIsAdmin } from '../hooks/useHasPermission'
+import { History, Download } from 'lucide-react'
 import auditApi from '../api/auditApi'
+import reportingApi from '../api/reportingApi'
 import {
   Card, CardHeader, CardTitle, CardContent, Segmented, MultiSelect,
   Button, Badge, Skeleton, EmptyState, IconButton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
+  Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../ui'
 // VX28/VX148 — un seul langage de graphique (kit ui/charts) + un seul
 // PageHeader ; `ChartEmpty` pour le graphe sans donnée (au lieu d'un <p> nu).
 import { BarArrondie, ChartEmpty } from '../ui/charts'
 import { PageHeader } from '../ui/PageHeader'
 import { formatDateTime, formatNumber } from '../lib/format'
+import { downloadBlobInGesture, stampedFilename } from '../utils/downloadBlob'
 
 /* Journal d'activité (Feature G) — réservé au Directeur par défaut
    (permission « journal_activite_voir », octroyable dans Paramètres → Rôles).
@@ -286,6 +289,82 @@ export default function Journal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowed, requestKey])
 
+  // WIR18/WIR20 — onglets « Sécurité » et « Analytiques », en plus de
+  // l'onglet « Activité » historique. Chargés PARESSEUSEMENT (seulement
+  // quand l'onglet est actif) : ne pèsent jamais sur le chargement par
+  // défaut de l'onglet « Activité » et ne cassent pas les tests existants
+  // qui ne mockent que `getStats`/`getEntries`/`getMeta`.
+  const [tab, setTab] = useState('activite')
+  const isAdmin = useIsAdmin()
+
+  // WIR18 — mêmes filtres que le Journal global (FG23) : période/date +
+  // utilisateur(s) + recherche (l'action est fixée au sous-ensemble sécurité
+  // côté serveur, le module ne s'applique pas aux évènements de connexion).
+  const securityParams = useMemo(() => {
+    const p = { ...range }
+    if (users.length) p.user = users
+    if (search.trim()) p.search = search.trim()
+    return p
+  }, [range, users, search])
+
+  const [secEvents, setSecEvents] = useState(null)
+  const [secLoading, setSecLoading] = useState(false)
+  const [secError, setSecError] = useState(null)
+  const [secExporting, setSecExporting] = useState(false)
+
+  useEffect(() => {
+    if (!allowed || tab !== 'securite') return undefined
+    let cancelled = false
+    setSecLoading(true)
+    setSecError(null)
+    auditApi.getSecurityEvents(securityParams)
+      .then((r) => { if (!cancelled) setSecEvents(r.data.results ?? []) })
+      .catch(() => {
+        if (!cancelled) setSecError('Impossible de charger les évènements de sécurité.')
+      })
+      .finally(() => { if (!cancelled) setSecLoading(false) })
+    return () => { cancelled = true }
+  }, [allowed, tab, securityParams])
+
+  // NTSEC15 — export CSV, gated backend `IsAdminRole` (bouton masqué pour un
+  // rôle non-admin ; le serveur re-vérifie de toute façon, 403 sinon).
+  const exportSecurityCsv = async () => {
+    const pending = downloadBlobInGesture()
+    setSecExporting(true)
+    try {
+      const res = await auditApi.exportSecurityEvents(securityParams)
+      pending.deliver(
+        new Blob([res.data], { type: 'text/csv' }),
+        stampedFilename('securite', 'csv'),
+      )
+    } catch {
+      setSecError('Export indisponible.')
+    } finally {
+      setSecExporting(false)
+    }
+  }
+
+  // WIR20 — onglet « Analytiques » : rollups FG97 (top utilisateurs, mix
+  // d'actions, activité quotidienne, échecs de connexion) sur la fenêtre
+  // par défaut du serveur (30 jours).
+  const [analytics, setAnalytics] = useState(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [analyticsError, setAnalyticsError] = useState(null)
+
+  useEffect(() => {
+    if (!allowed || tab !== 'analytiques') return undefined
+    let cancelled = false
+    setAnalyticsLoading(true)
+    setAnalyticsError(null)
+    reportingApi.auditAnalytics()
+      .then((r) => { if (!cancelled) setAnalytics(r.data) })
+      .catch(() => {
+        if (!cancelled) setAnalyticsError("Impossible de charger les analytiques du Journal.")
+      })
+      .finally(() => { if (!cancelled) setAnalyticsLoading(false) })
+    return () => { cancelled = true }
+  }, [allowed, tab])
+
   // Reset de page géré dans les setters de filtres (pas d'effet → pas de
   // cascade de rendus).
   const resetPage = () => setPage(1)
@@ -322,6 +401,17 @@ export default function Journal() {
         subtitle="Qui a fait quoi, et quand — heures en Africa/Casablanca."
       />
 
+      {/* WIR18/WIR20 — Activité (historique) / Sécurité (FG23 + export CSV
+          admin) / Analytiques (FG97 : top utilisateurs, mix d'actions,
+          activité quotidienne, échecs de connexion). */}
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="activite">Activité</TabsTrigger>
+          <TabsTrigger value="securite">Sécurité</TabsTrigger>
+          <TabsTrigger value="analytiques">Analytiques</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="activite">
       {/* VX98 — bandeau « filtré sur cet objet » quand on arrive via le bouton
           « Historique » d'une fiche (?model=&object_id=). */}
       {(modelParam || objectIdParam) && (
@@ -502,6 +592,186 @@ export default function Journal() {
           </Card>
         </div>
       )}
+        </TabsContent>
+
+        {/* WIR18 — onglet Sécurité (FG23) : connexion/déconnexion/échec/alerte,
+            mêmes filtres période/utilisateur/recherche que l'onglet Activité,
+            + export CSV réservé aux rôles admin (NTSEC15, gated backend). */}
+        <TabsContent value="securite">
+          <Card>
+            <CardHeader className="flex-row items-center justify-between gap-2">
+              <CardTitle>Évènements de sécurité</CardTitle>
+              {isAdmin && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={exportSecurityCsv}
+                  disabled={secExporting}
+                >
+                  <Download className="size-4" aria-hidden="true" />
+                  Exporter CSV
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {secError ? (
+                <p className="text-sm text-destructive">{secError}</p>
+              ) : secLoading && !secEvents ? (
+                <Skeleton className="h-48 w-full" />
+              ) : !secEvents || secEvents.length === 0 ? (
+                <EmptyState
+                  title="Aucun évènement"
+                  description="Aucun évènement de sécurité pour ces filtres."
+                />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[520px] border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40">
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Date / heure</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Utilisateur</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Évènement</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Détail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {secEvents.map((ev) => (
+                        <tr key={ev.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
+                          <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
+                            {ev.timestamp_local ? formatDateTime(ev.timestamp_local) : '—'}
+                          </td>
+                          <td className="px-4 py-2.5 text-foreground">{ev.utilisateur}</td>
+                          <td className="px-4 py-2.5"><Badge tone="info">{ev.action_label}</Badge></td>
+                          <td className="px-4 py-2.5 text-muted-foreground">{ev.detail || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* WIR20 — onglet Analytiques (FG97) : rollups du Journal, fenêtre
+            par défaut serveur (30 jours). */}
+        <TabsContent value="analytiques">
+          {analyticsError ? (
+            <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">{analyticsError}</CardContent></Card>
+          ) : analyticsLoading && !analytics ? (
+            <Skeleton className="h-48 w-full" />
+          ) : !analytics ? null : (
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-muted-foreground">
+                Fenêtre : {analytics.from} → {analytics.to} · {formatNumber(analytics.total_entries)} évènement(s)
+              </p>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card>
+                  <CardHeader><CardTitle>Top utilisateurs</CardTitle></CardHeader>
+                  <CardContent>
+                    {analytics.top_users.length === 0 ? (
+                      <ChartEmpty title="Aucune donnée" description="Aucune activité utilisateur sur la période." />
+                    ) : (
+                      <>
+                        {/* WIR20 — résumé texte : la donnée réelle reste visible
+                            même si le rendu SVG du graphe est indisponible. */}
+                        <p className="mb-2 text-sm text-foreground">
+                          Le plus actif : {analytics.top_users[0].actor_username}
+                          {' '}({formatNumber(analytics.top_users[0].count)} action(s))
+                        </p>
+                        <BarArrondie
+                          data={analytics.top_users}
+                          dataKey="count"
+                          categoryKey="actor_username"
+                          layout="vertical"
+                          tone="primary"
+                          name="Actions"
+                          height={220}
+                        />
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader><CardTitle>Répartition des actions</CardTitle></CardHeader>
+                  <CardContent>
+                    {analytics.action_mix.length === 0 ? (
+                      <ChartEmpty title="Aucune donnée" description="Aucune action sur la période." />
+                    ) : (
+                      <>
+                        <p className="mb-2 text-sm text-foreground">
+                          Action la plus fréquente : {analytics.action_mix[0].label}
+                          {' '}({analytics.action_mix[0].pct}%)
+                        </p>
+                        <BarArrondie
+                          data={analytics.action_mix}
+                          dataKey="count"
+                          categoryKey="label"
+                          layout="vertical"
+                          tone="info"
+                          name="Occurrences"
+                          height={220}
+                        />
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader><CardTitle>Activité quotidienne</CardTitle></CardHeader>
+                  <CardContent>
+                    {analytics.daily_counts.every((d) => d.count === 0) ? (
+                      <ChartEmpty title="Aucune activité" description="Aucune activité sur la fenêtre." />
+                    ) : (
+                      <>
+                        <p className="mb-2 text-sm text-foreground">
+                          Total sur la fenêtre :{' '}
+                          {formatNumber(analytics.daily_counts.reduce((sum, d) => sum + d.count, 0))} évènement(s)
+                        </p>
+                        <BarArrondie
+                          data={analytics.daily_counts}
+                          dataKey="count"
+                          categoryKey="date"
+                          tone="primary"
+                          name="Évènements"
+                          height={200}
+                          barSize={8}
+                        />
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader><CardTitle>Échecs de connexion</CardTitle></CardHeader>
+                  <CardContent>
+                    {analytics.failed_logins.every((d) => d.count === 0) ? (
+                      <ChartEmpty title="Aucun échec" description="Aucun échec de connexion sur la fenêtre." />
+                    ) : (
+                      <>
+                        <p className="mb-2 text-sm text-foreground">
+                          Total sur la fenêtre :{' '}
+                          {formatNumber(analytics.failed_logins.reduce((sum, d) => sum + d.count, 0))} échec(s)
+                        </p>
+                        <BarArrondie
+                          data={analytics.failed_logins}
+                          dataKey="count"
+                          categoryKey="date"
+                          tone="danger"
+                          name="Échecs"
+                          height={200}
+                          barSize={8}
+                        />
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

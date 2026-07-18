@@ -31,3 +31,7 @@ test('deleteDashboardConfig → DELETE /reporting/dashboard-config/<id>/', () =>
 test('cohorts (FG98) → GET /reporting/insights/cohorts/', () => {
   assert.match(src, /cohorts:[\s\S]*?api\.get\('\/reporting\/insights\/cohorts\/'/)
 })
+
+test('integriteInsight (WIR22, carte ALL_DASHBOARD_CARDS "integrite") → GET /reporting/insights/integrite/', () => {
+  assert.match(src, /integriteInsight:[\s\S]*?api\.get\('\/reporting\/insights\/integrite\/'/)
+})

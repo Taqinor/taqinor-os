@@ -15,6 +15,7 @@ import { formatNumber } from '../lib/format'
 import {
   Button, Card, CardHeader, CardTitle, CardDescription, CardContent,
   Tabs, TabsList, TabsTrigger, TabsContent, Skeleton, EmptyState, Input, Spinner,
+  Badge,
 } from '../ui'
 // VX28/VX148 — un seul langage de graphique (kit ui/charts), un seul
 // PageHeader, un seul moteur de table de reporting (Table partagé). VX148 —
@@ -438,6 +439,8 @@ export function Component() {
   const [jobCosting, setJobCosting] = useState(null)
   const [analytics, setAnalytics] = useState(null)
   const [commissions, setCommissions] = useState(null)
+  // WIR22 — contrôle d'intégrité inter-documents (YSERV13).
+  const [integrite, setIntegrite] = useState(null)
   // État par carte : 'loading' | 'ok' | 'error'.
   const [status, setStatus] = useState({})
   // Période optionnelle (?from=&to=) appliquée à ventes/stock/service.
@@ -501,6 +504,8 @@ export function Component() {
     load('analytics', reportingApi.analytics(), setAnalytics)
     // N99 — réservé admin.
     load('commissions', reportingApi.commissions(), setCommissions)
+    // WIR22 — réservé responsable/admin (backend IsResponsableOrAdmin).
+    load('integrite', reportingApi.integriteInsight(), setIntegrite)
   }, [load])
 
   // Paramètres de filtre du Journal (envoyés à l'endpoint et à l'export).
@@ -578,6 +583,8 @@ export function Component() {
       load('analytics', reportingApi.analytics(), setAnalytics)
     } else if (key === 'commissions') {
       load('commissions', reportingApi.commissions(), setCommissions)
+    } else if (key === 'integrite') {
+      load('integrite', reportingApi.integriteInsight(), setIntegrite)
     } else if (key === 'audit') {
       load('audit', reportingApi.auditLog(auditParams), setAudit)
     }
@@ -917,14 +924,11 @@ export function Component() {
               ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
 
-            {/* VX189(c) — cv-auto : dernière carte de l'onglet Insights, liste/
-                texte (Table), jamais un graphique recharts. */}
             <InsightCard title="Commissions commerciales"
                          note="(interne — visible admin ; configuré dans Paramètres)"
                          onExport={commissions?.enabled
                            ? exportInsight('commissions') : undefined}
-                         busy={insightExportBusy.commissions}
-                         className="cv-auto">
+                         busy={insightExportBusy.commissions}>
               {status.commissions === 'error' && (
                 <p className="text-sm text-muted-foreground">Réservé admin.</p>
               )}
@@ -949,6 +953,36 @@ export function Component() {
                                   fmt(sumBy(commissions.rows, 'commission'))]} />
                 </>
               )}
+            </InsightCard>
+
+            {/* WIR22 — badge du contrôle d'intégrité inter-documents (YSERV13) :
+                anomalies visibles ICI sans attendre la notification Beat
+                hebdomadaire ni lire les logs serveur.
+                VX189(c) — cv-auto : dernière carte de l'onglet Insights, liste/
+                texte (badge + liste), jamais un graphique recharts. */}
+            <InsightCard title="Contrôle d'intégrité"
+                         note="Anomalies inter-documents (YSERV13)"
+                         className="cv-auto">
+              {status.integrite === 'error' ? (
+                <StateBlock error="Rapport indisponible" onRetry={() => reloadCard('integrite')} />
+              ) : integrite ? (
+                <div className="space-y-2">
+                  <Badge tone={integrite.total_anomalies > 0 ? 'danger' : 'success'}>
+                    {integrite.total_anomalies > 0
+                      ? `${fmt(integrite.total_anomalies)} anomalie(s)`
+                      : 'Aucune anomalie'}
+                  </Badge>
+                  {integrite.total_anomalies > 0 && (
+                    <ul className="list-inside list-disc text-sm text-muted-foreground">
+                      {Object.values(integrite.familles)
+                        .filter((f) => f.ids.length > 0)
+                        .map((f) => (
+                          <li key={f.label}>{f.label} ({f.ids.length})</li>
+                        ))}
+                    </ul>
+                  )}
+                </div>
+              ) : <p className="text-sm text-muted-foreground">Chargement…</p>}
             </InsightCard>
           </div>
         </TabsContent>

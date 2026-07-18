@@ -87,6 +87,9 @@ ALL_DASHBOARD_CARDS = [
     'creances',
     'pipeline',
     'commercial',
+    # WIR22 — badge du contrôle d'intégrité inter-documents (YSERV13) :
+    # nombre d'anomalies détectées (GET /reporting/insights/integrite/).
+    'integrite',
 ]
 
 # Ensembles de cartes par défaut selon le palier de rôle (menu_tier).
