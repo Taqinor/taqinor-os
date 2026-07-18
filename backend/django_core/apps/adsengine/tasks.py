@@ -221,6 +221,9 @@ def _sync_company(conn):
     # ADSDEEP49 — miroir des posts organiques de la Page (best-effort).
     sync_page_posts(company, conn, client)
 
+    # ADSDEEP53 — miroir des commentaires (posts organiques + dark/ad posts).
+    sync_comments_for_company(company, client)
+
     today = datetime.date.today()
     for camp in AdCampaignMirror.objects.filter(company=company):
         # ENG6 — insights sur TOUT l'historique, ventilés par JOUR. Sans
@@ -433,6 +436,50 @@ def sync_page_posts(company, conn, client):
     mirrors = sync.sync_page_posts(
         company, posts, ad_linked_ids=ad_ids, app_id=app_id)
     return len(mirrors)
+
+
+def sync_comments_for_company(company, client):
+    """ADSDEEP53 — Miroite les commentaires de TOUS les objets commentables d'une
+    société : (a) chaque post organique miroir (``PagePostMirror``) ; (b) chaque
+    dark/ad post via l'``effective_object_story_id`` du créatif miroir
+    (``AdCreativeMirror``). Best-effort par objet ; NO-OP propre si le client
+    n'expose pas ``get_object_comments`` (mock ancien). Renvoie le nombre de
+    commentaires miroités."""
+    from . import comments as comments_mod
+    from .models import AdCreativeMirror, PagePostMirror
+
+    reader = getattr(client, 'get_object_comments', None)
+    if not callable(reader):
+        return 0
+    written = 0
+
+    def _pull(object_meta_id, source):
+        nonlocal written
+        if not object_meta_id:
+            return
+        try:
+            rows = reader(object_meta_id)
+        except Exception:  # noqa: BLE001 — un objet en échec n'arrête pas les autres
+            return
+        mirrors = comments_mod.sync_comments(
+            company, rows, object_meta_id=object_meta_id, source=source)
+        written += len(mirrors)
+
+    # (a) Posts organiques.
+    for post in PagePostMirror.objects.filter(company=company):
+        _pull(post.meta_id, 'post')
+
+    # (b) Dark/ad posts : l'ID du post diffusé vit sur le créatif miroir.
+    seen = set()
+    for cm in (AdCreativeMirror.objects
+               .filter(company=company)
+               .exclude(effective_object_story_id='')):
+        osid = str(cm.effective_object_story_id or '').strip()
+        if osid and osid not in seen:
+            seen.add(osid)
+            _pull(osid, 'ad')
+
+    return written
 
 
 def pull_ad_leads_for_company(company, conn, client):

@@ -438,6 +438,193 @@ def propose_boost_post(company, *, post, adset, name=None, reason_fr=None):
         company, kind=KIND_BOOST_POST, reason_fr=reason_fr, payload=payload)
 
 
+# ── ADSDEEP53 — Actions sur les commentaires (propose→approuve→applique) ─────
+# Kinds en constantes simples (même pattern que les kinds posts ci-dessus — hors
+# de ``EngineAction.Kind``, aucune migration requise).
+KIND_HIDE_COMMENT = 'hide_comment'
+KIND_REPLY_COMMENT = 'reply_comment'
+KIND_DELETE_COMMENT = 'delete_comment'
+KIND_PRIVATE_REPLY = 'private_reply'
+
+# Fenêtre Meta d'une réponse privée : UNE par commentaire, dans les 7 jours.
+PRIVATE_REPLY_WINDOW_DAYS = 7
+
+WARN_COMMENT_HIDE_READBACK = (
+    "Le masquage sera RE-VÉRIFIÉ après application (``is_hidden`` est éventuellement "
+    "consistant côté Meta) : le badge « caché-vérifié » ne s'allume que si le "
+    "re-contrôle confirme l'état.")
+
+
+def propose_hide_comment(company, *, comment, hidden=True, reason_fr=None):
+    """ADSDEEP53 — Propose de masquer (``hidden=True``) ou démasquer un
+    commentaire. L'application fera un READ-BACK obligatoire (dossier §3) : elle
+    re-GET le commentaire et ne pose ``hidden_verified`` que si l'état observé
+    confirme la demande."""
+    verb = 'Masquer' if hidden else 'Démasquer'
+    reason_fr = reason_fr or f"{verb} le commentaire {comment.meta_id}."
+    payload = {
+        'comment_id': comment.meta_id, 'hidden': bool(hidden),
+        'warnings': [WARN_COMMENT_HIDE_READBACK]}
+    return propose_action(
+        company, kind=KIND_HIDE_COMMENT, reason_fr=reason_fr, payload=payload)
+
+
+def propose_reply_comment(company, *, comment, message, reason_fr=None):
+    """ADSDEEP53 — Propose une réponse PUBLIQUE à un commentaire."""
+    if not (message and str(message).strip()):
+        raise ValueError("Une réponse ne peut pas être vide.")
+    reason_fr = reason_fr or f"Répondre au commentaire {comment.meta_id}."
+    payload = {'comment_id': comment.meta_id, 'message': str(message)}
+    return propose_action(
+        company, kind=KIND_REPLY_COMMENT, reason_fr=reason_fr, payload=payload)
+
+
+def propose_delete_comment(company, *, comment, reason_fr=None):
+    """ADSDEEP53 — Propose la SUPPRESSION d'un commentaire (irréversible côté
+    Meta — passe donc, comme tout, par l'approbation humaine)."""
+    reason_fr = reason_fr or f"Supprimer le commentaire {comment.meta_id}."
+    payload = {'comment_id': comment.meta_id}
+    return propose_action(
+        company, kind=KIND_DELETE_COMMENT, reason_fr=reason_fr, payload=payload)
+
+
+def propose_private_reply(company, *, comment, message, reason_fr=None):
+    """ADSDEEP53 — Propose une RÉPONSE PRIVÉE (DM) à un commentaire.
+
+    GARDE-FOU (dossier §3, fail-fast — AUCUNE action créée si violé) : Meta
+    n'autorise QU'UNE réponse privée par commentaire, dans les 7 jours. On refuse
+    donc proprement si (a) une réponse privée a déjà été envoyée
+    (``private_reply_sent_at`` renseigné) ou (b) le commentaire a plus de 7 jours."""
+    from django.utils import timezone
+
+    if not (message and str(message).strip()):
+        raise ValueError("Une réponse privée ne peut pas être vide.")
+    if comment.private_reply_sent_at is not None:
+        raise ValueError(
+            "Une réponse privée a déjà été envoyée pour ce commentaire "
+            "(Meta n'en autorise qu'une).")
+    created = comment.created_time
+    if created is not None:
+        age = timezone.now() - created
+        if age.days >= PRIVATE_REPLY_WINDOW_DAYS:
+            raise ValueError(
+                "Fenêtre de réponse privée expirée : Meta n'autorise le DM que "
+                f"dans les {PRIVATE_REPLY_WINDOW_DAYS} jours suivant le commentaire.")
+    reason_fr = reason_fr or (
+        f"Répondre en privé (DM) au commentaire {comment.meta_id}.")
+    payload = {'comment_id': comment.meta_id, 'message': str(message)}
+    return propose_action(
+        company, kind=KIND_PRIVATE_REPLY, reason_fr=reason_fr, payload=payload)
+
+
+def propose_keyword_hides(company, *, rules=None, auto_only=False):
+    """ADSDEEP53 — Depuis le DRY-RUN du moteur de règles mot-clé
+    (``comments.plan_keyword_hides``), crée les propositions de masquage.
+
+    Mode PROPOSE par défaut : chaque correspondance devient une ``EngineAction``
+    HIDE_COMMENT À APPROUVER (jamais un masquage silencieux). Une règle qui porte
+    ``auto=True`` (opt-in explicite fondateur) produit une action ``auto=True``
+    (trace d'audit — l'auto-apply éventuel reste géré par le chemin garde-fou
+    ENG8, jamais ici). ``auto_only=True`` restreint aux seules règles auto.
+    Renvoie la liste des actions proposées."""
+    from . import comments as comments_mod
+
+    plan = comments_mod.plan_keyword_hides(company, rules=rules)
+    actions = []
+    for item in plan:
+        if auto_only and not item['auto']:
+            continue
+        comment = item['comment']
+        action = propose_action(
+            company, kind=KIND_HIDE_COMMENT,
+            reason_fr=(
+                f"Masquage par règle mot-clé « {item['keyword']} » — "
+                f"commentaire {comment.meta_id}."),
+            payload={
+                'comment_id': comment.meta_id, 'hidden': True,
+                'keyword': item['keyword'],
+                'warnings': [WARN_COMMENT_HIDE_READBACK]},
+            auto=bool(item['auto']))
+        actions.append(action)
+    return actions
+
+
+def _dispatch_hide_comment(client, action):
+    """ADSDEEP53 — Applique un masquage/démasquage AVEC READ-BACK obligatoire
+    (dossier §3 : ``is_hidden`` est éventuellement consistant côté Meta).
+
+    Séquence : (1) POST is_hidden ; (2) re-GET le commentaire ; (3) compare l'état
+    observé à l'état demandé ; (4) met à jour le miroir (``is_hidden`` observé +
+    ``hidden_verified`` = confirmation stricte). Le badge « caché-vérifié » de
+    l'UI ne s'allume donc que quand le re-contrôle CONFIRME le masquage."""
+    from .models import CommentMirror
+
+    payload = action.payload or {}
+    comment_id = str(payload.get('comment_id') or '')
+    hidden = bool(payload.get('hidden', True))
+    client.hide_comment(comment_id=comment_id, hidden=hidden)
+    # READ-BACK — on ne croit jamais le POST en aveugle : on re-lit l'état réel.
+    observed = None
+    verified = False
+    try:
+        fresh = client.get_comment(comment_id) or {}
+        observed = bool(fresh.get('is_hidden'))
+        verified = (observed == hidden)
+    except Exception:  # noqa: BLE001 — read-back en échec ⇒ non vérifié (jamais un faux vert)
+        observed = None
+        verified = False
+    CommentMirror.objects.filter(
+        company=action.company, meta_id=comment_id).update(
+            is_hidden=(observed if observed is not None else hidden),
+            hidden_verified=verified)
+    return {
+        'comment_id': comment_id, 'requested_hidden': hidden,
+        'observed_is_hidden': observed, 'verified': verified}
+
+
+def _dispatch_reply_comment(client, action):
+    """ADSDEEP53 — Applique une réponse publique + marque le miroir « répondu »."""
+    from .models import CommentMirror
+
+    payload = action.payload or {}
+    comment_id = str(payload.get('comment_id') or '')
+    result = client.reply_to_comment(
+        comment_id=comment_id, message=payload.get('message', ''))
+    CommentMirror.objects.filter(
+        company=action.company, meta_id=comment_id).update(answered=True)
+    return result if isinstance(result, dict) else {'result': result}
+
+
+def _dispatch_delete_comment(client, action):
+    """ADSDEEP53 — Applique une suppression + retire le miroir local."""
+    from .models import CommentMirror
+
+    payload = action.payload or {}
+    comment_id = str(payload.get('comment_id') or '')
+    result = client.delete_comment(comment_id=comment_id)
+    CommentMirror.objects.filter(
+        company=action.company, meta_id=comment_id).delete()
+    return result if isinstance(result, dict) else {'result': result}
+
+
+def _dispatch_private_reply(client, action):
+    """ADSDEEP53 — Applique une réponse privée + horodate le miroir (le garde-fou
+    « une seule / 7 j » repose ensuite sur ``private_reply_sent_at`` — une 2e
+    tentative sera refusée à la proposition)."""
+    from django.utils import timezone
+
+    from .models import CommentMirror
+
+    payload = action.payload or {}
+    comment_id = str(payload.get('comment_id') or '')
+    result = client.private_reply(
+        comment_id=comment_id, message=payload.get('message', ''))
+    CommentMirror.objects.filter(
+        company=action.company, meta_id=comment_id).update(
+            private_reply_sent_at=timezone.now())
+    return result if isinstance(result, dict) else {'result': result}
+
+
 def _dispatch_create_post(client, payload):
     """ADSDEEP51 — Route une action CREATE_POST vers la bonne méthode de
     publication du client selon le média (aucun / photo / multi-photos / vidéo)
@@ -652,6 +839,21 @@ def _dispatch(client, action):
             adset_id=payload.get('adset_id', ''),
             name=payload.get('name', ''),
             extra_fields=payload.get('extra_fields'))
+    if kind == KIND_HIDE_COMMENT:
+        # ADSDEEP53 — masquage/démasquage AVEC READ-BACK obligatoire (le badge
+        # « caché-vérifié » ne s'allume que si le re-GET confirme). Aucun statut
+        # d'objet publicitaire en jeu.
+        return _dispatch_hide_comment(client, action)
+    if kind == KIND_REPLY_COMMENT:
+        # ADSDEEP53 — réponse publique à un commentaire.
+        return _dispatch_reply_comment(client, action)
+    if kind == KIND_DELETE_COMMENT:
+        # ADSDEEP53 — suppression d'un commentaire (miroir local retiré).
+        return _dispatch_delete_comment(client, action)
+    if kind == KIND_PRIVATE_REPLY:
+        # ADSDEEP53 — réponse privée (DM) : garde « une seule / 7 j » posée à la
+        # proposition ; l'application horodate le miroir pour bloquer une 2e.
+        return _dispatch_private_reply(client, action)
     if kind == KIND_ENABLE_CBO:
         # ADSENG22 — ``enable_cbo`` est PROPOSE-ONLY : activer l'Advantage+
         # campaign budget (CBO) est une décision HUMAINE hors moteur — jamais

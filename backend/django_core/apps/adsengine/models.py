@@ -1687,3 +1687,112 @@ class PagePostMirror(TenantModel):
         """Vrai si l'app peut éditer ce post (contrainte Meta : uniquement les
         posts créés par l'app elle-même)."""
         return bool(self.created_by_app)
+
+
+class CommentMirror(TenantModel):
+    """ADSDEEP53 — Miroir local d'un COMMENTAIRE de post (organique OU dark/ad).
+
+    Reflet en LECTURE d'un commentaire (dossier organic-posts §3). ``object_meta_id``
+    porte l'ID de l'objet commenté : soit le ``meta_id`` d'un ``PagePostMirror``
+    (post organique), soit l'``effective_object_story_id`` du créatif d'une ad
+    (dark post) — d'où le drapeau ``source``. Upsert idempotent par
+    ``(company, meta_id)``.
+
+    Deux champs gouvernent la sûreté du masquage (dossier §3 — ``is_hidden`` est
+    « éventuellement consistant » : masqué côté API mais parfois visible côté FB) :
+
+      * ``is_hidden`` — dernier état CONNU (peut être périmé/faux tant qu'un
+        read-back ne l'a pas confirmé) ;
+      * ``hidden_verified`` — VRAI uniquement quand un masquage/démasquage a été
+        RE-VÉRIFIÉ par un re-GET (le badge « caché-vérifié » de l'UI ne s'allume
+        que sur ce drapeau).
+
+    ``private_reply_sent_at`` matérialise le garde-fou des réponses privées : UNE
+    seule par commentaire, dans les 7 jours (dossier §3).
+    """
+
+    class Source(models.TextChoices):
+        POST = 'post', 'Post organique'
+        AD = 'ad', 'Post publicitaire (dark)'
+
+    meta_id = models.CharField(
+        max_length=64, verbose_name='ID commentaire Meta')
+    object_meta_id = models.CharField(
+        max_length=128, blank=True, default='',
+        verbose_name='ID objet commenté (post / dark post)')
+    source = models.CharField(
+        max_length=8, choices=Source.choices, default=Source.POST,
+        verbose_name='Origine')
+    parent_meta_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID commentaire parent (réponse)')
+    message = models.TextField(blank=True, default='', verbose_name='Message')
+    from_name = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Auteur')
+    from_id = models.CharField(
+        max_length=64, blank=True, default='', verbose_name='ID auteur')
+    created_time = models.DateTimeField(
+        null=True, blank=True, verbose_name='Créé le (Meta)')
+    like_count = models.PositiveIntegerField(
+        default=0, verbose_name='J’aime')
+    reply_count = models.PositiveIntegerField(
+        default=0, verbose_name='Réponses')
+    is_hidden = models.BooleanField(
+        default=False, verbose_name='Masqué (dernier état connu)')
+    hidden_verified = models.BooleanField(
+        default=False, verbose_name='Masquage re-vérifié (read-back)')
+    can_hide = models.BooleanField(default=True, verbose_name='Masquable')
+    can_remove = models.BooleanField(default=True, verbose_name='Supprimable')
+    answered = models.BooleanField(
+        default=False, verbose_name='Répondu (par la Page)')
+    permalink = models.TextField(
+        blank=True, default='', verbose_name='Permalien')
+    private_reply_sent_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Réponse privée envoyée le')
+    fetched_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Récupéré le')
+
+    class Meta:
+        verbose_name = 'Miroir de commentaire'
+        verbose_name_plural = 'Miroirs de commentaire'
+        ordering = ['-created_time', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adseng_comment_meta'),
+        ]
+
+    def __str__(self):
+        return f'Commentaire {self.meta_id} ({self.get_source_display()})'
+
+
+class CommentKeywordRule(TenantModel):
+    """ADSDEEP53 — Règle de masquage AUTOMATIQUE par mot-clé (spam/insultes…).
+
+    Par défaut en mode PROPOSE (``auto=False``) : une correspondance ne fait que
+    PROPOSER un masquage (``EngineAction`` à approuver) — jamais un masquage
+    silencieux. Le masquage réellement automatique n'existe QUE si le fondateur
+    bascule explicitement ``auto=True`` sur la règle (même doctrine opt-in que les
+    toggles de capacités ENG8). ``keyword`` est comparé en minuscules « contient »
+    au message du commentaire. Idempotent par ``(company, keyword)``.
+    """
+
+    keyword = models.CharField(max_length=128, verbose_name='Mot-clé')
+    enabled = models.BooleanField(default=True, verbose_name='Active')
+    auto = models.BooleanField(
+        default=False,
+        verbose_name='Masquage automatique (sinon : proposition seule)')
+
+    class Meta:
+        verbose_name = 'Règle de masquage par mot-clé'
+        verbose_name_plural = 'Règles de masquage par mot-clé'
+        ordering = ['keyword']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'keyword'],
+                name='uniq_adseng_comment_kw'),
+        ]
+
+    def __str__(self):
+        mode = 'auto' if self.auto else 'propose'
+        return f'Mot-clé « {self.keyword} » ({mode})'

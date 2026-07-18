@@ -913,6 +913,68 @@ class MetaClient:
         ad = self.create_ad(name=name, adset_id=adset_id, extra_fields=extra)
         return {'creative': creative, 'ad': ad}
 
+    # ── ADSDEEP53 — Commentaires (posts organiques ET dark/ad posts) ─────────
+    # Champs demandés par défaut (dossier organic-posts §3). ``is_hidden`` est
+    # DÉLIBÉRÉMENT re-lu par ``get_comment`` après tout masquage : il est
+    # « éventuellement consistant » (masqué côté API mais parfois visible côté FB,
+    # unhide parfois refusé alors que hide passe) — on ne le CROIT jamais en
+    # aveugle (read-back obligatoire, dossier §3).
+    COMMENT_FIELDS = (
+        'id', 'message', 'from', 'created_time', 'like_count', 'is_hidden',
+        'can_hide', 'can_remove', 'comment_count', 'permalink_url', 'parent')
+
+    def get_object_comments(self, object_id, *, fields=None, comment_filter='toplevel',
+                            limit=None):
+        """ADSDEEP53 — Lit les commentaires d'un objet (``GET /<object_id>/
+        comments``). ``object_id`` = un post organique OU l'``effective_object_
+        story_id`` d'un dark post (mêmes edges — dossier §3). ``comment_filter``
+        ∈ {toplevel, stream}. Renvoie la liste COMPLÈTE (toutes les pages)."""
+        params = {'fields': ','.join(fields or self.COMMENT_FIELDS)}
+        if comment_filter:
+            params['filter'] = comment_filter
+        if limit is not None:
+            params['limit'] = limit
+        return self._paged(f'{object_id}/comments', params=params)
+
+    def get_comment(self, comment_id, *, fields=None):
+        """ADSDEEP53 — Re-lit UN commentaire (``GET /<comment_id>``) — le read-back
+        du masquage. Renvoie le dict brut (ou ``{}``)."""
+        payload = self._request(
+            'GET', f'{comment_id}',
+            params={'fields': ','.join(fields or self.COMMENT_FIELDS)})
+        return payload if isinstance(payload, dict) else {}
+
+    def hide_comment(self, *, comment_id, hidden=True):
+        """ADSDEEP53 — Masque / démasque un commentaire (``POST /<comment_id>``
+        ``is_hidden=…``). ``is_hidden`` est l'un des DEUX seuls champs écrivables
+        d'un commentaire (avec ``message``). AUCUN ``status`` d'objet publicitaire
+        n'est en jeu ici. Le read-back de vérification est fait par l'appelant
+        (``services._dispatch_hide_comment`` re-GET puis compare)."""
+        return self._request(
+            'POST', f'{comment_id}',
+            data={'is_hidden': 'true' if hidden else 'false'})
+
+    def reply_to_comment(self, *, comment_id, message, attachment_url=None):
+        """ADSDEEP53 — Répond à un commentaire (``POST /<comment_id>/comments``)."""
+        body = {'message': message}
+        if attachment_url:
+            body['attachment_url'] = attachment_url
+        return self._request('POST', f'{comment_id}/comments', data=body)
+
+    def delete_comment(self, *, comment_id):
+        """ADSDEEP53 — Supprime un commentaire (``DELETE /<comment_id>``) — la Page
+        propriétaire de l'objet. Passe TOUJOURS par une ``EngineAction`` approuvée
+        (jamais un appel direct non journalisé)."""
+        return self._request('DELETE', f'{comment_id}')
+
+    def private_reply(self, *, comment_id, message):
+        """ADSDEEP53 — Réponse privée (DM) à un commentaire (``POST /<comment_id>/
+        private_replies``). Meta n'en autorise QU'UNE par commentaire, dans les
+        7 jours (dossier §3) — le garde-fou est appliqué à la proposition
+        (``services.propose_private_reply``) ; ce client ne fait que transmettre."""
+        return self._request(
+            'POST', f'{comment_id}/private_replies', data={'message': message})
+
     # ── Mise en pause (PAUSED-only — jamais de kwarg status) ─────────────────
     def update_status_paused(self, *, object_id, level=None):
         """ENGFIX5 — Met un objet (campagne / adset / ad) en ``PAUSED`` — et RIEN
