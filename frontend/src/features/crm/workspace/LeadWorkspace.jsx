@@ -1,4 +1,4 @@
-import { createElement, useEffect, useState, useCallback, useRef } from 'react'
+import { createElement, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import api from '../../../api/axios'
@@ -14,6 +14,7 @@ import {
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
 import { isTypingTarget } from '../../../providers/shortcuts'
+import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
 import { getField } from './draftCore'
 import IdentityRail from './IdentityRail'
@@ -76,7 +77,9 @@ export default function LeadWorkspace({
   const currentUserId = useSelector((s) => s.auth?.user?.id)
 
   const draft = useLeadDraft(lead, { mode, currentUserId, onSaved })
-  const { state, field, setField, saveState, leaveGuard } = draft
+  const {
+    state, field, setField, saveState, leaveGuard, changeStage,
+  } = draft
   // Primitives STABLES hoistées : le compilateur React (lint v7) refuse de
   // préserver un useCallback dont les deps mêlent optional-chaining et objet
   // entier — on ne dépend que de scalaires.
@@ -183,6 +186,27 @@ export default function LeadWorkspace({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [mode, leadsQueue, onNavigateLead, goToLead, nextInQueue, prevInQueue])
+
+  // ── LW23 : registre de raccourcis propre (a/d/n/1-4) ──────────────────────
+  // `a` archiver (leaveGuard déjà structurel dans doArchive), `d` focus le
+  // picker Responsable de l'IdentityRail (hook DOM stable `.ap-trigger` —
+  // fichier d'une autre lane, jamais importé), `n` bascule Historique +
+  // focus composer (événement `lw:open-note-composer`, ContextRail — LW19-21
+  // — DOIT écouter), `1`-`4` = StageControl (LEAD_STAGE_SHORTCUTS, jamais
+  // SIGNED/COLD). Handlers mémoïsés → `useFocusedRecordShortcuts` reçoit un
+  // objet STABLE, donc son propre effet clavier (dep array réparé,
+  // providers/focusedRecordShortcuts.jsx) ne se réabonne plus à chaque rendu.
+  const onStageShortcut = useCallback((def) => { changeStage(def.stage) }, [changeStage])
+  const focusedHandlers = useMemo(() => ({
+    a: () => doArchive(),
+    d: () => { document.querySelector('.ap-trigger')?.focus() },
+    n: () => { window.dispatchEvent(new CustomEvent('lw:open-note-composer', { detail: { leadId } })) },
+    '1': onStageShortcut,
+    '2': onStageShortcut,
+    '3': onStageShortcut,
+    '4': onStageShortcut,
+  }), [doArchive, onStageShortcut, leadId])
+  useFocusedRecordShortcuts('leadForm', focusedHandlers, mode === 'edit')
 
   // ── Fermeture (✕/overlay/Escape) via leaveGuard ──────────────────────────
   const requestClose = useCallback(() => { leaveGuard(onClose) }, [leaveGuard, onClose])
