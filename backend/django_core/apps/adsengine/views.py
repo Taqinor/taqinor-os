@@ -1605,6 +1605,37 @@ class AdCampaignMirrorViewSet(AdsengineViewSet):
         ]
         return Response(items)
 
+    @action(detail=True, methods=['get'], url_path='hierarchie',
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def hierarchy(self, request, pk=None):
+        """ADSDEEP60 — Hiérarchie navigable Campagne → Ad sets → Ads (3
+        niveaux) pour l'écran Campagnes : statuts/budgets/dépenses/leads par
+        niveau + badge d'apprentissage par ad set (ADSDEEP32). ``get_object``
+        hérité borne déjà la campagne à la société de l'utilisateur (404 sinon)
+        — lecture ``adsengine_view``, aucune écriture."""
+        campaign = self.get_object()
+        from .models import AdMirror, AdSetMirror
+        from .serializers import AdMirrorSerializer, AdSetMirrorSerializer
+
+        adsets = list(AdSetMirror.objects.filter(
+            company_id=campaign.company_id, campaign=campaign)
+            .order_by('-created_at'))
+        ads = list(AdMirror.objects.filter(
+            company_id=campaign.company_id, adset__in=adsets)
+            .order_by('-created_at')) if adsets else []
+        ads_by_adset = {}
+        for ad in ads:
+            ads_by_adset.setdefault(ad.adset_id, []).append(ad)
+
+        data = AdCampaignMirrorSerializer(campaign).data
+        data['adsets'] = []
+        for adset in adsets:
+            adset_data = AdSetMirrorSerializer(adset).data
+            adset_data['ads'] = AdMirrorSerializer(
+                ads_by_adset.get(adset.id, []), many=True).data
+            data['adsets'].append(adset_data)
+        return Response(data)
+
 
 # ── ENG36/ENG44 — Simulations (rejeu visuel — SHELL de scénario) ──────────────
 _SIM_SCENARIO_LABELS = {

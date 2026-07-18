@@ -4,13 +4,13 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    AdCampaignMirror, AdSetMirror, AnomalyEvent, ArmDailyStat, CommentMirror,
-    CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
-    CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
-    ExperimentArm, FlightPhase, FlightPlan, GuardrailConfig,
-    InsightBreakdown, InsightSnapshot, InstagramCommentMirror,
-    InstagramMediaMirror, MetaConnection, PacingState,
-    ReconciliationSnapshot, RulePolicy,
+    AdCampaignMirror, AdMirror, AdSetMirror, AnomalyEvent, ArmDailyStat,
+    CommentMirror, CreativeAsset, CreativeBacklogItem,
+    CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
+    EngineAlert, Experiment, ExperimentArm, FlightPhase, FlightPlan,
+    GuardrailConfig, InsightBreakdown, InsightSnapshot,
+    InstagramCommentMirror, InstagramMediaMirror, MetaConnection,
+    PacingState, ReconciliationSnapshot, RulePolicy,
 )
 
 
@@ -513,20 +513,45 @@ _LEARNING_BADGE = {
 }
 
 
+def _spend_results_for(model, obj):
+    """ADSDEEP60 — Agrégat (dépense, résultats) mémoïsé par instance depuis les
+    ``InsightSnapshot`` rattachés à ``obj`` (FK générique). Factorisation
+    partagée par les sérialiseurs de miroir (campagne/ad set/ad) — même
+    formule que ``AdCampaignMirrorSerializer._insights``, sans dupliquer la
+    requête pour les nouveaux niveaux de la hiérarchie."""
+    cached = getattr(obj, '_ae_insights', None)
+    if cached is None:
+        from django.contrib.contenttypes.models import ContentType
+        from django.db.models import Sum
+        ct = ContentType.objects.get_for_model(model)
+        cached = (InsightSnapshot.objects
+                  .filter(company_id=obj.company_id, content_type=ct,
+                          object_id=obj.pk)
+                  .aggregate(spend=Sum('spend'), results=Sum('results')))
+        obj._ae_insights = cached
+    return cached
+
+
 class AdSetMirrorSerializer(serializers.ModelSerializer):
-    """ADSDEEP32 — Miroir d'ad set (lecture seule) exposant la phase
-    d'apprentissage pour le badge UI. Le miroir reflète l'état Meta (jamais
-    d'activation) ; company-scopé par le viewset."""
+    """ADSDEEP32/ADSDEEP60 — Miroir d'ad set (lecture seule) exposant la phase
+    d'apprentissage pour le badge UI + (ADSDEEP60) statut FR, budget converti
+    et dépense/résultats agrégés pour l'écran hiérarchique Campagnes→Ad
+    sets→Ads. Le miroir reflète l'état Meta (jamais d'activation) ;
+    company-scopé par le viewset."""
 
     learning_badge = serializers.SerializerMethodField()
+    statut_display = serializers.SerializerMethodField()
+    budget_quotidien_mad = serializers.SerializerMethodField()
+    depense_mad = serializers.SerializerMethodField()
+    nb_leads = serializers.SerializerMethodField()
 
     class Meta:
         model = AdSetMirror
         fields = [
-            'id', 'meta_id', 'name', 'status', 'campaign',
+            'id', 'meta_id', 'name', 'status', 'statut_display', 'campaign',
             'learning_status', 'last_sig_edit', 'learning_stage_info',
-            'learning_badge', 'created_via_engine',
-            'created_at', 'updated_at',
+            'learning_badge', 'budget_quotidien_mad', 'depense_mad',
+            'nb_leads', 'created_via_engine', 'created_at', 'updated_at',
         ]
         read_only_fields = fields
 
@@ -542,6 +567,50 @@ class AdSetMirrorSerializer(serializers.ModelSerializer):
             'last_sig_edit': (obj.last_sig_edit.isoformat()
                               if obj.last_sig_edit else None),
         }
+
+    def get_statut_display(self, obj):
+        return _META_STATUT_FR.get(obj.status, obj.status or '—')
+
+    def get_budget_quotidien_mad(self, obj):
+        if obj.budget is None:
+            return None
+        # Budget Meta en unités mineures (centimes) → MAD (unités majeures).
+        return str((obj.budget / Decimal('100')).quantize(Decimal('0.01')))
+
+    def get_depense_mad(self, obj):
+        return str(_spend_results_for(AdSetMirror, obj)['spend'] or Decimal('0'))
+
+    def get_nb_leads(self, obj):
+        return int(_spend_results_for(AdSetMirror, obj)['results'] or 0)
+
+
+class AdMirrorSerializer(serializers.ModelSerializer):
+    """ADSDEEP60 — Miroir d'ad (lecture seule) pour le 3ᵉ niveau de la
+    hiérarchie Campagnes→Ad sets→Ads : statut FR + dépense/résultats agrégés
+    depuis les mêmes ``InsightSnapshot`` (ad-level, ADSDEEP2). Aucune
+    activation ; company-scopé par le viewset appelant."""
+
+    statut_display = serializers.SerializerMethodField()
+    depense_mad = serializers.SerializerMethodField()
+    nb_leads = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AdMirror
+        fields = [
+            'id', 'meta_id', 'name', 'status', 'statut_display', 'adset',
+            'depense_mad', 'nb_leads', 'hook_tag', 'angle_tag', 'format_tag',
+            'created_via_engine', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+    def get_statut_display(self, obj):
+        return _META_STATUT_FR.get(obj.status, obj.status or '—')
+
+    def get_depense_mad(self, obj):
+        return str(_spend_results_for(AdMirror, obj)['spend'] or Decimal('0'))
+
+    def get_nb_leads(self, obj):
+        return int(_spend_results_for(AdMirror, obj)['results'] or 0)
 
 
 class InsightBreakdownSerializer(serializers.ModelSerializer):

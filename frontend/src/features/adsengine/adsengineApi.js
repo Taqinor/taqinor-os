@@ -70,6 +70,8 @@ const adsengineApi = {
     syncNow: () => api.post('/adsengine/campaigns/sync-now/'),
     creativeRanking: (params) =>
       api.get('/adsengine/campaigns/creative-ranking/', { params }),
+    // ADSDEEP60 — hiérarchie Campagne → Ad sets → Ads (drill-down navigable).
+    hierarchy: (id) => api.get(`/adsengine/campaigns/${id}/hierarchie/`),
   },
 
   // ── ENG7/ENG25/ENG28 — EngineAction (boîte d'approbation + journal) ──

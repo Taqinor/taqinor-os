@@ -21,8 +21,9 @@ from authentication.models import Company
 from apps.roles.models import Role
 
 from apps.adsengine.models import (
-    AdCampaignMirror, CreativeAsset, CreativeGenerationBatch, DecisionLog,
-    EngineAlert, Experiment, GuardrailConfig, InsightSnapshot, MetaConnection,
+    AdCampaignMirror, AdMirror, AdSetMirror, CreativeAsset,
+    CreativeGenerationBatch, DecisionLog, EngineAlert, Experiment,
+    GuardrailConfig, InsightSnapshot, MetaConnection,
     ReconciliationSnapshot, WeeklyBrief,
 )
 
@@ -72,6 +73,19 @@ class ConsoleWiringTests(TestCase):
             company=cls.company, content_type=ct, object_id=cls.campaign.pk,
             date=datetime.date.today(), spend='120.00', results=6,
             frequency='1.80', cpl='20.00')
+
+        # ADSDEEP60 — hiérarchie Campagne → Ad set → Ad (badge apprentissage).
+        cls.adset = AdSetMirror.objects.create(
+            company=cls.company, meta_id='as-1', name='Ad set A',
+            status='ACTIVE', budget=4000, campaign=cls.campaign,
+            learning_status=AdSetMirror.LearningStatus.LEARNING)
+        cls.ad = AdMirror.objects.create(
+            company=cls.company, meta_id='ad-1', name='Ad A',
+            status='ACTIVE', adset=cls.adset)
+        ad_ct = ContentType.objects.get_for_model(AdMirror)
+        InsightSnapshot.objects.create(
+            company=cls.company, content_type=ad_ct, object_id=cls.ad.pk,
+            date=datetime.date.today(), spend='30.00', results=2)
 
         cls.brief = WeeklyBrief.objects.create(
             company=cls.company,
@@ -315,6 +329,38 @@ class ConsoleWiringTests(TestCase):
         resp = auth(self.manager).post(
             f'{BASE}/campaigns/', {'meta_id': 'x'}, format='json')
         self.assertEqual(resp.status_code, 405)
+
+    # ── ADSDEEP60 — Hiérarchie Campagne → Ad sets → Ads ───────────────────────
+    def test_campaign_hierarchy_shape_and_scoping(self):
+        resp = auth(self.viewer).get(
+            f'{BASE}/campaigns/{self.campaign.pk}/hierarchie/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['name'], 'Campagne A')
+        adsets = resp.data['adsets']
+        self.assertEqual(len(adsets), 1)
+        adset = adsets[0]
+        self.assertEqual(adset['name'], 'Ad set A')
+        self.assertEqual(adset['statut_display'], 'Active')
+        self.assertEqual(adset['budget_quotidien_mad'], '40.00')
+        self.assertEqual(adset['learning_badge']['label'], 'En apprentissage')
+        self.assertTrue(adset['learning_badge']['is_learning'])
+        ads = adset['ads']
+        self.assertEqual(len(ads), 1)
+        self.assertEqual(ads[0]['name'], 'Ad A')
+        self.assertEqual(ads[0]['depense_mad'], '30.00')
+        self.assertEqual(ads[0]['nb_leads'], 2)
+
+    def test_campaign_hierarchy_scoped_to_company(self):
+        other_campaign = AdCampaignMirror.objects.get(
+            company=self.other, meta_id='other-cmp')
+        resp = auth(self.viewer).get(
+            f'{BASE}/campaigns/{other_campaign.pk}/hierarchie/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_campaign_hierarchy_requires_view_permission(self):
+        resp = auth(self.nobody).get(
+            f'{BASE}/campaigns/{self.campaign.pk}/hierarchie/')
+        self.assertEqual(resp.status_code, 403)
 
     # ── ENG27 — Variantes (à la demande) ─────────────────────────────────────
     def test_variantes_action_noop_without_key(self):
