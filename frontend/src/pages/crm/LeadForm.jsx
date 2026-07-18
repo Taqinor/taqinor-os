@@ -1261,7 +1261,16 @@ export default function LeadForm({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} noValidate>
+        {/* LW1 — le shell ResponsiveDialog (grid/flex overflow-hidden, VX89)
+            ne borne le `<form>` qu'à condition que CE dernier porte lui-même
+            une hauteur bornée : sans classe, `.modal-body` (flex:1,
+            overflow-y:auto) ne rencontrait jamais de conteneur borné et le
+            débordement était simplement clippé (submit hors d'atteinte sur
+            petit viewport, Dialog ET Sheet mobile). `flex flex-col flex-1
+            min-h-0 overflow-hidden` fonctionne identiquement que le parent
+            soit grid (desktop) ou flex (Sheet) — ne touche pas à la règle
+            `.modal > form` d'index.css, encore portée par UsersManagement. */}
+        <form onSubmit={handleSubmit} noValidate className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <div className="lead-form-layout">
             <nav className="lead-nav" aria-label="Sections du lead">
               {buildNavSections({ agricole, isEdit, hasWebOrigin, dupCount: dups.length })
