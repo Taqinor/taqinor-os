@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import marketingApi from '../../api/marketingApi'
 import {
   addQuestion, removeQuestion, updateQuestion, optionsFromText, optionsToText,
-} from './enqueteBuilder'
+} from './enqueteRules'
 
 /* ============================================================================
    NTMKT8 — Constructeur d'enquête générique (NPS/choix/échelle/texte) avec
