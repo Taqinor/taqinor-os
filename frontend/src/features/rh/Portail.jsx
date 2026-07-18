@@ -6,7 +6,7 @@ import {
 import {
   Card, Stat, Segmented, Badge, EmptyState, Skeleton, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Button, Label, Input, Textarea,
+  Button, Label, Input, Textarea, confirmLeaveIfDirty,
 } from '../../ui'
 import { formatMAD, formatNumber, formatDate } from '../../lib/format'
 import rhApi from '../../api/rhApi'
@@ -50,6 +50,7 @@ export default function Portail() {
   const [tentatives, setTentatives] = useState([])
   const [evaluations, setEvaluations] = useState([])
   const [pulse, setPulse] = useState([])
+  const [typesAbsence, setTypesAbsence] = useState([])
   const [loading, setLoading] = useState(true)
   const [sansDossier, setSansDossier] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
@@ -58,6 +59,10 @@ export default function Portail() {
   const [attestationOpen, setAttestationOpen] = useState(false)
   const [quizFor, setQuizFor] = useState(null)
   const [autoEvalFor, setAutoEvalFor] = useState(null)
+  // WIR35 — nouvelle demande de congé/frais/allocation.
+  const [congeOpen, setCongeOpen] = useState(false)
+  const [allocationOpen, setAllocationOpen] = useState(false)
+  const [fraisOpen, setFraisOpen] = useState(false)
 
   const recharger = () => setReloadTick((t) => t + 1)
 
@@ -88,9 +93,10 @@ export default function Portail() {
       rhApi.getMesTentativesQuiz(),
       rhApi.getMesEvaluations(),
       rhApi.getCampagnesPulse(),
+      rhApi.getTypesAbsence(),
     ]).then((r) => {
       if (!vivant) return
-      const [s, c, f, m, b, dm, ep, ha, qz, tt, ev, pl] = r
+      const [s, c, f, m, b, dm, ep, ha, qz, tt, ev, pl, ta] = r
       if (s.status === 'fulfilled') setSoldes(unwrap(s.value.data))
       if (c.status === 'fulfilled') setConges(unwrap(c.value.data))
       if (f.status === 'fulfilled') setFrais(unwrap(f.value.data))
@@ -100,6 +106,7 @@ export default function Portail() {
       if (ep.status === 'fulfilled') setEpi(unwrap(ep.value.data))
       if (ha.status === 'fulfilled') setHabilitations(unwrap(ha.value.data))
       if (qz.status === 'fulfilled') setQuizDispo(unwrap(qz.value.data))
+      if (ta.status === 'fulfilled') setTypesAbsence(unwrap(ta.value.data))
       if (tt.status === 'fulfilled') setTentatives(unwrap(tt.value.data))
       if (ev.status === 'fulfilled') setEvaluations(unwrap(ev.value.data))
       if (pl.status === 'fulfilled') setPulse(unwrap(pl.value.data))
@@ -155,31 +162,44 @@ export default function Portail() {
 
       <Segmented options={VUES} value={vue} onChange={setVue} aria-label="Vue portail" />
 
+      {/* WIR35 — soumission self-service congé/allocation depuis le portail. */}
       {vue === 'conges' && (
-        <PortailListe
-          rows={conges}
-          empty="Aucune demande de congé."
-          renderRow={(c) => (
-            <RowLine
-              title={`${formatDate(c.date_debut)} → ${formatDate(c.date_fin)}`}
-              meta={`${c.type_absence_code || ''} · ${formatNumber(c.jours ?? 0, { decimals: 1 })} j`}
-              right={<StatutConge status={c.statut} label={c.statut_display} />}
-            />
-          )}
-        />
+        <div className="flex flex-col gap-3">
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setAllocationOpen(true)}>Demander une allocation</Button>
+            <Button size="sm" onClick={() => setCongeOpen(true)}>Nouvelle demande de congé</Button>
+          </div>
+          <PortailListe
+            rows={conges}
+            empty="Aucune demande de congé."
+            renderRow={(c) => (
+              <RowLine
+                title={`${formatDate(c.date_debut)} → ${formatDate(c.date_fin)}`}
+                meta={`${c.type_absence_code || ''} · ${formatNumber(c.jours ?? 0, { decimals: 1 })} j`}
+                right={<StatutConge status={c.statut} label={c.statut_display} />}
+              />
+            )}
+          />
+        </div>
       )}
+      {/* WIR35 — soumission self-service d'une note de frais. */}
       {vue === 'frais' && (
-        <PortailListe
-          rows={frais}
-          empty="Aucune note de frais."
-          renderRow={(f) => (
-            <RowLine
-              title={f.libelle || f.categorie_display || 'Note de frais'}
-              meta={`${formatMAD(f.montant)}${f.date_frais ? ` · ${formatDate(f.date_frais)}` : ''}`}
-              right={<StatutNoteFrais status={f.statut} label={f.statut_display} />}
-            />
-          )}
-        />
+        <div className="flex flex-col gap-3">
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => setFraisOpen(true)}>Nouvelle note de frais</Button>
+          </div>
+          <PortailListe
+            rows={frais}
+            empty="Aucune note de frais."
+            renderRow={(f) => (
+              <RowLine
+                title={f.libelle || f.categorie_display || 'Note de frais'}
+                meta={`${formatMAD(f.montant)}${f.date_frais ? ` · ${formatDate(f.date_frais)}` : ''}`}
+                right={<StatutNoteFrais status={f.statut} label={f.statut_display} />}
+              />
+            )}
+          />
+        </div>
       )}
       {vue === 'missions' && (
         <PortailListe
@@ -335,6 +355,26 @@ export default function Portail() {
           onSaved={() => { setAutoEvalFor(null); recharger() }}
         />
       )}
+      {congeOpen && (
+        <CongeDialog
+          typesAbsence={typesAbsence}
+          onClose={() => setCongeOpen(false)}
+          onSaved={() => { setCongeOpen(false); recharger() }}
+        />
+      )}
+      {allocationOpen && (
+        <AllocationDialog
+          typesAbsence={typesAbsence}
+          onClose={() => setAllocationOpen(false)}
+          onSaved={() => { setAllocationOpen(false); recharger() }}
+        />
+      )}
+      {fraisOpen && (
+        <FraisDialog
+          onClose={() => setFraisOpen(false)}
+          onSaved={() => { setFraisOpen(false); recharger() }}
+        />
+      )}
     </div>
   )
 }
@@ -426,6 +466,224 @@ function AttestationDialog({ onClose, onSaved }) {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Envoi…' : 'Envoyer la demande'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR35 — Nouvelle demande de congé (self-service) ── */
+function CongeDialog({ typesAbsence, onClose, onSaved }) {
+  const [typeAbsence, setTypeAbsence] = useState('')
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [motif, setMotif] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(typeAbsence || dateDebut || dateFin || motif)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(typeAbsence && dateDebut && dateFin)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.demanderConge({
+        type_absence: typeAbsence,
+        date_debut: dateDebut,
+        date_fin: dateFin,
+        motif: motif || '',
+      })
+      toast.success('Demande de congé envoyée.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || 'Envoi de la demande impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Nouvelle demande de congé</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cg-type">Type d’absence</Label>
+            <select id="cg-type" value={typeAbsence} onChange={(e) => setTypeAbsence(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+              <option value="">— Choisir —</option>
+              {typesAbsence.map((t) => <option key={t.id} value={t.id}>{t.libelle || t.code}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cg-debut">Du</Label>
+              <Input id="cg-debut" type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="cg-fin">Au</Label>
+              <Input id="cg-fin" type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cg-motif">Motif (optionnel)</Label>
+            <Textarea id="cg-motif" value={motif} onChange={(e) => setMotif(e.target.value)} rows={2} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Envoi…' : 'Envoyer la demande'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR35 (ZRH13) — Demander une allocation exceptionnelle de jours ── */
+function AllocationDialog({ typesAbsence, onClose, onSaved }) {
+  const [typeAbsence, setTypeAbsence] = useState('')
+  const [jours, setJours] = useState('')
+  const [motif, setMotif] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(typeAbsence || jours || motif)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(typeAbsence && jours)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.demanderAllocation({
+        type_absence: typeAbsence,
+        jours,
+        motif: motif || '',
+      })
+      toast.success('Demande d’allocation envoyée.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || 'Envoi de la demande impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Demander une allocation de congés</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="al-type">Type d’absence</Label>
+            <select id="al-type" value={typeAbsence} onChange={(e) => setTypeAbsence(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+              <option value="">— Choisir —</option>
+              {typesAbsence.map((t) => <option key={t.id} value={t.id}>{t.libelle || t.code}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="al-jours">Jours demandés</Label>
+            <Input id="al-jours" type="number" step="any" min="0" value={jours} onChange={(e) => setJours(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="al-motif">Motif</Label>
+            <Textarea id="al-motif" value={motif} onChange={(e) => setMotif(e.target.value)} rows={2} placeholder="Ex. RTT, congé d’ancienneté, don de jours…" />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Envoi…' : 'Envoyer la demande'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR35 — Nouvelle note de frais (self-service) ── */
+function FraisDialog({ onClose, onSaved }) {
+  const [categorie, setCategorie] = useState('transport')
+  const [montant, setMontant] = useState('')
+  const [dateFrais, setDateFrais] = useState('')
+  const [libelle, setLibelle] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const CATEGORIES = [
+    { value: 'transport', label: 'Transport' },
+    { value: 'repas', label: 'Repas' },
+    { value: 'hebergement', label: 'Hébergement' },
+    { value: 'fournitures', label: 'Fournitures' },
+    { value: 'autre', label: 'Autre' },
+  ]
+
+  const dirty = Boolean(montant || dateFrais || libelle)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(montant && dateFrais)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.declarerFrais({
+        categorie,
+        montant,
+        date_frais: dateFrais,
+        libelle: libelle || '',
+      })
+      toast.success('Note de frais déclarée.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || 'Déclaration impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Nouvelle note de frais</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="fr-categorie">Catégorie</Label>
+              <select id="fr-categorie" value={categorie} onChange={(e) => setCategorie(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+                {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="fr-montant">Montant (MAD)</Label>
+              <Input id="fr-montant" type="number" step="any" min="0" value={montant} onChange={(e) => setMontant(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="fr-date">Date de la dépense</Label>
+            <Input id="fr-date" type="date" value={dateFrais} onChange={(e) => setDateFrais(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="fr-libelle">Libellé (optionnel)</Label>
+            <Input id="fr-libelle" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>{saving ? 'Envoi…' : 'Déclarer la dépense'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
