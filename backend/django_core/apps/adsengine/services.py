@@ -625,6 +625,191 @@ def _dispatch_private_reply(client, action):
     return result if isinstance(result, dict) else {'result': result}
 
 
+# ── ADSDEEP55 — Instagram (publication container + commentaires) ─────────────
+KIND_PUBLISH_IG = 'publish_ig'
+KIND_HIDE_IG_COMMENT = 'hide_ig_comment'
+KIND_REPLY_IG_COMMENT = 'reply_ig_comment'
+KIND_DELETE_IG_COMMENT = 'delete_ig_comment'
+KIND_TOGGLE_IG_COMMENTS = 'toggle_ig_comments'
+
+WARN_IG_CAPTION_IMMUTABLE = (
+    "La légende Instagram ne pourra PLUS être modifiée après publication (Reels "
+    "compris) — relisez-la avant d'approuver, c'est définitif.")
+
+# Types de média IG publiables (miroir de MetaClient.IG_MEDIA_TYPES).
+IG_MEDIA_TYPES = ('IMAGE', 'VIDEO', 'REELS', 'STORIES', 'CAROUSEL')
+
+
+def propose_publish_ig(company, *, media_type, image_url='', video_url='',
+                       caption='', alt_text='', scheduled_at=None,
+                       reason_fr=None):
+    """ADSDEEP55 — Propose la PUBLICATION d'un média Instagram (kind PUBLISH_IG).
+
+    L'application passe par le flux CONTAINER (create → poll FINISHED → publish)
+    et vérifie le QUOTA 50/24 h AVANT toute création. La ``caption`` est posée à
+    la création du container et devient IMMUABLE — l'avertissement est porté à
+    l'approbateur (``payload['warnings']``). ``scheduled_at`` (optionnel) est
+    conservé : l'action proposée reste en attente jusqu'à ce qu'un humain
+    l'approuve/applique au moment voulu (aucune activation automatique)."""
+    mtype = str(media_type or '').strip().upper()
+    if mtype not in IG_MEDIA_TYPES:
+        raise ValueError(
+            f"media_type Instagram invalide : {media_type} "
+            f"(attendu l'un de {', '.join(IG_MEDIA_TYPES)}).")
+    if mtype in ('VIDEO', 'REELS') and not video_url:
+        raise ValueError("Une publication vidéo/Reel exige video_url.")
+    if mtype in ('IMAGE', 'CAROUSEL') and not image_url:
+        raise ValueError("Une publication image/carrousel exige image_url.")
+    reason_fr = reason_fr or f"Publier un média Instagram ({mtype})."
+    payload = {
+        'media_type': mtype, 'image_url': image_url, 'video_url': video_url,
+        'caption': caption, 'alt_text': alt_text,
+        'scheduled_at': scheduled_at,
+        'warnings': [WARN_IG_CAPTION_IMMUTABLE]}
+    return propose_action(
+        company, kind=KIND_PUBLISH_IG, reason_fr=reason_fr, payload=payload)
+
+
+def propose_hide_ig_comment(company, *, comment, hidden=True, reason_fr=None):
+    """ADSDEEP55 — Propose de masquer/démasquer un commentaire Instagram."""
+    verb = 'Masquer' if hidden else 'Démasquer'
+    reason_fr = reason_fr or f"{verb} le commentaire Instagram {comment.meta_id}."
+    payload = {'comment_id': comment.meta_id, 'hidden': bool(hidden)}
+    return propose_action(
+        company, kind=KIND_HIDE_IG_COMMENT, reason_fr=reason_fr, payload=payload)
+
+
+def propose_reply_ig_comment(company, *, comment, message, reason_fr=None):
+    """ADSDEEP55 — Propose une réponse à un commentaire Instagram."""
+    if not (message and str(message).strip()):
+        raise ValueError("Une réponse ne peut pas être vide.")
+    reason_fr = reason_fr or f"Répondre au commentaire Instagram {comment.meta_id}."
+    payload = {'comment_id': comment.meta_id, 'message': str(message)}
+    return propose_action(
+        company, kind=KIND_REPLY_IG_COMMENT, reason_fr=reason_fr, payload=payload)
+
+
+def propose_delete_ig_comment(company, *, comment, reason_fr=None):
+    """ADSDEEP55 — Propose la suppression d'un commentaire Instagram."""
+    reason_fr = reason_fr or f"Supprimer le commentaire Instagram {comment.meta_id}."
+    payload = {'comment_id': comment.meta_id}
+    return propose_action(
+        company, kind=KIND_DELETE_IG_COMMENT, reason_fr=reason_fr, payload=payload)
+
+
+def propose_toggle_ig_comments(company, *, media, enabled, reason_fr=None):
+    """ADSDEEP55 — Propose de couper / rouvrir les commentaires d'un média IG
+    (``comment_enabled`` — SEUL champ écrivable d'un média ; la légende reste
+    immuable)."""
+    verb = 'Rouvrir' if enabled else 'Couper'
+    reason_fr = reason_fr or (
+        f"{verb} les commentaires du média Instagram {media.meta_id}.")
+    payload = {'media_id': media.meta_id, 'enabled': bool(enabled)}
+    return propose_action(
+        company, kind=KIND_TOGGLE_IG_COMMENTS, reason_fr=reason_fr, payload=payload)
+
+
+def _dispatch_publish_ig(client, action):
+    """ADSDEEP55 — Applique une publication Instagram via le flux CONTAINER
+    (create → poll FINISHED → publish, quota 50/24 h vérifié dans le client).
+    Journalise un ``InstagramPublishJob`` (état + quota surfacé). La caption est
+    posée à la création et n'est jamais ré-éditée."""
+    from django.utils.dateparse import parse_datetime
+
+    from .models import InstagramPublishJob
+
+    payload = action.payload or {}
+    scheduled = payload.get('scheduled_at')
+    scheduled_dt = parse_datetime(str(scheduled)) if scheduled else None
+    job = InstagramPublishJob.objects.create(
+        company=action.company,
+        media_type=str(payload.get('media_type') or ''),
+        image_url=payload.get('image_url', '') or '',
+        video_url=payload.get('video_url', '') or '',
+        caption=payload.get('caption', '') or '',
+        scheduled_at=scheduled_dt,
+        status=InstagramPublishJob.Status.PENDING)
+    try:
+        result = client.publish_ig_media(
+            image_url=payload.get('image_url') or None,
+            video_url=payload.get('video_url') or None,
+            media_type=payload.get('media_type') or None,
+            caption=payload.get('caption', '') or '',
+            alt_text=payload.get('alt_text') or None,
+            file_size=payload.get('file_size'))
+    except Exception as exc:
+        job.status = InstagramPublishJob.Status.ERROR
+        job.error = str(exc)
+        job.save(update_fields=['status', 'error', 'updated_at'])
+        raise
+    result = result if isinstance(result, dict) else {'result': result}
+    quota = result.get('quota') or {}
+    job.creation_id = str(result.get('creation_id') or '')
+    job.published_media_id = str(result.get('media_id') or '')
+    job.status = InstagramPublishJob.Status.PUBLISHED
+    job.status_code = 'FINISHED'
+    job.quota_used = quota.get('used')
+    job.quota_total = quota.get('total')
+    job.save(update_fields=[
+        'creation_id', 'published_media_id', 'status', 'status_code',
+        'quota_used', 'quota_total', 'updated_at'])
+    out = dict(result)
+    out['job_id'] = job.pk
+    return out
+
+
+def _dispatch_hide_ig_comment(client, action):
+    """ADSDEEP55 — Masque/démasque un commentaire IG + met à jour le miroir."""
+    from .models import InstagramCommentMirror
+
+    payload = action.payload or {}
+    comment_id = str(payload.get('comment_id') or '')
+    hidden = bool(payload.get('hidden', True))
+    result = client.hide_ig_comment(comment_id=comment_id, hidden=hidden)
+    InstagramCommentMirror.objects.filter(
+        company=action.company, meta_id=comment_id).update(hidden=hidden)
+    return result if isinstance(result, dict) else {'result': result}
+
+
+def _dispatch_reply_ig_comment(client, action):
+    """ADSDEEP55 — Répond à un commentaire IG + marque le miroir « répondu »."""
+    from .models import InstagramCommentMirror
+
+    payload = action.payload or {}
+    comment_id = str(payload.get('comment_id') or '')
+    result = client.reply_ig_comment(
+        comment_id=comment_id, message=payload.get('message', ''))
+    InstagramCommentMirror.objects.filter(
+        company=action.company, meta_id=comment_id).update(answered=True)
+    return result if isinstance(result, dict) else {'result': result}
+
+
+def _dispatch_delete_ig_comment(client, action):
+    """ADSDEEP55 — Supprime un commentaire IG + retire le miroir."""
+    from .models import InstagramCommentMirror
+
+    payload = action.payload or {}
+    comment_id = str(payload.get('comment_id') or '')
+    result = client.delete_ig_comment(comment_id=comment_id)
+    InstagramCommentMirror.objects.filter(
+        company=action.company, meta_id=comment_id).delete()
+    return result if isinstance(result, dict) else {'result': result}
+
+
+def _dispatch_toggle_ig_comments(client, action):
+    """ADSDEEP55 — Coupe/rouvre les commentaires d'un média IG + met à jour le
+    miroir (``comment_enabled`` — la légende reste immuable, jamais touchée)."""
+    from .models import InstagramMediaMirror
+
+    payload = action.payload or {}
+    media_id = str(payload.get('media_id') or '')
+    enabled = bool(payload.get('enabled', True))
+    result = client.set_ig_comment_enabled(media_id=media_id, enabled=enabled)
+    InstagramMediaMirror.objects.filter(
+        company=action.company, meta_id=media_id).update(comment_enabled=enabled)
+    return result if isinstance(result, dict) else {'result': result}
+
+
 def _dispatch_create_post(client, payload):
     """ADSDEEP51 — Route une action CREATE_POST vers la bonne méthode de
     publication du client selon le média (aucun / photo / multi-photos / vidéo)
@@ -854,6 +1039,21 @@ def _dispatch(client, action):
         # ADSDEEP53 — réponse privée (DM) : garde « une seule / 7 j » posée à la
         # proposition ; l'application horodate le miroir pour bloquer une 2e.
         return _dispatch_private_reply(client, action)
+    if kind == KIND_PUBLISH_IG:
+        # ADSDEEP55 — publication Instagram via le flux container (create → poll
+        # FINISHED → publish, quota 50/24 h vérifié). Caption immuable, jamais
+        # ré-éditée. Aucun statut de campagne/adset/ad en jeu.
+        return _dispatch_publish_ig(client, action)
+    if kind == KIND_HIDE_IG_COMMENT:
+        return _dispatch_hide_ig_comment(client, action)
+    if kind == KIND_REPLY_IG_COMMENT:
+        return _dispatch_reply_ig_comment(client, action)
+    if kind == KIND_DELETE_IG_COMMENT:
+        return _dispatch_delete_ig_comment(client, action)
+    if kind == KIND_TOGGLE_IG_COMMENTS:
+        # ADSDEEP55 — couper/rouvrir les commentaires (comment_enabled — SEUL
+        # champ écrivable d'un média IG ; la légende reste immuable).
+        return _dispatch_toggle_ig_comments(client, action)
     if kind == KIND_ENABLE_CBO:
         # ADSENG22 — ``enable_cbo`` est PROPOSE-ONLY : activer l'Advantage+
         # campaign budget (CBO) est une décision HUMAINE hors moteur — jamais

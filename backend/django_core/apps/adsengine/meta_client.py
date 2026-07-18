@@ -184,14 +184,15 @@ class MetaClient:
     """
 
     def __init__(self, *, access_token, ad_account_id=None, page_id=None,
-                 base_url=GRAPH_BASE_URL, http_client=None, max_retries=3,
-                 backoff_base=0.5):
+                 ig_user_id=None, base_url=GRAPH_BASE_URL, http_client=None,
+                 max_retries=3, backoff_base=0.5):
         if not access_token:
             raise MetaAuthError(
                 "Token Meta manquant : connexion non configurée ou désactivée.")
         self._token = access_token
         self.ad_account_id = ad_account_id
         self.page_id = page_id
+        self.ig_user_id = ig_user_id
         self._base_url = base_url.rstrip('/')
         self._client = http_client or httpx.Client(timeout=30.0)
         self._owns_client = http_client is None
@@ -213,6 +214,7 @@ class MetaClient:
             access_token=token,
             ad_account_id=connection.ad_account_id or None,
             page_id=connection.page_id or None,
+            ig_user_id=getattr(connection, 'ig_user_id', '') or None,
             **kwargs,
         )
 
@@ -231,6 +233,14 @@ class MetaClient:
         if not self.page_id:
             raise MetaError("page_id manquant sur la connexion Meta.")
         return f'{self.page_id}/{edge}'
+
+    def _ig_edge(self, edge):
+        """ADSDEEP55 — Chemin d'un edge du compte IG (``<ig_user_id>/<edge>``).
+        Lève si la connexion n'a pas d'``ig_user_id`` (aucun appel sur un compte
+        Instagram inconnu — tout le pan IG no-ope proprement en amont)."""
+        if not self.ig_user_id:
+            raise MetaError("ig_user_id manquant sur la connexion Meta.")
+        return f'{self.ig_user_id}/{edge}'
 
     def _sleep(self, attempt):
         if self._backoff_base:
@@ -974,6 +984,218 @@ class MetaClient:
         (``services.propose_private_reply``) ; ce client ne fait que transmettre."""
         return self._request(
             'POST', f'{comment_id}/private_replies', data={'message': message})
+
+    # ── ADSDEEP55 — Instagram (compte Business relié à la Page) ──────────────
+    # ``caption`` est LECTURE SEULE (immuable après publication, dossier §4) —
+    # aucune méthode d'édition de légende n'existe (analogue à l'absence de toute
+    # méthode d'activation, invariant #3). Le SEUL champ écrivable d'un média est
+    # ``comment_enabled``.
+    IG_MEDIA_FIELDS = (
+        'id', 'caption', 'media_type', 'media_url', 'permalink', 'timestamp',
+        'like_count', 'comments_count', 'is_comment_enabled')
+    IG_COMMENT_FIELDS = (
+        'id', 'text', 'username', 'timestamp', 'like_count', 'hidden',
+        'parent_id')
+    # Quota de publication IG (dossier §4) : 50 publications / 24 h (à vérifier
+    # par compte via ``content_publishing_limit`` — jamais codé en dur comme
+    # source de vérité, seulement en repli si l'endpoint ne renvoie rien).
+    IG_PUBLISH_QUOTA_DEFAULT = 50
+    # Spec REELS (dossier §4) : MP4/MOV H.264, ≤ 300 Mo.
+    MAX_REEL_BYTES = 300 * 1024 * 1024
+    IG_MEDIA_TYPES = ('IMAGE', 'VIDEO', 'REELS', 'STORIES', 'CAROUSEL')
+    # États du container renvoyés par ``status_code`` (dossier §4).
+    IG_CONTAINER_MAX_POLLS = 30
+    IG_CONTAINER_POLL_SECONDS = 2.0
+
+    def get_page_ig_account(self):
+        """ADSDEEP55 — Résout l'``ig_user_id`` depuis la Page
+        (``GET /<page_id>?fields=instagram_business_account{id,username}``).
+        Renvoie l'ID (ou ``''`` si la Page n'a pas de compte IG relié)."""
+        payload = self._request(
+            'GET', self._page_edge('').rstrip('/'),
+            params={'fields': 'instagram_business_account{id,username}'})
+        acct = (payload or {}).get('instagram_business_account') or {}
+        return str(acct.get('id') or '')
+
+    def get_ig_media(self, *, fields=None, limit=None):
+        """ADSDEEP55 — Lit les médias du compte IG (``GET /<ig_user_id>/media``).
+        Renvoie la liste COMPLÈTE (toutes les pages)."""
+        return self._read_list(
+            self._ig_edge('media'), fields=fields or self.IG_MEDIA_FIELDS,
+            limit=limit)
+
+    def get_ig_media_comments(self, media_id, *, fields=None):
+        """ADSDEEP55 — Commentaires d'un média IG
+        (``GET /<ig_media_id>/comments``)."""
+        return self._paged(
+            f'{media_id}/comments',
+            params={'fields': ','.join(fields or self.IG_COMMENT_FIELDS)})
+
+    def hide_ig_comment(self, *, comment_id, hidden=True):
+        """ADSDEEP55 — Masque / démasque un commentaire IG
+        (``POST /<ig_comment_id>`` ``hide=…``)."""
+        return self._request(
+            'POST', f'{comment_id}',
+            data={'hide': 'true' if hidden else 'false'})
+
+    def reply_ig_comment(self, *, comment_id, message):
+        """ADSDEEP55 — Répond à un commentaire IG
+        (``POST /<ig_comment_id>/replies``)."""
+        return self._request(
+            'POST', f'{comment_id}/replies', data={'message': message})
+
+    def delete_ig_comment(self, *, comment_id):
+        """ADSDEEP55 — Supprime un commentaire IG (``DELETE /<ig_comment_id>``)."""
+        return self._request('DELETE', f'{comment_id}')
+
+    def set_ig_comment_enabled(self, *, media_id, enabled):
+        """ADSDEEP55 — Coupe / rouvre les commentaires d'un média
+        (``POST /<ig_media_id>`` ``comment_enabled=…`` — SEUL champ écrivable d'un
+        média IG ; la légende, elle, est immuable)."""
+        return self._request(
+            'POST', f'{media_id}',
+            data={'comment_enabled': 'true' if enabled else 'false'})
+
+    def get_ig_publishing_limit(self):
+        """ADSDEEP55 — Quota de publication du compte
+        (``GET /<ig_user_id>/content_publishing_limit``). Renvoie
+        ``{used, total}`` (``used`` = ``quota_usage`` ; ``total`` = ``config.
+        quota_total`` ou le repli 50). Robuste à un payload absent/partiel."""
+        payload = self._request(
+            'GET', self._ig_edge('content_publishing_limit'),
+            params={'fields': 'config,quota_usage'})
+        data = (payload or {}).get('data') or []
+        row = data[0] if data else (payload or {})
+        used = row.get('quota_usage')
+        config = row.get('config') or {}
+        total = config.get('quota_total', self.IG_PUBLISH_QUOTA_DEFAULT)
+        try:
+            used = int(used) if used is not None else None
+        except (TypeError, ValueError):
+            used = None
+        try:
+            total = int(total)
+        except (TypeError, ValueError):
+            total = self.IG_PUBLISH_QUOTA_DEFAULT
+        return {'used': used, 'total': total}
+
+    def create_ig_container(self, *, image_url=None, video_url=None,
+                            media_type=None, caption='', alt_text=None,
+                            file_size=None, extra_fields=None):
+        """ADSDEEP55 — Crée un container de publication
+        (``POST /<ig_user_id>/media``). ``caption`` est posée ICI (à la création)
+        et devient IMMUABLE après publication (aucune ré-édition). Un Reel
+        (``media_type=REELS``) exige ``video_url`` et est borné à 300 Mo (fail-fast).
+        Renvoie ``{id: creation_id}``."""
+        mtype = str(media_type or '').strip().upper()
+        if mtype and mtype not in self.IG_MEDIA_TYPES:
+            raise MetaError(
+                f"media_type Instagram invalide : {mtype} "
+                f"(attendu l'un de {', '.join(self.IG_MEDIA_TYPES)}).")
+        if mtype in ('VIDEO', 'REELS') and not video_url:
+            raise MetaError(
+                "Une publication vidéo/Reel exige video_url.")
+        if mtype in ('IMAGE', '') and not image_url and not video_url:
+            raise MetaError(
+                "Une publication image exige image_url.")
+        if file_size is not None:
+            try:
+                size = int(file_size)
+            except (TypeError, ValueError):
+                size = 0
+            if size > self.MAX_REEL_BYTES:
+                raise MetaError(
+                    "Vidéo trop lourde pour un Reel : 300 Mo maximum "
+                    "(dossier organic-posts-ig §4).")
+        body = {}
+        if image_url:
+            body['image_url'] = image_url
+        if video_url:
+            body['video_url'] = video_url
+        if mtype:
+            body['media_type'] = mtype
+        if caption:
+            body['caption'] = caption
+        if alt_text:
+            body['alt_text'] = alt_text
+        body.update(dict(extra_fields or {}))
+        return self._request('POST', self._ig_edge('media'), data=body)
+
+    def get_ig_container_status(self, creation_id):
+        """ADSDEEP55 — État d'un container (``GET /<creation_id>?fields=status_code``).
+        ``status_code`` ∈ {EXPIRED, ERROR, FINISHED, IN_PROGRESS, PUBLISHED}."""
+        payload = self._request(
+            'GET', f'{creation_id}', params={'fields': 'status_code,status'})
+        return payload if isinstance(payload, dict) else {}
+
+    def publish_ig_container(self, *, creation_id):
+        """ADSDEEP55 — Publie un container prêt
+        (``POST /<ig_user_id>/media_publish`` ``creation_id=…``). Renvoie
+        ``{id: published_media_id}``."""
+        return self._request(
+            'POST', self._ig_edge('media_publish'),
+            data={'creation_id': creation_id})
+
+    def publish_ig_media(self, *, image_url=None, video_url=None,
+                         media_type=None, caption='', alt_text=None,
+                         file_size=None, extra_fields=None,
+                         max_polls=None, poll_seconds=None):
+        """ADSDEEP55 — Flux de publication IG COMPLET en 2 temps (dossier §4) :
+
+          1. QUOTA — ``content_publishing_limit`` ; refus fail-fast si le quota
+             24 h est atteint (``used >= total``) — jamais un rejet Graph tardif ;
+          2. CONTAINER — ``create_ig_container`` (la ``caption`` est posée ici,
+             immuable ensuite) ;
+          3. POLL — attend ``status_code=FINISHED`` (lève sur ERROR/EXPIRED,
+             borne dure de polls) ;
+          4. PUBLISH — ``publish_ig_container``.
+
+        Renvoie ``{creation_id, media_id, polls, quota}``. AUCUNE édition de
+        légende n'est possible (par conception, comme l'absence d'activation)."""
+        quota = self.get_ig_publishing_limit()
+        if (quota.get('used') is not None
+                and quota.get('total') is not None
+                and quota['used'] >= quota['total']):
+            raise MetaError(
+                "Quota de publication Instagram atteint "
+                f"({quota['used']}/{quota['total']} sur 24 h) — publication "
+                "refusée (dossier organic-posts-ig §4).")
+        container = self.create_ig_container(
+            image_url=image_url, video_url=video_url, media_type=media_type,
+            caption=caption, alt_text=alt_text, file_size=file_size,
+            extra_fields=extra_fields)
+        creation_id = str((container or {}).get('id') or '').strip()
+        if not creation_id:
+            raise MetaError(
+                "Création du container Instagram échouée (aucun id renvoyé).")
+        max_polls = int(max_polls or self.IG_CONTAINER_MAX_POLLS)
+        poll_seconds = (self.IG_CONTAINER_POLL_SECONDS
+                        if poll_seconds is None else poll_seconds)
+        polls = 0
+        for _ in range(max_polls):
+            polls += 1
+            status = self.get_ig_container_status(creation_id)
+            code = str(status.get('status_code') or '').upper()
+            if code == 'FINISHED':
+                break
+            if code in ('ERROR', 'EXPIRED'):
+                raise MetaError(
+                    f"Container Instagram en échec (status_code={code}).")
+            if poll_seconds:
+                time.sleep(poll_seconds)
+        else:
+            raise MetaError(
+                "Container Instagram jamais prêt (status_code FINISHED non "
+                f"atteint après {max_polls} vérifications).")
+        published = self.publish_ig_container(creation_id=creation_id)
+        media_id = str((published or {}).get('id') or '').strip()
+        return {
+            'creation_id': creation_id, 'media_id': media_id,
+            'polls': polls, 'quota': quota}
+
+    # NOTE : il n'existe DÉLIBÉRÉMENT aucune méthode d'édition de légende IG
+    # (``edit_ig_caption``) — la caption est immuable après publication (dossier
+    # §4), exactement comme il n'existe aucune méthode d'activation (invariant #3).
 
     # ── Mise en pause (PAUSED-only — jamais de kwarg status) ─────────────────
     def update_status_paused(self, *, object_id, level=None):

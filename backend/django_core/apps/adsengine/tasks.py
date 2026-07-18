@@ -224,6 +224,9 @@ def _sync_company(conn):
     # ADSDEEP53 — miroir des commentaires (posts organiques + dark/ad posts).
     sync_comments_for_company(company, client)
 
+    # ADSDEEP55 — miroir des médias Instagram + leurs commentaires (best-effort).
+    sync_instagram_for_company(company, conn, client)
+
     today = datetime.date.today()
     for camp in AdCampaignMirror.objects.filter(company=company):
         # ENG6 — insights sur TOUT l'historique, ventilés par JOUR. Sans
@@ -480,6 +483,52 @@ def sync_comments_for_company(company, client):
             _pull(osid, 'ad')
 
     return written
+
+
+def sync_instagram_for_company(company, conn, client):
+    """ADSDEEP55 — Miroite le compte Instagram Business relié : d'abord résout
+    l'``ig_user_id`` (via ``GET /<page>?fields=instagram_business_account`` s'il
+    manque, et le persiste sur la connexion), puis upserte les médias
+    (``caption`` en LECTURE SEULE) et, par média, leurs commentaires. Best-effort ;
+    NO-OP propre si le client n'expose pas ``get_ig_media`` (mock ancien) ou si
+    aucun compte IG n'est relié. Renvoie le nombre de médias miroités."""
+    from . import instagram as ig
+
+    reader = getattr(client, 'get_ig_media', None)
+    if not callable(reader):
+        return 0
+
+    # Résolution de l'ig_user_id (best-effort) si la connexion n'en a pas encore.
+    if not getattr(client, 'ig_user_id', None):
+        resolver = getattr(client, 'get_page_ig_account', None)
+        if callable(resolver) and (conn.page_id or ''):
+            try:
+                ig_id = str(resolver() or '').strip()
+            except Exception:  # noqa: BLE001 — la résolution IG n'arrête pas la synchro
+                ig_id = ''
+            if ig_id:
+                client.ig_user_id = ig_id
+                if getattr(conn, 'ig_user_id', '') != ig_id:
+                    conn.ig_user_id = ig_id
+                    conn.save(update_fields=['ig_user_id'])
+    if not getattr(client, 'ig_user_id', None):
+        return 0
+
+    try:
+        media_rows = reader()
+    except Exception:  # noqa: BLE001 — les médias n'empêchent jamais la synchro
+        return 0
+    mirrors = ig.sync_ig_media(company, media_rows)
+
+    get_comments = getattr(client, 'get_ig_media_comments', None)
+    if callable(get_comments):
+        for m in mirrors:
+            try:
+                rows = get_comments(m.meta_id)
+            except Exception:  # noqa: BLE001 — un média en échec n'arrête pas les autres
+                continue
+            ig.sync_ig_comments(company, rows, media_meta_id=m.meta_id)
+    return len(mirrors)
 
 
 def pull_ad_leads_for_company(company, conn, client):

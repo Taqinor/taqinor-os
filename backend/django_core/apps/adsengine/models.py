@@ -50,6 +50,12 @@ class MetaConnection(TenantModel):
         verbose_name='ID compte publicitaire')
     page_id = models.CharField(
         max_length=64, blank=True, default='', verbose_name='ID Page')
+    # ADSDEEP55 — ID du compte Instagram Business relié à la Page. Résolu par la
+    # synchro (``GET /<page_id>?fields=instagram_business_account``) si vide ;
+    # tout le pan Instagram no-ope tant qu'il reste vide.
+    ig_user_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID compte Instagram Business')
     pixel_id = models.CharField(
         max_length=64, blank=True, default='', verbose_name='ID Pixel')
     # Devise du compte publicitaire (ISO-4217, ex. « USD ») — Meta rapporte TOUS
@@ -1796,3 +1802,152 @@ class CommentKeywordRule(TenantModel):
     def __str__(self):
         mode = 'auto' if self.auto else 'propose'
         return f'Mot-clé « {self.keyword} » ({mode})'
+
+
+class InstagramMediaMirror(TenantModel):
+    """ADSDEEP55 — Miroir local d'un MÉDIA Instagram (compte Business relié).
+
+    Reflet en LECTURE d'un média IG (dossier organic-posts-ig §4). La ``caption``
+    est **READ-ONLY** : Meta ne permet PAS de l'éditer après publication (Reels
+    compris) — l'UI l'affiche explicitement, et AUCUNE méthode d'édition de
+    légende n'existe (comme il n'existe aucune méthode d'activation, invariant #3
+    par analogie). Le SEUL champ écrivable d'un média est ``comment_enabled``
+    (couper/rouvrir les commentaires). Upsert idempotent par ``(company, meta_id)``.
+    """
+
+    class MediaType(models.TextChoices):
+        IMAGE = 'IMAGE', 'Image'
+        VIDEO = 'VIDEO', 'Vidéo'
+        REELS = 'REELS', 'Reel'
+        CAROUSEL = 'CAROUSEL_ALBUM', 'Carrousel'
+        STORY = 'STORY', 'Story'
+
+    meta_id = models.CharField(max_length=64, verbose_name='ID média IG')
+    caption = models.TextField(
+        blank=True, default='',
+        verbose_name='Légende (LECTURE SEULE — immuable après publication)')
+    media_type = models.CharField(
+        max_length=16, blank=True, default='', verbose_name='Type de média')
+    media_url = models.TextField(
+        blank=True, default='', verbose_name='URL du média')
+    permalink = models.TextField(
+        blank=True, default='', verbose_name='Permalien')
+    like_count = models.PositiveIntegerField(default=0, verbose_name='J’aime')
+    comments_count = models.PositiveIntegerField(
+        default=0, verbose_name='Commentaires')
+    view_count = models.PositiveIntegerField(default=0, verbose_name='Vues')
+    comment_enabled = models.BooleanField(
+        default=True, verbose_name='Commentaires ouverts')
+    timestamp = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publié le')
+    fetched_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Récupéré le')
+
+    class Meta:
+        verbose_name = 'Miroir de média Instagram'
+        verbose_name_plural = 'Miroirs de média Instagram'
+        ordering = ['-timestamp', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adseng_ig_media_meta'),
+        ]
+
+    def __str__(self):
+        return f'Média IG {self.meta_id} ({self.media_type or "?"})'
+
+
+class InstagramCommentMirror(TenantModel):
+    """ADSDEEP55 — Miroir local d'un COMMENTAIRE Instagram.
+
+    Masquage IG = ``POST /<ig_comment_id>`` ``hide=true`` (dossier §4). Upsert
+    idempotent par ``(company, meta_id)`` ; ``hidden``/``answered`` sont posés par
+    le cycle d'actions (jamais écrasés par la synchro)."""
+
+    meta_id = models.CharField(
+        max_length=64, verbose_name='ID commentaire IG')
+    media_meta_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID média commenté')
+    parent_meta_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID commentaire parent')
+    message = models.TextField(blank=True, default='', verbose_name='Message')
+    from_username = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Auteur')
+    like_count = models.PositiveIntegerField(default=0, verbose_name='J’aime')
+    hidden = models.BooleanField(default=False, verbose_name='Masqué')
+    answered = models.BooleanField(default=False, verbose_name='Répondu')
+    timestamp = models.DateTimeField(
+        null=True, blank=True, verbose_name='Créé le (IG)')
+    fetched_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Récupéré le')
+
+    class Meta:
+        verbose_name = 'Miroir de commentaire Instagram'
+        verbose_name_plural = 'Miroirs de commentaire Instagram'
+        ordering = ['-timestamp', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'meta_id'],
+                name='uniq_adseng_ig_comment_meta'),
+        ]
+
+    def __str__(self):
+        return f'Commentaire IG {self.meta_id}'
+
+
+class InstagramPublishJob(TenantModel):
+    """ADSDEEP55 — Journal d'une PUBLICATION Instagram (flux container en 2 temps).
+
+    Publier sur IG = créer un container (``POST /<ig_user>/media``) → attendre
+    ``status_code=FINISHED`` → publier (``POST /<ig_user>/media_publish``, dossier
+    §4). Ce job matérialise cet état async (créé au moment de l'``apply`` d'une
+    ``EngineAction`` PUBLISH_IG) : ``creation_id`` (container), ``status_code`` Meta,
+    ``published_media_id`` en sortie. Le quota (``50 publications / 24 h``) est
+    VÉRIFIÉ avant création et REFLÉTÉ dans ``quota_used``/``quota_total`` (surfacé
+    à l'UI). La caption est posée à la CRÉATION du container et devient immuable —
+    aucune ré-édition n'est possible (ni exposée)."""
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'En attente'
+        CREATED = 'created', 'Container créé'
+        FINISHED = 'finished', 'Container prêt'
+        PUBLISHED = 'published', 'Publié'
+        ERROR = 'error', 'Erreur'
+
+    media_type = models.CharField(
+        max_length=16, blank=True, default='', verbose_name='Type de média')
+    image_url = models.TextField(
+        blank=True, default='', verbose_name='URL image (JPEG)')
+    video_url = models.TextField(
+        blank=True, default='', verbose_name='URL vidéo (Reel)')
+    caption = models.TextField(
+        blank=True, default='', verbose_name='Légende (posée à la création)')
+    creation_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID container (creation_id)')
+    published_media_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID média publié')
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING,
+        verbose_name='État')
+    status_code = models.CharField(
+        max_length=32, blank=True, default='',
+        verbose_name='Code de statut Meta (container)')
+    quota_used = models.IntegerField(
+        null=True, blank=True, verbose_name='Quota utilisé (24 h)')
+    quota_total = models.IntegerField(
+        null=True, blank=True, verbose_name='Quota total (24 h)')
+    scheduled_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Programmé pour')
+    error = models.TextField(blank=True, default='', verbose_name='Erreur')
+
+    class Meta:
+        verbose_name = 'Publication Instagram'
+        verbose_name_plural = 'Publications Instagram'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Publication IG {self.get_status_display()} ({self.media_type or "?"})'
