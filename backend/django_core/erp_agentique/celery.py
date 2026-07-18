@@ -437,6 +437,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.generate_weekly_brief',
         'schedule': crontab(hour=6, minute=50, day_of_week=1),
     },
+    # ADSDEEP62 — digest QUOTIDIEN FR (dépense/conversations/leads/signatures/
+    # alertes actives/top ad de la veille), après le brief. NO-OP propre sans
+    # campagne synchronisée ; opt-out par utilisateur respecté (EventType.DIGEST).
+    'adsengine-daily-ads-digest': {
+        'task': 'adsengine.daily_ads_digest',
+        'schedule': crontab(hour=6, minute=58),
+    },
     # ADSENG15 — boucle CRITIQUE du Gardien (toutes les 6 h) : garde-fous
     # sécurité (zéro-diffusion, ad refusée, pic/chute de dépense). JAMAIS
     # sub-horaire (rate limits Meta scalés au spend, dd-guardian §A9).

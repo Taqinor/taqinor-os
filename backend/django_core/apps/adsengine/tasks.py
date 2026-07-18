@@ -682,6 +682,18 @@ def generate_weekly_brief():
     return {'briefs_generated': generated}
 
 
+@shared_task(name='adsengine.daily_ads_digest')
+def daily_ads_digest():
+    """ADSDEEP62 — Digest quotidien FR (dépense/conversations/leads/
+    signatures/alertes actives/top ad de la veille), émis via le moteur de
+    notifications unifié, opt-out par utilisateur respecté. Voir
+    ``digest.py`` pour la logique — best-effort par société, NO-OP propre
+    sans campagne synchronisée (même garde que ``generate_weekly_brief``)."""
+    from . import digest as digest_mod
+
+    return digest_mod.run_daily_digest_for_all()
+
+
 @shared_task(name='adsengine.evaluate_guardrails')
 def evaluate_guardrails():
     """ADSENG15 — Boucle CRITIQUE du Gardien (toutes les 6 h).
