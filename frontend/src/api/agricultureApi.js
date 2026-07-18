@@ -24,6 +24,9 @@ const agricultureApi = {
   intrants: crud('intrants-agricoles'),
   equipesSaisonnieres: crud('equipes-saisonnieres'),
   pointages: crud('pointages'),
+  // NTAGR11 — matériel agricole (pattern flotte, heures moteur cumulées).
+  materiels: crud('materiels-agricoles'),
+  utilisationsMateriel: crud('utilisations-materiel'),
 }
 
 export default agricultureApi

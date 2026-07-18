@@ -35,6 +35,9 @@ const esgApi = {
   catalogue: {
     list: (params) => api.get('/esg/catalogue-esg/', { params }),
     couverture: () => api.get('/esg/catalogue-esg/couverture/'),
+    // Badge de maturité ESG interne (NTESG15) — auto-évaluation, jamais une
+    // certification externe (voir `disclaimer` dans la réponse).
+    badgeMaturite: () => api.get('/esg/catalogue-esg/badge-maturite/'),
   },
 
   // ── Objectifs de trajectoire ESG (NTESG7) ──
@@ -45,6 +48,14 @@ const esgApi = {
     update: (id, data) => api.patch(`/esg/objectifs-esg/${id}/`, data),
     remove: (id) => api.delete(`/esg/objectifs-esg/${id}/`),
     trajectoire: (id) => api.get(`/esg/objectifs-esg/${id}/trajectoire/`),
+  },
+
+  // ── Parties prenantes ESG / matérialité (NTESG12) ──
+  partiesPrenantes: {
+    list: (params) => api.get('/esg/parties-prenantes-esg/', { params }),
+    create: (data) => api.post('/esg/parties-prenantes-esg/', data),
+    update: (id, data) => api.patch(`/esg/parties-prenantes-esg/${id}/`, data),
+    remove: (id) => api.delete(`/esg/parties-prenantes-esg/${id}/`),
   },
 }
 

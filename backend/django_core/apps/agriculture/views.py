@@ -4,18 +4,23 @@
 from django.http import HttpResponse
 from rest_framework import filters
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     CampagneCulturale, EquipeSaisonniere, EtapeCampagne, Exploitation,
-    IntrantAgricole, Parcelle, PointageAgricole,
+    IntrantAgricole, LotRecolte, MaterielAgricole, Parcelle, PointageAgricole,
+    PointIrrigation, RelevePointIrrigation, UtilisationMateriel,
 )
 from .serializers import (
     CampagneCulturaleSerializer, EquipeSaisonniereSerializer,
     EtapeCampagneSerializer, ExploitationSerializer,
-    IntrantAgricoleSerializer, ParcelleSerializer, PointageAgricoleSerializer,
+    IntrantAgricoleSerializer, LotRecolteSerializer,
+    MaterielAgricoleSerializer, ParcelleSerializer, PointageAgricoleSerializer,
+    PointIrrigationSerializer, RelevePointIrrigationSerializer,
+    UtilisationMaterielSerializer,
 )
 
 READ_ACTIONS = {'list', 'retrieve'}
@@ -156,3 +161,89 @@ class PointageAgricoleViewSet(_AgricultureBaseViewSet):
         if equipe_id:
             qs = qs.filter(equipe_id=equipe_id)
         return qs
+
+
+class MaterielAgricoleViewSet(_AgricultureBaseViewSet):
+    """NTAGR11 — Matériel agricole (pattern flotte, heures moteur cumulées)."""
+    queryset = MaterielAgricole.objects.all()
+    serializer_class = MaterielAgricoleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'numero_serie']
+    ordering_fields = ['nom', 'heures_moteur', 'date_creation']
+
+
+class UtilisationMaterielViewSet(_AgricultureBaseViewSet):
+    """NTAGR11 — Utilisations de matériel. Filtrable
+    ``?materiel_id=&campagne_id=``."""
+    queryset = UtilisationMateriel.objects.all()
+    serializer_class = UtilisationMaterielSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        materiel_id = params.get('materiel_id')
+        if materiel_id:
+            qs = qs.filter(materiel_id=materiel_id)
+        campagne_id = params.get('campagne_id')
+        if campagne_id:
+            qs = qs.filter(campagne_id=campagne_id)
+        return qs
+
+
+class PointIrrigationViewSet(_AgricultureBaseViewSet):
+    """NTAGR13 — Points d'irrigation (compteur d'eau par parcelle).
+    Filtrable ``?parcelle_id=``."""
+    queryset = PointIrrigation.objects.all()
+    serializer_class = PointIrrigationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        parcelle_id = self.request.query_params.get('parcelle_id')
+        if parcelle_id:
+            qs = qs.filter(parcelle_id=parcelle_id)
+        return qs
+
+
+class RelevePointIrrigationViewSet(_AgricultureBaseViewSet):
+    """NTAGR13 — Relevés d'un point d'irrigation. Filtrable ``?point_id=``."""
+    queryset = RelevePointIrrigation.objects.all()
+    serializer_class = RelevePointIrrigationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        point_id = self.request.query_params.get('point_id')
+        if point_id:
+            qs = qs.filter(point_id=point_id)
+        return qs
+
+
+class LotRecolteViewSet(_AgricultureBaseViewSet):
+    """NTAGR15 — Lots de récolte. Filtrable ``?campagne_id=``."""
+    queryset = LotRecolte.objects.all()
+    serializer_class = LotRecolteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero_lot', 'calibre', 'qualite']
+    ordering_fields = ['date_recolte', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        campagne_id = self.request.query_params.get('campagne_id')
+        if campagne_id:
+            qs = qs.filter(campagne_id=campagne_id)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='tracabilite',
+            permission_classes=[IsAnyRole])
+    def tracabilite(self, request, pk=None):
+        """NTAGR16 — Traçabilité amont-aval (parcelle→traitements→client) en
+        un seul appel JSON."""
+        from .selectors import tracer_lot
+
+        lot = self.get_object()
+        return Response(tracer_lot(lot))

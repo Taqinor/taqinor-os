@@ -69,6 +69,10 @@ HISTORICAL_TARGETS = {
     # (renommage/re-parentage) via le chatter générique records (ARC8), ciblée
     # par ``apps/entites/platform.py``.
     ('entites', 'entite'),
+    # NTESG13 — dépôt des documents de politique RSE (charte éthique,
+    # politique environnementale…) via ``records.Attachment``, ciblé par
+    # ``apps/esg/platform.py``.
+    ('esg', 'documentpolitiqueesg'),
 }
 
 
@@ -83,7 +87,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 31)
+        self.assertEqual(len(ALLOWED_TARGETS), 32)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

@@ -7,11 +7,14 @@ parcelle, campagne, intrant, équipe) est vérifiée appartenir à la MÊME
 société que l'appelant — sinon un id d'une autre société laisserait fuir de
 la donnée cross-tenant via une relation."""
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import F
 from rest_framework import serializers
 
 from .models import (
     CampagneCulturale, EquipeSaisonniere, EtapeCampagne, Exploitation,
-    IntrantAgricole, Parcelle, PointageAgricole, check_dar_guard,
+    IntrantAgricole, LotRecolte, MaterielAgricole, Parcelle, PointageAgricole,
+    PointIrrigation, RelevePointIrrigation, UtilisationMateriel,
+    check_dar_guard,
 )
 
 
@@ -197,3 +200,117 @@ class PointageAgricoleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Renseignez une équipe ou un nom de travailleur libre.')
         return attrs
+
+
+class MaterielAgricoleSerializer(serializers.ModelSerializer):
+    type_materiel_display = serializers.CharField(
+        source='get_type_materiel_display', read_only=True)
+
+    class Meta:
+        model = MaterielAgricole
+        fields = [
+            'id', 'company', 'nom', 'type_materiel', 'type_materiel_display',
+            'numero_serie', 'heures_moteur', 'parcelle_affectee',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+    def validate_parcelle_affectee(self, value):
+        _check_same_company(self, value, 'parcelle_affectee')
+        return value
+
+
+class UtilisationMaterielSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UtilisationMateriel
+        fields = [
+            'id', 'company', 'materiel', 'campagne', 'date',
+            'heures_utilisees', 'cout_carburant_mad', 'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+    def validate_materiel(self, value):
+        _check_same_company(self, value, 'materiel')
+        return value
+
+    def validate_campagne(self, value):
+        _check_same_company(self, value, 'campagne')
+        return value
+
+    def create(self, validated_data):
+        # NTAGR11 — chaque utilisation incrémente ATOMIQUEMENT (F()) les
+        # heures moteur cumulées du matériel — jamais une lecture-puis-
+        # écriture qui perdrait des mises à jour concurrentes.
+        utilisation = super().create(validated_data)
+        MaterielAgricole.objects.filter(pk=utilisation.materiel_id).update(
+            heures_moteur=F('heures_moteur') + utilisation.heures_utilisees)
+        utilisation.materiel.refresh_from_db(fields=['heures_moteur'])
+        return utilisation
+
+
+class PointIrrigationSerializer(serializers.ModelSerializer):
+    type_source_display = serializers.CharField(
+        source='get_type_source_display', read_only=True)
+
+    class Meta:
+        model = PointIrrigation
+        fields = [
+            'id', 'company', 'parcelle', 'type_source', 'type_source_display',
+            'installation_id', 'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+    def validate_parcelle(self, value):
+        _check_same_company(self, value, 'parcelle')
+        return value
+
+    def validate_installation_id(self, value):
+        # NTAGR13 — l'installation (pompage solaire) doit exister et
+        # appartenir à la même société. Lue EXCLUSIVEMENT via
+        # apps.installations.selectors (jamais un import de modèle).
+        if value is None:
+            return value
+        from apps.installations.selectors import installation_scoped
+        company = _company(self)
+        if company is not None and installation_scoped(company, value) is None:
+            raise serializers.ValidationError(
+                'Aucune installation avec cet id pour votre société.')
+        return value
+
+
+class RelevePointIrrigationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RelevePointIrrigation
+        fields = [
+            'id', 'company', 'point', 'date', 'volume_m3',
+            'cout_energie_mad', 'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'date_creation']
+
+    def validate_point(self, value):
+        _check_same_company(self, value, 'point')
+        return value
+
+
+class LotRecolteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LotRecolte
+        fields = [
+            'id', 'company', 'campagne', 'date_recolte', 'quantite_qtl',
+            'calibre', 'qualite', 'numero_lot', 'stock_lot_id',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'company', 'numero_lot', 'date_creation']
+
+    def validate_campagne(self, value):
+        _check_same_company(self, value, 'campagne')
+        return value
+
+    def create(self, validated_data):
+        # NTAGR15 — numérotation race-safe via core.numbering, jamais un
+        # ModelSerializer.create() nu (qui laisserait numero_lot vide).
+        # ``company`` est déjà dans ``validated_data`` : le viewset l'injecte
+        # via ``serializer.save(company=...)`` (TenantMixin.perform_create).
+        from .services import creer_lot_recolte
+
+        return creer_lot_recolte(**validated_data)
