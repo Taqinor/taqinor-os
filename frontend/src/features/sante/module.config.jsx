@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + composant lazy), pas un module
    de composants : le fast-refresh ne s'y applique pas (cf. moduleRoutes.jsx). */
 import { lazy } from 'react'
-import { ClipboardList, Stethoscope, UserPlus } from 'lucide-react'
+import { ClipboardList, ShieldCheck, Stethoscope, UserPlus } from 'lucide-react'
 
 /* ============================================================================
    NTSAN — Config du module Santé (cabinet/clinique), auto-enregistrée.
@@ -16,6 +16,10 @@ import { ClipboardList, Stethoscope, UserPlus } from 'lucide-react'
 const SanteAgenda = lazy(() => import('./SanteAgenda'))
 const NomenclatureActesScreen = lazy(() => import('./NomenclatureActesScreen'))
 const ReceptionScreen = lazy(() => import('./ReceptionScreen'))
+// WIR53(b) — destination réelle du lien de notification
+// `sante.alertes_prise_en_charge_expirant` (`/sante/prises-en-charge?id=`),
+// jusque-là non enregistrée (404 systématique).
+const PrisesEnChargePage = lazy(() => import('./PrisesEnChargePage'))
 
 const config = {
   key: 'sante',
@@ -42,12 +46,19 @@ const config = {
         icon: <ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['responsable', 'admin'],
       },
+      {
+        to: '/sante/prises-en-charge',
+        label: 'Prises en charge',
+        icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['normal', 'responsable', 'admin'],
+      },
     ],
   },
   titles: [
     ['/sante/reception', 'Réception (Santé)'],
     ['/sante/agenda', 'Agenda (Santé)'],
     ['/sante/nomenclature-actes', 'Nomenclature des actes'],
+    ['/sante/prises-en-charge', 'Prises en charge'],
   ],
   sectionLabels: { sante: 'Santé' },
   routes: [
@@ -62,6 +73,10 @@ const config = {
     {
       path: '/sante/nomenclature-actes', component: NomenclatureActesScreen,
       roles: ['responsable', 'admin'],
+    },
+    {
+      path: '/sante/prises-en-charge', component: PrisesEnChargePage,
+      roles: ['normal', 'responsable', 'admin'],
     },
   ],
 }
