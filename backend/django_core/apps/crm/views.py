@@ -487,6 +487,20 @@ class LeadViewSet(CompanyScopedModelViewSet):
                 **self.get_serializer_context(), **extra_context})
         return Response(serializer.data)
 
+    def retrieve(self, request, *args, **kwargs):
+        """LW30 — pose ``include_chatter_recent`` dans le contexte pour que
+        ``LeadSerializer`` embarque les 50 dernières activités du chatter
+        (``get_fields()`` ne garde le champ QUE quand ce flag est présent) —
+        jamais sur list() (payload), l'ouverture de la fiche passe de 4
+        requêtes (detail + historique/ + …) à 3."""
+        instance = self.get_object()
+        serializer = self.get_serializer(
+            instance, context={
+                **self.get_serializer_context(),
+                'include_chatter_recent': True,
+            })
+        return Response(serializer.data)
+
     @staticmethod
     def _next_activity_map(leads):
         """{lead_id: Activity} — l'activité ouverte la plus proche par lead,

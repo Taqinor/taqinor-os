@@ -211,6 +211,9 @@ class LeadSerializer(serializers.ModelSerializer):
     # Même condition EXACTE que get_fields()/to_representation() ci-dessous
     # — source unique, jamais une seconde règle qui pourrait diverger.
     pii_masked = serializers.SerializerMethodField()
+    # LW30 — 50 dernières LeadActivity embarquées sur le RETRIEVE seulement
+    # (jamais list() — payload) : voir get_fields() plus bas.
+    chatter_recent = serializers.SerializerMethodField()
 
     @staticmethod
     def _canonical_phone(value):
@@ -427,6 +430,11 @@ class LeadSerializer(serializers.ModelSerializer):
             for name in self.PII_FIELDS:
                 if name in fields:
                     fields[name].read_only = True
+        # LW30 — chatter_recent n'est embarqué que sur le RETRIEVE (flag de
+        # contexte posé par LeadViewSet.retrieve() uniquement) ; ABSENT du
+        # payload list() — jamais juste null, la clé elle-même disparaît.
+        if not self.context.get('include_chatter_recent'):
+            fields.pop('chatter_recent', None)
         return fields
 
     def to_representation(self, instance):
@@ -443,6 +451,18 @@ class LeadSerializer(serializers.ModelSerializer):
         verrouillés-cadenas au lieu de laisser croire à une édition qui
         sera jetée (drop silencieux au PATCH)."""
         return self._pii_masked()
+
+    def get_chatter_recent(self, obj):
+        """LW30 — 50 dernières LeadActivity (auto + notes), épingle-d'abord
+        (tri LW28), ``select_related('user','attachment')`` pour éviter tout
+        N+1 (même garde que LW8). Calculée uniquement quand get_fields() a
+        gardé le champ (RETRIEVE) — jamais appelée sur une liste."""
+        rows = (
+            obj.activites
+            .select_related('user', 'attachment')
+            .order_by('-pinned', '-created_at')[:50]
+        )
+        return LeadActivitySerializer(rows, many=True).data
 
     def get_client_nom(self, obj):
         if not obj.client_id:
