@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import MesBulletins from './MesBulletins.jsx'
@@ -23,8 +23,27 @@ vi.mock('../../api/paieApi', () => ({
       ],
     })),
     createPeriode: vi.fn(() => Promise.resolve({ data: periodeTest })),
+    // WIR39 — contrôles pré-run détaillés (YHIRE3 complétude + XPAI15 écarts).
+    controleCompletude: vi.fn(() => Promise.resolve({
+      data: {
+        actifs_sans_profil: [
+          { dossier_id: 9, matricule: 'M9', nom: 'Test Employé' },
+        ],
+        profils_sans_cnss: [], profils_sans_rib: [],
+        profils_actifs_dossiers_non_actifs: [], contrats_expires: [],
+        ecarts_remuneration: [],
+      },
+    })),
+    controleEcarts: vi.fn(() => Promise.resolve({
+      data: {
+        salaries_manquants: [], salaries_nouveaux: [], variations_net: [],
+        hs_anormales: [], seuil_pct: 20,
+      },
+    })),
   },
 }))
+
+import paieApi from '../../api/paieApi'
 
 function wrap(ui) {
   return render(
@@ -59,4 +78,24 @@ describe('Paie — smoke de rendu', () => {
     })
     expect(screen.getByText(/numéro CNSS manquant/i)).toBeInTheDocument()
   })
+
+  it('PaieRunWizard (WIR39) affiche les contrôles pré-run détaillés à la demande',
+    async () => {
+      wrap(<PaieRunWizard />)
+      await screen.findByText('Run de paie')
+      fireEvent.click(screen.getByRole('button', { name: /Créer la période/i }))
+      const bouton = await screen.findByRole(
+        'button', { name: /Contrôles pré-run/i })
+
+      fireEvent.click(bouton)
+
+      await waitFor(() => expect(paieApi.controleCompletude).toHaveBeenCalledWith(7))
+      expect(paieApi.controleEcarts).toHaveBeenCalledWith(7)
+
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).getByText(/Actifs sans profil de paie/))
+        .toBeInTheDocument()
+      expect(within(dialog).getByText(/Test Employé/)).toBeInTheDocument()
+      expect(within(dialog).getByText('Aucun écart signalé')).toBeInTheDocument()
+    })
 })

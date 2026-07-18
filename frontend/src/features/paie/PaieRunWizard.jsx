@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarPlus, FileStack, ClipboardCheck, CheckCircle2, Lock,
   AlertTriangle, RefreshCw, Plus, ArrowRight, ShieldAlert, ChevronDown, Gift,
+  ListChecks,
 } from 'lucide-react'
 import {
   Button, Card, Input, Select, SelectTrigger, SelectValue, SelectContent,
   SelectItem, EmptyState, Badge, HelpTip, Spinner, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '../../ui'
 import { DataTable } from '../../ui'
 import { formatMAD } from '../../lib/format'
@@ -51,6 +53,11 @@ export default function PaieRunWizard() {
   const [step, setStep] = useState('periode')
   const [avertissements, setAvertissements] = useState([])
   const [avertissementsOuvert, setAvertissementsOuvert] = useState(true)
+  // WIR39 — contrôles pré-run détaillés (YHIRE3 complétude + XPAI15 écarts
+  // M vs M-1), lus à la demande (ne s'affichent jamais tout seuls).
+  const [controles, setControles] = useState(null)
+  const [controlesOpen, setControlesOpen] = useState(false)
+  const [controlesBusy, setControlesBusy] = useState(false)
 
   // Formulaire de création de période.
   const [annee, setAnnee] = useState(String(now.getFullYear()))
@@ -207,6 +214,24 @@ export default function PaieRunWizard() {
     } finally { setBusy('') }
   }
 
+  // WIR39 — contrôles pré-run détaillés (complétude YHIRE3 + écarts XPAI15),
+  // lus à la demande depuis un bouton (aucun appel automatique). Lecture
+  // seule, jamais bloquant — comme le panneau d'avertissements.
+  const voirControles = async () => {
+    if (!periode) return
+    setControlesBusy(true)
+    try {
+      const [completude, ecarts] = await Promise.all([
+        paieApi.controleCompletude(periode.id),
+        paieApi.controleEcarts(periode.id),
+      ])
+      setControles({ completude: completude.data, ecarts: ecarts.data })
+      setControlesOpen(true)
+    } catch (e) {
+      toast.error(errMsg(e, 'Contrôles indisponibles.'))
+    } finally { setControlesBusy(false) }
+  }
+
   // XPAI4 — run hors-cycle « 13e mois » : génère les bulletins de
   // gratification de tous les profils actifs sur la période sélectionnée.
   const runGratification = async () => {
@@ -247,6 +272,10 @@ export default function PaieRunWizard() {
               {periode.libelle || `${MOIS[periode.mois - 1]} ${periode.annee}`}
             </span>
             <StatutPeriode status={periode.statut} />
+            <Button variant="outline" size="sm"
+              onClick={voirControles} loading={controlesBusy}>
+              <ListChecks size={15} aria-hidden="true" /> Contrôles pré-run
+            </Button>
             <Button variant="outline" size="sm"
               onClick={runGratification} loading={busy === 'gratification'}>
               <Gift size={15} aria-hidden="true" /> Run 13e mois
@@ -309,7 +338,137 @@ export default function PaieRunWizard() {
           />
         )}
       </Card>
+      {controlesOpen && controles && (
+        <ControlesPreRunDialog
+          completude={controles.completude} ecarts={controles.ecarts}
+          onClose={() => setControlesOpen(false)}
+        />
+      )}
     </div>
+  )
+}
+
+/* ── WIR39 — Contrôles pré-run détaillés (complétude YHIRE3 + écarts XPAI15).
+   Lecture seule, à la demande — distincts du panneau d'avertissements
+   (ZPAI2, message plat) : ici chaque catégorie porte matricule/nom/contexte. */
+function ControlesPreRunDialog({ completude, ecarts, onClose }) {
+  const groupes = [
+    { key: 'actifs_sans_profil', titre: 'Actifs sans profil de paie',
+      items: completude.actifs_sans_profil || [] },
+    { key: 'profils_sans_cnss', titre: 'Profils sans n° CNSS',
+      items: completude.profils_sans_cnss || [] },
+    { key: 'profils_sans_rib', titre: 'Profils sans RIB',
+      items: completude.profils_sans_rib || [] },
+    { key: 'profils_actifs_dossiers_non_actifs',
+      titre: 'Profils actifs dont le dossier RH ne l’est plus',
+      items: completude.profils_actifs_dossiers_non_actifs || [] },
+    { key: 'contrats_expires', titre: 'CDD expirés avant la fin de période',
+      items: completude.contrats_expires || [] },
+    { key: 'ecarts_remuneration',
+      titre: 'Écarts salaire profil ↔ rémunération RH en vigueur',
+      items: completude.ecarts_remuneration || [] },
+  ]
+  const totalCompletude = groupes.reduce((n, g) => n + g.items.length, 0)
+  const totalEcarts = (ecarts.salaries_manquants?.length || 0)
+    + (ecarts.salaries_nouveaux?.length || 0)
+    + (ecarts.variations_net?.length || 0)
+    + (ecarts.hs_anormales?.length || 0)
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Contrôles pré-run</DialogTitle>
+        </DialogHeader>
+        <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto text-sm">
+          <section>
+            <h3 className="mb-2 font-display font-semibold">
+              Complétude (trous structurels)
+            </h3>
+            {totalCompletude === 0 ? (
+              <Badge tone="success">Aucun trou détecté</Badge>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {groupes.filter((g) => g.items.length > 0).map((g) => (
+                  <div key={g.key}>
+                    <p className="mb-1 flex items-center gap-1.5 font-medium">
+                      {g.titre} <Badge tone="warning">{g.items.length}</Badge>
+                    </p>
+                    <ul className="flex flex-col gap-0.5 pl-3 text-muted-foreground">
+                      {g.items.map((it, i) => (
+                        <li key={it.profil_id ?? it.dossier_id ?? i}>
+                          {it.matricule ? `${it.matricule} — ` : ''}{it.nom}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+          <section>
+            <h3 className="mb-2 font-display font-semibold">
+              Écarts M vs M-1 (XPAI15)
+            </h3>
+            {totalEcarts === 0 ? (
+              <Badge tone="success">Aucun écart signalé</Badge>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {ecarts.salaries_manquants?.length > 0 && (
+                  <div>
+                    <p className="mb-1 font-medium">
+                      Salariés manquants (payés le mois dernier)
+                    </p>
+                    <ul className="flex flex-col gap-0.5 pl-3 text-muted-foreground">
+                      {ecarts.salaries_manquants.map((it, i) => (
+                        <li key={it.profil_id ?? i}>{it.nom}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {ecarts.salaries_nouveaux?.length > 0 && (
+                  <div>
+                    <p className="mb-1 font-medium">Nouveaux salariés ce mois-ci</p>
+                    <ul className="flex flex-col gap-0.5 pl-3 text-muted-foreground">
+                      {ecarts.salaries_nouveaux.map((it, i) => (
+                        <li key={it.profil_id ?? i}>{it.nom}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {ecarts.variations_net?.length > 0 && (
+                  <div>
+                    <p className="mb-1 font-medium">
+                      Variation de net &gt; {ecarts.seuil_pct}%
+                    </p>
+                    <ul className="flex flex-col gap-0.5 pl-3 text-muted-foreground">
+                      {ecarts.variations_net.map((it, i) => (
+                        <li key={it.profil_id ?? i}>
+                          {it.nom} : {formatMAD(it.net_precedent)} →{' '}
+                          {formatMAD(it.net_courant)} ({it.variation_pct}%)
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {ecarts.hs_anormales?.length > 0 && (
+                  <div>
+                    <p className="mb-1 font-medium">Heures supplémentaires anormales</p>
+                    <ul className="flex flex-col gap-0.5 pl-3 text-muted-foreground">
+                      {ecarts.hs_anormales.map((it, i) => (
+                        <li key={it.profil_id ?? i}>
+                          {it.nom} : {it.hs_precedent}h → {it.hs_courant}h
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
