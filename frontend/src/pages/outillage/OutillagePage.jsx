@@ -4,7 +4,7 @@
 // camionnette) plus un état « En intervention ». Jamais consommé, jamais
 // client-facing. Tout le texte est en français.
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, CalendarCheck } from 'lucide-react'
 import outillageApi from '../../api/outillageApi'
 import stockApi from '../../api/stockApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
@@ -34,6 +34,8 @@ const STATUT_TONES = {
 const EMPTY_FORM = {
   nom: '', categorie: '', asset_tag: '', numero_serie: '',
   emplacement: '', statut: 'disponible', date_achat: '', note: '',
+  // FG80/WIR28 — 0 = pas de calibration périodique requise.
+  intervalle_calibration_mois: 0,
 }
 
 export default function OutillagePage() {
@@ -80,6 +82,7 @@ export default function OutillagePage() {
       numero_serie: o.numero_serie ?? '', emplacement: o.emplacement ?? '',
       statut: o.statut ?? 'disponible', date_achat: o.date_achat ?? '',
       note: o.note ?? '',
+      intervalle_calibration_mois: o.intervalle_calibration_mois ?? 0,
     })
     setEditing(o)
   }
@@ -92,6 +95,7 @@ export default function OutillagePage() {
       ...form,
       emplacement: form.emplacement === '' ? null : form.emplacement,
       date_achat: form.date_achat || null,
+      intervalle_calibration_mois: Number(form.intervalle_calibration_mois) || 0,
     }
     try {
       if (editing && editing.id) {
@@ -113,6 +117,22 @@ export default function OutillagePage() {
     if (!window.confirm(`Supprimer l’outil « ${o.nom} » ?`)) return
     try { await outillageApi.deleteOutil(o.id); toast.success('Outil supprimé.'); load() }
     catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+
+  // FG80/WIR28 — enregistre une calibration (date du jour, backend
+  // recalcule `date_prochaine_calibration`) et met à jour l'outil localement
+  // (liste + panneau ouvert éventuel) sans recharger toute la page.
+  const calibrer = async (o) => {
+    try {
+      const r = await outillageApi.calibrer(o.id)
+      setOutils((list) => list.map((x) => (x.id === o.id ? r.data : x)))
+      setEditing((cur) => (cur?.id === o.id ? r.data : cur))
+      toast.success(r.data.date_prochaine_calibration
+        ? `Calibration enregistrée — prochaine échéance le ${r.data.date_prochaine_calibration}.`
+        : 'Calibration enregistrée.')
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? "Enregistrement de la calibration impossible.")
+    }
   }
 
   return (
@@ -193,7 +213,15 @@ export default function OutillagePage() {
               <tbody>
                 {filtered.map((o) => (
                   <tr key={o.id} className="cursor-pointer" onClick={() => openEdit(o)}>
-                    <td data-label="Outil" className="font-medium">{o.nom}</td>
+                    <td data-label="Outil" className="font-medium">
+                      <span className="inline-flex items-center gap-1.5">
+                        {o.nom}
+                        {/* FG80/WIR28 — conformité légale de calibration (multimètres,
+                            testeurs de terre, harnais…) : `a_calibrer` vient tel quel
+                            du serializer, jamais recalculé côté front. */}
+                        {o.a_calibrer && <Badge tone="danger">À calibrer</Badge>}
+                      </span>
+                    </td>
                     <td data-label="Catégorie" className="m-hide">{o.categorie || '—'}</td>
                     <td data-label="Étiquette" className="m-hide">{o.asset_tag || '—'}</td>
                     <td data-label="N° de série" className="m-hide">{o.numero_serie || '—'}</td>
@@ -205,6 +233,12 @@ export default function OutillagePage() {
                         label={STATUT_LABELS[o.statut] ?? o.statut} />
                     </td>
                     <td className="text-right" onClick={(e) => e.stopPropagation()}>
+                      {o.intervalle_calibration_mois > 0 && (
+                        <IconButton size="sm" variant="ghost" label="Enregistrer une calibration"
+                          onClick={() => calibrer(o)}>
+                          <CalendarCheck className="size-4" aria-hidden="true" />
+                        </IconButton>
+                      )}
                       <IconButton size="sm" variant="ghost" label="Modifier" onClick={() => openEdit(o)}>
                         <Pencil className="size-4" aria-hidden="true" />
                       </IconButton>
@@ -270,6 +304,23 @@ export default function OutillagePage() {
             <Input type="date" className="mt-1" value={form.date_achat}
               onChange={(e) => set('date_achat', e.target.value)} />
           </label>
+          <label className="text-sm font-medium">Intervalle de calibration (mois)
+            <Input type="number" step="1" min="0" className="mt-1"
+              value={form.intervalle_calibration_mois}
+              onChange={(e) => set('intervalle_calibration_mois', e.target.value)} />
+            <span className="mt-1 block text-[12px] font-normal text-muted-foreground">
+              0 = pas de calibration périodique requise (multimètres, testeurs de
+              terre, harnais…). Sinon, le badge « À calibrer » et le bouton
+              d’enregistrement apparaissent dans la liste dès l’échéance dépassée.
+            </span>
+          </label>
+          {editing?.id && editing?.intervalle_calibration_mois > 0 && (
+            <div className="rounded-md border border-border p-2 text-[12.5px] text-muted-foreground">
+              Dernière calibration : {editing.date_derniere_calibration || '—'}
+              {' · '}Prochaine échéance : {editing.date_prochaine_calibration || '—'}
+              {editing.a_calibrer && <Badge tone="danger" className="ml-2">À calibrer</Badge>}
+            </div>
+          )}
           <label className="text-sm font-medium">Note
             <Textarea className="mt-1" rows={2} value={form.note}
               onChange={(e) => set('note', e.target.value)} />
