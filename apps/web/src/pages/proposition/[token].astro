@@ -89,7 +89,18 @@ import {
   monitoringPoints,
   objectionFaq,
   sellerNote,
+  ficheSlugForItem,
+  specialDrawerKind,
+  itemTotalHt,
+  heroHook,
+  financingLedger,
 } from '../../lib/proposition';
+import {
+  TABLEAU_ACDC_DRAWER,
+  INSTALLATION_DRAWER,
+  TO_SPECIFY,
+  type DrawerContent,
+} from '../../lib/propositionContent';
 import {
   renderYearCurve,
   resolveProposalCurveMode,
@@ -219,6 +230,13 @@ const roofImg = data?.roof_image_url ?? null;
 const clientName = data?.client_name || q?.client_name || 'Client';
 const reference = data?.reference || q?.ref || '';
 const proposalDate = data?.date || q?.date || '';
+
+// WPROP2 — tableau d'équipement CHIFFRÉ (la page 2 du PDF, en interactif) :
+// lignes par option, option affichée par défaut = la recommandée. Chaque ligne
+// porte son détail « à un clic » : fiche /produits/<slug> quand elle existe
+// (MÊME classifieur que le moteur PDF), sinon tiroir spécial (tableau AC/DC,
+// installation TAQINOR), sinon la description/garantie de la ligne.
+const eqtDefault = (): OptionKey => reco ?? 'sans_batterie';
 
 // Options à présenter (une ou deux), dans l'ordre Sans → Avec.
 const options: OptionKey[] = ok
@@ -1615,32 +1633,27 @@ const signConfig = ok
                     Économies estimées : <span class="text-brass-300">{formatMAD(eco)}/an</span>
                   </p>
                 ) : null}
-
-                <!-- Équipement (WJ32 : marque + garantie + description quand disponibles — jamais de lien fiche technique fabriqué, le backend n'expose pas encore cette URL publiquement) -->
+                <!-- WPROP2 — pastille payback par option (le PDF p1) : le client
+                     compare enfin « moins chère » et « se rembourse en » côte à
+                     côte. Chiffre backend (roi_s/roi_a), jamais recalculé. -->
+                {(opt === 'avec_batterie' ? paybackAvec : paybackSans) ? (
+                  <p class="mt-2 text-sm" data-i18n
+                    data-fr={`Rentabilisée en ${opt === 'avec_batterie' ? paybackAvec : paybackSans}`}
+                    data-en={`Pays for itself in ${opt === 'avec_batterie' ? paybackAvec : paybackSans}`}
+                    data-ar={`تسترد كلفتها في ${opt === 'avec_batterie' ? paybackAvec : paybackSans}`}>
+                    <span class="rounded-full bg-emerald-400/10 px-3 py-1 font-semibold text-emerald-300">Rentabilisée en {opt === 'avec_batterie' ? paybackAvec : paybackSans}</span>
+                  </p>
+                ) : null}
+                <!-- WPROP2 — l'équipement détaillé vit désormais dans LE TABLEAU
+                     chiffré sous les cartes (la page 2 du PDF) : désignations,
+                     quantités, P.U. HT, TVA, totaux + fiche/tiroir par ligne. -->
                 {items.length > 0 && (
-                  <div class="mt-5 border-t border-white/10 pt-4">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Équipement" data-en="Equipment" data-ar="المعدات">Équipement</p>
-                    <ul class="mt-3 space-y-3 text-sm text-lune-soft">
-                      {items.map((it) => (
-                        <li>
-                          <div class="flex items-baseline justify-between gap-3">
-                            <span>
-                              <span class="text-lune">{it.designation}</span>
-                              {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
-                            </span>
-                            <span class="fig shrink-0 text-lune-faint" dir="ltr">×{formatNumber(it.quantite)}</span>
-                          </div>
-                          {it.description ? (
-                            <p class="mt-0.5 text-xs text-lune-faint">{it.description}</p>
-                          ) : null}
-                          {it.garantie ? (
-                            <p class="mt-0.5 text-xs text-brass-300" data-i18n
-                              data-fr={`Garantie : ${it.garantie}`} data-en={`Warranty: ${it.garantie}`} data-ar={`الضمان: ${it.garantie}`}>Garantie : {it.garantie}</p>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint" data-i18n
+                    data-fr={`${items.length} équipements — détail chiffré dans le tableau ci-dessous`}
+                    data-en={`${items.length} equipment lines — priced detail in the table below`}
+                    data-ar={`${items.length} تجهيزات — التفاصيل المسعّرة في الجدول أسفله`}>
+                    {items.length} équipements — détail chiffré dans le tableau ci-dessous
+                  </p>
                 )}
 
                 <!-- Chaîne de prix explicite -->
@@ -1674,6 +1687,129 @@ const signConfig = ok
             );
           })}
         </div>
+
+        <!-- ── WPROP2 · LE TABLEAU D'ÉQUIPEMENT CHIFFRÉ (la page 2 du PDF) ────
+             Désignation | Qté | P.U. HT | TVA | Total HT, par option (bascule
+             sans/avec re-rendue côté serveur, échangée par délégation dans
+             l'îlot existant — jamais un 4ᵉ îlot, règle bundling). Chaque ligne
+             porte son détail à UN clic : fiche /produits/<slug> (même
+             classifieur que le PDF), tiroir Tableau AC/DC (squelette que le
+             fondateur complète), tiroir Installation (équipe + ingénieur
+             superviseur + garantie 2 ans), ou description/garantie de la ligne.
+             Garde-fou WJ83 : un P.U. absent/0 s'affiche « — », jamais 0 MAD. -->
+        {options.some((opt) => optionItems(data!, opt).length > 0) && (
+          <div class="mt-8" id="equipment-table">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <p class="tech-label text-lune-faint" data-i18n
+                data-fr="Le détail de votre équipement, prix compris"
+                data-en="Your equipment in detail, prices included"
+                data-ar="تفاصيل معداتكم، بالأسعار">
+                Le détail de votre équipement, prix compris
+              </p>
+              {twoOptions && (
+                <div class="flex gap-1 rounded-full border border-white/15 bg-white/5 p-1 text-xs">
+                  <button type="button"
+                    class="eqt-toggle rounded-full px-3 py-1 font-semibold transition-colors aria-pressed:bg-brass-400 aria-pressed:text-nuit"
+                    data-opt="sans_batterie"
+                    aria-pressed={eqtDefault() === 'sans_batterie' ? 'true' : 'false'}
+                    data-i18n data-fr="Sans batterie" data-en="Without battery" data-ar="بدون بطارية">
+                    Sans batterie
+                  </button>
+                  <button type="button"
+                    class="eqt-toggle rounded-full px-3 py-1 font-semibold transition-colors aria-pressed:bg-brass-400 aria-pressed:text-nuit"
+                    data-opt="avec_batterie"
+                    aria-pressed={eqtDefault() === 'avec_batterie' ? 'true' : 'false'}
+                    data-i18n data-fr="Avec batterie" data-en="With battery" data-ar="مع بطارية">
+                    Avec batterie
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {options.map((opt) => {
+              const rows = optionItems(data!, opt);
+              if (!rows.length) return null;
+              const hidden = twoOptions && opt !== eqtDefault();
+              return (
+                <div class={`eqt-body mt-3 overflow-hidden rounded-2xl border border-white/10 ${hidden ? 'hidden' : ''}`} data-opt={opt}>
+                  <div class="eqt-grid eqt-head bg-white/5 text-xs font-semibold text-lune-faint">
+                    <span data-i18n data-fr="Désignation" data-en="Item" data-ar="التسمية">Désignation</span>
+                    <span class="eqt-num" data-i18n data-fr="Qté" data-en="Qty" data-ar="الكمية">Qté</span>
+                    <span class="eqt-num eqt-md" data-i18n data-fr="P.U. HT" data-en="Unit price excl. tax" data-ar="سعر الوحدة (بدون ضريبة)">P.U. HT</span>
+                    <span class="eqt-num eqt-md" data-i18n data-fr="TVA" data-en="VAT" data-ar="الضريبة">TVA</span>
+                    <span class="eqt-num" data-i18n data-fr="Total HT" data-en="Total excl. tax" data-ar="المجموع (بدون ضريبة)">Total HT</span>
+                  </div>
+                  {rows.map((it) => {
+                    const slug = ficheSlugForItem(it.designation, it.marque);
+                    const special = slug ? null : specialDrawerKind(it.designation);
+                    const drawer: DrawerContent | null =
+                      special === 'tableau' ? TABLEAU_ACDC_DRAWER
+                      : special === 'installation' ? INSTALLATION_DRAWER
+                      : null;
+                    const hasGeneric = !slug && !drawer && !!(it.description || it.garantie);
+                    const pu = typeof it.prix_unit_ht === 'number' && it.prix_unit_ht > 0 ? it.prix_unit_ht : null;
+                    return (
+                      <div class="eqt-grid border-t border-white/5 text-sm">
+                        <div class="min-w-0">
+                          <span class="text-lune">{it.designation}</span>
+                          {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
+                          {slug ? (
+                            <a class="eqt-link" href={`/produits/${slug}`} target="_blank" rel="noopener" data-i18n
+                              data-fr="Fiche technique ↗" data-en="Datasheet ↗" data-ar="البطاقة التقنية ↗">
+                              Fiche technique ↗
+                            </a>
+                          ) : null}
+                          {drawer ? (
+                            <details class="eqt-details">
+                              <summary class="eqt-link" data-i18n data-fr="Voir le détail" data-en="See details" data-ar="عرض التفاصيل">Voir le détail</summary>
+                              <div class="mt-2 rounded-lg bg-white/5 p-3 text-xs text-lune-soft">
+                                <p class="font-semibold text-lune" data-i18n data-fr={drawer.title.fr} data-en={drawer.title.en} data-ar={drawer.title.ar}>{drawer.title.fr}</p>
+                                <ul class="mt-2 space-y-1">
+                                  {drawer.lines.map((l) => (
+                                    <li data-i18n
+                                      data-fr={l.value === null ? `${l.fr} — ${TO_SPECIFY.fr}` : l.value ? `${l.fr} : ${l.value}` : l.fr}
+                                      data-en={l.value === null ? `${l.en} — ${TO_SPECIFY.en}` : l.value ? `${l.en}: ${l.value}` : l.en}
+                                      data-ar={l.value === null ? `${l.ar} — ${TO_SPECIFY.ar}` : l.value ? `${l.ar}: ${l.value}` : l.ar}>
+                                      {l.value === null ? `${l.fr} — ${TO_SPECIFY.fr}` : l.value ? `${l.fr} : ${l.value}` : l.fr}
+                                    </li>
+                                  ))}
+                                </ul>
+                                {drawer.footer ? (
+                                  <p class="mt-2 text-lune-faint" data-i18n data-fr={drawer.footer.fr} data-en={drawer.footer.en} data-ar={drawer.footer.ar}>{drawer.footer.fr}</p>
+                                ) : null}
+                              </div>
+                            </details>
+                          ) : null}
+                          {hasGeneric ? (
+                            <details class="eqt-details">
+                              <summary class="eqt-link" data-i18n data-fr="Voir le détail" data-en="See details" data-ar="عرض التفاصيل">Voir le détail</summary>
+                              <div class="mt-2 rounded-lg bg-white/5 p-3 text-xs text-lune-soft">
+                                {it.description ? <p>{it.description}</p> : null}
+                                {it.garantie ? (
+                                  <p class="mt-1 text-brass-300" data-i18n
+                                    data-fr={`Garantie : ${it.garantie}`} data-en={`Warranty: ${it.garantie}`} data-ar={`الضمان: ${it.garantie}`}>
+                                    Garantie : {it.garantie}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </details>
+                          ) : null}
+                        </div>
+                        <span class="eqt-num fig text-lune-soft" dir="ltr">×{formatNumber(it.quantite)}</span>
+                        <span class="eqt-num eqt-md fig text-lune-soft" dir="ltr">{pu !== null ? formatMAD(pu) : '—'}</span>
+                        <span class="eqt-num eqt-md fig text-lune-faint" dir="ltr">{typeof it.taux_tva === 'number' ? `${Math.round(it.taux_tva)}%` : '—'}</span>
+                        <span class="eqt-num fig text-lune" dir="ltr">{pu !== null ? formatMAD(itemTotalHt(it)) : '—'}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            {q?.tva_note ? (
+              <p class="mt-2 text-xs text-lune-faint">{q.tva_note}</p>
+            ) : null}
+          </div>
+        )}
       </section>
 
       <!-- ── WJ53 · TOGGLE « PAYER COMPTANT / PAIEMENT ÉCHELONNÉ » ────────────
@@ -4065,6 +4201,24 @@ const signConfig = ok
       update(n);
     });
 
+    // WPROP2 — bascule sans/avec du tableau d'équipement chiffré. Même
+    // doctrine QRES66 : délégation au document (survit à toute reconstruction
+    // de nœud), pliée dans CET îlot porteur d'imports (règle bundling — jamais
+    // un îlot nu). Les deux corps de tableau sont pré-rendus côté serveur ;
+    // ici on ne fait qu'échanger leur visibilité + l'état des boutons.
+    document.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement | null)?.closest?.('.eqt-toggle') as HTMLElement | null;
+      if (!btn) return;
+      const opt = btn.getAttribute('data-opt');
+      if (!opt) return;
+      document.querySelectorAll<HTMLElement>('.eqt-toggle').forEach((b) => {
+        b.setAttribute('aria-pressed', String(b === btn));
+      });
+      document.querySelectorAll<HTMLElement>('.eqt-body').forEach((body) => {
+        body.classList.toggle('hidden', body.getAttribute('data-opt') !== opt);
+      });
+    });
+
     // Re-localise le prix « sur étude » ET le SVG (title/desc) à chaque bascule
     // de langue — même registre que le libellé PDF (busy-label non couvert par
     // data-i18n car réécrit en JS après le premier rendu).
@@ -4327,6 +4481,65 @@ const signConfig = ok
        le poster/héros photo reste visible via <img> normal. */
     .roof3d-stage :global(canvas) {
       display: none !important;
+    }
+  }
+
+  /* ── WPROP2 — tableau d'équipement chiffré (grille-tableau, RTL-sûre) ────── */
+  .eqt-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 3.2rem 6.5rem 3.5rem 6.5rem;
+    gap: 0.4rem 0.75rem;
+    padding: 0.7rem 1rem;
+    align-items: baseline;
+  }
+  .eqt-head {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  /* Alignement LOGIQUE (end) : colonnes chiffres au bord extérieur en LTR
+     comme en RTL ; les chiffres eux-mêmes restent dir="ltr". */
+  .eqt-num {
+    text-align: end;
+    white-space: nowrap;
+  }
+  .eqt-link {
+    display: inline-block;
+    margin-inline-start: 0.6rem;
+    color: rgb(232 181 74 / 0.9);
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .eqt-details {
+    display: inline;
+  }
+  .eqt-details[open] {
+    display: block;
+  }
+  .eqt-details > summary {
+    list-style: none;
+    display: inline-block;
+  }
+  .eqt-details > summary::-webkit-details-marker {
+    display: none;
+  }
+  .eqt-toggle {
+    color: rgb(255 255 255 / 0.7);
+  }
+  .eqt-toggle[aria-pressed='true'] {
+    background: var(--color-brass-400, #e8b54a);
+    color: var(--color-nuit, #0b1120);
+  }
+  /* Mobile : P.U. et TVA se replient, Désignation | Qté | Total HT restent. */
+  @media (max-width: 640px) {
+    .eqt-md {
+      display: none;
+    }
+    .eqt-grid {
+      grid-template-columns: minmax(0, 1fr) 2.6rem 5.6rem;
     }
   }
 </style>
