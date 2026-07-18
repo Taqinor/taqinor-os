@@ -864,9 +864,21 @@ export default function LeadForm({
     try {
       const updated = await dispatch(updateLead({ id: lead.id, data: { stage: newStage } })).unwrap()
       setLiveLead(updated)
-      const merged = { ...fields, stage: updated.stage ?? newStage }
-      setFields(merged)
-      setCleanFieldsJSON(JSON.stringify(merged))
+      const resolvedStage = updated.stage ?? newStage
+      // LW2 — ce raccourci ne PATCHe QUE `{stage}` côté serveur : fusionner
+      // UNIQUEMENT cette clé dans l'instantané PROPRE EXISTANT (jamais
+      // `{...fields, stage}`, qui absorbait silencieusement toute édition en
+      // cours sur un AUTRE champ — l'instantané « propre » avalait des
+      // éditions jamais réellement enregistrées → isDirty passait à faux →
+      // fermeture/J-K sans avertissement, éditions perdues).
+      const clean = JSON.parse(cleanFieldsJSON)
+      setCleanFieldsJSON(JSON.stringify({ ...clean, stage: resolvedStage }))
+      // Ne pousser la nouvelle étape dans `fields` que si l'utilisateur n'a
+      // pas déjà une édition en cours sur CE champ précis (sinon on
+      // écraserait une sélection manuelle pas encore enregistrée).
+      if (fields.stage === clean.stage) {
+        setFields({ ...fields, stage: resolvedStage })
+      }
       onSaved?.()
     } catch { /* erreur silencieuse */ }
   }
