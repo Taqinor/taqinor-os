@@ -6628,3 +6628,90 @@ textarea.form-control {
   background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
   color: var(--foreground);
 }
+
+/* ── LW21 : onglet Devis — CTA devis auto, cartes chaîne document. ───────── */
+
+/* CTA « Devis automatique » (prêt) / liste des champs manquants (pas prêt). */
+.lw-context-devis-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.lw-context-devis-missing {
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--warning) 40%, transparent);
+  background: color-mix(in oklch, var(--warning) 10%, transparent);
+}
+.lw-context-missing-list {
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.lw-context-missing-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--info);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+/* Cartes devis (chaîne document, statut devis JAMAIS le funnel lead). */
+.lw-context-devis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.lw-context-devis-card {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.lw-context-devis-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lw-context-devis-ref {
+  flex: 1 1 auto;
+  text-align: left;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-weight: 600;
+  color: var(--foreground);
+  cursor: pointer;
+}
+.lw-context-devis-ref:hover {
+  text-decoration: underline;
+}
+.lw-context-devis-card-body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.lw-context-devis-date {
+  color: var(--muted-foreground);
+}
+.lw-context-devis-track {
+  margin: 0.1rem 0;
+}
+.lw-context-devis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
