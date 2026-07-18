@@ -51,6 +51,10 @@ export const FOCUSED_RECORD_SHORTCUTS = {
     items: [
       { key: 'a', label: 'Archiver / restaurer le lead' },
       { key: 'd', label: 'Aller au responsable (déléguer)' },
+      // LW23 — nouveau : bascule le rail contexte sur l'onglet Historique et
+      // focus le composer (événement `lw:open-note-composer`, cf.
+      // features/crm/workspace/LeadWorkspace.jsx).
+      { key: 'n', label: "Noter (bascule sur l'onglet Historique)" },
       ...LEAD_STAGE_SHORTCUTS,
     ],
   },
@@ -106,7 +110,10 @@ export function useFocusedRecordShortcuts(screenId, handlers, enabled = true) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  })
+    // `handlers` : le réabonnement ne doit se refaire QUE quand le registre
+    // ou l'objet handlers change réellement — fini le re-bind à chaque rendu
+    // (l'appelant doit fournir un `handlers` mémoïsé, cf. LeadWorkspace.jsx).
+  }, [screenId, enabled, handlers])
 }
 
 // VX248 — écran de détail ACTUELLEMENT monté (au plus un à la fois dans cet

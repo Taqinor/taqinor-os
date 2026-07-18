@@ -17,7 +17,7 @@ import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
 import {
-  filterActions, filterCreateActions, readRecentEntities, pushRecentEntity,
+  filterActions, filterCreateActions, filterContextActions, readRecentEntities, pushRecentEntity,
 } from './commandActions'
 // VX13 — ROUTE/TYPE_LABEL + recherche débouncée mutualisés avec GlobalSearch
 // (barre du haut) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
@@ -42,12 +42,26 @@ export function CommandPalette() {
   const listRef = useRef(null)
   const navigate = useNavigate()
 
+  // LW26 — actions contextuelles d'un LeadWorkspace ouvert (posées/retirées au
+  // mount/unmount via `taqinor:lead-workspace-actions`, cf.
+  // features/crm/workspace/LeadWorkspace.jsx). Vide dès que la fiche se
+  // ferme — mécanisme générique, réutilisable par un futur écran de détail.
+  const [contextActions, setContextActions] = useState([])
+  useEffect(() => {
+    const onContext = (e) => setContextActions((e.detail && e.detail.actions) || [])
+    window.addEventListener('taqinor:lead-workspace-actions', onContext)
+    return () => window.removeEventListener('taqinor:lead-workspace-actions', onContext)
+  }, [])
+
   const term = q.trim()
   // VX13 — recherche débouncée mutualisée (cf. lib/search/entityRoutes.js) ;
   // `enabled: open` préserve le comportement d'origine (aucune requête tant
   // que la palette est fermée). `failed` renommé `error` au point d'usage pour
   // ne rien changer au reste du composant.
   const { groups, loading, failed: error } = useEntitySearch(term, { enabled: open })
+  // LW26 — actions contextuelles de la fiche ouverte, filtrées comme les
+  // autres sections d'actions (libellé, insensible à la casse — pas de puce).
+  const contextRows = useMemo(() => filterContextActions(contextActions, term), [contextActions, term])
   const actions = useMemo(() => filterActions(term), [term])
   // VX220(b) — actions de CRÉATION, section dédiée « Créer » (jamais mélangée
   // à la navigation « Actions » ci-dessus).
@@ -60,10 +74,22 @@ export function CommandPalette() {
   const recent = useMemo(() => (open ? readRecentEntities() : []), [open])
 
   // Sections de rendu + liste APLATIE (indexable clavier) construites en une
-  // passe, dans l'ordre d'affichage : Actions → Récents (à vide) → Résultats.
+  // passe, dans l'ordre d'affichage : Fiche ouverte (LW26) → Actions →
+  // Récents (à vide) → Résultats.
   const { sections, flat } = useMemo(() => {
     const secs = []
     const f = []
+    // LW26 — « Fiche ouverte » : actions contextuelles du LeadWorkspace monté,
+    // EN PREMIER (le plus pertinent tant qu'une fiche est ouverte). Absente
+    // dès que la fiche se ferme (contextActions vidé par l'événement).
+    if (contextRows.length) {
+      const rows = contextRows.map((a) => {
+        const index = f.length
+        f.push({ kind: 'context', action: a })
+        return { ...a, index }
+      })
+      secs.push({ key: 'context', title: 'Fiche ouverte', kind: 'context', rows })
+    }
     // « Actions » — toujours présentes si au moins une correspond à la requête.
     if (actions.length) {
       const rows = actions.map((a) => {
@@ -112,7 +138,7 @@ export function CommandPalette() {
       }
     }
     return { sections: secs, flat: f }
-  }, [actions, createActions, quickCreateTypes, recent, groups, term])
+  }, [contextRows, actions, createActions, quickCreateTypes, recent, groups, term])
 
   const close = useCallback(() => {
     setOpen(false)
@@ -171,6 +197,10 @@ export function CommandPalette() {
     // (Devis — écran dédié) et « Actions » gardent le comportement nav existant.
     if (entry.kind === 'create' && entry.action.quickCreateType) {
       openQuickCreate(entry.action.quickCreateType)
+    } else if (entry.kind === 'context') {
+      // LW26 — une action contextuelle (Fiche ouverte) exécute son propre
+      // callback (archiver/convertir/aller à une section…) — jamais une nav.
+      entry.action.run?.()
     } else if (entry.kind === 'action' || entry.kind === 'create') {
       navigate(entry.action.to)
     } else if (entry.kind === 'recent') {
@@ -256,7 +286,7 @@ export function CommandPalette() {
               <div className="cmdk-group-title">{sec.title}</div>
               {sec.rows.map((r) => {
                 const i = r.index
-                if (sec.kind === 'action' || sec.kind === 'create') {
+                if (sec.kind === 'action' || sec.kind === 'create' || sec.kind === 'context') {
                   return (
                     <button
                       key={`${sec.kind}-${r.id}`}

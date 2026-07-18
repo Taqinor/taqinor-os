@@ -1,10 +1,12 @@
 import { useReducer, useRef, useEffect, useCallback } from 'react'
 import crmApi from '../../../api/crmApi'
+import { toast } from '../../../ui'
 import { useDirtyGuard, confirmLeaveIfDirty } from '../../../ui/useDirtyGuard'
 import {
   reducer, initState, getField, isDirty, dirtyKeys, isSuggested,
   toPayload, currentFields,
 } from './draftCore'
+import { getPrefetched } from './leadPrefetch'
 
 // LW9/LW12 — Hook moteur d'état du Lead Workspace : branche les effets (PATCH
 // réseau, debounce d'autosauvegarde, miroir sessionStorage, garde stale,
@@ -46,11 +48,24 @@ function clearMirror(id) {
   try { window.sessionStorage.removeItem(MIRROR_PREFIX + id) } catch { /* best-effort */ }
 }
 
+// LW24 — voisin déjà pré-chargé en idle (cf. leadPrefetch.js) : premier rendu
+// INSTANTANÉ avec la donnée COMPLÈTE en cache, superposée à la ligne partielle
+// reçue (le cache gagne sur les clés qu'il connaît). Le GET frais repart
+// TOUJOURS en arrière-plan et remplace via SET_SERVER — ce cache n'est jamais
+// la source de vérité.
+function withPrefetched(lead, mode) {
+  const id = lead && lead.id != null ? lead.id : null
+  if (mode !== 'edit' || id == null) return lead
+  const cached = getPrefetched(id)
+  return cached ? { ...lead, ...cached } : lead
+}
+
 export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUserId = null, onSaved } = {}) {
   const [state, dispatch] = useReducer(reducer, undefined, () => {
-    const id = lead && lead.id != null ? lead.id : null
+    const effectiveLead = withPrefetched(lead, mode)
+    const id = effectiveLead && effectiveLead.id != null ? effectiveLead.id : null
     const restoredDraft = (mode === 'edit' && id != null) ? readMirror(id) : null
-    return initState({ lead, mode, currentUserId, lastVille: readLastVille(), restoredDraft })
+    return initState({ lead: effectiveLead, mode, currentUserId, lastVille: readLastVille(), restoredDraft })
   })
 
   // Refs pour des callbacks STABLES (jamais de closure périmée ni de timer de
@@ -154,17 +169,44 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   // ── changeStage : action du StageControl (blueprint D2#4) ─────────────────
   // `stage` n'entre jamais dans le draft : on vide d'abord les éditions en
   // cours, puis PATCH {stage} dédié. Le succès met à jour server.stage SEUL.
-  // SIGNED est intercepté en amont par StageControl (SigneDialog) ; un recul de
-  // funnel remonte un 400 que l'appelant transforme en toast.
+  // SIGNED est intercepté en amont par StageControl (SigneDialog). Un recul de
+  // funnel remonte un 400 côté serveur — géré ICI, UN SEUL endroit pour les
+  // DEUX appelants (raccourci clavier « 1-4 » LW23, StageControl LW16) :
+  // jamais dupliqué au point d'appel.
   const changeStage = useCallback(async (newStage) => {
     const st = stateRef.current
     if (st.mode !== 'edit' || getField(st, 'stage') === newStage) return
     await flush({})
-    const res = (await crmApi.updateLead(st.leadId, { stage: newStage })).data
-    dispatch({ type: 'SET_SERVER', res })
-    if (res && res.date_modification) openedAtRef.current = res.date_modification
-    onSavedRef.current?.()
+    try {
+      const res = (await crmApi.updateLead(st.leadId, { stage: newStage })).data
+      dispatch({ type: 'SET_SERVER', res })
+      if (res && res.date_modification) openedAtRef.current = res.date_modification
+      onSavedRef.current?.()
+    } catch (err) {
+      if (err?.response?.status === 400) {
+        toast.error("Retour d'étape non autorisé")
+      }
+      // Autre échec (réseau/serveur) : silencieux, comme le reste du moteur
+      // (best-effort) — le stage affiché reste simplement l'ancien (server
+      // jamais mis à jour), rien à réconcilier.
+    }
   }, [flush])
+
+  // LW25/LW24 — GET complet systématique à l'ouverture (skeleton pendant le
+  // vol côté LeadWorkspace) ET rejoué en arrière-plan à chaque navigation
+  // J/K, MÊME sur un voisin déjà rendu depuis le cache LW24 (le cache n'est
+  // qu'un premier rendu, jamais la source de vérité). Distinct de
+  // `refreshServer` : ne notifie PAS `onSaved` (ouvrir/naviguer une fiche
+  // n'est pas un enregistrement — `onSaved` sert au parent à rafraîchir SA
+  // liste après une vraie mutation, pas à chaque simple consultation).
+  const loadFresh = useCallback(async (id) => {
+    if (id == null) return
+    try {
+      const res = (await crmApi.getLead(id)).data
+      dispatch({ type: 'SET_SERVER', res })
+      if (res && res.id === id && res.date_modification) openedAtRef.current = res.date_modification
+    } catch { /* best-effort — le premier rendu (ligne/cache) reste affiché */ }
+  }, [])
 
   // Recharge la vérité serveur sans toucher au draft (après devis/facture/fusion).
   const refreshServer = useCallback(async () => {
@@ -200,10 +242,14 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     loadedRef.current = id
     loadedModeRef.current = mode
     const restoredDraft = (mode === 'edit' && id != null) ? readMirror(id) : null
-    openedAtRef.current = leadRef.current && leadRef.current.date_modification
+    // LW24 — navigation J/K vers un voisin déjà pré-chargé : premier rendu
+    // instantané avec la donnée complète en cache (cf. withPrefetched
+    // ci-dessus) au lieu de la seule ligne partielle de `leadsQueue`.
+    const effectiveLead = withPrefetched(leadRef.current, mode)
+    openedAtRef.current = effectiveLead && effectiveLead.date_modification
     dispatch({
       type: 'LOAD_LEAD',
-      payload: { lead: leadRef.current, mode, currentUserId, lastVille: readLastVille(), restoredDraft },
+      payload: { lead: effectiveLead, mode, currentUserId, lastVille: readLastVille(), restoredDraft },
     })
     // On lit `leadRef.current` (jamais `lead` directement) pour ne recharger
     // qu'à un VRAI changement d'id/mode (un simple re-rendu du parent ne doit
@@ -250,6 +296,7 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
     leaveGuard,
     changeStage,
     refreshServer,
+    loadFresh,
     patchServer,
     resetForCreate,
     createPayload,

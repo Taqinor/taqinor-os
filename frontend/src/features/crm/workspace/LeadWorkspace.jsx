@@ -1,4 +1,4 @@
-import { createElement, useEffect, useState, useCallback, useRef } from 'react'
+import { createElement, useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import api from '../../../api/axios'
@@ -10,11 +10,16 @@ import {
   Button, IconButton, Switch,
   Dialog, DialogContent, DialogTitle,
   Sheet, SheetContent, SheetTitle,
+  SkeletonAvatar, SkeletonLine, SkeletonText, SkeletonCard, FadeSwap,
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { useServerFieldErrors } from '../../../hooks/useServerFieldErrors'
+import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { isTypingTarget } from '../../../providers/shortcuts'
+import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
+import { pushRecentEntity } from '../../../providers/commandActions'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
+import { schedulePrefetch } from './leadPrefetch'
 import { getField } from './draftCore'
 import IdentityRail from './IdentityRail'
 import SectionsPane from './SectionsPane'
@@ -42,6 +47,31 @@ const lireCreerUnAutre = () => {
 }
 const ecrireCreerUnAutre = (v) => {
   try { localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0') } catch { /* best-effort */ }
+}
+
+// LW26 — registre MINIMAL « Aller à la section … » de la palette ⌘K : miroir
+// des id/label STABLES du registre de SectionsPane.jsx (id/label seulement —
+// SectionsPane possède la STRUCTURE, cf. « Do NOT touch » de cette lane ;
+// les sections CONDITIONNELLES — pompage/origine web — n'y figurent pas,
+// simplification assumée). `[data-nav-id]`/`.lw-section-head` sont des hooks
+// DOM stables (même patron que `.ap-trigger` pour l'AssigneePicker).
+const SECTION_JUMP_TARGETS = [
+  { id: 'contact', label: 'Aller à : Contact' },
+  { id: 'pipeline', label: 'Aller à : Suivi commercial' },
+  { id: 'energie', label: 'Aller à : Profil énergétique' },
+  { id: 'toiture', label: 'Aller à : Toiture & site' },
+  { id: 'visite', label: 'Aller à : Visite technique' },
+  { id: 'divers', label: 'Aller à : Compléments' },
+]
+
+function goToSection(id) {
+  const el = document.querySelector(`.lw-center [data-nav-id="${id}"]`)
+  if (!el) return
+  // Déplie la section si elle est repliée (même logique que SectionsPane.jumpTo,
+  // rejouée depuis l'extérieur via le hook DOM stable — jamais un import de
+  // l'état interne de SectionsPane).
+  el.querySelector('.lw-section-head[aria-expanded="false"]')?.click()
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 // Chip d'état de sauvegarde (autosauvegarde D2). Jamais de spinner bloquant.
@@ -76,7 +106,9 @@ export default function LeadWorkspace({
   const currentUserId = useSelector((s) => s.auth?.user?.id)
 
   const draft = useLeadDraft(lead, { mode, currentUserId, onSaved })
-  const { state, field, setField, saveState, leaveGuard } = draft
+  const {
+    state, field, setField, saveState, leaveGuard, changeStage, loadFresh,
+  } = draft
   // Primitives STABLES hoistées : le compilateur React (lint v7) refuse de
   // préserver un useCallback dont les deps mêlent optional-chaining et objet
   // entier — on ne dépend que de scalaires.
@@ -152,11 +184,21 @@ export default function LeadWorkspace({
         return leaveGuard(() => { if (leadId) navigate(`/devis-design/${leadId}`) })
       case 'open-devis': return setDevisPanel(payload || 'auto')
       case 'view-devis': setPanelDevisId(payload); return setDevisPanel('view')
+      // LW16-wire — édition rapide du rail (responsable/relance) : un simple
+      // SET_FIELD, débouncé/flushé par le moteur comme toute autre frappe.
+      case 'set-field': return setField(payload.key, payload.value)
+      // LW16-wire — StageControl (transitions non-SIGNED) : passe TOUJOURS par
+      // le moteur `changeStage` (flush-puis-PATCH dédié, LW23 s'en sert déjà
+      // pour 1-4) ; un recul de funnel refusé (400) surface un toast — géré
+      // à l'INTÉRIEUR de `changeStage` (useLeadDraft.js), un seul endroit
+      // pour les DEUX appelants (raccourci clavier + StageControl).
+      case 'change-stage': return changeStage(payload)
+      // 'apply-card' : volontairement inerte pour l'instant (hors périmètre).
       case 'refresh': return draft.refreshServer()
       case 'close': return leaveGuard(onClose)
       default: return undefined
     }
-  }, [doArchive, leaveGuard, leadId, navigate, draft, onClose])
+  }, [doArchive, leaveGuard, leadId, navigate, draft, onClose, setField, changeStage])
 
   // ── File de rafale (◀▶ + J/K), gardée par leaveGuard (draft flushé) ───────
   const queueIndex = (leadsQueue && mode === 'edit')
@@ -183,6 +225,110 @@ export default function LeadWorkspace({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [mode, leadsQueue, onNavigateLead, goToLead, nextInQueue, prevInQueue])
+
+  // ── LW24 : pré-chargement en idle des voisins de file (J/K instantané) ────
+  // Se contente d'ALIMENTER le cache module-level (leadPrefetch.js) — la
+  // CONSOMMATION (premier rendu instantané) vit dans useLeadDraft.js
+  // (LOAD_LEAD). Annulé proprement si la file change avant le déclenchement.
+  useEffect(() => {
+    if (mode !== 'edit' || !leadsQueue) return undefined
+    const ids = [prevInQueue?.id, nextInQueue?.id].filter((id) => id != null)
+    if (!ids.length) return undefined
+    return schedulePrefetch(ids, (id) => crmApi.getLead(id).then((r) => r.data))
+  }, [mode, leadsQueue, prevInQueue, nextInQueue])
+
+  // ── LW25 : GET complet systématique à l'ouverture (+ LW24 : rejoué en
+  // arrière-plan à CHAQUE navigation J/K, même mécanisme unique — `loadFresh`
+  // remplace TOUJOURS le premier rendu, qu'il vienne de la ligne partielle ou
+  // du cache voisin, garde `res.id===leadId` déjà dans le réducteur). Piloté
+  // par `useDelayedLoading` : rien avant 300ms, squelette au-delà de 500ms —
+  // jamais de spinner nu (recon 03 #23).
+  const [leadLoading, setLeadLoading] = useState(false)
+  useEffect(() => {
+    if (mode !== 'edit' || !leadId) return undefined
+    let cancelled = false
+    // Synchronise le squelette avec le GET en vol (même patron que
+    // LeadDevisPanel.jsx setPreviewLoading) : ce n'est pas un dérivé de
+    // props/state, c'est le vrai début d'une opération réseau déclenchée PAR
+    // cet effet.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLeadLoading(true)
+    loadFresh(leadId).finally(() => { if (!cancelled) setLeadLoading(false) })
+    return () => { cancelled = true }
+  }, [mode, leadId, loadFresh])
+  const { showSkeleton } = useDelayedLoading(leadLoading)
+
+  // ── LW26 : actions contextuelles ⌘K tant que CE lead est ouvert ───────────
+  // `taqinor:lead-workspace-actions` (posé/retiré au mount/unmount, motif de
+  // `taqinor:command-palette` déjà en place) — providers/CommandPalette.jsx
+  // les fusionne dans sa propre liste. « Envoyer les devis WhatsApp » et
+  // « Épingler une note » n'ont pas ENCORE de surface concrète tant que le
+  // rail contexte (LW19-LW21, ContextRail toujours un placeholder à ce jour)
+  // n'a pas ses onglets — même patron d'événement `lw:open-*` que le
+  // raccourci « n » ci-dessous, DOCUMENTÉ pour cette lane-là (voir rapport).
+  const paletteActions = useMemo(() => {
+    if (mode !== 'edit' || !leadId) return []
+    return [
+      {
+        id: 'lw-wa-devis',
+        label: 'Envoyer les devis par WhatsApp',
+        run: () => window.dispatchEvent(new CustomEvent('lw:open-whatsapp-composer', { detail: { leadId } })),
+      },
+      { id: 'lw-devis-auto', label: 'Devis automatique', run: () => onAction('open-devis', 'auto') },
+      {
+        id: 'lw-archive',
+        label: leadArchived ? 'Restaurer le lead' : 'Archiver le lead',
+        run: () => onAction('archive'),
+      },
+      { id: 'lw-convert', label: 'Convertir en client', run: () => onAction('convert') },
+      {
+        id: 'lw-note',
+        label: 'Épingler une note',
+        run: () => window.dispatchEvent(new CustomEvent('lw:open-note-composer', { detail: { leadId } })),
+      },
+      ...SECTION_JUMP_TARGETS.map((s) => ({
+        id: `lw-goto-${s.id}`, label: s.label, run: () => goToSection(s.id),
+      })),
+    ]
+  }, [mode, leadId, leadArchived, onAction])
+
+  useEffect(() => {
+    if (!paletteActions.length) return undefined
+    window.dispatchEvent(new CustomEvent('taqinor:lead-workspace-actions', { detail: { actions: paletteActions } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('taqinor:lead-workspace-actions', { detail: { actions: [] } }))
+    }
+  }, [paletteActions])
+
+  // `pushRecentEntity` à l'OUVERTURE uniquement (jamais à chaque frappe du
+  // nom) : `nomTitreRef` lu à l'exécution de l'effet, hors deps — patron déjà
+  // établi par `stateRef`/`leadRef` dans useLeadDraft.js.
+  const nomTitreRef = useRef('')
+  useEffect(() => {
+    if (mode !== 'edit' || !leadId) return
+    pushRecentEntity({ type: 'lead', id: leadId, label: nomTitreRef.current })
+  }, [mode, leadId])
+
+  // ── LW23 : registre de raccourcis propre (a/d/n/1-4) ──────────────────────
+  // `a` archiver (leaveGuard déjà structurel dans doArchive), `d` focus le
+  // picker Responsable de l'IdentityRail (hook DOM stable `.ap-trigger` —
+  // fichier d'une autre lane, jamais importé), `n` bascule Historique +
+  // focus composer (événement `lw:open-note-composer`, ContextRail — LW19-21
+  // — DOIT écouter), `1`-`4` = StageControl (LEAD_STAGE_SHORTCUTS, jamais
+  // SIGNED/COLD). Handlers mémoïsés → `useFocusedRecordShortcuts` reçoit un
+  // objet STABLE, donc son propre effet clavier (dep array réparé,
+  // providers/focusedRecordShortcuts.jsx) ne se réabonne plus à chaque rendu.
+  const onStageShortcut = useCallback((def) => { changeStage(def.stage) }, [changeStage])
+  const focusedHandlers = useMemo(() => ({
+    a: () => doArchive(),
+    d: () => { document.querySelector('.ap-trigger')?.focus() },
+    n: () => { window.dispatchEvent(new CustomEvent('lw:open-note-composer', { detail: { leadId } })) },
+    '1': onStageShortcut,
+    '2': onStageShortcut,
+    '3': onStageShortcut,
+    '4': onStageShortcut,
+  }), [doArchive, onStageShortcut, leadId])
+  useFocusedRecordShortcuts('leadForm', focusedHandlers, mode === 'edit')
 
   // ── Fermeture (✕/overlay/Escape) via leaveGuard ──────────────────────────
   const requestClose = useCallback(() => { leaveGuard(onClose) }, [leaveGuard, onClose])
@@ -236,6 +382,9 @@ export default function LeadWorkspace({
   const nomTitre = mode === 'edit'
     ? `Lead — ${getField(state, 'nom') || ''} ${getField(state, 'prenom') || ''}`.trim()
     : 'Nouveau lead'
+  // LW26 — tenu à jour à CHAQUE rendu (jamais une dépendance d'effet, cf.
+  // pushRecentEntity ci-dessus : seul l'effet « ouverture » le LIT).
+  useEffect(() => { nomTitreRef.current = nomTitre })
 
   // ── Rendu du contenu (partagé dialog / sheet / page) ──────────────────────
   const renderBody = (TitleComp) => (
@@ -300,33 +449,75 @@ export default function LeadWorkspace({
         </div>
       )}
 
-      <div className={`lw-body ${mode === 'create' ? 'lw-body--create' : 'lw-body--edit'}`}>
-        {mode === 'edit' && (
-          <IdentityRail state={state} onAction={onAction} users={users} archiveBusy={archiveBusy} />
-        )}
-        <SectionsPane
-          state={state}
-          setField={setField}
-          errors={errors}
-          mode={mode}
-          focusSection={focusSection}
-          formId={CREATE_FORM_ID}
-          onSubmit={handleCreateSubmit}
-          refData={{
-            users, tagOptions, motifOptions, dups,
-            leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
-          }}
-        />
-        {mode === 'edit' && (
-          <ContextRail
+      {mode === 'create' ? (
+        <div className="lw-body lw-body--create">
+          <SectionsPane
             state={state}
-            users={users}
-            historique={historique}
-            refreshHistorique={refreshHistorique}
-            onAction={onAction}
+            setField={setField}
+            errors={errors}
+            mode={mode}
+            focusSection={focusSection}
+            formId={CREATE_FORM_ID}
+            onSubmit={handleCreateSubmit}
+            refData={{
+              users, tagOptions, motifOptions, dups,
+              leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
+            }}
           />
-        )}
-      </div>
+        </div>
+      ) : (
+        // LW25 — squelette EN FORME de la vraie grille (rail identité :
+        // avatar + 3 lignes ; centre : 2 cartes ; rail contexte : texte),
+        // crossfade via FadeSwap. Les champs déjà connus de la ligne
+        // (nom/stage/ville) restent visibles pendant ce temps : ils sont
+        // dans le bandeau (`nomTitre` ci-dessus) et l'IdentityRail — HORS de
+        // cette zone body, jamais masqués par le squelette.
+        <FadeSwap
+          loading={showSkeleton}
+          className="lw-skeleton-swap"
+          skeleton={(
+            <div className="lw-body lw-body--edit" aria-hidden="true">
+              <div className="lw-zone lw-rail-identity lw-skeleton-pane">
+                <SkeletonAvatar />
+                <SkeletonLine />
+                <SkeletonLine />
+                <SkeletonLine />
+              </div>
+              <div className="lw-zone lw-center lw-skeleton-pane lw-skeleton-pane--center">
+                <SkeletonCard />
+                <SkeletonCard />
+              </div>
+              <div className="lw-zone lw-rail-context lw-skeleton-pane">
+                <SkeletonText lines={5} />
+              </div>
+            </div>
+          )}
+        >
+          <div className="lw-body lw-body--edit">
+            <IdentityRail state={state} onAction={onAction} users={users} archiveBusy={archiveBusy} />
+            <SectionsPane
+              state={state}
+              setField={setField}
+              errors={errors}
+              mode={mode}
+              focusSection={focusSection}
+              formId={CREATE_FORM_ID}
+              onSubmit={handleCreateSubmit}
+              refData={{
+                users, tagOptions, motifOptions, dups,
+                leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
+              }}
+            />
+            <ContextRail
+              state={state}
+              users={users}
+              historique={historique}
+              refreshHistorique={refreshHistorique}
+              onAction={onAction}
+            />
+          </div>
+        </FadeSwap>
+      )}
 
       {mode === 'create' && (
         <footer className="lw-footer">
