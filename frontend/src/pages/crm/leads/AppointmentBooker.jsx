@@ -6,6 +6,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import crmApi from '../../../api/crmApi'
 import { formatDateTime } from '../../../lib/format'
+// LW6 — toast d'erreur explicite quand l'annulation échoue (import direct,
+// même convention que PlaybookChecklistPanel.jsx/KanbanView.jsx dans ce
+// même dossier — ce fichier est un composant JSX, jamais exécuté sous
+// `node --test`, donc aucune contrainte d'import paresseux ici).
+import { toast } from '../../../ui/confirm'
 
 const STATUS_LABELS = {
   planifie: 'Planifié',
@@ -35,6 +40,10 @@ export default function AppointmentBooker({ leadId }) {
   const [error, setError] = useState(null)
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
+  // LW6 — id du RDV en cours d'annulation (bouton désactivé pendant la
+  // requête, jamais un échec silencieux qui laisse croire au commercial que
+  // le RDV a bien été annulé alors qu'il tient toujours — double-booking).
+  const [cancellingId, setCancellingId] = useState(null)
   // VX245(b) — aperçu du message de confirmation WhatsApp avant ouverture de
   // wa.me : { apptId, message, wa_url } | null.
   const [waPreview, setWaPreview] = useState(null)
@@ -49,8 +58,12 @@ export default function AppointmentBooker({ leadId }) {
 
   useEffect(() => { load() }, [load])
 
+  // LW6 — plus de balise `form` (soumission au clic ET à Entrée, gérée
+  // localement ci-dessous) : `e` peut désormais être un KeyboardEvent, un
+  // MouseEvent, ou absent — `preventDefault` optionnel, jamais requis
+  // (aucune soumission de formulaire natif à bloquer).
   async function handleBook(e) {
-    e.preventDefault()
+    e?.preventDefault?.()
     if (!scheduledAt) { setError('La date et heure sont requises.'); return }
     setSaving(true)
     setError(null)
@@ -71,12 +84,20 @@ export default function AppointmentBooker({ leadId }) {
     }
   }
 
+  // LW6 — l'échec était avalé en silence (`catch {}`) : le commercial
+  // croyait le RDV annulé alors qu'il tenait toujours (double-booking client
+  // réel, recon 05 P2#11). Toast d'erreur explicite + bouton désactivé
+  // pendant la requête ; en échec, `load()` n'est PAS rappelé — la liste
+  // reste honnête, le RDV toujours affiché puisqu'il n'a pas été annulé.
   async function handleCancel(apptId) {
+    setCancellingId(apptId)
     try {
       await crmApi.updateAppointment(apptId, { statut: 'annule' })
       load()
     } catch {
-      // best-effort
+      toast.error('Annulation du rendez-vous impossible — réessayez.')
+    } finally {
+      setCancellingId(null)
     }
   }
 
@@ -187,6 +208,7 @@ export default function AppointmentBooker({ leadId }) {
                 <button
                   type="button"
                   onClick={() => handleCancel(a.id)}
+                  disabled={cancellingId === a.id}
                   style={{
                     fontSize: 11, color: 'var(--destructive)',
                     background: 'none', border: 'none', cursor: 'pointer',
@@ -194,7 +216,7 @@ export default function AppointmentBooker({ leadId }) {
                   }}
                   title="Annuler ce rendez-vous"
                 >
-                  Annuler
+                  {cancellingId === a.id ? 'Annulation…' : 'Annuler'}
                 </button>
               </div>
             ))}
@@ -256,11 +278,29 @@ export default function AppointmentBooker({ leadId }) {
           + Planifier une visite
         </button>
       ) : (
-        <form id="appt-booker-form" onSubmit={handleBook} style={{
-          display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end',
-          padding: '10px', background: 'var(--muted)',
-          borderRadius: 8, border: '1px solid var(--border)',
-        }}>
+        // LW6 — une balise `form` ici imbriquait un formulaire DANS le
+        // formulaire de LeadForm (HTML invalide, propriété du Enter
+        // fragile, recon 05 P2#10). `div role="group"` = équivalent
+        // sémantique pour un groupe de contrôles ; la soumission au clic
+        // (bouton Confirmer) et à Entrée (onKeyDown ci-dessous, réservé aux
+        // champs texte — comme un formulaire natif, jamais sur les boutons
+        // qui gèrent déjà Entrée eux-mêmes) est gérée localement.
+        <div
+          id="appt-booker-form"
+          role="group"
+          aria-label="Planifier une visite"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !saving) {
+              e.preventDefault()
+              handleBook(e)
+            }
+          }}
+          style={{
+            display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end',
+            padding: '10px', background: 'var(--muted)',
+            borderRadius: 8, border: '1px solid var(--border)',
+          }}
+        >
           <div className="form-group" style={{ flex: '1 1 180px', margin: 0 }}>
             <label className="form-label" htmlFor="appt-scheduled-at" style={{ fontSize: 12 }}>
               Date et heure <span style={{ color: 'var(--destructive)' }}>*</span>
@@ -296,10 +336,11 @@ export default function AppointmentBooker({ leadId }) {
           )}
           <div style={{ display: 'flex', gap: 6 }}>
             <button
-              type="submit"
+              type="button"
               className="btn btn-primary"
               style={{ fontSize: 13, padding: '4px 14px' }}
               disabled={saving}
+              onClick={handleBook}
             >
               {saving ? 'Enregistrement…' : 'Confirmer'}
             </button>
@@ -312,7 +353,7 @@ export default function AppointmentBooker({ leadId }) {
               Annuler
             </button>
           </div>
-        </form>
+        </div>
       )}
     </div>
   )
