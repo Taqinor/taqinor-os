@@ -20,7 +20,7 @@ beforeAll(() => {
 
 const {
   empty, signalementsCreate, garagesCreate, approuver, ordresList, generer,
-  plansCreate,
+  plansCreate, ordresCreate, pneumatiquesCreate, piecesCreate,
 } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   signalementsCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
@@ -35,20 +35,25 @@ const {
   }),
   generer: vi.fn(() => Promise.resolve({ data: { nb_creees: 2, nb_existantes: 0, nb_plans_due: 2, echeances: [] } })),
   plansCreate: vi.fn(() => Promise.resolve({ data: { id: 4 } })),
+  ordresCreate: vi.fn(() => Promise.resolve({ data: { id: 8 } })),
+  pneumatiquesCreate: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
+  piecesCreate: vi.fn(() => Promise.resolve({ data: { id: 10 } })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
     actifs: { list: () => Promise.resolve({ data: [{ id: 1, label: '12345-A-6' }] }) },
+    vehicules: { list: () => Promise.resolve({ data: [{ id: 2, immatriculation: '12345-A-6' }] }) },
     plansEntretien: { list: empty, create: (...args) => plansCreate(...args) },
     echeancesEntretien: { list: empty, generer: (...args) => generer(...args) },
     garages: { list: empty, create: (...args) => garagesCreate(...args) },
     ordresReparation: {
       list: ordresList,
       approuver: (...args) => approuver(...args),
+      create: (...args) => ordresCreate(...args),
     },
-    pneumatiques: { list: empty },
-    pieces: { list: empty },
+    pneumatiques: { list: empty, create: (...args) => pneumatiquesCreate(...args) },
+    pieces: { list: empty, create: (...args) => piecesCreate(...args) },
     signalements: {
       list: empty,
       create: (...args) => signalementsCreate(...args),
@@ -127,6 +132,59 @@ describe('EntretienScreen — Ordres de réparation (XFLT19)', () => {
     // point de rupture est géré en CSS) : deux correspondances attendues.
     await waitFor(() => expect(screen.getAllByText('Frein arrière').length).toBeGreaterThan(0))
     expect(screen.getAllByText('Sous garantie').length).toBeGreaterThan(0)
+  })
+})
+
+describe('EntretienScreen — Ordres de réparation (WIR45a création directe)', () => {
+  it('crée un OR direct pour une réparation planifiée sans signalement', async () => {
+    const user = userEvent.setup()
+    withProviders(<EntretienScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Ordres de réparation' }))
+    await user.click(await screen.findByRole('button', { name: 'Nouvel OR' }))
+
+    await user.selectOptions(screen.getByLabelText('Actif (véhicule ou engin)'), '1')
+    await user.type(screen.getByLabelText('Date d’ouverture'), '2026-08-01')
+    await user.click(screen.getByRole('button', { name: 'Créer' }))
+
+    await waitFor(() => expect(ordresCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ actif_flotte: 1, date_ouverture: '2026-08-01' }),
+    ))
+  })
+})
+
+describe('EntretienScreen — Pneumatiques (WIR45b création)', () => {
+  it('saisit un changement de pneu depuis l’écran', async () => {
+    const user = userEvent.setup()
+    withProviders(<EntretienScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Pneumatiques' }))
+    await user.click(await screen.findByRole('button', { name: 'Nouveau pneu' }))
+
+    await user.selectOptions(screen.getByLabelText('Véhicule'), '2')
+    await user.click(screen.getByRole('button', { name: 'Créer' }))
+
+    await waitFor(() => expect(pneumatiquesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ vehicule: 2, position: 'av_g' }),
+    ))
+  })
+})
+
+describe('EntretienScreen — Pièces (WIR45b création)', () => {
+  it('saisit une pièce consommée depuis l’écran', async () => {
+    const user = userEvent.setup()
+    withProviders(<EntretienScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Pièces' }))
+    await user.click(await screen.findByRole('button', { name: 'Nouvelle pièce' }))
+
+    await user.selectOptions(screen.getByLabelText('Véhicule'), '2')
+    await user.type(screen.getByLabelText('Désignation'), 'Plaquette de frein')
+    await user.click(screen.getByRole('button', { name: 'Créer' }))
+
+    await waitFor(() => expect(piecesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ vehicule: 2, designation: 'Plaquette de frein' }),
+    ))
   })
 })
 
