@@ -572,6 +572,28 @@ app.conf.beat_schedule = {
         'task': 'education.relancer_reinscriptions',
         'schedule': crontab(hour=7, minute=50),
     },
+    # ── WIR50 — trois commandes périodiques de SÉCURITÉ/GOUVERNANCE bâties mais
+    # jamais planifiées (P0 : elles ne tournaient JAMAIS en prod). ──
+    # NTSEC22 — révoque les accès break-glass ÉCHUS (un octroi expiré conserve
+    # sinon le rôle Administrateur : élévation de privilège persistante). Cadence
+    # rapide (toutes les 10 min) pour rétrograder promptement un accès échu.
+    'identity-revoke-expired-break-glass': {
+        'task': 'identity.revoke_expired_break_glass',
+        'schedule': crontab(minute='*/10'),
+    },
+    # NTSEC25 — désactive les comptes dormants au-delà du seuil société
+    # (balayage par société, notification Directeur préalable). Quotidien,
+    # heure creuse. No-op tant qu'aucune société n'a armé de seuil.
+    'authentication-desactiver-comptes-dormants': {
+        'task': 'authentication.desactiver_comptes_dormants',
+        'schedule': crontab(hour=2, minute=20),
+    },
+    # FG366 — escalade les étapes de workflow au SLA dépassé (balayage par
+    # société, WorkflowStepInstance en attente échue). Horaire.
+    'core-escalate-workflow-sla': {
+        'task': 'core.escalate_workflow_sla',
+        'schedule': crontab(minute=20),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
