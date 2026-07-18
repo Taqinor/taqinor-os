@@ -10,6 +10,13 @@ défaillance dominant du dépôt) :
     inactif au-delà du seuil société restait actif ;
   * ``core.escalate_workflow_sla`` (horaire) — une étape de workflow au SLA
     dépassé n'escaladait jamais.
+
+Frontière import-linter : ce module (paquet ``core``) ne doit PAS importer
+``apps.identity.tasks`` (qui atteint transitivement stock/ventes). La preuve
+d'enregistrement + d'exécution de la tâche identity vit donc dans
+``apps/identity/tests/test_wir50_break_glass_beat.py`` (import intra-app légal).
+``authentication`` et ``core`` sont des apps fondation : leur import depuis
+``core`` est autorisé.
 """
 from unittest.mock import patch
 
@@ -39,23 +46,16 @@ class Wir50SecurityBeatTests(TestCase):
         for name in EXPECTED_TASKS:
             self.assertIn('schedule', by_task[name], name)
 
-    def test_tasks_registered_with_expected_names(self):
-        from apps.identity.tasks import revoke_expired_break_glass_task
+    def test_auth_and_core_tasks_registered_with_expected_names(self):
+        # authentication + core = apps fondation (import légal depuis core) ;
+        # identity est vérifié dans apps/identity/tests (frontière M3).
         from authentication.tasks import desactiver_comptes_dormants_task
         from core.tasks import escalate_workflow_sla_task
-        self.assertEqual(
-            revoke_expired_break_glass_task.name,
-            'identity.revoke_expired_break_glass')
         self.assertEqual(
             desactiver_comptes_dormants_task.name,
             'authentication.desactiver_comptes_dormants')
         self.assertEqual(
             escalate_workflow_sla_task.name, 'core.escalate_workflow_sla')
-
-    def test_revoke_break_glass_task_runs_and_sweeps(self):
-        # Balayage global (toutes sociétés) ; sans octroi échu, zéro révocation.
-        from apps.identity.tasks import revoke_expired_break_glass_task
-        self.assertEqual(revoke_expired_break_glass_task(), {'revoques': 0})
 
     def test_dormant_task_delegates_to_command(self):
         from authentication.tasks import desactiver_comptes_dormants_task
