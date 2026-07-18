@@ -198,6 +198,79 @@ class Adsdeep57UploadTests(SimpleTestCase):
         self.assertEqual(client.calls[0][0], 'delete_custom_audience')
 
 
+class Adsdeep58LookalikeTests(SimpleTestCase):
+    def test_seed_off_by_default_no_send(self):
+        summary = aud.create_lookalike_from_seed(
+            company=None, name='LAL', origin_audience_id='SEED',
+            seed_matched_count=500, client=ExplodingClient())
+        self.assertFalse(summary['configured'])
+        self.assertEqual(summary['audience_id'], '')
+
+    def test_seed_below_100_refused_before_network(self):
+        summary = aud.create_lookalike_from_seed(
+            company=None, name='LAL', origin_audience_id='SEED',
+            seed_matched_count=99, client=ExplodingClient())
+        self.assertFalse(summary['seed_sufficient'])
+        self.assertEqual(summary['error'], 'seed_too_small')
+        self.assertEqual(summary['min_seed'], 100)
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_lookalike_created_with_ma_spec(self):
+        client = RecordingClient()
+        summary = aud.create_lookalike_from_seed(
+            company=None, name='LAL', origin_audience_id='SEED',
+            seed_matched_count=250, ratio=0.03, client=client)
+        self.assertTrue(summary['configured'])
+        self.assertTrue(summary['audience_id'])
+        call = next(k for (n, k) in client.calls
+                    if n == 'create_lookalike_audience')
+        spec = call['lookalike_spec']
+        self.assertEqual(spec['country'], 'MA')
+        self.assertEqual(spec['ratio'], 0.03)
+        self.assertEqual(spec['origin_audience_id'], 'SEED')
+        self.assertNotIn('type', spec)  # non value-based
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_ratio_clamped_to_ma_range(self):
+        client = RecordingClient()
+        # 20 % demandé → borné à 5 % (plage MA 1-5 %).
+        summary = aud.create_lookalike_from_seed(
+            company=None, name='L', origin_audience_id='S',
+            seed_matched_count=200, ratio=0.20, client=client)
+        self.assertEqual(summary['ratio'], 0.05)
+        # 0.2 % demandé → borné à 1 %.
+        client2 = RecordingClient()
+        s2 = aud.create_lookalike_from_seed(
+            company=None, name='L', origin_audience_id='S',
+            seed_matched_count=200, ratio=0.002, client=client2)
+        self.assertEqual(s2['ratio'], 0.01)
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_value_based_uses_custom_ratio(self):
+        client = RecordingClient()
+        aud.create_lookalike_from_seed(
+            company=None, name='L', origin_audience_id='S',
+            seed_matched_count=200, value_based=True, client=client)
+        call = next(k for (n, k) in client.calls
+                    if n == 'create_lookalike_audience')
+        self.assertEqual(call['lookalike_spec']['type'], 'custom_ratio')
+
+    def test_delivery_status_gated_off(self):
+        result = aud.lookalike_delivery_status(
+            company=None, audience_id='LAL', client=ExplodingClient())
+        self.assertFalse(result['configured'])
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_delivery_status_polls_and_reports_ready(self):
+        client = RecordingClient()
+        result = aud.lookalike_delivery_status(
+            company=None, audience_id='LAL', client=client)
+        self.assertTrue(result['configured'])
+        self.assertTrue(result['ready'])
+        self.assertEqual(result['approximate_count'], 5000)
+        self.assertEqual(client.calls[0][0], 'get_audience')
+
+
 class MetaClientAudienceTransportTests(SimpleTestCase):
     """Transport bas niveau : schéma/données correctes, edges users/usersreplace/
     DELETE, borne dure ≤10 000 AVANT tout réseau."""

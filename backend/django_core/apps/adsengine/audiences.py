@@ -266,3 +266,111 @@ def delete_crm_custom_audience(company, audience_id, *, client=None):
                 'audience_id': str(audience_id)}
     except MetaError as exc:
         return {'configured': True, 'deleted': False, 'error': str(exc)[:255]}
+
+
+# ── ADSDEEP58 — [GATED consentement] Lookalikes (@after 57) ──────────────────
+
+def _clamp_ratio(ratio):
+    """Borne le ratio du lookalike à la plage MA 1-5 % (dossier §2)."""
+    try:
+        ratio = float(ratio)
+    except (TypeError, ValueError):
+        ratio = MA_LOOKALIKE_MAX_RATIO
+    return max(MA_LOOKALIKE_MIN_RATIO, min(MA_LOOKALIKE_MAX_RATIO, ratio))
+
+
+def create_lookalike_from_seed(company, *, name, origin_audience_id,
+                               seed_matched_count, ratio=MA_LOOKALIKE_MAX_RATIO,
+                               value_based=False, client=None):
+    """ADSDEEP58 — Crée un lookalike MA depuis une audience seed (clients signés).
+
+    ``origin_audience_id`` = la Custom Audience seed (ADSDEEP57) déjà peuplée.
+    ``seed_matched_count`` = nombre de personnes matchées côté Meta : un lookalike
+    exige ≥100 matchés (dossier §1/§2) — l'UI l'annonce, et on refuse en amont si
+    le seuil n'est pas atteint (``seed_sufficient=False``, aucun appel réseau).
+    ``ratio`` borné à la plage MA 1-5 %. ``value_based`` → le seed porte une
+    colonne ``LOOKALIKE_VALUE`` (montant du devis) et le spec passe en
+    ``type=custom_ratio`` (dossier §2).
+
+    GATE : consentement OFF ⇒ AUCUN appel réseau (résumé de préviz seul). Renvoie
+    ``{'configured', 'name', 'origin_audience_id', 'seed_matched_count',
+    'min_seed', 'seed_sufficient', 'ratio', 'value_based', 'audience_id',
+    'error'?}``.
+    """
+    ratio = _clamp_ratio(ratio)
+    seed_matched_count = int(seed_matched_count or 0)
+    summary = {
+        'configured': custom_audience_consent_enabled(),
+        'name': name,
+        'origin_audience_id': str(origin_audience_id or ''),
+        'seed_matched_count': seed_matched_count,
+        'min_seed': LOOKALIKE_MIN_SEED,
+        'seed_sufficient': seed_matched_count >= LOOKALIKE_MIN_SEED,
+        'ratio': ratio,
+        'value_based': bool(value_based),
+        'audience_id': '',
+    }
+    # Seed trop petit → refus AVANT tout réseau (l'UI a déjà annoncé le seuil).
+    if not summary['seed_sufficient']:
+        summary['error'] = 'seed_too_small'
+        return summary
+    # ── PORTE : consentement OFF ⇒ strictement AUCUN réseau ──────────────────
+    if not summary['configured']:
+        return summary
+    client = client or _client_for(company)
+    if client is None:
+        summary['error'] = 'no_connection'
+        return summary
+
+    spec = {
+        'origin_audience_id': summary['origin_audience_id'],
+        'country': 'MA',
+        'ratio': ratio,
+    }
+    if value_based:
+        # Lookalike value-based (dossier §2) : le seed est is_value_based, le
+        # spec optimise sur la valeur client (custom_ratio).
+        spec['type'] = 'custom_ratio'
+
+    from .meta_client import MetaError
+    try:
+        created = client.create_lookalike_audience(
+            name=name, lookalike_spec=spec)
+        summary['audience_id'] = str((created or {}).get('id') or '')
+    except MetaError as exc:
+        summary['error'] = str(exc)[:255]
+    except Exception as exc:  # noqa: BLE001 — jamais casser l'appelant
+        summary['error'] = str(exc)[:255]
+    return summary
+
+
+def lookalike_delivery_status(company, audience_id, *, client=None):
+    """ADSDEEP58 — Poll l'état de préparation d'un lookalike (``delivery_status``/
+    ``operation_status`` — prêt en ~1-6 h, dossier §2). LECTURE SEULE, aucune
+    donnée CRM envoyée ; gaté sur le même consentement (poller un lookalike qui
+    n'aurait jamais pu être créé sans consentement n'a pas de sens). Renvoie
+    ``{'configured', 'audience_id', 'operation_status', 'delivery_status',
+    'approximate_count', 'ready'}``."""
+    if not custom_audience_consent_enabled():
+        return {'configured': False}
+    client = client or _client_for(company)
+    if client is None:
+        return {'configured': True, 'error': 'no_connection'}
+    from .meta_client import MetaError
+    try:
+        data = client.get_audience(audience_id)
+    except MetaError as exc:
+        return {'configured': True, 'audience_id': str(audience_id),
+                'error': str(exc)[:255]}
+    op = data.get('operation_status') or {}
+    delivery = data.get('delivery_status') or {}
+    # Code 200 côté Meta = « Normal / ready » ; sinon en préparation.
+    ready = str(op.get('code')) == '200' and str(delivery.get('code')) == '200'
+    return {
+        'configured': True,
+        'audience_id': str(audience_id),
+        'operation_status': op,
+        'delivery_status': delivery,
+        'approximate_count': data.get('approximate_count_lower_bound'),
+        'ready': ready,
+    }
