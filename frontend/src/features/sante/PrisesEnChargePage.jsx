@@ -37,6 +37,7 @@ export default function PrisesEnChargePage() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     setLoading(true)
     setError(false)
     Promise.all([

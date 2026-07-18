@@ -48,6 +48,7 @@ export default function SanteAgenda() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date])
 
   const parCol = useMemo(() => {
