@@ -6,8 +6,120 @@ que d'assembler des requêtes ad hoc — même patron que ``apps.stock.selectors
 from decimal import Decimal
 
 
+def _releves_irrigation_fenetre(campagne):
+    """NTAGR14 — Relevés des points d'irrigation de la parcelle de la
+    campagne, restreints à sa FENÊTRE : du semis (si connu) à la récolte
+    réelle si connue, sinon la récolte prévue si connue, sinon fenêtre
+    ouverte côté fin. Une campagne sans aucune date ne filtre pas les
+    relevés par date (comportement conservateur : mieux vaut tout compter
+    qu'exclure à tort faute de dates saisies)."""
+    from .models import RelevePointIrrigation
+
+    releves = RelevePointIrrigation.objects.filter(
+        point__parcelle_id=campagne.parcelle_id)
+    if campagne.date_semis:
+        releves = releves.filter(date__gte=campagne.date_semis)
+    fin = campagne.date_recolte_reelle or campagne.date_recolte_prevue
+    if fin:
+        releves = releves.filter(date__lte=fin)
+    return releves
+
+
+def cout_irrigation_campagne(campagne):
+    """NTAGR14 — Coût d'irrigation PAYANTE (réseau/gasoil) d'une campagne :
+    somme des ``RelevePointIrrigation.cout_energie_mad`` de la fenêtre de la
+    campagne. Les relevés SANS coût renseigné (pompage solaire — coût
+    variable nul par nature — ou coût simplement non saisi) sont EXCLUS de
+    la somme, jamais comptés comme zéro-conflictuel avec un coût réel (même
+    garde que ``cout_total_campagne`` pour les étapes sans coût)."""
+    total = Decimal('0')
+    releves = _releves_irrigation_fenetre(campagne)
+    for cout in releves.exclude(cout_energie_mad__isnull=True).values_list(
+            'cout_energie_mad', flat=True):
+        total += cout
+    return total
+
+
+def volume_irrigation_solaire_campagne(campagne):
+    """NTAGR14 — Volume (m³) irrigué par pompage solaire sur la fenêtre de la
+    campagne — irrigation GRATUITE (coût variable nul par construction,
+    distincte de l'irrigation payante ci-dessus), affichée séparément comme
+    « irrigation solaire : 0 MAD variable »."""
+    from .models import PointIrrigation
+
+    total = Decimal('0')
+    releves = _releves_irrigation_fenetre(campagne).filter(
+        point__type_source=PointIrrigation.TypeSource.POMPAGE_SOLAIRE)
+    for volume in releves.values_list('volume_m3', flat=True):
+        total += volume
+    return total
+
+
+def tracer_lot(lot_recolte):
+    """NTAGR16 — Traçabilité amont-aval d'un ``LotRecolte`` EN UN APPEL.
+
+    AMONT (toujours présent, données propres à cette app) : parcelle
+    d'origine (GPS/culture), et chaque traitement (``EtapeCampagne`` de type
+    ``traitement``, NTAGR3) avec le produit/matière active/n° AMM/DAR — lu
+    via ``apps.stock.selectors.get_produit_scoped`` (jamais ``stock.models``).
+
+    AVAL : si le lot est rattaché à un lot stock physique
+    (``stock_lot_id`` — le ``numero_lot`` d'un ``stock.LotEntrepot``, NTAGR15),
+    remonte la chaîne réception/emplacement via
+    ``apps.stock.selectors.trace_serie(company, numero_lot=...)`` (jamais un
+    import de modèle). Un lot SANS ``stock_lot_id`` s'arrête proprement à
+    l'amont — ``aval`` reste ``None``, jamais une erreur."""
+    from apps.stock.selectors import get_produit_scoped, trace_serie
+
+    campagne = lot_recolte.campagne
+    parcelle = campagne.parcelle
+    company = lot_recolte.company
+
+    traitements = []
+    etapes = (
+        campagne.etapes.filter(type_etape='traitement')
+        .select_related('intrant').order_by('date', 'id'))
+    for etape in etapes:
+        intrant = etape.intrant
+        produit_nom = None
+        if intrant is not None:
+            produit = get_produit_scoped(company, intrant.produit_id)
+            produit_nom = produit.nom if produit else None
+        traitements.append({
+            'date': etape.date.isoformat() if etape.date else None,
+            'produit_nom': produit_nom,
+            'matiere_active': intrant.matiere_active if intrant else '',
+            'numero_amm': intrant.numero_amm if intrant else '',
+            'delai_avant_recolte_jours': (
+                intrant.delai_avant_recolte_jours if intrant else None),
+        })
+
+    amont = {
+        'parcelle_id': parcelle.id,
+        'parcelle_nom': parcelle.nom,
+        'geometrie_gps': parcelle.geometrie_gps,
+        'culture': campagne.culture,
+        'campagne_id': campagne.id,
+        'traitements': traitements,
+    }
+
+    aval = None
+    if lot_recolte.stock_lot_id:
+        aval = trace_serie(company, numero_lot=lot_recolte.stock_lot_id)
+
+    return {
+        'lot_id': lot_recolte.id,
+        'numero_lot': lot_recolte.numero_lot,
+        'amont': amont,
+        'aval': aval,
+    }
+
+
 def cout_total_campagne(campagne):
-    """NTAGR3 — Somme des coûts des étapes de campagne (``EtapeCampagne.cout_mad``).
+    """NTAGR3/NTAGR14 — Somme des coûts des étapes de campagne
+    (``EtapeCampagne.cout_mad``) + le coût d'irrigation PAYANTE de sa
+    fenêtre (``cout_irrigation_campagne`` — l'irrigation par pompage
+    solaire reste explicitement à coût variable nul, jamais ajoutée ici).
 
     Les étapes sans coût renseigné (``cout_mad is None`` — ex. étapes
     prévisionnelles) sont ignorées, pas comptées comme zéro-conflictuel avec
@@ -16,6 +128,7 @@ def cout_total_campagne(campagne):
     for cout in campagne.etapes.exclude(cout_mad__isnull=True).values_list(
             'cout_mad', flat=True):
         total += cout
+    total += cout_irrigation_campagne(campagne)
     return total
 
 

@@ -155,3 +155,73 @@ def rentabilite_actif(company, *, site_id=None, batiment_id=None, periode=None):
         'marge_nette': marge_nette,
         'par_local': par_local,
     }
+
+
+def consommation_budget(budget_charges):
+    """NTPRO11 — Total consommé (dépenses réelles) vs budgété pour UN
+    ``BudgetCharges`` (un poste, un exercice, un bâtiment), avec l'écart en
+    pourcentage. ``ecart_pct`` est ``None`` quand le budget est nul (jamais de
+    division par zéro)."""
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    total_reel = (
+        budget_charges.depenses.aggregate(total=Sum('montant_reel'))['total']
+        or Decimal('0')
+    )
+    budgete = budget_charges.montant_budgete_annuel or Decimal('0')
+    ecart = total_reel - budgete
+    ecart_pct = None
+    if budgete:
+        ecart_pct = (ecart / budgete * 100).quantize(Decimal('0.01'))
+    return {
+        'budget_charges_id': budget_charges.id,
+        'montant_budgete_annuel': budgete,
+        'total_reel': total_reel,
+        'ecart': ecart,
+        'ecart_pct': ecart_pct,
+    }
+
+
+def photos_entree_comparables(element_sortie):
+    """NTPRO16 — Photos de l'élément d'ENTRÉE correspondant à
+    ``element_sortie`` (même bail, même nom de pièce, même élément), pour la
+    comparaison visuelle automatique entrée/sortie. Résolution par
+    ``nom_piece``/``element`` (correspondance texte, insensible à la casse) —
+    PAS par pk (les pièces/éléments d'entrée et de sortie sont deux grilles
+    distinctes, même si générées depuis le même type de local).
+
+    Renvoie toujours une liste (jamais d'exception) : vide si
+    ``element_sortie`` appartient lui-même à un état d'ENTRÉE (rien à comparer
+    contre lui-même), ou si aucun état d'entrée / pièce / élément
+    correspondant n'existe."""
+    from .models import ElementEtatLieux, EtatLieuxImmo
+
+    piece = element_sortie.piece
+    etat_lieux = piece.etat_lieux
+    if etat_lieux.moment != EtatLieuxImmo.Moment.SORTIE:
+        return []
+
+    etat_entree = (
+        EtatLieuxImmo.objects
+        .filter(bail=etat_lieux.bail, moment=EtatLieuxImmo.Moment.ENTREE)
+        .order_by('-date', '-id')
+        .first()
+    )
+    if etat_entree is None:
+        return []
+
+    element_entree = (
+        ElementEtatLieux.objects
+        .filter(
+            piece__etat_lieux=etat_entree,
+            piece__nom_piece__iexact=piece.nom_piece,
+            element__iexact=element_sortie.element,
+        )
+        .first()
+    )
+    if element_entree is None:
+        return []
+
+    return list(element_entree.photos.all())

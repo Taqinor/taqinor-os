@@ -8,6 +8,7 @@ conformément à la frontière cross-app de CLAUDE.md. ``client_ventes_id`` est
 une référence LÂCHE (id entier, pas de FK dure) vers ``crm.Client`` — même
 convention que ``chantier_id``/``ged_document_id`` ailleurs dans le repo.
 """
+from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
@@ -46,6 +47,10 @@ class Site(TenantModel):
 class Batiment(TenantModel):
     """NTPRO1 — Bâtiment d'un site."""
 
+    class ModeRepartition(models.TextChoices):
+        TANTIEMES = 'tantiemes', 'Tantièmes'
+        SURFACE = 'surface', 'Surface'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
@@ -66,6 +71,12 @@ class Batiment(TenantModel):
     plan_ged_document_id = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='ID document GED (plan)')
+    # NTPRO12 — bascule tantièmes/surface pour la répartition des charges
+    # réelles (`services.repartir_charges`), éditable par bâtiment.
+    mode_repartition = models.CharField(
+        max_length=10, choices=ModeRepartition.choices,
+        default=ModeRepartition.TANTIEMES,
+        verbose_name='Mode de répartition des charges')
 
     class Meta:
         verbose_name = 'Bâtiment'
@@ -396,3 +407,298 @@ class RelanceLoyer(TenantModel):
 
     def __str__(self):
         return f'Relance N{self.niveau} — {self.echeance_loyer}'
+
+
+class BudgetCharges(TenantModel):
+    """NTPRO10 — Budget de charges (par bâtiment, exercice et poste)."""
+
+    class Poste(models.TextChoices):
+        ASCENSEUR = 'ascenseur', 'Ascenseur'
+        NETTOYAGE = 'nettoyage', 'Nettoyage'
+        GARDIENNAGE = 'gardiennage', 'Gardiennage'
+        ELECTRICITE_COMMUNS = 'electricite_communs', 'Électricité communs'
+        EAU_COMMUNS = 'eau_communs', 'Eau communs'
+        ASSURANCE_IMMEUBLE = 'assurance_immeuble', 'Assurance immeuble'
+        ENTRETIEN_ESPACES_VERTS = (
+            'entretien_espaces_verts', 'Entretien espaces verts')
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_budgets_charges',
+        verbose_name='Société',
+    )
+    batiment = models.ForeignKey(
+        Batiment, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='budgets_charges',
+        verbose_name='Bâtiment')
+    exercice = models.PositiveIntegerField(verbose_name='Exercice (année)')
+    poste = models.CharField(
+        max_length=30, choices=Poste.choices, verbose_name='Poste')
+    montant_budgete_annuel = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        verbose_name='Montant budgété annuel')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Budget de charges'
+        verbose_name_plural = 'Budgets de charges'
+        ordering = ['-exercice', 'poste', 'id']
+        unique_together = [('batiment', 'exercice', 'poste')]
+
+    def __str__(self):
+        return f'{self.batiment} — {self.get_poste_display()} {self.exercice}'
+
+
+class DepenseCharges(TenantModel):
+    """NTPRO11 — Dépense réelle de charges rattachée à un budget."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_depenses_charges',
+        verbose_name='Société',
+    )
+    budget_charges = models.ForeignKey(
+        BudgetCharges, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='depenses',
+        verbose_name='Budget de charges')
+    date = models.DateField(verbose_name='Date')
+    montant_reel = models.DecimalField(
+        max_digits=10, decimal_places=2, verbose_name='Montant réel')
+    # NTPRO11 — référence LÂCHE (jamais un import de apps.stock.models) vers
+    # une pièce d'achat fournisseur existante, même convention que
+    # `plan_ged_document_id` sur `Batiment`.
+    facture_fournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="ID pièce d'achat fournisseur")
+    ged_document_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID justificatif GED')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Dépense de charges'
+        verbose_name_plural = 'Dépenses de charges'
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'{self.budget_charges} — {self.date} : {self.montant_reel}'
+
+
+class RegularisationCharges(TenantModel):
+    """NTPRO13 — Régularisation annuelle des charges d'un bail (provisions
+    encaissées vs quote-part réelle NTPRO12)."""
+
+    class Sens(models.TextChoices):
+        A_REMBOURSER = 'a_rembourser', 'À rembourser'
+        A_FACTURER = 'a_facturer', 'À facturer'
+        NEUTRE = 'neutre', 'Neutre (solde nul)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_regularisations_charges',
+        verbose_name='Société',
+    )
+    bail = models.ForeignKey(
+        Bail, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='regularisations_charges',
+        verbose_name='Bail')
+    exercice = models.PositiveIntegerField(verbose_name='Exercice (année)')
+    provisions_encaissees = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Provisions encaissées')
+    quote_part_reelle = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Quote-part réelle')
+    solde = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Solde (provisions - quote-part)')
+    sens = models.CharField(
+        max_length=12, choices=Sens.choices, default=Sens.NEUTRE,
+        verbose_name='Sens')
+    # NTPRO13 — références LÂCHES vers le document ventes émis (jamais les
+    # deux à la fois sur une même régularisation) : `apps.ventes.services`
+    # n'expose aucune primitive générique de création d'« Avoir » autonome
+    # pour un appelant cross-app (le modèle `Avoir` exige un `facture` FK
+    # source non-nul) — seule `creer_facture_classique` est exposée. Le cas
+    # « à rembourser » réutilise donc cette MÊME primitive avec des montants
+    # NÉGATIFS (une facture négative est un mécanisme de crédit déjà toléré
+    # par `Facture`, sans contrainte de positivité) plutôt que d'ajouter une
+    # nouvelle fonction dans `apps.ventes.services` (app EXISTANTE, hors
+    # périmètre de cette session). Voir DONE LOG NTPRO13.
+    facture_ventes_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID facture ventes (à facturer)')
+    avoir_ventes_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID avoir ventes (à rembourser — facture négative)')
+    date_emission = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'émission du document")
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Régularisation de charges'
+        verbose_name_plural = 'Régularisations de charges'
+        ordering = ['-exercice', '-id']
+        unique_together = [('bail', 'exercice')]
+
+    def __str__(self):
+        return f'{self.bail} — régularisation {self.exercice}'
+
+
+class EtatLieuxImmo(TenantModel):
+    """NTPRO15 — État des lieux (entrée/sortie) d'un bail."""
+
+    class Moment(models.TextChoices):
+        ENTREE = 'entree', 'Entrée'
+        SORTIE = 'sortie', 'Sortie'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        SIGNE = 'signe', 'Signé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_etats_lieux',
+        verbose_name='Société',
+    )
+    bail = models.ForeignKey(
+        Bail, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='etats_lieux',
+        verbose_name='Bail')
+    moment = models.CharField(
+        max_length=10, choices=Moment.choices, verbose_name='Moment')
+    date = models.DateField(verbose_name='Date')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    technicien = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: SET_NULL — technicien supprimé ne doit jamais effacer l'état des lieux (null=True posé, champ non-tenant)
+        null=True, blank=True, related_name='etats_lieux_immo_realises',
+        verbose_name='Technicien')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'État des lieux'
+        verbose_name_plural = 'États des lieux'
+        ordering = ['-date', '-id']
+
+    def __str__(self):
+        return f'{self.bail} — {self.get_moment_display()} ({self.date})'
+
+
+class PieceEtatLieux(TenantModel):
+    """NTPRO15 — Pièce inspectée d'un état des lieux."""
+
+    class EtatGeneral(models.TextChoices):
+        NEUF = 'neuf', 'Neuf'
+        BON = 'bon', 'Bon'
+        USAGE_NORMAL = 'usage_normal', 'Usage normal'
+        DEGRADE = 'degrade', 'Dégradé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_pieces_etat_lieux',
+        verbose_name='Société',
+    )
+    etat_lieux = models.ForeignKey(
+        EtatLieuxImmo, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='pieces',
+        verbose_name='État des lieux')
+    nom_piece = models.CharField(max_length=120, verbose_name='Pièce')
+    etat_general = models.CharField(
+        max_length=15, choices=EtatGeneral.choices,
+        default=EtatGeneral.BON, verbose_name='État général')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    ordre = models.IntegerField(default=0, verbose_name="Ordre d'affichage")
+
+    class Meta:
+        verbose_name = 'Pièce (état des lieux)'
+        verbose_name_plural = 'Pièces (état des lieux)'
+        ordering = ['etat_lieux_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.etat_lieux} — {self.nom_piece}'
+
+
+class ElementEtatLieux(TenantModel):
+    """NTPRO15 — Élément inspecté d'une pièce (sol/murs/plafond/…)."""
+
+    class Etat(models.TextChoices):
+        NEUF = 'neuf', 'Neuf'
+        BON = 'bon', 'Bon'
+        USAGE_NORMAL = 'usage_normal', 'Usage normal'
+        DEGRADE = 'degrade', 'Dégradé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_elements_etat_lieux',
+        verbose_name='Société',
+    )
+    piece = models.ForeignKey(
+        PieceEtatLieux, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='elements',
+        verbose_name='Pièce')
+    element = models.CharField(
+        max_length=60, verbose_name='Élément (ex. sol/murs/plafond)')
+    etat = models.CharField(
+        max_length=15, choices=Etat.choices, default=Etat.BON,
+        verbose_name='État')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    ordre = models.IntegerField(default=0, verbose_name="Ordre d'affichage")
+
+    class Meta:
+        verbose_name = 'Élément (état des lieux)'
+        verbose_name_plural = 'Éléments (état des lieux)'
+        ordering = ['piece_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.piece} — {self.element}'
+
+
+class PhotoEtatLieux(TenantModel):
+    """NTPRO16 — Photo comparative (entrée/sortie) d'un élément inspecté.
+
+    ``phase`` n'est PAS stockée sur la photo : elle se déduit toujours du
+    ``moment`` de l'`EtatLieuxImmo` parent (via `element.piece.etat_lieux.
+    moment`) — une seule source de vérité, jamais deux champs qui pourraient
+    diverger. Stockage MinIO via `records.storage` — même convention que
+    `ged.DocumentVersion` (clé objet + métadonnées, jamais un `FileField`)."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: cascade tenant (purge des données de la société supprimée)
+        related_name='immobilier_photos_etat_lieux',
+        verbose_name='Société',
+    )
+    element = models.ForeignKey(
+        ElementEtatLieux, on_delete=models.CASCADE,  # on_delete: cascade parent→enfant (composant du parent)
+        related_name='photos',
+        verbose_name='Élément')
+    # Clé objet MinIO (bucket erp-uploads) — conventions records.storage.
+    file_key = models.CharField(max_length=500)
+    filename = models.CharField(max_length=255, blank=True, default='')
+    size = models.PositiveIntegerField(default=0)
+    mime = models.CharField(max_length=120, blank=True, default='')
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: SET_NULL — utilisateur supprimé ne doit jamais effacer la photo (null=True posé, champ non-tenant)
+        null=True, blank=True, related_name='photos_etat_lieux_immo',
+        verbose_name='Déposée par')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Photo (état des lieux)'
+        verbose_name_plural = 'Photos (état des lieux)'
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f'{self.element} — {self.filename or self.file_key}'

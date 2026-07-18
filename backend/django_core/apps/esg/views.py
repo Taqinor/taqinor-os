@@ -13,11 +13,13 @@ from core.mixins import TenantMixin
 from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import CatalogueIndicateurESG, ObjectifESGTrajectoire, \
+from .models import CatalogueIndicateurESG, DocumentPolitiqueESG, \
+    FacteurEmissionReference, ObjectifESGTrajectoire, PartiePrenanteESG, \
     PeriodeReportingESG
 from .serializers import (
-    CatalogueIndicateurESGSerializer, ObjectifESGTrajectoireSerializer,
-    PeriodeReportingESGSerializer,
+    CatalogueIndicateurESGSerializer, DocumentPolitiqueESGSerializer,
+    FacteurEmissionReferenceSerializer, ObjectifESGTrajectoireSerializer,
+    PartiePrenanteESGSerializer, PeriodeReportingESGSerializer,
 )
 
 
@@ -48,6 +50,28 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(periode).data)
 
+    @action(detail=False, methods=['get'],
+            permission_classes=[ScopedPermission])
+    def comparer(self, request):
+        """Comparateur multi-période N vs N-1 (NTESG11) —
+        ``?periode=X&reference=Y`` (les deux IDs scopés société)."""
+        from .selectors import comparer_periodes
+
+        periode_id = request.query_params.get('periode')
+        reference_id = request.query_params.get('reference')
+        if not periode_id or not reference_id:
+            return Response(
+                {'detail': "Paramètres 'periode' et 'reference' requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        queryset = self.get_queryset()
+        periode = queryset.filter(pk=periode_id).first()
+        reference = queryset.filter(pk=reference_id).first()
+        if periode is None or reference is None:
+            return Response(
+                {'detail': 'Période introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(comparer_periodes(reference, periode))
+
     @action(detail=True, methods=['get'],
             permission_classes=[ScopedPermission])
     def indicateurs(self, request, pk=None):
@@ -70,6 +94,21 @@ class PeriodeReportingESGViewSet(CompanyScopedModelViewSet):
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = (
             f'attachment; filename="rapport-esg-{periode.pk}.pdf"')
+        return response
+
+    @action(detail=True, methods=['get'], url_path='dpef',
+            permission_classes=[ScopedPermission])
+    def dpef(self, request, pk=None):
+        """Export DPEF-friendly (NTESG14) — gabarit texte structuré
+        Markdown, JAMAIS présenté comme une DPEF officielle déposée."""
+        from .dpef_export import generer_dpef_texte
+
+        periode = self.get_object()
+        texte = generer_dpef_texte(periode)
+        response = HttpResponse(
+            texte, content_type='text/markdown; charset=utf-8')
+        response['Content-Disposition'] = (
+            f'attachment; filename="dpef-{periode.pk}.md"')
         return response
 
     @action(detail=True, methods=['get'],
@@ -106,6 +145,15 @@ class CatalogueIndicateurESGViewSet(
 
         return Response(couverture_catalogue(request.user.company))
 
+    @action(detail=False, methods=['get'], url_path='badge-maturite',
+            permission_classes=[ScopedPermission])
+    def badge_maturite(self, request):
+        """Badge de maturité ESG interne (NTESG15) — auto-évaluation, JAMAIS
+        une certification/notation externe (voir ``disclaimer``)."""
+        from .selectors import badge_maturite_esg
+
+        return Response(badge_maturite_esg(request.user.company))
+
 
 class ObjectifESGTrajectoireViewSet(CompanyScopedModelViewSet):
     """Objectifs de trajectoire ESG (NTESG7) — CRUD + comparaison théorique
@@ -123,3 +171,63 @@ class ObjectifESGTrajectoireViewSet(CompanyScopedModelViewSet):
 
         objectif = self.get_object()
         return Response(trajectoire_vs_realise(objectif))
+
+
+class PartiePrenanteESGViewSet(CompanyScopedModelViewSet):
+    """Registre des parties prenantes ESG — matérialité simplifiée
+    (NTESG12) : CRUD complet, la matrice 2x2 influence×intérêt se construit
+    côté frontend à partir de la liste."""
+
+    queryset = PartiePrenanteESG.objects.all()
+    serializer_class = PartiePrenanteESGSerializer
+
+
+class DocumentPolitiqueESGViewSet(CompanyScopedModelViewSet):
+    """Registre déclaratif des politiques RSE publiées (NTESG13) : CRUD des
+    métadonnées ; le fichier lui-même se dépose via le endpoint générique
+    ``records.Attachment`` (cible ``esg.documentpolitiqueesg``,
+    ``apps/esg/platform.py``)."""
+
+    queryset = DocumentPolitiqueESG.objects.all()
+    serializer_class = DocumentPolitiqueESGSerializer
+
+
+class FacteurEmissionReferenceViewSet(CompanyScopedModelViewSet):
+    """Bibliothèque de facteurs d'émission éditable et versionnée (NTESG16).
+
+    ``create`` passe TOUJOURS par ``services.creer_version_facteur`` — jamais
+    un écrasement silencieux : posté une seconde fois pour la même
+    ``(categorie, unite)``, une NOUVELLE version active est créée et
+    l'ancienne désactivée (jamais supprimée). Pas de PUT/PATCH exposé (une
+    version publiée est un fait historique immuable) — seules
+    liste/détail/création/suppression le sont."""
+
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+    queryset = FacteurEmissionReference.objects.all()
+    serializer_class = FacteurEmissionReferenceSerializer
+
+    def perform_create(self, serializer):
+        from . import services
+
+        data = serializer.validated_data
+        instance = services.creer_version_facteur(
+            self.request.user.company,
+            categorie=data['categorie'], unite=data['unite'],
+            valeur=data['valeur'], source=data.get('source', ''),
+            date_maj=data['date_maj'])
+        serializer.instance = instance
+
+    @action(detail=False, methods=['get'],
+            permission_classes=[ScopedPermission])
+    def historique(self, request):
+        """Historique COMPLET (toutes versions, actives et désactivées)
+        d'un facteur ``?categorie=X&unite=Y`` (NTESG16)."""
+        categorie = request.query_params.get('categorie')
+        unite = request.query_params.get('unite')
+        if not categorie or not unite:
+            return Response(
+                {'detail': "Paramètres 'categorie' et 'unite' requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        qs = self.get_queryset().filter(
+            categorie=categorie, unite=unite).order_by('-version')
+        return Response(self.get_serializer(qs, many=True).data)

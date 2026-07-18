@@ -88,16 +88,14 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // chunks < 1 Ko gzip d'icônes lucide individuelles, cf. VX189). Généreux :
 // n'attrape qu'une régression de structure massive, pas la croissance produit
 // normale (chaque écran lazy-loadé ajoute un chunk).
-// 2026-07-17 : 400 -> 430. Le batch plateforme NT (portail développeur API /
-// webhooks, vues sauvegardées, frontends éducation/innovation, réel 405) ET le
-// shell Marketing PLAN_CRM_VENTES (9 écrans lazy-loadés) portent le total à ~404
-// chunks — chaque écran lazy ajoute 1 chunk (croissance produit, pas une
-// prolifération d'icônes). Palier généreux couvrant les deux vagues ; le budget
-// gzip (2440) + PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous de poids.
-// 2026-07-17 : 430 -> 460. Les 5 verticales plateforme (agriculture/immobilier/
-// hospitality/esg/btp_chantier) + le shell Marketing PLAN_CRM_VENTES portent le
-// réel à 436 chunks, tous lazy-loadés (chaque écran = 1 chunk). Palier généreux ;
-// le budget gzip (2440, réel 2430) + PER_CHUNK_BUDGET_KB (350) restent les garde-fous.
+// 2026-07-17 : 400 -> 440 (batch plateforme NT : portail développeur API/
+// webhooks, vues sauvegardées, éducation/innovation + 5 verticaux agriculture/
+// immobilier/hospitality/esg/btp_chantier, tous lazy-loadés, réel ~426).
+// 2026-07-17 : 440 -> 460. Le shell Marketing PLAN_CRM_VENTES (9 écrans lazy-
+// loadés) ajoute ~10 chunks par-dessus les verticaux (réel combiné ~436) —
+// chaque écran lazy = 1 chunk, croissance produit, pas une prolifération.
+// Palier généreux couvrant les deux vagues ; le budget gzip (2440) +
+// PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous de poids.
 const MAX_CHUNK_COUNT = 460
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
