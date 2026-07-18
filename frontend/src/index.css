@@ -6708,6 +6708,82 @@ textarea.form-control {
 }
 .lw-rail-score-reasons {
   margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.lw-rail-score-reasons li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+.lw-rail-score-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+.lw-rail-score-foot {
+  margin: 0.6rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+/* ── LW18 : bannières intelligentes (doublons · client_match · carte) ─────── */
+
+.lw-banner-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+.lw-banner-card--warning {
+  border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+}
+.lw-banner-card--info {
+  border: 1px solid color-mix(in oklch, var(--info) 40%, transparent);
+  background: color-mix(in oklch, var(--info) 10%, transparent);
+}
+.lw-banner-link {
+  color: var(--info);
+  font-size: 0.82rem;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.lw-dup-dialog {
+  max-width: 40rem;
+}
+.lw-dup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.lw-dup-table th,
+.lw-dup-table td {
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.lw-dup-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+}
+
 /* ── LW19 : rail contexte — onglets (Historique · Devis · Activités ·
    Pièces) — tokens uniquement, zéro hex (D4#6). ──────────────────────────── */
 
@@ -6832,76 +6908,6 @@ textarea.form-control {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-}
-.lw-rail-score-reasons li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-  color: var(--foreground);
-}
-.lw-rail-score-empty {
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--muted-foreground);
-}
-.lw-rail-score-foot {
-  margin: 0.6rem 0 0;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--border);
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
-}
-
-/* ── LW18 : bannières intelligentes (doublons · client_match · carte) ─────── */
-
-.lw-banner-card {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.6rem;
-  padding: 0.5rem 0.65rem;
-  border-radius: var(--radius-md);
-  font-size: 0.85rem;
-  color: var(--foreground);
-}
-.lw-banner-card--warning {
-  border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
-  background: color-mix(in oklch, var(--warning) 12%, transparent);
-}
-.lw-banner-card--info {
-  border: 1px solid color-mix(in oklch, var(--info) 40%, transparent);
-  background: color-mix(in oklch, var(--info) 10%, transparent);
-}
-.lw-banner-link {
-  color: var(--info);
-  font-size: 0.82rem;
-  text-decoration: underline;
-  white-space: nowrap;
-}
-
-.lw-dup-dialog {
-  max-width: 40rem;
-}
-.lw-dup-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-.lw-dup-table th,
-.lw-dup-table td {
-  padding: 0.4rem 0.5rem;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-}
-.lw-dup-table th {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--muted-foreground);
   gap: 0.15rem;
 }
 .lw-context-missing-link {
