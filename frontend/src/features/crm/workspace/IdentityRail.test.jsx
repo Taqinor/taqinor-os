@@ -2,15 +2,15 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { initState } from './draftCore'
 import IdentityRail from './IdentityRail'
+import crmApi from '../../../api/crmApi'
 
-/* LW14 — rail identité : identité, contact cliquable, chips QX28, pile
-   d'actions. On neutralise le réseau des bannières (LW18) : ce test cible LW14
-   uniquement (identité + actions). crmApi mocké → aucune requête au montage. */
+/* crmApi mocké → aucune requête réelle au montage ; chaque test peut surcharger
+   le retour (mockResolvedValueOnce) pour les bannières LW18. */
 vi.mock('../../../api/crmApi', () => ({
   default: {
-    getLeadDuplicates: () => Promise.resolve({ data: [] }),
-    getLeadClientMatch: () => Promise.resolve({ data: [] }),
-    mergeLeads: () => Promise.resolve({ data: {} }),
+    getLeadDuplicates: vi.fn(() => Promise.resolve({ data: [] })),
+    getLeadClientMatch: vi.fn(() => Promise.resolve({ data: [] })),
+    mergeLeads: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
@@ -179,5 +179,38 @@ describe('LW17 — score expliqué (popover des raisons)', () => {
   it('n\'affiche pas le bloc score quand le lead n\'a pas de score', () => {
     render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
     expect(screen.queryByRole('button', { name: /Score de qualité/ })).toBeNull()
+  })
+})
+
+describe('LW18 — bannières intelligentes (doublons · client_match)', () => {
+  let onAction
+  beforeEach(() => { onAction = vi.fn() })
+
+  it('2 doublons → bannière + dialog listant 2 lignes « Fusionner ici »', async () => {
+    crmApi.getLeadDuplicates.mockResolvedValueOnce({ data: [
+      { id: 11, nom: 'Karim', prenom: 'B.', telephone: '0612345678', ville: 'Agadir' },
+      { id: 12, nom: 'Karim', prenom: 'C.', telephone: '0612345679', ville: 'Rabat' },
+    ] })
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(await screen.findByText(/2 doublons probables/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Examiner/ }))
+    expect(await screen.findByText('Doublons probables')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Fusionner ici/ })).toHaveLength(2)
+  })
+
+  it('client_match → bannière avec lien vers /crm/clients/:id', async () => {
+    crmApi.getLeadClientMatch.mockResolvedValueOnce({ data: [
+      { id: 42, nom: 'Atlas Agri SARL', nb_devis: 3, nb_chantiers: 1 },
+    ] })
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(await screen.findByText(/correspond au client Atlas Agri SARL/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Ouvrir la fiche/ })).toHaveAttribute('href', '/crm/clients/42')
+  })
+
+  it('aucune bannière quand ni doublon ni client correspondant (silencieux)', async () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(await screen.findByText('Karim B.')).toBeInTheDocument()
+    expect(screen.queryByText(/doublon/)).toBeNull()
+    expect(screen.queryByText(/correspond au client/)).toBeNull()
   })
 })

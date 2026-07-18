@@ -6733,3 +6733,53 @@ textarea.form-control {
   font-size: 0.75rem;
   color: var(--muted-foreground);
 }
+
+/* ── LW18 : bannières intelligentes (doublons · client_match · carte) ─────── */
+
+.lw-banner-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+.lw-banner-card--warning {
+  border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+}
+.lw-banner-card--info {
+  border: 1px solid color-mix(in oklch, var(--info) 40%, transparent);
+  background: color-mix(in oklch, var(--info) 10%, transparent);
+}
+.lw-banner-link {
+  color: var(--info);
+  font-size: 0.82rem;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.lw-dup-dialog {
+  max-width: 40rem;
+}
+.lw-dup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.lw-dup-table th,
+.lw-dup-table td {
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.lw-dup-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+}

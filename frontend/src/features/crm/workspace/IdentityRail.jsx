@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Badge, Button, Avatar, AvatarFallback, DatePicker, FieldSavedPulse,
   Popover, PopoverTrigger, PopoverContent,
+  Dialog, DialogContent, DialogTitle,
 } from '../../../ui'
 import { initials } from '../../../ui/Avatar'
 import { normalizeMaPhone } from '../../../lib/format'
+import { useConfirmDialog, toast } from '../../../ui/confirm'
+import { useDuplicateCheck } from '../../../hooks/useDuplicateCheck'
+import crmApi from '../../../api/crmApi'
 import AssigneePicker from '../../../components/AssigneePicker'
 import ScoreBadge from '../ScoreBadge'
 import StageControl from './StageControl'
@@ -21,17 +25,25 @@ function toIsoLocal(d) {
   return `${dt.getFullYear()}-${m}-${j}`
 }
 
-// LW14 — Rail identité (zone gauche, 288px) : tout ce qu'on regarde AVANT
-// d'appeler. Identité + contact cliquable + chips de préparation QX28 +
-// pile d'actions. La triade (LW15), l'étape (LW16 StageControl), le score
-// (LW17) et les bannières (LW18) se greffent ici dans les tâches suivantes.
+// Rail identité (zone gauche, 288px) : tout ce qu'on regarde AVANT d'appeler.
+// Bannières intelligentes (LW18) · identité + contact cliquable (LW14) · étape
+// (LW16 StageControl) · score expliqué (LW17) · triade responsable/prochaine
+// action/relance (LW15) · chips de préparation QX28 (LW14) · pile d'actions
+// (LW14).
 //
 // Contrat de props (blueprint D4 / lane 1) : { state, onAction, users,
 // archiveBusy }. Lecture des champs via getField (brouillon-sur-serveur) ; les
-// richesses serveur brutes (devis_auto, roof_point, client…) sur state.server.
-// TOUTES les sorties/mutations passent par onAction (routé leaveGuard par le
-// shell) — jamais de navigation/patch direct ici. Les liens tel:/wa.me
-// n'altèrent pas le lead et n'entrent donc pas dans le garde de sortie.
+// richesses serveur brutes (devis_auto, roof_point, client, score_reasons,
+// next_activity, stage_since_days…) sur state.server. TOUTES les sorties/
+// mutations passent par onAction (routé leaveGuard par le shell) — jamais de
+// navigation/patch direct ici. Les liens tel:/wa.me et l'ouverture de la fiche
+// client (nouvel onglet) n'altèrent pas le lead → hors garde de sortie.
+//
+// Extensions onAction que le shell doit câbler (au-delà du contrat existant) :
+//   'set-field' { key, value } → setField(key, value)  (responsable, relance)
+//   'change-stage' key         → draft.changeStage(key) (StageControl)
+//   'apply-card'               → applique la carte collée (inerte tant que
+//                                state.cardPaste n'est pas exposé par le moteur)
 
 export default function IdentityRail({ state, onAction, users = [], archiveBusy = false }) {
   const server = state.server || {}
@@ -69,6 +81,56 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const hasScore = server.score != null || server.score_label != null
   const scoreReasons = Array.isArray(server.score_reasons) ? server.score_reasons : []
 
+  // ── Bannières intelligentes (LW18) : doublons · client_match · carte collée ──
+  const leadId = server.id ?? null
+  const { confirm } = useConfirmDialog()
+  const [dups, setDups] = useState([])
+  const [clientMatch, setClientMatch] = useState([])
+  const [dupOpen, setDupOpen] = useState(false)
+  useEffect(() => {
+    if (!leadId) return
+    // GET paresseux, silencieux sur 404/vide (jamais de bruit).
+    crmApi.getLeadDuplicates(leadId)
+      .then((r) => setDups(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setDups([]))
+    crmApi.getLeadClientMatch(leadId)
+      .then((r) => setClientMatch(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setClientMatch([]))
+  }, [leadId])
+  // VX239 — doublons EN DIRECT (téléphone/email tapés), fusionnés aux probables.
+  const liveDups = useDuplicateCheck(
+    getField(state, 'telephone'), getField(state, 'email'),
+    { exclude: leadId ?? undefined },
+  )
+  const allDups = useMemo(() => {
+    const map = new Map()
+    for (const d of [...dups, ...liveDups]) {
+      if (d && d.id != null && d.id !== leadId) map.set(d.id, d)
+    }
+    return [...map.values()]
+  }, [dups, liveDups, leadId])
+  // VX237 — carte de visite collée : état optionnel exposé par le moteur
+  // (lane 1) / la section Contact (lane 4). Inerte tant qu'il est absent.
+  const cardPaste = state.cardPaste
+  const doMerge = async (otherId) => {
+    const ok = await confirm({
+      title: 'Fusionner ce doublon dans la fiche courante ?',
+      description: 'Le doublon sera archivé (jamais supprimé) et ses devis/activités rattachés à cette fiche.',
+      confirmLabel: 'Fusionner',
+      cancelLabel: 'Annuler',
+      destructive: false,
+    })
+    if (!ok) return
+    try {
+      await crmApi.mergeLeads(leadId, [otherId])
+      setDups((d) => d.filter((x) => x.id !== otherId))
+      onAction('refresh')
+      setDupOpen(false)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'La fusion a échoué — réessayez.')
+    }
+  }
+
   // ── Contact (liens directs — jamais de mutation du lead) ────────────────────
   const telephone = (getField(state, 'telephone') || '').trim()
   const whatsapp = (getField(state, 'whatsapp') || '').trim()
@@ -97,7 +159,42 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   }
 
   return (
+    <>
     <aside className="lw-zone lw-rail-identity" data-testid="lw-identity-rail">
+      {/* Bannières intelligentes (LW18) — en tête, tones sémantiques (jamais
+          de hex : dark-mode par tokens). */}
+      {allDups.length > 0 && (
+        <div className="lw-banner-card lw-banner-card--warning" role="status">
+          <span>
+            {allDups.length} doublon{allDups.length > 1 ? 's' : ''} probable{allDups.length > 1 ? 's' : ''}
+          </span>
+          <Button type="button" size="sm" variant="outline" onClick={() => setDupOpen(true)}>
+            Examiner
+          </Button>
+        </div>
+      )}
+      {clientMatch.length > 0 && (
+        <div className="lw-banner-card lw-banner-card--info" role="status">
+          <span>Ce contact correspond au client {clientMatch[0].nom}</span>
+          <a
+            className="lw-banner-link"
+            href={`/crm/clients/${clientMatch[0].id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Ouvrir la fiche
+          </a>
+        </div>
+      )}
+      {cardPaste && (
+        <div className="lw-banner-card lw-banner-card--info" role="status">
+          <span>Carte de visite détectée : {cardPaste.nom}</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => onAction('apply-card')}>
+            Répartir
+          </Button>
+        </div>
+      )}
+
       {/* Identité */}
       <header className="lw-rail-head">
         <Avatar size="lg" className="lw-rail-avatar">
@@ -294,5 +391,39 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         </Button>
       </div>
     </aside>
+
+    {/* Dialog de fusion des doublons (LW18) — portalisé hors du rail. */}
+    {dupOpen && (
+      <Dialog open onOpenChange={(o) => { if (!o) setDupOpen(false) }}>
+        <DialogContent className="lw-dup-dialog">
+          <DialogTitle>Doublons probables</DialogTitle>
+          <table className="lw-dup-table">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Téléphone</th>
+                <th>Ville</th>
+                <th aria-label="Action" />
+              </tr>
+            </thead>
+            <tbody>
+              {allDups.map((d) => (
+                <tr key={d.id}>
+                  <td>{`${d.nom ?? ''} ${d.prenom ?? ''}`.trim() || '—'}</td>
+                  <td>{d.telephone || '—'}</td>
+                  <td>{d.ville || '—'}</td>
+                  <td>
+                    <Button type="button" size="sm" onClick={() => doMerge(d.id)}>
+                      Fusionner ici
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   )
 }
