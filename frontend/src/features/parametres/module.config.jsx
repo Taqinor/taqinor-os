@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { MapPin } from 'lucide-react'
+import { MapPin, ListChecks } from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Paramètres vers le registre (phase 2,
@@ -24,8 +24,12 @@ import { MapPin } from 'lucide-react'
    posée ici est auto-collectée par le registre générique (`moduleNavSections`,
    router/moduleRoutes.jsx) et insérée juste avant ADMINISTRATION — même
    mécanisme que `/parametres/marketing` (nav déclarée dans
-   `features/marketing/module.config.jsx`). Un seul lien pour l'instant :
-   les autres routes ci-dessus restent routes-only, comme documenté ci-dessus.
+   `features/marketing/module.config.jsx`).
+
+   WIR14 — même mécanisme pour Playbooks (`Playbooks.jsx`, NTCRM13, CRUD des
+   playbooks/étapes/tâches par stage STAGES.py) : construit/testé, monté nulle
+   part. Deux liens dans la section `nav` ci-dessous ; les autres routes
+   ci-dessus restent routes-only, comme documenté ci-dessus.
 
    Gating préservé à l'identique (index.jsx:153-160 `roleLoader`) :
    - `/parametres`, `/parametres/alertes-kpi` (XPLT6) :
@@ -61,6 +65,9 @@ const VuesConfigurationPage = lazy(() => import('../../pages/parametres/VuesConf
 // par zone/segment/secteur) — réservé responsable/admin, comme documenté en
 // tête de `Territoires.jsx` (le backend applique déjà le RBAC réel).
 const Territoires = lazy(() => import('./Territoires'))
+// WIR14/NTCRM13 — Playbooks (CRUD des playbooks/étapes/tâches par stage) —
+// même gating responsable/admin que les autres écrans de configuration CRM.
+const Playbooks = lazy(() => import('./Playbooks'))
 
 const config = {
   key: 'parametres',
@@ -70,6 +77,7 @@ const config = {
     accent: 'nuit',
     items: [
       { to: '/parametres/territoires', label: 'Territoires', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      { to: '/parametres/playbooks', label: 'Playbooks', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
@@ -80,6 +88,7 @@ const config = {
     { path: '/parametres/marketing', component: DomaineEnvoi, roles: ['responsable', 'admin'] },
     { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/territoires', component: Territoires, roles: ['responsable', 'admin'] },
+    { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     {
       path: '/journal',
       component: Journal,
