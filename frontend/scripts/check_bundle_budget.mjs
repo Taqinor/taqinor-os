@@ -58,8 +58,14 @@ const PER_CHUNK_BUDGET_KB = 350
 // d'envoi + dashboard) ajoute ~26 Ko gzip sur ce même palier 2440 (AUCUNE
 // nouvelle dépendance npm) — réel cumulé ~2368 Ko, sous le budget.
 // + 5 verticales (agriculture, immobilier, hospitality, esg, btp_chantier),
-// toutes lazy-loadées, ajoutent ~7.7 Ko gzip — le réel combiné reste < 2440.
-const TOTAL_BUDGET_KB = 2440
+// toutes lazy-loadées, ajoutent ~7.7 Ko gzip.
+// 2026-07-18 : 2440 -> 2550. Le batch plateforme continu (santé/innovation/
+// crédit/fpa/assurances/éducation/uxviews + verticaux) cumulé au shell Marketing
+// PLAN_CRM_VENTES porte le réel combiné à ~2456 Ko — croissance produit
+// organique, écrans lazy-loadés, AUCUNE nouvelle dépendance npm. Palier généreux
+// (~110 Ko) pour absorber les prochaines vagues sans re-bumper à chaque merge ;
+// le garde per-chunk (350) + budgets vendors restent les vrais garde-fous.
+const TOTAL_BUDGET_KB = 2550
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

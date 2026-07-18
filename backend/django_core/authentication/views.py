@@ -869,7 +869,15 @@ def _run_demo_reset(slug):
     except Exception:
         # Pas de Celery (ou pas de task) → exécution synchrone immédiate.
         pass
-    call_command('reset_demo_company', slug=slug, force=True, verbosity=0)
+    try:
+        call_command('reset_demo_company', slug=slug, force=True, verbosity=0)
+    except Exception:
+        # NTDMO7 — trace complète sur stderr (le logger django.request ne
+        # journalise que le message « Internal Server Error »). Permet de
+        # localiser la source exacte du 500 côté endpoint reset-demo.
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 class CompanyViewSet(viewsets.ModelViewSet):
@@ -913,7 +921,9 @@ class CompanyViewSet(viewsets.ModelViewSet):
         # utilisateur qui vient d'être supprimé → IntegrityError → 500. Le
         # middleware d'audit rappellera ``end_request()`` en fin de requête.
         from apps.audit import recorder
+        from core.tenant_context import clear_current_company
         recorder.end_request()
+        clear_current_company()
         _run_demo_reset(company.slug)
 
         # Notification in-app de confirmation (best-effort, ne bloque jamais).
