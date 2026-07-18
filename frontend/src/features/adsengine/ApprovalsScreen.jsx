@@ -35,7 +35,14 @@ export default function ApprovalsScreen() {
   const load = useCallback(() => {
     setLoading(true)
     adsengineApi.actions.pending()
-      .then(r => setActions(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+      .then(r => {
+        const raw = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+        // L'API EngineAction expose le genre dans `kind` ; les libellés / le
+        // diff EDIT_COPY (adsengine.js) lisent `type`. On normalise ici (sans
+        // écraser un `type` déjà présent) pour que la carte affiche le bon
+        // libellé et le diff avant/après contre les vraies données.
+        setActions(raw.map(a => ({ ...a, type: a.type ?? a.kind })))
+      })
       .catch(() => setActions([]))
       .finally(() => setLoading(false))
   }, [])
