@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeft, Save } from 'lucide-react'
 import { Button, Input, Textarea, Label, Switch, toast } from '../../ui'
+import { Combobox } from '../../ui/Combobox'
 import { isDirty } from '../../ui/form-utils'
 import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 import litigesApi from '../../api/litigesApi'
+import ventesApi from '../../api/ventesApi'
 import { GRAVITE_MAP, TYPE_MAP } from './litigesStatus'
 import FilterSelect from './FilterSelect'
 
@@ -36,12 +38,53 @@ export default function ReclamationEditor({ reclamation, onCancel, onSaved }) {
     motif_perte: reclamation?.motif_perte ?? '',
     ncr_id: reclamation?.ncr_id ?? '',
     audit_id: reclamation?.audit_id ?? '',
+    // WIR10 — origine documentaire (facture liée). `source_type`/`source_id`
+    // sont le SEUL couple lu par `litiges.selectors.relances_suspendues_pour_facture`
+    // (consommé par `ventes.scheduled`) : sans eux, « Bloquer les relances »
+    // ci-dessous n'a jamais rien à bloquer.
+    source_type: reclamation?.source_type ?? '',
+    source_id: reclamation?.source_id ?? null,
   })
   const [saving, setSaving] = useState(false)
   // VX169 — garde de navigation IN-APP (snapshot pris au montage).
   const [initialSnapshot] = useState(() => form)
   const dirty = isDirty(initialSnapshot, form)
   useNavigationGuard(dirty)
+
+  // WIR10 — pré-charge le libellé (référence) de la facture déjà liée en
+  // édition, pour que le Combobox affiche autre chose que le placeholder.
+  const [factureOption, setFactureOption] = useState(null)
+  useEffect(() => {
+    if (reclamation?.source_type === 'facture' && reclamation?.source_id) {
+      ventesApi.getFacture(reclamation.source_id)
+        .then((r) => setFactureOption({
+          value: String(reclamation.source_id),
+          label: r.data?.reference || `Facture #${reclamation.source_id}`,
+        }))
+        .catch(() => setFactureOption({
+          value: String(reclamation.source_id),
+          label: `Facture #${reclamation.source_id}`,
+        }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- une seule fois, à l'ouverture
+  }, [])
+
+  const onSearchFacture = (q) =>
+    ventesApi.getFactures({ search: q }).then((r) => {
+      const hits = r?.data?.results ?? r?.data ?? []
+      return (Array.isArray(hits) ? hits : []).map((f) => ({
+        value: String(f.id), label: f.reference || `Facture #${f.id}`, hit: f,
+      }))
+    })
+
+  const handleFactureChoisie = (v, opt) => {
+    setForm((f) => ({
+      ...f,
+      source_type: v ? 'facture' : '',
+      source_id: v ? Number(v) : null,
+    }))
+    setFactureOption(v ? opt : null)
+  }
 
   const set = (key) => (e) =>
     setForm((f) => ({ ...f, [key]: e?.target ? e.target.value : e }))
@@ -139,12 +182,29 @@ export default function ReclamationEditor({ reclamation, onCancel, onSaved }) {
           <Textarea id="lit-desc" rows={6} value={form.description} onChange={set('description')} />
         </div>
 
+        {/* WIR10 — sans ce sélecteur, `bloque_relances` ci-dessous n'avait
+            aucune facture à bloquer : `source_type`/`source_id` n'étaient
+            jamais posés depuis cet écran. */}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="lit-facture">Facture liée — optionnel</Label>
+          <Combobox
+            id="lit-facture"
+            value={form.source_type === 'facture' && form.source_id ? String(form.source_id) : null}
+            options={factureOption ? [factureOption] : []}
+            onSearch={onSearchFacture}
+            onChange={handleFactureChoisie}
+            placeholder="Rechercher une facture…"
+            searchPlaceholder="Référence, client…"
+            emptyText="Aucune facture trouvée"
+          />
+        </div>
+
         <label className="flex items-center gap-2 text-sm">
           <Switch
             checked={form.bloque_relances}
             onCheckedChange={(v) => setForm((f) => ({ ...f, bloque_relances: v }))}
           />
-          Bloquer les relances automatiques sur la facture liée
+          Bloquer les relances automatiques sur la facture liée ci-dessus
         </label>
 
         <fieldset className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-3">

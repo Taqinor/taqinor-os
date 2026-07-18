@@ -31,6 +31,13 @@ const litigesApiMock = vi.hoisted(() => ({
 }))
 vi.mock('../../api/litigesApi', () => ({ default: litigesApiMock }))
 
+// WIR10 — stub du client API ventes (recherche de facture à lier).
+const ventesApiMock = vi.hoisted(() => ({
+  getFactures: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+  getFacture: vi.fn(() => Promise.resolve({ data: {} })),
+}))
+vi.mock('../../api/ventesApi', () => ({ default: ventesApiMock }))
+
 // jsdom n'implémente pas ResizeObserver (Switch/Radix Switch dans l'éditeur).
 beforeAll(() => {
   if (typeof globalThis.ResizeObserver === 'undefined') {
@@ -158,5 +165,36 @@ describe('ReclamationEditor — rattachement NCR / audit', () => {
     const [, payload] = litigesApiMock.update.mock.calls[0]
     expect(payload.ncr_id).toBe('7')
     expect(payload.audit_id).toBe('11')
+  })
+})
+
+// WIR10 — jusqu'ici AUCUN chemin UI ne posait `source_type='facture'`/
+// `source_id` sur une réclamation : `litiges.selectors.relances_suspendues_pour_facture`
+// (consommé par `ventes.scheduled`) ne trouvait donc jamais rien à bloquer.
+describe('ReclamationEditor — facture liée (WIR10)', () => {
+  it('lie une facture réelle et poste source_type/source_id à la création', async () => {
+    ventesApiMock.getFactures.mockResolvedValueOnce({
+      data: { results: [{ id: 55, reference: 'FA-2026-0099' }] },
+    })
+    litigesApiMock.create.mockResolvedValue({ data: { id: 10 } })
+
+    render(wrap(
+      <ReclamationEditor onCancel={() => {}} onSaved={() => {}} />,
+    ))
+
+    fireEvent.change(screen.getByLabelText('Objet'), { target: { value: 'Facture contestée' } })
+
+    fireEvent.click(screen.getByRole('combobox', { name: /Facture liée/ }))
+    const search = await screen.findByRole('searchbox')
+    fireEvent.change(search, { target: { value: 'FA-2026' } })
+    fireEvent.click(await screen.findByRole('option', { name: /FA-2026-0099/ }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }))
+
+    await waitFor(() => expect(litigesApiMock.create).toHaveBeenCalled())
+    const [payload] = litigesApiMock.create.mock.calls[0]
+    expect(payload.source_type).toBe('facture')
+    expect(payload.source_id).toBe(55)
+    expect(payload.bloque_relances).toBe(true)
   })
 })

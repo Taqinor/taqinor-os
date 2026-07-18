@@ -10,6 +10,9 @@ import {
   toast,
 } from '../../ui'
 import { Combobox } from '../../ui/Combobox'
+// WIR7 — extraction canonique du message d'erreur backend (VX203) : plus
+// jamais un échec d'encaissement avalé en silence sur ce chemin d'argent.
+import { errorMessageFrom } from '../../lib/toast'
 import {
   MODES_PAIEMENT, searchProduitsPos, addToCart, removeFromCart, setQuantite,
   cartLineTotal, cartTotal, cartItemCount, calculerRendu, peutEncaisser,
@@ -148,7 +151,11 @@ export default function CaisseScreen() {
   // Encaissement (app POS dédiée) : crée une VenteComptoir (brouillon), ajoute
   // ses lignes (produit + qté + prix TTC + numéros de série éventuels), puis la
   // valide avec les paiements — la validation crée la Facture légale + les
-  // Paiement côté backend (services.valider_vente). Le client est optionnel.
+  // Paiement côté backend (services.valider_vente). WIR7 — un client est en
+  // réalité TOUJOURS requis (apps/pos/services.py : « Un client est requis
+  // pour émettre la facture légale. ») : le champ est visuellement obligatoire
+  // ci-dessous, et un échec ici affiche le message réel du backend (jamais un
+  // échec silencieux).
   const handleConfirmerEncaissement = async () => {
     setBusy(true)
     try {
@@ -173,8 +180,11 @@ export default function CaisseScreen() {
       setCart([])
       setClient(null)
       setNumerosSerie({})
-    } catch {
-      toast.error('L’encaissement a échoué — la vente n’a pas été validée.')
+    } catch (err) {
+      // WIR7 — plus de message générique avalant l'erreur réelle : le
+      // caissier voit le motif exact renvoyé par le backend (ex. « Un client
+      // est requis pour émettre la facture légale. »).
+      toast.error(errorMessageFrom(err, 'L’encaissement a échoué — la vente n’a pas été validée.'))
     } finally {
       setBusy(false)
     }
@@ -291,13 +301,18 @@ export default function CaisseScreen() {
         {/* Panier tactile */}
         <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3">
           <div className="grid gap-1.5">
-            <Label htmlFor="pos-client">Client — optionnel</Label>
+            {/* WIR7 — un client est en réalité TOUJOURS requis pour valider
+                l'encaissement (facture légale) : le placeholder précédent
+                (« Vente comptoir (sans client) ») laissait croire le
+                contraire. Champ visuellement obligatoire, jamais un échec
+                silencieux à la validation. */}
+            <Label htmlFor="pos-client" required>Client</Label>
             <Combobox
               id="pos-client"
               value={client ? String(client.id) : null}
               onSearch={onSearchClient}
               onChange={handleClientChoisi}
-              placeholder="Vente comptoir (sans client)"
+              placeholder="Rechercher un client…"
               searchPlaceholder="Nom du client…"
               emptyText="Aucun client trouvé"
             />
