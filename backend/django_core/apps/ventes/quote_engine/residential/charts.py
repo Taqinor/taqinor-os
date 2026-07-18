@@ -166,11 +166,14 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
                 zorder=4, solid_capstyle="round")
 
     # Break-even dots ON the zero crossing (that IS the payback moment).
+    # QRES60 — deux ROI proches → points plus petits (ils fusionnaient
+    # visuellement à pleine taille).
     rois = [roi for _c, _col, _l, roi, _d in series if roi]
+    _dot_s = 80 if (len(rois) < 2 or abs(rois[0] - rois[1]) >= 0.8) else 52
     for curve, col, _label, roi, _dy in series:
         if not roi:
             continue
-        ax.scatter([roi], [0], s=80, color=col, zorder=6,
+        ax.scatter([roi], [0], s=_dot_s, color=col, zorder=6,
                    edgecolor="white", linewidth=1.6, marker="o")
     # QRES15/20 — UNE étiquette intelligente : ROI proches → un libellé
     # combiné (plus jamais deux textes qui se chevauchent) ; mono-option →

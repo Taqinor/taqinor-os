@@ -1383,12 +1383,12 @@ class TestResidentialQRESRound(TestCase):
         html = render.build_html(d)
         return html, HTML(string=html).render()
 
-    # QRES17/49 — nombre de pages ATTENDU par fixture : un devis standard
-    # tient en 3 pages ; un devis chargé (« plus5 », « plus10 » — la taille
-    # RÉELLE des devis du fondateur) PASSE en 4 pages : tableau équipement à
-    # l'aise + page rentabilité dédiée (grande courbe + financement). Le mode
-    # « dense » qui écrasait la courbe pour tasser en 3 pages n'existe plus.
-    EXPECTED_PAGES = {"deux": 3, "sans": 3, "long": 3, "plus5": 4,
+    # QRES17/49/57 — nombre de pages ATTENDU par fixture : un devis de la
+    # taille réelle du fondateur (« plus5 », ~13 lignes) tient en 3 pages AVEC
+    # la grande courbe (cartes badges et ligne fiches retirées de la page 2) ;
+    # seuls les très gros devis (« plus10 ») passent en 4 pages (tableau à
+    # l'aise + page rentabilité dédiée).
+    EXPECTED_PAGES = {"deux": 3, "sans": 3, "long": 3, "plus5": 3,
                       "plus10": 4}
 
     def test_page_count_per_variant_never_overflows_dirty(self):
@@ -1404,13 +1404,13 @@ class TestResidentialQRESRound(TestCase):
                 f'{self.EXPECTED_PAGES[variant]} pages, got {len(doc.pages)}')
 
     def test_overflow_quote_paginates_cleanly(self):
-        """Devis chargés (« plus5 » ET « plus10 ») : 4 pages numérotées
-        « / 4 », TOUTES les lignes du devis présentes (aucune avalée par le
+        """Devis très chargé (« plus10 ») : 4 pages numérotées « / 4 »,
+        TOUTES les lignes du devis présentes (aucune avalée par le
         découpage), la page rentabilité dédiée existe et porte la bande de
         financement (QRES50)."""
         import fitz
         from apps.ventes.quote_engine.residential import renderer, sample_data
-        for variant in ("plus5", "plus10"):
+        for variant in ("plus10",):
             data = sample_data.build(variant)
             pdf = renderer.render_pdf_bytes(data)
             doc = fitz.open(stream=pdf, filetype='pdf')
@@ -1556,9 +1556,11 @@ class TestCanonicalProductible(TestCase):
         devis.lead = lead
         devis.save(update_fields=['lead'])
         data = build_quote_data(devis)
-        # 7.1 kWc × 1687 (Agadir PVGIS) = 11 977 kWh/an
+        # QRES54 — 7,1 kWc × 1687 (Agadir PVGIS) × 0,86 (pertes système 14 %)
+        from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
         self.assertEqual(data['puissance_kwc'], 7.1)
-        self.assertEqual(data['prod_kwh'], round(7.1 * 1687))
+        self.assertEqual(data['prod_kwh'],
+                         round(7.1 * 1687 * PRODUCTION_DERATE))
 
     def test_onee_tranche_ceilings_aligned(self):
         """QX38 — les plafonds ONEE représentent les vraies bandes cumulées
@@ -1606,7 +1608,9 @@ class TestHonestCashflowPayback(TestCase):
         a = cashflow_assumptions()
         self.assertEqual(a['years'], 25)
         self.assertEqual(a['degradation_pct'], 0.5)
-        self.assertGreater(a['escalation_pct'], 0)
+        # QRES54 (fondateur) — AUCUNE hausse tarifaire supposée : la projection
+        # est à tarif constant, seule la dégradation érode les économies.
+        self.assertEqual(a['escalation_pct'], 0.0)
         self.assertTrue(any('82-21' in n for n in a['notes']))
         self.assertTrue(any('injection' in n.lower() for n in a['notes']))
 
@@ -2322,7 +2326,7 @@ class TestSavingsMath(TestCase):
             autoconso_sans=0.60,
             autoconso_avec=0.85,
         )
-        prod = roi["prod_kwh"]   # = 5 * 1240 = 6200
+        prod = roi["prod_kwh"]   # 5 kWc × 1240 × 0,86 (QRES54, pertes 14 %)
         # Option 1 savings = production × autoconso_sans × tarif
         self.assertEqual(roi["eco_s_ann"], round(prod * 0.60 * 1.75))
         # Option 2 savings = production × autoconso_avec × tarif

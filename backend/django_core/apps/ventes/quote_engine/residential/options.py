@@ -268,7 +268,15 @@ def build_pages(ctx) -> list:
     else:
         _eco_ref, _tot_ref = d.get("eco_s_ann", 0), d.get("total_sans", 0)
         gain25_label = "sans batterie"
-    gain25 = max(0, round(_eco_ref * 25 - _tot_ref))
+    # QRES58 — le gain net 25 ans sort du VRAI cashflow (dégradation 0,5 %/an
+    # intégrée — ce que les hypothèses promettent) : plus jamais un eco×25 plat
+    # qui surévaluait ~7 % ; repli Σ(0,995^t) ≈ 23,56 si le cumul manque.
+    _cf_ref = (d.get("cashflow_avec") if (deux_options or avec_ok)
+               else d.get("cashflow_sans")) or []
+    if _cf_ref:
+        gain25 = max(0, round(_cf_ref[-1]))
+    else:
+        gain25 = max(0, round(_eco_ref * 23.56 - _tot_ref))
     gain25 = round(gain25 / 1000) * 1000
     # QRES28 — le multiple (« ≈ 5,6× votre investissement ») rend le gain net
     # tangible ; calculé, jamais inventé (gain net / investissement).
@@ -286,15 +294,9 @@ def build_pages(ctx) -> list:
                "sur investissement" if deux_options
                else "gain cumulé — le point marque le retour sur investissement")
 
-    # QRES5 — badges de garantie (déplacés de la page 3) : ils meublent le bas
-    # de la page 2, à côté de l'équipement qu'ils couvrent, et allègent la
-    # page 3. Une seule source : theme.WARRANTIES.
-    badges_html = "".join(
-        f'<div class="p2-badge"><div class="p2-badge-n">{n}'
-        f'<span class="p2-badge-u">{u}</span></div>'
-        f'<div class="p2-badge-l">{label}</div>'
-        f'<div class="p2-badge-s">{sub}</div></div>'
-        for n, u, label, sub in theme.WARRANTIES)
+    # QRES57 — les garanties vivent en bande fine sur la page signature
+    # (trust.py, source unique theme.WARRANTIES) : plus de cartes badges en
+    # page 2 — l'espace revient à la courbe de rentabilité.
 
     # ── QRES17 — modèle de hauteur (mm) : décide si tout tient sur UNE page ──
     # Estimations calibrées sur le rendu réel (110 dpi) avec marge de sécurité ;
@@ -312,13 +314,13 @@ def build_pages(ctx) -> list:
         rows = max(len(delta_sans), len(delta_avec), 1)
         return 7.0 + rows * 4.6
 
-    # QRES49 (fondateur, 2026-07-18) — FINI le mode « dense » qui écrasait la
-    # courbe de rentabilité pour tasser un devis chargé en 3 pages : un devis
-    # dont l'équipement dépasse le confort de la page unique PASSE en mise en
-    # page multi-pages — tableau à l'aise + la page rentabilité dédiée (grande
-    # courbe) que le fondateur préfère. La densité ne rapetisse plus jamais le
-    # graphe ni les badges.
-    fits_one = (_table_mm(shared) + _deltas_mm()) <= 46.0
+    # QRES49/57 (fondateur, 2026-07-18) — un devis de la taille RÉELLE des
+    # devis du fondateur (~13 lignes, fixture « plus5 ») tient en 3 pages AVEC
+    # la grande courbe : on a retiré de la page 2 ce qui était redondant (les
+    # cartes badges → bande fine sur la page signature ; la ligne « fiches
+    # techniques » → fusionnée à la légende TVA). Seuls les très gros devis
+    # (~12 lignes communes et plus) passent en 4 pages.
+    fits_one = (_table_mm(shared) + _deltas_mm()) <= 68.0
 
     def _chunk_rows(items, budgets):
         """Découpe les lignes par tranches de hauteur (budgets mm par page)."""
@@ -463,11 +465,11 @@ def build_pages(ctx) -> list:
     0 5px 14px rgba(26,43,74,.05); }}
 
   /* CSS table: chart cell (left, full height) + stats cell (right, airy) */
-  /* QRES51 — courbe agrandie (retour fondateur) : 36 mm au lieu de 28,5,
-     compensée par les marges resserrées de la page. */
+  /* QRES51/57 — courbe agrandie (retour fondateur) : 42 mm — l'espace des
+     anciennes cartes badges lui revient. */
   .p2-fin-grid {{ display:table; width:100%; table-layout:fixed; margin-top:1.5mm; }}
   .p2-fin-cc {{ display:table-cell; width:62%; vertical-align:middle; }}
-  .p2-fin-cc img {{ display:block; height:36mm; width:auto; max-width:100%; }}
+  .p2-fin-cc img {{ display:block; height:42mm; width:auto; max-width:100%; }}
   .p2-fin-sc {{ display:table-cell; width:38%; vertical-align:middle;
     padding-left:8mm; }}
   .p2-side-stat {{ margin-bottom:2.5mm; }}
@@ -486,20 +488,6 @@ def build_pages(ctx) -> list:
     margin-top:2mm; font-style:italic; }}
   .p2-fin-cap b {{ color:{C['navy']}; font-weight:700; font-style:normal; }}
 
-  /* QRES5 — garanties (badges déplacés de la page 3) */
-  .p2-badges {{ display:flex; gap:9px; margin-top:0.8mm; }}
-  .p2-badge {{ flex:1; text-align:center; border:1px solid {C['line']};
-    border-top:3px solid {C['gold']}; border-radius:11px; padding:7px 4px 6px;
-    background:{C['paper']}; }}
-  .p2-badge-n {{ font-family:{fonts['display']}; font-size:17pt;
-    color:{C['navy']}; line-height:1; }}
-  .p2-badge-u {{ font-family:{fonts['sans']}; font-size:7.5pt;
-    color:{C['gold']}; font-weight:700; margin-left:3px; }}
-  .p2-badge-l {{ font-size:7.4pt; color:{C['navy']}; font-weight:700;
-    margin-top:4px; letter-spacing:.05em; text-transform:uppercase; }}
-  .p2-badge-s {{ font-size:6.4pt; color:{C['muted_2']}; margin-top:1.5px;
-    text-transform:none; letter-spacing:0; font-weight:500; }}
-
   /* QRES17 — pages de continuation / page rentabilité dédiée */
   .p2-cont-note {{ font-size:7.6pt; color:{C['muted']}; font-style:italic;
     margin-top:2mm; text-align:right; }}
@@ -513,7 +501,6 @@ def build_pages(ctx) -> list:
     box-shadow:0 1px 2px rgba(26,43,74,.04),0 5px 14px rgba(26,43,74,.05); }}
   .p2-fin-xl .p2-fin-sub {{ margin-top:0; }}
   .p2-fin-xl {{ margin-top:6mm; }}
-  .p2-finpage-badges {{ margin-top:7mm; }}
 
   /* QRES50 — bande financement de la page rentabilité (économies − crédit =
      dans votre poche) : séparation par cellules fixes, jamais par flex gap */
@@ -601,11 +588,12 @@ def build_pages(ctx) -> list:
             '<th class="p2-r">Total HT</th>'
             f'</tr></thead><tbody>{rows}</tbody></table>')
 
-    fiche_html = (
-        '<div class="p2-fiche">Chaque équipement renvoie à sa fiche technique '
-        'complète — bibliothèque&nbsp;: <a class="p2-fiche-btn" '
+    # QRES57 — la ligne « fiches techniques » fusionne avec la légende TVA
+    # (une seule ligne de légende sous les totaux, ~5 mm rendus à la courbe).
+    fiche_inline = (
+        ' &middot; fiches techniques&nbsp;: <a class="p2-fiche-btn" '
         f'href="{_produits_href(produits_link)}">{produits_link}'
-        '<span class="p2-fiche-i"> &rsaquo;</span></a></div>')
+        '<span class="p2-fiche-i"> &rsaquo;</span></a>')
 
     # QRES30/48 — mono-option : carte de totaux PLEINE LARGEUR (les montants
     # internes s'alignent déjà à droite, donc le TOTAL TTC retombe sur le rail
@@ -613,9 +601,8 @@ def build_pages(ctx) -> list:
     totals_wrap_cls = ""
     closing_html = (
         f'{deltas_html}'
-        f'{fiche_html}'
         f'<div class="p2-totals{totals_wrap_cls}">{totals_html}</div>'
-        f'<div class="p2-tva-note">{tva_note}</div>'
+        f'<div class="p2-tva-note">{tva_note}{fiche_inline}</div>'
         f'{multi_html}')
 
     _stats_html = f"""
@@ -634,10 +621,12 @@ def build_pages(ctx) -> list:
           <span class="p2-stat-v">30 ans</span>
           <span class="p2-stat-s">panneaux — 87,4 % de rendement à 30 ans</span>
         </div>"""
+    # QRES59 — libellé NEUTRE (beaucoup de clients sont chez une régie, pas
+    # l'ONEE) ; seule mention « toute hausse vous profite » du document.
     _fin_cap = (
-        '<div class="p2-fin-cap">Projection <b>à tarif ONEE constant</b> — '
-        "toute hausse future du prix de l'électricité accélère votre "
-        'rentabilité, votre coût solaire restant fixe.</div>')
+        '<div class="p2-fin-cap">Projection <b>à tarif électricité '
+        'constant</b> — toute hausse future du prix de l\'électricité '
+        'accélère votre rentabilité, votre coût solaire restant fixe.</div>')
 
     # QRES46 — sur la page rentabilité dédiée, le bandeau navy porte déjà le
     # gain net : la carte-stat « Gain net » disparaît (plus de doublon).
@@ -686,34 +675,21 @@ def build_pages(ctx) -> list:
     {_fin_cap}
   </div>"""
 
-    badges_block = (
-        '<div class="p2-lbl">Nos garanties</div>'
-        f'<div class="p2-badges">{badges_html}</div>')
-
     def _wrap_page(inner, dense_c=""):
         return f'{style}<div class="p2-wrap{dense_c}">{inner}</div>'
 
     if fits_one:
-        # Mise en page historique : tout sur UNE page (petits devis).
+        # Mise en page historique : tout sur UNE page (devis ≤ ~11 lignes).
         return [_wrap_page(
             head_html + band_html
             + _table_html(shared, equipement_lbl)
-            + closing_html + _fin_html()
-            + badges_block)]
+            + closing_html + _fin_html())]
 
     # ── Devis chargé : page(s) équipement + page rentabilité dédiée ──────────
     # Budgets (mm) : 1ʳᵉ page équipement (bande projet + titre + clôture
     # tableau), pages « suite » (titre court seulement — la clôture suit le
     # DERNIER morceau de tableau).
     chunks = _chunk_rows(shared, budgets=[118.0, 165.0])
-
-    # QRES52 — quand LA page équipement (non découpée) garde une réserve
-    # confortable, les badges de garantie la terminent — à côté de
-    # l'équipement qu'ils couvrent, plus de bas de page vide ; sinon ils
-    # clôturent la page rentabilité comme avant.
-    _est_equip = 13 + 26 + _table_mm(shared) + (71 if deux_options else 55)
-    badges_on_equip = len(chunks) == 1 and (271 - _est_equip) >= 60
-
     pages = []
     for i, chunk in enumerate(chunks):
         is_first = i == 0
@@ -726,8 +702,6 @@ def build_pages(ctx) -> list:
                       'page suivante &rsaquo;</div>')
         else:
             inner += closing_html
-            if badges_on_equip:
-                inner += f'<div class="p2-finpage-badges">{badges_block}</div>'
         pages.append(_wrap_page(inner))
 
     # QRES28 — la page rentabilité dédiée (espace abondant) reçoit le bandeau
@@ -804,11 +778,9 @@ def build_pages(ctx) -> list:
             '25 ans</span></div>'
             '</div>')
 
-    _fin_badges = ("" if badges_on_equip
-                   else f'<div class="p2-finpage-badges">{badges_block}</div>')
     pages.append(_wrap_page(
         fin_head_html + _fin_html(xl=True) + _callout
-        + finband_html + impact_html + _fin_badges))
+        + finband_html + impact_html))
     return pages
 
 

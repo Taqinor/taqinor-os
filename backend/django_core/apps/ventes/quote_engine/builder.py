@@ -931,6 +931,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # calcul avec le chemin vers l'exactitude (facture → barème par
         # tranches) ; un tarif réellement personnalisé reste affiché comme
         # tel ; le cas barème (« factures ») garde sa ligne dédiée ci-dessus.
+        # QRES55 (fondateur, 2026-07-18) — le tarif de référence interne ne
+        # s'affiche JAMAIS en chiffres sur le document (ni « 1,75 » ni un
+        # autre) : la ligne dit la MÉTHODE et le chemin vers l'exactitude.
+        # Seul un tarif réellement personnalisé (saisi pour CE devis, différent
+        # du défaut) reste affiché, car c'est la donnée du client.
         from .constants import KWH_PRICE as _KWH_DEFAULT
         if _util_name:
             hypotheses.append(
@@ -938,27 +943,33 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 f"({_util_name})")
         elif abs(float(_tarif_val) - float(_KWH_DEFAULT)) < 1e-6:
             hypotheses.append(
-                f"Économies calculées sur un tarif résidentiel de référence "
-                f"de {_tarif_txt} MAD/kWh — transmettez une facture récente "
-                "et nous les recalculons par tranches, sur votre barème "
-                "exact.")
+                "Tarif électricité : référence résidentielle prudente — "
+                "transmettez une facture récente et nous recalculons vos "
+                "économies par tranches, sur votre barème exact.")
         else:
             hypotheses.append(
                 f"Tarif électricité : {_tarif_txt} MAD/kWh, personnalisé "
                 "pour votre profil de consommation — un calcul par tranches "
                 "sur facture réelle reste possible.")
+    # QRES55 — formulations COMPACTES (le fondateur veut la même transparence
+    # « en plus petit ») : une idée, une ligne courte.
     hypotheses.append(
-        "Économies valorisées sur l'autoconsommation uniquement (loi 82-21) — "
-        "le surplus injecté n'est pas rémunéré (rachat BT résidentiel différé "
-        "par l'ANRE) ; plafond d'injection 20 % pré-intégré dans les taux "
-        "d'autoconsommation.")
+        "Loi 82-21 : seuls les kWh autoconsommés réduisent la facture — le "
+        "surplus injecté n'est pas rémunéré (plafond d'injection 20 % "
+        "intégré, rachat BT non publié).")
     if _prod_factor:
-        # QRES1 — la garantie panneaux vit dans les badges « Nos garanties »
-        # (une seule source) : plus de « garantie sur 25 ans » contradictoire
-        # avec la garantie performance 30 ans des fiches produit.
+        # QRES54 — production NETTE affichée : pertes système de 14 % déduites
+        # (PRODUCTION_DERATE), la même que TOUS les calculs du document.
+        from .pricing import PRODUCTION_DERATE as _DERATE
         hypotheses.append(
-            f"Production estimée : ≈ {_fr_int(_prod_factor)} kWh par kWc et "
-            "par an (irradiation moyenne au Maroc).")
+            f"Production estimée : ≈ {_fr_int(_prod_factor * _DERATE)} "
+            "kWh par kWc et par an, pertes système de 14 % déduites.")
+    _ac_s = roi.get("autoconso_sans")
+    _ac_a = roi.get("autoconso_avec")
+    if _ac_s and _ac_a:
+        hypotheses.append(
+            f"Autoconsommation retenue : {int(round(_ac_s * 100))} % sans "
+            f"batterie · {int(round(_ac_a * 100))} % avec batterie.")
     # QX39 — hypothèses du cashflow 25 ans (dégradation/escalade/batterie),
     # documentées et rendues sur le PDF/la proposition. Le payback vient
     # désormais du croisement du cumul à zéro, pas d'un ratio année-1.
@@ -973,9 +984,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if "82-21" in _n and any("82-21" in h for h in hypotheses):
             continue
         hypotheses.append(_n)
-    hypotheses.append(
-        "Estimations non contractuelles ; toute hausse future du tarif "
-        "électrique améliore votre rentabilité.")
+    # QRES59 — « toute hausse vous profite » ne se dit qu'UNE fois (la note
+    # cashflow ci-dessus) : la ligne finale reste sobre.
+    hypotheses.append("Estimations non contractuelles.")
     hypotheses_block = {
         "titre": "Nos hypothèses",
         "items": hypotheses,

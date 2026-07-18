@@ -145,10 +145,12 @@ def fmt(n) -> str:
 # contradictoires (« 25 ans » vs « 30 ans ») dans le même PDF.
 # QRES25 — libellé un mot + sous-ligne (lisibilité badge) : (n, unité, libellé,
 # sous-libellé).
+# QRES56 (fondateur, 2026-07-18) — la garantie « Structure 20 ans » est
+# RETIRÉE sur décision fondateur : trois garanties traçables aux fiches
+# produit, rien de plus.
 WARRANTIES = [
     ("10", "ans", "Onduleur", "garantie fabricant"),
     ("12", "ans", "Panneaux", "garantie produit"),
-    ("20", "ans", "Structure", "fixations & supports"),
     ("30", "ans", "Performance", "87,4 % de rendement garanti"),
 ]
 

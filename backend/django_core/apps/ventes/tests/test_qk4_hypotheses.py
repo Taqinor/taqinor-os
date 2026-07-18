@@ -106,7 +106,9 @@ class TestHypothesesInData(TestCase):
         self.assertIn('approximatif', ' '.join(h['items']).lower())
 
     def test_degrades_with_tarif_kwh_text(self):
-        """No utility → the flat tarif MAD/kWh is surfaced instead."""
+        """No utility → QRES55 : le tarif interne n'est JAMAIS affiché en
+        chiffres ; la ligne dit la méthode + le chemin vers l'exactitude
+        (facture → recalcul par tranches). La valeur reste en métadonnée."""
         from apps.ventes.quote_engine import build_quote_data
         devis = make_devis(self.company, self.user, self.client_obj,
                            reference='DEV-QK4-EST')
@@ -114,7 +116,9 @@ class TestHypothesesInData(TestCase):
         h = data['hypotheses']
         self.assertIsNone(h['tranche_source'])
         self.assertIsNotNone(h['tarif_kwh_txt'])
-        self.assertIn('MAD/kWh', ' '.join(h['items']))
+        joined = ' '.join(h['items'])
+        self.assertNotIn('1,75', joined)
+        self.assertIn('par tranches', joined)
 
 
 @tag('pdf')

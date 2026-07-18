@@ -111,38 +111,30 @@ def build(ctx) -> str:
     l_gar = links.get("garanties", site_url + "/garanties")
     l_sign = links.get("signer", site_url + "/signer")
 
-    # ── QX7e — puces de valeur : les marques d'équipement viennent des VRAIES
-    # lignes du devis (item['marque']), jamais d'une liste boilerplate. Repli
-    # « équipements certifiés IEC » quand aucune marque n'est portée par les
-    # lignes. Les figures marketing (« Pourquoi … ») sont un texte éditable par
-    # la société via doc_texts.trust_values (repli sur les puces par défaut).
-    _seen, _brands = set(), []
-    for _it in (d.get("avec_items") or []) + (d.get("sans_items") or []):
-        _m = (_it.get("marque") or "").strip()
-        if _m and _m.lower() not in _seen:
-            _seen.add(_m.lower())
-            _brands.append(_m)
-    # QRES13 — 3 marques max : 4 marques font passer la carte centrale à trois
-    # lignes, ce qui grandit toute la rangée (et la page est un A4 FIXE).
-    _brand_line = (
-        "Équipements premium certifiés — " + " · ".join(_brands[:3])
-        if _brands else "Équipements premium certifiés IEC")
-    values = [
-        "Ingénieurs spécialisés en énergie solaire",
-        _brand_line,
-        "Suivi de production en temps réel 24/7",
-    ]
-    # Texte éditable par la société (doc_texts.trust_values) : liste de puces qui
-    # remplace la valeur par défaut ci-dessus quand elle est renseignée.
+    # QRES57 — la rangée de puces PAR DÉFAUT disparaît (elle répétait mot pour
+    # mot le ruban de crédibilité de la page 1) au profit de la bande fine des
+    # garanties (source unique theme.WARRANTIES — les cartes badges de la
+    # page 2 sont retirées, l'espace revient à la courbe de rentabilité). Une
+    # société qui a personnalisé doc_texts.trust_values garde SA rangée.
+    values_html = ""
     _doc_texts = d.get("doc_texts") or {}
     _tv = _doc_texts.get("trust_values")
     if isinstance(_tv, (list, tuple)) and any(str(x).strip() for x in _tv):
         values = [str(x).strip() for x in _tv if str(x).strip()]
-    values_html = "".join(
-        f'<div class="p3-val"><span class="p3-dot"></span>'
-        f'<span class="p3-val-t">{v}</span></div>'
-        for v in values
-    )
+        values_html = (
+            '<div class="p3-values">'
+            + "".join(
+                f'<div class="p3-val"><span class="p3-dot"></span>'
+                f'<span class="p3-val-t">{v}</span></div>'
+                for v in values)
+            + '</div>')
+    gar_html = (
+        '<div class="p3-gar"><span class="p3-gar-t">Nos garanties</span>'
+        + " &middot; ".join(
+            f'<span class="p3-gar-i"><b>{n} {u}</b> — {label}'
+            f'{(" (" + sub + ")") if label == "Performance" else ""}</span>'
+            for n, u, label, sub in theme.WARRANTIES)
+        + '</div>')
 
     # ── Trust strip — LINK out, don't dump ──────────────────────────────────
     # QK5 — le libellé « avis clients » renvoie désormais vers /realisations
@@ -357,7 +349,15 @@ def build(ctx) -> str:
   font-size:23pt; color:{C['navy']}; line-height:1.04; margin:3px 0 0;
   letter-spacing:-.3px; }}
 
-/* Value points row */
+/* QRES57 — bande fine des garanties (remplace les cartes badges de la p.2) */
+.p3-gar {{ margin:10px 0 11px; background:{C['wash']};
+  border:1px solid {C['line_soft']}; border-left:4px solid {C['gold']};
+  border-radius:10px; padding:8px 14px; font-size:8.4pt; color:{C['ink']}; }}
+.p3-gar-t {{ font-size:7pt; letter-spacing:.14em; text-transform:uppercase;
+  color:{C['muted_2']}; font-weight:700; margin-right:10px; }}
+.p3-gar-i b {{ color:{C['navy']}; }}
+
+/* Value points row (uniquement si doc_texts.trust_values est personnalisé) */
 .p3-values {{ display:flex; gap:9px; margin:10px 0 11px; }}
 .p3-val {{ flex:1; display:flex; align-items:flex-start; gap:7px;
   background:{C['wash']}; border:1px solid {C['line_soft']}; border-radius:10px;
@@ -491,8 +491,9 @@ def build(ctx) -> str:
 
 /* QRES9 — hypothèses en fine-print pleine largeur (plus jamais un mur de
    texte dans la carte Conditions qui faisait déborder la page) */
-.p3-hyp {{ margin-top:7px; font-size:6.9pt; color:{C['muted']};
-  line-height:1.5; text-align:left; column-count:2; column-gap:8mm; }}
+/* QRES55 — « en plus petit » (fondateur) : mêmes hypothèses, corps réduit */
+.p3-hyp {{ margin-top:7px; font-size:6.4pt; color:{C['muted']};
+  line-height:1.45; text-align:left; column-count:2; column-gap:8mm; }}
 .p3-hyp-t {{ font-weight:700; color:{C['navy']}; text-transform:uppercase;
   letter-spacing:.08em; font-size:6.6pt; }}
 
@@ -507,7 +508,8 @@ def build(ctx) -> str:
   <div class="p3-kicker">Confiance &amp; Engagement</div>
   <div class="p3-title">Pourquoi {brand}</div>
 
-  <div class="p3-values">{values_html}</div>
+  {values_html}
+  {gar_html}
 
   <div class="p3-block">
     <div class="p3-h">La preuve, en ligne</div>

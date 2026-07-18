@@ -29,7 +29,7 @@ def keys():
 
 
 def _cumulative(total_ttc, eco_year1, years=25, degradation=0.005,
-                escalation=0.02):
+                escalation=0.0):
     """Cumulative cashflow like pricing.compute_cashflow (simplified)."""
     cumul, out = -float(total_ttc), []
     for y in range(1, years + 1):
@@ -96,7 +96,12 @@ def build(variant: str = "deux") -> dict:
 
     bills = [1500, 1450, 1550, 1600, 1750, 2100,
              2400, 2350, 1950, 1700, 1550, 1500]          # ≈ 21 400 MAD/an
-    eco_s_ann, eco_a_ann = 10650, 14750
+    # QRES54 — les règles du calculateur du fondateur : production NETTE
+    # (5,68 kWc × 1 651 kWh/kWc × 0,86 = 8 065 kWh), autoconsommation 60 %
+    # sans batterie / 85 % avec, valorisée au tarif interne (jamais affiché).
+    prod_kwh = round(5.68 * 1651 * 0.86)                  # 8 065
+    eco_s_ann = round(prod_kwh * 0.60 * 1.75)             # 8 468
+    eco_a_ann = round(prod_kwh * 0.85 * 1.75)             # 11 997
     eco_a_monthly = [round(eco_a_ann * b / sum(bills)) for b in bills]
     roi_s = round(totaux_sans["ttc"] / eco_s_ann, 1)
     roi_a = round(totaux_avec["ttc"] / eco_a_ann, 1)
@@ -114,7 +119,7 @@ def build(variant: str = "deux") -> dict:
         "puissance_kwc": 5.68,
         "nb_panneaux": 8,
         "watt_par_panneau": 710,
-        "prod_kwh": 9378,
+        "prod_kwh": prod_kwh,
         "conso_annuelle_kwh": 12000,
         "tarif_kwh": 1.75,
         "sans_items": sans_items,
@@ -154,20 +159,20 @@ def build(variant: str = "deux") -> dict:
         "hypotheses": {
             "titre": "Nos hypothèses",
             "items": [
-                "Économies calculées sur un tarif résidentiel de référence "
-                "de 1,75 MAD/kWh — transmettez une facture récente et nous "
-                "les recalculons par tranches, sur votre barème exact.",
-                "Économies valorisées sur l'autoconsommation uniquement "
-                "(loi 82-21) — le surplus injecté n'est pas rémunéré (rachat "
-                "BT résidentiel différé par l'ANRE) ; plafond d'injection "
-                "20 % pré-intégré dans les taux d'autoconsommation.",
-                "Production estimée : ≈ 1 651 kWh par kWc et par an "
-                "(irradiation moyenne au Maroc).",
-                "Dégradation panneau 0,5 %/an et escalade du tarif électrique "
-                "2 %/an (hypothèse prudente) intégrées au calcul de "
-                "rentabilité.",
-                "Estimations non contractuelles ; toute hausse future du "
-                "tarif électrique améliore votre rentabilité.",
+                "Tarif électricité : référence résidentielle prudente — "
+                "transmettez une facture récente et nous recalculons vos "
+                "économies par tranches, sur votre barème exact.",
+                "Loi 82-21 : seuls les kWh autoconsommés réduisent la "
+                "facture — le surplus injecté n'est pas rémunéré (plafond "
+                "d'injection 20 % intégré, rachat BT non publié).",
+                "Production estimée : ≈ 1 420 kWh par kWc et par an, pertes "
+                "système de 14 % déduites.",
+                "Autoconsommation retenue : 60 % sans batterie · 85 % avec "
+                "batterie.",
+                "Dégradation panneau 0,5 %/an intégrée ; aucune hausse du "
+                "tarif électrique supposée — projection à tarif constant, "
+                "toute hausse réelle améliore votre résultat.",
+                "Estimations non contractuelles.",
             ],
         },
         "financing": {"indicatif": True,
@@ -197,13 +202,15 @@ def build(variant: str = "deux") -> dict:
         tot = _totaux(items)
         bills21 = [7000, 8500, 12000, 14500, 16200, 16800,
                    16900, 14300, 12400, 9200, 7900, 6900]
-        eco_s = 122057
+        # QRES54 — mêmes règles : production nette ×0,86, autoconsommation 60 %.
+        _prod21 = round(49.7 * 1651 * 0.86)               # 70 568
+        eco_s = round(_prod21 * 0.60 * 1.75)              # 74 096
         _roi = round(tot["ttc"] / eco_s, 1)
         d.update({
             "sans_items": items, "avec_items": items,
             "totaux_sans": tot, "totaux_avec": tot,
             "total_sans": tot["ttc"], "total_avec": tot["ttc"],
-            "puissance_kwc": 49.7, "nb_panneaux": 70, "prod_kwh": 82055,
+            "puissance_kwc": 49.7, "nb_panneaux": 70, "prod_kwh": _prod21,
             "conso_annuelle_kwh": None, "eco_s_ann": eco_s, "eco_a_ann": eco_s,
             "roi_s": _roi, "roi_a": _roi,
             "factures_mensuelles": bills21,
@@ -278,15 +285,17 @@ def build(variant: str = "deux") -> dict:
         # everything else already on. Used by the pagination guard.
         d["savings_method"] = {
             "model": "factures", "approximatif": True,
-            "facture_actuelle": 21400, "facture_avec_solaire": 6651,
-            "economie": 14749,
+            "facture_actuelle": 21400,
+            "facture_avec_solaire": 21400 - eco_a_ann,
+            "economie": eco_a_ann,
             "ligne_methode": (
                 "Chaque kWh est valorisé au prix de SA tranche (barème "
                 "progressif du distributeur) : facture actuelle moins facture "
                 "résiduelle après autoconsommation — jamais un prix moyen "
                 "inventé."),
-            "exemple": ("Facture actuelle ≈ 21 400 MAD/an → avec solaire "
-                        "≈ 6 651 MAD/an → économie ≈ 14 749 MAD/an"),
+            "exemple": (f"Facture actuelle ≈ 21 400 MAD/an → avec solaire "
+                        f"≈ {21400 - eco_a_ann:,} MAD/an → économie ≈ "
+                        f"{eco_a_ann:,} MAD/an").replace(",", " "),
         }
         d["seller"] = {"nom": "Reda Kasri",
                        "telephone": "+212 6 61 85 04 10"}

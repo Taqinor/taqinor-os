@@ -200,8 +200,10 @@ def build(ctx):
 /* QRES41 — TABLE CSS, pas flex (RENDERING_NOTES §1 : le flex WeasyPrint
    superposait le méta replié sur le nom). Nom insécable | adresse qui replie
    proprement | pastille calée à droite. */
-.c1-client{{display:table;table-layout:auto;width:182mm;margin:5mm 14mm 0;
-  font-size:8.5pt;color:{muted};line-height:1.35;}}
+/* QRES60 — marge haute réduite : une adresse sur DEUX lignes ne pousse plus
+   les cartes d'option dans le pied de page (leur bord bas restait rogné). */
+.c1-client{{display:table;table-layout:auto;width:182mm;margin:3.5mm 14mm 0;
+  font-size:8.5pt;color:{muted};line-height:1.3;}}
 .c1-client-nom{{display:table-cell;white-space:nowrap;vertical-align:top;
   color:{ink};font-weight:700;padding-right:8px;}}
 .c1-client-meta{{display:table-cell;width:100%;vertical-align:top;}}
@@ -211,7 +213,7 @@ def build(ctx):
 .c1-tag{{display:inline-block;background:{wash};border:1px solid {line};
   border-radius:20px;padding:2px 10px;font-size:7pt;font-weight:600;
   color:{navy};letter-spacing:.3px;}}
-.c1-trust{{display:flex;align-items:center;gap:8px;padding:2.6mm 14mm 0 14mm;}}
+.c1-trust{{display:flex;align-items:center;gap:8px;padding:2mm 14mm 0 14mm;}}
 .c1-trust-line{{flex:1 1 0;height:1px;background:{line_soft};}}
 .c1-trust-txt{{font-size:7pt;letter-spacing:.12em;text-transform:uppercase;
   font-weight:700;color:{muted_2};white-space:nowrap;word-spacing:.35em;}}
