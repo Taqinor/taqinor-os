@@ -154,7 +154,12 @@ class TestHypothesesRender(TestCase):
         self.assertIn('82-21', html)
         self.assertEqual(len(doc.pages), 3)
 
-    def test_residential_renderer_shows_hypotheses(self):
+    def test_residential_renderer_keeps_hypotheses_off_the_pdf(self):
+        """QRES61 (fondateur, 2026-07-18) — le PDF résidentiel ne rend PLUS le
+        bloc hypothèses (il vit sur la proposition en ligne, WJ32/W359) ; le
+        papier garde une clause non-contractuelle qui y renvoie. Les données
+        ``hypotheses`` restent servies (proposal-data) — elles ne changent
+        rien au rendu papier."""
         from weasyprint import HTML
         from apps.ventes.quote_engine.residential import renderer, render
         from apps.ventes.tests.test_quote_engine import _residential_sample_data
@@ -170,5 +175,7 @@ class TestHypothesesRender(TestCase):
         d = renderer._augment(data)
         html = render.build_html(d)
         doc = HTML(string=html).render()
-        self.assertIn('Nos hypoth', html)
+        self.assertNotIn('Nos hypoth', html)
+        self.assertIn('Estimations non contractuelles', html)
+        self.assertIn('proposition en ligne', html)
         self.assertEqual(len(doc.pages), 3)

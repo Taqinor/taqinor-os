@@ -317,6 +317,11 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 .foot b {{ color:#fff; font-weight:700; letter-spacing:.04em; }}
 .foot a {{ color:{C['gold']}; text-decoration:none; }}
 
+/* QRES62 — joints élastiques : inertes (hauteur 0) au 1ᵉʳ rendu ; le
+   renderer les remplace par des espaceurs dimensionnés après MESURE du vide
+   réel de chaque page (distribution dynamique de l'espace). */
+.qj {{ height:0; margin:0; padding:0; }}
+
 /* Reusable card */
 .card {{ border:1px solid {C['line']}; border-radius:12px; background:{C['paper']}; }}
 .pill {{ display:inline-block; padding:3px 10px; border-radius:999px;

@@ -1429,8 +1429,9 @@ class TestResidentialQRESRound(TestCase):
     def test_bottom_content_never_silently_clipped(self):
         """Le cadre .page (A4 fixe, overflow:hidden) peut ROGNER sans faire de
         4ᵉ page : une page 3 trop haute perdait silencieusement la bande légale
-        (SARLAU/RC/ICE). On rastérise le VRAI PDF et on exige que la bande
-        légale ET les hypothèses soient physiquement sur la dernière page."""
+        (SARLAU/RC/ICE). On rastérise le VRAI PDF (chemin complet, distribution
+        élastique QRES62 incluse) et on exige la bande légale + la clause
+        non-contractuelle physiquement sur la dernière page."""
         import fitz
         from apps.ventes.quote_engine.residential import renderer, sample_data
         for variant in sample_data.keys():
@@ -1439,8 +1440,33 @@ class TestResidentialQRESRound(TestCase):
             last = doc[-1].get_text()
             self.assertIn('SARLAU', last,
                           f'variant {variant!r}: legal band clipped off page 3')
-            self.assertIn('hypoth', last.lower(),
-                          f'variant {variant!r}: hypotheses strip clipped')
+            self.assertIn('non contractuelles', last,
+                          f'variant {variant!r}: disclaimer clause clipped')
+
+    def test_no_page_ends_with_a_large_void(self):
+        """QRES62 — distribution dynamique de l'espace : après le second
+        passage (mesure du PDF réel → joints élastiques), plus AUCUNE page ne
+        garde un vide résiduel exploitable > 12 mm — le « petit espace en bas »
+        signalé par le fondateur ne peut pas revenir, quel que soit le nombre
+        de pages du devis."""
+        from apps.ventes.quote_engine.residential import renderer, sample_data
+        for variant in sample_data.keys():
+            pdf = renderer.render_pdf_bytes(sample_data.build(variant))
+            residual = renderer._measure_page_slack(pdf)
+            self.assertTrue(
+                all(v <= 12 for v in residual.values()),
+                f'variant {variant!r}: residual voids {residual}')
+
+    def test_hypotheses_live_on_the_web_proposal_not_the_pdf(self):
+        """QRES61 (fondateur) — les hypothèses de calcul quittent le papier :
+        plus de bande « Nos hypothèses » dans le PDF (la proposition en ligne
+        les porte, WJ32/W359) ; le papier garde UNE clause non-contractuelle
+        qui y renvoie."""
+        html, _ = self._render("deux")
+        self.assertNotIn("p3-hyp", html)
+        self.assertNotIn("Nos hypothèses", html)
+        self.assertIn("Estimations non contractuelles", html)
+        self.assertIn("proposition en ligne", html)
 
     def test_sign_link_token_never_displayed_as_text(self):
         """Le lien tokenisé vit dans le href et le QR ; le bouton n'affiche que
@@ -1479,13 +1505,11 @@ class TestResidentialQRESRound(TestCase):
 
     def test_hypotheses_deduplicated_by_builder_shape(self):
         """La fixture (miroir du builder corrigé) ne porte plus qu'UNE mention
-        de la loi 82-21 dans les hypothèses, et le rendu l'affiche en bande
-        fine-print pleine largeur."""
+        de la loi 82-21 dans les hypothèses — servies à la proposition EN
+        LIGNE (le PDF ne les rend plus, QRES61)."""
         from apps.ventes.quote_engine.residential import sample_data
         items = sample_data.build("deux")["hypotheses"]["items"]
         self.assertEqual(sum("82-21" in i for i in items), 1)
-        html, _ = self._render("deux")
-        self.assertIn("p3-hyp", html)
 
     def test_join_meta_dedups_repeated_fragments(self):
         """« casablanca, casablanca · casablanca » → « casablanca » (l'adresse

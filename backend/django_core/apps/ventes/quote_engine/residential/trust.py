@@ -183,18 +183,11 @@ def build(ctx) -> str:
         if sm_ex:
             _v += f' <b>{sm_ex}{sm_approx}</b>'
         conditions.append(("Comment nous calculons vos économies", _v))
-    # QK4 / QRES9 — « Nos hypothèses » : rendues comme une bande de fine-print
-    # PLEINE LARGEUR en bas de page (voir hyp_html plus bas), plus jamais comme
-    # une ligne de conditions — le mur de texte gonflait la carte gauche
-    # jusqu'à faire déborder la page 3 sur une 4ᵉ page.
-    hyp = d.get("hypotheses") or {}
-    hyp_items = [str(i).strip() for i in (hyp.get("items") or []) if str(i).strip()]
-    hyp_html = ""
-    if hyp_items:
-        hyp_html = (
-            f'<div class="p3-hyp"><span class="p3-hyp-t">'
-            f'{hyp.get("titre") or "Nos hypothèses"}</span> — '
-            + " &middot; ".join(hyp_items) + "</div>")
+    # QRES61 (fondateur, 2026-07-18) — les hypothèses de calcul quittent le
+    # PDF : elles vivent sur la proposition EN LIGNE (page /proposition —
+    # disclosure « Nos hypothèses » WJ32 + page méthodologie W359, données
+    # déjà servies par proposal-data/QK4). Le papier garde UNE clause
+    # non-contractuelle dans la bande légale, rien d'autre.
     # QK3 / QRES14 — financement (indicatif) : mensualité + programme, rendu
     # comme MINI-CARTE dans la colonne droite (sous « Prochaines étapes ») —
     # la mensualité gagne en visibilité commerciale, la carte Conditions
@@ -489,14 +482,6 @@ def build(ctx) -> str:
   padding-top:3.5px; }}
 .p3-fin-net span {{ color:{C['gold_soft']} !important; font-weight:700; }}
 
-/* QRES9 — hypothèses en fine-print pleine largeur (plus jamais un mur de
-   texte dans la carte Conditions qui faisait déborder la page) */
-/* QRES55 — « en plus petit » (fondateur) : mêmes hypothèses, corps réduit */
-.p3-hyp {{ margin-top:7px; font-size:6.4pt; color:{C['muted']};
-  line-height:1.45; text-align:left; column-count:2; column-gap:8mm; }}
-.p3-hyp-t {{ font-weight:700; color:{C['navy']}; text-transform:uppercase;
-  letter-spacing:.08em; font-size:6.6pt; }}
-
 /* Legal identifier band — refined fine print, intentional margin above footer */
 .p3-legal {{ margin-top:8px; margin-bottom:3mm; padding-top:6px;
   border-top:1px solid {C['line']}; font-size:6.7pt; color:{C['muted_2']};
@@ -528,6 +513,7 @@ def build(ctx) -> str:
     </div>
   </div>
 
+  <div class="qj" data-w="40"></div>
   <div class="p3-accord">
     <div class="p3-accord-hd">
       <div class="p3-accord-ttl">Bon pour accord</div>
@@ -550,6 +536,7 @@ def build(ctx) -> str:
     </div>
   </div>
 
+  <div class="qj" data-w="35"></div>
   <div class="p3-cta">
     <div class="p3-cta-l">
       <div class="p3-cta-t">Prêt à passer au solaire ?</div>
@@ -559,8 +546,8 @@ def build(ctx) -> str:
     {qr_html}
   </div>
 
-  {hyp_html}
-
-  <div class="p3-legal">{legal}</div>
+  <div class="qj" data-w="25"></div>
+  <div class="p3-legal">{legal} &middot; Estimations non contractuelles —
+    hypothèses de calcul détaillées sur votre proposition en ligne.</div>
 </div>
 """

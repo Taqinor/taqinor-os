@@ -470,6 +470,11 @@ def build_pages(ctx) -> list:
   .p2-fin-grid {{ display:table; width:100%; table-layout:fixed; margin-top:1.5mm; }}
   .p2-fin-cc {{ display:table-cell; width:62%; vertical-align:middle; }}
   .p2-fin-cc img {{ display:block; height:42mm; width:auto; max-width:100%; }}
+  /* QRES63 — page légère (mono-option minimal) : la courbe et ses stats
+     grandissent pour nourrir l'espace disponible, avant toute respiration */
+  .p2-light .p2-fin-cc img {{ height:52mm; }}
+  .p2-light .p2-fin-sc .p2-stat-v {{ font-size:16.5pt; }}
+  .p2-light .p2-fin-sc .p2-stat-s {{ font-size:7.8pt; }}
   .p2-fin-sc {{ display:table-cell; width:38%; vertical-align:middle;
     padding-left:8mm; }}
   .p2-side-stat {{ margin-bottom:2.5mm; }}
@@ -680,10 +685,21 @@ def build_pages(ctx) -> list:
 
     if fits_one:
         # Mise en page historique : tout sur UNE page (devis ≤ ~11 lignes).
+        # QRES62 — joints élastiques : le renderer mesure le vide résiduel de
+        # la page rendue et le redistribue sur ces joints (aucun bas de page
+        # « tassé en haut, troué en bas »).
+        # QRES63 — page LÉGÈRE (≤ 4 lignes, ex. devis mono-option minimal) :
+        # la courbe grandit (52 mm) au lieu de laisser l'élastique combler un
+        # vide géant — l'espace nourrit le contenu avant les respirations.
+        light_cls = (" p2-light"
+                     if (not deux_options and len(shared) <= 4) else "")
         return [_wrap_page(
             head_html + band_html
             + _table_html(shared, equipement_lbl)
-            + closing_html + _fin_html())]
+            + '<div class="qj" data-w="35"></div>'
+            + closing_html
+            + '<div class="qj" data-w="65"></div>'
+            + _fin_html(), light_cls)]
 
     # ── Devis chargé : page(s) équipement + page rentabilité dédiée ──────────
     # Budgets (mm) : 1ʳᵉ page équipement (bande projet + titre + clôture
@@ -701,7 +717,9 @@ def build_pages(ctx) -> list:
             inner += ('<div class="p2-cont-note">Suite de l\'équipement '
                       'page suivante &rsaquo;</div>')
         else:
-            inner += closing_html
+            # QRES62 — joint élastique avant la clôture (totaux) : absorbe le
+            # vide résiduel mesuré de la dernière page équipement.
+            inner += '<div class="qj" data-w="100"></div>' + closing_html
         pages.append(_wrap_page(inner))
 
     # QRES28 — la page rentabilité dédiée (espace abondant) reçoit le bandeau
@@ -778,9 +796,13 @@ def build_pages(ctx) -> list:
             '25 ans</span></div>'
             '</div>')
 
+    # QRES62 — joints élastiques de la page rentabilité : le vide mesuré se
+    # répartit entre courbe→bandeau→financement→impact (page toujours pleine).
     pages.append(_wrap_page(
-        fin_head_html + _fin_html(xl=True) + _callout
-        + finband_html + impact_html))
+        fin_head_html + _fin_html(xl=True)
+        + '<div class="qj" data-w="40"></div>' + _callout
+        + '<div class="qj" data-w="35"></div>' + finband_html
+        + '<div class="qj" data-w="25"></div>' + impact_html))
     return pages
 
 
