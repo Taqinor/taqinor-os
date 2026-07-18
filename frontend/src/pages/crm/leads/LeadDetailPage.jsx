@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import crmApi from '../../../api/crmApi'
-import LeadForm from '../LeadForm'
+import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
 import { Spinner, EmptyState, Button } from '../../../ui'
 
 /* VX22 — Une vraie page lead : route `/crm/leads/:id`.
@@ -57,7 +57,10 @@ export default function LeadDetailPage() {
   }
 
   return (
-    <LeadForm
+    // LW13 — la route détail rend le LeadWorkspace en PLEINE PAGE (parité de
+    // fonctionnalités avec le flux liste : même cockpit, mêmes rails).
+    <LeadWorkspace
+      variant="page"
       lead={lead}
       onClose={backToList}
       onSaved={() => {
