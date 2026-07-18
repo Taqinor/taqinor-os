@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { MessageCircle } from 'lucide-react'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
@@ -53,6 +54,7 @@ function DocTable({ titre, rows, withTotal, withDate, emptyLabel, renderActions 
 }
 
 export default function ClientDetailPanel({ client, onClose, onNewDevis, onChanged }) {
+  const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -255,6 +257,11 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
             client={client}
             onChanged={() => { onChanged?.(); onClose() }}
           />
+          {/* WIR17(b) — même motif que le bouton dossier chantier
+              d'InstallationDetail.jsx:883 (route déjà enregistrée, N32). */}
+          <Button variant="outline" onClick={() => navigate(`/reporting/archive/client/${client.id}`)}>
+            Voir dossier documentaire
+          </Button>
           <Button variant="outline" onClick={() => onNewDevis(client)}>
             Nouveau devis
           </Button>
