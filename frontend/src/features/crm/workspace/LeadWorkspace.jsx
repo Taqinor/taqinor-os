@@ -7,7 +7,7 @@ import {
   createLead, archiveLead, restoreLead,
 } from '../store/crmSlice'
 import {
-  Button, IconButton,
+  Button, IconButton, Switch,
   Dialog, DialogContent, DialogTitle,
   Sheet, SheetContent, SheetTitle,
 } from '../../../ui'
@@ -33,6 +33,16 @@ import ConvertirClientDialog from '../../../pages/crm/leads/ConvertirClientDialo
 
 // Validation e-mail minimale (le formulaire est noValidate) — miroir LeadForm.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+// VX224/VX92 — « Créer un autre » : persisté par utilisateur (localStorage),
+// défaut OFF. Une session de qualification en rafale = 20-40 leads/j.
+const CREER_UN_AUTRE_KEY = 'taqinor.leadForm.creerUnAutre'
+const lireCreerUnAutre = () => {
+  try { return localStorage.getItem(CREER_UN_AUTRE_KEY) === '1' } catch { return false }
+}
+const ecrireCreerUnAutre = (v) => {
+  try { localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0') } catch { /* best-effort */ }
+}
 
 // Chip d'état de sauvegarde (autosauvegarde D2). Jamais de spinner bloquant.
 function SaveChip({ saveState, onRetry }) {
@@ -172,11 +182,19 @@ export default function LeadWorkspace({
   // ── Fermeture (✕/overlay/Escape) via leaveGuard ──────────────────────────
   const requestClose = useCallback(() => { leaveGuard(onClose) }, [leaveGuard, onClose])
 
-  // ── Création : soumission (LW12 complète : créer-un-autre, refocus…) ──────
+  // ── Création : le formulaire rapide (défauts VX93, « créer un autre ») ────
   const [saving, setSaving] = useState(false)
+  const [creerUnAutre, setCreerUnAutre] = useState(() => mode === 'create' && lireCreerUnAutre())
+  const [savedConfirm, setSavedConfirm] = useState(false)
+  const savedConfirmTimer = useRef(null)
+  useEffect(() => () => { if (savedConfirmTimer.current) clearTimeout(savedConfirmTimer.current) }, [])
+
   const CREATE_FORM_ID = 'lw-create-form'
   const handleCreateSubmit = async (e) => {
     e.preventDefault()
+    // Validation client identique à LeadForm (nom requis, email regex,
+    // perdu→motif requis). SIGNED est structurellement impossible en création
+    // (pas de StageControl, stage=NEW par défaut).
     const ve = {}
     if (!String(field('nom') || '').trim()) ve.nom = 'Nom requis'
     const email = String(field('email') || '').trim()
@@ -188,9 +206,21 @@ export default function LeadWorkspace({
     setSaving(true)
     try {
       await dispatch(createLead(draft.createPayload())).unwrap()
-      rememberVille(field('ville'))
+      rememberVille(field('ville')) // VX93 — mémorise la ville pour le prochain lead
       onSaved?.()
-      onClose?.()
+      if (creerUnAutre) {
+        // Reset COMPLET vers les défauts VX93 frais (owner=moi, ville mémorisée,
+        // canal walk_in) — customData INCLUS (parité LW4, purgé par LOAD_LEAD) —
+        // puis refocus #lf-nom, au lieu de fermer.
+        draft.resetForCreate()
+        setErrors({})
+        if (savedConfirmTimer.current) clearTimeout(savedConfirmTimer.current)
+        setSavedConfirm(true)
+        savedConfirmTimer.current = setTimeout(() => setSavedConfirm(false), 2000)
+        setTimeout(() => document.getElementById('lf-nom')?.focus(), 0)
+      } else {
+        onClose?.()
+      }
     } catch (err) {
       setFromResponse(err)
     } finally {
@@ -289,6 +319,20 @@ export default function LeadWorkspace({
 
       {mode === 'create' && (
         <footer className="lw-footer">
+          {/* VX224/VX92 — « Créer un autre » : création uniquement, persisté. */}
+          <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+            <Switch
+              checked={creerUnAutre}
+              onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
+              aria-label="Créer un autre"
+            />
+            Créer un autre
+          </label>
+          {savedConfirm && (
+            <span className="lw-savechip lw-savechip--saved" role="status" aria-live="polite">
+              ✓ Enregistré
+            </span>
+          )}
           {errors.submit && <span className="lw-footer-error" role="alert">{errors.submit}</span>}
           <Button type="button" variant="outline" onClick={requestClose}>Annuler</Button>
           <Button type="submit" form={CREATE_FORM_ID} loading={saving} disabled={saving}>
