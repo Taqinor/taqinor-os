@@ -17,21 +17,24 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AdCampaignMirror, AnomalyEvent, ArmDailyStat, CreativeAsset,
-    CreativeBacklogItem, CreativeGenerationBatch, CreativePolicy, DecisionLog,
-    EngineAction, EngineAlert, Experiment, ExperimentArm, FlightPhase,
-    FlightPlan, GuardrailConfig, MetaConnection, PacingState,
-    ReconciliationSnapshot, RulePolicy, WeeklyBrief,
+    AdCampaignMirror, AnomalyEvent, ArmDailyStat, CommentMirror,
+    CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
+    CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
+    ExperimentArm, FlightPhase, FlightPlan, GuardrailConfig,
+    InstagramCommentMirror, InstagramMediaMirror, InstagramPublishJob,
+    MetaConnection, PacingState, ReconciliationSnapshot, RulePolicy,
+    WeeklyBrief,
 )
 from .serializers import (
     AdCampaignMirrorSerializer, AnomalyEventSerializer, ArmDailyStatSerializer,
-    CreativeAssetSerializer, CreativeBacklogItemSerializer,
-    CreativeGenerationBatchSerializer, CreativePolicySerializer,
-    DecisionLogSerializer, EngineActionSerializer, EngineAlertSerializer,
-    ExperimentArmSerializer, ExperimentSerializer, FlightPhaseSerializer,
-    FlightPlanSerializer, GuardrailConfigSerializer, MetaConnectionSerializer,
-    PacingStateSerializer, ReconciliationSnapshotSerializer,
-    RulePolicySerializer,
+    CommentMirrorSerializer, CreativeAssetSerializer,
+    CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
+    CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
+    EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
+    FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
+    InstagramCommentMirrorSerializer, InstagramMediaMirrorSerializer,
+    MetaConnectionSerializer, PacingStateSerializer,
+    ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
 
 
@@ -1930,3 +1933,363 @@ class ConversationsPerAdView(APIView):
             return err
         from .metrics import conversations_per_ad
         return Response(conversations_per_ad(company))
+
+
+# ══ ADSDEEP53/54 — Boîte de réception des commentaires (câblage front↔back) ═══
+# Vues MINCES : lecture des miroirs company-scopée + chaque action inline ne
+# fait que PROPOSER une ``EngineAction`` via les fonctions ``propose_*`` DÉJÀ
+# construites de ``services.py`` (règle #3 — jamais d'écriture directe Meta ici).
+
+def _truthy_param(value):
+    """``?flag=1|true|yes`` → bool ; absent/vide → None (filtre non appliqué)."""
+    if value is None or value == '':
+        return None
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'oui')
+
+
+class CommentListView(APIView):
+    """ADSDEEP53 — Liste des commentaires (posts + dark posts) miroités.
+
+    ``GET /api/django/adsengine/commentaires/?ad_id=&post_id=&hidden=&unanswered=``
+    — company-scopé, gaté ``adsengine_view``. ``ad_id``/``post_id`` filtrent sur
+    l'objet commenté (``object_meta_id`` + ``source`` associée) ; ``hidden`` et
+    ``unanswered`` sont des booléens optionnels."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        qs = CommentMirror.objects.filter(company=company)
+        ad_id = request.query_params.get('ad_id')
+        if ad_id:
+            qs = qs.filter(object_meta_id=ad_id, source=CommentMirror.Source.AD)
+        post_id = request.query_params.get('post_id')
+        if post_id:
+            qs = qs.filter(
+                object_meta_id=post_id, source=CommentMirror.Source.POST)
+        hidden = _truthy_param(request.query_params.get('hidden'))
+        if hidden is not None:
+            qs = qs.filter(is_hidden=hidden)
+        unanswered = _truthy_param(request.query_params.get('unanswered'))
+        if unanswered:
+            qs = qs.filter(answered=False)
+        return Response(CommentMirrorSerializer(qs, many=True).data)
+
+
+class CommentCountsView(APIView):
+    """ADSDEEP53 — Compteurs pour le cockpit : totaux + détail PAR objet commenté
+    (masqués, non répondus). Company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        qs = CommentMirror.objects.filter(company=company)
+        total = qs.count()
+        hidden = qs.filter(is_hidden=True).count()
+        unanswered = qs.filter(answered=False, is_hidden=False).count()
+        par_objet_map = {}
+        for c in qs:
+            key = c.object_meta_id or ''
+            slot = par_objet_map.setdefault(key, {
+                'object_meta_id': key, 'source': c.source,
+                'total': 0, 'hidden': 0, 'unanswered': 0,
+            })
+            slot['total'] += 1
+            if c.is_hidden:
+                slot['hidden'] += 1
+            if not c.answered and not c.is_hidden:
+                slot['unanswered'] += 1
+        return Response({
+            'total': total, 'hidden': hidden, 'unanswered': unanswered,
+            'par_objet': list(par_objet_map.values()),
+        })
+
+
+def _get_comment_or_404(company, comment_id):
+    return CommentMirror.objects.filter(company=company, pk=comment_id).first()
+
+
+class CommentHideView(APIView):
+    """ADSDEEP53 — Propose de masquer/démasquer un commentaire. Réutilise
+    ``services.propose_hide_comment``. Écriture ``adsengine_manage`` ;
+    company-scopé (un commentaire d'une autre société → 404)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_hide_comment
+        hidden = request.data.get('hidden', True)
+        try:
+            action = propose_hide_comment(
+                company, comment=comment, hidden=bool(hidden))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class CommentReplyView(APIView):
+    """ADSDEEP53 — Propose une réponse PUBLIQUE. Réutilise
+    ``services.propose_reply_comment``. Écriture ``adsengine_manage`` ;
+    company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_reply_comment
+        try:
+            action = propose_reply_comment(
+                company, comment=comment,
+                message=request.data.get('message', ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class CommentDeleteView(APIView):
+    """ADSDEEP53 — Propose la SUPPRESSION d'un commentaire. Réutilise
+    ``services.propose_delete_comment``. Écriture ``adsengine_manage`` ;
+    company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_delete_comment
+        try:
+            action = propose_delete_comment(company, comment=comment)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class CommentPrivateReplyView(APIView):
+    """ADSDEEP53 — Propose une réponse PRIVÉE (DM). Réutilise
+    ``services.propose_private_reply`` (garde-fou 1/commentaire/7 jours déjà
+    appliqué côté service). Écriture ``adsengine_manage`` ; company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_private_reply
+        try:
+            action = propose_private_reply(
+                company, comment=comment,
+                message=request.data.get('message', ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+# ══ ADSDEEP55/56 — Instagram (câblage front↔back) ═════════════════════════════
+
+class InstagramMediaListView(APIView):
+    """ADSDEEP55/56 — Liste des médias Instagram miroités. Company-scopé, gaté
+    ``adsengine_view``. La ``caption`` reste LECTURE SEULE (immuable)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        qs = InstagramMediaMirror.objects.filter(company=company)
+        return Response(InstagramMediaMirrorSerializer(qs, many=True).data)
+
+
+class InstagramQuotaView(APIView):
+    """ADSDEEP56 — État du quota de publication IG (50/24 h), lu depuis le
+    DERNIER ``InstagramPublishJob`` journalisé (jamais un appel Meta live —
+    lecture seule de l'état déjà connu, dossier organic-posts-ig §4).
+    Company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        latest = (InstagramPublishJob.objects
+                  .filter(company=company, quota_total__isnull=False)
+                  .order_by('-created_at')
+                  .first())
+        used = latest.quota_used if latest else None
+        total = latest.quota_total if latest else None
+        remaining = (
+            max(total - used, 0)
+            if (isinstance(used, int) and isinstance(total, int)) else None)
+        return Response({'used': used, 'total': total, 'remaining': remaining})
+
+
+class InstagramPublishView(APIView):
+    """ADSDEEP55 — Propose la PUBLICATION d'un média Instagram (flux container).
+    Réutilise ``services.propose_publish_ig``. Écriture ``adsengine_manage``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from .services import propose_publish_ig
+        data = request.data if isinstance(request.data, dict) else {}
+        try:
+            action = propose_publish_ig(
+                company,
+                media_type=data.get('media_type', ''),
+                image_url=data.get('image_url', '') or '',
+                video_url=data.get('video_url', '') or '',
+                caption=data.get('caption', '') or '',
+                alt_text=data.get('alt_text', '') or '',
+                scheduled_at=data.get('scheduled_at'))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class InstagramCommentListView(APIView):
+    """ADSDEEP55 — Liste des commentaires Instagram miroités. ``?media_id=``
+    filtre optionnellement sur un média. Company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        qs = InstagramCommentMirror.objects.filter(company=company)
+        media_id = request.query_params.get('media_id')
+        if media_id:
+            qs = qs.filter(media_meta_id=media_id)
+        return Response(InstagramCommentMirrorSerializer(qs, many=True).data)
+
+
+def _get_ig_comment_or_404(company, comment_id):
+    return InstagramCommentMirror.objects.filter(
+        company=company, pk=comment_id).first()
+
+
+class InstagramCommentHideView(APIView):
+    """ADSDEEP55 — Propose de masquer/démasquer un commentaire Instagram.
+    Réutilise ``services.propose_hide_ig_comment``. Écriture
+    ``adsengine_manage`` ; company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_ig_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_hide_ig_comment
+        hidden = request.data.get('hidden', True)
+        try:
+            action = propose_hide_ig_comment(
+                company, comment=comment, hidden=bool(hidden))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class InstagramCommentReplyView(APIView):
+    """ADSDEEP55 — Propose une réponse à un commentaire Instagram. Réutilise
+    ``services.propose_reply_ig_comment``. Écriture ``adsengine_manage`` ;
+    company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_ig_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_reply_ig_comment
+        try:
+            action = propose_reply_ig_comment(
+                company, comment=comment,
+                message=request.data.get('message', ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class InstagramCommentDeleteView(APIView):
+    """ADSDEEP55 — Propose la suppression d'un commentaire Instagram. Réutilise
+    ``services.propose_delete_ig_comment``. Écriture ``adsengine_manage`` ;
+    company-scopé."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, comment_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        comment = _get_ig_comment_or_404(company, comment_id)
+        if comment is None:
+            return Response({'detail': 'Commentaire introuvable.'}, status=404)
+        from .services import propose_delete_ig_comment
+        try:
+            action = propose_delete_ig_comment(company, comment=comment)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
+
+
+class InstagramMediaToggleCommentsView(APIView):
+    """ADSDEEP55 — Propose de couper/rouvrir les commentaires d'un média IG
+    (SEUL champ écrivable d'un média). Réutilise
+    ``services.propose_toggle_ig_comments``. Écriture ``adsengine_manage`` ;
+    company-scopé (média d'une autre société → 404).
+
+    ``media_meta_id`` est l'ID Meta du média (``InstagramMediaMirror.meta_id``,
+    tel que le front l'envoie — ``m.meta_id``), jamais la pk locale."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, media_meta_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        media = InstagramMediaMirror.objects.filter(
+            company=company, meta_id=media_meta_id).first()
+        if media is None:
+            return Response({'detail': 'Média introuvable.'}, status=404)
+        from .services import propose_toggle_ig_comments
+        enabled = request.data.get('enabled', True)
+        try:
+            action = propose_toggle_ig_comments(
+                company, media=media, enabled=bool(enabled))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)

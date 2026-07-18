@@ -4,11 +4,13 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    AdCampaignMirror, AdSetMirror, AnomalyEvent, ArmDailyStat, CreativeAsset,
-    CreativeBacklogItem, CreativeGenerationBatch, CreativePolicy, DecisionLog,
-    EngineAction, EngineAlert, Experiment, ExperimentArm, FlightPhase,
-    FlightPlan, GuardrailConfig, InsightBreakdown, InsightSnapshot,
-    MetaConnection, PacingState, ReconciliationSnapshot, RulePolicy,
+    AdCampaignMirror, AdSetMirror, AnomalyEvent, ArmDailyStat, CommentMirror,
+    CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
+    CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
+    ExperimentArm, FlightPhase, FlightPlan, GuardrailConfig,
+    InsightBreakdown, InsightSnapshot, InstagramCommentMirror,
+    InstagramMediaMirror, MetaConnection, PacingState,
+    ReconciliationSnapshot, RulePolicy,
 )
 
 
@@ -554,5 +556,55 @@ class InsightBreakdownSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'date', 'dimension', 'dimension_display', 'key',
             'spend', 'impressions', 'clicks', 'results', 'conversations',
+        ]
+        read_only_fields = fields
+
+
+# ── ADSDEEP53/54 — Boîte de réception des commentaires ────────────────────────
+class CommentMirrorSerializer(serializers.ModelSerializer):
+    """ADSDEEP53 — Miroir de commentaire (lecture seule côté API : peuplé par la
+    synchro, jamais écrit par le client — toute action passe par la proposition
+    ``EngineAction`` via les vues dédiées, jamais un PATCH direct)."""
+
+    class Meta:
+        model = CommentMirror
+        fields = [
+            'id', 'meta_id', 'object_meta_id', 'source', 'parent_meta_id',
+            'message', 'from_name', 'from_id', 'created_time', 'like_count',
+            'reply_count', 'is_hidden', 'hidden_verified', 'can_hide',
+            'can_remove', 'answered', 'permalink', 'private_reply_sent_at',
+            'fetched_at', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+# ── ADSDEEP55/56 — Instagram (compte Business relié) ──────────────────────────
+class InstagramMediaMirrorSerializer(serializers.ModelSerializer):
+    """ADSDEEP55 — Miroir de média Instagram (lecture seule côté API). La
+    ``caption`` est immuable après publication — jamais éditable ici (le SEUL
+    champ écrivable, ``comment_enabled``, passe par la proposition dédiée)."""
+
+    class Meta:
+        model = InstagramMediaMirror
+        fields = [
+            'id', 'meta_id', 'caption', 'media_type', 'media_url',
+            'permalink', 'like_count', 'comments_count', 'view_count',
+            'comment_enabled', 'timestamp', 'fetched_at',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+class InstagramCommentMirrorSerializer(serializers.ModelSerializer):
+    """ADSDEEP55 — Miroir de commentaire Instagram (lecture seule côté API) ;
+    toute action (masquer/répondre/supprimer) passe par la proposition
+    ``EngineAction`` via les vues dédiées, jamais un PATCH direct."""
+
+    class Meta:
+        model = InstagramCommentMirror
+        fields = [
+            'id', 'meta_id', 'media_meta_id', 'parent_meta_id', 'message',
+            'from_username', 'like_count', 'hidden', 'answered', 'timestamp',
+            'fetched_at', 'created_at', 'updated_at',
         ]
         read_only_fields = fields
