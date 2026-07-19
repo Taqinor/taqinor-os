@@ -12,14 +12,21 @@ import KanbanView from './KanbanView'
    d'une frappe de recherche), et on vérifie 0 rendu supplémentaire. */
 
 const renderCounts = {}
-vi.mock('./LeadCard', () => ({
-  default: (props) => {
-    renderCounts[props.lead.id] = (renderCounts[props.lead.id] ?? 0) + 1
-    return <article className="kb-card" data-testid={`card-${props.lead.id}`}>
-      <span className="kb-card-name">{props.lead.nom}</span>
-    </article>
-  },
-}))
+// Le mock DOIT être memo() comme le vrai LeadCard (export memo, LeadCard.jsx:689) :
+// l'enveloppe DraggableCard se re-rend légitimement quand le contexte interne de
+// dnd-kit churn (useDraggable s'abonne au DndContext — un memo ne protège pas
+// d'un hook) ; l'invariant LB6 est que la CARTE LOURDE, elle, ne se re-rend pas.
+vi.mock('./LeadCard', async () => {
+  const { memo } = await import('react')
+  return {
+    default: memo((props) => {
+      renderCounts[props.lead.id] = (renderCounts[props.lead.id] ?? 0) + 1
+      return <article className="kb-card" data-testid={`card-${props.lead.id}`}>
+        <span className="kb-card-name">{props.lead.nom}</span>
+      </article>
+    }),
+  }
+})
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
