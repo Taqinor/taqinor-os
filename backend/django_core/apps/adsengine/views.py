@@ -17,7 +17,8 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AdCampaignMirror, AnomalyEvent, ArmDailyStat, CommentMirror,
+    AdCampaignMirror, AnomalyEvent, ArmDailyStat, AssumptionNode,
+    CommentMirror,
     CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
     CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
     ExperimentArm, FlightPhase, FlightPlan, GuardrailConfig,
@@ -27,6 +28,7 @@ from .models import (
 )
 from .serializers import (
     AdCampaignMirrorSerializer, AnomalyEventSerializer, ArmDailyStatSerializer,
+    AssumptionNodeSerializer,
     CommentMirrorSerializer, CreativeAssetSerializer,
     CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
     CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
@@ -302,6 +304,15 @@ class GuardrailConfigViewSet(AdsengineViewSet):
 
     queryset = GuardrailConfig.objects.all()
     serializer_class = GuardrailConfigSerializer
+
+
+class AssumptionNodeViewSet(AdsengineViewSet):
+    """ASG1 — CRUD des nœuds de l'Assumption Engine (dd-assumption-engine
+    §3.1), company-scopé. ``company`` posée côté serveur ; ``parent`` et
+    ``invalidation_links`` isolés à la MÊME société côté serializer."""
+
+    queryset = AssumptionNode.objects.all()
+    serializer_class = AssumptionNodeSerializer
 
 
 class EngineAlertViewSet(AdsengineViewSet):

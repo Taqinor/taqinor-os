@@ -5,7 +5,7 @@ from rest_framework import serializers
 
 from .models import (
     AdCampaignMirror, AdMirror, AdSetMirror, AnomalyEvent, ArmDailyStat,
-    CommentMirror, CreativeAsset, CreativeBacklogItem,
+    AssumptionNode, CommentMirror, CreativeAsset, CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
     EngineAlert, Experiment, ExperimentArm, FlightPhase, FlightPlan,
     GuardrailConfig, InsightBreakdown, InsightSnapshot,
@@ -677,3 +677,42 @@ class InstagramCommentMirrorSerializer(serializers.ModelSerializer):
             'fetched_at', 'created_at', 'updated_at',
         ]
         read_only_fields = fields
+
+
+# ── ASG1 — Assumption Engine (arbre vivant de croyances testées) ──────────────
+class AssumptionNodeSerializer(serializers.ModelSerializer):
+    """ASG1 — Nœud de l'Assumption Engine (dd-assumption-engine §3.1).
+
+    ``company`` est absente des champs (posée côté serveur). ``parent`` et
+    ``invalidation_links`` sont contraints à la MÊME société
+    (``_same_company``) — un DAG ne traverse jamais une frontière de tenant.
+    ``demi_vie_semaines`` reçoit le défaut de sa classe (``HALF_LIFE_WEEKS``)
+    quand absente ; une valeur fournie explicitement n'est jamais écrasée.
+    """
+
+    class Meta:
+        model = AssumptionNode
+        fields = [
+            'id', 'classe', 'enonce_fr', 'enjeux_s', 'pertinence_r',
+            'tags_saison', 'parent', 'invalidation_links',
+            'alpha', 'beta', 'alpha0', 'beta0', 'demi_vie_semaines',
+            'last_tested_at', 'statut', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_parent(self, value):
+        return _same_company(self, value)
+
+    def validate_invalidation_links(self, value):
+        for node in value:
+            _same_company(self, node)
+        return value
+
+    def validate(self, attrs):
+        if attrs.get('demi_vie_semaines') is None:
+            classe = attrs.get('classe') or getattr(
+                self.instance, 'classe', None)
+            if classe:
+                attrs['demi_vie_semaines'] = (
+                    AssumptionNode.HALF_LIFE_WEEKS.get(classe))
+        return attrs
