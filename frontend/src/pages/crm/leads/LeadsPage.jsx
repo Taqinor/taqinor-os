@@ -36,6 +36,13 @@ import DoublonsPanel from './DoublonsPanel'
 import SigneDialog from './SigneDialog'
 import LeadExpressModal from './LeadExpressModal'
 import { SIGNE_INTERCEPT } from './signeIntercept'
+// LB22 — URL partageable (blueprint D5/I7) : module PUR encode/decode
+// filtres+vue ↔ URLSearchParams (urlFilters.js) — VALID_VIEWS y vit
+// désormais en SEULE source (jamais une 2e liste déclarée ici).
+import {
+  VALID_VIEWS, hasUrlFilterState, readFiltersFromParams, readViewFromParams,
+  writeFiltersToParams,
+} from './urlFilters'
 // VX186 — KanbanView reste STATIQUE (vue par défaut la plus fréquente, zéro
 // flash de chargement au premier rendu). Les 4 autres vues + Prévision sont
 // désormais `lazy` : LeadsPage était le PLUS GROS chunk de route du repo
@@ -51,7 +58,6 @@ const ForecastView = lazy(() => import('./views/ForecastView'))  // XSAL15
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
 const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
-const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique', 'carte', 'prevision']  // FG37, XSAL15
 
 // loadSavedViews inlined removed — now using useSavedViews hook (FG11).
 
@@ -89,7 +95,13 @@ export default function LeadsPage() {
   }, [])
 
   // Vue active, persistée (kanban par défaut, façon Odoo).
+  // LB22 — priorité URL > localStorage > défaut (blueprint D5/I7) : une URL
+  // collée (`?view=liste`) gagne toujours sur la vue persistée localement —
+  // `readViewFromParams` renvoie `null` si `?view=` est absente/invalide, on
+  // retombe alors sur le comportement historique (localStorage puis kanban).
   const [view, setView] = useState(() => {
+    const fromUrl = readViewFromParams(searchParams)
+    if (fromUrl) return fromUrl
     try {
       const saved = localStorage.getItem(VIEW_KEY)
       return VALID_VIEWS.includes(saved) ? saved : 'kanban'
@@ -103,7 +115,14 @@ export default function LeadsPage() {
 
   // Filtres partagés par les quatre vues — persistés en localStorage (comme la
   // vue active) pour survivre à un rechargement de page.
+  // LB22 — priorité URL > localStorage > défauts (blueprint D5/I7) : une URL
+  // collée (3 filtres + vue) reproduit EXACTEMENT l'écran, même en
+  // navigation privée (aucun localStorage) — quand l'URL porte AU MOINS un
+  // filtre géré, elle est la SEULE source retenue (jamais un mélange avec le
+  // localStorage), le défaut « Mes leads » (VX224) ne s'applique alors pas
+  // (un lien partagé est déjà une intention explicite).
   const [filters, setFilters] = useState(() => {
+    if (hasUrlFilterState(searchParams)) return readFiltersFromParams(searchParams)
     const loaded = loadFilters()
     // VX224 — « Mes leads » ON par défaut pour le rôle `normal`, UNIQUEMENT
     // au tout premier chargement (aucun filtre encore persisté) — un choix
@@ -117,6 +136,21 @@ export default function LeadsPage() {
       localStorage.setItem(FILTERS_KEY, JSON.stringify(filters))
     } catch { /* stockage indisponible */ }
   }, [filters])
+  // LB22 — URL partageable (blueprint D5, invariant I7 : une seule écriture
+  // d'URL) : chaque changement de filtres/vue réécrit l'URL en `replace`
+  // (jamais un spam d'historique — l'utilisatrice n'a jamais navigué),
+  // débouncé 300ms pour ne pas fragmenter chaque frappe de recherche.
+  // `applySavedView` (setFilters+setView) traverse ce même effet, aucun
+  // câblage séparé nécessaire. `writeFiltersToParams` ne touche QUE ses
+  // propres clés : les deep-links `?lead=`/`?new=`/`?equipe=` traversent
+  // intacts (mise à jour fonctionnelle sur les derniers params réels, jamais
+  // une valeur `searchParams` figée par une closure obsolète).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchParams((prev) => writeFiltersToParams(prev, filters, view), { replace: true })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [filters, view, setSearchParams])
   // VX187 — `filterLeads` recalculait en SYNCHRONE dans le commit de CHAQUE
   // frappe de la recherche (le filtre est mis à jour à chaque `onChange`) :
   // `useDeferredValue` dérive `filtered` d'une valeur qui suit `filters` avec

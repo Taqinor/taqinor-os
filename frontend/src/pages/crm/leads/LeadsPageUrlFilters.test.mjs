@@ -1,0 +1,53 @@
+// LB22 — URL partageable (blueprint D5/I7) : LeadsPage.jsx priorise
+// URL > localStorage > défauts au premier chargement et réécrit l'URL
+// (débouncée 300ms, `replace`) à chaque changement de filtres/vue, via le
+// module pur `urlFilters.js`. Verified against SOURCE (no node_modules in
+// this worktree/lane).
+//   node --test src/pages/crm/leads/LeadsPageUrlFilters.test.mjs
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const PAGE_SRC = readFileSync(join(HERE, 'LeadsPage.jsx'), 'utf8')
+
+test('LB22 : VALID_VIEWS est importé depuis urlFilters.js — jamais une 2e liste déclarée', () => {
+  assert.match(
+    PAGE_SRC,
+    /import \{\s*VALID_VIEWS, hasUrlFilterState, readFiltersFromParams, readViewFromParams,\s*\n\s*writeFiltersToParams,\s*\n\} from '\.\/urlFilters'/,
+  )
+  assert.doesNotMatch(PAGE_SRC, /const VALID_VIEWS = \[/)
+})
+
+test('LB22 : la vue initiale priorise `?view=` (readViewFromParams) sur localStorage', () => {
+  const start = PAGE_SRC.indexOf('const [view, setView] = useState(() => {')
+  assert.ok(start > 0)
+  const block = PAGE_SRC.slice(start, start + 400)
+  assert.match(block, /const fromUrl = readViewFromParams\(searchParams\)/)
+  assert.match(block, /if \(fromUrl\) return fromUrl/)
+  // Repli historique conservé : localStorage puis 'kanban'.
+  assert.match(block, /localStorage\.getItem\(VIEW_KEY\)/)
+})
+
+test('LB22 : les filtres initiaux priorisent l’URL (hasUrlFilterState) — jamais un mélange avec localStorage', () => {
+  const start = PAGE_SRC.indexOf('const [filters, setFilters] = useState(() => {')
+  assert.ok(start > 0)
+  const block = PAGE_SRC.slice(start, start + 400)
+  assert.match(block, /if \(hasUrlFilterState\(searchParams\)\) return readFiltersFromParams\(searchParams\)/)
+})
+
+test('LB22 : écriture d’URL débouncée 300ms, en `replace`, jamais un spam d’historique', () => {
+  const idx = PAGE_SRC.indexOf('setSearchParams((prev) => writeFiltersToParams(prev, filters, view), { replace: true })')
+  assert.ok(idx > 0, 'écriture URL introuvable')
+  const block = PAGE_SRC.slice(Math.max(0, idx - 200), idx + 200)
+  assert.match(block, /setTimeout\(\(\) => \{/)
+  assert.match(block, /\}, 300\)/)
+  assert.match(block, /return \(\) => clearTimeout\(t\)/)
+  assert.match(block, /\[filters, view, setSearchParams\]/)
+})
+
+test('LB22 : le lien profond `?lead=` reste géré indépendamment (jamais touché par urlFilters)', () => {
+  assert.match(PAGE_SRC, /const wantedLeadId = searchParams\.get\('lead'\)/)
+})
