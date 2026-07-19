@@ -4262,51 +4262,12 @@ textarea.form-control {
   white-space: nowrap;
 }
 
-/* ── Sélecteur de vue (groupe de boutons-icônes joints, façon Odoo) ──────── */
-.vs-group {
-  display: inline-flex;
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: var(--radius-sm, 8px);
-  overflow: hidden;
-  background: var(--card, #fff);
-}
-
-.vs-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 36px;
-  background: var(--card, #fff);
-  border: none;
-  border-right: 1px solid var(--border, #e2e8f0);
-  color: var(--foreground, #0b1f3a);
-  cursor: pointer;
-  transition: background-color var(--motion-base) ease, color var(--motion-base) ease;
-}
-
-.vs-btn:last-child {
-  border-right: none;
-}
-
-@media (hover: hover) {
-  .vs-btn:hover {
-    background: var(--accent, #f1f5f9);
-  }
-}
-
-.vs-btn:focus-visible {
-  outline: 2px solid var(--ring, #94a3b8);
-  outline-offset: -2px;
-}
-
-@media (hover: hover) {
-  .vs-btn-active,
-  .vs-btn-active:hover {
-    background: var(--primary, #0b1f3a);
-    color: var(--primary-foreground, #fff);
-  }
-}
+/* ── Sélecteur de vue ─────────────────────────────────────────────────────
+   LB32 — ViewSwitcher rebâti sur `ui/Segmented` (son propre style Tailwind :
+   plus de `.vs-btn`/boutons joints main-roulés). `.vs-group` ne porte plus
+   QUE le hook de positionnement ci-dessus (`.lp-header-actions .vs-group`) —
+   conservé comme className sur le radiogroup pour ne pas retoucher
+   LeadsPage.jsx (hors périmètre de cette tâche). */
 
 /* ── Mobile ──────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
@@ -4319,11 +4280,6 @@ textarea.form-control {
     flex: 1 1 100%;
     max-width: none;
     min-height: 44px;
-  }
-
-  .vs-btn {
-    width: 44px;
-    height: 44px;
   }
 
   .lp-view-area {

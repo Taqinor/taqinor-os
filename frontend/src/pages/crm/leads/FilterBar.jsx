@@ -9,6 +9,7 @@ import {
   tagList,
 } from '../../../features/crm/stages'
 import useCanaux from '../../../features/crm/useCanaux'
+import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import {
   Input, Button, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -20,21 +21,11 @@ const ALL = '__all'
 const toSel = (v) => (v ? v : ALL)
 const fromSel = (v) => (v === ALL ? '' : v)
 
+// LB32 — dédup : hook CANONIQUE `useIsMobile` (ui/ResponsiveDialog, déjà
+// adopté par LeadsPage.jsx/LeadWorkspace) au lieu d'une 3e copie locale
+// verbatim (identique à celles de ListView.jsx/ChartsView.jsx). Même
+// breakpoint qu'avant (768px, passé en paramètre) — comportement inchangé.
 const MOBILE_QUERY = '(max-width: 768px)'
-
-// Vrai sous 768px — la barre de filtres se replie alors derrière un bouton.
-function useIsMobile() {
-  const [mobile, setMobile] = useState(
-    () => window.matchMedia(MOBILE_QUERY).matches,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia(MOBILE_QUERY)
-    const onChange = (e) => setMobile(e.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return mobile
-}
 
 // Barre de recherche/filtres partagée par les quatre vues (façon Odoo).
 // `leads` = liste NON filtrée, pour dériver les options disponibles.
@@ -102,7 +93,7 @@ export default function FilterBar({ filters, setFilters, leads }) {
 
   const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
 
-  const isMobile = useIsMobile()
+  const isMobile = useIsMobile(MOBILE_QUERY)
   const [open, setOpen] = useState(false)
   // Sur mobile, on ne déplie les contrôles que si l'utilisateur ouvre le
   // panneau ; sur desktop, ils sont toujours visibles.

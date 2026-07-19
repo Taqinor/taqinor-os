@@ -4115,7 +4115,7 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   JSX. Files : `frontend/src/index.css`. DoD : zéro hex restant dans les plages CSS des surfaces
   leads (hors tokens.css) ; vérification visuelle sombre : badges, card-stack mobile, étoiles,
   erreurs inline lisibles AA. (ROUTINE — M) (@model: sonnet) (@lane: LB6) (@after: LB2)
-- [ ] LB32 — **Dédup useIsMobile + ViewSwitcher sur Segmented.** Remplacer les 3 copies verbatim
+- [x] LB32 — **Dédup useIsMobile + ViewSwitcher sur Segmented.** Remplacer les 3 copies verbatim
   de `useIsMobile` (FilterBar 26-37, ListView 43-54, ChartsView 31-42) par l'export canonique de
   `ui/ResponsiveDialog` ; refondre ViewSwitcher (85 l. de role=group main-roulé + SVG bruts) sur
   `ui/Segmented` avec icônes lucide, en CONSERVANT les noms accessibles exacts 'Vue kanban' /
@@ -4294,6 +4294,37 @@ place, LANE C peut poser `.lv-sticky-name` sans retoucher `index.css` (déjà pr
   (grep vérifié) ; pas de nouveau test ajouté (tâche CSS pure, DoD = grep + vérification visuelle
   sombre, pas de couverture automatisée demandée). `node -e` brace-balance check sur index.css
   après coup : OK.
+- 2026-07-19 LB32 — ViewSwitcher rebâti sur `ui/Segmented` (radiogroup + roving tabindex +
+  flèches/Home/End au clavier "gratuits", au lieu du `role="group"` main-roulé + SVG bruts) ;
+  icônes lucide alignées 1:1 sur celles que CHAQUE vue importe déjà pour son propre empty state
+  (LayoutGrid/List/BarChart3/Map/CalendarClock, + `Calendar` neuf pour « Vue calendrier », seule
+  vue sans icône déjà établie). Les 6 noms accessibles pinnés ('Vue kanban'/'Vue liste'/…) sont
+  CONSERVÉS verbatim mais deviennent visuellement masqués (`.sr-only`, idiome déjà utilisé par
+  ui/Form.jsx/ui/Select.jsx/ui/SolarLoader.jsx) — Segmented rend toujours `label` en contenu
+  visible, c'était le seul moyen de garder le nom accessible pinné ET la présentation
+  icône-seule d'origine (le switcher partage sa rangée avec Nouveau/Express/⋯, header dense).
+  Conséquence directe assumée : le rôle ARIA réel passe de `button` à `radio`
+  (`role="radiogroup"` > `role="radio"`) — `frontend/e2e/helpers.js#setLeadsView` (hors
+  périmètre "Files:" nommé mais explicitement requis par le DoD "e2e leads.spec vert" ET par le
+  blueprint §STRATÉGIE E2E : « chaque tâche qui touche un hook pinné le met à jour DANS la même
+  tâche ») bascule `getByRole('button', …)` → `getByRole('radio', …)`, nom accessible inchangé.
+  index.css : `.vs-btn`/boutons joints main-roulés (rendus dead par le remplacement JSX)
+  supprimés ; `.vs-group` réduit à son seul hook de positionnement
+  (`.lp-header-actions .vs-group{margin-left:auto}`), toujours appliqué comme className sur le
+  radiogroup pour ne pas retoucher LeadsPage.jsx (hors périmètre). Dédup useIsMobile : les 3
+  copies locales verbatim (FilterBar.jsx/ListView.jsx/ChartsView.jsx, MOBILE_QUERY
+  '(max-width: 768px)') remplacées par le hook CANONIQUE `ui/ResponsiveDialog#useIsMobile`
+  (déjà adopté par LeadsPage.jsx/LeadWorkspace), appelé avec le MÊME breakpoint explicite —
+  comportement pixel-identique, zéro nouvelle copie. `useState`/`useEffect` devenus
+  entièrement inutilisés dans ChartsView.jsx (n'y servaient QUE le hook local) → import react
+  élagué à `{ useMemo }`. Tests : nouveau `ViewSwitcherSegmented.test.mjs` (5 assertions —
+  Segmented monté/plus de role=group/SVG brut, icônes lucide, 6 libellés pinnés, dédup
+  useIsMobile ×3, helpers.js role=radio) ; `ForecastView.test.mjs` mis à jour dans cette tâche
+  (assertion `key: 'prevision'` → `value: 'prevision'`, contrat Segmented). `node --test` sur
+  toute la suite leads (114 tests, `src/pages/crm/leads/**/*.test.mjs` +
+  `SavedViewsBar.test.mjs`) : verte. e2e leads.spec/tablet.spec/mobile.spec non exécutables ici
+  (pas de node_modules dans ce worktree/lane) — vérifiés par raisonnement + le nouveau test
+  source-grep sur helpers.js.
 
 ## Group F — Design foundation & tokens
 
