@@ -132,6 +132,14 @@ const reportingApi = {
     api.post(`/reporting/classeurs/${id}/evaluer/`, { formule }),
   // XSAV8 — conformité SLA + KPI SAV avancés.
   savSlaInsight: (params) => api.get('/reporting/insights/sav-sla/', { params }),
+  // WIR102 — analytique SAV : pivot tickets (technicien×statut), coût interne
+  // moyen (permission prix_achat_voir), taux d'attache contrat (YSERV10).
+  savTicketsPivot: (params) =>
+    api.get('/reporting/insights/sav-tickets-pivot/', { params }),
+  savTicketsCoutMoyen: () =>
+    api.get('/reporting/insights/sav-tickets-cout-moyen/'),
+  savTauxAttache: (params) =>
+    api.get('/reporting/insights/sav-taux-attache/', { params }),
   // XFSM16 — analytics field service consolidés (FTF, MTTR, ponctualité…).
   fieldServiceReport: (params) => api.get('/reporting/reports/field/', { params }),
   // XFSM17 — scorecard coaching par technicien vs moyenne équipe.

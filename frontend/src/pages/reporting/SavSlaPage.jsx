@@ -35,6 +35,10 @@ export default function SavSlaPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // WIR102 — analytique SAV : taux d'attache, pivot tickets, coût moyen.
+  const [tauxAttache, setTauxAttache] = useState(null)
+  const [pivot, setPivot] = useState(null)
+  const [coutMoyen, setCoutMoyen] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -42,6 +46,18 @@ export default function SavSlaPage() {
       .then((r) => { if (active) { setData(r.data); setError(false) } })
       .catch(() => { if (active) setError(true) })
       .finally(() => { if (active) setLoading(false) })
+    // WIR102 — chargés en parallèle, best-effort (une source en erreur
+    // n'empêche pas les autres de s'afficher ; le coût moyen est
+    // permission-gated côté serveur : un 403 laisse simplement la carte cachée).
+    reportingApi.savTauxAttache()
+      .then((r) => { if (active) setTauxAttache(r.data) })
+      .catch(() => { if (active) setTauxAttache(null) })
+    reportingApi.savTicketsPivot()
+      .then((r) => { if (active) setPivot(r.data) })
+      .catch(() => { if (active) setPivot(null) })
+    reportingApi.savTicketsCoutMoyen()
+      .then((r) => { if (active) setCoutMoyen(r.data?.rows || []) })
+      .catch(() => { if (active) setCoutMoyen(null) })
     return () => { active = false }
   }, [])
 
@@ -66,6 +82,14 @@ export default function SavSlaPage() {
             <KpiCard icon={<ShieldCheck />} label="Visites préventives à l’heure" value={pct(data.visites_preventives?.pct_a_heure)} />
             {data.reouverture && (
               <KpiCard icon={<AlertOctagon />} label="Réouvertures / 100 tickets" value={data.reouverture.taux_pour_100_tickets} />
+            )}
+            {/* WIR102 — taux d'attache contrat (YSERV10). */}
+            {tauxAttache && (
+              <KpiCard
+                icon={<ShieldCheck />}
+                label="Taux d’attache contrat"
+                value={`${pct(tauxAttache.taux_pct)} (${tauxAttache.avec_contrat}/${tauxAttache.total})`}
+              />
             )}
           </div>
 
@@ -110,6 +134,59 @@ export default function SavSlaPage() {
               empty={<p className="text-sm text-muted-foreground">Aucun ticket sur la période.</p>}
             />
           </div>
+
+          {/* WIR102 — pivot tickets SAV (technicien × statut). */}
+          {pivot && (pivot.row_keys || []).length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Tickets par technicien et statut</h3>
+              <Table
+                aria-label="Pivot tickets SAV par technicien et statut"
+                columns={[
+                  { key: 'technicien', header: 'Technicien', cell: (r) => r.label },
+                  ...(pivot.col_keys || []).map((ck) => {
+                    const ckKey = ck.join(',')
+                    return {
+                      key: `col_${ckKey}`,
+                      header: ckKey || '—',
+                      align: 'right',
+                      cell: (r) => r.cells[ckKey] ?? 0,
+                    }
+                  }),
+                  { key: 'total', header: 'Total', align: 'right', cell: (r) => r.total },
+                ]}
+                rows={(pivot.row_keys || []).map((rk) => {
+                  const rowKey = rk.join(',')
+                  return {
+                    id: rowKey,
+                    label: rowKey || '—',
+                    cells: pivot.cells?.[rowKey] || {},
+                    total: pivot.row_totals?.[rowKey] ?? 0,
+                  }
+                })}
+                getRowKey={(r) => r.id}
+                empty={<p className="text-sm text-muted-foreground">Aucun ticket sur la période.</p>}
+              />
+            </div>
+          )}
+
+          {/* WIR102 — coût interne moyen par technicien (permission prix_achat_voir ;
+              masqué sans elle, le serveur renvoyant 403). */}
+          {coutMoyen && coutMoyen.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Coût interne moyen par technicien</h3>
+              <Table
+                aria-label="Coût interne moyen par technicien"
+                columns={[
+                  { key: 'technicien', header: 'Technicien', cell: (r) => r.technicien_responsable__username || '—' },
+                  { key: 'cout_moyen', header: 'Coût moyen', align: 'right', cell: (r) => (r.cout_moyen != null ? Math.round(r.cout_moyen) : '—') },
+                  { key: 'n', header: 'Tickets', align: 'right', cell: (r) => r.n ?? 0 },
+                ]}
+                rows={coutMoyen}
+                getRowKey={(r) => r.technicien_responsable__username || 'na'}
+                empty={<p className="text-sm text-muted-foreground">Aucune donnée.</p>}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
