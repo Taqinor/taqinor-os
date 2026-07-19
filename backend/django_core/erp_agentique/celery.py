@@ -487,6 +487,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.run_active_flightplans',
         'schedule': crontab(hour=7, minute=5),
     },
+    # ASG2 — oubli HEBDO des posteriors de l'arbre d'hypothèses (péremption §3.2 :
+    # chaque semaine sans test, (α,β) s'oublie vers le prior à la demi-vie de la
+    # classe). Lundi tôt, avant les boucles du gardien/runner. NO-OP sans nœud.
+    'adsengine-decay-assumptions-weekly': {
+        'task': 'adsengine.decay_assumptions_weekly',
+        'schedule': crontab(hour=6, minute=40, day_of_week=1),
+    },
     # ADSDEEP8 — synchro HEBDO des breakdowns (âge×genre, placements, régions,
     # heures) des campagnes miroir. Lundi, heure creuse. NO-OP sans connexion Meta.
     'adsengine-sync-breakdowns-weekly': {
