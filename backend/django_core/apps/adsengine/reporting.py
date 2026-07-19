@@ -383,6 +383,90 @@ def creative_scatter(company, *, date_start=None, date_end=None):
     }
 
 
+# ── PUB81 — ROI par LANE de fabrique créative ─────────────────────────────
+def factory_lane_roi(company, *, date_start=None, date_end=None):
+    """PUB81 — ``CreativeAsset.cost_cents`` est peuplé par chaque adaptateur
+    (zapcap/fal/templated/elevenlabs/json2video/chantier/ugc… via
+    ``source_lane``) et n'était lu NULLE PART : coût-par-résultat PAR LANE de
+    fabrique, quelle filière de production rapporte. Un asset sans lane
+    (``source_lane=''``, ex. upload manuel direct) est groupé sous
+    ``'manuel'``. Le coût est compté UNE FOIS par asset distinct de la lane
+    (coût de production sunk, indépendant du nombre d'ads qui le réutilisent) ;
+    les résultats sont sommés sur TOUTES les ads nées des assets de la lane,
+    sur la période (défaut 30 jours glissants, comme le leaderboard créatif
+    ADSDEEP47). Jointure : ``CreativeAsset`` → ``ExperimentArm.ad_id`` →
+    ``AdMirror`` → ``InsightSnapshot``. Company-scopé ; jamais un coût-par-
+    résultat fabriqué (``None`` quand aucun résultat)."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from .models import AdMirror, CreativeAsset, ExperimentArm, InsightSnapshot
+
+    date_start, date_end = _default_period(date_start, date_end)
+    periode = {'debut': date_start.isoformat(), 'fin': date_end.isoformat()}
+
+    assets = list(CreativeAsset.objects.filter(company=company)
+                  .only('id', 'source_lane', 'cost_cents'))
+    if not assets:
+        return {'lanes': [], 'periode': periode}
+    asset_by_id = {a.id: a for a in assets}
+
+    arms = list(ExperimentArm.objects
+                .filter(company=company, creative_asset_id__in=asset_by_id)
+                .exclude(ad_id=''))
+    ad_meta_ids = {arm.ad_id for arm in arms}
+    ad_by_meta = {
+        a.meta_id: a for a in
+        AdMirror.objects.filter(company=company, meta_id__in=ad_meta_ids)
+    } if ad_meta_ids else {}
+
+    results_by_pk = {}
+    if ad_by_meta:
+        ct = ContentType.objects.get_for_model(AdMirror)
+        ad_pks = [a.pk for a in ad_by_meta.values()]
+        qs = (InsightSnapshot.objects
+              .filter(company=company, content_type=ct, object_id__in=ad_pks,
+                      date__gte=date_start, date__lte=date_end)
+              .values('object_id')
+              .annotate(results=Sum('results'), spend=Sum('spend')))
+        results_by_pk = {row['object_id']: row for row in qs}
+
+    lanes = {}
+    for arm in arms:
+        asset = asset_by_id.get(arm.creative_asset_id)
+        ad = ad_by_meta.get(arm.ad_id)
+        if asset is None or ad is None:
+            continue
+        lane_key = asset.source_lane or 'manuel'
+        slot = lanes.setdefault(lane_key, {
+            'asset_ids': set(), 'results': 0, 'spend': Decimal('0')})
+        slot['asset_ids'].add(asset.id)
+        agg = results_by_pk.get(ad.pk) or {}
+        slot['results'] += agg.get('results') or 0
+        slot['spend'] += agg.get('spend') or Decimal('0')
+
+    rows = []
+    for lane_key, slot in lanes.items():
+        cost_cents_total = sum(
+            asset_by_id[aid].cost_cents for aid in slot['asset_ids'])
+        results = slot['results']
+        cost_per_result_centimes = (
+            round(cost_cents_total / results, 2) if results else None)
+        rows.append({
+            'lane': lane_key,
+            'assets_count': len(slot['asset_ids']),
+            'cost_cents_total': cost_cents_total,
+            'results': results,
+            'spend_mad': str(slot['spend']),
+            'cost_per_result_centimes': cost_per_result_centimes,
+        })
+    # Meilleur ROI (coût-par-résultat le plus bas) d'abord ; lanes sans
+    # résultat mesurable en fin de liste (jamais un zéro fabriqué en tête).
+    rows.sort(key=lambda r: (r['cost_per_result_centimes'] is None,
+                             r['cost_per_result_centimes'] or 0))
+    return {'lanes': rows, 'periode': periode}
+
+
 def reconciliation_csv(company, *, day=None):
     """CSV de la table de réconciliation (§5.4). Réutilise
     ``reconciliation.reconcile`` (ADSENG31, fichier disjoint) — jamais un schéma

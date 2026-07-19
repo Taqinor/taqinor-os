@@ -1291,6 +1291,24 @@ class CoverageReportView(APIView):
             coverage_report(company, date_start=debut, date_end=fin))
 
 
+class FactoryLaneRoiView(APIView):
+    """PUB81 — ROI par LANE de fabrique créative (coût-par-résultat par
+    ``source_lane`` : zapcap/fal/templated/elevenlabs/json2video/chantier/
+    ugc/manuel). 100 % LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import factory_lane_roi
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(
+            factory_lane_roi(company, date_start=debut, date_end=fin))
+
+
 class MetaConnectionStatusView(APIView):
     """ENG22 — Statut de connexion (GET) + enregistrement des identifiants
     (POST). Les identifiants sont **write-only** : un GET ne renvoie JAMAIS un

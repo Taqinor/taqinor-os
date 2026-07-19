@@ -26,7 +26,8 @@ from .views import (
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
-    ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
+    ExperimentViewSet, FactoryLaneRoiView, FlightPhaseViewSet,
+    FlightPlanViewSet,
     GuardrailConfigViewSet, GuardrailSingletonView,
     InstagramCommentDeleteView, InstagramCommentHideView,
     InstagramCommentListView, InstagramCommentReplyView,
@@ -158,6 +159,9 @@ urlpatterns = [
     # PUB80 — rapport « trous de couverture » (formats + segments).
     path('reporting/couverture/', CoverageReportView.as_view(),
          name='adsengine-reporting-couverture'),
+    # PUB81 — ROI par lane de fabrique créative (coût-par-résultat/source_lane).
+    path('reporting/creatifs/roi-lane/', FactoryLaneRoiView.as_view(),
+         name='adsengine-reporting-creatifs-roi-lane'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
