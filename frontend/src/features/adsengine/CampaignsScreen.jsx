@@ -6,6 +6,7 @@ import DataWindowNotice from './DataWindowNotice'
 // PUB3 — panneau démographie/placement/région/heure, construit+testé mais
 // jamais monté nulle part avant cette tâche — drill par ad set ET par ad.
 import BreakdownsPanel from './BreakdownsPanel'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    ENG24 — Écran « Campagnes » (miroirs Meta) du moteur publicitaire.
@@ -22,7 +23,23 @@ import BreakdownsPanel from './BreakdownsPanel'
    niveaux navigables) avec statuts/budgets/dépenses/leads par niveau + le
    badge d'apprentissage (ADSDEEP32) par ad set. Un fil d'Ariane permet de
    remonter d'un niveau sans recharger la liste des campagnes.
+
+   PUB13 — le détail d'un ad set (niveau 3) ne montrait que le badge
+   d'apprentissage DÉRIVÉ (learning_badge) ; `learning_stage_info` (dict BRUT
+   Meta : conversions, attribution_windows…) et `last_sig_edit` (dernière
+   édition significative — reset d'apprentissage) sont sérialisés
+   (AdSetMirrorSerializer) mais invisibles. Panneau « Apprentissage Meta » qui
+   les rend TELS QUELS (jamais reformatés/interprétés — c'est du brut Meta
+   pour l'audit).
    ========================================================================== */
+
+// PUB13 — rend une valeur BRUTE de `learning_stage_info` sans l'interpréter
+// (objet/liste → JSON compact, primitive → telle quelle).
+function formatLearningValue(v) {
+  if (v == null) return '—'
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
 
 export default function CampaignsScreen() {
   const [campaigns, setCampaigns] = useState([])
@@ -267,6 +284,33 @@ export default function CampaignsScreen() {
                   <p style={{ color: '#64748b', margin: '0.5rem 0' }}>
                     Apprentissage : {openAdset.learning_badge?.label || 'Inconnu'}
                   </p>
+
+                  {/* PUB13 — panneau « Apprentissage Meta » : learning_stage_info
+                      brut + last_sig_edit (fenêtres d'attribution, statut
+                      d'apprentissage, dernière édition significative). */}
+                  <section className="card ae-camp-learning" data-testid="ae-camp-learning-panel"
+                    style={{ padding: '0.75rem', margin: '0 0 0.9rem', border: '1px solid #e2e8f0' }}>
+                    <h4 style={{ margin: '0 0 0.4rem' }}>Apprentissage Meta</h4>
+                    <p style={{ margin: '0 0 0.5rem', color: '#64748b', fontSize: '0.85rem' }}
+                      data-testid="ae-camp-learning-last-sig-edit">
+                      Dernière édition significative : {openAdset.last_sig_edit
+                        ? formatDateTime(openAdset.last_sig_edit) : 'Aucune.'}
+                    </p>
+                    {Object.keys(openAdset.learning_stage_info || {}).length === 0
+                      ? <p data-testid="ae-camp-learning-empty" style={{ color: '#64748b', margin: 0 }}>
+                          Aucune info d&apos;apprentissage brute disponible.</p>
+                      : (
+                        <ul data-testid="ae-camp-learning-raw"
+                          style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.25rem', fontSize: '0.85rem' }}>
+                          {Object.entries(openAdset.learning_stage_info).map(([k, v]) => (
+                            <li key={k} data-testid="ae-camp-learning-row">
+                              <strong style={{ color: '#475569' }}>{k}</strong>{' : '}{formatLearningValue(v)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                  </section>
+
                   {(openAdset.ads || []).length === 0
                     ? <p data-testid="ae-camp-ads-empty" style={{ color: '#64748b' }}>Aucune ad synchronisée.</p>
                     : (
