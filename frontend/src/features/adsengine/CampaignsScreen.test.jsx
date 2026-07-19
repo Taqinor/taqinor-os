@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { rankCreatives } from './adsengine'
 
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   syncNow: vi.fn(),
   ranking: vi.fn(),
   connGet: vi.fn(),
+  breakdownsList: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -22,6 +23,7 @@ vi.mock('./adsengineApi', () => ({
       syncNow: mocks.syncNow, creativeRanking: mocks.ranking,
     },
     connection: { get: mocks.connGet },
+    breakdowns: { list: mocks.breakdownsList },
   },
 }))
 
@@ -42,10 +44,14 @@ beforeEach(() => {
     adsets: [
       { id: 11, nom: 'Ad set toiture', statut_display: 'Actif',
         learning_badge: { label: 'En apprentissage', tone: 'info' },
+        // PUB13 — brut Meta (conversions/fenêtres d'attribution) + dernière
+        // édition significative.
+        learning_stage_info: { conversions: 12, attribution_windows: ['7d_click'] },
+        last_sig_edit: '2026-07-10T09:00:00Z',
         budget_quotidien_mad: 40, depense_mad: 300, nb_leads: 7,
         ads: [
-          { id: 111, nom: 'Reel toiture', statut_display: 'Actif', depense_mad: 150, nb_leads: 4 },
-          { id: 112, nom: 'Statique prix', statut_display: 'Actif', depense_mad: 150, nb_leads: 3 },
+          { id: 111, meta_id: 'ad-111', nom: 'Reel toiture', statut_display: 'Actif', depense_mad: 150, nb_leads: 4 },
+          { id: 112, meta_id: 'ad-112', nom: 'Statique prix', statut_display: 'Actif', depense_mad: 150, nb_leads: 3 },
         ] },
       { id: 12, nom: 'Ad set pompage', statut_display: 'En pause',
         learning_badge: { label: 'Optimisé', tone: 'success' },
@@ -59,6 +65,7 @@ beforeEach(() => {
     { id: 'b', nom: 'Statique prix', reponses_whatsapp: 10, cout_mad: 500 },  // 50/rép (meilleur)
     { id: 'c', nom: 'Explainer', reponses_whatsapp: 0, cout_mad: 300 },       // sans réponse → dernier
   ] })
+  mocks.breakdownsList.mockResolvedValue({ data: [] })
 })
 
 describe('rankCreatives (helper de tri — pur)', () => {
@@ -147,6 +154,60 @@ describe('CampaignsScreen (ENG24)', () => {
       expect(breadcrumb).toHaveTextContent('Campagnes')
       expect(breadcrumb).toHaveTextContent('Solaire résidentiel Casa')
       expect(breadcrumb).toHaveTextContent('Ad set toiture')
+
+      // PUB44 — chaque ad porte un lien croisé vers sa fiche complète.
+      const links = screen.getAllByTestId('ae-camp-ad-full-story')
+      expect(links).toHaveLength(2)
+      expect(links[0]).toHaveAttribute('href', '/publicite/ad/ad-111')
+    })
+
+    it('PUB3 — drill des ventilations par ad set, puis par ad', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      fireEvent.click(screen.getAllByTestId('ae-camp-open')[0])
+      await screen.findByTestId('ae-camp-hierarchy')
+
+      // Niveau ad set : ouvrir les ventilations du 1er ad set (id 11).
+      fireEvent.click(screen.getAllByTestId('ae-camp-adset-breakdowns')[0])
+      await waitFor(() => expect(mocks.breakdownsList).toHaveBeenCalledWith({
+        object_type: 'adset', object_id: 11,
+      }))
+      expect(await screen.findByTestId('ae-breakdowns-panel')).toBeInTheDocument()
+
+      // Descendre au niveau ads : le panneau ad set disparaît, on peut ouvrir
+      // les ventilations d'une ad (id 111).
+      fireEvent.click(screen.getAllByTestId('ae-camp-adset-open')[0])
+      await screen.findByTestId('ae-camp-ads-table')
+      expect(screen.queryByTestId('ae-breakdowns-panel')).toBeNull()
+
+      fireEvent.click(screen.getAllByTestId('ae-camp-ad-breakdowns')[0])
+      await waitFor(() => expect(mocks.breakdownsList).toHaveBeenCalledWith({
+        object_type: 'ad', object_id: 111,
+      }))
+      expect(await screen.findByTestId('ae-breakdowns-panel')).toBeInTheDocument()
+    })
+
+    it('PUB13 — le panneau « Apprentissage Meta » montre learning_stage_info brut + last_sig_edit', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      fireEvent.click(screen.getAllByTestId('ae-camp-open')[0])
+      await screen.findByTestId('ae-camp-hierarchy')
+      fireEvent.click(screen.getAllByTestId('ae-camp-adset-open')[0])
+
+      const panel = await screen.findByTestId('ae-camp-learning-panel')
+      expect(panel).toHaveTextContent('conversions : 12')
+      expect(within(panel).getByTestId('ae-camp-learning-last-sig-edit')).not.toHaveTextContent('Aucune.')
+    })
+
+    it('PUB13 — état vide sans learning_stage_info', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      fireEvent.click(screen.getAllByTestId('ae-camp-open')[0])
+      await screen.findByTestId('ae-camp-hierarchy')
+      // 2ᵉ ad set (id 12, « Ad set pompage ») n'a ni learning_stage_info ni last_sig_edit.
+      fireEvent.click(screen.getAllByTestId('ae-camp-adset-open')[1])
+      expect(await screen.findByTestId('ae-camp-learning-empty')).toBeInTheDocument()
+      expect(screen.getByTestId('ae-camp-learning-last-sig-edit')).toHaveTextContent('Aucune.')
     })
 
     it('« Retour aux ad sets » remonte au 2ᵉ niveau sans recharger la hiérarchie', async () => {
@@ -171,6 +232,49 @@ describe('CampaignsScreen (ENG24)', () => {
       await screen.findByTestId('ae-camp-hierarchy')
       fireEvent.click(screen.getByTestId('ae-camp-breadcrumb-campaigns'))
       expect(screen.queryByTestId('ae-camp-hierarchy')).toBeNull()
+    })
+  })
+
+  // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
+  describe('PUB40 — sélecteur de période', () => {
+    it('affiche la barre de période et recharge les campagnes au changement', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange')).toBeInTheDocument()
+      mocks.list.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-hier'))
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      const params = mocks.list.mock.calls[0][0]
+      expect(params.debut).toBe(params.fin)
+    })
+
+    it('comparaison activée -> bandeau de dépense totale + delta', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-camp-compare-summary')).toBeNull()
+      mocks.list.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-compare'))
+      await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
+      expect(await screen.findByTestId('ae-camp-compare-summary'))
+        .toHaveTextContent('vs période précédente')
+    })
+  })
+
+  // ── PUB41 — Fraîcheur + panne visibles ─────────────────────────────────
+  describe('PUB41 — état-erreur distinct de l’état-vide', () => {
+    it('panne réseau -> message d’erreur, PAS « aucune campagne synchronisée »', async () => {
+      mocks.list.mockRejectedValue(new Error('network'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-camp-load-error')).toBeInTheDocument()
+      expect(screen.queryByText('Aucune campagne synchronisée')).toBeNull()
+    })
+
+    it('liste réellement vide (succès) -> état-vide normal, pas d’erreur', async () => {
+      mocks.list.mockResolvedValue({ data: [] })
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.getByText('Aucune campagne synchronisée')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-camp-load-error')).toBeNull()
     })
   })
 })

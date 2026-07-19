@@ -1,10 +1,13 @@
 """Sérialiseurs du moteur publicitaire Meta Ads (Groupe ENG)."""
+import datetime
 from decimal import Decimal
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
-    AdCampaignMirror, AdMirror, AdSetMirror, AnomalyEvent, ArmDailyStat,
+    AdCampaignMirror, AdMirror, AdSetMirror, Annotation, AnomalyEvent,
+    ArmDailyStat,
     AssumptionNode, CommentMirror, CreativeAsset, CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
     EngineAlert, Experiment, ExperimentArm, FactEntry, FactTable,
@@ -13,6 +16,30 @@ from .models import (
     InstagramCommentMirror, InstagramMediaMirror, MetaConnection,
     PacingState, ReconciliationSnapshot, RulePolicy,
 )
+
+
+def _extract_token_expiry(credentials):
+    """PUB20 — Extrait au mieux l'expiration d'un token depuis les identifiants.
+
+    Accepte ``expires_at`` (epoch secondes, comme le renvoie ``debug_token`` Meta)
+    ou ``token_expires_at`` (ISO-8601). Renvoie un ``datetime`` aware ou ``None``
+    (un System-User long-lived n'a souvent aucune expiration — c'est légitime)."""
+    if not isinstance(credentials, dict):
+        return None
+    epoch = credentials.get('expires_at')
+    if isinstance(epoch, (int, float)) and epoch > 0:
+        return datetime.datetime.fromtimestamp(
+            epoch, tz=datetime.timezone.utc)
+    iso = credentials.get('token_expires_at')
+    if isinstance(iso, str) and iso.strip():
+        try:
+            parsed = datetime.datetime.fromisoformat(iso.strip())
+        except ValueError:
+            return None
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed, datetime.timezone.utc)
+        return parsed
+    return None
 
 
 def _same_company(serializer, value):
@@ -45,17 +72,57 @@ class MetaConnectionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'enabled', 'ad_account_id', 'page_id', 'pixel_id',
             'currency', 'credentials', 'has_credentials',
+            # PUB20 — état santé du token (lecture seule) pour le bandeau
+            # ConnectionScreen/Dashboard (front = lane console). `token_invalid`
+            # est posé par les tâches de synchro sur une auth-error 190.
+            'token_expires_at', 'token_invalid', 'token_invalid_at',
             'created_at', 'updated_at',
         ]
         extra_kwargs = {
             'credentials': {'write_only': True, 'required': False},
         }
         # ``currency`` : renseignée par la synchro (nœud de compte Meta), jamais
-        # par le client.
-        read_only_fields = ['currency', 'created_at', 'updated_at']
+        # par le client. Les champs d'état PUB20 sont posés côté serveur (synchro).
+        read_only_fields = [
+            'currency', 'token_expires_at', 'token_invalid',
+            'token_invalid_at', 'created_at', 'updated_at',
+        ]
 
     def get_has_credentials(self, obj):
         return bool(obj.credentials)
+
+    def _apply_token_state(self, instance, credentials):
+        """PUB20 — À la (re)connexion, renseigne au mieux ``token_expires_at``
+        si les identifiants portent une expiration (``expires_at`` epoch ou
+        ``token_expires_at`` ISO), et lève tout état « token mort » précédent
+        dès qu'un nouveau token est fourni (le client repart propre)."""
+        creds = credentials or {}
+        expiry = _extract_token_expiry(creds)
+        changed = []
+        if expiry is not None and instance.token_expires_at != expiry:
+            instance.token_expires_at = expiry
+            changed.append('token_expires_at')
+        if creds.get('access_token') and (
+                instance.token_invalid or instance.token_invalid_at):
+            instance.token_invalid = False
+            instance.token_invalid_at = None
+            changed += ['token_invalid', 'token_invalid_at']
+        if changed:
+            instance.save(update_fields=changed)
+        return instance
+
+    def create(self, validated_data):
+        credentials = validated_data.get('credentials')
+        instance = super().create(validated_data)
+        return self._apply_token_state(instance, credentials)
+
+    def update(self, instance, validated_data):
+        credentials = validated_data.get('credentials')
+        instance = super().update(instance, validated_data)
+        # Ne toucher l'état que si de nouveaux identifiants sont fournis.
+        if 'credentials' in validated_data:
+            self._apply_token_state(instance, credentials)
+        return instance
 
 
 class GuardrailConfigSerializer(serializers.ModelSerializer):
@@ -80,6 +147,18 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
             'health_ops_weight_cpl', 'health_ops_weight_delivery',
             'created_at', 'updated_at',
         ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class AnnotationSerializer(serializers.ModelSerializer):
+    """PUB49 — Annotation de courbe (note de décision épinglée à une date).
+
+    ``company`` est absente des champs (posée côté serveur, jamais lue du corps).
+    Le rendu en surimpression sur les courbes est côté front (lane console)."""
+
+    class Meta:
+        model = Annotation
+        fields = ['id', 'date', 'texte', 'portee', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
 
@@ -121,19 +200,27 @@ class EngineAlertSerializer(serializers.ModelSerializer):
     """
 
     wa_links = serializers.SerializerMethodField()
+    # PUB48 — lien profond FR vers l'entité concernée (approbation liée, écran
+    # d'origine du gabarit, ou Règles & anomalies à défaut).
+    link = serializers.SerializerMethodField()
+    # PUB48 — snooze (reporté jusqu'à cette date) : stocké dans `detail`
+    # (JSONField déjà existant, aucune migration) — exposé pour la cloche.
+    snoozed_until = serializers.SerializerMethodField()
 
     class Meta:
         model = EngineAlert
         fields = [
             'id', 'alert_type', 'message', 'action', 'detail',
-            'acknowledged', 'wa_links', 'created_at', 'updated_at',
+            'acknowledged', 'wa_links', 'link', 'snoozed_until',
+            'created_at', 'updated_at',
             # ADSENG4 — sévérité + cooldown + escalade.
             'severity', 'entity_key', 'cooldown_hours', 'unresolved_cycles',
             'resolved',
         ]
-        # ``wa_links`` est un champ déclaré (SerializerMethodField, déjà
-        # read-only) — il ne doit PAS figurer dans read_only_fields (DRF
-        # l'interdit). Ce viewset est de toute façon GET-only (ENG13).
+        # ``wa_links``/``link``/``snoozed_until`` sont des champs déclarés
+        # (SerializerMethodField, déjà read-only) — ils ne doivent PAS figurer
+        # dans read_only_fields (DRF l'interdit). Ce viewset est de toute
+        # façon GET-only (ENG13).
         read_only_fields = [
             'id', 'alert_type', 'message', 'action', 'detail',
             'acknowledged', 'created_at', 'updated_at',
@@ -144,6 +231,13 @@ class EngineAlertSerializer(serializers.ModelSerializer):
     def get_wa_links(self, obj):
         from .alerts import wa_links
         return wa_links(obj.message)
+
+    def get_link(self, obj):
+        from .alerts import deep_link_for_alert
+        return deep_link_for_alert(obj)
+
+    def get_snoozed_until(self, obj):
+        return (obj.detail or {}).get('snoozed_until')
 
 
 class CreativeAssetSerializer(serializers.ModelSerializer):
@@ -482,16 +576,26 @@ class AdCampaignMirrorSerializer(serializers.ModelSerializer):
 
     def _insights(self, obj):
         """Agrégat (dépense, résultats) mémoïsé par instance (évite un double
-        calcul entre ``depense_mad`` et ``nb_leads``)."""
+        calcul entre ``depense_mad`` et ``nb_leads``).
+
+        PUB40 — borné à ``context['debut']``/``context['fin']`` (dates ISO
+        `datetime.date`, sélecteur de période de l'écran Campagnes) quand
+        présents ; absents (défaut, y compris hors contexte de requête), la
+        dépense reste cumulée sur TOUT l'historique — comportement inchangé."""
         cached = getattr(obj, '_ae_insights', None)
         if cached is None:
             from django.contrib.contenttypes.models import ContentType
             from django.db.models import Sum
             ct = ContentType.objects.get_for_model(AdCampaignMirror)
-            cached = (InsightSnapshot.objects
-                      .filter(company_id=obj.company_id, content_type=ct,
-                              object_id=obj.pk)
-                      .aggregate(spend=Sum('spend'), results=Sum('results')))
+            qs = InsightSnapshot.objects.filter(
+                company_id=obj.company_id, content_type=ct, object_id=obj.pk)
+            debut = self.context.get('debut')
+            fin = self.context.get('fin')
+            if debut is not None:
+                qs = qs.filter(date__gte=debut)
+            if fin is not None:
+                qs = qs.filter(date__lte=fin)
+            cached = qs.aggregate(spend=Sum('spend'), results=Sum('results'))
             obj._ae_insights = cached
         return cached
 
@@ -644,6 +748,14 @@ class CommentMirrorSerializer(serializers.ModelSerializer):
     synchro, jamais écrit par le client — toute action passe par la proposition
     ``EngineAction`` via les vues dédiées, jamais un PATCH direct)."""
 
+    # PUB44 — lien croisé vers la fiche « histoire complète » de l'ad (un
+    # commentaire source=AD porte l'``effective_object_story_id`` du créatif
+    # dans ``object_meta_id``, PAS le ``meta_id`` de l'ad — dossier
+    # organic-posts §3). Résolu via ``context['story_to_ad']`` (map construite
+    # UNE FOIS par ``CommentListView``, jamais une requête par ligne) ; ``None``
+    # si le contexte n'est pas fourni ou si aucune ad ne correspond.
+    ad_meta_id = serializers.SerializerMethodField()
+
     class Meta:
         model = CommentMirror
         fields = [
@@ -651,9 +763,14 @@ class CommentMirrorSerializer(serializers.ModelSerializer):
             'message', 'from_name', 'from_id', 'created_time', 'like_count',
             'reply_count', 'is_hidden', 'hidden_verified', 'can_hide',
             'can_remove', 'answered', 'permalink', 'private_reply_sent_at',
-            'fetched_at', 'created_at', 'updated_at',
+            'fetched_at', 'created_at', 'updated_at', 'ad_meta_id',
         ]
         read_only_fields = fields
+
+    def get_ad_meta_id(self, obj):
+        if obj.source != CommentMirror.Source.AD:
+            return None
+        return self.context.get('story_to_ad', {}).get(obj.object_meta_id)
 
 
 # ── ADSDEEP55/56 — Instagram (compte Business relié) ──────────────────────────

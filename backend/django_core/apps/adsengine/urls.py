@@ -8,11 +8,13 @@ suivantes de la lane.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .incrementality import GeoHoldoutReportView
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
-    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AnomalyEventViewSet,
-    ArmDailyStatViewSet, AssumptionNodeViewSet, ConversationsPerAdView,
+    AdCampaignMirrorViewSet, AdFullStoryView, AdPreviewsView, AdsCockpitView,
+    AlertSnoozeView, AnnotationViewSet, AnomalyEventViewSet,
+    ArmDailyStatViewSet, AssumptionNodeViewSet,
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
@@ -23,6 +25,7 @@ from .views import (
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
+    GroundedGenerationView,
     ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
     GuardrailConfigViewSet, GuardrailSingletonView,
     InstagramCommentDeleteView, InstagramCommentHideView,
@@ -32,10 +35,11 @@ from .views import (
     MetaConnectionHealthView,
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
     MetricsDashboardView,
-    MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
+    MetricsLeadsView, MetricsPacingView, ProposeCuratedActionView, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
-    RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
-    VariantReportView, WiringHealthView,
+    RulePolicyViewSet, SignalCohortView, SignalsView, SimulationDetailView,
+    SimulationListView, StatusView, SyncStatusView, TodayQueueView,
+    VariantFunnelView, VariantReportView, WiringHealthView,
 )
 from .whatsapp_webhook import WhatsAppCloudWebhookView
 
@@ -45,6 +49,8 @@ router.register(r'garde-fous', GuardrailConfigViewSet, basename='guardrail')
 # ASG1 — Assumption Engine (arbre vivant de croyances testées).
 router.register(r'noeuds-hypothese', AssumptionNodeViewSet,
                 basename='assumption-node')
+# PUB49 — annotations de courbe (notes de décision épinglées à une date).
+router.register(r'annotations', AnnotationViewSet, basename='annotation')
 # AGEN1 — génération autonome : table de faits versionnée (§10.2 point 1).
 router.register(r'table-faits', FactTableViewSet, basename='fact-table')
 router.register(r'faits', FactEntryViewSet, basename='fact-entry')
@@ -61,7 +67,6 @@ router.register(r'decisions', DecisionLogViewSet, basename='decision-log')
 # ADSENG4 — gardien + trésorerie
 router.register(r'regles', RulePolicyViewSet, basename='rule-policy')
 router.register(r'anomalies', AnomalyEventViewSet, basename='anomaly-event')
-router.register(r'pacing', PacingStateViewSet, basename='pacing-state')
 # ADSENG5 — créa + vol
 router.register(r'lots-creatifs', CreativeGenerationBatchViewSet,
                 basename='creative-batch')
@@ -91,6 +96,12 @@ urlpatterns = [
          name='adsengine-connection'),
     path('connection/health/', MetaConnectionHealthView.as_view(),
          name='adsengine-connection-health'),
+    # PUB41 — fraîcheur de synchro par type (bandeau global + tuiles horodatées).
+    path('sync-status/', SyncStatusView.as_view(),
+         name='adsengine-sync-status'),
+    # PUB42 — file « Aujourd'hui » unifiée (écran d'accueil /publicite).
+    path('aujourd-hui/', TodayQueueView.as_view(),
+         name='adsengine-today-queue'),
     # ENG22 — garde-fous singleton (GET/PATCH sans id).
     path('guardrail/', GuardrailSingletonView.as_view(),
          name='adsengine-guardrail'),
@@ -120,12 +131,19 @@ urlpatterns = [
          BacklogLotApproveView.as_view(), name='adsengine-backlog-lot-approve'),
     path('backlog/<int:campagne_id>/assets/',
          BacklogDropAssetView.as_view(), name='adsengine-backlog-drop-asset'),
+    # PUB16 — génération IA ancrée (« Générer des variantes ancrées »).
+    path('generation/variantes-ancrees/', GroundedGenerationView.as_view(),
+         name='adsengine-generation-variantes-ancrees'),
     # ADSENG33 — drill-downs de reporting (table variante / entonnoir / cohortes
     # / export CSV).
     path('reporting/variantes/', VariantReportView.as_view(),
          name='adsengine-reporting-variantes'),
     path('reporting/entonnoir/', CampaignFunnelView.as_view(),
          name='adsengine-reporting-entonnoir'),
+    # PUB36 — même entonnoir NEW→SIGNED cumulatif, résolu PAR AD plutôt que
+    # par campagne (à quelle étape chaque annonce perd ses leads).
+    path('reporting/entonnoir-variantes/', VariantFunnelView.as_view(),
+         name='adsengine-reporting-entonnoir-variantes'),
     path('reporting/cohortes/', CohortReportView.as_view(),
          name='adsengine-reporting-cohortes'),
     path('reporting/export/', ReportExportView.as_view(),
@@ -140,15 +158,22 @@ urlpatterns = [
     # budgétaire, fatigue, tracking, fenêtres de données), 100 % lecture.
     path('reporting/audit/', AccountAuditView.as_view(),
          name='adsengine-reporting-audit'),
+    # PUB38 — rapport d'incrémentalité geo-holdout (zone tenue vs zones
+    # actives), 100 % lecture, aucune action automatique.
+    path('reporting/incrementalite/', GeoHoldoutReportView.as_view(),
+         name='adsengine-reporting-incrementalite'),
+    # PUB48 — reporte UNE alerte (snooze) jusqu'à une date ; ne masque QUE la
+    # liste active (``history()`` reste complet).
+    path('alertes/<int:alert_id>/snooze/', AlertSnoozeView.as_view(),
+         name='adsengine-alerte-snooze'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
     path('metrics/real-leads/', RealLeadsView.as_view(),
          name='adsengine-real-leads'),
-    # ADSDEEP25 — conversations WhatsApp RÉELLES par ad (CtwaReferral) + signés.
-    path('metrics/conversations-per-ad/', ConversationsPerAdView.as_view(),
-         name='adsengine-conversations-per-ad'),
-    # ADSDEEP22 — cockpit par ad (écran-console quotidien).
+    # ADSDEEP22 — cockpit par ad (écran-console quotidien). Les conversations
+    # WhatsApp par ad y sont une COLONNE (PUB12 : l'ancien endpoint dédié
+    # metrics/conversations-per-ad/, sans consommateur, était redondant → retiré).
     path('metrics/ads-cockpit/', AdsCockpitView.as_view(),
          name='adsengine-ads-cockpit'),
     # ADSDEEP12 — résolveur de médias frais (URL jouable non persistée).
@@ -157,6 +182,10 @@ urlpatterns = [
     # ADSDEEP13 — proxy previews (iframe Meta, jamais persistée).
     path('ads/<str:ad_meta_id>/previews/', AdPreviewsView.as_view(),
          name='adsengine-ad-previews'),
+    # PUB44 — fiche « histoire complète » d'une ad (créatif + métriques +
+    # actions + commentaires + règles + expériences + ventilations).
+    path('ads/<str:meta_id>/histoire/', AdFullStoryView.as_view(),
+         name='adsengine-ad-full-story'),
     # ADSDEEP24 — récepteur webhook WhatsApp Cloud API (CTWA referral). Public,
     # gated WHATSAPP_CLOUD_VERIFY_TOKEN + WHATSAPP_CLOUD_APP_SECRET (404 sinon).
     path('whatsapp/webhook/', WhatsAppCloudWebhookView.as_view(),
@@ -195,6 +224,17 @@ urlpatterns = [
     path('instagram/medias/<str:media_meta_id>/commentaires-actif/',
          InstagramMediaToggleCommentsView.as_view(),
          name='adsengine-ig-media-toggle-comments'),
+    # PUB22 — proposition d'action CURÉE (duplicate/set_schedule/create_ad_study)
+    # via son producteur backend (toujours à travers propose_action). Placé AVANT
+    # le routeur pour que « actions/proposer/<kind>/ » gagne sur « actions/<pk>/ ».
+    path('actions/proposer/<str:kind>/', ProposeCuratedActionView.as_view(),
+         name='adsengine-propose-curated'),
+    # SIG4 — console de signaux (deux scores de santé + quadrant de garde-fous
+    # durs + drill-down par cohorte). Vues minces sur health.py / signal_guards.py
+    # / cohorts.py — company-scopées, lecture ``adsengine_view``.
+    path('signaux/', SignalsView.as_view(), name='adsengine-signaux'),
+    path('signaux/cohorte/', SignalCohortView.as_view(),
+         name='adsengine-signaux-cohorte'),
     # ADSDEEP59 — audiences d'engagement (picker composeur d'adset) + estimation
     # d'audience avant usage. NON gated consentement (aucune donnée CRM envoyée).
     path('audiences/engagement/', EngagementAudienceView.as_view(),

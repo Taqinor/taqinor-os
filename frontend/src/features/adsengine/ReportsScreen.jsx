@@ -1,12 +1,15 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { BarChart3, Download, ClipboardList } from 'lucide-react'
+import { BarChart3, Download, ClipboardList, Printer, Scale } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeVariants, normalizeFunnel, normalizeCohorts, normalizeLeaderboard,
-  normalizeScatter, toCsv, formatMAD, formatNumber, formatPercent,
+  normalizeScatter, hasRetentionData, formatMAD, formatNumber, formatPercent,
 } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
+import AlertCenter from './AlertCenter'
+import CommandPalette from './CommandPalette'
+import MetricHelp from './MetricHelp'
 
 /* ============================================================================
    ENG45 — Drill-downs reporting (consomme ENG33).
@@ -15,16 +18,15 @@ import DataWindowNotice from './DataWindowNotice'
    - TABLE des variantes (impressions, réponses WhatsApp, coût, coût/réponse) ;
    - ENTONNOIR de campagne (étapes ordonnées avec leur valeur) ;
    - COHORTES avec le lag médian jusqu'à la signature.
-   L'export CSV est construit côté client à partir des variantes CHARGÉES (les
-   mêmes chiffres que l'API — jamais inventés) et proposé en lien téléchargeable.
+   L'export CSV est SERVI PAR LE BACKEND (ReportExportView, PUB12) : source de
+   vérité unique incluant la table de réconciliation — jamais un CSV fabriqué
+   côté client (qui divergerait du serveur).
 
    ADSDEEP47 — un second ONGLET « Créatifs » : classement spend-weighted par
    hook/angle/format + nuage hook rate × dépense (quadrants FR « pépites
    cachées »/« gouffres »/« gagnants confirmés »/« à surveiller »), période
    sélectionnable (7/30/90 jours).
    ========================================================================== */
-
-const CSV_HEADERS = ['Variante', 'Impressions', 'Réponses WhatsApp', 'Coût (MAD)', 'Coût par réponse (MAD)']
 
 const DIMENSIONS = [
   { key: 'hook', label: 'Accroche' },
@@ -123,33 +125,60 @@ export default function ReportsScreen() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de dimension/période
   useEffect(() => { loadCreative() }, [loadCreative])
 
-  // Export CSV : construit depuis les variantes chargées (data-URI, pas de dep).
-  const csvHref = useMemo(() => {
-    if (variants.length === 0) return null
-    const rows = variants.map(v => [
-      v.nom, v.impressions ?? '', v.reponses_whatsapp ?? '', v.cout_mad ?? '', v.cout_par_reponse ?? '',
-    ])
-    const csv = toCsv(CSV_HEADERS, rows)
-    return `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`
-  }, [variants])
+  // Export CSV : SERVI PAR LE BACKEND (PUB12). On télécharge le blob authentifié
+  // du ReportExportView (source de vérité unique, table de réconciliation
+  // incluse) puis on déclenche l'enregistrement — jamais un CSV fabriqué ici.
+  const handleExportCsv = useCallback(() => {
+    adsengineApi.reports.export({ table: 'variantes' })
+      .then(r => {
+        const blob = r.data instanceof Blob
+          ? r.data : new Blob([r.data], { type: 'text/csv;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'variantes-taqinor.csv'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+      })
+      .catch(() => {})
+  }, [])
 
   const funnelMax = useMemo(
     () => funnel.reduce((m, e) => Math.max(m, Number.isFinite(e.valeur) ? e.valeur : 0), 0) || 1,
     [funnel])
 
   return (
-    <div className="page ae-reports">
-      <div className="page-header">
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+    <div className="page ae-reports ae-print-area">
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginRight: 'auto' }}>
           <BarChart3 size={20} aria-hidden="true" /> Reporting
         </h2>
-        {tab === 'apercu' && csvHref && (
-          <a className="btn btn-primary" data-testid="ae-reports-export"
-            href={csvHref} download="variantes-taqinor.csv"
+        {tab === 'apercu' && variants.length > 0 && (
+          <button type="button" className="btn btn-primary" data-testid="ae-reports-export"
+            onClick={handleExportCsv}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
             <Download size={15} aria-hidden="true" /> Exporter en CSV
-          </a>
+          </button>
         )}
+        {/* PUB52 — comparateur côte-à-côte (ads/campagnes) */}
+        <Link to="/publicite/comparateur" className="btn btn-light" data-testid="ae-reports-compare-link"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <Scale size={15} aria-hidden="true" /> Comparateur
+        </Link>
+        {/* PUB47 — impression navigateur (feuille globale print.css, VX80) :
+            PDF imprimable propre (A4), zéro dépendance nouvelle. Distinct des
+            PDF WeasyPrint client (règle #4). */}
+        <button type="button" className="btn btn-light" data-testid="ae-reports-print"
+          onClick={() => window.print()}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <Printer size={15} aria-hidden="true" /> Imprimer / PDF
+        </button>
+        {/* PUB48 — centre de notifications persistant de la console */}
+        <AlertCenter />
+        {/* PUB51 — palette de commandes (Ctrl-K) */}
+        <CommandPalette />
       </div>
 
       <div role="tablist" aria-label="Sections du reporting"
@@ -191,11 +220,11 @@ export default function ReportsScreen() {
                     <tbody>
                       {variants.map(v => (
                         <tr key={v.id} data-testid="ae-reports-variant-row">
-                          <td>{v.nom}</td>
-                          <td>{formatNumber(v.impressions)}</td>
-                          <td>{formatNumber(v.reponses_whatsapp)}</td>
-                          <td>{formatMAD(v.cout_mad)}</td>
-                          <td>{formatMAD(v.cout_par_reponse)}</td>
+                          <td data-label="Variante">{v.nom}</td>
+                          <td data-label="Impressions">{formatNumber(v.impressions)}</td>
+                          <td data-label="Réponses WhatsApp">{formatNumber(v.reponses_whatsapp)}</td>
+                          <td data-label="Coût">{formatMAD(v.cout_mad)}</td>
+                          <td data-label="Coût / réponse">{formatMAD(v.cout_par_reponse)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -242,10 +271,10 @@ export default function ReportsScreen() {
                     <tbody>
                       {cohorts.map(c => (
                         <tr key={c.id} data-testid="ae-reports-cohort-row">
-                          <td>{c.cohorte}</td>
-                          <td>{formatNumber(c.taille)}</td>
-                          <td>{formatNumber(c.lag_jours_median)}</td>
-                          <td>{formatNumber(c.signatures)}</td>
+                          <td data-label="Cohorte">{c.cohorte}</td>
+                          <td data-label="Taille">{formatNumber(c.taille)}</td>
+                          <td data-label="Lag médian (jours)">{formatNumber(c.lag_jours_median)}</td>
+                          <td data-label="Signatures">{formatNumber(c.signatures)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -294,18 +323,20 @@ export default function ReportsScreen() {
                       <thead>
                         <tr>
                           <th>Tag</th><th>Dépense</th><th>Résultats</th>
-                          <th>Coût / résultat</th><th>Hook rate (pondéré)</th><th>Ads</th>
+                          <th>Coût / résultat<MetricHelp metric="cost_per_result" label="Coût / résultat" /></th>
+                          <th>Hook rate (pondéré)<MetricHelp metric="hook_rate" label="Hook rate" /></th>
+                          <th>Ads</th>
                         </tr>
                       </thead>
                       <tbody>
                         {leaderboard.classement.map(row => (
                           <tr key={row.id} data-testid="ae-creatifs-leaderboard-row">
-                            <td>{row.tag}</td>
-                            <td>{formatMAD(row.spend)}</td>
-                            <td>{formatNumber(row.results)}</td>
-                            <td>{formatMAD(row.costPerResult)}</td>
-                            <td>{formatPercent(row.hookRateWeighted, 1)}</td>
-                            <td>{formatNumber(row.adCount)}</td>
+                            <td data-label="Tag">{row.tag}</td>
+                            <td data-label="Dépense">{formatMAD(row.spend)}</td>
+                            <td data-label="Résultats">{formatNumber(row.results)}</td>
+                            <td data-label="Coût / résultat">{formatMAD(row.costPerResult)}</td>
+                            <td data-label="Hook rate (pondéré)">{formatPercent(row.hookRateWeighted, 1)}</td>
+                            <td data-label="Ads">{formatNumber(row.adCount)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -327,15 +358,27 @@ export default function ReportsScreen() {
                   : (
                     <table className="data-table" data-testid="ae-creatifs-scatter-table">
                       <thead>
-                        <tr><th>Ad</th><th>Dépense</th><th>Hook rate</th><th>Quadrant</th></tr>
+                        <tr><th>Ad</th><th>Dépense</th>
+                          <th>Hook rate<MetricHelp metric="hook_rate" label="Hook rate" /></th>
+                          <th>Quadrant</th>
+                          {/* PUB8 — courbe de rétention par ad vidéo (25/50/75/100 %
+                              des lectures qui atteignent chaque quartile). */}
+                          <th>Rétention (25/50/75/100 %)</th>
+                        </tr>
                       </thead>
                       <tbody>
                         {scatter.points.map(p => (
                           <tr key={p.id} data-testid="ae-creatifs-scatter-row">
-                            <td>{p.nom}</td>
-                            <td>{formatMAD(p.spend)}</td>
-                            <td>{formatPercent(p.hookRate, 1)}</td>
-                            <td data-testid="ae-creatifs-scatter-quadrant">{p.quadrantLabel}</td>
+                            <td data-label="Ad">{p.nom}</td>
+                            <td data-label="Dépense">{formatMAD(p.spend)}</td>
+                            <td data-label="Hook rate">{formatPercent(p.hookRate, 1)}</td>
+                            <td data-label="Quadrant" data-testid="ae-creatifs-scatter-quadrant">{p.quadrantLabel}</td>
+                            <td data-label="Rétention (25/50/75/100 %)" data-testid="ae-creatifs-scatter-retention">
+                              {hasRetentionData(p)
+                                ? [p.retention.p25, p.retention.p50, p.retention.p75, p.retention.p100]
+                                    .map(v => formatPercent(v, 0)).join(' · ')
+                                : '—'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

@@ -70,6 +70,19 @@ class MetaConnection(TenantModel):
     # sérialiseur ne le relit JAMAIS ; un GET n'expose que sa PRÉSENCE.
     credentials = models.JSONField(
         default=dict, blank=True, verbose_name='Identifiants (write-only)')
+    # PUB20 — expiration connue du token (best-effort : renseignée à la connexion
+    # quand les identifiants portent un `expires_at`/`token_expires_at`). Null
+    # tant qu'inconnue — un System-User long-lived n'expose pas toujours d'expiry.
+    token_expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Expiration du token")
+    # PUB20 — état « token mort » : posé par les tâches de synchro dès qu'un
+    # ``MetaAuthError`` (code 190) survient (la synchro ne masque plus JAMAIS
+    # silencieusement une auth-error), remis à faux dès une synchro réussie.
+    # Source d'un bandeau ConnectionScreen/Dashboard (front = autre lane).
+    token_invalid = models.BooleanField(
+        default=False, verbose_name='Token invalide (détecté)')
+    token_invalid_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Détection du token invalide")
 
     class Meta:
         verbose_name = 'Connexion Meta'
@@ -88,6 +101,32 @@ class MetaConnection(TenantModel):
     def is_live(self):
         """Vrai si la connexion peut réellement appeler Meta : activée + token."""
         return bool(self.enabled and self.has_token)
+
+    def mark_token_invalid(self):
+        """PUB20 — Marque le token mort (auth-error 190 détectée par une synchro).
+        Idempotent : n'écrit que les champs qui changent. Horodate la PREMIÈRE
+        détection (``token_invalid_at`` conservé sur les cycles suivants)."""
+        from django.utils import timezone
+        fields = []
+        if not self.token_invalid:
+            self.token_invalid = True
+            fields.append('token_invalid')
+        if self.token_invalid_at is None:
+            self.token_invalid_at = timezone.now()
+            fields.append('token_invalid_at')
+        if fields:
+            self.save(update_fields=fields)
+        return bool(fields)
+
+    def clear_token_invalid(self):
+        """PUB20 — Le token refonctionne (synchro réussie) : lève l'état + le
+        bandeau. Idempotent (aucune écriture si déjà propre)."""
+        if self.token_invalid or self.token_invalid_at is not None:
+            self.token_invalid = False
+            self.token_invalid_at = None
+            self.save(update_fields=['token_invalid', 'token_invalid_at'])
+            return True
+        return False
 
 
 class GuardrailConfig(TenantModel):
@@ -162,6 +201,24 @@ class GuardrailConfig(TenantModel):
         default=60, verbose_name='Santé opérations — poids CPL')
     health_ops_weight_delivery = models.PositiveIntegerField(
         default=40, verbose_name='Santé opérations — poids livraison')
+
+    # ── PUB21 — Interrupteur global (kill-switch) + autonomie PERSISTÉS en base.
+    # Ces deux états vivaient uniquement en cache Redis (TTL 30 j) : un flush ou
+    # un redémarrage infra annulait SILENCIEUSEMENT un arrêt d'urgence — un
+    # kill-switch de sécurité ne DOIT jamais disparaître à un restart. La DB est
+    # désormais la SOURCE DE VÉRITÉ ; le cache reste un simple accélérateur de
+    # lecture (ré-échauffé depuis la DB sur miss). Défaut sûr : rien d'engagé.
+    kill_switch_engaged = models.BooleanField(
+        default=False, verbose_name='Interrupteur global engagé')
+    kill_switch_engaged_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Engagement de l'interrupteur")
+    kill_switch_reason = models.TextField(
+        blank=True, default='', verbose_name="Motif de l'interrupteur")
+    # OFF par défaut ; ne peut être posé que par ``preflight.activate`` (ADSENG38)
+    # APRÈS que toutes les portes préflight soient vertes — la persistance ne
+    # change pas ce gate, elle empêche seulement un flush cache de le perdre.
+    autonomy_active = models.BooleanField(
+        default=False, verbose_name='Mode autonome activé')
 
     class Meta:
         verbose_name = 'Garde-fous publicitaires'
@@ -462,6 +519,31 @@ class InsightSnapshot(TenantModel):
     video_metrics = models.JSONField(
         default=dict, blank=True, verbose_name='Métriques vidéo')
 
+    # ── PUB32 — Diagnostics de classement Meta niveau AD (ordinaux 3 niveaux :
+    # ``above_average``/``average``/``below_average``, ou ``UNKNOWN``/'' quand
+    # indisponible <500 impr.). Ce sont des PROXYS NÉGATIFS lus par
+    # ``signal_guards.quality_ranking_guard`` (frein), JAMAIS une récompense du
+    # bandit. Renseignés seulement au niveau ad (le compte/adset ne les expose
+    # pas). Additifs : les rows historiques restent '' (guard non déclenché).
+    quality_ranking = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name='Classement de qualité')
+    engagement_rate_ranking = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name="Classement du taux d'engagement")
+    conversion_rate_ranking = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name='Classement du taux de conversion')
+
+    # ── PUB35 — Attribution INCRÉMENTALE native Meta (déploiement progressif).
+    # ``{incremental_conversions: .., incremental_conversion_value: ..}`` quand le
+    # compte expose la colonne ; ``{}`` sinon (dégradation propre — voir
+    # ``meta_client.incremental_attribution_available``). Sert de contre-lecture
+    # CAUSALE face aux résultats ATTRIBUÉS (``results``/``leads_count``) — jamais
+    # une récompense du bandit, une lecture comparative (attribué vs incrémental).
+    incremental_attribution = models.JSONField(
+        default=dict, blank=True, verbose_name='Attribution incrémentale')
+
     class Meta:
         verbose_name = 'Instantané de performance'
         verbose_name_plural = 'Instantanés de performance'
@@ -698,6 +780,9 @@ class EngineAlert(TenantModel):
         ANOMALIE = 'anomalie', 'Anomalie'
         GARDE_FOU = 'garde_fou', 'Violation de garde-fou'
         REGLE_INOPERANTE = 'regle_inoperante', 'Règle inopérante'
+        # PUB20 — token Meta expiré/invalide (code 190) : la synchro s'arrête,
+        # jamais un dashboard figé sans signal.
+        TOKEN_INVALIDE = 'token_invalide', 'Token Meta invalide'
 
     # ADSENG4 — sévérité (🔴🟠🔵) : valeurs alignées sur ``rules.SEVERITY_*``.
     class Severity(models.TextChoices):
@@ -2217,3 +2302,38 @@ class FactEntry(TenantModel):
     def __str__(self):
         suffix = f' {self.unite}' if self.unite else ''
         return f'{self.cle} = {self.valeur}{suffix}'
+
+
+class Annotation(TenantModel):
+    """PUB49 — Note de décision épinglée à une DATE, en surimpression sur les
+    courbes (Dashboard/Reporting).
+
+    La mémoire ÉCRITE qui manque pour relire une courbe des mois plus tard :
+    « budget baissé ici — Ramadan ». Company-scopée (``TenantModel``). ``portee``
+    cible la/les courbe(s) où la note apparaît (globale par défaut). Le rendu en
+    surimpression est côté front (lane console) — ici on n'expose qu'une API
+    CRUD propre.
+    """
+
+    class Portee(models.TextChoices):
+        GLOBALE = 'globale', 'Toutes les courbes'
+        DASHBOARD = 'dashboard', 'Tableau de bord'
+        REPORTING = 'reporting', 'Reporting'
+
+    date = models.DateField(verbose_name='Date épinglée')
+    texte = models.TextField(verbose_name='Texte de la note')
+    portee = models.CharField(
+        max_length=16, choices=Portee.choices, default=Portee.GLOBALE,
+        verbose_name='Portée')
+
+    class Meta:
+        verbose_name = 'Annotation de courbe'
+        verbose_name_plural = 'Annotations de courbe'
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'portee', 'date'],
+                         name='adseng_annot_co_scope_idx'),
+        ]
+
+    def __str__(self):
+        return f'Annotation {self.date}: {self.texte[:32]}'

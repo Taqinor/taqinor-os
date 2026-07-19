@@ -79,7 +79,7 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # champ pré-existant, même motif que les dates-ancre ventes du
     # DATEFIELD_AUTO_NOW_ALLOWLIST ci-dessus — pas un bug d'horodatage.
     # Modèle relocalisé compta→crm par ODX13 (2026-07-12) : clé remappée.
-    "backend/django_core/apps/crm/models.py:1986",  # remapped +4 (LW28 LeadActivity.pinned) — same field (CommissionPartenaire.paye_le)
+    "backend/django_core/apps/crm/models.py:2001",  # remapped +15 (PUB28 MotifPerte.est_junk) — same field (CommissionPartenaire.paye_le)
 }
 
 TIMESTAMP_NAME_RE = re.compile(

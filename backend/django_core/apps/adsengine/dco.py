@@ -1,5 +1,11 @@
 """ADSENG29 — Arbitrage DCO (Dynamic Creative Optimization) — creative-sci §e.
 
+STATUT (PUB25, 2026-07-19) — NON CÂBLÉ en production : aucun appelant hors tests.
+Pas un doublon. EN ATTENTE DE : un flux de création qui consulte cet arbitre au
+bootstrap cold-start (le DCO natif Meta reste réservé au démarrage à froid et
+n'est déclenché par aucun chemin de génération/lancement aujourd'hui). Capacité
+prête + testée ; jamais mort silencieux.
+
 Le DCO natif de Meta est réservé au **bootstrap de démarrage à froid** (aucune
 donnée) : Meta assemble automatiquement image/vidéo/texte pour amorcer un
 signal, mais expose UN SEUL ad par ad set et une attribution par asset limitée.

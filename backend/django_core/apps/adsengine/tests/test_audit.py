@@ -172,6 +172,103 @@ class AuditTrackingTests(TestCase):
         section = audit._audit_tracking(self.company)
         self.assertFalse(any('UTM' in item for item in section['items']))
 
+    def test_pub29_flags_missing_crm_stage_odoo_whatsapp(self):
+        # Sans aucune des nouvelles clés PUB29 posées, les 3 boucles
+        # supplémentaires sont signalées manquantes.
+        section = audit._audit_tracking(self.company)
+        joined = ' '.join(section['items']).lower()
+        self.assertIn('capi crm', joined)
+        self.assertIn('odoo', joined)
+        self.assertIn('whatsapp', joined)
+
+    def test_pub29_crm_stage_capi_configured_removes_its_item(self):
+        import os
+        env = {
+            'META_CAPI_ACCESS_TOKEN': 'tok', 'META_CAPI_PIXEL_ID': 'px',
+            'META_CRM_STAGE_CAPI_ENABLED': '1',
+        }
+        os.environ.update(env)
+        try:
+            section = audit._audit_tracking(self.company)
+        finally:
+            for k in env:
+                os.environ.pop(k, None)
+        self.assertFalse(
+            any('capi crm' in item.lower() for item in section['items']))
+
+    def test_pub29_odoo_configured_removes_its_item(self):
+        import os
+        env = {
+            'ODOO_URL': 'https://x.odoo.com', 'ODOO_DB': 'x',
+            'ODOO_USERNAME': 'x', 'ODOO_API_KEY': 'x',
+        }
+        os.environ.update(env)
+        try:
+            section = audit._audit_tracking(self.company)
+        finally:
+            for k in env:
+                os.environ.pop(k, None)
+        self.assertFalse(
+            any('odoo' in item.lower() for item in section['items']))
+
+    def test_pub29_whatsapp_configured_removes_its_item(self):
+        import os
+        env = {
+            'WHATSAPP_CLOUD_VERIFY_TOKEN': 'vt',
+            'WHATSAPP_CLOUD_APP_SECRET': 'sec',
+        }
+        os.environ.update(env)
+        try:
+            section = audit._audit_tracking(self.company)
+        finally:
+            for k in env:
+                os.environ.pop(k, None)
+        self.assertFalse(
+            any('whatsapp' in item.lower() for item in section['items']))
+
+
+class PendingActivationLoopsTests(TestCase):
+    """PUB29 — Panneau ConnectionScreen « Boucles en attente d'activation »."""
+
+    def test_returns_a_loop_per_key_family(self):
+        loops = audit.pending_activation_loops()
+        ids = {loop['id'] for loop in loops}
+        for expected in (
+                'lead_ads_webhook', 'capi_site', 'capi_crm_stage',
+                'capi_odoo_signed', 'odoo_connector', 'whatsapp_cloud_ctwa',
+                'fabrique_zapcap', 'fabrique_fal', 'fabrique_templated',
+                'fabrique_elevenlabs', 'fabrique_json2video'):
+            self.assertIn(expected, ids)
+
+    def test_each_loop_reports_off_without_keys(self):
+        loops = audit.pending_activation_loops()
+        for loop in loops:
+            self.assertFalse(loop['actif'])
+            self.assertTrue(loop['remediation_fr'])
+            self.assertIn('nom', loop)
+
+    def test_loop_turns_on_only_when_all_its_keys_present(self):
+        import os
+        os.environ['ZAPCAP_API_KEY'] = 'k'
+        try:
+            loops = {loop['id']: loop for loop in audit.pending_activation_loops()}
+        finally:
+            del os.environ['ZAPCAP_API_KEY']
+        self.assertTrue(loops['fabrique_zapcap']['actif'])
+        # Une boucle multi-clés reste OFF tant qu'UNE clé manque.
+        self.assertFalse(loops['whatsapp_cloud_ctwa']['actif'])
+
+    def test_never_leaks_key_values(self):
+        import json
+        import os
+        secret = 'distinct-secret-91827'
+        os.environ['CAPI_CRM_ACCESS_TOKEN'] = secret
+        try:
+            loops = audit.pending_activation_loops()
+        finally:
+            del os.environ['CAPI_CRM_ACCESS_TOKEN']
+        self.assertNotIn(secret, json.dumps(loops))
+
 
 class AuditDataWindowsTests(TestCase):
     def test_always_returns_five_messages(self):

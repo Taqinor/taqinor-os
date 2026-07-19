@@ -1,5 +1,12 @@
 """ASG8 — Priors hiérarchiques INTRA-tenant (démarrage à froid, §3.4 / §6).
 
+STATUT (PUB25, 2026-07-19) — NON CÂBLÉ en production : aucun appelant hors tests.
+Pas un doublon. EN ATTENTE DE : la consommation des priors hiérarchiques par
+l'ordonnanceur VoI au démarrage à froid d'un nœud NEUF — aujourd'hui le champion
+de référence de ``voi.uncertainty`` est le PROPRE prior du nœud
+(``voi._champion_for``), pas un prior hérité du parent/frère. Capacité prête +
+testée ; jamais mort silencieux.
+
 Un nœud NEUF n'a pas de données propres. Plutôt que de partir d'un prior uniforme
 Beta(1,1) aveugle, il EMPRUNTE aux agrégats de ses frères/de sa catégorie DANS LA
 MÊME société (pattern « partial pooling » / empirical Bayes — AISTATS 2022 ;

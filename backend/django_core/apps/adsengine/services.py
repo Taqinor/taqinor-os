@@ -73,6 +73,18 @@ class CreativePolicyNotPassed(ValueError):
     """ENG15 — Levée si une création d'ad référence un asset non validé policy."""
 
 
+class ActionPayloadInvalid(ValueError):
+    """PUB22 — Levée si le payload d'une action proposée par POST BRUT est
+    invalide (champ requis manquant / valeur incohérente). Sous-classe de
+    ``ValueError`` — traduite en 400 par la vue, jamais une 500."""
+
+
+class ActionNotInvertible(ValueError):
+    """PUB45 — Levée si une action appliquée n'a pas d'inverse AUTOMATIQUE (kind
+    de création, mise en pause non ré-activable — règle #3, ou valeur précédente
+    non mémorisée). Sous-classe de ``ValueError`` — la vue rend une explication."""
+
+
 # Kinds qui créent une ad et peuvent donc référencer un ``CreativeAsset``.
 _AD_CREATING_KINDS = frozenset({
     EngineAction.Kind.CREATE_AD, EngineAction.Kind.ROTATE_CREATIVE,
@@ -108,6 +120,47 @@ def assert_creative_ok_for_ad(company, kind, payload):
         raise CreativePolicyNotPassed(
             "Créatif non validé (policy_stamp.passed absent) : il ne peut pas "
             "être référencé par une création d'ad.")
+
+
+# ── PUB22 — Validation de payload PAR KIND pour les kinds atteignables par POST
+# BRUT sans producteur curé (``create_ad`` / ``set_spend_cap`` / ``rename``). Un
+# producteur (``propose_duplicate``, ``propose_pause_for_month``…) construit déjà
+# un payload correct ; ces trois-là peuvent être proposés depuis l'UI sans passer
+# par un service dédié — on valide donc leur payload AVANT de créer l'action, pour
+# ne jamais matérialiser une action inapplicable (name/adset_id/campaign_id vides,
+# plafond ≤ 0…). AUCUN autre kind n'est soumis à ce contrôle (leur producteur
+# curé garantit déjà la forme). ────────────────────────────────────────────────
+def _require_nonempty(payload, key, label):
+    value = payload.get(key)
+    if value is None or not str(value).strip():
+        raise ActionPayloadInvalid(f"Champ requis manquant : {label}.")
+
+
+def _require_positive_number(payload, key, label):
+    value = payload.get(key)
+    if value is None:
+        raise ActionPayloadInvalid(f"Champ requis manquant : {label}.")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ActionPayloadInvalid(f"{label} doit être un nombre.")
+    if number <= 0:
+        raise ActionPayloadInvalid(f"{label} doit être strictement positif.")
+
+
+def validate_manual_payload(kind, payload):
+    """Valide le payload d'un kind proposable par POST brut. No-op pour tout kind
+    hors du trio contrôlé. Lève ``ActionPayloadInvalid`` (→ 400) sinon."""
+    payload = payload or {}
+    if kind == EngineAction.Kind.CREATE_AD:
+        _require_nonempty(payload, 'name', "le nom de l'ad")
+        _require_nonempty(payload, 'adset_id', "l'id de l'ad set")
+    elif kind == EngineAction.Kind.SET_SPEND_CAP:
+        _require_nonempty(payload, 'campaign_id', "l'id de la campagne")
+        _require_positive_number(payload, 'spend_cap', "le plafond de dépense")
+    elif kind == EngineAction.Kind.RENAME:
+        _require_nonempty(payload, 'object_id', "l'id de l'objet")
+        _require_nonempty(payload, 'name', 'le nouveau nom')
 
 
 # ── ADSDEEP31 — Avertissements montrés à l'APPROBATEUR (surface d'édition) ────
@@ -160,6 +213,7 @@ def propose_action(company, *, kind, reason_fr, payload=None, auto=False):
             "Une raison en une phrase (français) est obligatoire pour proposer "
             "une action.")
     assert_creative_ok_for_ad(company, kind, payload)
+    validate_manual_payload(kind, payload)
     payload = dict(payload or {})
     _merge_warnings(payload, edit_warnings(kind, payload))
     return EngineAction.objects.create(
@@ -352,6 +406,189 @@ def propose_pause_for_month(company, *, target_meta_id, target_type='campaign',
     return propose_action(
         company, kind=KIND_PAUSE_FOR_MONTH, reason_fr=reason_fr,
         payload={'target_type': target_type, 'target_meta_id': target_meta_id})
+
+
+# ── PUB22 — Dispatch de proposition CURÉE (kinds qui exigent une résolution /
+# validation backend et ne peuvent donc PAS être proposés par POST brut) ─────────
+def _resolve_adset(company, meta_id):
+    """Ad set miroir de la société par son ``meta_id`` (jamais cross-société).
+    Lève ``ActionPayloadInvalid`` (→ 400) si introuvable."""
+    from .models import AdSetMirror
+    if not meta_id or not str(meta_id).strip():
+        raise ActionPayloadInvalid("Champ requis manquant : l'id de l'ad set.")
+    adset = AdSetMirror.objects.filter(
+        company=company, meta_id=str(meta_id).strip()).first()
+    if adset is None:
+        raise ActionPayloadInvalid(
+            "Ad set introuvable pour cette société.")
+    return adset
+
+
+def propose_manual_curated(company, *, kind, params, reason_fr=None):
+    """PUB22 — Route une proposition d'action CURÉE (``duplicate`` /
+    ``set_schedule`` / ``create_ad_study``) vers son producteur dédié — lequel
+    passe TOUJOURS par ``propose_action`` (naissance PAUSED intacte, aucune
+    activation). Company-scopé : les objets référencés sont bornés à la société.
+    Un producteur lève ``ValueError`` sur entrée invalide (→ 400)."""
+    params = params or {}
+    if kind == KIND_DUPLICATE:
+        adset = _resolve_adset(company, params.get('adset_id'))
+        return propose_duplicate(
+            company, adset=adset,
+            name_suffix=(params.get('name_suffix') or ' (copie)'),
+            reason_fr=reason_fr)
+    if kind == KIND_SET_SCHEDULE:
+        return propose_native_schedule(
+            company, adset_id=(params.get('adset_id') or ''),
+            grid=params.get('grid'), reason_fr=reason_fr)
+    if kind == KIND_CREATE_AD_STUDY:
+        return propose_ad_study(
+            company, name=(params.get('name') or ''),
+            cells=params.get('cells'), reason_fr=reason_fr)
+    raise ActionPayloadInvalid(f"Kind curé inconnu : {kind}.")
+
+
+# ── PUB45 — Annuler une action APPLIQUÉE = proposer son INVERSE ────────────────
+# L'annulation ne fait JAMAIS un write direct : elle CRÉE une proposition inverse
+# qui repasse par le circuit propose→approuve normal. Seule une poignée de kinds a
+# un inverse automatique (rétablir une valeur MÉMORISÉE) ; les autres sont
+# expliqués (une CRÉATION ne s'annule pas par ce circuit — on met en pause l'objet
+# né PAUSED ; une PAUSE ne se ré-active pas — règle #3).
+_INVERTIBLE_BUDGET_KINDS = frozenset({
+    EngineAction.Kind.REBALANCE_BUDGET, KIND_INCREASE_PACE,
+    KIND_REBALANCE_ADSET_BUDGET,
+})
+
+# Explications FR pour les kinds SANS inverse automatique (rendues à l'opérateur).
+_NOT_INVERTIBLE_REASONS = {
+    EngineAction.Kind.CREATE_CAMPAIGN: (
+        "Une création de campagne ne s'annule pas par ce circuit : mettre en "
+        "pause la campagne créée (elle est née PAUSED)."),
+    EngineAction.Kind.CREATE_ADSET: (
+        "Une création d'ad set ne s'annule pas par ce circuit : mettre en pause "
+        "l'ad set créé (né PAUSED)."),
+    EngineAction.Kind.CREATE_AD: (
+        "Une création d'ad ne s'annule pas par ce circuit : mettre en pause "
+        "l'ad créée (née PAUSED)."),
+    EngineAction.Kind.ROTATE_CREATIVE: (
+        "Une rotation crée une NOUVELLE ad (née PAUSED) : mettre en pause l'ad "
+        "créée plutôt que d'annuler."),
+    EngineAction.Kind.PAUSE: (
+        "Une mise en pause ne s'annule pas automatiquement : ré-activer est "
+        "interdit (règle #3). Ré-activer manuellement côté Meta si nécessaire."),
+    KIND_PAUSE_FOR_MONTH: (
+        "Une pause pour le mois ne s'annule pas automatiquement : ré-activer est "
+        "interdit (règle #3)."),
+    KIND_DUPLICATE: (
+        "Une duplication crée de nouveaux objets (nés PAUSED) : les mettre en "
+        "pause plutôt que d'annuler."),
+    KIND_ENABLE_CBO: (
+        "L'activation CBO n'a pas d'inverse automatique."),
+    KIND_SET_SCHEDULE: (
+        "Un horaire n'a pas d'inverse automatique : reposer un horaire différent."),
+    KIND_CREATE_AD_STUDY: (
+        "Une étude A/B native ne s'annule pas par ce circuit."),
+}
+
+
+def propose_inverse_action(action, *, reason_fr=None):
+    """PUB45 — Propose l'action INVERSE d'une action APPLIQUÉE, via le circuit
+    propose→approuve normal (jamais un write direct). Rétablit la valeur
+    MÉMORISÉE sur l'action d'origine (budget précédent ``current_budget``, texte
+    précédent ``current_creative``…). Lève ``ActionNotInvertible`` (avec une
+    explication FR) pour tout kind sans inverse automatique. La proposition
+    inverse porte ``payload['inverse_of']`` = pk de l'action annulée (traçabilité)."""
+    if action.status != EngineAction.Statut.APPLIQUEE:
+        raise ActionNotInvertible(
+            "Seule une action APPLIQUÉE peut être annulée.")
+    payload = action.payload or {}
+    kind = action.kind
+
+    if kind in _INVERTIBLE_BUDGET_KINDS:
+        previous = payload.get('current_budget')
+        if previous is None:
+            raise ActionNotInvertible(
+                "Le budget précédent n'a pas été mémorisé sur cette action : "
+                "ré-proposer le budget voulu manuellement.")
+        inv_reason = reason_fr or (
+            f"Annuler l'action #{action.pk} : rétablir le budget précédent.")
+        return propose_action(
+            action.company, kind=EngineAction.Kind.REBALANCE_BUDGET,
+            reason_fr=inv_reason,
+            payload={
+                'adset_id': payload.get('adset_id', ''),
+                'daily_budget': previous,
+                'current_budget': payload.get('daily_budget'),
+                'inverse_of': action.pk,
+            })
+
+    if kind == EngineAction.Kind.EDIT_COPY:
+        previous_creative = payload.get('current_creative')
+        if not previous_creative:
+            raise ActionNotInvertible(
+                "Le texte/créatif précédent n'a pas été mémorisé sur cette "
+                "action : ré-proposer le texte voulu manuellement.")
+        inv_reason = reason_fr or (
+            f"Annuler l'action #{action.pk} : rétablir le texte précédent.")
+        return propose_action(
+            action.company, kind=EngineAction.Kind.EDIT_COPY,
+            reason_fr=inv_reason,
+            payload={
+                'ad_id': payload.get('ad_id', ''),
+                'current_creative': payload.get('creative_spec'),
+                'creative_spec': previous_creative,
+                'inverse_of': action.pk,
+            })
+
+    if kind == EngineAction.Kind.SET_SPEND_CAP:
+        previous = payload.get('previous_spend_cap')
+        if previous is None:
+            raise ActionNotInvertible(
+                "Le plafond de dépense précédent n'a pas été mémorisé : reposer "
+                "un plafond manuellement.")
+        inv_reason = reason_fr or (
+            f"Annuler l'action #{action.pk} : rétablir le plafond précédent.")
+        return propose_action(
+            action.company, kind=EngineAction.Kind.SET_SPEND_CAP,
+            reason_fr=inv_reason,
+            payload={
+                'campaign_id': payload.get('campaign_id', ''),
+                'spend_cap': previous,
+                'previous_spend_cap': payload.get('spend_cap'),
+                'inverse_of': action.pk,
+            })
+
+    if kind == EngineAction.Kind.RENAME:
+        previous = payload.get('previous_name')
+        if not previous:
+            raise ActionNotInvertible(
+                "Le nom précédent n'a pas été mémorisé : renommer manuellement.")
+        inv_reason = reason_fr or (
+            f"Annuler l'action #{action.pk} : rétablir le nom précédent.")
+        return propose_action(
+            action.company, kind=EngineAction.Kind.RENAME,
+            reason_fr=inv_reason,
+            payload={
+                'object_id': payload.get('object_id', ''),
+                'name': previous,
+                'previous_name': payload.get('name'),
+                'inverse_of': action.pk,
+            })
+
+    raise ActionNotInvertible(_NOT_INVERTIBLE_REASONS.get(
+        kind, "Cette action n'a pas d'inverse automatique."))
+
+
+def non_invertible_reason_fr(action):
+    """PUB45 — Raison FR (sûre, curée) de non-inversibilité d'une action, pour
+    l'AFFICHAGE client — dérivée du KIND (constante ``_NOT_INVERTIBLE_REASONS``)
+    et JAMAIS du texte d'une exception attrapée (CodeQL py/stack-trace-exposure :
+    on n'expose aucune trace ni détail interne au client, seulement un message
+    métier volontairement rédigé)."""
+    if action.status != EngineAction.Statut.APPLIQUEE:
+        return "Seule une action APPLIQUÉE peut être annulée."
+    return _NOT_INVERTIBLE_REASONS.get(
+        action.kind, "Cette action n'a pas d'inverse automatique.")
 
 
 # ── ADSDEEP49-52 — Posts ORGANIQUES de Page (propose→approuve→applique) ───────

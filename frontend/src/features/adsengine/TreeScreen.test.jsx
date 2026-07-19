@@ -23,6 +23,7 @@ vi.mock('./adsengineApi', () => ({
 }))
 
 import TreeScreen from './TreeScreen'
+import { beliefSummary } from './adsengine'
 
 const renderScreen = () => render(<MemoryRouter><TreeScreen /></MemoryRouter>)
 
@@ -91,5 +92,52 @@ describe('TreeScreen (ASG6)', () => {
     renderScreen()
     expect(await screen.findByTestId('ae-tree-empty')).toBeInTheDocument()
     expect(screen.getByTestId('ae-tree-queue-empty')).toBeInTheDocument()
+  })
+})
+
+describe('beliefSummary (PUB11, helper pur)', () => {
+  it('traduit alpha/beta/alpha0/beta0 en pourcentage + nombre d\'observations', () => {
+    // Prior Beta(1,1) neutre ; posterior alpha=18, beta=7 → 17+6=23 obs.
+    const s = beliefSummary({ alpha: 18, beta: 7, alpha0: 1, beta0: 1 })
+    expect(s.pct).toBe(72) // 18/25
+    expect(s.nObs).toBe(23)
+    expect(s.texte).toBe('sûrs à ~72 %, sur 23 obs')
+  })
+
+  it('renvoie null sans alpha/beta exploitables (jamais un pourcentage fabriqué)', () => {
+    expect(beliefSummary({})).toBeNull()
+    expect(beliefSummary({ alpha: null, beta: null })).toBeNull()
+  })
+})
+
+describe('TreeScreen (PUB11) — cartes de croyance', () => {
+  it('affiche la croyance, enjeux, pertinence, demi-vie et tags saison d\'un nœud', async () => {
+    mocks.nodes.mockResolvedValue({ data: [
+      { id: 11, enonce_fr: "Le hook « facture d'été » convertit mieux", classe: 'creatif',
+        statut: 'validated', fraicheur_jours: 12,
+        alpha: 18, beta: 7, alpha0: 1, beta0: 1,
+        enjeux_s: 0.6, pertinence_r: 0.8, tags_saison: ['ete', 'ramadan'],
+        demi_vie_semaines: 8 },
+    ] })
+    mocks.queue.mockResolvedValue({ data: [] })
+    renderScreen()
+    const belief = await screen.findByTestId('ae-tree-node-belief-11')
+    expect(belief).toHaveTextContent('sûrs à ~72 %, sur 23 obs')
+    expect(belief).toHaveTextContent('Enjeux 60 %')
+    expect(belief).toHaveTextContent('Pertinence 80 %')
+    expect(belief).toHaveTextContent('Demi-vie 8 sem.')
+    const tags = screen.getAllByTestId('ae-tree-node-tag-saison')
+    expect(tags.map(t => t.textContent)).toEqual(['ete', 'ramadan'])
+  })
+
+  it('n\'affiche aucune croyance/statistique quand l\'API ne les fournit pas', async () => {
+    mocks.nodes.mockResolvedValue({ data: [
+      { id: 12, enonce_fr: 'Nœud sans stats', classe: 'audience', statut: 'assumed' },
+    ] })
+    mocks.queue.mockResolvedValue({ data: [] })
+    renderScreen()
+    const belief = await screen.findByTestId('ae-tree-node-belief-12')
+    expect(belief).toHaveTextContent('')
+    expect(screen.queryByTestId('ae-tree-node-tag-saison')).toBeNull()
   })
 })

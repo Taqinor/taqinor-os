@@ -13,6 +13,11 @@ const mocks = vi.hoisted(() => ({
   preflight: vi.fn(),
   validate: vi.fn(),
   simulate: vi.fn(),
+  engagementPresets: vi.fn(),
+  createEngagement: vi.fn(),
+  deliveryEstimate: vi.fn(),
+  // PUB10 — pleines permissions par défaut ; restreintes dans les tests dédiés.
+  permissions: ['adsengine_manage'],
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -24,7 +29,20 @@ vi.mock('./adsengineApi', () => ({
       validate: mocks.validate,
       simulate: mocks.simulate,
     },
+    // PUB5 — EngagementAudiencePicker mounted in the compose column.
+    audiences: {
+      engagementPresets: mocks.engagementPresets,
+      createEngagement: mocks.createEngagement,
+      deliveryEstimate: mocks.deliveryEstimate,
+    },
   },
+}))
+
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({
+    loading: false,
+    has: (code) => mocks.permissions.includes(code),
+  }),
 }))
 
 import FlightPlanScreen from './FlightPlanScreen'
@@ -49,6 +67,12 @@ beforeEach(() => {
     { key: 'backlog', label: 'Backlog volume + diversité', ok: false, detail: 'Runway sous 7 jours.' },
     { key: 'simulation', label: 'Simulation verte', ok: false, detail: 'Aucune simulation lancée.' },
   ] } })
+  mocks.engagementPresets.mockResolvedValue({ data: { presets: [
+    { key: 'lead_submitted', label: 'Formulaire soumis', source_type: 'lead', retention_days: 90 },
+  ] } })
+  mocks.createEngagement.mockResolvedValue({ data: { preset: 'lead_submitted', audience_id: '901', retention_days: 90 } })
+  mocks.deliveryEstimate.mockResolvedValue({ data: { estimate: { estimate_ready: true, estimate_dau: 8000 } } })
+  mocks.permissions = ['adsengine_manage']
 })
 
 describe('FlightPlanScreen (ENG40)', () => {
@@ -110,5 +134,43 @@ describe('FlightPlanScreen (ENG40)', () => {
     const arm = await screen.findByTestId('ae-fp-arm-1')
     fireEvent.click(arm)
     expect(arm).toBeChecked()
+  })
+
+  describe('PUB5 — Audiences d\'engagement dans le composeur', () => {
+    it('monte le picker et estime l\'audience AVEC le ciblage MA de base', async () => {
+      renderScreen()
+      await screen.findByTestId('ae-fp-audiences')
+      expect(await screen.findByTestId('ae-engagement-option-lead_submitted')).toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('ae-engagement-estimate-btn'))
+      await waitFor(() => expect(mocks.deliveryEstimate).toHaveBeenCalledWith({
+        targeting_spec: { geo_locations: { countries: ['MA'] } },
+      }))
+      expect(await screen.findByTestId('ae-engagement-estimate')).toHaveTextContent('8000')
+    })
+
+    it('créer une audience l\'ajoute comme variable du plan', async () => {
+      renderScreen()
+      await screen.findByTestId('ae-fp-audiences')
+      fireEvent.click(await screen.findByTestId('ae-engagement-option-lead_submitted'))
+      fireEvent.click(screen.getByTestId('ae-engagement-create-btn'))
+      await waitFor(() => expect(mocks.createEngagement).toHaveBeenCalled())
+      // Le plan démarre avec 1 variable vide ; la création en ajoute une 2ᵉ
+      // (index 1) pré-remplie avec l'id de l'audience créée.
+      await waitFor(() =>
+        expect(screen.getByTestId('ae-fp-var-cle-1').value).toBe('audience_engagement'))
+      expect(screen.getByTestId('ae-fp-var-val-1').value).toBe('901')
+    })
+  })
+
+  describe('PUB10 — Valider/Simuler exigent adsengine_manage', () => {
+    it('sans adsengine_manage, Valider et Simuler sont grisés', async () => {
+      mocks.permissions = []
+      renderScreen()
+      fireEvent.change(await screen.findByTestId('ae-fp-template'), { target: { value: 'lancement' } })
+      expect(screen.getByTestId('ae-fp-validate')).toBeDisabled()
+      expect(screen.getByTestId('ae-fp-simulate')).toBeDisabled()
+      fireEvent.click(screen.getByTestId('ae-fp-validate'))
+      expect(mocks.validate).not.toHaveBeenCalled()
+    })
   })
 })

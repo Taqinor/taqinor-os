@@ -37,6 +37,12 @@ def _parse_date(value):
 AD_INSIGHT_FIELDS = (
     'spend', 'impressions', 'reach', 'clicks', 'frequency',
     'inline_link_clicks', 'results', 'actions',
+    # PUB32 — diagnostics de classement Meta (niveau ad uniquement) : proxys
+    # NÉGATIFS lus par le garde-fou dur quality_ranking_guard, jamais une
+    # récompense. NB : « opportunity score » (Ads Manager) n'est PAS exposé par
+    # l'API Insights — c'est une recommandation UI niveau compte (edge
+    # ``recommendations``), non une métrique par ad → non synchronisé ici.
+    'quality_ranking', 'engagement_rate_ranking', 'conversion_rate_ranking',
     'video_p25_watched_actions', 'video_p50_watched_actions',
     'video_p75_watched_actions', 'video_p95_watched_actions',
     'video_p100_watched_actions', 'video_play_actions',
@@ -44,6 +50,16 @@ AD_INSIGHT_FIELDS = (
     'video_30_sec_watched_actions', 'video_thruplay_watched_actions',
     'video_avg_time_watched_actions',
 )
+
+
+def _clean_ranking(value):
+    """PUB32 — Normalise un diagnostic de classement Meta (ordinal). Renvoie la
+    chaîne bornée (ex. ``below_average``/``UNKNOWN``), ou ``None`` si absente —
+    ``None`` ne réécrit jamais un classement déjà connu (protection re-sync)."""
+    if value in (None, ''):
+        return None
+    return str(value).strip()[:16] or None
+
 
 # Fenêtre glissante (jours) pour la synchro ad/adset — les insights fins sont
 # lus sur les 7 derniers jours (le détail campagne reste sur ``maximum``).
@@ -56,6 +72,51 @@ def _account_node(conn):
     if not acct:
         return ''
     return acct if acct.startswith('act_') else f'act_{acct}'
+
+
+def _handle_meta_auth_error(conn, exc):
+    """PUB20 — Un ``MetaAuthError`` (token 190) ne doit JAMAIS être avalé en
+    silence : la synchro marque la connexion (état + bandeau) et émet une
+    ``EngineAlert`` ``token_invalide`` CRITIQUE. Dédup best-effort par connexion
+    (une alerte non acquittée déjà présente → pas de réémission à chaque beat).
+
+    Best-effort : ni le marquage ni l'alerte ne relèvent l'exception — la société
+    est neutralisée, les suivantes continuent. Renvoie l'alerte créée ou ``None``.
+    """
+    from .guardrails import ALERT_TOKEN_INVALID
+    from .models import EngineAlert
+
+    company = conn.company
+    logger.warning(
+        'adsengine ALERTE [token_invalide] société=%s connexion=%s: %s',
+        getattr(company, 'pk', None), conn.pk, exc)
+    try:
+        conn.mark_token_invalid()
+    except Exception:  # noqa: BLE001 — l'état ne doit pas empêcher l'alerte
+        logger.warning(
+            'adsengine: échec marquage token invalide société %s',
+            getattr(company, 'pk', None), exc_info=True)
+    entity_key = f'connection:{conn.pk}'
+    message = (
+        "Connexion Meta rompue : le token d'accès est expiré ou invalide "
+        "(code 190). La synchronisation publicitaire est à l'arrêt jusqu'au "
+        "renouvellement du token dans « Connexion ».")
+    try:
+        already = EngineAlert.objects.filter(
+            company=company, alert_type=ALERT_TOKEN_INVALID,
+            entity_key=entity_key, acknowledged=False).exists()
+        if already:
+            return None
+        return EngineAlert.objects.create(
+            company=company, alert_type=ALERT_TOKEN_INVALID, message=message,
+            severity=EngineAlert.Severity.CRITIQUE, entity_key=entity_key,
+            detail={'code': getattr(exc, 'code', None),
+                    'subcode': getattr(exc, 'subcode', None)})
+    except Exception:  # pragma: no cover - défensif, l'alerte est déjà loggée
+        logger.warning(
+            'adsengine: échec persistance alerte token_invalide société %s',
+            getattr(company, 'pk', None), exc_info=True)
+        return None
 
 
 # ── ADSDEEP32 — Phase d'apprentissage par ad set (learning_stage_info) ────────
@@ -126,7 +187,8 @@ def sync_adset_learning(company, client):
     return updated
 
 
-def _sync_level_insights(company, conn, client, *, level):
+def _sync_level_insights(company, conn, client, *, level,
+                         incremental_available=False):
     """ADSDEEP2 — Synchronise les snapshots niveau ``ad`` ou ``adset``.
 
     Tire les insights de l'edge COMPTE avec ``level=ad|adset``,
@@ -143,13 +205,21 @@ def _sync_level_insights(company, conn, client, *, level):
     node = _account_node(conn)
     if not node:
         return
-    id_field = 'ad_id' if level == 'ad' else 'adset_id'
-    mirror_model = AdMirror if level == 'ad' else AdSetMirror
+    is_ad = level == 'ad'
+    id_field = 'ad_id' if is_ad else 'adset_id'
+    mirror_model = AdMirror if is_ad else AdSetMirror
     today = datetime.date.today()
     since = today - datetime.timedelta(days=AD_INSIGHT_WINDOW_DAYS - 1)
+    # PUB35 — n'ajoute les champs incrémentaux QUE si le compte les expose (probe
+    # validé en amont) et seulement au niveau ad — sinon un champ inconnu ferait
+    # échouer tout le pull (dégradation propre : on ne les demande pas).
+    fields = AD_INSIGHT_FIELDS + (id_field,)
+    if is_ad and incremental_available:
+        from .meta_client import INCREMENTAL_ATTRIBUTION_FIELDS
+        fields = fields + INCREMENTAL_ATTRIBUTION_FIELDS
     rows = client.get_insights(
         node,
-        fields=AD_INSIGHT_FIELDS + (id_field,),
+        fields=fields,
         params={
             'level': level,
             'time_increment': 1,
@@ -166,6 +236,22 @@ def _sync_level_insights(company, conn, client, *, level):
             continue  # ad/adset non miroité (synchro miroirs à faire d'abord)
         day = _parse_date(row.get('date_start')) or today
         norm = normalize_insight_row(row)
+        # PUB32 — classements Meta seulement au niveau ad (l'adset ne les expose
+        # pas ; passer None les laisse intacts sur l'adset).
+        # PUB35 — attribution incrémentale (si disponible) parsée par ad.
+        ranking_kwargs = {}
+        incremental = None
+        if is_ad:
+            ranking_kwargs = {
+                'quality_ranking': _clean_ranking(row.get('quality_ranking')),
+                'engagement_rate_ranking': _clean_ranking(
+                    row.get('engagement_rate_ranking')),
+                'conversion_rate_ranking': _clean_ranking(
+                    row.get('conversion_rate_ranking')),
+            }
+            if incremental_available:
+                from .meta_client import parse_incremental_attribution
+                incremental = parse_incremental_attribution(row) or None
         sync.upsert_insight(
             company, mirror, date=day,
             spend=norm['spend'], results=norm['results'],
@@ -174,7 +260,8 @@ def _sync_level_insights(company, conn, client, *, level):
             clicks=norm['clicks'], link_clicks=norm['link_clicks'],
             conversations=norm['conversations'],
             leads_count=norm['leads_count'],
-            video_metrics=norm['video_metrics'])
+            video_metrics=norm['video_metrics'],
+            incremental_attribution=incremental, **ranking_kwargs)
 
 
 def _sync_company(conn):
@@ -206,11 +293,21 @@ def _sync_company(conn):
     sync.sync_adsets(company, client.get_adsets())
     sync.sync_ads(company, client.get_ads())
 
+    # PUB35 — probe UNE fois : le compte expose-t-il l'attribution incrémentale ?
+    # (déploiement progressif Meta — jamais supposé ; un champ inconnu casserait
+    # tout le pull insights, d'où le probe préalable.) Best-effort.
+    incremental_available = False
+    try:
+        incremental_available = client.incremental_attribution_available()
+    except Exception:  # noqa: BLE001 — le probe ne bloque jamais la synchro
+        incremental_available = False
+
     # ADSDEEP2 — snapshots niveau adset PUIS ad (edge compte, level=…). Placés
     # AVANT la boucle campagne pour que le dernier appel get_insights reste
     # celui de la campagne (fenêtre ``maximum`` — contrat ENG6 préservé).
     _sync_level_insights(company, conn, client, level='adset')
-    _sync_level_insights(company, conn, client, level='ad')
+    _sync_level_insights(company, conn, client, level='ad',
+                         incremental_available=incremental_available)
 
     # ADSDEEP32 — phase d'apprentissage par ad set (learning_stage_info).
     sync_adset_learning(company, client)
@@ -245,6 +342,10 @@ def _sync_company(conn):
                 company, camp, date=day,
                 spend=row.get('spend'), results=row.get('results'),
                 frequency=row.get('frequency'), cpl=row.get('cpl'))
+
+    # PUB20 — la synchro a réussi de bout en bout : le token refonctionne, on
+    # lève tout état « token mort » posé lors d'un cycle précédent (idempotent).
+    conn.clear_token_invalid()
 
 
 # ── ADSDEEP8 — Spécifications de breakdown (combos LÉGAUX uniquement) ─────────
@@ -361,7 +462,7 @@ def sync_breakdowns_weekly():
     live. Best-effort par société. Renvoie le nombre de campagnes traitées."""
     from authentication.selectors import active_companies
 
-    from .meta_client import MetaClient
+    from .meta_client import MetaAuthError, MetaClient
     from .models import AdCampaignMirror, MetaConnection
 
     processed = 0
@@ -375,6 +476,9 @@ def sync_breakdowns_weekly():
             for camp in AdCampaignMirror.objects.filter(company=company):
                 sync_breakdowns_for_campaign(company, client, camp)
                 processed += 1
+        except MetaAuthError as exc:
+            _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
+            continue
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.sync_breakdowns_weekly: échec société %s',
@@ -598,7 +702,7 @@ def pull_meta_leads():
     Meta active. NO-OP propre sans connexion live. Best-effort par société."""
     from authentication.selectors import active_companies
 
-    from .meta_client import MetaClient
+    from .meta_client import MetaAuthError, MetaClient
     from .models import MetaConnection
 
     total = 0
@@ -610,6 +714,9 @@ def pull_meta_leads():
         try:
             client = MetaClient.from_connection(conn)
             total += pull_ad_leads_for_company(company, conn, client)
+        except MetaAuthError as exc:
+            _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
+            continue
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.pull_meta_leads: échec société %s',
@@ -629,6 +736,7 @@ def sync_insights_daily():
     """
     from authentication.selectors import active_companies
 
+    from .meta_client import MetaAuthError
     from .models import MetaConnection
 
     synced = 0
@@ -640,6 +748,10 @@ def sync_insights_daily():
         try:
             _sync_company(conn)
             synced += 1
+        except MetaAuthError as exc:
+            # PUB20 — token mort : alerte + bandeau, jamais un swallow silencieux.
+            _handle_meta_auth_error(conn, exc)
+            continue
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.sync_insights_daily: échec société %s',
@@ -694,6 +806,56 @@ def daily_ads_digest():
     return digest_mod.run_daily_digest_for_all()
 
 
+def _evaluate_ranking_guards_for_company(company):
+    """PUB32 — Câble le garde-fou DUR ``signal_guards.quality_ranking_guard``
+    (quadrant SIG2, BRAKE-ONLY) resté sans appelant production.
+
+    Pour chaque ad dont le dernier snapshot porte un ``quality_ranking``
+    « below_average » soutenu (≥500 impr., fenêtre Meta), émet une ``EngineAlert``
+    de FREIN recommandant la pause à un humain. C'est un frein (∈
+    ``BRAKE_ACTIONS``) : il ne propose JAMAIS d'accélération et ne CONTOURNE PAS
+    le spine propose→approve (aucune pause n'est appliquée automatiquement — la
+    décision reste humaine via la boîte d'approbation). Dédup par ad
+    (``entity_key``). Renvoie le nombre d'alertes émises."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from . import signal_guards
+    from .guardrails import ALERT_GUARDRAIL
+    from .models import AdMirror, EngineAlert, GuardrailConfig, InsightSnapshot
+
+    config = GuardrailConfig.objects.filter(company=company).first()
+    ct = ContentType.objects.get_for_model(AdMirror)
+    emitted = 0
+    for ad in AdMirror.objects.filter(company=company):
+        snap = (InsightSnapshot.objects
+                .filter(company=company, content_type=ct, object_id=ad.pk)
+                .exclude(quality_ranking='')
+                .order_by('-date').first())
+        if snap is None:
+            continue
+        verdict = signal_guards.quality_ranking_guard(
+            {'quality_ranking': snap.quality_ranking,
+             'impressions': snap.impressions}, config)
+        if not verdict.triggered:
+            continue
+        entity_key = f'ad:{ad.pk}'
+        if EngineAlert.objects.filter(
+                company=company, alert_type=ALERT_GUARDRAIL,
+                entity_key=entity_key, acknowledged=False).exists():
+            continue  # dédup : une alerte non acquittée existe déjà pour cette ad
+        logger.warning(
+            'adsengine ALERTE [quality_ranking] société=%s ad=%s: %s',
+            company.pk, ad.meta_id, verdict.reason)
+        EngineAlert.objects.create(
+            company=company, alert_type=ALERT_GUARDRAIL,
+            message=f"Ad « {ad.name or ad.meta_id} » : {verdict.reason}",
+            severity=EngineAlert.Severity.CRITIQUE, entity_key=entity_key,
+            detail={'guard': 'quality_ranking', 'ad_meta_id': ad.meta_id,
+                    **verdict.computed})
+        emitted += 1
+    return emitted
+
+
 @shared_task(name='adsengine.evaluate_guardrails')
 def evaluate_guardrails():
     """ADSENG15 — Boucle CRITIQUE du Gardien (toutes les 6 h).
@@ -703,10 +865,45 @@ def evaluate_guardrails():
     Meta scalent au spend et pénalisent les petits comptes, dd-guardian §A9).
     NO-OP propre tant qu'aucune ``RulePolicy`` critique n'est activée. Renvoie le
     récapitulatif ``{'companies': n, 'rules_evaluated': m}``."""
+    from authentication.selectors import active_companies
+
     from . import rules_engine
 
     result = rules_engine.evaluate_all(
         cadences=rules_engine.CRITICAL_CADENCES)
+    # PUB32 — quadrant de garde-fous DURS niveau ad (brake-only) : classement de
+    # qualité « below_average » soutenu → alerte de frein. Best-effort/isolé.
+    guard_alerts = 0
+    structure_alerts = 0
+    for company in active_companies():
+        try:
+            guard_alerts += _evaluate_ranking_guards_for_company(company)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.evaluate_guardrails: échec garde classement '
+                'société %s', company.pk, exc_info=True)
+        # PUB33/PUB34 — vigie vélocité d'apprentissage (par ad set actif) +
+        # santé structurelle Andromeda (par campagne active). Recommandations
+        # SEULEMENT (EngineAlert), jamais d'action — best-effort/isolé.
+        try:
+            from .anomaly import (evaluate_learning_velocity,
+                                  evaluate_structural_fragmentation)
+            from .models import AdCampaignMirror, AdSetMirror
+            for adset in AdSetMirror.objects.filter(
+                    company=company, status='ACTIVE'):
+                if evaluate_learning_velocity(company, adset):
+                    structure_alerts += 1
+            for campaign in AdCampaignMirror.objects.filter(
+                    company=company, status='ACTIVE'):
+                if evaluate_structural_fragmentation(company, campaign):
+                    structure_alerts += 1
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.evaluate_guardrails: échec vigies structure/'
+                'vélocité société %s', company.pk, exc_info=True)
+    if isinstance(result, dict):
+        result['ranking_guard_alerts'] = guard_alerts
+        result['structure_velocity_alerts'] = structure_alerts
     logger.info('adsengine.evaluate_guardrails: %s', result)
     return result
 
@@ -724,6 +921,39 @@ def evaluate_optimization_rules():
         cadences=rules_engine.OPTIMIZATION_CADENCES)
     logger.info('adsengine.evaluate_optimization_rules: %s', result)
     return result
+
+
+@shared_task(name='adsengine.run_reward_divergence_check')
+def run_reward_divergence_check():
+    """PUB15 — Boucle HEBDO du détecteur de divergence CRM/proxy du bandit
+    (ADSENG9 ``rewards.run_divergence_check``, resté sans appelant production).
+
+    Pour chaque société active, compare le classement PROXY des bras (conversation
+    démarrée / impression) au classement du COÛT CRM (coût-par-lead-qualifié). Une
+    divergence ≥2 positions avec ≥10 leads qualifiés cumulés PROPOSE un REBALANCE
+    (``EngineAction`` propose-only : ``status=proposee``, ``auto=False``) visible
+    dans Approbations — le moteur ne réalloue JAMAIS seul (véto CRM, jamais
+    pilotage : approbation humaine requise). Best-effort par société ; NO-OP propre
+    sans bras/expérience. Renvoie le nombre de propositions REBALANCE créées."""
+    from authentication.selectors import active_companies
+
+    from . import rewards
+
+    proposed = 0
+    for company in active_companies():
+        try:
+            _decision, action = rewards.run_divergence_check(company)
+            if action is not None:
+                proposed += 1
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.run_reward_divergence_check: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.run_reward_divergence_check: %s proposition(s) REBALANCE',
+        proposed)
+    return {'rebalance_proposed': proposed}
 
 
 @shared_task(name='adsengine.evaluate_quarter_hourly')
@@ -854,6 +1084,45 @@ def emit_capi_signatures():
     return {'configured': True, 'received': received, 'signed': signed}
 
 
+@shared_task(name='adsengine.run_daily_reconciliation')
+def run_daily_reconciliation():
+    """PUB19 — Beat QUOTIDIEN : réconcilie Meta vs ERP et PERSISTE un
+    ``ReconciliationSnapshot`` par campagne (ADSENG31).
+
+    La fonction persist+alerte de ``reconciliation.py`` était MORTE : seul le CSV
+    on-demand appelait ``reconcile`` (calcul sans persistance). Ce beat appelle
+    ``reconciliation.run_daily_reconciliation`` qui upserte un snapshot par
+    campagne (idempotent par ``(company, date, campaign)``) et, sur une divergence
+    NOUVELLE au-delà du seuil (plancher absolu + ratio), émet une ``EngineAlert``
+    🟠 « divergence silencieuse » (jamais deux fois pour la même divergence).
+    Best-effort par société ; NO-OP propre sans campagne miroir. Renvoie
+    ``{'companies', 'snapshots'}``."""
+    from authentication.selectors import active_companies
+
+    from . import reconciliation
+    from .models import AdCampaignMirror
+
+    companies = 0
+    snapshots = 0
+    for company in active_companies():
+        if not AdCampaignMirror.objects.filter(company=company).exists():
+            continue  # rien à réconcilier tant qu'aucune campagne n'est miroitée
+        try:
+            contract = reconciliation.run_daily_reconciliation(company)
+            companies += 1
+            snapshots += len(contract.get('campaigns', []))
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.run_daily_reconciliation: échec société %s',
+                company.pk, exc_info=True)
+            continue
+
+    logger.info(
+        'adsengine.run_daily_reconciliation: %s société(s), %s snapshot(s)',
+        companies, snapshots)
+    return {'companies': companies, 'snapshots': snapshots}
+
+
 @shared_task(name='adsengine.decay_assumptions_weekly')
 def decay_assumptions_weekly():
     """ASG2 — Beat HEBDO : oubli des posteriors de l'arbre d'hypothèses.
@@ -902,6 +1171,68 @@ def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
         'adsengine.generate_creative_variants: %s variante(s) pour asset %s',
         len(variants), base_asset_id)
     return {'variants_created': len(variants)}
+
+
+def _run_grounded_generation(company, seed_brief, *, components=None,
+                             max_variants=3, generator=None):
+    """PUB16 — Orchestration du pipeline de génération IA ANCRÉE (AGEN2).
+
+    Produit des variantes dont CHAQUE chiffre cite une ``FactEntry`` publiée
+    (``generation.generate_grounded_variants``), emballe les assets ancrés (nés
+    PENDING, ``policy_stamp={}``) dans un ``CreativeGenerationBatch`` EN_ATTENTE
+    et PERSISTE l'audit (``fact_table_version`` + ``claim_verdicts`` par variante,
+    via ``generation_audit.record_audit``). L'IA produit des ASSETS, jamais des
+    décisions : le lot attend une approbation HUMAINE par lot avant d'entrer au
+    backlog (``recombine.approve_lot``). NO-OP propre (``enabled=False``, aucun
+    lot) sans clé/générateur. Renvoie un dict de rapport."""
+    from . import generation, generation_audit
+    from .models import CreativeGenerationBatch
+
+    result = generation.generate_grounded_variants(
+        company, seed_brief, components=components, max_variants=max_variants,
+        generator=generator, create_assets=True, source_lane='gen')
+    if not result.get('enabled'):
+        return {'enabled': False, 'batch_id': None, 'assets': 0,
+                'reason': result.get('reason', 'génération désactivée')}
+
+    assets = result.get('assets') or []
+    batch = CreativeGenerationBatch.objects.create(
+        company=company,
+        status=CreativeGenerationBatch.Statut.EN_ATTENTE,
+        visual_ids=[a.pk for a in assets])
+    generation_audit.record_audit(
+        batch,
+        fact_table_version=result.get('table_version'),
+        claim_verdicts={
+            'seed_brief': (seed_brief or '').strip()[:200],
+            'variants': result.get('variants', []),
+            'rejected': result.get('rejected', []),
+        })
+    logger.info(
+        'adsengine._run_grounded_generation: lot %s, %s asset(s) ancré(s), '
+        '%s rejeté(s)', batch.pk, len(assets), len(result.get('rejected', [])))
+    return {'enabled': True, 'batch_id': batch.pk, 'assets': len(assets),
+            'rejected': len(result.get('rejected', [])),
+            'table_version': result.get('table_version')}
+
+
+@shared_task(name='adsengine.generate_grounded_variants')
+def generate_grounded_variants(company_id, seed_brief, components=None,
+                               max_variants=3):
+    """PUB16 — Tâche async : câble le pipeline de génération IA ANCRÉE (AGEN2 :
+    ``generation→claim_check→groundedness→generation_audit``) resté sans point
+    d'entrée production. Key-gated : sans ``ADSENGINE_GEN_API_KEY`` (et sans
+    générateur), NO-OP propre (``enabled=False``, aucun lot, zéro crash) ; sinon
+    crée un ``CreativeGenerationBatch`` EN_ATTENTE de variantes ancrées FactTable
+    + audit ``claim_verdicts`` persisté. NO-OP propre si société introuvable."""
+    from authentication.models import Company
+
+    company = Company.objects.filter(pk=company_id).first()
+    if company is None:
+        return {'enabled': False, 'batch_id': None, 'assets': 0,
+                'reason': 'société introuvable'}
+    return _run_grounded_generation(
+        company, seed_brief, components=components, max_variants=max_variants)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

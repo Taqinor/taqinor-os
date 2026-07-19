@@ -9,6 +9,11 @@
 # Rebased 2026-07-12 (wave-6 fold): 104 file:line entries remapped for shifted/relocated pre-existing FKs (compta insertion of XPLT20 models pushed lines down; crm gained ODX13-relocated partenaire models; kb +12 / notifications +6). Same FK set, no new CASCADE.
 # Rebased 2026-07-16 (quote-journey v2): 31 crm/models.py entries remapped (+18)
 # after the Lead web_questionnaire/web_estimate insertion. Same FK set, no new CASCADE.
+# Rebased 2026-07-19 (PUB28/PUB37): 2 crm/models.py entries remapped (+15) after the
+# MotifPerte.est_junk insertion (CommissionPartenaire.partenaire 1964->1979,
+# TerritoireCommercial.company 2023->2038). Same FK set, no new CASCADE.
+backend/django_core/apps/crm/models.py:1979
+backend/django_core/apps/crm/models.py:2038
 # Rebased 2026-07-17 (NTDMO CI fix): 2 pre-existing SET_NULL_ON_TENANT_FIELD
 # entries remapped (authentication/models.py CustomUser.company +ventes/models.py
 # ParametrageRelanceClient.responsable — same FKs as the 2026-07-12 YDATA3 review,
@@ -2308,3 +2313,33 @@ backend/django_core/apps/stock/models.py:986
 backend/django_core/apps/stock/models.py:989
 backend/django_core/apps/stock/models.py:991
 backend/django_core/apps/territoires/models.py:36
+# Rebased 2026-07-19 (PUB batch 1): pre-existing FK entries remapped after crm/adsengine
+# model-field insertions (MotifPerte.est_junk, token_health, etc.). Same FK set.
+backend/django_core/apps/adsengine/models.py:142
+backend/django_core/apps/adsengine/models.py:320
+backend/django_core/apps/adsengine/models.py:389
+backend/django_core/apps/adsengine/models.py:2273
+backend/django_core/apps/crm/models.py:998
+backend/django_core/apps/crm/models.py:1029
+backend/django_core/apps/crm/models.py:1088
+backend/django_core/apps/crm/models.py:1165
+backend/django_core/apps/crm/models.py:1173
+backend/django_core/apps/crm/models.py:1288
+backend/django_core/apps/crm/models.py:1295
+backend/django_core/apps/crm/models.py:1364
+backend/django_core/apps/crm/models.py:1371
+backend/django_core/apps/crm/models.py:1447
+backend/django_core/apps/crm/models.py:1454
+backend/django_core/apps/crm/models.py:1535
+backend/django_core/apps/crm/models.py:1541
+backend/django_core/apps/crm/models.py:1633
+backend/django_core/apps/crm/models.py:1669
+backend/django_core/apps/crm/models.py:1693
+backend/django_core/apps/crm/models.py:1729
+backend/django_core/apps/crm/models.py:1733
+backend/django_core/apps/crm/models.py:1778
+backend/django_core/apps/crm/models.py:1781
+backend/django_core/apps/crm/models.py:1837
+backend/django_core/apps/crm/models.py:1918
+backend/django_core/apps/crm/models.py:1924
+backend/django_core/apps/crm/models.py:1973

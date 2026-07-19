@@ -4,6 +4,10 @@ Prouve : GET verify renvoie hub.challenge ; sans jeton tout no-ope (404) ;
 un POST signé avec un objet ``referral`` stocke un ``CtwaReferral`` (ad_id /
 ctwa_clid extraits) et rattache le lead CRM par téléphone ; idempotent par
 wa_message_id ; signature invalide → 403.
+
+PUB27 — un referral SANS lead préalable auto-crée un Lead minimal (jamais un
+referral orphelin qui perd son attribution par ad) ; dédupliqué par téléphone
+(jamais de doublon) ; un referral AVEC lead existant reste inchangé.
 """
 import hashlib
 import hmac
@@ -131,3 +135,61 @@ class WebhookTests(TestCase):
         resp = self._post_signed(payload)
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(CtwaReferral.objects.count(), 0)
+
+    # ── PUB27 — auto-création d'un Lead minimal quand le referral est orphelin ──
+
+    def test_referral_without_lead_auto_creates_minimal_lead(self):
+        from apps.crm.models import Lead
+
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+        resp = self._post_signed(_referral_payload(
+            wa_message_id='wamid.pub27a', phone='212699887766',
+            source_id='ad-pub27'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+        ref = CtwaReferral.objects.get(
+            company=self.company, wa_message_id='wamid.pub27a')
+        self.assertIsNotNone(ref.crm_lead_id)
+        lead = Lead.objects.get(pk=ref.crm_lead_id, company=self.company)
+        self.assertEqual(lead.canal, Lead.Canal.WHATSAPP_CTWA)
+        self.assertEqual(lead.meta_ad_id, 'ad-pub27')
+        self.assertTrue(lead.telephone)
+
+    def test_referral_without_lead_never_duplicates_on_replay(self):
+        """Deux messages CTWA distincts du MÊME numéro (dédup téléphone,
+        jamais un doublon) n'auto-créent qu'UN seul lead."""
+        from apps.crm.models import Lead
+
+        self._post_signed(_referral_payload(
+            wa_message_id='wamid.pub27b1', phone='212655443322'))
+        self._post_signed(_referral_payload(
+            wa_message_id='wamid.pub27b2', phone='212655443322'))
+        self.assertEqual(
+            Lead.objects.filter(
+                company=self.company, canal=Lead.Canal.WHATSAPP_CTWA).count(),
+            1)
+        ref1 = CtwaReferral.objects.get(
+            company=self.company, wa_message_id='wamid.pub27b1')
+        ref2 = CtwaReferral.objects.get(
+            company=self.company, wa_message_id='wamid.pub27b2')
+        self.assertEqual(ref1.crm_lead_id, ref2.crm_lead_id)
+
+    def test_referral_with_existing_lead_behaviour_unchanged(self):
+        """PUB27 ne touche jamais le chemin « lead déjà trouvé » (rien de
+        nouveau écrit sur le lead existant)."""
+        from apps.crm.models import Lead
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Déjà Connu',
+            telephone='0612340000', canal=Lead.Canal.TELEPHONE)
+        resp = self._post_signed(_referral_payload(
+            wa_message_id='wamid.pub27c', phone='212612340000'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        ref = CtwaReferral.objects.get(
+            company=self.company, wa_message_id='wamid.pub27c')
+        self.assertEqual(ref.crm_lead_id, lead.id)
+        lead.refresh_from_db()
+        # Canal du lead existant préservé (jamais réécrit par le referral).
+        self.assertEqual(lead.canal, Lead.Canal.TELEPHONE)
+        self.assertEqual(
+            Lead.objects.filter(company=self.company).count(), 1)

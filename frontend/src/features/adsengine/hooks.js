@@ -36,6 +36,19 @@ export const AE_HOOKS = {
     batchTogglePrefix: 'ae-batch-toggle-', // + id
     batchBar: 'ae-batch-bar',
     batchApprove: 'ae-batch-approve',
+    // PUB51 — raccourcis clavier (J/K naviguer, A approuver, R rejeter ;
+    // jamais déclenchés pendant qu'un champ/select est focalisé).
+    focusedClass: 'ae-action-card-focused',
+    shortcutsHint: 'ae-shortcuts-hint',
+  },
+
+  // PUB51 — palette de commandes console (Ctrl-K) : écrans + campagnes + ads.
+  commandPalette: {
+    overlay: 'ae-command-palette-overlay',
+    root: 'ae-command-palette',
+    input: 'ae-command-palette-input',
+    item: 'ae-command-palette-item',
+    empty: 'ae-command-palette-empty',
   },
 
   // ── ENG46 — Écrans P7 (contrat DOM des NOUVEAUX écrans, axe sans violation
@@ -117,6 +130,12 @@ export const AE_HOOKS = {
     anomaly: 'ae-anomaly',
     anomalySeverity: 'ae-anomaly-severity',
     alertHistory: 'ae-alert-history',
+    // PUB23 — armer/désarmer une règle depuis la console.
+    statePrefix: 'ae-rule-state-', // + key — badge « Armée · cadence » | « Désarmée »
+    armPrefix: 'ae-rule-arm-', // + key
+    disarmPrefix: 'ae-rule-disarm-', // + key
+    armConfirmPrefix: 'ae-rule-arm-confirm-', // + key — panneau de confirmation
+    armConfirmBtnPrefix: 'ae-rule-arm-confirm-btn-', // + key
   },
 
   // Visionneuse de simulation (ENG44) — rejeu d'un run ADSENG36.
@@ -132,6 +151,27 @@ export const AE_HOOKS = {
     decision: 'ae-sim-decision',
   },
 
+  // PUB54 — aide contextuelle FR statique (« ? »), zéro dépendance. Réutilisée
+  // par n'importe quel écran adsengine (voir MetricHelp.jsx METRIC_HELP).
+  metricHelp: {
+    togglePrefix: 'ae-metric-help-toggle-', // + clé de métrique
+    popoverPrefix: 'ae-metric-help-popover-', // + clé de métrique
+  },
+
+  // PUB48 — cloche de notifications persistante de la console (historique
+  // complet, snooze par alerte, lien vers l'entité). Montée sur Dashboard/
+  // Rules/Reports/Approvals.
+  alertCenter: {
+    root: 'ae-alert-center',
+    toggle: 'ae-alert-center-toggle',
+    badge: 'ae-alert-center-badge',
+    panel: 'ae-alert-center-panel',
+    item: 'ae-alert-center-item',
+    snoozePrefix: 'ae-alert-center-snooze-', // + id
+    snoozeConfirmPrefix: 'ae-alert-center-snooze-confirm-', // + id
+    linkPrefix: 'ae-alert-center-link-', // + id
+  },
+
   // Reporting (ENG45) — drill-downs + export CSV.
   reports: {
     root: 'ae-reports',
@@ -140,6 +180,68 @@ export const AE_HOOKS = {
     funnelStep: 'ae-reports-funnel-step',
     cohortRow: 'ae-reports-cohort-row',
     export: 'ae-reports-export', // lien de téléchargement CSV
+  },
+
+  // PUB40 — Sélecteur de période + comparaison (`DateRangeBar`, partagé par
+  // Dashboard/Cockpit/Campagnes/Journal).
+  dateRange: {
+    root: 'ae-daterange',
+    presetPrefix: 'ae-daterange-preset-', // + hier|7j|30j|personnalise
+    debut: 'ae-daterange-debut', // saisie personnalisée
+    fin: 'ae-daterange-fin',
+    compare: 'ae-daterange-compare', // case « comparer à la période précédente »
+    summary: 'ae-daterange-summary',
+  },
+
+  // PUB41 — Fraîcheur + panne visibles (`SyncStatusBanner`, montée sur
+  // Dashboard/Cockpit/Campagnes/Journal/Approbations/Commentaires) + état-
+  // erreur distinct de l'état-vide sur chaque écran qui l'affiche.
+  syncStatus: {
+    banner: 'ae-sync-banner', // bandeau global « Meta ne répond plus… »
+    // Suffixe par écran : `-cockpit`/`-camp`/`-log`/`-approvals`/`-comments`.
+    loadErrorPrefix: 'ae-', // + '<écran>-load-error' (ex. ae-cockpit-load-error)
+    refreshApprovals: 'ae-approvals-refresh', // reprise manuelle du sondage
+    refreshComments: 'ae-comments-refresh',
+  },
+
+  // PUB43 — Vues enregistrées un-clic du Cockpit (Top Ads/En fatigue/En
+  // baisse/Meilleures vidéos), filtre+tri figés + mémoire localStorage.
+  cockpitViews: {
+    group: 'ae-cockpit-views',
+    tabPrefix: 'ae-cockpit-view-', // + toutes|top|fatigue|baisse|videos
+  },
+
+  // PUB42 — File « Aujourd'hui » unifiée (écran d'accueil `/publicite`).
+  today: {
+    root: 'ae-today',
+    list: 'ae-today-list',
+    item: 'ae-today-item', // <Link>, cliquable vers l'écran de l'item
+    itemBadge: 'ae-today-item-badge', // catégorie (garde_fou/alerte/…)
+    empty: 'ae-today-empty',
+    loadError: 'ae-today-load-error',
+    navBadge: 'ae-nav-today-badge', // pastille de comptage sur l'icône de nav
+  },
+
+  // PUB44 — Fiche « histoire complète » d'une ad (`/publicite/ad/:id`) +
+  // liens croisés depuis Cockpit/Campagnes/Journal/Commentaires.
+  adDetail: {
+    root: 'ae-ad-detail',
+    statut: 'ae-ad-detail-statut',
+    notFound: 'ae-ad-detail-not-found',
+    loadError: 'ae-ad-detail-load-error',
+    noCreative: 'ae-ad-detail-no-creative',
+    metrics: 'ae-ad-detail-metrics',
+    fatigue: 'ae-ad-detail-fatigue',
+    actionRow: 'ae-ad-detail-action-row',
+    commentRow: 'ae-ad-detail-comment-row',
+    ruleRow: 'ae-ad-detail-rule-row',
+    experimentRow: 'ae-ad-detail-experiment-row',
+    breakdownRow: 'ae-ad-detail-breakdown-row',
+    // Liens croisés (chaque écran source porte son propre hook) :
+    crossLinkCockpit: 'ae-cockpit-full-story',
+    crossLinkCampaigns: 'ae-camp-ad-full-story',
+    crossLinkJournal: 'ae-log-ad-link',
+    crossLinkCommentsPrefix: 'ae-comment-ad-link-', // + id de commentaire
   },
 }
 

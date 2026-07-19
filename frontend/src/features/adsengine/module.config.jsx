@@ -3,12 +3,21 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
+import { Link } from 'react-router-dom'
 import {
   LayoutDashboard, PlugZap, Megaphone, ClipboardCheck,
   FileText, Images, History, FlaskConical, Route, Layers,
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
-  Gauge, GitBranch,
+  Gauge, GitBranch, Table2, Scale,
 } from 'lucide-react'
+// PUB47 — enveloppe d'impression (bouton « Imprimer / PDF » + print.css
+// globale) posée UNIQUEMENT au point d'enregistrement de route, sans toucher
+// au corps d'AdsCockpitScreen (lane distincte).
+import PrintPageWrapper from './PrintPageWrapper'
+// PUB42 — icône de nav auto-chargée (porte SON PROPRE badge de comptage,
+// jamais un composant lazy — elle doit être visible dès le premier rendu de
+// la Sidebar, comme les autres icônes de ce fichier).
+import TodayNavIcon from './TodayNavIcon'
 
 /* ============================================================================
    ENG21 — configuration du module « Publicité » (moteur Meta-ads autonome,
@@ -24,6 +33,10 @@ import {
    appliquée côté backend).
    ========================================================================== */
 
+// PUB42 — file « Aujourd'hui » unifiée (écran d'accueil /publicite).
+const TodayScreen = lazy(() => import('./TodayScreen'))
+// PUB44 — fiche « histoire complète » d'une ad (deep-link, pas de nav item).
+const AdDetailScreen = lazy(() => import('./AdDetailScreen'))
 const DashboardScreen = lazy(() => import('./DashboardScreen'))
 const ConnectionScreen = lazy(() => import('./ConnectionScreen'))
 const CampaignsScreen = lazy(() => import('./CampaignsScreen'))
@@ -42,6 +55,24 @@ const InstagramScreen = lazy(() => import('./InstagramScreen'))
 const AdsCockpitScreen = lazy(() => import('./AdsCockpitScreen'))
 // ASG6 — L'Arbre (l'Assumption Engine : plan vivant, dd-assumption-engine.md §3).
 const TreeScreen = lazy(() => import('./TreeScreen'))
+// PUB6/AGEN1 — Table des faits versionnée (génération créative ancrée).
+const FactTableScreen = lazy(() => import('./FactTableScreen'))
+// PUB52 — comparateur côte-à-côte (ads/campagnes), nouvel écran additif.
+const ComparatorScreen = lazy(() => import('./ComparatorScreen'))
+
+// PUB47 — cockpit imprimable A4 (bouton + print.css) sans éditer l'écran.
+// PUB52 — + lien « Comparer » vers le Comparateur, même patron non-intrusif.
+function AdsCockpitScreenPrintable() {
+  return (
+    <PrintPageWrapper extraActions={
+      <Link to="/publicite/comparateur" className="btn btn-light" data-testid="ae-cockpit-compare-link">
+        <Scale size={15} aria-hidden="true" /> Comparer
+      </Link>
+    }>
+      <AdsCockpitScreen />
+    </PrintPageWrapper>
+  )
+}
 
 const ROLES = ['responsable', 'admin']
 
@@ -52,6 +83,10 @@ const config = {
     label: 'PUBLICITÉ',
     accent: 'brass', // VX8 — croissance/commercial = accent brass (dérivé).
     items: [
+      // PUB42 — point d'entrée du matin, en tête de nav (badge de comptage
+      // porté par TodayNavIcon, auto-chargé — jamais un « 0 » avant l'arrivée
+      // du compte réel).
+      { to: '/publicite', label: "Aujourd'hui", icon: <TodayNavIcon />, roles: ROLES },
       { to: '/publicite/tableau-de-bord', label: 'Tableau de bord', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/cockpit', label: 'Cockpit par ad', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/approbations', label: 'Approbations', icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -69,6 +104,8 @@ const config = {
       { to: '/publicite/journal', label: "Journal d'actions", icon: <History size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/connexion', label: 'Connexion & garde-fous', icon: <PlugZap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/arbre', label: "L'Arbre", icon: <GitBranch size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/table-des-faits', label: 'Table des faits', icon: <Table2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/comparateur', label: 'Comparateur', icon: <Scale size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -90,11 +127,24 @@ const config = {
     ['/publicite/journal', "Publicité — Journal d'actions"],
     ['/publicite/connexion', 'Publicité — Connexion & garde-fous'],
     ['/publicite/arbre', "Publicité — L'Arbre"],
+    ['/publicite/table-des-faits', 'Publicité — Table des faits'],
+    ['/publicite/comparateur', 'Publicité — Comparateur'],
+    // PUB44 — fiche ad (préfixe fixe avant l'id dynamique).
+    ['/publicite/ad/', 'Publicité — Fiche ad'],
+    // PUB42 — le PLUS général (préfixe de tous les autres) : DERNIER, sinon
+    // il matcherait `/publicite/tableau-de-bord` etc. avant leur propre entrée
+    // (routes.meta.js fait un `find` sur `startsWith`, premier match gagne).
+    ['/publicite', "Publicité — Aujourd'hui"],
   ],
   sectionLabels: { publicite: 'Publicité' },
   routes: [
+    // PUB42 — écran d'accueil (chemin exact, aucune ambiguïté de préfixe côté
+    // react-router : chaque `path` reste un match littéral indépendant).
+    { path: '/publicite', component: TodayScreen, roles: ROLES },
+    // PUB44 — fiche « histoire complète » d'une ad (deep-link, sans item nav).
+    { path: '/publicite/ad/:id', component: AdDetailScreen, roles: ROLES },
     { path: '/publicite/tableau-de-bord', component: DashboardScreen, roles: ROLES },
-    { path: '/publicite/cockpit', component: AdsCockpitScreen, roles: ROLES },
+    { path: '/publicite/cockpit', component: AdsCockpitScreenPrintable, roles: ROLES },
     { path: '/publicite/approbations', component: ApprovalsScreen, roles: ROLES },
     { path: '/publicite/campagnes', component: CampaignsScreen, roles: ROLES },
     { path: '/publicite/creatifs', component: CreativeLibraryScreen, roles: ROLES },
@@ -110,6 +160,8 @@ const config = {
     { path: '/publicite/journal', component: ActionsLogScreen, roles: ROLES },
     { path: '/publicite/connexion', component: ConnectionScreen, roles: ROLES },
     { path: '/publicite/arbre', component: TreeScreen, roles: ROLES },
+    { path: '/publicite/table-des-faits', component: FactTableScreen, roles: ROLES },
+    { path: '/publicite/comparateur', component: ComparatorScreen, roles: ROLES },
   ],
 }
 

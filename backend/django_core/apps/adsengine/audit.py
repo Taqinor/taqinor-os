@@ -185,7 +185,12 @@ def _audit_fatigue(company, *, now=None):
 def _audit_tracking(company):
     """Pixel/CAPI câblés (même logique de PRÉSENCE que
     ``MetaConnectionHealthView`` — jamais un secret exposé) + liens créatifs
-    sans paramètre UTM détecté."""
+    sans paramètre UTM détecté.
+
+    PUB29 — étendu aux boucles de suivi jusque-là invisibles de l'audit : CAPI
+    par étape du pipeline CRM (ADSENG32), connecteur Odoo lecture seule (le
+    coût-par-signature RÉEL), webhook WhatsApp Cloud (attribution CTWA). Même
+    logique de PRÉSENCE que les autres — jamais un secret exposé."""
     from .models import AdCreativeMirror, MetaConnection
 
     conn = MetaConnection.objects.filter(company=company).first()
@@ -201,6 +206,29 @@ def _audit_tracking(company):
         items.append(
             "CAPI (Conversions API) non câblée — clé serveur absente, "
             "suivi moins résilient au blocage des cookies tiers.")
+    # PUB29 — CAPI CRM-stage (Conversion Leads) : réutilise le même jeton/pixel
+    # que la CAPI site, mais exige son PROPRE opt-in (META_CRM_STAGE_CAPI_ENABLED).
+    if not (capi_ok and os.environ.get('META_CRM_STAGE_CAPI_ENABLED')):
+        items.append(
+            "CAPI CRM (étapes du pipeline, Conversion Leads) non câblée — "
+            "Meta n'apprend pas des transitions CONTACTED/QUOTE_SENT/SIGNED "
+            "du CRM.")
+    # PUB29 — connecteur Odoo lecture seule (coût-par-signature RÉEL Odoo).
+    odoo_ok = bool(
+        os.environ.get('ODOO_URL') and os.environ.get('ODOO_DB')
+        and os.environ.get('ODOO_USERNAME') and os.environ.get('ODOO_API_KEY'))
+    if not odoo_ok:
+        items.append(
+            "Connecteur Odoo non câblé — le coût-par-signature RÉEL (deals "
+            "Odoo) reste indisponible, seul le proxy CRM ERP est visible.")
+    # PUB29 — webhook WhatsApp Cloud (attribution des conversations CTWA).
+    whatsapp_ok = bool(
+        os.environ.get('WHATSAPP_CLOUD_VERIFY_TOKEN')
+        and os.environ.get('WHATSAPP_CLOUD_APP_SECRET'))
+    if not whatsapp_ok:
+        items.append(
+            "Webhook WhatsApp Cloud non câblé — l'attribution des "
+            "conversations clic-to-WhatsApp (CTWA) reste perdue.")
     links = list(
         AdCreativeMirror.objects.filter(company=company)
         .exclude(link_url='').values_list('link_url', flat=True))
@@ -216,6 +244,144 @@ def _audit_tracking(company):
                    else f"{len(items)} point(s) de suivi à corriger."),
         'items': items, 'lien': '/publicite/connexion',
     }
+
+
+# ── PUB29 — Boucles en attente d'activation (ConnectionScreen) ───────────────
+# Chaque boucle est du code DÉJÀ construit et testé (webhook, CAPI, connecteur
+# Odoo…) qui ne tourne pas faute d'une clé — jamais le fondateur ne pouvait
+# voir ÇA d'un coup d'œil avant PUB29. ``requires`` = clés d'environnement dont
+# la PRÉSENCE (jamais la valeur) détermine l'état ON/OFF de la boucle ;
+# ``remediation_fr`` = l'étape manuelle EXACTE (dashboard, menu, bouton) pour
+# provisionner ces clés. Purement informatif — aucune écriture, aucun secret.
+PENDING_LOOPS = (
+    {
+        'id': 'lead_ads_webhook',
+        'nom': 'Capture Lead Ads (webhook entrant)',
+        'requires': ('META_LEAD_ADS_APP_SECRET', 'META_LEAD_ADS_VERIFY_TOKEN'),
+        'remediation_fr': (
+            "Meta Business Suite → Gestionnaire d'événements → Formulaires "
+            'instantanés → configurer le webhook (URL + jeton de '
+            'vérification). Renseigner META_LEAD_ADS_APP_SECRET (App Secret '
+            "de l'app Meta) et META_LEAD_ADS_VERIFY_TOKEN (jeton de votre "
+            'choix) dans les variables d\'environnement du serveur.'),
+    },
+    {
+        'id': 'capi_site',
+        'nom': 'Conversions API — site web (optimisation ROAS)',
+        'requires': ('META_CAPI_ACCESS_TOKEN', 'META_CAPI_PIXEL_ID'),
+        'remediation_fr': (
+            'Events Manager Meta → Paramètres de la source de données → '
+            "Conversions API → générer un jeton d'accès système ; copier "
+            "l'ID du pixel dans Paramètres de la source. Renseigner "
+            'META_CAPI_ACCESS_TOKEN et META_CAPI_PIXEL_ID.'),
+    },
+    {
+        'id': 'capi_crm_stage',
+        'nom': 'CAPI par étape du pipeline CRM (Conversion Leads)',
+        'requires': (
+            'META_CRM_STAGE_CAPI_ENABLED', 'META_CAPI_ACCESS_TOKEN',
+            'META_CAPI_PIXEL_ID'),
+        'remediation_fr': (
+            "Events Manager Meta → intégration « Conversion Leads » → "
+            "activer l'opt-in dédié (étape séparée du pixel site). Poser "
+            'META_CRM_STAGE_CAPI_ENABLED=1 (réutilise le même jeton/pixel '
+            'que la CAPI site — pas de nouvelle clé Meta).'),
+    },
+    {
+        'id': 'capi_odoo_signed',
+        'nom': 'CAPI signatures Odoo (CRM Dataset)',
+        'requires': ('CAPI_CRM_DATASET_ID', 'CAPI_CRM_ACCESS_TOKEN'),
+        'remediation_fr': (
+            'Events Manager Meta → créer/ouvrir un CRM Dataset dédié → '
+            "copier son ID et générer un jeton d'accès système. Renseigner "
+            'CAPI_CRM_DATASET_ID et CAPI_CRM_ACCESS_TOKEN (à défaut, '
+            'META_CAPI_ACCESS_TOKEN est réutilisé automatiquement).'),
+    },
+    {
+        'id': 'odoo_connector',
+        'nom': 'Connecteur Odoo lecture seule (coût-par-signature réel)',
+        'requires': ('ODOO_URL', 'ODOO_DB', 'ODOO_USERNAME', 'ODOO_API_KEY'),
+        'remediation_fr': (
+            'Odoo Online → Paramètres → Utilisateurs & Sociétés → '
+            'Utilisateurs → votre compte → onglet « Sécurité du compte » → '
+            'Clés API → Nouvelle clé API. Renseigner ODOO_URL (ex. '
+            'https://votre-instance.odoo.com), ODOO_DB, ODOO_USERNAME (votre '
+            'login) et ODOO_API_KEY (la clé générée, utilisée comme mot de '
+            'passe).'),
+    },
+    {
+        'id': 'whatsapp_cloud_ctwa',
+        'nom': 'Attribution WhatsApp CTWA (clic-to-WhatsApp)',
+        'requires': (
+            'WHATSAPP_CLOUD_VERIFY_TOKEN', 'WHATSAPP_CLOUD_APP_SECRET',
+            'WHATSAPP_CLOUD_COMPANY_ID'),
+        'remediation_fr': (
+            'Meta for Developers → votre app WhatsApp Business → '
+            'Configuration → Webhooks → poser l\'URL du webhook + un jeton '
+            'de vérification de votre choix (WHATSAPP_CLOUD_VERIFY_TOKEN) ; '
+            "App Secret dans Paramètres de base de l'app "
+            '(WHATSAPP_CLOUD_APP_SECRET). WHATSAPP_CLOUD_COMPANY_ID = l\'ID '
+            "de la société ERP cible (sans elle, la 1ʳᵉ société créée est "
+            'utilisée par défaut).'),
+    },
+    {
+        'id': 'fabrique_zapcap',
+        'nom': 'Fabrique créative — sous-titres auto (ZapCap)',
+        'requires': ('ZAPCAP_API_KEY',),
+        'remediation_fr': (
+            'Compte ZapCap → Paramètres → Clés API → générer une clé. '
+            'Renseigner ZAPCAP_API_KEY.'),
+    },
+    {
+        'id': 'fabrique_fal',
+        'nom': 'Fabrique créative — génération image/vidéo IA (FAL)',
+        'requires': ('FAL_API_KEY',),
+        'remediation_fr': (
+            'fal.ai → Dashboard → Keys → générer une clé. Renseigner '
+            'FAL_API_KEY.'),
+    },
+    {
+        'id': 'fabrique_templated',
+        'nom': 'Fabrique créative — gabarits visuels (Templated)',
+        'requires': ('TEMPLATED_API_KEY',),
+        'remediation_fr': (
+            'Templated.io → Paramètres → API → générer une clé. Renseigner '
+            'TEMPLATED_API_KEY.'),
+    },
+    {
+        'id': 'fabrique_elevenlabs',
+        'nom': 'Fabrique créative — voix off IA (ElevenLabs)',
+        'requires': ('ELEVENLABS_API_KEY',),
+        'remediation_fr': (
+            'ElevenLabs → Profil → Clé API. Renseigner ELEVENLABS_API_KEY.'),
+    },
+    {
+        'id': 'fabrique_json2video',
+        'nom': 'Fabrique créative — assemblage vidéo (JSON2Video)',
+        'requires': ('JSON2VIDEO_API_KEY',),
+        'remediation_fr': (
+            'JSON2Video → Dashboard → API Key. Renseigner '
+            'JSON2VIDEO_API_KEY.'),
+    },
+)
+
+
+def pending_activation_loops():
+    """PUB29 — Une entrée par boucle key-gated déjà codée/testée, avec son état
+    ON/OFF (présence de TOUTES ses clés — jamais leur valeur) et la remédiation
+    FR exacte. 100 % lecture d'environnement, aucun secret, aucune donnée
+    société (les clés sont globales au déploiement, pas par société)."""
+    loops = []
+    for loop in PENDING_LOOPS:
+        actif = all(os.environ.get(key) for key in loop['requires'])
+        loops.append({
+            'id': loop['id'],
+            'nom': loop['nom'],
+            'actif': actif,
+            'cles_requises': list(loop['requires']),
+            'remediation_fr': loop['remediation_fr'],
+        })
+    return loops
 
 
 def _audit_data_windows():
@@ -268,3 +434,61 @@ def run_account_audit(company, *, now=None):
 
     now_dt = now if isinstance(now, datetime.date) else datetime.date.today()
     return {'genere_le': now_dt.isoformat(), 'sections': sections}
+
+
+# =============================================================================
+# PUB57 — Tuile Dashboard « score d'audit » auto-chargée + tendance hebdo.
+# L'audit (ci-dessus) est délibérément SANS score agrégé opaque (chaque item
+# porte un chiffre réel + un lien, jamais un chiffre inventé) — cette tuile ne
+# CONTREDIT PAS cette doctrine : le score qu'elle affiche est la part
+# TRANSPARENTE de sections RÉELLEMENT 'ok' parmi celles évaluables (jamais
+# 'inconnu'), donc toujours traçable jusqu'aux 5 sections ci-dessus.
+# =============================================================================
+AUDIT_SCORE_CACHE_PREFIX = 'adsengine:audit_score'
+# 40 j : assez de marge pour toujours retrouver le point « il y a 7 jours »
+# même si un jour de calcul a été manqué (weekend, panne...).
+AUDIT_SCORE_CACHE_TTL = 40 * 24 * 3600
+AUDIT_SCORE_DELTA_DAYS = 7
+
+
+def _audit_score_cache_key(company, day):
+    return f'{AUDIT_SCORE_CACHE_PREFIX}:{getattr(company, "pk", company)}:{day.isoformat()}'
+
+
+def account_audit_score(company, *, now=None, audit=None):
+    """PUB57 — Score de compte 0-100 (part des sections évaluables 'ok') +
+    delta hebdomadaire.
+
+    Le delta compare au score mis en CACHE (Django, ``django.core.cache`` —
+    Redis en prod) il y a ~7 jours : AUCUNE migration, rien n'est persisté en
+    base. Un flush cache ou un premier calcul dégrade proprement en
+    ``delta_hebdo: None`` (« pas encore d'historique »), jamais une exception
+    ni un delta halluciné. Réutilise l'audit déjà calculé si fourni
+    (``audit=``) pour ne jamais recalculer les 5 sections deux fois."""
+    audit = audit if audit is not None else run_account_audit(company, now=now)
+    sections = audit.get('sections') or {}
+    evaluated = [s for s in sections.values() if s.get('statut') != STATUT_INCONNU]
+    ok_count = sum(1 for s in evaluated if s.get('statut') == STATUT_OK)
+    attention_count = sum(1 for s in evaluated if s.get('statut') == STATUT_ATTENTION)
+    total = len(evaluated)
+    score = round((ok_count / total) * 100) if total else None
+
+    today = now if isinstance(now, datetime.date) else datetime.date.today()
+    score_7d_ago = None
+    try:
+        from django.core.cache import cache
+        cache.set(_audit_score_cache_key(company, today), score, AUDIT_SCORE_CACHE_TTL)
+        score_7d_ago = cache.get(_audit_score_cache_key(
+            company, today - datetime.timedelta(days=AUDIT_SCORE_DELTA_DAYS)))
+    except Exception:  # pragma: no cover - défensif (cache indisponible)
+        logger.warning('adsdeep63: cache score d\'audit indisponible', exc_info=True)
+
+    delta_hebdo = (
+        score - score_7d_ago
+        if (score is not None and score_7d_ago is not None) else None)
+
+    return {
+        'score': score, 'ok_count': ok_count, 'attention_count': attention_count,
+        'total_sections': total, 'delta_hebdo': delta_hebdo,
+        'genere_le': audit.get('genere_le'),
+    }

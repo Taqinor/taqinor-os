@@ -158,6 +158,9 @@ CATALOG = {
     'entite_deactivated': _e(
         'Une entité intra-tenant (NTADM40) est désactivée.',
         ['entite', 'user']),
+    'appointment_effectue': _e(
+        "Un rendez-vous CRM (Appointment) bascule vers « effectué ».",
+        ['appointment', 'company', 'user', 'ancien_statut']),
 }
 
 
