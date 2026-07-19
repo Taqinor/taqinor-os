@@ -3235,17 +3235,28 @@ textarea.form-control {
 .chatter-item {
   padding: 0.5rem 0.75rem;
   border-radius: var(--radius-md);
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  background: var(--muted);
+  border: 1px solid var(--border);
   font-size: 0.85rem;
 }
 
-.chatter-note { background: #fffbeb; border-color: #fde68a; }
+/* LW31 (suite, retour QA visuelle sombre) — les 3 fonds/textes ci-dessous
+   étaient en hex fixes (crème/vert clairs, gris #94a3b8…) : illisibles en
+   thème sombre (fond quasi blanc figé + texte pâle qui ne s'inverse jamais).
+   Migration en jetons « soft » (même patron que .lw-banner--warning/success
+   plus haut) — teinte = color-mix sur --card, AA garanti dans les 2 thèmes. */
+.chatter-note {
+  background: color-mix(in oklch, var(--warning) 14%, var(--card));
+  border-color: color-mix(in oklch, var(--warning) 45%, transparent);
+}
 
-.chatter-creation { background: #ecfdf5; border-color: #a7f3d0; }
+.chatter-creation {
+  background: color-mix(in oklch, var(--success) 14%, var(--card));
+  border-color: color-mix(in oklch, var(--success) 45%, transparent);
+}
 
 .chatter-meta {
-  color: #94a3b8;
+  color: var(--muted-foreground);
   font-size: 0.75rem;
   margin-left: 6px;
 }
@@ -3257,8 +3268,8 @@ textarea.form-control {
   padding: 0 6px;
   font-size: 0.68rem;
   font-weight: 600;
-  color: #475569;
-  background: #e2e8f0;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
   border-radius: 999px;
   vertical-align: middle;
 }
@@ -3274,7 +3285,7 @@ textarea.form-control {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  color: #94a3b8;
+  color: var(--muted-foreground);
   margin: 0.25rem 0 0.1rem;
 }
 
@@ -3293,7 +3304,7 @@ textarea.form-control {
 .chatter-item-autolog {
   background: transparent;
   border-color: transparent;
-  color: #94a3b8;
+  color: var(--muted-foreground);
   padding-left: 0;
 }
 
@@ -3301,17 +3312,17 @@ textarea.form-control {
   display: inline-block;
   margin-right: 3px;
   vertical-align: -1px;
-  color: #cbd5e1;
+  color: var(--border);
 }
 
-.chatter-attachment { background: #f8fafc; border: 1px solid #eef2f7; border-radius: 8px; padding: 0.5rem 0.75rem; }
+.chatter-attachment { background: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; }
 
 .chatter-attachment-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 0.85rem;
-  color: #1d4ed8;
+  color: var(--info);
   text-decoration: none;
 }
 
@@ -3327,7 +3338,7 @@ textarea.form-control {
   align-items: center;
   gap: 3px;
   font-size: 0.8rem;
-  color: #1d4ed8;
+  color: var(--info);
   text-decoration: none;
 }
 
