@@ -7291,3 +7291,37 @@ textarea.form-control {
 @media (max-width: 768px) {
   .lp-kpi-tile { min-width: 96px; padding: 5px 10px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB25 — Barre bulk FLOTTANTE (blueprint D5) : l'ancienne barre inline
+   (`.bulk-bar`) poussait le layout à chaque sélection (le board sautait de
+   hauteur). Toolbar bas-centre fixed, même palier `--z-sticky` que le reste
+   du chrome collant (FAB/tabbar), safe-area + AU-DESSUS de la tabbar mobile
+   (même calcul que `.fab-button` ci-dessus), glissée depuis le bas. La règle
+   globale `prefers-reduced-motion` (tout en haut de ce fichier) neutralise
+   déjà l'animation (`animation-duration:0.01ms`) — aucun garde dédié requis.
+   MÊME composant BulkActionBar à l'intérieur, seul le conteneur change. ═══ */
+.lp-bulk-float {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-sticky, 1100);
+  width: min(92vw, 720px);
+  animation: lp-bulk-float-in var(--motion-base) var(--ease-out);
+}
+.lp-bulk-float .bulk-bar {
+  margin: 0;
+  box-shadow: var(--shadow-lg);
+}
+@keyframes lp-bulk-float-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (max-width: 768px) {
+  .lp-bulk-float {
+    /* Même réserve que le FAB (VX42) : 52px de tabbar + son safe-area. */
+    bottom: calc(52px + env(safe-area-inset-bottom) + 12px);
+    width: calc(100vw - 24px);
+  }
+}

@@ -301,7 +301,20 @@ export default function LeadsPage() {
     (visibleIds) => setSelected((s) => toggleAll(s, visibleIds)),
     [],
   )
-  const clearSelection = () => setSelected(new Set())
+  // LB25 — useCallback : référence stable pour le raccourci Échap ci-dessous
+  // (barre bulk flottante) sans le ré-abonner à chaque rendu.
+  const clearSelection = useCallback(() => setSelected(new Set()), [])
+  // LB25 — barre bulk FLOTTANTE (blueprint D5) : Échap la ferme, même geste
+  // que le bouton « Effacer » — n'écoute que tant qu'une sélection existe
+  // (jamais de listener global superflu sur le reste de la page).
+  useEffect(() => {
+    if (visibleSelected.size === 0) return undefined
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') clearSelection()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [visibleSelected.size, clearSelection])
 
   // Action en masse : la règle métier (funnel, garde-fous, Historique) vit
   // côté serveur. On rafraîchit, on affiche le bilan et on garde la sélection
@@ -648,17 +661,23 @@ export default function LeadsPage() {
         onDelete={deleteSavedView}
       />
 
+      {/* LB25 — barre bulk FLOTTANTE (blueprint D5) : l'ancienne barre inline
+          poussait le layout à chaque sélection (le board sautait de
+          hauteur) ; MÊME composant BulkActionBar (toutes les actions +
+          BulkDestructiveConfirm conservées), seul le conteneur change. */}
       {visibleSelected.size > 0 && (
-        <BulkActionBar
-          count={visibleSelected.size}
-          users={users}
-          canDelete={canDelete}
-          hasArchivedSelected={hasArchivedSelected}
-          busy={bulkBusy}
-          onAction={runBulk}
-          onExport={exportSelection}
-          onClear={clearSelection}
-        />
+        <div className="lp-bulk-float">
+          <BulkActionBar
+            count={visibleSelected.size}
+            users={users}
+            canDelete={canDelete}
+            hasArchivedSelected={hasArchivedSelected}
+            busy={bulkBusy}
+            onAction={runBulk}
+            onExport={exportSelection}
+            onClear={clearSelection}
+          />
+        </div>
       )}
 
       {bulkMsg && (
@@ -692,7 +711,21 @@ export default function LeadsPage() {
       {/* VX187 — atténuation discrète pendant que React rattrape le filtre
           différé (jamais sur l'input lui-même, seulement la liste rendue). */}
       <div className="lp-view-area" style={isFiltersStale ? { opacity: 0.6 } : undefined}>
-        {view === 'kanban' && <KanbanView {...viewProps} />}
+        {/* LB9-wire — KanbanView (lane LB1, board) accepte désormais 4 props
+            OPTIONNELLES pour ses empty states à deux paliers (0 lead du tout
+            vs 0 résultat filtré), dégradant proprement quand absentes : même
+            trio que ChartsView ci-dessous (totalLeads/onClearFilters) + les
+            deux actions de coach « + Nouveau lead »/« Importer » déjà
+            câblées ailleurs sur la page (openNew, l'item ⋯ Importer). */}
+        {view === 'kanban' && (
+          <KanbanView
+            {...viewProps}
+            totalLeads={leads.length}
+            onClearFilters={() => setFilters(EMPTY_FILTERS)}
+            onNewLead={openNew}
+            onImportLeads={() => setShowImport(true)}
+          />
+        )}
         {/* VX186 — Suspense autour des vues lazy uniquement (Kanban reste
             synchrone, jamais de flash sur le rendu par défaut). */}
         <Suspense fallback={<div className="lp-view-loading"><Spinner /> Chargement de la vue…</div>}>
