@@ -30,6 +30,42 @@ const notificationsApi = {
     api.post('/notifications/push/subscribe/', subscription),
   pushUnsubscribe: (endpoint) =>
     api.post('/notifications/push/unsubscribe/', { endpoint }),
+
+  // ── WIR154 — administration Notifications (admin) ──
+  // FG4 — règles de routage par événement/rôle.
+  getRoutingRules: (params) => api.get('/notifications/routing-rules/', { params }),
+  saveRoutingRule: (id, data) => id
+    ? api.patch(`/notifications/routing-rules/${id}/`, data)
+    : api.post('/notifications/routing-rules/', data),
+  deleteRoutingRule: (id) => api.delete(`/notifications/routing-rules/${id}/`),
+  // FG5 — calendrier ouvré (singleton société) + jours fériés + diagnostic.
+  getWorkingHours: () => api.get('/notifications/working-hours/'),
+  saveWorkingHours: (data) =>
+    api.patch('/notifications/working-hours/current/', data),
+  getHolidays: (params) => api.get('/notifications/holidays/', { params }),
+  createHoliday: (data) => api.post('/notifications/holidays/', data),
+  deleteHoliday: (id) => api.delete(`/notifications/holidays/${id}/`),
+  calendarCheck: (params) => api.get('/notifications/calendar/check/', { params }),
+  // XKB5/XKB6 — annonces internes (créer/publier/cibler + accusé de lecture).
+  getAnnonces: (params) => api.get('/notifications/annonces/', { params }),
+  createAnnonce: (data) => api.post('/notifications/annonces/', data),
+  deleteAnnonce: (id) => api.delete(`/notifications/annonces/${id}/`),
+  publierAnnonce: (id) => api.post(`/notifications/annonces/${id}/publier/`),
+  accuserLectureAnnonce: (id) =>
+    api.post(`/notifications/annonces/${id}/accuser-lecture/`),
+  // XMKT25 — registre des gabarits WhatsApp (créer/soumettre/décider).
+  getWhatsAppTemplates: (params) =>
+    api.get('/notifications/whatsapp-templates/', { params }),
+  createWhatsAppTemplate: (data) =>
+    api.post('/notifications/whatsapp-templates/', data),
+  deleteWhatsAppTemplate: (id) =>
+    api.delete(`/notifications/whatsapp-templates/${id}/`),
+  submitWhatsAppTemplate: (id) =>
+    api.post(`/notifications/whatsapp-templates/${id}/submit/`),
+  decisionWhatsAppTemplate: (id, statut_approbation, motif_rejet) =>
+    api.post(`/notifications/whatsapp-templates/${id}/decision/`, {
+      statut_approbation, motif_rejet,
+    }),
 }
 
 export default notificationsApi
