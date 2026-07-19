@@ -517,3 +517,237 @@ def engagement_delivery_estimate(company, *, targeting_spec,
         return {'estimate': estimate}
     except MetaError as exc:
         return {'error': str(exc)[:255]}
+
+
+# ── PUB58 — Boucles de croissance ERP : PREMIER appelant production d'ADSDEEP57
+# (le mécanisme dormait à zéro appelant) ─────────────────────────────────────
+
+def sync_devis_view_audiences(company, *, client=None):
+    """PUB58 — Pousse les 2 Custom Audiences « devis vu / jamais ouvert »
+    depuis le view-tracking ``ShareLink`` (QJ1,
+    ``apps.ventes.selectors.devis_view_tracking_segments``) — PREMIER
+    appelant production de :func:`sync_crm_custom_audience` (ADSDEEP57).
+    Chaque segment porte un angle de relance dédié (jamais ouvert vs objection
+    prix) dans son ``name``/``description``. Même porte consentement : OFF ⇒
+    no-op propre (résumés de préviz seuls, aucun réseau). Renvoie
+    ``{'jamais_ouvert': <résumé>, 'ouvert_non_signe': <résumé>}``."""
+    from apps.ventes.selectors import devis_view_tracking_segments
+
+    segments = devis_view_tracking_segments(company)
+    return {
+        'jamais_ouvert': sync_crm_custom_audience(
+            company, name='Devis jamais ouvert',
+            contacts=segments['jamais_ouvert'],
+            description='Devis envoyé jamais consulté — relance découverte.',
+            client=client),
+        'ouvert_non_signe': sync_crm_custom_audience(
+            company, name='Devis ouvert non signé',
+            contacts=segments['ouvert_non_signe'],
+            description=("Devis consulté non signé — objection prix "
+                         "probable."),
+            client=client),
+    }
+
+
+# ── PUB59 — Audience « devis expiré » ─────────────────────────────────────────
+
+def sync_expired_devis_audience(company, *, client=None):
+    """PUB59 — Pousse la Custom Audience « devis expiré »
+    (``apps.ventes.selectors.expired_devis_contacts`` — exclusions déjà
+    signées appliquées en amont). Angle : « votre prix était valable 30 j,
+    nouvelle offre » — l'angle-offre précis que la nurture générique rate.
+    Même porte consentement que :func:`sync_crm_custom_audience`."""
+    from apps.ventes.selectors import expired_devis_contacts
+
+    contacts = expired_devis_contacts(company)
+    return sync_crm_custom_audience(
+        company, name='Devis expiré', contacts=contacts,
+        description=("Devis expiré — votre prix était valable 30 j, "
+                     "nouvelle offre."),
+        client=client)
+
+
+# ── PUB60 — Audiences cross-sell base installée ───────────────────────────────
+
+def sync_installed_base_upsell_audiences(company, *, client=None):
+    """PUB60 — Pousse les 2 Custom Audiences d'upsell base installée : clients
+    SIGNÉS sans contrat de maintenance actif (entretien) et clients SIGNÉS
+    sans batterie sur leur devis d'origine (batterie) —
+    ``apps.ventes.selectors.signed_clients_cross_sell_segments`` (lecture
+    sav/ventes par selectors uniquement). Même porte consentement. Renvoie
+    ``{'entretien': <résumé>, 'batterie': <résumé>}``."""
+    from apps.ventes.selectors import signed_clients_cross_sell_segments
+
+    segments = signed_clients_cross_sell_segments(company)
+    return {
+        'entretien': sync_crm_custom_audience(
+            company, name='Upsell — sans contrat entretien',
+            contacts=segments['sans_contrat'],
+            description=('Clients signés sans contrat de maintenance '
+                         'actif.'),
+            client=client),
+        'batterie': sync_crm_custom_audience(
+            company, name='Upsell — sans batterie',
+            contacts=segments['sans_batterie'],
+            description=("Clients signés sans batterie sur le devis "
+                         "d'origine."),
+            client=client),
+    }
+
+
+# ── PUB61 — Lookalike « signatures réelles » (@after ADSDEEP57/58) ───────────
+
+def _signed_seed_contacts(company):
+    """PUB61 — Contacts (email/téléphone) des leads SIGNÉS de la société — la
+    graine « signatures réelles » du lookalike. Combine DEUX sélecteurs CRM
+    déjà exposés à ``apps.adsengine`` (jamais un import d'``apps.crm.models``) :
+    ``attribution_lead_rows`` (ADSENG6, isole les ids des leads SIGNÉS) puis
+    ``lead_contact_identifiers`` (XMKT36, résout email/téléphone pour ces
+    ids) — aucun nouveau sélecteur CRM requis."""
+    from apps.crm.selectors import attribution_lead_rows, lead_contact_identifiers
+
+    signed_ids = [r['id'] for r in attribution_lead_rows(company) if r['signed']]
+    return lead_contact_identifiers(company, signed_ids)
+
+
+def build_signed_customers_lookalike(company, *, seed_name='Signatures réelles',
+                                     lookalike_name=None,
+                                     ratio=MA_LOOKALIKE_MAX_RATIO,
+                                     value_based=False, client=None):
+    """PUB61 — Lookalike « signatures réelles » : la graine = contacts des
+    deals SIGNÉS ERP (leads au stade SIGNED, STAGES.py — une donnée de graine
+    strictement meilleure que tout pixel concurrent).
+
+    Construit d'abord la Custom Audience seed (ADSDEEP57,
+    :func:`sync_crm_custom_audience`) puis, si assez de contacts ont été
+    matchés (≥100, dossier §1/§2), demande le lookalike dérivé (ADSDEEP58,
+    :func:`create_lookalike_from_seed` — RÉUTILISÉ, jamais réimplémenté).
+    <100 contacts matchés → AUCUN appel lookalike, message clair
+    (``seed_insufficient``). Même porte consentement que le seed (OFF ⇒
+    aucun réseau, ni pour le seed ni pour le lookalike puisqu'aucun
+    ``audience_id`` réel n'existe alors).
+
+    Renvoie ``{'seed': <résumé sync>, 'lookalike': <résumé lookalike>|None,
+    'seed_insufficient': bool}``."""
+    contacts = _signed_seed_contacts(company)
+    seed_summary = sync_crm_custom_audience(
+        company, name=seed_name, contacts=contacts,
+        description='Graine lookalike — clients aux deals réellement signés.',
+        client=client)
+
+    matched = seed_summary['matched_rows']
+    result = {'seed': seed_summary, 'lookalike': None,
+              'seed_insufficient': matched < LOOKALIKE_MIN_SEED}
+    if matched < LOOKALIKE_MIN_SEED or not seed_summary['audience_id']:
+        # Seed trop petit, OU consentement OFF/erreur amont (aucune audience
+        # seed réelle créée) : rien à dériver.
+        return result
+
+    result['lookalike'] = create_lookalike_from_seed(
+        company, name=lookalike_name or f'Lookalike — {seed_name}',
+        origin_audience_id=seed_summary['audience_id'],
+        seed_matched_count=matched, ratio=ratio, value_based=value_based,
+        client=client)
+    return result
+
+
+# ── PUB65 — Parrainage converti → suggestion de graine géo/lookalike ─────────
+# JAMAIS une action automatique : le programme de parrainage et le moteur pub
+# ne se parlaient jamais avant ce pont. Cette fonction ne construit ni
+# n'envoie AUCUNE audience elle-même — une pure fonction de TEXTE FR, posée
+# en note chatter sur la fiche du parrain par `apps.crm.receivers` (jamais un
+# import d'``apps.crm.models`` ici).
+
+def referral_seed_suggestion(*, parrain_nom, parrain_localisation=None):
+    """PUB65 — Construit le texte FR d'une suggestion de graine publicitaire
+    autour d'un parrain dont le filleul vient de signer. Deux graines
+    possibles, à déclencher MANUELLEMENT par un opérateur via les fonctions
+    déjà existantes de ce module :
+
+      * géo-radius autour de la localisation du parrain (comme PUB66) ;
+      * lookalike : ajouter ce contact à la graine « signatures réelles »
+        (PUB61, :func:`build_signed_customers_lookalike`) — accumulée
+        jusqu'au seuil ≥100 (:data:`LOOKALIKE_MIN_SEED`).
+
+    Renvoie ``{'reason_fr': str, 'parrain_localisation': str|None,
+    'has_geo': bool}``."""
+    localisation = (parrain_localisation or '').strip()
+    has_geo = bool(localisation)
+    if has_geo:
+        reason = (
+            f"Parrainage converti : le filleul de {parrain_nom} vient de "
+            f"signer — proposer une audience géo-radius (500 m-2 km) autour "
+            f"de « {localisation} » et/ou ajouter ce contact à la graine "
+            f"lookalike « signatures réelles » (seuil ≥{LOOKALIKE_MIN_SEED} "
+            f"avant lookalike). Aucune audience n'a été créée "
+            f"automatiquement — action à déclencher manuellement.")
+    else:
+        reason = (
+            f"Parrainage converti : le filleul de {parrain_nom} vient de "
+            f"signer — localisation du parrain inconnue, proposer d'ajouter "
+            f"ce contact à la graine lookalike « signatures réelles » "
+            f"(seuil ≥{LOOKALIKE_MIN_SEED} avant lookalike). Aucune "
+            f"audience n'a été créée automatiquement — action à déclencher "
+            f"manuellement.")
+    return {'reason_fr': reason, 'parrain_localisation': localisation or None,
+            'has_geo': has_geo}
+
+
+# ── PUB66 — Halo géographique autour des installations fraîches ──────────────
+# Audience GÉO PURE : AUCUNE donnée client (nom/adresse/photo) dans le
+# ciblage — reste possible SANS consentement (contrairement à toute
+# mention/photo du chantier, gatée PUB75, hors périmètre ici).
+
+GEO_HALO_MIN_RADIUS_KM = 0.5
+GEO_HALO_MAX_RADIUS_KM = 2.0
+GEO_HALO_DEFAULT_RADIUS_KM = 1.0
+
+
+def _geo_targeting_spec(lat, lng, radius_km):
+    """PUB66 — ``targeting_spec`` géo-radius Meta (``custom_locations``), le
+    format attendu par :func:`engagement_delivery_estimate` (ADSDEEP59).
+    Rayon en KM, borné [0.5, 2] (halo voisinage)."""
+    try:
+        radius = float(radius_km)
+    except (TypeError, ValueError):
+        radius = GEO_HALO_DEFAULT_RADIUS_KM
+    radius = max(GEO_HALO_MIN_RADIUS_KM, min(GEO_HALO_MAX_RADIUS_KM, radius))
+    return {
+        'geo_locations': {
+            'custom_locations': [{
+                'latitude': float(lat), 'longitude': float(lng),
+                'radius': radius, 'distance_unit': 'kilometer',
+            }],
+        },
+    }
+
+
+def fresh_installation_geo_halos(company, *, days=14,
+                                 radius_km=GEO_HALO_DEFAULT_RADIUS_KM):
+    """PUB66 — Propose un halo géo-radius (500 m-2 km) autour de chaque
+    installation FRAÎCHE de la société
+    (``apps.installations.selectors.fresh_installation_geo_seeds``, jamais
+    un import d'``apps.installations.models``) — angle « vu sur les toits du
+    quartier ». RECOMMANDATION SEULE : ne crée ni n'applique rien sur Meta,
+    renvoie juste le ``targeting_spec`` prêt à être passé au composeur
+    d'adset (PUB22) ou à :func:`engagement_delivery_estimate` pour une
+    préviz de taille d'audience. Renvoie une liste ``[{'installation_id',
+    'reference', 'targeting_spec', 'reason_fr'}, ...]``."""
+    from apps.installations.selectors import fresh_installation_geo_seeds
+
+    halos = []
+    for row in fresh_installation_geo_seeds(company, days=days):
+        spec = _geo_targeting_spec(row['gps_lat'], row['gps_lng'], radius_km)
+        rayon = spec['geo_locations']['custom_locations'][0]['radius']
+        halos.append({
+            'installation_id': row['id'],
+            'reference': row['reference'],
+            'targeting_spec': spec,
+            'reason_fr': (
+                f"Chantier {row['reference']} fraîchement signé — halo géo "
+                f"{rayon} km, angle « vu sur les toits du quartier » "
+                f"(audience géo pure, aucune donnée client). "
+                f"Recommandation seule — aucune audience créée "
+                f"automatiquement."),
+        })
+    return halos

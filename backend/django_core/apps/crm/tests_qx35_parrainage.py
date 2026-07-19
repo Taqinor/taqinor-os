@@ -12,8 +12,10 @@ Covers:
 """
 import json
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -23,6 +25,7 @@ from authentication.models import Company
 from apps.crm.models import Client, Lead, LeadActivity, Parrainage
 from apps.crm.services import handle_parrainage_signup
 from apps.notifications.models import Notification
+from apps.records.models import Activity
 from apps.ventes.models import Devis
 from core.events import devis_accepted
 
@@ -212,3 +215,38 @@ class DevisAcceptedFlipsParrainageTests(TestCase):
             sender=None, devis=devis, user=self.user, ancien_statut='envoye')
         parrainage.refresh_from_db()
         self.assertEqual(parrainage.statut, Parrainage.Statut.RECOMPENSE_VERSEE)
+
+    # ── PUB65 — suggestion de graine pub géo/lookalike sur le PARRAIN ────────
+
+    def test_conversion_posts_suggestion_note_on_parrain(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Filleul Suggestion', stage='QUOTE_SENT')
+        Parrainage.objects.create(
+            company=self.company, parrain=self.parrain, filleul_lead=lead,
+            statut=Parrainage.Statut.EN_ATTENTE)
+        devis = self._devis(lead, num=4, statut=Devis.Statut.ACCEPTE)
+        devis_accepted.send(
+            sender=None, devis=devis, user=self.user, ancien_statut='envoye')
+
+        ct = ContentType.objects.get_for_model(Client)
+        note = Activity.objects.filter(
+            content_type=ct, object_id=self.parrain.pk,
+            kind=Activity.Kind.NOTE).first()
+        self.assertIsNotNone(note)
+        self.assertIn('graine lookalike', note.body)
+
+    def test_suggestion_never_blocks_conversion_even_if_note_fails(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Filleul Robuste', stage='QUOTE_SENT')
+        parrainage = Parrainage.objects.create(
+            company=self.company, parrain=self.parrain, filleul_lead=lead,
+            statut=Parrainage.Statut.EN_ATTENTE)
+        devis = self._devis(lead, num=5, statut=Devis.Statut.ACCEPTE)
+        with mock.patch(
+                'apps.adsengine.audiences.referral_seed_suggestion',
+                side_effect=RuntimeError('boom')):
+            devis_accepted.send(
+                sender=None, devis=devis, user=self.user,
+                ancien_statut='envoye')
+        parrainage.refresh_from_db()
+        self.assertEqual(parrainage.statut, Parrainage.Statut.CONVERTI)

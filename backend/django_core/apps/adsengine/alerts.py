@@ -394,6 +394,52 @@ def emit_guarded_alert(company, *, template_key, target_type='', target_id='',
     return existing
 
 
+# ── PUB68 — Alerte SLA « lead Meta sans premier contact » (notify() unifié) ──
+
+def notify_meta_leads_sla_breach(company, *, now=None, seuil_heures=None):
+    """PUB68 — Notifie (moteur ``notify()`` UNIFIÉ de l'ERP —
+    ``apps.notifications.services.notify``, ``EventType.HOT_LEAD_UNREAD``
+    RÉUTILISÉ, jamais un nouveau type/migration) chaque lead Meta encore
+    sans premier contact au-delà du SLA société CONFIGURÉ
+    (``apps.crm.selectors.leads_meta_sla_depasse``, qui réutilise
+    ``leads_sla_depasse`` YLEAD14 — même seuil, jamais dupliqué). Une
+    notification PAR lead à son ``owner`` (aucun owner → skip). Best-effort :
+    une erreur sur un lead n'empêche jamais les suivants. L'auto-réponse
+    elle-même reste GATÉE (PUB108, hors périmètre ici). Renvoie le nombre de
+    notifications ÉMISES."""
+    from django.utils import timezone as _tz
+
+    from apps.crm.selectors import leads_meta_sla_depasse
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    ref_now = now or _tz.now()
+    emitted = 0
+    for lead in leads_meta_sla_depasse(company, now=now,
+                                       seuil_heures=seuil_heures):
+        owner = getattr(lead, 'owner', None)
+        if owner is None:
+            continue
+        minutes = (
+            int((ref_now - lead.date_creation).total_seconds() // 60)
+            if lead.date_creation else None)
+        body = (
+            f"Lead Meta « {lead.nom} » sans premier contact depuis "
+            f"{minutes if minutes is not None else '?'} min (SLA configuré "
+            f"dépassé). Répondre vite : <1 min ≈ ×4-5 de chances de "
+            f"conversion.")
+        try:
+            sent = notify(
+                owner, EventType.HOT_LEAD_UNREAD,
+                'Lead Meta sans premier contact', body=body,
+                link=f'/crm/leads?lead={lead.id}', company=company)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            continue
+        if sent is not None:
+            emitted += 1
+    return emitted
+
+
 def resolve_alert(company, *, template_key, target_type='', target_id=''):
     """Condition redevenue fausse : marque l'alerte ouverte résolue. Pour une
     CRITICAL uniquement, émet un suivi ``✅ Résolu`` (dd-guardian §C3). Renvoie

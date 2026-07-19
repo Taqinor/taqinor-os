@@ -109,6 +109,32 @@ def _flip_parrainage_converti_on_devis_accepted(sender, devis, user, ancien_stat
         return
     parrainage.statut = Parrainage.Statut.CONVERTI
     parrainage.save(update_fields=['statut'])
+    _suggerer_graine_pub_parrainage(parrainage, user)
+
+
+def _suggerer_graine_pub_parrainage(parrainage, user):
+    """PUB65 — Poste, sur la fiche du PARRAIN, une note chatter suggérant une
+    graine publicitaire géo/lookalike autour de lui (jamais une action
+    automatique — un humain doit déclencher via
+    ``apps.adsengine.audiences``). Best-effort : n'échoue JAMAIS la
+    conversion du parrainage elle-même."""
+    parrain = getattr(parrainage, 'parrain', None)
+    if parrain is None:
+        return
+    try:
+        from apps.adsengine.audiences import referral_seed_suggestion
+        from apps.records.services import log_note
+
+        nom_complet = f'{parrain.nom} {parrain.prenom or ""}'.strip() or 'parrain'
+        suggestion = referral_seed_suggestion(
+            parrain_nom=nom_complet,
+            parrain_localisation=getattr(parrain, 'adresse', None))
+        log_note(parrain, user, suggestion['reason_fr'],
+                 company=parrainage.company)
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais la conversion
+        logger.warning(
+            'PUB65 : suggestion de graine pub échouée pour parrainage #%s',
+            getattr(parrainage, 'pk', '?'), exc_info=True)
 
 
 @receiver(devis_refused, dispatch_uid="crm_signal_signe_sans_devis_actif")

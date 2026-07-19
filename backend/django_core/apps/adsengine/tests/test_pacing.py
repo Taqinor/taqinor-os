@@ -83,6 +83,28 @@ class PacingFormulaTests(TestCase):
         self.assertAlmostEqual(pacing.pacing_ratio(50, 0), 50.0)
 
 
+class MonthlySignatureSharesTests(TestCase):
+    """PUB67 — parts saisonnières annuelles (même primitif que
+    weekday_shares, axe mois plutôt que jour-de-semaine)."""
+
+    def test_empty_counts_uniform_shares(self):
+        shares = pacing.monthly_signature_shares({})
+        self.assertEqual(len(shares), 12)
+        for m in range(1, 13):
+            self.assertAlmostEqual(shares[m], 1.0 / 12.0)
+
+    def test_shares_normalized_to_one(self):
+        counts = {1: 10, 6: 30, 12: 10}
+        shares = pacing.monthly_signature_shares(counts)
+        self.assertAlmostEqual(sum(shares.values()), 1.0, places=6)
+        self.assertAlmostEqual(shares[6], 0.6)
+        self.assertAlmostEqual(shares[1], 0.2)
+
+    def test_month_absent_from_input_has_zero_share(self):
+        shares = pacing.monthly_signature_shares({3: 5})
+        self.assertEqual(shares[7], 0.0)
+
+
 class PacingInvariantTests(TestCase):
     """L'invariant « plafond jamais dépassé » au flex maximum 1,25×."""
 

@@ -518,6 +518,276 @@ def factory_lane_roi(company, *, date_start=None, date_end=None):
     return {'lanes': rows, 'periode': periode}
 
 
+# ── PUB62 — Carte chaleur ville : CPL, coût-par-signature, ticket moyen ──────
+
+def _normalize_place_fr(value):
+    return (value or '').strip().lower()
+
+
+def city_heatmap(company, *, date_start=None, date_end=None):
+    """PUB62 — Carte chaleur ville : CPL, coût-par-signature ET ticket moyen
+    SIGNÉ par ville (une ville chère en CPL mais à gros tickets industriels
+    peut gagner). Croise le breakdown RÉGION Meta (``InsightBreakdown``,
+    ADSDEEP7, synchronisé au niveau CAMPAGNE) avec les villes RÉELLES
+    saisies sur les leads (``apps.crm.selectors.leads_ville_rows``) et le
+    total TTC des devis ACCEPTÉS qui leur sont liés
+    (``apps.ventes.selectors.devis_accepted_totals_by_lead``) — jamais un
+    import des modèles crm/ventes.
+
+    Le rapprochement ville↔région Meta est TEXTUEL (une région Meta MA type
+    « Casablanca-Settat » contient généralement le nom de ville usuel) —
+    correspondance dans les deux sens, insensible à la casse ; une ville sans
+    correspondance de région n'a simplement pas de CPL/coût-par-signature
+    (jamais un chiffre à 0 fabriqué). Une ville SANS AUCUNE donnée
+    n'apparaît PAS dans la table (règle checked-facts : les villes sans
+    données sont OMISES, jamais un « 0 »).
+
+    Renvoie ``{'periode': {...}|None, 'villes': [{'ville', 'region_meta',
+    'spend', 'leads', 'cpl', 'signed', 'cout_par_signature',
+    'ticket_moyen_ttc'}, ...]}`` — triable côté appelant sur les 3
+    métriques."""
+    from decimal import Decimal
+
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from apps.crm.selectors import leads_ville_rows
+    from apps.ventes.selectors import devis_accepted_totals_by_lead
+    from .models import AdCampaignMirror, InsightBreakdown
+
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    qs = InsightBreakdown.objects.filter(
+        company=company, content_type=ct,
+        dimension=InsightBreakdown.Dimension.REGION)
+    if date_start is not None:
+        qs = qs.filter(date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date__lte=date_end)
+    regions = [
+        {'key': r['key'], 'spend': r['spend'] or Decimal('0')}
+        for r in qs.values('key').annotate(spend=Sum('spend'))
+        if r['key']
+    ]
+
+    lead_rows = leads_ville_rows(company)
+    signed_lead_ids = [r['id'] for r in lead_rows if r['signed']]
+    totals_by_lead = devis_accepted_totals_by_lead(company, signed_lead_ids)
+
+    cities = {}
+    for row in lead_rows:
+        slot = cities.setdefault(row['ville'], {
+            'leads': 0, 'signed': 0, 'signed_total': Decimal('0')})
+        slot['leads'] += 1
+        if row['signed']:
+            slot['signed'] += 1
+            slot['signed_total'] += totals_by_lead.get(row['id'], Decimal('0'))
+
+    result = []
+    for ville, slot in cities.items():
+        norm = _normalize_place_fr(ville)
+        matched_region, spend = None, None
+        for region in regions:
+            rnorm = _normalize_place_fr(region['key'])
+            if norm and rnorm and (norm in rnorm or rnorm in norm):
+                matched_region, spend = region['key'], region['spend']
+                break
+        leads = slot['leads']
+        signed = slot['signed']
+        result.append({
+            'ville': ville,
+            'region_meta': matched_region,
+            'spend': _q2(spend) if spend is not None else None,
+            'leads': leads,
+            'cpl': (_q2(spend / leads)
+                    if spend is not None and leads else None),
+            'signed': signed,
+            'cout_par_signature': (_q2(spend / signed)
+                                   if spend is not None and signed else None),
+            'ticket_moyen_ttc': (_q2(slot['signed_total'] / signed)
+                                 if signed else None),
+        })
+    result.sort(key=lambda r: r['ville'])
+
+    periode = None
+    if date_start is not None or date_end is not None:
+        periode = {
+            'debut': date_start.isoformat() if date_start else None,
+            'fin': date_end.isoformat() if date_end else None,
+        }
+    return {'periode': periode, 'villes': result}
+
+
+# ── PUB64 — Calculateur recyclage COLD (aide à la décision, pas une action) ──
+
+MIN_COLD_RECYCLING_LEADS = 1  # au moins un lead COLD exploitable pour parler
+
+
+def _company_spend_window(company, date_start, date_end):
+    """Dépense totale de la société (``InsightSnapshot``, niveau CAMPAGNE —
+    évite tout double-comptage avec les instantanés ad set/ad enfants) sur
+    ``[date_start, date_end]``. Même primitif ``ContentType`` que
+    ``attribution``/``metrics`` (jamais réimplémenté à un autre niveau)."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from .models import AdCampaignMirror, InsightSnapshot
+
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    total = (InsightSnapshot.objects
+             .filter(company=company, content_type=ct,
+                     date__gte=date_start, date__lte=date_end)
+             .aggregate(total=Sum('spend'))['total'])
+    return total or Decimal('0')
+
+
+def cold_recycling_report(company, *, date_start=None, date_end=None):
+    """PUB64 — Calculateur d'aide à la décision GO/NO-GO « réactiver un lead
+    COLD vs acheter un lead neuf », basé sur les taux de conversion
+    HISTORIQUES réels par âge-au-COLD
+    (``apps.crm.selectors.cold_reactivation_by_age_bucket``) et le CAC
+    COURANT par mode marché (dépense société sur la fenêtre ÷ leads Meta
+    NEUFS de ce mode, ``apps.crm.selectors.new_leads_by_mode_meta``). UN
+    CALCULATEUR D'AIDE À LA DÉCISION, PAS UNE NURTURE — aucune action n'est
+    déclenchée ici.
+
+    Fenêtre par défaut : 90 jours glissants. Données insuffisantes (aucun
+    historique COLD exploitable, ou aucun lead Meta neuf sur la fenêtre) → le
+    dit CLAIREMENT (``avertissement``) et s'abstient de toute conclusion
+    chiffrée fausse."""
+    from apps.crm.selectors import (
+        cold_reactivation_by_age_bucket, new_leads_by_mode_meta,
+    )
+
+    date_start, date_end = _default_period(date_start, date_end)
+    spend = _company_spend_window(company, date_start, date_end)
+    leads_by_mode = new_leads_by_mode_meta(
+        company, date_start=date_start, date_end=date_end)
+
+    cac_par_mode = []
+    for mode, count in sorted(leads_by_mode.items()):
+        cac_par_mode.append({
+            'mode_installation': mode or '(non renseigné)',
+            'leads_neufs_meta': count,
+            'cac_actuel': _q2(spend / count) if count else None,
+        })
+
+    buckets = cold_reactivation_by_age_bucket(company)
+    has_cold_data = sum(b['total'] for b in buckets) >= MIN_COLD_RECYCLING_LEADS
+    donnees_suffisantes = has_cold_data and bool(cac_par_mode)
+
+    return {
+        'periode': {'debut': date_start.isoformat(),
+                    'fin': date_end.isoformat()},
+        'depense_totale': _q2(spend),
+        'cac_par_mode': cac_par_mode,
+        'reconversion_par_age_cold': buckets,
+        'donnees_suffisantes': donnees_suffisantes,
+        'avertissement': (
+            None if donnees_suffisantes else
+            "Historique de leads COLD ou dépense/leads Meta neufs "
+            "insuffisants sur la période pour un calcul fiable — "
+            "abstention (aucune conclusion chiffrée)."),
+    }
+
+
+# ── PUB67 — Saisonnalité pilotée par l'historique RÉEL (recommandation seule) ─
+
+MIN_MONTHS_COVERAGE_SEASONALITY = 12
+
+
+def seasonality_report(company):
+    """PUB67 — Rapport « votre saisonnalité » : vélocité de signature RÉELLE
+    mois-par-mois PAR MODE MARCHÉ (``apps.ventes.selectors.
+    signature_velocity_by_month_and_mode`` + ``pacing.
+    monthly_signature_shares``, RÉUTILISÉ) → RECOMMANDATION de réallocation
+    budgétaire saisonnière. Distinct du calendrier fixe générique PUB78 —
+    ici c'est la donnée Taqinor RÉELLE. RECOMMANDATION SEULE, jamais une
+    action automatique.
+
+    <``MIN_MONTHS_COVERAGE_SEASONALITY`` mois-calendaires distincts de
+    données → le dit EXPLICITEMENT et s'abstient de toute recommandation
+    (jamais un signal saisonnier fabriqué sur un historique trop court)."""
+    from . import pacing
+    from apps.ventes.selectors import signature_velocity_by_month_and_mode
+
+    data = signature_velocity_by_month_and_mode(company)
+    if data['mois_couverts'] < MIN_MONTHS_COVERAGE_SEASONALITY:
+        return {
+            'donnees_suffisantes': False,
+            'mois_couverts': data['mois_couverts'],
+            'seuil_requis': MIN_MONTHS_COVERAGE_SEASONALITY,
+            'avertissement': (
+                f"Seulement {data['mois_couverts']} mois-calendaires "
+                f"distincts de devis signés — "
+                f"{MIN_MONTHS_COVERAGE_SEASONALITY} requis pour un cycle "
+                f"annuel complet. Abstention (aucune recommandation)."),
+            'par_mode': [],
+        }
+
+    par_mode = []
+    for mode, months in sorted(data['par_mode'].items()):
+        total = sum(months.values())
+        if total == 0:
+            continue
+        shares = pacing.monthly_signature_shares(months)
+        pic = max(shares, key=shares.get)
+        creux = min(shares, key=shares.get)
+        par_mode.append({
+            'mode_installation': mode,
+            'total_signatures': total,
+            'repartition_mensuelle': {m: round(s, 4)
+                                      for m, s in shares.items()},
+            'mois_pic': pic,
+            'mois_creux': creux,
+            'recommandation_fr': (
+                f"{mode} : pic historique en mois {pic} "
+                f"({shares[pic] * 100:.0f} % des signatures), creux en "
+                f"mois {creux} ({shares[creux] * 100:.0f} %) — envisager "
+                f"de réallouer le budget vers le mois {pic} à l'approche "
+                f"de la saison (recommandation seule, aucune action "
+                f"automatique)."),
+        })
+    return {
+        'donnees_suffisantes': True,
+        'mois_couverts': data['mois_couverts'],
+        'seuil_requis': MIN_MONTHS_COVERAGE_SEASONALITY,
+        'avertissement': None,
+        'par_mode': par_mode,
+    }
+
+
+# ── PUB68 — SLA première réponse : médiane par ad ────────────────────────────
+
+def response_time_by_ad(company):
+    """PUB68 — Temps de première réponse MÉDIAN par ad (minutes) — la donnée
+    la plus documentée du marché (répondre <1 min ≈ ×4-5 conversion),
+    jusqu'ici jamais mesurée par l'ERP. Réutilise ``selectors.
+    leads_response_time_by_ad_rows`` (fichier disjoint, résolution d'ad
+    ADSENG6). Un ad sans lead contacté résolu est ABSENT (jamais une
+    médiane sur 0 valeur). Renvoie une liste triée par médiane croissante
+    (le plus réactif d'abord) ``[{'meta_id', 'name',
+    'median_response_minutes', 'sample_size'}, ...]``."""
+    import statistics
+
+    from .selectors import leads_response_time_by_ad_rows
+
+    by_ad = {}
+    for row in leads_response_time_by_ad_rows(company):
+        slot = by_ad.setdefault(
+            row['meta_id'], {'name': row['name'], 'times': []})
+        slot['times'].append(row['response_minutes'])
+
+    result = [
+        {'meta_id': meta_id, 'name': slot['name'],
+         'median_response_minutes': round(
+             statistics.median(slot['times']), 1),
+         'sample_size': len(slot['times'])}
+        for meta_id, slot in by_ad.items()
+    ]
+    result.sort(key=lambda r: r['median_response_minutes'])
+    return result
+
+
 def reconciliation_csv(company, *, day=None):
     """CSV de la table de réconciliation (§5.4). Réutilise
     ``reconciliation.reconcile`` (ADSENG31, fichier disjoint) — jamais un schéma
