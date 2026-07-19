@@ -514,6 +514,10 @@ export default function LeadWorkspace({
               historique={historique}
               refreshHistorique={refreshHistorique}
               onAction={onAction}
+              // Câblage moteur (demande lane 3) : composer/wa vivent dans le
+              // réducteur — le repli local de ContextRail devient inactif et
+              // le miroir sessionStorage anti-perte couvre aussi la note.
+              dispatch={draft.dispatch}
             />
           </div>
         </FadeSwap>

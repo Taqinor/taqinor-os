@@ -40,6 +40,30 @@ export default function ContextRail({
   const [tab, setTab] = useState(readTab)
   const changeTab = useCallback((v) => { setTab(v); writeTab(v) }, [])
 
+  // Câblage inter-lanes (lane 4) : « n » / actions de la palette ⌘K ouvrent
+  // le bon onglet puis focusent le composer correspondant. Le focus part au
+  // frame suivant (l'onglet doit être monté par Radix avant le querySelector).
+  useEffect(() => {
+    const openNote = () => {
+      changeTab('historique')
+      requestAnimationFrame(() => {
+        document.querySelector('.lw-context-timeline .chatter-note-box input.form-control')?.focus()
+      })
+    }
+    const openWa = () => {
+      changeTab('devis')
+      requestAnimationFrame(() => {
+        document.querySelector('.lw-context-devis input[type="checkbox"]')?.focus()
+      })
+    }
+    window.addEventListener('lw:open-note-composer', openNote)
+    window.addEventListener('lw:open-whatsapp-composer', openWa)
+    return () => {
+      window.removeEventListener('lw:open-note-composer', openNote)
+      window.removeEventListener('lw:open-whatsapp-composer', openWa)
+    }
+  }, [changeTab])
+
   const [openActivites, setOpenActivites] = useState(0)
   const [nbPieces, setNbPieces] = useState(0)
 
