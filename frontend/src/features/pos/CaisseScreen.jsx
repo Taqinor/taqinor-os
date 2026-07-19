@@ -39,6 +39,15 @@ export default function CaisseScreen() {
   const [derniereVente, setDerniereVente] = useState(null)
   // XPOS9 — numéros de série saisis par produitId ("SN1, SN2" → liste).
   const [numerosSerie, setNumerosSerie] = useState({})
+  // WIR58 — encaisser une facture/devis existant au comptoir (XPOS6) :
+  // recherche par référence/client → sélection → montant + mode → encaissement.
+  const [factureDialogOpen, setFactureDialogOpen] = useState(false)
+  const [factureQuery, setFactureQuery] = useState('')
+  const [factureResults, setFactureResults] = useState([])
+  const [factureRecherche, setFactureRecherche] = useState(false)
+  const [factureSel, setFactureSel] = useState(null) // { id, reference, client, montant_du }
+  const [factureMontant, setFactureMontant] = useState('')
+  const [factureMode, setFactureMode] = useState('especes')
 
   useEffect(() => {
     posApi.getProduits().then((r) => {
@@ -233,10 +242,69 @@ export default function CaisseScreen() {
     }
   }
 
+  // ── WIR58 — encaissement d'une facture existante (XPOS6) ──────────────────
+  const ouvrirFactureDialog = () => {
+    setFactureQuery('')
+    setFactureResults([])
+    setFactureSel(null)
+    setFactureMontant('')
+    setFactureMode('especes')
+    setFactureDialogOpen(true)
+  }
+
+  const rechercherFactures = async (q) => {
+    setFactureRecherche(true)
+    try {
+      const res = await posApi.rechercheFactures(q)
+      const rows = res?.data?.results ?? res?.data ?? []
+      setFactureResults(Array.isArray(rows) ? rows : [])
+    } catch {
+      setFactureResults([])
+      toast.error('La recherche de factures a échoué.')
+    } finally {
+      setFactureRecherche(false)
+    }
+  }
+
+  const choisirFacture = (facture) => {
+    setFactureSel(facture)
+    // pré-remplir avec le solde dû (le caissier peut encaisser un acompte).
+    setFactureMontant(String(facture.montant_du ?? ''))
+  }
+
+  const confirmerEncaissementFacture = async () => {
+    if (!factureSel) return
+    const montant = Number(factureMontant)
+    if (!(montant > 0)) {
+      toast.error('Montant invalide.')
+      return
+    }
+    setBusy(true)
+    try {
+      const res = await posApi.encaisserFacture({
+        facture: factureSel.id,
+        montant: factureMontant,
+        mode: factureMode,
+      })
+      toast.success(`Encaissement de ${res?.data?.montant ?? factureMontant} DH enregistré sur ${res?.data?.facture ?? factureSel.reference}.`)
+      setFactureDialogOpen(false)
+    } catch (err) {
+      // même exigence WIR7 que l'encaissement panier : jamais un échec avalé.
+      toast.error(errorMessageFrom(err, 'L’encaissement de la facture a échoué.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="font-display text-xl font-semibold">Caisse — vente rapide</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="font-display text-xl font-semibold">Caisse — vente rapide</h1>
+          <Button type="button" variant="outline" size="sm" onClick={ouvrirFactureDialog}>
+            Encaisser une facture existante
+          </Button>
+        </div>
         {tickets.length > 0 && (
           <div className="flex flex-wrap items-center gap-2" data-testid="tickets-en-attente">
             <span className="text-sm text-muted-foreground">Tickets en attente :</span>
@@ -497,6 +565,107 @@ export default function CaisseScreen() {
               <Button type="submit" loading={busy} disabled={!encaissable}>Confirmer l’encaissement</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* WIR58 — encaisser une facture/devis existant (XPOS6) */}
+      <Dialog open={factureDialogOpen} onOpenChange={(o) => { if (!o) setFactureDialogOpen(false) }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Encaisser une facture existante</DialogTitle>
+            <DialogDescription>
+              Recherchez une facture par référence ou client, puis encaissez son solde au comptoir.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <form
+              noValidate
+              onSubmit={(e) => { e.preventDefault(); rechercherFactures(factureQuery) }}
+              className="flex items-end gap-2"
+            >
+              <div className="grid flex-1 gap-1.5">
+                <Label htmlFor="pos-facture-search">Référence ou client</Label>
+                <Input
+                  id="pos-facture-search"
+                  value={factureQuery}
+                  onChange={(e) => setFactureQuery(e.target.value)}
+                  placeholder="Ex. FA-2026-… ou nom du client"
+                />
+              </div>
+              <Button type="submit" loading={factureRecherche}>Rechercher</Button>
+            </form>
+
+            {factureResults.length > 0 && (
+              <ul className="max-h-48 overflow-y-auto rounded-md border border-border" data-testid="facture-resultats">
+                {factureResults.map((f) => (
+                  <li key={f.id}>
+                    <button
+                      type="button"
+                      onClick={() => choisirFacture(f)}
+                      className={
+                        'flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-accent ' +
+                        (factureSel?.id === f.id ? 'bg-accent' : '')
+                      }
+                    >
+                      <span className="flex flex-col">
+                        <span className="font-medium">{f.reference}</span>
+                        <span className="text-xs text-muted-foreground">{f.client || 'Sans client'}</span>
+                      </span>
+                      <span className="tabular-nums text-xs text-muted-foreground">
+                        Dû : {formatMAD(f.montant_du, { withSymbol: false })} DH
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {factureResults.length === 0 && factureQuery && !factureRecherche && (
+              <div className="py-4 text-center text-sm text-muted-foreground">
+                Aucune facture avec solde dû pour « {factureQuery} ».
+              </div>
+            )}
+
+            {factureSel && (
+              <form
+                noValidate
+                onSubmit={(e) => { e.preventDefault(); confirmerEncaissementFacture() }}
+                className="grid gap-3 border-t border-border pt-3"
+              >
+                <div className="text-sm">
+                  Encaissement sur <span className="font-medium">{factureSel.reference}</span>
+                </div>
+                <div className="flex items-end gap-2">
+                  <select
+                    aria-label="Mode de paiement"
+                    value={factureMode}
+                    onChange={(e) => setFactureMode(e.target.value)}
+                    className="h-9 rounded-md border border-input bg-card px-2 text-sm"
+                  >
+                    {MODES_PAIEMENT.map((m) => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  <div className="grid flex-1 gap-1.5">
+                    <Label htmlFor="pos-facture-montant" required>Montant</Label>
+                    <input
+                      id="pos-facture-montant"
+                      type="number"
+                      step="any"
+                      aria-label="Montant à encaisser"
+                      value={factureMontant}
+                      onChange={(e) => setFactureMontant(e.target.value)}
+                      className="h-9 rounded-md border border-input bg-card px-2 text-sm"
+                      placeholder="Montant"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button type="button" variant="ghost" onClick={() => setFactureDialogOpen(false)}>Annuler</Button>
+                  <Button type="submit" loading={busy}>Encaisser la facture</Button>
+                </DialogFooter>
+              </form>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
