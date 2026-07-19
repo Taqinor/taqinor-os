@@ -1330,6 +1330,24 @@ class SyncStatusView(APIView):
         return Response(sync_status(company))
 
 
+class TodayQueueView(APIView):
+    """PUB42 — File « Aujourd'hui » unifiée (écran d'accueil ``/publicite``) :
+    garde-fous > alertes > approbations > commentaires > digest en UNE liste
+    classée par priorité. Vue MINCE — dérivée de ``metrics.today_queue``
+    (reshape de lignes déjà existantes, aucun recalcul métier). Lecture
+    ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import today_queue
+        items = today_queue(company)
+        return Response({'items': items, 'total': len(items)})
+
+
 class GuardrailSingletonView(APIView):
     """ENG3/ENG22 — Garde-fous d'UNE société vus comme un singleton (GET/PATCH
     sans id). Mappe les libellés d'écran (``max_daily_budget_mad`` /

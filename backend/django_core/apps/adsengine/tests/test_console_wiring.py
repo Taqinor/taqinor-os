@@ -758,3 +758,64 @@ class ConsoleWiringTests(TestCase):
         ids_all = {r['id'] for r in resp_all.data.get('results', resp_all.data)}
         self.assertIn(old_action.pk, ids_all)
         self.assertIn(new_action.pk, ids_all)
+
+    # ── PUB42 — File « Aujourd'hui » unifiée ─────────────────────────────────
+    def test_today_queue_priority_order_garde_fou_first(self):
+        """garde-fous > alertes > approbations > commentaires > digest —
+        l'ordre EXACT du critère Done (« que dois-je faire ce matin ? »)."""
+        from apps.adsengine.models import CommentMirror, EngineAction
+
+        EngineAlert.objects.create(
+            company=self.company, alert_type=EngineAlert.Type.GARDE_FOU,
+            message='Plafond quotidien dépassé.', resolved=False)
+        EngineAlert.objects.create(
+            company=self.company, alert_type=EngineAlert.Type.ANOMALIE,
+            message='Fréquence anormale.', resolved=False)
+        EngineAction.objects.create(
+            company=self.company, kind=EngineAction.Kind.PAUSE,
+            reason_fr='CPL en hausse.')
+        CommentMirror.objects.create(
+            company=self.company, meta_id='today-c1', message='Question prix',
+            from_name='Client X', answered=False, is_hidden=False,
+            created_time=datetime.datetime.now(datetime.timezone.utc))
+
+        resp = auth(self.viewer).get(f'{BASE}/aujourd-hui/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        items = resp.data['items']
+        self.assertEqual(resp.data['total'], len(items))
+        categories = [it['categorie'] for it in items]
+        # garde_fou avant alerte avant approbation avant commentaire avant digest.
+        self.assertEqual(categories[0], 'garde_fou')
+        self.assertLess(
+            categories.index('garde_fou'), categories.index('alerte'))
+        self.assertLess(
+            categories.index('alerte'), categories.index('approbation'))
+        self.assertLess(
+            categories.index('approbation'), categories.index('commentaire'))
+        # Le brief (fixture setUpTestData) apparaît en dernier (digest).
+        self.assertEqual(categories[-1], 'digest')
+        # Chaque item porte un lien vers SON écran.
+        for it in items:
+            self.assertTrue(it['lien'].startswith('/publicite/'))
+
+    def test_today_queue_excludes_resolved_alerts(self):
+        EngineAlert.objects.create(
+            company=self.company, alert_type=EngineAlert.Type.GARDE_FOU,
+            message='Déjà traité.', resolved=True)
+        resp = auth(self.viewer).get(f'{BASE}/aujourd-hui/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        categories = [it['categorie'] for it in resp.data['items']]
+        self.assertNotIn('garde_fou', categories)
+
+    def test_today_queue_scoped_to_company(self):
+        EngineAlert.objects.create(
+            company=self.other, alert_type=EngineAlert.Type.GARDE_FOU,
+            message='Autre société.', resolved=False)
+        resp = auth(self.viewer).get(f'{BASE}/aujourd-hui/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        details = [it.get('detail', '') for it in resp.data['items']]
+        self.assertNotIn('Autre société.', details)
+
+    def test_today_queue_requires_view_permission(self):
+        resp = auth(self.nobody).get(f'{BASE}/aujourd-hui/')
+        self.assertEqual(resp.status_code, 403)

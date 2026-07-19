@@ -221,4 +221,49 @@ test.describe('ADSDEEP64 : console Publicité étendue (mocks ciblés, ADSENGINT
     await expect(page.getByTestId('ae-dv2-mer-spend-sparkline')).toBeVisible()
     await expect(page.getByTestId('ae-dv2-mer-ca-sparkline')).toBeVisible()
   })
+
+  // ── PUB42 — File « Aujourd'hui » unifiée ─────────────────────────────────
+  test("File « Aujourd'hui » : ordre de priorité + lien vers l'écran de chaque item", async ({ page }) => {
+    const ITEMS = [
+      { id: 'garde_fou-1', categorie: 'garde_fou', categorie_label: 'Garde-fou',
+        titre: 'Violation de garde-fou', detail: 'Plafond quotidien dépassé.',
+        lien: '/publicite/tableau-de-bord', quand: new Date().toISOString() },
+      { id: 'approbation-11', categorie: 'approbation', categorie_label: 'Approbation',
+        titre: 'Ajustement de budget', detail: 'CPL en baisse — augmenter la portée.',
+        lien: '/publicite/approbations', quand: new Date().toISOString() },
+      { id: 'commentaire-5', categorie: 'commentaire', categorie_label: 'Commentaire',
+        titre: 'Karim B.', detail: 'Combien coûte l’installation pour une villa ?',
+        lien: '/publicite/commentaires', quand: new Date().toISOString() },
+    ]
+    await page.route('**/api/django/adsengine/aujourd-hui/**', (route) =>
+      route.fulfill({ json: { items: ITEMS, total: ITEMS.length } }))
+    await page.route('**/api/django/adsengine/sync-status/**', (route) =>
+      route.fulfill({ json: { types: [], stale: false, worst: null } }))
+
+    await page.goto('/publicite')
+    await expect(page.getByRole('heading', { name: "Aujourd'hui" })).toBeVisible({ timeout: 20_000 })
+
+    const rows = page.getByTestId('ae-today-item')
+    await expect(rows).toHaveCount(3)
+    // Ordre EXACT reçu du backend (garde-fou > approbation > commentaire) —
+    // l'écran ne retrie jamais.
+    await expect(rows.nth(0)).toContainText('Violation de garde-fou')
+    await expect(rows.nth(1)).toContainText('Ajustement de budget')
+    await expect(rows.nth(2)).toContainText('Karim B.')
+
+    // Chaque item est cliquable vers SON écran (approbations ici).
+    await rows.nth(1).click()
+    await expect(page.getByRole('heading', { name: "Boîte d'approbation" })).toBeVisible({ timeout: 20_000 })
+  })
+
+  test("Nav « Aujourd'hui » : badge de comptage sur l'icône", async ({ page }) => {
+    await page.route('**/api/django/adsengine/aujourd-hui/**', (route) =>
+      route.fulfill({ json: { items: [{ id: 1 }, { id: 2 }, { id: 3 }], total: 3 } }))
+    await page.route('**/api/django/adsengine/sync-status/**', (route) =>
+      route.fulfill({ json: { types: [], stale: false, worst: null } }))
+
+    await page.goto('/publicite')
+    await expect(page.getByRole('heading', { name: "Aujourd'hui" })).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByTestId('ae-nav-today-badge').first()).toContainText('3')
+  })
 })

@@ -9,6 +9,10 @@ import {
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
   Gauge, GitBranch,
 } from 'lucide-react'
+// PUB42 — icône de nav auto-chargée (porte SON PROPRE badge de comptage,
+// jamais un composant lazy — elle doit être visible dès le premier rendu de
+// la Sidebar, comme les autres icônes de ce fichier).
+import TodayNavIcon from './TodayNavIcon'
 
 /* ============================================================================
    ENG21 — configuration du module « Publicité » (moteur Meta-ads autonome,
@@ -24,6 +28,8 @@ import {
    appliquée côté backend).
    ========================================================================== */
 
+// PUB42 — file « Aujourd'hui » unifiée (écran d'accueil /publicite).
+const TodayScreen = lazy(() => import('./TodayScreen'))
 const DashboardScreen = lazy(() => import('./DashboardScreen'))
 const ConnectionScreen = lazy(() => import('./ConnectionScreen'))
 const CampaignsScreen = lazy(() => import('./CampaignsScreen'))
@@ -52,6 +58,10 @@ const config = {
     label: 'PUBLICITÉ',
     accent: 'brass', // VX8 — croissance/commercial = accent brass (dérivé).
     items: [
+      // PUB42 — point d'entrée du matin, en tête de nav (badge de comptage
+      // porté par TodayNavIcon, auto-chargé — jamais un « 0 » avant l'arrivée
+      // du compte réel).
+      { to: '/publicite', label: "Aujourd'hui", icon: <TodayNavIcon />, roles: ROLES },
       { to: '/publicite/tableau-de-bord', label: 'Tableau de bord', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/cockpit', label: 'Cockpit par ad', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/approbations', label: 'Approbations', icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -90,9 +100,16 @@ const config = {
     ['/publicite/journal', "Publicité — Journal d'actions"],
     ['/publicite/connexion', 'Publicité — Connexion & garde-fous'],
     ['/publicite/arbre', "Publicité — L'Arbre"],
+    // PUB42 — le PLUS général (préfixe de tous les autres) : DERNIER, sinon
+    // il matcherait `/publicite/tableau-de-bord` etc. avant leur propre entrée
+    // (routes.meta.js fait un `find` sur `startsWith`, premier match gagne).
+    ['/publicite', "Publicité — Aujourd'hui"],
   ],
   sectionLabels: { publicite: 'Publicité' },
   routes: [
+    // PUB42 — écran d'accueil (chemin exact, aucune ambiguïté de préfixe côté
+    // react-router : chaque `path` reste un match littéral indépendant).
+    { path: '/publicite', component: TodayScreen, roles: ROLES },
     { path: '/publicite/tableau-de-bord', component: DashboardScreen, roles: ROLES },
     { path: '/publicite/cockpit', component: AdsCockpitScreen, roles: ROLES },
     { path: '/publicite/approbations', component: ApprovalsScreen, roles: ROLES },

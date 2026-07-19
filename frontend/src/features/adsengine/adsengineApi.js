@@ -284,6 +284,11 @@ const adsengineApi = {
   syncStatus: {
     get: () => api.get('/adsengine/sync-status/'),
   },
+
+  // ── PUB42 — File « Aujourd'hui » unifiée (écran d'accueil /publicite) ──
+  today: {
+    get: () => api.get('/adsengine/aujourd-hui/'),
+  },
 }
 
 export default adsengineApi

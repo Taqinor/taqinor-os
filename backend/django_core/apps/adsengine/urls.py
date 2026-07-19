@@ -35,7 +35,7 @@ from .views import (
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
-    SyncStatusView,
+    SyncStatusView, TodayQueueView,
     VariantReportView, WiringHealthView,
 )
 from .whatsapp_webhook import WhatsAppCloudWebhookView
@@ -95,6 +95,9 @@ urlpatterns = [
     # PUB41 — fraîcheur de synchro par type (bandeau global + tuiles horodatées).
     path('sync-status/', SyncStatusView.as_view(),
          name='adsengine-sync-status'),
+    # PUB42 — file « Aujourd'hui » unifiée (écran d'accueil /publicite).
+    path('aujourd-hui/', TodayQueueView.as_view(),
+         name='adsengine-today-queue'),
     # ENG22 — garde-fous singleton (GET/PATCH sans id).
     path('guardrail/', GuardrailSingletonView.as_view(),
          name='adsengine-guardrail'),

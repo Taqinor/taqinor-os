@@ -163,6 +163,17 @@ export const AE_HOOKS = {
     refreshApprovals: 'ae-approvals-refresh', // reprise manuelle du sondage
     refreshComments: 'ae-comments-refresh',
   },
+
+  // PUB42 — File « Aujourd'hui » unifiée (écran d'accueil `/publicite`).
+  today: {
+    root: 'ae-today',
+    list: 'ae-today-list',
+    item: 'ae-today-item', // <Link>, cliquable vers l'écran de l'item
+    itemBadge: 'ae-today-item-badge', // catégorie (garde_fou/alerte/…)
+    empty: 'ae-today-empty',
+    loadError: 'ae-today-load-error',
+    navBadge: 'ae-nav-today-badge', // pastille de comptage sur l'icône de nav
+  },
 }
 
 export default AE_HOOKS

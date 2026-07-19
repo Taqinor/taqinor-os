@@ -637,6 +637,113 @@ def sync_status(company, *, stale_minutes=SYNC_STALE_MINUTES_DEFAULT, now=None):
     return {'types': types, 'stale': bool(stale_types), 'worst': worst}
 
 
+# ── PUB42 — File « Aujourd'hui » unifiée ───────────────────────────────────
+# Ordre de priorité FIXE (le tri du matin, doctrine « que dois-je faire ? ») :
+# garde-fous (bloquant) > alertes (anomalies/règles inopérantes) > approbations
+# en attente > commentaires non traités > digest (brief hebdomadaire, le moins
+# urgent — un résumé, pas une action).
+QUEUE_CATEGORY_ORDER = ['garde_fou', 'alerte', 'approbation', 'commentaire', 'digest']
+QUEUE_CATEGORY_LABELS = {
+    'garde_fou': 'Garde-fou',
+    'alerte': 'Alerte',
+    'approbation': 'Approbation',
+    'commentaire': 'Commentaire',
+    'digest': 'Digest',
+}
+QUEUE_ITEM_LIMIT_PER_CATEGORY = 20
+
+
+def today_queue(company, *, limit_per_category=QUEUE_ITEM_LIMIT_PER_CATEGORY):
+    """PUB42 — File « Aujourd'hui » unifiée (écran d'accueil ``/publicite``) :
+    UNE liste classée par priorité, chaque item reshape d'une ligne DÉJÀ
+    existante (``EngineAlert``/``EngineAction``/``CommentMirror``/
+    ``WeeklyBrief``) — aucune nouvelle colonne, aucun recalcul métier, chaque
+    item porte ``lien`` vers SON écran (jamais un nouveau sous-écran par
+    item). Company-scopé ; dérivé, lecture seule."""
+    from .models import CommentMirror, EngineAction, EngineAlert, WeeklyBrief
+
+    items = []
+
+    # 1) Garde-fous — violations de garde-fou NON acquittées (le plus urgent,
+    # ça bloque/menace le budget).
+    for alert in (EngineAlert.objects
+                  .filter(company=company, alert_type=EngineAlert.Type.GARDE_FOU,
+                          resolved=False)
+                  .order_by('-created_at')[:limit_per_category]):
+        items.append({
+            'id': f'garde_fou-{alert.pk}', 'categorie': 'garde_fou',
+            'categorie_label': QUEUE_CATEGORY_LABELS['garde_fou'],
+            'titre': 'Violation de garde-fou', 'detail': alert.message,
+            'lien': '/publicite/tableau-de-bord',
+            'quand': alert.created_at.isoformat(),
+        })
+
+    # 2) Alertes — anomalies / règles inopérantes NON acquittées (garde-fous
+    # déjà comptés au-dessus, exclus ici pour ne jamais dupliquer un item).
+    alert_labels = {
+        EngineAlert.Type.ANOMALIE: 'Anomalie',
+        EngineAlert.Type.REGLE_INOPERANTE: 'Règle inopérante',
+    }
+    for alert in (EngineAlert.objects
+                  .filter(company=company, resolved=False)
+                  .exclude(alert_type=EngineAlert.Type.GARDE_FOU)
+                  .order_by('-created_at')[:limit_per_category]):
+        label = alert_labels.get(alert.alert_type, 'Alerte')
+        items.append({
+            'id': f'alerte-{alert.pk}', 'categorie': 'alerte',
+            'categorie_label': label, 'titre': label, 'detail': alert.message,
+            'lien': '/publicite/tableau-de-bord',
+            'quand': alert.created_at.isoformat(),
+        })
+
+    # 3) Approbations en attente (boîte d'approbation — l'écran-vaisseau-amiral).
+    for action in (EngineAction.objects
+                   .filter(company=company, status=EngineAction.Statut.PROPOSEE)
+                   .order_by('-created_at')[:limit_per_category]):
+        items.append({
+            'id': f'approbation-{action.pk}', 'categorie': 'approbation',
+            'categorie_label': QUEUE_CATEGORY_LABELS['approbation'],
+            'titre': action.get_kind_display(), 'detail': action.reason_fr,
+            'lien': '/publicite/approbations',
+            'quand': action.created_at.isoformat(),
+        })
+
+    # 4) Commentaires non traités (non répondus, non masqués).
+    for comment in (CommentMirror.objects
+                    .filter(company=company, answered=False, is_hidden=False)
+                    .order_by('-created_time')[:limit_per_category]):
+        items.append({
+            'id': f'commentaire-{comment.pk}', 'categorie': 'commentaire',
+            'categorie_label': QUEUE_CATEGORY_LABELS['commentaire'],
+            'titre': comment.from_name or 'Anonyme',
+            'detail': comment.message or '(sans texte)',
+            'lien': '/publicite/commentaires',
+            'quand': (comment.created_time.isoformat()
+                      if comment.created_time else None),
+        })
+
+    # 5) Digest — dernier brief hebdomadaire (UN item résumé ; ses
+    # propositions individuelles sont DÉJÀ comptées en « approbation » — pas
+    # de doublon).
+    brief = (WeeklyBrief.objects.filter(company=company)
+             .order_by('-period_start', '-created_at').first())
+    if brief is not None:
+        data = brief.data if isinstance(brief.data, dict) else {}
+        cps = data.get('cout_par_signature_cumule')
+        detail = (f"{cps} MAD/signature (cumulé)" if cps is not None
+                  else 'Brief disponible.')
+        items.append({
+            'id': f'digest-{brief.pk}', 'categorie': 'digest',
+            'categorie_label': QUEUE_CATEGORY_LABELS['digest'],
+            'titre': 'Brief hebdomadaire', 'detail': detail,
+            'lien': '/publicite/brief', 'quand': brief.created_at.isoformat(),
+        })
+
+    order = {cat: i for i, cat in enumerate(QUEUE_CATEGORY_ORDER)}
+    items.sort(key=lambda it: order.get(it['categorie'], 99))
+    return items
+
+
 # ── ADSDEEP22 — Cockpit par ad (écran-console quotidien du fondateur) ─────────
 COCKPIT_RECENT_DAYS = 7
 COCKPIT_MIN_FATIGUE_SAMPLES = 3
