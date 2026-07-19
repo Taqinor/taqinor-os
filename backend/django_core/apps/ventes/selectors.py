@@ -1324,3 +1324,39 @@ def devis_accepted_totals_by_lead(company, lead_ids):
             amount = Decimal('0')
         totals[devis.lead_id] = totals.get(devis.lead_id, Decimal('0')) + amount
     return totals
+
+
+def signature_velocity_by_month_and_mode(company):
+    """PUB67 — Nombre de devis ACCEPTÉS (signatures), par MOIS CALENDAIRE
+    (1-12, toutes années confondues — la SAISONNALITÉ récurrente, pas une
+    série temporelle) et par ``mode_installation``. Référence temporelle =
+    ``date_acceptation`` (posée à l'acceptation), repli sur ``date_creation``
+    pour les rares devis acceptés sans cette date.
+
+    Renvoie ``{'par_mode': {mode: {1..12: count}}, 'mois_couverts': int}`` —
+    ``mois_couverts`` = nombre de MOIS-CALENDAIRES (année, mois) DISTINCTS
+    couverts par au moins un devis accepté, tous modes confondus (le signal
+    de fiabilité — l'appelant exige ≥12 pour parler d'un cycle annuel
+    complet, règle checked-facts)."""
+    from collections import defaultdict
+
+    from .models import Devis
+
+    counts = defaultdict(lambda: defaultdict(int))
+    covered_year_months = set()
+    qs = (Devis.objects
+          .filter(company=company, statut=Devis.Statut.ACCEPTE)
+          .values_list('mode_installation', 'date_acceptation',
+                       'date_creation'))
+    for mode, date_acceptation, date_creation in qs:
+        ref = date_acceptation or (
+            date_creation.date() if date_creation else None)
+        if ref is None:
+            continue
+        key = mode or '(non renseigné)'
+        counts[key][ref.month] += 1
+        covered_year_months.add((ref.year, ref.month))
+    return {
+        'par_mode': {mode: dict(months) for mode, months in counts.items()},
+        'mois_couverts': len(covered_year_months),
+    }

@@ -17,7 +17,8 @@ from apps.sav.models import ContratMaintenance
 from apps.ventes.models import Devis, ShareLink
 from apps.ventes.selectors import (
     devis_accepted_totals_by_lead, devis_view_tracking_segments,
-    expired_devis_contacts, signed_clients_cross_sell_segments,
+    expired_devis_contacts, signature_velocity_by_month_and_mode,
+    signed_clients_cross_sell_segments,
 )
 
 MONTH = timezone.now().strftime('%Y%m')
@@ -214,3 +215,44 @@ class DevisAcceptedTotalsByLeadTests(TestCase):
                 statut=Devis.Statut.ACCEPTE)
         totals = devis_accepted_totals_by_lead(self.company, [self.lead.id])
         self.assertIn(self.lead.id, totals)
+
+
+class SignatureVelocityByMonthAndModeTests(TestCase):
+    """PUB67 — vélocité de signature réelle mois-par-mois par mode marché."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB67 Co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='Saison')
+
+    def _signed(self, ref, mode, date_acceptation):
+        return Devis.objects.create(
+            company=self.company, reference=ref, client=self.client_obj,
+            taux_tva=Decimal('20'), statut=Devis.Statut.ACCEPTE,
+            mode_installation=mode, date_acceptation=date_acceptation)
+
+    def test_no_signed_devis_empty_result(self):
+        result = signature_velocity_by_month_and_mode(self.company)
+        self.assertEqual(result['par_mode'], {})
+        self.assertEqual(result['mois_couverts'], 0)
+
+    def test_counts_grouped_by_calendar_month_and_mode(self):
+        from datetime import date
+        self._signed(f'DEV-{MONTH}-PUB6701', 'residentiel', date(2025, 3, 10))
+        self._signed(f'DEV-{MONTH}-PUB6702', 'residentiel', date(2026, 3, 5))
+        self._signed(f'DEV-{MONTH}-PUB6703', 'agricole', date(2025, 8, 1))
+        result = signature_velocity_by_month_and_mode(self.company)
+        self.assertEqual(result['par_mode']['residentiel'][3], 2)
+        self.assertEqual(result['par_mode']['agricole'][8], 1)
+        # 3 mois-calendaires DISTINCTS : (2025,3), (2026,3), (2025,8).
+        self.assertEqual(result['mois_couverts'], 3)
+
+    def test_non_accepted_devis_excluded(self):
+        from datetime import date
+        Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-PUB6704',
+            client=self.client_obj, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ENVOYE, mode_installation='residentiel',
+            date_acceptation=date(2025, 1, 1))
+        result = signature_velocity_by_month_and_mode(self.company)
+        self.assertEqual(result['par_mode'], {})

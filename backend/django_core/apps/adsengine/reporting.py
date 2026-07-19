@@ -555,6 +555,72 @@ def cold_recycling_report(company, *, date_start=None, date_end=None):
     }
 
 
+# ── PUB67 — Saisonnalité pilotée par l'historique RÉEL (recommandation seule) ─
+
+MIN_MONTHS_COVERAGE_SEASONALITY = 12
+
+
+def seasonality_report(company):
+    """PUB67 — Rapport « votre saisonnalité » : vélocité de signature RÉELLE
+    mois-par-mois PAR MODE MARCHÉ (``apps.ventes.selectors.
+    signature_velocity_by_month_and_mode`` + ``pacing.
+    monthly_signature_shares``, RÉUTILISÉ) → RECOMMANDATION de réallocation
+    budgétaire saisonnière. Distinct du calendrier fixe générique PUB78 —
+    ici c'est la donnée Taqinor RÉELLE. RECOMMANDATION SEULE, jamais une
+    action automatique.
+
+    <``MIN_MONTHS_COVERAGE_SEASONALITY`` mois-calendaires distincts de
+    données → le dit EXPLICITEMENT et s'abstient de toute recommandation
+    (jamais un signal saisonnier fabriqué sur un historique trop court)."""
+    from . import pacing
+    from apps.ventes.selectors import signature_velocity_by_month_and_mode
+
+    data = signature_velocity_by_month_and_mode(company)
+    if data['mois_couverts'] < MIN_MONTHS_COVERAGE_SEASONALITY:
+        return {
+            'donnees_suffisantes': False,
+            'mois_couverts': data['mois_couverts'],
+            'seuil_requis': MIN_MONTHS_COVERAGE_SEASONALITY,
+            'avertissement': (
+                f"Seulement {data['mois_couverts']} mois-calendaires "
+                f"distincts de devis signés — "
+                f"{MIN_MONTHS_COVERAGE_SEASONALITY} requis pour un cycle "
+                f"annuel complet. Abstention (aucune recommandation)."),
+            'par_mode': [],
+        }
+
+    par_mode = []
+    for mode, months in sorted(data['par_mode'].items()):
+        total = sum(months.values())
+        if total == 0:
+            continue
+        shares = pacing.monthly_signature_shares(months)
+        pic = max(shares, key=shares.get)
+        creux = min(shares, key=shares.get)
+        par_mode.append({
+            'mode_installation': mode,
+            'total_signatures': total,
+            'repartition_mensuelle': {m: round(s, 4)
+                                      for m, s in shares.items()},
+            'mois_pic': pic,
+            'mois_creux': creux,
+            'recommandation_fr': (
+                f"{mode} : pic historique en mois {pic} "
+                f"({shares[pic] * 100:.0f} % des signatures), creux en "
+                f"mois {creux} ({shares[creux] * 100:.0f} %) — envisager "
+                f"de réallouer le budget vers le mois {pic} à l'approche "
+                f"de la saison (recommandation seule, aucune action "
+                f"automatique)."),
+        })
+    return {
+        'donnees_suffisantes': True,
+        'mois_couverts': data['mois_couverts'],
+        'seuil_requis': MIN_MONTHS_COVERAGE_SEASONALITY,
+        'avertissement': None,
+        'par_mode': par_mode,
+    }
+
+
 def reconciliation_csv(company, *, day=None):
     """CSV de la table de réconciliation (§5.4). Réutilise
     ``reconciliation.reconcile`` (ADSENG31, fichier disjoint) — jamais un schéma
