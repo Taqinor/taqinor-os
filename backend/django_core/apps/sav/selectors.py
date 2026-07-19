@@ -239,6 +239,26 @@ def client_a_contrat_actif(client, company):
         client=client, company=company, actif=True).exists()
 
 
+def clients_sans_contrat_actif(company, client_ids):
+    """PUB60 — Version BULK de ``client_a_contrat_actif`` (YSERV10, RÉUTILISÉE
+    — jamais réimplémentée) : parmi ``client_ids`` (déjà scopés société par
+    l'appelant), lesquels n'ont AUCUN ``ContratMaintenance`` ``actif`` ?
+
+    Évite une requête PAR CLIENT sur un segment publicitaire (cross-sell base
+    installée — PUB60). Renvoie un ``set`` d'ids, sous-ensemble de
+    ``client_ids``."""
+    from .models import ContratMaintenance
+
+    ids = {int(i) for i in (client_ids or [])}
+    if not ids:
+        return set()
+    avec_contrat = set(
+        ContratMaintenance.objects.filter(
+            company=company, client_id__in=ids, actif=True)
+        .values_list('client_id', flat=True))
+    return ids - avec_contrat
+
+
 def taux_attache(company, *, date_debut=None, date_fin=None):
     """YSERV10 — KPI taux d'attache : part des chantiers réceptionnés de la
     période qui ont un ``ContratMaintenance`` ``actif`` créé (``date_debut``)

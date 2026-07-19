@@ -13,9 +13,11 @@ from django.utils import timezone
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead
+from apps.sav.models import ContratMaintenance
 from apps.ventes.models import Devis, ShareLink
 from apps.ventes.selectors import (
     devis_view_tracking_segments, expired_devis_contacts,
+    signed_clients_cross_sell_segments,
 )
 
 MONTH = timezone.now().strftime('%Y%m')
@@ -124,3 +126,60 @@ class ExpiredDevisContactsTests(TestCase):
                     Devis.Statut.EXPIRE)
         contacts = expired_devis_contacts(self.company)
         self.assertEqual(len(contacts), 1)
+
+
+class SignedClientsCrossSellSegmentsTests(TestCase):
+    """PUB60 — sans_contrat (sav) + sans_batterie (devis d'origine)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB60 Selectors Co')
+
+    def _signed_client(self, nom, *, option_acceptee='', ref_suffix=None):
+        client = Client.objects.create(
+            company=self.company, nom=nom, prenom='C',
+            email=f'{nom.lower()}@ex.ma', telephone='+212600000050')
+        Devis.objects.create(
+            company=self.company,
+            reference=f'DEV-{MONTH}-{ref_suffix or nom}',
+            client=client, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ACCEPTE, option_acceptee=option_acceptee)
+        return client
+
+    def test_no_signed_client_returns_empty_segments(self):
+        result = signed_clients_cross_sell_segments(self.company)
+        self.assertEqual(result, {'sans_contrat': [], 'sans_batterie': []})
+
+    def test_client_with_active_contract_and_battery_excluded_both(self):
+        client = self._signed_client(
+            'Complet', option_acceptee=Devis.OptionAcceptee.AVEC_BATTERIE)
+        ContratMaintenance.objects.create(
+            company=self.company, client=client, periodicite='annuel',
+            date_debut=timezone.localdate(), actif=True)
+        result = signed_clients_cross_sell_segments(self.company)
+        self.assertEqual(result['sans_contrat'], [])
+        self.assertEqual(result['sans_batterie'], [])
+
+    def test_client_without_contract_or_battery_in_both_segments(self):
+        self._signed_client('Nu')
+        result = signed_clients_cross_sell_segments(self.company)
+        self.assertEqual(len(result['sans_contrat']), 1)
+        self.assertEqual(len(result['sans_batterie']), 1)
+
+    def test_origin_devis_is_the_earliest_accepted(self):
+        client = Client.objects.create(
+            company=self.company, nom='Origine', prenom='X',
+            email='origine@ex.ma', telephone='+212600000051')
+        premier = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-ORIG1',
+            client=client, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ACCEPTE, option_acceptee='')
+        Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-ORIG2',
+            client=client, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ACCEPTE,
+            option_acceptee=Devis.OptionAcceptee.AVEC_BATTERIE)
+        result = signed_clients_cross_sell_segments(self.company)
+        # Le devis d'ORIGINE (premier=sans batterie) qualifie pour sans_batterie
+        # même si un devis PLUS RÉCENT du même client a une batterie.
+        self.assertEqual(len(result['sans_batterie']), 1)
+        self.assertIsNotNone(premier)

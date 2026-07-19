@@ -1255,3 +1255,47 @@ def expired_devis_contacts(company):
         seen.add(devis.client_id)
         contacts.append(contact)
     return contacts
+
+
+def signed_clients_cross_sell_segments(company):
+    """PUB60 — Segmente les clients SIGNÉS (≥1 devis ACCEPTÉ) en deux paniers
+    d'upsell base installée :
+
+      * ``sans_contrat`` — aucun ``sav.ContratMaintenance`` actif, lu via
+        ``apps.sav.selectors.clients_sans_contrat_actif`` (version bulk de
+        YSERV10 ``client_a_contrat_actif`` — RÉUTILISÉE, jamais
+        réimplémentée) ;
+      * ``sans_batterie`` — le devis d'ORIGINE (le premier ACCEPTÉ,
+        chronologiquement) ne portait PAS l'option ``avec_batterie``.
+
+    Renvoie ``{'sans_contrat': [...], 'sans_batterie': [...]}`` (dicts
+    ``{'email', 'telephone'}``)."""
+    from .models import Devis
+
+    accepted = (Devis.objects
+                .filter(company=company, statut=Devis.Statut.ACCEPTE)
+                .select_related('client')
+                .order_by('client_id', 'date_creation'))
+
+    origin_by_client = {}
+    for devis in accepted:
+        if devis.client_id and devis.client_id not in origin_by_client:
+            origin_by_client[devis.client_id] = devis  # 1er vu = le + ancien
+
+    if not origin_by_client:
+        return {'sans_contrat': [], 'sans_batterie': []}
+
+    from apps.sav.selectors import clients_sans_contrat_actif
+    sans_contrat_ids = clients_sans_contrat_actif(
+        company, list(origin_by_client.keys()))
+
+    sans_contrat, sans_batterie = [], []
+    for client_id, devis in origin_by_client.items():
+        contact = _client_contact(devis.client)
+        if not contact:
+            continue
+        if client_id in sans_contrat_ids:
+            sans_contrat.append(contact)
+        if devis.option_acceptee != Devis.OptionAcceptee.AVEC_BATTERIE:
+            sans_batterie.append(contact)
+    return {'sans_contrat': sans_contrat, 'sans_batterie': sans_batterie}

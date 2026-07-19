@@ -429,3 +429,48 @@ class Pub59ExpiredDevisAudienceTests(TestCase):
         result = aud.sync_expired_devis_audience(self.company, client=client)
         self.assertEqual(result['name'], 'Devis expiré')
         self.assertEqual(result['matched_rows'], 1)  # seul le client_expired
+
+
+class Pub60UpsellAudiencesTests(TestCase):
+    """PUB60 — sync_installed_base_upsell_audiences : cross-sell entretien
+    (sans contrat sav actif) + batterie (devis d'origine sans_batterie)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB60 Co')
+
+    def _signed_client(self, nom, *, option_acceptee=''):
+        client = Client.objects.create(
+            company=self.company, nom=nom, prenom='C',
+            email=f'{nom.lower()}@example.ma', telephone='+212600000030')
+        Devis.objects.create(
+            company=self.company, reference=f'DEV-PUB60-{nom}',
+            client=client, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ACCEPTE, option_acceptee=option_acceptee)
+        return client
+
+    def test_consent_off_no_network(self):
+        self._signed_client('SansTout')
+        result = aud.sync_installed_base_upsell_audiences(
+            self.company, client=ExplodingClient())
+        self.assertFalse(result['entretien']['configured'])
+        self.assertFalse(result['batterie']['configured'])
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_without_contract_and_without_battery_both_segmented(self):
+        self._signed_client('SansRien')
+        avec_batterie = self._signed_client(
+            'AvecBatterie', option_acceptee=Devis.OptionAcceptee.AVEC_BATTERIE)
+        from django.utils import timezone
+
+        from apps.sav.models import ContratMaintenance
+        ContratMaintenance.objects.create(
+            company=self.company, client=avec_batterie,
+            date_debut=timezone.now().date(), actif=True)
+
+        client = RecordingClient()
+        result = aud.sync_installed_base_upsell_audiences(
+            self.company, client=client)
+        # sans_contrat : seul 'SansRien' n'a pas de ContratMaintenance actif.
+        self.assertEqual(result['entretien']['matched_rows'], 1)
+        # sans_batterie : seul 'SansRien' (option_acceptee='') qualifie.
+        self.assertEqual(result['batterie']['matched_rows'], 1)

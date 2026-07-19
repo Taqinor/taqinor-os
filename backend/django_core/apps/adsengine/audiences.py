@@ -565,3 +565,31 @@ def sync_expired_devis_audience(company, *, client=None):
         description=("Devis expiré — votre prix était valable 30 j, "
                      "nouvelle offre."),
         client=client)
+
+
+# ── PUB60 — Audiences cross-sell base installée ───────────────────────────────
+
+def sync_installed_base_upsell_audiences(company, *, client=None):
+    """PUB60 — Pousse les 2 Custom Audiences d'upsell base installée : clients
+    SIGNÉS sans contrat de maintenance actif (entretien) et clients SIGNÉS
+    sans batterie sur leur devis d'origine (batterie) —
+    ``apps.ventes.selectors.signed_clients_cross_sell_segments`` (lecture
+    sav/ventes par selectors uniquement). Même porte consentement. Renvoie
+    ``{'entretien': <résumé>, 'batterie': <résumé>}``."""
+    from apps.ventes.selectors import signed_clients_cross_sell_segments
+
+    segments = signed_clients_cross_sell_segments(company)
+    return {
+        'entretien': sync_crm_custom_audience(
+            company, name='Upsell — sans contrat entretien',
+            contacts=segments['sans_contrat'],
+            description=('Clients signés sans contrat de maintenance '
+                         'actif.'),
+            client=client),
+        'batterie': sync_crm_custom_audience(
+            company, name='Upsell — sans batterie',
+            contacts=segments['sans_batterie'],
+            description=("Clients signés sans batterie sur le devis "
+                         "d'origine."),
+            client=client),
+    }
