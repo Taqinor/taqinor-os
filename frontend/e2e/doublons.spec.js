@@ -14,7 +14,8 @@ test('E11: doublons view renders and merging a cluster completes', async ({ page
     await page.getByRole('button', { name: '+ Nouveau lead' }).click()
     const modal = page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
     await modal.locator('#lf-nom').fill(name)
-    await modal.locator('.form-group', { hasText: 'Téléphone' }).locator('input').fill(phone)
+    // LW39 (suite) — FormField du workspace ne rend plus `.form-group` : id stable.
+    await modal.locator('#lf-telephone').fill(phone)
     await modal.getByRole('button', { name: 'Créer le lead' }).click()
     await expect(page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })).toHaveCount(0)
   }

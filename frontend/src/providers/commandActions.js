@@ -49,6 +49,22 @@ export function filterCreateActions(query) {
   )
 }
 
+/**
+ * filterContextActions — LW26 : filtre une liste d'actions CONTEXTUELLES
+ * arbitraires (posées par un écran de détail tant qu'il est monté — ex.
+ * `taqinor:lead-workspace-actions` de features/crm/workspace/LeadWorkspace.jsx)
+ * par le même critère que filterActions/filterCreateActions (libellé,
+ * insensible à la casse). Ces actions n'ont pas de `keys` (pas de raccourci
+ * clavier dédié) — filtre donc UNIQUEMENT sur `label`. Requête vide → toutes
+ * les actions fournies, inchangées ; `actions` absent/vide → [].
+ */
+export function filterContextActions(actions, query) {
+  const list = actions || []
+  const q = (query || '').trim().toLowerCase()
+  if (!q) return list
+  return list.filter((a) => a.label.toLowerCase().includes(q))
+}
+
 // ── Mémoire des entités récemment ouvertes via la palette ────────────────────
 export const RECENT_KEY = 'taqinor.cmdk.recent'
 const RECENT_MAX = 6

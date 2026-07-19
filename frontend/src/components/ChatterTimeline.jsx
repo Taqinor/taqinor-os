@@ -14,7 +14,7 @@
    `recordsApi.getAttachments`) injectées dans le fil, triées avec le reste
    par date — pas un onglet séparé. */
 import Avatar from './Avatar'
-import { Pencil, Paperclip, Megaphone } from 'lucide-react'
+import { Pencil, Paperclip, Megaphone, Pin, PinOff } from 'lucide-react'
 
 // FG30/QX27 — libellés FR du résultat d'un appel/e-mail journalisé (miroir de
 // LeadActivity.OUTCOMES côté serveur, apps/crm/models.py). Rapatrié ici
@@ -201,67 +201,109 @@ function ActivityLine({ a, resolveMarketingLink }) {
  *                              (campagne/séquence) reconnue dans une note —
  *                              non fourni = pas de lien (comportement actuel
  *                              inchangé pour tout autre appelant).
+ * @param {boolean} [pinned]   LW20 — additif, défaut false. Active l'affichage
+ *                              « épinglé » : les entrées `item.pinned` (backend
+ *                              LW28) sortent de la chronologie et remontent en
+ *                              tête (icône 📌), hors des groupes jour. Sans ce
+ *                              prop, comportement STRICTEMENT inchangé pour les
+ *                              appelants existants (DevisList/FactureList/
+ *                              LeadForm) qui n'ont pas de notion d'épinglage.
+ * @param {Function} [onTogglePin] LW20 — additif, `(item) => void` appelé au
+ *                              clic sur le bouton épingler/désépingler (révélé
+ *                              au survol/focus d'une entrée). Absent = pas de
+ *                              bouton rendu, même si `pinned` est actif.
  */
 export default function ChatterTimeline({
   entries, attachments, emptyLabel = 'Aucune activité pour le moment.',
-  resolveMarketingLink,
+  resolveMarketingLink, pinned = false, onTogglePin,
 }) {
   const feed = buildFeed(entries, attachments)
   if (feed.length === 0) {
     return <p className="gen-hint chatter-empty">{emptyLabel}</p>
   }
-  const groups = groupByDay(feed)
+  // LW20 — quand `pinned` est actif, les notes épinglées sortent de la
+  // chronologie normale (hors groupes jour) et remontent dans une section
+  // dédiée en tête. Un item de pièce jointe (`__feedKind === 'attachment'`)
+  // n'est jamais une `LeadActivity` et ne porte donc jamais `pinned`.
+  const pinnedItems = pinned
+    ? feed.filter((item) => item.__feedKind === 'activity' && item.pinned)
+    : []
+  const restFeed = pinned
+    ? feed.filter((item) => !(item.__feedKind === 'activity' && item.pinned))
+    : feed
+  const groups = groupByDay(restFeed)
+
+  const renderItem = (item) => {
+    if (item.__feedKind === 'attachment') {
+      return (
+        <div key={`att-${item.id}`} className="chatter-item chatter-attachment">
+          <Avatar name={item.uploaded_by_nom} size={24} />
+          <div className="chatter-item-body">
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="chatter-attachment-link"
+            >
+              <Paperclip size={13} aria-hidden="true" /> {item.filename}
+            </a>
+            <span className="chatter-meta">
+              — par {item.uploaded_by_nom ?? '?'} · {timeAgo(item.__at)}
+            </span>
+          </div>
+        </div>
+      )
+    }
+    const isNote = item.kind === 'note'
+    const isAutoLog = AUTO_LOG_KINDS.has(item.kind)
+    const isMarketing = isNote && !!parseMarketingTouch(item.body)
+    const classes = [
+      'chatter-item',
+      `chatter-${item.kind}`,
+      isNote ? 'chatter-item-note' : '',
+      isAutoLog ? 'chatter-item-autolog' : '',
+      isMarketing ? 'chatter-item-marketing' : '',
+    ].filter(Boolean).join(' ')
+    return (
+      <div key={item.id} className={classes}>
+        <Avatar name={item.user_nom} size={24} />
+        <div className="chatter-item-body">
+          {isAutoLog && <Pencil size={11} className="chatter-autolog-icon" aria-hidden="true" />}
+          {pinned && item.pinned && (
+            <span className="lw-context-pin-badge" title="Épinglée">📌</span>
+          )}
+          <ActivityLine a={item} resolveMarketingLink={resolveMarketingLink} />
+          {item.bulk && <span className="chatter-bulk">en masse</span>}
+          <span className="chatter-meta">
+            — par {item.user_nom ?? '?'} · {timeAgo(item.__at)}
+          </span>
+        </div>
+        {onTogglePin && (
+          <button
+            type="button"
+            className="lw-context-pin-toggle"
+            onClick={() => onTogglePin(item)}
+            aria-label={item.pinned ? 'Désépingler cette note' : 'Épingler cette note'}
+            title={item.pinned ? 'Désépingler' : 'Épingler en tête'}
+          >
+            {item.pinned ? <PinOff size={13} aria-hidden="true" /> : <Pin size={13} aria-hidden="true" />}
+          </button>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="chatter-timeline chatter-timeline-grouped">
+      {pinnedItems.length > 0 && (
+        <div className="lw-context-chatter-pinned">
+          {pinnedItems.map(renderItem)}
+        </div>
+      )}
       {groups.map((group) => (
         <div key={group.label} className="chatter-day-group">
           <div className="chatter-day-label">{group.label}</div>
-          {group.items.map((item) => {
-            if (item.__feedKind === 'attachment') {
-              return (
-                <div key={`att-${item.id}`} className="chatter-item chatter-attachment">
-                  <Avatar name={item.uploaded_by_nom} size={24} />
-                  <div className="chatter-item-body">
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="chatter-attachment-link"
-                    >
-                      <Paperclip size={13} aria-hidden="true" /> {item.filename}
-                    </a>
-                    <span className="chatter-meta">
-                      — par {item.uploaded_by_nom ?? '?'} · {timeAgo(item.__at)}
-                    </span>
-                  </div>
-                </div>
-              )
-            }
-            const isNote = item.kind === 'note'
-            const isAutoLog = AUTO_LOG_KINDS.has(item.kind)
-            const isMarketing = isNote && !!parseMarketingTouch(item.body)
-            const classes = [
-              'chatter-item',
-              `chatter-${item.kind}`,
-              isNote ? 'chatter-item-note' : '',
-              isAutoLog ? 'chatter-item-autolog' : '',
-              isMarketing ? 'chatter-item-marketing' : '',
-            ].filter(Boolean).join(' ')
-            return (
-              <div key={item.id} className={classes}>
-                <Avatar name={item.user_nom} size={24} />
-                <div className="chatter-item-body">
-                  {isAutoLog && <Pencil size={11} className="chatter-autolog-icon" aria-hidden="true" />}
-                  <ActivityLine a={item} resolveMarketingLink={resolveMarketingLink} />
-                  {item.bulk && <span className="chatter-bulk">en masse</span>}
-                  <span className="chatter-meta">
-                    — par {item.user_nom ?? '?'} · {timeAgo(item.__at)}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
+          {group.items.map(renderItem)}
         </div>
       ))}
     </div>

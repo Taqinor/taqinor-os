@@ -10,8 +10,12 @@ import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'PlanActiviteDialog.jsx'), 'utf8')
-const LEADFORM_SRC = readFileSync(
-  join(HERE, '..', 'LeadForm.jsx'), 'utf8')
+// LW37 — « Appliquer un plan » a migré de LeadForm vers le rail contexte
+// (ContextRail, bouton → onAction('plan')) + le shell LeadWorkspace (montage).
+const CONTEXTRAIL_SRC = readFileSync(
+  join(HERE, '..', '..', '..', 'features', 'crm', 'workspace', 'ContextRail.jsx'), 'utf8')
+const WORKSPACE_SRC = readFileSync(
+  join(HERE, '..', '..', '..', 'features', 'crm', 'workspace', 'LeadWorkspace.jsx'), 'utf8')
 
 test('charge les plans ACTIFS via crmApi.getPlansActivite', () => {
   assert.match(SRC, /crmApi\.getPlansActivite\(\)/)
@@ -27,8 +31,13 @@ test('affiche le nombre d\'activités créées après application (pas de succè
   assert.match(SRC, /activité\(s\) planifiée\(s\)/)
 })
 
-test('LeadForm : le bouton « Appliquer un plan » ouvre PlanActiviteDialog', () => {
-  assert.match(LEADFORM_SRC, /import PlanActiviteDialog from '\.\/leads\/PlanActiviteDialog'/)
-  assert.match(LEADFORM_SRC, /onClick=\{\(\) => setPlanOpen\(true\)\}/)
-  assert.match(LEADFORM_SRC, /isEdit && planOpen && \(/)
+test('ContextRail : le bouton « Appliquer un plan » déclenche onAction(\'plan\')', () => {
+  assert.match(CONTEXTRAIL_SRC, /Appliquer un plan/)
+  assert.match(CONTEXTRAIL_SRC, /onClick=\{\(\) => onAction\?\.\('plan'\)\}/)
+})
+
+test('LeadWorkspace : onAction(\'plan\') ouvre PlanActiviteDialog', () => {
+  assert.match(WORKSPACE_SRC, /import PlanActiviteDialog from '\.\.\/\.\.\/\.\.\/pages\/crm\/leads\/PlanActiviteDialog'/)
+  assert.match(WORKSPACE_SRC, /case 'plan': return setPlanOpen\(true\)/)
+  assert.match(WORKSPACE_SRC, /\{planOpen && \(/)
 })

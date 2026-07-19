@@ -13,13 +13,16 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const LEAD_SRC = readFileSync(join(HERE, '../pages/crm/LeadForm.jsx'), 'utf8')
 const CLIENT_SRC = readFileSync(join(HERE, '../pages/crm/ClientDetailPanel.jsx'), 'utf8')
 const FOURNISSEUR_SRC = readFileSync(join(HERE, '../pages/stock/FournisseurFiche360.jsx'), 'utf8')
 const PRODUIT_SRC = readFileSync(join(HERE, '../pages/stock/ProduitDetail.jsx'), 'utf8')
+// LW37 — la fiche lead n'utilise PLUS RelationCounters (fondue en cockpit en
+// LW13) : le compteur devis est devenu le badge d'onglet du rail contexte
+// (`ContextRail`, « N devis »), toujours ZÉRO appel réseau (dérivé du lead déjà
+// chargé). Client/Fournisseur/Produit consomment toujours RelationCounters.
+const CONTEXTRAIL_SRC = readFileSync(join(HERE, '../features/crm/workspace/ContextRail.jsx'), 'utf8')
 
 for (const [name, src] of [
-  ['LeadForm.jsx', LEAD_SRC],
   ['ClientDetailPanel.jsx', CLIENT_SRC],
   ['FournisseurFiche360.jsx', FOURNISSEUR_SRC],
   ['ProduitDetail.jsx', PRODUIT_SRC],
@@ -33,8 +36,9 @@ for (const [name, src] of [
   })
 }
 
-test('LeadForm.jsx : compteur devis dérivé de liveLead.devis déjà chargé — ZÉRO appel réseau', () => {
-  assert.match(LEAD_SRC, /count: liveLead\.devis\.length/)
+test('ContextRail : badge devis dérivé de state.server.devis déjà chargé — ZÉRO appel réseau, jamais prix_achat', () => {
+  assert.match(CONTEXTRAIL_SRC, /const nbDevis = \(state\.server\?\.devis \?\? \[\]\)\.length/)
+  assert.doesNotMatch(CONTEXTRAIL_SRC, /\.prix_achat\b|\bprix_achat:/)
 })
 
 test('ClientDetailPanel.jsx : compteurs dérivés de `data` déjà chargé (endpoint /documents/ existant) — ZÉRO appel réseau nouveau', () => {

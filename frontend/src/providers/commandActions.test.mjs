@@ -19,7 +19,7 @@ const clear = installLocalStorage()
 
 const {
   NAV_ACTIONS, filterActions, CREATE_ACTIONS, filterCreateActions,
-  readRecentEntities, pushRecentEntity,
+  filterContextActions, readRecentEntities, pushRecentEntity,
 } = await import('./commandActions.js')
 
 test('NAV_ACTIONS: dérivées des raccourcis, bien formées (label + route + puce)', () => {
@@ -114,4 +114,26 @@ test('readRecentEntities: JSON corrompu toléré', () => {
   clear()
   globalThis.window.localStorage.setItem('taqinor.cmdk.recent', '{pas du json')
   assert.deepEqual(readRecentEntities(), [])
+})
+
+test('LW26 : filterContextActions — requête vide → toutes ; filtre par libellé seul (pas de puce)', () => {
+  const actions = [
+    { id: 'lw-archive', label: 'Archiver le lead' },
+    { id: 'lw-convert', label: 'Convertir en client' },
+    { id: 'lw-goto-toiture', label: 'Aller à : Toiture & site' },
+  ]
+  assert.equal(filterContextActions(actions, '').length, 3)
+  assert.equal(filterContextActions(actions, '   ').length, 3)
+  const toiture = filterContextActions(actions, 'toiture')
+  assert.equal(toiture.length, 1)
+  assert.equal(toiture[0].id, 'lw-goto-toiture')
+  // insensible à la casse
+  assert.deepEqual(filterContextActions(actions, 'ARCHIVER'), filterContextActions(actions, 'archiver'))
+  assert.equal(filterContextActions(actions, 'zzz-introuvable').length, 0)
+})
+
+test('LW26 : filterContextActions — actions absentes/nulles → []', () => {
+  assert.deepEqual(filterContextActions(null, 'x'), [])
+  assert.deepEqual(filterContextActions(undefined, ''), [])
+  assert.deepEqual(filterContextActions([], ''), [])
 })

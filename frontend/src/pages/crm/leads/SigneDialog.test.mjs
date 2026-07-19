@@ -40,6 +40,18 @@ test('VX40/VX155 : acceptation confirmée déclenche la carte de victoire', () =
   assert.match(SRC, /onClose=\{\(\) => \{ setCelebration\(null\); onConfirmed\?\.\(\) \}\}/)
 })
 
+// LW5 — le défaut du champ date (L121) et la comparaison « date future »
+// (dans confirm()) doivent tous deux passer par todayLocalStr() (date civile
+// LOCALE) ; plus jamais new Date().toISOString().slice(0,10) (date UTC, qui
+// décale d'un jour côté fuseau local autour de minuit — recon 05 P2#9).
+test('LW5 : date par défaut + comparaison "future" en LOCAL, jamais toISOString() UTC', () => {
+  assert.doesNotMatch(SRC, /new Date\(\)\.toISOString\(\)\.slice\(0, ?10\)/)
+  assert.match(SRC, /function todayLocalStr\(now = new Date\(\)\)/)
+  assert.match(SRC, /toLocaleDateString\('fr-CA'\)/)
+  assert.match(SRC, /useState\(\(\) => todayLocalStr\(\)\)/)
+  assert.match(SRC, /const today = todayLocalStr\(\)/)
+})
+
 // La carte elle-même reste responsable du burst CSS-only VX40 (posé une
 // seule fois, jamais dupliqué dans SigneDialog).
 test('DealSignedCelebration : réutilise celebrateDealSigned (VX40), montant + kWc réels', () => {
@@ -114,4 +126,37 @@ test('optionsDetail : null sans lignes ; pas de kWc sans panneaux', () => {
     lignes: [{ designation: 'Pompe', quantite: '1', prix_unitaire: '5000', remise: '0', taux_tva: '20' }],
   })
   assert.equal(d.avec_batterie.kwc, null)
+})
+
+// ── LW5 : todayLocalStr, ré-implémentée à l'identique (le code source
+//    ci-dessus en garantit la présence exacte, cf. tests de régression). ──
+function todayLocalStr(now = new Date()) {
+  return now.toLocaleDateString('fr-CA')
+}
+
+// Horloge mockée à 23h30 (référentiel UTC) = 00h30 le LENDEMAIN à Casablanca
+// (Africa/Casablanca est fixé à UTC+1 depuis 2018, hors Ramadan) : le jour
+// civil LOCAL a déjà changé alors que toISOString() reste bloqué sur la
+// veille. C'est exactement la fenêtre (minuit local passé, minuit UTC pas
+// encore atteint) où l'ancien code L121/L207-211 affichait « hier » comme
+// date par défaut et levait une fausse alerte « date future » pour toute
+// date d'aujourd'hui tapée par le vendeur.
+test('LW5 : todayLocalStr reste sur le jour civil LOCAL quand toISOString() a déjà basculé sur la veille (23h30 UTC / Casablanca)', () => {
+  const previousTz = process.env.TZ
+  process.env.TZ = 'Africa/Casablanca'
+  try {
+    const mocked = new Date('2026-07-18T23:30:00.000Z')
+    // Le bug historique (toISOString) resterait bloqué sur la veille :
+    assert.equal(mocked.toISOString().slice(0, 10), '2026-07-18')
+    // Le jour civil LOCAL (Casablanca) est déjà le lendemain :
+    assert.equal(todayLocalStr(mocked), '2026-07-19')
+    // Défaut du champ = aujourd'hui LOCAL (jamais "hier") :
+    assert.notEqual(todayLocalStr(mocked), mocked.toISOString().slice(0, 10))
+    // Une date d'acceptation tapée = aujourd'hui LOCAL ne doit plus jamais
+    // sembler « future » face à ce today() corrigé :
+    const dateChoisieParLeClient = '2026-07-19'
+    assert.ok(!(dateChoisieParLeClient > todayLocalStr(mocked)))
+  } finally {
+    process.env.TZ = previousTz
+  }
 })

@@ -16,10 +16,10 @@ import { roleProfile } from './ShortcutsProvider'
 afterEach(() => { cleanup() })
 
 describe('FOCUSED_RECORD_SHORTCUTS (registre)', () => {
-  it('leadForm : a/d + 4 touches de stage, jamais SIGNED ni COLD', () => {
+  it('leadForm : a/d/n + 4 touches de stage, jamais SIGNED ni COLD', () => {
     const entry = FOCUSED_RECORD_SHORTCUTS.leadForm
     const keys = entry.items.map((it) => it.key)
-    expect(keys).toEqual(['a', 'd', '1', '2', '3', '4'])
+    expect(keys).toEqual(['a', 'd', 'n', '1', '2', '3', '4'])
     const stages = LEAD_STAGE_SHORTCUTS.map((s) => s.stage)
     expect(stages).toEqual(['NEW', 'CONTACTED', 'QUOTE_SENT', 'FOLLOW_UP'])
     expect(stages).not.toContain('SIGNED')
