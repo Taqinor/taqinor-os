@@ -22,6 +22,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead
+from apps.installations.models import Installation
 from apps.ventes.models import Devis, ShareLink
 
 from apps.adsengine import audiences as aud
@@ -519,3 +520,46 @@ class Pub61SignedLookalikeTests(TestCase):
             self.company, client=ExplodingClient())
         self.assertFalse(result['seed']['configured'])
         self.assertIsNone(result['lookalike'])
+
+
+class Pub66GeoHaloTests(TestCase):
+    """PUB66 — fresh_installation_geo_halos : halo géo pur (aucune donnée
+    client), targeting_spec borné 500 m-2 km."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB66 Audiences Co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='C', prenom='PUB66')
+
+    def test_no_fresh_installation_empty_list(self):
+        self.assertEqual(aud.fresh_installation_geo_halos(self.company), [])
+
+    def test_halo_built_for_fresh_installation_with_gps(self):
+        Installation.objects.create(
+            company=self.company, reference='CHT-AUD66-01',
+            client=self.client_obj, gps_lat='33.573100', gps_lng='-7.589800')
+        halos = aud.fresh_installation_geo_halos(self.company)
+        self.assertEqual(len(halos), 1)
+        spec = halos[0]['targeting_spec']
+        loc = spec['geo_locations']['custom_locations'][0]
+        self.assertEqual(loc['latitude'], 33.5731)
+        self.assertEqual(loc['radius'], aud.GEO_HALO_DEFAULT_RADIUS_KM)
+        self.assertIn('halo géo', halos[0]['reason_fr'])
+
+    def test_radius_clamped_to_ma_range(self):
+        Installation.objects.create(
+            company=self.company, reference='CHT-AUD66-02',
+            client=self.client_obj, gps_lat='34.020000', gps_lng='-6.841600')
+        halos = aud.fresh_installation_geo_halos(self.company, radius_km=10)
+        loc = halos[0]['targeting_spec']['geo_locations']['custom_locations'][0]
+        self.assertEqual(loc['radius'], aud.GEO_HALO_MAX_RADIUS_KM)
+
+    def test_no_client_data_in_targeting_spec(self):
+        Installation.objects.create(
+            company=self.company, reference='CHT-AUD66-03',
+            client=self.client_obj, gps_lat='31.629500', gps_lng='-8.008900')
+        halos = aud.fresh_installation_geo_halos(self.company)
+        self.assertEqual(
+            set(halos[0]['targeting_spec'].keys()), {'geo_locations'})
+        self.assertNotIn(str(self.client_obj.pk),
+                         str(halos[0]['targeting_spec']))

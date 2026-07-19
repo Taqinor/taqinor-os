@@ -82,6 +82,29 @@ def installation_gps_map(installation_ids):
     return {iid: (lat, lng) for iid, lat, lng in rows}
 
 
+def fresh_installation_geo_seeds(company, *, days=14, today=None):
+    """PUB66 — Chantiers CRÉÉS dans les ``days`` derniers jours, AVEC un GPS
+    exploitable (lat/lng non nuls) — la base du halo géographique
+    publicitaire autour d'une installation fraîche. Ne renvoie AUCUNE donnée
+    client (ni nom, ni adresse) : uniquement id/référence/coordonnées — le
+    ciblage géo PUR ne nécessite aucun consentement (contrairement à toute
+    mention/photo du chantier, gatée PUB75, hors périmètre ici). Scopé
+    société. Renvoie ``[{'id', 'reference', 'gps_lat', 'gps_lng'}, ...]``."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import Installation
+
+    today = today or timezone.now()
+    since = today - timedelta(days=days)
+    return list(
+        Installation.objects
+        .filter(company=company, date_creation__gte=since,
+                gps_lat__isnull=False, gps_lng__isnull=False)
+        .values('id', 'reference', 'gps_lat', 'gps_lng'))
+
+
 def installation_qs_for_remise():
     """Queryset Installation prêt pour la fiche de remise (relations préchargées).
     L'appelant applique son propre scope société puis filtre par pk."""

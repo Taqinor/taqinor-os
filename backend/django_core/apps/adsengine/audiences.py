@@ -691,3 +691,63 @@ def referral_seed_suggestion(*, parrain_nom, parrain_localisation=None):
             f"manuellement.")
     return {'reason_fr': reason, 'parrain_localisation': localisation or None,
             'has_geo': has_geo}
+
+
+# ── PUB66 — Halo géographique autour des installations fraîches ──────────────
+# Audience GÉO PURE : AUCUNE donnée client (nom/adresse/photo) dans le
+# ciblage — reste possible SANS consentement (contrairement à toute
+# mention/photo du chantier, gatée PUB75, hors périmètre ici).
+
+GEO_HALO_MIN_RADIUS_KM = 0.5
+GEO_HALO_MAX_RADIUS_KM = 2.0
+GEO_HALO_DEFAULT_RADIUS_KM = 1.0
+
+
+def _geo_targeting_spec(lat, lng, radius_km):
+    """PUB66 — ``targeting_spec`` géo-radius Meta (``custom_locations``), le
+    format attendu par :func:`engagement_delivery_estimate` (ADSDEEP59).
+    Rayon en KM, borné [0.5, 2] (halo voisinage)."""
+    try:
+        radius = float(radius_km)
+    except (TypeError, ValueError):
+        radius = GEO_HALO_DEFAULT_RADIUS_KM
+    radius = max(GEO_HALO_MIN_RADIUS_KM, min(GEO_HALO_MAX_RADIUS_KM, radius))
+    return {
+        'geo_locations': {
+            'custom_locations': [{
+                'latitude': float(lat), 'longitude': float(lng),
+                'radius': radius, 'distance_unit': 'kilometer',
+            }],
+        },
+    }
+
+
+def fresh_installation_geo_halos(company, *, days=14,
+                                 radius_km=GEO_HALO_DEFAULT_RADIUS_KM):
+    """PUB66 — Propose un halo géo-radius (500 m-2 km) autour de chaque
+    installation FRAÎCHE de la société
+    (``apps.installations.selectors.fresh_installation_geo_seeds``, jamais
+    un import d'``apps.installations.models``) — angle « vu sur les toits du
+    quartier ». RECOMMANDATION SEULE : ne crée ni n'applique rien sur Meta,
+    renvoie juste le ``targeting_spec`` prêt à être passé au composeur
+    d'adset (PUB22) ou à :func:`engagement_delivery_estimate` pour une
+    préviz de taille d'audience. Renvoie une liste ``[{'installation_id',
+    'reference', 'targeting_spec', 'reason_fr'}, ...]``."""
+    from apps.installations.selectors import fresh_installation_geo_seeds
+
+    halos = []
+    for row in fresh_installation_geo_seeds(company, days=days):
+        spec = _geo_targeting_spec(row['gps_lat'], row['gps_lng'], radius_km)
+        rayon = spec['geo_locations']['custom_locations'][0]['radius']
+        halos.append({
+            'installation_id': row['id'],
+            'reference': row['reference'],
+            'targeting_spec': spec,
+            'reason_fr': (
+                f"Chantier {row['reference']} fraîchement signé — halo géo "
+                f"{rayon} km, angle « vu sur les toits du quartier » "
+                f"(audience géo pure, aucune donnée client). "
+                f"Recommandation seule — aucune audience créée "
+                f"automatiquement."),
+        })
+    return halos
