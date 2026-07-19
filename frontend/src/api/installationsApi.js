@@ -511,6 +511,21 @@ const installationsApi = {
   // XMFG5 — nomenclature indentée + disponibilité d'un kit produit (stock app).
   getKitStructure: (kitId) => api.get(`/stock/kits/${kitId}/structure/`),
 
+  // WIR110 — approvisionnement avancé (consultation lecture seule) : les 6
+  // familles d'endpoints FG310-318 qui n'avaient aucun écran.
+  getSeuilsApprobationBcf: (params) =>
+    api.get('/installations/seuils-approbation-bcf/', { params }),
+  getApprobationsBcf: (params) =>
+    api.get('/installations/approbations-bcf/', { params }),
+  getCommandesCadre: (params) =>
+    api.get('/installations/commandes-cadre/', { params }),
+  getAppelsCommande: (params) =>
+    api.get('/installations/appels-commande/', { params }),
+  getContratsPrixFournisseur: (params) =>
+    api.get('/installations/contrats-prix-fournisseur/', { params }),
+  getReceptionsNonFacturees: (params) =>
+    api.get('/installations/receptions-non-facturees/', { params }),
+
   // WIR112 — équipes terrain canoniques (DC40). CRUD depuis Paramètres ;
   // `membres` (M2M utilisateurs) + `chef` optionnel. Société posée serveur.
   getEquipesTerrain: (params) => api.get('/installations/equipes/', { params }),
