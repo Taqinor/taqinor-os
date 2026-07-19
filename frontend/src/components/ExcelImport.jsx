@@ -13,6 +13,9 @@ import importApi, { downloadBlob, filenameFromResponse } from '../api/importApi'
 const TARGET_LABEL = {
   leads: 'leads', clients: 'clients', products: 'produits',
   fournisseurs: 'fournisseurs', equipements: 'équipements',
+  // WIR48/XFLT22/ARC13 — cibles déjà implémentées côté serveur mais jusqu'ici
+  // non listées ici (aucun écran ne les instanciait).
+  vehicules: 'véhicules', contrats: 'contrats', dossiers_rh: 'dossiers RH',
 }
 
 const MODES = [
@@ -20,6 +23,12 @@ const MODES = [
   { value: 'maj', label: 'Mettre à jour seulement (jamais de création)' },
   { value: 'upsert', label: 'Créer ou mettre à jour (upsert)' },
 ]
+
+// WIR48/XPLT1 — le rapprochement maj/upsert n'est câblé côté serveur que pour
+// leads et clients (services.py refuse les autres cibles avec une 400). On
+// n'expose donc maj/upsert QUE pour ces cibles, sinon « Créer seulement » seul
+// (fin de l'option qui provoquait une erreur backend évitable).
+const UPSERT_TARGETS = new Set(['leads', 'clients'])
 
 export default function ExcelImport({ target, onClose, onDone }) {
   const [file, setFile] = useState(null)
@@ -107,6 +116,14 @@ export default function ExcelImport({ target, onClose, onDone }) {
   }
 
   const fields = preview ? Object.values(preview.mapping) : []
+  // WIR48 — modes proposés selon la cible (maj/upsert masqués hors leads/clients).
+  // `target` est fixé au montage : le sélecteur n'est rendu que pour les cibles
+  // qui supportent maj/upsert, donc `mode` reste « creer » ailleurs (pas besoin
+  // d'un effet correctif — jamais de mode refusé soumis).
+  const supporteUpsert = UPSERT_TARGETS.has(target)
+  const modesDisponibles = supporteUpsert
+    ? MODES
+    : MODES.filter((m) => m.value === 'creer')
 
   return (
     <div
@@ -123,21 +140,25 @@ export default function ExcelImport({ target, onClose, onDone }) {
           s'affiche avant l'import. Rien n'est écrasé : les doublons sont ignorés.
         </p>
 
-        {/* XPLT1 — mode d'import (création seule par défaut, historique). */}
-        <label className="mt-3 flex flex-col gap-1 text-[13px]" htmlFor="excel-import-mode">
-          Mode d'import
-          <select
-            id="excel-import-mode"
-            className="rounded-md border border-input bg-card px-2 py-1.5 text-sm"
-            value={mode}
-            onChange={(e) => setMode(e.target.value)}
-            disabled={busy}
-          >
-            {MODES.map((m) => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </select>
-        </label>
+        {/* XPLT1/WIR48 — mode d'import. maj/upsert ne sont câblés que pour
+            leads/clients : pour les autres cibles, seule la création est
+            possible (le sélecteur est masqué, plus d'option refusée). */}
+        {modesDisponibles.length > 1 && (
+          <label className="mt-3 flex flex-col gap-1 text-[13px]" htmlFor="excel-import-mode">
+            Mode d'import
+            <select
+              id="excel-import-mode"
+              className="rounded-md border border-input bg-card px-2 py-1.5 text-sm"
+              value={mode}
+              onChange={(e) => setMode(e.target.value)}
+              disabled={busy}
+            >
+              {modesDisponibles.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {/* XPLT2 — mapping colonne→champ sauvegardé, réapplicable au dry-run. */}
         {savedMappings.length > 0 && (

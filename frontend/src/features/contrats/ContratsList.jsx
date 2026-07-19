@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileSignature, Plus } from 'lucide-react'
+import { FileSignature, Plus, Upload } from 'lucide-react'
 import contratsApi from '../../api/contratsApi'
+import ExcelImport from '../../components/ExcelImport'
 import {
   Button, Segmented, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -41,6 +42,8 @@ export default function ContratsList() {
   // ModeleContrat ; l'instanciation depuis un gabarit reste possible via
   // /contrats/modeles, toujours accessible depuis le menu).
   const [creating, setCreating] = useState(false)
+  // WIR48/ARC13 — import CSV/XLSX du registre contractuel (cible `contrats`).
+  const [showImport, setShowImport] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -132,6 +135,9 @@ export default function ContratsList() {
           <Button variant="ghost" size="sm" onClick={() => navigate('/contrats/modeles')}>
             Depuis un gabarit
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
+            <Upload /> Importer
+          </Button>
           <Button onClick={() => setCreating(true)}>
             <Plus /> Nouveau contrat
           </Button>
@@ -180,6 +186,13 @@ export default function ContratsList() {
             if (id) navigate(`/contrats/${id}`)
             else load()
           }}
+        />
+      )}
+      {showImport && (
+        <ExcelImport
+          target="contrats"
+          onClose={() => setShowImport(false)}
+          onDone={load}
         />
       )}
     </ListShell>
