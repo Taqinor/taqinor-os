@@ -61,7 +61,12 @@ class LeadDetailChatterRecentTests(AssertQueryBudgetMixin, TestCase):
         resp = self.api.get(self._detail_url())
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIn('chatter_recent', resp.data)
-        self.assertEqual(len(resp.data['chatter_recent']), 3)
+        # Jamais un compte FIGÉ : la création du lead (et de futurs receivers)
+        # journalise déjà ses propres activités automatiques — on compare au
+        # VRAI contenu de la table (CI rouge « 4 != 3 », log_creation).
+        attendu = self.lead.activites.count()
+        self.assertGreaterEqual(attendu, 3)
+        self.assertEqual(len(resp.data['chatter_recent']), min(attendu, 50))
 
     def test_chatter_recent_capped_at_50(self):
         self._seed_activites(55)
