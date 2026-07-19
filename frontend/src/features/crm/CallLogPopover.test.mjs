@@ -9,7 +9,9 @@ import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'CallLogPopover.jsx'), 'utf8')
-const LEADFORM_SRC = readFileSync(join(HERE, '..', '..', 'pages', 'crm', 'LeadForm.jsx'), 'utf8')
+// LW37 — le composer (dont CallLogPopover) a migré de LeadForm vers l'onglet
+// Historique du cockpit (`TimelineTab`).
+const TIMELINE_SRC = readFileSync(join(HERE, 'workspace', 'TimelineTab.jsx'), 'utf8')
 const LEADCARD_SRC = readFileSync(
   join(HERE, '..', '..', 'pages', 'crm', 'leads', 'views', 'LeadCard.jsx'), 'utf8',
 )
@@ -41,9 +43,9 @@ test('VX87 : useCallEndedNudge s\'abonne à visibilitychange', () => {
   assert.match(SRC, /document\.addEventListener\('visibilitychange', onVisibilityChange\)/)
 })
 
-test('VX87 : LeadForm.jsx monte CallLogPopover dans la section Historique', () => {
-  assert.match(LEADFORM_SRC, /import CallLogPopover from '\.\.\/\.\.\/features\/crm\/CallLogPopover'/)
-  assert.match(LEADFORM_SRC, /<CallLogPopover/)
+test('VX87 : TimelineTab (onglet Historique du cockpit) monte CallLogPopover', () => {
+  assert.match(TIMELINE_SRC, /import CallLogPopover from '\.\.\/CallLogPopover'/)
+  assert.match(TIMELINE_SRC, /<CallLogPopover/)
 })
 
 test('VX87 : LeadCard.jsx arme le nudge sur les deux liens tel: (swipe + contact)', () => {
