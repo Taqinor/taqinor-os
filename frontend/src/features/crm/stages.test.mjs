@@ -63,6 +63,16 @@ test('groupLeadsByStage répartit, compte et totalise les devis par colonne', ()
   assert.equal(byKey.CONTACTED.count, 0)
 })
 
+test('groupLeadsByStage : un lead PERDU compte dans `count` mais JAMAIS dans totalDevis (mêmes chiffres que la tuile Pipeline)', () => {
+  const leads = [
+    { id: 1, stage: 'NEW', date_creation: '2026-06-01', devis: [{ total_ttc: '10000.00' }] },
+    { id: 2, stage: 'NEW', perdu: true, date_creation: '2026-06-02', devis: [{ total_ttc: '5000.00' }] },
+  ]
+  const byKey = Object.fromEntries(groupLeadsByStage(leads).map((c) => [c.key, c]))
+  assert.equal(byKey.NEW.count, 2)
+  assert.equal(byKey.NEW.totalDevis, 10000)
+})
+
 test('perdu = drapeau booléen `perdu`, jamais le texte du motif ni une colonne', () => {
   assert.equal(isPerdu({ perdu: true }), true)
   assert.equal(isPerdu({ perdu: true, motif_perte: '' }), true) // perdu sans motif tapé

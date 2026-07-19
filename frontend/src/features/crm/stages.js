@@ -159,7 +159,10 @@ export function groupLeadsByStage(leads) {
       color: STAGE_COLORS[key],
       leads: inStage,
       count: inStage.length,
-      totalDevis: inStage.reduce((s, l) => s + latestDevisTotal(l), 0),
+      // Un lead PERDU compte 0 dans l'argent d'étape (0 % de chance de
+      // conversion) — mêmes chiffres que la tuile Pipeline du bandeau KPI
+      // (critique Fable LB #4 : deux sommes divergentes sur le même écran).
+      totalDevis: inStage.reduce((s, l) => s + (isPerdu(l) ? 0 : latestDevisTotal(l)), 0),
     }
   })
 }

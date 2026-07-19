@@ -213,6 +213,12 @@ export default function LeadsPage() {
     if (!equipeId || !equipeMembreIds) return base
     return base.filter((l) => equipeMembreIds.has(l.owner))
   }, [leads, deferredFilters, currentUser?.username, equipeId, equipeMembreIds])
+  // Pool KPI : les leads APRÈS le filtre additif équipe (mais AVANT les
+  // filtres utilisateur — la tuile force sa dimension par-dessus `filters`).
+  const kpiPool = useMemo(() => {
+    if (!equipeId || !equipeMembreIds) return leads
+    return leads.filter((l) => equipeMembreIds.has(l.owner))
+  }, [leads, equipeId, equipeMembreIds])
 
   // Vues enregistrées nommées (FG11 — useSavedViews hook).
   const { savedViews, saveView, deleteView: deleteSavedView } = useSavedViews(SAVED_VIEWS_KEY)
@@ -364,7 +370,16 @@ export default function LeadsPage() {
   useEffect(() => {
     if (visibleSelected.size === 0) return undefined
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') clearSelection()
+      if (e.key !== 'Escape') return
+      // Critique Fable LB #6 : Échap ne vide la sélection que si RIEN d'autre
+      // ne le consomme — un dialogue/menu/popover Radix ouvert (il pose
+      // defaultPrevented ou vit dans [data-state="open"]) garde son Échap ;
+      // sinon fermer un dialogue effacerait la sélection en silence.
+      if (e.defaultPrevented) return
+      if (document.querySelector(
+        '[role="dialog"][data-state="open"], [role="menu"][data-state="open"], [data-radix-popper-content-wrapper]',
+      )) return
+      clearSelection()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -715,7 +730,10 @@ export default function LeadsPage() {
           FilterBar : les tuiles lisent/écrivent le MÊME état `filters` que
           le reste de la page (invariant D6-I7, un seul état de filtres). */}
       <LeadsKpiStrip
-        leads={leads}
+        // Critique Fable LB #3 : le pool KPI doit subir le MÊME filtre additif
+        // `?equipe=` que `filtered` — sinon les tuiles annoncent des nombres
+        // que le clic ne rend pas (« chiffre menteur », interdit par D5).
+        leads={kpiPool}
         filters={filters}
         setFilters={setFilters}
         myUsername={currentUser?.username}

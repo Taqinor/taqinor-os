@@ -23,7 +23,33 @@ import ScoreBadge from '../../../features/crm/ScoreBadge'
 // source de vérité : un remontage au-delà du TTL refait les 3 appels comme
 // avant.
 const INSIGHTS_TTL_MS = 60_000
-let insightsCache = null // { companyId, at, attainment, roi, sla, errors }
+// { companyId, at, attainment, roi, sla, errors, pAttainment, pRoi, pSla } —
+// l'entrée porte AUSSI ses 3 promesses en vol (critique Fable LB #5) : un
+// remontage PENDANT le vol s'abonne aux promesses au lieu de lire des champs
+// encore null et de croire le cache « déjà chargé » (spinner infini sinon).
+let insightsCache = null
+
+// loadInsights — retourne l'entrée fraîche du cache ou en crée UNE (les 3
+// appels partent une seule fois) ; les promesses ne rejettent jamais (les
+// erreurs deviennent des champs `errors.*` + valeur vide, comme avant).
+function loadInsights(companyId) {
+  const existing = readInsightsCache(companyId)
+  if (existing) return existing
+  const entry = {
+    companyId, at: Date.now(), attainment: null, roi: null, sla: null, errors: {},
+  }
+  entry.pAttainment = crmApi.getObjectifsAttainment()
+    .then((r) => { entry.attainment = r.data ?? [] })
+    .catch(() => { entry.attainment = []; entry.errors.attainment = true })
+  entry.pRoi = crmApi.getRoiSources()
+    .then((r) => { entry.roi = r.data ?? [] })
+    .catch(() => { entry.roi = []; entry.errors.roi = true })
+  entry.pSla = crmApi.getSlaBreach()
+    .then((r) => { entry.sla = r.data ?? { count: 0, results: [] } })
+    .catch(() => { entry.sla = { count: 0, results: [] }; entry.errors.sla = true })
+  insightsCache = entry
+  return entry
+}
 
 function readInsightsCache(companyId) {
   if (!insightsCache || insightsCache.companyId !== companyId) return null
@@ -195,48 +221,23 @@ export default function CrmInsightsPanel() {
   const [errors, setErrors] = useState(cached?.errors ?? {})
 
   useEffect(() => {
-    // Cache encore frais pour cette company : les 3 appels réseau sont
-    // sautés — c'est TOUT l'objet de LB30 (bascule graphique→kanban→
-    // graphique en <60s = 0 appel insights).
-    if (readInsightsCache(companyId)) return undefined
+    // Une seule entrée par company (fraîche ou créée ici) ; on peint ce qui
+    // est déjà résolu puis on s'abonne aux promesses — un remontage PENDANT
+    // le vol reçoit donc les données à l'arrivée au lieu d'un spinner infini
+    // (critique Fable LB #5).
     let alive = true
-    const entry = {
-      companyId, at: Date.now(), attainment: null, roi: null, sla: null, errors: {},
+    const entry = loadInsights(companyId)
+    const sync = () => {
+      if (!alive) return
+      setAttainment(entry.attainment)
+      setRoi(entry.roi)
+      setSla(entry.sla)
+      setErrors({ ...entry.errors })
     }
-    insightsCache = entry
-    crmApi.getObjectifsAttainment()
-      .then((r) => {
-        const data = r.data ?? []
-        entry.attainment = data
-        if (alive) setAttainment(data)
-      })
-      .catch(() => {
-        entry.attainment = []
-        entry.errors.attainment = true
-        if (alive) { setAttainment([]); setErrors((e) => ({ ...e, attainment: true })) }
-      })
-    crmApi.getRoiSources()
-      .then((r) => {
-        const data = r.data ?? []
-        entry.roi = data
-        if (alive) setRoi(data)
-      })
-      .catch(() => {
-        entry.roi = []
-        entry.errors.roi = true
-        if (alive) { setRoi([]); setErrors((e) => ({ ...e, roi: true })) }
-      })
-    crmApi.getSlaBreach()
-      .then((r) => {
-        const data = r.data ?? { count: 0, results: [] }
-        entry.sla = data
-        if (alive) setSla(data)
-      })
-      .catch(() => {
-        entry.sla = { count: 0, results: [] }
-        entry.errors.sla = true
-        if (alive) { setSla({ count: 0, results: [] }); setErrors((e) => ({ ...e, sla: true })) }
-      })
+    sync()
+    entry.pAttainment.then(sync)
+    entry.pRoi.then(sync)
+    entry.pSla.then(sync)
     return () => { alive = false }
   }, [companyId])
 

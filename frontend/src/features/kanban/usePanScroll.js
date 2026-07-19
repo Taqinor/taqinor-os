@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useRef } from 'react'
 import {
   shouldIgnorePanStart,
   isPannablePointerType,
@@ -26,10 +26,21 @@ export function usePanScroll() {
   // Mutable, PAS de state React : chaque pointermove pendant un pan ne doit
   // JAMAIS re-render KanbanView (perf — même esprit que LB6/mémoïsation).
   const panRef = useRef(null)
+  const cleanupRef = useRef(null)
 
-  useEffect(() => {
-    const board = boardRef.current
-    if (!board) return undefined
+  // CALLBACK REF (critique Fable LB #1) : un `useEffect([])` n'attachait les
+  // listeners qu'AU MONTAGE — or KanbanView démonte le board sur un état vide
+  // (EmptyState au premier chargement, ou une recherche qui passe par 0
+  // résultat) : le nouveau `.kb-board` remontait SANS listeners et le
+  // drag-to-pan mourait en silence pour la session (le curseur `grab`
+  // continuait de le promettre). Le callback ref attache/détache PAR NŒUD.
+  const attach = useCallback((board) => {
+    if (cleanupRef.current) {
+      cleanupRef.current()
+      cleanupRef.current = null
+    }
+    boardRef.current = board
+    if (!board) return
 
     const onPointerDown = (e) => {
       if (e.button !== 0) return
@@ -74,7 +85,7 @@ export function usePanScroll() {
     board.addEventListener('pointermove', onPointerMove)
     board.addEventListener('pointerup', release)
     board.addEventListener('pointercancel', release)
-    return () => {
+    cleanupRef.current = () => {
       board.removeEventListener('pointerdown', onPointerDown)
       board.removeEventListener('pointermove', onPointerMove)
       board.removeEventListener('pointerup', release)
@@ -82,7 +93,9 @@ export function usePanScroll() {
     }
   }, [])
 
-  return boardRef
+  // Le consommateur pose `ref={attach}` sur `.kb-board` (React appelle un
+  // callback ref avec le nœud au montage et `null` au démontage).
+  return attach
 }
 
 export default usePanScroll

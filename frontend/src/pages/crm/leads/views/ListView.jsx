@@ -34,6 +34,7 @@ import ScoreBadge from '../../../../features/crm/ScoreBadge'
 // VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
 import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/CallLogPopover'
 import PerduPopover from '../PerduPopover'
+import { isSigneIntercept } from '../signeIntercept'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
 import {
   Button, Checkbox, HelpTip, IconButton, StatusPill, Segmented,
@@ -320,7 +321,13 @@ const ListRow = memo(function ListRow({
               className="lv-stage-badge"
             />
           )}
-          onSave={(v) => onInlineSave(lead, 'stage', v)}
+          // Critique Fable LB #2 : « Signé » ouvre SigneDialog via la
+          // sentinelle rejetée (LB3) — l'avaler ICI, sinon InlineEdit peint
+          // un faux « Échec de l'enregistrement » rouge PERSISTANT sur un
+          // chemin de succès (l'affichage suit déjà la prop, rien à annuler).
+          onSave={(v) => onInlineSave(lead, 'stage', v).catch((e) => {
+            if (!isSigneIntercept(e)) throw e
+          })}
         />
       </td>
       {!hiddenCols.score && (
