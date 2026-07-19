@@ -55,7 +55,7 @@ function RevealOnce({ label, value, onDismiss }) {
 const _CHANGELOG_TYPE = {
   feature: { label: 'Nouveauté', tone: 'success' },
   fix: { label: 'Correctif', tone: 'info' },
-  breaking: { label: 'Changement majeur', tone: 'destructive' },
+  breaking: { label: 'Changement majeur', tone: 'danger' },
 }
 
 function ChangelogFeed() {

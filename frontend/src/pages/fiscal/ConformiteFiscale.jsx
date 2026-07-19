@@ -17,7 +17,7 @@ import { StateBlock } from '../../components/StateBlock'
 const STATUT_META = {
   a_jour: { label: 'À jour', tone: 'success' },
   echeance_proche: { label: 'Échéance proche', tone: 'warning' },
-  en_retard: { label: 'En retard', tone: 'destructive' },
+  en_retard: { label: 'En retard', tone: 'danger' },
   aucune_echeance: { label: 'Aucune échéance', tone: 'neutral' },
 }
 
