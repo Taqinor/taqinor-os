@@ -70,6 +70,30 @@ const PRIORITE_OPTIONS = [
   { value: 'haute', label: PRIORITE_LABELS.haute },
 ]
 
+// LB18 — modèle de colonnes déclaré UNE fois : alimente le `<colgroup>`
+// (largeurs fixes — l'édition inline ne fait plus danser les colonnes
+// voisines, P3 #14) puis, LB19, `useColumnPrefs`/`ColumnManager` (moteur
+// ui/datatable, import direct — blueprint D4, zéro fork). `hideable: false`
+// = colonnes cœur jamais proposées au choix (Lead/Stade/Relance/Actions) ;
+// les autres reprennent EXACTEMENT l'ensemble qui portait `.m-hide` (repli
+// responsive existant) — la visibilité PAR DÉFAUT du modèle est donc
+// identique au rendu desktop actuel (toutes visibles).
+const LIST_COLUMNS = [
+  { id: 'lead', header: 'Lead', width: 220, hideable: false },
+  { id: 'stage', header: 'Stade', width: 150, hideable: false },
+  { id: 'score', header: 'Score', width: 90 },
+  { id: 'telephone', header: 'Téléphone', width: 150 },
+  { id: 'ville', header: 'Ville', width: 110 },
+  { id: 'facture', header: 'Facture', width: 110 },
+  { id: 'canal', header: 'Canal', width: 140 },
+  { id: 'owner', header: 'Responsable', width: 150 },
+  { id: 'priorite', header: 'Priorité', width: 90 },
+  { id: 'relance', header: 'Relance', width: 120, hideable: false },
+  { id: 'next_activity', header: 'Prochaine activité', width: 190 },
+  { id: 'tags', header: 'Tags', width: 160 },
+  { id: 'actions', header: 'Actions', width: 190, hideable: false },
+]
+
 // Priorité : haute > normale > basse (ordre croissant = haute d'abord).
 const PRIO_RANK = { haute: 0, normale: 1, basse: 2 }
 
@@ -188,7 +212,7 @@ const ListRow = memo(function ListRow({
           />
         </td>
       )}
-      <td data-label="Lead">
+      <td data-label="Lead" className="lv-sticky-name">
         <div className="lv-lead-cell">
           <span className="lv-lead-name">
             {fullName(lead) || '—'}
@@ -513,6 +537,21 @@ export default function ListView({
   const dispatch = useDispatch()
   const canDelete = useIsAdmin() // règle existante : destroy = admin
   const isMobile = useIsMobile()
+  // LB18 — `.lv-wrap` est LE scrolleur deux axes (D1) : un listener de
+  // scroll PASSIF (jamais de re-rendu React — classList directe sur le DOM)
+  // bascule `.lv-scrolled-x` dès que le scroll horizontal démarre, pour
+  // l'ombre de bord de la colonne nom épinglée (.lv-sticky-name, index.css).
+  const wrapRef = useRef(null)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const onScroll = () => {
+      el.classList.toggle('lv-scrolled-x', el.scrollLeft > 0)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
   // Par défaut : plus récents d'abord (date_creation desc), aucune colonne active.
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [busyId, setBusyId] = useState(null)
@@ -676,9 +715,16 @@ export default function ListView({
   const allChecked = allVisibleSelected(selected, visibleIds)
 
   return (
-    <div className="lv-wrap">
+    <div className="lv-wrap" ref={wrapRef}>
       {/* VX7 — calm color : séparateurs adoucis + actions révélées au survol. */}
       <table className="data-table lv-table calm-list">
+        {/* LB18 — largeurs fixes (table-layout:fixed, index.css) : ouvrir un
+            <select> d'édition en place ne fait plus danser les colonnes
+            voisines (P3 #14). */}
+        <colgroup>
+          {onToggleSelect && <col style={{ width: 36 }} />}
+          {LIST_COLUMNS.map((c) => <col key={c.id} style={{ width: c.width }} />)}
+        </colgroup>
         <thead>
           <tr>
             {onToggleSelect && (
@@ -690,7 +736,7 @@ export default function ListView({
                 />
               </th>
             )}
-            <SortableTh col="lead" label="Lead" sort={sort} onSort={onSort} />
+            <SortableTh col="lead" label="Lead" sort={sort} onSort={onSort} className="lv-sticky-name" />
             <SortableTh col="stage" label="Stade" sort={sort} onSort={onSort} />
             <SortableTh
               col="score" label="Score" sort={sort} onSort={onSort} className="m-hide"

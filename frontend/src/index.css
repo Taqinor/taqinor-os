@@ -7221,6 +7221,20 @@ textarea.form-control {
   border-radius: 999px;
 }
 
+/* LB18 — colgroup à largeurs fixes (ListView.jsx) : sans table-layout:fixed
+   le <colgroup> n'est qu'indicatif — un <select> d'édition en place plus
+   large que le texte affiché ferait quand même danser les colonnes
+   voisines (P3 #14). */
+.lv-table {
+  table-layout: fixed;
+}
+/* Ombre de bord sur la colonne nom épinglée (.lv-sticky-name) une fois que
+   la table a défilé horizontalement — classe togglée par un listener de
+   scroll passif sur .lv-wrap (ListView.jsx), jamais par un re-rendu React. */
+.lv-wrap.lv-scrolled-x .lv-sticky-name {
+  box-shadow: 4px 0 6px -4px rgba(0, 0, 0, 0.25);
+}
+
 /* Gap responsive 769-899px (recon-05) : le palier fixe 150px ci-dessus ne
    s'active qu'à partir de 900px — entre 768 et 900, `.kb-col` retombait à sa
    largeur desktop (272px) et ne montrait plus que ~3 colonnes sur iPad
