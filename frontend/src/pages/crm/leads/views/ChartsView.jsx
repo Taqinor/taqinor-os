@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import {
   ResponsiveContainer,
   BarChart,
@@ -17,6 +17,7 @@ import {
 } from '../../../../features/crm/stages'
 import useCanaux from '../../../../features/crm/useCanaux'
 import CrmInsightsPanel from '../CrmInsightsPanel'
+import { useIsMobile } from '../../../../ui/ResponsiveDialog'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState, Button,
 } from '../../../../ui'
@@ -25,21 +26,11 @@ import {
 // plutôt que du hex local recharts.
 const NAVY = 'var(--cat-navy)'
 const GOLD = 'var(--cat-gold)'
+// LB32 — dédup : hook CANONIQUE `useIsMobile` (ui/ResponsiveDialog, déjà
+// adopté par LeadsPage.jsx/LeadWorkspace) au lieu d'une copie locale
+// verbatim (identique à celles de FilterBar.jsx/ListView.jsx). Même
+// breakpoint qu'avant (768px, passé en paramètre) — comportement inchangé.
 const MOBILE_QUERY = '(max-width: 768px)'
-
-// Vrai sous 768px — pour incliner les libellés d'axe sur mobile.
-function useIsMobile() {
-  const [mobile, setMobile] = useState(
-    () => window.matchMedia(MOBILE_QUERY).matches,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia(MOBILE_QUERY)
-    const onChange = (e) => setMobile(e.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return mobile
-}
 
 const tooltipFormatter = (value) => [`${value}`, 'Leads']
 const pctFormatter = (value) => [`${value} %`, 'Conversion']
@@ -47,7 +38,7 @@ const pctFormatter = (value) => [`${value} %`, 'Conversion']
 export default function ChartsView({
   leads, totalLeads = null, onClearFilters,
 }) {
-  const isMobile = useIsMobile()
+  const isMobile = useIsMobile(MOBILE_QUERY)
   // Libellés de canaux depuis le référentiel géré (Paramètres → CRM) + statiques.
   const { labels: canalLabels } = useCanaux()
 

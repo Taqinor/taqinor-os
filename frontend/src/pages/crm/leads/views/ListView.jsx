@@ -50,22 +50,13 @@ import { formatMAD } from '../../../../lib/format'
 // toute la page (D5), cette liste n'en emprunte rien d'autre.
 import { useColumnPrefs } from '../../../../ui/datatable/useColumnPrefs'
 import { ColumnManager, columnStateReducer, initColumnState } from '../../../../ui/datatable'
+import { useIsMobile } from '../../../../ui/ResponsiveDialog'
 
+// LB32 — dédup : hook CANONIQUE `useIsMobile` (ui/ResponsiveDialog, déjà
+// adopté par LeadsPage.jsx/LeadWorkspace) au lieu d'une copie locale
+// verbatim (identique à celles de FilterBar.jsx/ChartsView.jsx). Même
+// breakpoint qu'avant (768px, passé en paramètre) — comportement inchangé.
 const MOBILE_QUERY = '(max-width: 768px)'
-
-// Vrai sous 768px — les actions de ligne se replient alors dans un menu « ⋯ ».
-function useIsMobile() {
-  const [mobile, setMobile] = useState(
-    () => window.matchMedia(MOBILE_QUERY).matches,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia(MOBILE_QUERY)
-    const onChange = (e) => setMobile(e.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return mobile
-}
 
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
 // LB4 — options d'étape calculées PAR LIGNE (dépendent de l'étape courante du
@@ -579,7 +570,7 @@ export default function ListView({
 }) {
   const dispatch = useDispatch()
   const canDelete = useIsAdmin() // règle existante : destroy = admin
-  const isMobile = useIsMobile()
+  const isMobile = useIsMobile(MOBILE_QUERY)
   // LB18 — `.lv-wrap` est LE scrolleur deux axes (D1) : un listener de
   // scroll PASSIF (jamais de re-rendu React — classList directe sur le DOM)
   // bascule `.lv-scrolled-x` dès que le scroll horizontal démarre, pour

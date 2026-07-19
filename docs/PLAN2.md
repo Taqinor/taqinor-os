@@ -4105,7 +4105,7 @@ CarteView/ChartsView, CrmInsightsPanel) :**
 
 **LANE 6 — polish sombre/hex + dédup (UN agent — index.css d'abord, sweep ensuite) :**
 
-- [ ] LB31 — **Chasse aux hex des surfaces leads (dark mode honnête).** Recon-05 §HEX,
+- [x] LB31 — **Chasse aux hex des surfaces leads (dark mode honnête).** Recon-05 §HEX,
   index.css UNIQUEMENT : supprimer le doublon MORT `.count-badge` (1701-1715) et tokeniser la
   règle vivante (chips bleu-clair illisibles en sombre) ; `.data-table tr` card-stack mobile
   `background:#fff` → `var(--card)` (chaque ligne mobile était une carte blanche en sombre) ;
@@ -4115,7 +4115,7 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   JSX. Files : `frontend/src/index.css`. DoD : zéro hex restant dans les plages CSS des surfaces
   leads (hors tokens.css) ; vérification visuelle sombre : badges, card-stack mobile, étoiles,
   erreurs inline lisibles AA. (ROUTINE — M) (@model: sonnet) (@lane: LB6) (@after: LB2)
-- [ ] LB32 — **Dédup useIsMobile + ViewSwitcher sur Segmented.** Remplacer les 3 copies verbatim
+- [x] LB32 — **Dédup useIsMobile + ViewSwitcher sur Segmented.** Remplacer les 3 copies verbatim
   de `useIsMobile` (FilterBar 26-37, ListView 43-54, ChartsView 31-42) par l'export canonique de
   `ui/ResponsiveDialog` ; refondre ViewSwitcher (85 l. de role=group main-roulé + SVG bruts) sur
   `ui/Segmented` avec icônes lucide, en CONSERVANT les noms accessibles exacts 'Vue kanban' /
@@ -4272,6 +4272,59 @@ avec les tâches LB1-LB8 de cette section) peuvent désormais bâtir dessus : `f
 sont les nouveaux contrats partagés ; `onMarkPerdu`/`stageOptionsFor` sont les nouveaux points
 d'extension côté carte/liste ; le contrat CSS D1 (`.lp-page`/`data-view`/`.kb-*`/`.lv-*`) est en
 place, LANE C peut poser `.lv-sticky-name` sans retoucher `index.css` (déjà prêt).
+
+- 2026-07-19 LB31 — chasse aux hex des surfaces leads (index.css UNIQUEMENT, aucun changement
+  JSX). Retokenisé : `.count-badge` live (re-basée sur `--tag-8-bg`/`--tag-8-fg`, identique
+  octet-près en clair, plus un chip bleu-clair illisible en sombre) après suppression du
+  doublon MORT (l'ancienne règle `#e2e8f0`/`#64748b`, toujours écrasée par la cascade) ;
+  `.data-table tr` card-stack mobile (`#fff`/`#e2e8f0` → `var(--card)`/`var(--border)`) et
+  `.data-table td::before` (`#94a3b8` → `var(--muted-foreground)`) — règle GLOBALE (~40 pages
+  consommatrices hors leads : DevisList/FactureList/ClientList/reporting/marketing/adsengine/…),
+  corrigée volontairement pour tuer le bug sombre partout, rayon d'action noté dans un
+  commentaire in situ ; `.gen-btn-orange` (seul consommateur ListView « ⚡ Devis auto ») re-basé
+  sur `--warning`/`--warning-foreground` (couleur sémantique la plus proche, léger glissement
+  orange→doré assumé) ; `.link-blue` (consommateur partagé RH/installations/stock/SAV/CRM) sur
+  `--info` + hover `color-mix` vers `--foreground` ; `.ie-err`/`.ie-placeholder` sur l'idiome
+  teinte-destructive déjà utilisé ailleurs dans le fichier / `--muted-foreground` ; `.lv-star`
+  aligné sur `.kb-star` (`var(--border, #d1d5db)`). Supprimé : le doublon mort `.kb-act-clock`
+  (raw hex, toujours écrasé par la version tokenisée plus bas) et les règles mortes
+  `.lv-owner`/`.lv-avatar` (zéro référence JSX repo-wide, supersédées par AssigneePicker).
+  Différé (hors périmètre nommé) : `.ie-cell:hover` (`#cbd5e1`/`#f8fafc`) — non cité par la tâche
+  ni par recon2-05, laissé pour une passe future. Aucun test existant ne référence ces classes
+  (grep vérifié) ; pas de nouveau test ajouté (tâche CSS pure, DoD = grep + vérification visuelle
+  sombre, pas de couverture automatisée demandée). `node -e` brace-balance check sur index.css
+  après coup : OK.
+- 2026-07-19 LB32 — ViewSwitcher rebâti sur `ui/Segmented` (radiogroup + roving tabindex +
+  flèches/Home/End au clavier "gratuits", au lieu du `role="group"` main-roulé + SVG bruts) ;
+  icônes lucide alignées 1:1 sur celles que CHAQUE vue importe déjà pour son propre empty state
+  (LayoutGrid/List/BarChart3/Map/CalendarClock, + `Calendar` neuf pour « Vue calendrier », seule
+  vue sans icône déjà établie). Les 6 noms accessibles pinnés ('Vue kanban'/'Vue liste'/…) sont
+  CONSERVÉS verbatim mais deviennent visuellement masqués (`.sr-only`, idiome déjà utilisé par
+  ui/Form.jsx/ui/Select.jsx/ui/SolarLoader.jsx) — Segmented rend toujours `label` en contenu
+  visible, c'était le seul moyen de garder le nom accessible pinné ET la présentation
+  icône-seule d'origine (le switcher partage sa rangée avec Nouveau/Express/⋯, header dense).
+  Conséquence directe assumée : le rôle ARIA réel passe de `button` à `radio`
+  (`role="radiogroup"` > `role="radio"`) — `frontend/e2e/helpers.js#setLeadsView` (hors
+  périmètre "Files:" nommé mais explicitement requis par le DoD "e2e leads.spec vert" ET par le
+  blueprint §STRATÉGIE E2E : « chaque tâche qui touche un hook pinné le met à jour DANS la même
+  tâche ») bascule `getByRole('button', …)` → `getByRole('radio', …)`, nom accessible inchangé.
+  index.css : `.vs-btn`/boutons joints main-roulés (rendus dead par le remplacement JSX)
+  supprimés ; `.vs-group` réduit à son seul hook de positionnement
+  (`.lp-header-actions .vs-group{margin-left:auto}`), toujours appliqué comme className sur le
+  radiogroup pour ne pas retoucher LeadsPage.jsx (hors périmètre). Dédup useIsMobile : les 3
+  copies locales verbatim (FilterBar.jsx/ListView.jsx/ChartsView.jsx, MOBILE_QUERY
+  '(max-width: 768px)') remplacées par le hook CANONIQUE `ui/ResponsiveDialog#useIsMobile`
+  (déjà adopté par LeadsPage.jsx/LeadWorkspace), appelé avec le MÊME breakpoint explicite —
+  comportement pixel-identique, zéro nouvelle copie. `useState`/`useEffect` devenus
+  entièrement inutilisés dans ChartsView.jsx (n'y servaient QUE le hook local) → import react
+  élagué à `{ useMemo }`. Tests : nouveau `ViewSwitcherSegmented.test.mjs` (5 assertions —
+  Segmented monté/plus de role=group/SVG brut, icônes lucide, 6 libellés pinnés, dédup
+  useIsMobile ×3, helpers.js role=radio) ; `ForecastView.test.mjs` mis à jour dans cette tâche
+  (assertion `key: 'prevision'` → `value: 'prevision'`, contrat Segmented). `node --test` sur
+  toute la suite leads (114 tests, `src/pages/crm/leads/**/*.test.mjs` +
+  `SavedViewsBar.test.mjs`) : verte. e2e leads.spec/tablet.spec/mobile.spec non exécutables ici
+  (pas de node_modules dans ce worktree/lane) — vérifiés par raisonnement + le nouveau test
+  source-grep sur helpers.js.
 
 ## Group F — Design foundation & tokens
 

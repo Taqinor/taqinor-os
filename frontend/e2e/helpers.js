@@ -41,9 +41,13 @@ export async function gotoLeads(page) {
 }
 
 // view: 'kanban' | 'liste'
+// LB32 — ViewSwitcher rebâti sur ui/Segmented (role="radiogroup" > role="radio",
+// pas des <button> nus) : le sélecteur suit le nouveau rôle ARIA réel. Le nom
+// accessible pinné ('Vue kanban'/'Vue liste') est inchangé (blueprint §STRATÉGIE
+// E2E, mis à jour DANS la tâche qui a touché ce hook).
 export async function setLeadsView(page, view) {
   const label = view === 'liste' ? 'Vue liste' : 'Vue kanban'
-  await page.getByRole('button', { name: label }).click()
+  await page.getByRole('radio', { name: label }).click()
 }
 
 const leadModal = (page) => page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })

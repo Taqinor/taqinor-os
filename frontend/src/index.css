@@ -1697,23 +1697,6 @@ textarea.form-control {
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 20%, transparent);
 }
 
-/* ── Count badge (inline with title) ─────────────────── */
-.count-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  background: #e2e8f0;
-  color: #64748b;
-  font-size: 0.72rem;
-  font-weight: 700;
-  border-radius: 50px;
-  margin-left: 8px;
-  vertical-align: middle;
-}
-
 /* ── Count pill (inside table cell) ──────────────────── */
 .count-pill {
   display: inline-flex;
@@ -1736,12 +1719,17 @@ textarea.form-control {
 }
 
 /* ── Link ─────────────────────────────────────────────── */
+/* LB31 — tokenized (was raw #3b82f6/#2563eb, invisible-on-dark risk shared
+   across RH/installations/stock/SAV/CRM, not just leads). */
 .link-blue {
-  color: #3b82f6;
+  color: var(--info);
   text-decoration: none;
 }
 @media (hover: hover) {
-  .link-blue:hover { text-decoration: underline; color: #2563eb; }
+  .link-blue:hover {
+    text-decoration: underline;
+    color: color-mix(in oklch, var(--info) 80%, var(--foreground) 20%);
+  }
 }
 
 /* ── Text truncate ────────────────────────────────────── */
@@ -1911,6 +1899,9 @@ textarea.form-control {
 }
 
 /* ── Count badge (page header) ────────────────────────── */
+/* LB31 — re-based on the blue tag-8 pair (--tag-8-bg/--tag-8-fg) instead of
+   raw hex: byte-identical light look, dark mode gets the real dark-tag pair
+   instead of a light-blue chip stuck on a dark surface. */
 .count-badge {
   display: inline-flex;
   align-items: center;
@@ -1918,8 +1909,8 @@ textarea.form-control {
   min-width: 22px;
   height: 22px;
   padding: 0 6px;
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--tag-8-bg);
+  color: var(--tag-8-fg);
   border-radius: 50px;
   font-size: 0.72rem;
   font-weight: 700;
@@ -2662,11 +2653,16 @@ textarea.form-control {
   .modal-footer { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
 
   /* ── Listes (leads, devis, clients) : lignes → cartes ── */
+  /* LB31 — GLOBAL rule (used by ListView/DevisList/FactureList/ClientList/
+     reporting/marketing/adsengine mobile card-stacks, ~40 consumer pages,
+     not just leads): every mobile row was a hardcoded #fff card stuck on a
+     dark surface. Re-based on --card/--border — same look in light, real
+     card surface in dark. Blast radius is intentional per LB31 scope. */
   .data-table thead { display: none; }
   .data-table, .data-table tbody, .data-table tr { display: block; width: 100%; }
   .data-table tr {
-    background: #fff;
-    border: 1px solid #e2e8f0;
+    background: var(--card);
+    border: 1px solid var(--border);
     border-left: 3px solid var(--cat-navy);
     border-radius: 10px;
     margin-bottom: 10px;
@@ -2687,7 +2683,7 @@ textarea.form-control {
     font-weight: 800;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    color: #94a3b8;
+    color: var(--muted-foreground);
     text-align: left;
     flex-shrink: 0;
   }
@@ -2902,14 +2898,16 @@ textarea.form-control {
   margin-top: 1rem;
 }
 
+/* LB31 — re-based on --warning (was raw #f28e2b/#d97a1d, no dark variant);
+   single consumer, ListView.jsx « ⚡ Devis auto ». */
 .gen-btn-orange {
-  background: #f28e2b;
-  color: #fff;
+  background: var(--warning);
+  color: var(--warning-foreground);
   border: none;
 }
 
 @media (hover: hover) {
-  .gen-btn-orange:hover { background: #d97a1d; }
+  .gen-btn-orange:hover { background: color-mix(in oklch, var(--warning) 88%, black); }
 }
 
 .gen-monthly-grid {
@@ -3392,8 +3390,12 @@ textarea.form-control {
   .ie-cell:hover { border-color: #cbd5e1; background: #f8fafc; }
 }
 .ie-saving { opacity: 0.6; }
-.ie-err { border-color: #fca5a5; background: #fef2f2; }
-.ie-placeholder { color: #94a3b8; }
+/* LB31 — tokenized (destructive tint idiom used elsewhere in this file). */
+.ie-err {
+  border-color: color-mix(in oklch, var(--destructive) 45%, transparent);
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}
+.ie-placeholder { color: var(--muted-foreground); }
 .ie-display { padding: 2px 6px; }
 .ie-right { text-align: right; }
 .ie-left { text-align: left; }
@@ -3745,12 +3747,6 @@ textarea.form-control {
 @media (hover: hover) {
   .att-name:hover { text-decoration: underline; }
 }
-
-/* Pastille horloge d'activité sur les cartes kanban. */
-.kb-act-clock { display: inline-flex; align-items: center; font-size: 0.72rem; gap: 3px; }
-.kb-act-clock.overdue { color: #dc2626; }
-.kb-act-clock.today { color: #d97706; }
-.kb-act-clock.upcoming { color: #16a34a; }
 
 /* ===== migrated from src/pages/crm/leadform-extra.css (P67) ===== */
 /* LW31 — tout le bandeau/sous-barre/menu/avertissements hand-rolled de
@@ -4266,51 +4262,12 @@ textarea.form-control {
   white-space: nowrap;
 }
 
-/* ── Sélecteur de vue (groupe de boutons-icônes joints, façon Odoo) ──────── */
-.vs-group {
-  display: inline-flex;
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: var(--radius-sm, 8px);
-  overflow: hidden;
-  background: var(--card, #fff);
-}
-
-.vs-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 36px;
-  background: var(--card, #fff);
-  border: none;
-  border-right: 1px solid var(--border, #e2e8f0);
-  color: var(--foreground, #0b1f3a);
-  cursor: pointer;
-  transition: background-color var(--motion-base) ease, color var(--motion-base) ease;
-}
-
-.vs-btn:last-child {
-  border-right: none;
-}
-
-@media (hover: hover) {
-  .vs-btn:hover {
-    background: var(--accent, #f1f5f9);
-  }
-}
-
-.vs-btn:focus-visible {
-  outline: 2px solid var(--ring, #94a3b8);
-  outline-offset: -2px;
-}
-
-@media (hover: hover) {
-  .vs-btn-active,
-  .vs-btn-active:hover {
-    background: var(--primary, #0b1f3a);
-    color: var(--primary-foreground, #fff);
-  }
-}
+/* ── Sélecteur de vue ─────────────────────────────────────────────────────
+   LB32 — ViewSwitcher rebâti sur `ui/Segmented` (son propre style Tailwind :
+   plus de `.vs-btn`/boutons joints main-roulés). `.vs-group` ne porte plus
+   QUE le hook de positionnement ci-dessus (`.lp-header-actions .vs-group`) —
+   conservé comme className sur le radiogroup pour ne pas retoucher
+   LeadsPage.jsx (hors périmètre de cette tâche). */
 
 /* ── Mobile ──────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
@@ -4323,11 +4280,6 @@ textarea.form-control {
     flex: 1 1 100%;
     max-width: none;
     min-height: 44px;
-  }
-
-  .vs-btn {
-    width: 44px;
-    height: 44px;
   }
 
   .lp-view-area {
@@ -5389,35 +5341,16 @@ textarea.form-control {
   white-space: nowrap;
 }
 
-/* ── Responsable ── */
-.lv-owner {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-.lv-avatar {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--cat-navy, #0b1f3a);
-  color: #fff;
-  font-size: 0.62rem;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  letter-spacing: 0.02em;
-}
-
 /* ── Priorité (2 étoiles) ── */
 .lv-stars {
   font-size: 0.95rem;
   letter-spacing: 1px;
   white-space: nowrap;
 }
+/* LB31 — aligned on .kb-star (was raw #d1d5db, same token the kanban side
+   already uses). */
 .lv-star {
-  color: #d1d5db;
+  color: var(--border, #d1d5db);
 }
 .lv-star-on {
   color: var(--cat-gold, #f5a623);
