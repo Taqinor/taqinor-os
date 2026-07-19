@@ -7467,3 +7467,54 @@ textarea.form-control {
   background: var(--destructive);
   pointer-events: none;
 }
+
+/* ===========================================================================
+   LB15 — Menu ••• (DropdownMenu) révélé au survol/focus, permanent au toucher.
+   Le bouton ✗ 20×20 a quitté la face : la popover « Marquer perdu » est
+   désormais le composant partagé PerduPopover, contrôlé par le menu et ancré
+   au coin de la carte. LB17 durcira la cible tactile ≥44px.
+   =========================================================================== */
+.kb-card-menu {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+.kb-card-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 6px);
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+.kb-card:hover .kb-card-menu-btn,
+.kb-card:focus-within .kb-card-menu-btn,
+.kb-card-menu-btn[data-state='open'] {
+  opacity: 1;
+}
+.kb-card-menu-btn:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.kb-card-menu-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  opacity: 1;
+}
+@media (hover: none) {
+  .kb-card-menu-btn { opacity: 1; }
+}
+/* Ancre invisible de la popover « Marquer perdu » contrôlée (coin haut-droit). */
+.kb-perdu-anchor {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 0;
+  height: 0;
+}

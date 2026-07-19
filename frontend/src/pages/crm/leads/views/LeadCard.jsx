@@ -14,9 +14,9 @@
 // VX187/LB6 — memo() : chaque frappe dans la recherche/un filtre re-rendait
 // TOUTES les cartes visibles. Ne tient que si les callbacks parents sont
 // stables (useCallback sur onOpenLead/onAutoQuote/changeStage/… dans LeadsPage).
-import { useEffect, useRef, useState, memo } from 'react'
+import { useRef, useState, memo } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
-import { Zap, MapPin, FileText } from 'lucide-react'
+import { Zap, MapPin, FileText, MoreHorizontal } from 'lucide-react'
 import {
   CANAL_LABELS,
   PIPELINE_STAGES,
@@ -35,14 +35,17 @@ import AssigneePicker from '../../../../components/AssigneePicker'
 import { telHref, waHref } from '../../../../lib/contactLinks'
 // VX122 — finesse française : espace fine insécable devant « : » du tooltip.
 import { nbsp } from '../../../../lib/format'
-import crmApi from '../../../../api/crmApi'
 import ExternalLink from '../../../../ui/ExternalLink'
 // VX24 — score de qualité visible sur la carte (ex Liste seule).
 // VX221 — tooltip top-3 facteurs.
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
 // VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
 import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/CallLogPopover'
-import { Button, Popover, PopoverTrigger, PopoverContent } from '../../../../ui'
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from '../../../../ui'
+// LB15 — flux « Marquer perdu » partagé (fin de la triplication carte/liste).
+import PerduPopover from '../PerduPopover'
 
 // VX43 — Swipe-to-action horizontal maison (touchstart/move/end, zéro
 // dépendance). Les liens tel:/wa.me sont révélés en GRAND (≥44px) par un
@@ -180,6 +183,10 @@ function LeadCard({
   // LB5 — callback stable de LeadsPage (dispatch updateLead, store seul
   // source de vérité — jamais de refetch ni de crmApi direct depuis la carte).
   onMarkPerdu,
+  // LB15 — action « Archiver » du menu ••• (optionnelle : masquée si non
+  // câblée, ce qui est le cas du kanban/prévision aujourd'hui). Primitive/
+  // callback stable — n'affecte pas la sonde mémo LB6.
+  onArchive,
   // LB13 — quand une sélection est active ailleurs sur le board, la checkbox
   // reste visible sur TOUTES les cartes (primitive stable — défaut false, non
   // câblé par le kanban aujourd'hui : la CSS révèle déjà la checkbox au survol/
@@ -260,38 +267,11 @@ function LeadCard({
   // retour dans l'onglet (visibilitychange).
   const { nudgeVisible, armCallNudge, dismissNudge } = useCallEndedNudge()
 
-  // VX223 — « ✗ Perdu » en 2 clics : (1) ouvrir la mini-popover, (2) choisir
-  // un motif (datalist des motifs gérés, texte libre toléré) → confirmer, UNE
-  // seule requête PATCH `perdu`+`motif_perte`. Motifs chargés paresseusement à
-  // la PREMIÈRE ouverture (jamais à chaque montage — un kanban a des dizaines
-  // de cartes). LB15 extraira ce flux dans PerduPopover.jsx (partagé).
+  // LB15 — le flux « ✗ Marquer perdu » (motif + datalist, chargement paresseux
+  // des motifs, PATCH via le store) vit désormais dans PerduPopover.jsx
+  // (partagé LeadCard/ListView). La carte n'en garde QUE l'état d'ouverture,
+  // piloté par l'item « ✗ Marquer perdu » du menu •••.
   const [perduOpen, setPerduOpen] = useState(false)
-  const [perduMotif, setPerduMotif] = useState('')
-  const [perduBusy, setPerduBusy] = useState(false)
-  const [motifsPerte, setMotifsPerte] = useState(null) // null = pas encore chargés
-  useEffect(() => {
-    if (!perduOpen || motifsPerte !== null) return
-    crmApi.getMotifsPerte()
-      .then((r) => setMotifsPerte(((r.data?.results ?? r.data) || []).filter((m) => !m.archived)))
-      .catch(() => setMotifsPerte([]))
-  }, [perduOpen, motifsPerte])
-  const confirmPerdu = async () => {
-    const motif = perduMotif.trim()
-    if (!motif || !onMarkPerdu) return
-    setPerduBusy(true)
-    try {
-      // LB5 — passe par le store (LeadsPage.onMarkPerdu) : la carte se grise
-      // IMMÉDIATEMENT via le state Redux, aucun refetch. Le toast d'échec est
-      // déjà émis par onMarkPerdu — on garde la popover ouverte pour retenter.
-      await onMarkPerdu(lead, motif)
-      setPerduOpen(false)
-      setPerduMotif('')
-    } catch {
-      // Échec : toast déjà affiché par onMarkPerdu, popover reste ouverte.
-    } finally {
-      setPerduBusy(false)
-    }
-  }
 
   return (
     <div className="kb-swipe-wrap" style={{ position: 'relative' }}>
@@ -367,62 +347,70 @@ function LeadCard({
           <span className="kb-card-name">{nomComplet}</span>
           {/* VX24 — ScoreBadge partagé (features/crm) ; VX221 — tooltip top-3 facteurs. */}
           <ScoreBadge lead={lead} />
-          {/* VX223 — « ✗ Perdu » en 2 clics. Absent si déjà perdu. LB15
-              le déplacera dans le menu ••• (DropdownMenu) + PerduPopover. */}
-          {!perdu && (
-            <Popover
-              open={perduOpen}
-              onOpenChange={(v) => { setPerduOpen(v); if (!v) setPerduMotif('') }}
-            >
-              <PopoverTrigger asChild>
+          {/* LB15 — menu ••• (révélé au survol/focus, permanent au toucher) :
+              toutes les actions du lead, atteignables au clavier. Le bouton ✗
+              20×20 a quitté la face (blueprint D3). */}
+          <div className="kb-card-menu" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="kb-mark-perdu"
-                  title="Marquer perdu"
-                  aria-label={`Marquer ${nomComplet} comme perdu`}
+                  className="kb-card-menu-btn"
+                  aria-label={`Actions du lead ${nomComplet}`}
+                  onClick={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
                   onTouchStart={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
                 >
-                  ✗
+                  <MoreHorizontal size={16} aria-hidden="true" />
                 </button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="start"
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                <div className="kb-perdu-form">
-                  <p className="kb-perdu-title">Marquer perdu</p>
-                  <input
-                    className="form-control"
-                    list={`kb-motifs-${lead.id}`}
-                    placeholder="Motif de perte"
-                    value={perduMotif}
-                    onChange={(e) => setPerduMotif(e.target.value)}
-                    autoFocus
-                  />
-                  <datalist id={`kb-motifs-${lead.id}`}>
-                    {(motifsPerte ?? []).map((m) => <option key={m.id} value={m.nom} />)}
-                  </datalist>
-                  <div className="kb-perdu-actions">
-                    <Button type="button" variant="outline" size="sm" onClick={() => setPerduOpen(false)}>
-                      Annuler
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="destructive"
-                      disabled={!perduMotif.trim() || perduBusy}
-                      loading={perduBusy}
-                      onClick={confirmPerdu}
-                    >
-                      Confirmer
-                    </Button>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
+                {onOpen && (
+                  <DropdownMenuItem onSelect={() => onOpen(lead)}>Ouvrir</DropdownMenuItem>
+                )}
+                {onPlanifierRelance && (
+                  <DropdownMenuItem onSelect={() => onPlanifierRelance(lead)}>
+                    Planifier une relance
+                  </DropdownMenuItem>
+                )}
+                {onAutoQuote && lead.devis_auto?.pret && (
+                  <DropdownMenuItem onSelect={() => onAutoQuote(lead)}>
+                    <Zap size={14} aria-hidden="true" /> Devis auto
+                  </DropdownMenuItem>
+                )}
+                {!perdu && onMarkPerdu && (
+                  <DropdownMenuItem
+                    destructive
+                    onSelect={() => {
+                      // Ouverture différée d'un frame : la fermeture du menu ne
+                      // referme pas aussitôt la popover contrôlée (LB15).
+                      requestAnimationFrame(() => setPerduOpen(true))
+                    }}
+                  >
+                    ✗ Marquer perdu
+                  </DropdownMenuItem>
+                )}
+                {onArchive && (
+                  <DropdownMenuItem onSelect={() => onArchive(lead)}>Archiver</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          {/* LB15 — popover « Marquer perdu » PARTAGÉE (contrôlée par le menu),
+              ancrée au coin de la carte. Un seul composant perdu dans le code. */}
+          {!perdu && onMarkPerdu && (
+            <PerduPopover
+              lead={lead}
+              onMarkPerdu={onMarkPerdu}
+              open={perduOpen}
+              onOpenChange={setPerduOpen}
+              anchor={<span className="kb-perdu-anchor" aria-hidden="true" />}
+              idPrefix="kb-motifs"
+            />
           )}
         </div>
 
