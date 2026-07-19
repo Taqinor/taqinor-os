@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { axe } from 'vitest-axe'
+import * as axeMatchers from 'vitest-axe/matchers'
 import { initState } from './draftCore'
 import ContextRail from './ContextRail'
 import { configureStore } from '@reduxjs/toolkit'
 import { Provider } from 'react-redux'
+
+expect.extend(axeMatchers)
 
 // AttachmentsPanel (onglet Pièces) lit le rôle via useIsAdmin/useSelector —
 // un Provider minimal suffit (même motif que LeadForm.test.jsx).
@@ -133,5 +137,26 @@ describe('LW19 — ContextRail : onglets + badges', () => {
     await user.click(screen.getByRole('tab', { name: /Activités/ }))
     await user.click(screen.getByText('📋 Appliquer un plan'))
     expect(onAction).toHaveBeenCalledWith('plan')
+  })
+})
+
+/* LW35 — passe a11y axe-core sur le rail contexte monté (onglets ui/Tabs déjà
+   conformes ARIA/clavier — on vérifie qu'aucune régression de balisage ne
+   s'est glissée autour : badges, boutons, panneaux). Onglet par défaut
+   (Historique) ET onglet Devis (cartes/DropdownMenu) couverts. */
+describe('LW35 — ContextRail : axe-core, aucune violation critique', () => {
+  it('onglet Historique (par défaut) n\'a aucune violation axe', async () => {
+    const { container } = renderWithStore(<ContextRail {...baseProps()} />)
+    const results = await axe(container)
+    expect(results).toHaveNoViolations()
+  })
+
+  it('onglet Devis (cartes, badges, menu) n\'a aucune violation axe', async () => {
+    const user = userEvent.setup()
+    const { container } = renderWithStore(<ContextRail {...baseProps()} />)
+    await user.click(screen.getByRole('tab', { name: /devis/i }))
+    await screen.findByText('DEV-2026-001')
+    const results = await axe(container)
+    expect(results).toHaveNoViolations()
   })
 })

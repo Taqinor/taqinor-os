@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
+import { axe } from 'vitest-axe'
+import * as axeMatchers from 'vitest-axe/matchers'
 import { initState } from '../draftCore'
 import SectionContact from './SectionContact'
 import SectionPipeline from './SectionPipeline'
@@ -7,6 +9,9 @@ import SectionEnergie, { SectionPompage } from './SectionEnergie'
 import SectionSite from './SectionSite'
 import SectionVisite from './SectionVisite'
 import SectionDivers, { SectionOrigine } from './SectionDivers'
+import SectionsPane from '../SectionsPane'
+
+expect.extend(axeMatchers)
 
 /* LW11 — rendu des 6 fichiers de sections. On neutralise les dépendances qui
    feraient un appel réseau au montage (doublons live, canaux, champs perso,
@@ -88,5 +93,30 @@ describe('LW11 — rendu des sections (port 1:1 des champs)', () => {
     render(<SectionOrigine state={state} />)
     expect(screen.getByText('UTM source')).toBeInTheDocument()
     expect(screen.getByText('meta')).toBeInTheDocument()
+  })
+})
+
+/* LW35 — passe a11y axe-core sur SectionsPane MONTÉ (le vrai centre : nav-chips
+   de scroll-spy + accordéon de sections, pas les sections isolées ci-dessus).
+   `aria-current` sur le chip actif (grep DoD) + boutons repliables natifs
+   (aria-expanded déjà posé par WorkspaceSection) : on vérifie qu'aucune
+   régression de balisage ne s'y est glissée. */
+describe('LW35 — SectionsPane (nav de sections) : axe-core, aucune violation critique', () => {
+  it('le centre en édition (nav-chips + sections repliables) n\'a aucune violation axe', async () => {
+    const state = initState({ lead: { id: 1, nom: 'Test' }, mode: 'edit' })
+    const { container } = render(
+      <SectionsPane
+        state={state}
+        setField={vi.fn()}
+        errors={{}}
+        mode="edit"
+        formId="lw-test-form"
+        onSubmit={vi.fn()}
+        refData={{ users: [], tagOptions: [], motifOptions: [] }}
+      />,
+    )
+    expect(container.querySelector('.lw-secnav-chip[aria-current="true"]')).toBeInTheDocument()
+    const results = await axe(container)
+    expect(results).toHaveNoViolations()
   })
 })
