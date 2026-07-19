@@ -17,7 +17,9 @@ from .views import (
     AlertSnoozeView, AnnotationViewSet, AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet,
     FactEntryViewSet, FactTableViewSet,
+    AdChatterView,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
+    ImportChantierPhotoView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
     CommentCountsView, CommentDeleteView, CommentFaqView, CommentHideView,
     CommentListView,
@@ -25,6 +27,9 @@ from .views import (
     AudienceDeliveryEstimateView, EngagementAudienceView,
     CostPerSignatureView, CoverageReportView, CreativeLeaderboardView,
     CreativeScatterView,
+    BrandKitViewSet,
+    CompetitorAdObservationViewSet, CompetitorPageViewSet,
+    ConsentRecordViewSet,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     ExplorationLedgerView,
@@ -41,7 +46,8 @@ from .views import (
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
     MetricsDashboardView,
     MdeCalculatorView,
-    MetricsLeadsView, MetricsPacingView, ProposeCuratedActionView, RealLeadsView,
+    MetricsLeadsView, MetricsPacingView, ProposalTemplateViewSet,
+    ProposeCuratedActionView, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, RegretRegistryView,
     ReportExportView,
     RulePolicyViewSet, SignalCohortView, SignalsView, SimulationDetailView,
@@ -59,6 +65,17 @@ router.register(r'noeuds-hypothese', AssumptionNodeViewSet,
                 basename='assumption-node')
 # PUB49 — annotations de courbe (notes de décision épinglées à une date).
 router.register(r'annotations', AnnotationViewSet, basename='annotation')
+# PUB75 — registre de consentement image/témoignage (CNDP loi 09-08).
+router.register(r'consentements', ConsentRecordViewSet, basename='consent-record')
+# PUB83 — kit de marque persistant (logo/couleurs/zones/polices).
+router.register(r'kit-marque', BrandKitViewSet, basename='brand-kit')
+# PUB50 — gabarits de proposition réutilisables (pré-remplissage des composeurs).
+router.register(r'gabarits-proposition', ProposalTemplateViewSet,
+                basename='proposal-template')
+# PUB70 — veille concurrentielle (manuelle outillée, zéro scraping).
+router.register(r'concurrents', CompetitorPageViewSet, basename='competitor-page')
+router.register(r'observations-concurrents', CompetitorAdObservationViewSet,
+                basename='competitor-observation')
 # AGEN1 — génération autonome : table de faits versionnée (§10.2 point 1).
 router.register(r'table-faits', FactTableViewSet, basename='fact-table')
 router.register(r'faits', FactEntryViewSet, basename='fact-entry')
@@ -142,6 +159,13 @@ urlpatterns = [
     # PUB16 — génération IA ancrée (« Générer des variantes ancrées »).
     path('generation/variantes-ancrees/', GroundedGenerationView.as_view(),
          name='adsengine-generation-variantes-ancrees'),
+    # PUB73 — import d'une photo de chantier dans la créathèque (provenance +
+    # consentement PUB75 bloquant).
+    path('creatifs/import-chantier/', ImportChantierPhotoView.as_view(),
+         name='adsengine-import-chantier-photo'),
+    # PUB55 — fil de chatter par entité (campagne/ad set/ad) : notes manuelles +
+    # actions appliquées + alertes, fusionnées.
+    path('chatter/', AdChatterView.as_view(), name='adsengine-chatter'),
     # ADSENG33 — drill-downs de reporting (table variante / entonnoir / cohortes
     # / export CSV).
     path('reporting/variantes/', VariantReportView.as_view(),

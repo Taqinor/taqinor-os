@@ -2,11 +2,10 @@
 # + throttle brake-only. Migration ADDITIVE (4 champs nullables/à défaut vide sur
 # AnomalyEvent : jamais destructive, entièrement revertable).
 #
-# zz_pub90 — MARQUEUR ORCHESTRATEUR : ce numéro (0090) est un PLACEHOLDER pour
-# éviter toute collision avec les migrations du lot 1 de Groupe PUB (dev-pub) ;
-# l'orchestrateur RENUMÉROTE ce fichier et RE-POINTE sa dépendance sur la vraie
-# tête de la chaîne adsengine au moment du fold. La dépendance ci-dessous vise la
-# dernière migration présente sur CETTE branche (chaîne cohérente en isolation).
+# Renumérotée 0090 → 0049 au fold de lane X2 dans dev-pub2 (le 0090 était un
+# placeholder orchestrateur évitant toute collision avec les migrations du lot 1
+# de Groupe PUB en isolation) ; dépendance re-pointée sur la vraie tête de la
+# chaîne adsengine (0048_pub82_script_beats).
 from django.conf import settings
 from django.db import migrations, models
 import django.db.models.deletion
@@ -16,7 +15,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('adsengine', '0033_guardrailconfig_health_creative_weight_ctr_and_more'),
+        ('adsengine', '0048_pub82_script_beats'),
     ]
 
     operations = [

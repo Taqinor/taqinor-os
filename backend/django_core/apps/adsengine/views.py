@@ -18,28 +18,31 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AdCampaignMirror, Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
-    CommentMirror,
+    AdCampaignMirror, AdEngineActivity,
+    Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
+    BrandKit, CommentMirror,
+    CompetitorAdObservation, CompetitorPage, ConsentRecord,
     CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
     CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
     ExperimentArm, FactEntry, FactTable, FlightPhase, FlightPlan,
     GuardrailConfig,
     InstagramCommentMirror, InstagramMediaMirror, InstagramPublishJob,
-    MetaConnection, ReconciliationSnapshot, RulePolicy,
+    MetaConnection, ProposalTemplate, ReconciliationSnapshot, RulePolicy,
     WeeklyBrief,
 )
 from .serializers import (
     AdCampaignMirrorSerializer, AnnotationSerializer, AnomalyEventSerializer,
     ArmDailyStatSerializer,
-    AssumptionNodeSerializer,
-    CommentMirrorSerializer, CreativeAssetSerializer,
+    AssumptionNodeSerializer, BrandKitSerializer,
+    CompetitorAdObservationSerializer, CompetitorPageSerializer,
+    CommentMirrorSerializer, ConsentRecordSerializer, CreativeAssetSerializer,
     CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
     CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
     EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
     FactEntrySerializer, FactTableSerializer,
     FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
     InstagramCommentMirrorSerializer, InstagramMediaMirrorSerializer,
-    MetaConnectionSerializer,
+    MetaConnectionSerializer, ProposalTemplateSerializer,
     ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
 
@@ -546,6 +549,180 @@ class FactEntryViewSet(AdsengineViewSet):
 
     queryset = FactEntry.objects.all()
     serializer_class = FactEntrySerializer
+
+
+class ConsentRecordViewSet(AdsengineViewSet):
+    """PUB75 — CRUD du registre de consentement image/témoignage (CNDP loi 09-08).
+
+    Company-scopé (hérité) ; ``company`` posée côté serveur. La révocation passe
+    par l'action dédiée ``revoquer`` (jamais un PATCH direct de ``revoked_at``) :
+    elle retire aussitôt de la rotation les assets liés (``policy.revoke_consent``).
+    L'UI de collecte simple (lien WhatsApp signable) enregistre ici le
+    consentement recueilli.
+    """
+
+    queryset = ConsentRecord.objects.all()
+    serializer_class = ConsentRecordSerializer
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def revoquer(self, request, pk=None):
+        """PUB75 — Révoque le consentement : les assets « client réel » qui le
+        citent sont immédiatement retirés de la rotation (policy passed=False)."""
+        consent = self.get_object()
+        retires = consent.revoke()
+        data = self.get_serializer(consent).data
+        data['assets_retires'] = retires
+        return Response(data)
+
+
+class CompetitorPageViewSet(AdsengineViewSet):
+    """PUB70 — CRUD des Pages concurrentes suivies (veille manuelle outillée).
+
+    Company-scopé ; ``company`` posée côté serveur. Un ``GET veille/`` agrégé
+    (finding API + cadence + matière de brief) est exposé en action ``veille``.
+    ZÉRO scraping — aucun appel réseau côté serveur."""
+
+    queryset = CompetitorPage.objects.all()
+    serializer_class = CompetitorPageSerializer
+
+    @action(detail=False, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def veille(self, request):
+        """PUB70 — Tableau de veille : le finding API (couverture commerciale =
+        NON), la cadence par concurrent, et la matière de brief (hooks/angles
+        saisis). Lecture seule, company-scopé."""
+        from . import competitor_intel as ci
+
+        company = request.user.company
+        return Response({
+            'finding': ci.AD_LIBRARY_API_FINDING,
+            'cadence': ci.cadence_timeline(company),
+            'brief_material': ci.observations_as_brief_material(company),
+        })
+
+
+class CompetitorAdObservationViewSet(AdsengineViewSet):
+    """PUB70 — CRUD des observations manuelles (hooks/angles reformulés). Company-
+    scopé ; ``competitor_page`` contrainte à la même société côté serializer."""
+
+    queryset = CompetitorAdObservation.objects.all()
+    serializer_class = CompetitorAdObservationSerializer
+
+
+class AdChatterView(APIView):
+    """PUB55 — Fil de chatter par entité (campagne / ad set / ad).
+
+    ``GET ?entity_type=&entity_id=`` renvoie le fil FUSIONNÉ (notes manuelles +
+    actions appliquées + alertes, le plus récent d'abord). ``POST {entity_type,
+    entity_id, body}`` pose une note manuelle — acteur + société côté serveur
+    (jamais lus du corps), pattern ``crm.LeadActivity``. Company-scopé."""
+
+    _ENTITIES = {'campaign', 'adset', 'ad'}
+
+    def _resolve(self, request, perm):
+        return _adseng_company_gate(request, perm)
+
+    def get(self, request):
+        company, err = self._resolve(request, 'adsengine_view')
+        if err is not None:
+            return err
+        entity_type = request.query_params.get('entity_type')
+        entity_id = request.query_params.get('entity_id')
+        if entity_type not in self._ENTITIES or not entity_id:
+            return Response(
+                {'detail': 'entity_type (campaign/adset/ad) et entity_id requis.'},
+                status=400)
+        from . import chatter
+        return Response(chatter.build_timeline(company, entity_type, entity_id))
+
+    def post(self, request):
+        company, err = self._resolve(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        body = request.data or {}
+        entity_type = body.get('entity_type')
+        entity_id = body.get('entity_id')
+        text = (body.get('body') or '').strip()
+        if entity_type not in self._ENTITIES or not entity_id:
+            return Response(
+                {'detail': 'entity_type (campaign/adset/ad) et entity_id requis.'},
+                status=400)
+        if not text:
+            return Response({'detail': 'Une note (body) est requise.'}, status=400)
+        note = AdEngineActivity.objects.create(
+            company=company, entity_type=entity_type,
+            entity_meta_id=str(entity_id), body=text, user=request.user)
+        return Response({
+            'id': note.id, 'kind': 'note', 'body': note.body,
+            'at': note.created_at.isoformat(),
+            'author': request.user.username, 'source': 'note',
+        }, status=201)
+
+
+class ImportChantierPhotoView(APIView):
+    """PUB73 — Importe une photo de chantier dans la créathèque
+    (``CreativeAsset(source_lane='chantier')``).
+
+    Corps : ``{chantier_id, attachment_id, client_id, puissance_kwc?, ville?,
+    note?, auto_flagged?}``. Écriture ``adsengine_manage`` ; company-scopé.
+    BLOQUÉ (400) sans consentement photo client actif (PUB75) — refus expliqué."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        body = request.data or {}
+        chantier_id = body.get('chantier_id')
+        attachment_id = body.get('attachment_id')
+        client_id = body.get('client_id')
+        if not (chantier_id and attachment_id):
+            return Response(
+                {'detail': 'chantier_id et attachment_id requis.'}, status=400)
+        from . import creative_factory as cf
+        result = cf.import_chantier_photo(
+            company, chantier_id=chantier_id, attachment_id=attachment_id,
+            client_id=client_id, puissance_kwc=body.get('puissance_kwc'),
+            ville=body.get('ville'), note=body.get('note', ''),
+            auto_flagged=bool(body.get('auto_flagged')))
+        if not result['imported']:
+            return Response(
+                {'detail': result['message'],
+                 'blocked_reason': result['blocked_reason']}, status=400)
+        return Response({
+            'imported': True, 'asset_id': result['asset'].id,
+            'message': result['message'],
+        }, status=201)
+
+
+class ProposalTemplateViewSet(AdsengineViewSet):
+    """PUB50 — CRUD des gabarits de proposition réutilisables. Company-scopé ;
+    ``company`` posée côté serveur. Appliquer un gabarit (côté front) ne fait que
+    PRÉ-REMPLIR un composeur — aucune action n'est exécutée depuis ce viewset."""
+
+    queryset = ProposalTemplate.objects.all()
+    serializer_class = ProposalTemplateSerializer
+
+    def get_queryset(self):
+        # Filtre optionnel par ``kind`` (le composeur ne charge que ses gabarits).
+        qs = super().get_queryset()
+        kind = self.request.query_params.get('kind')
+        if kind:
+            qs = qs.filter(kind=kind)
+        return qs
+
+
+class BrandKitViewSet(AdsengineViewSet):
+    """PUB83 — CRUD du kit de marque (une par société, ``OneToOne``).
+
+    Company-scopé (hérité) ; ``company`` posée côté serveur. Le
+    ``TemplatedAdapter`` lit ce kit persistant au lieu d'un payload de marque
+    ad hoc à chaque génération."""
+
+    queryset = BrandKit.objects.all()
+    serializer_class = BrandKitSerializer
 
 
 class EngineAlertViewSet(AdsengineViewSet):

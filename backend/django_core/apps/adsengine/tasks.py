@@ -1336,3 +1336,84 @@ def autopause_blast_radius():
     result = {'companies': companies, 'paused': paused, 'alerted': alerted}
     logger.info('adsengine.autopause_blast_radius: %s', result)
     return result
+
+
+# ── PUB76 — Fraîcheur des assets (chiffre périmé à l'antenne = risque conf.) ──
+
+def flag_stale_assets_for_company(company, *, today=None):
+    """PUB76 — Marque « à revoir » les assets d'une société devenus périmés.
+
+    Trois motifs, par ordre de priorité (le plus critique gagne) :
+      1. ``fait_revise`` — l'asset cite une version de ``FactTable`` ANTÉRIEURE à
+         la version publiée courante (chiffre potentiellement périmé à
+         l'antenne) ;
+      2. ``expire`` — ``expires_at`` atteint ;
+      3. ``a_revoir`` — ``review_after`` atteint (créa saisonnière à re-vérifier).
+    JAMAIS un retrait automatique — on pose seulement ``needs_review`` +
+    ``review_reason`` (l'humain tranche). Idempotent : un asset déjà marqué du
+    même motif n'est pas ré-écrit. Renvoie ``{fait_revise, expire, a_revoir}``.
+    """
+    from .models import CreativeAsset, FactTable
+
+    today = today or datetime.date.today()
+    published = FactTable.published_for(company)
+    current_version = published.version if published else None
+    flagged = {'fait_revise': 0, 'expire': 0, 'a_revoir': 0}
+
+    def _flag(qs, reason):
+        n = 0
+        for asset in qs:
+            if asset.needs_review and asset.review_reason == reason:
+                continue  # déjà marqué de ce motif — idempotent
+            asset.needs_review = True
+            asset.review_reason = reason
+            asset.save(update_fields=[
+                'needs_review', 'review_reason', 'updated_at'])
+            n += 1
+        return n
+
+    # 1. Faits révisés (priorité — peut « améliorer » un motif date existant).
+    if current_version is not None:
+        stale = CreativeAsset.objects.filter(
+            company=company, facts_version__isnull=False,
+            facts_version__lt=current_version)
+        flagged['fait_revise'] = _flag(stale, 'fait_revise')
+
+    # 2. Expiration (n'écrase jamais un asset déjà marqué).
+    expired = CreativeAsset.objects.filter(
+        company=company, needs_review=False,
+        expires_at__isnull=False, expires_at__lte=today)
+    flagged['expire'] = _flag(expired, 'expire')
+
+    # 3. Revue saisonnière due (n'écrase jamais un asset déjà marqué).
+    review_due = CreativeAsset.objects.filter(
+        company=company, needs_review=False,
+        review_after__isnull=False, review_after__lte=today)
+    flagged['a_revoir'] = _flag(review_due, 'a_revoir')
+
+    return flagged
+
+
+@shared_task(name='adsengine.flag_stale_assets')
+def flag_stale_assets():
+    """PUB76 — Passe HEBDO de fraîcheur des assets, toutes sociétés confondues.
+
+    Best-effort par société (une exception n'arrête jamais les suivantes).
+    NO-OP propre pour une société sans asset daté / sans table révisée. Renvoie
+    le total d'assets marqués « à revoir » par motif."""
+    from authentication.selectors import active_companies
+
+    totals = {'fait_revise': 0, 'expire': 0, 'a_revoir': 0}
+    for company in active_companies():
+        try:
+            counts = flag_stale_assets_for_company(company)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.flag_stale_assets: échec société %s',
+                getattr(company, 'pk', company), exc_info=True)
+            continue
+        for key in totals:
+            totals[key] += counts[key]
+
+    logger.info('adsengine.flag_stale_assets: %s', totals)
+    return totals

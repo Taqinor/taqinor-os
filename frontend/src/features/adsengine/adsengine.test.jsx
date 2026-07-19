@@ -57,9 +57,11 @@ describe('adsengine — module.config (auto-enregistrement ENG21)', () => {
     // +1 : « Aujourd'hui » (PUB42 — file unifiée, écran d'accueil /publicite).
     // +1 route SANS item nav : « Fiche ad » (PUB44 — deep-link uniquement,
     // même patron que /crm/leads/:id — jamais un point d'entrée de nav).
-    expect(config.routes).toHaveLength(21)
-    expect(config.nav.items).toHaveLength(20)
-    expect(config.titles).toHaveLength(21)
+    // +4 écrans batch-2 : Consentements (PUB75), Kit de marque (PUB83), Veille
+    // concurrentielle (PUB70), Import photo chantier (PUB73).
+    expect(config.routes).toHaveLength(25)
+    expect(config.nav.items).toHaveLength(24)
+    expect(config.titles).toHaveLength(25)
 
     // PUB44 — /publicite/ad/:id est une route DÉTAIL sans item de nav
     // correspondant (même patron que /crm/leads/:id) : exclue de la parité
