@@ -127,6 +127,12 @@ class DevisSerializer(serializers.ModelSerializer):
     # pour un aperçu au survol dans la liste des devis. None si pas de lead.
     lead_facture_hiver = serializers.SerializerMethodField()
     lead_type_installation = serializers.SerializerMethodField()
+    # PUB53 — liens retour Devis → annonce d'origine : id d'attribution ADSENG1
+    # du lead lié (même champ que crm.LeadSerializer, lu ici via la relation
+    # `lead` déjà déclarée en string-FK 'crm.Lead' — même motif que
+    # get_lead_facture_hiver/get_lead_type_installation juste au-dessus, jamais
+    # un import de apps.crm.models). None si pas de lead ou lead non-Meta.
+    lead_meta_ad_id = serializers.SerializerMethodField()
     # NTCPQ6 — drapeau INTERNE « marge sous seuil » (staff only, jamais côté
     # client). Comme marge_snapshot, la CLÉ elle-même est retirée du payload
     # pour tout rendu non authentifié (voir to_representation).
@@ -139,6 +145,10 @@ class DevisSerializer(serializers.ModelSerializer):
     def get_lead_facture_hiver(self, obj):
         return str(obj.lead.facture_hiver) if obj.lead_id and \
             obj.lead.facture_hiver is not None else None
+
+    def get_lead_meta_ad_id(self, obj):
+        return obj.lead.meta_ad_id if obj.lead_id and \
+            obj.lead.meta_ad_id else None
 
     def get_lead_type_installation(self, obj):
         if not obj.lead_id:

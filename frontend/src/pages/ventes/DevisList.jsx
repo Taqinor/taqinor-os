@@ -41,7 +41,7 @@ import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useRotatingLabel } from '../../hooks/useRotatingLabel'
-import { useHasPermission, useCanValiderVente } from '../../hooks/useHasPermission'
+import { useHasPermission, useCanValiderVente, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 // VX248 — raccourci d'ACTION sur le devis focalisé (le deep-link ?devis=,
@@ -348,7 +348,7 @@ function DevisRow({ d, ctx }) {
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     versionChain, effStatutOf,
     navigate, dispatch,
-    role, canDelete, canValiderVente, highlightId,
+    role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
@@ -542,6 +542,20 @@ function DevisRow({ d, ctx }) {
             >
               ↗ {d.lead_nom ?? 'Lead'}
             </button>
+            {/* PUB53 — traçabilité retour : ce devis vient (via son lead) d'une
+                ad Meta → lien direct vers sa fiche « histoire complète »
+                (PUB44). Gaté aux rôles qui voient /publicite. */}
+            {d.lead_meta_ad_id && canSeePublicite && (
+              <a
+                href={`/publicite/ad/${encodeURIComponent(d.lead_meta_ad_id)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Ouvrir la fiche de l'annonce Meta à l'origine de ce lead"
+                className="ml-1 inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
+              >
+                📣 Vient de la pub
+              </a>
+            )}
           </div>
         )}
       </td>
@@ -1071,6 +1085,10 @@ export default function DevisList() {
   // l'affordance pour les rôles « lecture + une écriture » (ex. Commercial)
   // qui recevraient sinon 403 sur l'appel direct.
   const canValiderVente = useCanValiderVente()
+  // PUB53 — badge « Vient de la pub » (lien retour vers /publicite/ad/:id) sur
+  // une ligne dont le lead lié est un lead Meta : gaté aux mêmes rôles que le
+  // module Publicité (responsable/admin — module.config.jsx).
+  const canSeePublicite = useIsAdminOrResponsable()
   // J141 — chargement différé anti-scintillement : spinner discret puis squelette.
   const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
@@ -1952,7 +1970,7 @@ export default function DevisList() {
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     versionChain, effStatutOf,
     navigate, dispatch,
-    role, canDelete, canValiderVente, highlightId,
+    role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
