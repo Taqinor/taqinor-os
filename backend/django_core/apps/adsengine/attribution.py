@@ -191,3 +191,43 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
         'unresolved': unresolved,
         'organic_excluded_count': organic_excluded,
     }
+
+
+# ── PUB69 — Canal organique « carte de partage client » (parrainage_whatsapp) ─
+# Après signature, le client forwarde lui-même son lien « mon installation »
+# (``apps.ventes.services.installation_share_link``, ShareLink/UTM EXISTANTE
+# — aucun nouveau modèle). Ce canal est du bouche-à-oreille SANS dépense —
+# jamais un CPL fabriqué ici, seulement le comptage leads/qualifiés/signés.
+REFERRAL_SHARE_UTM_CAMPAIGN = 'parrainage_whatsapp'
+
+
+def referral_share_channel_summary(
+        company, *, utm_campaign=REFERRAL_SHARE_UTM_CAMPAIGN):
+    """PUB69 — Isole, DANS L'ATTRIBUTION EXISTANTE, le canal ORGANIQUE
+    « carte de partage client » comme un canal DISTINCT — remonte
+    naturellement via ``utm_campaign`` (aucune écriture Meta/CRM
+    supplémentaire n'est requise ; le webhook de capture de lead existant
+    stampe déjà ``utm_campaign`` depuis l'URL visitée). Réutilise
+    ``apps.crm.selectors.attribution_lead_rows`` (ADSENG6, MÊME sélecteur
+    que :func:`variant_attribution` — jamais réimplémenté) en filtrant sur
+    ``utm_campaign``. Renvoie ``{'utm_campaign', 'leads', 'qualified',
+    'signed', 'lead_ids', 'signed_lead_ids'}``."""
+    from apps.crm.selectors import attribution_lead_rows
+
+    leads = qualified = signed = 0
+    lead_ids, signed_lead_ids = [], []
+    for row in attribution_lead_rows(company):
+        if row.get('utm_campaign') != utm_campaign:
+            continue
+        leads += 1
+        lead_ids.append(row['id'])
+        if row['qualified']:
+            qualified += 1
+        if row['signed']:
+            signed += 1
+            signed_lead_ids.append(row['id'])
+    return {
+        'utm_campaign': utm_campaign, 'leads': leads, 'qualified': qualified,
+        'signed': signed, 'lead_ids': lead_ids,
+        'signed_lead_ids': signed_lead_ids,
+    }
