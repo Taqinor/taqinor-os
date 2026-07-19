@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Truck, ClipboardList, ArrowLeftRight } from 'lucide-react'
+import { Truck, ClipboardList, ArrowLeftRight, Undo2 } from 'lucide-react'
 
 /* ============================================================================
    LOGISTIQUE (XSTK2) — configuration du module « Logistique » (auto-enregistrée).
@@ -18,6 +18,8 @@ const LogistiqueCockpit = lazy(() => import('./LogistiqueCockpit'))
 const LivraisonsPlanningScreen = lazy(() => import('./LivraisonsPlanningScreen'))
 const ComptageCyclesScreen = lazy(() => import('./ComptageCyclesScreen'))
 const TransfertsScreen = lazy(() => import('./TransfertsScreen'))
+// WIR111 — consultation des retours (matériel + livraison), backend-only.
+const RetoursScreen = lazy(() => import('./RetoursScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -32,6 +34,7 @@ const config = {
       { to: '/logistique/livraisons', label: 'Livraisons', icon: <Truck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/logistique/comptages', label: 'Comptages cycliques', icon: <ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/logistique/transferts', label: 'Transferts', icon: <ArrowLeftRight size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/logistique/retours', label: 'Retours', icon: <Undo2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général (le préfixe /logistique en dernier).
@@ -39,6 +42,7 @@ const config = {
     ['/logistique/livraisons', 'Livraisons'],
     ['/logistique/comptages', 'Comptages cycliques'],
     ['/logistique/transferts', 'Transferts'],
+    ['/logistique/retours', 'Retours'],
     ['/logistique', 'Logistique'],
   ],
   sectionLabels: { logistique: 'Logistique' },
@@ -47,6 +51,7 @@ const config = {
     { path: '/logistique/livraisons', component: LivraisonsPlanningScreen, roles: ROLES },
     { path: '/logistique/comptages', component: ComptageCyclesScreen, roles: ROLES },
     { path: '/logistique/transferts', component: TransfertsScreen, roles: ROLES },
+    { path: '/logistique/retours', component: RetoursScreen, roles: ROLES },
   ],
 }
 
