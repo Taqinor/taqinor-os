@@ -16,9 +16,12 @@ import SettingsAuditFeed from './SettingsAuditFeed'
 // NTIDE7 — Campagnes innovation (boîte à idées), composant autonome (modèle
 // backend séparé, apps/innovation) — même patron que SettingsAuditFeed.
 import CampagnesInnovationSettings from '../../features/innovation/CampagnesInnovationSettings'
+// WIR112 — équipes terrain canoniques (DC40), à côté des Types d'intervention.
+import EquipeTerrainSection from './EquipeTerrainSection'
 
 export default function AvanceSection({
   form, set,
+  assignables = [],
   typesItv, newType, setNewType, addType, renameType, delType,
   checklistEtapes, newEtape, setNewEtape, addEtape, renameEtape, toggleEtapeActif, delEtape,
   toggleEtapeCapture, moveEtape,
@@ -213,6 +216,9 @@ export default function AvanceSection({
           </div>
         </CardContent>
       </Card>
+
+      {/* WIR112 — Chantiers — Équipes terrain canoniques (DC40), à côté des types. */}
+      <EquipeTerrainSection assignables={assignables} />
 
       {/* Chantiers — Checklist d'exécution */}
       <Card>

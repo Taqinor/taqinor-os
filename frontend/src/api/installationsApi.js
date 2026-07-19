@@ -510,6 +510,14 @@ const installationsApi = {
 
   // XMFG5 — nomenclature indentée + disponibilité d'un kit produit (stock app).
   getKitStructure: (kitId) => api.get(`/stock/kits/${kitId}/structure/`),
+
+  // WIR112 — équipes terrain canoniques (DC40). CRUD depuis Paramètres ;
+  // `membres` (M2M utilisateurs) + `chef` optionnel. Société posée serveur.
+  getEquipesTerrain: (params) => api.get('/installations/equipes/', { params }),
+  saveEquipeTerrain: (id, data) => id
+    ? api.patch(`/installations/equipes/${id}/`, data)
+    : api.post('/installations/equipes/', data),
+  deleteEquipeTerrain: (id) => api.delete(`/installations/equipes/${id}/`),
 }
 
 export default installationsApi
