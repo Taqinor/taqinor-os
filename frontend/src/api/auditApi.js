@@ -17,6 +17,13 @@ const auditApi = {
     api.get(`/audit/objets/${contentType}/${objectId}/as-of/`, {
       params: date ? { date } : {},
     }),
+  // WIR19 — historique (AuditLog) record-scopé d'UN objet précis
+  // (`/audit/objets/<app_label.model>/<id>/history/`, VX243b) : autorisé au
+  // PROPRIÉTAIRE de l'objet même SANS la permission globale `journal_activite_voir`
+  // (le backend re-vérifie owner/created_by/assigned_to + scope société).
+  // Réponse `{count, results:[AuditLog]}`. Un non-propriétaire sans permission → 403.
+  getObjectHistory: (contentType, objectId, params) =>
+    api.get(`/audit/objets/${contentType}/${objectId}/history/`, { params }),
   // WIR18 — onglet « Sécurité » du Journal (connexion/déconnexion/échec/
   // alerte), FG23, mêmes filtres que le Journal global (user/from/to/search).
   getSecurityEvents: (params) => api.get('/audit/security/', { params }),

@@ -19,6 +19,9 @@ import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+// WIR19 — historique AuditLog record-scopé (visible au propriétaire du ticket
+// sans la permission globale journal_activite_voir).
+import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
 import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
@@ -934,6 +937,15 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
 
         {/* ── Historique (chatter) — L313 repliable ── */}
         <CollapsibleSection icon={History} title="Historique">
+          {/* WIR19 — traçabilité AuditLog de CE ticket, ouverte au propriétaire
+              même sans la permission Journal globale. */}
+          <div>
+            <ObjectHistoryButton
+              contentType="sav.ticket"
+              objectId={ticket.id}
+              label="Historique des modifications"
+            />
+          </div>
           <div className="flex gap-2">
             <Input placeholder="Écrire une note…" value={noteBody}
                    onChange={(e) => setNoteBody(e.target.value)}

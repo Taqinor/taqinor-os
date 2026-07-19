@@ -24,6 +24,10 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+// WIR19 — historique AuditLog record-scopé, ouvert au propriétaire du devis
+// même sans la permission globale journal_activite_voir (le lien Journal
+// ci-dessous, lui, exige cette permission).
+import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { formatMAD, timeAgo } from '../../lib/format'
@@ -399,6 +403,19 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                   <History className="size-3" aria-hidden="true" /> Historique
                 </Link>
               )}
+            </div>
+          )}
+          {/* WIR19 — sans la permission Journal globale, le propriétaire du devis
+              accède quand même à sa traçabilité (endpoint audit record-scopé). */}
+          {isEdit && !canViewJournal && (
+            <div className="mt-1">
+              <ObjectHistoryButton
+                contentType="ventes.devis"
+                objectId={devis.id}
+                label="Historique"
+                variant="ghost"
+                size="sm"
+              />
             </div>
           )}
         </DialogHeader>
