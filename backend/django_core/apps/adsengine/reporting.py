@@ -514,3 +514,53 @@ def language_leaderboard(company):
         })
     classement.sort(key=lambda r: Decimal(r['spend']), reverse=True)
     return {'classement': classement, 'untagged_count': untagged}
+
+
+# ── PUB82 — Rétention par SCÈNE de script (beat ↔ percentile vidéo) ───────────
+#
+# Les percentiles de rétention Meta (p25/p50/p75/p100) disent « à quel % du film
+# l'audience chute » ; en les reliant aux *beats* PERSISTÉS du script
+# (``CreativeAsset.script_beats``) on répond « à quelle SCÈNE » (« la chute
+# arrive à la scène du prix »). Beats répartis uniformément sur la durée.
+
+RETENTION_PERCENTILES = (25, 50, 75, 100)
+
+
+def _beat_index_at_percentile(percentile, n_beats):
+    """Index de la scène jouée au repère ``percentile`` % (beats uniformes)."""
+    if n_beats <= 0:
+        return None
+    idx = int(percentile / 100.0 * n_beats)
+    return min(n_beats - 1, idx)
+
+
+def script_beat_retention(asset):
+    """PUB82 — Mapping beat↔percentile de rétention pour un asset vidéo.
+
+    Renvoie ``{beat_count, mapping: [{percentile, retention, beat_index,
+    beat_text, fact_key}]}`` — chaque percentile pointe la SCÈNE jouée à ce
+    repère + la valeur de rétention (``asset.perf['retention']``, ou ``None`` si
+    non mesurée : jamais un chiffre fabriqué). ``beat_count == 0`` (aucun beat
+    persisté) → mapping vide."""
+    beats = list(asset.script_beats or [])
+    n = len(beats)
+    retention = (asset.perf or {}).get('retention') or {}
+    mapping = []
+    for p in RETENTION_PERCENTILES:
+        idx = _beat_index_at_percentile(p, n)
+        beat = beats[idx] if idx is not None else None
+        beat_text = ''
+        fact_key = None
+        if isinstance(beat, dict):
+            beat_text = beat.get('text', '') or ''
+            fact_key = beat.get('fact_key')
+        elif beat is not None:
+            beat_text = str(beat)
+        mapping.append({
+            'percentile': p,
+            'retention': retention.get(f'p{p}'),
+            'beat_index': idx,
+            'beat_text': beat_text,
+            'fact_key': fact_key,
+        })
+    return {'beat_count': n, 'mapping': mapping}

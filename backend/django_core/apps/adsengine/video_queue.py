@@ -109,6 +109,20 @@ def build_grounded_script(company, *, template_key='', beats=None):
     }
 
 
+def persist_script_beats(asset, script):
+    """PUB82 — Persiste les *beats* du script sur l'asset vidéo (``script_beats``).
+
+    Les beats (lignes du script ancré) étaient éphémères : les stocker permet de
+    relier plus tard chaque percentile de rétention à la SCÈNE jouée
+    (``reporting.script_beat_retention``). Idempotent sur ``update_fields``.
+    Renvoie l'asset."""
+    if asset is None:
+        return asset
+    asset.script_beats = list((script or {}).get('lines', []))
+    asset.save(update_fields=['script_beats', 'updated_at'])
+    return asset
+
+
 def script_text(script):
     """Concatène le texte des lignes d'un script (pour la synthèse voix)."""
     return ' '.join(
@@ -185,6 +199,8 @@ def generate_video(company, *, template_key='', script=None, voice_id='default',
          'cost_cents': cost_cents},
         http_client=http_client, parent=voice_asset)
     if video is not None:
+        # PUB82 — persiste les beats du script sur l'asset (rétention par scène).
+        persist_script_beats(video, script)
         logger.info(
             'video_queue: explainer #%s généré (pending, palier %s, gabarit %s)',
             video.pk, VIDEO_MIN_TIER, template_key or '—')

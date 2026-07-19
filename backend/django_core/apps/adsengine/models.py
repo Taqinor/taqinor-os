@@ -988,6 +988,14 @@ class CreativeAsset(TenantModel):
         max_length=255, blank=True, default='',
         verbose_name='Clé MinIO de la vignette')
 
+    # ── PUB82 — Beats du script persistés (rétention par SCÈNE) ──────────────
+    # Les *beats* du script généré (``video_queue.build_grounded_script``) étaient
+    # éphémères : on les PERSISTE ici pour relier chaque percentile de rétention
+    # vidéo (p25/50/75/100) à la SCÈNE jouée (« la chute arrive à la scène du
+    # prix », pas juste « à 50 % »). Liste de dicts ``{text, fact_key, ...}``.
+    script_beats = models.JSONField(
+        default=list, blank=True, verbose_name='Beats du script')
+
     class Meta:
         verbose_name = 'Asset créatif'
         verbose_name_plural = 'Assets créatifs'
