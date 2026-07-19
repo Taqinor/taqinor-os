@@ -287,6 +287,12 @@ NO_STATIC_EMITTER = {
     # émis directement aujourd'hui (voir apps/ged/services.py — « jamais appelé
     # directement par l'app »).
     "document_produit",
+    # ``lead_erased`` (PUB100) : « seam » posé côté récepteur seul — adsengine
+    # (on_lead_erased) anonymise ses miroirs sur effacement CNDP d'un lead CRM,
+    # mais aucun producteur ne l'émet encore dans le code (le flux d'effacement
+    # CRM viendra dans une tâche ultérieure). Son entrée au catalogue reste
+    # documentaire tant qu'un émetteur statique n'existe pas.
+    "lead_erased",
 }
 
 
