@@ -1,8 +1,8 @@
 // Vue kanban des leads CRM, façon Odoo : 6 colonnes canoniques (stages.js,
 // miroir de STAGES.py — jamais de liste d'étapes en dur ici), glisser-déposer
 // via @dnd-kit/core. Le parent gère l'optimistic update : on ne mute rien.
-import { memo, useMemo, useState } from 'react'
-import { LayoutGrid } from 'lucide-react'
+import { memo, useCallback, useMemo, useState } from 'react'
+import { ChevronDown, LayoutGrid } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -21,6 +21,7 @@ import {
   buildKanbanAnnouncements,
   kanbanScreenReaderInstructions,
 } from '../../../../features/kanban/kanbanA11y'
+import { readCollapsedStages, writeCollapsedStages } from '../../../../features/kanban/collapsedColumns'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
@@ -158,26 +159,53 @@ const DraggableCard = memo(function DraggableCard({
 // LB9 — région nommée (axe/lecteur d'écran atteignent chaque colonne par son
 // libellé + compteur) ; en-têtes déjà épinglés hors du corps scrollant depuis
 // LB2 (P0 fondateur), aucune retouche nécessaire pour ça ici.
-function StageColumn({ col, children }) {
+// LB10 — `collapsed`/`onToggleCollapse` (état + persistance possédés par
+// KanbanView, `features/kanban/collapsedColumns.js`) : une colonne repliée
+// REND SEULEMENT le rail 44px (chevron + compteur + libellé pivoté), les
+// cartes (`children`) ne sont même pas montées — mais le `<section>` garde
+// EXACTEMENT le même `ref={setNodeRef}`/`id: col.key` qu'en dépliée : elle
+// reste une zone droppable à part entière (surbrillance `kb-over` incluse).
+function StageColumn({ col, collapsed, onToggleCollapse, children }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.key })
   // Prévisionnel pondéré : total devis × probabilité de l'étape.
   const forecast = col.totalDevis * (STAGE_PROBABILITY[col.key] ?? 0)
+  const chevronLabel = collapsed
+    ? `Déplier la colonne ${col.label}`
+    : `Replier la colonne ${col.label}`
+  const sectionClassName = [
+    'kb-col',
+    isOver && 'kb-over',
+    collapsed && 'kb-col-collapsed',
+  ].filter(Boolean).join(' ')
   return (
     <section
       ref={setNodeRef}
       aria-label={`Étape ${col.label} — ${col.count} lead${col.count === 1 ? '' : 's'}`}
-      className={isOver ? 'kb-col kb-over' : 'kb-col'}
+      className={sectionClassName}
       style={{ '--kb-accent': col.color }}
     >
       <header className="kb-col-header">
         <div className="kb-col-title-row">
-          <span className="kb-col-title">{col.label}</span>
+          <button
+            type="button"
+            className="kb-col-collapse-btn"
+            aria-expanded={!collapsed}
+            aria-label={chevronLabel}
+            title={chevronLabel}
+            onClick={onToggleCollapse}
+          >
+            <ChevronDown
+              className={collapsed ? 'kb-col-chevron kb-col-chevron-collapsed' : 'kb-col-chevron'}
+              aria-hidden="true"
+            />
+          </button>
+          {!collapsed && <span className="kb-col-title">{col.label}</span>}
           <span className="kb-col-count">{col.count}</span>
         </div>
         {/* LB9 — une SEULE rangée « total MAD · Prév. pondéré » (au lieu de
             deux lignes empilées) ; le tooltip explique la pondération
             STAGE_PROBABILITY importée de plus haut (jamais une seconde table). */}
-        {col.totalDevis > 0 && (
+        {!collapsed && col.totalDevis > 0 && (
           <span
             className="kb-col-money"
             title={`Prévisionnel pondéré à ${Math.round((STAGE_PROBABILITY[col.key] ?? 0) * 100)} % (probabilité de conversion à cette étape)`}
@@ -186,20 +214,24 @@ function StageColumn({ col, children }) {
           </span>
         )}
       </header>
-      {/* LB9 — `tabindex=0` + aria-label : zone de scroll interne atteignable
-          au clavier (recon-05 a11y #6), indépendamment du sélecteur d'étape
-          (StageMover) déjà focalisable sous chaque carte. */}
-      <div
-        className="kb-col-body"
-        tabIndex={0}
-        aria-label={`Cartes de l'étape ${col.label}`}
-      >
-        {col.count === 0 ? (
-          <div className="kb-col-empty">Déposer un lead ici</div>
-        ) : (
-          children
-        )}
-      </div>
+      {collapsed ? (
+        <div className="kb-col-rail-label">{col.label}</div>
+      ) : (
+        /* LB9 — `tabindex=0` + aria-label : zone de scroll interne atteignable
+           au clavier (recon-05 a11y #6), indépendamment du sélecteur d'étape
+           (StageMover) déjà focalisable sous chaque carte. */
+        <div
+          className="kb-col-body"
+          tabIndex={0}
+          aria-label={`Cartes de l'étape ${col.label}`}
+        >
+          {col.count === 0 ? (
+            <div className="kb-col-empty">Déposer un lead ici</div>
+          ) : (
+            children
+          )}
+        </div>
+      )}
     </section>
   )
 }
@@ -247,6 +279,21 @@ export default function KanbanView({
   )
   const columns = useMemo(() => groupLeadsByStage(leads), [leads])
   const [activeLead, setActiveLead] = useState(null)
+
+  // LB10 — repli de colonne PERSISTÉ (localStorage, features/kanban/
+  // collapsedColumns.js) : lu UNE FOIS au montage (lazy useState — jamais de
+  // repli par défaut, `readCollapsedStages()` renvoie `[]` tant que
+  // l'utilisatrice n'a jamais replié une colonne), écrit à chaque bascule.
+  const [collapsedStages, setCollapsedStages] = useState(() => new Set(readCollapsedStages()))
+  const toggleCollapsed = useCallback((stageKey) => {
+    setCollapsedStages((prev) => {
+      const next = new Set(prev)
+      if (next.has(stageKey)) next.delete(stageKey)
+      else next.add(stageKey)
+      writeCollapsedStages([...next])
+      return next
+    })
+  }, [])
 
   // VX192 — annonces FR : id de lead → nom, id de colonne → libellé d'étape.
   const announcements = useMemo(() => {
@@ -346,7 +393,12 @@ export default function KanbanView({
       )}
       <div className="kb-board">
         {columns.map((col) => (
-          <StageColumn key={col.key} col={col}>
+          <StageColumn
+            key={col.key}
+            col={col}
+            collapsed={collapsedStages.has(col.key)}
+            onToggleCollapse={() => toggleCollapsed(col.key)}
+          >
             {col.leads.map((lead) => (
               <DraggableCard
                 key={lead.id}

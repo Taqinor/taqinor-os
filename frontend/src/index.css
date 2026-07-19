@@ -7253,3 +7253,78 @@ textarea.form-control {
   background: color-mix(in srgb, var(--kb-accent) 10%, transparent);
   color: var(--foreground, #0b1f3a);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB10 — Repli de colonne persisté (docs/design/leads-board-blueprint.md D2) :
+   colonne repliée = rail vertical 44px, TOUJOURS une zone droppable (aucune
+   règle `.kb-over`/`.kb-col` de base à dupliquer — `.kb-col-collapsed` ne fait
+   QUE réduire la largeur/réorganiser l'intérieur). ═══════════════════════ */
+.kb-col-collapsed {
+  flex: 0 0 44px;
+  width: 44px;
+  align-items: center;
+}
+
+/* Rangée titre : en repli, seuls le chevron + le compteur restent (le libellé
+   quitte cette rangée pour le rail pivoté ci-dessous) — recentrés. */
+.kb-col-collapsed .kb-col-header {
+  padding: 0.5rem 0.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+.kb-col-collapsed .kb-col-title-row {
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.kb-col-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+}
+.kb-col-collapse-btn:hover {
+  background: var(--muted, #f1f5f9);
+  color: var(--foreground, #0b1f3a);
+}
+.kb-col-collapse-btn:focus-visible {
+  outline: 2px solid var(--ring, #f5a623);
+  outline-offset: 1px;
+}
+
+/* Chevron pivote pour indiquer déplier/replier — un simple `transform`, donc
+   déjà neutralisé sous `prefers-reduced-motion` par le garde global en tête
+   de fichier (transition-property y exclut `transform`). */
+.kb-col-chevron {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--motion-base) ease;
+}
+.kb-col-chevron-collapsed {
+  transform: rotate(-90deg);
+}
+
+/* Libellé pivoté du rail replié — lisible de haut en bas, compteur déjà rendu
+   juste au-dessus dans `.kb-col-header`. */
+.kb-col-rail-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--foreground, #0b1f3a);
+  padding: 0.4rem 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
