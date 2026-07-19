@@ -55,13 +55,13 @@ CATALOG = {
         ['devis', 'user', 'ancien_statut']),
     'devis_refused': _e(
         'Un devis passe à « refusé ».',
-        ['devis', 'user', 'ancien_statut']),
+        ['devis', 'user', 'motif_refus', 'marquer_lead_perdu']),
     'devis_expired': _e(
         'Un devis envoyé bascule automatiquement en « expiré ».',
-        ['devis', 'user', 'ancien_statut']),
+        ['devis', 'ancien_statut']),
     'document_pdf_generated': _e(
         'Un PDF de document a été généré.',
-        ['document', 'kind', 'user', 'company']),
+        ['instance', 'kind']),
     'payment_captured': _e(
         'Un paiement carte en ligne a été capturé.',
         ['transaction', 'company']),
@@ -70,10 +70,10 @@ CATALOG = {
         ['reception', 'company', 'user']),
     'employe_sorti': _e(
         'Un employé quitte l’entreprise (sortie RH).',
-        ['employe', 'company', 'user']),
+        ['dossier', 'user', 'motif']),
     'conge_approuve': _e(
-        'Une demande de congé est approuvée.',
-        ['conge', 'company', 'user']),
+        'Une demande de congé est approuvée (ou annulée : annule=True).',
+        ['demande', 'user', 'annule']),
     'contrat_signe': _e(
         'Un contrat est signé.',
         ['contrat', 'company', 'user']),
@@ -82,7 +82,7 @@ CATALOG = {
         ['contrat', 'company', 'user']),
     'contrat_resilie': _e(
         'Un contrat est résilié.',
-        ['contrat', 'company', 'user']),
+        ['contrat_id', 'company', 'date_effet']),
     'document_produit': _e(
         'Un document métier a été produit.',
         ['document', 'company', 'user']),
@@ -91,46 +91,46 @@ CATALOG = {
         ['intervention', 'company', 'user']),
     'facture_paid': _e(
         'Une facture est réglée (signal frère déprécié de facture_payee).',
-        ['facture', 'company', 'user']),
+        ['facture', 'company', 'montant']),
     'paiement_rejete': _e(
         'Un paiement est rejeté.',
-        ['paiement', 'company', 'user']),
+        ['paiement', 'facture', 'montant', 'company']),
     'facture_emise': _e(
         'Une facture est émise.',
-        ['facture', 'company', 'user']),
+        ['instance', 'company']),
     'facture_payee': _e(
         'Une facture est réglée.',
-        ['facture', 'company', 'user']),
+        ['instance', 'company']),
     'facture_annulee': _e(
         'Une facture est annulée.',
-        ['facture', 'company', 'user']),
+        ['instance', 'company']),
     'bon_commande_cree': _e(
         'Un bon de commande est créé.',
-        ['bon_commande', 'company', 'user']),
+        ['instance', 'company']),
     'paiement_enregistre': _e(
         'Un paiement client est enregistré.',
-        ['paiement', 'company', 'user']),
+        ['instance', 'company']),
     'avoir_cree': _e(
         'Un avoir est créé.',
-        ['avoir', 'company', 'user']),
+        ['instance', 'company']),
     'facture_fournisseur_creee': _e(
         'Une facture fournisseur est créée.',
-        ['facture', 'company', 'user']),
+        ['instance', 'company', 'user']),
     'paiement_fournisseur_enregistre': _e(
         'Un paiement fournisseur est enregistré.',
-        ['paiement', 'company', 'user']),
+        ['instance', 'company']),
     'chantier_annule': _e(
         'Un chantier est annulé.',
-        ['chantier', 'company', 'user']),
+        ['installation', 'company', 'user']),
     'effet_rejete': _e(
         'Un effet (LCN/chèque) est rejeté.',
-        ['effet', 'company', 'user']),
+        ['effet', 'company', 'frais', 'paiement_id']),
     'abonnement_monitoring_resilie': _e(
         'Un abonnement de monitoring est résilié.',
-        ['abonnement', 'company', 'user']),
+        ['abonnement', 'company', 'motif']),
     'chantier_receptionne': _e(
         'Un chantier est réceptionné.',
-        ['chantier', 'company', 'user']),
+        ['installation', 'user', 'ancien_statut']),
     'ticket_resolu': _e(
         'Un ticket SAV bascule vers « résolu ».',
         ['ticket', 'company', 'user', 'ancien_statut']),
@@ -152,6 +152,12 @@ CATALOG = {
     'budget_cycle_clos': _e(
         'Un cycle budgétaire FP&A (NTFPA29) bascule vers « clos ».',
         ['company', 'cycle_id', 'totaux']),
+    'entite_created': _e(
+        'Une entité intra-tenant (NTADM40) est créée.',
+        ['entite', 'user']),
+    'entite_deactivated': _e(
+        'Une entité intra-tenant (NTADM40) est désactivée.',
+        ['entite', 'user']),
 }
 
 
