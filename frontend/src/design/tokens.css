@@ -166,6 +166,27 @@
   --owner-color-9: color-mix(in oklch, var(--destructive) 50%, var(--primary) 50%);
   --owner-color-10: color-mix(in oklch, var(--success) 55%, var(--color-nuit) 45%);
 
+  /* LB16 — Pastilles de TAG : 10 buckets déterministes (features/crm/stages.js
+     `tagColor`, hash conservé). Paires bg/fg AA en clair ; variantes sombres
+     dans `.dark`. C'est le SEUL lieu de naissance de ces hex (comme les
+     primitives de marque) — LeadCard/ListView les consomment via var(). */
+  --tag-1-bg: #e0f2fe; --tag-1-fg: #075985;
+  --tag-2-bg: #fef3c7; --tag-2-fg: #92600a;
+  --tag-3-bg: #dcfce7; --tag-3-fg: #15803d;
+  --tag-4-bg: #fae8ff; --tag-4-fg: #a21caf;
+  --tag-5-bg: #fee2e2; --tag-5-fg: #b91c1c;
+  --tag-6-bg: #e2e8f0; --tag-6-fg: #475569;
+  --tag-7-bg: #fdf0dc; --tag-7-fg: #9a5b0a;
+  --tag-8-bg: #dbeafe; --tag-8-fg: #1d4ed8;
+  --tag-9-bg: #fce7f3; --tag-9-fg: #a5175b;
+  --tag-10-bg: #ecfccb; --tag-10-fg: #4d7c0f;
+
+  /* LB16 — vert de marque WhatsApp. Bug recon-05 : le fond du swipe utilisait
+     var(--color-info) (= BLEU). Nouveau token de marque (seul endroit où ce hex
+     naît) ; assombri pour que le glyphe blanc reste lisible (cible graphique). */
+  --brand-whatsapp: #1fa855;
+  --brand-whatsapp-foreground: #ffffff;
+
   --border: #dde3f0;
   --input: #d2d9ea;
   /* Anneau de focus (F122). `--ring` = couleur azur (contraste ≥ 3:1 sur le
@@ -313,6 +334,23 @@
   --module-accent-destructive: var(--destructive); /* Après-vente/SAV — #e06a52 */
   --module-accent-warning: var(--warning);         /* Analyse/reporting — brass-300 */
   --module-accent-lune: var(--color-lune-faint);   /* Documents/Intelligence — #8d96b4 */
+
+  /* LB16 — pastilles de TAG en sombre : fonds sombres + texte clair (AA sur le
+     fond navy). Mêmes 10 buckets/hues que le clair. */
+  --tag-1-bg: #0c3a52; --tag-1-fg: #bae6fd;
+  --tag-2-bg: #3a2a08; --tag-2-fg: #fde68a;
+  --tag-3-bg: #0b3a24; --tag-3-fg: #bbf7d0;
+  --tag-4-bg: #3b0a3f; --tag-4-fg: #f5d0fe;
+  --tag-5-bg: #45161a; --tag-5-fg: #fecaca;
+  --tag-6-bg: #2a3140; --tag-6-fg: #cbd5e1;
+  --tag-7-bg: #3d2c12; --tag-7-fg: #fbcf9a;
+  --tag-8-bg: #16265e; --tag-8-fg: #bfdbfe;
+  --tag-9-bg: #451128; --tag-9-fg: #fbcfe8;
+  --tag-10-bg: #26340f; --tag-10-fg: #d9f99d;
+
+  /* LB16 — vert WhatsApp en sombre (un peu plus lumineux sur fond navy). */
+  --brand-whatsapp: #22b35c;
+  --brand-whatsapp-foreground: #ffffff;
 
   --border: oklch(33% 0.03 270);          /* bordures relevées (≈ +3,6 L) */
   --input: oklch(37% 0.03 270);

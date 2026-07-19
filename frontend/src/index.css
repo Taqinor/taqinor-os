@@ -5136,16 +5136,18 @@ textarea.form-control {
   margin-top: 0.4rem;
   padding: 4px 8px;
   border-radius: 6px;
-  background: var(--color-info-muted, rgba(37, 99, 235, 0.1));
+  /* LB16 — `--color-info-muted` n'a jamais existé (le littéral rgba était donc
+     toujours utilisé) : re-basé sur un token réel (teinte info sur la carte). */
+  background: color-mix(in srgb, var(--info) 12%, var(--card));
   font-size: 0.72rem;
 }
 
-.kb-call-nudge-text { flex: 1; color: var(--foreground, #0b1f3a); }
+.kb-call-nudge-text { flex: 1; color: var(--foreground); }
 
 .kb-call-nudge-log {
   border: none;
-  background: var(--color-info, #2342b5);
-  color: #fff;
+  background: var(--info);
+  color: var(--info-foreground);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 0.72rem;
@@ -7669,4 +7671,328 @@ textarea.form-control {
   height: 100%;
   overflow: hidden;
   padding: 4px 2px;
+/* ===========================================================================
+   LB13 — Carte lead : anatomie à 4 zones (blueprint D3). Bloc append-only
+   `.kb-card*` : nom → valeur → UNE ligne d'action → pied. Tokens sémantiques
+   uniquement (aucun hex). Complète/écrase les règles `.kb-card*` plus haut.
+   =========================================================================== */
+
+/* Checkbox de sélection : présente en permanence mais révélée seulement au
+   survol / focus / sélection active (bruit en moins au repos, blueprint D3).
+   Toujours visible au toucher — (hover: none). LB17 durcit la cible ≥44px. */
+.kb-card-check {
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease;
+}
+/* Révélation non-hover (focus, sélection) — s'applique partout, tactile inclus. */
+.kb-card:focus-within .kb-card-check,
+.kb-card-selected .kb-card-check,
+.kb-card-selection-active .kb-card-check {
+  opacity: 1;
+}
+/* Révélation au survol — gardée par @media (hover: hover) (VX53 : pas de hover
+   collant en tactile). */
+@media (hover: hover) {
+  .kb-card:hover .kb-card-check { opacity: 1; }
+}
+@media (hover: none) {
+  .kb-card-check { opacity: 1; }
+}
+
+/* Formulaire « Marquer perdu » (PerduPopover, partagé). Le bouton ✗ 20×20 de
+   la face a été retiré en LB15 (déplacé dans le menu ••• → PerduPopover). */
+.kb-perdu-form { display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
+.kb-perdu-title { font-size: 13px; font-weight: 500; margin: 0; }
+.kb-perdu-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* Zone VALEUR : montant (devis sinon estimé) + chip type d'installation. */
+.kb-card-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+.kb-card-montant {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+.kb-card-type {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 0.64rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* UNE ligne d'action (précédence D3). Une seule tonalité à la fois. */
+.kb-card-actionline {
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.kb-actionline-perdu {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--destructive);
+}
+.kb-actionline-danger { color: var(--destructive); font-weight: 600; }
+.kb-actionline-warning { color: var(--warning-text); font-weight: 600; }
+.kb-actionline-info { color: var(--info); }
+.kb-actionline-muted { color: var(--muted-foreground); }
+.kb-act-overdue { color: var(--destructive); }
+.kb-act-today { color: var(--warning-text); }
+.kb-act-upcoming { color: var(--success); }
+/* Variante « lien » (bouton reset) : planifier une relance / renseigner la facture. */
+.kb-actionline-link {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--info);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .kb-actionline-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+}
+.kb-actionline-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 4px);
+}
+
+/* Tag « +N » (repli des tags au-delà de 2). */
+.kb-tag-more {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+/* PIED — méta canal · ville, readiness, pill d'âge. */
+.kb-foot-meta {
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.kb-readi { display: inline-flex; align-items: center; gap: 4px; }
+.kb-readi-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted-foreground);
+}
+.kb-readi-devis { color: var(--primary-text); }
+
+/* Pill d'âge « rotting » (absorbe « Inactif N j » + horloge). LB13 : neutre ;
+   LB14 la teinte via [data-rot]. */
+.kb-age-pill {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.64rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Lead perdu : atténue aussi la nouvelle zone valeur. */
+.kb-card-perdu .kb-card-value { filter: saturate(0.5); opacity: 0.9; }
+
+/* Actions rapides révélées au survol (tel / WhatsApp / ⚡ Devis auto) —
+   permanentes au toucher (hover: none). Les hrefs tel/wa restent TOUJOURS
+   dans le DOM (contrat). Trello-like : la carte s'étire légèrement au survol.
+   LB15 posera ici le menu ••• ; LB17 durcit les cibles ≥44px. */
+.kb-quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height var(--motion-base) ease, opacity var(--motion-base) ease,
+    margin-top var(--motion-base) ease;
+}
+@media (hover: hover) {
+  .kb-card:hover .kb-quick,
+  .kb-card:focus-within .kb-quick {
+    max-height: 3rem;
+    opacity: 1;
+    margin-top: 0.4rem;
+  }
+}
+@media (hover: none) {
+  .kb-quick {
+    max-height: none;
+    overflow: visible;
+    opacity: 1;
+    margin-top: 0.4rem;
+    justify-content: flex-end;
+  }
+}
+.kb-quick-tel,
+.kb-quick-wa {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 0.95rem;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+.kb-quick-tel { color: var(--success); }
+.kb-quick-wa { color: var(--brand-whatsapp); }
+@media (hover: hover) {
+  .kb-quick-tel:hover { border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+  .kb-quick-wa:hover { border-color: color-mix(in srgb, var(--brand-whatsapp) 45%, transparent); }
+}
+.kb-quick-tel:focus-visible,
+.kb-quick-wa:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* ===========================================================================
+   LB14 — Rampe « rotting » sur la carte. `data-rot` (ok|warning|danger) est
+   posé sur `article.kb-card` (features/crm/workspace/rotting.js, réutilisé tel
+   quel sur stage_since_days). La pill d'âge se teinte ; un liseré intérieur
+   gauche 3px n'apparaît QU'EN danger (discret). Jamais en SIGNED/COLD/perdu
+   (rot = 'ok' par construction). Tokens sémantiques uniquement.
+   =========================================================================== */
+.kb-card[data-rot='warning'] .kb-age-pill {
+  background: color-mix(in srgb, var(--warning) 18%, var(--card));
+  color: var(--warning-text);
+}
+.kb-card[data-rot='danger'] .kb-age-pill {
+  background: color-mix(in srgb, var(--destructive) 18%, var(--card));
+  color: var(--destructive);
+  font-weight: 700;
+}
+/* Liseré intérieur gauche 3px, UNIQUEMENT en danger — pseudo dédié (::before
+   est déjà la poignée de glissé). N'altère pas la boîte (pas de décalage). */
+.kb-card[data-rot='danger']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--radius, 10px) 0 0 var(--radius, 10px);
+  background: var(--destructive);
+  pointer-events: none;
+}
+
+/* ===========================================================================
+   LB15 — Menu ••• (DropdownMenu) révélé au survol/focus, permanent au toucher.
+   Le bouton ✗ 20×20 a quitté la face : la popover « Marquer perdu » est
+   désormais le composant partagé PerduPopover, contrôlé par le menu et ancré
+   au coin de la carte. LB17 durcira la cible tactile ≥44px.
+   =========================================================================== */
+.kb-card-menu {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+.kb-card-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 6px);
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+.kb-card:focus-within .kb-card-menu-btn,
+.kb-card-menu-btn[data-state='open'] {
+  opacity: 1;
+}
+.kb-card-menu-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  opacity: 1;
+}
+/* Révélation + fond au survol — gardés (VX53 : pas de hover collant en tactile). */
+@media (hover: hover) {
+  .kb-card:hover .kb-card-menu-btn { opacity: 1; }
+  .kb-card-menu-btn:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+@media (hover: none) {
+  .kb-card-menu-btn { opacity: 1; }
+}
+/* Ancre invisible de la popover « Marquer perdu » contrôlée (coin haut-droit). */
+.kb-perdu-anchor {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 0;
+  height: 0;
+}
+
+/* ===========================================================================
+   LB17 — Tactile (cibles ≥44px par STYLESHEET, jamais une taille inline) + PII.
+   La case et le bouton ••• gardent leur taille visuelle en pointeur fin ; en
+   pointeur COARSE, un overlay ::before de 44×44 étend la zone de frappe SANS
+   décaler la mise en page (tue le sliver 16px horizontal — recon-05 touch).
+   Les actions rapides tel/WA/⚡ passent à 44px au toucher (rangée dédiée).
+   =========================================================================== */
+.kb-check-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+@media (pointer: coarse) {
+  .kb-check-hit,
+  .kb-card-menu-btn { position: relative; }
+  .kb-check-hit::before,
+  .kb-card-menu-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .kb-quick-tel,
+  .kb-quick-wa,
+  .kb-flash.kb-quick-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+/* Cadenas PII : à la place des actions d'appel quand `lead.pii_masked`. */
+.kb-quick-lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--muted-foreground);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm, 8px);
 }
