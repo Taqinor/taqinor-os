@@ -164,6 +164,13 @@ export const AE_HOOKS = {
     refreshComments: 'ae-comments-refresh',
   },
 
+  // PUB43 — Vues enregistrées un-clic du Cockpit (Top Ads/En fatigue/En
+  // baisse/Meilleures vidéos), filtre+tri figés + mémoire localStorage.
+  cockpitViews: {
+    group: 'ae-cockpit-views',
+    tabPrefix: 'ae-cockpit-view-', // + toutes|top|fatigue|baisse|videos
+  },
+
   // PUB42 — File « Aujourd'hui » unifiée (écran d'accueil `/publicite`).
   today: {
     root: 'ae-today',

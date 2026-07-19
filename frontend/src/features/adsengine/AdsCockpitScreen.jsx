@@ -7,6 +7,7 @@ import AdCreativePanel from './AdCreativePanel'
 import DateRangeBar from './DateRangeBar'
 import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
 import SyncStatusBanner from './SyncStatusBanner'
+import { COCKPIT_VIEWS, applyCockpitView, loadSavedCockpitView, saveCockpitView } from './cockpitViews'
 
 // PUB40 — dépense totale visible (somme ``depense_mad`` des lignes) — pure,
 // testable isolément ; une ligne sans dépense compte pour 0 (jamais NaN).
@@ -90,10 +91,24 @@ function fatigueTone(fatigue) {
     : { bg: '#ffedd5', color: '#9a3412', label: 'Fatigue possible' }
 }
 
+// PUB43 — dernière vue enregistrée (localStorage), lue UNE FOIS au montage —
+// jamais recalculée entre-temps (un `useState(() => ...)` initializer, comme
+// `range` ci-dessous).
+const initialCockpitView = () => {
+  const saved = loadSavedCockpitView()
+  return {
+    tab: (saved && COCKPIT_VIEWS.some(v => v.key === saved.tab)) ? saved.tab : 'toutes',
+    sort: (saved && saved.sort && saved.sort.key && saved.sort.dir)
+      ? saved.sort : { key: 'depense_mad', dir: 'desc' },
+  }
+}
+
 export default function AdsCockpitScreen() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
-  const [sort, setSort] = useState({ key: 'depense_mad', dir: 'desc' })
+  // PUB43 — vues enregistrées un-clic (Top Ads / En fatigue / En baisse /
+  // Meilleures vidéos) + mémoire du dernier onglet/tri (localStorage).
+  const [{ tab: activeView, sort }, setViewState] = useState(initialCockpitView)
   const [openAdId, setOpenAdId] = useState(null)
 
   // PUB40 — sélecteur de période + comparaison (partagé avec Dashboard).
@@ -132,13 +147,31 @@ export default function AdsCockpitScreen() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
 
+  // PUB43 — mémorise le dernier onglet/tri choisi (localStorage) à chaque
+  // changement — dégradation silencieuse si indisponible (cockpitViews.js).
+  useEffect(() => { saveCockpitView({ tab: activeView, sort }) }, [activeView, sort])
+
+  // « Toutes » reste pilotée par le tri MANUEL (colonnes cliquables) ; un
+  // onglet prédéfini FIGE son propre filtre+tri (PUB43 — jamais retrié).
   const sortedRows = useMemo(
-    () => sortCockpitRows(rows, sort.key, sort.dir), [rows, sort])
+    () => activeView === 'toutes'
+      ? sortCockpitRows(rows, sort.key, sort.dir)
+      : applyCockpitView(rows, activeView),
+    [rows, sort, activeView])
 
   const toggleSort = (key) => {
-    setSort(prev => prev.key === key
-      ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
-      : { key, dir: 'asc' })
+    if (activeView !== 'toutes') return // figé (PUB43) : un onglet prédéfini ne se retrie pas
+    setViewState(prev => ({
+      tab: prev.tab,
+      sort: prev.sort.key === key
+        ? { key, dir: prev.sort.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: 'asc' },
+    }))
+  }
+
+  const selectView = (key) => {
+    setViewState(prev => ({ ...prev, tab: key }))
+    setOpenAdId(null) // la ligne ouverte peut ne plus exister dans la nouvelle vue
   }
 
   const sortIcon = (key) => {
@@ -170,6 +203,19 @@ export default function AdsCockpitScreen() {
         </p>
       )}
 
+      {/* PUB43 — vues enregistrées un-clic (filtre+tri figés, mémorisées). */}
+      <div className="ae-cockpit-views" data-testid="ae-cockpit-views" role="group"
+        aria-label="Vues enregistrées" style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        {COCKPIT_VIEWS.map(v => (
+          <button key={v.key} type="button"
+            className={`btn ${activeView === v.key ? 'btn-primary' : 'btn-light'}`}
+            data-testid={`ae-cockpit-view-${v.key}`} aria-pressed={activeView === v.key}
+            onClick={() => selectView(v.key)}>
+            {v.label}
+          </button>
+        ))}
+      </div>
+
       {/* ADSDEEP66 — fenêtres de données visibles à l'écran : leads (90 j,
           MetaLeadMirror ADSDEEP19) + insights (37 mois, dépense/fréquence). */}
       <DataWindowNotice kind="leads" />
@@ -191,13 +237,20 @@ export default function AdsCockpitScreen() {
               <tr>
                 <th aria-label="Miniature créatif" />
                 {COLUMNS.map(col => (
-                  <th key={col.key} aria-sort={sort.key === col.key
+                  <th key={col.key} aria-sort={(activeView === 'toutes' && sort.key === col.key)
                     ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                    {/* PUB43 — tri par colonne désactivé quand une vue prédéfinie
+                        est active (filtre+tri FIGÉS) — jamais un bouton actif
+                        qui ne fait rien en silence. */}
                     <button type="button" className="btn-link" data-testid={`ae-cockpit-sort-${col.key}`}
                       onClick={() => toggleSort(col.key)}
+                      disabled={activeView !== 'toutes'}
+                      title={activeView !== 'toutes' ? 'Tri figé par la vue sélectionnée' : undefined}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                        background: 'none', border: 0, padding: 0, font: 'inherit', cursor: 'pointer' }}>
-                      {col.label} {sortIcon(col.key)}
+                        background: 'none', border: 0, padding: 0, font: 'inherit',
+                        cursor: activeView !== 'toutes' ? 'default' : 'pointer',
+                        opacity: activeView !== 'toutes' ? 0.55 : 1 }}>
+                      {col.label} {activeView === 'toutes' && sortIcon(col.key)}
                     </button>
                   </th>
                 ))}

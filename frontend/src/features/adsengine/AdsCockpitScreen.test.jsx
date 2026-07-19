@@ -54,6 +54,7 @@ const ROWS = [
 
 beforeEach(() => {
   vi.clearAllMocks()
+  window.localStorage.clear() // PUB43 — jamais de fuite de vue enregistrée entre tests
   mocks.adsCockpit.mockResolvedValue({ data: ROWS })
   mocks.mediaResolve.mockResolvedValue({ data: { url: 'https://cdn.example/img.jpg' } })
   mocks.syncStatus.mockResolvedValue({ data: { types: [], stale: false, worst: null } })
@@ -193,6 +194,117 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
       } })
       renderScreen()
       expect(await screen.findByTestId('ae-sync-banner')).toBeInTheDocument()
+    })
+  })
+
+  // ── PUB43 — Vues enregistrées un-clic ────────────────────────────────────
+  describe('PUB43 — vues enregistrées un-clic', () => {
+    // Fixture dédiée : distingue « en fatigue » (fired, sévérité NON critique)
+    // de « en baisse » (fired ET critique) — le jeu ROWS global ne les
+    // différencie pas (une seule ad fired, et elle est critique).
+    const VIEW_ROWS = [
+      { id: 1, meta_id: 'ad-1', nom: 'Vidéo gagnante', thumbnail_kind: 'video',
+        depense_mad: '500.00', signatures: 3, cost_per_signature_mad: '166.67',
+        fatigue: { fired: false, insufficient_data: false, severity: 'info' } },
+      { id: 2, meta_id: 'ad-2', nom: 'Statique correcte', thumbnail_kind: 'image',
+        depense_mad: '200.00', signatures: 1, cost_per_signature_mad: '200.00',
+        fatigue: { fired: false, insufficient_data: false, severity: 'info' } },
+      { id: 3, meta_id: 'ad-3', nom: 'Fatiguée possible', thumbnail_kind: 'image',
+        depense_mad: '400.00', signatures: 0, cost_per_signature_mad: null,
+        fatigue: { fired: true, severity: 'avertissement' } },
+      { id: 4, meta_id: 'ad-4', nom: 'En chute confirmée', thumbnail_kind: 'video',
+        depense_mad: '1200.00', signatures: 0, cost_per_signature_mad: null,
+        fatigue: { fired: true, severity: 'critique' } },
+    ]
+
+    it('affiche les 5 onglets (Toutes + 4 vues prédéfinies)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      for (const key of ['toutes', 'top', 'fatigue', 'baisse', 'videos']) {
+        expect(screen.getByTestId(`ae-cockpit-view-${key}`)).toBeInTheDocument()
+      }
+      expect(screen.getByTestId('ae-cockpit-view-toutes')).toHaveAttribute('aria-pressed', 'true')
+    })
+
+    it('« Top Ads » : signatures>0 triées par coût/signature croissant', async () => {
+      mocks.adsCockpit.mockResolvedValue({ data: VIEW_ROWS })
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-cockpit-view-top'))
+      const rows = screen.getAllByTestId('ae-cockpit-row')
+      expect(rows).toHaveLength(2) // ad-1 (166.67) et ad-2 (200) — ad-3/ad-4 sans signature exclues
+      expect(within(rows[0]).getByText('Vidéo gagnante')).toBeInTheDocument()
+      expect(within(rows[1]).getByText('Statique correcte')).toBeInTheDocument()
+    })
+
+    it('« En fatigue » : toute sévérité déclenchée, triées par dépense décroissante', async () => {
+      mocks.adsCockpit.mockResolvedValue({ data: VIEW_ROWS })
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-cockpit-view-fatigue'))
+      const rows = screen.getAllByTestId('ae-cockpit-row')
+      expect(rows).toHaveLength(2) // ad-3 (avertissement) + ad-4 (critique)
+      expect(within(rows[0]).getByText('En chute confirmée')).toBeInTheDocument() // 1200 > 400
+      expect(within(rows[1]).getByText('Fatiguée possible')).toBeInTheDocument()
+    })
+
+    it('« En baisse » : UNIQUEMENT la fatigue confirmée (sévérité critique)', async () => {
+      mocks.adsCockpit.mockResolvedValue({ data: VIEW_ROWS })
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-cockpit-view-baisse'))
+      const rows = screen.getAllByTestId('ae-cockpit-row')
+      expect(rows).toHaveLength(1)
+      expect(within(rows[0]).getByText('En chute confirmée')).toBeInTheDocument()
+    })
+
+    it('« Meilleures vidéos » : format vidéo uniquement, triées par coût/signature', async () => {
+      mocks.adsCockpit.mockResolvedValue({ data: VIEW_ROWS })
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-cockpit-view-videos'))
+      const rows = screen.getAllByTestId('ae-cockpit-row')
+      expect(rows).toHaveLength(2) // ad-1 et ad-4 sont vidéo
+      expect(within(rows[0]).getByText('Vidéo gagnante')).toBeInTheDocument() // 166.67 avant null
+    })
+
+    it('le tri par colonne est DÉSACTIVÉ tant qu’une vue prédéfinie est active', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-cockpit-view-top'))
+      expect(screen.getByTestId('ae-cockpit-sort-nb_leads')).toBeDisabled()
+      fireEvent.click(screen.getByTestId('ae-cockpit-view-toutes'))
+      expect(screen.getByTestId('ae-cockpit-sort-nb_leads')).not.toBeDisabled()
+    })
+
+    it('mémorise le dernier onglet choisi (localStorage) entre deux montages', async () => {
+      const { unmount } = renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-cockpit-view-fatigue'))
+      await waitFor(() => expect(
+        JSON.parse(window.localStorage.getItem('ae-cockpit-view')).tab).toBe('fatigue'))
+      unmount()
+
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalledTimes(2))
+      expect(screen.getByTestId('ae-cockpit-view-fatigue')).toHaveAttribute('aria-pressed', 'true')
+    })
+
+    it('mémorise aussi le tri manuel de « Toutes » entre deux montages', async () => {
+      const { unmount } = renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-cockpit-sort-nb_leads')) // asc
+      await waitFor(() => {
+        const saved = JSON.parse(window.localStorage.getItem('ae-cockpit-view'))
+        expect(saved.sort).toEqual({ key: 'nb_leads', dir: 'asc' })
+      })
+      unmount()
+
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalledTimes(2))
+      const rows = screen.getAllByTestId('ae-cockpit-row')
+      // Tri restauré (croissant par leads) : Explainer(0) en tête.
+      expect(within(rows[0]).getByText('Explainer')).toBeInTheDocument()
     })
   })
 })
