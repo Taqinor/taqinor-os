@@ -35,6 +35,11 @@ TRACKED_MODELS = [
     ('sav', 'ContratMaintenance'),
     ('stock', 'Produit'),
     ('stock', 'MouvementStock'),
+    # WIR1 — RIB/coordonnées/conditions de paiement fournisseur alimentent
+    # toute la chaîne achats déjà tracée (BCF/réceptions/factures/paiements
+    # fournisseur) mais leur propre modification ne produisait aucune ligne
+    # AuditLog (perte d'audit silencieuse, surface fraude).
+    ('stock', 'Fournisseur'),
     # FG15 — chaîne achats fournisseur (argent sortant : commande → réception
     # → facture → paiement). ODX19 — déplacés de ``stock`` vers ``achats``.
     ('achats', 'BonCommandeFournisseur'),

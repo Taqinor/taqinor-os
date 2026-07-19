@@ -23,6 +23,8 @@ from .models import (
     ScheduledExport,
     TenantTheme,
     TenantUsageSnapshot,
+    WorkflowDefinition,
+    WorkflowStepDefinition,
 )
 
 
@@ -53,6 +55,116 @@ class WorkflowTemplateSerializer(serializers.Serializer):
     description = serializers.CharField(allow_blank=True)
     nb_etapes = serializers.IntegerField()
     steps = WorkflowTemplateStepSerializer(many=True)
+
+
+class WorkflowStepDefinitionSerializer(serializers.ModelSerializer):
+    """WIR51 — étape (modèle) d'un ``WorkflowDefinition``.
+
+    Utilisée à la fois IMBRIQUÉE dans ``WorkflowDefinitionSerializer``
+    (``definition`` alors imposée par le parent, jamais lue du corps) et en
+    AUTONOME via ``WorkflowStepDefinitionViewSet`` (``definition`` fournie et
+    validée company-scope pour interdire l'accroche à une définition d'un
+    autre tenant)."""
+
+    class Meta:
+        model = WorkflowStepDefinition
+        fields = [
+            'id', 'definition', 'ordre', 'nom', 'type_approbation',
+            'sla_heures', 'role_requis', 'escalade_vers',
+        ]
+        read_only_fields = ['id']
+        extra_kwargs = {'definition': {'required': False}}
+        # La contrainte d'unicité (definition, ordre) génère sinon un
+        # `UniqueTogetherValidator` qui FORCE `definition` requis au niveau
+        # champ (ignorant `required: False`, erreur `code='required'`) — ce qui
+        # cassait la création IMBRIQUÉE où le parent impose `definition` via
+        # `_sync_steps`. On le retire : l'unicité reste garantie par la
+        # contrainte DB + la renumérotation 1..n de `_sync_steps`.
+        validators = []
+
+    def validate_definition(self, value):
+        request = self.context.get('request')
+        if (value is not None and request is not None
+                and getattr(request.user, 'company_id', None)
+                and value.company_id != request.user.company_id):
+            raise serializers.ValidationError(
+                'Définition hors de votre société.')
+        return value
+
+    def validate(self, attrs):
+        # En autonome (viewset des étapes), la définition est obligatoire à la
+        # création (une étape sans définition n'a pas de rattachement) ;
+        # imbriquée, elle est imposée par le parent (`_sync_steps`). Le viewset
+        # autonome pose `require_definition` dans le contexte : signal fiable,
+        # contrairement à `self.parent` qui n'est pas toujours lié lors d'une
+        # validation imbriquée `many=True`.
+        if (self.context.get('require_definition') and self.instance is None
+                and not attrs.get('definition')):
+            raise serializers.ValidationError(
+                {'definition': 'Ce champ est obligatoire.'})
+        return attrs
+
+
+class WorkflowDefinitionSerializer(serializers.ModelSerializer):
+    """WIR51 — définition de workflow (chaîne d'approbation multi-étapes) +
+    ses étapes imbriquées.
+
+    ``company`` n'est JAMAIS lue du corps (imposée côté serveur via
+    ``TenantMixin``). ``code`` (identifiant stable, unique par société) est
+    DÉRIVÉ du ``nom`` côté serveur et reste en lecture seule. Les étapes sont
+    créées / remplacées intégralement depuis la liste imbriquée ``steps``
+    (renumérotées 1..n dans l'ordre du tableau)."""
+
+    steps = WorkflowStepDefinitionSerializer(many=True, required=False)
+
+    class Meta:
+        model = WorkflowDefinition
+        fields = [
+            'id', 'code', 'nom', 'description', 'actif', 'steps',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'code', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        steps_data = validated_data.pop('steps', [])
+        validated_data['code'] = self._derive_code(
+            validated_data.get('company'), validated_data.get('nom', ''))
+        definition = WorkflowDefinition.objects.create(**validated_data)
+        self._sync_steps(definition, steps_data)
+        return definition
+
+    def update(self, instance, validated_data):
+        steps_data = validated_data.pop('steps', None)
+        for attr in ('nom', 'description', 'actif'):
+            if attr in validated_data:
+                setattr(instance, attr, validated_data[attr])
+        instance.save()
+        # Remplacement intégral des étapes UNIQUEMENT si `steps` est fourni.
+        if steps_data is not None:
+            instance.steps.all().delete()
+            self._sync_steps(instance, steps_data)
+        return instance
+
+    @staticmethod
+    def _sync_steps(definition, steps_data):
+        for i, step in enumerate(steps_data):
+            step = dict(step)
+            step.pop('definition', None)  # imposée par le parent, jamais du corps
+            step.pop('ordre', None)       # renumérotée 1..n (unicité garantie)
+            WorkflowStepDefinition.objects.create(
+                definition=definition, ordre=i + 1, **step)
+
+    @staticmethod
+    def _derive_code(company, nom):
+        from django.utils.text import slugify
+        base = (slugify(nom) or 'workflow').replace('-', '_')[:60]
+        code = base
+        n = 2
+        while WorkflowDefinition.objects.filter(
+                company=company, code=code).exists():
+            code = ('%s_%d' % (base, n))[:64]
+            n += 1
+        return code
 
 
 class DashboardSerializer(serializers.ModelSerializer):

@@ -34,6 +34,8 @@ const CARD_LABELS = {
   creances: 'Créances',
   pipeline: 'Pipeline',
   commercial: 'Commercial',
+  // WIR22 — badge du contrôle d'intégrité inter-documents (YSERV13).
+  integrite: "Contrôle d'intégrité",
 }
 const ALL_CARDS = Object.keys(CARD_LABELS)
 

@@ -6,10 +6,11 @@
 import { useEffect, useState } from 'react'
 import { Plus, Pencil, Check, X } from 'lucide-react'
 import savApi from '../../api/savApi'
+import api from '../../api/axios'
 import {
   TooltipProvider, Card, Tabs, TabsList, TabsTrigger, TabsContent,
   Button, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent,
-  SelectItem, EmptyState, Skeleton, toast,
+  SelectItem, EmptyState, Skeleton, Switch, toast,
 } from '../../ui'
 import SimpleRefListEditor from './SimpleRefListEditor'
 
@@ -158,6 +159,112 @@ function CategoriesEquipementSection() {
   )
 }
 
+// ── WIR30 — Réglages SLA / automatisation SAV (SavSlaSettings, singleton par
+// société). 14 champs déjà exposés côté serveur (GET/POST /sav/sla-settings/,
+// SavSlaSettingsViewSet.list()/create() = upsert du singleton) mais sans
+// aucune surface frontend jusqu'ici. Notamment `generation_auto_visites`, qui
+// bloque la génération auto des visites préventives déjà planifiée au beat
+// (YSERV5, sav.generer_visites_dues_quotidien) tant qu'aucune société ne
+// l'active ici — et `sla_warning_days`/`escalade_activee`, qui pilotent le
+// scan pré-alertes désormais lui aussi planifié (WIR30).
+const SLA_SETTINGS_DEFAULTS = {
+  sla_response_days: 1,
+  sla_resolution_days: 7,
+  sla_breach_enabled: false,
+  notifications_client_sav: false,
+  sla_jours_ouvres: false,
+  sla_warning_days: 0,
+  escalade_activee: false,
+  affectation_auto_sav: false,
+  auto_cloture_jours: 0,
+  recidive_fenetre_jours: 30,
+  generation_auto_visites: false,
+  visites_avance_jours: 7,
+  worksheets_maintenance_actifs: false,
+}
+
+const SLA_TOGGLES = [
+  { key: 'sla_breach_enabled', label: 'Notifier le technicien au dépassement du SLA' },
+  { key: 'notifications_client_sav', label: 'Notifications client aux transitions du ticket' },
+  { key: 'sla_jours_ouvres', label: "Calculer l'échéance SLA en jours ouvrés" },
+  { key: 'escalade_activee', label: 'Escalader au responsable à la violation du SLA' },
+  { key: 'affectation_auto_sav', label: 'Affectation automatique des tickets à la création' },
+  { key: 'generation_auto_visites', label: 'Génération automatique des visites préventives dues' },
+  { key: 'worksheets_maintenance_actifs', label: 'Feuilles de maintenance (worksheets) actives' },
+]
+
+const SLA_NUMBER_FIELDS = [
+  { key: 'sla_response_days', label: 'Délai de première réponse (jours)' },
+  { key: 'sla_resolution_days', label: 'Délai de résolution cible (jours)' },
+  { key: 'sla_warning_days', label: 'Pré-alerte SLA (jours avant échéance, 0 = désactivée)' },
+  { key: 'auto_cloture_jours', label: 'Auto-clôture des tickets résolus (jours, 0 = désactivée)' },
+  { key: 'recidive_fenetre_jours', label: 'Fenêtre de récidive (jours)' },
+  { key: 'visites_avance_jours', label: 'Avance de génération des visites (jours)' },
+]
+
+function SlaAutomationSection() {
+  const [form, setForm] = useState(SLA_SETTINGS_DEFAULTS)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api.get('/sav/sla-settings/')
+      .then((r) => setForm((f) => ({ ...f, ...(r.data ?? {}) })))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const setField = (key) => (value) => setForm((f) => ({ ...f, [key]: value }))
+  const setNumberField = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const r = await api.post('/sav/sla-settings/', form)
+      setForm((f) => ({ ...f, ...(r.data ?? {}) }))
+      toast.success('Réglages SLA enregistrés')
+    } catch {
+      toast.error("Échec de l'enregistrement des réglages SLA.")
+    } finally { setSaving(false) }
+  }
+
+  if (loading) return <Skeleton className="h-32 w-full" />
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Délais SLA et automatisations SAV, par société. Chaque automatisation
+        reste désactivée (comportement actuel inchangé) tant qu'elle n'est pas
+        activée explicitement ici.
+      </p>
+      <Card className="flex flex-col gap-4 p-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {SLA_NUMBER_FIELDS.map((f) => (
+            <label key={f.key} className="flex flex-col gap-1 text-sm text-foreground">
+              {f.label}
+              <Input type="number" min="0" step="1" value={form[f.key] ?? 0}
+                     onChange={setNumberField(f.key)} />
+            </label>
+          ))}
+        </div>
+        <div className="flex flex-col gap-2 border-t border-border pt-3">
+          {SLA_TOGGLES.map((t) => (
+            <div key={t.key}
+                 className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5 text-sm text-foreground">
+              <span>{t.label}</span>
+              <Switch aria-label={t.label} checked={!!form[t.key]}
+                      onCheckedChange={setField(t.key)} />
+            </div>
+          ))}
+        </div>
+        <Button type="button" size="sm" className="self-start" loading={saving} onClick={save}>
+          Enregistrer
+        </Button>
+      </Card>
+    </div>
+  )
+}
+
 export default function SavParametresPage() {
   const [tab, setTab] = useState('categories-ticket')
 
@@ -179,6 +286,7 @@ export default function SavParametresPage() {
             <TabsTrigger value="reponses-type">Réponses types</TabsTrigger>
             <TabsTrigger value="equipes">Équipes de maintenance</TabsTrigger>
             <TabsTrigger value="categories-equipement">Catégories d'équipement</TabsTrigger>
+            <TabsTrigger value="sla-automatisation">SLA / Automatisation</TabsTrigger>
           </TabsList>
 
           <TabsContent value="categories-ticket">
@@ -234,6 +342,10 @@ export default function SavParametresPage() {
 
           <TabsContent value="categories-equipement">
             <CategoriesEquipementSection />
+          </TabsContent>
+
+          <TabsContent value="sla-automatisation">
+            <SlaAutomationSection />
           </TabsContent>
         </Tabs>
       </div>

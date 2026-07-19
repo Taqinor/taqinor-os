@@ -100,3 +100,17 @@ def generer_visites_dues_quotidien():
         'sav.generer_visites_dues_quotidien: %s société(s) traitée(s), %s '
         'visite(s) générée(s)', total_societes, total_generes)
     return {'societes': total_societes, 'visites_generees': total_generes}
+
+
+# ── WIR30 — Beat quotidien pour XSAV6 (pré-alerte SLA + escalade) ───────────
+
+@shared_task(name='sav.scan_sla_pre_alerts_and_escalations_quotidien')
+def scan_sla_pre_alerts_and_escalations_quotidien():
+    """WIR30 — Planifie ``apps.sav.views.scan_sla_pre_alerts_and_escalations``
+    (XSAV6), bâtie et testée (``tests_xsav6.py``) mais jamais ajoutée au beat
+    jusqu'ici. DISTINCT de ``scan_sla_breaches`` (planifiée séparément par
+    NTSRV38, ne pas dupliquer ici). OFF par défaut par société
+    (``sla_warning_days=0``, ``escalade_activee=False``) : aucun effet tant
+    qu'une société n'active pas explicitement l'un des deux réglages."""
+    from apps.sav.views import scan_sla_pre_alerts_and_escalations
+    return scan_sla_pre_alerts_and_escalations()

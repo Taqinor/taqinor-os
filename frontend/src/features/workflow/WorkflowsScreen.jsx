@@ -48,8 +48,15 @@ function nouvelleDefinition() {
 }
 
 function DefinitionsTab() {
+  // WIR51 — les definitions sont desormais PERSISTEES cote serveur
+  // (`core/workflow-definitions/`, company forcee cote serveur). On charge les
+  // definitions existantes au montage ; "Creer" POST reellement puis les
+  // rajoute a la liste (un rechargement de l'ecran les conserve).
+  const {
+    data, error, reload, setData,
+  } = useWorkflowResource(() => coreApi.workflowDefinitions.list())
   const [def, setDef] = useState(nouvelleDefinition)
-  const [crees, setCrees] = useState([])
+  const [saving, setSaving] = useState(false)
 
   function majChamp(champ, valeur) {
     setDef((d) => ({ ...d, [champ]: valeur }))
@@ -78,26 +85,51 @@ function DefinitionsTab() {
     setDef((d) => ({ ...d, steps: deplacerEtape(d.steps, index, 1) }))
   }
 
-  function creer() {
+  async function creer() {
     const erreurs = validerDefinition(def)
     if (erreurs.length > 0) {
       toast.error(erreurs[0])
       return
     }
-    setCrees((c) => [...c, { ...def, id: `local-${Date.now()}` }])
-    toast.success(`Definition "${def.nom}" creee (${def.steps.length} etapes).`)
-    setDef(nouvelleDefinition())
+    if (saving) return
+    setSaving(true)
+    try {
+      const payload = {
+        nom: String(def.nom || '').trim(),
+        description: def.description || '',
+        steps: def.steps.map((s, i) => ({
+          ordre: i + 1,
+          nom: s.nom,
+          type_approbation: s.type_approbation || 'manuelle',
+          sla_heures:
+            s.sla_heures === '' || s.sla_heures == null
+              ? null
+              : Number(s.sla_heures),
+          role_requis: s.role_requis || '',
+          escalade_vers: s.escalade_vers || '',
+        })),
+      }
+      const res = await coreApi.workflowDefinitions.create(payload)
+      const created = res?.data
+      if (created && created.id != null) {
+        setData((list) => [...(Array.isArray(list) ? list : []), created])
+      } else {
+        reload()
+      }
+      toast.success(`Definition "${def.nom}" enregistree (${def.steps.length} etapes).`)
+      setDef(nouvelleDefinition())
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Enregistrement impossible.')
+    } finally {
+      setSaving(false)
+    }
   }
+
+  const crees = Array.isArray(data) ? data : []
 
   return (
     <div className="flex flex-col gap-4">
       <Card className="p-4 sm:p-5">
-        <div className="mb-3 rounded-md border border-dashed border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-          Editeur local : aucun endpoint de creation de definition n'existe
-          encore cote serveur (seule l'installation d'un modele en cree
-          reellement une). Ce brouillon valide le flux et sert de base a une
-          future tache backend.
-        </div>
         <div className="flex flex-col gap-3">
           <Input
             placeholder="Nom de la definition (ex. Validation devis)"
@@ -177,24 +209,30 @@ function DefinitionsTab() {
             <Button variant="secondary" onClick={ajouter} data-testid="wf-def-add-step">
               <Plus /> Ajouter une etape
             </Button>
-            <Button onClick={creer} data-testid="wf-def-create">
-              <Check /> Creer la definition
+            <Button onClick={creer} disabled={saving} data-testid="wf-def-create">
+              <Check /> {saving ? 'Enregistrement...' : 'Creer la definition'}
             </Button>
           </div>
         </div>
       </Card>
 
+      {error && (
+        <div className="rounded-md border border-dashed border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+          Definitions existantes indisponibles ({error}).
+        </div>
+      )}
+
       {crees.length > 0 && (
         <Card className="p-4 sm:p-5">
           <h3 className="mb-3 text-sm font-medium text-foreground">
-            Definitions creees cette session
+            Definitions enregistrees
           </h3>
           <ul className="flex flex-col gap-2" data-testid="wf-def-created-list">
             {crees.map((d) => (
               <li key={d.id} className="rounded-md border border-border p-3">
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{d.nom}</span>
-                  <Badge tone="neutral">{d.steps.length} etapes</Badge>
+                  <Badge tone="neutral">{(d.steps || []).length} etapes</Badge>
                 </div>
                 {d.description && (
                   <p className="mt-1 text-sm text-muted-foreground">{d.description}</p>

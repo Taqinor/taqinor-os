@@ -76,8 +76,10 @@ const reportingApi = {
       params: { module, code, ...(params || {}) },
     }),
   // FG97 — Analytiques du Journal.
+  // WIR20 — préfixe corrigé : l'endpoint est monté sous `apps.audit.urls`
+  // (`/audit/analytics/`), jamais sous `/reporting/` (404 avant ce fix).
   auditAnalytics: (params) =>
-    api.get('/reporting/audit/analytics/', { params }),
+    api.get('/audit/analytics/', { params }),
   // FG98 — Cohortes / saisonnalité.
   cohorts: (params) =>
     api.get('/reporting/insights/cohorts/', { params }),
@@ -124,6 +126,10 @@ const reportingApi = {
   // XFSM17 — scorecard coaching par technicien vs moyenne équipe.
   technicienScorecard: (params) =>
     api.get('/reporting/insights/technicien-scorecard/', { params }),
+  // WIR22 — contrôle d'intégrité inter-documents (YSERV13) : anomalies
+  // détectées AUJOURD'HUI, sans attendre la notification Beat hebdomadaire
+  // ni lire les logs serveur. Réservé responsable/admin (backend).
+  integriteInsight: () => api.get('/reporting/insights/integrite/'),
 }
 
 export default reportingApi

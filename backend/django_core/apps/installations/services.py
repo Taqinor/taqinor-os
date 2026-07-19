@@ -1338,6 +1338,46 @@ def _gate_check_qhse(installation):
     return None
 
 
+# ── QHSE22 — Gate « document unique (DUERP) requis avant la pose » ────────────
+# Gate LÉGAL de sécurité : un chantier ne peut ENTRER en pose (montage physique)
+# sans document unique d'évaluation des risques validé. L'exigence est appliquée
+# via la FRONTIÈRE SERVICES de qhse (`services.exiger_document_unique`,
+# référence lâche par chantier_id) — jamais d'import de modèle cross-app. Comme
+# la porte QHSE des points d'arrêt, elle est soumise à l'interrupteur historique
+# `stages_configures` (une société sans étapes configurées garde EXACTEMENT le
+# comportement d'avant).
+
+def _pose_stage_index(stages):
+    """Index (dans `stages` ordonné et actif) de l'étape de POSE — le premier
+    montage physique, mappé au statut hérité EN_COURS (`montage_mecanique` par
+    défaut, ou son équivalent renommé/réordonné par le Directeur).
+
+    Renvoie None si aucune étape active ne porte ce statut (gate DUERP alors
+    inopérant — dégradation propre, aucun blocage inattendu)."""
+    for k, stage in enumerate(stages):
+        if (Installation.canonical_statut(stage.statut_legacy)
+                == Installation.Statut.EN_COURS):
+            return k
+    return None
+
+
+def _gate_check_duerp(installation):
+    """QHSE22 — document unique (DUERP) validé requis AVANT la pose.
+
+    Appel via la frontière services de qhse (`exiger_document_unique`, qui lève
+    une ``ValidationError`` au message clair quand le DUERP manque). Renvoie la
+    raison FRANÇAISE de blocage, ou None si le document unique lève l'exigence.
+    Référence LÂCHE au chantier par son id — aucun import cross-app de modèle."""
+    from django.core.exceptions import ValidationError
+    from apps.qhse.services import exiger_document_unique
+    try:
+        exiger_document_unique(installation.company, installation.id)
+    except ValidationError as exc:
+        messages = getattr(exc, 'messages', None)
+        return messages[0] if messages else str(exc)
+    return None
+
+
 def stage_gate_status(installation, stage):
     """État du gate d'une étape pour un chantier : exigences réunies ou non.
 
@@ -1374,6 +1414,15 @@ def _gates_non_satisfaits(installation, stages, i, j):
     qu'une fois son pack assemblé). Les étapes non bloquantes ne bloquent
     jamais (consultatives)."""
     raisons = []
+    # QHSE22 — GATE DUERP : franchir VERS la pose (entrer dans l'étape de
+    # montage physique) exige un document unique validé. Ne se déclenche qu'au
+    # PASSAGE dans l'étape de pose (i < pose ≤ j) : jamais une fois la pose déjà
+    # entamée, jamais un recul. Appliqué via la frontière services qhse.
+    pose_index = _pose_stage_index(stages)
+    if pose_index is not None and i < pose_index <= j:
+        raison = _gate_check_duerp(installation)
+        if raison:
+            raisons.append(raison)
     for stage in stages[i:j + 1]:
         if not stage.bloquant:
             continue

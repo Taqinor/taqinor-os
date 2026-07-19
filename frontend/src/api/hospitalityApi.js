@@ -48,6 +48,14 @@ const hospitalityApi = {
   // ── Main courante / passations d'équipe (NTHOT12) ── journal append-only.
   listMainCourante: (params) => api.get('/hospitality/main-courante/', { params }),
   createMainCourante: (data) => api.post('/hospitality/main-courante/', data),
+
+  // ── WIR8 — Taxe de séjour paramétrable (singleton société) ──
+  // Tant qu'aucune ligne n'est configurée, `services.cloturer_folio` retombe
+  // silencieusement sur Decimal('0') — c'est le SEUL chemin d'écriture hors
+  // admin Django.
+  getParametresTaxeSejour: () => api.get('/hospitality/parametres-taxe-sejour/'),
+  saveParametresTaxeSejour: (data) =>
+    api.patch('/hospitality/parametres-taxe-sejour/', data),
 }
 
 export default hospitalityApi

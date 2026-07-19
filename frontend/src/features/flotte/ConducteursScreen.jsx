@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState } from 'react'
 import { UserPlus, AlertTriangle, FileCheck } from 'lucide-react'
 import {
   Button, Badge, Segmented, Tabs, TabsList, TabsTrigger, TabsContent,
-  toast,
+  toast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Label, Input, Textarea, confirmLeaveIfDirty,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
@@ -12,6 +13,10 @@ import useFlotteResource from './useFlotteResource'
 import AffectationDialog from './AffectationDialog'
 import MasseAffectationDialog from './MasseAffectationDialog'
 import SignatureDialog from './SignatureDialog'
+import ConducteurDialog from './ConducteurDialog'
+import ReservationDialog from './ReservationDialog'
+import DemandeVehiculeDialog from './DemandeVehiculeDialog'
+import EtatDesLieuxDialog from './EtatDesLieuxDialog'
 
 /* ============================================================================
    UX17 — Conducteurs & affectations (`/flotte/conducteurs`).
@@ -41,8 +46,9 @@ function PermisBadge({ dateExpiration }) {
 
 function ConducteursTab() {
   const [actif, setActif] = useState('')
+  const [showForm, setShowForm] = useState(false)
   const params = useMemo(() => (actif ? { actif } : {}), [actif])
-  const { data, loading, error } = useFlotteResource(flotteApi.conducteurs.list, params)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.conducteurs.list, params)
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Conducteur', width: 200, accessor: (r) => r.nom, cell: (v) => v || '—' },
@@ -88,21 +94,36 @@ function ConducteursTab() {
     <Segmented options={ACTIF_FILTERS} value={actif} onChange={setActif} aria-label="Filtrer par activité" />
   )
 
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>
+      <UserPlus /> Nouveau conducteur
+    </Button>
+  )
+
   return (
-    <ListShell
-      title="Conducteurs"
-      subtitle="Chauffeurs et validité de leur permis."
-      filters={filters}
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      searchable
-      searchPlaceholder="Rechercher nom, permis, téléphone…"
-      exportName="conducteurs"
-      emptyTitle="Aucun conducteur"
-      emptyDescription="Aucun conducteur ne correspond à ces filtres."
-    />
+    <>
+      <ListShell
+        title="Conducteurs"
+        subtitle="Chauffeurs et validité de leur permis."
+        filters={filters}
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        searchable
+        searchPlaceholder="Rechercher nom, permis, téléphone…"
+        exportName="conducteurs"
+        emptyTitle="Aucun conducteur"
+        emptyDescription="Aucun conducteur ne correspond à ces filtres."
+      />
+      {showForm && (
+        <ConducteurDialog
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Conducteur créé.') }}
+        />
+      )}
+    </>
   )
 }
 
@@ -183,8 +204,9 @@ function AffectationsTab({ conducteurs, vehicules }) {
   )
 }
 
-function ReservationsTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.reservations.list, {})
+function ReservationsTab({ conducteurs, vehicules }) {
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.reservations.list, {})
   const columns = useMemo(() => [
     { id: 'vehicule', header: 'Véhicule', width: 180, accessor: (r) => r.vehicule_label || r.vehicule, cell: (v) => v || '—' },
     { id: 'conducteur', header: 'Conducteur', width: 160, accessor: (r) => r.conducteur_nom || r.conducteur, cell: (v) => v || '—' },
@@ -193,24 +215,83 @@ function ReservationsTab() {
     { id: 'motif', header: 'Motif', width: 200, accessor: (r) => r.motif, cell: (v) => v || '—' },
     { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut_display || r.statut, cell: (v) => v || '—' },
   ], [])
+
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouvelle réservation</Button>
+  )
+
   return (
-    <ListShell
-      title="Réservations & demandes de pool"
-      subtitle="Créneaux réservés et demandes de véhicule en attente."
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      exportName="reservations"
-      emptyTitle="Aucune réservation"
-      emptyDescription="Aucune réservation enregistrée."
-    />
+    <>
+      <ListShell
+        title="Réservations & demandes de pool"
+        subtitle="Créneaux réservés et demandes de véhicule en attente."
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        exportName="reservations"
+        emptyTitle="Aucune réservation"
+        emptyDescription="Aucune réservation enregistrée."
+      />
+      {showForm && (
+        <ReservationDialog
+          conducteurs={conducteurs}
+          vehicules={vehicules}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Réservation enregistrée.') }}
+        />
+      )}
+    </>
   )
 }
 
-function EtatsDesLieuxTab() {
+// WIR41(b) — Demandes de véhicule du pool (FLOTTE32) : aucun consommateur
+// frontend n'existait pour `DemandeVehiculeViewSet` (full CRUD côté serveur).
+function DemandesVehiculeTab() {
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.demandesVehicule.list, {})
+  const columns = useMemo(() => [
+    { id: 'besoin', header: 'Besoin', width: 220, accessor: (r) => r.besoin, cell: (v) => v || '—' },
+    { id: 'demandeur', header: 'Demandeur', width: 160, accessor: (r) => r.demandeur_nom, cell: (v) => v || '—' },
+    { id: 'date_debut_souhaitee', header: 'Début souhaité', width: 140, accessor: (r) => r.date_debut_souhaitee, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'date_fin_souhaitee', header: 'Fin souhaitée', width: 140, accessor: (r) => r.date_fin_souhaitee, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'vehicule_attribue', header: 'Véhicule attribué', width: 160, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
+    { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut_display || r.statut, cell: (v) => v || '—' },
+  ], [])
+
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Demander un véhicule</Button>
+  )
+
+  return (
+    <>
+      <ListShell
+        title="Demandes de véhicule"
+        subtitle="Pool partagé : demande, décision et véhicule attribué."
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        exportName="demandes-vehicule"
+        emptyTitle="Aucune demande"
+        emptyDescription="Aucune demande de véhicule enregistrée."
+      />
+      {showForm && (
+        <DemandeVehiculeDialog
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Demande enregistrée.') }}
+        />
+      )}
+    </>
+  )
+}
+
+function EtatsDesLieuxTab({ conducteurs, vehicules }) {
   const { data, loading, error, reload } = useFlotteResource(flotteApi.etatsDesLieux.list, {})
   const [signing, setSigning] = useState(null) // { etat, role }
+  const [showForm, setShowForm] = useState(false)
 
   const columns = useMemo(() => [
     { id: 'vehicule', header: 'Véhicule', width: 170, accessor: (r) => r.vehicule_label || r.vehicule, cell: (v) => v || '—' },
@@ -250,11 +331,16 @@ function EtatsDesLieuxTab() {
     return actions
   }
 
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouveau constat</Button>
+  )
+
   return (
     <>
       <ListShell
         title="États des lieux"
         subtitle="Constats départ / retour avec relevé kilométrique et e-signature."
+        actions={actions}
         columns={columns}
         rows={data}
         loading={loading}
@@ -272,12 +358,97 @@ function EtatsDesLieuxTab() {
           onSaved={() => { setSigning(null); reload(); toast.success('Signature enregistrée.') }}
         />
       )}
+      {showForm && (
+        <EtatDesLieuxDialog
+          conducteurs={conducteurs}
+          vehicules={vehicules}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Constat créé.') }}
+        />
+      )}
     </>
   )
 }
 
+// WIR44 — Publication d'une nouvelle version de la charte véhicule
+// (`chartesVehicule.create`) : seul l'accusé de lecture existait. `version`
+// est posée côté serveur (auto-incrémentée) — jamais du body ; le contenu
+// saisi (titre + texte) est encapsulé en fichier texte pour le champ
+// `document` (FileField) du modèle.
+function CharteVehiculeDialog({ onClose, onSaved }) {
+  const [titre, setTitre] = useState('')
+  const [contenu, setContenu] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(titre.trim() && contenu.trim())
+  const dirty = Boolean(titre || contenu)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      const fichier = new File([contenu], `${titre.trim()}.txt`, { type: 'text/plain' })
+      const formData = new FormData()
+      formData.append('document', fichier)
+      await flotteApi.chartesVehicule.create(formData)
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.detail
+        || (typeof data === 'string' ? data : 'Publication impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Publier une nouvelle version de la charte véhicule</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="charte-titre">Titre</Label>
+            <Input id="charte-titre" autoFocus value={titre} onChange={(e) => setTitre(e.target.value)} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="charte-contenu">Contenu</Label>
+            <Textarea id="charte-contenu" value={contenu} onChange={(e) => setContenu(e.target.value)} rows={8} />
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            La version est numérotée automatiquement (auto-incrémentée) —
+            publier repasse les accusés de lecture des conducteurs « à faire ».
+          </p>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Publication…' : 'Publier'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CharteTab({ conducteurs }) {
-  const { data: charte, loading: loadingCharte } = useFlotteResource(flotteApi.chartesVehicule.list, {})
+  const [showForm, setShowForm] = useState(false)
+  const { data: charte, loading: loadingCharte, reload: reloadCharte } = useFlotteResource(flotteApi.chartesVehicule.list, {})
   const { data: accuses, loading: loadingAccuses, reload } = useFlotteResource(flotteApi.accusesCharte.list, {})
   const derniere = useMemo(
     () => [...(charte || [])].sort((a, b) => (b.version || 0) - (a.version || 0))[0] || null,
@@ -322,13 +493,16 @@ function CharteTab({ conducteurs }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm">
-        <FileCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-        {loadingCharte
-          ? 'Chargement de la charte…'
-          : derniere
-            ? `Charte véhicule en vigueur : version ${derniere.version} (publiée le ${formatDate(derniere.date_publication)}).`
-            : 'Aucune charte véhicule publiée pour cette société.'}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm">
+        <span className="flex items-center gap-2">
+          <FileCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+          {loadingCharte
+            ? 'Chargement de la charte…'
+            : derniere
+              ? `Charte véhicule en vigueur : version ${derniere.version} (publiée le ${formatDate(derniere.date_publication)}).`
+              : 'Aucune charte véhicule publiée pour cette société.'}
+        </span>
+        <Button size="sm" onClick={() => setShowForm(true)}>Publier une nouvelle version</Button>
       </div>
       <ListShell
         title="Accusés de lecture"
@@ -340,6 +514,17 @@ function CharteTab({ conducteurs }) {
         emptyTitle="Aucun conducteur"
         emptyDescription="Aucun conducteur à suivre."
       />
+      {showForm && (
+        <CharteVehiculeDialog
+          onClose={() => setShowForm(false)}
+          onSaved={() => {
+            setShowForm(false)
+            reloadCharte()
+            reload()
+            toast.success('Nouvelle version publiée — accusés de lecture repassés « à faire ».')
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -358,6 +543,7 @@ export default function ConducteursScreen() {
           <TabsTrigger value="conducteurs">Conducteurs</TabsTrigger>
           <TabsTrigger value="affectations">Affectations</TabsTrigger>
           <TabsTrigger value="reservations">Réservations</TabsTrigger>
+          <TabsTrigger value="demandes">Demandes de véhicule</TabsTrigger>
           <TabsTrigger value="etats">États des lieux</TabsTrigger>
           <TabsTrigger value="charte">Charte véhicule</TabsTrigger>
         </TabsList>
@@ -365,8 +551,13 @@ export default function ConducteursScreen() {
         <TabsContent value="affectations">
           <AffectationsTab conducteurs={conducteurs} vehicules={vehicules} />
         </TabsContent>
-        <TabsContent value="reservations"><ReservationsTab /></TabsContent>
-        <TabsContent value="etats"><EtatsDesLieuxTab /></TabsContent>
+        <TabsContent value="reservations">
+          <ReservationsTab conducteurs={conducteurs} vehicules={vehicules} />
+        </TabsContent>
+        <TabsContent value="demandes"><DemandesVehiculeTab /></TabsContent>
+        <TabsContent value="etats">
+          <EtatsDesLieuxTab conducteurs={conducteurs} vehicules={vehicules} />
+        </TabsContent>
         <TabsContent value="charte"><CharteTab conducteurs={conducteurs} /></TabsContent>
       </Tabs>
     </div>

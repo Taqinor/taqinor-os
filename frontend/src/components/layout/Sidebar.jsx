@@ -7,7 +7,8 @@ import {
   UserPlus, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock,
   CalendarDays, HardHat, Wrench, Cpu, BarChart3, Search, Bot, UserCog, Shield,
   ScrollText, Settings, DownloadCloud, LogOut, ChevronLeft, ChevronRight, Key,
-  Briefcase, User as UserIcon, FolderOpen, Inbox, AlertTriangle, Tv,
+  Briefcase, User as UserIcon, FolderOpen, Inbox, AlertTriangle, Tv, ListChecks,
+  Percent,
 } from 'lucide-react'
 import { logoutUser } from '../../features/auth/store/authSlice'
 // UX1 — Sections de navigation des modules « coquille », enregistrées par
@@ -72,6 +73,7 @@ const I = {
   wallet:       mk(Wallet),
   ocr:          mk(Search),
   agent_ia:     mk(Bot),
+  agent_actions: mk(ListChecks),
   reporting:    mk(BarChart3),
   utilisateurs: mk(UserCog),
   parametres:   mk(Settings),
@@ -105,6 +107,7 @@ const I = {
   approbations: mk(Inbox),
   alertes_kpi:  mk(AlertTriangle),
   dashboards_tv: mk(Tv),
+  taxe_sejour:  mk(Percent),
 }
 
 const ROLE_META = {
@@ -174,6 +177,10 @@ export const NAV_SECTIONS = [
     items: [
       { to: '/ia/ocr',               label: 'OCR',              k: 'nav.ocr',        icon: I.ocr,          roles: ['responsable','admin'] },
       { to: '/ia/agent',             label: 'Agent IA',         k: 'nav.agent_ia',   icon: I.agent_ia,     roles: ['admin'] },
+      // WIR23 — catalogue + historique/annuler des actions IA (AgentActions.jsx,
+      // testé, route déjà enregistrée router/index.jsx:241, authLoader — les
+      // actions elles-mêmes sont filtrées par permission côté serveur).
+      { to: '/ia/actions',           label: 'Actions IA',       k: 'nav.agent_actions', icon: I.agent_actions, roles: ['normal','responsable','admin'] },
     ],
   },
   navFor('reporting'),
@@ -192,6 +199,9 @@ export const NAV_SECTIONS = [
       { to: '/parametres/export',    label: 'Export / Sauvegarde', k: 'nav.export_sauvegarde', icon: I.export, roles: ['admin'] },
       // XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
       { to: '/parametres/alertes-kpi', label: 'Alertes KPI',    k: 'nav.alertes_kpi', icon: I.alertes_kpi, roles: ['responsable','admin'] },
+      // WIR8 — taxe de séjour hôtellerie (singleton société), sinon
+      // silencieusement facturée 0 sur chaque folio clos.
+      { to: '/parametres/hospitality/taxe-sejour', label: 'Taxe de séjour', k: 'nav.taxe_sejour', icon: I.taxe_sejour, roles: ['responsable','admin'] },
     ],
   },
 // ODX7 — `navFor()` peut renvoyer `null` si un module.config.jsx venait à

@@ -293,3 +293,46 @@ class TestEndpointAndNotification(IntegrityBase):
             statut=Devis.Statut.ACCEPTE)
         result = controle_integrite(self.company)
         self.assertGreaterEqual(total_anomalies(result), 1)
+
+
+class TestControleIntegriteBeatTask(IntegrityBase):
+    """WIR22 — la tâche Beat `reporting.controle_integrite` (planifiée dans
+    `erp_agentique/celery.py`, entrée `reporting-controle-integrite-hebdo`)
+    ne correspondait à AUCUNE tâche Celery enregistrée : Beat échouait
+    silencieusement chaque semaine et `total_anomalies` n'était jamais
+    consulté par personne. `apps/reporting/tasks.py` ajoute la tâche
+    manquante ; elle relaie vers la commande de gestion déjà éprouvée."""
+
+    def test_task_registered_with_expected_beat_name(self):
+        from apps.reporting.tasks import controle_integrite_task
+        self.assertEqual(
+            controle_integrite_task.name, 'reporting.controle_integrite')
+
+    def test_beat_task_notifies_admin_in_app_when_anomaly_detected(self):
+        """Done = une anomalie détectée génère une notification in-app
+        visible par un admin, sans lire les logs serveur."""
+        from apps.notifications.models import Notification
+        from apps.reporting.tasks import run_controle_integrite_beat
+
+        Devis.objects.create(
+            company=self.company, reference='DEV-BEAT', client=self.client_obj,
+            statut=Devis.Statut.ACCEPTE)
+
+        run_controle_integrite_beat()
+
+        notif = Notification.objects.filter(
+            recipient=self.user, company=self.company,
+            title__icontains="Contrôle d'intégrité").first()
+        self.assertIsNotNone(notif)
+        self.assertIn('Devis acceptés sans chantier créé', notif.body)
+
+    def test_beat_task_does_not_notify_when_no_anomaly(self):
+        from apps.notifications.models import Notification
+        from apps.reporting.tasks import run_controle_integrite_beat
+
+        run_controle_integrite_beat()
+
+        self.assertFalse(
+            Notification.objects.filter(
+                recipient=self.user,
+                title__icontains="Contrôle d'intégrité").exists())

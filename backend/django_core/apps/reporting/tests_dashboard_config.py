@@ -18,6 +18,7 @@ from .models import (
     DashboardConfig,
     ROLE_DEFAULT_CARDS,
     GLOBAL_DEFAULT_CARDS,
+    ALL_DASHBOARD_CARDS,
 )
 
 User = get_user_model()
@@ -91,6 +92,19 @@ class DashboardConfigCreateTests(TestCase):
         }
         res = self.api.post(BASE_URL, payload, format='json')
         self.assertEqual(res.status_code, 400)
+
+    def test_integrite_card_key_is_registered_and_valid(self):
+        """WIR22 — la clé 'integrite' (badge du contrôle d'intégrité
+        inter-documents) est enregistrée dans ALL_DASHBOARD_CARDS et acceptée
+        par la validation serveur des clés de carte."""
+        self.assertIn('integrite', ALL_DASHBOARD_CARDS)
+        payload = {
+            'user': self.admin.pk,
+            'menu_tier': '',
+            'cards': ['kpis', 'integrite'],
+        }
+        res = self.api.post(BASE_URL, payload, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
 
     def test_user_and_menu_tier_together_rejected(self):
         payload = {

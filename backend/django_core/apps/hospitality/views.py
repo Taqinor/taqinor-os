@@ -21,17 +21,54 @@ from core.viewsets import CompanyScopedModelViewSet
 from . import selectors, services
 from .models import (
     Chambre, EvenementBanquet, Folio, IngredientRecette, MainCourante,
-    PlanTarifaire, Recette, Reservation, SalleEvenement, TacheMenage,
-    TypeChambre,
+    ParametresTaxeSejour, PlanTarifaire, Recette, Reservation,
+    SalleEvenement, TacheMenage, TypeChambre,
 )
 from .serializers import (
     ChambreSerializer, EvenementBanquetSerializer, FicheClientSerializer,
     FolioSerializer, IngredientRecetteSerializer, MainCouranteSerializer,
-    PlanTarifaireSerializer, RecetteSerializer, ReservationSerializer,
-    SalleEvenementSerializer, TacheMenageSerializer, TypeChambreSerializer,
+    ParametresTaxeSejourSerializer, PlanTarifaireSerializer, RecetteSerializer,
+    ReservationSerializer, SalleEvenementSerializer, TacheMenageSerializer,
+    TypeChambreSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
+
+
+class ParametresTaxeSejourView(views.APIView):
+    """WIR8 — réglage de taxe de séjour DE LA société (singleton get-or-
+    défaut/PATCH, même patron que ``credit.views.ReglageCreditView``).
+
+    Tant qu'aucune ligne n'est configurée, ``services.calculer_taxe_sejour``
+    retombe silencieusement sur ``Decimal('0')`` (comportement actuel
+    inchangé) — cet endpoint est le SEUL chemin d'écriture hors admin Django.
+    Lecture ouverte à tout rôle authentifié ; écriture réservée Responsable/
+    Administrateur (impacte la facturation de tous les folios clos)."""
+    permission_classes = [IsAnyRole]
+
+    def get_permissions(self):
+        if self.request.method in ('PATCH', 'PUT', 'POST'):
+            return [IsResponsableOrAdmin()]
+        return super().get_permissions()
+
+    def get(self, request):
+        try:
+            params = ParametresTaxeSejour.objects.get(
+                company=request.user.company)
+        except ParametresTaxeSejour.DoesNotExist:
+            # Instance NON sauvegardée aux défauts du modèle (jamais bloquant
+            # tant que le founder n'a rien configuré) — jamais persistée ici.
+            params = ParametresTaxeSejour(company=request.user.company)
+        return Response(ParametresTaxeSejourSerializer(params).data)
+
+    def patch(self, request):
+        params, _ = ParametresTaxeSejour.objects.get_or_create(
+            company=request.user.company)
+        serializer = ParametresTaxeSejourSerializer(
+            params, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class TypeChambreViewSet(CompanyScopedModelViewSet):

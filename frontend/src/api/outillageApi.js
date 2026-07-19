@@ -9,6 +9,10 @@ const outillageApi = {
   updateOutil: (id, data) => api.patch(`/outillage/outils/${id}/`, data),
   deleteOutil: (id) => api.delete(`/outillage/outils/${id}/`),
 
+  // ── FG80/WIR28 — calibration périodique ──
+  // Corps optionnel {date_calibration: 'YYYY-MM-DD'} — défaut serveur = aujourd'hui.
+  calibrer: (id, data) => api.post(`/outillage/outils/${id}/calibrer/`, data ?? {}),
+
   // ── Kits d'outillage (F2) ──
   getKits: () => api.get('/outillage/kits/'),
   saveKit: (id, data) => id

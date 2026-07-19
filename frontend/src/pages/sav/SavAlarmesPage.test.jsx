@@ -11,7 +11,14 @@ vi.mock('../../api/savApi', () => ({
   },
 }))
 
+// WIR31 — création manuelle d'une alarme : POST /sav/alarmes-onduleur/ (api
+// axios direct, hors savApi — cf. creerAlarme dans SavAlarmesPage.jsx).
+vi.mock('../../api/axios', () => ({
+  default: { post: vi.fn(() => Promise.resolve({ data: {} })) },
+}))
+
 import savApi from '../../api/savApi'
+import api from '../../api/axios'
 import SavAlarmesPage from './SavAlarmesPage'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -50,5 +57,30 @@ describe('SavAlarmesPage', () => {
     savApi.getAlarmes.mockResolvedValue({ data: [] })
     render(<SavAlarmesPage />)
     expect(await screen.findByText('Aucune alarme')).toBeInTheDocument()
+  })
+
+  describe('WIR31 — formulaire « Créer une alarme »', () => {
+    it('ouvre le formulaire de création et crée une alarme via POST', async () => {
+      savApi.getAlarmes.mockResolvedValue({ data: [] })
+      render(<SavAlarmesPage />)
+      await screen.findByText('Aucune alarme')
+
+      fireEvent.click(screen.getByRole('button', { name: /Créer une alarme/ }))
+      fireEvent.change(screen.getByPlaceholderText('ex. E07'), { target: { value: 'E07' } })
+      fireEvent.change(screen.getByPlaceholderText('ex. Défaut isolement'),
+        { target: { value: 'Défaut isolement' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Créer' }))
+
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith('/sav/alarmes-onduleur/',
+        expect.objectContaining({ code: 'E07', gravite: 'warning', libelle: 'Défaut isolement' })))
+    })
+
+    it('désactive le bouton Créer tant que le code est vide', async () => {
+      savApi.getAlarmes.mockResolvedValue({ data: [] })
+      render(<SavAlarmesPage />)
+      await screen.findByText('Aucune alarme')
+      fireEvent.click(screen.getByRole('button', { name: /Créer une alarme/ }))
+      expect(screen.getByRole('button', { name: 'Créer' })).toBeDisabled()
+    })
   })
 })

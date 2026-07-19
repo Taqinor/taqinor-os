@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { CalendarDays, Users, Target, Map, UserPlus } from 'lucide-react'
+import { CalendarDays, Users, Target, Map, UserPlus, TrendingUp } from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy CRM vers le registre (phase 2, après les
@@ -35,6 +35,12 @@ const CartePage = lazy(() => import('../../pages/CartePage'))
 const ParrainagePage = lazy(() => import('../../pages/crm/ParrainagePage'))
 // QX16 — rejeu des payloads leads site web (« jamais perdre un lead »).
 const WebsiteLeadPayloadsPage = lazy(() => import('../../pages/crm/WebsiteLeadPayloadsPage'))
+// WIR15/NTCRM7 — vue manager Forecast (Commit/Best Case/Pipeline/Total par
+// commercial + sous-total équipe) — construite/testée, montée nulle part.
+// Aucun travail backend : `forecast-entries/`/`forecast/rollup/`/
+// `forecast/historique/` existent déjà (`IsAnyRole`, filtre équipe côté
+// serveur pour un Responsable non-Admin).
+const ForecastPage = lazy(() => import('../../pages/crm/forecast/ForecastPage'))
 
 const config = {
   key: 'crm',
@@ -46,6 +52,7 @@ const config = {
       { to: '/calendrier',           label: 'Calendrier',       k: 'nav.calendrier', icon: navIcon(CalendarDays),   roles: ['normal','responsable','admin'] },
       { to: '/crm',                  label: 'Clients',          k: 'nav.clients',    icon: navIcon(Users),      roles: ['normal','responsable','admin'] },
       { to: '/crm/leads',            label: 'Leads',            k: 'nav.leads',      icon: navIcon(Target),        roles: ['normal','responsable','admin'] },
+      { to: '/crm/forecast',         label: 'Forecast',         k: 'nav.forecast',   icon: navIcon(TrendingUp),    roles: ['normal','responsable','admin'] },
       { to: '/carte',                label: 'Carte',            k: 'nav.carte',      icon: navIcon(Map),           roles: ['normal','responsable','admin'] },
       { to: '/crm/parrainage',       label: 'Parrainage',       k: 'nav.parrainage', icon: navIcon(UserPlus),   roles: ['normal','responsable','admin'] },
     ],
@@ -61,6 +68,8 @@ const config = {
     { path: '/crm/parrainage', component: ParrainagePage },
     // QX16 — rejeu des payloads leads site web.
     { path: '/crm/payloads-site-web', component: WebsiteLeadPayloadsPage },
+    // WIR15/NTCRM7 — Forecast (manager rollup).
+    { path: '/crm/forecast', component: ForecastPage },
   ],
 }
 

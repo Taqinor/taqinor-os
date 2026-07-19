@@ -56,6 +56,20 @@ def _lignes_qs(company, *, date_debut=None, date_fin=None, validees_seulement=Fa
     return qs
 
 
+# ── WIR24 — Écriture GL générée pour un document source ────────────────────
+
+def ecriture_pour_source(company, source_type, source_id):
+    """L'écriture au grand livre générée pour un document source, ou None.
+
+    Company-scoped. Permet au détail d'une facture/paiement/avoir de POINTER
+    vers son écriture comptable (auto-générée quand le réglage société
+    ``comptabilite_auto_ecritures`` est actif) sans importer les modèles de
+    ``compta`` : les autres apps passent par ce sélecteur (frontière M3).
+    """
+    return EcritureComptable.objects.filter(
+        company=company, source_type=source_type, source_id=source_id).first()
+
+
 # ── FG110 / COMPTA19 — Grand livre ─────────────────────────────────────────
 
 def grand_livre(company, *, compte=None, date_debut=None, date_fin=None,

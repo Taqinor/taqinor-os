@@ -402,6 +402,26 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     } finally { setIntervBusy(false) }
   }
 
+  // WIR29 — bouton « Planifier en un clic » : crée l'intervention pré-remplie
+  // via `POST tickets/{id}/planifier-intervention/` (apps.installations.services,
+  // frontière cross-app déjà respectée côté backend) et passe le ticket en
+  // PLANIFIE si besoin. Le formulaire manuel ci-dessous reste disponible en option.
+  const [planBusy, setPlanBusy] = useState(false)
+  const planifierUnClic = async () => {
+    setPlanBusy(true)
+    setActionError(null)
+    try {
+      const r = await api.post(`/sav/tickets/${id}/planifier-intervention/`)
+      loadInterventions()
+      loadHistorique()
+      await reloadAll()
+      toast.success(`Intervention #${r.data?.intervention_id} planifiée`)
+      onSaved?.()
+    } catch (err) {
+      setActionError(frError(err, 'Échec de la planification en un clic.'))
+    } finally { setPlanBusy(false) }
+  }
+
   const addPiece = async () => {
     if (!pieceForm.produit) return
     // L309/L7 — garde anti-survente : si on décrémente le stock et que la qté
@@ -807,6 +827,13 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
 
         {/* ── Interventions (L313 — repliable) ── */}
         <CollapsibleSection icon={Wrench} title="Interventions">
+          {/* WIR29 — création one-click depuis le ticket ; formulaire manuel conservé en option ci-dessous. */}
+          <div>
+            <Button type="button" variant="outline" size="sm"
+                    loading={planBusy} onClick={planifierUnClic}>
+              <Zap /> Planifier une intervention en un clic
+            </Button>
+          </div>
           {interventions.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucune intervention rattachée.</p>
           ) : (

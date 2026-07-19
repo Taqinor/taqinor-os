@@ -1447,10 +1447,16 @@ class DocumentConformiteFournisseurSerializer(serializers.ModelSerializer):
 
 
 class AchatsParametresSerializer(serializers.ModelSerializer):
+    # WIR26 — expose XPUR2 (RAS-TVA LF2024) et XPUR10 (tolérances du
+    # rapprochement 3 voies) : ces champs existaient déjà sur le modèle
+    # (services.py les consomme) mais n'étaient jamais exposés par l'API,
+    # laissant l'écran Paramètres → Achats sans moyen de les piloter.
     class Meta:
         model = AchatsParametres
         fields = [
             'id', 'bloquer_paiement_conformite_expiree',
+            'ras_tva_actif', 'tolerance_prix_pct',
+            'tolerance_prix_absolu_mad', 'tolerance_quantite_pct',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']

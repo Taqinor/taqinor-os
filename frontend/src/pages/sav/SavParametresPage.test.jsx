@@ -22,7 +22,17 @@ vi.mock('../../api/savApi', () => ({
   },
 }))
 
+// WIR30 — onglet SLA/Automatisation : GET/POST /sav/sla-settings/ (api axios
+// direct, hors savApi — cf. SlaAutomationSection dans SavParametresPage.jsx).
+vi.mock('../../api/axios', () => ({
+  default: {
+    get: vi.fn(() => Promise.resolve({ data: {} })),
+    post: vi.fn(() => Promise.resolve({ data: {} })),
+  },
+}))
+
 import savApi from '../../api/savApi'
+import api from '../../api/axios'
 import SavParametresPage from './SavParametresPage'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -48,5 +58,32 @@ describe('SavParametresPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Ajouter/ }))
     await waitFor(() => expect(savApi.saveReponseType).toHaveBeenCalledWith(
       null, expect.objectContaining({ titre: 'Relance client', corps: 'Bonjour {client}...' })))
+  })
+
+  describe('WIR30 — onglet SLA / Automatisation', () => {
+    it('charge les réglages via GET /sav/sla-settings/ et affiche les 7 toggles', async () => {
+      const user = userEvent.setup()
+      render(<SavParametresPage />)
+      await user.click(screen.getByRole('tab', { name: 'SLA / Automatisation' }))
+      await waitFor(() => expect(api.get).toHaveBeenCalledWith('/sav/sla-settings/'))
+      expect(await screen.findByRole('switch',
+        { name: 'Génération automatique des visites préventives dues' })).toBeInTheDocument()
+      expect(screen.getByRole('switch',
+        { name: 'Escalader au responsable à la violation du SLA' })).toBeInTheDocument()
+    })
+
+    it("active generation_auto_visites et persiste via POST /sav/sla-settings/", async () => {
+      const user = userEvent.setup()
+      render(<SavParametresPage />)
+      await user.click(screen.getByRole('tab', { name: 'SLA / Automatisation' }))
+      const toggle = await screen.findByRole('switch',
+        { name: 'Génération automatique des visites préventives dues' })
+      expect(toggle).toHaveAttribute('aria-checked', 'false')
+      await user.click(toggle)
+      expect(toggle).toHaveAttribute('aria-checked', 'true')
+      await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+      await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+        '/sav/sla-settings/', expect.objectContaining({ generation_auto_visites: true })))
+    })
   })
 })

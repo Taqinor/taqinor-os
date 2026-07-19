@@ -10,11 +10,10 @@ import api from './axios'
    `core.WorkflowStepInstance`). Toutes les URLs sont relatives : l'intercepteur
    axios préfixe `/api/django`.
 
-   IMPORTANT (gap backend confirmé) : il n'existe AUCUN ViewSet CRUD pour
-   `WorkflowDefinition`/`WorkflowStepDefinition` — seule l'installation depuis
-   un modèle (`workflow-templates/installer/`) matérialise ces lignes. Ce
-   client ne fabrique donc PAS d'appels vers des endpoints qui n'existent pas ;
-   `createDefinition`/`updateDefinition` ci-dessous sont volontairement absents.
+   WIR51 : le CRUD serveur des définitions de workflow existe désormais
+   (`workflow-definitions/`, `workflow-step-definitions/`, company forcée côté
+   serveur) — `workflowDefinitions` ci-dessous le consomme, comblant le GAP
+   BACKEND que documentait l'écran Workflows.
    ========================================================================== */
 
 const coreApi = {
@@ -58,6 +57,17 @@ const coreApi = {
     list: () => api.get('/core/workflow-templates/'),
     installer: (code) =>
       api.post('/core/workflow-templates/installer/', { code }),
+  },
+
+  // WIR51 — CRUD serveur des définitions de workflow (FG366) : composer une
+  // chaîne d'étapes la persiste réellement (company forcée côté serveur, jamais
+  // dans le corps ; `code` dérivé du nom côté serveur).
+  workflowDefinitions: {
+    list: () => api.get('/core/workflow-definitions/'),
+    create: (payload) => api.post('/core/workflow-definitions/', payload),
+    update: (id, payload) =>
+      api.put(`/core/workflow-definitions/${id}/`, payload),
+    remove: (id) => api.delete(`/core/workflow-definitions/${id}/`),
   },
 
   // XKB1 — boîte d'approbations centralisée (reporting), filtrée côté client

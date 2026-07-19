@@ -27,6 +27,9 @@
   "nav.section.administration": "ADMINISTRATION",
 
   "nav.dashboard": "Dashboard",
+  "nav.agent_actions": "Actions IA",
+  "nav.listes_prix": "Listes de prix",
+  "nav.devis_action_requise": "Action requise",
   "nav.messages": "Messages",
   "nav.produits": "Produits",
   "nav.categories": "Catégories & marques",

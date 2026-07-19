@@ -117,6 +117,23 @@ export default function ReceptionScreen() {
     }
   }
 
+  // WIR53 — annulation depuis la réception (NTSAN37) : délai + pénalité
+  // éventuelle sont calculés côté serveur, jamais ici.
+  const annuler = async (rdv) => {
+    if (!window.confirm('Annuler ce rendez-vous ?')) return
+    try {
+      const res = await santeApi.rendezvous.annuler(rdv.id, 'patient')
+      toast[res.data?.penalite_applicable ? 'error' : 'success'](
+        res.data?.penalite_applicable
+          ? 'Rendez-vous annulé — pénalité applicable (délai dépassé).'
+          : 'Rendez-vous annulé.')
+      chargerRdvDuJour()
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      toast.error(detail || "Impossible d'annuler ce rendez-vous.")
+    }
+  }
+
   return (
     <div className="sante-reception">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -224,6 +241,14 @@ export default function ReceptionScreen() {
               {rdv.statut !== 'arrive' && rdv.statut !== 'termine' && rdv.statut !== 'annule' && (
                 <Button variant="ghost" onClick={() => checkin(rdv)}>
                   <LogIn size={14} strokeWidth={1.75} aria-hidden="true" /> Patient arrivé
+                </Button>
+              )}
+              {rdv.statut !== 'termine' && rdv.statut !== 'annule' && (
+                <Button
+                  variant="ghost" onClick={() => annuler(rdv)}
+                  aria-label="Annuler ce rendez-vous"
+                >
+                  Annuler
                 </Button>
               )}
             </li>

@@ -277,6 +277,16 @@ app.conf.beat_schedule = {
         'task': 'sav.generer_visites_dues_quotidien',
         'schedule': crontab(hour=7, minute=45),
     },
+    # WIR30 — pré-alerte SLA (J-x) + escalade à la violation (XSAV6,
+    # apps/sav/views.py scan_sla_pre_alerts_and_escalations), bâtie/testée
+    # mais jamais planifiée jusqu'ici. DISTINCT de scan_sla_breaches
+    # (planifiée séparément par NTSRV38). OFF par défaut par société
+    # (sla_warning_days=0, escalade_activee=False) : no-op tant qu'aucun
+    # réglage n'est activé.
+    'sav-scan-sla-pre-alerts-and-escalations': {
+        'task': 'sav.scan_sla_pre_alerts_and_escalations_quotidien',
+        'schedule': crontab(hour=7, minute=42),
+    },
     # XFSM21 — météo J+3 sur les poses planifiées (Open-Meteo, gratuit,
     # sans clé), quotidien, heure creuse matinale.
     'installations-meteo-planning-j3': {
@@ -571,6 +581,50 @@ app.conf.beat_schedule = {
     'education-relancer-reinscriptions': {
         'task': 'education.relancer_reinscriptions',
         'schedule': crontab(hour=7, minute=50),
+    },
+    # WIR5/FLOTTE16 — génère réellement les échéances d'entretien flotte
+    # (avant cette entrée : ni beat ni bouton, seule la commande manage
+    # fonctionnait — l'onglet Échéances et le KPI « entretien » du Cockpit
+    # Flotte restaient silencieusement vides). Quotidien, heure creuse.
+    'flotte-generer-echeances-entretien-quotidien': {
+        'task': 'flotte.generer_echeances_entretien_quotidien',
+        'schedule': crontab(hour=6, minute=45),
+    },
+    # ── WIR50 — trois commandes périodiques de SÉCURITÉ/GOUVERNANCE bâties mais
+    # jamais planifiées (P0 : elles ne tournaient JAMAIS en prod). ──
+    # NTSEC22 — révoque les accès break-glass ÉCHUS (un octroi expiré conserve
+    # sinon le rôle Administrateur : élévation de privilège persistante). Cadence
+    # rapide (toutes les 10 min) pour rétrograder promptement un accès échu.
+    'identity-revoke-expired-break-glass': {
+        'task': 'identity.revoke_expired_break_glass',
+        'schedule': crontab(minute='*/10'),
+    },
+    # NTSEC25 — désactive les comptes dormants au-delà du seuil société
+    # (balayage par société, notification Directeur préalable). Quotidien,
+    # heure creuse. No-op tant qu'aucune société n'a armé de seuil.
+    'authentication-desactiver-comptes-dormants': {
+        'task': 'authentication.desactiver_comptes_dormants',
+        'schedule': crontab(hour=2, minute=20),
+    },
+    # FG366 — escalade les étapes de workflow au SLA dépassé (balayage par
+    # société, WorkflowStepInstance en attente échue). Horaire.
+    'core-escalate-workflow-sla': {
+        'task': 'core.escalate_workflow_sla',
+        'schedule': crontab(minute=20),
+    },
+    # WIR25 (XACC8) — génère les écritures dues des abonnements récurrents
+    # (loyers/abonnements) en brouillon, quotidien, heure creuse. Idempotent
+    # par période (rejouer le même jour ne crée rien) ; no-op sans abonnement.
+    'compta-generer-ecritures-recurrentes': {
+        'task': 'compta.generer_ecritures_recurrentes',
+        'schedule': crontab(hour=2, minute=15),
+    },
+    # WIR25 (NTMAR15) — rappels d'échéance fiscale (CNSS/taxe pro/TVA/IS…)
+    # N jours avant la date limite, quotidien, heure creuse matinale.
+    # Idempotent via rappel_envoye_le (pas de double envoi le même jour).
+    'fiscal-rappels-fiscaux': {
+        'task': 'fiscal.rappels_fiscaux',
+        'schedule': crontab(hour=6, minute=40),
     },
 }
 

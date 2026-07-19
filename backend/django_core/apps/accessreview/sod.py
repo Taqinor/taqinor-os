@@ -13,16 +13,26 @@ Tout est scopé société ; aucune app métier n'est importée.
 """
 from __future__ import annotations
 
-# Jeu standard finance/achats (permissions telles que déclarées dans les rôles).
+# Jeu standard finance/ventes. WIR11 — les codes doivent EXISTER dans le
+# catalogue `roles.ALL_PERMISSIONS` (codes UNDERSCORE) : les anciens codes
+# POINTÉS (`facture.saisir`…) n'y figuraient pas, si bien que `sod_violations`
+# et `would_cumulate_critical` ne matchaient JAMAIS (SoD silencieusement no-op).
+# Chaque paire est une incompatibilité RÉELLE de séparation des tâches sur des
+# codes déclarés (compta_saisir/valider/cloturer = COMPTA40 ; ventes_creer/
+# valider = flux devis/ventes).
 STANDARD_SOD_RULES = [
-    ('facture.saisir', 'paiement.valider', 'critique',
-     'Saisie de facture et validation de paiement'),
-    ('achat.commander', 'achat.receptionner', 'warning',
-     'Commande et réception achats'),
-    ('devis.creer', 'devis.approuver', 'warning',
-     'Création et approbation de devis'),
-    ('paie.saisir', 'paie.valider', 'critique',
-     'Saisie et validation de la paie'),
+    # Comptabilité (COMPTA40) — le saisisseur d'une écriture ne doit ni la
+    # valider (second regard) ni clôturer sa période. Le cumul saisie+validation
+    # est CRITIQUE : il bloque l'attribution du rôle qui le créerait.
+    ('compta_saisir', 'compta_valider', 'critique',
+     "Saisie et validation d'écritures comptables"),
+    ('compta_saisir', 'compta_cloturer', 'warning',
+     'Saisie et clôture comptable'),
+    ('compta_valider', 'compta_cloturer', 'warning',
+     'Validation et clôture comptable'),
+    # Ventes — le créateur d'un devis/commande ne doit pas le valider lui-même.
+    ('ventes_creer', 'ventes_valider', 'warning',
+     'Création et validation de devis/ventes'),
 ]
 
 

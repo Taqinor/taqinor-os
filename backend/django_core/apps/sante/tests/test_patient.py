@@ -115,6 +115,40 @@ class PatientApiTests(TestCase):
         self.assertTrue(obj.numero_dossier)
         self.assertEqual(obj.company, self.company)
 
+    def test_create_resolves_and_creates_crm_client_server_side(self):
+        """WIR54 — ``PatientViewSet.perform_create`` appelle désormais
+        ``resoudre_client_pour_patient`` : un patient créé sans client CRM
+        connu en obtient automatiquement un (jamais un doublon non
+        rattaché)."""
+        from apps.crm.models import Client
+
+        api = auth(self.user)
+        resp = api.post(
+            self.BASE, {'nom': 'Fassi', 'email': 'fassi@example.com'},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        obj = Patient.objects.get(id=resp.data['id'])
+        self.assertIsNotNone(obj.client_id)
+        client = Client.objects.get(id=obj.client_id)
+        self.assertEqual(client.company_id, self.company.id)
+        self.assertEqual(client.email, 'fassi@example.com')
+
+    def test_create_reuses_existing_crm_client_by_email(self):
+        """Même société + même email déjà connu en CRM => réutilisation du
+        client existant, jamais un doublon."""
+        from apps.crm.models import Client
+
+        existing = Client.objects.create(
+            company=self.company, nom='Idrissi', email='idrissi@example.com')
+
+        api = auth(self.user)
+        resp = api.post(
+            self.BASE, {'nom': 'Idrissi', 'email': 'idrissi@example.com'},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        obj = Patient.objects.get(id=resp.data['id'])
+        self.assertEqual(obj.client_id, existing.id)
+
     def test_search_by_nom_cin_telephone(self):
         """NTSAN18 — écran Réception : recherche patient par nom/CIN/téléphone."""
         Patient.objects.create(
