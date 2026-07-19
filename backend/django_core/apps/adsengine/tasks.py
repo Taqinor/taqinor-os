@@ -1403,3 +1403,76 @@ def rollup_insights_monthly_task():
         logger.warning(
             'adsengine.rollup_insights_monthly: échec', exc_info=True)
         return {'rollups': 0, 'snapshots_purged': 0}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUB105 — Rejeu / backfill ciblé après panne de webhook.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def backfill_after_divergence(company, *, campaign_meta_id='', day=None):
+    """PUB105 — Rattrape une divergence « webhook non reçu » par un backfill ciblé.
+
+    La réconciliation (ADSENG31) FLAGGE « webhook non reçu » mais ne réparait
+    rien. Ce backfill RÉPARE : il rejoue le pull-sync des leads (idempotent par
+    ``leadgen_id`` — jamais un doublon) et re-synchronise les insights de la
+    campagne visée, puis re-calcule la réconciliation du jour pour rafraîchir le
+    statut. Idempotent (rejouable sans effet de bord). NO-OP propre sans
+    connexion Meta live (rien à rattraper sans accès API).
+
+    Note CTWA : les conversations Click-to-WhatsApp arrivent UNIQUEMENT par
+    webhook (Meta ne les re-sert pas) — non re-fetchables ici ; seuls leads +
+    insights sont rattrapables. Renvoie un résumé."""
+    import datetime as _dt
+
+    from .meta_client import MetaClient
+    from .models import AdCampaignMirror, MetaConnection
+
+    conn = MetaConnection.objects.filter(company=company, enabled=True).first()
+    if conn is None or not conn.is_live:
+        return {'status': 'no_connection', 'leads_processed': 0,
+                'insights_refreshed': 0}
+
+    client = MetaClient.from_connection(conn)
+    summary = {'status': 'ok', 'leads_processed': 0, 'insights_refreshed': 0}
+
+    # 1) Leads via le pull-sync EXISTANT (idempotent, convergent avec le webhook).
+    try:
+        summary['leads_processed'] = pull_ad_leads_for_company(
+            company, conn, client)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('adsengine.backfill: pull leads échoué (%s)',
+                       company.pk, exc_info=True)
+
+    # 2) Insights de la/les campagne(s) visée(s) (upsert idempotent par date).
+    from . import sync
+
+    camps = AdCampaignMirror.objects.filter(company=company)
+    if campaign_meta_id:
+        camps = camps.filter(meta_id=str(campaign_meta_id))
+    today = _dt.date.today()
+    for camp in camps:
+        try:
+            rows = client.get_insights(
+                camp.meta_id,
+                params={'date_preset': 'maximum', 'time_increment': 1})
+            for row in rows or []:
+                d = _parse_date(row.get('date_start')) or today
+                sync.upsert_insight(
+                    company, camp, date=d, spend=row.get('spend'),
+                    results=row.get('results'), frequency=row.get('frequency'),
+                    cpl=row.get('cpl'))
+            summary['insights_refreshed'] += 1
+        except Exception:  # noqa: BLE001 — une campagne en échec n'arrête pas
+            continue
+
+    # 3) Re-calcule la réconciliation du jour pour rafraîchir le statut/l'alerte.
+    try:
+        from . import reconciliation
+        recon_day = day or today
+        reconciliation.run_daily_reconciliation(company, recon_day)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('adsengine.backfill: réconciliation échouée (%s)',
+                       company.pk, exc_info=True)
+
+    logger.info('adsengine.backfill_after_divergence: %s', summary)
+    return summary

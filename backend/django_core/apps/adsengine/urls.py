@@ -33,7 +33,8 @@ from .views import (
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
     MetricsDashboardView,
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
-    ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
+    ReconciliationBackfillView, ReconciliationListView,
+    ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
     VariantReportView, WiringHealthView,
 )
@@ -105,6 +106,8 @@ urlpatterns = [
     path('metrics/dashboard-v2/', MetricsDashboardV2View.as_view(),
          name='adsengine-metrics-dashboard-v2'),
     # ENG42 — réconciliation (liste reshaped pour l'écran).
+    path('reconciliation/backfill/', ReconciliationBackfillView.as_view(),
+         name='adsengine-reconciliation-backfill'),
     path('reconciliation/', ReconciliationListView.as_view(),
          name='adsengine-reconciliation'),
     # ENG26 — dernier brief hebdomadaire.

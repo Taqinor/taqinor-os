@@ -1597,6 +1597,51 @@ class ReconciliationListView(APIView):
         return Response(rows)
 
 
+class ReconciliationBackfillView(APIView):
+    """PUB105 — Bouton « rattraper » depuis l'alerte de divergence.
+
+    Déclenche un backfill CIBLÉ (leads via pull-sync + insights de la campagne)
+    quand une divergence « webhook non reçu » a été flaggée. Accepte soit
+    ``alert_id`` (on lit ``campaign_meta_id``/``date`` dans le détail de
+    l'``EngineAlert`` de divergence), soit ``campaign_meta_id`` + ``date``
+    directement. Société forcée serveur. Écriture ``adsengine_manage``.
+    Idempotent (rejouable)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        data = request.data if isinstance(request.data, dict) else {}
+        campaign_meta_id = str(data.get('campaign_meta_id') or '')
+        day = data.get('date') or None
+
+        alert_id = data.get('alert_id')
+        if alert_id:
+            alert = EngineAlert.objects.filter(
+                company=company, pk=alert_id).first()
+            if alert is None:
+                return Response({'detail': 'Alerte introuvable.'}, status=404)
+            detail = alert.detail if isinstance(alert.detail, dict) else {}
+            campaign_meta_id = campaign_meta_id or str(
+                detail.get('campaign_meta_id') or '')
+            day = day or detail.get('date')
+
+        parsed_day = None
+        if day:
+            import datetime as _dt
+            try:
+                parsed_day = _dt.date.fromisoformat(str(day))
+            except (ValueError, TypeError):
+                parsed_day = None
+
+        from .tasks import backfill_after_divergence
+        summary = backfill_after_divergence(
+            company, campaign_meta_id=campaign_meta_id, day=parsed_day)
+        return Response(summary)
+
+
 def _brief_payload(brief):
     """Reshape un ``WeeklyBrief`` (data déterministe) vers le contrat de l'écran
     (``{periode, resume, items:[{quoi, pourquoi, suggestion, action_id}]}``).
