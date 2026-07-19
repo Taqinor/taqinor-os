@@ -12,6 +12,7 @@ import {
 import { downloadXlsx } from '../../api/importApi'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { StateBlock } from '../../components/StateBlock'
+import DocumentsPolitiqueSection from './DocumentsPolitiqueSection'
 
 /* ============================================================================
    NTESG6 — Cockpit ESG consolidé.
@@ -459,6 +460,9 @@ export default function EsgCockpit() {
           </CardContent>
         </Card>
       )}
+
+      {/* WIR130 — Registre des politiques RSE (annexe du rapport). */}
+      <DocumentsPolitiqueSection />
 
       {/* WIR129 — Dialogue de création de période. */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>

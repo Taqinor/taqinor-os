@@ -26,6 +26,10 @@ vi.mock('../../api/esgApi', () => ({
       } })),
       dpef: vi.fn(() => Promise.resolve({ data: new Blob(['# DPEF']) })),
     },
+    documentsPolitique: {
+      list: vi.fn(() => Promise.resolve({ data: [] })),
+      create: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    },
   },
 }))
 vi.mock('../../api/importApi', () => ({ downloadXlsx: vi.fn() }))
