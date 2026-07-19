@@ -37,7 +37,7 @@ from .views import (
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
-    VariantReportView, VisualFatigueView, WiringHealthView,
+    VariantReportView, VisualFatigueView, WeatherTriggerView, WiringHealthView,
 )
 from .whatsapp_webhook import WhatsAppCloudWebhookView
 
@@ -151,6 +151,9 @@ urlpatterns = [
     # PUB74 — fatigue au niveau du VISUEL (visual_asset_key réutilisé).
     path('reporting/creatifs/fatigue-visuelle/', VisualFatigueView.as_view(),
          name='adsengine-reporting-creatifs-fatigue-visuelle'),
+    # PUB79 — déclencheur météo (canicule ⇒ angle pompage/climatisation).
+    path('reporting/creatifs/declencheur-meteo/', WeatherTriggerView.as_view(),
+         name='adsengine-reporting-creatifs-declencheur-meteo'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).

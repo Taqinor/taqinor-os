@@ -1258,6 +1258,21 @@ class VisualFatigueView(APIView):
         return Response(visual_fatigue_report(company))
 
 
+class WeatherTriggerView(APIView):
+    """PUB79 — Déclencheur météo (canicule ⇒ angle pompage/climatisation),
+    suggestions de backlog SEULEMENT (jamais une action automatique). 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .weather_trigger import canicule_backlog_suggestions
+        return Response({'suggestions': canicule_backlog_suggestions(company)})
+
+
 class MetaConnectionStatusView(APIView):
     """ENG22 — Statut de connexion (GET) + enregistrement des identifiants
     (POST). Les identifiants sont **write-only** : un GET ne renvoie JAMAIS un
