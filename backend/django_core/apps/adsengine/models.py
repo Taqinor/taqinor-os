@@ -2777,3 +2777,41 @@ class ProposalTemplate(TenantModel):
 
     def __str__(self):
         return f'{self.name} ({self.kind})'
+
+
+class AdEngineActivity(TenantModel):
+    """PUB55 — Note MANUELLE de chatter par entité (campagne / ad set / ad).
+
+    Même pattern que ``crm.LeadActivity`` : l'acteur (``user``) et la société sont
+    posés CÔTÉ SERVEUR, jamais lus du corps. La fiche (PUB44) et le détail
+    campagne affichent un fil UNIQUE qui MÊLE ces notes manuelles aux événements
+    AUTO déjà persistés (``EngineAction`` appliquées, ``EngineAlert``) — la fusion
+    chronologique est faite à la lecture (``views``), on ne DUPLIQUE pas les
+    événements auto ici. Company-scopé."""
+
+    class Entity(models.TextChoices):
+        CAMPAIGN = 'campaign', 'Campagne'
+        ADSET = 'adset', 'Ad set'
+        AD = 'ad', 'Ad'
+
+    entity_type = models.CharField(
+        max_length=10, choices=Entity.choices, verbose_name='Type entité')
+    entity_meta_id = models.CharField(
+        max_length=64, verbose_name='ID Meta de l\'entité')
+    body = models.TextField(verbose_name='Note')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_chatter_notes',
+        verbose_name='Auteur')
+
+    class Meta:
+        verbose_name = 'Note de chatter (Publicité)'
+        verbose_name_plural = 'Notes de chatter (Publicité)'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'entity_type', 'entity_meta_id'],
+                         name='adseng_chatter_co_entity_idx'),
+        ]
+
+    def __str__(self):
+        return f'Note {self.entity_type}:{self.entity_meta_id} #{self.pk}'

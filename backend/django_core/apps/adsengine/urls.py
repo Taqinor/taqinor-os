@@ -16,6 +16,7 @@ from .views import (
     AlertSnoozeView, AnnotationViewSet, AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet,
     FactEntryViewSet, FactTableViewSet,
+    AdChatterView,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     ImportChantierPhotoView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
@@ -154,6 +155,9 @@ urlpatterns = [
     # consentement PUB75 bloquant).
     path('creatifs/import-chantier/', ImportChantierPhotoView.as_view(),
          name='adsengine-import-chantier-photo'),
+    # PUB55 — fil de chatter par entité (campagne/ad set/ad) : notes manuelles +
+    # actions appliquées + alertes, fusionnées.
+    path('chatter/', AdChatterView.as_view(), name='adsengine-chatter'),
     # ADSENG33 — drill-downs de reporting (table variante / entonnoir / cohortes
     # / export CSV).
     path('reporting/variantes/', VariantReportView.as_view(),

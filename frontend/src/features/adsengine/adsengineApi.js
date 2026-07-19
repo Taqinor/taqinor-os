@@ -374,6 +374,15 @@ const adsengineApi = {
   proposalTemplates: {
     ...resource('gabarits-proposition'),
   },
+
+  // ── PUB55 — Chatter par entité (campagne/ad set/ad) ──
+  // Fil fusionné (notes manuelles + actions appliquées + alertes) ; POST = note.
+  chatter: {
+    timeline: (entityType, entityId) =>
+      api.get('/adsengine/chatter/', { params: { entity_type: entityType, entity_id: entityId } }),
+    postNote: (entityType, entityId, body) =>
+      api.post('/adsengine/chatter/', { entity_type: entityType, entity_id: entityId, body }),
+  },
 }
 
 export default adsengineApi

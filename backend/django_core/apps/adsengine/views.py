@@ -18,7 +18,8 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AdCampaignMirror, Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
+    AdCampaignMirror, AdEngineActivity,
+    Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
     BrandKit, CommentMirror,
     CompetitorAdObservation, CompetitorPage, ConsentRecord,
     CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
@@ -607,6 +608,56 @@ class CompetitorAdObservationViewSet(AdsengineViewSet):
 
     queryset = CompetitorAdObservation.objects.all()
     serializer_class = CompetitorAdObservationSerializer
+
+
+class AdChatterView(APIView):
+    """PUB55 — Fil de chatter par entité (campagne / ad set / ad).
+
+    ``GET ?entity_type=&entity_id=`` renvoie le fil FUSIONNÉ (notes manuelles +
+    actions appliquées + alertes, le plus récent d'abord). ``POST {entity_type,
+    entity_id, body}`` pose une note manuelle — acteur + société côté serveur
+    (jamais lus du corps), pattern ``crm.LeadActivity``. Company-scopé."""
+
+    _ENTITIES = {'campaign', 'adset', 'ad'}
+
+    def _resolve(self, request, perm):
+        return _adseng_company_gate(request, perm)
+
+    def get(self, request):
+        company, err = self._resolve(request, 'adsengine_view')
+        if err is not None:
+            return err
+        entity_type = request.query_params.get('entity_type')
+        entity_id = request.query_params.get('entity_id')
+        if entity_type not in self._ENTITIES or not entity_id:
+            return Response(
+                {'detail': 'entity_type (campaign/adset/ad) et entity_id requis.'},
+                status=400)
+        from . import chatter
+        return Response(chatter.build_timeline(company, entity_type, entity_id))
+
+    def post(self, request):
+        company, err = self._resolve(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        body = request.data or {}
+        entity_type = body.get('entity_type')
+        entity_id = body.get('entity_id')
+        text = (body.get('body') or '').strip()
+        if entity_type not in self._ENTITIES or not entity_id:
+            return Response(
+                {'detail': 'entity_type (campaign/adset/ad) et entity_id requis.'},
+                status=400)
+        if not text:
+            return Response({'detail': 'Une note (body) est requise.'}, status=400)
+        note = AdEngineActivity.objects.create(
+            company=company, entity_type=entity_type,
+            entity_meta_id=str(entity_id), body=text, user=request.user)
+        return Response({
+            'id': note.id, 'kind': 'note', 'body': note.body,
+            'at': note.created_at.isoformat(),
+            'author': request.user.username, 'source': 'note',
+        }, status=201)
 
 
 class ImportChantierPhotoView(APIView):
