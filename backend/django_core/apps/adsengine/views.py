@@ -940,15 +940,21 @@ class EngineActionViewSet(AdsengineViewSet):
         except CreativePolicyNotPassed as exc:
             raise drf_serializers.ValidationError(
                 {'creative_asset_id': str(exc)})
-        super().perform_create(serializer)
+        # PUB103 — proposeur posé côté serveur (support du garde-fou quatre yeux).
+        serializer.save(company=company, proposed_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        """Approuve l'action (acteur posé côté serveur)."""
-        from .services import approve_action
+        """Approuve l'action (acteur posé côté serveur).
+
+        PUB103 — un proposeur qui approuve sa propre action alors que la double
+        validation est active reçoit 403 (``FourEyesViolation``)."""
+        from .services import FourEyesViolation, approve_action
         instance = self.get_object()
         try:
             approve_action(instance, user=request.user)
+        except FourEyesViolation as exc:
+            return Response({'detail': str(exc)}, status=403)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(instance).data)

@@ -163,6 +163,16 @@ class GuardrailConfig(TenantModel):
     health_ops_weight_delivery = models.PositiveIntegerField(
         default=40, verbose_name='Santé opérations — poids livraison')
 
+    # ── PUB103 — Quatre yeux OPTIONNEL sur l'approbation ──
+    # OFF par défaut : mode solo intact (une seule personne propose ET approuve —
+    # l'usage fondateur actuel). ON : le service ``approve_action`` IMPOSE
+    # ``proposed_by ≠ approved_by`` (403 sinon) — dès qu'un media buyer est
+    # embauché, personne ne peut auto-approuver sa propre dépense. Ne peut JAMAIS
+    # autoriser une activation de campagne (interdite en dur, invariant #3).
+    require_four_eyes = models.BooleanField(
+        default=False,
+        verbose_name='Double validation (quatre yeux) sur les approbations')
+
     class Meta:
         verbose_name = 'Garde-fous publicitaires'
         verbose_name_plural = 'Garde-fous publicitaires'
@@ -619,6 +629,15 @@ class EngineAction(TenantModel):
     # laisse quand même une trace ``auto=True``. Défaut False (approbation requise).
     auto = models.BooleanField(
         default=False, verbose_name='Jouée automatiquement (ENG8)')
+    # PUB103 — proposeur (posé côté serveur au POST API). Support du garde-fou
+    # « quatre yeux » : quand ``GuardrailConfig.require_four_eyes`` est activé,
+    # ``approve_action`` refuse ``proposed_by == approved_by``. NULL = proposée
+    # par le moteur (système) — le quatre-yeux ne s'applique jamais à une
+    # proposition machine (un humain qui l'approuve EST le second regard).
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_actions_proposees',
+        verbose_name='Proposée par')
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='adsengine_actions_approuvees',
