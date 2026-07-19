@@ -52,7 +52,8 @@ describe('TreeScreen (ASG6)', () => {
     await waitFor(() => expect(mocks.nodes).toHaveBeenCalled())
     expect(await screen.findByTestId('ae-tree-group-validated')).toBeInTheDocument()
     expect(screen.getByTestId('ae-tree-group-stale')).toBeInTheDocument()
-    expect(screen.getByText(/facture d'été/)).toBeInTheDocument()
+    // L'énoncé apparaît DEUX fois (dans la file VoI et dans son groupe de statut) — attendu.
+    expect(screen.getAllByText(/facture d'été/).length).toBeGreaterThan(0)
     expect(screen.getByText(/il y a 190 j/)).toBeInTheDocument()
   })
 

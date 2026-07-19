@@ -61,7 +61,8 @@ class HealthScoreGoldenTests(SimpleTestCase):
     def test_clamps_out_of_range_signals(self):
         score = health.creative_health(
             {'ctr': 5.0, 'freshness': -3.0}, self._config())
-        self.assertEqual(score, 1.0)  # ctr clampé à 1.0, freshness à 0.0
+        # ctr clampé à 1.0, freshness à 0.0 → moyenne pondérée (60·1 + 40·0)/100.
+        self.assertAlmostEqual(score, 0.6, places=9)
 
     def test_zero_total_weight_returns_zero_not_error(self):
         score = health.creative_health(
@@ -107,8 +108,11 @@ class HealthNeverConsumedByAllocationInvariantTests(SimpleTestCase):
                 'ne doit JAMAIS être lu par le bandit/l\'allocation (§11).')
 
     def test_modules_have_zero_io_no_model_imports(self):
-        # Discipline documentée de ces 3 modules : purs, sans accès base.
-        for module in self.MODULES:
+        # bandit + allocation sont PURS (aucun accès base). rewards.py fait
+        # exception assumée : son cœur ``evaluate_divergence`` est pur, mais
+        # ``run_divergence_check`` lit la base (I/O documentée en tête de module)
+        # — il n'est donc pas soumis à ce contrôle de pureté.
+        for module in (bandit, allocation):
             source = inspect.getsource(module)
             self.assertNotIn('from .models import', source)
             self.assertNotIn('from django.db import models', source)
@@ -124,12 +128,16 @@ class HealthNeverConsumedByAllocationInvariantTests(SimpleTestCase):
             self.assertNotIn('from apps.adsengine.health', content)
 
     def test_health_module_itself_is_pure(self):
-        # health.py ne doit rien connaître du bandit/de l'allocation non plus
-        # (séparation dans les DEUX sens — pas de couplage caché).
+        # health.py ne doit pas IMPORTER le bandit/l'allocation/les rewards
+        # (séparation dans les DEUX sens — pas de couplage caché). On teste les
+        # IMPORTS, pas les simples mentions : le docstring explique justement
+        # « jamais lu par le bandit », ce qui est légitime et attendu.
         source = inspect.getsource(health)
-        self.assertNotIn('bandit', source.lower())
-        self.assertNotIn('allocation', source.lower())
-        self.assertNotIn('rewards', source.lower())
+        for mod in ('bandit', 'allocation', 'rewards'):
+            self.assertNotIn(f'import {mod}', source)
+            self.assertNotIn(f'from .{mod}', source)
+            self.assertNotIn(f'from apps.adsengine.{mod}', source)
+            self.assertNotIn(f'from apps.adsengine import {mod}', source)
 
     def test_health_module_path_exists_once(self):
         # Sanity : on a bien testé le VRAI fichier (pas un stub vide).

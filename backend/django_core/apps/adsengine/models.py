@@ -2205,6 +2205,15 @@ class FactEntry(TenantModel):
                 fields=['table', 'cle'], name='uniq_adseng_factentry_table_cle'),
         ]
 
+    def save(self, *args, **kwargs):
+        # Une entrée appartient TOUJOURS à la société de sa table de faits : on
+        # dérive ``company`` de ``table`` quand elle n'est pas fournie (création
+        # directe en test / seed / service, hors ViewSet où ``perform_create``
+        # la force). Jamais un franchissement de frontière société silencieux.
+        if self.company_id is None and self.table_id is not None:
+            self.company_id = self.table.company_id
+        super().save(*args, **kwargs)
+
     def __str__(self):
         suffix = f' {self.unite}' if self.unite else ''
         return f'{self.cle} = {self.valeur}{suffix}'
