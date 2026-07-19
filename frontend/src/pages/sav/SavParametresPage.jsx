@@ -142,20 +142,235 @@ function EquipesMaintenanceSection() {
   )
 }
 
-// ── Catégories d'équipement (ZMFG2) — nom + commentaire, sans gestion de
-// l'alias e-mail/équipe responsable (édité via l'API pour l'instant). ──
+// ── Catégories d'équipement (ZMFG2/ZMFG7/WIR117) — nom + alias e-mail +
+// équipe responsable. L'alias e-mail route un message entrant (FG373) vers un
+// ticket correctif pré-catégorisé (câblé dans apps.py) ; l'équipe responsable
+// est affectée automatiquement. Jusqu'ici seul `nom` était éditable. ──
 function CategoriesEquipementSection() {
+  const [rows, setRows] = useState([])
+  const [equipes, setEquipes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ nom: '', alias_email: '', equipe_responsable: '' })
+  const [busy, setBusy] = useState(false)
+  const [edits, setEdits] = useState({})
+
+  const load = () => savApi.getCategoriesEquipement()
+    .then((r) => setRows(r.data.results ?? r.data ?? []))
+    .catch(() => {})
+    .finally(() => setLoading(false))
+
+  useEffect(() => {
+    load()
+    savApi.getEquipesMaintenance()
+      .then((r) => setEquipes(r.data.results ?? r.data ?? []))
+      .catch(() => {})
+  }, [])
+
+  const add = async () => {
+    const nom = form.nom.trim()
+    if (!nom) return
+    setBusy(true)
+    try {
+      await savApi.saveCategorieEquipement(null, {
+        nom,
+        alias_email: form.alias_email.trim() || null,
+        equipe_responsable: form.equipe_responsable || null,
+      })
+      setForm({ nom: '', alias_email: '', equipe_responsable: '' })
+      toast.success("Catégorie d'équipement ajoutée")
+      setLoading(true); load()
+    } catch (e) {
+      toast.error(e?.response?.data?.alias_email ?? e?.response?.data?.detail ?? 'Ajout impossible.')
+    } finally { setBusy(false) }
+  }
+
+  const rowEdit = (row) => edits[row.id] ?? {
+    alias_email: row.alias_email ?? '',
+    equipe_responsable: row.equipe_responsable ? String(row.equipe_responsable) : '',
+  }
+  const setRowEdit = (id, patch) =>
+    setEdits((e) => ({ ...e, [id]: { ...rowEdit({ id, ...e[id] }), ...patch } }))
+
+  const saveRow = async (row) => {
+    const e = rowEdit(row)
+    try {
+      await savApi.saveCategorieEquipement(row.id, {
+        alias_email: e.alias_email.trim() || null,
+        equipe_responsable: e.equipe_responsable || null,
+      })
+      toast.success('Catégorie mise à jour')
+      setEdits((prev) => { const n = { ...prev }; delete n[row.id]; return n })
+      setLoading(true); load()
+    } catch (err) {
+      toast.error(err?.response?.data?.alias_email ?? err?.response?.data?.detail ?? 'Enregistrement impossible.')
+    }
+  }
+
+  if (loading) return <Skeleton className="h-24 w-full" />
+
   return (
-    <SimpleRefListEditor
-      loadFn={savApi.getCategoriesEquipement}
-      saveFn={savApi.saveCategorieEquipement}
-      nameField="nom"
-      label="catégorie d'équipement"
-      emptyLabel="Aucune catégorie d'équipement"
-      isArchived={() => false}
-      archivePayload={() => ({})}
-      unarchivePayload={() => ({})}
-    />
+    <div className="flex flex-col gap-3">
+      <div className="grid items-end gap-2 sm:grid-cols-[2fr_2fr_2fr_auto]">
+        <Input placeholder="Nouvelle catégorie…" value={form.nom}
+               onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))}
+               onKeyDown={(e) => { if (e.key === 'Enter') add() }} />
+        <Input type="email" placeholder="Alias e-mail (optionnel)…" value={form.alias_email}
+               onChange={(e) => setForm((f) => ({ ...f, alias_email: e.target.value }))} />
+        <Select value={form.equipe_responsable || '__none'}
+                onValueChange={(v) => setForm((f) => ({ ...f, equipe_responsable: v === '__none' ? '' : v }))}>
+          <SelectTrigger><SelectValue placeholder="— Équipe responsable —" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none">— Aucune équipe —</SelectItem>
+            {equipes.map((eq) => (
+              <SelectItem key={eq.id} value={String(eq.id)}>{eq.nom}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button type="button" size="sm" loading={busy} onClick={add}><Plus /> Ajouter</Button>
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState title="Aucune catégorie d'équipement" />
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {rows.map((r) => {
+            const e = rowEdit(r)
+            return (
+              <li key={r.id}
+                  className="grid items-end gap-2 rounded-lg border border-border bg-card px-3 py-2 sm:grid-cols-[2fr_2fr_2fr_auto]">
+                <span className="text-sm font-medium">{r.nom}</span>
+                <Input type="email" aria-label={`Alias e-mail — ${r.nom}`}
+                       placeholder="Alias e-mail…" value={e.alias_email}
+                       onChange={(ev) => setRowEdit(r.id, { alias_email: ev.target.value })} />
+                <Select value={e.equipe_responsable || '__none'}
+                        onValueChange={(v) => setRowEdit(r.id, { equipe_responsable: v === '__none' ? '' : v })}>
+                  <SelectTrigger aria-label={`Équipe responsable — ${r.nom}`}>
+                    <SelectValue placeholder="— Équipe —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— Aucune équipe —</SelectItem>
+                    {equipes.map((eq) => (
+                      <SelectItem key={eq.id} value={String(eq.id)}>{eq.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" size="sm" variant="outline" onClick={() => saveRow(r)}>
+                  <Check /> Enregistrer
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// ── Compatibilités pièces (XSAV25/WIR117) — mappe une pièce catalogue comme
+// compatible avec un produit d'équipement, pour que le picker de pièces du
+// ticket la propose EN PREMIER. CRUD minimal (ajout + suppression). ──
+function CompatibilitesPieceSection() {
+  const [rows, setRows] = useState([])
+  const [produits, setProduits] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ produit_equipement: '', piece: '', note: '' })
+  const [busy, setBusy] = useState(false)
+
+  const load = () => savApi.getCompatibilitesPiece()
+    .then((r) => setRows(r.data.results ?? r.data ?? []))
+    .catch(() => {})
+    .finally(() => setLoading(false))
+
+  useEffect(() => {
+    load()
+    api.get('/stock/produits/')
+      .then((r) => setProduits(r.data.results ?? r.data ?? []))
+      .catch(() => {})
+  }, [])
+
+  const add = async () => {
+    if (!form.produit_equipement || !form.piece) return
+    setBusy(true)
+    try {
+      await savApi.saveCompatibilitePiece(null, {
+        produit_equipement: form.produit_equipement,
+        piece: form.piece,
+        note: form.note.trim(),
+      })
+      setForm({ produit_equipement: '', piece: '', note: '' })
+      toast.success('Compatibilité ajoutée')
+      setLoading(true); load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Ajout impossible.')
+    } finally { setBusy(false) }
+  }
+
+  const remove = async (id) => {
+    try {
+      await savApi.deleteCompatibilitePiece(id)
+      setLoading(true); load()
+    } catch { toast.error('Suppression impossible.') }
+  }
+
+  const produitOptions = (placeholder) => (
+    <SelectContent>
+      <SelectItem value="__none">{placeholder}</SelectItem>
+      {produits.map((p) => (
+        <SelectItem key={p.id} value={String(p.id)}>{p.nom}{p.sku ? ` (${p.sku})` : ''}</SelectItem>
+      ))}
+    </SelectContent>
+  )
+
+  if (loading) return <Skeleton className="h-24 w-full" />
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Associez une pièce catalogue à un produit d'équipement : le picker de
+        pièces du ticket (équipement lié) proposera ces pièces en premier.
+      </p>
+      <div className="grid items-end gap-2 sm:grid-cols-[2fr_2fr_2fr_auto]">
+        <Select value={form.produit_equipement || '__none'}
+                onValueChange={(v) => setForm((f) => ({ ...f, produit_equipement: v === '__none' ? '' : v }))}>
+          <SelectTrigger aria-label="Produit d'équipement">
+            <SelectValue placeholder="— Produit d'équipement —" />
+          </SelectTrigger>
+          {produitOptions("— Produit d'équipement —")}
+        </Select>
+        <Select value={form.piece || '__none'}
+                onValueChange={(v) => setForm((f) => ({ ...f, piece: v === '__none' ? '' : v }))}>
+          <SelectTrigger aria-label="Pièce compatible">
+            <SelectValue placeholder="— Pièce compatible —" />
+          </SelectTrigger>
+          {produitOptions('— Pièce compatible —')}
+        </Select>
+        <Input placeholder="Note (optionnel)…" value={form.note}
+               onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} />
+        <Button type="button" size="sm" loading={busy}
+                disabled={!form.produit_equipement || !form.piece} onClick={add}>
+          <Plus /> Ajouter
+        </Button>
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState title="Aucune compatibilité" />
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {rows.map((r) => (
+            <li key={r.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+              <span>
+                <span className="font-medium">{r.produit_equipement_nom ?? `#${r.produit_equipement}`}</span>
+                {' → '}
+                {r.piece_nom ?? `#${r.piece}`}
+                {r.note ? ` · ${r.note}` : ''}
+              </span>
+              <Button type="button" size="sm" variant="ghost" onClick={() => remove(r.id)}>
+                <X /> Supprimer
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -265,6 +480,145 @@ function SlaAutomationSection() {
   )
 }
 
+// ── WIR119/ZMFG6 — Modèles de feuille de maintenance (worksheets). CRUD du
+// modèle (nom, type applicable, actif) + de ses champs typés (JSON `champs`).
+const WS_TYPE_APPLICABLE = [
+  ['tous', 'Tous types'], ['preventif', 'Préventif'], ['correctif', 'Correctif'],
+]
+const WS_TYPE_CHAMP = [
+  ['texte', 'Texte'], ['nombre', 'Nombre'], ['case', 'Case à cocher'], ['mesure', 'Mesure'],
+]
+
+function WorksheetModelesSection() {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [nom, setNom] = useState('')
+  const [typeApplicable, setTypeApplicable] = useState('tous')
+  const [busyId, setBusyId] = useState(null)
+
+  const load = () => savApi.getWorksheetModeles()
+    .then((r) => setRows(r.data.results ?? r.data ?? []))
+    .catch(() => {}).finally(() => setLoading(false))
+  const charger = () => { setLoading(true); return load() }
+  useEffect(() => { load() }, [])
+
+  const add = async () => {
+    if (!nom.trim()) return
+    try {
+      await savApi.saveWorksheetModele(null, {
+        nom: nom.trim(), type_ticket_applicable: typeApplicable, champs: [], actif: true,
+      })
+      setNom(''); setTypeApplicable('tous')
+      toast.success('Modèle ajouté')
+      charger()
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+  }
+
+  const patchChamps = async (modele, champs) => {
+    setBusyId(modele.id)
+    try { await savApi.saveWorksheetModele(modele.id, { champs }); charger() }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Mise à jour impossible.') }
+    finally { setBusyId(null) }
+  }
+  const toggleActif = async (modele) => {
+    try { await savApi.saveWorksheetModele(modele.id, { actif: !modele.actif }); charger() }
+    catch { toast.error('Bascule impossible.') }
+  }
+  const del = async (modele) => {
+    if (!window.confirm(`Supprimer le modèle « ${modele.nom} » ?`)) return
+    try { await savApi.deleteWorksheetModele(modele.id); charger() }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+
+  if (loading) return <Skeleton className="h-32 w-full" />
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Le technicien remplit ces champs typés sur le ticket (panneau « Feuille
+        de maintenance »). Activez la fonctionnalité dans l'onglet SLA /
+        Automatisation pour la rendre visible sur les tickets.
+      </p>
+      <Card className="flex flex-col gap-2 p-4">
+        <Input placeholder="Nom du modèle" value={nom} onChange={(e) => setNom(e.target.value)} />
+        <Select value={typeApplicable} onValueChange={setTypeApplicable}>
+          <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {WS_TYPE_APPLICABLE.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button type="button" size="sm" className="self-start" onClick={add}><Plus /> Ajouter</Button>
+      </Card>
+      {rows.length === 0 ? <EmptyState title="Aucun modèle de feuille" /> : (
+        <ul className="flex flex-col gap-2">
+          {rows.map((m) => (
+            <WorksheetModeleRow key={m.id} modele={m} busy={busyId === m.id}
+              onPatchChamps={(champs) => patchChamps(m, champs)}
+              onToggleActif={() => toggleActif(m)} onDelete={() => del(m)} />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function WorksheetModeleRow({ modele, busy, onPatchChamps, onToggleActif, onDelete }) {
+  const [cle, setCle] = useState('')
+  const [libelle, setLibelle] = useState('')
+  const [typeChamp, setTypeChamp] = useState('texte')
+  const [requis, setRequis] = useState(false)
+  const champs = modele.champs ?? []
+
+  const addChamp = () => {
+    if (!cle.trim() || !libelle.trim()) return
+    const next = [...champs, { cle: cle.trim(), libelle: libelle.trim(), type: typeChamp, requis }]
+    onPatchChamps(next)
+    setCle(''); setLibelle(''); setTypeChamp('texte'); setRequis(false)
+  }
+  const removeChamp = (i) => onPatchChamps(champs.filter((_, idx) => idx !== i))
+
+  return (
+    <li className="rounded-lg border border-border bg-card p-3 text-sm" data-testid={`ws-modele-${modele.id}`}>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="font-medium">{modele.nom}</span>
+        <span className="text-xs text-muted-foreground">{modele.type_ticket_applicable}</span>
+        <div className="ml-auto flex items-center gap-2">
+          <Switch checked={modele.actif} disabled={busy}
+            onCheckedChange={onToggleActif}
+            aria-label={`${modele.actif ? 'Désactiver' : 'Activer'} le modèle ${modele.nom}`} />
+          <Button size="sm" variant="ghost" onClick={onDelete}>Supprimer</Button>
+        </div>
+      </div>
+      {champs.length > 0 && (
+        <ul className="mb-2 flex flex-col gap-1">
+          {champs.map((c, i) => (
+            <li key={`${c.cle}-${i}`} className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">{c.libelle}</span>
+              <span>({c.type}{c.requis ? ', requis' : ''})</span>
+              <Button size="sm" variant="ghost" className="ml-auto" disabled={busy}
+                onClick={() => removeChamp(i)}><X /></Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Input className="w-32" placeholder="Clé" value={cle} onChange={(e) => setCle(e.target.value)} />
+        <Input className="flex-1" placeholder="Libellé" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+        <Select value={typeChamp} onValueChange={setTypeChamp}>
+          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {WS_TYPE_CHAMP.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <label className="flex items-center gap-1 text-xs">
+          <input type="checkbox" checked={requis} onChange={(e) => setRequis(e.target.checked)} /> requis
+        </label>
+        <Button type="button" size="sm" disabled={busy} onClick={addChamp}><Plus /> Champ</Button>
+      </div>
+    </li>
+  )
+}
+
 export default function SavParametresPage() {
   const [tab, setTab] = useState('categories-ticket')
 
@@ -286,6 +640,8 @@ export default function SavParametresPage() {
             <TabsTrigger value="reponses-type">Réponses types</TabsTrigger>
             <TabsTrigger value="equipes">Équipes de maintenance</TabsTrigger>
             <TabsTrigger value="categories-equipement">Catégories d'équipement</TabsTrigger>
+            <TabsTrigger value="feuilles-maintenance">Feuilles de maintenance</TabsTrigger>
+            <TabsTrigger value="compatibilites-piece">Pièces compatibles</TabsTrigger>
             <TabsTrigger value="sla-automatisation">SLA / Automatisation</TabsTrigger>
           </TabsList>
 
@@ -342,6 +698,14 @@ export default function SavParametresPage() {
 
           <TabsContent value="categories-equipement">
             <CategoriesEquipementSection />
+          </TabsContent>
+
+          <TabsContent value="feuilles-maintenance">
+            <WorksheetModelesSection />
+          </TabsContent>
+
+          <TabsContent value="compatibilites-piece">
+            <CompatibilitesPieceSection />
           </TabsContent>
 
           <TabsContent value="sla-automatisation">

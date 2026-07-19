@@ -123,6 +123,9 @@ class ContratSerializer(serializers.ModelSerializer):
             'sequence_dunning',
             'confidentialite', 'confidentialite_display',
             'responsable', 'responsable_nom',
+            # WIR77 — nom lisible du client lié (résolu cross-app via
+            # crm.selectors, jamais un import de crm.Client).
+            'client_nom',
             'created_by', 'date_creation', 'custom_data',
         ]
         read_only_fields = [
@@ -131,6 +134,9 @@ class ContratSerializer(serializers.ModelSerializer):
         ]
 
     responsable_nom = serializers.SerializerMethodField()
+    # WIR77 — nom du client lié (lecture cross-app, même motif que
+    # responsable_nom). None si aucun client ou client hors société.
+    client_nom = serializers.SerializerMethodField()
 
     def validate(self, attrs):
         # ARC14 — champs personnalisés (pilote) : valider/nettoyer
@@ -149,6 +155,14 @@ class ContratSerializer(serializers.ModelSerializer):
 
     def get_responsable_nom(self, obj):
         return getattr(obj.responsable, 'username', None)
+
+    def get_client_nom(self, obj):
+        """WIR77 — libellé du client via crm.selectors (lecture cross-app,
+        frontière M3). Dégrade en None sans client / hors société."""
+        if not obj.client_id:
+            return None
+        from apps.crm import selectors as crm_selectors
+        return crm_selectors.client_label(obj.company, obj.client_id)
 
     def get_echeance_preavis(self, obj):
         echeance = obj.echeance_preavis()
@@ -241,12 +255,63 @@ class PartieContratSerializer(serializers.ModelSerializer):
     type_partie_display = serializers.CharField(
         source='get_type_partie_display', read_only=True)
 
+    # WIR98 — libellé lisible du contact lié (jamais un import de
+    # ``apps.contacts`` : source sur l'attribut résolu par le FK string).
+    contact_nom = serializers.CharField(
+        source='contact.nom', read_only=True, default=None)
+    # WIR98 — ``nom`` devient facultatif À L'ÉCRITURE : il peut être dérivé du
+    # contact lié (le modèle le garde non-vide, rempli dans ``create``). Un
+    # ``validate`` objet garantit qu'au moins l'un des deux est fourni.
+    nom = serializers.CharField(
+        max_length=255, required=False, allow_blank=True)
+
     class Meta:
         model = PartieContrat
         fields = [
             'id', 'contrat', 'type_partie', 'type_partie_display', 'nom',
-            'fonction', 'email', 'telephone', 'ordre',
+            'fonction', 'email', 'telephone', 'ordre', 'contact', 'contact_nom',
         ]
+
+    def validate_contact(self, contact):
+        """WIR98 — le contact lié doit appartenir à la société de l'utilisateur.
+
+        Optionnel (``None`` accepté) : une partie hors référentiel reste
+        parfaitement valide, seules les coordonnées libres sont alors utilisées.
+        """
+        request = self.context.get('request')
+        if contact is not None and request is not None \
+                and contact.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contact n'appartient pas à votre société.")
+        return contact
+
+    def validate(self, attrs):
+        """WIR98 — une partie doit avoir une identité : soit un ``nom`` saisi,
+        soit un ``contact`` lié qui le fournira. À la mise à jour, le ``nom``
+        existant de l'instance suffit."""
+        nom = attrs.get('nom') or (getattr(self.instance, 'nom', '') if self.instance else '')
+        if not (nom and nom.strip()) and not attrs.get('contact'):
+            raise serializers.ValidationError(
+                {'nom': 'Le nom est requis (ou reliez un contact existant).'})
+        return attrs
+
+    def create(self, validated_data):
+        """WIR98 — à la création, un contact fourni PRÉ-REMPLIT les champs
+        d'identité laissés vides (nom/fonction/email/téléphone). Une valeur
+        explicitement saisie n'est JAMAIS écrasée (le référentiel amorce, il
+        ne dicte pas)."""
+        contact = validated_data.get('contact')
+        if contact is not None:
+            if not validated_data.get('nom'):
+                prenom = (contact.prenom or '').strip()
+                validated_data['nom'] = f'{contact.nom} {prenom}'.strip()
+            if not validated_data.get('fonction'):
+                validated_data['fonction'] = contact.poste or ''
+            if not validated_data.get('email'):
+                validated_data['email'] = contact.email or ''
+            if not validated_data.get('telephone'):
+                validated_data['telephone'] = contact.telephone or ''
+        return super().create(validated_data)
 
     def validate_contrat(self, contrat):
         """Le contrat rattaché doit appartenir à la société de l'utilisateur.

@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react'
-import { ClipboardCheck, PackageCheck } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  ClipboardCheck, PackageCheck, Play, Calculator, AlertTriangle, CheckCircle2, PlusCircle,
+} from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Badge, Button, Dialog,
-  DialogContent, DialogTitle, Textarea, Label, toast,
+  DialogContent, DialogTitle, Textarea, Label, Input, toast,
 } from '../../ui'
 import { FieldSelect } from './QhseForm'
 import { formatDate } from '../../lib/format'
@@ -139,6 +141,280 @@ function ControleReceptionTab() {
   )
 }
 
+// ── WIR124 — dialogues d'écriture des onglets ITP/Audits/Procédures/Retours ──
+// Le backend (instancier ITP, relevés, grilles/audits + calculerScore/leverNcr,
+// procédures create/activer, retours + moyenne) était complet et testé mais les
+// 4 onglets restaient lecture seule : ces dialogues câblent les helpers
+// `qhseApi` déjà prêts. `company`/`auteur` sont posés côté serveur.
+
+const AUDIT_TYPE_OPTS = [
+  { value: 'chantier', label: 'Chantier' },
+  { value: 'securite', label: 'Sécurité' },
+  { value: 'qualite', label: 'Qualité' },
+  { value: 'environnement', label: 'Environnement' },
+]
+const RETOUR_CANAL_OPTS = [
+  { value: 'telephone', label: 'Téléphone' },
+  { value: 'email', label: 'Email' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'formulaire', label: 'Formulaire' },
+  { value: 'visite', label: 'Visite sur site' },
+  { value: 'autre', label: 'Autre' },
+]
+
+// Charge des options {value,label} pour un <FieldSelect> depuis un fetcher.
+function useSelectOptions(fetcher, mapRow) {
+  const [options, setOptions] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    fetcher()
+      .then((r) => {
+        const rows = r?.data?.results ?? r?.data ?? []
+        if (!cancelled) setOptions((Array.isArray(rows) ? rows : []).map(mapRow))
+      })
+      .catch(() => { if (!cancelled) setOptions([]) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return options
+}
+
+function InstancierPlanChantierDialog({ onClose, onDone }) {
+  const modeles = useSelectOptions(
+    () => qhseApi.plansInspection.list(),
+    (m) => ({ value: String(m.id), label: `${m.code || ''} ${m.nom}`.trim() }))
+  const [modele, setModele] = useState('')
+  const [chantierId, setChantierId] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!modele || !chantierId) { toast.error('Modèle et chantier requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.plansChantier.instancier({
+        modele: Number(modele), chantier_id: Number(chantierId),
+      })
+      toast.success('Plan chantier instancié.')
+      onDone(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Instanciation impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Instancier un plan chantier (ITP)</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Modèle ITP</Label>
+            <FieldSelect value={modele} onValueChange={setModele} options={modeles} />
+          </div>
+          <div>
+            <Label>Chantier (id)</Label>
+            <Input type="number" value={chantierId} onChange={(e) => setChantierId(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Instanciation…' : 'Instancier'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function GrilleAuditDialog({ onClose, onDone }) {
+  const [code, setCode] = useState('')
+  const [nom, setNom] = useState('')
+  const [typeAudit, setTypeAudit] = useState('chantier')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!code.trim() || !nom.trim()) { toast.error('Code et nom requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.grillesAudit.create({
+        code: code.trim(), nom: nom.trim(), type_audit: typeAudit, actif: true,
+      })
+      toast.success("Grille d'audit créée.")
+      onDone(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Nouvelle grille d'audit</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div><Label>Code</Label><Input value={code} onChange={(e) => setCode(e.target.value)} /></div>
+          <div><Label>Nom</Label><Input value={nom} onChange={(e) => setNom(e.target.value)} /></div>
+          <div>
+            <Label>Type d'audit</Label>
+            <FieldSelect value={typeAudit} onValueChange={setTypeAudit} options={AUDIT_TYPE_OPTS} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function AuditDialog({ onClose, onDone }) {
+  const grilles = useSelectOptions(
+    () => qhseApi.grillesAudit.list(),
+    (g) => ({ value: String(g.id), label: `${g.code || ''} ${g.nom}`.trim() }))
+  const [grille, setGrille] = useState('')
+  const [dateAudit, setDateAudit] = useState('')
+  const [chantierId, setChantierId] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!grille) { toast.error('La grille est requise.'); return }
+    setSaving(true)
+    try {
+      const payload = { grille: Number(grille) }
+      if (dateAudit) payload.date_audit = dateAudit
+      if (chantierId) payload.chantier_id = Number(chantierId)
+      await qhseApi.audits.create(payload)
+      toast.success('Audit démarré.')
+      onDone(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Démarrer un audit</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Grille</Label>
+            <FieldSelect value={grille} onValueChange={setGrille} options={grilles} />
+          </div>
+          <div><Label>Date d'audit</Label><Input type="date" value={dateAudit} onChange={(e) => setDateAudit(e.target.value)} /></div>
+          <div><Label>Chantier (id, optionnel)</Label><Input type="number" value={chantierId} onChange={(e) => setChantierId(e.target.value)} /></div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Création…' : 'Démarrer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ProcedureQualiteDialog({ onClose, onDone }) {
+  const [reference, setReference] = useState('')
+  const [titre, setTitre] = useState('')
+  const [version, setVersion] = useState('1')
+  const [contenu, setContenu] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!reference.trim() || !titre.trim()) { toast.error('Référence et titre requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.proceduresQualite.create({
+        reference: reference.trim(), titre: titre.trim(),
+        version: Number(version) || 1, contenu,
+      })
+      toast.success('Procédure créée (brouillon).')
+      onDone(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Nouvelle procédure qualité</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div><Label>Référence</Label><Input aria-label="Référence" value={reference} onChange={(e) => setReference(e.target.value)} /></div>
+          <div><Label>Titre</Label><Input aria-label="Titre" value={titre} onChange={(e) => setTitre(e.target.value)} /></div>
+          <div><Label>Version</Label><Input aria-label="Version" type="number" value={version} onChange={(e) => setVersion(e.target.value)} /></div>
+          <div><Label>Contenu (optionnel)</Label><Textarea rows={3} value={contenu} onChange={(e) => setContenu(e.target.value)} /></div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function RetourClientDialog({ onClose, onDone }) {
+  const [chantierId, setChantierId] = useState('')
+  const [note, setNote] = useState('5')
+  const [canal, setCanal] = useState('telephone')
+  const [commentaire, setCommentaire] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    const n = Number(note)
+    if (!(n >= 1 && n <= 5)) { toast.error('La note doit être entre 1 et 5.'); return }
+    setSaving(true)
+    try {
+      const payload = { note_satisfaction: n, canal, commentaire }
+      if (chantierId) payload.chantier_id = Number(chantierId)
+      await qhseApi.retoursClient.create(payload)
+      toast.success('Retour client enregistré.')
+      onDone(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Nouveau retour client</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div><Label>Chantier (id, optionnel)</Label><Input type="number" value={chantierId} onChange={(e) => setChantierId(e.target.value)} /></div>
+          <div><Label>Note de satisfaction (1-5)</Label><Input type="number" min="1" max="5" value={note} onChange={(e) => setNote(e.target.value)} /></div>
+          <div>
+            <Label>Canal</Label>
+            <FieldSelect value={canal} onValueChange={setCanal} options={RETOUR_CANAL_OPTS} />
+          </div>
+          <div><Label>Commentaire</Label><Textarea rows={3} value={commentaire} onChange={(e) => setCommentaire(e.target.value)} /></div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function MoyenneRetoursWidget({ deps = [] }) {
+  const [data, setData] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    qhseApi.retoursClient.moyenne()
+      .then((r) => { if (!cancelled) setData(r?.data ?? null) })
+      .catch(() => { if (!cancelled) setData(null) })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
+  if (!data) return null
+  return (
+    <div className="rounded-md border border-border bg-muted/30 p-3 text-sm" data-testid="retours-moyenne">
+      Note moyenne de satisfaction :{' '}
+      <strong>{data.moyenne == null ? '—' : `${Number(data.moyenne).toFixed(1)}/5`}</strong>
+      {' '}({data.total ?? 0} retour(s))
+    </div>
+  )
+}
+
 /* ============================================================================
    UX31 — Inspections & audits.
    ----------------------------------------------------------------------------
@@ -158,6 +434,45 @@ const boolCell = (v) =>
 
 export default function Inspections() {
   const [tab, setTab] = useState('itp')
+  // WIR124 — état des dialogues d'écriture + compteurs de rechargement par onglet.
+  const [dialog, setDialog] = useState(null) // 'instancier' | 'grille' | 'audit' | 'procedure' | 'retour'
+  const [reloadItp, setReloadItp] = useState(0)
+  const [reloadAudits, setReloadAudits] = useState(0)
+  const [reloadProc, setReloadProc] = useState(0)
+  const [reloadRetours, setReloadRetours] = useState(0)
+  const [busyAudit, setBusyAudit] = useState(null)
+  const [busyProc, setBusyProc] = useState(null)
+
+  const calculerScoreAudit = async (audit) => {
+    setBusyAudit(audit.id)
+    try {
+      await qhseApi.audits.calculerScore(audit.id)
+      toast.success('Score recalculé.')
+      setReloadAudits((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Calcul impossible.')
+    } finally { setBusyAudit(null) }
+  }
+  const leverNcrAudit = async (audit) => {
+    setBusyAudit(audit.id)
+    try {
+      await qhseApi.audits.leverNcr(audit.id)
+      toast.success('NCR levée(s) pour les réponses non conformes.')
+      setReloadAudits((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Levée de NCR impossible.')
+    } finally { setBusyAudit(null) }
+  }
+  const activerProcedure = async (proc) => {
+    setBusyProc(proc.id)
+    try {
+      await qhseApi.proceduresQualite.activer(proc.id)
+      toast.success('Procédure mise en vigueur.')
+      setReloadProc((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Activation impossible.')
+    } finally { setBusyProc(null) }
+  }
 
   const plansModelesCols = useMemo(() => [
     { id: 'code', header: 'Code', width: 120, accessor: (r) => r.code },
@@ -308,6 +623,12 @@ export default function Inspections() {
             fetcher={() => qhseApi.plansChantier.list()}
             columns={plansChantierCols}
             exportName="qhse-plans-chantier"
+            deps={[reloadItp]}
+            actions={(
+              <Button size="sm" onClick={() => setDialog('instancier')}>
+                <PlusCircle size={15} aria-hidden="true" /> Instancier un plan
+              </Button>
+            )}
           />
           <QhseResourceList
             title="Relevés de contrôle"
@@ -323,6 +644,12 @@ export default function Inspections() {
             fetcher={() => qhseApi.grillesAudit.list()}
             columns={grillesCols}
             exportName="qhse-grilles-audit"
+            deps={[reloadAudits]}
+            actions={(
+              <Button size="sm" onClick={() => setDialog('grille')}>
+                <PlusCircle size={15} aria-hidden="true" /> Nouvelle grille
+              </Button>
+            )}
           />
           <QhseResourceList
             title="Audits"
@@ -330,6 +657,22 @@ export default function Inspections() {
             fetcher={() => qhseApi.audits.list()}
             columns={auditsCols}
             exportName="qhse-audits"
+            deps={[reloadAudits]}
+            actions={(
+              <Button size="sm" onClick={() => setDialog('audit')}>
+                <Play size={15} aria-hidden="true" /> Démarrer un audit
+              </Button>
+            )}
+            rowActions={(r) => [
+              {
+                id: 'calculer-score', label: 'Calculer le score', icon: Calculator,
+                disabled: busyAudit === r.id, onClick: () => calculerScoreAudit(r),
+              },
+              {
+                id: 'lever-ncr', label: 'Lever NCR', icon: AlertTriangle,
+                disabled: busyAudit === r.id, onClick: () => leverNcrAudit(r),
+              },
+            ]}
           />
         </TabsContent>
 
@@ -347,12 +690,31 @@ export default function Inspections() {
             fetcher={() => qhseApi.proceduresQualite.list()}
             columns={proceduresCols}
             exportName="qhse-procedures"
+            deps={[reloadProc]}
+            actions={(
+              <Button size="sm" onClick={() => setDialog('procedure')}>
+                <PlusCircle size={15} aria-hidden="true" /> Nouvelle procédure
+              </Button>
+            )}
+            rowActions={(r) => (r.statut === 'brouillon'
+              ? [{
+                  id: 'activer', label: 'Mettre en vigueur', icon: CheckCircle2,
+                  disabled: busyProc === r.id, onClick: () => activerProcedure(r),
+                }]
+              : [])}
           />
+          <MoyenneRetoursWidget deps={[reloadRetours]} />
           <QhseResourceList
             title="Retours client"
             fetcher={() => qhseApi.retoursClient.list()}
             columns={retoursCols}
             exportName="qhse-retours-client"
+            deps={[reloadRetours]}
+            actions={(
+              <Button size="sm" onClick={() => setDialog('retour')}>
+                <PlusCircle size={15} aria-hidden="true" /> Nouveau retour
+              </Button>
+            )}
           />
         </TabsContent>
 
@@ -360,6 +722,38 @@ export default function Inspections() {
           <ControleReceptionTab />
         </TabsContent>
       </Tabs>
+
+      {/* WIR124 — dialogues d'écriture */}
+      {dialog === 'instancier' && (
+        <InstancierPlanChantierDialog
+          onClose={() => setDialog(null)}
+          onDone={() => setReloadItp((n) => n + 1)}
+        />
+      )}
+      {dialog === 'grille' && (
+        <GrilleAuditDialog
+          onClose={() => setDialog(null)}
+          onDone={() => setReloadAudits((n) => n + 1)}
+        />
+      )}
+      {dialog === 'audit' && (
+        <AuditDialog
+          onClose={() => setDialog(null)}
+          onDone={() => setReloadAudits((n) => n + 1)}
+        />
+      )}
+      {dialog === 'procedure' && (
+        <ProcedureQualiteDialog
+          onClose={() => setDialog(null)}
+          onDone={() => setReloadProc((n) => n + 1)}
+        />
+      )}
+      {dialog === 'retour' && (
+        <RetourClientDialog
+          onClose={() => setDialog(null)}
+          onDone={() => setReloadRetours((n) => n + 1)}
+        />
+      )}
     </div>
   )
 }

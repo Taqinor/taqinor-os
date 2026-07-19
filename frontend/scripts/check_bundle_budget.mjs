@@ -65,7 +65,10 @@ const PER_CHUNK_BUDGET_KB = 350
 // organique, écrans lazy-loadés, AUCUNE nouvelle dépendance npm. Palier généreux
 // (~110 Ko) pour absorber les prochaines vagues sans re-bumper à chaque merge ;
 // le garde per-chunk (350) + budgets vendors restent les vrais garde-fous.
-const TOTAL_BUDGET_KB = 2550
+// 2026-07-19 : 2550 -> 2650. WIR vague 2 : ~30 nouveaux écrans lazy (P3) —
+// croissance répartie sur de nombreux petits chunks (pas un seul chunk gonflé),
+// AUCUNE nouvelle dépendance npm. Réel ~2589 Ko ; palier généreux habituel.
+const TOTAL_BUDGET_KB = 2650
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -102,7 +105,11 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // chaque écran lazy = 1 chunk, croissance produit, pas une prolifération.
 // Palier généreux couvrant les deux vagues ; le budget gzip (2440) +
 // PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous de poids.
-const MAX_CHUNK_COUNT = 460
+// 2026-07-19 : 460 -> 500. WIR vague 2 : ~30 nouveaux écrans lazy (P3), chacun
+// son propre chunk (réel ~489) — croissance produit, pas une prolifération de
+// structure ; le budget gzip (2650) + PER_CHUNK_BUDGET_KB (350) restent les
+// vrais garde-fous de poids.
+const MAX_CHUNK_COUNT = 500
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

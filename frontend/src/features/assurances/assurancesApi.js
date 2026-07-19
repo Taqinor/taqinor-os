@@ -88,6 +88,16 @@ const assurancesApi = {
       params: { type_actif: typeActif, actif_ref: actifRef },
     }),
   getTableauBord: () => api.get('/assurances/tableau-bord/'),
+
+  // ── WIR145 — exigences d'assurance par marché + vérification conformité ──
+  getExigencesMarche: (params) =>
+    api.get('/assurances/exigences-assurance-marche/', { params }),
+  createExigenceMarche: (data) =>
+    api.post('/assurances/exigences-assurance-marche/', data),
+  deleteExigenceMarche: (id) =>
+    api.delete(`/assurances/exigences-assurance-marche/${id}/`),
+  verifierExigenceMarche: (id) =>
+    api.post(`/assurances/exigences-assurance-marche/${id}/verifier/`),
 }
 
 export default assurancesApi

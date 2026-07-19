@@ -71,6 +71,10 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/compta/reponses-enquete/",    # certificat PDF d'une réponse d'enquête
     "api/django/compta/evenements-marketing/",  # inscription publique à un événement
     "api/django/rh/carrieres",                # page carrières publique (flag-gated)
+    # WIR64/FG206 — landing publique de capture de lead (FormulaireIntake) :
+    # soumission AllowAny throttlée 30/min par IP, société résolue depuis le
+    # slug du formulaire actif (jamais du corps), crée un lead crm via services.
+    "api/django/marketing/intake/",
     # Auth publiques (JWT obtention/refresh, inscription société onboarding) :
     "api/django/auth/token",                  # obtention/refresh/verify JWT (auth.urls)
     "api/django/auth/register-company",       # inscription société (onboarding)

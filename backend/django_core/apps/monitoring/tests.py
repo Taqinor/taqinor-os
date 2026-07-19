@@ -267,6 +267,29 @@ class TestUnderperformance(TestCase):
         self.assertEqual(
             UnderperformanceFlag.objects.filter(is_open=True).count(), 1)
 
+    def test_underperf_ticket_goes_through_sav_services_boundary(self):
+        """WIR88 — le ticket préventif est créé via apps.sav.services (frontière
+        M3), avec les mêmes attributs qu'avant (comportement inchangé)."""
+        s = MonitoringSettings.get(self.company)
+        s.auto_create_ticket = True
+        s.save()
+        self._add_reading(1000)
+        res = services.evaluate_underperformance(
+            self.inst, user=self.user, today=self.today)
+        ticket = res['ticket']
+        self.assertIsNotNone(ticket)
+        self.assertEqual(ticket.type, Ticket.Type.PREVENTIF)
+        self.assertEqual(ticket.statut, Ticket.Statut.NOUVEAU)
+        self.assertEqual(ticket.priorite, Ticket.Priorite.HAUTE)
+        self.assertEqual(ticket.installation_id, self.inst.id)
+        self.assertEqual(ticket.created_by_id, self.user.id)
+        self.assertTrue(ticket.reference.startswith('SAV'))
+        # Frontière : monitoring.services n'importe plus les models SAV.
+        import inspect
+        from apps.monitoring import services as monitoring_services
+        source = inspect.getsource(monitoring_services)
+        self.assertNotIn('apps.sav.models', source)
+
     def test_good_production_closes_open_flag(self):
         # Sous-performe d'abord.
         self._add_reading(1000)

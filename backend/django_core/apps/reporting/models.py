@@ -90,6 +90,9 @@ ALL_DASHBOARD_CARDS = [
     # WIR22 — badge du contrôle d'intégrité inter-documents (YSERV13) :
     # nombre d'anomalies détectées (GET /reporting/insights/integrite/).
     'integrite',
+    # WIR100 — KPI fédérés (ARC40) : tuiles agrégées des providers
+    # `kpi_providers` des modules actifs (GET /reporting/reports/kpi-federes/).
+    'kpi_federes',
 ]
 
 # Ensembles de cartes par défaut selon le palier de rôle (menu_tier).

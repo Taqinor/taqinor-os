@@ -50,6 +50,9 @@ export default function ArticleDetail({
   const [aclDraft, setAclDraft] = useState({ role: 'normal', niveau: 'lecture' })
   const [favori, setFavori] = useState(false)
   const [retroliens, setRetroliens] = useState([])
+  // WIR71 — lectures obligatoires (XKB7) assignées sur cet article.
+  const [lecturesObl, setLecturesObl] = useState([])
+  const [oblDraft, setOblDraft] = useState({ role_cible: 'normal', echeance: '' })
 
   const load = () => {
     setLoading(true)
@@ -61,8 +64,10 @@ export default function ArticleDetail({
       canEdit ? kbApi.listPartages({ article: articleId }) : Promise.resolve(null),
       kbApi.listFavoris({ article: articleId }),
       kbApi.retroliens(articleId),
+      kbApi.listLecturesObligatoires({ article: articleId })
+        .catch(() => ({ data: [] })),
     ])
-      .then(([a, v, r, acl, part, fav, retro]) => {
+      .then(([a, v, r, acl, part, fav, retro, obl]) => {
         setArticle(a.data)
         setVersions(Array.isArray(v.data) ? v.data : (v.data?.results ?? []))
         setResume(r.data)
@@ -71,9 +76,32 @@ export default function ArticleDetail({
         const favRows = Array.isArray(fav.data) ? fav.data : (fav.data?.results ?? [])
         setFavori(favRows.length > 0)
         setRetroliens(Array.isArray(retro.data) ? retro.data : (retro.data?.results ?? []))
+        setLecturesObl(Array.isArray(obl.data) ? obl.data : (obl.data?.results ?? []))
       })
       .catch(() => toast.error('Impossible de charger l’article.'))
       .finally(() => setLoading(false))
+  }
+
+  // WIR71 — assignation d'une lecture obligatoire (managers) + retrait.
+  const assignerLectureObl = async () => {
+    try {
+      await kbApi.createLectureObligatoire({
+        article: articleId,
+        role_cible: oblDraft.role_cible,
+        echeance: oblDraft.echeance || null,
+      })
+      toast.success('Lecture obligatoire assignée.')
+      setOblDraft({ role_cible: 'normal', echeance: '' })
+      load()
+    } catch { toast.error('Assignation impossible (doublon ?).') }
+  }
+
+  const retirerLectureObl = async (id) => {
+    try {
+      await kbApi.removeLectureObligatoire(id)
+      toast.success('Lecture obligatoire retirée.')
+      load()
+    } catch { toast.error('Suppression impossible.') }
   }
 
   useEffect(() => {
@@ -286,6 +314,17 @@ export default function ArticleDetail({
         {article.traduction_perimee && (
           <Badge tone="warning">Traduction périmée</Badge>
         )}
+        {/* WIR71 — badge « Lecture obligatoire » quand une assignation XKB7
+            porte sur cet article (avec l'échéance la plus proche si fournie). */}
+        {lecturesObl.length > 0 && (
+          <Badge tone="warning">
+            Lecture obligatoire
+            {(() => {
+              const echeances = lecturesObl.map((o) => o.echeance).filter(Boolean).sort()
+              return echeances.length > 0 ? ` · avant le ${echeances[0]}` : ''
+            })()}
+          </Badge>
+        )}
         <span>· Auteur : {article.auteur_nom || '—'}</span>
         <span>· Modifié : {formatDateTime(article.date_modification)}</span>
       </div>
@@ -492,6 +531,54 @@ export default function ArticleDetail({
       ) : (
         <p className="text-sm text-muted-foreground">Aucun droit défini (article public).</p>
       )}
+
+      {/* WIR71 — lectures obligatoires (XKB7) : un manager assigne cet article
+          à un palier de rôle (avec échéance optionnelle) ; l'utilisateur ciblé
+          voit alors le badge « Lecture obligatoire » sur l'article. */}
+      <div className="mt-2 border-t border-border pt-4">
+        <h4 className="mb-1 text-sm font-semibold">Lecture obligatoire</h4>
+        <p className="mb-2 text-sm text-muted-foreground">
+          Rendez cet article obligatoire pour un palier de rôle. La complétion
+          s’appuie sur le suivi de lecture existant (« Marquer comme lu »).
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <FilterSelect
+            value={oblDraft.role_cible}
+            onChange={(role_cible) => setOblDraft((d) => ({ ...d, role_cible }))}
+            options={ROLE_OPTIONS}
+            aria-label="Palier de rôle ciblé"
+          />
+          <input
+            type="date"
+            value={oblDraft.echeance}
+            onChange={(e) => setOblDraft((d) => ({ ...d, echeance: e.target.value }))}
+            aria-label="Échéance (optionnelle)"
+            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+          />
+          <Button type="button" variant="outline" onClick={assignerLectureObl}>
+            <Plus /> Assigner
+          </Button>
+        </div>
+        {lecturesObl.length > 0 && (
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {lecturesObl.map((o) => (
+              <li key={o.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+                <span className="flex items-center gap-2">
+                  <Badge tone="info">{o.utilisateur_nom || o.role_cible || '—'}</Badge>
+                  {o.echeance && <Badge tone="neutral">avant le {o.echeance}</Badge>}
+                </span>
+                <Button
+                  type="button" variant="ghost" size="sm"
+                  onClick={() => retirerLectureObl(o.id)}
+                  aria-label="Retirer cette lecture obligatoire"
+                >
+                  <Trash2 />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 

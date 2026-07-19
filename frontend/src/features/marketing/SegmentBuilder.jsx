@@ -66,7 +66,6 @@ export default function SegmentBuilder({ initial, onSaved, onCancel }) {
       .catch(() => { if (!cancelled) setErr('Prévisualisation impossible.') })
       .finally(() => { if (!cancelled) setPreviewLoading(false) })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, segmentId])
 
   const creerBrouillon = async () => {

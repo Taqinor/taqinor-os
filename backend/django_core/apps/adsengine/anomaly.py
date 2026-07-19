@@ -16,6 +16,14 @@ DB (lecture ``InsightSnapshot``, écriture ``AnomalyEvent``) vit dans
 Choix délibéré (dd-guardian §B2) : les bandes sont des RATIOS simples (±2×), pas
 des écarts-types — 5-15 leads/semaine sont trop épars pour qu'un stddev signifie
 quoi que ce soit, et un ratio est explicable en une phrase FR au fondateur.
+
+WIR140 — SÉPARATION DÉLIBÉRÉE du socle ``core.anomaly`` : ce module ne le
+consomme PAS (et ne doit pas). Le socle fait du z-score sur des séries denses et
+matérialise un ``core.AnomalyFlag`` générique ; ici on fait des ratios relatifs
+sur des données SMB éparses et on matérialise un ``adsengine.AnomalyEvent``
+(kind ads, ``rule_policy``, ``alert``). Réexprimer ces détecteurs via le z-score
+du socle régresserait le design dd-guardian. Dossier de décision complet :
+``docs/engine/anomaly-engine-separation.md``.
 """
 from __future__ import annotations
 

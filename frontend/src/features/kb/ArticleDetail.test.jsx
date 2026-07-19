@@ -39,6 +39,10 @@ vi.mock('../../api/kbApi', () => ({
     removeCouverture: vi.fn(),
     couvertureImageUrl: vi.fn(() => '/api/django/kb/articles/1/couverture-image/'),
     items: vi.fn().mockResolvedValue({ data: [] }),
+    // WIR71 — lectures obligatoires (XKB7).
+    listLecturesObligatoires: vi.fn().mockResolvedValue({ data: [] }),
+    createLectureObligatoire: vi.fn(),
+    removeLectureObligatoire: vi.fn(),
   },
 }))
 
@@ -100,6 +104,7 @@ function mockLoads(overrides = {}) {
   kbApi.listPartages.mockResolvedValue({ data: [] })
   kbApi.listFavoris.mockResolvedValue({ data: [] })
   kbApi.retroliens.mockResolvedValue({ data: [] })
+  kbApi.listLecturesObligatoires.mockResolvedValue({ data: overrides.lecturesObl || [] })
 }
 
 beforeEach(() => {

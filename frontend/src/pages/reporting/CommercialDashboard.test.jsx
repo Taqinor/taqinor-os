@@ -28,6 +28,8 @@ vi.mock('../../api/reportingApi', () => ({
         by_source_technique: [],
       },
     })),
+    // WIR100(a) — carte Vélocité par étape (FG29).
+    funnelVelocity: vi.fn(() => Promise.resolve({ data: { velocity: [] } })),
   },
 }))
 

@@ -7,6 +7,7 @@ import Sidebar from './Sidebar'
 import Header from './Header'
 import BottomTabBar from './BottomTabBar'
 import RouteFocus from './RouteFocus'
+import UsageTracker from './UsageTracker'
 import OnboardingCoachmarks from '../../features/onboarding/OnboardingCoachmarks'
 import { OfflineBanner } from '../../ui/OfflineState'
 import PresentationModeBanner from './PresentationModeBanner'
@@ -99,6 +100,8 @@ export default function Layout({ children }) {
           contenu du DOM pour que le skip-link soit le premier élément
           focalisable au Tab (WCAG 2.4.1). */}
       <RouteFocus />
+      {/* WIR69 — suivi d'adoption : trace une visite d'écran par navigation. */}
+      <UsageTracker />
       <Sidebar collapsed={collapsed} onToggle={toggleCollapsed}
                onNavigate={() => setDrawerOpen(false)} />
       {drawerOpen && (

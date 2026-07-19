@@ -2008,6 +2008,17 @@ class TerritoireCommercial(models.Model):
     hors foundation). Le service ``affecter_territoire`` associe un lead à la
     zone qui matche sa ville, en respectant la priorité (plus haute d'abord).
     Scopé société.
+
+    WIR81 — RELATION AVEC ``apps.territoires.Territoire`` (NTCRM1/2). Ces deux
+    modèles « territoire » résolvent le même besoin sans référence croisée.
+    Le moteur CANONIQUE d'assignation des leads est
+    ``apps.territoires.Territoire`` : c'est LUI que
+    ``crm.services.default_responsable_for`` consulte en premier (via
+    ``territoires.services.resoudre_owner_pour_attrs``). ``TerritoireCommercial``
+    est le référentiel LEGACY (FG236), conservé (jamais supprimé) car NTDST11
+    prévoit une FK vers lui ; son ViewSet est exposé sous l'UNIQUE préfixe
+    ``/api/django/compta/territoires-commerciaux/`` (le double montage ODX13 a
+    été retiré ; le retrait complet ODX22 reste futur).
     """
     company = models.ForeignKey(
         'authentication.Company',

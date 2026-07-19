@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ShieldAlert, UserPlus, Trash2 } from 'lucide-react'
+import { ShieldAlert, UserPlus, Trash2, Upload } from 'lucide-react'
 import { ListShell } from '../../ui/module'
+import ExcelImport from '../../components/ExcelImport'
 import {
   toast, Button,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -43,6 +44,8 @@ export default function EmployeList() {
   const [error, setError] = useState(null)
   const [reloadTick, setReloadTick] = useState(0)
   const [createOpen, setCreateOpen] = useState(false)
+  // WIR48/ARC13 — import CSV/XLSX des dossiers RH (cible `dossiers_rh`).
+  const [showImport, setShowImport] = useState(false)
 
   const recharger = () => setReloadTick((t) => t + 1)
 
@@ -143,10 +146,16 @@ export default function EmployeList() {
   ]
 
   const actions = (
-    <Button onClick={() => setCreateOpen(true)}>
-      <UserPlus size={15} strokeWidth={1.75} aria-hidden="true" />
-      Nouvel employé
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button variant="outline" onClick={() => setShowImport(true)}>
+        <Upload size={15} strokeWidth={1.75} aria-hidden="true" />
+        Importer
+      </Button>
+      <Button onClick={() => setCreateOpen(true)}>
+        <UserPlus size={15} strokeWidth={1.75} aria-hidden="true" />
+        Nouvel employé
+      </Button>
+    </div>
   )
 
   return (
@@ -185,6 +194,13 @@ export default function EmployeList() {
           departements={departements}
           onClose={() => setCreateOpen(false)}
           onSaved={(id) => { setCreateOpen(false); recharger(); if (id) navigate(`/rh/employes/${id}`) }}
+        />
+      )}
+      {showImport && (
+        <ExcelImport
+          target="dossiers_rh"
+          onClose={() => setShowImport(false)}
+          onDone={recharger}
         />
       )}
     </div>

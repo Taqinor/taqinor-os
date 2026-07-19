@@ -58,6 +58,7 @@ export const TABS = [
   { key: 'kits',       label: "Kits d'outillage",         group: 'terrain' },
   { key: 'shotlist',   label: 'Documentation terrain',    group: 'terrain' },
   { key: 'automatisations', label: 'Automatisations',     group: 'automatisation' },
+  { key: 'notifications', label: 'Notifications',         group: 'automatisation' },
   { key: 'securite',   label: 'Sécurité & terrain',       group: 'equipe' },
   { key: 'equipe',     label: 'Équipe & rôles',           group: 'equipe' },
   { key: 'messages',   label: 'Messages & relances',      group: 'ventes' },

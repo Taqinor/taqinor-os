@@ -30,6 +30,12 @@ const TRIGGERS = [
   { key: 'warranty_expiring', label: 'Garantie proche expiration' },
   { key: 'maintenance_due', label: 'Visite de maintenance due' },
   { key: 'stock_below_threshold', label: 'Stock sous le seuil' },
+  // WIR61 — les 5 déclencheurs backend jusqu'ici invisibles côté UI.
+  { key: 'date_echeance_champ', label: 'Échéance de champ (± N jours)' },
+  { key: 'webhook_inbound', label: 'Webhook entrant' },
+  { key: 'record_state_change', label: "Changement d'état d'un enregistrement" },
+  { key: 'projet_status_change', label: 'Changement de statut de projet' },
+  { key: 'projet_phase_change', label: 'Changement de phase de projet' },
 ]
 
 // Actions — clés EN alignées sur ActionType.
@@ -61,6 +67,110 @@ function safeParse(text) {
 function toJson(obj) {
   if (!obj || !Object.keys(obj).length) return ''
   try { return JSON.stringify(obj, null, 2) } catch { return '' }
+}
+
+// WIR61 / XPLT4 — Panneau des webhooks entrants tokenisés. Chaque webhook est
+// attaché à UNE règle de type `webhook_inbound` : le POST externe reçu sur son
+// URL tokenisée devient le contexte des conditions/actions. Le token/URL sont
+// générés côté serveur ; la rotation invalide immédiatement l'ancien token.
+function IncomingWebhookPanel({ rules }) {
+  const [hooks, setHooks] = useState([])
+  const [ruleId, setRuleId] = useState('')
+  const [secret, setSecret] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = () => automationApi.getWebhooks()
+    .then((r) => setHooks(r.data.results ?? r.data)).catch(() => {})
+  useEffect(() => { load() }, [])
+
+  // Seules les règles de type `webhook_inbound` peuvent porter un webhook.
+  const webhookRules = rules.filter((r) => r.trigger_type === 'webhook_inbound')
+
+  const create = async () => {
+    if (!ruleId) { toast.error('Choisissez une règle « Webhook entrant ».'); return }
+    setBusy(true)
+    try {
+      await automationApi.createWebhook({ rule: ruleId, hmac_secret: secret })
+      setRuleId(''); setSecret(''); load()
+      toast.success('Webhook créé.')
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Création impossible.') }
+    finally { setBusy(false) }
+  }
+  const rotate = async (h) => {
+    try { await automationApi.rotateWebhook(h.id); load(); toast.success('Token régénéré.') }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Rotation impossible.') }
+  }
+  const toggle = async (h) => {
+    try { await automationApi.updateWebhook(h.id, { enabled: !h.enabled }); load() }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+  }
+  const remove = async (h) => {
+    if (!window.confirm('Supprimer ce webhook ? Son URL cessera de fonctionner.')) return
+    try { await automationApi.deleteWebhook(h.id); load() }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-4 sm:pt-5" data-testid="webhook-panel">
+        <SectionTitle label="Webhooks entrants"
+          icon={<><path d="M18 16.98h-5.99c-1.66 0-3.01-1.34-3.01-3s1.34-3 3.01-3H18"/><path d="m21 12-3-3v6z"/><circle cx="6" cy="18" r="3"/></>}/>
+        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+          Attachez une URL tokenisée à une règle « Webhook entrant » : un POST
+          externe reçu sur cette URL déclenche la règle. Ajoutez un secret HMAC
+          pour exiger une signature. La rotation invalide immédiatement l'ancien
+          token.
+        </p>
+
+        {webhookRules.length === 0 ? (
+          <EmptyState title="Aucune règle « Webhook entrant »"
+            description="Créez d'abord une règle dont le déclencheur est « Webhook entrant »." className="py-6" />
+        ) : (
+          <div className="mb-3 flex flex-wrap items-end gap-2">
+            <div className="min-w-[200px] flex-1">
+              <Select value={ruleId} onValueChange={setRuleId}>
+                <SelectTrigger aria-label="Règle webhook"><SelectValue placeholder="Règle « Webhook entrant »" /></SelectTrigger>
+                <SelectContent>
+                  {webhookRules.map((r) => (
+                    <SelectItem key={r.id} value={String(r.id)}>{r.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Input placeholder="Secret HMAC (optionnel)" value={secret}
+              onChange={(e) => setSecret(e.target.value)} className="max-w-[220px]" />
+            <Button onClick={create} disabled={busy}><Plus size={16} /> Générer l'URL</Button>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2">
+          {hooks.map((h) => (
+            <div key={h.id} className="rounded-lg border border-border p-3 text-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-medium">{h.rule_nom ?? `Règle #${h.rule}`}</span>
+                <Badge tone={h.enabled ? 'success' : 'neutral'}>
+                  {h.enabled ? 'Actif' : 'Inactif'}
+                </Badge>
+                <code className="ml-auto break-all rounded bg-muted px-1.5 py-0.5">{h.url_path}</code>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Button size="sm" variant="ghost" onClick={() => rotate(h)}>
+                  <RefreshCw size={14} /> Rotation du token
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => toggle(h)}>
+                  {h.enabled ? 'Désactiver' : 'Activer'}
+                </Button>
+                <IconButton size="sm" variant="ghost" label="Supprimer"
+                  onClick={() => remove(h)}>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </IconButton>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 export default function AutomatisationsSection() {
@@ -482,6 +592,9 @@ export default function AutomatisationsSection() {
           )}
         </CardContent>
       </Card>
+
+      {/* WIR61 / XPLT4 — Webhooks entrants tokenisés (par règle webhook_inbound). */}
+      <IncomingWebhookPanel rules={rules} />
     </div>
   )
 }

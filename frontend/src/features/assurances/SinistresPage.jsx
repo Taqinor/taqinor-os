@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ShieldAlert } from 'lucide-react'
+import { ShieldAlert, Plus } from 'lucide-react'
 import assurancesApi from './assurancesApi'
-import { Badge, Button, Segmented } from '../../ui'
+import {
+  Badge, Button, Segmented, Label, Input, Textarea,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '../../ui'
 import { ListShell } from '../../ui/module'
 import { formatMAD, formatDate } from '../../lib/format'
 import { SINISTRE_STATUS, SINISTRE_TYPES } from './status'
@@ -26,6 +29,7 @@ export default function SinistresPage() {
   const [error, setError] = useState(null)
   const [statutFilter, setStatutFilter] = useState('tous')
   const [selected, setSelected] = useState(null)
+  const [showCreate, setShowCreate] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -102,7 +106,11 @@ export default function SinistresPage() {
     <ListShell
       title="Sinistres transverses"
       subtitle="Déclarations hors véhicule : dommage, RC, décennale, cyber, vol, incendie… Suivi jusqu'à l'indemnisation."
-      breadcrumbs={[{ label: 'Assurances' }, { label: 'Sinistres' }]}
+      actions={(
+        <Button onClick={() => setShowCreate(true)}>
+          <Plus /> Nouveau sinistre
+        </Button>
+      )}
       columns={columns}
       rows={visible}
       loading={loading}
@@ -138,6 +146,7 @@ export default function SinistresPage() {
             )}
           </div>
           <IndemnisationBloc sinistreId={selected.id} />
+          <IndemnisationForm sinistreId={selected.id} onSaved={load} />
         </div>
       )}
       {!error && (
@@ -145,6 +154,12 @@ export default function SinistresPage() {
           <ShieldAlert className="size-3.5" aria-hidden="true" />
           {visible.length} sinistre(s) affiché(s)
         </p>
+      )}
+      {showCreate && (
+        <SinistreCreateDialog
+          onClose={() => setShowCreate(false)}
+          onSaved={() => { setShowCreate(false); load() }}
+        />
       )}
     </ListShell>
   )
@@ -172,5 +187,188 @@ function IndemnisationBloc({ sinistreId }) {
       <dt className="font-medium">Reste à charge</dt>
       <dd className="font-medium tabular-nums text-right">{formatMAD(data.reste_a_charge)}</dd>
     </dl>
+  )
+}
+
+/* WIR56 — enregistrement d'une indemnisation depuis l'UI (montant réclamé +
+   indemnisé requis ; franchise/date optionnelles). Fait passer le sinistre à
+   `indemnise` côté serveur. */
+function IndemnisationForm({ sinistreId, onSaved }) {
+  const [montantReclame, setMontantReclame] = useState('')
+  const [montantIndemnise, setMontantIndemnise] = useState('')
+  const [franchise, setFranchise] = useState('')
+  const [dateVersement, setDateVersement] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  const peut = montantReclame !== '' && montantIndemnise !== ''
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peut) return
+    setSaving(true)
+    setError(null)
+    try {
+      await assurancesApi.enregistrerIndemnisation(sinistreId, {
+        montant_reclame: Number(montantReclame),
+        montant_indemnise: Number(montantIndemnise),
+        franchise_appliquee: franchise === '' ? undefined : Number(franchise),
+        date_versement: dateVersement || undefined,
+      })
+      setMontantReclame('')
+      setMontantIndemnise('')
+      setFranchise('')
+      setDateVersement('')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setError(data?.detail || (typeof data === 'string' ? data : 'Enregistrement impossible.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-3 flex flex-col gap-2 border-t pt-3" noValidate>
+      <p className="text-xs font-semibold text-muted-foreground">Enregistrer une indemnisation</p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="ind-reclame" className="text-xs">Montant réclamé</Label>
+          <Input id="ind-reclame" type="number" step="any" value={montantReclame} onChange={(e) => setMontantReclame(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="ind-indemnise" className="text-xs">Montant indemnisé</Label>
+          <Input id="ind-indemnise" type="number" step="any" value={montantIndemnise} onChange={(e) => setMontantIndemnise(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="ind-franchise" className="text-xs">Franchise (optionnel)</Label>
+          <Input id="ind-franchise" type="number" step="any" value={franchise} onChange={(e) => setFranchise(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="ind-date" className="text-xs">Date de versement</Label>
+          <Input id="ind-date" type="date" value={dateVersement} onChange={(e) => setDateVersement(e.target.value)} />
+        </div>
+      </div>
+      {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
+      <div>
+        <Button type="submit" size="sm" disabled={!peut || saving}>
+          {saving ? 'Enregistrement…' : 'Enregistrer l\'indemnisation'}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+/* WIR56 — déclaration d'un nouveau sinistre transverse. La police est requise
+   (FK) ; la société est posée côté serveur. */
+function SinistreCreateDialog({ onClose, onSaved }) {
+  const [polices, setPolices] = useState([])
+  const [form, setForm] = useState({
+    police: '',
+    type_sinistre: 'dommage_materiel',
+    date_survenance: '',
+    nature_sinistre: '',
+    montant_estime_degats: '',
+    description: '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    assurancesApi.getPolices()
+      .then((res) => setPolices(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
+      .catch(() => setPolices([]))
+  }, [])
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  const peut = Boolean(form.police && form.nature_sinistre.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peut) return
+    setSaving(true)
+    setError(null)
+    try {
+      await assurancesApi.createSinistre({
+        police: Number(form.police),
+        type_sinistre: form.type_sinistre,
+        date_survenance: form.date_survenance || null,
+        nature_sinistre: form.nature_sinistre.trim(),
+        montant_estime_degats: form.montant_estime_degats === '' ? 0 : Number(form.montant_estime_degats),
+        description: form.description,
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setError(data?.police || data?.detail || (typeof data === 'string' ? data : 'Enregistrement impossible.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouveau sinistre</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sin-police">Police concernée</Label>
+            <select
+              id="sin-police"
+              value={form.police}
+              onChange={(e) => set('police', e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+            >
+              <option value="">— Sélectionner —</option>
+              {polices.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.numero_police} · {p.type_police_display || p.type_police}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sin-type">Type de sinistre</Label>
+              <select
+                id="sin-type"
+                value={form.type_sinistre}
+                onChange={(e) => set('type_sinistre', e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                {SINISTRE_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sin-date">Date de survenance</Label>
+              <Input id="sin-date" type="date" value={form.date_survenance} onChange={(e) => set('date_survenance', e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sin-nature">Nature du sinistre</Label>
+            <Input id="sin-nature" value={form.nature_sinistre} onChange={(e) => set('nature_sinistre', e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sin-montant">Montant estimé des dégâts (MAD)</Label>
+            <Input id="sin-montant" type="number" step="any" value={form.montant_estime_degats} onChange={(e) => set('montant_estime_degats', e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sin-desc">Description</Label>
+            <Textarea id="sin-desc" value={form.description} onChange={(e) => set('description', e.target.value)} />
+          </div>
+          {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={!peut || saving}>
+              {saving ? 'Enregistrement…' : 'Déclarer le sinistre'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

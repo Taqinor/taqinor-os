@@ -42,6 +42,7 @@ from .models import (
     ReleveCourbeIV, ReponseCritere, RetourClientQualite,
     RevueVeilleReglementaire, Secouriste,
     SignalementPublic, VeilleReglementaire,
+    CheckinSecurite, DemandeActionFournisseur,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
@@ -77,6 +78,7 @@ from .serializers import (
     RevueVeilleReglementaireSerializer,
     SecouristeSerializer, SignalementPublicSerializer,
     VeilleReglementaireSerializer,
+    CheckinSecuriteSerializer, DemandeActionFournisseurSerializer,
 )
 from . import chatter
 from .selectors import (
@@ -1077,7 +1079,8 @@ class PermisTravailViewSet(_QhseBaseViewSet):
     queryset = PermisTravail.objects.all()
     serializer_class = PermisTravailSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['reference', 'titre', 'delivre_par', 'valide_par']
+    search_fields = [
+        'reference', 'titre', 'delivre_par__username', 'valide_par__username']
     ordering_fields = [
         'id', 'reference', 'date_debut', 'date_fin', 'date_creation']
 
@@ -1113,9 +1116,10 @@ class PermisTravailViewSet(_QhseBaseViewSet):
     def valider(self, request, pk=None):
         """Valide le permis (``brouillon`` → ``valide``), scopé société.
 
-        Refuse si le permis est déjà clôturé ou expiré. ``valide_par`` peut être
-        fourni au corps (chaîne libre) pour tracer le valideur ; sinon le nom de
-        l'utilisateur courant est posé côté serveur.
+        Refuse si le permis est déjà clôturé ou expiré. WIR128 — ``valide_par``
+        peut être fourni au corps (id d'utilisateur de la société) pour tracer
+        le valideur ; sinon l'utilisateur courant est posé côté serveur (lien
+        auditable, jamais du texte libre).
         """
         permis = self.get_object()
         if permis.statut in (
@@ -1123,10 +1127,19 @@ class PermisTravailViewSet(_QhseBaseViewSet):
             return Response(
                 {'detail': 'Un permis clôturé ou expiré ne peut être validé.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        valide_par = (request.data.get('valide_par')
-                      or request.user.username or '')
+        valideur = request.user
+        raw_id = request.data.get('valide_par')
+        if raw_id not in (None, ''):
+            # Un id explicite doit désigner un utilisateur de la même société.
+            candidat = type(request.user).objects.filter(
+                pk=raw_id, company=request.user.company).first()
+            if candidat is None:
+                return Response(
+                    {'valide_par': "Utilisateur inconnu pour cette société."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            valideur = candidat
         permis.statut = PermisTravail.Statut.VALIDE
-        permis.valide_par = valide_par
+        permis.valide_par = valideur
         permis.save(update_fields=['statut', 'valide_par'])
         return Response(self.get_serializer(permis).data)
 
@@ -2842,3 +2855,144 @@ def causerie_securite_pdf(request, causerie_id):
     response['Content-Disposition'] = (
         f'attachment; filename="causerie-securite-{causerie.pk}-{lang}.pdf"')
     return response
+
+
+# ── WIR115 — Check-in sécurité (technicien seul sur site à risque) ───────────
+class CheckinSecuriteViewSet(_QhseBaseViewSet):
+    """Cycle check-in/check-out d'un technicien seul sur site à risque (WIR115).
+
+    Donne enfin un moyen d'insérer / clôturer une ligne (la tâche beat
+    ``escalader_checkins_en_retard`` tournait contre une table sans écran).
+    CRUD scopé société ; ``company`` posée côté serveur. ``technicien`` par
+    défaut = utilisateur courant. Filtres : ``?en_retard=1`` (non checkout et
+    délai dépassé), ``?technicien=`` , ``?escalade=1``. Action détail
+    ``POST …/<id>/checkout/`` pose l'heure de check-out réelle (maintenant).
+    """
+    queryset = CheckinSecurite.objects.all()
+    serializer_class = CheckinSecuriteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'heure_checkin', 'heure_checkout_prevue',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        technicien = self.request.query_params.get('technicien')
+        if technicien not in (None, ''):
+            qs = qs.filter(technicien_id=technicien)
+        escalade = self.request.query_params.get('escalade')
+        if escalade in ('1', 'true'):
+            qs = qs.filter(escalade_declenchee=True)
+        if self.request.query_params.get('en_retard') in ('1', 'true'):
+            ids = [c.id for c in qs if c.en_retard()]
+            qs = qs.filter(id__in=ids)
+        return qs
+
+    def perform_create(self, serializer):
+        # Le technicien par défaut est l'utilisateur courant (jamais un autre
+        # posé silencieusement) ; l'heure de check-in par défaut = maintenant.
+        data = {'company': self.request.user.company}
+        if not serializer.validated_data.get('technicien'):
+            data['technicien'] = self.request.user
+        if not serializer.validated_data.get('heure_checkin'):
+            data['heure_checkin'] = timezone.now()
+        return serializer.save(**data)
+
+    @action(detail=True, methods=['post'])
+    def checkout(self, request, pk=None):
+        """Enregistre le check-out réel (maintenant) — clôt le cycle."""
+        checkin = self.get_object()
+        checkin.heure_checkout_reelle = timezone.now()
+        checkin.save(update_fields=['heure_checkout_reelle'])
+        return Response(self.get_serializer(checkin).data)
+
+
+# ── WIR115 — SCAR : demande d'action corrective fournisseur ──────────────────
+class DemandeActionFournisseurViewSet(_QhseBaseViewSet):
+    """SCAR — demande d'action corrective adressée à un fournisseur (WIR115).
+
+    CRUD scopé société ; ``company`` posée côté serveur. Le ``statut`` est en
+    lecture seule au CRUD ; deux actions détail pilotent le cycle de vie :
+
+    * ``POST …/<id>/repondre/`` — ``emise`` → ``repondue`` (enregistre cause
+      racine / action fournisseur + ``date_reponse``) ;
+    * ``POST …/<id>/verifier/`` — ``repondue`` → ``verifiee``/``close`` selon
+      ``efficace`` (booléen requis) ; ``verifiee_par`` = utilisateur courant.
+
+    Filtres : ``?statut=`` , ``?fournisseur=`` , ``?ncr_source=``.
+    """
+    queryset = DemandeActionFournisseur.objects.all()
+    serializer_class = DemandeActionFournisseurSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'echeance_reponse', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        for champ in ('statut', 'fournisseur', 'ncr_source'):
+            val = self.request.query_params.get(champ)
+            if val not in (None, ''):
+                key = {'fournisseur': 'fournisseur_id',
+                       'ncr_source': 'ncr_source_id'}.get(champ, champ)
+                qs = qs.filter(**{key: val})
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def repondre(self, request, pk=None):
+        """Enregistre la réponse fournisseur (``emise`` → ``repondue``)."""
+        scar = self.get_object()
+        if scar.statut != DemandeActionFournisseur.Statut.EMISE:
+            return Response(
+                {'detail': 'Seule une SCAR émise peut recevoir une réponse.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        scar.cause_racine_fournisseur = request.data.get(
+            'cause_racine_fournisseur', scar.cause_racine_fournisseur)
+        scar.action_fournisseur = request.data.get(
+            'action_fournisseur', scar.action_fournisseur)
+        scar.statut = DemandeActionFournisseur.Statut.REPONDUE
+        scar.date_reponse = timezone.now()
+        scar.save(update_fields=[
+            'cause_racine_fournisseur', 'action_fournisseur', 'statut',
+            'date_reponse'])
+        return Response(self.get_serializer(scar).data)
+
+    @action(detail=True, methods=['post'])
+    def verifier(self, request, pk=None):
+        """Vérifie l'efficacité (``repondue`` → ``verifiee``/``close``).
+
+        ``efficace`` (booléen) requis : True → ``close``, False → ``verifiee``
+        (l'action reste ouverte). ``verifiee_par`` = utilisateur courant.
+        """
+        scar = self.get_object()
+        if scar.statut not in (
+                DemandeActionFournisseur.Statut.REPONDUE,
+                DemandeActionFournisseur.Statut.VERIFIEE):
+            return Response(
+                {'detail': 'Seule une SCAR répondue peut être vérifiée.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        efficace = request.data.get('efficace')
+        if efficace is None:
+            return Response(
+                {'efficace': 'Champ requis (booléen).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        efficace = str(efficace).lower() in ('1', 'true', 'yes', 'oui')
+        scar.efficace = efficace
+        scar.verifiee_par = request.user
+        scar.date_verification = timezone.now()
+        scar.statut = (DemandeActionFournisseur.Statut.CLOSE if efficace
+                       else DemandeActionFournisseur.Statut.VERIFIEE)
+        scar.save(update_fields=[
+            'efficace', 'verifiee_par', 'date_verification', 'statut'])
+        return Response(self.get_serializer(scar).data)
+
+
+# ── WIR115 — SCAFFOLDING DIFFÉRÉ (note explicite) ────────────────────────────
+# Les modèles QHSE ci-dessous (services testés, aucune exposition REST) sont
+# volontairement laissés SANS API dans ce lot : la priorité WIR115 était
+# CheckinSecurite (une tâche beat d'escalade tournait contre une table sans
+# écran) et DemandeActionFournisseur (SCAR) — tous deux exposés ci-dessus. Les
+# suivants restent en scaffolding différé (à exposer par un lot ultérieur, un
+# viewset ``_QhseBaseViewSet`` par modèle sur le même patron) et NE doivent
+# jamais être re-listés comme « backend sombre non traité » :
+#   CampagneRappel, AnalyseNcr, Certification, AuditCertification,
+#   ProgrammeAudit, ClauseNorme, ReunionQhse, ObjectifQhse, RisqueOpportunite,
+#   RisqueOpportuniteCapa, PartieInteressee, ContexteOrganisation,
+#   DiffusionProcedure.

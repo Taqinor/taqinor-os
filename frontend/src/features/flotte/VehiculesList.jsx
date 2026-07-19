@@ -12,6 +12,8 @@ import { VehiculeStatutPill } from './statusPills'
 import useFlotteResource from './useFlotteResource'
 import VehiculeDetail from './VehiculeDetail'
 import VehiculeCreateDialog from './VehiculeCreateDialog'
+import ExcelImport from '../../components/ExcelImport'
+import { Upload } from 'lucide-react'
 
 /* ============================================================================
    UX16 — Véhicules & engins (`/flotte/vehicules`).
@@ -158,6 +160,8 @@ export default function VehiculesList() {
   const [energie, setEnergie] = useState('')
   const [selected, setSelected] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
+  // WIR48 — import CSV/XLSX des véhicules (cible `vehicules`, XFLT22).
+  const [showImport, setShowImport] = useState(false)
 
   const isVeh = parc === 'vehicules'
   const params = useMemo(() => {
@@ -264,9 +268,18 @@ export default function VehiculesList() {
     </div>
   )
 
-  const actions = isVeh
-    ? <Button onClick={() => setShowCreate(true)}>Nouveau véhicule</Button>
-    : <Button onClick={() => setShowCreate(true)}>Nouvel engin</Button>
+  const actions = (
+    <div className="flex items-center gap-2">
+      {isVeh && (
+        <Button variant="outline" onClick={() => setShowImport(true)}>
+          <Upload /> Importer
+        </Button>
+      )}
+      <Button onClick={() => setShowCreate(true)}>
+        {isVeh ? 'Nouveau véhicule' : 'Nouvel engin'}
+      </Button>
+    </div>
+  )
 
   return (
     <div className="page">
@@ -306,6 +319,14 @@ export default function VehiculesList() {
         <EnginCreateDialog
           onClose={() => setShowCreate(false)}
           onSaved={() => { setShowCreate(false); reload(); toast.success('Engin créé.') }}
+        />
+      )}
+
+      {showImport && (
+        <ExcelImport
+          target="vehicules"
+          onClose={() => setShowImport(false)}
+          onDone={reload}
         />
       )}
     </div>

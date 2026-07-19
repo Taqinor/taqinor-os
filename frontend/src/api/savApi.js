@@ -11,6 +11,18 @@ const savApi = {
   // FG290 — registre des garanties par parc (échéancier de fin de garantie).
   getRegistreGaranties: (params) =>
     api.get('/sav/equipements/registre-garanties/', { params }),
+  // WIR116/FG85/XSAV19 — étiquettes QR imprimables (HTML prêt à imprimer).
+  // `public:true` encode le lien public /e/<token> ; sinon le jeton interne
+  // EQUIP:<id> (scan interne inchangé). Renvoie un blob text/html.
+  etiquettesEquipements: (ids = [], { symbology = 'qr', public: pub = true } = {}) =>
+    api.get('/sav/equipements/etiquettes/', {
+      params: {
+        ...(ids.length ? { ids: ids.join(',') } : {}),
+        symbology,
+        ...(pub ? { public: 1 } : {}),
+      },
+      responseType: 'blob',
+    }),
   // XSAV15 — MTBF/MTTR/coût cumulé de CET équipement (coût gated prix_achat_voir côté serveur).
   getEquipementFiabilite: (id) => api.get(`/sav/equipements/${id}/fiabilite/`),
   // ZMFG11 — prochaine défaillance estimée (MTBF) + prochain entretien dû.
@@ -232,6 +244,8 @@ const savApi = {
   getSavFiabiliteParc: (params) => api.get('/sav/insights/sav-fiabilite/', { params }),
   // ZMFG4 — tableau de bord maintenance par équipe.
   getSavResumeParEquipe: () => api.get('/sav/insights/sav-resume-equipe/'),
+  // WIR121/FG89 — prévision de consommation de pièces (fenêtre glissante).
+  getSavPartsForecast: (params) => api.get('/sav/insights/sav-parts-forecast/', { params }),
   // ZSAV6 — file d'action : tickets ouverts groupés par action attendue.
   getSavFileAction: () => api.get('/sav/tickets/file-action/'),
 }

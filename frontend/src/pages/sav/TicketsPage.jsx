@@ -19,9 +19,13 @@ import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+// WIR19 — historique AuditLog record-scopé (visible au propriétaire du ticket
+// sans la permission globale journal_activite_voir).
+import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
 import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
+import TicketWorksheetPanel from './TicketWorksheetPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import { telHref } from '../../lib/contactLinks'
@@ -58,6 +62,7 @@ import {
   Textarea,
   Checkbox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  SelectGroup, SelectLabel,
   Segmented,
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
@@ -236,6 +241,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   // N46 — pièces consommées (le stock peut être décrémenté).
   const [pieces, setPieces] = useState([])
   const [produits, setProduits] = useState([])
+  // WIR117/XSAV25 — pièces catalogue compatibles avec l'équipement lié : le
+  // picker les propose EN PREMIER (jamais une erreur si aucune n'est mappée).
+  const [piecesCompatibles, setPiecesCompatibles] = useState([])
   const [pieceForm, setPieceForm] = useState(
     { produit: '', quantite: '1', decrement: false })
   const [pieceBusy, setPieceBusy] = useState(false)
@@ -267,6 +275,12 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     loadPieces()
     api.get('/stock/produits/')
       .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
+    // WIR117/XSAV25 — pièces compatibles avec l'équipement lié (compatibles
+    // d'abord dans le picker). Vide silencieusement si pas d'équipement mappé,
+    // et aussi si savApi.getPiecesCompatibles est absent (mocks partiels
+    // préexistants dans d'autres tests qui rendent TicketDetail).
+    savApi.getPiecesCompatibles?.(id)
+      ?.then((r) => setPiecesCompatibles(r.data?.results ?? [])).catch?.(() => {})
     // Équipements du chantier concerné (pour lier l'équipement précis).
     if (current.installation) {
       savApi.getEquipements({ installation: current.installation })
@@ -279,6 +293,16 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
 
   // L296 — saut de statut hors ordre détecté (pour avertir avant submit).
   const statutSautHorsOrdre = !isStatusTransitionAllowed(current.statut, fields.statut)
+
+  // WIR117/XSAV25 — options du picker de pièces : compatibles d'abord (groupe
+  // dédié), puis le reste du catalogue (dédupliqué des compatibles).
+  const { piecesCompatiblesOpts, piecesAutresOpts } = useMemo(() => {
+    const ids = new Set(piecesCompatibles.map((c) => c.piece_id))
+    return {
+      piecesCompatiblesOpts: piecesCompatibles,
+      piecesAutresOpts: produits.filter((p) => !ids.has(p.id)),
+    }
+  }, [piecesCompatibles, produits])
 
   // YDOCF1 — `statut` par action guardée dédiée (POST) : plus de PATCH
   // direct. On mappe le statut cible choisi dans le formulaire vers l'action
@@ -819,6 +843,11 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           <TicketChecklistPanel ticketId={id} />
         </CollapsibleSection>
 
+        {/* ── WIR119/ZMFG6 — feuille de maintenance (worksheet) à remplir ── */}
+        <CollapsibleSection icon={FileText} title="Feuille de maintenance">
+          <TicketWorksheetPanel ticketId={id} />
+        </CollapsibleSection>
+
         {/* ── XSAV12/21/27/28, ZSAV8/9 — actions avancées (fusion, similaires,
              triage IA, macros, prêts équipement, conversion lead, suivre). ── */}
         <CollapsibleSection icon={Sparkles} title="Actions avancées">
@@ -906,11 +935,26 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                 <SelectTrigger><SelectValue placeholder="— Produit —" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— Produit —</SelectItem>
-                  {produits.map((pr) => (
-                    <SelectItem key={pr.id} value={String(pr.id)}>
-                      {pr.nom}{pr.sku ? ` (${pr.sku})` : ''}
-                    </SelectItem>
-                  ))}
+                  {piecesCompatiblesOpts.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Compatibles avec l'équipement</SelectLabel>
+                      {piecesCompatiblesOpts.map((c) => (
+                        <SelectItem key={`compat-${c.piece_id}`} value={String(c.piece_id)}>
+                          ★ {c.nom}{c.sku ? ` (${c.sku})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  <SelectGroup>
+                    {piecesCompatiblesOpts.length > 0 && (
+                      <SelectLabel>Autres pièces du catalogue</SelectLabel>
+                    )}
+                    {piecesAutresOpts.map((pr) => (
+                      <SelectItem key={pr.id} value={String(pr.id)}>
+                        {pr.nom}{pr.sku ? ` (${pr.sku})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </FormField>
@@ -934,6 +978,15 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
 
         {/* ── Historique (chatter) — L313 repliable ── */}
         <CollapsibleSection icon={History} title="Historique">
+          {/* WIR19 — traçabilité AuditLog de CE ticket, ouverte au propriétaire
+              même sans la permission Journal globale. */}
+          <div>
+            <ObjectHistoryButton
+              contentType="sav.ticket"
+              objectId={ticket.id}
+              label="Historique des modifications"
+            />
+          </div>
           <div className="flex gap-2">
             <Input placeholder="Écrire une note…" value={noteBody}
                    onChange={(e) => setNoteBody(e.target.value)}

@@ -5738,12 +5738,18 @@ class PostSocialViewSet(_ComptaBaseViewSet):
         return Response(PostSocialSerializer(post).data)
 
 
-# ── XMKT30 (partiel) — Calendrier marketing unifié ──────────────────────────
+# ── XMKT30 / WIR65 — Calendrier marketing unifié ────────────────────────────
 # Endpoint agrégé consommé par features/marketing/MarketingCalendarScreen.jsx.
-# Sources servies AUJOURD'HUI : campagnes (planifiee_le, XMKT7) et posts
-# sociaux (date_planifiee, XMKT35). Les sources étapes-de-séquence/relances/
-# événements restent à brancher par la tâche XMKT30 backend (même contrat de
-# réponse {events: [...]}) — additif, aucun contrat cassé.
+# Agrège les 5 SOURCE_TYPES du frontend, tous company-scopés, même contrat de
+# réponse {events: [...]} :
+#   * campagne     — Campagne.planifiee_le (XMKT7)
+#   * post_social  — PostSocial.date_planifiee (XMKT35)
+#   * etape_sequence — prochaine étape due d'une InscriptionSequence active
+#                    (declenchee_le + EtapeSequence.delai_jours) — WIR65
+#   * evenement    — EvenementMarketing.date_debut (XMKT28) — WIR65
+#   * relance      — RelanceDevisAbandonne.date_relance (FG203) — WIR65
+# Additif : les filtres etape_sequence/evenement/relance du frontend affichaient
+# toujours zéro faute de ces trois sources — désormais alimentés.
 
 class CalendrierMarketingView(APIView):
     permission_classes = [IsResponsableOrAdmin]
@@ -5781,6 +5787,62 @@ class CalendrierMarketingView(APIView):
                 'date': p.date_planifiee.date().isoformat(),
                 'title': f'{p.get_reseau_display()} — {(p.texte or "")[:60]}',
                 'channel': '', 'editable': False,
+            })
+
+        # WIR65 — étapes de séquence dues : pour chaque inscription ACTIVE,
+        # l'étape courante (prochaine à exécuter) est due à
+        # ``declenchee_le + delai_jours``. Fenêtre appliquée sur la date calculée
+        # (comparaison lexicographique d'ISO ``AAAA-MM-JJ``, valide et stable).
+        from datetime import timedelta
+        inscriptions = InscriptionSequence.objects.filter(
+            company=company,
+            statut=InscriptionSequence.Statut.ACTIF,
+            etape_courante__isnull=False,
+        ).select_related('etape_courante', 'sequence')
+        for insc in inscriptions:
+            etape = insc.etape_courante
+            due = (insc.declenchee_le
+                   + timedelta(days=etape.delai_jours)).date().isoformat()
+            if date_from and due < date_from:
+                continue
+            if date_to and due > date_to:
+                continue
+            events.append({
+                'id': f'etape_sequence-{insc.id}', 'obj_id': insc.id,
+                'source': 'etape_sequence', 'link_type': 'etape_sequence',
+                'date': due,
+                'title': (f'{insc.sequence.nom} — étape {etape.ordre} '
+                          f'({etape.get_canal_display()})'),
+                'channel': etape.canal, 'editable': False,
+            })
+
+        # WIR65 — événements marketing à venir (XMKT28), datés par date_debut.
+        evenements = EvenementMarketing.objects.filter(company=company)
+        if date_from:
+            evenements = evenements.filter(date_debut__date__gte=date_from)
+        if date_to:
+            evenements = evenements.filter(date_debut__date__lte=date_to)
+        for e in evenements:
+            events.append({
+                'id': f'evenement-{e.id}', 'obj_id': e.id,
+                'source': 'evenement', 'link_type': 'evenement',
+                'date': e.date_debut.date().isoformat(),
+                'title': e.nom, 'channel': '', 'editable': False,
+            })
+
+        # WIR65 — relances de devis abandonnés (FG203), datées par date_relance.
+        relances = RelanceDevisAbandonne.objects.filter(company=company)
+        if date_from:
+            relances = relances.filter(date_relance__date__gte=date_from)
+        if date_to:
+            relances = relances.filter(date_relance__date__lte=date_to)
+        for r in relances:
+            events.append({
+                'id': f'relance-{r.id}', 'obj_id': r.id,
+                'source': 'relance', 'link_type': 'relance',
+                'date': r.date_relance.date().isoformat(),
+                'title': f'Relance devis {r.devis_reference or r.devis_id}',
+                'channel': r.canal, 'editable': False,
             })
         return Response({'events': events})
 

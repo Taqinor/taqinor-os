@@ -3,6 +3,7 @@ import adminopsApi from './adminopsApi'
 import PageHeader from '../../components/layout/PageHeader'
 import { Button, Card, Label, NumberInput, Spinner, Switch } from '../../ui'
 import { toastError, toastSuccess } from '../../lib/toast'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 
 /* ============================================================================
    NTADM33/34 — Réglages « Administration » : durée sandbox (7-30j), délai de
@@ -22,6 +23,17 @@ export default function AdminSettingsPage() {
       .catch(() => toastError('Impossible de charger les réglages.'))
       .finally(() => setLoading(false))
   }, [])
+
+  // WIR69 — téléchargement du journal d'administration en PDF (un clic).
+  const [journalBusy, setJournalBusy] = useState(false)
+  const downloadJournal = () => {
+    const pending = downloadBlobInGesture()
+    setJournalBusy(true)
+    adminopsApi.journalAdminPdf()
+      .then((res) => pending.deliver(res.data, 'journal-admin.pdf'))
+      .catch(() => toastError('Téléchargement du journal impossible.'))
+      .finally(() => setJournalBusy(false))
+  }
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const setNum = (k) => (e) => {
@@ -86,6 +98,19 @@ export default function AdminSettingsPage() {
           <Label>Autoriser la création de sandbox</Label>
         </div>
         <Button onClick={save} disabled={saving}>Enregistrer</Button>
+      </Card>
+
+      {/* WIR69 — journal d'administration téléchargeable en PDF (IsAdministrateur). */}
+      <Card className="mt-4 max-w-lg space-y-3 p-6">
+        <div>
+          <Label>Journal d'administration</Label>
+          <p className="text-sm text-muted-foreground">
+            Export PDF des actions d'administration (paramètres, rôles, sièges…).
+          </p>
+        </div>
+        <Button variant="outline" onClick={downloadJournal} disabled={journalBusy}>
+          {journalBusy ? 'Génération…' : 'Télécharger le journal (PDF)'}
+        </Button>
       </Card>
     </div>
   )

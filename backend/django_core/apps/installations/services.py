@@ -3534,3 +3534,19 @@ def remplacer_composant_kits(company, *, produit_ancien_id, produit_nouveau_id,
     for kit in kits_touches.values():
         snapshot_revision_kit(kit, user=user)
     return modifies
+
+
+def chantier_peut_cloturer(chantier_id, company):
+    """WIR125 — pont ADVISORY vers la gate QHSE de fin de chantier.
+
+    Expose côté ``installations`` le gate advisory ``NotationFinChantier``
+    (score de fin de chantier calculé par qhse) EN PASSANT PAR la frontière
+    ``selectors`` de qhse — lecture seule, jamais d'import de modèle qhse
+    (référence lâche par ``chantier_id``). Advisory (comme WIR2) : renvoie
+    ``True`` s'il n'existe aucune notation ou si son verdict n'est pas un échec
+    ; ``False`` seulement si la notation la plus récente a un verdict
+    ``echec``. À utiliser pour AVERTIR avant une clôture — la décision de
+    BLOQUER reste un choix produit explicite (non câblé ici, gate non bloquant).
+    """
+    from apps.qhse.selectors import chantier_peut_cloturer as _qhse_gate
+    return _qhse_gate(chantier_id, company)

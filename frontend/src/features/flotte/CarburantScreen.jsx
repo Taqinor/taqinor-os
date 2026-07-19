@@ -273,8 +273,256 @@ function CartesTab() {
   )
 }
 
+/* ============================================================================
+   WIR133 — DÉCISION fondateur (saisie manuelle vs machine-fed), tranchée par la
+   NATURE des données (aucune ingestion externe n'existe, apps/flotte sans
+   tasks.py) :
+   • Sinistres, Infractions, Trajets chantier = ÉVÉNEMENTS MÉTIER déclarés à la
+     main (un accident, un PV de police, un trajet vers un chantier). Aucun flux
+     externe possible → SAISIE MANUELLE (dialogues de création ci-dessous).
+   • Relevés / trajets télématiques = données APPAREIL (GPS/OBD), par nature
+     MACHINE-FED → pas de saisie manuelle : ils attendent une future intégration
+     télématique (webhook/import constructeur). Documenté dans l'onglet
+     Télématique (bandeau) plutôt qu'un formulaire trompeur.
+   ========================================================================== */
+
+// WIR133 — <select> réutilisable sur les actifs de la flotte (véhicules/engins).
+function ActifSelect({ id, value, onChange, actifs = [], required }) {
+  return (
+    <select
+      id={id}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      required={required}
+      className="h-9 rounded-md border border-input bg-card px-2 text-sm"
+    >
+      <option value="">— Choisir un actif —</option>
+      {(actifs || []).map((a) => (
+        <option key={a.id} value={a.id}>{a.label || `Actif #${a.id}`}</option>
+      ))}
+    </select>
+  )
+}
+
+// WIR133 — déclaration manuelle d'un sinistre (FLOTTE25).
+function SinistreDialog({ actifs = [], onClose, onSaved }) {
+  const [actif, setActif] = useState('')
+  const [date, setDate] = useState('')
+  const [type, setType] = useState('accident_materiel')
+  const [lieu, setLieu] = useState('')
+  const [montant, setMontant] = useState('')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peut = Boolean(actif && date)
+  const dirty = Boolean(actif || date || lieu || montant || description || type !== 'accident_materiel')
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peut) return
+    setSaving(true); setServerError(null)
+    try {
+      await flotteApi.sinistres.create({
+        actif_flotte: Number(actif), date_sinistre: date, type_sinistre: type,
+        lieu, montant_estime: montant === '' ? undefined : Number(montant),
+        description,
+      })
+      onSaved?.()
+    } catch (err) {
+      const d = err?.response?.data
+      setServerError(d?.detail || d?.actif_flotte || (typeof d === 'string' ? d : 'Enregistrement impossible.'))
+    } finally { setSaving(false) }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Déclarer un sinistre</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sin-actif" required>Actif</Label>
+            <ActifSelect id="sin-actif" value={actif} onChange={setActif} actifs={actifs} required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sin-date" required>Date du sinistre</Label>
+            <Input id="sin-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sin-type">Type</Label>
+            <select id="sin-type" value={type} onChange={(e) => setType(e.target.value)}
+              className="h-9 rounded-md border border-input bg-card px-2 text-sm">
+              {Object.entries(SINISTRE_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sin-lieu">Lieu</Label>
+            <Input id="sin-lieu" value={lieu} onChange={(e) => setLieu(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sin-montant">Montant estimé (MAD)</Label>
+            <Input id="sin-montant" type="number" step="any" value={montant} onChange={(e) => setMontant(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sin-desc">Description</Label>
+            <Input id="sin-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => { if (confirmLeaveIfDirty(dirty)) onClose?.() }}>Annuler</Button>
+            <Button type="submit" loading={saving} disabled={!peut}>Enregistrer</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR133 — saisie manuelle d'une infraction / PV (FLOTTE26).
+function InfractionDialog({ actifs = [], conducteurs = [], onClose, onSaved }) {
+  const [actif, setActif] = useState('')
+  const [conducteur, setConducteur] = useState('')
+  const [date, setDate] = useState('')
+  const [type, setType] = useState('exces_vitesse')
+  const [refPv, setRefPv] = useState('')
+  const [montant, setMontant] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peut = Boolean(actif && date)
+  const dirty = Boolean(actif || conducteur || date || refPv || montant || type !== 'exces_vitesse')
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peut) return
+    setSaving(true); setServerError(null)
+    try {
+      await flotteApi.infractions.create({
+        actif_flotte: Number(actif),
+        conducteur: conducteur ? Number(conducteur) : null,
+        date_infraction: date, type_infraction: type, reference_pv: refPv,
+        montant_amende: montant === '' ? undefined : Number(montant),
+      })
+      onSaved?.()
+    } catch (err) {
+      const d = err?.response?.data
+      setServerError(d?.detail || d?.actif_flotte || (typeof d === 'string' ? d : 'Enregistrement impossible.'))
+    } finally { setSaving(false) }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Enregistrer une infraction (PV)</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="inf-actif" required>Actif</Label>
+            <ActifSelect id="inf-actif" value={actif} onChange={setActif} actifs={actifs} required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="inf-conducteur">Conducteur</Label>
+            <select id="inf-conducteur" value={conducteur} onChange={(e) => setConducteur(e.target.value)}
+              className="h-9 rounded-md border border-input bg-card px-2 text-sm">
+              <option value="">— Aucun —</option>
+              {(conducteurs || []).map((c) => (
+                <option key={c.id} value={c.id}>{c.nom_complet || c.nom || `Conducteur #${c.id}`}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="inf-date" required>Date de l'infraction</Label>
+            <Input id="inf-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="inf-type">Type</Label>
+            <select id="inf-type" value={type} onChange={(e) => setType(e.target.value)}
+              className="h-9 rounded-md border border-input bg-card px-2 text-sm">
+              {Object.entries(INFRACTION_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="inf-ref">Référence PV</Label>
+            <Input id="inf-ref" value={refPv} onChange={(e) => setRefPv(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="inf-montant">Montant de l'amende (MAD)</Label>
+            <Input id="inf-montant" type="number" step="any" value={montant} onChange={(e) => setMontant(e.target.value)} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => { if (confirmLeaveIfDirty(dirty)) onClose?.() }}>Annuler</Button>
+            <Button type="submit" loading={saving} disabled={!peut}>Enregistrer</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR133 — saisie manuelle d'un trajet chantier (FLOTTE29, journal kilométrique).
+function TrajetChantierDialog({ actifs = [], onClose, onSaved }) {
+  const [actif, setActif] = useState('')
+  const [date, setDate] = useState('')
+  const [motif, setMotif] = useState('')
+  const [kmDepart, setKmDepart] = useState('')
+  const [kmArrivee, setKmArrivee] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peut = Boolean(actif && date)
+  const dirty = Boolean(actif || date || motif || kmDepart || kmArrivee)
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peut) return
+    setSaving(true); setServerError(null)
+    try {
+      await flotteApi.trajetsChantier.create({
+        actif_flotte: Number(actif), date_trajet: date, motif,
+        km_depart: kmDepart === '' ? undefined : Number(kmDepart),
+        km_arrivee: kmArrivee === '' ? undefined : Number(kmArrivee),
+      })
+      onSaved?.()
+    } catch (err) {
+      const d = err?.response?.data
+      setServerError(d?.detail || d?.actif_flotte || (typeof d === 'string' ? d : 'Enregistrement impossible.'))
+    } finally { setSaving(false) }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Enregistrer un trajet chantier</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="trj-actif" required>Actif</Label>
+            <ActifSelect id="trj-actif" value={actif} onChange={setActif} actifs={actifs} required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="trj-date" required>Date du trajet</Label>
+            <Input id="trj-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="trj-motif">Motif</Label>
+            <Input id="trj-motif" value={motif} onChange={(e) => setMotif(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="trj-kmd">Km départ</Label>
+            <Input id="trj-kmd" type="number" step="any" value={kmDepart} onChange={(e) => setKmDepart(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="trj-kma">Km arrivée</Label>
+            <Input id="trj-kma" type="number" step="any" value={kmArrivee} onChange={(e) => setKmArrivee(e.target.value)} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => { if (confirmLeaveIfDirty(dirty)) onClose?.() }}>Annuler</Button>
+            <Button type="submit" loading={saving} disabled={!peut}>Enregistrer</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function SinistresTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.sinistres.list, {})
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.sinistres.list, {})
+  const { data: actifs } = useFlotteResource(flotteApi.actifs.list, {})
   const columns = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 160, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
     { id: 'date_sinistre', header: 'Date', width: 120, accessor: (r) => r.date_sinistre, cell: (v) => (v ? formatDate(v) : '—') },
@@ -284,13 +532,26 @@ function SinistresTab() {
     { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut, cell: (v) => <SinistreStatutPill status={v} /> },
   ], [])
   return (
-    <ListShell title="Sinistres" columns={columns} rows={data} loading={loading} error={error}
-      exportName="sinistres" emptyTitle="Aucun sinistre" emptyDescription="Aucun sinistre déclaré." />
+    <>
+      <ListShell title="Sinistres" columns={columns} rows={data} loading={loading} error={error}
+        actions={<Button onClick={() => setShowForm(true)}>Déclarer un sinistre</Button>}
+        exportName="sinistres" emptyTitle="Aucun sinistre" emptyDescription="Aucun sinistre déclaré." />
+      {showForm && (
+        <SinistreDialog
+          actifs={actifs}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Sinistre déclaré.') }}
+        />
+      )}
+    </>
   )
 }
 
 function InfractionsTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.infractions.list, {})
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.infractions.list, {})
+  const { data: actifs } = useFlotteResource(flotteApi.actifs.list, {})
+  const { data: conducteurs } = useFlotteResource(flotteApi.conducteurs.list, {})
   const columns = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 160, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
     { id: 'conducteur', header: 'Conducteur', width: 150, accessor: (r) => r.conducteur_nom, cell: (v) => v || '—' },
@@ -301,9 +562,20 @@ function InfractionsTab() {
     { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut, cell: (v) => <InfractionStatutPill status={v} /> },
   ], [])
   return (
-    <ListShell title="Infractions (PV)" subtitle="PV en attente de règlement ou contestés."
-      columns={columns} rows={data} loading={loading} error={error}
-      exportName="infractions" emptyTitle="Aucune infraction" emptyDescription="Aucune infraction enregistrée." />
+    <>
+      <ListShell title="Infractions (PV)" subtitle="PV en attente de règlement ou contestés."
+        columns={columns} rows={data} loading={loading} error={error}
+        actions={<Button onClick={() => setShowForm(true)}>Nouvelle infraction</Button>}
+        exportName="infractions" emptyTitle="Aucune infraction" emptyDescription="Aucune infraction enregistrée." />
+      {showForm && (
+        <InfractionDialog
+          actifs={actifs}
+          conducteurs={conducteurs}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Infraction enregistrée.') }}
+        />
+      )}
+    </>
   )
 }
 
@@ -335,6 +607,15 @@ function TelematiqueTab() {
   ], [])
   return (
     <div className="flex flex-col gap-6">
+      {/* WIR133 — décision fondateur documentée : ces deux registres sont
+          MACHINE-FED (données GPS/OBD des boîtiers), pas de saisie manuelle.
+          Ils se rempliront via une future intégration télématique (webhook/
+          import constructeur) — délibérément aucun bouton « Nouveau ». */}
+      <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+        Ces relevés et trajets proviennent des boîtiers télématiques (GPS/OBD) et
+        se remplissent automatiquement. Aucune saisie manuelle : ils attendent
+        l'intégration télématique (webhook ou import constructeur) à venir.
+      </div>
       <ListShell title="Relevés télématiques" columns={relevesCols} rows={releves} loading={lr} error={er}
         exportName="releves-telematiques" emptyTitle="Aucun relevé" emptyDescription="Aucun relevé télématique." />
       <ListShell title="Trajets télématiques" columns={trajetsCols} rows={trajets} loading={lt} error={et}
@@ -344,7 +625,9 @@ function TelematiqueTab() {
 }
 
 function TrajetsChantierTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.trajetsChantier.list, {})
+  const [showForm, setShowForm] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.trajetsChantier.list, {})
+  const { data: actifs } = useFlotteResource(flotteApi.actifs.list, {})
   const columns = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 160, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
     { id: 'date_trajet', header: 'Date', width: 120, accessor: (r) => r.date_trajet, cell: (v) => (v ? formatDate(v) : '—') },
@@ -352,8 +635,18 @@ function TrajetsChantierTab() {
     { id: 'distance_km', header: 'Distance', align: 'right', numeric: true, width: 120, searchable: false, accessor: (r) => r.distance_km, cell: (v) => (v != null ? `${formatNumber(v, { decimals: 1 })} km` : '—') },
   ], [])
   return (
-    <ListShell title="Trajets chantier" columns={columns} rows={data} loading={loading} error={error}
-      exportName="trajets-chantier" emptyTitle="Aucun trajet" emptyDescription="Aucun trajet chantier enregistré." />
+    <>
+      <ListShell title="Trajets chantier" columns={columns} rows={data} loading={loading} error={error}
+        actions={<Button onClick={() => setShowForm(true)}>Nouveau trajet chantier</Button>}
+        exportName="trajets-chantier" emptyTitle="Aucun trajet" emptyDescription="Aucun trajet chantier enregistré." />
+      {showForm && (
+        <TrajetChantierDialog
+          actifs={actifs}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Trajet chantier enregistré.') }}
+        />
+      )}
+    </>
   )
 }
 

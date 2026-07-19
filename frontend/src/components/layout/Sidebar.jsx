@@ -190,6 +190,10 @@ export const NAV_SECTIONS = [
     items: [
       { to: '/admin/users',          label: 'Utilisateurs',     k: 'nav.utilisateurs', icon: I.utilisateurs, roles: ['responsable','admin'] },
       { to: '/admin/roles',          label: 'Rôles',            k: 'nav.roles',      icon: I.roles_icon,    roles: ['responsable','admin'] },
+      // WIR134 — Sécurité & Identité (admin only : backend IsAdminRole).
+      { to: '/admin/securite-identite', label: 'Sécurité & Identité', k: 'nav.securite_identite', icon: I.key, roles: ['admin'] },
+      // WIR135 — Gouvernance des accès (admin only : backend IsAdminRole).
+      { to: '/admin/gouvernance-acces', label: 'Gouvernance des accès', k: 'nav.gouvernance_acces', icon: I.roles_icon, roles: ['admin'] },
       // Journal d'activité — visible UNIQUEMENT avec la permission dédiée
       // (Directeur par défaut), indépendamment du palier de menu.
       { to: '/journal',              label: "Journal d'activité", k: 'nav.journal',  icon: I.journal,    roles: ['normal','responsable','admin'], perm: 'journal_activite_voir' },

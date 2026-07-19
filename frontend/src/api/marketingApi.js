@@ -137,6 +137,18 @@ const marketingApi = {
     scansParSupport: () =>
       api.get('/marketing/supports-offline/scans-par-support/'),
   },
+
+  // ── WIR64/FG206 — Formulaires d'intake (landing publique de capture de
+  // lead). CRUD admin authentifié ; la soumission publique passe par la vue
+  // AllowAny /marketing/intake/<slug>/soumettre/ (jamais ce client). ──
+  formulairesIntake: {
+    ...resource('formulaires-intake'),
+    // URL publique de la landing (partageable), pour information dans l'admin.
+    lienPublic: (slug) => `/api/django/marketing/intake/${slug}/`,
+  },
+  // ── WIR161 — Journal d'appels commercial / click-to-call log (FG208) ──
+  // `company`/`auteur` posés côté serveur (jamais lus du corps de requête).
+  appels: resource('appels'),
 }
 
 export default marketingApi

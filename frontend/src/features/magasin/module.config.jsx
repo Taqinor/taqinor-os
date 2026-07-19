@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Warehouse, MapPin, PackageCheck, ClipboardList, Boxes } from 'lucide-react'
+import { Warehouse, MapPin, PackageCheck, ClipboardList, Boxes, Archive } from 'lucide-react'
 
 /* ============================================================================
    MAGASIN (XSTK1) — configuration du module « Magasin » (auto-enregistrée).
@@ -20,6 +20,8 @@ const BinTreeScreen = lazy(() => import('./BinTreeScreen'))
 const PutAwayScreen = lazy(() => import('./PutAwayScreen'))
 const PickListScreen = lazy(() => import('./PickListScreen'))
 const ColisageScreen = lazy(() => import('./ColisageScreen'))
+// WIR111 — consultation référentiel & suivi entrepôt (6 familles backend-only).
+const EntrepotConsultScreen = lazy(() => import('./EntrepotConsultScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -35,6 +37,7 @@ const config = {
       { to: '/magasin/rangement', label: 'Rangement (put-away)', icon: <PackageCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/magasin/prelevements', label: 'Prélèvements', icon: <ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/magasin/colisage', label: 'Colisage', icon: <Boxes size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/magasin/entrepot', label: 'Entrepôt (référentiel)', icon: <Archive size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général (le préfixe /magasin en dernier).
@@ -43,6 +46,7 @@ const config = {
     ['/magasin/rangement', 'Rangement (put-away)'],
     ['/magasin/prelevements', 'Prélèvements'],
     ['/magasin/colisage', 'Colisage'],
+    ['/magasin/entrepot', 'Entrepôt (référentiel)'],
     ['/magasin', 'Magasin'],
   ],
   sectionLabels: { magasin: 'Magasin' },
@@ -52,6 +56,7 @@ const config = {
     { path: '/magasin/rangement', component: PutAwayScreen, roles: ROLES },
     { path: '/magasin/prelevements', component: PickListScreen, roles: ROLES },
     { path: '/magasin/colisage', component: ColisageScreen, roles: ROLES },
+    { path: '/magasin/entrepot', component: EntrepotConsultScreen, roles: ROLES },
   ],
 }
 

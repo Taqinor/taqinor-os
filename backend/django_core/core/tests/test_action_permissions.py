@@ -74,7 +74,12 @@ UNGUARDED_ACTION_BASELINE = {
     # NTSEC — ServiceAccountViewSet ajoute 2 @action (rotate/… ) gardées au
     # niveau CLASSE par _IsAdminRole (5 → 7) ; coarse-guardé, company-scopé.
     "publicapi": 7,
-    "qhse": 65,
+    # WIR115/124/127 ajoutent 3 @action (check-out check-in, écritures ITP,
+    # création environnement) — TOUTES gardées au niveau CLASSE par
+    # `_QhseBaseViewSet` (WriteScopedPermissionMixin, `write_permission='qhse_gerer'`
+    # gate les actions custom) ; le scanner statique ne crédite pas le mixin
+    # d'où +3 en dette apparente (65 → 68), pas un vrai trou de garde.
+    "qhse": 68,
     "rh": 103,
     # YRBAC10 a gardé la dernière @action roles non gardée (permission-catalog
     # est admin-only) → dette tombée à 0 ; on resserre le baseline (le cliquet

@@ -1,12 +1,21 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 
 // Login ne fait pas de requête réseau au montage (seulement au submit) —
 // on neutralise quand même le module axios pour ne dépendre d'aucun réseau.
-vi.mock('../api/axios', () => ({ default: { post: vi.fn() } }))
+vi.mock('../api/axios', () => ({ default: { post: vi.fn(), get: vi.fn() } }))
+// WIR134 — bannière légale résolue par identityApi (pré-auth) : stub par défaut
+// sans bannière (surchargé dans le test dédié).
+const { bannerGet, bannerAck } = vi.hoisted(() => ({
+  bannerGet: vi.fn(() => Promise.resolve({ data: { login_banner_text: '' } })),
+  bannerAck: vi.fn(() => Promise.resolve({ data: {} })),
+}))
+vi.mock('../api/identityApi', () => ({
+  default: { loginBanner: { get: bannerGet, acknowledge: bannerAck } },
+}))
 
 import Login from './Login'
 
@@ -67,5 +76,31 @@ describe('Login (SCA24 — marque produit neutre)', () => {
     renderLogin()
     const wordmark = screen.getByText('ERP')
     expect(wordmark.style.fontFamily).toContain('--font-display')
+  })
+})
+
+describe('Login — WIR134/NTSEC28 bannière légale de connexion', () => {
+  afterEach(() => { cleanup(); bannerGet.mockClear() })
+
+  it('affiche la bannière résolue par username (au blur)', async () => {
+    bannerGet.mockResolvedValueOnce({
+      data: { login_banner_text: 'Accès réservé au personnel autorisé.' },
+    })
+    renderLogin()
+    const input = screen.getByPlaceholderText('Entrez votre identifiant')
+    fireEvent.change(input, { target: { value: 'reda' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(bannerGet).toHaveBeenCalledWith('reda'))
+    expect(await screen.findByTestId('login-banner'))
+      .toHaveTextContent('Accès réservé au personnel autorisé.')
+  })
+
+  it('n’affiche aucun bandeau quand aucune bannière n’est configurée', async () => {
+    renderLogin()
+    const input = screen.getByPlaceholderText('Entrez votre identifiant')
+    fireEvent.change(input, { target: { value: 'sami' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(bannerGet).toHaveBeenCalled())
+    expect(screen.queryByTestId('login-banner')).not.toBeInTheDocument()
   })
 })

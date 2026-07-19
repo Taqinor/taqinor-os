@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { History, Plus, Trash2 } from 'lucide-react'
@@ -24,6 +24,10 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+// WIR19 — historique AuditLog record-scopé, ouvert au propriétaire du devis
+// même sans la permission globale journal_activite_voir (le lien Journal
+// ci-dessous, lui, exige cette permission).
+import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { formatMAD, timeAgo } from '../../lib/format'
@@ -53,15 +57,15 @@ function ApprobationPanel({ devisId }) {
   const [motif, setMotif] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const reload = () => {
+  const reload = useCallback(() => {
     setLoading(true)
     ventesApi.approbationDevis(devisId)
       .then((r) => setEtapes(r.data || []))
       .catch(() => setEtapes([]))
       .finally(() => setLoading(false))
-  }
+  }, [devisId])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de devis
-  useEffect(() => { reload() }, [devisId])
+  useEffect(() => { reload() }, [reload])
 
   const approuver = async () => {
     setBusy(true)
@@ -399,6 +403,19 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
                   <History className="size-3" aria-hidden="true" /> Historique
                 </Link>
               )}
+            </div>
+          )}
+          {/* WIR19 — sans la permission Journal globale, le propriétaire du devis
+              accède quand même à sa traçabilité (endpoint audit record-scopé). */}
+          {isEdit && !canViewJournal && (
+            <div className="mt-1">
+              <ObjectHistoryButton
+                contentType="ventes.devis"
+                objectId={devis.id}
+                label="Historique"
+                variant="ghost"
+                size="sm"
+              />
             </div>
           )}
         </DialogHeader>

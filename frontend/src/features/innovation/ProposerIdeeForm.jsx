@@ -47,7 +47,6 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     innovationApi.campagnes.incitation()
       .then((res) => setCampagne(res.data?.campagne || null))
       .catch(() => setCampagne(null))

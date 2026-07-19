@@ -23,7 +23,6 @@ export default function InnovationDashboard() {
   const [timeline, setTimeline] = useState([])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     innovationApi.tableauBord()
       .then((res) => setData(res.data))
       .catch(() => setError('Impossible de charger le tableau de bord.'))
@@ -31,7 +30,6 @@ export default function InnovationDashboard() {
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     innovationApi.timeline()
       .then((res) => setTimeline(res.data?.results || []))
       .catch(() => setTimeline([]))

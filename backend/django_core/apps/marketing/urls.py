@@ -13,6 +13,10 @@ les noms d'URL du routeur compta (qui reverse ``campagne-list`` etc.).
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .public_views import (
+    formulaire_intake_public,
+    formulaire_intake_soumettre,
+)
 from .views import (
     AbonnementListeViewSet,
     AppelTelephoniqueViewSet,
@@ -135,5 +139,10 @@ urlpatterns = [
     path('evenements-marketing/<int:evenement_id>/inscription-publique/',
          evenement_inscription_publique,
          name='mkt-evenement-inscription-publique'),
+    # WIR64/FG206 — capture de lead publique (landing tokenisée par slug).
+    path('intake/<slug:slug>/', formulaire_intake_public,
+         name='mkt-formulaire-intake-public'),
+    path('intake/<slug:slug>/soumettre/', formulaire_intake_soumettre,
+         name='mkt-formulaire-intake-soumettre'),
     path('', include(router.urls)),
 ]

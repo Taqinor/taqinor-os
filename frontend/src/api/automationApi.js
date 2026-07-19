@@ -34,6 +34,38 @@ const automationApi = {
   getDelegations: (params) => api.get('/automation/approval-delegations/', { params }),
   createDelegation: (data) => api.post('/automation/approval-delegations/', data),
   deleteDelegation: (id) => api.delete(`/automation/approval-delegations/${id}/`),
+
+  // ── WIR62 / XKB2 — Demandes d'approbation ad-hoc ──
+  // Types (admin) : définition d'un type de demande (nom, champs requis,
+  // palier approbateur). CRUD sur `automation/approval-request-types/`.
+  getApprovalRequestTypes: (params) =>
+    api.get('/automation/approval-request-types/', { params }),
+  saveApprovalRequestType: (id, data) => id
+    ? api.patch(`/automation/approval-request-types/${id}/`, data)
+    : api.post('/automation/approval-request-types/', data),
+  deleteApprovalRequestType: (id) =>
+    api.delete(`/automation/approval-request-types/${id}/`),
+  // Demandes (employé soumet, approbateur décide). ?status=pending / ?mine=1.
+  getApprovalRequests: (params) =>
+    api.get('/automation/approval-requests/', { params }),
+  createApprovalRequest: (data) =>
+    api.post('/automation/approval-requests/', data),
+  approveApprovalRequest: (id, note) =>
+    api.post(`/automation/approval-requests/${id}/approve/`, { note }),
+  rejectApprovalRequest: (id, note) =>
+    api.post(`/automation/approval-requests/${id}/reject/`, { note }),
+  demandeInfoApprovalRequest: (id, motif) =>
+    api.post(`/automation/approval-requests/${id}/demande-info/`, { motif }),
+  resoumettreApprovalRequest: (id, payload) =>
+    api.post(`/automation/approval-requests/${id}/resoumettre/`, { payload }),
+  // ── WIR61 / XPLT4 — Webhooks entrants tokenisés (par règle webhook_inbound).
+  // Le `token` et l'`url_path` sont générés côté serveur ; la rotation invalide
+  // immédiatement l'ancien token. `hmac_secret` optionnel (signature entrante).
+  getWebhooks: (params) => api.get('/automation/incoming-webhooks/', { params }),
+  createWebhook: (data) => api.post('/automation/incoming-webhooks/', data),
+  rotateWebhook: (id) => api.post(`/automation/incoming-webhooks/${id}/rotate/`),
+  updateWebhook: (id, data) => api.patch(`/automation/incoming-webhooks/${id}/`, data),
+  deleteWebhook: (id) => api.delete(`/automation/incoming-webhooks/${id}/`),
 }
 
 export default automationApi

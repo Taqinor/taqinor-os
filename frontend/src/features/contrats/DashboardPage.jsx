@@ -138,6 +138,9 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* WIR77 / XCTR9 — valeur vie client (CLV) par client. */}
+      {!loading && !error && <ClvCard />}
+
       {/* XCTR8 — cohortes de rétention. */}
       {!loading && !error && cohortes?.cohortes && Object.keys(cohortes.cohortes).length > 0 && (
         <Card className="p-4 sm:p-5">
@@ -196,6 +199,69 @@ function CohortesHeatmap({ cohortes }) {
   )
 }
 
+// WIR77 / XCTR9 — carte CLV : saisir un client → ARPC, durée de vie, CLV.
+// L'endpoint exige un client_id (lien lâche Contrat.client_id) ; clv=null
+// quand le calcul est impossible (churn nul/inconnu) — jamais une fausse valeur.
+function ClvCard() {
+  const [clientId, setClientId] = useState('')
+  const [data, setData] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const chercher = async (e) => {
+    e.preventDefault()
+    if (clientId === '') { setErr('L’identifiant client est requis.'); return }
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await contratsApi.getClv({ client_id: Number(clientId) })
+      setData(r.data)
+    } catch (e2) {
+      setData(null)
+      setErr(e2?.response?.data?.detail || 'Calcul CLV impossible.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <h3 className="mb-3 flex items-center gap-2 font-display text-base font-semibold">
+        <Wallet className="size-4 text-muted-foreground" aria-hidden="true" /> Valeur vie client (CLV)
+      </h3>
+      <form onSubmit={chercher} className="flex flex-wrap items-end gap-3" noValidate>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="clv-client">Identifiant client</Label>
+          <Input id="clv-client" type="number" step="1" value={clientId}
+                 onChange={(e) => setClientId(e.target.value)} placeholder="ex. 42" className="w-40" />
+        </div>
+        <Button type="submit" variant="outline" disabled={busy}>{busy ? 'Calcul…' : 'Calculer'}</Button>
+      </form>
+      {err && <p className="mt-2 text-sm text-destructive" role="alert">{err}</p>}
+      {data && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">ARPC (MRR client)</p>
+            <p className="font-display text-lg font-semibold tabular-nums">{formatMAD(data.arpc)}</p>
+          </div>
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">Durée de vie estimée</p>
+            <p className="font-display text-lg font-semibold tabular-nums">
+              {data.duree_vie_mois != null ? `${data.duree_vie_mois} mois` : '—'}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-muted/30 p-3">
+            <p className="text-xs text-muted-foreground">
+              CLV{data.plafonnee ? ' (plafonnée)' : ''}{data.used_fallback ? ' (churn estimé)' : ''}
+            </p>
+            <p className="font-display text-lg font-semibold tabular-nums">
+              {data.clv != null ? formatMAD(data.clv) : 'Indisponible'}
+            </p>
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
 // XCTR11 — campagne de révision tarifaire en masse (preview → application).
 function CampagneRevisionDialog({ onClose }) {
   const [pct, setPct] = useState('')
@@ -203,6 +269,8 @@ function CampagneRevisionDialog({ onClose }) {
   const [preview, setPreview] = useState(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
+  // WIR77 — ids d'avenants de la dernière application, pour le rollback (XCTR11).
+  const [rollbackIds, setRollbackIds] = useState([])
 
   const lancerPreview = async (e) => {
     e.preventDefault()
@@ -223,9 +291,27 @@ function CampagneRevisionDialog({ onClose }) {
     try {
       const r = await contratsApi.campagneRevision({ pct: Number(pct), date_effet: dateEffet || undefined, preview: false })
       toast.success(`Campagne appliquée : ${r.data?.avenants_crees ?? 0} avenant(s).`)
-      onClose()
+      // WIR77 — on garde la fenêtre ouverte pour offrir le rollback tant que
+      // les ids d'avenants sont connus (annulation par avenants compensatoires,
+      // jamais de suppression — historique immuable).
+      setRollbackIds(Array.isArray(r.data?.rollback_ids) ? r.data.rollback_ids : [])
+      setPreview(null)
     } catch (e2) {
       setErr(e2?.response?.data?.detail || 'Application impossible.')
+    } finally { setBusy(false) }
+  }
+
+  // WIR77 — annule la campagne appliquée (avenants compensatoires).
+  const rollback = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await contratsApi.campagneRevisionRollback({ avenant_ids: rollbackIds })
+      toast.success(`Campagne annulée : ${r.data?.compensations_creees ?? 0} compensation(s).`)
+      setRollbackIds([])
+      onClose()
+    } catch (e2) {
+      setErr(e2?.response?.data?.detail || 'Annulation impossible.')
     } finally { setBusy(false) }
   }
 
@@ -268,8 +354,21 @@ function CampagneRevisionDialog({ onClose }) {
           </div>
         )}
 
+        {/* WIR77 — bandeau rollback après application. */}
+        {rollbackIds.length > 0 && (
+          <p className="mt-2 rounded-md border border-warning/30 bg-warning/10 p-2 text-xs text-foreground">
+            Campagne appliquée sur {rollbackIds.length} avenant(s). Vous pouvez
+            l’annuler (chaque avenant sera compensé, sans suppression).
+          </p>
+        )}
+
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+          {rollbackIds.length > 0 && (
+            <Button type="button" variant="destructive" disabled={busy} onClick={rollback}>
+              <RefreshCw className="size-3.5" /> Annuler la campagne
+            </Button>
+          )}
           {preview?.lignes?.length > 0 && (
             <Button type="button" disabled={busy} onClick={appliquer}>
               Appliquer à {preview.lignes.length} contrat(s)

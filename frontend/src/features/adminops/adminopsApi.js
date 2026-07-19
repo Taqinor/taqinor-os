@@ -10,6 +10,9 @@ const adminopsApi = {
   adoption: (periode = 30) => api.get('/adminops/adoption/', { params: { periode } }),
   trackerUsage: (module, ecran) =>
     api.post('/adminops/tracker-usage/', { module, ecran }),
+  // WIR69 — export PDF du journal d'administration (IsAdministrateur).
+  journalAdminPdf: () =>
+    api.get('/adminops/rapports/journal-admin/', { responseType: 'blob' }),
   getSettings: () => api.get('/adminops/settings/'),
   updateSettings: (data) => api.patch('/adminops/settings/', data),
   diagnostic: () => api.get('/adminops/diagnostic/'),

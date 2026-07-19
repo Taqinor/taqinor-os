@@ -21,6 +21,14 @@ const esgApi = {
     figer: (id) => api.post(`/esg/periodes-esg/${id}/figer/`),
     // Données ESG effectives (snapshot gelé si figée, aperçu live sinon).
     indicateurs: (id) => api.get(`/esg/periodes-esg/${id}/indicateurs/`),
+    // Comparateur N vs N-1 (NTESG11) — écarts entre deux périodes scopées.
+    comparer: (periodeId, referenceId) =>
+      api.get('/esg/periodes-esg/comparer/', {
+        params: { periode: periodeId, reference: referenceId },
+      }),
+    // Export DPEF-friendly (NTESG14) — gabarit Markdown, téléchargement binaire.
+    dpef: (id) =>
+      api.get(`/esg/periodes-esg/${id}/dpef/`, { responseType: 'blob' }),
     // Rapport PDF GRI-lite (NTESG4) — téléchargement binaire.
     rapportPdf: (id) =>
       api.get(`/esg/periodes-esg/${id}/rapport-pdf/`, { responseType: 'blob' }),
@@ -56,6 +64,30 @@ const esgApi = {
     create: (data) => api.post('/esg/parties-prenantes-esg/', data),
     update: (id, data) => api.patch(`/esg/parties-prenantes-esg/${id}/`, data),
     remove: (id) => api.delete(`/esg/parties-prenantes-esg/${id}/`),
+  },
+
+  // ── Documents de politique RSE (NTESG13, WIR130) ──
+  // Métadonnées ; le fichier se dépose via records.Attachment
+  // (cible `esg.documentpolitiqueesg`).
+  documentsPolitique: {
+    list: (params) => api.get('/esg/documents-politique-esg/', { params }),
+    create: (data) => api.post('/esg/documents-politique-esg/', data),
+    update: (id, data) =>
+      api.patch(`/esg/documents-politique-esg/${id}/`, data),
+    remove: (id) => api.delete(`/esg/documents-politique-esg/${id}/`),
+  },
+
+  // ── Bibliothèque de facteurs d'émission versionnée (NTESG16, WIR130) ──
+  facteurs: {
+    list: (params) => api.get('/esg/facteurs-emission/', { params }),
+    // create passe TOUJOURS par services.creer_version_facteur côté serveur.
+    create: (data) => api.post('/esg/facteurs-emission/', data),
+    remove: (id) => api.delete(`/esg/facteurs-emission/${id}/`),
+    // Historique COMPLET (toutes versions) d'un facteur (categorie+unite).
+    historique: (categorie, unite) =>
+      api.get('/esg/facteurs-emission/historique/', {
+        params: { categorie, unite },
+      }),
   },
 }
 

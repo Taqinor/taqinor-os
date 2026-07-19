@@ -181,6 +181,9 @@ export default function ContratDetail() {
         { header: 'Fonction', cell: (p) => p.fonction || '—' },
         { header: 'Email', cell: (p) => p.email || '—' },
         { header: 'Téléphone', cell: (p) => p.telephone || '—' },
+        // WIR98 — contact canonique lié (référentiel contacts) quand la
+        // partie provient d'un contact plutôt que de texte libre.
+        { header: 'Contact lié', cell: (p) => p.contact_nom || '—' },
       ]}
     />
   )
@@ -309,6 +312,8 @@ export default function ContratDetail() {
   const infosTab = (
     <Card className="p-4">
       <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+        {/* WIR77 — nom du client lié (résolu cross-app côté serveur). */}
+        <Info label="Client" value={contrat.client_nom || '—'} />
         <Info label="Type" value={contrat.type_contrat_display || contrat.type_contrat} />
         <Info label="Confidentialité" value={contrat.confidentialite_display || contrat.confidentialite} />
         <Info label="Montant" value={contrat.montant != null ? formatMAD(contrat.montant) : '—'} />

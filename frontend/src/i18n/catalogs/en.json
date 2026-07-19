@@ -77,6 +77,8 @@
   "nav.tableau_commercial": "Sales dashboard",
   "nav.utilisateurs": "Users",
   "nav.roles": "Roles",
+  "nav.securite_identite": "Security & Identity",
+  "nav.gouvernance_acces": "Access governance",
   "nav.journal": "Activity log",
   "nav.parametres": "Settings",
   "nav.export_sauvegarde": "Export / Backup",

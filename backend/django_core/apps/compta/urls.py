@@ -193,6 +193,10 @@ router.register(r'demandes-ticket-portail', DemandeTicketPortailViewSet)
 router.register(r'partenaires', PartenaireViewSet)
 router.register(r'soumissions-lead-partenaire', SoumissionLeadPartenaireViewSet)
 router.register(r'commissions-partenaire', CommissionPartenaireViewSet)
+# WIR81 — UNIQUE préfixe de ``crm.TerritoireCommercial`` (FG236). Le double
+# montage ODX13 (une seconde route /api/django/crm/territoires-commerciaux/)
+# a été retiré : ce modèle n'est qu'un référentiel de zones (legacy) et NON le
+# moteur d'assignation des leads, qui est ``apps.territoires.Territoire``.
 router.register(r'territoires-commerciaux', TerritoireCommercialViewSet)
 router.register(r'enquetes-nps', EnqueteNPSViewSet)
 router.register(r'avis-clients', AvisClientViewSet)

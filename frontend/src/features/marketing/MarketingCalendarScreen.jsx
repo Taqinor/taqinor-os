@@ -8,16 +8,14 @@ import {
 } from './marketing'
 
 /* ============================================================================
-   XMKT30 — Calendrier marketing unifié.
+   XMKT30 / WIR65 — Calendrier marketing unifié.
    ----------------------------------------------------------------------------
-   Agrège 4 sources company-scoped : campagnes (planifiee_le, XMKT7), étapes de
-   séquences dues, événements (XMKT28), relances (FG31). Filtrable par canal ;
+   Agrège les 5 sources company-scoped servies par l'endpoint backend
+   (`CalendrierMarketingView`, apps/compta/views.py) : campagnes (planifiee_le,
+   XMKT7), posts sociaux (XMKT35), étapes de séquences dues, événements
+   (XMKT28) et relances de devis abandonnés (FG203). Filtrable par canal ;
    drag-to-reschedule (HTML5 natif, comme reporting/CalendarPage.jsx — pas de
    lib externe) réservé aux campagnes non parties. Clic → ouvre l'objet.
-   NOTE : l'endpoint agrégé backend n'existe pas encore (voir comptaApi.js —
-   `calendrierMarketing.get/reschedule`) ; l'écran reste pleinement fonctionnel
-   dès son activation (404 tant que la route n'est pas construite côté
-   apps/compta/views.py).
    ========================================================================== */
 
 export default function MarketingCalendarScreen() {

@@ -269,6 +269,31 @@ const gedApi = {
   // `data` : { documents:[<id>,...], operation:'tagger'|'detaguer'|'deplacer'|
   // 'corbeille'|'partager'|'demander_signature'|'demander_revue', params?:{} }.
   operationsLot: (data) => api.post('/ged/documents/operations-lot/', data),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // WIR70 — surfaces GED déjà exposées mais sans consommateur frontend.
+  // ══════════════════════════════════════════════════════════════════════
+  // Timeline d'un document (audit chronologique).
+  getTimeline: (id) => api.get(`/ged/documents/${id}/timeline/`),
+  // Rapport ACL « qui voit ce document et pourquoi » (+ export CSV).
+  getPermissionsEffectives: (id) =>
+    api.get(`/ged/documents/${id}/permissions-effectives/`),
+  exportPermissionsEffectivesCsv: (id) =>
+    api.get(`/ged/documents/${id}/permissions-effectives/`,
+      { params: { format: 'csv' }, responseType: 'blob' }),
+  // ZGED7 — favori personnel (toggle) : renvoie { favori: bool } après bascule.
+  toggleFavoriDocument: (id, favori) =>
+    api.post(`/ged/documents/${id}/favori/`, { favori }),
+  // GED35 — mes documents récents / mes favoris (personnels, jamais d'un collègue).
+  getMesRecents: (params) => api.get('/ged/mes-recents/', { params }),
+  getMesFavoris: () => api.get('/ged/mes-favoris/'),
+  // XGED26 — analytique workflow & signature (gestion/admin).
+  getAnalytique: (params) => api.get('/ged/analytique/', { params }),
+  // Vues enregistrées (filtres sauvegardés) partagées de la société.
+  getVues: (params) => api.get('/ged/vues/', { params }),
+  // Lien de dépôt public tokenisé (la page publique PublicDepotPage fonctionne).
+  getDepotsPublics: (params) => api.get('/ged/depots-publics/', { params }),
+  createDepotPublic: (data) => api.post('/ged/depots-publics/', data),
 }
 
 export default gedApi

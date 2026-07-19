@@ -75,6 +75,11 @@ const reportingApi = {
     api.get('/reporting/insights/cf-group-by/', {
       params: { module, code, ...(params || {}) },
     }),
+  // WIR101 — export xlsx de la répartition d'un champ personnalisé.
+  cfGroupByXlsx: (module, code) =>
+    api.get('/reporting/insights/cf-group-by/', {
+      params: { module, code, export: 'xlsx' }, responseType: 'blob',
+    }),
   // FG97 — Analytiques du Journal.
   // WIR20 — préfixe corrigé : l'endpoint est monté sous `apps.audit.urls`
   // (`/audit/analytics/`), jamais sous `/reporting/` (404 avant ce fix).
@@ -86,6 +91,12 @@ const reportingApi = {
   // FG99 — Rentabilité par segment (admin).
   profitability: (params) =>
     api.get('/reporting/insights/profitability/', { params }),
+  // FG29 — Vélocité par étape du pipeline (durée moyenne + leads en attente
+  // par étape). Distinct de `sales_velocity` (délai global lead→signature).
+  funnelVelocity: () => api.get('/reporting/pipeline/velocity/'),
+  // ARC40 — KPI fédérés : tuiles agrégées des providers `kpi_providers`
+  // déclarés par les modules actifs (rh/paie/contrats/compta…).
+  kpiFederes: () => api.get('/reporting/reports/kpi-federes/'),
   // QJ18 — Tableau de bord commercial (entonnoir, vélocité, classement).
   commercialDashboard: (params) =>
     api.get('/reporting/commercial/dashboard/', { params }),
@@ -121,6 +132,14 @@ const reportingApi = {
     api.post(`/reporting/classeurs/${id}/evaluer/`, { formule }),
   // XSAV8 — conformité SLA + KPI SAV avancés.
   savSlaInsight: (params) => api.get('/reporting/insights/sav-sla/', { params }),
+  // WIR102 — analytique SAV : pivot tickets (technicien×statut), coût interne
+  // moyen (permission prix_achat_voir), taux d'attache contrat (YSERV10).
+  savTicketsPivot: (params) =>
+    api.get('/reporting/insights/sav-tickets-pivot/', { params }),
+  savTicketsCoutMoyen: () =>
+    api.get('/reporting/insights/sav-tickets-cout-moyen/'),
+  savTauxAttache: (params) =>
+    api.get('/reporting/insights/sav-taux-attache/', { params }),
   // XFSM16 — analytics field service consolidés (FTF, MTTR, ponctualité…).
   fieldServiceReport: (params) => api.get('/reporting/reports/field/', { params }),
   // XFSM17 — scorecard coaching par technicien vs moyenne équipe.

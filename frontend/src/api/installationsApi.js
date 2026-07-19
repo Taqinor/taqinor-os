@@ -510,6 +510,61 @@ const installationsApi = {
 
   // XMFG5 — nomenclature indentée + disponibilité d'un kit produit (stock app).
   getKitStructure: (kitId) => api.get(`/stock/kits/${kitId}/structure/`),
+
+  // WIR110 — approvisionnement avancé (consultation lecture seule) : les 6
+  // familles d'endpoints FG310-318 qui n'avaient aucun écran.
+  getSeuilsApprobationBcf: (params) =>
+    api.get('/installations/seuils-approbation-bcf/', { params }),
+  getApprobationsBcf: (params) =>
+    api.get('/installations/approbations-bcf/', { params }),
+  getCommandesCadre: (params) =>
+    api.get('/installations/commandes-cadre/', { params }),
+  getAppelsCommande: (params) =>
+    api.get('/installations/appels-commande/', { params }),
+  getContratsPrixFournisseur: (params) =>
+    api.get('/installations/contrats-prix-fournisseur/', { params }),
+  getReceptionsNonFacturees: (params) =>
+    api.get('/installations/receptions-non-facturees/', { params }),
+
+  // WIR114 — astreintes (FG302), indisponibilités ressource (FG302) et
+  // récurrences d'intervention (ZFSM3). Société/created_by posés serveur.
+  getAstreintes: (params) => api.get('/installations/astreintes/', { params }),
+  createAstreinte: (data) => api.post('/installations/astreintes/', data),
+  deleteAstreinte: (id) => api.delete(`/installations/astreintes/${id}/`),
+  getIndisponibilites: (params) =>
+    api.get('/installations/indisponibilites-ressource/', { params }),
+  createIndisponibilite: (data) =>
+    api.post('/installations/indisponibilites-ressource/', data),
+  deleteIndisponibilite: (id) =>
+    api.delete(`/installations/indisponibilites-ressource/${id}/`),
+  getRecurrencesIntervention: (params) =>
+    api.get('/installations/recurrences-intervention/', { params }),
+  createRecurrenceIntervention: (data) =>
+    api.post('/installations/recurrences-intervention/', data),
+  deleteRecurrenceIntervention: (id) =>
+    api.delete(`/installations/recurrences-intervention/${id}/`),
+
+  // WIR114 — ZFSM3 : modèles de fiche d'intervention + leurs champs (Paramètres).
+  getFicheTemplates: (params) =>
+    api.get('/installations/fiche-intervention-templates/', { params }),
+  saveFicheTemplate: (id, data) => id
+    ? api.patch(`/installations/fiche-intervention-templates/${id}/`, data)
+    : api.post('/installations/fiche-intervention-templates/', data),
+  deleteFicheTemplate: (id) =>
+    api.delete(`/installations/fiche-intervention-templates/${id}/`),
+  saveFicheChamp: (id, data) => id
+    ? api.patch(`/installations/fiche-intervention-champs/${id}/`, data)
+    : api.post('/installations/fiche-intervention-champs/', data),
+  deleteFicheChamp: (id) =>
+    api.delete(`/installations/fiche-intervention-champs/${id}/`),
+
+  // WIR112 — équipes terrain canoniques (DC40). CRUD depuis Paramètres ;
+  // `membres` (M2M utilisateurs) + `chef` optionnel. Société posée serveur.
+  getEquipesTerrain: (params) => api.get('/installations/equipes/', { params }),
+  saveEquipeTerrain: (id, data) => id
+    ? api.patch(`/installations/equipes/${id}/`, data)
+    : api.post('/installations/equipes/', data),
+  deleteEquipeTerrain: (id) => api.delete(`/installations/equipes/${id}/`),
 }
 
 export default installationsApi

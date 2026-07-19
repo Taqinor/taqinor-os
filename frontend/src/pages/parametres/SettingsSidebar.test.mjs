@@ -28,7 +28,7 @@ function arrayBlock(src, name) {
 const EXPECTED_TAB_KEYS = [
   'onboarding', 'societe', 'leads', 'clients', 'devis', 'documents',
   'tarification', 'stock', 'donnees', 'statuts', 'monitoring', 'checklists',
-  'etapes_chantier', 'kits', 'shotlist', 'automatisations', 'securite',
+  'etapes_chantier', 'kits', 'shotlist', 'automatisations', 'notifications', 'securite',
   'equipe', 'messages', 'email', 'api', 'avance',
 ]
 
