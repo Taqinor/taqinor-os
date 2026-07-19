@@ -10,8 +10,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adminops/config_package_service.py:125` | update_or_create | MessageTemplate.objects | cle, company |
 | `backend/django_core/apps/adsengine/brief.py:244` | update_or_create | WeeklyBrief.objects | company, period_start |
 | `backend/django_core/apps/adsengine/comments.py:74` | update_or_create | CommentMirror.objects | company, meta_id |
-| `backend/django_core/apps/adsengine/flightrunner.py:375` | update_or_create | AdCampaignMirror.objects | company, meta_id |
-| `backend/django_core/apps/adsengine/flightrunner.py:385` | update_or_create | AdSetMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/flightrunner.py:118` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/flightrunner.py:204` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/flightrunner.py:437` | update_or_create | AdCampaignMirror.objects | company, meta_id |
+| `backend/django_core/apps/adsengine/flightrunner.py:447` | update_or_create | AdSetMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/instagram.py:55` | update_or_create | InstagramMediaMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/instagram.py:84` | update_or_create | InstagramCommentMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/management/commands/seed_adsengine.py:40` | get_or_create | GuardrailConfig.objects | company |
@@ -20,9 +22,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/management/commands/seed_synthetic_account.py:137` | update_or_create | AdCampaignMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/management/commands/seed_synthetic_account.py:141` | update_or_create | AdSetMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/management/commands/seed_synthetic_account.py:159` | update_or_create | AdMirror.objects | company, meta_id |
-| `backend/django_core/apps/adsengine/models.py:560` | update_or_create | cls.objects | company, content_type, date, dimension, key, object_id |
-| `backend/django_core/apps/adsengine/models.py:1046` | update_or_create | cls.objects | arm, company, date |
-| `backend/django_core/apps/adsengine/models.py:1288` | update_or_create | cls.objects | company, period_start |
+| `backend/django_core/apps/adsengine/models.py:642` | update_or_create | cls.objects | company, content_type, date, dimension, key, object_id |
+| `backend/django_core/apps/adsengine/models.py:1131` | update_or_create | cls.objects | arm, company, date |
+| `backend/django_core/apps/adsengine/models.py:1373` | update_or_create | cls.objects | company, period_start |
 | `backend/django_core/apps/adsengine/policy.py:40` | get_or_create | CreativePolicy.objects | company |
 | `backend/django_core/apps/adsengine/receivers.py:59` | update_or_create | MetaLeadMirror.objects | company, leadgen_id |
 | `backend/django_core/apps/adsengine/reconciliation.py:350` | update_or_create | RS.objects | campaign, company, date |
@@ -36,11 +38,11 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/sync.py:116` | get_or_create | AdMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/sync.py:181` | update_or_create | AdCreativeMirror.objects | ad, company |
 | `backend/django_core/apps/adsengine/sync.py:242` | update_or_create | PagePostMirror.objects | company, meta_id |
-| `backend/django_core/apps/adsengine/sync.py:301` | update_or_create | InsightSnapshot.objects | company, content_type, date, object_id |
-| `backend/django_core/apps/adsengine/views.py:1247` | get_or_create | MetaConnection.objects | company |
-| `backend/django_core/apps/adsengine/views.py:1329` | get_or_create | GuardrailConfig.objects | company |
-| `backend/django_core/apps/adsengine/views.py:1336` | get_or_create | GuardrailConfig.objects | company |
-| `backend/django_core/apps/adsengine/whatsapp_webhook.py:174` | update_or_create | CtwaReferral.objects | company, wa_message_id |
+| `backend/django_core/apps/adsengine/sync.py:326` | update_or_create | InsightSnapshot.objects | company, content_type, date, object_id |
+| `backend/django_core/apps/adsengine/views.py:1619` | get_or_create | MetaConnection.objects | company |
+| `backend/django_core/apps/adsengine/views.py:1760` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:1767` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/whatsapp_webhook.py:203` | update_or_create | CtwaReferral.objects | company, wa_message_id |
 | `backend/django_core/apps/assurances/services.py:340` | update_or_create | IndemnisationSinistre.objects | declaration |
 | `backend/django_core/apps/automation/views.py:400` | get_or_create | IncomingWebhookTrigger.objects | rule |
 | `backend/django_core/apps/chat/services.py:152` | get_or_create | MessageMention.objects | mentioned_user, message |
@@ -104,8 +106,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/credit/views.py:375` | get_or_create | ReglageCredit.objects | company |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/services.py:104` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:3315` | get_or_create | MessageTemplate.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:1470` | get_or_create | Canal.objects | cle, company |
+| `backend/django_core/apps/crm/services.py:3380` | get_or_create | MessageTemplate.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:1454` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:1506` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/dataimport/services.py:224` | update_or_create | ImportMapping.objects | company, entity, nom |
 | `backend/django_core/apps/dataimport/services.py:261` | get_or_create | ExternalRef.objects | company, external_id, external_system |
 | `backend/django_core/apps/education/models.py:755` | get_or_create | cls.objects | company |

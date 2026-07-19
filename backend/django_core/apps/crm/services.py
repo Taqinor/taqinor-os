@@ -1598,7 +1598,7 @@ def create_minimal_lead_from_ctwa(*, company, phone, ad_id='') -> Lead:
     Attribution : ``canal=WHATSAPP_CTWA``, ``meta_ad_id`` posé quand
     ``ad_id`` est fourni (même colonne de jointure que ADSENG1/XMKT32 — la
     variante Meta reste résolvable par ``apps.adsengine.attribution``).
-    ``source=OS_NATIVE`` (créé nativement dans TAQINOR — CTWA n'est pas un
+    ``source=OS_NATIVE`` (créé nativement dans l'ERP — CTWA n'est pas un
     import, contrairement à ``META_LEAD_ADS``)."""
     phone = (phone or '').strip()
     if not phone or company is None:
