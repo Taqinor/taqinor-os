@@ -27,10 +27,14 @@ du socle régresserait le design dd-guardian. Dossier de décision complet :
 """
 from __future__ import annotations
 
+import datetime
+import logging
 import statistics
 from dataclasses import dataclass, field
 
 from .rules import SEVERITY_CRITICAL, SEVERITY_INFO, SEVERITY_WARNING
+
+logger = logging.getLogger(__name__)
 
 # ── Types d'anomalie (valeurs ALIGNÉES sur ``AnomalyEvent.Kind`` — pas d'import
 # de modèle, on partage les littéraux, comme ``rules.py`` pour la sévérité). ──
@@ -44,6 +48,14 @@ KIND_OTHER = 'autre'
 # n'applique PAS ``choices`` au ``.save()``, donc aucune migration requise pour
 # un nouveau kind qui suit ce pattern).
 KIND_CREATIVE_FATIGUE = 'creative_fatigue'
+# PUB33 — vélocité d'apprentissage (volume d'événements d'optimisation/7 j).
+KIND_LEARNING_VELOCITY = 'apprentissage_lent'
+
+# PUB33 — Meta cible ~50 événements d'optimisation (résultats de la campagne
+# d'optimisation) par ad set sur une fenêtre glissante de 7 jours pour sortir
+# proprement de la phase d'apprentissage ; en dessous, l'ad set reste affamé de
+# signal (CPA instable, apprentissage qui ne se stabilise jamais).
+DEFAULT_LEARNING_EVENTS_PER_WEEK = 50
 
 
 @dataclass(frozen=True)
@@ -349,6 +361,48 @@ def detect_creative_fatigue(*, frequency, ctr_current, ctr_baseline,
                      KIND_CREATIVE_FATIGUE, message, computed)
 
 
+# ── PUB33 — Vigie vélocité d'apprentissage (~50 événements d'optimisation/7 j) ─
+def detect_learning_velocity(daily_optimization_events, *,
+                             min_events_per_week=DEFAULT_LEARNING_EVENTS_PER_WEEK,
+                             min_samples=3):
+    """Ad set sous le seuil ~50 événements d'optimisation/7 j (Meta) — signal
+    que PERSONNE ne surveille aujourd'hui : un ad set structurellement affamé
+    de volume ne sort jamais proprement de l'apprentissage et ne se voit qu'a
+    posteriori dans le CPA.
+
+    ``daily_optimization_events`` = compte quotidien d'événements
+    d'optimisation DÉJÀ SYNCHRONISÉS (``InsightSnapshot.results``, ou
+    ``leads_count`` à défaut) sur la fenêtre glissante (7 j par défaut) —
+    fonction PURE, aucun I/O, le câblage DB vit dans
+    ``evaluate_learning_velocity`` ci-dessous. Sous ``min_samples`` jours de
+    donnée → ``insufficient_data`` (ALERTE toujours, jamais un skip muet,
+    même doctrine que le reste du module)."""
+    clean = _floats(daily_optimization_events)
+    if len(clean) < min_samples:
+        return _insufficient(
+            'learning_velocity', KIND_LEARNING_VELOCITY,
+            "Vélocité d'apprentissage : historique insuffisant pour juger — "
+            "vérification impossible.", {'samples': len(clean)})
+    total = sum(clean)
+    computed = {'total_events_7d': total, 'threshold': min_events_per_week,
+                'samples': len(clean)}
+    if total < min_events_per_week:
+        deficit = min_events_per_week - total
+        return Detection(
+            'learning_velocity', True, False, SEVERITY_WARNING,
+            KIND_LEARNING_VELOCITY,
+            (f"Ad set sous le seuil d'apprentissage Meta : {total:g} "
+             f"événement(s) d'optimisation sur 7 jours (seuil ~"
+             f"{min_events_per_week:g}) — déficit de {deficit:g}. Volume trop "
+             "faible pour sortir proprement de la phase d'apprentissage : "
+             "envisagez de CONSOLIDER cet ad set avec un autre proche (même "
+             "audience/objectif) pour concentrer le volume d'optimisation, ou "
+             "élargir le ciblage."),
+            computed)
+    return Detection('learning_velocity', False, False, SEVERITY_WARNING,
+                     KIND_LEARNING_VELOCITY, '', computed)
+
+
 # ── Matérialisation (câblage DB — le seul point non pur du module) ────────────
 def record_anomaly(company, detection, *, entity_type='', entity_meta_id='',
                    rule_policy=None, alert=None):
@@ -362,3 +416,74 @@ def record_anomaly(company, detection, *, entity_type='', entity_meta_id='',
         entity_meta_id=entity_meta_id, severity=detection.severity,
         message_fr=detection.message_fr, detail=detection.computed,
         rule_policy=rule_policy, alert=alert)
+
+
+# ── PUB33 — Matérialisation directe en ``EngineAlert`` (recommandation) ──────
+# Ce détecteur parle au fondateur directement (centre d'alertes), pas au
+# journal d'anomalies techniques ``AnomalyEvent`` — même patron que
+# ``blast_radius._emit_critical_alert`` : dédup par ``entity_key`` sur un
+# cooldown (ne renotifie pas à chaque évaluation tant que rien n'a changé).
+# JAMAIS d'``EngineAction`` créée ici — une alerte est une RECOMMANDATION,
+# jamais une action auto (règle du moteur, hors escalade humaine explicite).
+def _emit_alert(company, detection, *, entity_key, cooldown_hours=24):
+    """Matérialise une ``EngineAlert`` de type ``anomalie`` à partir d'un
+    ``Detection`` DÉCLENCHÉ (jamais pour un ``insufficient_data``). Best-effort
+    : une erreur de persistance ne casse jamais l'appelant (déjà journalisée
+    via ``logger.warning`` + le ``Detection`` renvoyé par le détecteur pur)."""
+    from django.utils import timezone
+
+    from .models import EngineAlert
+
+    if company is None or not detection.fired:
+        return None
+    try:
+        since = timezone.now() - datetime.timedelta(hours=cooldown_hours)
+        existing = (EngineAlert.objects
+                    .filter(company=company, entity_key=entity_key,
+                            resolved=False, created_at__gte=since)
+                    .order_by('-created_at').first())
+        if existing is not None:
+            return existing
+        return EngineAlert.objects.create(
+            company=company, alert_type=EngineAlert.Type.ANOMALIE,
+            message=detection.message_fr, severity=detection.severity,
+            entity_key=entity_key, cooldown_hours=cooldown_hours,
+            detail=detection.computed)
+    except Exception:  # pragma: no cover - défensif, jamais casser l'appelant
+        logger.warning(
+            'anomaly: échec persistance EngineAlert (%s)', entity_key,
+            exc_info=True)
+        return None
+
+
+def evaluate_learning_velocity(company, adset, *, now=None,
+                               min_events_per_week=DEFAULT_LEARNING_EVENTS_PER_WEEK,
+                               window_days=7, min_samples=3):
+    """PUB33 — Lit les ``InsightSnapshot`` DÉJÀ SYNCHRONISÉS de l'ad set sur les
+    ``window_days`` derniers jours (``results``, ou ``leads_count`` à défaut),
+    calcule ``detect_learning_velocity`` et matérialise une ``EngineAlert`` FR
+    si déclenché (dédupliquée par ad set). Renvoie toujours le ``Detection``
+    (utile même quand ``insufficient_data`` ou non déclenché — jamais
+    d'écriture sur Meta, lecture seule de données déjà synchronisées)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from .models import AdSetMirror, InsightSnapshot
+
+    today = now.date() if isinstance(now, datetime.datetime) else (
+        now if isinstance(now, datetime.date) else datetime.date.today())
+    start = today - datetime.timedelta(days=max(1, window_days) - 1)
+    ct = ContentType.objects.get_for_model(AdSetMirror)
+    snaps = (InsightSnapshot.objects
+             .filter(company=company, content_type=ct, object_id=adset.pk,
+                     date__gte=start, date__lte=today)
+             .order_by('date'))
+    daily = [
+        (s.results if s.results is not None else s.leads_count) for s in snaps]
+    detection = detect_learning_velocity(
+        daily, min_events_per_week=min_events_per_week,
+        min_samples=min_samples)
+    if detection.fired:
+        _emit_alert(
+            company, detection,
+            entity_key=f'learning_velocity:adset:{adset.meta_id}'[:80])
+    return detection
