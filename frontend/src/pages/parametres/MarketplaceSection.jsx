@@ -122,13 +122,16 @@ export default function MarketplaceSection() {
                     )}
                     {resume.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {resume.map(({ key, label, Icon, count }) => (
-                          <span key={key}
-                            className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-                            <Icon className="size-3" aria-hidden="true" />
-                            {count} {label}
-                          </span>
-                        ))}
+                        {resume.map((r) => {
+                          const { key, label, Icon, count } = r
+                          return (
+                            <span key={key}
+                              className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                              <Icon className="size-3" aria-hidden="true" />
+                              {count} {label}
+                            </span>
+                          )
+                        })}
                       </div>
                     )}
                   </div>

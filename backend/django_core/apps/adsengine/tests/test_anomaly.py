@@ -203,7 +203,10 @@ class AnomalyEngineSeparationTests(SimpleTestCase):
     def test_adsengine_anomaly_does_not_import_core_anomaly(self):
         import inspect
         source = inspect.getsource(anomaly)
-        self.assertNotIn('core.anomaly', source)
+        # Vérifie les IMPORTS, pas les simples mentions : le docstring du module
+        # explique justement la SÉPARATION d'avec « core.anomaly » (légitime).
+        self.assertNotIn('import core.anomaly', source)
+        self.assertNotIn('from core.anomaly', source)
         self.assertNotIn('from core import anomaly', source)
 
     def test_both_engines_have_distinct_entry_points(self):

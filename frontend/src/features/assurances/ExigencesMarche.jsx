@@ -36,6 +36,7 @@ export default function ExigencesMarche() {
       .catch(() => setError(true))
       .finally(() => setLoading(false))
   }
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper
   useEffect(() => { load() }, [])
 
   const creer = async () => {

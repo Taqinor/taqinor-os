@@ -63,7 +63,6 @@ function HistoriquePanel({ entite, onClose }) {
       .catch(() => { setEntries([]); toastError("Impossible de charger l'historique.") })
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(load, [entite.id])
 
   const submitNote = async () => {

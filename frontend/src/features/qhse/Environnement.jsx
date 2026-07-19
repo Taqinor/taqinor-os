@@ -324,7 +324,6 @@ function EnvCreateDialog({ spec, onClose, onDone }) {
     const o = {}
     for (const f of spec.fields) o[f.name] = f.default ?? ''
     return o
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spec])
   const [form, setForm] = useState(initial)
   const [saving, setSaving] = useState(false)
@@ -343,7 +342,6 @@ function EnvCreateDialog({ spec, onClose, onDone }) {
         .catch(() => {})
     })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spec])
 
   const setField = (k, v) => setForm((prev) => ({ ...prev, [k]: v }))

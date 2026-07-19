@@ -36,6 +36,7 @@ function RoutingRulesPanel() {
       .catch(() => toast.error('Chargement des règles impossible.'))
       .finally(() => setLoading(false))
   }
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper
   useEffect(() => { load() }, [])
 
   const creer = async () => {
@@ -119,6 +120,7 @@ function CalendrierPanel() {
       .catch(() => toast.error('Chargement du calendrier impossible.'))
       .finally(() => setLoading(false))
   }
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper
   useEffect(() => { load() }, [])
 
   const toggleJour = (idx) => setWh((w) => {
@@ -223,6 +225,7 @@ function AnnoncesPanel() {
       .catch(() => toast.error('Chargement des annonces impossible.'))
       .finally(() => setLoading(false))
   }
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper
   useEffect(() => { load() }, [])
 
   const creer = async () => {
@@ -310,6 +313,7 @@ function WhatsAppTemplatesPanel() {
       .catch(() => toast.error('Chargement des gabarits impossible.'))
       .finally(() => setLoading(false))
   }
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper
   useEffect(() => { load() }, [])
 
   const creer = async () => {

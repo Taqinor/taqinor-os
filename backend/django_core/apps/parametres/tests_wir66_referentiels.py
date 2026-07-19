@@ -55,7 +55,8 @@ class ReferentielsTest(TestCase):
         self.assertEqual(row.company_id, self.company.id)
         lst = self.api.get(TVA)
         self.assertEqual(lst.status_code, 200)
-        self.assertEqual(len(lst.data), 1)
+        rows = lst.data['results'] if isinstance(lst.data, dict) else lst.data
+        self.assertEqual(len(rows), 1)
 
     def test_viewer_can_read_but_not_write(self):
         TauxTVA.objects.create(company=self.company, code='tva20',
@@ -90,7 +91,9 @@ class ReferentielsTest(TestCase):
         other = _company(slug='ref-other', nom='Other')
         TauxTVA.objects.create(company=other, code='z', libelle='Z',
                                taux=Decimal('20'))
-        self.assertEqual(len(self.api.get(TVA).data), 0)
+        data = self.api.get(TVA).data
+        rows = data['results'] if isinstance(data, dict) else data
+        self.assertEqual(len(rows), 0)
 
     # ── Conditions de paiement ───────────────────────────────────────────
     def test_condition_crud(self):
@@ -109,6 +112,7 @@ class ReferentielsTest(TestCase):
                                    libelle='Ancien', actif=False)
         r = self.api.get(UNITE, {'actif': 'true'})
         self.assertEqual(r.status_code, 200)
-        codes = {row['code'] for row in r.data}
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        codes = {row['code'] for row in rows}
         self.assertIn('m', codes)
         self.assertNotIn('old', codes)

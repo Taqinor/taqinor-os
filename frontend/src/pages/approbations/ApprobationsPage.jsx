@@ -593,6 +593,7 @@ function DemandesAdHocTab() {
       .catch(() => toast.error('Chargement impossible.'))
       .finally(() => setLoading(false))
   }
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper
   useEffect(() => { load() }, [])
 
   const creerType = async () => {

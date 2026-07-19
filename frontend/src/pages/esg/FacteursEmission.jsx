@@ -37,6 +37,7 @@ export default function FacteursEmission() {
       .finally(() => setLoading(false))
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper
   useEffect(() => { load() }, [load])
 
   const creer = async () => {

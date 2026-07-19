@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Card, Badge, Button, Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogFooter, EmptyState, Spinner, toast,
@@ -50,14 +50,14 @@ function useReservationsData() {
   const [reservations, setReservations] = useState(null)
   const [error, setError] = useState(null)
 
-  const load = () => {
+  const load = useCallback(() => {
     Promise.all([hospitalityApi.listChambres(), hospitalityApi.listReservations()])
       .then(([resChambres, resReservations]) => {
         setChambres(resChambres.data?.results ?? resChambres.data ?? [])
         setReservations(resReservations.data?.results ?? resReservations.data ?? [])
       })
       .catch(() => setError('Calendrier des réservations indisponible.'))
-  }
+  }, [])
 
   return { chambres, reservations, error, load }
 }
@@ -72,9 +72,8 @@ export default function CalendrierReservations() {
   const [serverError, setServerError] = useState(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
     load()
-  }, [])
+  }, [load])
 
   if (error) {
     return <EmptyState title="Calendrier indisponible" description={error} />

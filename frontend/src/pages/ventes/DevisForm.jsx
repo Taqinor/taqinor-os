@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { History, Plus, Trash2 } from 'lucide-react'
@@ -57,15 +57,15 @@ function ApprobationPanel({ devisId }) {
   const [motif, setMotif] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const reload = () => {
+  const reload = useCallback(() => {
     setLoading(true)
     ventesApi.approbationDevis(devisId)
       .then((r) => setEtapes(r.data || []))
       .catch(() => setEtapes([]))
       .finally(() => setLoading(false))
-  }
+  }, [devisId])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de devis
-  useEffect(() => { reload() }, [devisId])
+  useEffect(() => { reload() }, [reload])
 
   const approuver = async () => {
     setBusy(true)

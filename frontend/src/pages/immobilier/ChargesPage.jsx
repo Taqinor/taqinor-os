@@ -105,8 +105,8 @@ export default function ChargesPage() {
     for (const ligne of apercu) {
       if (ligne.sens === 'neutre' || nouveauxEmis.has(ligne.id)) continue
       try {
-        // eslint-disable-next-line no-await-in-loop -- émission séquentielle
-        // volontaire (jamais N requêtes concurrentes non contrôlées vers ventes).
+        // Émission séquentielle volontaire (jamais N requêtes concurrentes
+        // non contrôlées vers ventes).
         await immobilierApi.regularisationsCharges.emettre(ligne.id)
         nouveauxEmis.add(ligne.id)
       } catch {

@@ -29,6 +29,7 @@ export default function FollowToggle({ model, id }) {
     }
   }, [model, id])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState happens after the awaited request resolves, not synchronously
   useEffect(() => { load() }, [load])
 
   const toggle = async () => {

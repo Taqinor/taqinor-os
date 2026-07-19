@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import assurancesApi from './assurancesApi'
@@ -154,11 +154,11 @@ export default function PoliceDetail() {
   const historique = useLoader(() => assurancesApi.getPoliceHistorique(id), [id])
   const attestations = useLoader(() => assurancesApi.getAttestations(id), [id])
 
-  const proposerEcriture = (echeanceId) => {
+  const proposerEcriture = useCallback((echeanceId) => {
     assurancesApi.proposerEcriturePrime(echeanceId)
       .then(() => echeances.reload())
       .catch(() => { /* affiché via rechargement */ })
-  }
+  }, [echeances])
 
   const tabs = useMemo(() => [
     {
@@ -267,7 +267,7 @@ export default function PoliceDetail() {
         </div>
       ),
     },
-  ], [garanties.data, actifs.data, echeances.data, attestations.data])
+  ], [garanties.data, actifs.data, echeances.data, attestations.data, proposerEcriture])
 
   const activity = (
     <div className="flex flex-col gap-2">

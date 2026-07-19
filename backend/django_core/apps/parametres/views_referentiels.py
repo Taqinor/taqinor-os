@@ -12,12 +12,11 @@ n'avaient aucune exposition REST : cet écran les rend consultables/éditables.
 ``company`` est filtrée et forcée côté serveur (``TenantMixin``) — jamais lue
 du corps. Aucune clé canonique (code TVA/unité) ne migre (garde au sérialiseur).
 """
-from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
+from core.viewsets import CompanyScopedModelViewSet
 
 from .models_payment_terms import ConditionPaiement
 from .models_taxes import TauxTVA
@@ -31,7 +30,7 @@ from .serializers_referentiels import (
 READ_ACTIONS = ['list', 'retrieve']
 
 
-class _ReferentielViewSet(TenantMixin, viewsets.ModelViewSet):
+class _ReferentielViewSet(CompanyScopedModelViewSet):
     """Base commune : lecture ouverte, écriture réservée admin/responsable."""
 
     def get_permissions(self):

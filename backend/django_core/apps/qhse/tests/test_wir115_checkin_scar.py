@@ -80,7 +80,8 @@ class CheckinSecuriteApiTests(TestCase):
             heure_checkin=now, heure_checkout_prevue=now + timedelta(hours=1))
         resp = self.api.get(CHECKINS, {'en_retard': '1'})
         self.assertEqual(resp.status_code, 200)
-        ids = [row['id'] for row in resp.data]
+        rows = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+        ids = [row['id'] for row in rows]
         self.assertIn(retard.id, ids)
         self.assertEqual(len(ids), 1)
 
@@ -89,7 +90,9 @@ class CheckinSecuriteApiTests(TestCase):
         other_user = _user(other, 'wir115-x')
         CheckinSecurite.objects.create(
             company=other, technicien=other_user, site_ref='hors')
-        self.assertEqual(len(self.api.get(CHECKINS).data), 0)
+        data = self.api.get(CHECKINS).data
+        rows = data['results'] if isinstance(data, dict) else data
+        self.assertEqual(len(rows), 0)
 
 
 class ScarApiTests(TestCase):
