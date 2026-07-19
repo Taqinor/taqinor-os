@@ -11,6 +11,10 @@ import {
   normalizeAlerts, alertTone, normalizePacing, pacingStateTone,
   normalizeReconciliation, reconStatusTone,
 } from './adsengine'
+import DateRangeBar from './DateRangeBar'
+import { presetRange, computeDelta, formatDeltaPct } from './dateRange'
+import SyncStatusBanner from './SyncStatusBanner'
+import { normalizeSyncStatus, syncStatusFor, formatAge } from './syncStatus'
 
 /* ============================================================================
    ENG23 — Dashboard « un chiffre » du moteur publicitaire.
@@ -168,6 +172,15 @@ export default function DashboardScreen() {
   const [leads, setLeads] = useState([])
   const [leadsLoading, setLeadsLoading] = useState(false)
 
+  // PUB40 — sélecteur de période + comparaison (partagé Dashboard/Cockpit/
+  // Campagnes/Journal). Défaut « 30 derniers jours », sans comparaison.
+  const [range, setRange] = useState(
+    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+
+  // PUB41 — fraîcheur : horodatage discret par tuile (les 3 tuiles spend/CPL/
+  // fréquence viennent des insights — un seul type de synchro à leur montrer).
+  const [syncStatus, setSyncStatus] = useState(null)
+
   // ENG42 — onglets Pacing / Réconciliation (chargés paresseusement).
   const [tab, setTab] = useState('overview')
   const [pacing, setPacing] = useState(null)
@@ -189,7 +202,13 @@ export default function DashboardScreen() {
   const signalsLoaded = useRef(false)
 
   const load = useCallback(() => {
-    adsengineApi.metrics.dashboard()
+    // PUB40 — bornes optionnelles + comparaison (le backend renvoie un bloc
+    // `previous` quand `compare=1` ET debut/fin résolus ; sinon comportement
+    // historique inchangé, `previous` absent).
+    adsengineApi.metrics.dashboard({
+      debut: range.debut || undefined, fin: range.fin || undefined,
+      compare: (range.compare && range.debut && range.fin) ? 1 : undefined,
+    })
       .then(r => setMetrics(r.data || {}))
       .catch(() => setMetrics({}))
     adsengineApi.alerts.list()
@@ -203,7 +222,15 @@ export default function DashboardScreen() {
         .then(r => setV2(r.data || null))
         .catch(() => setV2(null))
     }
-  }, [])
+    // PUB41 — statut de fraîcheur (endpoint optionnel : garde `?.` pour ne
+    // pas casser les écrans/tests qui mockent une API réduite).
+    const syncStatusFn = adsengineApi.syncStatus?.get
+    if (syncStatusFn) {
+      syncStatusFn()
+        .then(r => setSyncStatus(normalizeSyncStatus(r.data)))
+        .catch(() => setSyncStatus(null))
+    }
+  }, [range])
 
   useEffect(() => { load() }, [load])
 
@@ -273,6 +300,10 @@ export default function DashboardScreen() {
   }
   const closeSignalDrill = () => { setSignalDrill(null); setCohorts([]) }
 
+  // PUB41 — les 3 tuiles secondaires viennent d'``InsightSnapshot`` (le type
+  // « insights » du statut de synchro leur fait un horodatage commun).
+  const insightsSync = syncStatusFor(syncStatus, 'insights')
+
   return (
     <div className="page ae-dashboard ae-print-area">
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -292,6 +323,13 @@ export default function DashboardScreen() {
           <CommandPalette />
         </div>
       </div>
+
+      {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <SyncStatusBanner />
+
+      {/* PUB40 — sélecteur de période + comparaison (spend/CPL/fréquence,
+          jamais le héro coût-par-signature — voir doctrine backend). */}
+      <DateRangeBar value={range} onChange={setRange} />
 
       {/* Bandeau d'alertes ENG13 (global, toutes vues) */}
       {alerts.length > 0 && (
@@ -334,7 +372,13 @@ export default function DashboardScreen() {
           {/* Chiffres cliquables (héro + tuiles) — chacun ouvre les leads réels */}
           <div style={{ display: 'grid', gap: '1rem',
             gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '1.25rem' }}>
-            {NUMBERS.map(num => (
+            {NUMBERS.map(num => {
+              // PUB40 — delta vs période précédente : JAMAIS pour le héro
+              // (coût-par-signature reste un chiffre GLOBAL côté backend —
+              // afficher un delta dessus fabriquerait une comparaison fausse).
+              const prev = !num.hero ? metrics?.previous?.[num.key] : null
+              const delta = prev != null ? computeDelta(metrics?.[num.key], prev) : null
+              return (
               // PUB54 — le « ? » d'aide vit HORS du bouton (jamais un bouton
               // imbriqué dans un bouton) : la tuile-héro/bouton reste
               // inchangée (mêmes hooks ae-*), le « ? » est un frère positionné
@@ -353,15 +397,34 @@ export default function DashboardScreen() {
                     style={{ fontSize: num.hero ? '2.4rem' : '1.5rem', fontWeight: 700 }}>
                     {fmtValue(num.fmt, metrics?.[num.key], metrics?.currency)}
                   </div>
+                  {delta && (
+                    <span className="badge" data-testid={`ae-delta-${num.key}`}
+                      style={{ marginTop: '0.3rem', display: 'inline-block',
+                        background: delta.direction === 'up' ? '#dcfce7'
+                          : delta.direction === 'down' ? '#fee2e2' : '#f1f5f9',
+                        color: delta.direction === 'up' ? '#166534'
+                          : delta.direction === 'down' ? '#991b1b' : '#475569' }}>
+                      {formatDeltaPct(delta.pct)} vs période précédente
+                    </span>
+                  )}
                   <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>
                     Voir les leads →
                   </div>
+                  {/* PUB41 — horodatage discret par tuile (jamais pour le héro,
+                      qui n'est pas un chiffre de synchro insights). */}
+                  {!num.hero && insightsSync?.last_ok_at && (
+                    <div data-testid={`ae-tile-sync-${num.key}`}
+                      style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+                      à jour il y a {formatAge(insightsSync.age_minutes)}
+                    </div>
+                  )}
                 </button>
                 <div style={{ position: 'absolute', top: num.hero ? '1.1rem' : '0.7rem', right: '0.7rem' }}>
                   <MetricHelp metric={num.key} label={num.label} />
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* PUB57 — tuile score d'audit auto-chargée (fichier autonome,

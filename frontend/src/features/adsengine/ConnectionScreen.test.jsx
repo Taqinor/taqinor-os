@@ -155,4 +155,52 @@ describe('ConnectionScreen (ENG22)', () => {
     // réglage écran).
     expect(screen.getAllByRole('checkbox')).toHaveLength(2)
   })
+
+  // ── PUB46 — Assistant de connexion guidé ─────────────────────────────────
+  describe('PUB46 — assistant de connexion guidé', () => {
+    it('affiche les 5 étapes du wizard, chacune avec un lien externe', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.health).toHaveBeenCalled())
+      for (let n = 1; n <= 5; n++) {
+        const step = screen.getByTestId(`ae-conn-wizard-step-${n}`)
+        expect(step).toBeInTheDocument()
+        const link = step.querySelector('a[target="_blank"]')
+        expect(link).toBeTruthy()
+        expect(link.getAttribute('href')).toMatch(/^https:\/\//)
+      }
+    })
+
+    it('étape jeton VÉRIFIÉE quand le statut backend token est ok', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.health).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-conn-wizard-status-3')).toHaveTextContent('Vérifié')
+    })
+
+    it('étape sans statut backend dédié -> « à faire manuellement » (jamais fabriqué vert)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.health).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-conn-wizard-status-1')).toHaveTextContent('manuellement')
+    })
+
+    it('« Vérifier cette étape » redéclenche connection.health', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.health).toHaveBeenCalledTimes(1))
+      fireEvent.click(screen.getByTestId('ae-conn-wizard-verify-3'))
+      await waitFor(() => expect(mocks.health).toHaveBeenCalledTimes(2))
+    })
+
+    it('remédiation affichée sous un item de câblage rouge (pixel), avec lien vers l’étape', async () => {
+      renderScreen()
+      const remediation = await screen.findByTestId('ae-conn-remediation-pixel')
+      expect(remediation).toHaveTextContent('Aucun Pixel renseigné')
+      const link = remediation.querySelector('a')
+      expect(link.getAttribute('href')).toBe('#ae-conn-wizard-step-5')
+    })
+
+    it('aucune remédiation affichée pour un item déjà OK (token)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.health).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-conn-remediation-token')).toBeNull()
+    })
+  })
 })

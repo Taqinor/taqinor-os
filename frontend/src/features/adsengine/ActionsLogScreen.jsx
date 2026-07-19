@@ -1,8 +1,25 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import { Link } from 'react-router-dom'
+import { FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   actionTypeLabel, actionResultLabel, actionResultKey, actionMode, filterActionLog,
 } from './adsengine'
+import DateRangeBar from './DateRangeBar'
+import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
+import SyncStatusBanner from './SyncStatusBanner'
+
+// PUB44 — l'ad ciblée par une EngineAction, quand résoluble : 3 conventions
+// de clé cohabitent dans `payload` selon le `kind` (les mêmes que côté
+// backend, metrics.ad_full_story) — jamais une 4ᵉ inventée ici.
+function actionAdMetaId(action) {
+  const p = action?.payload
+  if (!p || typeof p !== 'object') return null
+  if (p.target_type === 'ad' && p.target_meta_id) return p.target_meta_id
+  if (p.ad_id) return p.ad_id
+  if (p.source_ad_id) return p.source_ad_id
+  return null
+}
 
 /* ============================================================================
    ENG28 — Journal d'actions (timeline EngineAction) — le backstop de confiance.
@@ -37,13 +54,34 @@ export default function ActionsLogScreen() {
   const [cancelState, setCancelState] = useState({})
   const [cancelBusy, setCancelBusy] = useState(null)
 
+  // PUB40 — sélecteur de période + comparaison (partagé avec les 3 autres
+  // écrans-données). Défaut « 30 derniers jours ».
+  const [range, setRange] = useState(
+    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+  const [previousCount, setPreviousCount] = useState(null)
+  // PUB41 — état-ERREUR distinct de l'état-vide (jamais un silence).
+  const [loadError, setLoadError] = useState(false)
+
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.actions.log()
-      .then(r => setActions(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
-      .catch(() => setActions([]))
+    const params = { debut: range.debut || undefined, fin: range.fin || undefined }
+    adsengineApi.actions.log(params)
+      .then(r => {
+        setActions(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        setLoadError(false)
+      })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
-  }, [])
+    if (range.compare && range.debut && range.fin) {
+      const prev = previousRange(range)
+      adsengineApi.actions.log({ debut: prev.debut, fin: prev.fin })
+        .then(r => setPreviousCount(
+          (Array.isArray(r.data) ? r.data : (r.data?.results || [])).length))
+        .catch(() => setPreviousCount(null))
+    } else {
+      setPreviousCount(null)
+    }
+  }, [range])
 
   // PUB45 — « Annuler » : PROPOSE l'inverse (jamais un write direct). Succès →
   // message renvoyant vers Approbations ; 422 → explication (kind non inversible).
@@ -68,11 +106,33 @@ export default function ActionsLogScreen() {
   const visible = useMemo(
     () => filterActionLog(actions, { statut, mode }), [actions, statut, mode])
 
+  const compareDelta = previousCount != null ? computeDelta(actions.length, previousCount) : null
+
   return (
     <div className="page ae-actions-log">
       <div className="page-header">
         <h2>Journal d&apos;actions</h2>
       </div>
+
+      {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <SyncStatusBanner />
+
+      {/* PUB40 — sélecteur de période + comparaison. */}
+      <DateRangeBar value={range} onChange={setRange} />
+      {compareDelta && (
+        <p className="card" data-testid="ae-log-compare-summary"
+          style={{ padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
+          {actions.length} action(s) cette période ({formatDeltaPct(compareDelta.pct)} vs période précédente)
+        </p>
+      )}
+
+      {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence. */}
+      {loadError && (
+        <p data-testid="ae-log-load-error" role="alert" style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>
+          Chargement du journal impossible — panne de synchronisation possible.
+          {actions.length > 0 ? ' Liste peut-être obsolète.' : ''}
+        </p>
+      )}
 
       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <select className="form-input" data-testid="ae-log-filter-statut"
@@ -88,7 +148,9 @@ export default function ActionsLogScreen() {
       {loading
         ? <p className="page-loading">Chargement…</p>
         : visible.length === 0
-          ? <p data-testid="ae-log-empty" style={{ color: '#64748b' }}>Aucune action à afficher.</p>
+          ? (!loadError && (
+              <p data-testid="ae-log-empty" style={{ color: '#64748b' }}>Aucune action à afficher.</p>
+            ))
           : (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.6rem' }}>
               {visible.map(a => {
@@ -96,6 +158,7 @@ export default function ActionsLogScreen() {
                 const resKey = actionResultKey(a)
                 const resTone = resKey === 'rejete' || resKey === 'echec' ? '#991b1b'
                   : resKey === 'applique' || resKey === 'approuve' ? '#166534' : '#854d0e'
+                const adMetaId = actionAdMetaId(a)
                 return (
                   <li key={a.id} className="card ae-log-row" data-testid="ae-log-row"
                     style={{ padding: '0.75rem', border: '1px solid #e2e8f0' }}>
@@ -143,6 +206,15 @@ export default function ActionsLogScreen() {
                           </p>
                         )}
                       </div>
+                    )}
+                    {/* PUB44 — lien croisé vers la fiche « histoire complète »
+                        de l'ad ciblée, quand résoluble depuis le payload. */}
+                    {adMetaId && (
+                      <Link to={`/publicite/ad/${adMetaId}`} data-testid="ae-log-ad-link"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          marginTop: '0.35rem', fontSize: '0.8rem', color: '#2563eb' }}>
+                        <FileText size={13} aria-hidden="true" /> Voir la fiche de l&apos;ad
+                      </Link>
                     )}
                   </li>
                 )

@@ -181,6 +181,68 @@ export const AE_HOOKS = {
     cohortRow: 'ae-reports-cohort-row',
     export: 'ae-reports-export', // lien de téléchargement CSV
   },
+
+  // PUB40 — Sélecteur de période + comparaison (`DateRangeBar`, partagé par
+  // Dashboard/Cockpit/Campagnes/Journal).
+  dateRange: {
+    root: 'ae-daterange',
+    presetPrefix: 'ae-daterange-preset-', // + hier|7j|30j|personnalise
+    debut: 'ae-daterange-debut', // saisie personnalisée
+    fin: 'ae-daterange-fin',
+    compare: 'ae-daterange-compare', // case « comparer à la période précédente »
+    summary: 'ae-daterange-summary',
+  },
+
+  // PUB41 — Fraîcheur + panne visibles (`SyncStatusBanner`, montée sur
+  // Dashboard/Cockpit/Campagnes/Journal/Approbations/Commentaires) + état-
+  // erreur distinct de l'état-vide sur chaque écran qui l'affiche.
+  syncStatus: {
+    banner: 'ae-sync-banner', // bandeau global « Meta ne répond plus… »
+    // Suffixe par écran : `-cockpit`/`-camp`/`-log`/`-approvals`/`-comments`.
+    loadErrorPrefix: 'ae-', // + '<écran>-load-error' (ex. ae-cockpit-load-error)
+    refreshApprovals: 'ae-approvals-refresh', // reprise manuelle du sondage
+    refreshComments: 'ae-comments-refresh',
+  },
+
+  // PUB43 — Vues enregistrées un-clic du Cockpit (Top Ads/En fatigue/En
+  // baisse/Meilleures vidéos), filtre+tri figés + mémoire localStorage.
+  cockpitViews: {
+    group: 'ae-cockpit-views',
+    tabPrefix: 'ae-cockpit-view-', // + toutes|top|fatigue|baisse|videos
+  },
+
+  // PUB42 — File « Aujourd'hui » unifiée (écran d'accueil `/publicite`).
+  today: {
+    root: 'ae-today',
+    list: 'ae-today-list',
+    item: 'ae-today-item', // <Link>, cliquable vers l'écran de l'item
+    itemBadge: 'ae-today-item-badge', // catégorie (garde_fou/alerte/…)
+    empty: 'ae-today-empty',
+    loadError: 'ae-today-load-error',
+    navBadge: 'ae-nav-today-badge', // pastille de comptage sur l'icône de nav
+  },
+
+  // PUB44 — Fiche « histoire complète » d'une ad (`/publicite/ad/:id`) +
+  // liens croisés depuis Cockpit/Campagnes/Journal/Commentaires.
+  adDetail: {
+    root: 'ae-ad-detail',
+    statut: 'ae-ad-detail-statut',
+    notFound: 'ae-ad-detail-not-found',
+    loadError: 'ae-ad-detail-load-error',
+    noCreative: 'ae-ad-detail-no-creative',
+    metrics: 'ae-ad-detail-metrics',
+    fatigue: 'ae-ad-detail-fatigue',
+    actionRow: 'ae-ad-detail-action-row',
+    commentRow: 'ae-ad-detail-comment-row',
+    ruleRow: 'ae-ad-detail-rule-row',
+    experimentRow: 'ae-ad-detail-experiment-row',
+    breakdownRow: 'ae-ad-detail-breakdown-row',
+    // Liens croisés (chaque écran source porte son propre hook) :
+    crossLinkCockpit: 'ae-cockpit-full-story',
+    crossLinkCampaigns: 'ae-camp-ad-full-story',
+    crossLinkJournal: 'ae-log-ad-link',
+    crossLinkCommentsPrefix: 'ae-comment-ad-link-', // + id de commentaire
+  },
 }
 
 export default AE_HOOKS

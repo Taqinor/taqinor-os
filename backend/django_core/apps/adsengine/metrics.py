@@ -69,7 +69,25 @@ def result_metric_for_objective(objective):
     return RESULT_METRIC_BY_OBJECTIVE.get(key, DEFAULT_RESULT_METRIC)
 
 
-def real_lead_counts(company):
+# ── PUB40 — Sélecteur de période + comparaison ─────────────────────────────
+def previous_period(start, end):
+    """PUB40 — Période de comparaison « vs période précédente ».
+
+    Une période D'UN SEUL JOUR (preset « hier ») compare au MÊME JOUR de la
+    semaine PRÉCÉDENTE (-7 j) — contrôle l'effet jour-de-semaine (« hier vs
+    même jour semaine passée », le critère Done du dashboard). Toute période
+    plus longue (7j/30j/personnalisée) compare à la période équivalente
+    IMMÉDIATEMENT précédente (period-over-period classique), bornes inclusives.
+    Pure — aucun accès base de données."""
+    length_days = (end - start).days + 1
+    if length_days <= 1:
+        shift = datetime.timedelta(days=7)
+    else:
+        shift = datetime.timedelta(days=length_days)
+    return start - shift, end - shift
+
+
+def real_lead_counts(company, start_date=None, end_date=None):
     """ADSDEEP19 — Comptes de leads RÉELS par ad et par campagne (MetaLeadMirror).
 
     Remplace le « Leads: 0 » issu des insights par le vrai nombre de leads
@@ -77,10 +95,24 @@ def real_lead_counts(company):
     d'un miroir peut être vide (le webhook leadgen ne le pousse pas) : dans ce
     cas la campagne est résolue via l'échelle miroir ``ad_id`` → ``AdMirror`` →
     ``AdSetMirror`` → ``AdCampaignMirror``. Company-scopé. Renvoie
-    ``{by_ad, by_campaign, total}`` (``by_campaign`` clé = meta_id de campagne)."""
+    ``{by_ad, by_campaign, total}`` (``by_campaign`` clé = meta_id de campagne).
+
+    PUB40 — ``start_date``/``end_date`` (optionnels, bornes inclusives sur
+    ``created_time``, la date Meta du lead) FENÊTRENT le compte pour la
+    comparaison de période du cockpit. Omis (défaut) : comportement inchangé,
+    TOUT l'historique. Un miroir SANS ``created_time`` connu est exclu d'un
+    compte fenêtré (jamais compté à l'aveugle dans une fenêtre qu'il ne peut
+    pas prouver respecter)."""
     from .models import AdMirror, MetaLeadMirror
 
-    mirrors = list(MetaLeadMirror.objects.filter(company=company))
+    qs = MetaLeadMirror.objects.filter(company=company)
+    if start_date is not None or end_date is not None:
+        qs = qs.filter(created_time__isnull=False)
+        if start_date is not None:
+            qs = qs.filter(created_time__date__gte=start_date)
+        if end_date is not None:
+            qs = qs.filter(created_time__date__lte=end_date)
+    mirrors = list(qs)
     total = len(mirrors)
     by_ad = {}
     for m in mirrors:
@@ -537,6 +569,181 @@ def dashboard_v2_metrics(company, *, as_of=None,
     }
 
 
+# ── PUB41 — Fraîcheur + panne visibles (dernier sync OK par type + âge) ───────
+# Seuil « panne probable » : le sync insights de fond (ENG6,
+# ``adsengine.sync_insights_daily``) tourne UNE FOIS PAR JOUR — 26 h (24 h +
+# 2 h de marge) évite un faux « Meta ne répond plus » qui se déclencherait
+# chaque jour juste avant le prochain passage du beat.
+SYNC_STALE_MINUTES_DEFAULT = 26 * 60
+
+# Types de synchro affichés — un par SOURCE de données déjà horodatée par la
+# synchro/le webhook existants (AUCUNE nouvelle colonne). Libellés FR stables.
+SYNC_TYPE_LABELS = {
+    'campaigns': 'Campagnes',
+    'insights': 'Insights (dépense, résultats)',
+    'leads': 'Leads Meta',
+    'comments': 'Commentaires',
+}
+
+
+def sync_status(company, *, stale_minutes=SYNC_STALE_MINUTES_DEFAULT, now=None):
+    """PUB41 — Fraîcheur de synchro PAR TYPE : dernier horodatage connu, âge
+    (minutes) et ``stale`` (panne probable, âge > ``stale_minutes``).
+
+    Dérivé de colonnes DÉJÀ écrites par la synchro/le webhook — jamais une
+    nouvelle colonne ni un nouvel effet de bord : ``AdCampaignMirror`` (sync
+    campagnes), ``InsightSnapshot`` (sync insights), ``MetaLeadMirror``
+    (webhook/pull leads), ``CommentMirror`` (sync commentaires).
+
+    DOCTRINE (empty vs erreur) : un type SANS AUCUN historique
+    (``last_ok_at`` ``None`` — jamais synchronisé, ex. tenant non connecté)
+    n'est JAMAIS marqué ``stale`` — ce n'est pas une panne, c'est une absence
+    de donnée légitime. ``stale`` ne se déclenche QUE sur un type qui a DÉJÀ
+    réussi au moins une fois et dont le silence dépasse le seuil (une vraie
+    régression). ``worst`` (le type le plus stale, ou ``None``) alimente le
+    bandeau global — un seul message, jamais 4 bandeaux redondants."""
+    from django.utils import timezone
+
+    from .models import AdCampaignMirror, CommentMirror, MetaLeadMirror
+
+    now = now or timezone.now()
+
+    def _last(qs, field='updated_at'):
+        return qs.order_by(f'-{field}').values_list(field, flat=True).first()
+
+    last_by_type = {
+        'campaigns': _last(AdCampaignMirror.objects.filter(company=company)),
+        'insights': _last(InsightSnapshot.objects.filter(company=company)),
+        'leads': _last(
+            MetaLeadMirror.objects.filter(company=company), 'created_at'),
+        'comments': _last(CommentMirror.objects.filter(company=company)),
+    }
+
+    types = []
+    for key, last in last_by_type.items():
+        age_minutes = None
+        if last is not None:
+            age_minutes = int((now - last).total_seconds() // 60)
+        types.append({
+            'type': key,
+            'label': SYNC_TYPE_LABELS[key],
+            'last_ok_at': last.isoformat() if last else None,
+            'age_minutes': age_minutes,
+            'stale': age_minutes is not None and age_minutes > stale_minutes,
+        })
+
+    stale_types = [t for t in types if t['stale']]
+    worst = max(stale_types, key=lambda t: t['age_minutes']) if stale_types else None
+    return {'types': types, 'stale': bool(stale_types), 'worst': worst}
+
+
+# ── PUB42 — File « Aujourd'hui » unifiée ───────────────────────────────────
+# Ordre de priorité FIXE (le tri du matin, doctrine « que dois-je faire ? ») :
+# garde-fous (bloquant) > alertes (anomalies/règles inopérantes) > approbations
+# en attente > commentaires non traités > digest (brief hebdomadaire, le moins
+# urgent — un résumé, pas une action).
+QUEUE_CATEGORY_ORDER = ['garde_fou', 'alerte', 'approbation', 'commentaire', 'digest']
+QUEUE_CATEGORY_LABELS = {
+    'garde_fou': 'Garde-fou',
+    'alerte': 'Alerte',
+    'approbation': 'Approbation',
+    'commentaire': 'Commentaire',
+    'digest': 'Digest',
+}
+QUEUE_ITEM_LIMIT_PER_CATEGORY = 20
+
+
+def today_queue(company, *, limit_per_category=QUEUE_ITEM_LIMIT_PER_CATEGORY):
+    """PUB42 — File « Aujourd'hui » unifiée (écran d'accueil ``/publicite``) :
+    UNE liste classée par priorité, chaque item reshape d'une ligne DÉJÀ
+    existante (``EngineAlert``/``EngineAction``/``CommentMirror``/
+    ``WeeklyBrief``) — aucune nouvelle colonne, aucun recalcul métier, chaque
+    item porte ``lien`` vers SON écran (jamais un nouveau sous-écran par
+    item). Company-scopé ; dérivé, lecture seule."""
+    from .models import CommentMirror, EngineAction, EngineAlert, WeeklyBrief
+
+    items = []
+
+    # 1) Garde-fous — violations de garde-fou NON acquittées (le plus urgent,
+    # ça bloque/menace le budget).
+    for alert in (EngineAlert.objects
+                  .filter(company=company, alert_type=EngineAlert.Type.GARDE_FOU,
+                          resolved=False)
+                  .order_by('-created_at')[:limit_per_category]):
+        items.append({
+            'id': f'garde_fou-{alert.pk}', 'categorie': 'garde_fou',
+            'categorie_label': QUEUE_CATEGORY_LABELS['garde_fou'],
+            'titre': 'Violation de garde-fou', 'detail': alert.message,
+            'lien': '/publicite/tableau-de-bord',
+            'quand': alert.created_at.isoformat(),
+        })
+
+    # 2) Alertes — anomalies / règles inopérantes NON acquittées (garde-fous
+    # déjà comptés au-dessus, exclus ici pour ne jamais dupliquer un item).
+    alert_labels = {
+        EngineAlert.Type.ANOMALIE: 'Anomalie',
+        EngineAlert.Type.REGLE_INOPERANTE: 'Règle inopérante',
+    }
+    for alert in (EngineAlert.objects
+                  .filter(company=company, resolved=False)
+                  .exclude(alert_type=EngineAlert.Type.GARDE_FOU)
+                  .order_by('-created_at')[:limit_per_category]):
+        label = alert_labels.get(alert.alert_type, 'Alerte')
+        items.append({
+            'id': f'alerte-{alert.pk}', 'categorie': 'alerte',
+            'categorie_label': label, 'titre': label, 'detail': alert.message,
+            'lien': '/publicite/tableau-de-bord',
+            'quand': alert.created_at.isoformat(),
+        })
+
+    # 3) Approbations en attente (boîte d'approbation — l'écran-vaisseau-amiral).
+    for action in (EngineAction.objects
+                   .filter(company=company, status=EngineAction.Statut.PROPOSEE)
+                   .order_by('-created_at')[:limit_per_category]):
+        items.append({
+            'id': f'approbation-{action.pk}', 'categorie': 'approbation',
+            'categorie_label': QUEUE_CATEGORY_LABELS['approbation'],
+            'titre': action.get_kind_display(), 'detail': action.reason_fr,
+            'lien': '/publicite/approbations',
+            'quand': action.created_at.isoformat(),
+        })
+
+    # 4) Commentaires non traités (non répondus, non masqués).
+    for comment in (CommentMirror.objects
+                    .filter(company=company, answered=False, is_hidden=False)
+                    .order_by('-created_time')[:limit_per_category]):
+        items.append({
+            'id': f'commentaire-{comment.pk}', 'categorie': 'commentaire',
+            'categorie_label': QUEUE_CATEGORY_LABELS['commentaire'],
+            'titre': comment.from_name or 'Anonyme',
+            'detail': comment.message or '(sans texte)',
+            'lien': '/publicite/commentaires',
+            'quand': (comment.created_time.isoformat()
+                      if comment.created_time else None),
+        })
+
+    # 5) Digest — dernier brief hebdomadaire (UN item résumé ; ses
+    # propositions individuelles sont DÉJÀ comptées en « approbation » — pas
+    # de doublon).
+    brief = (WeeklyBrief.objects.filter(company=company)
+             .order_by('-period_start', '-created_at').first())
+    if brief is not None:
+        data = brief.data if isinstance(brief.data, dict) else {}
+        cps = data.get('cout_par_signature_cumule')
+        detail = (f"{cps} MAD/signature (cumulé)" if cps is not None
+                  else 'Brief disponible.')
+        items.append({
+            'id': f'digest-{brief.pk}', 'categorie': 'digest',
+            'categorie_label': QUEUE_CATEGORY_LABELS['digest'],
+            'titre': 'Brief hebdomadaire', 'detail': detail,
+            'lien': '/publicite/brief', 'quand': brief.created_at.isoformat(),
+        })
+
+    order = {cat: i for i, cat in enumerate(QUEUE_CATEGORY_ORDER)}
+    items.sort(key=lambda it: order.get(it['categorie'], 99))
+    return items
+
+
 # ── ADSDEEP22 — Cockpit par ad (écran-console quotidien du fondateur) ─────────
 COCKPIT_RECENT_DAYS = 7
 COCKPIT_MIN_FATIGUE_SAMPLES = 3
@@ -605,14 +812,23 @@ def _ad_fatigue_badge(recent, baseline):
     }
 
 
-def ads_cockpit_rows(company, *, as_of=None):
+def ads_cockpit_rows(company, *, as_of=None, start_date=None):
     """ADSDEEP22 — Une ligne PAR AD pour le cockpit quotidien du fondateur :
     miniature créatif (référence, pas d'URL persistée — le front résout via
     ``media.resolve``), dépense/résultats agrégés, leads RÉELS (ADSDEEP19),
     conversations WhatsApp réelles (ADSDEEP25), signatures + coût/signature
     Odoo par ad (ADSDEEP20), fréquence, badge de fatigue (ADSDEEP45) et statut
     + badge d'apprentissage HÉRITÉ de l'ad set parent (ADSDEEP32). Combine des
-    métriques DÉJÀ construites — aucune logique métier réimplémentée ici."""
+    métriques DÉJÀ construites — aucune logique métier réimplémentée ici.
+
+    PUB40 — ``start_date`` (optionnel, borne basse inclusive de la colonne
+    « Dépense »/« Leads »/« CPL »/« Fréquence », ``as_of`` reste la borne
+    haute) fenêtre le cockpit sur une période choisie (sélecteur de date +
+    comparaison). Omis (défaut) : comportement inchangé — totaux sur TOUT
+    l'historique. Dépense (InsightSnapshot) ET leads (MetaLeadMirror) ET
+    signatures (Odoo ``since``) sont fenêtrés ENSEMBLE pour que le CPL et le
+    coût/signature affichés restent des ratios cohérents (jamais une dépense
+    fenêtrée divisée par des leads all-time)."""
     from .models import AdCreativeMirror, AdMirror
     from .odoo_metrics import odoo_signatures_by_ad
     from .serializers import _LEARNING_BADGE, _META_STATUT_FR
@@ -623,7 +839,8 @@ def ads_cockpit_rows(company, *, as_of=None):
                .order_by('-created_at'))
     ad_pks = [a.pk for a in ads]
 
-    totals = _ad_window_aggregates(company, ad_pks, end_date=as_of)
+    totals = _ad_window_aggregates(
+        company, ad_pks, start_date=start_date, end_date=as_of)
     recent_start = as_of - datetime.timedelta(days=COCKPIT_RECENT_DAYS - 1)
     baseline_end = recent_start - datetime.timedelta(days=1)
     baseline_start = baseline_end - datetime.timedelta(days=COCKPIT_RECENT_DAYS - 1)
@@ -631,7 +848,14 @@ def ads_cockpit_rows(company, *, as_of=None):
     baseline_agg = _ad_window_aggregates(
         company, ad_pks, baseline_start, baseline_end)
 
-    real_leads_by_ad = real_lead_counts(company)['by_ad']
+    # PUB40 — la fenêtre de leads ne s'active QUE si une borne basse a été
+    # choisie (``start_date``) : ``as_of`` seul (défaut = aujourd'hui) NE DOIT
+    # PAS déclencher un filtrage silencieux (byte-identique sans sélection).
+    if start_date is not None:
+        real_leads_by_ad = real_lead_counts(
+            company, start_date=start_date, end_date=as_of)['by_ad']
+    else:
+        real_leads_by_ad = real_lead_counts(company)['by_ad']
     conv_by_ad = {row['ad_id']: row
                   for row in conversations_per_ad(company)['by_ad']}
     # PUB32 — dernier classement Meta connu PAR AD (diagnostics de qualité/
@@ -643,7 +867,7 @@ def ads_cockpit_rows(company, *, as_of=None):
     odoo_by_ad = {}
     odoo_configured = False
     try:
-        odoo_result = odoo_signatures_by_ad(company)
+        odoo_result = odoo_signatures_by_ad(company, since=start_date)
         odoo_configured = bool(odoo_result.get('configured'))
         odoo_by_ad = {row['ad_id']: row for row in odoo_result.get('ads', [])}
     except Exception:  # noqa: BLE001 — le cockpit ne casse jamais sur Odoo
@@ -771,3 +995,144 @@ def _latest_incremental_by_ad(company, ad_pks, end_date):
             continue  # order_by -date : la première vue est la plus récente
         out[oid] = row['incremental_attribution'] or {}
     return out
+
+
+# ── PUB44 — Fiche « histoire complète » d'une ad ───────────────────────────
+def ad_full_story(company, meta_id):
+    """PUB44 — « Que se passe-t-il avec CETTE ad » en UN appel : créatif +
+    métriques + actions passées + commentaires + règles l'ayant touchée +
+    expériences + ventilations — aujourd'hui éclaté sur 6 écrans.
+
+    RÉUTILISE les sélecteurs déjà construits, aucune logique métier
+    dupliquée : ``ads_cockpit_rows`` pour les métriques (MÊME ligne que le
+    cockpit — le O(n_ads) qu'elle coûte est accepté ici, c'est un écran
+    détail par ad, pas une liste chaude), le même filtre que
+    ``BreakdownsView`` (ADSDEEP9) pour les ventilations,
+    ``InsightBreakdownSerializer`` pour leur forme. ``None`` si l'ad
+    n'existe pas dans la société (404 côté vue — jamais de fuite cross-
+    tenant).
+
+    Trois conventions de clé COHABITENT dans ``EngineAction.payload`` selon
+    le ``kind`` (aucune n'est un choix arbitraire — chacune est celle déjà
+    écrite par ``services.py``/``rules_engine.py`` pour ce kind) :
+    ``target_type='ad'``+``target_meta_id`` (pause/rotate_creative/règles
+    v2 scope=ad), ``ad_id`` (edit_copy), ``source_ad_id`` (duplicate)."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Q
+
+    from .models import (
+        AdMirror, AnomalyEvent, CommentMirror, EngineAction, ExperimentArm,
+        InsightBreakdown)
+
+    ad = AdMirror.objects.filter(company=company, meta_id=meta_id).first()
+    if ad is None:
+        return None
+
+    cockpit_row = next(
+        (r for r in ads_cockpit_rows(company) if r['meta_id'] == meta_id),
+        None)
+
+    # Créatif — texte complet (titre/body/description/CTA/permalien IG), le
+    # MÊME contrat que `AdCreativePanel.jsx` (ADSDEEP14) — jamais un
+    # deuxième format de créatif inventé pour cet écran.
+    creative = getattr(ad, 'creative_mirror', None)
+    creatif = None
+    if creative is not None:
+        creatif = {
+            'video_id': creative.video_id, 'image_hash': creative.image_hash,
+            'title': creative.title, 'body': creative.body,
+            'description': creative.description, 'cta_type': creative.cta_type,
+            'instagram_permalink_url': creative.instagram_permalink_url,
+            'effective_object_story_id': creative.effective_object_story_id,
+        }
+
+    actions_qs = (EngineAction.objects.filter(company=company)
+                  .filter(Q(payload__target_type='ad',
+                            payload__target_meta_id=meta_id)
+                          | Q(payload__ad_id=meta_id)
+                          | Q(payload__source_ad_id=meta_id))
+                  .order_by('-created_at'))
+    actions = [{
+        'id': a.pk, 'kind': a.kind, 'kind_display': a.get_kind_display(),
+        'reason_fr': a.reason_fr, 'status': a.status,
+        'status_display': a.get_status_display(), 'auto': a.auto,
+        'created_at': a.created_at.isoformat(),
+    } for a in actions_qs]
+
+    # Commentaires — pour une ad (source=AD), `object_meta_id` porte
+    # l'`effective_object_story_id` du CRÉATIF (dark post), jamais le
+    # `meta_id` de l'ad (dossier organic-posts §3, models.py CommentMirror).
+    # Aucun créatif synchronisé = aucun post connu = liste vide (pas une erreur).
+    comments = []
+    story_id = creative.effective_object_story_id if creative is not None else ''
+    if story_id:
+        comments_qs = (CommentMirror.objects
+                       .filter(company=company, object_meta_id=story_id,
+                               source=CommentMirror.Source.AD)
+                       .order_by('-created_time'))
+        comments = [{
+            'id': c.pk, 'from_name': c.from_name, 'message': c.message,
+            'created_time': (
+                c.created_time.isoformat() if c.created_time else None),
+            'is_hidden': c.is_hidden, 'hidden_verified': c.hidden_verified,
+            'answered': c.answered,
+        } for c in comments_qs]
+
+    # Règles l'ayant touchée — anomalies détectées sur CETTE ad
+    # (entity_type/entity_meta_id, jamais une FK dure — survit à une
+    # resynchro, cf. AnomalyEvent.__doc__).
+    rules_qs = (AnomalyEvent.objects
+                .filter(company=company, entity_type='ad', entity_meta_id=meta_id)
+                .select_related('rule_policy')
+                .order_by('-created_at'))
+    regles = [{
+        'id': r.pk, 'kind': r.kind, 'kind_display': r.get_kind_display(),
+        'severity': r.severity, 'message_fr': r.message_fr,
+        'resolved': r.resolved,
+        'rule_template_key': (r.rule_policy.template_key if r.rule_policy else None),
+        'rule_label': (r.rule_policy.get_template_key_display()
+                       if r.rule_policy else None),
+        'created_at': r.created_at.isoformat(),
+    } for r in rules_qs]
+
+    # Expériences — bras dont CETTE ad porte le créatif candidat
+    # (ExperimentArm.ad_id, la seule jointure per-ad du sous-système bandit —
+    # Experiment lui-même ne descend qu'au niveau campagne/ad set).
+    arms_qs = (ExperimentArm.objects
+               .filter(company=company, ad_id=meta_id)
+               .select_related('experiment')
+               .order_by('-created_at'))
+    experiences = [{
+        'id': arm.pk, 'label': arm.label or f'Bras #{arm.pk}',
+        'is_active': arm.is_active,
+        'experiment_id': arm.experiment_id,
+        'experiment_nom': arm.experiment.name if arm.experiment_id else '',
+        'experiment_statut': (arm.experiment.status if arm.experiment_id else ''),
+    } for arm in arms_qs]
+
+    # Ventilations — MÊME filtre que BreakdownsView (content_type + PK de
+    # l'ad, jamais son meta_id — ADSDEEP9) + son propre serializer (aucune
+    # deuxième forme de ventilation inventée pour cet écran).
+    from .serializers import InsightBreakdownSerializer
+    ct = ContentType.objects.get_for_model(AdMirror)
+    breakdowns_qs = (
+        InsightBreakdown.objects
+        .filter(company=company, content_type=ct, object_id=ad.pk)
+        .order_by('-date'))
+    breakdowns = InsightBreakdownSerializer(breakdowns_qs, many=True).data
+
+    return {
+        'ad': {
+            'id': ad.id, 'meta_id': ad.meta_id, 'nom': ad.name,
+            'statut': ad.status,
+            'statut_display': (
+                cockpit_row['statut_display'] if cockpit_row else ad.status),
+        },
+        'creatif': creatif,
+        'metriques': cockpit_row,
+        'actions': actions,
+        'commentaires': comments,
+        'regles': regles,
+        'experiences': experiences,
+        'breakdowns': breakdowns,
+    }

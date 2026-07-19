@@ -121,4 +121,76 @@ describe('ActionsLogScreen (ENG28)', () => {
       /Approuvée par Meryem — Trop tôt — laisser la phase apprentissage se terminer\./,
     )).toBeInTheDocument()
   })
+
+  // ── PUB44 — Lien croisé vers la fiche « histoire complète » ─────────────
+  describe('PUB44 — lien croisé vers la fiche ad', () => {
+    it('action avec payload.ad_id résoluble -> lien affiché', async () => {
+      mocks.log.mockResolvedValue({ data: [
+        { id: 4, type: 'edit_copy', reason_fr: 'Nouvelle accroche', statut: 'approuve',
+          payload: { ad_id: 'ad-42' } },
+      ] })
+      renderScreen()
+      const link = await screen.findByTestId('ae-log-ad-link')
+      expect(link).toHaveAttribute('href', '/publicite/ad/ad-42')
+    })
+
+    it('action avec target_type=ad résoluble -> lien affiché', async () => {
+      mocks.log.mockResolvedValue({ data: [
+        { id: 5, type: 'pause', reason_fr: 'Fatigue', statut: 'approuve',
+          payload: { target_type: 'ad', target_meta_id: 'ad-7' } },
+      ] })
+      renderScreen()
+      const link = await screen.findByTestId('ae-log-ad-link')
+      expect(link).toHaveAttribute('href', '/publicite/ad/ad-7')
+    })
+
+    it('action sans payload résoluble -> aucun lien (jamais fabriqué)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-log-ad-link')).toBeNull()
+    })
+  })
+
+  // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
+  describe('PUB40 — sélecteur de période', () => {
+    it('affiche la barre de période et recharge le journal au changement', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange')).toBeInTheDocument()
+      mocks.log.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-hier'))
+      await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+      const params = mocks.log.mock.calls[0][0]
+      expect(params.debut).toBe(params.fin)
+    })
+
+    it('comparaison activée -> bandeau de comptage + delta', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-log-compare-summary')).toBeNull()
+      mocks.log.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-compare'))
+      await waitFor(() => expect(mocks.log).toHaveBeenCalledTimes(2))
+      expect(await screen.findByTestId('ae-log-compare-summary'))
+        .toHaveTextContent('vs période précédente')
+    })
+  })
+
+  // ── PUB41 — Fraîcheur + panne visibles ─────────────────────────────────
+  describe('PUB41 — état-erreur distinct de l’état-vide', () => {
+    it('panne réseau -> message d’erreur, PAS « aucune action à afficher »', async () => {
+      mocks.log.mockRejectedValue(new Error('network'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-log-load-error')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-log-empty')).toBeNull()
+    })
+
+    it('journal réellement vide (succès) -> état-vide normal, pas d’erreur', async () => {
+      mocks.log.mockResolvedValue({ data: [] })
+      renderScreen()
+      await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-log-empty')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-log-load-error')).toBeNull()
+    })
+  })
 })

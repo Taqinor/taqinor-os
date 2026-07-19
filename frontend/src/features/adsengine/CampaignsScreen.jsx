@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { RefreshCw, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { RefreshCw, ChevronRight, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
@@ -8,6 +9,16 @@ import ManualActionMenu from './ManualActionMenu'
 // jamais monté nulle part avant cette tâche — drill par ad set ET par ad.
 import BreakdownsPanel from './BreakdownsPanel'
 import { formatDateTime } from '../../lib/format'
+import DateRangeBar from './DateRangeBar'
+import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
+import SyncStatusBanner from './SyncStatusBanner'
+
+// PUB40 — dépense totale visible (somme ``depense_mad``/``spend_mad`` des
+// campagnes listées) — pure, testable isolément.
+function totalCampaignSpend(campaigns) {
+  return (campaigns || []).reduce(
+    (sum, c) => sum + (Number(c.depense_mad ?? c.spend_mad) || 0), 0)
+}
 
 /* ============================================================================
    ENG24 — Écran « Campagnes » (miroirs Meta) du moteur publicitaire.
@@ -68,11 +79,22 @@ export default function CampaignsScreen() {
   const toggleBreakdown = (id) =>
     setOpenBreakdownId(cur => (cur === id ? null : id))
 
+  // PUB40 — sélecteur de période + comparaison (partagé avec Dashboard/Cockpit).
+  const [range, setRange] = useState(
+    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+  const [previousTotal, setPreviousTotal] = useState(null)
+  // PUB41 — état-ERREUR distinct de l'état-vide (jamais un silence).
+  const [loadError, setLoadError] = useState(false)
+
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.campaigns.list()
-      .then(r => setCampaigns(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
-      .catch(() => setCampaigns([]))
+    const params = { debut: range.debut || undefined, fin: range.fin || undefined }
+    adsengineApi.campaigns.list(params)
+      .then(r => {
+        setCampaigns(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        setLoadError(false)
+      })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
     adsengineApi.campaigns.creativeRanking()
       .then(r => setRanking(rankCreatives(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
@@ -90,7 +112,17 @@ export default function CampaignsScreen() {
         .then(r => setCurrency(r?.data?.currency || 'MAD'))
         .catch(() => {})
     }
-  }, [])
+    // PUB40 — comparaison : dépense TOTALE de la période précédente.
+    if (range.compare && range.debut && range.fin) {
+      const prev = previousRange(range)
+      adsengineApi.campaigns.list({ debut: prev.debut, fin: prev.fin })
+        .then(r => setPreviousTotal(
+          totalCampaignSpend(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
+        .catch(() => setPreviousTotal(null))
+    } else {
+      setPreviousTotal(null)
+    }
+  }, [range])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
@@ -141,9 +173,33 @@ export default function CampaignsScreen() {
 
       {msg && <p data-testid="ae-camp-msg" style={{ color: '#475569', margin: '0 0 0.75rem' }}>{msg}</p>}
 
+      {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <SyncStatusBanner />
+
+      {/* PUB40 — sélecteur de période + comparaison. */}
+      <DateRangeBar value={range} onChange={setRange} />
+      {previousTotal != null && (() => {
+        const delta = computeDelta(totalCampaignSpend(campaigns), previousTotal)
+        return (
+          <p className="card" data-testid="ae-camp-compare-summary"
+            style={{ padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
+            Dépense totale période : {formatMoney(totalCampaignSpend(campaigns), currency)}
+            {' '}({formatDeltaPct(delta.pct)} vs période précédente)
+          </p>
+        )
+      })()}
+
       {/* ADSDEEP66 — les comptes de leads affichés ici sont bornés à la
           fenêtre Meta 90 j (au-delà, seul l'ERP/Odoo fait foi). */}
       <DataWindowNotice kind="leads" />
+
+      {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence. */}
+      {loadError && (
+        <p data-testid="ae-camp-load-error" role="alert" style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>
+          Chargement des campagnes impossible — panne de synchronisation possible.
+          {campaigns.length > 0 ? ' Liste peut-être obsolète.' : ''}
+        </p>
+      )}
 
       {/* Liste des miroirs (niveau 1 — campagnes) */}
       {loading
@@ -166,7 +222,7 @@ export default function CampaignsScreen() {
                   </td>
                 </tr>
               ))}
-              {campaigns.length === 0 && (
+              {campaigns.length === 0 && !loadError && (
                 <tr><td colSpan={5} style={{ textAlign: 'center', color: '#64748b' }}>
                   Aucune campagne synchronisée</td></tr>
               )}
@@ -341,6 +397,14 @@ export default function CampaignsScreen() {
                                   onClick={() => toggleBreakdown(ad.id)}>
                                   {openBreakdownId === ad.id ? 'Fermer les ventilations' : 'Ventilations'}
                                 </button>
+                                {/* PUB44 — lien croisé vers la fiche « histoire complète ». */}
+                                {ad.meta_id && (
+                                  <Link to={`/publicite/ad/${ad.meta_id}`} className="btn btn-light"
+                                    data-testid="ae-camp-ad-full-story"
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                    <FileText size={14} aria-hidden="true" /> Fiche
+                                  </Link>
+                                )}
                               </td>
                             </tr>
                           ))}

@@ -576,16 +576,26 @@ class AdCampaignMirrorSerializer(serializers.ModelSerializer):
 
     def _insights(self, obj):
         """Agrégat (dépense, résultats) mémoïsé par instance (évite un double
-        calcul entre ``depense_mad`` et ``nb_leads``)."""
+        calcul entre ``depense_mad`` et ``nb_leads``).
+
+        PUB40 — borné à ``context['debut']``/``context['fin']`` (dates ISO
+        `datetime.date`, sélecteur de période de l'écran Campagnes) quand
+        présents ; absents (défaut, y compris hors contexte de requête), la
+        dépense reste cumulée sur TOUT l'historique — comportement inchangé."""
         cached = getattr(obj, '_ae_insights', None)
         if cached is None:
             from django.contrib.contenttypes.models import ContentType
             from django.db.models import Sum
             ct = ContentType.objects.get_for_model(AdCampaignMirror)
-            cached = (InsightSnapshot.objects
-                      .filter(company_id=obj.company_id, content_type=ct,
-                              object_id=obj.pk)
-                      .aggregate(spend=Sum('spend'), results=Sum('results')))
+            qs = InsightSnapshot.objects.filter(
+                company_id=obj.company_id, content_type=ct, object_id=obj.pk)
+            debut = self.context.get('debut')
+            fin = self.context.get('fin')
+            if debut is not None:
+                qs = qs.filter(date__gte=debut)
+            if fin is not None:
+                qs = qs.filter(date__lte=fin)
+            cached = qs.aggregate(spend=Sum('spend'), results=Sum('results'))
             obj._ae_insights = cached
         return cached
 
@@ -738,6 +748,14 @@ class CommentMirrorSerializer(serializers.ModelSerializer):
     synchro, jamais écrit par le client — toute action passe par la proposition
     ``EngineAction`` via les vues dédiées, jamais un PATCH direct)."""
 
+    # PUB44 — lien croisé vers la fiche « histoire complète » de l'ad (un
+    # commentaire source=AD porte l'``effective_object_story_id`` du créatif
+    # dans ``object_meta_id``, PAS le ``meta_id`` de l'ad — dossier
+    # organic-posts §3). Résolu via ``context['story_to_ad']`` (map construite
+    # UNE FOIS par ``CommentListView``, jamais une requête par ligne) ; ``None``
+    # si le contexte n'est pas fourni ou si aucune ad ne correspond.
+    ad_meta_id = serializers.SerializerMethodField()
+
     class Meta:
         model = CommentMirror
         fields = [
@@ -745,9 +763,14 @@ class CommentMirrorSerializer(serializers.ModelSerializer):
             'message', 'from_name', 'from_id', 'created_time', 'like_count',
             'reply_count', 'is_hidden', 'hidden_verified', 'can_hide',
             'can_remove', 'answered', 'permalink', 'private_reply_sent_at',
-            'fetched_at', 'created_at', 'updated_at',
+            'fetched_at', 'created_at', 'updated_at', 'ad_meta_id',
         ]
         read_only_fields = fields
+
+    def get_ad_meta_id(self, obj):
+        if obj.source != CommentMirror.Source.AD:
+            return None
+        return self.context.get('story_to_ad', {}).get(obj.object_meta_id)
 
 
 # ── ADSDEEP55/56 — Instagram (compte Business relié) ──────────────────────────

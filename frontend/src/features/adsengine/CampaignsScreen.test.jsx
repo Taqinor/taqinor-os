@@ -50,8 +50,8 @@ beforeEach(() => {
         last_sig_edit: '2026-07-10T09:00:00Z',
         budget_quotidien_mad: 40, depense_mad: 300, nb_leads: 7,
         ads: [
-          { id: 111, nom: 'Reel toiture', statut_display: 'Actif', depense_mad: 150, nb_leads: 4 },
-          { id: 112, nom: 'Statique prix', statut_display: 'Actif', depense_mad: 150, nb_leads: 3 },
+          { id: 111, meta_id: 'ad-111', nom: 'Reel toiture', statut_display: 'Actif', depense_mad: 150, nb_leads: 4 },
+          { id: 112, meta_id: 'ad-112', nom: 'Statique prix', statut_display: 'Actif', depense_mad: 150, nb_leads: 3 },
         ] },
       { id: 12, nom: 'Ad set pompage', statut_display: 'En pause',
         learning_badge: { label: 'Optimisé', tone: 'success' },
@@ -154,6 +154,11 @@ describe('CampaignsScreen (ENG24)', () => {
       expect(breadcrumb).toHaveTextContent('Campagnes')
       expect(breadcrumb).toHaveTextContent('Solaire résidentiel Casa')
       expect(breadcrumb).toHaveTextContent('Ad set toiture')
+
+      // PUB44 — chaque ad porte un lien croisé vers sa fiche complète.
+      const links = screen.getAllByTestId('ae-camp-ad-full-story')
+      expect(links).toHaveLength(2)
+      expect(links[0]).toHaveAttribute('href', '/publicite/ad/ad-111')
     })
 
     it('PUB3 — drill des ventilations par ad set, puis par ad', async () => {
@@ -227,6 +232,49 @@ describe('CampaignsScreen (ENG24)', () => {
       await screen.findByTestId('ae-camp-hierarchy')
       fireEvent.click(screen.getByTestId('ae-camp-breadcrumb-campaigns'))
       expect(screen.queryByTestId('ae-camp-hierarchy')).toBeNull()
+    })
+  })
+
+  // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
+  describe('PUB40 — sélecteur de période', () => {
+    it('affiche la barre de période et recharge les campagnes au changement', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange')).toBeInTheDocument()
+      mocks.list.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-hier'))
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      const params = mocks.list.mock.calls[0][0]
+      expect(params.debut).toBe(params.fin)
+    })
+
+    it('comparaison activée -> bandeau de dépense totale + delta', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-camp-compare-summary')).toBeNull()
+      mocks.list.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-compare'))
+      await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
+      expect(await screen.findByTestId('ae-camp-compare-summary'))
+        .toHaveTextContent('vs période précédente')
+    })
+  })
+
+  // ── PUB41 — Fraîcheur + panne visibles ─────────────────────────────────
+  describe('PUB41 — état-erreur distinct de l’état-vide', () => {
+    it('panne réseau -> message d’erreur, PAS « aucune campagne synchronisée »', async () => {
+      mocks.list.mockRejectedValue(new Error('network'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-camp-load-error')).toBeInTheDocument()
+      expect(screen.queryByText('Aucune campagne synchronisée')).toBeNull()
+    })
+
+    it('liste réellement vide (succès) -> état-vide normal, pas d’erreur', async () => {
+      mocks.list.mockResolvedValue({ data: [] })
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.getByText('Aucune campagne synchronisée')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-camp-load-error')).toBeNull()
     })
   })
 })

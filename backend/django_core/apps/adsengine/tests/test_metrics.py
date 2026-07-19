@@ -120,3 +120,86 @@ class CostPerSignatureEndpointTests(TestCase):
     def test_endpoint_requires_view_permission(self):
         nobody = make_user(self.company, 'nobody', [])
         self.assertEqual(auth(nobody).get(URL).status_code, 403)
+
+
+class PreviousPeriodTests(TestCase):
+    """PUB40 — ``metrics.previous_period`` (pure, aucun accès base)."""
+
+    def test_single_day_compares_to_same_weekday_last_week(self):
+        import datetime
+        day = datetime.date(2026, 7, 18)  # samedi
+        prev_start, prev_end = metrics.previous_period(day, day)
+        self.assertEqual(prev_start, datetime.date(2026, 7, 11))
+        self.assertEqual(prev_end, datetime.date(2026, 7, 11))
+
+    def test_multi_day_range_compares_to_immediately_preceding_period(self):
+        import datetime
+        start = datetime.date(2026, 7, 10)
+        end = datetime.date(2026, 7, 16)  # 7 jours inclus
+        prev_start, prev_end = metrics.previous_period(start, end)
+        self.assertEqual(prev_start, datetime.date(2026, 7, 3))
+        self.assertEqual(prev_end, datetime.date(2026, 7, 9))
+
+    def test_thirty_day_range(self):
+        import datetime
+        start = datetime.date(2026, 6, 1)
+        end = datetime.date(2026, 6, 30)  # 30 jours inclus
+        prev_start, prev_end = metrics.previous_period(start, end)
+        self.assertEqual((end - start).days + 1, 30)
+        self.assertEqual((prev_end - prev_start).days + 1, 30)
+        self.assertEqual(prev_end, start - datetime.timedelta(days=1))
+
+
+class SyncStatusTests(TestCase):
+    """PUB41 — ``metrics.sync_status`` sur fixtures déterministes (``now``
+    injecté, jamais ``timezone.now()`` implicite dans les assertions)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Sync Co', slug='sync-co')
+
+    def test_never_synced_types_are_not_stale(self):
+        import datetime
+        result = metrics.sync_status(
+            self.company, now=datetime.datetime(
+                2026, 7, 19, 12, 0, tzinfo=datetime.timezone.utc))
+        self.assertFalse(result['stale'])
+        self.assertIsNone(result['worst'])
+        for row in result['types']:
+            self.assertIsNone(row['last_ok_at'])
+            self.assertFalse(row['stale'])
+
+    def test_recent_sync_not_stale(self):
+        import datetime
+        AdCampaignMirror.objects.create(
+            company=self.company, meta_id='c1', name='C1', status='PAUSED')
+        now = datetime.datetime(2026, 7, 19, 12, 0, tzinfo=datetime.timezone.utc)
+        result = metrics.sync_status(self.company, now=now)
+        row = next(r for r in result['types'] if r['type'] == 'campaigns')
+        self.assertFalse(row['stale'])
+        self.assertEqual(row['age_minutes'], 0)
+
+    def test_stale_past_threshold_becomes_worst(self):
+        import datetime
+        camp = AdCampaignMirror.objects.create(
+            company=self.company, meta_id='c1', name='C1', status='PAUSED')
+        old = datetime.datetime(2026, 7, 15, 0, 0, tzinfo=datetime.timezone.utc)
+        AdCampaignMirror.objects.filter(pk=camp.pk).update(updated_at=old)
+        now = datetime.datetime(2026, 7, 19, 12, 0, tzinfo=datetime.timezone.utc)
+        result = metrics.sync_status(self.company, now=now)
+        row = next(r for r in result['types'] if r['type'] == 'campaigns')
+        self.assertTrue(row['stale'])
+        self.assertEqual(result['worst']['type'], 'campaigns')
+
+    def test_custom_stale_threshold(self):
+        import datetime
+        camp = AdCampaignMirror.objects.create(
+            company=self.company, meta_id='c1', name='C1', status='PAUSED')
+        old = datetime.datetime(2026, 7, 19, 10, 0, tzinfo=datetime.timezone.utc)
+        AdCampaignMirror.objects.filter(pk=camp.pk).update(updated_at=old)
+        now = datetime.datetime(2026, 7, 19, 12, 0, tzinfo=datetime.timezone.utc)
+        # 90 min d'âge : stale avec un seuil de 60 min, pas avec le défaut (26h).
+        result_default = metrics.sync_status(self.company, now=now)
+        result_tight = metrics.sync_status(
+            self.company, now=now, stale_minutes=60)
+        self.assertFalse(result_default['stale'])
+        self.assertTrue(result_tight['stale'])

@@ -1162,6 +1162,10 @@ class EngineActionViewSet(AdsengineViewSet):
     qu'une fois APPROUVÉE — ``services.apply_action`` refuse tout le reste (le
     client Meta n'est jamais atteint). Aucun PATCH direct de ``status`` (champ en
     lecture seule au serializer).
+
+    PUB40 — ``GET .../actions/?debut=&fin=`` (dates ISO, optionnelles) borne
+    la liste (Journal d'actions) à ``created_at`` dans ``[debut, fin]`` ;
+    omises, comportement inchangé (tout l'historique).
     """
 
     queryset = EngineAction.objects.all()
@@ -1173,6 +1177,16 @@ class EngineActionViewSet(AdsengineViewSet):
         if getattr(self, 'action', None) in self._APPROVE_ACTIONS:
             return [HasAdsengineApprove()]
         return super().get_permissions()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        debut = _adseng_parse_date(self.request.query_params.get('debut'))
+        fin = _adseng_parse_date(self.request.query_params.get('fin'))
+        if debut is not None:
+            qs = qs.filter(created_at__date__gte=debut)
+        if fin is not None:
+            qs = qs.filter(created_at__date__lte=fin)
+        return qs
 
     def perform_create(self, serializer):
         """ENGFIX2 — Garde policy créative sur le chemin de création API.
@@ -1631,6 +1645,41 @@ class MetaConnectionHealthView(APIView):
         return Response({'statuses': statuses})
 
 
+class SyncStatusView(APIView):
+    """PUB41 — Fraîcheur de synchro PAR TYPE (dernier sync OK + âge minutes +
+    ``stale``), pour le bandeau global « Meta ne répond plus depuis X… » et
+    les horodatages discrets par tuile. Vue MINCE — dérivée de
+    ``metrics.sync_status`` (aucune nouvelle colonne, aucun effet de bord).
+    Lecture ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import sync_status
+        return Response(sync_status(company))
+
+
+class TodayQueueView(APIView):
+    """PUB42 — File « Aujourd'hui » unifiée (écran d'accueil ``/publicite``) :
+    garde-fous > alertes > approbations > commentaires > digest en UNE liste
+    classée par priorité. Vue MINCE — dérivée de ``metrics.today_queue``
+    (reshape de lignes déjà existantes, aucun recalcul métier). Lecture
+    ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import today_queue
+        items = today_queue(company)
+        return Response({'items': items, 'total': len(items)})
+
+
 class GuardrailSingletonView(APIView):
     """ENG3/ENG22 — Garde-fous d'UNE société vus comme un singleton (GET/PATCH
     sans id). Mappe les libellés d'écran HISTORIQUES (``max_daily_budget_mad``
@@ -1721,12 +1770,45 @@ class GuardrailSingletonView(APIView):
         return Response(self._payload(cfg))
 
 
+def _dashboard_spend_window(company, ct, debut, fin):
+    """PUB40 — Agrégat ``{spend, cpl, frequency}`` (Decimal/None) sur
+    ``InsightSnapshot`` de campagne, borné à ``[debut, fin]`` quand fournis
+    (bornes ``None`` = pas de filtre sur ce côté, comportement historique)."""
+    from decimal import Decimal
+
+    from django.db.models import Avg, Sum
+
+    from .models import InsightSnapshot as Snap
+
+    qs = Snap.objects.filter(company=company, content_type=ct)
+    if debut is not None:
+        qs = qs.filter(date__gte=debut)
+    if fin is not None:
+        qs = qs.filter(date__lte=fin)
+    agg = qs.aggregate(
+        spend=Sum('spend'), results=Sum('results'), freq=Avg('frequency'))
+    spend = agg['spend'] or Decimal('0')
+    results = agg['results'] or 0
+    cpl = (spend / results) if results else None
+    return {'spend': spend, 'cpl': cpl, 'frequency': agg['freq']}
+
+
 # ── ENG10/ENG23 — Dashboard « un chiffre » + drill-down leads + pacing ────────
 class MetricsDashboardView(APIView):
     """ENG23 — Chiffres du dashboard : coût-par-signature (héro), dépense totale,
     CPL global, fréquence moyenne. Agrégats LECTURE SEULE sur les
     ``InsightSnapshot`` de campagne + ``metrics.cost_per_signature_summary``.
-    Lecture ``adsengine_view``."""
+    Lecture ``adsengine_view``.
+
+    PUB40 — ``?debut=&fin=`` (dates ISO, optionnelles) bornent dépense/CPL/
+    fréquence sur la période choisie par le sélecteur de date de la console ;
+    omis, comportement inchangé (tout l'historique). ``?compare=1`` (exige
+    ``debut``+``fin``) ajoute un bloc ``previous`` (mêmes 3 chiffres sur la
+    période de comparaison PUB40 — « hier vs même jour semaine passée » pour
+    un jour unique, sinon la période équivalente précédente). Le héro
+    (coût-par-signature/signatures) reste GLOBAL — une signature CRM/Odoo
+    n'est pas horodatée de façon fiable au jour près, jamais de chiffre
+    fenêtré fabriqué à partir d'une donnée qui ne l'est pas."""
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
@@ -1734,13 +1816,9 @@ class MetricsDashboardView(APIView):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:
             return err
-        from decimal import Decimal
-
         from django.contrib.contenttypes.models import ContentType
-        from django.db.models import Avg, Sum
 
-        from .metrics import cost_per_signature_summary
-        from .models import InsightSnapshot as Snap
+        from .metrics import cost_per_signature_summary, previous_period
 
         summary = cost_per_signature_summary(company)
         cps = summary['cost_per_signature']
@@ -1763,27 +1841,40 @@ class MetricsDashboardView(APIView):
         except Exception:  # noqa: BLE001 — le dashboard ne casse jamais sur Odoo
             pass
         ct = ContentType.objects.get_for_model(AdCampaignMirror)
-        agg = (Snap.objects
-               .filter(company=company, content_type=ct)
-               .aggregate(spend=Sum('spend'), results=Sum('results'),
-                          freq=Avg('frequency')))
-        spend = agg['spend'] or Decimal('0')
-        results = agg['results'] or 0
-        cpl = (spend / results) if results else None
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        window = _dashboard_spend_window(company, ct, debut, fin)
+        spend, cpl = window['spend'], window['cpl']
         # Devise du compte Meta (les montants dépense/CPL/coût-par-signature sont
         # dans CETTE devise, pas forcément en MAD). 'MAD' en repli tant que la
         # synchro ne l'a pas lue.
         conn = MetaConnection.objects.filter(company=company).first()
         currency = (conn.currency if conn else '') or 'MAD'
-        return Response({
+        payload = {
             'cost_per_signature': cps,
             'signatures': signatures,
             'signatures_source': signatures_source,
             'currency': currency,
             'spend': str(spend),
             'cpl': (str(cpl) if cpl is not None else None),
-            'frequency': (str(agg['freq']) if agg['freq'] is not None else None),
-        })
+            'frequency': (str(window['frequency'])
+                          if window['frequency'] is not None else None),
+        }
+        compare = _truthy_param(request.query_params.get('compare'))
+        if compare and debut is not None and fin is not None:
+            prev_debut, prev_fin = previous_period(debut, fin)
+            prev_window = _dashboard_spend_window(
+                company, ct, prev_debut, prev_fin)
+            payload['previous'] = {
+                'debut': prev_debut.isoformat(), 'fin': prev_fin.isoformat(),
+                'spend': str(prev_window['spend']),
+                'cpl': (str(prev_window['cpl'])
+                        if prev_window['cpl'] is not None else None),
+                'frequency': (str(prev_window['frequency'])
+                              if prev_window['frequency'] is not None
+                              else None),
+            }
+        return Response(payload)
 
 
 class MetricsLeadsView(APIView):
@@ -1993,11 +2084,24 @@ class BriefLatestView(APIView):
 class AdCampaignMirrorViewSet(AdsengineViewSet):
     """ENG5/ENG24 — Liste (lecture) des miroirs de campagne + synchro à la
     demande + classement par créatif. Les miroirs sont écrits par la SYNCHRO
-    (jamais créés via l'API — ``create`` renvoie 405). Company-scopé (hérité)."""
+    (jamais créés via l'API — ``create`` renvoie 405). Company-scopé (hérité).
+
+    PUB40 — ``GET .../campaigns/?debut=&fin=`` (dates ISO, optionnelles)
+    bornent ``depense_mad``/``nb_leads`` sur la période choisie par le
+    sélecteur de date de l'écran Campagnes (propagées au serializer via le
+    contexte) ; omises, comportement inchangé (tout l'historique)."""
 
     queryset = AdCampaignMirror.objects.all()
     serializer_class = AdCampaignMirrorSerializer
     http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['debut'] = _adseng_parse_date(
+            self.request.query_params.get('debut'))
+        context['fin'] = _adseng_parse_date(
+            self.request.query_params.get('fin'))
+        return context
 
     def create(self, request, *args, **kwargs):
         from rest_framework.exceptions import MethodNotAllowed
@@ -2443,6 +2547,29 @@ class AdPreviewsView(APIView):
         return Response({'format': ad_format, 'body': body})
 
 
+class AdFullStoryView(APIView):
+    """PUB44 — Fiche « histoire complète » d'une ad (créatif + métriques +
+    actions passées + commentaires + règles + expériences + ventilations)
+    en UNE requête — aujourd'hui éclaté sur 6 écrans. Vue MINCE, dérivée de
+    ``metrics.ad_full_story`` (réutilise ``ads_cockpit_rows`` + les mêmes
+    filtres que ``BreakdownsView``/``CommentListView`` — aucun recalcul
+    métier). ``GET /api/django/adsengine/ads/<meta_id>/histoire/`` — company-
+    scopé (un id d'une autre société → 404, jamais de fuite cross-tenant),
+    gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request, meta_id):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import ad_full_story
+        story = ad_full_story(company, meta_id)
+        if story is None:
+            return Response({'detail': 'Ad introuvable.'}, status=404)
+        return Response(story)
+
+
 class RealLeadsView(APIView):
     """ADSDEEP19 — Comptes de leads RÉELS par ad / par campagne (MetaLeadMirror).
 
@@ -2466,10 +2593,14 @@ class AdsCockpitView(APIView):
     leads réels, CPL, signatures + coût/signature (Odoo), fréquence, badge de
     fatigue (ADSDEEP45) et statut + apprentissage (ADSDEEP32).
 
-    ``GET /api/django/adsengine/metrics/ads-cockpit/`` — company-scopé, gaté
-    ``adsengine_view``. Dérivé (aucune écriture) via
+    ``GET /api/django/adsengine/metrics/ads-cockpit/?debut=&fin=`` — company-
+    scopé, gaté ``adsengine_view``. Dérivé (aucune écriture) via
     ``metrics.ads_cockpit_rows``, qui ne fait que COMBINER les métriques déjà
-    construites (ADSDEEP19/20/25/32/44/45) — aucune logique métier réécrite."""
+    construites (ADSDEEP19/20/25/32/44/45) — aucune logique métier réécrite.
+    PUB40 — ``debut``/``fin`` (dates ISO, optionnelles) fenêtrent la
+    dépense/leads/CPL/fréquence sur la période choisie par le sélecteur de
+    date de la console ; omis, le comportement reste inchangé (tout
+    l'historique)."""
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
@@ -2478,7 +2609,10 @@ class AdsCockpitView(APIView):
         if err is not None:
             return err
         from .metrics import ads_cockpit_rows
-        return Response(ads_cockpit_rows(company))
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(
+            ads_cockpit_rows(company, as_of=fin, start_date=debut))
 
 
 # ══ ADSDEEP53/54 — Boîte de réception des commentaires (câblage front↔back) ═══
@@ -2521,7 +2655,15 @@ class CommentListView(APIView):
         unanswered = _truthy_param(request.query_params.get('unanswered'))
         if unanswered:
             qs = qs.filter(answered=False)
-        return Response(CommentMirrorSerializer(qs, many=True).data)
+        # PUB44 — lien croisé vers la fiche « histoire complète » de l'ad :
+        # UNE requête pour toute la société (jamais une par commentaire).
+        from .models import AdCreativeMirror
+        story_to_ad = dict(
+            AdCreativeMirror.objects.filter(company=company)
+            .exclude(effective_object_story_id='')
+            .values_list('effective_object_story_id', 'ad__meta_id'))
+        return Response(CommentMirrorSerializer(
+            qs, many=True, context={'story_to_ad': story_to_ad}).data)
 
 
 class CommentCountsView(APIView):

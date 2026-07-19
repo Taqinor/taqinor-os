@@ -12,8 +12,8 @@ from .incrementality import GeoHoldoutReportView
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
-    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AlertSnoozeView,
-    AnnotationViewSet, AnomalyEventViewSet,
+    AdCampaignMirrorViewSet, AdFullStoryView, AdPreviewsView, AdsCockpitView,
+    AlertSnoozeView, AnnotationViewSet, AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet,
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
@@ -38,7 +38,7 @@ from .views import (
     MetricsLeadsView, MetricsPacingView, ProposeCuratedActionView, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SignalCohortView, SignalsView, SimulationDetailView,
-    SimulationListView, StatusView,
+    SimulationListView, StatusView, SyncStatusView, TodayQueueView,
     VariantFunnelView, VariantReportView, WiringHealthView,
 )
 from .whatsapp_webhook import WhatsAppCloudWebhookView
@@ -96,6 +96,12 @@ urlpatterns = [
          name='adsengine-connection'),
     path('connection/health/', MetaConnectionHealthView.as_view(),
          name='adsengine-connection-health'),
+    # PUB41 — fraîcheur de synchro par type (bandeau global + tuiles horodatées).
+    path('sync-status/', SyncStatusView.as_view(),
+         name='adsengine-sync-status'),
+    # PUB42 — file « Aujourd'hui » unifiée (écran d'accueil /publicite).
+    path('aujourd-hui/', TodayQueueView.as_view(),
+         name='adsengine-today-queue'),
     # ENG22 — garde-fous singleton (GET/PATCH sans id).
     path('guardrail/', GuardrailSingletonView.as_view(),
          name='adsengine-guardrail'),
@@ -176,6 +182,10 @@ urlpatterns = [
     # ADSDEEP13 — proxy previews (iframe Meta, jamais persistée).
     path('ads/<str:ad_meta_id>/previews/', AdPreviewsView.as_view(),
          name='adsengine-ad-previews'),
+    # PUB44 — fiche « histoire complète » d'une ad (créatif + métriques +
+    # actions + commentaires + règles + expériences + ventilations).
+    path('ads/<str:meta_id>/histoire/', AdFullStoryView.as_view(),
+         name='adsengine-ad-full-story'),
     # ADSDEEP24 — récepteur webhook WhatsApp Cloud API (CTWA referral). Public,
     # gated WHATSAPP_CLOUD_VERIFY_TOKEN + WHATSAPP_CLOUD_APP_SECRET (404 sinon).
     path('whatsapp/webhook/', WhatsAppCloudWebhookView.as_view(),

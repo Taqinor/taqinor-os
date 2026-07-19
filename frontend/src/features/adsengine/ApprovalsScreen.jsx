@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Check, X, ClipboardCheck, AlertTriangle, PlusCircle } from 'lucide-react'
+import { Check, X, ClipboardCheck, AlertTriangle, PlusCircle, RefreshCw } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   actionTypeLabel, budgetDiff, actionCreative, formatMAD, REJECTION_REASONS,
@@ -12,6 +12,8 @@ import EditCopyComposer from './EditCopyComposer'
 import { useAdsPermissions } from './useAdsPermissions'
 import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
+import SyncStatusBanner from './SyncStatusBanner'
+import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 
 /* ============================================================================
    PUB51 — Raccourcis clavier (« pile d'approbations traitable sans souris »).
@@ -31,6 +33,12 @@ function isTypingTarget(el) {
   if (TYPING_TAGS.has(el.tagName)) return true
   return !!el.isContentEditable
 }
+
+// PUB41 — sondage doux (poll_ms) de la boîte d'approbation : l'écran-vaisseau-
+// amiral doit refléter une nouvelle proposition sans que le fondateur ait à
+// rafraîchir la page. Suspendu onglet masqué (`useVisibilityAwarePolling`,
+// VX56) ; rafraîchissement IMMÉDIAT au retour au premier plan.
+const APPROVALS_POLL_MS = 20000
 
 /* ============================================================================
    ENG25 — Boîte d'approbation (l'écran-vaisseau-amiral).
@@ -53,7 +61,12 @@ export default function ApprovalsScreen() {
   const canApprove = has('adsengine_approve')
   const canManage = has('adsengine_manage')
   const [actions, setActions] = useState([])
+  // PUB41 — `loading` ne couvre QUE le tout premier chargement : un sondage
+  // en arrière-plan ne doit jamais faire clignoter l'écran-vaisseau-amiral
+  // (« poll doux »). `loadError` distingue une PANNE (message dédié) d'une
+  // boîte réellement vide (jamais un silence — l'écran le plus critique).
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [selected, setSelected] = useState(() => new Set()) // ids du batch
   const [rejectingId, setRejectingId] = useState(null)
   const [rejectReason, setRejectReason] = useState(REJECTION_REASONS[0].value)
@@ -63,7 +76,6 @@ export default function ApprovalsScreen() {
   const [showComposer, setShowComposer] = useState(false)
 
   const load = useCallback(() => {
-    setLoading(true)
     adsengineApi.actions.pending()
       .then(r => {
         const raw = Array.isArray(r.data) ? r.data : (r.data?.results || [])
@@ -72,13 +84,17 @@ export default function ApprovalsScreen() {
         // écraser un `type` déjà présent) pour que la carte affiche le bon
         // libellé et le diff avant/après contre les vraies données.
         setActions(raw.map(a => ({ ...a, type: a.type ?? a.kind })))
+        setLoadError(false)
       })
-      .catch(() => setActions([]))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
-  useEffect(() => { load() }, [load])
+  // PUB41 — sondage doux : amorçage immédiat au montage (comme l'ancien
+  // `useEffect(load)`), puis toutes les `APPROVALS_POLL_MS`, suspendu onglet
+  // masqué, rafraîchissement immédiat au retour.
+  const { resume } = useVisibilityAwarePolling(
+    [{ fn: load, intervalMs: APPROVALS_POLL_MS }])
 
   // Retire une (ou plusieurs) action(s) appliquée(s) de la boîte + du batch.
   const removeApplied = (ids) => {
@@ -192,6 +208,12 @@ export default function ApprovalsScreen() {
           <ClipboardCheck size={20} aria-hidden="true" /> Boîte d&apos;approbation
         </h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* PUB41 — reprise manuelle du sondage (ex. après une panne prolongée). */}
+          <button type="button" className="btn btn-light" data-testid="ae-approvals-refresh"
+            onClick={resume}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+            <RefreshCw size={15} aria-hidden="true" /> Actualiser
+          </button>
           <button type="button" className="btn btn-light ae-toggle-composer"
             data-testid="ae-toggle-composer"
             disabled={!showComposer && !canManage}
@@ -209,6 +231,9 @@ export default function ApprovalsScreen() {
         </div>
       </div>
 
+      {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <SyncStatusBanner />
+
       {/* PUB51 — rappel des raccourcis clavier (jamais requis, juste visible) */}
       {actions.length > 0 && (
         <p className="ae-shortcuts-hint" data-testid="ae-shortcuts-hint"
@@ -222,6 +247,15 @@ export default function ApprovalsScreen() {
       )}
 
       {err && <p data-testid="ae-approvals-err" style={{ color: '#dc2626' }}>{err}</p>}
+
+      {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence sur
+          l'écran le plus critique (l'approbation dépend de le voir). */}
+      {loadError && (
+        <p data-testid="ae-approvals-load-error" role="alert" style={{ color: '#dc2626' }}>
+          Chargement des propositions impossible — panne de synchronisation possible.
+          {actions.length > 0 ? ' Liste peut-être obsolète (nouvelle tentative automatique en cours).' : ''}
+        </p>
+      )}
 
       {/* Barre de batch (toggle par item ci-dessous) */}
       {selectedCount > 0 && (
@@ -242,8 +276,10 @@ export default function ApprovalsScreen() {
       {loading
         ? <p className="page-loading">Chargement…</p>
         : actions.length === 0
-          ? <p data-testid="ae-approvals-empty" style={{ color: '#64748b' }}>
-              Aucune action en attente d&apos;approbation.</p>
+          ? (!loadError && (
+              <p data-testid="ae-approvals-empty" style={{ color: '#64748b' }}>
+                Aucune action en attente d&apos;approbation.</p>
+            ))
           : (
             <div style={{ display: 'grid', gap: '1rem' }}>
               {actions.map((a, i) => {

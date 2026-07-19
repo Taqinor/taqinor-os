@@ -318,6 +318,21 @@ const adsengineApi = {
   factEntries: {
     ...resource('faits'),
   },
+
+  // ── PUB41 — Fraîcheur + panne visibles (dernier sync OK par type + âge) ──
+  syncStatus: {
+    get: () => api.get('/adsengine/sync-status/'),
+  },
+
+  // ── PUB42 — File « Aujourd'hui » unifiée (écran d'accueil /publicite) ──
+  today: {
+    get: () => api.get('/adsengine/aujourd-hui/'),
+  },
+
+  // ── PUB44 — Fiche « histoire complète » d'une ad ──
+  ads: {
+    fullStory: (metaId) => api.get(`/adsengine/ads/${metaId}/histoire/`),
+  },
 }
 
 export default adsengineApi

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   dashboard: vi.fn(),
   leads: vi.fn(),
   alerts: vi.fn(),
+  syncStatus: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -19,6 +20,7 @@ vi.mock('./adsengineApi', () => ({
     alerts: { list: mocks.alerts, history: () => Promise.resolve({ data: [] }) },
     // PUB57 — tuile score d'audit auto-chargée (AuditScoreTile).
     reports: { audit: () => Promise.resolve({ data: { score_tile: null } }) },
+    syncStatus: { get: mocks.syncStatus },
   },
 }))
 
@@ -37,6 +39,7 @@ beforeEach(() => {
   mocks.leads.mockResolvedValue({ data: [
     { id: 7, nom: 'Ahmed Benali', ville: 'Casablanca', stage_label: 'SIGNÉ', devis_ref: 'DV-2026-07-0042', montant: 78000 },
   ] })
+  mocks.syncStatus.mockResolvedValue({ data: { types: [], stale: false, worst: null } })
 })
 
 describe('DashboardScreen (ENG23)', () => {
@@ -82,5 +85,69 @@ describe('DashboardScreen (ENG23)', () => {
     await screen.findByTestId('ae-drill-panel')
     fireEvent.click(screen.getByTestId('ae-drill-close'))
     await waitFor(() => expect(screen.queryByTestId('ae-drill-panel')).toBeNull())
+  })
+
+  // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
+  describe('PUB40 — sélecteur de période', () => {
+    it('affiche la barre de période et recharge le dashboard au changement', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.dashboard).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange')).toBeInTheDocument()
+      mocks.dashboard.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-hier'))
+      await waitFor(() => expect(mocks.dashboard).toHaveBeenCalled())
+      const params = mocks.dashboard.mock.calls[0][0]
+      expect(params.debut).toBe(params.fin) // « hier » = un seul jour
+    })
+
+    it('aucun bloc `previous` -> aucun delta affiché (jamais un badge fabriqué)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.dashboard).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-delta-spend')).toBeNull()
+    })
+
+    it('bloc `previous` fourni -> delta % affiché sur les tuiles (jamais le héro)', async () => {
+      mocks.dashboard.mockResolvedValue({ data: {
+        cost_per_signature: 1850, spend: 4200, cpl: 95, frequency: 1.8,
+        previous: { spend: 3500, cpl: 100, frequency: 1.5 },
+      } })
+      renderScreen()
+      await waitFor(() => expect(mocks.dashboard).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-delta-spend')).toHaveTextContent('vs période précédente')
+      expect(screen.queryByTestId('ae-delta-cost_per_signature')).toBeNull()
+    })
+  })
+
+  // ── PUB41 — Fraîcheur + panne visibles ─────────────────────────────────
+  describe('PUB41 — fraîcheur + panne', () => {
+    it('rien de stale -> pas de bandeau, pas d’horodatage de tuile', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.syncStatus).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-sync-banner')).toBeNull()
+      expect(screen.queryByTestId('ae-tile-sync-spend')).toBeNull()
+    })
+
+    it('sync insights récente -> horodatage discret sur les tuiles secondaires', async () => {
+      mocks.syncStatus.mockResolvedValue({ data: {
+        types: [{ type: 'insights', label: 'Insights', age_minutes: 45, last_ok_at: '2026-07-19T10:00:00Z', stale: false }],
+        stale: false, worst: null,
+      } })
+      renderScreen()
+      expect(await screen.findByTestId('ae-tile-sync-spend')).toHaveTextContent('45 min')
+      expect(screen.getByTestId('ae-tile-sync-cpl')).toBeInTheDocument()
+      expect(screen.getByTestId('ae-tile-sync-frequency')).toBeInTheDocument()
+      // Jamais sur le héro.
+      expect(screen.queryByTestId('ae-tile-sync-cost_per_signature')).toBeNull()
+    })
+
+    it('sync cassée (stale) -> bandeau global visible', async () => {
+      mocks.syncStatus.mockResolvedValue({ data: {
+        types: [{ type: 'insights', label: 'Insights', age_minutes: 2000, last_ok_at: '2026-07-17T08:00:00Z', stale: true }],
+        stale: true,
+        worst: { type: 'insights', label: 'Insights', age_minutes: 2000, last_ok_at: '2026-07-17T08:00:00Z' },
+      } })
+      renderScreen()
+      expect(await screen.findByTestId('ae-sync-banner')).toHaveTextContent('Meta ne répond plus')
+    })
   })
 })
