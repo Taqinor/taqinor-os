@@ -75,6 +75,11 @@ const reportingApi = {
     api.get('/reporting/insights/cf-group-by/', {
       params: { module, code, ...(params || {}) },
     }),
+  // WIR101 — export xlsx de la répartition d'un champ personnalisé.
+  cfGroupByXlsx: (module, code) =>
+    api.get('/reporting/insights/cf-group-by/', {
+      params: { module, code, export: 'xlsx' }, responseType: 'blob',
+    }),
   // FG97 — Analytiques du Journal.
   // WIR20 — préfixe corrigé : l'endpoint est monté sous `apps.audit.urls`
   // (`/audit/analytics/`), jamais sous `/reporting/` (404 avant ce fix).
