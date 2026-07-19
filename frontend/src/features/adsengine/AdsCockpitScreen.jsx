@@ -4,6 +4,10 @@ import adsengineApi from './adsengineApi'
 import { formatMAD, formatNumber, formatRatio, sortCockpitRows } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import AdCreativePanel from './AdCreativePanel'
+// PUB3 — panneau démographie/placement/région/heure, construit+testé mais
+// jamais monté nulle part avant cette tâche (breakdowns/ est synchronisé
+// chaque semaine côté back mais restait invisible).
+import BreakdownsPanel from './BreakdownsPanel'
 
 /* ============================================================================
    ADSDEEP22 — Cockpit par ad (écran-console QUOTIDIEN du fondateur).
@@ -207,6 +211,12 @@ export default function AdsCockpitScreen() {
               image_hash: openRow.thumbnail_kind === 'image' ? openRow.thumbnail_ref : '',
             }}
           />
+
+          {/* PUB3 — drill démographie/placement/région/heure de CETTE ad
+              (id du miroir, pas le meta_id — même clé que breakdowns/). */}
+          <div style={{ marginTop: '1rem' }}>
+            <BreakdownsPanel objectType="ad" objectId={openRow.id} />
+          </div>
         </section>
       )}
     </div>

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   syncNow: vi.fn(),
   ranking: vi.fn(),
   connGet: vi.fn(),
+  breakdownsList: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -22,6 +23,7 @@ vi.mock('./adsengineApi', () => ({
       syncNow: mocks.syncNow, creativeRanking: mocks.ranking,
     },
     connection: { get: mocks.connGet },
+    breakdowns: { list: mocks.breakdownsList },
   },
 }))
 
@@ -59,6 +61,7 @@ beforeEach(() => {
     { id: 'b', nom: 'Statique prix', reponses_whatsapp: 10, cout_mad: 500 },  // 50/rép (meilleur)
     { id: 'c', nom: 'Explainer', reponses_whatsapp: 0, cout_mad: 300 },       // sans réponse → dernier
   ] })
+  mocks.breakdownsList.mockResolvedValue({ data: [] })
 })
 
 describe('rankCreatives (helper de tri — pur)', () => {
@@ -147,6 +150,32 @@ describe('CampaignsScreen (ENG24)', () => {
       expect(breadcrumb).toHaveTextContent('Campagnes')
       expect(breadcrumb).toHaveTextContent('Solaire résidentiel Casa')
       expect(breadcrumb).toHaveTextContent('Ad set toiture')
+    })
+
+    it('PUB3 — drill des ventilations par ad set, puis par ad', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      fireEvent.click(screen.getAllByTestId('ae-camp-open')[0])
+      await screen.findByTestId('ae-camp-hierarchy')
+
+      // Niveau ad set : ouvrir les ventilations du 1er ad set (id 11).
+      fireEvent.click(screen.getAllByTestId('ae-camp-adset-breakdowns')[0])
+      await waitFor(() => expect(mocks.breakdownsList).toHaveBeenCalledWith({
+        object_type: 'adset', object_id: 11,
+      }))
+      expect(await screen.findByTestId('ae-breakdowns-panel')).toBeInTheDocument()
+
+      // Descendre au niveau ads : le panneau ad set disparaît, on peut ouvrir
+      // les ventilations d'une ad (id 111).
+      fireEvent.click(screen.getAllByTestId('ae-camp-adset-open')[0])
+      await screen.findByTestId('ae-camp-ads-table')
+      expect(screen.queryByTestId('ae-breakdowns-panel')).toBeNull()
+
+      fireEvent.click(screen.getAllByTestId('ae-camp-ad-breakdowns')[0])
+      await waitFor(() => expect(mocks.breakdownsList).toHaveBeenCalledWith({
+        object_type: 'ad', object_id: 111,
+      }))
+      expect(await screen.findByTestId('ae-breakdowns-panel')).toBeInTheDocument()
     })
 
     it('« Retour aux ad sets » remonte au 2ᵉ niveau sans recharger la hiérarchie', async () => {

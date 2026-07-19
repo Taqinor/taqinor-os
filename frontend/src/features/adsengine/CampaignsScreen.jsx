@@ -3,6 +3,9 @@ import { RefreshCw, ChevronRight } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
+// PUB3 — panneau démographie/placement/région/heure, construit+testé mais
+// jamais monté nulle part avant cette tâche — drill par ad set ET par ad.
+import BreakdownsPanel from './BreakdownsPanel'
 
 /* ============================================================================
    ENG24 — Écran « Campagnes » (miroirs Meta) du moteur publicitaire.
@@ -39,6 +42,13 @@ export default function CampaignsScreen() {
   // id du miroir d'ad set actuellement ouvert (3ᵉ niveau = ses ads) ; null =
   // on est encore au niveau « ad sets » de la campagne.
   const [openAdsetId, setOpenAdsetId] = useState(null)
+  // PUB3 — drill « Audience & diffusion » (BreakdownsPanel) : id du miroir
+  // (ad set OU ad, selon le niveau affiché) dont les ventilations sont
+  // ouvertes ; un seul à la fois (les deux tables ne sont jamais visibles
+  // simultanément — remis à null à chaque changement de niveau).
+  const [openBreakdownId, setOpenBreakdownId] = useState(null)
+  const toggleBreakdown = (id) =>
+    setOpenBreakdownId(cur => (cur === id ? null : id))
 
   const load = useCallback(() => {
     setLoading(true)
@@ -70,6 +80,7 @@ export default function CampaignsScreen() {
   // ADSDEEP60 — ouvre la hiérarchie d'une campagne (Ad sets → Ads).
   const openCampaign = (c) => {
     setOpenAdsetId(null)
+    setOpenBreakdownId(null)
     setHierarchy({ ...c, adsets: [] }) // affichage immédiat (ligne connue)
     setHierarchyLoading(true)
     adsengineApi.campaigns.hierarchy(c.id)
@@ -77,8 +88,9 @@ export default function CampaignsScreen() {
       .catch(() => setHierarchy({ ...c, adsets: [] }))
       .finally(() => setHierarchyLoading(false))
   }
-  const closeCampaign = () => { setHierarchy(null); setOpenAdsetId(null) }
-  const backToAdsets = () => setOpenAdsetId(null)
+  const closeCampaign = () => { setHierarchy(null); setOpenAdsetId(null); setOpenBreakdownId(null) }
+  const backToAdsets = () => { setOpenAdsetId(null); setOpenBreakdownId(null) }
+  const openAdsetLevel = (id) => { setOpenAdsetId(id); setOpenBreakdownId(null) }
 
   const syncNow = async () => {
     setSyncing(true); setMsg('')
@@ -205,7 +217,7 @@ export default function CampaignsScreen() {
                         <thead>
                           <tr>
                             <th>Ad set</th><th>Statut</th><th>Apprentissage</th>
-                            <th>Budget/jour</th><th>Dépense</th><th>Leads</th><th />
+                            <th>Budget/jour</th><th>Dépense</th><th>Leads</th><th /><th />
                           </tr>
                         </thead>
                         <tbody>
@@ -222,14 +234,26 @@ export default function CampaignsScreen() {
                               <td>{formatMoney(a.depense_mad, currency)}</td>
                               <td>{formatNumber(a.nb_leads)}</td>
                               <td>
+                                {/* PUB3 — drill audience & diffusion de CET ad set */}
+                                <button type="button" className="btn btn-light" data-testid="ae-camp-adset-breakdowns"
+                                  onClick={() => toggleBreakdown(a.id)}>
+                                  {openBreakdownId === a.id ? 'Fermer les ventilations' : 'Ventilations'}
+                                </button>
+                              </td>
+                              <td>
                                 <button type="button" className="btn btn-light" data-testid="ae-camp-adset-open"
-                                  onClick={() => setOpenAdsetId(a.id)}>Ouvrir</button>
+                                  onClick={() => openAdsetLevel(a.id)}>Ouvrir</button>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     )}
+                  {openBreakdownId != null && (hierarchy.adsets || []).some(a => a.id === openBreakdownId) && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <BreakdownsPanel objectType="adset" objectId={openBreakdownId} />
+                    </div>
+                  )}
                 </>
               )
               : (
@@ -248,7 +272,7 @@ export default function CampaignsScreen() {
                     : (
                       <table className="data-table" data-testid="ae-camp-ads-table">
                         <thead>
-                          <tr><th>Ad</th><th>Statut</th><th>Dépense</th><th>Leads</th></tr>
+                          <tr><th>Ad</th><th>Statut</th><th>Dépense</th><th>Leads</th><th /></tr>
                         </thead>
                         <tbody>
                           {openAdset.ads.map(ad => (
@@ -257,11 +281,23 @@ export default function CampaignsScreen() {
                               <td>{ad.statut_display || ad.status || '—'}</td>
                               <td>{formatMoney(ad.depense_mad, currency)}</td>
                               <td>{formatNumber(ad.nb_leads)}</td>
+                              <td>
+                                {/* PUB3 — drill audience & diffusion de CETTE ad */}
+                                <button type="button" className="btn btn-light" data-testid="ae-camp-ad-breakdowns"
+                                  onClick={() => toggleBreakdown(ad.id)}>
+                                  {openBreakdownId === ad.id ? 'Fermer les ventilations' : 'Ventilations'}
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     )}
+                  {openBreakdownId != null && (openAdset.ads || []).some(ad => ad.id === openBreakdownId) && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <BreakdownsPanel objectType="ad" objectId={openBreakdownId} />
+                    </div>
+                  )}
                 </>
               )}
         </section>
