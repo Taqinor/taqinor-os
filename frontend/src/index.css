@@ -7437,3 +7437,33 @@ textarea.form-control {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
 }
+
+/* ===========================================================================
+   LB14 — Rampe « rotting » sur la carte. `data-rot` (ok|warning|danger) est
+   posé sur `article.kb-card` (features/crm/workspace/rotting.js, réutilisé tel
+   quel sur stage_since_days). La pill d'âge se teinte ; un liseré intérieur
+   gauche 3px n'apparaît QU'EN danger (discret). Jamais en SIGNED/COLD/perdu
+   (rot = 'ok' par construction). Tokens sémantiques uniquement.
+   =========================================================================== */
+.kb-card[data-rot='warning'] .kb-age-pill {
+  background: color-mix(in srgb, var(--warning) 18%, var(--card));
+  color: var(--warning-text);
+}
+.kb-card[data-rot='danger'] .kb-age-pill {
+  background: color-mix(in srgb, var(--destructive) 18%, var(--card));
+  color: var(--destructive);
+  font-weight: 700;
+}
+/* Liseré intérieur gauche 3px, UNIQUEMENT en danger — pseudo dédié (::before
+   est déjà la poignée de glissé). N'altère pas la boîte (pas de décalage). */
+.kb-card[data-rot='danger']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--radius, 10px) 0 0 var(--radius, 10px);
+  background: var(--destructive);
+  pointer-events: none;
+}

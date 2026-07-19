@@ -19,6 +19,7 @@ import { useEffect, useRef, useState, memo } from 'react'
 import { Zap, MapPin, FileText } from 'lucide-react'
 import {
   CANAL_LABELS,
+  PIPELINE_STAGES,
   TYPE_INSTALLATION_LABELS,
   formatMAD,
   isPerdu,
@@ -26,6 +27,10 @@ import {
   tagColor,
   tagList,
 } from '../../../../features/crm/stages'
+// LB14 — rampe « rotting » réutilisée TELLE QUELLE (module pur, testable node).
+// Les seuils sont indexés sur l'ORDRE de PIPELINE_STAGES (jamais une clé
+// d'étape en dur) — renommer une étape reste impossible sans passer par stages.js.
+import { rottingLevel, thresholdsForIndex } from '../../../../features/crm/workspace/rotting'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import { telHref, waHref } from '../../../../lib/contactLinks'
 // VX122 — finesse française : espace fine insécable devant « : » du tooltip.
@@ -226,6 +231,12 @@ function LeadCard({
     typeof lead.stage_since_days === 'number' && lead.stage_since_days >= 0
       ? lead.stage_since_days
       : null
+  // LB14 — niveau de « rotting » (ok|warning|danger) selon l'ancienneté dans
+  // l'étape courante. Jamais de rot sur un lead perdu, ni sur SIGNED/COLD
+  // (thresholdsForIndex renvoie null → rottingLevel = 'ok').
+  const rot = perdu
+    ? 'ok'
+    : rottingLevel(lead.stage_since_days, thresholdsForIndex(PIPELINE_STAGES.indexOf(lead.stage)))
 
   const relanceEnRetard = !perdu && !!lead.relance_date && isEnRetard(lead.relance_date)
   const rappelDemande = !perdu && lead.contact_preference === 'phone_ok'
@@ -330,6 +341,7 @@ function LeadCard({
       )}
       <article
         className={classes}
+        data-rot={rot}
         onClick={onOpen ? () => onOpen(lead) : undefined}
         {...swipe.handlers}
         style={{
@@ -548,8 +560,13 @@ function LeadCard({
           {ageJours != null && (
             <span
               className="kb-age-pill"
-              data-rot="ok"
-              title={nbsp(`Dans cette étape depuis ${ageJours} jour${ageJours > 1 ? 's' : ''}`)}
+              title={nbsp(
+                rot === 'danger'
+                  ? `Stagne dans cette étape depuis ${ageJours} jours — à relancer`
+                  : rot === 'warning'
+                    ? `Dans cette étape depuis ${ageJours} jours — commence à traîner`
+                    : `Dans cette étape depuis ${ageJours} jour${ageJours > 1 ? 's' : ''}`,
+              )}
             >
               {ageJours} j
             </span>
