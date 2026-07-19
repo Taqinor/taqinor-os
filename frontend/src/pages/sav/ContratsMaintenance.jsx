@@ -87,13 +87,21 @@ export function Component() {
   const [rows, setRows] = useState([])
   const [clients, setClients] = useState([])
   const [installations, setInstallations] = useState([])
+  const [equipements, setEquipements] = useState([]) // WIR120 — registre couvert
   const [preventifs, setPreventifs] = useState([]) // L327 — tickets préventifs
   const [vue, setVue] = useState('tous') // 'tous' | 'dus' | 'renouveler'
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false) // L329 — vide vs erreur
+  // WIR120 — valeurs par défaut des champs « Avancé » (tous optionnels ;
+  // vides = comportement historique inchangé côté serveur).
+  const ADVANCED_DEFAULTS = {
+    facturation_active: false, sla_response_days: '', sla_resolution_days: '',
+    visites_incluses_an: '', deplacements_inclus_an: '', pieces_couvertes_pct: '',
+    equipements: [],
+  }
   const [form, setForm] = useState({
     client: '', periodicite: 'annuel', date_debut: '', date_renouvellement: '',
-    prix: '', installation: '', duree_mois: '',
+    prix: '', installation: '', duree_mois: '', ...ADVANCED_DEFAULTS,
   })
   const [formError, setFormError] = useState(null) // L326
   const [edit, setEdit] = useState(null) // L320 — { id, periodicite, prix, actif }
@@ -120,6 +128,9 @@ export function Component() {
     // L327 — tickets préventifs pour compter les visites générées par contrat.
     savApi.getTickets({ type: 'preventif', ouvert: 'tous' })
       .then((r) => setPreventifs(r.data.results ?? r.data ?? [])).catch(() => {})
+    // WIR120 — parc d'équipements pour le registre de couverture du contrat.
+    savApi.getEquipements()
+      .then((r) => setEquipements(r.data.results ?? r.data ?? [])).catch(() => {})
   }, [])
 
   // L327 — compte de tickets préventifs par client (et installation si fixée).
@@ -153,10 +164,19 @@ export function Component() {
       if (form.prix !== '') payload.prix = form.prix
       if (form.installation) payload.installation = form.installation
       if (form.duree_mois !== '') payload.duree_mois = form.duree_mois
+      // WIR120 — champs « Avancé » : facturation récurrente, overrides SLA,
+      // registre d'équipements couverts, quotas visites/déplacements/pièces.
+      payload.facturation_active = form.facturation_active
+      if (form.sla_response_days !== '') payload.sla_response_days = form.sla_response_days
+      if (form.sla_resolution_days !== '') payload.sla_resolution_days = form.sla_resolution_days
+      if (form.visites_incluses_an !== '') payload.visites_incluses_an = form.visites_incluses_an
+      if (form.deplacements_inclus_an !== '') payload.deplacements_inclus_an = form.deplacements_inclus_an
+      if (form.pieces_couvertes_pct !== '') payload.pieces_couvertes_pct = form.pieces_couvertes_pct
+      if (form.equipements.length) payload.equipements = form.equipements
       await savApi.saveContrat(null, payload)
       setForm({
         client: '', periodicite: 'annuel', date_debut: '', date_renouvellement: '',
-        prix: '', installation: '', duree_mois: '',
+        prix: '', installation: '', duree_mois: '', ...ADVANCED_DEFAULTS,
       })
       toast.success('Contrat ajouté')
       load()
@@ -410,6 +430,73 @@ export function Component() {
               </Select>
             </FormField>
           </Form>
+
+          {/* WIR120 — section « Avancé » : facturation récurrente, overrides SLA,
+              registre d'équipements couverts, quotas visites/déplacements/pièces.
+              Tous optionnels ; vides = comportement historique inchangé. */}
+          <details className="mt-3 rounded-lg border border-border">
+            <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">
+              Avancé — facturation, SLA, couverture &amp; quotas
+            </summary>
+            <div className="flex flex-col gap-4 border-t border-border p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={form.facturation_active}
+                          onCheckedChange={(v) => setForm((f) => ({ ...f, facturation_active: !!v }))} />
+                Facturation récurrente active
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <FormField label="SLA réponse (jours, override)" hint="vide = SLA société">
+                  <Input type="number" min="0" step="1" value={form.sla_response_days}
+                         onChange={(e) => setForm((f) => ({ ...f, sla_response_days: e.target.value }))} />
+                </FormField>
+                <FormField label="SLA résolution (jours, override)" hint="vide = SLA société">
+                  <Input type="number" min="0" step="1" value={form.sla_resolution_days}
+                         onChange={(e) => setForm((f) => ({ ...f, sla_resolution_days: e.target.value }))} />
+                </FormField>
+                <FormField label="Pièces couvertes (%)" hint="0–100, vide = indéfini">
+                  <Input type="number" min="0" max="100" step="1" value={form.pieces_couvertes_pct}
+                         onChange={(e) => setForm((f) => ({ ...f, pieces_couvertes_pct: e.target.value }))} />
+                </FormField>
+                <FormField label="Visites incluses / an" hint="vide = illimité">
+                  <Input type="number" min="0" step="1" value={form.visites_incluses_an}
+                         onChange={(e) => setForm((f) => ({ ...f, visites_incluses_an: e.target.value }))} />
+                </FormField>
+                <FormField label="Déplacements inclus / an" hint="vide = illimité">
+                  <Input type="number" min="0" step="1" value={form.deplacements_inclus_an}
+                         onChange={(e) => setForm((f) => ({ ...f, deplacements_inclus_an: e.target.value }))} />
+                </FormField>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-medium">Équipements couverts (registre)</span>
+                {equipements.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Aucun équipement au parc.</p>
+                ) : (
+                  <div className="flex max-h-44 flex-col gap-1 overflow-y-auto rounded-md border border-border p-2">
+                    {equipements.map((eq) => {
+                      const checked = form.equipements.includes(eq.id)
+                      const label = `${eq.numero_serie || `#${eq.id}`}${eq.produit_nom ? ` — ${eq.produit_nom}` : ''}`
+                      return (
+                        <label key={eq.id} className="flex items-center gap-2 text-sm">
+                          <Checkbox checked={checked}
+                                    aria-label={label}
+                                    onCheckedChange={(v) => setForm((f) => ({
+                                      ...f,
+                                      equipements: v
+                                        ? [...f.equipements, eq.id]
+                                        : f.equipements.filter((id) => id !== eq.id),
+                                    }))} />
+                          {label}
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </details>
+
           {formError && (
             <div role="alert"
                  className="mt-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
