@@ -601,3 +601,221 @@ def simulate_assumption_scheduler(company, *, scenario='peremption_retest_auto',
                 scenario, report['verdict'], expected)
     return {'scenario': scenario, 'seed': seed,
             'expected_verdict': expected, **report}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AGEN10 — Harnais de simulation de la PIPELINE de génération.
+#
+# Rejoue la pile de sécurité de la génération créative (dd-assumption-engine
+# §10.1/§10.2) sur des lots SYNTHÉTIQUES déterministes et prouve les trois
+# comportements-clés contre une vérité terrain CONNUE, SANS aucun appel réseau :
+#
+#   * ``faux_chiffre_bloque`` — un lot dont une variante porte un chiffre HORS
+#     table de faits est BLOQUÉ par le vérificateur numérique dur (AGEN3,
+#     ``claim_check``) ; la variante ancrée passe (§10.2 point 2) ;
+#   * ``gabarit_gradue`` — un gabarit qui reste PROPRE ``CLEAN_WEEKS_FOR_GRADUATION``
+#     semaines gradue en Palier A (``tier_router``) : tout-vert + gradué → backlog
+#     direct (§10.1 Palier A / AGEN6) ;
+#   * ``desapprobation_rayon`` — une désapprobation Meta simulée déclenche
+#     l'auto-pause maison du rayon d'explosion (AGEN8, ``blast_radius``) : ad en
+#     PAUSE (client gardé PAUSED-only), bras retiré, EngineAction auto + alerte 🔴
+#     dans UN cycle de polling (§10.2 point 5).
+#
+# Ces scénarios sont RÈGLE-À-RÈGLE (regex, toggles cache, lookup de statut) :
+# aucun aléa, aucune horloge murale — déterministes par construction, quel que
+# soit ``seed`` (gardé pour la symétrie d'API). N'ouvrent jamais de campagne réelle.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Verdict attendu par scénario de génération (la « vérité terrain » assert).
+GENERATION_EXPECTED_VERDICT = {
+    'faux_chiffre_bloque': 'blocked',
+    'gabarit_gradue': 'graduated',
+    'desapprobation_rayon': 'auto_paused',
+}
+
+
+def _publish_fact_table(company):
+    """Publie une table de faits synthétique déterministe (2 faits connus) :
+    économie annuelle 12 000 MAD et autoconsommation 82 %."""
+    from .models import FactEntry, FactTable
+    table = FactTable.create_draft(company)
+    FactEntry.objects.create(
+        table=table, cle='economie_annuelle', valeur='12 000', unite='MAD',
+        source='étude interne', verifie_le=datetime.date(2026, 1, 1))
+    FactEntry.objects.create(
+        table=table, cle='autoconsommation', valeur='82', unite='%',
+        source='RedaSolar', verifie_le=datetime.date(2026, 1, 1))
+    table.publish()
+    return table
+
+
+def _scenario_faux_chiffre(company, *, seed):
+    """Un lot dont une variante porte un chiffre HORS table est bloqué par le
+    vérificateur numérique dur (AGEN3) ; la variante ancrée passe (§10.2 pt 2)."""
+    from . import claim_check
+
+    _publish_fact_table(company)
+    # Lot synthétique de 2 variantes « générées » : l'une ancrée (chiffres de la
+    # table), l'autre avec un FAUX chiffre (99 999 MAD, hors table).
+    batch = [
+        {'ref': 'ancree',
+         'text': "Économisez 12 000 MAD par an, jusqu'à 82 % d'autoconsommation."},
+        {'ref': 'faux_chiffre',
+         'text': "Économisez 99 999 MAD par an — offre exceptionnelle."},
+    ]
+
+    results = []
+    for variant in batch:
+        verdict = claim_check.verify_text(company, variant['text'])
+        results.append({
+            'ref': variant['ref'],
+            'ok': verdict['ok'],
+            'violations': [v['fragment'] for v in verdict['violations']],
+        })
+
+    blocked = [r for r in results if not r['ok']]
+    passed = [r for r in results if r['ok']]
+    # Verdict : le FAUX chiffre est bloqué, l'ancré passe.
+    faux_blocked = any(
+        r['ref'] == 'faux_chiffre' and not r['ok'] for r in results)
+    ancree_passed = any(
+        r['ref'] == 'ancree' and r['ok'] for r in results)
+
+    verdict = ('blocked'
+               if (faux_blocked and ancree_passed and len(blocked) == 1)
+               else 'leaked')
+    return {
+        'verdict': verdict,
+        'batch_size': len(batch),
+        'blocked_count': len(blocked),
+        'passed_count': len(passed),
+        'blocked_numbers': [n for r in blocked for n in r['violations']],
+        'summary_fr': (
+            f"Lot de {len(batch)} variantes : {len(blocked)} bloquée(s) par le "
+            "vérificateur numérique dur (chiffre hors table de faits), "
+            f"{len(passed)} ancrée(s) laissée(s) passer."),
+    }
+
+
+def _scenario_graduation(company, *, seed):
+    """Un gabarit propre N semaines gradue en Palier A ; tout-vert + gradué →
+    backlog direct (AGEN6 / §10.1 Palier A)."""
+    from . import groundedness, tier_router
+
+    template_id = 'gabarit-eco-static'
+    # Avant graduation : tout-vert MAIS gabarit non gradué → Palier B.
+    green = dict(
+        content_type='static',
+        claim_result={'ok': True}, policy_result={'ok': True},
+        groundedness_result={'tier': groundedness.TIER_A},
+        template_id=template_id)
+    before = tier_router.route_tier(company, **green)
+
+    # N semaines propres consécutives → graduation automatique au seuil.
+    weeks = []
+    for _ in range(tier_router.CLEAN_WEEKS_FOR_GRADUATION):
+        weeks.append(tier_router.record_clean_week(company, template_id))
+
+    graduated = tier_router.template_graduated(company, template_id)
+    after = tier_router.route_tier(company, **green)
+
+    ok = (
+        before['tier'] == tier_router.TIER_B      # avant : B (non gradué)
+        and graduated                              # le seuil a gradué le gabarit
+        and after['tier'] == tier_router.TIER_A    # après : A (backlog direct)
+        and after['all_green'] and after['graduated'])
+
+    verdict = 'graduated' if ok else 'not_graduated'
+    return {
+        'verdict': verdict,
+        'clean_weeks': weeks,
+        'threshold': tier_router.CLEAN_WEEKS_FOR_GRADUATION,
+        'tier_before': before['tier'],
+        'tier_after': after['tier'],
+        'summary_fr': (
+            f"Gabarit propre {tier_router.CLEAN_WEEKS_FOR_GRADUATION} semaines : "
+            f"palier {before['tier']}→{after['tier']} (gradué → backlog direct)."),
+    }
+
+
+def _scenario_desapprobation(company, *, seed):
+    """Une désapprobation Meta simulée déclenche l'auto-pause maison du rayon
+    d'explosion (AGEN8) dans UN cycle de polling (§10.2 point 5)."""
+    from unittest.mock import Mock
+
+    from . import blast_radius
+    from .models import (
+        CreativeAsset, EngineAction, EngineAlert, Experiment, ExperimentArm,
+    )
+
+    asset = CreativeAsset.objects.create(
+        company=company, asset_type=CreativeAsset.AssetType.STATIC,
+        source_lane='gen', policy_stamp={})
+    experiment = Experiment.objects.create(company=company, name='[SIM:AGEN10]')
+    arm = ExperimentArm.objects.create(
+        company=company, experiment=experiment, creative_asset=asset,
+        label='Variante générée', ad_id='sim-ad-1', is_active=True)
+
+    client = Mock()
+    # Statut Meta = DISAPPROVED → auto-pause maison dans ce cycle (Meta n'offre
+    # AUCUNE auto-pause native : on POLLE et on pause nous-mêmes).
+    result = blast_radius.poll_and_autopause(
+        company, client=client,
+        status_lookup=lambda ad_id: ('DISAPPROVED', 'texte non conforme'))
+
+    arm.refresh_from_db()
+    paused_action = EngineAction.objects.filter(
+        company=company, kind=EngineAction.Kind.PAUSE, auto=True).first()
+    critical_alert = EngineAlert.objects.filter(
+        company=company, severity=EngineAlert.Severity.CRITIQUE).exists()
+
+    ok = (
+        result == {'polled': 1, 'paused': 1, 'alerted': 1}
+        and not arm.is_active                       # bras retiré du bandit
+        and paused_action is not None               # EngineAction auto d'audit
+        and paused_action.status == EngineAction.Statut.APPROUVEE
+        and critical_alert                          # alerte 🔴
+        # Gardé PAUSED-only : la pause réelle a été appelée.
+        and client.update_status_paused.called)
+
+    verdict = 'auto_paused' if ok else 'not_paused'
+    return {
+        'verdict': verdict,
+        'poll_result': result,
+        'arm_active': arm.is_active,
+        'audit_action': (paused_action.pk if paused_action else None),
+        'summary_fr': (
+            "Désapprobation Meta détectée : ad mise en PAUSE (client gardé "
+            "PAUSED-only), bras retiré, EngineAction auto + alerte 🔴 dans un "
+            "seul cycle de polling — le rayon d'explosion est borné."),
+    }
+
+
+_GENERATION_DRIVERS = {
+    'faux_chiffre_bloque': _scenario_faux_chiffre,
+    'gabarit_gradue': _scenario_graduation,
+    'desapprobation_rayon': _scenario_desapprobation,
+}
+
+
+def simulate_generation(company, *, scenario='faux_chiffre_bloque', seed=42):
+    """AGEN10 — Rejoue la pipeline de génération sur des lots synthétiques.
+
+    Déterministe par construction (règle-à-règle : regex, toggles cache, lookup de
+    statut — aucun aléa ni horloge murale ; ``seed`` gardé pour la symétrie d'API).
+    Renvoie un rapport JSON-stable avec ``verdict`` + ``expected_verdict``. Ne fait
+    AUCUN appel réseau (client mocké) et n'ouvre aucune campagne réelle."""
+    if scenario not in GENERATION_EXPECTED_VERDICT:
+        raise ValueError(
+            f"Scénario de génération inconnu : {scenario!r}. "
+            f"Choix : {', '.join(GENERATION_EXPECTED_VERDICT)}.")
+
+    from .models import GuardrailConfig
+    GuardrailConfig.objects.get_or_create(company=company)
+
+    report = _GENERATION_DRIVERS[scenario](company, seed=seed)
+    expected = GENERATION_EXPECTED_VERDICT[scenario]
+    logger.info('simulator[agen10]: scénario=%s verdict=%s (attendu %s)',
+                scenario, report['verdict'], expected)
+    return {'scenario': scenario, 'seed': seed,
+            'expected_verdict': expected, **report}
