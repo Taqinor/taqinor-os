@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../design/ThemeProvider'
 
 /* WIR135 — l'écran Gouvernance des accès lance une campagne, atteste/révoque un
@@ -53,15 +54,17 @@ describe('WIR135 GouvernanceAccesPage', () => {
   })
 
   it('affiche les violations SoD', async () => {
+    const user = userEvent.setup()
     renderPage()
-    fireEvent.click(screen.getByRole('tab', { name: /Règles SoD/ }))
+    await user.click(screen.getByRole('tab', { name: /Règles SoD/ }))
     await waitFor(() => expect(H.sodViolations).toHaveBeenCalled())
     expect(await screen.findByText(/Achat ⊗ Paiement/)).toBeInTheDocument()
   })
 
   it('lit le rapport de certification', async () => {
+    const user = userEvent.setup()
     renderPage()
-    fireEvent.click(screen.getByRole('tab', { name: /Rapport/ }))
+    await user.click(screen.getByRole('tab', { name: /Rapport/ }))
     await waitFor(() => expect(H.revueAcces).toHaveBeenCalled())
     expect(await screen.findByText('sami')).toBeInTheDocument()
   })

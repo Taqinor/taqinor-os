@@ -25,8 +25,8 @@ beforeAll(() => {
   }
 })
 
-const empty = () => Promise.resolve({ data: [] })
-const { dechetCreate } = vi.hoisted(() => ({
+const { empty, dechetCreate } = vi.hoisted(() => ({
+  empty: () => Promise.resolve({ data: [] }),
   dechetCreate: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
 }))
 
@@ -68,7 +68,7 @@ describe('Environnement — création par onglet (WIR127)', () => {
     withProviders(<Environnement />)
 
     await user.click(await screen.findByRole('button', { name: /Nouveau déchet/ }))
-    await waitFor(() => expect(screen.getByText('Nouveau déchet')).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText('Nouveau déchet').length).toBeGreaterThan(1))
 
     fireEvent.change(screen.getByLabelText('Libellé'), { target: { value: 'Chutes de câble' } })
     await user.click(screen.getByRole('button', { name: 'Créer' }))

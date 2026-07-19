@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { emptyRuleForm, ruleFormFromRegles, buildRegles, reglesKey } from './segmentBuilder'
+import { emptyRuleForm, ruleFormFromRegles, buildRegles, reglesKey } from './segmentRules'
 
 // ── Vitest ne ramasse que `*.test.jsx` (voir vitest.config.js) — la logique
-// pure de `segmentBuilder.js` est donc testée ICI plutôt que dans un fichier
+// pure de `segmentRules.js` est donc testée ICI plutôt que dans un fichier
 // `.test.js` séparé (qui ne serait exécuté par aucun des deux runners).
 describe('emptyRuleForm / ruleFormFromRegles (logique pure)', () => {
   it('emptyRuleForm renvoie tous les champs vides', () => {

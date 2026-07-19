@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 const PERIODES = [
   { id: 1, libelle: 'Exercice 2025', date_debut: '2025-01-01', date_fin: '2025-12-31', statut: 'brouillon' },
@@ -45,10 +45,11 @@ describe('EsgCockpit (WIR129)', () => {
   it('crée une période depuis le dialogue', async () => {
     render(<EsgCockpit />)
     fireEvent.click(await screen.findByRole('button', { name: /Nouvelle période/ }))
-    fireEvent.change(await screen.findByLabelText('Libellé'), { target: { value: 'Exercice 2027' } })
-    fireEvent.change(screen.getByLabelText('Date de début'), { target: { value: '2027-01-01' } })
-    fireEvent.change(screen.getByLabelText('Date de fin'), { target: { value: '2027-12-31' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Libellé'), { target: { value: 'Exercice 2027' } })
+    fireEvent.change(dialog.getByLabelText('Date de début'), { target: { value: '2027-01-01' } })
+    fireEvent.change(dialog.getByLabelText('Date de fin'), { target: { value: '2027-12-31' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Créer' }))
     await waitFor(() => expect(esgApi.periodes.create).toHaveBeenCalledWith({
       libelle: 'Exercice 2027', date_debut: '2027-01-01', date_fin: '2027-12-31',
     }))

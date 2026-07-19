@@ -75,17 +75,19 @@ describe('hospitality — module.config (WIR57)', () => {
 
   it('monte le Tableau de bord via /hospitality', async () => {
     renderRoute('/hospitality')
-    await waitFor(() => expect(screen.getByText('ADR (prix moyen/nuit)')).toBeTruthy())
+    // Premier montage lazy du module : le chunk (+ Card/Stat) peut mettre plus
+    // d'1s à se transformer en environnement de test, d'où un délai généreux.
+    await waitFor(() => expect(screen.getByText('ADR (prix moyen/nuit)')).toBeTruthy(), { timeout: 5000 })
   })
 
   it('monte le Plan des chambres via /hospitality/chambres', async () => {
     renderRoute('/hospitality/chambres')
-    await waitFor(() => expect(screen.getByText(/101/)).toBeTruthy())
+    await waitFor(() => expect(screen.getByText(/101/)).toBeTruthy(), { timeout: 5000 })
   })
 
   it('monte les Réservations via /hospitality/reservations', async () => {
     renderRoute('/hospitality/reservations')
-    await waitFor(() => expect(screen.getByTestId('cell-1-0')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('cell-1-0')).toBeTruthy(), { timeout: 5000 })
   })
 
   it('monte la Main courante via /hospitality/main-courante', async () => {

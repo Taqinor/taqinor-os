@@ -25,8 +25,8 @@ beforeAll(() => {
   }
 })
 
-const empty = () => Promise.resolve({ data: [] })
-const { procedureCreate } = vi.hoisted(() => ({
+const { empty, procedureCreate } = vi.hoisted(() => ({
+  empty: () => Promise.resolve({ data: [] }),
   procedureCreate: vi.fn(() => Promise.resolve({ data: { id: 5 } })),
 }))
 

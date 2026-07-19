@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, act, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, act, cleanup, waitFor, fireEvent, within } from '@testing-library/react'
 
 /* WIR66 — smoke de l'onglet Référentiels : il se monte, charge les trois
    référentiels (TVA / conditions / unités), affiche leurs lignes et permet
@@ -66,7 +66,10 @@ describe('WIR66 ReferentielsSection', () => {
     const [codeInput, libelleInput] = scope.querySelectorAll('input')
     fireEvent.change(codeInput, { target: { value: 'kg' } })
     fireEvent.change(libelleInput, { target: { value: 'Kilogramme' } })
-    fireEvent.click(scope.querySelector('button'))
+    // Le scope contient déjà une ligne (Mètre) avec ses propres boutons
+    // (interrupteur Actif + Supprimer) AVANT le bouton "Ajouter" du formulaire :
+    // cibler par nom évite de cliquer le premier bouton venu (l'interrupteur).
+    fireEvent.click(within(scope).getByRole('button', { name: /Ajouter/ }))
     await waitFor(() =>
       expect(parametresApi.createUniteMesure).toHaveBeenCalledWith(
         { code: 'kg', libelle: 'Kilogramme' }))

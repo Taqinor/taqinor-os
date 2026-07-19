@@ -60,10 +60,10 @@ describe('CarburantScreen — WIR133 saisie manuelle', () => {
     await user.click(screen.getByRole('tab', { name: 'Sinistres' }))
     await user.click(await screen.findByRole('button', { name: 'Déclarer un sinistre' }))
 
-    await waitFor(() => expect(screen.getByLabelText('Actif')).toBeTruthy())
-    await user.selectOptions(screen.getByLabelText('Actif'), '10')
-    fireEvent.change(screen.getByLabelText('Date du sinistre'), { target: { value: '2026-07-01' } })
-    fireEvent.change(screen.getByLabelText('Montant estimé (MAD)'), { target: { value: '5000' } })
+    await waitFor(() => expect(screen.getByLabelText(/^Actif/)).toBeTruthy())
+    await user.selectOptions(screen.getByLabelText(/^Actif/), '10')
+    fireEvent.change(screen.getByLabelText(/^Date du sinistre/), { target: { value: '2026-07-01' } })
+    fireEvent.change(screen.getByLabelText(/^Montant estimé \(MAD\)/), { target: { value: '5000' } })
 
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
 

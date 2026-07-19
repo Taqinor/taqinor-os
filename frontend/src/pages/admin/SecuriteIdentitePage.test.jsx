@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../design/ThemeProvider'
 
 /* WIR134 — l'écran Sécurité & Identité monte ses onglets, liste/crée une règle
@@ -65,8 +66,9 @@ describe('WIR134 SecuriteIdentitePage', () => {
   })
 
   it('lit la posture de sécurité', async () => {
+    const user = userEvent.setup()
     renderPage()
-    fireEvent.click(screen.getByRole('tab', { name: /Posture/ }))
+    await user.click(screen.getByRole('tab', { name: /Posture/ }))
     await waitFor(() => expect(H.posture).toHaveBeenCalled())
     expect(await screen.findByText('72')).toBeInTheDocument()
     expect(screen.getByText('1 compte dormant')).toBeInTheDocument()

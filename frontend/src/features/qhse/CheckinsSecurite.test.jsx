@@ -46,16 +46,17 @@ afterEach(() => cleanup())
 describe('WIR115 CheckinsSecurite', () => {
   it('charge et affiche la liste des check-ins', async () => {
     renderScreen()
-    expect(await screen.findByText('Sami T.')).toBeInTheDocument()
-    expect(screen.getByText('Toiture Anfa')).toBeInTheDocument()
+    // « Sami T. » / « Toiture Anfa » apparaissent en double (vue table + cartes) → All.
+    expect((await screen.findAllByText('Sami T.')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Toiture Anfa').length).toBeGreaterThan(0)
   })
 
   it('déclenche un check-out depuis l’action de ligne', async () => {
     renderScreen()
-    await screen.findByText('Sami T.')
-    // L'action rapide est un IconButton dont le libellé = aria-label.
-    const btn = await screen.findByRole('button', { name: 'Check-out' })
-    fireEvent.click(btn)
+    await screen.findAllByText('Sami T.')
+    // L'action rapide est un IconButton dont le libellé = aria-label (dupliqué table/cartes).
+    const btns = await screen.findAllByRole('button', { name: 'Check-out' })
+    fireEvent.click(btns[0])
     await waitFor(() =>
       expect(qhseApi.checkinsSecurite.checkout).toHaveBeenCalledWith(1))
   })

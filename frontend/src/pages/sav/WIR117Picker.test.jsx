@@ -30,6 +30,8 @@ vi.mock('../../api/savApi', () => ({
     getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
     getTicketChecklist: vi.fn(() => Promise.resolve({ data: [] })),
     getChecklistTemplates: vi.fn(() => Promise.resolve({ data: [] })),
+    getTicketWorksheet: vi.fn(() => Promise.resolve({ data: null })),
+    getWorksheetModeles: vi.fn(() => Promise.resolve({ data: [] })),
   },
 }))
 vi.mock('../../api/axios', () => ({

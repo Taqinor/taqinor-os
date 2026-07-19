@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../design/ThemeProvider'
 
 /* WIR70 — le panneau Détails charge la timeline et le rapport ACL d'un
@@ -44,12 +45,13 @@ describe('WIR70 GedDocumentInsights', () => {
   })
 
   it('affiche le rapport ACL et exporte en CSV', async () => {
+    const user = userEvent.setup()
     // jsdom : stub des API de téléchargement.
-    global.URL.createObjectURL = vi.fn(() => 'blob:x')
-    global.URL.revokeObjectURL = vi.fn()
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:x')
+    globalThis.URL.revokeObjectURL = vi.fn()
     renderPanel()
     await waitFor(() => expect(H.getPermissionsEffectives).toHaveBeenCalledWith(42))
-    fireEvent.click(screen.getByRole('tab', { name: /Accès/ }))
+    await user.click(screen.getByRole('tab', { name: /Accès/ }))
     expect(await screen.findByText('Sami')).toBeInTheDocument()
     expect(screen.getByText('heritage_dossier')).toBeInTheDocument()
     fireEvent.click(screen.getByText('CSV'))
