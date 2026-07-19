@@ -82,6 +82,28 @@ def installation_gps_map(installation_ids):
     return {iid: (lat, lng) for iid, lat, lng in rows}
 
 
+def active_installation_locations(company):
+    """PUB79 — Chantiers ACTIFS (hors ``CLOTURE``) avec GPS + ville, pour les
+    déclencheurs cross-app lisant la météo par emplacement (ex.
+    ``apps.adsengine.weather_trigger`` — canicule ⇒ angle pompage/climatisation)
+    — jamais un import direct d'``Installation`` hors de ce module. Un chantier
+    sans GPS est simplement absent (jamais une coordonnée fabriquée). Lecture
+    seule, scopée société. Renvoie une LISTE de dicts ``{installation_id,
+    ville, gps_lat, gps_lng}``."""
+    from .models import Installation
+    qs = (Installation.objects
+          .filter(company=company)
+          .exclude(statut=Installation.Statut.CLOTURE)
+          .exclude(gps_lat__isnull=True)
+          .exclude(gps_lng__isnull=True)
+          .only('id', 'site_ville', 'gps_lat', 'gps_lng'))
+    return [
+        {'installation_id': i.id, 'ville': i.site_ville or '',
+         'gps_lat': i.gps_lat, 'gps_lng': i.gps_lng}
+        for i in qs
+    ]
+
+
 def installation_qs_for_remise():
     """Queryset Installation prêt pour la fiche de remise (relations préchargées).
     L'appelant applique son propre scope société puis filtre par pk."""

@@ -52,6 +52,11 @@ KIND_CREATIVE_FATIGUE = 'creative_fatigue'
 KIND_LEARNING_VELOCITY = 'apprentissage_lent'
 # PUB34 — santé structurelle (doctrine Andromeda : fragmentation ad sets/créas).
 KIND_STRUCTURAL_FRAGMENTATION = 'fragmentation_structurelle'
+# PUB74 — kind EN CONSTANTE SIMPLE (même pattern qu'ADSDEEP45 ci-dessus) :
+# fatigue au niveau du VISUEL (``visual_asset_key``), DISTINCTE de la fatigue
+# par ad ci-dessus (fréquence/CTR d'UNE ad) — ici le signal est « le même
+# visuel ressert sur N créas malgré des hooks différents ».
+KIND_VISUAL_FATIGUE = 'visual_fatigue'
 
 # PUB33 — Meta cible ~50 événements d'optimisation (résultats de la campagne
 # d'optimisation) par ad set sur une fenêtre glissante de 7 jours pour sortir
@@ -474,6 +479,60 @@ def detect_structural_fragmentation(active_adset_count, creatives_per_adset=None
         "automatique, décision humaine requise.")
     return Detection('structural_fragmentation', True, False, SEVERITY_WARNING,
                      KIND_STRUCTURAL_FRAGMENTATION, message, computed)
+
+
+# ── PUB74 — Fatigue au niveau du VISUEL (visual_asset_key réutilisé) ─────────
+# ``visual_asset_key`` (ADSENG5) identifie précisément un visuel réutilisable
+# à travers plusieurs ``CreativeAsset`` (recombinaison hook × visuel) — AUCUNE
+# analytique ne s'en sert jusqu'ici. Le signal : un visuel qui ressert sur
+# beaucoup de créas MALGRÉ des accroches différentes est un candidat à la
+# lassitude visuelle, indépendant de la fatigue par-ad (fréquence/CTR d'UNE
+# ad, ci-dessus) — le câblage DB (regroupement par visuel + déclin CTR
+# cross-ads) vit dans ``metrics.visual_fatigue_report``.
+DEFAULT_VISUAL_REUSE_THRESHOLDS = {
+    'min_reuse': 3,
+    'min_distinct_hooks': 2,
+    'ctr_decline_warn': 0.25,
+}
+
+
+def detect_visual_reuse_fatigue(reuse_count, distinct_hook_count, *,
+                                min_reuse=3, min_distinct_hooks=2,
+                                ctr_decline_pct=None, ctr_decline_warn=0.25):
+    """PUB74 — Un visuel réutilisé sur ``reuse_count`` créas MALGRÉ
+    ``distinct_hook_count`` accroches différentes est un signal de lassitude
+    visuelle. Confirmé (WARNING) dès ``reuse_count >= min_reuse`` ET
+    ``distinct_hook_count >= min_distinct_hooks`` (sinon simple recyclage
+    normal d'un visuel avec le MÊME hook — pas un signal) ; ESCALADE en
+    CRITICAL si le déclin de CTR cross-ads fourni (``ctr_decline_pct``, du
+    plus ancien ad utilisant ce visuel au plus récent) dépasse
+    ``ctr_decline_warn``. ``ctr_decline_pct`` est OPTIONNEL (calculé par
+    l'appelant) : son absence n'empêche jamais la détection de fuite de
+    réutilisation elle-même. Fonction PURE — aucun I/O, aucun import de
+    modèle."""
+    computed = {
+        'reuse_count': reuse_count, 'distinct_hook_count': distinct_hook_count,
+        'min_reuse': min_reuse, 'min_distinct_hooks': min_distinct_hooks,
+        'ctr_decline_pct': (round(ctr_decline_pct, 4)
+                            if ctr_decline_pct is not None else None),
+    }
+    if reuse_count < min_reuse or distinct_hook_count < min_distinct_hooks:
+        return Detection('visual_fatigue', False, False, SEVERITY_WARNING,
+                         KIND_VISUAL_FATIGUE, '', computed)
+
+    severity = SEVERITY_WARNING
+    decline_suffix = ''
+    if ctr_decline_pct is not None and ctr_decline_pct >= ctr_decline_warn:
+        severity = SEVERITY_CRITICAL
+        decline_suffix = (
+            f", CTR en baisse de {ctr_decline_pct * 100:.0f} % entre le "
+            f"1er et le dernier usage")
+    message = (
+        f"Visuel réutilisé sur {reuse_count} créas malgré {distinct_hook_count} "
+        f"accroches différentes{decline_suffix} — lassitude visuelle probable, "
+        f"tester un nouveau visuel.")
+    return Detection('visual_fatigue', True, False, severity,
+                     KIND_VISUAL_FATIGUE, message, computed)
 
 
 # ── Matérialisation (câblage DB — le seul point non pur du module) ────────────

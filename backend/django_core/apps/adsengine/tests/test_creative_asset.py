@@ -127,3 +127,16 @@ class CreativeAssetApiTests(TestCase):
         resp = auth(self.manager).get(BASE)
         results = resp.data['results'] if 'results' in resp.data else resp.data
         self.assertEqual(len(results), 1)
+
+    def test_response_includes_provenance_for_manual_upload(self):
+        # PUB84 — un asset jamais issu d'un lot de génération ancrée (upload
+        # manuel) reste un batch_id None + son policy_stamp, jamais une 500.
+        asset = CreativeAsset.objects.create(
+            company=self.company, asset_type=CreativeAsset.AssetType.STATIC,
+            policy_stamp={'passed': True})
+        resp = auth(self.manager).get(f'{BASE}{asset.id}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('provenance', resp.data)
+        self.assertIsNone(resp.data['provenance']['batch_id'])
+        self.assertEqual(
+            resp.data['provenance']['policy_stamp'], {'passed': True})

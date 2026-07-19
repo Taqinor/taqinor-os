@@ -1606,6 +1606,102 @@ class AccountAuditView(APIView):
         return Response(data)
 
 
+class CommentFaqView(APIView):
+    """PUB71 — Mine de questions des commentaires : thèmes agrégés (prix/
+    garantie/subvention/durée) + candidats ``seed_brief`` pour la génération
+    ancrée. 100 % LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .comment_mining import mine_comment_questions
+        return Response(mine_comment_questions(company))
+
+
+class AdObjectionsView(APIView):
+    """PUB72 — Top objections PAR VARIANTE d'annonce (motif_perte + notes de
+    chatter CRM, tags mots-clés purs) + angles suggérés en backlog. 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .comment_mining import mine_ad_objections
+        return Response(mine_ad_objections(company))
+
+
+class VisualFatigueView(APIView):
+    """PUB74 — Fatigue au niveau du VISUEL (``visual_asset_key`` réutilisé sur
+    N créas malgré des hooks différents, + déclin CTR cross-ads). 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .metrics import visual_fatigue_report
+        return Response(visual_fatigue_report(company))
+
+
+class WeatherTriggerView(APIView):
+    """PUB79 — Déclencheur météo (canicule ⇒ angle pompage/climatisation),
+    suggestions de backlog SEULEMENT (jamais une action automatique). 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .weather_trigger import canicule_backlog_suggestions
+        return Response({'suggestions': canicule_backlog_suggestions(company)})
+
+
+class CoverageReportView(APIView):
+    """PUB80 — Rapport « trous de couverture » : formats Meta jamais couverts
+    + segments démographiques à forte dépense sans créa dédiée. 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .coverage import coverage_report
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(
+            coverage_report(company, date_start=debut, date_end=fin))
+
+
+class FactoryLaneRoiView(APIView):
+    """PUB81 — ROI par LANE de fabrique créative (coût-par-résultat par
+    ``source_lane`` : zapcap/fal/templated/elevenlabs/json2video/chantier/
+    ugc/manuel). 100 % LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import factory_lane_roi
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(
+            factory_lane_roi(company, date_start=debut, date_end=fin))
+
+
 class MetaConnectionStatusView(APIView):
     """ENG22 — Statut de connexion (GET) + enregistrement des identifiants
     (POST). Les identifiants sont **write-only** : un GET ne renvoie JAMAIS un

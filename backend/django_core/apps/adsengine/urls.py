@@ -12,21 +12,25 @@ from .incrementality import GeoHoldoutReportView
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
-    AdCampaignMirrorViewSet, AdFullStoryView, AdPreviewsView, AdsCockpitView,
+    AdCampaignMirrorViewSet, AdFullStoryView, AdObjectionsView,
+    AdPreviewsView, AdsCockpitView,
     AlertSnoozeView, AnnotationViewSet, AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet,
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
-    CommentCountsView, CommentDeleteView, CommentHideView, CommentListView,
+    CommentCountsView, CommentDeleteView, CommentFaqView, CommentHideView,
+    CommentListView,
     CommentPrivateReplyView, CommentReplyView,
     AudienceDeliveryEstimateView, EngagementAudienceView,
-    CostPerSignatureView, CreativeLeaderboardView, CreativeScatterView,
+    CostPerSignatureView, CoverageReportView, CreativeLeaderboardView,
+    CreativeScatterView,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
     GroundedGenerationView,
-    ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
+    ExperimentViewSet, FactoryLaneRoiView, FlightPhaseViewSet,
+    FlightPlanViewSet,
     GuardrailConfigViewSet, GuardrailSingletonView,
     InstagramCommentDeleteView, InstagramCommentHideView,
     InstagramCommentListView, InstagramCommentReplyView,
@@ -39,7 +43,8 @@ from .views import (
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SignalCohortView, SignalsView, SimulationDetailView,
     SimulationListView, StatusView, SyncStatusView, TodayQueueView,
-    VariantFunnelView, VariantReportView, WiringHealthView,
+    VariantFunnelView, VariantReportView, VisualFatigueView,
+    WeatherTriggerView, WiringHealthView,
 )
 from .whatsapp_webhook import WhatsAppCloudWebhookView
 
@@ -166,6 +171,24 @@ urlpatterns = [
     # liste active (``history()`` reste complet).
     path('alertes/<int:alert_id>/snooze/', AlertSnoozeView.as_view(),
          name='adsengine-alerte-snooze'),
+    # PUB71 — mine de questions des commentaires (thèmes + candidats seed_brief).
+    path('reporting/creatifs/faq/', CommentFaqView.as_view(),
+         name='adsengine-reporting-creatifs-faq'),
+    # PUB72 — top objections CRM par variante d'annonce + angles suggérés.
+    path('reporting/creatifs/objections/', AdObjectionsView.as_view(),
+         name='adsengine-reporting-creatifs-objections'),
+    # PUB74 — fatigue au niveau du VISUEL (visual_asset_key réutilisé).
+    path('reporting/creatifs/fatigue-visuelle/', VisualFatigueView.as_view(),
+         name='adsengine-reporting-creatifs-fatigue-visuelle'),
+    # PUB79 — déclencheur météo (canicule ⇒ angle pompage/climatisation).
+    path('reporting/creatifs/declencheur-meteo/', WeatherTriggerView.as_view(),
+         name='adsengine-reporting-creatifs-declencheur-meteo'),
+    # PUB80 — rapport « trous de couverture » (formats + segments).
+    path('reporting/couverture/', CoverageReportView.as_view(),
+         name='adsengine-reporting-couverture'),
+    # PUB81 — ROI par lane de fabrique créative (coût-par-résultat/source_lane).
+    path('reporting/creatifs/roi-lane/', FactoryLaneRoiView.as_view(),
+         name='adsengine-reporting-creatifs-roi-lane'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).

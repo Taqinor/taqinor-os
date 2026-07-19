@@ -96,3 +96,49 @@ def evaluate_risk(
     if vent is not None and vent >= seuil_vent_kmh:
         risque = True
     return risque
+
+
+# ── PUB79 — Prévision de TEMPÉRATURE (canicule ⇒ déclencheur créatif pub) ────
+# Même source Open-Meteo, même patron d'appel (STDLIB/``requests`` best-effort,
+# repli SILENCIEUX hors-ligne) que ``fetch_forecast`` ci-dessus — jamais dupliqué,
+# juste un autre paramètre ``daily``. Seuil par défaut : 38 °C (canicule Maroc).
+SEUIL_TEMPERATURE_C = 38
+
+
+def fetch_temperature_forecast(lat, lng, target_date):
+    """PUB79 — Prévision de température MAXIMALE (°C) pour ``target_date`` au
+    point (lat, lng) — même source/garanties que ``fetch_forecast`` (panne
+    réseau/coordonnées manquantes → ``None`` SILENCIEUX, jamais une exception).
+    Renvoie ``{"temperature_max_c": float}`` ou ``None``."""
+    if lat is None or lng is None or target_date is None:
+        return None
+    data = _fetch_json(_OPEN_METEO_URL, {
+        'latitude': float(lat), 'longitude': float(lng),
+        'daily': 'temperature_2m_max',
+        'timezone': 'Africa/Casablanca',
+        'start_date': target_date.isoformat(),
+        'end_date': target_date.isoformat(),
+    })
+    if not data:
+        return None
+    daily = data.get('daily') or {}
+    try:
+        temp_max = daily.get('temperature_2m_max', [None])[0]
+    except (IndexError, TypeError):
+        return None
+    if temp_max is None:
+        return None
+    return {'temperature_max_c': temp_max}
+
+
+def evaluate_canicule(forecast, seuil_temp_c=SEUIL_TEMPERATURE_C):
+    """PUB79 — True si la température MAX prévue franchit ``seuil_temp_c``
+    (canicule), False sinon, None si la prévision est absente/inexploitable
+    (jamais un skip muet côté appelant — ``None`` reste distinguable de
+    « pas de canicule »)."""
+    if not forecast:
+        return None
+    temp = forecast.get('temperature_max_c')
+    if temp is None:
+        return None
+    return temp >= seuil_temp_c
