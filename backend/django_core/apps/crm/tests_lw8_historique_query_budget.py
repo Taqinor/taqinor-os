@@ -88,4 +88,8 @@ class HistoriqueQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
         with self.assertMaxQueries(10):
             resp = self.api.get(url)
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(len(resp.data), 6)
+        # Jamais un compte figé : la création du lead journalise déjà sa
+        # propre activité automatique (log_creation) — même leçon que
+        # test_lead_detail_chatter (CI « 7 != 6 »).
+        self.assertEqual(len(resp.data), self.lead.activites.count())
+        self.assertGreaterEqual(len(resp.data), 6)
