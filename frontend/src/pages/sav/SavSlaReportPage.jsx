@@ -16,6 +16,12 @@ export default function SavSlaReportPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
+  // WIR121 — 4 analyses fleet-wide (chargées indépendamment du rapport SLA :
+  // une panne d'un endpoint n'empêche pas l'affichage du reste).
+  const [pareto, setPareto] = useState([])
+  const [fiabilite, setFiabilite] = useState({ results: [], couts_inclus: false })
+  const [forecast, setForecast] = useState([])
+  const [resumeEquipe, setResumeEquipe] = useState([])
 
   const load = () => savApi.getSavSlaReport()
     .then((r) => setData(r.data))
@@ -25,6 +31,17 @@ export default function SavSlaReportPage() {
   const charger = () => { setLoading(true); setLoadError(false); return load() }
 
   useEffect(() => { load() }, [])
+
+  // WIR121 — surfacent les 4 endpoints d'analyse jusqu'ici sans page.
+  useEffect(() => {
+    savApi.getSavPareto().then((r) => setPareto(r.data?.results ?? [])).catch(() => {})
+    savApi.getSavFiabiliteParc()
+      .then((r) => setFiabilite({ results: r.data?.results ?? [], couts_inclus: !!r.data?.couts_inclus }))
+      .catch(() => {})
+    savApi.getSavPartsForecast()
+      .then((r) => setForecast(Array.isArray(r.data) ? r.data : (r.data?.results ?? []))).catch(() => {})
+    savApi.getSavResumeParEquipe().then((r) => setResumeEquipe(r.data?.results ?? [])).catch(() => {})
+  }, [])
 
   const exportXlsx = () => {
     // Ouvre l'export xlsx généré côté serveur (même patron que les autres
@@ -137,6 +154,134 @@ export default function SavSlaReportPage() {
                     <td className="py-1.5">{pct(t.pct_premiere_reponse_ok)}</td>
                     <td className="py-1.5">{pct(t.pct_resolution_ok)}</td>
                     <td className="py-1.5">{t.reouvertures}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+
+        {/* ── WIR121 — Analyses parc (fleet-wide) ── */}
+        <h2 className="mt-2 font-display text-lg font-semibold">Analyses du parc</h2>
+
+        {/* XSAV14 — Pareto des pannes par produit */}
+        <Card className="overflow-x-auto p-4">
+          <h3 className="mb-3 font-display text-base font-semibold">Pareto des pannes (par produit)</h3>
+          {pareto.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune donnée.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground">
+                  <th className="pb-2">Produit / modèle</th>
+                  <th className="pb-2">Nb tickets</th>
+                  <th className="pb-2">%</th>
+                  <th className="pb-2">% cumulé</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pareto.map((p) => (
+                  <tr key={p.cle ?? p.libelle} className="border-t border-border">
+                    <td className="py-1.5">{p.libelle}</td>
+                    <td className="py-1.5">{p.nb_tickets}</td>
+                    <td className="py-1.5">{pct(p.pct)}</td>
+                    <td className="py-1.5">{pct(p.pct_cumule)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+
+        {/* XSAV15 — Fiabilité parc (MTBF/MTTR) — « citrons » d'abord */}
+        <Card className="overflow-x-auto p-4">
+          <h3 className="mb-3 font-display text-base font-semibold">Fiabilité du parc (MTBF / MTTR)</h3>
+          {fiabilite.results.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune donnée.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground">
+                  <th className="pb-2">Équipement</th>
+                  <th className="pb-2">Correctifs</th>
+                  <th className="pb-2">MTBF</th>
+                  <th className="pb-2">MTTR</th>
+                  {fiabilite.couts_inclus && <th className="pb-2">Coût cumulé</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {fiabilite.results.map((e) => (
+                  <tr key={e.equipement_id} className="border-t border-border">
+                    <td className="py-1.5">
+                      {e.numero_serie || `#${e.equipement_id}`}
+                      {e.produit_nom ? ` — ${e.produit_nom}` : ''}
+                    </td>
+                    <td className="py-1.5">{e.nb_tickets_correctifs ?? 0}</td>
+                    <td className="py-1.5">{jours(e.mtbf_jours)}</td>
+                    <td className="py-1.5">{jours(e.mttr_jours)}</td>
+                    {fiabilite.couts_inclus && (
+                      <td className="py-1.5">{e.cout_cumule != null ? `${e.cout_cumule} DH` : '—'}</td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+
+        {/* FG89 — Prévision de consommation de pièces */}
+        <Card className="overflow-x-auto p-4">
+          <h3 className="mb-3 font-display text-base font-semibold">Prévision pièces (réappro)</h3>
+          {forecast.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune donnée.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground">
+                  <th className="pb-2">Pièce</th>
+                  <th className="pb-2">Consommé</th>
+                  <th className="pb-2">Moy. / mois</th>
+                  <th className="pb-2">Qté suggérée (réappro)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {forecast.map((f) => (
+                  <tr key={f.produit} className="border-t border-border">
+                    <td className="py-1.5">{f.nom}{f.sku ? ` (${f.sku})` : ''}</td>
+                    <td className="py-1.5">{f.total_consomme}</td>
+                    <td className="py-1.5">{f.consommation_mensuelle_moy}</td>
+                    <td className="py-1.5">{f.qte_suggere_reappro}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+
+        {/* ZMFG4 — Résumé maintenance par équipe */}
+        <Card className="overflow-x-auto p-4">
+          <h3 className="mb-3 font-display text-base font-semibold">Résumé par équipe</h3>
+          {resumeEquipe.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune donnée.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground">
+                  <th className="pb-2">Équipe</th>
+                  <th className="pb-2">Ouverts</th>
+                  <th className="pb-2">En retard SLA</th>
+                  <th className="pb-2">Préventifs dus</th>
+                  <th className="pb-2">Correctifs urgents</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resumeEquipe.map((eq) => (
+                  <tr key={eq.equipe_id ?? 'none'} className="border-t border-border">
+                    <td className="py-1.5">{eq.equipe_nom}</td>
+                    <td className="py-1.5">{eq.ouverts}</td>
+                    <td className="py-1.5">{eq.en_retard_sla}</td>
+                    <td className="py-1.5">{eq.preventifs_dus}</td>
+                    <td className="py-1.5">{eq.correctifs_urgents}</td>
                   </tr>
                 ))}
               </tbody>

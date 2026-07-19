@@ -57,3 +57,44 @@ from apps.compta.services import (  # noqa: F401
     variante_pour_langue,
     webhook_brevo_evenement,
 )
+
+
+# ── WIR64 / FG206 — Capture de lead publique depuis un FormulaireIntake ──────
+# Écrit dans le domaine crm UNIQUEMENT via ``apps.crm.services`` (jamais un
+# import des modèles crm — invariant CLAUDE.md/M3). La société vient TOUJOURS
+# du formulaire résolu côté serveur, jamais du corps de la requête publique.
+
+def formulaire_intake_actif_par_slug(slug):
+    """WIR64 — résout un FormulaireIntake ACTIF par son slug public (lookup
+    par slug, cf. NTMKT16). Renvoie le formulaire ou ``None``. La société est
+    portée par le formulaire trouvé — jamais lue d'un paramètre public."""
+    from .models import FormulaireIntake
+    return (FormulaireIntake.objects
+            .filter(slug=slug, actif=True)
+            .order_by('id')
+            .first())
+
+
+def creer_lead_depuis_intake(formulaire, data):
+    """WIR64/FG206 — crée un lead depuis la soumission publique d'un
+    ``FormulaireIntake``, via ``crm.services`` (jamais d'import des modèles
+    crm). Le ``type_installation`` par défaut du formulaire pré-remplit le
+    lead ; le ``tag_prefill`` est posé comme tag après création. ``nom`` est
+    obligatoire (``ValueError`` sinon, remonté en 400 par la vue). La société
+    est forcée depuis ``formulaire.company``."""
+    from apps.crm.services import create_lead_from_public_api, poser_tag_lead
+    data = data or {}
+    fields = {
+        'nom': data.get('nom'),
+        'prenom': data.get('prenom'),
+        'societe': data.get('societe'),
+        'email': data.get('email'),
+        'telephone': data.get('telephone'),
+        'ville': data.get('ville'),
+    }
+    if formulaire.type_installation:
+        fields['type_installation'] = formulaire.type_installation
+    lead = create_lead_from_public_api(company=formulaire.company, fields=fields)
+    if formulaire.tag_prefill:
+        poser_tag_lead(lead, None, formulaire.tag_prefill)
+    return lead

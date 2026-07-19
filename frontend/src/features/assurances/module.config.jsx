@@ -21,6 +21,7 @@ const ROLES = ['responsable', 'admin']
 
 const PolicesList = lazy(() => import('./PolicesList'))
 const PoliceDetail = lazy(() => import('./PoliceDetail'))
+const PoliceForm = lazy(() => import('./PoliceForm'))
 const SinistresPage = lazy(() => import('./SinistresPage'))
 // WIR145 — tableau de bord assurances + exigences par marché.
 const TableauBordAssurances = lazy(() => import('./TableauBordAssurances'))
@@ -49,6 +50,7 @@ export default {
     ['/assurances/tableau-bord', 'Tableau de bord assurances'],
     ['/assurances/exigences', 'Exigences d\'assurance par marché'],
     ['/assurances/sinistres', 'Sinistres transverses'],
+    ['/assurances/nouvelle', 'Nouvelle police'],
     ['/assurances', "Polices d'assurance"],
   ],
   sectionLabels: { assurances: 'Assurances' },
@@ -60,6 +62,9 @@ export default {
     // NTASS27 — sinistres : route STATIQUE déclarée AVANT la route dynamique
     // `:id` pour qu'elle ne soit jamais capturée comme un id de police.
     { path: '/assurances/sinistres', component: SinistresPage, roles: ROLES },
+    // WIR56 — création de police : route STATIQUE déclarée AVANT `:id` pour que
+    // « nouvelle » ne soit jamais capturé comme un id de police.
+    { path: '/assurances/nouvelle', component: PoliceForm, roles: ROLES },
     // NTASS26 — fiche police détail (onglets).
     { path: '/assurances/:id', component: PoliceDetail, roles: ROLES },
   ],

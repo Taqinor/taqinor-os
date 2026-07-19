@@ -17,6 +17,7 @@ import useFlotteResource from './useFlotteResource'
 import SignalementDialog from './SignalementDialog'
 import GarageDialog from './GarageDialog'
 import PlanRolloutDialog from './PlanRolloutDialog'
+import GarantiesFlotteTab from './GarantiesFlotteTab'
 
 /* ============================================================================
    UX18 — Entretien (`/flotte/entretien`).
@@ -951,6 +952,7 @@ export default function EntretienScreen() {
           <TabsTrigger value="garages">Garages</TabsTrigger>
           <TabsTrigger value="pneus">Pneumatiques</TabsTrigger>
           <TabsTrigger value="pieces">Pièces</TabsTrigger>
+          <TabsTrigger value="garanties">Garanties</TabsTrigger>
         </TabsList>
         <TabsContent value="echeances"><EcheancesTab /></TabsContent>
         <TabsContent value="plans"><PlansTab actifs={actifs} /></TabsContent>
@@ -959,6 +961,7 @@ export default function EntretienScreen() {
         <TabsContent value="garages"><GaragesTab /></TabsContent>
         <TabsContent value="pneus"><PneusTab /></TabsContent>
         <TabsContent value="pieces"><PiecesTab /></TabsContent>
+        <TabsContent value="garanties"><GarantiesFlotteTab actifs={actifs} /></TabsContent>
       </Tabs>
     </div>
   )

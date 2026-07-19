@@ -122,7 +122,6 @@ export default function PolicesList() {
           <Plus /> Nouvelle police
         </Button>
       )}
-      breadcrumbs={[{ label: 'Assurances' }]}
       columns={columns}
       rows={visible}
       loading={loading}

@@ -4,7 +4,14 @@ import { render, screen, cleanup } from '@testing-library/react'
 /* XSAV8 — rapport de conformité SLA + KPI avancés SAV. savApi mocké. */
 
 vi.mock('../../api/savApi', () => ({
-  default: { getSavSlaReport: vi.fn() },
+  default: {
+    getSavSlaReport: vi.fn(),
+    // WIR121 — 4 analyses fleet-wide surfacées dans le rapport SLA.
+    getSavPareto: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+    getSavFiabiliteParc: vi.fn(() => Promise.resolve({ data: { results: [], couts_inclus: false } })),
+    getSavPartsForecast: vi.fn(() => Promise.resolve({ data: [] })),
+    getSavResumeParEquipe: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+  },
 }))
 
 import savApi from '../../api/savApi'
@@ -41,5 +48,28 @@ describe('SavSlaReportPage', () => {
     savApi.getSavSlaReport.mockRejectedValue(new Error('fail'))
     render(<SavSlaReportPage />)
     expect(await screen.findByText('Chargement impossible')).toBeInTheDocument()
+  })
+
+  it('WIR121 — surface les 4 analyses fleet-wide avec données réelles', async () => {
+    savApi.getSavSlaReport.mockResolvedValue({ data: { total_tickets: 0 } })
+    savApi.getSavPareto.mockResolvedValue({
+      data: { results: [{ cle: 1, libelle: 'Onduleur 5kW', nb_tickets: 9, pct: 45, pct_cumule: 45 }] },
+    })
+    savApi.getSavFiabiliteParc.mockResolvedValue({
+      data: { results: [{ equipement_id: 2, numero_serie: 'SN-2', produit_nom: 'Pompe', nb_tickets_correctifs: 3, mtbf_jours: 40, mttr_jours: 2 }], couts_inclus: false },
+    })
+    savApi.getSavPartsForecast.mockResolvedValue({
+      data: [{ produit: 7, nom: 'Fusible', sku: 'F16', total_consomme: 12, consommation_mensuelle_moy: 1, qte_suggere_reappro: 2 }],
+    })
+    savApi.getSavResumeParEquipe.mockResolvedValue({
+      data: { results: [{ equipe_id: 5, equipe_nom: 'Équipe Nord', ouverts: 4, en_retard_sla: 1, preventifs_dus: 2, correctifs_urgents: 1 }] },
+    })
+    render(<SavSlaReportPage />)
+
+    expect(await screen.findByText('Pareto des pannes (par produit)')).toBeInTheDocument()
+    expect(await screen.findByText('Onduleur 5kW')).toBeInTheDocument()
+    expect(screen.getByText('Fusible (F16)')).toBeInTheDocument()
+    expect(screen.getByText('Équipe Nord')).toBeInTheDocument()
+    expect(screen.getByText('Fiabilité du parc (MTBF / MTTR)')).toBeInTheDocument()
   })
 })
