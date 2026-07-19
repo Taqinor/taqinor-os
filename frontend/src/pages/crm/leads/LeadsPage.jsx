@@ -19,9 +19,17 @@ import {
 import {
   Button, IconButton, Spinner, FloatingActionButton,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  FadeSwap, SkeletonCard, SkeletonTableRow,
 } from '../../../ui'
+// LB27 — squelette EN FORME dans le shell (blueprint I9), même hook que
+// ClientList/DevisList/LeadWorkspace : rien avant 300ms (anti-flash), un
+// spinner discret jusqu'à 500ms, puis un squelette au-delà.
+import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
+// LB26 — hook CANONIQUE (déjà adopté par LeadWorkspace.jsx) : jamais une
+// nouvelle copie locale de useIsMobile.
+import { useIsMobile } from '../../../ui/ResponsiveDialog'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../../hooks/useEquipeMembreIds'
@@ -30,12 +38,20 @@ import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
 import ExcelImport from '../../../components/ExcelImport'
 import SavedViewsBar, { SaveViewButton } from '../../../components/SavedViewsBar'
 import FilterBar from './FilterBar'
+import LeadsKpiStrip from './LeadsKpiStrip'
 import BulkActionBar from './BulkActionBar'
 import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
 import SigneDialog from './SigneDialog'
 import LeadExpressModal from './LeadExpressModal'
 import { SIGNE_INTERCEPT } from './signeIntercept'
+// LB22 — URL partageable (blueprint D5/I7) : module PUR encode/decode
+// filtres+vue ↔ URLSearchParams (urlFilters.js) — VALID_VIEWS y vit
+// désormais en SEULE source (jamais une 2e liste déclarée ici).
+import {
+  VALID_VIEWS, hasUrlFilterState, readFiltersFromParams, readViewFromParams,
+  writeFiltersToParams,
+} from './urlFilters'
 // VX186 — KanbanView reste STATIQUE (vue par défaut la plus fréquente, zéro
 // flash de chargement au premier rendu). Les 4 autres vues + Prévision sont
 // désormais `lazy` : LeadsPage était le PLUS GROS chunk de route du repo
@@ -51,7 +67,6 @@ const ForecastView = lazy(() => import('./views/ForecastView'))  // XSAL15
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
 const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
-const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique', 'carte', 'prevision']  // FG37, XSAL15
 
 // loadSavedViews inlined removed — now using useSavedViews hook (FG11).
 
@@ -68,6 +83,37 @@ function loadFilters() {
   }
 }
 
+// LB27 — squelette EN FORME de la vue active (blueprint I9) : 6 colonnes ×
+// 3 SkeletonCard en kanban/prévision (la forme du board), SkeletonTableRow en
+// liste ; calendrier/graphique/carte retombent sur le même bloc kanban (des
+// vues moins fréquentes au premier chargement, une forme neutre suffit).
+function LeadsViewSkeleton({ view }) {
+  if (view === 'liste') {
+    return (
+      <div className="lp-skeleton-liste" aria-hidden="true">
+        <table className="lv-table">
+          <tbody>
+            {Array.from({ length: 8 }).map((unused, i) => (
+              <SkeletonTableRow key={i} columns={7} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+  return (
+    <div className="lp-skeleton-kanban" aria-hidden="true">
+      {Array.from({ length: 6 }).map((unused, col) => (
+        <div key={col} className="lp-skeleton-col">
+          {Array.from({ length: 3 }).map((unused2, card) => (
+            <SkeletonCard key={card} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function LeadsPage() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
   useDocumentTitle('Leads')
@@ -79,6 +125,10 @@ export default function LeadsPage() {
   // rôle ci-dessous (normal=ON, manager=OFF, comportement historique inchangé).
   const currentUser = useSelector(s => s.auth.user)
   const roleTier = useSelector(s => s.auth.role)
+  // LB26 — Express rejoint le menu ⋯ sous 768px (le header respire) : hook
+  // CANONIQUE (ui/ResponsiveDialog, déjà adopté par LeadWorkspace) — jamais
+  // une nouvelle copie locale de useIsMobile.
+  const isMobile = useIsMobile()
 
   // Employés assignables (avatar + nom) pour les sélecteurs de responsable des
   // cartes kanban et de la liste. Ouvert à la Commerciale (endpoint dédié).
@@ -89,7 +139,13 @@ export default function LeadsPage() {
   }, [])
 
   // Vue active, persistée (kanban par défaut, façon Odoo).
+  // LB22 — priorité URL > localStorage > défaut (blueprint D5/I7) : une URL
+  // collée (`?view=liste`) gagne toujours sur la vue persistée localement —
+  // `readViewFromParams` renvoie `null` si `?view=` est absente/invalide, on
+  // retombe alors sur le comportement historique (localStorage puis kanban).
   const [view, setView] = useState(() => {
+    const fromUrl = readViewFromParams(searchParams)
+    if (fromUrl) return fromUrl
     try {
       const saved = localStorage.getItem(VIEW_KEY)
       return VALID_VIEWS.includes(saved) ? saved : 'kanban'
@@ -103,7 +159,14 @@ export default function LeadsPage() {
 
   // Filtres partagés par les quatre vues — persistés en localStorage (comme la
   // vue active) pour survivre à un rechargement de page.
+  // LB22 — priorité URL > localStorage > défauts (blueprint D5/I7) : une URL
+  // collée (3 filtres + vue) reproduit EXACTEMENT l'écran, même en
+  // navigation privée (aucun localStorage) — quand l'URL porte AU MOINS un
+  // filtre géré, elle est la SEULE source retenue (jamais un mélange avec le
+  // localStorage), le défaut « Mes leads » (VX224) ne s'applique alors pas
+  // (un lien partagé est déjà une intention explicite).
   const [filters, setFilters] = useState(() => {
+    if (hasUrlFilterState(searchParams)) return readFiltersFromParams(searchParams)
     const loaded = loadFilters()
     // VX224 — « Mes leads » ON par défaut pour le rôle `normal`, UNIQUEMENT
     // au tout premier chargement (aucun filtre encore persisté) — un choix
@@ -117,6 +180,21 @@ export default function LeadsPage() {
       localStorage.setItem(FILTERS_KEY, JSON.stringify(filters))
     } catch { /* stockage indisponible */ }
   }, [filters])
+  // LB22 — URL partageable (blueprint D5, invariant I7 : une seule écriture
+  // d'URL) : chaque changement de filtres/vue réécrit l'URL en `replace`
+  // (jamais un spam d'historique — l'utilisatrice n'a jamais navigué),
+  // débouncé 300ms pour ne pas fragmenter chaque frappe de recherche.
+  // `applySavedView` (setFilters+setView) traverse ce même effet, aucun
+  // câblage séparé nécessaire. `writeFiltersToParams` ne touche QUE ses
+  // propres clés : les deep-links `?lead=`/`?new=`/`?equipe=` traversent
+  // intacts (mise à jour fonctionnelle sur les derniers params réels, jamais
+  // une valeur `searchParams` figée par une closure obsolète).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchParams((prev) => writeFiltersToParams(prev, filters, view), { replace: true })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [filters, view, setSearchParams])
   // VX187 — `filterLeads` recalculait en SYNCHRONE dans le commit de CHAQUE
   // frappe de la recherche (le filtre est mis à jour à chaque `onChange`) :
   // `useDeferredValue` dérive `filtered` d'une valeur qui suit `filters` avec
@@ -146,6 +224,17 @@ export default function LeadsPage() {
     setFilters({ ...EMPTY_FILTERS, ...(v.state?.filters || v.filters || {}) })
     const savedView = v.state?.view ?? v.view
     if (VALID_VIEWS.includes(savedView)) setView(savedView)
+  }
+  // LB26 — « Copier le lien » d'une vue enregistrée (blueprint D5) : sérialise
+  // via urlFilters.js (même module que l'URL live) sur une base VIERGE (pas
+  // de `?lead=` résiduel dans un lien partagé) — le partage Reda→Meriem
+  // devient un simple collage WhatsApp.
+  const buildShareUrl = (v) => {
+    const vFilters = { ...EMPTY_FILTERS, ...(v.state?.filters || v.filters || {}) }
+    const vView = v.state?.view ?? v.view ?? 'kanban'
+    const params = writeFiltersToParams(new URLSearchParams(), vFilters, vView)
+    const qs = params.toString()
+    return `${window.location.origin}${window.location.pathname}${qs ? `?${qs}` : ''}`
   }
 
   // Formulaire lead (création / édition).
@@ -266,7 +355,20 @@ export default function LeadsPage() {
     (visibleIds) => setSelected((s) => toggleAll(s, visibleIds)),
     [],
   )
-  const clearSelection = () => setSelected(new Set())
+  // LB25 — useCallback : référence stable pour le raccourci Échap ci-dessous
+  // (barre bulk flottante) sans le ré-abonner à chaque rendu.
+  const clearSelection = useCallback(() => setSelected(new Set()), [])
+  // LB25 — barre bulk FLOTTANTE (blueprint D5) : Échap la ferme, même geste
+  // que le bouton « Effacer » — n'écoute que tant qu'une sélection existe
+  // (jamais de listener global superflu sur le reste de la page).
+  useEffect(() => {
+    if (visibleSelected.size === 0) return undefined
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') clearSelection()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [visibleSelected.size, clearSelection])
 
   // Action en masse : la règle métier (funnel, garde-fous, Historique) vit
   // côté serveur. On rafraîchit, on affiche le bilan et on garde la sélection
@@ -521,14 +623,18 @@ export default function LeadsPage() {
     onInlineSave, onMarkPerdu,
   ])
 
-  // Only blank the page on the FIRST load. A background refetch (after saving a
-  // bill, generating a devis, changing a stage…) must NOT unmount the page —
-  // doing so tore down any open lead modal / inline devis preview mid-action.
-  // VX147 — chargement/erreur unifiés sur `StateBlock` (rôle status/alert)
-  // au lieu de `<p className="page-loading/page-error">` en hex bruts.
-  if (leadsLoading && leads.length === 0) {
-    return <StateBlock loading loadingText="Chargement des leads…" />
-  }
+  // LB27 — squelette EN FORME dans le shell (blueprint I9) : au lieu de
+  // blanchir la page ENTIÈRE au premier chargement (VX147's ancien retour
+  // anticipé), le shell (en-tête + FilterBar + KPI) reste visible tout de
+  // suite — seule la zone de vue affiche un squelette qui a la FORME de la
+  // vue active. `useDelayedLoading` (même hook que ClientList/DevisList/
+  // LeadWorkspace) absorbe l'anti-flash : rien avant 300ms, un spinner
+  // discret jusqu'à 500ms, un squelette au-delà — jamais les deux ensemble.
+  // Placé AVANT le retour anticipé error (règle des Hooks, même raison que
+  // `viewProps` ci-dessus).
+  const initialLoading = leadsLoading && leads.length === 0
+  const { showSpinner, showSkeleton } = useDelayedLoading(initialLoading)
+
   // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé. Le
   // slice stocke déjà `err.response.data ?? err.message` ; on reconstruit la
   // forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
@@ -550,11 +656,16 @@ export default function LeadsPage() {
         </h2>
         <div className="page-header-actions lp-header-actions">
           <Button onClick={openNew}>+ Nouveau lead</Button>
-          <Button
-            variant="outline"
-            title="Saisie express : nom + téléphone + canal"
-            onClick={() => setShowExpressModal(true)}
-          ><Zap aria-hidden="true" size={14} /> Express</Button>
+          {/* LB26 — Express rejoint le menu ⋯ sous 768px (le header respire) :
+              les DEUX contrôles existent, seul `isMobile` décide lequel rend
+              (jamais les deux à la fois — pas un doublon caché en CSS). */}
+          {!isMobile && (
+            <Button
+              variant="outline"
+              title="Saisie express : nom + téléphone + canal"
+              onClick={() => setShowExpressModal(true)}
+            ><Zap aria-hidden="true" size={14} /> Express</Button>
+          )}
           {/* VX145(b) — Doublons/Importer/Exporter sont des fréquences basses
               face aux 2 contrôles ci-dessus ; démotés dans un menu « ⋯ »
               (pattern DropdownMenu déjà importé dans ListView.jsx). */}
@@ -570,6 +681,11 @@ export default function LeadsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {isMobile && (
+                <DropdownMenuItem onSelect={() => setShowExpressModal(true)}>
+                  <Zap aria-hidden="true" /> Express
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onSelect={() => setShowDoublons(true)}>
                 <GitMerge aria-hidden="true" /> Doublons
                 {doublonsCount > 0 && (
@@ -595,25 +711,42 @@ export default function LeadsPage() {
         </div>
       </div>
 
+      {/* LB24 — Bandeau KPI = filtres (blueprint D5), entre l'en-tête et
+          FilterBar : les tuiles lisent/écrivent le MÊME état `filters` que
+          le reste de la page (invariant D6-I7, un seul état de filtres). */}
+      <LeadsKpiStrip
+        leads={leads}
+        filters={filters}
+        setFilters={setFilters}
+        myUsername={currentUser?.username}
+      />
+
       <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
 
       <SavedViewsBar
         savedViews={savedViews}
         onApply={applySavedView}
         onDelete={deleteSavedView}
+        buildShareUrl={buildShareUrl}
       />
 
+      {/* LB25 — barre bulk FLOTTANTE (blueprint D5) : l'ancienne barre inline
+          poussait le layout à chaque sélection (le board sautait de
+          hauteur) ; MÊME composant BulkActionBar (toutes les actions +
+          BulkDestructiveConfirm conservées), seul le conteneur change. */}
       {visibleSelected.size > 0 && (
-        <BulkActionBar
-          count={visibleSelected.size}
-          users={users}
-          canDelete={canDelete}
-          hasArchivedSelected={hasArchivedSelected}
-          busy={bulkBusy}
-          onAction={runBulk}
-          onExport={exportSelection}
-          onClear={clearSelection}
-        />
+        <div className="lp-bulk-float">
+          <BulkActionBar
+            count={visibleSelected.size}
+            users={users}
+            canDelete={canDelete}
+            hasArchivedSelected={hasArchivedSelected}
+            busy={bulkBusy}
+            onAction={runBulk}
+            onExport={exportSelection}
+            onClear={clearSelection}
+          />
+        </div>
       )}
 
       {bulkMsg && (
@@ -647,7 +780,36 @@ export default function LeadsPage() {
       {/* VX187 — atténuation discrète pendant que React rattrape le filtre
           différé (jamais sur l'input lui-même, seulement la liste rendue). */}
       <div className="lp-view-area" style={isFiltersStale ? { opacity: 0.6 } : undefined}>
-        {view === 'kanban' && <KanbanView {...viewProps} />}
+        {/* LB27 — trois paliers, jamais deux affichés ensemble (blueprint
+            I9) : 0-300ms rien (le contenu réel, encore vide, ne flashe pas
+            à cette échelle) ; 300-500ms un spinner discret ; ≥500ms le
+            squelette EN FORME de la vue active, avec un crossfade FadeSwap
+            (même pattern que LeadWorkspace.jsx, LW25) vers le contenu réel
+            une fois les leads arrivés. */}
+        {showSpinner && (
+          <div className="lp-view-loading"><Spinner /> Chargement des leads…</div>
+        )}
+        {!showSpinner && (
+        <FadeSwap
+          loading={showSkeleton}
+          className="lp-view-skeleton-swap"
+          skeleton={<LeadsViewSkeleton view={view} />}
+        >
+        {/* LB9-wire — KanbanView (lane LB1, board) accepte désormais 4 props
+            OPTIONNELLES pour ses empty states à deux paliers (0 lead du tout
+            vs 0 résultat filtré), dégradant proprement quand absentes : même
+            trio que ChartsView ci-dessous (totalLeads/onClearFilters) + les
+            deux actions de coach « + Nouveau lead »/« Importer » déjà
+            câblées ailleurs sur la page (openNew, l'item ⋯ Importer). */}
+        {view === 'kanban' && (
+          <KanbanView
+            {...viewProps}
+            totalLeads={leads.length}
+            onClearFilters={() => setFilters(EMPTY_FILTERS)}
+            onNewLead={openNew}
+            onImportLeads={() => setShowImport(true)}
+          />
+        )}
         {/* VX186 — Suspense autour des vues lazy uniquement (Kanban reste
             synchrone, jamais de flash sur le rendu par défaut). */}
         <Suspense fallback={<div className="lp-view-loading"><Spinner /> Chargement de la vue…</div>}>
@@ -671,6 +833,8 @@ export default function LeadsPage() {
               prévue, glisser une carte replanifie le mois. */}
           {view === 'prevision' && <ForecastView {...viewProps} />}
         </Suspense>
+        </FadeSwap>
+        )}
       </div>
 
       {(showForm || deepLead) && (

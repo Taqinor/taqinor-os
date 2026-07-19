@@ -7402,3 +7402,157 @@ textarea.form-control {
   text-decoration-thickness: 2px;
   text-underline-offset: 2px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB24 — Bandeau KPI = filtres (docs/design/leads-board-blueprint.md D5, « le
+   cockpit du matin ») : rangée compacte entre l'en-tête et FilterBar, scroll-x
+   sur mobile (jamais un wrap qui pousse le contenu). Tuiles 1-3 sont des
+   boutons-filtres (`aria-pressed`) accentés `--module-accent-azur` quand
+   actifs ; la tuile Pipeline (`.lp-kpi-tile-display`) est un AFFICHAGE seul,
+   jamais un filtre. ══════════════════════════════════════════════════════ */
+.lp-kpi-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.lp-kpi-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 108px;
+  padding: 6px 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 10px);
+  background: var(--card, #fff);
+  color: var(--foreground, #1e293b);
+  cursor: pointer;
+  transition: background var(--motion-fast), border-color var(--motion-fast),
+              color var(--motion-fast);
+}
+.lp-kpi-tile[aria-pressed="true"] {
+  border-color: var(--module-accent-azur);
+  background: color-mix(in srgb, var(--module-accent-azur) 12%, var(--card));
+  color: var(--module-accent-azur);
+}
+@media (hover: hover) {
+  .lp-kpi-tile:hover { background: var(--muted, #f1f5f9); }
+  .lp-kpi-tile[aria-pressed="true"]:hover {
+    background: color-mix(in srgb, var(--module-accent-azur) 18%, var(--card));
+  }
+}
+/* Tuile Pipeline : affichage seul (jamais interactive — pas de :hover/press). */
+.lp-kpi-tile-display {
+  cursor: default;
+}
+.lp-kpi-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.lp-kpi-label {
+  font-size: 0.72rem;
+  color: var(--muted-foreground, #64748b);
+  white-space: nowrap;
+}
+.lp-kpi-tile[aria-pressed="true"] .lp-kpi-label { color: inherit; }
+@media (max-width: 768px) {
+  .lp-kpi-tile { min-width: 96px; padding: 5px 10px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB25 — Barre bulk FLOTTANTE (blueprint D5) : l'ancienne barre inline
+   (`.bulk-bar`) poussait le layout à chaque sélection (le board sautait de
+   hauteur). Toolbar bas-centre fixed, même palier `--z-sticky` que le reste
+   du chrome collant (FAB/tabbar), safe-area + AU-DESSUS de la tabbar mobile
+   (même calcul que `.fab-button` ci-dessus), glissée depuis le bas. La règle
+   globale `prefers-reduced-motion` (tout en haut de ce fichier) neutralise
+   déjà l'animation (`animation-duration:0.01ms`) — aucun garde dédié requis.
+   MÊME composant BulkActionBar à l'intérieur, seul le conteneur change. ═══ */
+.lp-bulk-float {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-sticky, 1100);
+  width: min(92vw, 720px);
+  animation: lp-bulk-float-in var(--motion-base) var(--ease-out);
+}
+.lp-bulk-float .bulk-bar {
+  margin: 0;
+  box-shadow: var(--shadow-lg);
+}
+@keyframes lp-bulk-float-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (max-width: 768px) {
+  .lp-bulk-float {
+    /* Même réserve que le FAB (VX42) : 52px de tabbar + son safe-area. */
+    bottom: calc(52px + env(safe-area-inset-bottom) + 12px);
+    width: calc(100vw - 24px);
+  }
+}
+
+/* LB26 — « Copier le lien » sur une puce de vue enregistrée (blueprint D5) :
+   même famille visuelle que `.lp-saved-view-del` (ligne ~5792 ci-dessus,
+   FG11) — bouton neutre entre le libellé et la suppression, jamais teinté
+   destructif (ce n'est pas une action dangereuse). */
+.lp-saved-view-share {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border, #e2e8f0);
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+  color: var(--muted-foreground, #64748b);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+@media (hover: hover) {
+  .lp-saved-view-share:hover {
+    background: var(--muted, #f1f5f9);
+    color: var(--foreground, #1e293b);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB27 — Squelette EN FORME dans le shell (docs/design/leads-board-blueprint.md
+   I9) : même contrat que `.lw-skeleton-swap` (LW13/LW25 ci-dessus) — le
+   conteneur FadeSwap doit s'étirer en flex:1 pour hériter de la chaîne de
+   hauteur D1 (`.lp-view-area`), le calque actif de FadeSwap (`[aria-hidden]`,
+   posé sur SES DEUX enfants) hérite `height:100%` + redevient flex column,
+   sinon le squelette/contenu s'affaisse à sa hauteur intrinsèque. ══════════ */
+.lp-view-skeleton-swap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lp-view-skeleton-swap > [aria-hidden] {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lp-skeleton-kanban {
+  display: flex;
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+  padding: 4px 2px;
+}
+.lp-skeleton-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 272px;
+  min-width: 220px;
+}
+.lp-skeleton-liste {
+  height: 100%;
+  overflow: hidden;
+  padding: 4px 2px;
+}

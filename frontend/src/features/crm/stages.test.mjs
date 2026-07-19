@@ -192,6 +192,36 @@ test('LB4 : isStageMoveAllowed — miroir byte-à-byte de _bulk_stage_allowed', 
   assert.equal(isStageMoveAllowed('QUOTE_SENT', 'FOLLOW_UP'), true)
 })
 
+test('LB24 : filterLeads — relance "aujourdhui" (tuile KPI « Dû aujourd\'hui »)', () => {
+  const pad = (n) => String(n).padStart(2, '0')
+  const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const past = new Date(); past.setDate(past.getDate() - 5)
+  const todayD = new Date()
+  const future = new Date(); future.setDate(future.getDate() + 2)
+  const leads = [
+    { id: 1, stage: 'NEW', nom: 'Retard', relance_date: local(past) },
+    { id: 2, stage: 'NEW', nom: "Aujourd'hui", relance_date: local(todayD) },
+    { id: 3, stage: 'NEW', nom: 'Demain', relance_date: local(future) },
+    { id: 4, stage: 'NEW', nom: 'Sans' },
+  ]
+  assert.deepEqual(filterLeads(leads, { relance: 'aujourdhui' }).map((l) => l.id), [2])
+})
+
+test('LB24 : filterLeads — score "chaud" (tuile KPI « Chauds ») lit score_label du serializer', () => {
+  const leads = [
+    { id: 1, nom: 'A', score_label: 'Chaud' },
+    { id: 2, nom: 'B', score_label: 'Tiède' },
+    { id: 3, nom: 'C', score_label: 'Froid' },
+    { id: 4, nom: 'D' }, // score_label absent → jamais « chaud »
+  ]
+  assert.deepEqual(filterLeads(leads, { score: 'chaud' }).map((l) => l.id), [1])
+  assert.equal(filterLeads(leads, EMPTY_FILTERS).length, 4)
+})
+
+test('EMPTY_FILTERS : score (LB24) rejoint le trio existant, défaut vide', () => {
+  assert.equal(EMPTY_FILTERS.score, '')
+})
+
 test('helpers de carte : tags, initiales, total du dernier devis', () => {
   assert.deepEqual(tagList({ tags: ' VIP , 82-21 ,, ' }), ['VIP', '82-21'])
   assert.deepEqual(tagList({}), [])

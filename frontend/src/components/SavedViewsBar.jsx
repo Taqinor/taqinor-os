@@ -1,4 +1,6 @@
+import { Link2 } from 'lucide-react'
 import { Button } from '../ui'
+import { toastSuccess, toastError } from '../lib/toast'
 
 // VX145(c) — Barre « vues enregistrées » partagée. Le balisage était
 // copié-collé entre `pages/crm/leads/LeadsPage.jsx` et `pages/crm/ClientList.jsx`
@@ -14,8 +16,22 @@ import { Button } from '../ui'
 // le déclencheur « Enregistrer cette vue » (`onSave`) dans une rangée déjà
 // existante (ex. l'en-tête de page ou la rangée de filtres) plutôt que de
 // réserver une rangée pleine largeur pour ce seul bouton.
-export default function SavedViewsBar({ savedViews, onApply, onDelete }) {
+// LB26 — prop ADDITIVE optionnelle `buildShareUrl(view)` (blueprint D5) :
+// quand fournie (page leads uniquement, sérialisée via urlFilters.js), chaque
+// puce gagne une action « Copier le lien ». Absente (ClientList, DevisList…)
+// → comportement STRICTEMENT inchangé, ce composant reste partagé sans forker.
+export default function SavedViewsBar({ savedViews, onApply, onDelete, buildShareUrl }) {
   if (!savedViews || savedViews.length === 0) return null
+
+  const copyLink = async (v) => {
+    if (!buildShareUrl) return
+    try {
+      await navigator.clipboard.writeText(buildShareUrl(v))
+      toastSuccess('Lien copié.')
+    } catch {
+      toastError('Copie du lien impossible.')
+    }
+  }
 
   return (
     <div className="lp-saved-views">
@@ -25,6 +41,14 @@ export default function SavedViewsBar({ savedViews, onApply, onDelete }) {
                   onClick={() => onApply(v)} title="Appliquer cette vue">
             {v.name}
           </button>
+          {buildShareUrl && (
+            <button type="button" className="lp-saved-view-share"
+                    onClick={() => copyLink(v)}
+                    aria-label={`Copier le lien de la vue ${v.name}`}
+                    title="Copier le lien">
+              <Link2 aria-hidden="true" size={12} />
+            </button>
+          )}
           <button type="button" className="lp-saved-view-del"
                   onClick={() => onDelete(v.name)}
                   aria-label={`Supprimer la vue ${v.name}`}>

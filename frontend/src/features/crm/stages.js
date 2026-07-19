@@ -173,7 +173,11 @@ export const EMPTY_FILTERS = {
   tag: '',
   stage: '', // étape du funnel ('' = toutes)
   type_installation: '', // résidentiel/commercial/industriel/agricole ('' = tous)
-  relance: '', // '' | 'retard' (en retard) | 'semaine' (cette semaine)
+  // LB24 — 'aujourdhui' (relance_date === aujourd'hui) ajouté au trio
+  // existant (bandeau KPI « Dû aujourd'hui », blueprint D5) : jamais une 2e
+  // dimension déclarée ailleurs, le Segmented relance de FilterBar.jsx gagne
+  // la même option.
+  relance: '', // '' | 'aujourdhui' | 'retard' (en retard) | 'semaine' (cette semaine)
   perdus: 'avec', // 'avec' | 'sans' | 'seuls'
   archived: 'actifs', // 'actifs' | 'tous' | 'seuls' — dimension serveur (refetch)
   // QW3 — préférence de contact explicite ('' = toutes | 'phone_ok' | 'whatsapp_only')
@@ -183,6 +187,9 @@ export const EMPTY_FILTERS = {
   // épingle spécifiquement l'utilisateur COURANT, résolu par l'appelant
   // (LeadsPage.jsx passe `myUsername`, jamais codé en dur ici).
   mesLeads: false,
+  // LB24 — tuile KPI « Chauds » (bandeau KPI = filtres, blueprint D5) :
+  // filtre sur `score_label` (scoring.py, serializer) — '' | 'chaud'.
+  score: '',
 }
 
 // 'YYYY-MM-DD' du jour, en heure LOCALE (jamais via toISOString → pas d'UTC).
@@ -230,6 +237,12 @@ export function filterLeads(leads, filters, { myUsername } = {}) {
     if (f.type_installation && (l.type_installation ?? '') !== f.type_installation) {
       return false
     }
+    // LB24 — « Dû aujourd'hui » (tuile KPI, blueprint D5) : relance_date
+    // strictement égale à aujourd'hui (distinct de 'retard' — passé — et de
+    // 'semaine' — aujourd'hui à dimanche inclus).
+    if (f.relance === 'aujourdhui') {
+      if (!l.relance_date || l.relance_date !== today) return false
+    }
     if (f.relance === 'retard') {
       if (!l.relance_date || l.relance_date >= today) return false
     }
@@ -243,6 +256,9 @@ export function filterLeads(leads, filters, { myUsername } = {}) {
     if (f.contact_preference && l.contact_preference !== f.contact_preference) {
       return false
     }
+    // LB24 — « Chauds » (tuile KPI) : `score_label` calculé serveur
+    // (apps/crm/scoring.py) — 'Chaud' | 'Tiède' | 'Froid'.
+    if (f.score === 'chaud' && (l.score_label ?? '') !== 'Chaud') return false
     if (!q) return true
     return (
       (l.nom ?? '').toLowerCase().includes(q) ||

@@ -39,6 +39,26 @@ function useIsMobile() {
 // Barre de recherche/filtres partagée par les quatre vues (façon Odoo).
 // `leads` = liste NON filtrée, pour dériver les options disponibles.
 export default function FilterBar({ filters, setFilters, leads }) {
+  // LB23 — recherche débouncée (blueprint D5/I7) : l'input reste un état
+  // LOCAL (frappe instantanée, jamais bloquée) qui ne pousse `setFilters`
+  // qu'après 250ms de pause — combiné à LB6 (viewProps mémoïsé), une frappe
+  // ne recalcule/re-rend plus aucune carte tant que l'utilisatrice tape.
+  // `useDeferredValue` (LeadsPage.jsx, VX187) reste un second étage : lui
+  // absorbe le coût du RECALCUL une fois `filters.q` mis à jour.
+  const [searchLocal, setSearchLocal] = useState(filters.q)
+  // Resynchronise l'input quand `filters.q` change depuis L'EXTÉRIEUR
+  // (« Effacer les filtres », vue enregistrée appliquée, URL collée — LB22) :
+  // ces chemins réagissent donc IMMÉDIATEMENT, sans attendre le débounce.
+  useEffect(() => {
+    setSearchLocal(filters.q)
+  }, [filters.q])
+  useEffect(() => {
+    if (searchLocal === filters.q) return undefined
+    const t = setTimeout(() => setFilters((f) => ({ ...f, q: searchLocal })), 250)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'à la frappe locale, `filters`/`setFilters` lus au déclenchement
+  }, [searchLocal])
+
   // Libellés de canaux depuis le référentiel géré (Paramètres → CRM) + statiques.
   const { options: canalOptions } = useCanaux()
   const owners = useMemo(() => {
@@ -95,8 +115,8 @@ export default function FilterBar({ filters, setFilters, leads }) {
           type="search"
           leading={<Search />}
           placeholder="Rechercher nom, téléphone, email…"
-          value={filters.q}
-          onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+          value={searchLocal}
+          onChange={(e) => setSearchLocal(e.target.value)}
         />
       </div>
 
@@ -229,6 +249,9 @@ export default function FilterBar({ filters, setFilters, leads }) {
         </SelectContent>
       </Select>
 
+      {/* LB24 — le Segmented relance gagne « Aujourd'hui » (miroir de la
+          tuile KPI « Dû aujourd'hui », même clé de filtre — un seul état de
+          filtres, KPI et FilterBar restent parfaitement synchronisés). */}
       <Segmented
         size="sm"
         aria-label="Filtre relance"
@@ -236,6 +259,7 @@ export default function FilterBar({ filters, setFilters, leads }) {
         onChange={setKey('relance')}
         options={[
           { value: '', label: 'Toutes relances' },
+          { value: 'aujourdhui', label: "Aujourd'hui" },
           { value: 'retard', label: 'En retard' },
           { value: 'semaine', label: 'Cette semaine' },
         ]}
