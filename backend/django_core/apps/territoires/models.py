@@ -18,7 +18,15 @@ from core.models import TenantModel
 
 class Territoire(TenantModel):
     """ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
-    l'identique (related_name historique)."""
+    l'identique (related_name historique).
+
+    WIR81 — moteur CANONIQUE d'assignation des leads (NTCRM1/2) : le matching
+    passe par ``TerritoireRegle.condition`` (core.rules) et
+    ``territoires.services.resoudre_owner_pour_attrs``, consulté EN PREMIER par
+    ``crm.services.default_responsable_for``. À NE PAS confondre avec
+    ``crm.TerritoireCommercial`` (FG236), un référentiel de zones LEGACY
+    (villes → owner par priorité) qui n'alimente PAS l'assignation et n'est
+    conservé que pour la FK à venir NTDST11."""
 
     class TypeTerritoire(models.TextChoices):
         GEO = 'geo', 'Géographique'

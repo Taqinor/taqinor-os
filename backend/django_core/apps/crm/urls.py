@@ -19,7 +19,7 @@ from .public_booking_views import public_booking_status, public_booking_reserve
 # routeur compta, qui reverse ``partenaire-list`` etc.).
 from .views import (
     CommissionPartenaireViewSet, PartenaireViewSet,
-    SoumissionLeadPartenaireViewSet, TerritoireCommercialViewSet,
+    SoumissionLeadPartenaireViewSet,
 )
 # NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks.
 from .views import (
@@ -51,8 +51,14 @@ router.register(r'soumissions-lead-partenaire', SoumissionLeadPartenaireViewSet,
                 basename='crm-soumission-lead-partenaire')
 router.register(r'commissions-partenaire', CommissionPartenaireViewSet,
                 basename='crm-commission-partenaire')
-router.register(r'territoires-commerciaux', TerritoireCommercialViewSet,
-                basename='crm-territoire-commercial')
+# WIR81 — ``crm.TerritoireCommercial`` (FG236, legacy) N'EST plus monté ici :
+# le double montage ODX13 (/crm/ + /compta/) est consolidé sur l'UNIQUE préfixe
+# historique ``/api/django/compta/territoires-commerciaux/`` (le ViewSet vit
+# dans ``apps.compta.views``, ODX22 relogera son corps vers crm plus tard).
+# NB : ce modèle n'est PAS le moteur d'assignation des leads — celui-ci est
+# ``apps.territoires.Territoire`` (NTCRM1/2), consulté par
+# ``crm.services.default_responsable_for`` ; TerritoireCommercial reste
+# conservé pour la FK à venir NTDST11.
 # NTCRM4 — Catégories de forecast (commit/best-case/pipeline/omis).
 router.register(r'forecast-entries', ForecastEntryViewSet)
 # NTCRM10 — Plan de compte (Account Planning).

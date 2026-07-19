@@ -93,21 +93,24 @@ class TestODX13Routes(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn(obj.id, ids_of(r))
 
-    def test_new_and_legacy_routes_agree_on_territoire_affectation(self):
+    def test_territoire_served_on_single_compta_prefix(self):
+        # WIR81 — le double montage ODX13 de TerritoireCommercial est retiré :
+        # SEUL /api/django/compta/territoires-commerciaux/ répond ; l'ancienne
+        # route /api/django/crm/… n'existe plus (404). Partenaires/soumissions/
+        # commissions restent, eux, dual-montés (voir tests ci-dessus).
         from apps.crm.models import TerritoireCommercial
         TerritoireCommercial.objects.create(
             company=self.company, nom='Grand Casablanca',
             villes=['casablanca'], priorite=10, owner_user_id=self.user.id)
-        r_new = self.api.get(
-            '/api/django/crm/territoires-commerciaux/affecter/',
-            {'ville': 'Casablanca'})
         r_legacy = self.api.get(
             '/api/django/compta/territoires-commerciaux/affecter/',
             {'ville': 'Casablanca'})
-        self.assertEqual(r_new.status_code, 200, r_new.data)
         self.assertEqual(r_legacy.status_code, 200, r_legacy.data)
-        self.assertEqual(r_new.data, r_legacy.data)
-        self.assertEqual(r_new.data['owner_user_id'], self.user.id)
+        self.assertEqual(r_legacy.data['owner_user_id'], self.user.id)
+        r_removed = self.api.get(
+            '/api/django/crm/territoires-commerciaux/affecter/',
+            {'ville': 'Casablanca'})
+        self.assertEqual(r_removed.status_code, 404)
 
     def test_cross_company_partenaire_isolated_on_new_route(self):
         other = make_company('odx13-other', 'Autre Co ODX13')
