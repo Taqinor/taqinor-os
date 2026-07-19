@@ -19,11 +19,13 @@ test('LB23 : état local searchLocal initialisé depuis filters.q', () => {
 })
 
 test('LB23 : resynchronisation immédiate quand filters.q change depuis l’extérieur', () => {
+  // Motif « adjust state during render » (lint v7 interdit le setState
+  // synchrone en effet) : resync pendant le rendu, gardée par prevQ.
   const idx = SRC.indexOf('setSearchLocal(filters.q)')
-  assert.ok(idx > 0, 'effet de resynchronisation introuvable')
-  const block = SRC.slice(Math.max(0, idx - 60), idx + 80)
-  assert.match(block, /useEffect\(\(\) => \{/)
-  assert.match(block, /\}, \[filters\.q\]\)/)
+  assert.ok(idx > 0, 'resynchronisation introuvable')
+  const block = SRC.slice(Math.max(0, idx - 160), idx + 80)
+  assert.match(block, /if \(prevQ !== filters\.q\) \{/)
+  assert.match(block, /setPrevQ\(filters\.q\)/)
 })
 
 test('LB23 : le push vers setFilters est débouncé 250ms et annulé au démontage/frappe suivante', () => {
