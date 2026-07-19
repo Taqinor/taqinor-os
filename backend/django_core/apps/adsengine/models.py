@@ -202,6 +202,24 @@ class GuardrailConfig(TenantModel):
     health_ops_weight_delivery = models.PositiveIntegerField(
         default=40, verbose_name='Santé opérations — poids livraison')
 
+    # ── PUB21 — Interrupteur global (kill-switch) + autonomie PERSISTÉS en base.
+    # Ces deux états vivaient uniquement en cache Redis (TTL 30 j) : un flush ou
+    # un redémarrage infra annulait SILENCIEUSEMENT un arrêt d'urgence — un
+    # kill-switch de sécurité ne DOIT jamais disparaître à un restart. La DB est
+    # désormais la SOURCE DE VÉRITÉ ; le cache reste un simple accélérateur de
+    # lecture (ré-échauffé depuis la DB sur miss). Défaut sûr : rien d'engagé.
+    kill_switch_engaged = models.BooleanField(
+        default=False, verbose_name='Interrupteur global engagé')
+    kill_switch_engaged_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Engagement de l'interrupteur")
+    kill_switch_reason = models.TextField(
+        blank=True, default='', verbose_name="Motif de l'interrupteur")
+    # OFF par défaut ; ne peut être posé que par ``preflight.activate`` (ADSENG38)
+    # APRÈS que toutes les portes préflight soient vertes — la persistance ne
+    # change pas ce gate, elle empêche seulement un flush cache de le perdre.
+    autonomy_active = models.BooleanField(
+        default=False, verbose_name='Mode autonome activé')
+
     class Meta:
         verbose_name = 'Garde-fous publicitaires'
         verbose_name_plural = 'Garde-fous publicitaires'
