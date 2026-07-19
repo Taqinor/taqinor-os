@@ -21,6 +21,7 @@ const ROLES = ['responsable', 'admin']
 
 const PolicesList = lazy(() => import('./PolicesList'))
 const PoliceDetail = lazy(() => import('./PoliceDetail'))
+const PoliceForm = lazy(() => import('./PoliceForm'))
 const SinistresPage = lazy(() => import('./SinistresPage'))
 
 const SC = <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />
@@ -40,6 +41,7 @@ export default {
   // routes.meta : du plus spécifique au plus général.
   titles: [
     ['/assurances/sinistres', 'Sinistres transverses'],
+    ['/assurances/nouvelle', 'Nouvelle police'],
     ['/assurances', "Polices d'assurance"],
   ],
   sectionLabels: { assurances: 'Assurances' },
@@ -48,6 +50,9 @@ export default {
     // NTASS27 — sinistres : route STATIQUE déclarée AVANT la route dynamique
     // `:id` pour qu'elle ne soit jamais capturée comme un id de police.
     { path: '/assurances/sinistres', component: SinistresPage, roles: ROLES },
+    // WIR56 — création de police : route STATIQUE déclarée AVANT `:id` pour que
+    // « nouvelle » ne soit jamais capturé comme un id de police.
+    { path: '/assurances/nouvelle', component: PoliceForm, roles: ROLES },
     // NTASS26 — fiche police détail (onglets).
     { path: '/assurances/:id', component: PoliceDetail, roles: ROLES },
   ],

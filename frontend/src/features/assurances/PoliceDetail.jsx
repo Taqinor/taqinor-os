@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { Plus } from 'lucide-react'
 import assurancesApi from './assurancesApi'
-import { Badge, Button } from '../../ui'
+import {
+  Badge, Button, Label, Input,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '../../ui'
 import { RecordShell } from '../../ui/module'
 import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
 import { POLICE_STATUS, toneEcheance } from './status'
@@ -36,10 +40,106 @@ function Empty({ label }) {
   return <p className="py-6 text-center text-sm text-muted-foreground">{label}</p>
 }
 
+/* WIR56 — modales de création des onglets Garanties / Actifs / Attestations.
+   Chaque champ de saisie envoie `police` + les champs métier ; la société est
+   posée côté serveur (jamais dans le corps). */
+const ITEM_FORMS = {
+  garantie: {
+    title: 'Nouvelle garantie',
+    fields: [
+      { name: 'libelle_garantie', label: 'Libellé de la garantie', required: true },
+      { name: 'plafond_indemnisation', label: "Plafond d'indemnisation (MAD)", type: 'number' },
+      { name: 'franchise_montant', label: 'Franchise (MAD)', type: 'number' },
+    ],
+    submit: (data) => assurancesApi.createGarantie(data),
+  },
+  actif: {
+    title: 'Nouvel actif couvert',
+    fields: [
+      { name: 'type_actif', label: 'Type d\'actif', required: true },
+      { name: 'actif_ref', label: 'Référence de l\'actif' },
+      { name: 'actif_libelle', label: 'Libellé de l\'actif' },
+    ],
+    submit: (data) => assurancesApi.createActifCouvert(data),
+  },
+  attestation: {
+    title: 'Nouvelle attestation',
+    fields: [
+      { name: 'emise_pour', label: 'Émise pour', required: true },
+      { name: 'date_emission', label: "Date d'émission", type: 'date' },
+      { name: 'date_validite', label: 'Date de validité', type: 'date' },
+    ],
+    submit: (data) => assurancesApi.createAttestation(data),
+  },
+}
+
+function AddItemDialog({ kind, policeId, onClose, onSaved }) {
+  const cfg = ITEM_FORMS[kind]
+  const [values, setValues] = useState({})
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  const peut = cfg.fields.filter((f) => f.required).every((f) => String(values[f.name] ?? '').trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peut) return
+    setSaving(true)
+    setError(null)
+    try {
+      const payload = { police: Number(policeId) }
+      cfg.fields.forEach((f) => {
+        const v = values[f.name]
+        if (v === undefined || v === '') return
+        payload[f.name] = f.type === 'number' ? Number(v) : v
+      })
+      await cfg.submit(payload)
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setError(data?.detail || (typeof data === 'string' ? data : 'Enregistrement impossible.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{cfg.title}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3" noValidate>
+          {cfg.fields.map((f) => (
+            <div key={f.name} className="flex flex-col gap-1.5">
+              <Label htmlFor={`add-${f.name}`}>{f.label}</Label>
+              <Input
+                id={`add-${f.name}`}
+                type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                step={f.type === 'number' ? 'any' : undefined}
+                value={values[f.name] ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, [f.name]: e.target.value }))}
+              />
+            </div>
+          ))}
+          {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={!peut || saving}>
+              {saving ? 'Enregistrement…' : 'Ajouter'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function PoliceDetail() {
   const { id } = useParams()
   const [police, setPolice] = useState(null)
   const [error, setError] = useState(null)
+  const [addDialog, setAddDialog] = useState(null)
 
   const loadPolice = () => {
     assurancesApi.getPolice(id)
@@ -65,38 +165,56 @@ export default function PoliceDetail() {
       value: 'garanties',
       label: 'Garanties',
       count: garanties.data.length,
-      content: garanties.data.length === 0
-        ? <Empty label="Aucune garantie enregistrée." />
-        : (
-          <ul className="divide-y">
-            {garanties.data.map((g) => (
-              <li key={g.id} className="flex items-center justify-between py-2 text-sm">
-                <span className="font-medium">{g.libelle_garantie}</span>
-                <span className="text-muted-foreground">
-                  Plafond {formatMAD(g.plafond_indemnisation)} · Franchise{' '}
-                  {formatMAD(g.franchise_montant)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ),
+      content: (
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => setAddDialog('garantie')}>
+              <Plus className="size-3.5" /> Ajouter une garantie
+            </Button>
+          </div>
+          {garanties.data.length === 0
+            ? <Empty label="Aucune garantie enregistrée." />
+            : (
+              <ul className="divide-y">
+                {garanties.data.map((g) => (
+                  <li key={g.id} className="flex items-center justify-between py-2 text-sm">
+                    <span className="font-medium">{g.libelle_garantie}</span>
+                    <span className="text-muted-foreground">
+                      Plafond {formatMAD(g.plafond_indemnisation)} · Franchise{' '}
+                      {formatMAD(g.franchise_montant)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+        </div>
+      ),
     },
     {
       value: 'actifs',
       label: 'Actifs couverts',
       count: actifs.data.length,
-      content: actifs.data.length === 0
-        ? <Empty label="Aucun actif couvert." />
-        : (
-          <ul className="divide-y">
-            {actifs.data.map((a) => (
-              <li key={a.id} className="flex items-center justify-between py-2 text-sm">
-                <span className="font-medium">{a.actif_libelle || '—'}</span>
-                <Badge tone="slate">{a.type_actif}</Badge>
-              </li>
-            ))}
-          </ul>
-        ),
+      content: (
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => setAddDialog('actif')}>
+              <Plus className="size-3.5" /> Ajouter un actif
+            </Button>
+          </div>
+          {actifs.data.length === 0
+            ? <Empty label="Aucun actif couvert." />
+            : (
+              <ul className="divide-y">
+                {actifs.data.map((a) => (
+                  <li key={a.id} className="flex items-center justify-between py-2 text-sm">
+                    <span className="font-medium">{a.actif_libelle || '—'}</span>
+                    <Badge tone="slate">{a.type_actif}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+        </div>
+      ),
     },
     {
       value: 'echeancier',
@@ -125,20 +243,29 @@ export default function PoliceDetail() {
       value: 'attestations',
       label: 'Attestations',
       count: attestations.data.length,
-      content: attestations.data.length === 0
-        ? <Empty label="Aucune attestation." />
-        : (
-          <ul className="divide-y">
-            {attestations.data.map((att) => (
-              <li key={att.id} className="flex items-center justify-between py-2 text-sm">
-                <span className="font-medium">{att.emise_pour || 'Attestation'}</span>
-                <Badge tone={toneEcheance(att.date_validite)}>
-                  Valide jusqu'au {formatDate(att.date_validite)}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        ),
+      content: (
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => setAddDialog('attestation')}>
+              <Plus className="size-3.5" /> Ajouter une attestation
+            </Button>
+          </div>
+          {attestations.data.length === 0
+            ? <Empty label="Aucune attestation." />
+            : (
+              <ul className="divide-y">
+                {attestations.data.map((att) => (
+                  <li key={att.id} className="flex items-center justify-between py-2 text-sm">
+                    <span className="font-medium">{att.emise_pour || 'Attestation'}</span>
+                    <Badge tone={toneEcheance(att.date_validite)}>
+                      Valide jusqu'au {formatDate(att.date_validite)}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+        </div>
+      ),
     },
   ], [garanties.data, actifs.data, echeances.data, attestations.data])
 
@@ -172,22 +299,38 @@ export default function PoliceDetail() {
   const statut = police?.statut
   const statutInfo = statut ? POLICE_STATUS[statut] : null
 
+  const reloadAfterAdd = (kind) => {
+    if (kind === 'garantie') garanties.reload()
+    else if (kind === 'actif') actifs.reload()
+    else if (kind === 'attestation') attestations.reload()
+  }
+
   return (
-    <RecordShell
-      title={police ? `${police.numero_police}` : 'Police'}
-      subtitle={police
-        ? `${police.type_police_display || police.type_police} · ${police.assureur_nom || ''}`
-        : ''}
-      backTo="/assurances"
-      backLabel="Retour aux polices"
-      status={statutInfo ? statutInfo.label : null}
-      actions={police && (
-        <Button variant="outline" onClick={() => assurancesApi.renouvelerPolice(id).then(loadPolice)}>
-          Renouveler
-        </Button>
+    <>
+      <RecordShell
+        title={police ? `${police.numero_police}` : 'Police'}
+        subtitle={police
+          ? `${police.type_police_display || police.type_police} · ${police.assureur_nom || ''}`
+          : ''}
+        backTo="/assurances"
+        backLabel="Retour aux polices"
+        status={statutInfo ? statutInfo.label : null}
+        actions={police && (
+          <Button variant="outline" onClick={() => assurancesApi.renouvelerPolice(id).then(loadPolice)}>
+            Renouveler
+          </Button>
+        )}
+        tabs={tabs}
+        activity={activity}
+      />
+      {addDialog && (
+        <AddItemDialog
+          kind={addDialog}
+          policeId={id}
+          onClose={() => setAddDialog(null)}
+          onSaved={() => { reloadAfterAdd(addDialog); setAddDialog(null) }}
+        />
       )}
-      tabs={tabs}
-      activity={activity}
-    />
+    </>
   )
 }
