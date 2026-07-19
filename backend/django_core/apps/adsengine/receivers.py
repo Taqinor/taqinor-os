@@ -64,8 +64,33 @@ def on_meta_lead_captured(sender, **kwargs):
             leadgen_id, exc_info=True)
 
 
+def on_appointment_effectue(sender, **kwargs):
+    """PUB30 — Sur ``appointment_effectue`` (émis par ``crm``, jamais importé
+    ici), pousse l'événement CAPI dédié « visite technique effectuée » via
+    ``capi_crm`` (même famille/gating que ADSENG32). Best-effort : un échec
+    n'empêche jamais la transition déjà actée côté crm."""
+    appointment = kwargs.get('appointment')
+    company = kwargs.get('company')
+    if appointment is None or company is None:
+        return
+    lead_id = getattr(appointment, 'lead_id', None)
+    if not lead_id:
+        return
+    try:
+        from . import capi_crm
+        capi_crm.emit_appointment_effectue_event(
+            company, lead_id, appointment.pk)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'adsengine.on_appointment_effectue: émission échouée '
+            '(appointment %s)', getattr(appointment, 'pk', '?'),
+            exc_info=True)
+
+
 def connect():
     """Abonne les récepteurs domaine (appelé depuis ``apps.py`` ``ready()``)."""
-    from core.events import meta_lead_captured
+    from core.events import appointment_effectue, meta_lead_captured
     meta_lead_captured.connect(
         on_meta_lead_captured, dispatch_uid='adsengine_meta_lead_captured')
+    appointment_effectue.connect(
+        on_appointment_effectue, dispatch_uid='adsengine_appointment_effectue')

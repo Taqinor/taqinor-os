@@ -975,6 +975,11 @@ SITE_URL = os.environ.get('SITE_URL', 'https://taqinor.ma')
 # apps/crm/webhooks.py::meta_lead_ads_webhook.
 META_LEAD_ADS_VERIFY_TOKEN = os.environ.get('META_LEAD_ADS_VERIFY_TOKEN', '')
 META_LEAD_ADS_ACCESS_TOKEN = os.environ.get('META_LEAD_ADS_ACCESS_TOKEN', '')
+# PUB26 — App Secret Meta utilisé pour vérifier `X-Hub-Signature-256` sur le
+# POST de notification (HMAC-SHA256 du corps brut, miroir exact de
+# whatsapp_webhook._check_signature). Absent : rétro-compatible (log warning,
+# payload accepté quand même) — voir apps/crm/webhooks.py::meta_lead_ads_webhook.
+META_LEAD_ADS_APP_SECRET = os.environ.get('META_LEAD_ADS_APP_SECRET', '')
 # Tenant cible des leads Meta Lead Ads (id de Company) ; à défaut, la
 # première Company (même repli que WEBSITE_LEADS_COMPANY_ID).
 META_LEAD_ADS_COMPANY_ID = os.environ.get('META_LEAD_ADS_COMPANY_ID') or None

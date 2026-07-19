@@ -176,16 +176,23 @@ def attribution_lead_rows(company, qualifying_stage=None):
     Pour chaque lead vivant de la société, renvoie un dict portant les CLÉS
     d'attribution (``meta_ad_id`` d'ADSENG1, ``utm_content``/``utm_campaign``) +
     le canal (sous forme booléenne ``is_meta_channel`` pour ne pas exposer la
-    taxonomie de canal crm à adsengine) + deux drapeaux dérivés du funnel :
+    taxonomie de canal crm à adsengine) + des drapeaux dérivés du funnel :
 
       * ``signed``    — le lead est au stade SIGNÉ ;
       * ``qualified`` — le lead a atteint AU MOINS ``qualifying_stage``
-        (défaut : CONTACTED), hors COLD et hors perdu.
+        (défaut : CONTACTED), hors COLD et hors perdu ;
+      * ``junk``       — PUB28 : le lead est perdu (``perdu=True``) avec un
+        motif marqué ``MotifPerte.est_junk=True`` (numéro invalide, spam/bot,
+        hors zone, jamais répondu) — DISTINCT d'un lead simplement « non
+        qualifié » (qui peut encore être vivant dans le funnel) ou perdu pour
+        une raison commerciale réelle (prix, concurrent…). ``junk`` et
+        ``qualified`` sont mutuellement exclusifs (un lead junk est perdu,
+        donc jamais qualifié).
 
     Lecture seule, scopée société. Renvoie une LISTE de dicts (jamais un
     queryset de modèles — le contrat cross-app reste des données pures)."""
     from . import stages as stage_mod
-    from .models import Lead
+    from .models import Lead, MotifPerte
 
     order = list(stage_mod.STAGES)
     qual_key = qualifying_stage or stage_mod.CONTACTED
@@ -198,12 +205,19 @@ def attribution_lead_rows(company, qualifying_stage=None):
 
     qual_rank = _rank(qual_key)
     meta_channels = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+    # PUB28 — motifs marqués « junk » de la société, comparés en minuscule/
+    # strippé (Lead.motif_perte reste un texte libre, pas une FK vers
+    # MotifPerte — même patron de rapprochement que le reste du CRM).
+    junk_motifs = {
+        (nom or '').strip().lower()
+        for nom in MotifPerte.objects.filter(
+            company=company, est_junk=True).values_list('nom', flat=True)}
 
     rows = []
     qs = (Lead.objects
           .filter(company=company, is_archived=False)
           .only('id', 'meta_ad_id', 'utm_content', 'utm_campaign', 'canal',
-                'stage', 'perdu'))
+                'stage', 'perdu', 'motif_perte'))
     for lead in qs:
         stage = lead.stage
         rank = _rank(stage)
@@ -211,6 +225,8 @@ def attribution_lead_rows(company, qualifying_stage=None):
         is_qualified = (
             stage != stage_mod.COLD and not lead.perdu
             and rank >= qual_rank)
+        is_junk = bool(lead.perdu) and (
+            (lead.motif_perte or '').strip().lower() in junk_motifs)
         rows.append({
             'id': lead.id,
             'meta_ad_id': lead.meta_ad_id or '',
@@ -219,8 +235,33 @@ def attribution_lead_rows(company, qualifying_stage=None):
             'is_meta_channel': lead.canal in meta_channels,
             'signed': is_signed,
             'qualified': is_qualified,
+            'junk': is_junk,
         })
     return rows
+
+
+def lead_appointment_stats(company):
+    """PUB37 — Statistiques de RDV (``crm.Appointment``) PAR LEAD, pour le
+    signal qualité intermédiaire de l'attribution par variante (adsengine).
+
+    Point d'entrée cross-app LECTURE SEULE (jamais un import de
+    ``apps.crm.models`` côté adsengine) : une annonce qui génère des RDV
+    fantômes (no-show) coûte cher avant que le coût-par-signature ne le
+    montre. Renvoie ``{lead_id: {'total': int, 'no_show': int}}`` — un lead
+    sans AUCUN rendez-vous est absent du dict (jamais une entrée 0/0
+    fabriquée). Lecture seule, scopée société."""
+    from .models import Appointment
+
+    stats = {}
+    qs = (Appointment.objects
+          .filter(company=company)
+          .values_list('lead_id', 'statut'))
+    for lead_id, statut in qs:
+        slot = stats.setdefault(lead_id, {'total': 0, 'no_show': 0})
+        slot['total'] += 1
+        if statut == Appointment.Statut.NO_SHOW:
+            slot['no_show'] += 1
+    return stats
 
 
 def client_credit_warning(client, montant_ttc_nouveau=None):
@@ -1622,9 +1663,11 @@ def pipeline_stage_order():
     cross-app pour que ``apps.adsengine`` détecte une transition AVANT (rang qui
     augmente) sans importer ``apps.crm.models`` ni ``STAGES.py`` directement.
 
-    Renvoie ``{'stages': [...], 'funnel': [...], 'signed': str, 'cold': str}``
-    où ``funnel`` = les étapes AVANT-ordonnées hors COLD (« Perdu » n'est pas une
-    étape)."""
+    Renvoie ``{'stages': [...], 'funnel': [...], 'signed': str, 'cold': str,
+    'quote_sent': str}`` où ``funnel`` = les étapes AVANT-ordonnées hors COLD
+    (« Perdu » n'est pas une étape). PUB31 ajoute ``quote_sent`` (additif) :
+    permet à ``adsengine.capi_crm`` de détecter la transition QUOTE_SENT sans
+    jamais importer ``apps.crm.stages`` directement (règle #2)."""
     from . import stages as stage_mod
     order = list(stage_mod.STAGES)
     return {
@@ -1632,6 +1675,7 @@ def pipeline_stage_order():
         'funnel': [k for k in order if k != stage_mod.COLD],
         'signed': stage_mod.SIGNED,
         'cold': stage_mod.COLD,
+        'quote_sent': stage_mod.QUOTE_SENT,
     }
 
 

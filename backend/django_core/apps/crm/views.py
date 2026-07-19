@@ -1428,6 +1428,33 @@ class LeadTagViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
         return None
 
 
+# PUB28 — motifs de perte standards, seedés au premier chargement (idempotent,
+# additive-only — même patron que ``seed_canaux`` ci-dessous). ``est_junk=True``
+# = le lead n'était jamais un vrai prospect ; ``False`` = perte commerciale
+# réelle. Vocabulaire pris tel quel dans le texte de la tâche fondateur.
+_DEFAULT_MOTIFS_PERTE = [
+    ('Numéro invalide', True),
+    ('Spam/bot', True),
+    ('Hors zone', True),
+    ('Jamais répondu', True),
+    ('Prix', False),
+    ('Concurrent', False),
+    ('Reporté', False),
+]
+
+
+def seed_motifs_perte(company):
+    """Crée les motifs de perte standards pour une société qui n'en a AUCUN
+    (idempotent, additif) — mêmes garanties que ``seed_canaux`` : ne touche
+    jamais une liste déjà personnalisée par le fondateur, jamais de doublon
+    (``get_or_create`` par nom), jamais de modification d'un motif existant."""
+    if company is None or MotifPerte.objects.filter(company=company).exists():
+        return
+    for nom, est_junk in _DEFAULT_MOTIFS_PERTE:
+        MotifPerte.objects.get_or_create(
+            company=company, nom=nom, defaults={'est_junk': est_junk})
+
+
 class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
     """Motifs de perte gérés (Paramètres → CRM). Lecture tout rôle,
     écriture admin. Garde-fou (L779) : un motif utilisé par des leads ne se
@@ -1441,6 +1468,15 @@ class MotifPerteViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsAdminRole()]
+
+    def list(self, request, *args, **kwargs):
+        # PUB28 — amorçage paresseux : à la 1re consultation, on peuple les
+        # motifs de perte standards de la société (même patron que
+        # CanalViewSet.list — préserve le comportement existant : une société
+        # ayant déjà des motifs n'est jamais touchée).
+        if request.user.company_id:
+            seed_motifs_perte(request.user.company)
+        return super().list(request, *args, **kwargs)
 
     def destroy_guard_message(self, motif):
         if _motif_en_usage(motif.company, motif.nom) > 0:

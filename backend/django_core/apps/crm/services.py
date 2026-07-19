@@ -1572,6 +1572,71 @@ def create_lead_from_meta_lead_ads(
     return lead
 
 
+def create_minimal_lead_from_ctwa(*, company, phone, ad_id='') -> Lead:
+    """PUB27 — Crée (ou dédupe sur) un Lead minimal pour une conversation
+    WhatsApp/CTWA entrante SANS lead préalable.
+
+    Point d'entrée cross-app WRITE sanctionné (services.py — jamais un import
+    des modèles crm côté adsengine) : appelé par
+    ``apps.adsengine.whatsapp_webhook`` quand ``_lead_id_for_phone`` ne trouve
+    AUCUN lead pour le téléphone d'un message entrant portant un ``referral``
+    CTWA (Click-to-WhatsApp) — jusqu'ici, ce cas laissait le ``CtwaReferral``
+    orphelin (``crm_lead_id=None``) et l'attribution par ad était perdue.
+
+    Dédupliqué par TÉLÉPHONE (``find_duplicates_by_contact`` — mêmes colonnes
+    normalisées QW10 que le reste du CRM, indexées) : un second message de la
+    même conversation (ou un prospect déjà connu par un autre canal) ne crée
+    JAMAIS de doublon — renvoie le lead existant le plus récent tel quel, sans
+    l'altérer (« referral avec lead → comportement inchangé »).
+
+    Env-gated COMME le webhook : cette fonction n'est jamais appelée hors de
+    ``WhatsAppCloudWebhookView.post`` (gardé par
+    ``WHATSAPP_CLOUD_VERIFY_TOKEN``/``WHATSAPP_CLOUD_APP_SECRET`` — sans les
+    deux, le webhook répond 404 et n'atteint jamais ce chemin), donc aucun
+    flag séparé n'est nécessaire ici.
+
+    Attribution : ``canal=WHATSAPP_CTWA``, ``meta_ad_id`` posé quand
+    ``ad_id`` est fourni (même colonne de jointure que ADSENG1/XMKT32 — la
+    variante Meta reste résolvable par ``apps.adsengine.attribution``).
+    ``source=OS_NATIVE`` (créé nativement dans TAQINOR — CTWA n'est pas un
+    import, contrairement à ``META_LEAD_ADS``)."""
+    phone = (phone or '').strip()
+    if not phone or company is None:
+        return None
+
+    dupes = find_duplicates_by_contact(company, phone=phone)
+    if dupes:
+        return sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+
+    extra = {}
+    default = default_responsable_for(company)
+    if default is not None:
+        extra['owner'] = default
+    ad_id = str(ad_id or '')[:64] or None
+    lead = Lead.objects.create(
+        company=company,
+        nom='Lead WhatsApp/CTWA',
+        telephone=phone,
+        source=Lead.Source.OS_NATIVE,
+        canal=Lead.Canal.WHATSAPP_CTWA,
+        meta_ad_id=ad_id,
+        **extra,
+    )
+    activity.log_creation(lead, None)
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body='Lead créé depuis une conversation WhatsApp/CTWA entrante '
+             '(aucun lead préalable trouvé pour ce numéro).',
+    )
+    try:
+        notify_new_lead(lead)
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+    recompute_lead_score(lead)
+    return lead
+
+
 def fetch_meta_lead_node(leadgen_id, access_token):  # pragma: no cover - réseau
     """ADSENG1 — Récupère les identifiants natifs (ad_id/adgroup_id/form_id) du
     nœud lead Meta via le Graph API officiel, pour le backfill.

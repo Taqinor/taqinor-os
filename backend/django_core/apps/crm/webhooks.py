@@ -1225,6 +1225,23 @@ def _meta_lead_ads_company():
     return Company.objects.order_by('pk').first()
 
 
+def _meta_lead_ads_app_secret():
+    return (getattr(settings, 'META_LEAD_ADS_APP_SECRET', '') or '').strip()
+
+
+def _check_meta_lead_ads_signature(request, secret):
+    """PUB26 — Vrai si ``X-Hub-Signature-256`` est présente ET valide
+    (HMAC-SHA256 du corps brut avec ``secret``). Miroir EXACT de
+    ``apps.adsengine.whatsapp_webhook._check_signature`` (même en-tête, même
+    algorithme) — absente ou mal formée → False (rejet)."""
+    sig_header = request.META.get('HTTP_X_HUB_SIGNATURE_256', '')
+    if not sig_header or not sig_header.startswith('sha256='):
+        return False
+    expected = 'sha256=' + hmac.new(
+        secret.encode(), request.body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sig_header, expected)
+
+
 def fetch_meta_lead_data(leadgen_id, access_token):
     """Récupère le détail d'un lead Meta via le Graph API officiel.
 
@@ -1264,6 +1281,23 @@ def meta_lead_ads_webhook(request):
         # Sans jeton : no-op silencieux (défaut OFF), jamais d'exception.
         logger.info('meta_lead_ads_webhook: aucun access token configuré — no-op.')
         return JsonResponse({'detail': 'Non configuré — ignoré.'}, status=200)
+
+    # PUB26 — vérification HMAC (`X-Hub-Signature-256`) : n'importe qui pouvait
+    # jusqu'ici poster de faux leads (META_LEAD_ADS_APP_SECRET était listé dans
+    # WIRING_ENV_KEYS mais jamais vérifié). Rétro-compatible : secret absent →
+    # warning + payload accepté quand même (comportement historique préservé) ;
+    # secret présent + signature absente/invalide → 403.
+    app_secret = _meta_lead_ads_app_secret()
+    if app_secret:
+        if not _check_meta_lead_ads_signature(request, app_secret):
+            logger.warning(
+                'meta_lead_ads_webhook: signature X-Hub-Signature-256 '
+                'absente ou invalide.')
+            return JsonResponse({'detail': 'Signature invalide.'}, status=403)
+    else:
+        logger.warning(
+            'meta_lead_ads_webhook: META_LEAD_ADS_APP_SECRET non configuré — '
+            'signature non vérifiée (rétro-compatibilité).')
 
     try:
         data = json.loads(request.body.decode('utf-8'))

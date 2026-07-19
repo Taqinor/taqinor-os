@@ -36,7 +36,7 @@ from .views import (
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
-    VariantReportView, WiringHealthView,
+    VariantFunnelView, VariantReportView, WiringHealthView,
 )
 from .whatsapp_webhook import WhatsAppCloudWebhookView
 
@@ -127,6 +127,10 @@ urlpatterns = [
          name='adsengine-reporting-variantes'),
     path('reporting/entonnoir/', CampaignFunnelView.as_view(),
          name='adsengine-reporting-entonnoir'),
+    # PUB36 — même entonnoir NEW→SIGNED cumulatif, résolu PAR AD plutôt que
+    # par campagne (à quelle étape chaque annonce perd ses leads).
+    path('reporting/entonnoir-variantes/', VariantFunnelView.as_view(),
+         name='adsengine-reporting-entonnoir-variantes'),
     path('reporting/cohortes/', CohortReportView.as_view(),
          name='adsengine-reporting-cohortes'),
     path('reporting/export/', ReportExportView.as_view(),
