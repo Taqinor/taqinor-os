@@ -16,7 +16,7 @@
 // stables (useCallback sur onOpenLead/onAutoQuote/changeStage/… dans LeadsPage).
 import { useRef, useState, memo } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
-import { Zap, MapPin, FileText, MoreHorizontal } from 'lucide-react'
+import { Zap, MapPin, FileText, MoreHorizontal, Lock } from 'lucide-react'
 import {
   CANAL_LABELS,
   PIPELINE_STAGES,
@@ -279,6 +279,10 @@ function LeadCard({
         <div
           className="kb-swipe-actions"
           aria-hidden={swipe.offset === 0}
+          // LB17 — bande cachée réellement inerte : l'aria-hidden seul laissait
+          // les <a> tabbables (recon-05). `inert` (React 19) les sort du tab
+          // order ET de l'interaction tant que le panneau n'est pas révélé.
+          inert={swipe.offset === 0}
           style={{
             position: 'absolute', inset: 0, display: 'flex',
             justifyContent: 'flex-end', alignItems: 'stretch',
@@ -333,16 +337,23 @@ function LeadCard({
         {/* ── TÊTE : checkbox (révélée) · nom · score · action perdu ── */}
         <div className="kb-card-head">
           {onToggleSelect && (
-            <input
-              type="checkbox"
-              className="kb-card-check"
-              aria-label={`Sélectionner ${nomComplet}`}
-              checked={selected}
+            // LB17 — cible tactile ≥44×44 via le label enveloppant (stylesheet,
+            // jamais une taille inline) : tue le sliver 16px horizontal
+            // (recon-05 touch) sans agrandir la case visuelle en pointeur fin.
+            <label
+              className="kb-check-hit"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
               onTouchStart={(e) => e.stopPropagation()}
-              onChange={() => onToggleSelect(lead.id)}
-            />
+            >
+              <input
+                type="checkbox"
+                className="kb-card-check"
+                aria-label={`Sélectionner ${nomComplet}`}
+                checked={selected}
+                onChange={() => onToggleSelect(lead.id)}
+              />
+            </label>
           )}
           <span className="kb-card-name">{nomComplet}</span>
           {/* VX24 — ScoreBadge partagé (features/crm) ; VX221 — tooltip top-3 facteurs. */}
@@ -580,31 +591,46 @@ function LeadCard({
             — tel / WhatsApp / ⚡ Devis auto. Les hrefs tel/wa restent toujours
             présents dans le DOM (contrat). LB15 ajoute ici le menu •••. ── */}
         <div className="kb-quick" aria-label="Actions rapides">
-          {tel && (
-            <a
-              className="kb-quick-btn kb-quick-tel"
-              href={tel}
-              title="Appeler"
-              aria-label={`Appeler ${nomComplet}`}
-              onClick={(e) => { e.stopPropagation(); armCallNudge() }}
-              onPointerDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
+          {/* LB17 — PII masquée (le serializer nullifie tel/whatsapp sans la
+              permission client_pii_voir, `lead.pii_masked`) : à la place des
+              actions d'appel, un cadenas tooltipé — plus jamais un blanc muet. */}
+          {lead.pii_masked ? (
+            <span
+              className="kb-quick-lock"
+              title="Coordonnées masquées (permission PII)"
+              aria-label="Coordonnées masquées (permission PII)"
             >
-              ☎
-            </a>
-          )}
-          {wa && (
-            <ExternalLink
-              className="kb-quick-btn kb-quick-wa"
-              href={wa}
-              title="Ouvrir WhatsApp"
-              aria-label={`Ouvrir WhatsApp pour ${nomComplet}`}
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
-            >
-              💬
-            </ExternalLink>
+              <Lock size={12} aria-hidden="true" />
+            </span>
+          ) : (
+            <>
+              {tel && (
+                <a
+                  className="kb-quick-btn kb-quick-tel"
+                  href={tel}
+                  title="Appeler"
+                  aria-label={`Appeler ${nomComplet}`}
+                  onClick={(e) => { e.stopPropagation(); armCallNudge() }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
+                  ☎
+                </a>
+              )}
+              {wa && (
+                <ExternalLink
+                  className="kb-quick-btn kb-quick-wa"
+                  href={wa}
+                  title="Ouvrir WhatsApp"
+                  aria-label={`Ouvrir WhatsApp pour ${nomComplet}`}
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
+                  💬
+                </ExternalLink>
+              )}
+            </>
           )}
           <button
             type="button"

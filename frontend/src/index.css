@@ -7520,3 +7520,50 @@ textarea.form-control {
   width: 0;
   height: 0;
 }
+
+/* ===========================================================================
+   LB17 — Tactile (cibles ≥44px par STYLESHEET, jamais une taille inline) + PII.
+   La case et le bouton ••• gardent leur taille visuelle en pointeur fin ; en
+   pointeur COARSE, un overlay ::before de 44×44 étend la zone de frappe SANS
+   décaler la mise en page (tue le sliver 16px horizontal — recon-05 touch).
+   Les actions rapides tel/WA/⚡ passent à 44px au toucher (rangée dédiée).
+   =========================================================================== */
+.kb-check-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+@media (pointer: coarse) {
+  .kb-check-hit,
+  .kb-card-menu-btn { position: relative; }
+  .kb-check-hit::before,
+  .kb-card-menu-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .kb-quick-tel,
+  .kb-quick-wa,
+  .kb-flash.kb-quick-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+/* Cadenas PII : à la place des actions d'appel quand `lead.pii_masked`. */
+.kb-quick-lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--muted-foreground);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm, 8px);
+}
