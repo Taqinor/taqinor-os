@@ -54,7 +54,10 @@ test('VX147 : ListView monte EmptyState pour sorted=[] au lieu du texte brut "Au
   assert.doesNotMatch(LIST, />Aucun lead à afficher avec ces filtres\.</)
   const idx = LIST.indexOf('{!sorted.length && (')
   assert.ok(idx > 0)
-  const block = LIST.slice(idx, idx + 300)
+  // LB19 — la fenêtre a grandi de quelques caractères : colSpan calcule
+  // désormais le nombre de colonnes VISIBLES (choix de colonnes persisté)
+  // au lieu d'une constante 13/12 en dur.
+  const block = LIST.slice(idx, idx + 400)
   assert.match(block, /<EmptyState/)
 })
 

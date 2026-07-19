@@ -7221,6 +7221,120 @@ textarea.form-control {
   border-radius: 999px;
 }
 
+/* LB18 — colgroup à largeurs fixes (ListView.jsx) : sans table-layout:fixed
+   le <colgroup> n'est qu'indicatif — un <select> d'édition en place plus
+   large que le texte affiché ferait quand même danser les colonnes
+   voisines (P3 #14). */
+.lv-table {
+  table-layout: fixed;
+}
+/* Ombre de bord sur la colonne nom épinglée (.lv-sticky-name) une fois que
+   la table a défilé horizontalement — classe togglée par un listener de
+   scroll passif sur .lv-wrap (ListView.jsx), jamais par un re-rendu React. */
+.lv-wrap.lv-scrolled-x .lv-sticky-name {
+  box-shadow: 4px 0 6px -4px rgba(0, 0, 0, 0.25);
+}
+
+/* LB19 — barre d'outils locale de la liste (choix de colonnes, puis LB20 le
+   segmented Plat/Par étape) : HORS du scrolleur .lv-wrap pour rester
+   visible pendant le défilement vertical de la table — même recette flex
+   que .lp-view-area/.kb-board (D1) : .lv-view remplace .lv-wrap comme
+   enfant direct de .lp-view-area, .lv-wrap garde sa règle flex existante
+   inchangée (elle ne dépend pas du nom de son parent). */
+.lv-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lv-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+
+/* LB20 — option « Par étape » : rangées de groupe collantes SOUS le thead
+   sticky — `--lv-thead-h` est MESURÉE (ResizeObserver, ListView.jsx),
+   jamais un pixel deviné, posée sur .lv-wrap (le repère commun le plus
+   proche entre le thead et les rangées de groupe). */
+.lv-table tr.lv-group td {
+  position: sticky;
+  top: var(--lv-thead-h, 37px);
+  left: 0;
+  z-index: 1;
+  background: var(--muted);
+  padding: 0;
+}
+.lv-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 12px;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .lv-group-toggle:hover {
+    background: var(--accent, #e2e8f0);
+  }
+}
+.lv-group-toggle:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: -2px;
+}
+.lv-group-chevron {
+  display: inline-block;
+  width: 1em;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+.lv-group-count {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
+.lv-group-total {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--cat-navy, #0b1f3a);
+}
+
+/* LB21 — le nom (.lv-lead-name) est un <button> depuis le refit clavier
+   (élément interactif sémantique, blueprint D4) : reset des styles natifs
+   de bouton par-dessus la règle existante ci-dessus (5357) — APPEND-ONLY,
+   cette règle ne la modifie pas, elle ajoute les propriétés qu'un <button>
+   pose par défaut et qu'un <span> n'avait jamais eues. */
+.lv-lead-name {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lv-lead-name:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Ligne ouvrable au clavier (LB21) : anneau de focus visible sur tr.lv-row
+   quand elle est focus directement (Tab), pas quand le focus est descendu
+   sur un contrôle interne. */
+.lv-table tbody tr.lv-row:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: -2px;
+}
+
 /* Gap responsive 769-899px (recon-05) : le palier fixe 150px ci-dessus ne
    s'active qu'à partir de 900px — entre 768 et 900, `.kb-col` retombait à sa
    largeur desktop (272px) et ne montrait plus que ~3 colonnes sur iPad
