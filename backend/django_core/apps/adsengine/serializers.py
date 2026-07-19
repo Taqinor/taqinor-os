@@ -159,13 +159,16 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
     # ``<video>`` pour un reel/explainer.
     preview_url = serializers.SerializerMethodField()
     is_video = serializers.SerializerMethodField()
+    # PUB84 — piste de provenance durable (fait cité → version table de faits
+    # → verdicts → décision humaine), lecture seule sur la créathèque.
+    provenance = serializers.SerializerMethodField()
 
     class Meta:
         model = CreativeAsset
         fields = [
             'id', 'asset_type', 'file_key', 'source_lane', 'cost_cents',
             'policy_stamp', 'is_policy_passed', 'perf', 'parent',
-            'preview_url', 'is_video',
+            'preview_url', 'is_video', 'provenance',
             # ADSENG5 — composants (accroche / texte / visuel / CTA).
             'hook_id', 'hook_text', 'primary_text', 'visual_asset_key', 'cta',
             'created_at', 'updated_at',
@@ -190,6 +193,12 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
         """Un reel / explainer se rend en ``<video>`` (les statiques en ``<img>``)."""
         return obj.asset_type in (
             CreativeAsset.AssetType.REEL, CreativeAsset.AssetType.EXPLAINER)
+
+    def get_provenance(self, obj):
+        """PUB84 — Piste d'audit durable (``generation_audit.asset_provenance``,
+        AGEN9) : lecture seule, jamais recalculée ici."""
+        from .generation_audit import asset_provenance
+        return asset_provenance(obj)
 
 
 class CreativePolicySerializer(serializers.ModelSerializer):

@@ -222,6 +222,54 @@ def _emit_critical_alert(company, *, message, entity_key, action=None):
         return None
 
 
+def asset_provenance(asset):
+    """PUB84 — Piste de provenance DURABLE d'UN asset créatif : le lot de
+    génération ancrée qui l'a produit (fait cité → version de la table de
+    faits → verdicts par claim → décision humaine), les bras qui le portent
+    (avec statut Meta), et le ``policy_stamp`` posé à la génération (ENG16).
+    Consultable sur la créathèque même après que le rapport de génération
+    d'origine se soit « dispersé » (le lot ``CreativeGenerationBatch`` reste
+    la source de vérité durable, jamais recalculée ici — simple lecture).
+
+    ``None`` batch (asset uploadé manuellement, jamais issu d'un lot de
+    génération ancrée) → provenance réduite à son ``policy_stamp`` (jamais une
+    exception, jamais un lot fabriqué). Lecture seule, JSON-safe."""
+    item = (asset.backlog_items
+            .select_related('batch').order_by('-created_at').first())
+    batch = item.batch if item else None
+
+    if batch is None:
+        return {
+            'asset_id': asset.pk,
+            'batch_id': None,
+            'fact_table_version': None,
+            'claim_verdicts': {},
+            'template_quarantined': False,
+            'human_decision': None,
+            'meta_status': None,
+            'policy_stamp': dict(asset.policy_stamp or {}),
+        }
+
+    snap = audit_snapshot(batch)
+    arm = next(
+        (a for a in _batch_arms(batch, active_only=False)
+         if a.creative_asset_id == asset.pk),
+        None)
+    meta_status = (
+        snap['meta_statuses'].get(arm.ad_id) if arm is not None else None)
+
+    return {
+        'asset_id': asset.pk,
+        'batch_id': batch.pk,
+        'fact_table_version': snap['fact_table_version'],
+        'claim_verdicts': snap['claim_verdicts'],
+        'template_quarantined': snap['template_quarantined'],
+        'human_decision': snap['human_decision'],
+        'meta_status': meta_status,
+        'policy_stamp': dict(asset.policy_stamp or {}),
+    }
+
+
 def rollback_batch(batch, *, template_key='', nodes=None, client=None,
                    reason_fr='', now=None):
     """AGEN9 — Rollback d'un lot de génération en quelques appels (§10.2 point 6).
