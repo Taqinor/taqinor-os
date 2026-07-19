@@ -197,7 +197,13 @@ export default function LeadsPage() {
 
   // Le filtre « Archivés » est une dimension SERVEUR : on refait l'appel avec
   // le bon paramètre quand il change (les autres filtres restent côté client).
-  const refetch = () => dispatch(fetchLeads(archivedParam(filters.archived)))
+  // LB6 — useCallback : `refetch` entre dans `viewProps` (onRefetch) — une
+  // référence fraîche à chaque rendu de LeadsPage cassait le memo() des vues
+  // qui la reçoivent (bug #4).
+  const refetch = useCallback(
+    () => dispatch(fetchLeads(archivedParam(filters.archived))),
+    [dispatch, filters.archived],
+  )
   // VX55 — annule la requête en vol au démontage / changement de filtre : sans
   // ça, une réponse tardive (3G qui cale) peut écraser l'état d'un AUTRE écran
   // après navigation. `thunk.abort()` coupe le signal jusqu'à axios.
@@ -242,9 +248,13 @@ export default function LeadsPage() {
     [leads, visibleSelected],
   )
 
-  const onToggleSelect = (id) => setSelected((s) => toggleId(s, id))
-  const onToggleAll = (visibleIds) =>
-    setSelected((s) => toggleAll(s, visibleIds))
+  // LB6 — useCallback : passées à CHAQUE carte/ligne via viewProps ;
+  // `setSelected` (useState) est stable par définition, `[]` suffit (bug #4).
+  const onToggleSelect = useCallback((id) => setSelected((s) => toggleId(s, id)), [])
+  const onToggleAll = useCallback(
+    (visibleIds) => setSelected((s) => toggleAll(s, visibleIds)),
+    [],
+  )
   const clearSelection = () => setSelected(new Set())
 
   // Action en masse : la règle métier (funnel, garde-fous, Historique) vit
@@ -360,22 +370,25 @@ export default function LeadsPage() {
   // kanban, LeadCard.jsx) : ouvre la fiche du lead directement sur la section
   // « Suivi commercial » (relance_date), même machinerie que les autres
   // ouvertures de fiche (setEditLead/setShowForm).
-  const onPlanifierRelance = (lead) => {
+  // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps ; les
+  // setters `useState` sont stables par définition, `[]` suffit (bug #4).
+  const onPlanifierRelance = useCallback((lead) => {
     setEditLead(lead)
     setFormDevisIntent(null)
     setFormFocusSection('pipeline')
     setShowForm(true)
-  }
+  }, [])
 
   // (Ré)assignation rapide du responsable depuis la carte / la liste. Le PATCH
   // journalise ancien → nouveau côté serveur (Historique) et est ouvert à la
   // Commerciale comme à l'admin.
-  const reassign = async (lead, ownerId) => {
+  // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps (bug #4).
+  const reassign = useCallback(async (lead, ownerId) => {
     try {
       await dispatch(updateLead({ id: lead.id, data: { owner: ownerId } })).unwrap()
       refetch()
     } catch { /* erreur silencieuse */ }
-  }
+  }, [dispatch, refetch])
 
   // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.
   // perform_update journalise ancien → nouveau dans l'Historique côté serveur.
@@ -388,7 +401,8 @@ export default function LeadsPage() {
   // enregistré. On REJETTE avec la sentinelle SIGNE_INTERCEPT : le select
   // revient honnêtement à l'étape réelle (rollback), et l'onError de
   // StageMover avale spécifiquement cette sentinelle sans toaster.
-  const onInlineSave = (lead, field, value) => {
+  // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps (bug #4).
+  const onInlineSave = useCallback((lead, field, value) => {
     if (field === 'stage' && value === CONVERSION_STAGE) {
       setSigneLead(lead)
       return Promise.reject(SIGNE_INTERCEPT)
@@ -396,7 +410,7 @@ export default function LeadsPage() {
     return dispatch(updateLead({ id: lead.id, data: { [field]: value } }))
       .unwrap()
       .then(() => { refetch() })
-  }
+  }, [dispatch, refetch])
 
   // LB5 — « ✗ Perdu » passe ENFIN par le store (blueprint I2, bug #3) :
   // LeadCard.confirmPerdu appelait crmApi.updateLead en DIRECT (contournait
@@ -458,6 +472,34 @@ export default function LeadsPage() {
     }
   }, [dispatch])
 
+  // LB6 — useMemo : `viewProps` était un objet LITTÉRAL neuf à CHAQUE rendu
+  // de LeadsPage — même avec des callbacks individuellement stables
+  // (useCallback ci-dessus), l'objet conteneur changeait quand même de
+  // référence, ce qui aurait cassé le memo() de toute vue qui le recevrait
+  // en un seul bloc. Placé AVANT les retours anticipés loading/error : les
+  // Hooks doivent s'exécuter dans le MÊME ORDRE à chaque rendu (règle des
+  // Hooks), jamais après un retour conditionnel.
+  const viewProps = useMemo(() => ({
+    leads: filtered,
+    onOpenLead,
+    onChangeStage: changeStage,
+    onAutoQuote,
+    onPlanifierRelance,
+    onRefetch: refetch,
+    busyLeadId,
+    users,
+    onReassign: reassign,
+    selected: visibleSelected,
+    onToggleSelect,
+    onToggleAll,
+    onInlineSave,
+    onMarkPerdu,
+  }), [
+    filtered, onOpenLead, changeStage, onAutoQuote, onPlanifierRelance, refetch,
+    busyLeadId, users, reassign, visibleSelected, onToggleSelect, onToggleAll,
+    onInlineSave, onMarkPerdu,
+  ])
+
   // Only blank the page on the FIRST load. A background refetch (after saving a
   // bill, generating a devis, changing a stage…) must NOT unmount the page —
   // doing so tore down any open lead modal / inline devis preview mid-action.
@@ -474,23 +516,6 @@ export default function LeadsPage() {
       error={`Erreur : ${errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}`}
     />
   )
-
-  const viewProps = {
-    leads: filtered,
-    onOpenLead,
-    onChangeStage: changeStage,
-    onAutoQuote,
-    onPlanifierRelance,
-    onRefetch: refetch,
-    busyLeadId,
-    users,
-    onReassign: reassign,
-    selected: visibleSelected,
-    onToggleSelect,
-    onToggleAll,
-    onInlineSave,
-    onMarkPerdu,
-  }
 
   return (
     // LB2 — `data-view` pilote le contrat CSS de hauteur (index.css) : le

@@ -35,7 +35,9 @@ test('LB5 : onMarkPerdu toaste ET relance l\'erreur en échec (I8 — jamais de 
 })
 
 test('LB5 : viewProps transmet onMarkPerdu à toutes les vues', () => {
-  const start = PAGE_SRC.indexOf('const viewProps = {')
+  // LB6 — viewProps est désormais useMemo (bug #4).
+  const start = PAGE_SRC.indexOf('const viewProps = useMemo(() => ({')
+  assert.ok(start > 0, 'viewProps introuvable')
   const block = PAGE_SRC.slice(start, start + 500)
   assert.match(block, /onMarkPerdu,/)
 })
@@ -62,5 +64,9 @@ test('LB5 : LeadCard n\'appelle plus JAMAIS crmApi.updateLead en direct — pass
 
 test('LB5 : ListView.confirmPerdu passe par onMarkPerdu, plus de dispatch(updateLead) local dupliqué', () => {
   assert.doesNotMatch(LIST_SRC, /dispatch\(updateLead\(/)
-  assert.match(LIST_SRC, /await onMarkPerdu\(perduTarget, motif\)/)
+  // LB6 — confirmPerdu prend (lead, motif) en PARAMÈTRES (au lieu de lire
+  // perduTarget/perduMotif en closure), pour rester une référence STABLE
+  // (bug #4) ; le call-site (bouton Confirmer) passe (lead, perduMotif).
+  assert.match(LIST_SRC, /await onMarkPerdu\(lead, trimmed\)/)
+  assert.match(LIST_SRC, /onClick=\{\(\) => confirmPerdu\(lead, perduMotif\)\}/)
 })

@@ -1,7 +1,7 @@
 // Vue kanban des leads CRM, façon Odoo : 6 colonnes canoniques (stages.js,
 // miroir de STAGES.py — jamais de liste d'étapes en dur ici), glisser-déposer
 // via @dnd-kit/core. Le parent gère l'optimistic update : on ne mute rien.
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { LayoutGrid } from 'lucide-react'
 import {
   DndContext,
@@ -122,7 +122,12 @@ export const STAGE_PROBABILITY = {
 
 // Enveloppe draggable d'une carte ; l'original reste en place (style fantôme)
 // pendant que le DragOverlay suit le pointeur.
-function DraggableCard({
+// LB6 — memo() (blueprint I4, bug #4) : sans lui, KanbanView re-rendait
+// TOUTES les instances de DraggableCard (donc ré-exécutait useDraggable +
+// recréait la sous-arborescence) à chaque rendu du parent, même quand seule
+// UNE carte avait réellement changé — LeadCard(memo) protège son PROPRE
+// re-rendu mais pas le travail de DraggableCard lui-même en amont.
+const DraggableCard = memo(function DraggableCard({
   lead, busy, onOpen, onAutoQuote, users, onReassign,
   selected, onToggleSelect, onPlanifierRelance, onInlineSave, onMarkPerdu,
 }) {
@@ -147,7 +152,7 @@ function DraggableCard({
       <StageMover lead={lead} onInlineSave={onInlineSave} />
     </div>
   )
-}
+})
 
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
 function StageColumn({ col, children }) {

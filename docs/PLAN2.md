@@ -3810,7 +3810,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   `frontend/src/pages/crm/leads/views/ListView.jsx`. DoD : marquer perdu depuis une carte kanban
   grise la carte IMMÉDIATEMENT (style perdu) sans refetch réseau intégral ; échec réseau → toast
   FR + état intact. (ROUTINE — S) (@model: sonnet) (@lane: LB0)
-- [ ] LB6 — **P1 : mémo réparé — une frappe ne re-rend plus tout le board.** Bug recon2-03 #4 :
+- [x] LB6 — **P1 : mémo réparé — une frappe ne re-rend plus tout le board.** Bug recon2-03 #4 :
   `reassign`/`onToggleSelect`/`onPlanifierRelance`/`onInlineSave`/`onToggleAll` sont des closures
   fraîches (VX187 n'en avait mémoïsé que 3), `viewProps` est un objet neuf à chaque rendu,
   `DraggableCard` n'est pas mémoïsé ; côté liste, l'état du popover perdu
@@ -4210,6 +4210,29 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   assertions source, exécutées, vertes) ; suite existante (VX95Forgiveness, LeadCardVX24,
   ReadinessChips, SwipeAction, FirstTouchTimer, ForecastView — 37 tests) re-exécutée, toujours
   verte.
+- 2026-07-19 LB6 — mémo réparé (bug #4) : TOUS les callbacks de `viewProps` (LeadsPage.jsx) sont
+  désormais `useCallback` — `refetch`, `onToggleSelect`, `onToggleAll`, `reassign`,
+  `onPlanifierRelance`, `onInlineSave` (en plus des `onOpenLead`/`onAutoQuote`/`changeStage` déjà
+  faits en VX187) ; `viewProps` lui-même passe en `useMemo`, repositionné AVANT les retours
+  anticipés loading/error (règle des Hooks — un `useMemo` après un retour conditionnel change
+  l'ordre des Hooks entre rendus). `KanbanView.jsx` mémoïse `DraggableCard` (`memo()`). Côté liste
+  (bug #4 précis : `perduMotif` partagé passé identique à TOUTES les lignes → une frappe
+  re-rendait la table entière malgré `memo(ListRow)`) : la popover « ✗ Perdu » ne reçoit plus
+  `perduTarget` (objet, référence neuve à chaque frappe) mais `perduOpen` (booléen calculé par le
+  parent) + `perduMotif`/`perduBusy` CONDITIONNÉS (constante `''`/`false` pour les lignes non
+  ciblées, valeur live SEULEMENT pour la ligne ouverte) ; `confirmPerdu(lead, motif)` prend ses
+  arguments en PARAMÈTRES (au lieu de lire `perduTarget`/`perduMotif` en closure) pour rester une
+  référence stable quel que soit ce que l'utilisateur tape ; `onArchive`/`onRestore`/`onDelete`/
+  `closePerdu` passent en `useCallback` ; `armCallNudgeFor` stabilisée via un ref « toujours à
+  jour » synchronisé en effet (jamais pendant le rendu — `useCallEndedNudge` reste hors périmètre
+  de cette lane). `components/InlineEdit.jsx` inchangé (déjà touché LB4). Tests : nouveau
+  `LeadsPageMemoStability.test.mjs` (8 assertions source, exécutées, vertes) ; nouveau
+  `KanbanViewMemoStability.test.jsx` (sonde de rendu réelle — LeadCard mocké+compté, 0 re-rendu
+  sur un nouveau tableau `leads` à callbacks/objets stables, re-rendu ciblé sur `busyLeadId`) ;
+  3 tests pré-existants mis à jour DANS cette tâche pour suivre la nouvelle forme du source
+  (`LeadsPagePlanifierRelance.test.mjs`, `LeadsPageMarkPerdu.test.mjs`,
+  `axiosVX55Timeout.test.mjs` — `viewProps`/`refetch`/`confirmPerdu` littéraux changés). Suite
+  complète leads + adjacents (148 tests node) re-exécutée, verte.
 
 ## Group F — Design foundation & tokens
 
