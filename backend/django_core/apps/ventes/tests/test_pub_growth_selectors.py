@@ -14,7 +14,9 @@ from django.utils import timezone
 from authentication.models import Company
 from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis, ShareLink
-from apps.ventes.selectors import devis_view_tracking_segments
+from apps.ventes.selectors import (
+    devis_view_tracking_segments, expired_devis_contacts,
+)
 
 MONTH = timezone.now().strftime('%Y%m')
 
@@ -79,3 +81,46 @@ class DevisViewTrackingSegmentsTests(TestCase):
         self._devis(f'DEV-{MONTH}-PUB5806', client=client_no_contact)
         segments = devis_view_tracking_segments(self.company)
         self.assertEqual(segments['jamais_ouvert'], [])
+
+
+class ExpiredDevisContactsTests(TestCase):
+    """PUB59 — devis expirés, exclusion des clients déjà signés ailleurs."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB59 Selectors Co')
+        self.expired_client = Client.objects.create(
+            company=self.company, nom='Ex', prenom='Pire',
+            email='ex@example.ma', telephone='+212600000040')
+        self.signed_client = Client.objects.create(
+            company=self.company, nom='Sig', prenom='Ne',
+            email='sig@example.ma', telephone='+212600000041')
+
+    def _devis(self, ref, client, statut):
+        return Devis.objects.create(
+            company=self.company, reference=ref, client=client,
+            taux_tva=Decimal('20'), statut=statut)
+
+    def test_no_expired_devis_returns_empty(self):
+        self.assertEqual(expired_devis_contacts(self.company), [])
+
+    def test_expired_devis_contact_included(self):
+        self._devis(f'DEV-{MONTH}-PUB5901', self.expired_client,
+                    Devis.Statut.EXPIRE)
+        contacts = expired_devis_contacts(self.company)
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(contacts[0]['email'], 'ex@example.ma')
+
+    def test_client_signed_elsewhere_excluded(self):
+        self._devis(f'DEV-{MONTH}-PUB5902', self.signed_client,
+                    Devis.Statut.EXPIRE)
+        self._devis(f'DEV-{MONTH}-PUB5903', self.signed_client,
+                    Devis.Statut.ACCEPTE)
+        self.assertEqual(expired_devis_contacts(self.company), [])
+
+    def test_dedup_multiple_expired_devis_same_client(self):
+        self._devis(f'DEV-{MONTH}-PUB5904', self.expired_client,
+                    Devis.Statut.EXPIRE)
+        self._devis(f'DEV-{MONTH}-PUB5905', self.expired_client,
+                    Devis.Statut.EXPIRE)
+        contacts = expired_devis_contacts(self.company)
+        self.assertEqual(len(contacts), 1)

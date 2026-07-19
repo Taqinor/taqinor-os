@@ -387,3 +387,45 @@ class Pub58DevisViewAudiencesTests(TestCase):
         self.assertTrue(result['jamais_ouvert']['audience_id'])
         self.assertTrue(result['ouvert_non_signe']['audience_id'])
         self.assertIsNotNone(never)
+
+
+class Pub59ExpiredDevisAudienceTests(TestCase):
+    """PUB59 — sync_expired_devis_audience : angle « devis expiré », avec
+    exclusion des clients déjà signés PAR AILLEURS."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB59 Co')
+        self.client_expired = Client.objects.create(
+            company=self.company, nom='Expiré', prenom='Client',
+            email='expire@example.ma', telephone='+212600000020')
+        self.client_signed = Client.objects.create(
+            company=self.company, nom='Signé', prenom='Ailleurs',
+            email='signe@example.ma', telephone='+212600000021')
+
+    def test_consent_off_no_network(self):
+        Devis.objects.create(
+            company=self.company, reference='DEV-PUB59A',
+            client=self.client_expired, taux_tva=Decimal('20'),
+            statut=Devis.Statut.EXPIRE)
+        result = aud.sync_expired_devis_audience(
+            self.company, client=ExplodingClient())
+        self.assertFalse(result['configured'])
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_signed_elsewhere_excluded(self):
+        Devis.objects.create(
+            company=self.company, reference='DEV-PUB59B',
+            client=self.client_expired, taux_tva=Decimal('20'),
+            statut=Devis.Statut.EXPIRE)
+        Devis.objects.create(
+            company=self.company, reference='DEV-PUB59C',
+            client=self.client_signed, taux_tva=Decimal('20'),
+            statut=Devis.Statut.EXPIRE)
+        Devis.objects.create(
+            company=self.company, reference='DEV-PUB59D',
+            client=self.client_signed, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ACCEPTE)
+        client = RecordingClient()
+        result = aud.sync_expired_devis_audience(self.company, client=client)
+        self.assertEqual(result['name'], 'Devis expiré')
+        self.assertEqual(result['matched_rows'], 1)  # seul le client_expired

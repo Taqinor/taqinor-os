@@ -1215,3 +1215,43 @@ def devis_view_tracking_segments(company):
         else:
             jamais_ouvert.append(contact)
     return {'jamais_ouvert': jamais_ouvert, 'ouvert_non_signe': ouvert_non_signe}
+
+
+def expired_devis_contacts(company):
+    """PUB59 — Contacts des devis EXPIRÉS (``Devis.statut='expire'``) de la
+    société — angle de relance « votre prix était valable 30 j, nouvelle
+    offre ». Un devis expiré est un statut DOCUMENT (rule #4), distinct du
+    stade funnel COLD du lead (rule #2) : les deux ne se mélangent jamais
+    ici (aucune lecture de ``stage``).
+
+    EXCLUSION signée : un client qui a, PAR AILLEURS, au moins un devis
+    ACCEPTÉ est retiré du segment — on ne relance jamais quelqu'un qui a
+    déjà acheté. Renvoie une liste de dicts ``{'email', 'telephone'}``."""
+    from .models import Devis
+
+    expired = list(
+        Devis.objects
+        .filter(company=company, statut=Devis.Statut.EXPIRE)
+        .select_related('client'))
+    if not expired:
+        return []
+
+    client_ids = {d.client_id for d in expired if d.client_id}
+    signed_client_ids = set(
+        Devis.objects.filter(
+            company=company, statut=Devis.Statut.ACCEPTE,
+            client_id__in=client_ids)
+        .values_list('client_id', flat=True)) if client_ids else set()
+
+    seen, contacts = set(), []
+    for devis in expired:
+        if not devis.client_id:
+            continue
+        if devis.client_id in signed_client_ids or devis.client_id in seen:
+            continue
+        contact = _client_contact(devis.client)
+        if not contact:
+            continue
+        seen.add(devis.client_id)
+        contacts.append(contact)
+    return contacts

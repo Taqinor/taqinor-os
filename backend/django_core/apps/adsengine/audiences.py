@@ -547,3 +547,21 @@ def sync_devis_view_audiences(company, *, client=None):
                          "probable."),
             client=client),
     }
+
+
+# ── PUB59 — Audience « devis expiré » ─────────────────────────────────────────
+
+def sync_expired_devis_audience(company, *, client=None):
+    """PUB59 — Pousse la Custom Audience « devis expiré »
+    (``apps.ventes.selectors.expired_devis_contacts`` — exclusions déjà
+    signées appliquées en amont). Angle : « votre prix était valable 30 j,
+    nouvelle offre » — l'angle-offre précis que la nurture générique rate.
+    Même porte consentement que :func:`sync_crm_custom_audience`."""
+    from apps.ventes.selectors import expired_devis_contacts
+
+    contacts = expired_devis_contacts(company)
+    return sync_crm_custom_audience(
+        company, name='Devis expiré', contacts=contacts,
+        description=("Devis expiré — votre prix était valable 30 j, "
+                     "nouvelle offre."),
+        client=client)
