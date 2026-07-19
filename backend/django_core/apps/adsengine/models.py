@@ -14,6 +14,8 @@ dans les tâches suivantes de la lane ``backend/adsengine`` :
 Tout nouveau modèle métier hérite de ``core.models.TenantModel`` (FK société +
 horodatage) et les ViewSets de ``core.viewsets.CompanyScopedModelViewSet``.
 """
+import datetime
+
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.core.exceptions import ValidationError
@@ -2530,3 +2532,64 @@ class ConsentRecord(TenantModel):
             self.revoked_at = now or timezone.now()
             self.save(update_fields=['revoked_at', 'updated_at'])
         return policy_mod.revoke_consent(self)
+
+
+class CreativeCalendarEvent(TenantModel):
+    """PUB78 — Événement du CALENDRIER CRÉATIF marocain (fenêtre saisonnière).
+
+    ``CreativeBacklogItem.seasonal_tag`` était du texte libre sans source : ce
+    modèle donne une VÉRITÉ calendaire (Ramadan mobile, Aïds, rentrée, canicule,
+    saison agricole post-récolte) qui alimente le tri du backlog (par proximité
+    réelle) et les fenêtres de recommandation (« préparer les créas Ramadan
+    J-30 »). Company-scopé (``TenantModel``) : chaque société détient/édite son
+    calendrier ; le seed (``calendar.seed_calendar``) est idempotent.
+
+    ``lead_days`` = combien de jours AVANT ``date_debut`` la fenêtre de
+    recommandation s'ouvre (J-30 par défaut). ``market_mode`` relie
+    optionnellement un événement à un mode marché (ex. agricole)."""
+
+    tag = models.SlugField(
+        max_length=40, verbose_name='Tag saisonnier',
+        help_text="Clé de saison (ex. ramadan, aid_fitr, rentree, canicule).")
+    label = models.CharField(max_length=120, verbose_name='Libellé')
+    date_debut = models.DateField(verbose_name='Début')
+    date_fin = models.DateField(verbose_name='Fin')
+    lead_days = models.PositiveIntegerField(
+        default=30, verbose_name='Anticipation (jours)',
+        help_text="Fenêtre de recommandation ouverte J-lead_days avant le début.")
+    market_mode = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Mode marché (optionnel)')
+
+    class Meta:
+        verbose_name = 'Événement de calendrier créatif'
+        verbose_name_plural = 'Événements de calendrier créatif'
+        ordering = ['date_debut']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'tag', 'date_debut'],
+                name='uniq_adseng_calevent_co_tag_debut'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'date_debut'],
+                         name='adseng_calevent_co_debut_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.label} ({self.date_debut}→{self.date_fin})'
+
+    def recommendation_start(self):
+        """Date d'ouverture de la fenêtre de recommandation (J-lead_days)."""
+        return self.date_debut - datetime.timedelta(days=self.lead_days or 0)
+
+    def is_in_season(self, day):
+        """Vrai si ``day`` tombe dans la saison elle-même (début→fin inclus)."""
+        return self.date_debut <= day <= self.date_fin
+
+    def is_in_recommendation_window(self, day):
+        """Vrai si ``day`` est dans la fenêtre de préparation (J-lead_days→fin)."""
+        return self.recommendation_start() <= day <= self.date_fin
+
+    def days_until_start(self, day):
+        """Jours avant le début (négatif si déjà commencé/passé)."""
+        return (self.date_debut - day).days
