@@ -73,6 +73,12 @@ class CreativePolicyNotPassed(ValueError):
     """ENG15 — Levée si une création d'ad référence un asset non validé policy."""
 
 
+class ActionPayloadInvalid(ValueError):
+    """PUB22 — Levée si le payload d'une action proposée par POST BRUT est
+    invalide (champ requis manquant / valeur incohérente). Sous-classe de
+    ``ValueError`` — traduite en 400 par la vue, jamais une 500."""
+
+
 # Kinds qui créent une ad et peuvent donc référencer un ``CreativeAsset``.
 _AD_CREATING_KINDS = frozenset({
     EngineAction.Kind.CREATE_AD, EngineAction.Kind.ROTATE_CREATIVE,
@@ -108,6 +114,47 @@ def assert_creative_ok_for_ad(company, kind, payload):
         raise CreativePolicyNotPassed(
             "Créatif non validé (policy_stamp.passed absent) : il ne peut pas "
             "être référencé par une création d'ad.")
+
+
+# ── PUB22 — Validation de payload PAR KIND pour les kinds atteignables par POST
+# BRUT sans producteur curé (``create_ad`` / ``set_spend_cap`` / ``rename``). Un
+# producteur (``propose_duplicate``, ``propose_pause_for_month``…) construit déjà
+# un payload correct ; ces trois-là peuvent être proposés depuis l'UI sans passer
+# par un service dédié — on valide donc leur payload AVANT de créer l'action, pour
+# ne jamais matérialiser une action inapplicable (name/adset_id/campaign_id vides,
+# plafond ≤ 0…). AUCUN autre kind n'est soumis à ce contrôle (leur producteur
+# curé garantit déjà la forme). ────────────────────────────────────────────────
+def _require_nonempty(payload, key, label):
+    value = payload.get(key)
+    if value is None or not str(value).strip():
+        raise ActionPayloadInvalid(f"Champ requis manquant : {label}.")
+
+
+def _require_positive_number(payload, key, label):
+    value = payload.get(key)
+    if value is None:
+        raise ActionPayloadInvalid(f"Champ requis manquant : {label}.")
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ActionPayloadInvalid(f"{label} doit être un nombre.")
+    if number <= 0:
+        raise ActionPayloadInvalid(f"{label} doit être strictement positif.")
+
+
+def validate_manual_payload(kind, payload):
+    """Valide le payload d'un kind proposable par POST brut. No-op pour tout kind
+    hors du trio contrôlé. Lève ``ActionPayloadInvalid`` (→ 400) sinon."""
+    payload = payload or {}
+    if kind == EngineAction.Kind.CREATE_AD:
+        _require_nonempty(payload, 'name', "le nom de l'ad")
+        _require_nonempty(payload, 'adset_id', "l'id de l'ad set")
+    elif kind == EngineAction.Kind.SET_SPEND_CAP:
+        _require_nonempty(payload, 'campaign_id', "l'id de la campagne")
+        _require_positive_number(payload, 'spend_cap', "le plafond de dépense")
+    elif kind == EngineAction.Kind.RENAME:
+        _require_nonempty(payload, 'object_id', "l'id de l'objet")
+        _require_nonempty(payload, 'name', 'le nouveau nom')
 
 
 # ── ADSDEEP31 — Avertissements montrés à l'APPROBATEUR (surface d'édition) ────
@@ -160,6 +207,7 @@ def propose_action(company, *, kind, reason_fr, payload=None, auto=False):
             "Une raison en une phrase (français) est obligatoire pour proposer "
             "une action.")
     assert_creative_ok_for_ad(company, kind, payload)
+    validate_manual_payload(kind, payload)
     payload = dict(payload or {})
     _merge_warnings(payload, edit_warnings(kind, payload))
     return EngineAction.objects.create(
@@ -352,6 +400,46 @@ def propose_pause_for_month(company, *, target_meta_id, target_type='campaign',
     return propose_action(
         company, kind=KIND_PAUSE_FOR_MONTH, reason_fr=reason_fr,
         payload={'target_type': target_type, 'target_meta_id': target_meta_id})
+
+
+# ── PUB22 — Dispatch de proposition CURÉE (kinds qui exigent une résolution /
+# validation backend et ne peuvent donc PAS être proposés par POST brut) ─────────
+def _resolve_adset(company, meta_id):
+    """Ad set miroir de la société par son ``meta_id`` (jamais cross-société).
+    Lève ``ActionPayloadInvalid`` (→ 400) si introuvable."""
+    from .models import AdSetMirror
+    if not meta_id or not str(meta_id).strip():
+        raise ActionPayloadInvalid("Champ requis manquant : l'id de l'ad set.")
+    adset = AdSetMirror.objects.filter(
+        company=company, meta_id=str(meta_id).strip()).first()
+    if adset is None:
+        raise ActionPayloadInvalid(
+            "Ad set introuvable pour cette société.")
+    return adset
+
+
+def propose_manual_curated(company, *, kind, params, reason_fr=None):
+    """PUB22 — Route une proposition d'action CURÉE (``duplicate`` /
+    ``set_schedule`` / ``create_ad_study``) vers son producteur dédié — lequel
+    passe TOUJOURS par ``propose_action`` (naissance PAUSED intacte, aucune
+    activation). Company-scopé : les objets référencés sont bornés à la société.
+    Un producteur lève ``ValueError`` sur entrée invalide (→ 400)."""
+    params = params or {}
+    if kind == KIND_DUPLICATE:
+        adset = _resolve_adset(company, params.get('adset_id'))
+        return propose_duplicate(
+            company, adset=adset,
+            name_suffix=(params.get('name_suffix') or ' (copie)'),
+            reason_fr=reason_fr)
+    if kind == KIND_SET_SCHEDULE:
+        return propose_native_schedule(
+            company, adset_id=(params.get('adset_id') or ''),
+            grid=params.get('grid'), reason_fr=reason_fr)
+    if kind == KIND_CREATE_AD_STUDY:
+        return propose_ad_study(
+            company, name=(params.get('name') or ''),
+            cells=params.get('cells'), reason_fr=reason_fr)
+    raise ActionPayloadInvalid(f"Kind curé inconnu : {kind}.")
 
 
 # ── ADSDEEP49-52 — Posts ORGANIQUES de Page (propose→approuve→applique) ───────

@@ -4,6 +4,7 @@ import adsengineApi from './adsengineApi'
 import { formatMAD, formatNumber, formatRatio, sortCockpitRows } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import AdCreativePanel from './AdCreativePanel'
+import ManualActionMenu from './ManualActionMenu'
 
 /* ============================================================================
    ADSDEEP22 — Cockpit par ad (écran-console QUOTIDIEN du fondateur).
@@ -207,6 +208,11 @@ export default function AdsCockpitScreen() {
               image_hash: openRow.thumbnail_kind === 'image' ? openRow.thumbnail_ref : '',
             }}
           />
+          {/* PUB22 — proposer une action manuelle sur CETTE ad (pause/renommer…),
+              chaque soumission passe par la boîte d'approbation. */}
+          <ManualActionMenu
+            target={{ metaId: openRow.meta_id, scope: 'ad', name: openRow.nom }}
+            onProposed={load} />
         </section>
       )}
     </div>

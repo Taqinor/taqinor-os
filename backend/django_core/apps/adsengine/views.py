@@ -1040,7 +1040,9 @@ class EngineActionViewSet(AdsengineViewSet):
         en ``ValidationError`` (400), jamais une 500."""
         from rest_framework import serializers as drf_serializers
 
-        from .services import CreativePolicyNotPassed, assert_creative_ok_for_ad
+        from .services import (
+            ActionPayloadInvalid, CreativePolicyNotPassed,
+            assert_creative_ok_for_ad, validate_manual_payload)
         company = self.request.user.company
         kind = serializer.validated_data.get('kind')
         payload = serializer.validated_data.get('payload') or {}
@@ -1049,6 +1051,14 @@ class EngineActionViewSet(AdsengineViewSet):
         except CreativePolicyNotPassed as exc:
             raise drf_serializers.ValidationError(
                 {'creative_asset_id': str(exc)})
+        # PUB22 — validation de payload par kind pour les kinds atteignables par
+        # POST brut sans producteur curé (create_ad / set_spend_cap / rename) :
+        # un POST direct ne passe pas par ``propose_action``, on ré-enclenche donc
+        # ICI le même contrôle avant ``save`` (jamais une action inapplicable).
+        try:
+            validate_manual_payload(kind, payload)
+        except ActionPayloadInvalid as exc:
+            raise drf_serializers.ValidationError({'payload': str(exc)})
         super().perform_create(serializer)
 
     @action(detail=True, methods=['post'])
@@ -1087,6 +1097,36 @@ class EngineActionViewSet(AdsengineViewSet):
         except Exception as exc:  # échec Meta → action déjà passée « echouee »
             return Response({'detail': str(exc)}, status=502)
         return Response(self.get_serializer(instance).data)
+
+
+class ProposeCuratedActionView(APIView):
+    """PUB22 — Propose une action CURÉE (``duplicate`` / ``set_schedule`` /
+    ``create_ad_study``) via son producteur backend (résolution + validation),
+    toujours à travers ``propose_action``. Ces kinds ne peuvent PAS être proposés
+    par POST brut (ils exigent une résolution DB, ex. le créatif LIVE d'une
+    duplication) — d'où cet endpoint dédié.
+
+    ``POST /api/django/adsengine/actions/proposer/<kind>/`` avec le corps propre
+    au kind (ex. ``{adset_id, name_suffix?, reason_fr?}`` pour ``duplicate``).
+    Company-scopé, gaté ``adsengine_manage``. Naissance PAUSED intacte (aucune
+    activation). Une entrée invalide → 400, jamais une 500."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, kind):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from .services import propose_manual_curated
+        body = request.data or {}
+        reason_fr = body.get('reason_fr')
+        params = {k: v for k, v in body.items() if k != 'reason_fr'}
+        try:
+            action = propose_manual_curated(
+                company, kind=kind, params=params, reason_fr=reason_fr)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
 
 
 # ── ADSENG33 — Drill-downs de reporting (dd-attribution part d) ───────────────

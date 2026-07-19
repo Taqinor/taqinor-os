@@ -88,6 +88,12 @@ const adsengineApi = {
     // @action backend EN : approve / reject (ADSENGINT1).
     approve: (id) => api.post(`/adsengine/actions/${id}/approve/`),
     reject: (id, payload) => api.post(`/adsengine/actions/${id}/reject/`, payload),
+    // PUB22 — proposition d'action CURÉE (duplicate/set_schedule/create_ad_study)
+    // via le producteur backend (résolution + validation) ; les kinds simples
+    // passent par `create` ({kind, reason_fr, payload}). Tout finit en
+    // propose_action (naissance PAUSED intacte, jamais un write Meta direct).
+    proposeCurated: (kind, body) =>
+      api.post(`/adsengine/actions/proposer/${kind}/`, body),
   },
 
   // ── ENG11/ENG26 — Brief hebdomadaire ──

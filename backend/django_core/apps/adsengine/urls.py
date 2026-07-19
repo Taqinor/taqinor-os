@@ -32,7 +32,7 @@ from .views import (
     MetaConnectionHealthView,
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
     MetricsDashboardView,
-    MetricsLeadsView, MetricsPacingView, RealLeadsView,
+    MetricsLeadsView, MetricsPacingView, ProposeCuratedActionView, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SignalCohortView, SignalsView, SimulationDetailView,
     SimulationListView, StatusView,
@@ -194,6 +194,11 @@ urlpatterns = [
     path('instagram/medias/<str:media_meta_id>/commentaires-actif/',
          InstagramMediaToggleCommentsView.as_view(),
          name='adsengine-ig-media-toggle-comments'),
+    # PUB22 — proposition d'action CURÉE (duplicate/set_schedule/create_ad_study)
+    # via son producteur backend (toujours à travers propose_action). Placé AVANT
+    # le routeur pour que « actions/proposer/<kind>/ » gagne sur « actions/<pk>/ ».
+    path('actions/proposer/<str:kind>/', ProposeCuratedActionView.as_view(),
+         name='adsengine-propose-curated'),
     # SIG4 — console de signaux (deux scores de santé + quadrant de garde-fous
     # durs + drill-down par cohorte). Vues minces sur health.py / signal_guards.py
     # / cohorts.py — company-scopées, lecture ``adsengine_view``.
