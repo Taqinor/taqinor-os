@@ -452,3 +452,65 @@ def reconciliation_csv(company, *, day=None):
         for c in contract['campaigns']
     ]
     return _csv_string(header, rows)
+
+
+# ── PUB77 — Performance créative COMPARABLE PAR LANGUE (fr / darija / amazigh) ─
+#
+# Deux variantes FR/Darija du même hook étaient indistinguables : on splite la
+# performance des ``CreativeAsset`` par ``language``. La perf vient du champ
+# ``perf`` de l'asset (remontée d'insights : impressions/spend/résultats). Un
+# asset sans langue renseignée est compté À PART (``untagged_count``) — jamais
+# regroupé sous une langue fabriquée (règle checked-facts-only).
+
+def _perf_num(perf, *keys):
+    """Nombre (float) lu au mieux dans le dict ``perf`` (0.0 si absent)."""
+    for key in keys:
+        val = (perf or {}).get(key)
+        if val not in (None, ''):
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
+def language_leaderboard(company):
+    """PUB77 — Classement de la performance créative PAR LANGUE.
+
+    Groupe les ``CreativeAsset`` de la société par ``language`` (fr / ar-ma /
+    amazigh) et agrège leur perf (dépense / résultats / impressions). Renvoie
+    ``{classement: [...], untagged_count}`` — un asset sans langue est compté
+    séparément, jamais rangé sous une langue inventée. Le coût-par-résultat est
+    ``None`` sans résultat (jamais un 0 trompeur). Lecture seule, company-scopé."""
+    from .models import CreativeAsset
+
+    labels = dict(CreativeAsset.Language.choices)
+    groups = {}
+    untagged = 0
+    for asset in CreativeAsset.objects.filter(company=company):
+        lang = asset.language or ''
+        if not lang:
+            untagged += 1
+            continue
+        g = groups.setdefault(lang, {
+            'language': lang, 'language_label': labels.get(lang, lang),
+            'spend': Decimal('0'), 'results': 0, 'impressions': 0,
+            'asset_count': 0})
+        perf = asset.perf or {}
+        g['spend'] += Decimal(str(_perf_num(perf, 'spend', 'depense')))
+        g['results'] += int(_perf_num(perf, 'results', 'resultats'))
+        g['impressions'] += int(_perf_num(perf, 'impressions'))
+        g['asset_count'] += 1
+
+    classement = []
+    for lang, g in groups.items():
+        cost_per_result = (
+            _q2(g['spend'] / g['results']) if g['results'] else None)
+        classement.append({
+            'language': lang, 'language_label': g['language_label'],
+            'spend': str(g['spend']), 'results': g['results'],
+            'impressions': g['impressions'], 'asset_count': g['asset_count'],
+            'cost_per_result': cost_per_result,
+        })
+    classement.sort(key=lambda r: Decimal(r['spend']), reverse=True)
+    return {'classement': classement, 'untagged_count': untagged}

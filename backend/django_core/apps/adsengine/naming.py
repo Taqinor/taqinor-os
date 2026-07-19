@@ -25,14 +25,40 @@ from __future__ import annotations
 
 import posixpath
 
-# ── Vocabulaire de champs connus (seuls hook/angle/format sont MATÉRIALISÉS en
-# tags ; ``date`` sert de repère positionnel dans la convention sans devenir un
-# tag stocké — pas de champ modèle pour lui, hors périmètre ADSDEEP46). ───────
-KNOWN_FIELDS = ('date', 'format', 'hook', 'angle')
+# ── Vocabulaire de champs connus (hook/angle/format sont MATÉRIALISÉS en tags ;
+# ``date`` sert de repère positionnel sans tag stocké ; PUB77 : ``language``
+# devient une dimension positionnelle reconnue — normalisée en fr/ar-ma/amazigh,
+# posée sur ``CreativeAsset.language`` par l'appelant, jamais un tag libre). ───
+KNOWN_FIELDS = ('date', 'format', 'hook', 'angle', 'language')
 TAG_FIELDS = ('hook', 'angle', 'format')
 
 DEFAULT_DELIMITER = '_'
 DEFAULT_CONVENTION = 'DATE_FORMAT_HOOK_ANGLE'
+
+# PUB77 — Alias de langue → clé canonique (``CreativeAsset.Language``). Un
+# segment inconnu → '' (langue non renseignée, jamais une valeur fabriquée).
+LANGUAGE_ALIASES = {
+    'fr': 'fr', 'french': 'fr', 'francais': 'fr', 'français': 'fr',
+    'ar': 'ar-ma', 'ar-ma': 'ar-ma', 'arma': 'ar-ma', 'darija': 'ar-ma',
+    'ary': 'ar-ma', 'arabe': 'ar-ma',
+    'amazigh': 'amazigh', 'tz': 'amazigh', 'ber': 'amazigh',
+    'tamazight': 'amazigh',
+}
+
+
+def normalize_language(segment):
+    """PUB77 — Normalise un segment de langue en clé canonique fr/ar-ma/amazigh.
+    Un segment vide/None/inconnu → '' (jamais une langue fabriquée)."""
+    key = str(segment or '').strip().lower()
+    return LANGUAGE_ALIASES.get(key, '')
+
+
+def language_from_name(name, *, convention=DEFAULT_CONVENTION,
+                       delimiter=DEFAULT_DELIMITER):
+    """PUB77 — Langue canonique extraite d'un nom selon ``convention`` (nécessite
+    un segment ``LANGUAGE`` dans la convention), ou '' si absente/inconnue."""
+    parsed = parse_name(name, convention=convention, delimiter=delimiter)
+    return normalize_language(parsed.get('language'))
 
 
 def parse_convention(convention, *, delimiter=DEFAULT_DELIMITER):

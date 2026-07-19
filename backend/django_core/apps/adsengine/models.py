@@ -928,6 +928,19 @@ class CreativeAsset(TenantModel):
     format_tag = models.CharField(
         max_length=64, blank=True, default='', verbose_name='Tag format')
 
+    # ── PUB77 — Langue de la créa (fr / darija / amazigh) ────────────────────
+    # Deux variantes FR/Darija du même hook étaient indistinguables : ce champ
+    # rend la performance comparable PAR LANGUE au reporting (leaderboard splité).
+    # Vide = langue non renseignée (jamais un défaut fabriqué).
+    class Language(models.TextChoices):
+        FR = 'fr', 'Français'
+        DARIJA = 'ar-ma', 'Darija (arabe marocain)'
+        AMAZIGH = 'amazigh', 'Amazigh'
+
+    language = models.CharField(
+        max_length=10, choices=Language.choices, blank=True, default='',
+        verbose_name='Langue')
+
     # ── PUB75 — Consentement image/témoignage (CNDP loi 09-08) ───────────────
     # ``depicts_real_client`` marque un asset qui montre un VRAI client / chantier
     # / visage / nom réel : la passe policy exige alors un ``ConsentRecord`` ACTIF
