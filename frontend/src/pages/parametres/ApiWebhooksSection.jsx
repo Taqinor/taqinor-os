@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import {
   KeyRound, Webhook as WebhookIcon, Plus, Trash2, Copy, Check, Ban, BookOpen,
-  RotateCw, History, Send, Play,
+  RotateCw, History, Send, Play, Sparkles,
 } from 'lucide-react'
 import publicapiApi from '../../api/publicapiApi'
 import {
@@ -49,6 +49,80 @@ function RevealOnce({ label, value, onDismiss }) {
 // FG105 — Référence de l'API publique (endpoints, auth, scopes, évènements,
 // recette HMAC). Chargée à la demande depuis /publicapi/docs/ (page statique
 // servie par le backend, sans dépendance d'auto-génération).
+// WIR158 — Onglet « Nouveautés » : consomme le changelog public
+// (`publicapiApi.getChangelog`, PublicChangelogView/AllowAny, réutilise
+// core.ChangelogEntry) pour afficher les dernières notes de version dans l'ERP.
+const _CHANGELOG_TYPE = {
+  feature: { label: 'Nouveauté', tone: 'success' },
+  fix: { label: 'Correctif', tone: 'info' },
+  breaking: { label: 'Changement majeur', tone: 'destructive' },
+}
+
+function ChangelogFeed() {
+  const [entries, setEntries] = useState(null) // null = en cours
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    publicapiApi.getChangelog()
+      .then((r) => { if (alive) setEntries(r.data?.results ?? []) })
+      .catch(() => { if (alive) setError(true) })
+    return () => { alive = false }
+  }, [])
+
+  return (
+    <Card>
+      <CardContent className="pt-4 sm:pt-5">
+        <SectionTitle icon={<Sparkles className="size-4" />} label="Nouveautés" />
+        <p className="mb-3 text-sm text-muted-foreground">
+          Dernières notes de version publiées (changelog API public).
+        </p>
+        {error && (
+          <p className="text-sm text-destructive">
+            Changelog indisponible pour le moment.
+          </p>
+        )}
+        {!error && entries === null && (
+          <p className="text-sm text-muted-foreground">
+            <Spinner /> Chargement des nouveautés…
+          </p>
+        )}
+        {!error && entries !== null && entries.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Aucune note de version publiée pour le moment.
+          </p>
+        )}
+        {!error && entries !== null && entries.length > 0 && (
+          <ul className="space-y-3">
+            {entries.slice(0, 10).map((e) => {
+              const meta = _CHANGELOG_TYPE[e.type] ?? _CHANGELOG_TYPE.feature
+              return (
+                <li key={e.id} className="border-b border-border/60 pb-2 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <Badge tone={meta.tone}>{meta.label}</Badge>
+                    <span className="font-medium">{e.titre}</span>
+                    {e.version && (
+                      <span className="text-xs text-muted-foreground">v{e.version}</span>
+                    )}
+                    {e.date && (
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {formatDateTime(e.date)}
+                      </span>
+                    )}
+                  </div>
+                  {e.corps && (
+                    <p className="mt-1 text-sm text-muted-foreground">{e.corps}</p>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function DocsReference() {
   const [open, setOpen] = useState(false)
   const [doc, setDoc] = useState(null)
@@ -640,6 +714,9 @@ export default function ApiWebhooksSection() {
 
       {/* ── Console de docs interactive (NTAPI21) ── */}
       <InteractiveConsole />
+
+      {/* ── Nouveautés / changelog public (WIR158) ── */}
+      <ChangelogFeed />
 
       <ConfirmDialog
         open={!!pendingAction}
