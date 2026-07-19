@@ -1243,6 +1243,21 @@ class AdObjectionsView(APIView):
         return Response(mine_ad_objections(company))
 
 
+class VisualFatigueView(APIView):
+    """PUB74 — Fatigue au niveau du VISUEL (``visual_asset_key`` réutilisé sur
+    N créas malgré des hooks différents, + déclin CTR cross-ads). 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .metrics import visual_fatigue_report
+        return Response(visual_fatigue_report(company))
+
+
 class MetaConnectionStatusView(APIView):
     """ENG22 — Statut de connexion (GET) + enregistrement des identifiants
     (POST). Les identifiants sont **write-only** : un GET ne renvoie JAMAIS un

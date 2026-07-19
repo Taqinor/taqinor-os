@@ -698,3 +698,84 @@ def ads_cockpit_rows(company, *, as_of=None):
                 recent_agg.get(ad.pk), baseline_agg.get(ad.pk)),
         })
     return rows
+
+
+# ── PUB74 — Fatigue au niveau du VISUEL (visual_asset_key réutilisé) ─────────
+def visual_fatigue_report(company, *, min_reuse=3, min_distinct_hooks=2):
+    """PUB74 — Signal de lassitude au niveau du VISUEL (``visual_asset_key``),
+    absent de toute analytique jusqu'ici : regroupe les ``CreativeAsset`` de
+    la société par ``visual_asset_key`` (jamais vide) et matérialise, pour
+    chaque visuel réutilisé sur ``>= min_reuse`` créas avec
+    ``>= min_distinct_hooks`` accroches distinctes (ADSDEEP46 ``hook_tag``,
+    replié sur ``hook_id`` si absent), le déclin de CTR CROSS-ADS : ad la plus
+    ANCIENNE ayant diffusé ce visuel vs la plus RÉCENTE (ordre
+    ``AdMirror.created_at``), sur tout l'historique ``InsightSnapshot``
+    disponible. Réutilise le détecteur PUR ``anomaly.detect_visual_reuse_fatigue``
+    (aucun seuil recalculé ici). Company-scopé. Renvoie ::
+
+        {'signals': [{'visual_asset_key', 'creas_count', 'distinct_hooks',
+                      'ad_meta_ids', 'severity', 'message_fr',
+                      'ctr_decline_pct'}, ...]}   # triés, + réutilisé d'abord
+    """
+    from .anomaly import detect_visual_reuse_fatigue
+    from .models import AdMirror, CreativeAsset, ExperimentArm
+
+    assets = (CreativeAsset.objects
+              .filter(company=company)
+              .exclude(visual_asset_key='')
+              .only('id', 'visual_asset_key', 'hook_id', 'hook_tag'))
+    groups = {}
+    for a in assets:
+        g = groups.setdefault(
+            a.visual_asset_key, {'asset_ids': [], 'hooks': set()})
+        g['asset_ids'].append(a.id)
+        hook = a.hook_tag or a.hook_id or ''
+        if hook:
+            g['hooks'].add(hook)
+
+    signals = []
+    for visual_key, g in groups.items():
+        asset_ids = g['asset_ids']
+        arm_ad_ids = list(
+            ExperimentArm.objects
+            .filter(company=company, creative_asset_id__in=asset_ids)
+            .exclude(ad_id='')
+            .values_list('ad_id', flat=True).distinct())
+        ordered_ads = list(
+            AdMirror.objects.filter(company=company, meta_id__in=arm_ad_ids)
+            .order_by('created_at'))
+        ad_meta_ids = [ad.meta_id for ad in ordered_ads]
+
+        ctr_decline = None
+        if len(ordered_ads) >= 2:
+            aggs = _ad_window_aggregates(
+                company, [ad.pk for ad in ordered_ads])
+
+            def _ctr(pk):
+                row = aggs.get(pk) or {}
+                impr = row.get('impressions') or 0
+                clicks = row.get('clicks') or 0
+                return (clicks / impr) if impr else None
+
+            first_ctr = _ctr(ordered_ads[0].pk)
+            last_ctr = _ctr(ordered_ads[-1].pk)
+            if first_ctr and last_ctr is not None and first_ctr > 0:
+                ctr_decline = (first_ctr - last_ctr) / first_ctr
+
+        detection = detect_visual_reuse_fatigue(
+            len(asset_ids), len(g['hooks']),
+            min_reuse=min_reuse, min_distinct_hooks=min_distinct_hooks,
+            ctr_decline_pct=ctr_decline)
+        if not detection.fired:
+            continue
+        signals.append({
+            'visual_asset_key': visual_key,
+            'creas_count': len(asset_ids),
+            'distinct_hooks': len(g['hooks']),
+            'ad_meta_ids': ad_meta_ids,
+            'severity': detection.severity,
+            'message_fr': detection.message_fr,
+            'ctr_decline_pct': detection.computed.get('ctr_decline_pct'),
+        })
+    signals.sort(key=lambda s: s['creas_count'], reverse=True)
+    return {'signals': signals}

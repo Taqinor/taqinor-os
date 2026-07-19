@@ -37,7 +37,7 @@ from .views import (
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
-    VariantReportView, WiringHealthView,
+    VariantReportView, VisualFatigueView, WiringHealthView,
 )
 from .whatsapp_webhook import WhatsAppCloudWebhookView
 
@@ -148,6 +148,9 @@ urlpatterns = [
     # PUB72 — top objections CRM par variante d'annonce + angles suggérés.
     path('reporting/creatifs/objections/', AdObjectionsView.as_view(),
          name='adsengine-reporting-creatifs-objections'),
+    # PUB74 — fatigue au niveau du VISUEL (visual_asset_key réutilisé).
+    path('reporting/creatifs/fatigue-visuelle/', VisualFatigueView.as_view(),
+         name='adsengine-reporting-creatifs-fatigue-visuelle'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
