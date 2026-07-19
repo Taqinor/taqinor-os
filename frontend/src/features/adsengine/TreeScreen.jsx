@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import adsengineApi from './adsengineApi'
-import { formatRatio } from './adsengine'
+import { formatRatio, formatPercent } from './adsengine'
 
 /* ============================================================================
    ASG6 — Écran « L'Arbre » : la vue plan-vivant.
@@ -54,6 +54,7 @@ function normalizeNodes(raw) {
   const list = Array.isArray(raw) ? raw : (raw?.results || raw?.noeuds || [])
   return (list || []).filter(Boolean).map((n, i) => {
     const statut = n.statut || n.status || 'assumed'
+    const numOrNull = (v) => (Number.isFinite(Number(v)) ? Number(v) : null)
     return {
       id: n.id ?? i,
       enonce_fr: n.enonce_fr || n.enonce || n.statement_fr || `Nœud ${i + 1}`,
@@ -63,8 +64,37 @@ function normalizeNodes(raw) {
       statut_display: n.statut_display || STATUT_LABELS[statut] || statut || '—',
       fraicheur_jours: Number.isFinite(Number(n.fraicheur_jours ?? n.staleness_days))
         ? Number(n.fraicheur_jours ?? n.staleness_days) : null,
+      // PUB11 — base statistique du rang VoI (Beta-Bernoulli conjugate) :
+      // alpha/beta = compteurs POSTÉRIEURS (prior + observations), alpha0/
+      // beta0 = le PRIOR de la classe. Toutes déjà sérialisées, jamais
+      // recalculées ici hormis un affichage FR (voir `beliefSummary`).
+      alpha: numOrNull(n.alpha),
+      beta: numOrNull(n.beta),
+      alpha0: numOrNull(n.alpha0),
+      beta0: numOrNull(n.beta0),
+      enjeux_s: numOrNull(n.enjeux_s),
+      pertinence_r: numOrNull(n.pertinence_r),
+      tags_saison: Array.isArray(n.tags_saison) ? n.tags_saison : [],
+      demi_vie_semaines: numOrNull(n.demi_vie_semaines),
     }
   })
+}
+
+// PUB11 — traduit alpha/beta/alpha0/beta0 (déjà sérialisés) en phrase FR
+// lisible « sûrs à ~72 %, sur N obs ». C'est un simple affichage du modèle
+// Beta-Bernoulli EXPOSÉ par l'API (moyenne postérieure + nombre
+// d'observations = alpha+beta − prior) — pas un score recalculé (VoI/
+// fraîcheur restent 100 % backend, doctrine de l'écran, cf. en-tête).
+// `null` si les compteurs ne sont pas exploitables (jamais un pourcentage
+// fabriqué).
+export function beliefSummary(node) {
+  const { alpha, beta, alpha0, beta0 } = node || {}
+  if (alpha == null || beta == null || (alpha + beta) <= 0) return null
+  const pct = Math.round((alpha / (alpha + beta)) * 100)
+  const priorAlpha = alpha0 ?? 0
+  const priorBeta = beta0 ?? 0
+  const nObs = Math.max(0, Math.round((alpha - priorAlpha) + (beta - priorBeta)))
+  return { pct, nObs, texte: `sûrs à ~${pct} %, sur ${nObs} obs` }
 }
 
 // File VoI (ASG3) — on affiche le RANG et le score déjà calculés par le
@@ -196,6 +226,7 @@ export default function TreeScreen() {
                     {g.items.map(n => {
                       const tone = statutTone(n.statut)
                       const open = openNodeId === n.id
+                      const belief = beliefSummary(n)
                       return (
                         <div key={n.id} className="card ae-tree-node" data-testid="ae-tree-node">
                           <button type="button" onClick={() => openNode(n.id)}
@@ -217,6 +248,44 @@ export default function TreeScreen() {
                               {n.statut_display}
                             </span>
                           </button>
+
+                          {/* PUB11 — carte de croyance en français simple : la base
+                              statistique du rang VoI (alpha/beta/alpha0/beta0),
+                              enjeux (S) / pertinence-décision (R), tags saison et
+                              demi-vie — sérialisés mais invisibles avant cette
+                              tâche. Pas de delta hebdo : l'API n'expose aucun
+                              champ de ce type (jamais un chiffre fabriqué). */}
+                          <div data-testid={`ae-tree-node-belief-${n.id}`}
+                            style={{ padding: '0.5rem 0.75rem 0', display: 'flex',
+                              flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem',
+                              fontSize: '0.85rem', color: '#334155' }}>
+                            {belief && (
+                              <span data-testid={`ae-tree-node-belief-text-${n.id}`}>
+                                {belief.texte}
+                              </span>
+                            )}
+                            {n.enjeux_s != null && (
+                              <span className="badge" style={{ background: '#eef2ff', color: '#3730a3' }}>
+                                Enjeux {formatPercent(n.enjeux_s, 0)}
+                              </span>
+                            )}
+                            {n.pertinence_r != null && (
+                              <span className="badge" style={{ background: '#ecfdf5', color: '#065f46' }}>
+                                Pertinence {formatPercent(n.pertinence_r, 0)}
+                              </span>
+                            )}
+                            {n.demi_vie_semaines != null && (
+                              <span className="badge" style={{ background: '#f1f5f9', color: '#475569' }}>
+                                Demi-vie {n.demi_vie_semaines} sem.
+                              </span>
+                            )}
+                            {n.tags_saison.map(tag => (
+                              <span key={tag} className="badge" data-testid="ae-tree-node-tag-saison"
+                                style={{ background: '#fff7ed', color: '#9a3412' }}>
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
 
                           {/* Drill 1 — historique des tests de ce nœud */}
                           {open && (
