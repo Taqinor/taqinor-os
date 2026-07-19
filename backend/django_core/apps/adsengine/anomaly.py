@@ -50,12 +50,24 @@ KIND_OTHER = 'autre'
 KIND_CREATIVE_FATIGUE = 'creative_fatigue'
 # PUB33 — vélocité d'apprentissage (volume d'événements d'optimisation/7 j).
 KIND_LEARNING_VELOCITY = 'apprentissage_lent'
+# PUB34 — santé structurelle (doctrine Andromeda : fragmentation ad sets/créas).
+KIND_STRUCTURAL_FRAGMENTATION = 'fragmentation_structurelle'
 
 # PUB33 — Meta cible ~50 événements d'optimisation (résultats de la campagne
 # d'optimisation) par ad set sur une fenêtre glissante de 7 jours pour sortir
 # proprement de la phase d'apprentissage ; en dessous, l'ad set reste affamé de
 # signal (CPA instable, apprentissage qui ne se stabilise jamais).
 DEFAULT_LEARNING_EVENTS_PER_WEEK = 50
+
+# PUB34 — doctrine Andromeda 2025/2026 (le ranking Meta lit désormais le
+# créatif) : 2-3 ad sets actifs par campagne, 15-25 créations diverses par ad
+# set restant. Au-delà du max d'ad sets → fragmentation du budget/signal ; en
+# dessous du min de créas → l'algorithme de sélection créative manque de
+# variété pour bien apprendre.
+IDEAL_ACTIVE_ADSETS_MIN = 2
+IDEAL_ACTIVE_ADSETS_MAX = 3
+IDEAL_CREATIVES_MIN = 15
+IDEAL_CREATIVES_MAX = 25
 
 
 @dataclass(frozen=True)
@@ -403,6 +415,67 @@ def detect_learning_velocity(daily_optimization_events, *,
                      KIND_LEARNING_VELOCITY, '', computed)
 
 
+# ── PUB34 — Santé structurelle (doctrine Andromeda 2025/2026) ────────────────
+def detect_structural_fragmentation(active_adset_count, creatives_per_adset=None,
+                                    *, ideal_adsets_max=IDEAL_ACTIVE_ADSETS_MAX,
+                                    ideal_creatives_min=IDEAL_CREATIVES_MIN):
+    """Doctrine Andromeda (le ranking Meta lit désormais le créatif) : 2-3 ad
+    sets actifs par campagne, 15-25 créations diverses par ad set. Beaucoup de
+    petits ad sets AFFAME l'algorithme (chaque ad set trop petit, signal
+    dispersé) ; peu de créations par ad set prive le sélecteur créatif de
+    variété pour apprendre.
+
+    ``active_adset_count`` = nb d'ad sets ACTIFS de la campagne, déjà
+    synchronisé (``None`` ⇒ aucune donnée d'ad set encore synchronisée pour
+    cette campagne → ``insufficient_data``, jamais un skip muet).
+    ``creatives_per_adset`` = liste du nb de créas (ads) de chacun de ces ad
+    sets actifs (ordre indifférent). Fonction PURE, aucun I/O ; le câblage DB
+    vit dans ``evaluate_structural_fragmentation`` ci-dessous.
+
+    Renvoie une RECOMMANDATION de consolidation seulement — **jamais une
+    action automatique** : la décision de fusionner des ad sets reste
+    humaine (règle du moteur : propose→approve→apply, jamais d'écriture
+    directe depuis un détecteur)."""
+    if active_adset_count is None:
+        return _insufficient(
+            'structural_fragmentation', KIND_STRUCTURAL_FRAGMENTATION,
+            "Santé structurelle : nombre d'ad sets actifs inconnu (aucune "
+            "synchro) — vérification impossible.")
+    creatives = [c for c in (creatives_per_adset or []) if c is not None]
+    starved = [c for c in creatives if c < ideal_creatives_min]
+    too_many_adsets = active_adset_count > ideal_adsets_max
+    computed = {
+        'active_adsets': active_adset_count, 'ideal_adsets_max': ideal_adsets_max,
+        'creatives_per_adset': creatives,
+        'ideal_creatives_min': ideal_creatives_min,
+        'starved_adsets': len(starved),
+    }
+    if not too_many_adsets and not starved:
+        return Detection('structural_fragmentation', False, False,
+                         SEVERITY_WARNING, KIND_STRUCTURAL_FRAGMENTATION, '',
+                         computed)
+    bits = []
+    if too_many_adsets:
+        bits.append(
+            f"{active_adset_count} ad sets actifs (doctrine "
+            f"{IDEAL_ACTIVE_ADSETS_MIN}-{ideal_adsets_max}) — fragmentation "
+            "probable du budget/signal.")
+    if starved:
+        bits.append(
+            f"{len(starved)} ad set(s) avec moins de {ideal_creatives_min} "
+            "créations diverses — l'algorithme de sélection créative manque "
+            "de variété pour bien apprendre.")
+    message = (
+        "Structure sous-optimale (doctrine Andromeda — le ranking Meta lit "
+        "désormais le créatif) : " + ' '.join(bits) + " Plan de consolidation "
+        f"suggéré : regrouper en {IDEAL_ACTIVE_ADSETS_MIN}-{ideal_adsets_max} "
+        f"ad sets, chacun avec {ideal_creatives_min}-{IDEAL_CREATIVES_MAX} "
+        "créations diversifiées. Recommandation seulement — AUCUNE action "
+        "automatique, décision humaine requise.")
+    return Detection('structural_fragmentation', True, False, SEVERITY_WARNING,
+                     KIND_STRUCTURAL_FRAGMENTATION, message, computed)
+
+
 # ── Matérialisation (câblage DB — le seul point non pur du module) ────────────
 def record_anomaly(company, detection, *, entity_type='', entity_meta_id='',
                    rule_policy=None, alert=None):
@@ -418,9 +491,9 @@ def record_anomaly(company, detection, *, entity_type='', entity_meta_id='',
         rule_policy=rule_policy, alert=alert)
 
 
-# ── PUB33 — Matérialisation directe en ``EngineAlert`` (recommandation) ──────
-# Ce détecteur parle au fondateur directement (centre d'alertes), pas au
-# journal d'anomalies techniques ``AnomalyEvent`` — même patron que
+# ── PUB33/PUB34 — Matérialisation directe en ``EngineAlert`` (recommandation) ─
+# Ces deux détecteurs parlent au fondateur directement (centre d'alertes),
+# pas au journal d'anomalies techniques ``AnomalyEvent`` — même patron que
 # ``blast_radius._emit_critical_alert`` : dédup par ``entity_key`` sur un
 # cooldown (ne renotifie pas à chaque évaluation tant que rien n'a changé).
 # JAMAIS d'``EngineAction`` créée ici — une alerte est une RECOMMANDATION,
@@ -486,4 +559,36 @@ def evaluate_learning_velocity(company, adset, *, now=None,
         _emit_alert(
             company, detection,
             entity_key=f'learning_velocity:adset:{adset.meta_id}'[:80])
+    return detection
+
+
+def evaluate_structural_fragmentation(company, campaign, *, now=None,
+                                      ideal_adsets_max=IDEAL_ACTIVE_ADSETS_MAX,
+                                      ideal_creatives_min=IDEAL_CREATIVES_MIN):
+    """PUB34 — Lit les miroirs DÉJÀ SYNCHRONISÉS (``AdSetMirror``/``AdMirror``)
+    de la campagne : nb d'ad sets ACTIFS + nb de créas (ads) de chacun. Calcule
+    ``detect_structural_fragmentation`` et matérialise une ``EngineAlert`` FR
+    si déclenché (dédupliquée par campagne). Aucune ad set totalement
+    non-synchronisée pour cette campagne ⇒ ``None`` transmis au détecteur
+    (``insufficient_data`` honnête, jamais un ``0`` fabriqué)."""
+    from .models import AdSetMirror
+
+    adsets = list(
+        AdSetMirror.objects.filter(company=company, campaign=campaign))
+    if not adsets:
+        detection = detect_structural_fragmentation(
+            None, [], ideal_adsets_max=ideal_adsets_max,
+            ideal_creatives_min=ideal_creatives_min)
+    else:
+        active = [a for a in adsets
+                  if (a.status or '').strip().upper() in ('ACTIVE', 'ACTIF')]
+        creatives_per_adset = [a.ads.count() for a in active]
+        detection = detect_structural_fragmentation(
+            len(active), creatives_per_adset, ideal_adsets_max=ideal_adsets_max,
+            ideal_creatives_min=ideal_creatives_min)
+    if detection.fired:
+        _emit_alert(
+            company, detection,
+            entity_key=(
+                f'structural_fragmentation:campaign:{campaign.meta_id}'[:80]))
     return detection
