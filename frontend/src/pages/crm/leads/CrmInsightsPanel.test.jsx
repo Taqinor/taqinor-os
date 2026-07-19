@@ -1,8 +1,22 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { configureStore } from '@reduxjs/toolkit'
+import { Provider } from 'react-redux'
 
 /* WR9 — panneau consultatif du pipeline : atteinte des objectifs (FG39),
-   ROI par source (FG34), retards SLA de premier contact (FG28). crmApi mocké. */
+   ROI par source (FG34), retards SLA de premier contact (FG28). crmApi mocké.
+   LB30 — cache session TTL 60s invalidé par company : le panneau lit
+   `state.auth.user.active_company_id` (useSelector) — un Provider minimal
+   suffit (même motif que ContextRail.test.jsx/LeadForm.test.jsx). */
+
+function makeStore(companyId = 1) {
+  return configureStore({
+    reducer: { auth: (state = { user: { id: 1, active_company_id: companyId } }) => state },
+  })
+}
+function renderWithStore(ui, companyId = 1) {
+  return render(<Provider store={makeStore(companyId)}>{ui}</Provider>)
+}
 
 vi.mock('../../../api/crmApi', () => ({
   default: {
@@ -35,13 +49,14 @@ vi.mock('../../../api/crmApi', () => ({
 }))
 
 import crmApi from '../../../api/crmApi'
-import CrmInsightsPanel from './CrmInsightsPanel'
+import CrmInsightsPanel, { resetInsightsCache } from './CrmInsightsPanel'
 
+beforeEach(() => { resetInsightsCache() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('CrmInsightsPanel (WR9 — FG39/FG34/FG28)', () => {
   it('rend les trois surfaces avec les données serveur', async () => {
-    render(<CrmInsightsPanel />)
+    renderWithStore(<CrmInsightsPanel />)
     expect(screen.getByTestId('crm-insights')).toBeInTheDocument()
 
     // FG39 — objectif avec taux et période.
@@ -67,9 +82,37 @@ describe('CrmInsightsPanel (WR9 — FG39/FG34/FG28)', () => {
     crmApi.getObjectifsAttainment.mockRejectedValueOnce(new Error('x'))
     crmApi.getRoiSources.mockRejectedValueOnce(new Error('x'))
     crmApi.getSlaBreach.mockRejectedValueOnce(new Error('x'))
-    render(<CrmInsightsPanel />)
+    renderWithStore(<CrmInsightsPanel />)
     await waitFor(() =>
       expect(screen.getAllByText('Données indisponibles — réessayez.').length)
         .toBeGreaterThanOrEqual(2))
+  })
+})
+
+describe('CrmInsightsPanel — LB30 cache session TTL 60s', () => {
+  it('un remontage (bascule graphique→kanban→graphique) dans le TTL ne refait AUCUN appel réseau', async () => {
+    const { unmount } = renderWithStore(<CrmInsightsPanel />)
+    await waitFor(() => expect(screen.getByText('Leads signés — sami')).toBeInTheDocument())
+    expect(crmApi.getObjectifsAttainment).toHaveBeenCalledTimes(1)
+    // ChartsView démonte entièrement quand la vue change (rendu conditionnel
+    // de LeadsPage) — on simule exactement ce remontage.
+    unmount()
+    renderWithStore(<CrmInsightsPanel />)
+    // Les données apparaissent IMMÉDIATEMENT (cache), sans attendre un fetch.
+    expect(screen.getByText('Leads signés — sami')).toBeInTheDocument()
+    expect(crmApi.getObjectifsAttainment).toHaveBeenCalledTimes(1)
+    expect(crmApi.getRoiSources).toHaveBeenCalledTimes(1)
+    expect(crmApi.getSlaBreach).toHaveBeenCalledTimes(1)
+  })
+
+  it('un changement de company invalide le cache — 3 nouveaux appels réseau', async () => {
+    const { unmount } = renderWithStore(<CrmInsightsPanel />, 1)
+    await waitFor(() => expect(screen.getByText('Leads signés — sami')).toBeInTheDocument())
+    expect(crmApi.getObjectifsAttainment).toHaveBeenCalledTimes(1)
+    unmount()
+    renderWithStore(<CrmInsightsPanel />, 2)
+    await waitFor(() => expect(crmApi.getObjectifsAttainment).toHaveBeenCalledTimes(2))
+    expect(crmApi.getRoiSources).toHaveBeenCalledTimes(2)
+    expect(crmApi.getSlaBreach).toHaveBeenCalledTimes(2)
   })
 })

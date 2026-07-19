@@ -25,6 +25,17 @@ function dateKey(raw) {
   return localKey(y, m, d)
 }
 
+// LB29 — une relance « en retard » (comparaison de chaînes locales, jamais
+// `new Date('YYYY-MM-DD')` qui serait interprété en UTC — même motif que
+// `isEnRetard` de LeadCard.jsx, dupliqué ici en pur car les deux fichiers ne
+// s'importent jamais entre eux, cf. règle des lanes file-disjointes).
+function isRelanceEnRetard(iso) {
+  if (!iso) return false
+  const t = new Date()
+  const aujourdhui = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+  return iso < aujourdhui
+}
+
 // Palette déterministe pour colorer par responsable (owner_nom).
 // VX26 — dérivée des tokens de marque (design/tokens.css --owner-color-*)
 // au lieu de hex locaux.
@@ -61,13 +72,18 @@ function LeadChip({ lead, onOpenLead, colorBy, kind = 'relance' }) {
   const dim = colorBy === 'owner' ? ownerLabel : stageLabel
   // Une visite prévue porte une icône distincte de la relance.
   const icon = kind === 'visite' ? '🔧' : ''
+  // LB29 — une relance en retard se souligne (destructive) : un lead perdu
+  // porte déjà son propre signal (pastille rouge) — pas de double marquage.
+  // Ne concerne QUE la relance (kind='visite' reste hors périmètre de cette
+  // tâche, le double-affichage relance+visite étant conservé tel quel).
+  const enRetard = !perdu && kind === 'relance' && isRelanceEnRetard(lead.relance_date)
   const titre = perdu
     ? `${name} — Perdu (${dim})`
-    : `${name} — ${kind === 'visite' ? 'Visite' : 'Relance'} · ${dim}`
+    : `${name} — ${kind === 'visite' ? 'Visite' : 'Relance'}${enRetard ? ' en retard' : ''} · ${dim}`
   return (
     <button
       type="button"
-      className={`cal-chip${perdu ? ' cal-chip-perdu' : ''}`}
+      className={`cal-chip${perdu ? ' cal-chip-perdu' : ''}${enRetard ? ' cal-chip-late' : ''}`}
       title={titre}
       onClick={() => onOpenLead(lead)}
     >

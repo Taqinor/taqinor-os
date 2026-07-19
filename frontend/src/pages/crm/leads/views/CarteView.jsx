@@ -10,27 +10,30 @@
  * Réutilise le composant MapView (N85 / src/components/MapView.jsx) qui pilote
  * Leaflet de façon impérative, sans react-leaflet.
  */
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Map } from 'lucide-react'
 import MapView, { escapeHtml } from '../../../../components/MapView'
 import { STAGE_COLORS, STAGE_LABELS } from '../../../../features/crm/stages'
 import { EmptyState } from '../../../../ui'
 
-// Couleur de l'épingle selon l'étape (fallback gris).
+// LB29 — Couleur de l'épingle selon l'étape (repli neutre tokenisé — recon-05
+// hex hunt : STAGE_COLORS renvoie déjà des `var(--stage-*)`, seul CE repli
+// pour une étape inconnue/absente restait un hex brut).
 function pinColor(stage) {
-  return STAGE_COLORS[stage] ?? '#94a3b8'
+  return STAGE_COLORS[stage] ?? 'var(--muted-foreground)'
 }
 
-// HTML du popup Leaflet (tous les champs sont échappés).
+// LB29 — HTML du popup Leaflet (tous les champs sont échappés) : re-basé sur
+// un token (`var(--muted-foreground)`) au lieu du hex `#6b7280` — le popup
+// est injecté en HTML brut dans le DOM du document (Leaflet, pas de shadow
+// DOM), donc une variable CSS custom property y cascade normalement.
 function buildPopupHtml(lead) {
   const stage = escapeHtml(STAGE_LABELS[lead.stage] ?? lead.stage ?? '—')
-  const tel = lead.telephone ? `<br><span style="color:#6b7280">${escapeHtml(lead.telephone)}</span>` : ''
-  return `<br><em style="font-size:0.85em;color:#6b7280">${stage}</em>${tel}`
+  const tel = lead.telephone ? `<br><span style="color:var(--muted-foreground)">${escapeHtml(lead.telephone)}</span>` : ''
+  return `<br><em style="font-size:0.85em;color:var(--muted-foreground)">${stage}</em>${tel}`
 }
 
 export default function CarteView({ leads = [], onOpenLead }) {
-  const [hoveredId, setHoveredId] = useState(null)
-
   // Séparer les leads avec et sans GPS.
   const { withGps, withoutGps } = useMemo(() => {
     const withGps = []
@@ -124,6 +127,15 @@ export default function CarteView({ leads = [], onOpenLead }) {
           <summary>
             {withoutGps.length} lead{withoutGps.length > 1 ? 's' : ''} sans GPS (non affiché{withoutGps.length > 1 ? 's' : ''})
           </summary>
+          {/* LB29 — recon-01 : `hoveredId` était posé ici (survol d'un lead
+              SANS GPS) mais ne pilotait plus rien qu'un `aria-current` sur
+              CE MÊME bouton (donc jamais visible ni utile — un lead sans GPS
+              n'a, par définition, aucune épingle à mettre en avant sur la
+              carte). Décision locale : supprimé plutôt que « réparé » — un
+              vrai câblage exigerait d'étendre `MapView` (composant partagé
+              hors du périmètre de cette lane, CartePage/ParcInstallePage en
+              dépendent aussi) pour une fonctionnalité qui, même câblée,
+              resterait sans effet visible sur cette liste précise. */}
           <ul>
             {withoutGps.map((lead) => (
               <li key={lead.id}>
@@ -131,9 +143,6 @@ export default function CarteView({ leads = [], onOpenLead }) {
                   type="button"
                   className="carte-no-gps-btn"
                   onClick={() => onOpenLead?.(lead)}
-                  onMouseEnter={() => setHoveredId(lead.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  aria-current={hoveredId === lead.id}
                 >
                   {[lead.nom, lead.prenom].filter(Boolean).join(' ') || `Lead #${lead.id}`}
                   {lead.stage && (
