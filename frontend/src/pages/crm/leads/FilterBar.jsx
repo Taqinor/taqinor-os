@@ -249,6 +249,9 @@ export default function FilterBar({ filters, setFilters, leads }) {
         </SelectContent>
       </Select>
 
+      {/* LB24 — le Segmented relance gagne « Aujourd'hui » (miroir de la
+          tuile KPI « Dû aujourd'hui », même clé de filtre — un seul état de
+          filtres, KPI et FilterBar restent parfaitement synchronisés). */}
       <Segmented
         size="sm"
         aria-label="Filtre relance"
@@ -256,6 +259,7 @@ export default function FilterBar({ filters, setFilters, leads }) {
         onChange={setKey('relance')}
         options={[
           { value: '', label: 'Toutes relances' },
+          { value: 'aujourdhui', label: "Aujourd'hui" },
           { value: 'retard', label: 'En retard' },
           { value: 'semaine', label: 'Cette semaine' },
         ]}

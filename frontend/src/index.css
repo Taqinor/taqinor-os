@@ -7230,3 +7230,64 @@ textarea.form-control {
     flex: 0 0 clamp(220px, 24vw, 272px);
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB24 — Bandeau KPI = filtres (docs/design/leads-board-blueprint.md D5, « le
+   cockpit du matin ») : rangée compacte entre l'en-tête et FilterBar, scroll-x
+   sur mobile (jamais un wrap qui pousse le contenu). Tuiles 1-3 sont des
+   boutons-filtres (`aria-pressed`) accentés `--module-accent-azur` quand
+   actifs ; la tuile Pipeline (`.lp-kpi-tile-display`) est un AFFICHAGE seul,
+   jamais un filtre. ══════════════════════════════════════════════════════ */
+.lp-kpi-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.lp-kpi-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 108px;
+  padding: 6px 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 10px);
+  background: var(--card, #fff);
+  color: var(--foreground, #1e293b);
+  cursor: pointer;
+  transition: background var(--motion-fast), border-color var(--motion-fast),
+              color var(--motion-fast);
+}
+.lp-kpi-tile[aria-pressed="true"] {
+  border-color: var(--module-accent-azur);
+  background: color-mix(in srgb, var(--module-accent-azur) 12%, var(--card));
+  color: var(--module-accent-azur);
+}
+@media (hover: hover) {
+  .lp-kpi-tile:hover { background: var(--muted, #f1f5f9); }
+  .lp-kpi-tile[aria-pressed="true"]:hover {
+    background: color-mix(in srgb, var(--module-accent-azur) 18%, var(--card));
+  }
+}
+/* Tuile Pipeline : affichage seul (jamais interactive — pas de :hover/press). */
+.lp-kpi-tile-display {
+  cursor: default;
+}
+.lp-kpi-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.lp-kpi-label {
+  font-size: 0.72rem;
+  color: var(--muted-foreground, #64748b);
+  white-space: nowrap;
+}
+.lp-kpi-tile[aria-pressed="true"] .lp-kpi-label { color: inherit; }
+@media (max-width: 768px) {
+  .lp-kpi-tile { min-width: 96px; padding: 5px 10px; }
+}

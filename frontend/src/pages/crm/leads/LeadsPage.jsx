@@ -30,6 +30,7 @@ import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
 import ExcelImport from '../../../components/ExcelImport'
 import SavedViewsBar, { SaveViewButton } from '../../../components/SavedViewsBar'
 import FilterBar from './FilterBar'
+import LeadsKpiStrip from './LeadsKpiStrip'
 import BulkActionBar from './BulkActionBar'
 import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
@@ -628,6 +629,16 @@ export default function LeadsPage() {
           <ViewSwitcher view={view} setView={setView} />
         </div>
       </div>
+
+      {/* LB24 — Bandeau KPI = filtres (blueprint D5), entre l'en-tête et
+          FilterBar : les tuiles lisent/écrivent le MÊME état `filters` que
+          le reste de la page (invariant D6-I7, un seul état de filtres). */}
+      <LeadsKpiStrip
+        leads={leads}
+        filters={filters}
+        setFilters={setFilters}
+        myUsername={currentUser?.username}
+      />
 
       <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
 
