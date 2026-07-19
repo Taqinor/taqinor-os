@@ -1179,6 +1179,25 @@ class CreativeLeaderboardView(APIView):
         return Response(data)
 
 
+class RegretRegistryView(APIView):
+    """PUB86 — Registre de qualité des décisions (regret réalisé, MAD laissés sur
+    la table) PAR TYPE DE DÉCISION. Company-scopé, gaté ``adsengine_view``.
+    ``?debut=&fin=`` (dates ISO) bornent la fenêtre. Peu de données → intervalle
+    honnête (``insufficient_data`` + ``interval``), jamais un chiffre sec."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .decision_quality import regret_registry
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(regret_registry(
+            company, date_start=debut, date_end=fin))
+
+
 class CreativeScatterView(APIView):
     """ADSDEEP47 — Nuage de points hook rate × dépense (quadrants FR « pépites
     cachées »/« gouffres »/« gagnants confirmés »/« à surveiller »).

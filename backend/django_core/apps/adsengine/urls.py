@@ -33,7 +33,8 @@ from .views import (
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
     MetricsDashboardView,
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
-    ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
+    ReconciliationListView, ReconciliationSnapshotViewSet, RegretRegistryView,
+    ReportExportView,
     RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
     VariantReportView, WiringHealthView,
 )
@@ -136,6 +137,9 @@ urlpatterns = [
          name='adsengine-reporting-creatifs-classement'),
     path('reporting/creatifs/nuage/', CreativeScatterView.as_view(),
          name='adsengine-reporting-creatifs-nuage'),
+    # PUB86 — registre de qualité des décisions (regret réalisé par type).
+    path('reporting/regret/', RegretRegistryView.as_view(),
+         name='adsengine-reporting-regret'),
     # ADSDEEP63 — audit de compte à la demande (structure/naming, fragmentation
     # budgétaire, fatigue, tracking, fenêtres de données), 100 % lecture.
     path('reporting/audit/', AccountAuditView.as_view(),
