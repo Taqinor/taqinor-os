@@ -79,6 +79,14 @@ export default function ContratsList() {
       cell: (v) => <span className="font-medium">{v || '—'}</span>,
     },
     {
+      // WIR77 — nom du client lié (résolu cross-app côté serveur).
+      id: 'client_nom',
+      header: 'Client',
+      width: 180,
+      accessor: (c) => c.client_nom || '',
+      cell: (v) => v || <span className="text-muted-foreground">—</span>,
+    },
+    {
       id: 'type',
       header: 'Type',
       width: 130,

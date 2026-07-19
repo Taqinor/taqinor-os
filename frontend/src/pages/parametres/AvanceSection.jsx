@@ -20,6 +20,27 @@ import SettingsAuditFeed from './SettingsAuditFeed'
 // backend séparé, apps/innovation) — même patron que SettingsAuditFeed.
 import CampagnesInnovationSettings from '../../features/innovation/CampagnesInnovationSettings'
 
+// WIR67 — modules « customfieldables » (miroir de
+// `customfields.registry` : 8 clés natives + pilotes ARC31 contrat/vehicule
+// + WIR67 kb_article). Remplace le sélecteur figé lead/client/produit : un
+// champ personnalisé peut cibler n'importe quel module enregistré, et le
+// widget s'affiche là où `<CustomFieldsInput>` est monté (lead/client/produit
+// aujourd'hui, article KB via ArticleEditor).
+const CUSTOMFIELD_MODULES = [
+  { key: 'lead', label: 'Leads' },
+  { key: 'client', label: 'Clients' },
+  { key: 'produit', label: 'Produits' },
+  { key: 'devis', label: 'Devis' },
+  { key: 'installation', label: 'Chantiers' },
+  { key: 'ticket', label: 'Tickets SAV' },
+  { key: 'document', label: 'Documents GED' },
+  { key: 'fournisseur', label: 'Fournisseurs' },
+  { key: 'employe', label: 'Employés' },
+  { key: 'contrat', label: 'Contrats' },
+  { key: 'vehicule', label: 'Véhicules' },
+  { key: 'kb_article', label: 'Articles KB' },
+]
+
 export default function AvanceSection({
   form, set,
   typesItv, newType, setNewType, addType, renameType, delType,
@@ -333,9 +354,11 @@ export default function AvanceSection({
                       onValueChange={v => { setCfModule(v); loadCfDefs(v); closeCfDist() }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="lead">Leads</SelectItem>
-                  <SelectItem value="client">Clients</SelectItem>
-                  <SelectItem value="produit">Produits</SelectItem>
+                  {/* WIR67 — tous les modules enregistrés (plus seulement
+                      lead/client/produit). */}
+                  {CUSTOMFIELD_MODULES.map(m => (
+                    <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

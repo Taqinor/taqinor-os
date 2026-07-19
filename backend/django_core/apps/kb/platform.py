@@ -14,7 +14,17 @@ PLATFORM = {
     # ARC30 — cible chatter/records historique (records.ALLOWED_TARGETS).
     'record_targets': ['kb.kbarticle'],
     'searchable_models': [],
-    'customfield_models': [],
+    # WIR67 — KbArticle est déclaré cible customfieldable ICI (clé
+    # ``kb_article`` déjà consommée par ``ArticleEditor.jsx`` et validée par
+    # ``kb.serializers.validate_proprietes`` via ``validate_custom_data``).
+    # L'enregistrement passe par le CHARGEUR CENTRAL
+    # ``customfields.registry.register_from_platform_manifests`` (ARC31) :
+    # ``is_registered('kb_article')`` devient vrai → une ``CustomFieldDef``
+    # module=``kb_article`` passe ``CustomFieldDefSerializer.validate_module``.
+    # Note : les propriétés KB vivent dans le JSONField ``KbArticle.proprietes``
+    # (pas via ``CustomRecord``), donc la résolution ``get_model`` de la clé
+    # n'est jamais empruntée pour ce module.
+    'customfield_models': ['kb_article'],
     'import_specs': [],
     'agent_actions_module': '',
     'automation_state_fields': [],

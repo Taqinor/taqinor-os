@@ -16,6 +16,7 @@ import { usePasteClean, parsePastedPhone } from '../../hooks/usePasteClean'
 import { useDuplicateCheck } from '../../hooks/useDuplicateCheck'
 import PhoneHint from '../../components/PhoneHint'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import CustomFieldsInput from '../../components/CustomFieldsInput'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
 import {
@@ -114,6 +115,10 @@ export default function ClientForm({ client = null, onClose }) {
 
   const [fields, setFields] = useState(initial)
   const isEntreprise = fields.type_client === 'entreprise'
+
+  // WIR67 — champs personnalisés du module « client » (même motif que
+  // LeadForm) : le backend valide/persiste `custom_data` du Client.
+  const [customData, setCustomData] = useState(client?.custom_data || {})
 
   // XSAL1-2 — listes de prix actives de la société, pour le select tarif.
   const [listesPrix, setListesPrix] = useState([])
@@ -245,6 +250,8 @@ export default function ClientForm({ client = null, onClose }) {
         parent: fields.parent || null,
         // XSAL1-2 — liste de prix négociée, optionnelle.
         liste_prix: fields.liste_prix || null,
+        // WIR67 — champs personnalisés du module « client ».
+        custom_data: customData,
       }
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
@@ -542,6 +549,9 @@ export default function ClientForm({ client = null, onClose }) {
                 </Select>
               </FormField>
             </FormSection>
+
+            {/* WIR67 — champs personnalisés (module « client »). */}
+            <CustomFieldsInput module="client" value={customData} onChange={setCustomData} />
 
             {isEdit && client?.id && (
               <FormSection title="Pièces jointes">
