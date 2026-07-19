@@ -80,7 +80,7 @@ export default function StageControl({ state, onChangeStage, onSigne }) {
       </div>
       {currentStage && sinceDays != null && (
         <p className={`lw-stage-since lw-stage-since--${level}`} data-rotting={level}>
-          depuis {sinceDays} j
+          depuis <span className="num">{sinceDays}</span> j
         </p>
       )}
     </div>

@@ -19,20 +19,28 @@ const makeState = (over = {}) => initState({
 
 describe('LW16 — StageControl', () => {
   it('CONTACTED à 8 j affiche l\'ancienneté en classe/rotting warning', () => {
-    render(<StageControl state={makeState()} onChangeStage={vi.fn()} onSigne={vi.fn()} />)
-    const since = screen.getByText(/depuis 8 j/)
+    // LW33 — le compteur de jours vit dans un <span className="num"> (échelle
+    // numérique dédiée) : le texte « depuis 8 j » est désormais scindé sur
+    // plusieurs nœuds, hors de portée du matcher texte par défaut de RTL
+    // (qui ne concatène pas le texte de plusieurs éléments). On requête le
+    // conteneur par classe puis on vérifie son textContent complet.
+    const { container } = render(<StageControl state={makeState()} onChangeStage={vi.fn()} onSigne={vi.fn()} />)
+    const since = container.querySelector('.lw-stage-since')
+    expect(since).toHaveTextContent('depuis 8 j')
     expect(since).toHaveAttribute('data-rotting', 'warning')
     expect(since.className).toMatch(/lw-stage-since--warning/)
   })
 
   it('à 2 j sur NEW, aucune teinte d\'alerte (rotting ok)', () => {
     const NEW = PIPELINE_STAGES[0]
-    render(<StageControl
+    const { container } = render(<StageControl
       state={makeState({ stage: NEW, stage_since_days: 2 })}
       onChangeStage={vi.fn()}
       onSigne={vi.fn()}
     />)
-    expect(screen.getByText(/depuis 2 j/)).toHaveAttribute('data-rotting', 'ok')
+    const since = container.querySelector('.lw-stage-since')
+    expect(since).toHaveTextContent('depuis 2 j')
+    expect(since).toHaveAttribute('data-rotting', 'ok')
   })
 
   it('cliquer l\'étape signée ouvre la signature (onSigne), jamais un PATCH direct', () => {

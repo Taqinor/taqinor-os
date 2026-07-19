@@ -225,7 +225,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
               <ScoreBadge lead={server} asTrigger />
             </PopoverTrigger>
             <PopoverContent align="start" className="lw-rail-score-pop">
-              <p className="lw-rail-score-title">Score de qualité — {server.score ?? 0}/100</p>
+              <p className="lw-rail-score-title">Score de qualité — <span className="num">{server.score ?? 0}/100</span></p>
               {scoreReasons.length > 0 ? (
                 <ul className="lw-rail-score-reasons">
                   {scoreReasons.map((r, i) => (

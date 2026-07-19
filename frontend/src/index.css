@@ -6095,7 +6095,11 @@ textarea.form-control {
 .lw-title {
   margin: 0;
   min-width: 0;
-  font-size: 1.05rem;
+  /* LW33 — échelle typo stricte (blueprint D4#3) : titre de dialogue = chrome
+     compact, pas le « nom du lead » (ce rôle est .lw-rail-name → --text-h2,
+     ci-dessous) ; --text-body, line-height propre gardé (titre 1 ligne
+     tronquée, pas un paragraphe). */
+  font-size: var(--text-body);
   line-height: 1.3;
   font-weight: 600;
   color: var(--foreground);
@@ -6107,7 +6111,7 @@ textarea.form-control {
   margin-left: 0.5rem;
   padding: 0.05rem 0.4rem;
   border-radius: 9999px;
-  font-size: 0.7rem;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--muted-foreground);
   background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
@@ -6115,17 +6119,17 @@ textarea.form-control {
 .lw-nav {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 .lw-nav-pos {
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
 
 /* Chip d'état de sauvegarde (autosauvegarde). */
 .lw-savechip {
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   padding: 0.15rem 0.55rem;
   border-radius: 9999px;
   border: 1px solid transparent;
@@ -6157,7 +6161,7 @@ textarea.form-control {
   margin: 0.5rem 1rem 0;
   padding: 0.55rem 0.75rem;
   border-radius: var(--radius-md);
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--foreground);
 }
 .lw-banner-actions {
@@ -6209,20 +6213,24 @@ textarea.form-control {
   border-left: 1px solid var(--border);
   padding: 1rem;
 }
+/* LW33 — le nom du lead est LE titre --text-h2 de la fenêtre (blueprint
+   D4#3) : seul élément du bloc .lw-* promu à ce palier. */
 .lw-rail-name {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--text-h2);
+  line-height: var(--text-h2-lh);
+  letter-spacing: var(--text-h2-ls);
   font-weight: 600;
   color: var(--foreground);
 }
 .lw-rail-sub {
   margin: 0.15rem 0 0;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 .lw-rail-hint {
   margin: 0.5rem 0 0;
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 
@@ -6243,7 +6251,7 @@ textarea.form-control {
 }
 .lw-footer-error {
   margin-right: auto;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--destructive);
 }
 
@@ -6269,27 +6277,36 @@ textarea.form-control {
 
 /* ── LW11 : centre (nav-chips sticky, sections repliables, port des champs) ── */
 
-/* Nav-chips horizontaux STICKY en tête du centre (scroll-spy). */
+/* Nav-chips horizontaux STICKY en tête du centre (scroll-spy). LW33 (retour
+   QA visuelle orchestrateur) — à centre étroit (~750px), la rangée déborde
+   sans AUCUN indice qu'elle défile : scrollbar masquée (déjà présente à
+   l'œil comme un artefact, pas une affordance) + dégradé de bord (mask-image)
+   pour suggérer « il y a plus à droite ». Le scroll horizontal existait déjà
+   (overflow-x:auto) — seul l'indice manquait. */
 .lw-secnav {
   position: sticky;
   top: 0;
   z-index: 1;
   display: flex;
-  gap: 0.25rem;
+  gap: 0.5rem;
   align-items: center;
   padding: 0.5rem 0.75rem;
   overflow-x: auto;
+  scrollbar-width: none;
   background: var(--card);
   border-bottom: 1px solid var(--border);
+  mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
 }
+.lw-secnav::-webkit-scrollbar { display: none; }
 .lw-secnav-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.5rem;
   flex: 0 0 auto;
   padding: 0.25rem 0.6rem;
   border-radius: 9999px;
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
   background: transparent;
   border: 1px solid transparent;
@@ -6346,14 +6363,16 @@ textarea.form-control {
   flex: 0 0 auto;
   color: var(--muted-foreground);
 }
+/* LW33 — titre de section = --text-h3 (blueprint D4#3). */
 .lw-section-title {
   flex: 1 1 auto;
-  font-size: 0.95rem;
+  font-size: var(--text-h3);
+  line-height: var(--text-h3-lh);
   font-weight: 600;
 }
 .lw-section-chevron {
   flex: 0 0 auto;
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 .lw-section-body {
@@ -6365,7 +6384,7 @@ textarea.form-control {
   margin: 0 0 0.6rem;
   padding: 0.5rem 0.65rem;
   border-radius: var(--radius-md);
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--foreground);
   border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
   background: color-mix(in oklch, var(--warning) 12%, transparent);
@@ -6381,7 +6400,7 @@ textarea.form-control {
 }
 .lw-gps-link {
   color: var(--info);
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   text-decoration: none;
 }
 .lw-gps-link:hover {
@@ -6393,7 +6412,7 @@ textarea.form-control {
 .lw-rail-head {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   margin-bottom: 0.85rem;
 }
 .lw-rail-avatar {
@@ -6407,12 +6426,12 @@ textarea.form-control {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 .lw-rail-archived {
   padding: 0.05rem 0.4rem;
   border-radius: 9999px;
-  font-size: 0.65rem;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--muted-foreground);
   background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
@@ -6421,11 +6440,11 @@ textarea.form-control {
 .lw-rail-contact {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.5rem;
   margin-bottom: 0.85rem;
 }
 .lw-rail-contact-link {
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--info);
   text-decoration: none;
   white-space: nowrap;
@@ -6439,14 +6458,14 @@ textarea.form-control {
 .lw-rail-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  gap: 0.5rem;
   margin-bottom: 0.85rem;
 }
 
 .lw-rail-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 .lw-rail-actions > * {
   width: 100%;
@@ -6468,17 +6487,20 @@ textarea.form-control {
 .lw-rail-field {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.5rem;
 }
+/* LW33 — micro-label MAJUSCULE tracké : même famille que l'utilitaire
+   .text-eyebrow (design/tokens.css) — --text-caption reste un palier de
+   l'échelle typo officielle (recon 06), pas une valeur inventée. */
 .lw-rail-label {
-  font-size: 0.72rem;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
 .lw-rail-nextact {
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--foreground);
 }
 .lw-rail-nextact[data-state="overdue"] {
@@ -6487,7 +6509,7 @@ textarea.form-control {
 .lw-rail-nextact-empty {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   padding: 0;
   background: transparent;
   border: 0;
@@ -6496,7 +6518,7 @@ textarea.form-control {
   text-align: left;
 }
 .lw-rail-nextact-cta {
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   color: var(--info);
   text-decoration: underline;
 }
@@ -6509,7 +6531,7 @@ textarea.form-control {
 .lw-stage-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 .lw-stage-pill {
   padding: 0;
@@ -6529,10 +6551,12 @@ textarea.form-control {
 .lw-stage-pill--current {
   cursor: default;
 }
-/* Ancienneté d'étape : neutre par défaut, chauffe avec la rampe rotting. */
+/* Ancienneté d'étape : neutre par défaut, chauffe avec la rampe rotting. Le
+   compteur de jours passe par `.num` dans le JSX (StageControl.jsx, LW33) —
+   ce `font-variant-numeric` reste pour le mot « depuis…j » hors du span.num. */
 .lw-stage-since {
   margin: 0.35rem 0 0;
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
@@ -6564,7 +6588,7 @@ textarea.form-control {
 }
 .lw-rail-score-title {
   margin: 0 0 0.5rem;
-  font-size: 0.9rem;
+  font-size: var(--text-body);
   font-weight: 600;
   color: var(--foreground);
 }
@@ -6574,25 +6598,25 @@ textarea.form-control {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
 }
 .lw-rail-score-reasons li {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--foreground);
 }
 .lw-rail-score-empty {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 .lw-rail-score-foot {
   margin: 0.6rem 0 0;
   padding-top: 0.5rem;
   border-top: 1px solid var(--border);
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 
@@ -6607,7 +6631,7 @@ textarea.form-control {
   margin-bottom: 0.6rem;
   padding: 0.5rem 0.65rem;
   border-radius: var(--radius-md);
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--foreground);
 }
 .lw-banner-card--warning {
@@ -6620,7 +6644,7 @@ textarea.form-control {
 }
 .lw-banner-link {
   color: var(--info);
-  font-size: 0.82rem;
+  font-size: var(--text-small);
   text-decoration: underline;
   white-space: nowrap;
 }
@@ -6631,7 +6655,7 @@ textarea.form-control {
 .lw-dup-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
 }
 .lw-dup-table th,
 .lw-dup-table td {
@@ -6640,7 +6664,7 @@ textarea.form-control {
   border-bottom: 1px solid var(--border);
 }
 .lw-dup-table th {
-  font-size: 0.72rem;
+  font-size: var(--text-caption);
   text-transform: uppercase;
   letter-spacing: 0.02em;
   color: var(--muted-foreground);
@@ -6658,7 +6682,7 @@ textarea.form-control {
 .lw-context-devis {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.75rem;
 }
 
 /* Onglet Activités : bouton « Appliquer un plan » au-dessus du panneau. */
@@ -6673,11 +6697,11 @@ textarea.form-control {
 .lw-context-touch-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
+  gap: 0.5rem 0.75rem;
   padding: 0.4rem 0.6rem;
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--info) 8%, transparent);
-  font-size: 0.78rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 
@@ -6685,12 +6709,12 @@ textarea.form-control {
 .lw-context-filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  gap: 0.5rem;
 }
 .lw-context-filter-chip {
   padding: 0.2rem 0.55rem;
   border-radius: 9999px;
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
   background: transparent;
   border: 1px solid var(--border);
@@ -6714,7 +6738,7 @@ textarea.form-control {
 .lw-context-chatter-pinned {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
   margin-bottom: 0.35rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px dashed var(--border);
@@ -6756,7 +6780,7 @@ textarea.form-control {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 .lw-context-devis-missing {
   padding: 0.5rem 0.65rem;
@@ -6770,7 +6794,7 @@ textarea.form-control {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.5rem;
 }
 .lw-context-missing-link {
   padding: 0;
@@ -6780,7 +6804,7 @@ textarea.form-control {
   text-decoration: underline;
   cursor: pointer;
   font: inherit;
-  font-size: 0.82rem;
+  font-size: var(--text-small);
 }
 
 /* Cartes devis (chaîne document, statut devis JAMAIS le funnel lead). */
@@ -6796,7 +6820,7 @@ textarea.form-control {
   background: var(--card);
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 .lw-context-devis-card-head {
   display: flex;
@@ -6821,7 +6845,7 @@ textarea.form-control {
   align-items: baseline;
   justify-content: space-between;
   gap: 0.5rem;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
 }
 .lw-context-devis-date {
   color: var(--muted-foreground);
@@ -6829,11 +6853,28 @@ textarea.form-control {
 .lw-context-devis-track {
   margin: 0.1rem 0;
 }
+/* LW33 — actions secondaires (Facture/Chantier, devis accepté) révélées au
+   survol de la carte, patron "group-hover" (blueprint D4#7, sans reflow :
+   uniquement opacity, l'espace reste réservé par le flex normal). GARDÉ
+   derrière `@media (hover: hover)` : sur tactile (aucun hover fiable), ces
+   actions sont des CTA métier de premier plan (générer facture/chantier) —
+   jamais masquées, toujours visibles. `:focus-within` garde l'accès clavier
+   même sur pointeur fin. */
 .lw-context-devis-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
+}
+@media (hover: hover) {
+  .lw-context-devis-actions {
+    opacity: 0;
+    transition: opacity var(--motion-fast) var(--ease-standard);
+  }
+  .lw-context-devis-card:hover .lw-context-devis-actions,
+  .lw-context-devis-actions:focus-within {
+    opacity: 1;
+  }
 }
 
 /* ── LW22 : barre d'envoi WhatsApp multi-devis FR/Darija. ─────────────────── */
@@ -6848,8 +6889,10 @@ textarea.form-control {
 }
 .lw-context-wa-langue {
   display: inline-flex;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
+/* LW33 — seul vrai « corps » de texte du bloc .lw-* (message WhatsApp
+   multi-lignes lu comme du contenu, pas un label) : --text-body. */
 .lw-context-wa-preview {
   white-space: pre-wrap;
   word-break: break-word;
@@ -6857,7 +6900,8 @@ textarea.form-control {
   padding: 0.75rem;
   border-radius: var(--radius-md);
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: var(--text-body);
+  line-height: var(--text-body-lh);
   margin: 0;
 }
 .lw-context-wa-links {
