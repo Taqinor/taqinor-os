@@ -3,6 +3,7 @@ import {
   User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe, FileText,
 } from 'lucide-react'
 import { ErrorBoundary } from '../../../ui'
+import { useKeyboardAwareScroll } from '../../../hooks/useKeyboardAwareScroll'
 import { getField, WEB_ORIGIN_FIELDS } from './draftCore'
 import SectionContact from './sections/SectionContact'
 import SectionPipeline from './sections/SectionPipeline'
@@ -54,6 +55,11 @@ export default function SectionsPane({
 }) {
   const scrollRef = useRef(null)
   const rafRef = useRef(null)
+  // LW34 — clavier virtuel iOS : sur mobile <768 le centre est le SEUL
+  // conteneur scrollable (la fenêtre est en Sheet bas plein écran) ; sans ce
+  // recentrage, un champ bas de formulaire reste caché sous le clavier.
+  // No-op silencieux ailleurs (visualViewport absent hors WebKit mobile).
+  useKeyboardAwareScroll({ containerRef: scrollRef })
   const [collapsed, setCollapsed] = useState(() => {
     // « Origine web » repliée par défaut (blueprint) ; le reste ouvert.
     const stored = readCollapsed()

@@ -263,16 +263,16 @@ button:active, [role="button"]:active, a.btn:active,
    `-webkit-overflow-scrolling: touch` (défilement inertiel iOS — sans elle,
    le scroll saccade « step-by-step » sur Safari mobile) + `overscroll-
    behavior-x: contain` (empêche le scroll horizontal de « fuiter » vers une
-   navigation retour/avant du navigateur). Appliquée aux 4 conteneurs
+   navigation retour/avant du navigateur). Appliquée aux conteneurs
    `overflow-x: auto` prouvés sans elle — `.lines-table-wrap`, `.lv-wrap`
-   (liste leads), `.kb-board` (kanban), `.lead-nav` mobile (@media 720px
-   plus bas). `.agent-sql-code` EXCLU : CSS mort, 0 consommateur, sa
-   suppression appartient à VX121, pas à cette tâche. */
+   (liste leads), `.kb-board` (kanban). `.lead-nav` (ancien rail mobile
+   @media 720px) est mort et supprimé en LW34 — retiré d'ici aussi.
+   `.agent-sql-code` EXCLU : CSS mort, 0 consommateur, sa suppression
+   appartient à VX121, pas à cette tâche. */
 .scroll-x-touch,
 .lines-table-wrap,
 .lv-wrap,
-.kb-board,
-.lead-nav {
+.kb-board {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
 }
@@ -1390,73 +1390,12 @@ button:active, [role="button"]:active, a.btn:active,
   .modal-body::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
 }
 
-/* ── Navigateur de sections (formulaire lead) ─────────── */
-.lead-form-layout {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-.lead-nav {
-  width: 152px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 14px 8px;
-  background: var(--muted);
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-}
-/* VX143 — rail tokenisé (thème clair/sombre) : barre d'accent à gauche +
-   même icône que la section active, au lieu d'un simple fond hex figé. */
-.lead-nav button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-  border: none;
-  border-left: 3px solid transparent;
-  background: transparent;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  font-size: 0.8rem;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.lead-nav-icon { flex-shrink: 0; opacity: 0.75; }
-.lead-nav-badge {
-  margin-left: auto;
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  border-radius: 999px;
-  padding: 1px 6px;
-  line-height: 1.4;
-}
-@media (hover: hover) {
-  .lead-nav button:hover { background: var(--accent); }
-}
-.lead-nav button.active {
-  border-left-color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
-  color: var(--primary);
-  font-weight: 700;
-}
-.lead-nav button.active .lead-nav-icon { opacity: 1; }
-@media (max-width: 720px) {
-  .lead-form-layout { flex-direction: column; }
-  .lead-nav {
-    width: auto;
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 8px;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-}
+/* LW34 — l'ancien navigateur de sections .lead-form-layout/.lead-nav* (rail
+   152px, breakpoint 720px) appartenait au LeadForm pré-LW13 : 0 usage JSX
+   vivant (grep confirmé — LeadWorkspace/SectionsPane utilisent .lw-secnav/
+   .lw-sections, un patron entièrement différent). Bloc supprimé — c'est lui
+   qui créait la bande morte 721-767px (recon 04 §5) : le seul breakpoint qui
+   reste dans la fenêtre lead est 768 (.lw-* + ResponsiveDialog). */
 
 /* ── Badge « N devis » (ContextRail, onglet Devis) ─────────────────────────
    LW31 — hook CI-GATED (devis.spec.js E4 : `.lead-devis-badge` contient
@@ -6239,15 +6178,11 @@ textarea.form-control {
   display: contents;
 }
 
-/* Pied de création. */
-.lw-footer {
+/* Pied de création. LW34 — passe par `ui/FormActions` (barre collante mobile
+   déjà gérée par le kit) ; cette classe ne garde que ce que FormActions ne
+   fixe pas déjà (rester un item flex non-écrasable de .lw-root). */
+.lw-footer-create {
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-top: 1px solid var(--border);
 }
 .lw-footer-error {
   margin-right: auto;
@@ -6255,9 +6190,85 @@ textarea.form-control {
   color: var(--destructive);
 }
 
-/* 768-1023px : on empile les 3 zones (le corps entier défile) — données
-   préservées ; le breakpoint UNIQUE reste 768 (Dialog↔Sheet). */
-@media (max-width: 1023px) {
+/* LW34 — barre-pouce mobile (<768) : Appeler/WhatsApp/Note toujours
+   atteignables sans défiler le formulaire, safe-area iOS respectée. Item
+   flex non-écrasable de .lw-root (même famille que .lw-topbar/.lw-footer-
+   create), sous le corps scrollable. */
+.lw-thumbbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.lw-thumbbar-btn {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.5rem 0.25rem;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: var(--text-small);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.lw-thumbbar-btn:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+.lw-thumbbar-btn[aria-disabled="true"],
+.lw-thumbbar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (hover: hover) {
+  .lw-thumbbar-btn:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: color-mix(in oklch, var(--muted-foreground) 8%, transparent);
+  }
+}
+
+/* LW34 — ContextRail dans un Sheet à la demande (768-1023, bouton
+   « Contexte »). Padding du kit neutralisé : .lw-zone.lw-rail-context a déjà
+   le sien (1rem) — même patron que .lw-dialog/.lw-sheet (p-0, la grille
+   interne gère tout). */
+.lw-context-sheet {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* LW34 — 768-1023 : rail identité + centre en 2 colonnes ; le rail contexte
+   quitte la grille (LeadWorkspace.jsx le rend dans un Sheet à la demande via
+   le bouton « Contexte » du bandeau — patron LeadDevisPanel). Données
+   préservées, aucune perte de zone : juste un 3e panneau qui devient un
+   panneau à la demande plutôt qu'un panneau toujours visible. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .lw-body--edit {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  /* Le squelette d'ouverture (LW25) rend encore 3 panneaux ; à ce palier le
+     rail contexte réel n'est plus dans la grille (Sheet à la demande) — son
+     ombre de squelette doit disparaître avec lui, sinon elle déborde du
+     gabarit 2 colonnes (3e enfant sans piste dédiée). */
+  .lw-body--edit .lw-rail-context.lw-skeleton-pane {
+    display: none;
+  }
+}
+
+/* LW34 — <768 : empilement — bande identité compacte → sections accordéon →
+   onglets contexte (ordre DOM naturel ; le rail contexte reste EN LIGNE ici,
+   seule la tablette le sort en Sheet). SEUL breakpoint restant du bloc
+   .lw-* : la bande morte 721-767px de l'ancien .lead-form-layout à 720px
+   (recon 04 §5) a disparu avec lui. */
+@media (max-width: 767px) {
   .lw-body--edit {
     display: block;
     overflow-y: auto;
