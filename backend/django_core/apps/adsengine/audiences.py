@@ -649,3 +649,45 @@ def build_signed_customers_lookalike(company, *, seed_name='Signatures réelles'
         seed_matched_count=matched, ratio=ratio, value_based=value_based,
         client=client)
     return result
+
+
+# ── PUB65 — Parrainage converti → suggestion de graine géo/lookalike ─────────
+# JAMAIS une action automatique : le programme de parrainage et le moteur pub
+# ne se parlaient jamais avant ce pont. Cette fonction ne construit ni
+# n'envoie AUCUNE audience elle-même — une pure fonction de TEXTE FR, posée
+# en note chatter sur la fiche du parrain par `apps.crm.receivers` (jamais un
+# import d'``apps.crm.models`` ici).
+
+def referral_seed_suggestion(*, parrain_nom, parrain_localisation=None):
+    """PUB65 — Construit le texte FR d'une suggestion de graine publicitaire
+    autour d'un parrain dont le filleul vient de signer. Deux graines
+    possibles, à déclencher MANUELLEMENT par un opérateur via les fonctions
+    déjà existantes de ce module :
+
+      * géo-radius autour de la localisation du parrain (comme PUB66) ;
+      * lookalike : ajouter ce contact à la graine « signatures réelles »
+        (PUB61, :func:`build_signed_customers_lookalike`) — accumulée
+        jusqu'au seuil ≥100 (:data:`LOOKALIKE_MIN_SEED`).
+
+    Renvoie ``{'reason_fr': str, 'parrain_localisation': str|None,
+    'has_geo': bool}``."""
+    localisation = (parrain_localisation or '').strip()
+    has_geo = bool(localisation)
+    if has_geo:
+        reason = (
+            f"Parrainage converti : le filleul de {parrain_nom} vient de "
+            f"signer — proposer une audience géo-radius (500 m-2 km) autour "
+            f"de « {localisation} » et/ou ajouter ce contact à la graine "
+            f"lookalike « signatures réelles » (seuil ≥{LOOKALIKE_MIN_SEED} "
+            f"avant lookalike). Aucune audience n'a été créée "
+            f"automatiquement — action à déclencher manuellement.")
+    else:
+        reason = (
+            f"Parrainage converti : le filleul de {parrain_nom} vient de "
+            f"signer — localisation du parrain inconnue, proposer d'ajouter "
+            f"ce contact à la graine lookalike « signatures réelles » "
+            f"(seuil ≥{LOOKALIKE_MIN_SEED} avant lookalike). Aucune "
+            f"audience n'a été créée automatiquement — action à déclencher "
+            f"manuellement.")
+    return {'reason_fr': reason, 'parrain_localisation': localisation or None,
+            'has_geo': has_geo}
