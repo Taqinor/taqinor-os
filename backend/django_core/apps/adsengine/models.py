@@ -2813,6 +2813,9 @@ class CompetitorAdObservation(TenantModel):
     (aucune récupération automatique du contenu). Company-scopé."""
 
     competitor_page = models.ForeignKey(
+        # on_delete: composition — une observation n'existe que pour SA page
+        # concurrente ; la page supprimée emporte ses observations (aucune
+        # ligne orpheline, aucune donnée financière). Company-scopé.
         'adsengine.CompetitorPage', on_delete=models.CASCADE,
         related_name='observations', verbose_name='Page concurrente')
     observed_at = models.DateField(verbose_name="Date d'observation")

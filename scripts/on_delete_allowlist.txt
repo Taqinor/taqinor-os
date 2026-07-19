@@ -3,6 +3,13 @@
 # spec, so the guard does not block on ~1300 pre-existing FKs). One
 # 'path:lineno' per line. A NEW CASCADE must instead carry an inline
 # '# on_delete: <reason>' comment, or be added here after review.
+# Rebased 2026-07-19 (batch-2 Groupe PUB final fold): 4 adsengine/models.py
+# entries remapped for pre-existing FKs shifted by X5 model additions
+# (InsightMonthlyRollup + EngineAction.proposed_by + GuardrailConfig.require_four_eyes):
+# MetaConnection.company 42->45, GuardrailConfig.company 142->145,
+# AdMirror.adset 389->401, FactEntry.table 2273->2461. Same FK set, no new CASCADE.
+# (CompetitorAdObservation.competitor_page, a batch-2 PUB70 addition, carries an
+# inline '# on_delete:' comment in models.py instead.)
 # YDATA3 — SET_NULL on a tenant/owner-identity field (owner/responsable
 # assignee fields, plus one genuine CustomUser.company case flagged for
 # founder review) reviewed as-of 2026-07-12 and reused from this same file.
@@ -43,7 +50,7 @@ backend/django_core/apps/adsengine/models.py:227
 backend/django_core/apps/adsengine/models.py:233
 backend/django_core/apps/adsengine/models.py:254
 backend/django_core/apps/adsengine/models.py:260
-backend/django_core/apps/adsengine/models.py:42
+backend/django_core/apps/adsengine/models.py:45
 backend/django_core/apps/adsengine/models.py:580
 backend/django_core/apps/adsengine/models.py:586
 backend/django_core/apps/adsengine/models.py:667
@@ -2315,10 +2322,10 @@ backend/django_core/apps/stock/models.py:991
 backend/django_core/apps/territoires/models.py:36
 # Rebased 2026-07-19 (PUB batch 1): pre-existing FK entries remapped after crm/adsengine
 # model-field insertions (MotifPerte.est_junk, token_health, etc.). Same FK set.
-backend/django_core/apps/adsengine/models.py:142
+backend/django_core/apps/adsengine/models.py:145
 backend/django_core/apps/adsengine/models.py:320
-backend/django_core/apps/adsengine/models.py:389
-backend/django_core/apps/adsengine/models.py:2273
+backend/django_core/apps/adsengine/models.py:401
+backend/django_core/apps/adsengine/models.py:2461
 backend/django_core/apps/crm/models.py:998
 backend/django_core/apps/crm/models.py:1029
 backend/django_core/apps/crm/models.py:1088

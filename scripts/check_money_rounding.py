@@ -51,13 +51,13 @@ BASELINE_ALLOWLIST = {
     # 2026-07-17, +36 lines above them from the RAS convention/timbre-mode
     # signature edits; same NPS/ROI/percentage round() sites, unmoved logic,
     # verified uniform shift, NOT new sites — bug-class #34).
-    "backend/django_core/apps/compta/services.py:9652",
-    "backend/django_core/apps/compta/services.py:7596",
-    "backend/django_core/apps/compta/services.py:7599",
-    "backend/django_core/apps/compta/services.py:12120",
-    "backend/django_core/apps/compta/services.py:12522",
-    "backend/django_core/apps/compta/services.py:8905",
-    "backend/django_core/apps/compta/services.py:8909",
+    "backend/django_core/apps/compta/services.py:9658",
+    "backend/django_core/apps/compta/services.py:7602",
+    "backend/django_core/apps/compta/services.py:7605",
+    "backend/django_core/apps/compta/services.py:12126",
+    "backend/django_core/apps/compta/services.py:12528",
+    "backend/django_core/apps/compta/services.py:8911",
+    "backend/django_core/apps/compta/services.py:8915",
     # XSAL14 (2026-07-16) — builder.py edits shifted existing display-round
     # sites; re-based 1:1 (premium engine, sanctioned rounding).
     "backend/django_core/apps/ventes/quote_engine/builder.py:1285",
