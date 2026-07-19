@@ -897,6 +897,8 @@ class FactEntrySerializer(serializers.ModelSerializer):
         model = FactEntry
         fields = [
             'id', 'table', 'cle', 'valeur', 'unite', 'source', 'verifie_le',
+            # PUB85 — région optionnelle ('' = national ; ville = surcharge locale).
+            'region',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']

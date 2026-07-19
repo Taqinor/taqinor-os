@@ -2368,6 +2368,13 @@ class FactEntry(TenantModel):
     source = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Source')
     verifie_le = models.DateField(verbose_name='Vérifié le')
+    # PUB85 — dimension RÉGION optionnelle : '' = fait NATIONAL (défaut) ; une
+    # valeur (ex. « marrakech ») = surcharge régionale VÉRIFIÉE (irradiation /
+    # tarif local). La génération d'une variante ville-spécifique cite le fait
+    # régional s'il existe, sinon retombe sur le national (jamais un chiffre
+    # local inventé — règle checked-facts-only).
+    region = models.CharField(
+        max_length=60, blank=True, default='', verbose_name='Région / ville')
 
     class Meta:
         verbose_name = 'Fait'
@@ -2375,7 +2382,8 @@ class FactEntry(TenantModel):
         ordering = ['cle']
         constraints = [
             models.UniqueConstraint(
-                fields=['table', 'cle'], name='uniq_adseng_factentry_table_cle'),
+                fields=['table', 'cle', 'region'],
+                name='uniq_adseng_factentry_table_cle_region'),
         ]
 
     def save(self, *args, **kwargs):
