@@ -64,8 +64,44 @@ def on_meta_lead_captured(sender, **kwargs):
             leadgen_id, exc_info=True)
 
 
+def on_lead_erased(sender, **kwargs):
+    """PUB100 — Propage l'effacement CNDP d'un lead CRM aux miroirs adsengine.
+
+    Anonymise (jamais ne supprime — on garde l'agrégat d'attribution par ad) les
+    ``MetaLeadMirror`` et ``CtwaReferral`` qui référençaient ce lead : on efface
+    le ``phone_key`` (PII normalisée) et on détache ``crm_lead_id``. Best-effort :
+    une exception est journalisée, jamais propagée (l'effacement CRM ne casse
+    jamais). Retrouve les miroirs par ``crm_lead_id`` d'abord, puis par
+    ``phone_key`` (les deux clés de jointure QW10)."""
+    from django.db.models import Q
+
+    from .models import CtwaReferral, MetaLeadMirror
+
+    company = kwargs.get('company')
+    crm_lead_id = kwargs.get('crm_lead_id')
+    phone_key = str(kwargs.get('phone_key') or '').strip()
+    if company is None or (not crm_lead_id and not phone_key):
+        return
+
+    match = Q()
+    if crm_lead_id:
+        match |= Q(crm_lead_id=crm_lead_id)
+    if phone_key:
+        match |= Q(phone_key=phone_key)
+    try:
+        for model in (MetaLeadMirror, CtwaReferral):
+            model.objects.filter(company=company).filter(match).update(
+                phone_key='', crm_lead_id=None)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'adsengine.on_lead_erased: anonymisation échouée (lead %s)',
+            crm_lead_id, exc_info=True)
+
+
 def connect():
     """Abonne les récepteurs domaine (appelé depuis ``apps.py`` ``ready()``)."""
-    from core.events import meta_lead_captured
+    from core.events import lead_erased, meta_lead_captured
     meta_lead_captured.connect(
         on_meta_lead_captured, dispatch_uid='adsengine_meta_lead_captured')
+    lead_erased.connect(
+        on_lead_erased, dispatch_uid='adsengine_lead_erased')

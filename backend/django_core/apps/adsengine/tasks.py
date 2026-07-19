@@ -1041,3 +1041,83 @@ def autopause_blast_radius():
     result = {'companies': companies, 'paused': paused, 'alerted': alerted}
     logger.info('adsengine.autopause_blast_radius: %s', result)
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUB100 — Rétention / purge CNDP des miroirs publicitaires.
+#
+# ``MetaLeadMirror`` / ``InsightBreakdown`` / ``CtwaReferral`` grossissaient sans
+# fin ni purge. Fenêtres de rétention CONFIGURABLES par réglage Django (défauts
+# CNDP prudents), purge périodique au-delà de la fenêtre. La propagation de
+# l'effacement d'un lead CRM (anonymisation) vit dans ``receivers.on_lead_erased``
+# (événement domaine ``core.events.lead_erased``). Registre de traitement :
+# ``docs/engine/registre-traitement-cndp.md``.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Fenêtres de rétention (jours) — surchargeables via settings. Défauts : ~13 mois
+# pour garder un an glissant d'attribution + marge, jamais indéfini.
+_DEFAULT_LEAD_MIRROR_RETENTION_DAYS = 400
+_DEFAULT_BREAKDOWN_RETENTION_DAYS = 400
+_DEFAULT_CTWA_RETENTION_DAYS = 400
+
+
+def _retention_days(setting_name, default):
+    """Fenêtre de rétention (jours) depuis les settings Django, ou le défaut.
+    Une valeur ≤ 0 DÉSACTIVE la purge de ce miroir (conservation illimitée
+    explicite — jamais un accident)."""
+    from django.conf import settings
+    try:
+        return int(getattr(settings, setting_name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+@shared_task(name='adsengine.purge_expired_mirrors')
+def purge_expired_mirrors():
+    """PUB100 — Purge CNDP des miroirs au-delà de leur fenêtre de rétention.
+
+    Supprime les ``MetaLeadMirror`` / ``CtwaReferral`` (datés par ``created_at``)
+    et ``InsightBreakdown`` (daté par ``date``) plus vieux que leur fenêtre
+    configurée. Toutes sociétés confondues (la fenêtre est une politique
+    d'entreprise, pas par société). Idempotent : une seconde exécution ne trouve
+    plus rien à purger. Une fenêtre ≤ 0 désactive la purge de ce miroir.
+
+    Renvoie le compte supprimé par miroir."""
+    import datetime as _dt
+
+    from django.utils import timezone as _tz
+
+    from .models import CtwaReferral, InsightBreakdown, MetaLeadMirror
+
+    now = _tz.now()
+    today = _dt.date.today()
+    result = {}
+
+    lead_days = _retention_days(
+        'ADSENGINE_LEAD_MIRROR_RETENTION_DAYS',
+        _DEFAULT_LEAD_MIRROR_RETENTION_DAYS)
+    if lead_days > 0:
+        cutoff = now - _dt.timedelta(days=lead_days)
+        deleted, _ = MetaLeadMirror.objects.filter(
+            created_at__lt=cutoff).delete()
+        result['meta_lead_mirror'] = deleted
+
+    ctwa_days = _retention_days(
+        'ADSENGINE_CTWA_RETENTION_DAYS', _DEFAULT_CTWA_RETENTION_DAYS)
+    if ctwa_days > 0:
+        cutoff = now - _dt.timedelta(days=ctwa_days)
+        deleted, _ = CtwaReferral.objects.filter(
+            created_at__lt=cutoff).delete()
+        result['ctwa_referral'] = deleted
+
+    bkdn_days = _retention_days(
+        'ADSENGINE_BREAKDOWN_RETENTION_DAYS',
+        _DEFAULT_BREAKDOWN_RETENTION_DAYS)
+    if bkdn_days > 0:
+        cutoff_date = today - _dt.timedelta(days=bkdn_days)
+        deleted, _ = InsightBreakdown.objects.filter(
+            date__lt=cutoff_date).delete()
+        result['insight_breakdown'] = deleted
+
+    logger.info('adsengine.purge_expired_mirrors: %s', result)
+    return result

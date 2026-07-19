@@ -522,6 +522,14 @@ app.conf.beat_schedule = {
         'task': 'adsengine.autopause_blast_radius',
         'schedule': crontab(minute='*/30'),
     },
+    # PUB100 — purge CNDP QUOTIDIENNE des miroirs publicitaires au-delà de leur
+    # fenêtre de rétention (MetaLeadMirror/CtwaReferral/InsightBreakdown). Heure
+    # creuse ; idempotent ; no-op si fenêtres ≤ 0. Registre de traitement :
+    # docs/engine/registre-traitement-cndp.md.
+    'adsengine-purge-expired-mirrors': {
+        'task': 'adsengine.purge_expired_mirrors',
+        'schedule': crontab(hour=3, minute=40),
+    },
     # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
     # Best-effort, une alerte par jour et par société (dédup), no-op tant que
     # le seuil société vaut 0 (défaut).
