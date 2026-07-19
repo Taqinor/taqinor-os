@@ -17,7 +17,7 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AdCampaignMirror, AnomalyEvent, ArmDailyStat, AssumptionNode,
+    AdCampaignMirror, Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
     CommentMirror,
     CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
     CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
@@ -28,7 +28,8 @@ from .models import (
     WeeklyBrief,
 )
 from .serializers import (
-    AdCampaignMirrorSerializer, AnomalyEventSerializer, ArmDailyStatSerializer,
+    AdCampaignMirrorSerializer, AnnotationSerializer, AnomalyEventSerializer,
+    ArmDailyStatSerializer,
     AssumptionNodeSerializer,
     CommentMirrorSerializer, CreativeAssetSerializer,
     CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
@@ -315,6 +316,16 @@ class AssumptionNodeViewSet(AdsengineViewSet):
 
     queryset = AssumptionNode.objects.all()
     serializer_class = AssumptionNodeSerializer
+
+
+class AnnotationViewSet(AdsengineViewSet):
+    """PUB49 — CRUD des annotations de courbe (notes de décision épinglées à une
+    date), company-scopées. ``company`` posée côté serveur ; le front les affiche
+    en surimpression sur les courbes Dashboard/Reporting (overlay = lane console).
+    """
+
+    queryset = Annotation.objects.all()
+    serializer_class = AnnotationSerializer
 
 
 class FactTableViewSet(AdsengineViewSet):

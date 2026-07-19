@@ -2302,3 +2302,38 @@ class FactEntry(TenantModel):
     def __str__(self):
         suffix = f' {self.unite}' if self.unite else ''
         return f'{self.cle} = {self.valeur}{suffix}'
+
+
+class Annotation(TenantModel):
+    """PUB49 — Note de décision épinglée à une DATE, en surimpression sur les
+    courbes (Dashboard/Reporting).
+
+    La mémoire ÉCRITE qui manque pour relire une courbe des mois plus tard :
+    « budget baissé ici — Ramadan ». Company-scopée (``TenantModel``). ``portee``
+    cible la/les courbe(s) où la note apparaît (globale par défaut). Le rendu en
+    surimpression est côté front (lane console) — ici on n'expose qu'une API
+    CRUD propre.
+    """
+
+    class Portee(models.TextChoices):
+        GLOBALE = 'globale', 'Toutes les courbes'
+        DASHBOARD = 'dashboard', 'Tableau de bord'
+        REPORTING = 'reporting', 'Reporting'
+
+    date = models.DateField(verbose_name='Date épinglée')
+    texte = models.TextField(verbose_name='Texte de la note')
+    portee = models.CharField(
+        max_length=16, choices=Portee.choices, default=Portee.GLOBALE,
+        verbose_name='Portée')
+
+    class Meta:
+        verbose_name = 'Annotation de courbe'
+        verbose_name_plural = 'Annotations de courbe'
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'portee', 'date'],
+                         name='adseng_annot_co_scope_idx'),
+        ]
+
+    def __str__(self):
+        return f'Annotation {self.date}: {self.texte[:32]}'

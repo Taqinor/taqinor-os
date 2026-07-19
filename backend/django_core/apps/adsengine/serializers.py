@@ -6,7 +6,8 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
-    AdCampaignMirror, AdMirror, AdSetMirror, AnomalyEvent, ArmDailyStat,
+    AdCampaignMirror, AdMirror, AdSetMirror, Annotation, AnomalyEvent,
+    ArmDailyStat,
     AssumptionNode, CommentMirror, CreativeAsset, CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
     EngineAlert, Experiment, ExperimentArm, FactEntry, FactTable,
@@ -146,6 +147,18 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
             'health_ops_weight_cpl', 'health_ops_weight_delivery',
             'created_at', 'updated_at',
         ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class AnnotationSerializer(serializers.ModelSerializer):
+    """PUB49 — Annotation de courbe (note de décision épinglée à une date).
+
+    ``company`` est absente des champs (posée côté serveur, jamais lue du corps).
+    Le rendu en surimpression sur les courbes est côté front (lane console)."""
+
+    class Meta:
+        model = Annotation
+        fields = ['id', 'date', 'texte', 'portee', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
 
 
