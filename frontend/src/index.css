@@ -5136,16 +5136,18 @@ textarea.form-control {
   margin-top: 0.4rem;
   padding: 4px 8px;
   border-radius: 6px;
-  background: var(--color-info-muted, rgba(37, 99, 235, 0.1));
+  /* LB16 — `--color-info-muted` n'a jamais existé (le littéral rgba était donc
+     toujours utilisé) : re-basé sur un token réel (teinte info sur la carte). */
+  background: color-mix(in srgb, var(--info) 12%, var(--card));
   font-size: 0.72rem;
 }
 
-.kb-call-nudge-text { flex: 1; color: var(--foreground, #0b1f3a); }
+.kb-call-nudge-text { flex: 1; color: var(--foreground); }
 
 .kb-call-nudge-log {
   border: none;
-  background: var(--color-info, #2342b5);
-  color: #fff;
+  background: var(--info);
+  color: var(--info-foreground);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 0.72rem;
@@ -7429,9 +7431,9 @@ textarea.form-control {
   cursor: pointer;
 }
 .kb-quick-tel { color: var(--success); }
-.kb-quick-wa { color: var(--success); }
-.kb-quick-tel:hover,
-.kb-quick-wa:hover { border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+.kb-quick-wa { color: var(--brand-whatsapp); }
+.kb-quick-tel:hover { border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+.kb-quick-wa:hover { border-color: color-mix(in srgb, var(--brand-whatsapp) 45%, transparent); }
 .kb-quick-tel:focus-visible,
 .kb-quick-wa:focus-visible {
   outline: 2px solid var(--ring);

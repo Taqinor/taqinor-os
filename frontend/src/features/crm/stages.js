@@ -82,19 +82,18 @@ export const tagList = (lead) =>
     .filter(Boolean)
 
 // Couleur stable d'une pastille de tag (palette fixe, déterministe).
-const TAG_PALETTE = [
-  '#e0f2fe', '#fef3c7', '#dcfce7', '#fae8ff', '#fee2e2',
-  '#e2e8f0', '#fdf3e0', '#dbeafe', '#fce7f3', '#ecfccb',
-]
-const TAG_TEXT = [
-  '#0369a1', '#a16207', '#15803d', '#a21caf', '#b91c1c',
-  '#475569', '#92600a', '#1d4ed8', '#be185d', '#4d7c0f',
-]
+// LB16 — les 10 paires de couleurs vivent désormais dans design/tokens.css
+// (`--tag-1-bg/--tag-1-fg … --tag-10-bg/--tag-10-fg`, clair + sombre, AA) : plus
+// aucun hex ici. `tagColor()` garde sa signature ({bg, color}) et renvoie des
+// `var(--tag-N-…)` (LeadCard ET ListView en profitent sans changement). Le
+// nombre de buckets (10) et le hash déterministe sont conservés : un tag donné
+// tombe TOUJOURS sur le même bucket (donc la même couleur) qu'auparavant.
+const TAG_BUCKETS = 10
 export const tagColor = (tag) => {
   let h = 0
   for (const c of String(tag)) h = (h * 31 + c.charCodeAt(0)) % 997
-  const i = h % TAG_PALETTE.length
-  return { bg: TAG_PALETTE[i], color: TAG_TEXT[i] }
+  const i = (h % TAG_BUCKETS) + 1
+  return { bg: `var(--tag-${i}-bg)`, color: `var(--tag-${i}-fg)` }
 }
 
 // Initiales du responsable (ex. « meryem » → ME, « Reda Kasri » → RK).

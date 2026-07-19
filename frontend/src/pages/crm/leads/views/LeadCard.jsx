@@ -294,7 +294,7 @@ function LeadCard({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
-                background: 'var(--color-success, #16a34a)', color: '#fff',
+                background: 'var(--success)', color: 'var(--success-foreground)',
                 fontSize: '18px', textDecoration: 'none',
               }}
             >
@@ -310,7 +310,7 @@ function LeadCard({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
-                background: 'var(--color-info, #25D366)', color: '#fff',
+                background: 'var(--brand-whatsapp)', color: 'var(--brand-whatsapp-foreground)',
                 fontSize: '18px', textDecoration: 'none',
               }}
             >
