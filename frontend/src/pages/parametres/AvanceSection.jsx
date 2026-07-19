@@ -18,6 +18,8 @@ import SettingsAuditFeed from './SettingsAuditFeed'
 import CampagnesInnovationSettings from '../../features/innovation/CampagnesInnovationSettings'
 // WIR112 — équipes terrain canoniques (DC40), à côté des Types d'intervention.
 import EquipeTerrainSection from './EquipeTerrainSection'
+// WIR114 (ZFSM3) — modèles de fiche d'intervention (champs de compte-rendu).
+import FicheInterventionModelesSection from './FicheInterventionModelesSection'
 
 export default function AvanceSection({
   form, set,
@@ -219,6 +221,9 @@ export default function AvanceSection({
 
       {/* WIR112 — Chantiers — Équipes terrain canoniques (DC40), à côté des types. */}
       <EquipeTerrainSection assignables={assignables} />
+
+      {/* WIR114 — Modèles de fiche d'intervention (ZFSM3), à côté des types. */}
+      <FicheInterventionModelesSection />
 
       {/* Chantiers — Checklist d'exécution */}
       <Card>

@@ -46,6 +46,7 @@ const BASE_PAGE_TITLES = [
   ['/chantiers', 'Chantiers'],
   ['/ma-journee', 'Ma journée'],
   ['/interventions', 'Interventions'],
+  ['/planification/astreintes', 'Astreintes & indisponibilités'],
   ['/parc', 'Parc installé'],
   ['/production', 'Production'],
 
