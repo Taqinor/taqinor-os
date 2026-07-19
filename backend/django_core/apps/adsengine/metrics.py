@@ -637,6 +637,9 @@ def ads_cockpit_rows(company, *, as_of=None):
     # PUB32 — dernier classement Meta connu PAR AD (diagnostics de qualité/
     # engagement/conversion), visibles au cockpit.
     rankings_by_ad = _latest_rankings_by_ad(company, ad_pks, as_of)
+    # PUB35 — dernière lecture d'attribution INCRÉMENTALE connue PAR AD (vide si
+    # le compte n'expose pas la colonne — dégradation propre).
+    incremental_by_ad = _latest_incremental_by_ad(company, ad_pks, as_of)
     odoo_by_ad = {}
     odoo_configured = False
     try:
@@ -706,6 +709,10 @@ def ads_cockpit_rows(company, *, as_of=None):
                 'engagement', ''),
             'classement_conversion': rankings_by_ad.get(ad.pk, {}).get(
                 'conversion', ''),
+            # PUB35 — résultats ATTRIBUÉS (``nb_leads`` ci-dessus) vs
+            # INCRÉMENTAUX, côte à côte. Dict vide = colonne non exposée par le
+            # compte (dégradation propre — le front affiche « non disponible »).
+            'attribution_incrementale': incremental_by_ad.get(ad.pk, {}),
         })
     return rows
 
@@ -737,4 +744,30 @@ def _latest_rankings_by_ad(company, ad_pks, end_date):
             'engagement': row['engagement_rate_ranking'],
             'conversion': row['conversion_rate_ranking'],
         }
+    return out
+
+
+def _latest_incremental_by_ad(company, ad_pks, end_date):
+    """PUB35 — Dernière lecture d'attribution INCRÉMENTALE connue PAR AD : le
+    snapshot le plus récent (≤ end_date) dont ``incremental_attribution`` n'est
+    pas vide. Renvoie ``{ad_pk: {incremental_conversions: ..}}`` (une requête) ;
+    ``{}`` pour un compte qui n'expose pas la colonne (dégradation propre)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from .models import AdMirror, InsightSnapshot
+
+    if not ad_pks:
+        return {}
+    ct = ContentType.objects.get_for_model(AdMirror)
+    out = {}
+    for row in (InsightSnapshot.objects
+                .filter(company=company, content_type=ct,
+                        object_id__in=ad_pks, date__lte=end_date)
+                .exclude(incremental_attribution={})
+                .order_by('object_id', '-date')
+                .values('object_id', 'incremental_attribution')):
+        oid = row['object_id']
+        if oid in out:
+            continue  # order_by -date : la première vue est la plus récente
+        out[oid] = row['incremental_attribution'] or {}
     return out

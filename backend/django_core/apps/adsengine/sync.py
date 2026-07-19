@@ -265,7 +265,8 @@ def upsert_insight(company, target, *, date, spend=None, results=None,
                    clicks=None, link_clicks=None, conversations=None,
                    leads_count=None, video_metrics=None,
                    quality_ranking=None, engagement_rate_ranking=None,
-                   conversion_rate_ranking=None):
+                   conversion_rate_ranking=None,
+                   incremental_attribution=None):
     """Upsert un ``InsightSnapshot`` daté sur un miroir (FK générique).
 
     Clé idempotente : ``(company, content_type, object_id, date)`` — un même
@@ -309,6 +310,11 @@ def upsert_insight(company, target, *, date, spend=None, results=None,
             ('conversion_rate_ranking', conversion_rate_ranking)):
         if value is not None:
             defaults[name] = value
+    # PUB35 — attribution incrémentale : n'écrire QUE si un dict non vide est
+    # fourni (compte sans la colonne → None → jamais d'écrasement d'une lecture
+    # incrémentale déjà connue par un re-sync dégradé).
+    if incremental_attribution:
+        defaults['incremental_attribution'] = incremental_attribution
     obj, _ = InsightSnapshot.objects.update_or_create(
         company=company, content_type=ct, object_id=target.pk, date=date,
         defaults=defaults)

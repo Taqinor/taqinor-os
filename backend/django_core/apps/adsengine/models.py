@@ -535,6 +535,15 @@ class InsightSnapshot(TenantModel):
         max_length=16, blank=True, default='',
         verbose_name='Classement du taux de conversion')
 
+    # ── PUB35 — Attribution INCRÉMENTALE native Meta (déploiement progressif).
+    # ``{incremental_conversions: .., incremental_conversion_value: ..}`` quand le
+    # compte expose la colonne ; ``{}`` sinon (dégradation propre — voir
+    # ``meta_client.incremental_attribution_available``). Sert de contre-lecture
+    # CAUSALE face aux résultats ATTRIBUÉS (``results``/``leads_count``) — jamais
+    # une récompense du bandit, une lecture comparative (attribué vs incrémental).
+    incremental_attribution = models.JSONField(
+        default=dict, blank=True, verbose_name='Attribution incrémentale')
+
     class Meta:
         verbose_name = 'Instantané de performance'
         verbose_name_plural = 'Instantanés de performance'

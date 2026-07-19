@@ -187,7 +187,8 @@ def sync_adset_learning(company, client):
     return updated
 
 
-def _sync_level_insights(company, conn, client, *, level):
+def _sync_level_insights(company, conn, client, *, level,
+                         incremental_available=False):
     """ADSDEEP2 — Synchronise les snapshots niveau ``ad`` ou ``adset``.
 
     Tire les insights de l'edge COMPTE avec ``level=ad|adset``,
@@ -209,9 +210,16 @@ def _sync_level_insights(company, conn, client, *, level):
     mirror_model = AdMirror if is_ad else AdSetMirror
     today = datetime.date.today()
     since = today - datetime.timedelta(days=AD_INSIGHT_WINDOW_DAYS - 1)
+    # PUB35 — n'ajoute les champs incrémentaux QUE si le compte les expose (probe
+    # validé en amont) et seulement au niveau ad — sinon un champ inconnu ferait
+    # échouer tout le pull (dégradation propre : on ne les demande pas).
+    fields = AD_INSIGHT_FIELDS + (id_field,)
+    if is_ad and incremental_available:
+        from .meta_client import INCREMENTAL_ATTRIBUTION_FIELDS
+        fields = fields + INCREMENTAL_ATTRIBUTION_FIELDS
     rows = client.get_insights(
         node,
-        fields=AD_INSIGHT_FIELDS + (id_field,),
+        fields=fields,
         params={
             'level': level,
             'time_increment': 1,
@@ -230,7 +238,9 @@ def _sync_level_insights(company, conn, client, *, level):
         norm = normalize_insight_row(row)
         # PUB32 — classements Meta seulement au niveau ad (l'adset ne les expose
         # pas ; passer None les laisse intacts sur l'adset).
+        # PUB35 — attribution incrémentale (si disponible) parsée par ad.
         ranking_kwargs = {}
+        incremental = None
         if is_ad:
             ranking_kwargs = {
                 'quality_ranking': _clean_ranking(row.get('quality_ranking')),
@@ -239,6 +249,9 @@ def _sync_level_insights(company, conn, client, *, level):
                 'conversion_rate_ranking': _clean_ranking(
                     row.get('conversion_rate_ranking')),
             }
+            if incremental_available:
+                from .meta_client import parse_incremental_attribution
+                incremental = parse_incremental_attribution(row) or None
         sync.upsert_insight(
             company, mirror, date=day,
             spend=norm['spend'], results=norm['results'],
@@ -247,7 +260,8 @@ def _sync_level_insights(company, conn, client, *, level):
             clicks=norm['clicks'], link_clicks=norm['link_clicks'],
             conversations=norm['conversations'],
             leads_count=norm['leads_count'],
-            video_metrics=norm['video_metrics'], **ranking_kwargs)
+            video_metrics=norm['video_metrics'],
+            incremental_attribution=incremental, **ranking_kwargs)
 
 
 def _sync_company(conn):
@@ -279,11 +293,21 @@ def _sync_company(conn):
     sync.sync_adsets(company, client.get_adsets())
     sync.sync_ads(company, client.get_ads())
 
+    # PUB35 — probe UNE fois : le compte expose-t-il l'attribution incrémentale ?
+    # (déploiement progressif Meta — jamais supposé ; un champ inconnu casserait
+    # tout le pull insights, d'où le probe préalable.) Best-effort.
+    incremental_available = False
+    try:
+        incremental_available = client.incremental_attribution_available()
+    except Exception:  # noqa: BLE001 — le probe ne bloque jamais la synchro
+        incremental_available = False
+
     # ADSDEEP2 — snapshots niveau adset PUIS ad (edge compte, level=…). Placés
     # AVANT la boucle campagne pour que le dernier appel get_insights reste
     # celui de la campagne (fenêtre ``maximum`` — contrat ENG6 préservé).
     _sync_level_insights(company, conn, client, level='adset')
-    _sync_level_insights(company, conn, client, level='ad')
+    _sync_level_insights(company, conn, client, level='ad',
+                         incremental_available=incremental_available)
 
     # ADSDEEP32 — phase d'apprentissage par ad set (learning_stage_info).
     sync_adset_learning(company, client)

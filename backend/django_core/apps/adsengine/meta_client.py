@@ -44,6 +44,58 @@ ATTRIBUTION_WINDOWS = ('1d_click', '7d_click', '1d_view')
 DEAD_ATTRIBUTION_WINDOWS = ('7d_view', '28d_view')
 
 
+# ── PUB35 — Attribution INCRÉMENTALE native Meta ─────────────────────────────
+# Contre-vérification CAUSALE des choix du bandit : les conversions ATTRIBUÉES
+# (dans la fenêtre de clic) ≠ INCRÉMENTALES (celles qui n'auraient PAS eu lieu
+# sans la pub — mesurées par le modèle d'attribution incrémentale Meta, déployé
+# progressivement depuis avr. 2025). La disponibilité de ces colonnes est en
+# DÉPLOIEMENT PROGRESSIF côté Meta, jamais garantie pour un compte donné (surtout
+# hors US) : on les DEMANDE seulement si un probe les valide, sinon on dégrade
+# proprement (aucune erreur, aucune donnée stockée). Noms candidats à revalider
+# au fil du déploiement (cf. PUB39 pour les fenêtres d'attribution).
+INCREMENTAL_ATTRIBUTION_FIELDS = (
+    'incremental_conversions',
+    'incremental_conversion_value',
+)
+
+
+def _incremental_to_float(value):
+    """PUB35 — Une métrique incrémentale peut arriver en scalaire OU en liste
+    façon AdsActionStats (``[{'value': ..}]``). Renvoie un float agrégé, ou
+    ``None`` si illisible (jamais d'exception)."""
+    if value in (None, ''):
+        return None
+    if isinstance(value, list):
+        total = None
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            try:
+                total = (total or 0.0) + float(item.get('value'))
+            except (TypeError, ValueError):
+                continue
+        return total
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_incremental_attribution(row):
+    """PUB35 — Extrait les métriques d'attribution incrémentale d'une ligne
+    d'insight (dict). Renvoie un dict ``{champ: float}`` des SEULES clés présentes
+    et lisibles, ou ``{}`` si aucune (compte sans la colonne → dégradation
+    propre : rien n'est stocké, aucun affichage incrémental)."""
+    row = row or {}
+    out = {}
+    for field in INCREMENTAL_ATTRIBUTION_FIELDS:
+        if field in row:
+            val = _incremental_to_float(row[field])
+            if val is not None:
+                out[field] = val
+    return out
+
+
 # ── Taxonomie d'erreurs ──────────────────────────────────────────────────────
 # ── ADSDEEP5 — Budgeteur de rate-limit ───────────────────────────────────────
 # Seuil (%) d'utilisation au-delà duquel on RALENTIT la boucle AVANT de heurter
@@ -370,6 +422,31 @@ class MetaClient:
         if fields:
             query['fields'] = ','.join(fields)
         return self._paged(f'{object_id}/insights', params=query)
+
+    def incremental_attribution_available(self):
+        """PUB35 — ÉTAPE 1 : les colonnes d'attribution incrémentale sont-elles
+        exposées pour CE compte publicitaire ? Déploiement progressif Meta →
+        jamais supposé, toujours vérifié avant d'ajouter les champs à un pull
+        (un champ inconnu ferait échouer TOUT l'appel insights).
+
+        Tente une lecture minimale (hier, niveau compte) des champs incrémentaux.
+        Renvoie ``True`` si l'API les accepte ET renvoie au moins une clé
+        incrémentale ; ``False`` sinon (champ inconnu, erreur Graph, ou données
+        absentes) — dégradation propre, jamais d'exception propagée."""
+        acct = str(self.ad_account_id or '').strip()
+        if not acct:
+            return False
+        node = acct if acct.startswith('act_') else f'act_{acct}'
+        try:
+            rows = self.get_insights(
+                node, fields=INCREMENTAL_ATTRIBUTION_FIELDS,
+                params={'date_preset': 'yesterday'})
+        except MetaError:
+            return False  # champ inconnu / non déployé → indisponible
+        for row in rows or []:
+            if parse_incremental_attribution(row):
+                return True
+        return False
 
     # ── Créatif LIVE (ADSDEEP11/12/13) ───────────────────────────────────────
     # Sous-champs du nœud ``creative`` demandés pour miroiter le créatif diffusé
