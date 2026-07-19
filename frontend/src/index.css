@@ -1458,16 +1458,15 @@ button:active, [role="button"]:active, a.btn:active,
   }
 }
 
-/* ── En-tête de la fiche lead : badge « N devis » + ⚡ Devis auto ── */
-.lead-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
+/* ── Badge « N devis » (ContextRail, onglet Devis) ─────────────────────────
+   LW31 — hook CI-GATED (devis.spec.js E4 : `.lead-devis-badge` contient
+   « N devis ») : la CLASSE reste posée telle quelle, seul le style hex hérité
+   de l'ancien en-tête LeadForm (disparu en LW13) est retokenisé. `.lead-head-
+   actions`/`.lead-head-error`/`.lead-archived-badge` (voisines mortes,
+   0 usage JSX vivant — grep confirmé) sont supprimées. */
 .lead-devis-badge {
   border: 1px solid var(--cat-navy);
-  background: #fff;
+  background: var(--card);
   color: var(--cat-navy);
   border-radius: 999px;
   padding: 5px 12px;
@@ -1480,31 +1479,19 @@ button:active, [role="button"]:active, a.btn:active,
 @media (hover: hover) {
   .lead-devis-badge:hover {
     background: var(--cat-navy);
-    color: #fff;
+    color: var(--color-lune);
   }
 }
 .lead-devis-badge.is-zero {
-  border-color: #cbd5e1;
-  color: #94a3b8;
+  border-color: var(--border);
+  color: var(--muted-foreground);
   font-weight: 600;
 }
 @media (hover: hover) {
   .lead-devis-badge.is-zero:hover {
-    background: #f1f5f9;
-    color: #64748b;
+    background: var(--muted);
+    color: var(--muted-foreground);
   }
-}
-.lead-head-error { margin: 10px 24px 0; flex-shrink: 0; }
-/* Pastille « Archivé » dans l'en-tête de la fiche lead */
-.lead-archived-badge {
-  margin-left: 10px;
-  border-radius: 999px;
-  padding: 3px 10px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  background: #e2e8f0;
-  color: #475569;
-  vertical-align: middle;
 }
 /* Astérisque doré : champ requis pour le devis automatique */
 .req-auto { color: var(--cat-gold); font-weight: 700; }
@@ -3817,152 +3804,16 @@ textarea.form-control {
 .kb-act-clock.upcoming { color: #16a34a; }
 
 /* ===== migrated from src/pages/crm/leadform-extra.css (P67) ===== */
-/* Compléments fiche lead : avatar responsable d'entête, barre d'actions devis
-   (style Odoo) et édition inline de la facture. */
-
-.lead-head-owner { display: inline-flex; align-items: center; margin-right: 4px; }
-
-/* VX24 — LeadSummaryBar : bandeau de faits clés (score, montant estimé,
-   prochaine activité, jours depuis modif.) façon Attio, en tête de fiche. */
-.lead-summary-bar {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
-  padding: 8px 20px;
-  font-size: 0.82rem;
-  color: var(--muted-foreground, #475569);
-  border-bottom: 1px solid var(--border, #e2e8f0);
-}
-
-.lead-summary-item { display: inline-flex; align-items: center; gap: 4px; }
-
-/* Barre d'actions sous l'entête : facture inline (gauche) + devis (droite). */
-.lead-subbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 10px 20px;
-  background: var(--muted, #f1f5f9);
-  border-bottom: 1px solid var(--border, #e2e8f0);
-}
-
-.lead-subbar-bills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.lead-subbar-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: 600;
-  color: var(--muted-foreground, #475569);
-  font-size: 0.85rem;
-}
-
-/* VX45 — icône lucide remplaçant l'emoji 💡 (rendu variable selon l'OS). */
-.lead-subbar-icon { flex-shrink: 0; }
-.lead-bill-input { width: 110px; }
-
-.lead-bill-view {
-  background: var(--card, #fff);
-  border: 1px dashed var(--border, #cbd5e1);
-  border-radius: var(--radius-sm, 8px);
-  padding: 4px 10px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--foreground, #1e293b);
-  cursor: pointer;
-}
-@media (hover: hover) {
-  .lead-bill-view:hover {
-    border-color: var(--primary, #2563eb);
-    background: color-mix(in srgb, var(--primary, #2563eb) 8%, var(--card, #fff));
-  }
-}
-.lead-bill-edit-hint { color: var(--primary, #2563eb); margin-left: 6px; }
-.lead-bill-empty { color: var(--primary, #2563eb); font-weight: 600; }
-
-.lead-subbar-devis { display: flex; align-items: center; gap: 8px; }
-
-.lead-devis-menu-wrap { position: relative; display: inline-block; }
-.lead-devis-menu {
-  position: absolute;
-  /* MB3 — menu déroulant d'actions devis = DROPDOWN (barème de tokens). Rendu
-     dans la fiche lead (.ldp-panel, --z-modal) : le palier joue dans ce
-     contexte, au-dessus du contenu de la fiche. */
-  z-index: var(--z-dropdown, 1000);
-  top: calc(100% + 4px);
-  right: 0;
-  min-width: 200px;
-  background: var(--popover, #fff);
-  color: var(--popover-foreground, inherit);
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: var(--radius, 10px);
-  box-shadow: var(--shadow-ui-lg, 0 16px 40px rgba(0, 0, 0, 0.16));
-  padding: 4px;
-}
-.lead-devis-menu-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 0;
-  border-radius: 7px;
-  padding: 8px 10px;
-  font-size: 0.86rem;
-  color: var(--foreground, #1e293b);
-  cursor: pointer;
-}
-@media (hover: hover) {
-  .lead-devis-menu-item:hover:not(:disabled) { background: var(--accent, #f1f5f9); }
-}
-.lead-devis-menu-item:disabled { color: var(--muted-foreground, #94a3b8); cursor: not-allowed; }
-
-/* Affinages 2026-06 : avertissement doublon (non bloquant), lien carte GPS,
-   erreurs en ligne (facture inline, note). */
-.lead-dup-warning {
-  margin: 0 0 10px;
-  padding: 8px 12px;
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
-  border-radius: var(--radius-md);
-  font-size: 0.85rem;
-  color: #92400e;
-}
-.lead-dup-link {
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  font-weight: 700;
-  color: #b45309;
-  text-decoration: underline;
-  cursor: pointer;
-}
-.lead-gps-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #2563eb;
-  text-decoration: none;
-}
-@media (hover: hover) {
-  .lead-gps-link:hover { text-decoration: underline; }
-}
-.lead-bill-error { color: #dc2626; font-size: 0.82rem; }
+/* LW31 — tout le bandeau/sous-barre/menu/avertissements hand-rolled de
+   l'ancien LeadForm (avatar d'entête, LeadSummaryBar, sous-barre facture
+   inline, menu devis, bannière doublon, lien GPS) a été SUPPRIMÉ : LeadForm
+   est devenu un adaptateur vers LeadWorkspace (LW13) qui reconstruit ces
+   fonctions avec `ui/DropdownMenu`, un `Dialog` doublons, `.lw-gps-link` et
+   les formulaires de section — 0 usage JSX vivant restait ici (grep confirmé
+   classe par classe). `.form-error` reste : classe de message d'erreur
+   générique partagée par d'autres écrans hors fenêtre lead (ClientForm,
+   PlanActiviteDialog, ActivitiesPanel…) — hors périmètre LW31. */
 .form-error { color: #dc2626; font-size: 0.85rem; margin: 4px 0 0; }
-
-/* A4 — actions en ligne sur les devis d'un lead (facture / chantier). */
-.lead-devis-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-}
-.lead-devis-pdf-hint { color: var(--muted-foreground, #64748b); white-space: nowrap; }
 
 /* ===== migrated from src/pages/crm/leads/bulkactionbar.css (P67) ===== */
 /* Barre d'actions en masse — collante sous le filtre, surface tokenisée pour

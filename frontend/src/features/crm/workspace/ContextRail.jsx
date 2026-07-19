@@ -138,9 +138,13 @@ export default function ContextRail({
           {/* `.lead-devis-badge` + « N devis » : hook du spec e2e CI-GATED
               devis.spec.js E4 (l'ancien badge d'en-tête LeadForm a disparu
               avec LW13) — la CLASSE est le contrat, le style vient des
-              tokens de l'onglet. */}
+              tokens de l'onglet. `.is-zero` (LW31) reprend le modificateur
+              atténué de l'ancien en-tête quand le lead n'a encore aucun
+              devis. */}
           <TabsTrigger value="devis">
-            <span className="lead-devis-badge">{nbDevis ? `${nbDevis} devis` : 'Devis'}</span>
+            <span className={`lead-devis-badge${nbDevis ? '' : ' is-zero'}`}>
+              {nbDevis ? `${nbDevis} devis` : 'Devis'}
+            </span>
           </TabsTrigger>
           <TabsTrigger value="activites">Activités{openActivites ? ` (${openActivites})` : ''}</TabsTrigger>
           <TabsTrigger value="pieces">Pièces{nbPieces ? ` (${nbPieces})` : ''}</TabsTrigger>
