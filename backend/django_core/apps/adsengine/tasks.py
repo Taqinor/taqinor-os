@@ -1113,6 +1113,68 @@ def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
     return {'variants_created': len(variants)}
 
 
+def _run_grounded_generation(company, seed_brief, *, components=None,
+                             max_variants=3, generator=None):
+    """PUB16 — Orchestration du pipeline de génération IA ANCRÉE (AGEN2).
+
+    Produit des variantes dont CHAQUE chiffre cite une ``FactEntry`` publiée
+    (``generation.generate_grounded_variants``), emballe les assets ancrés (nés
+    PENDING, ``policy_stamp={}``) dans un ``CreativeGenerationBatch`` EN_ATTENTE
+    et PERSISTE l'audit (``fact_table_version`` + ``claim_verdicts`` par variante,
+    via ``generation_audit.record_audit``). L'IA produit des ASSETS, jamais des
+    décisions : le lot attend une approbation HUMAINE par lot avant d'entrer au
+    backlog (``recombine.approve_lot``). NO-OP propre (``enabled=False``, aucun
+    lot) sans clé/générateur. Renvoie un dict de rapport."""
+    from . import generation, generation_audit
+    from .models import CreativeGenerationBatch
+
+    result = generation.generate_grounded_variants(
+        company, seed_brief, components=components, max_variants=max_variants,
+        generator=generator, create_assets=True, source_lane='gen')
+    if not result.get('enabled'):
+        return {'enabled': False, 'batch_id': None, 'assets': 0,
+                'reason': result.get('reason', 'génération désactivée')}
+
+    assets = result.get('assets') or []
+    batch = CreativeGenerationBatch.objects.create(
+        company=company,
+        status=CreativeGenerationBatch.Statut.EN_ATTENTE,
+        visual_ids=[a.pk for a in assets])
+    generation_audit.record_audit(
+        batch,
+        fact_table_version=result.get('table_version'),
+        claim_verdicts={
+            'seed_brief': (seed_brief or '').strip()[:200],
+            'variants': result.get('variants', []),
+            'rejected': result.get('rejected', []),
+        })
+    logger.info(
+        'adsengine._run_grounded_generation: lot %s, %s asset(s) ancré(s), '
+        '%s rejeté(s)', batch.pk, len(assets), len(result.get('rejected', [])))
+    return {'enabled': True, 'batch_id': batch.pk, 'assets': len(assets),
+            'rejected': len(result.get('rejected', [])),
+            'table_version': result.get('table_version')}
+
+
+@shared_task(name='adsengine.generate_grounded_variants')
+def generate_grounded_variants(company_id, seed_brief, components=None,
+                               max_variants=3):
+    """PUB16 — Tâche async : câble le pipeline de génération IA ANCRÉE (AGEN2 :
+    ``generation→claim_check→groundedness→generation_audit``) resté sans point
+    d'entrée production. Key-gated : sans ``ADSENGINE_GEN_API_KEY`` (et sans
+    générateur), NO-OP propre (``enabled=False``, aucun lot, zéro crash) ; sinon
+    crée un ``CreativeGenerationBatch`` EN_ATTENTE de variantes ancrées FactTable
+    + audit ``claim_verdicts`` persisté. NO-OP propre si société introuvable."""
+    from authentication.models import Company
+
+    company = Company.objects.filter(pk=company_id).first()
+    if company is None:
+        return {'enabled': False, 'batch_id': None, 'assets': 0,
+                'reason': 'société introuvable'}
+    return _run_grounded_generation(
+        company, seed_brief, components=components, max_variants=max_variants)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # lane/gen-b — AGEN8 : auto-pause maison du rayon d'explosion (§10.2 point 5).
 # Bloc ISOLÉ (fold propre avec le co-éditeur de tasks.py) — n'ajouter ici que

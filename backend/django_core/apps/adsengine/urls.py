@@ -24,6 +24,7 @@ from .views import (
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
+    GroundedGenerationView,
     ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
     GuardrailConfigViewSet, GuardrailSingletonView,
     InstagramCommentDeleteView, InstagramCommentHideView,
@@ -123,6 +124,9 @@ urlpatterns = [
          BacklogLotApproveView.as_view(), name='adsengine-backlog-lot-approve'),
     path('backlog/<int:campagne_id>/assets/',
          BacklogDropAssetView.as_view(), name='adsengine-backlog-drop-asset'),
+    # PUB16 — génération IA ancrée (« Générer des variantes ancrées »).
+    path('generation/variantes-ancrees/', GroundedGenerationView.as_view(),
+         name='adsengine-generation-variantes-ancrees'),
     # ADSENG33 — drill-downs de reporting (table variante / entonnoir / cohortes
     # / export CSV).
     path('reporting/variantes/', VariantReportView.as_view(),

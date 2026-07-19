@@ -244,6 +244,50 @@ class EngagementAudienceView(APIView):
         return Response(result)
 
 
+class GroundedGenerationView(APIView):
+    """PUB16 — Déclenche la génération IA ANCRÉE (AGEN2), câblée depuis
+    BacklogScreen / CreativeLibrary (« Générer des variantes ancrées »).
+
+    ``POST /api/django/adsengine/generation/variantes-ancrees/`` avec
+    ``{seed_brief, components?, max_variants?}`` → tâche async qui produit un LOT
+    de variantes dont CHAQUE chiffre cite une ``FactEntry`` publiée (assets nés
+    PENDING, lot EN_ATTENTE d'approbation humaine — l'IA produit des ASSETS,
+    jamais des décisions). Key-gated : sans ``ADSENGINE_GEN_API_KEY``, message
+    clair (200, ``enabled=False``) et AUCUN lot créé (zéro crash). Gaté
+    ``adsengine_manage`` ; company-scopé.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _user_has_or_legacy(request.user, 'adsengine_manage'):
+            return Response({'detail': 'Permission refusée.'}, status=403)
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        seed_brief = str((request.data or {}).get('seed_brief', '') or '')
+        if not seed_brief.strip():
+            return Response({'detail': 'seed_brief requis.'}, status=400)
+        components = (request.data or {}).get('components') or []
+        # Key-gated : message clair AVANT dispatch (pas de tâche inutile ni de
+        # lot créé sans clé — zéro crash).
+        from .generation import GEN_ENV_KEY
+        if not os.environ.get(GEN_ENV_KEY):
+            return Response({
+                'enabled': False,
+                'detail': ('Génération IA désactivée : la clé '
+                           f"{GEN_ENV_KEY} n'est pas configurée. Aucun lot créé."),
+            }, status=200)
+        from .tasks import generate_grounded_variants
+        generate_grounded_variants.delay(
+            company.id, seed_brief, components=components)
+        return Response({
+            'enabled': True,
+            'detail': ('Génération lancée : le lot de variantes ancrées '
+                       'apparaîtra dans le backlog pour approbation.'),
+        }, status=202)
+
+
 class AudienceDeliveryEstimateView(APIView):
     """ADSDEEP59 — Estimation d'audience AVANT usage (dossier §5), montrée dans le
     picker avant de créer/utiliser une audience.
