@@ -2769,7 +2769,6 @@ textarea.form-control {
   /* MB2 — Largeurs fixes héritées sans garde mobile (audit index.css) : on les
      assouplit sous 768px pour qu'aucun écran ne déborde horizontalement. */
   .gen-page { max-width: 100%; }
-  .lead-bill-input { width: auto; flex: 1 1 110px; min-width: 0; max-width: 200px; }
   .devis-totals { min-width: 0; width: 100%; }
   .nb-panel { width: min(320px, calc(100vw - 16px)); }
 }

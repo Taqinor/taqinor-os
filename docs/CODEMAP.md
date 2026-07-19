@@ -539,6 +539,7 @@ module per backend area. The **design system** (refonte UI) lives in `design/`
 | `/dashboard` | Dashboard |
 | `/crm` | ClientList |
 | `/crm/leads` | LeadsPage (kanban / list / calendar / charts) |
+| `/crm/leads/:id` | LeadDetailPage → LeadWorkspace (full-page cockpit) |
 | `/activites` | MesActivitesPage |
 | `/calendrier` | CalendarPage (agenda) |
 | `/crm/parrainage` | ParrainagePage (referrals) |
@@ -574,7 +575,7 @@ module per backend area. The **design system** (refonte UI) lives in `design/`
 
 ### Features (`frontend/src/features`)
 - **auth** — session/JWT; `authSlice.js` (fetchMe, login/logout thunks).
-- **crm** — leads/clients state; `crmSlice.js`, `bulk.js` (selection logic), `stages.js` (mirrors STAGES.py + CONVERSION_STAGE — CI-checked).
+- **crm** — leads/clients state; `crmSlice.js`, `bulk.js` (selection logic), `stages.js` (mirrors STAGES.py + CONVERSION_STAGE — CI-checked); **`workspace/`** — the lead cockpit (ex-`pages/crm/LeadForm.jsx`, removed LW40): shell `LeadWorkspace.jsx` (3 zones — `IdentityRail`/`SectionsPane`+`sections/`/`ContextRail` with `TimelineTab`/`DevisTab`/`StageControl`) over the pure autosave engine `draftCore.js` (no-loss reducer) via `useLeadDraft.js`; `leadPrefetch.js`, `rotting.js`; consumers `ScoreBadge.jsx`, `CallLogPopover.jsx`, `components/ChatterTimeline.jsx`.
 - **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill for the quote generator: GHI/ONEE/ROI, panel/inverter/battery sizing, pompage HMT+débit→pump+VEICHI variateur, all TTC), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
 - **installations** — chantiers; `installationsSlice.js`, `statuses.js` (stage constants).
 - **stock** — catalogue/inventory/procurement; `stockSlice.js`, `catalogue.js`, `emplacements.js`, `procurement.js`.
@@ -587,7 +588,7 @@ module per backend area. The **design system** (refonte UI) lives in `design/`
 - **adsengine** — « Publicité » console for the Meta Ads engine (§4), a `module.config.jsx`-registered coquille (not a Redux slice — `hooks.js`/`adsengineApi.js` + `adsengine.js` label maps) under `/publicite`, gated responsable/admin: DashboardScreen (+ Pacing/Reconciliation tabs, ADSDEEP61 v2 conversations/MER tiles), AdsCockpitScreen (ADSDEEP22 per-ad daily cockpit), ConnectionScreen, CampaignsScreen (ADSDEEP60 3-level drill-down), ApprovalsScreen (the flagship propose→approve box, ADSDEEP35 EDIT_COPY diff+warnings), CommentsInboxScreen (ADSDEEP54), InstagramScreen (ADSDEEP56), BriefScreen, CreativeLibraryScreen, ActionsLogScreen, ExperimentsScreen, FlightPlanScreen, BacklogScreen, RulesScreen (ADSDEEP43 journal), SimulationScreen, ReportsScreen (Créatifs leaderboard + Audit tabs); shared `DataWindowNotice.jsx` (ADSDEEP66 no-silent-caps banners); `TenantBrand.jsx` (white-label-clean fallback, no hardcoded brand — SCA29); DOM test hooks prefixed `ae-*`.
 
 ### Pages (`frontend/src/pages`)
-- **crm/** — ClientList, LeadForm, LeadsPage, ParrainagePage + `leads/` (ViewSwitcher, FilterBar, BulkActionBar, DoublonsPanel, SigneDialog, views/Kanban|List|Calendar|Charts).
+- **crm/** — ClientList, LeadsPage, ParrainagePage + `leads/` (LeadDetailPage → `features/crm/workspace/LeadWorkspace`, ViewSwitcher, FilterBar, BulkActionBar, DoublonsPanel, SigneDialog, views/Kanban|List|Calendar|Charts). The lead cockpit itself lives in `features/crm/workspace/` (ex-`LeadForm.jsx`, removed LW40).
 - **ventes/** — DevisList, DevisGenerator, DevisForm, FactureList, FactureForm, AvoirsPage, RelancesPage, VentesKanban.
 - **stock/** — StockList, ProduitForm, MouvementsPage, BonsCommandeFournisseur, OcrStockImport.
 - **installations/** — InstallationsPage, ParcInstallePage, InstallationDetail, ChantierChecklist/Photos/Timeline.
