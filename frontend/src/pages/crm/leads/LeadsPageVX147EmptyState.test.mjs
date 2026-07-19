@@ -15,20 +15,38 @@ const KANBAN = readFileSync(join(HERE, 'views/KanbanView.jsx'), 'utf8')
 const LIST = readFileSync(join(HERE, 'views/ListView.jsx'), 'utf8')
 const CARTE = readFileSync(join(HERE, 'views/CarteView.jsx'), 'utf8')
 
-test('VX147 : LeadsPage ne rend plus .page-loading/.page-error (StateBlock à la place)', () => {
+test('VX147→LB27 : LeadsPage ne rend plus .page-loading/.page-error (StateBlock reste pour l’erreur)', () => {
   assert.doesNotMatch(LEADS_PAGE, /className="page-loading"/)
   assert.doesNotMatch(LEADS_PAGE, /className="page-error"/)
   assert.match(LEADS_PAGE, /import StateBlock from '..\/..\/..\/components\/StateBlock'/)
-  assert.match(LEADS_PAGE, /<StateBlock loading loadingText=/)
+  // LB27 (blueprint I9) : le retour anticipé PLEIN-PAGE `<StateBlock
+  // loading .../>` a disparu — remplacé par un squelette EN FORME DANS le
+  // shell (header/FilterBar/KPI visibles immédiatement). L'erreur reste
+  // INCHANGÉE (StateBlock plein-page, blueprint : « Erreur : StateBlock
+  // inchangé »).
+  assert.doesNotMatch(LEADS_PAGE, /return <StateBlock loading loadingText=/)
   assert.match(LEADS_PAGE, /<StateBlock\s*\n\s*error=/)
 })
 
 test('VX147 : KanbanView monte EmptyState pour leads=[] au lieu de colonnes vides en texte brut', () => {
-  assert.match(KANBAN, /import \{ EmptyState \} from '..\/..\/..\/..\/ui'/)
+  assert.match(KANBAN, /import \{ EmptyState, Button \} from '..\/..\/..\/..\/ui'/)
   assert.match(KANBAN, /if \(!leads \|\| leads\.length === 0\) \{/)
   const idx = KANBAN.indexOf('if (!leads || leads.length === 0)')
-  const block = KANBAN.slice(idx, idx + 200)
+  const block = KANBAN.slice(idx, idx + 900)
   assert.match(block, /<EmptyState/)
+})
+
+test('LB9 : KanbanView distingue « aucun lead du tout » (coach illustré + CTA) de « filtré à 0 » (CTA Effacer les filtres)', () => {
+  const idx = KANBAN.indexOf('if (!leads || leads.length === 0)')
+  const block = KANBAN.slice(idx, idx + 1600)
+  // Palier 1 : vraiment aucun lead — coach illustré (VX40) + actions création/import.
+  assert.match(block, /const aucunDuTout = totalLeads != null && totalLeads === 0/)
+  assert.match(block, /<EmptyState\s*\n\s*illustrated/)
+  assert.match(block, /onClick=\{onNewLead\}/)
+  assert.match(block, /onClick=\{onImportLeads\}/)
+  // Palier 2 : filtré à 0 — CTA « Effacer les filtres » réel (onClick, pas décoratif).
+  assert.match(block, /Effacer les filtres/)
+  assert.match(block, /onClick=\{onClearFilters\}/)
 })
 
 test('VX147 : ListView monte EmptyState pour sorted=[] au lieu du texte brut "Aucun lead à afficher..."', () => {
@@ -36,7 +54,10 @@ test('VX147 : ListView monte EmptyState pour sorted=[] au lieu du texte brut "Au
   assert.doesNotMatch(LIST, />Aucun lead à afficher avec ces filtres\.</)
   const idx = LIST.indexOf('{!sorted.length && (')
   assert.ok(idx > 0)
-  const block = LIST.slice(idx, idx + 300)
+  // LB19 — la fenêtre a grandi de quelques caractères : colSpan calcule
+  // désormais le nombre de colonnes VISIBLES (choix de colonnes persisté)
+  // au lieu d'une constante 13/12 en dur.
+  const block = LIST.slice(idx, idx + 400)
   assert.match(block, /<EmptyState/)
 })
 

@@ -18,7 +18,10 @@ test('QX25 : telHref/waHref helpers ajoutés', () => {
 })
 
 test('QX25 : la cellule "Lead" (jamais masquée) porte les icônes tel/wa, contrairement à la colonne Téléphone (m-hide)', () => {
-  const start = SRC.indexOf('<td data-label="Lead">')
+  // LB18 — la cellule porte désormais aussi `.lv-sticky-name` (colonne nom
+  // épinglée) : recherche sur le préfixe SANS le `>` fermant pour survivre
+  // à l'ajout d'attributs (className…) sur ce même <td>.
+  const start = SRC.indexOf('<td data-label="Lead"')
   assert.ok(start > 0)
   const block = SRC.slice(start, start + 2000)
   assert.match(block, /telHref\(lead\.telephone\)/)
@@ -28,7 +31,7 @@ test('QX25 : la cellule "Lead" (jamais masquée) porte les icônes tel/wa, contr
 })
 
 test('QX25 : le clic sur les icônes de contact n\'ouvre pas la fiche (stopPropagation)', () => {
-  const start = SRC.indexOf('<td data-label="Lead">')
+  const start = SRC.indexOf('<td data-label="Lead"')
   const block = SRC.slice(start, start + 2000)
   assert.match(block, /onClick=\{\(e\) => e\.stopPropagation\(\)\}/)
 })

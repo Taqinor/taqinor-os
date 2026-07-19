@@ -145,6 +145,12 @@ const crmSlice = createSlice({
     // peuvent coïncider numériquement sans rapport entre eux).
     clientUpdateSeq: {},
     leadUpdateSeq: {},
+    // LB7 — requestId (RTK) du DERNIER `fetchLeads` dispatché (bug recon2-03
+    // #10, même motif que `leadUpdateSeq` ci-dessus) : un `fulfilled` dont le
+    // requestId ne correspond plus (un fetch plus récent a déjà été
+    // dispatché) est ignoré — fin du flicker de retour où un refetch lent
+    // remplaçait `state.leads` au complet avec un snapshot périmé.
+    fetchLeadsRequestId: null,
   },
   reducers: {
     setSelectedClient(state, action) { state.selectedClient = action.payload },
@@ -194,9 +200,17 @@ const crmSlice = createSlice({
       .addCase(deleteClient.fulfilled, (state, action) => {
         state.clients = state.clients.filter(c => c.id !== action.payload)
       })
-      .addCase(fetchLeads.pending, (state) => { state.leadsLoading = true; state.error = null })
+      .addCase(fetchLeads.pending, (state, action) => {
+        state.leadsLoading = true
+        state.error = null
+        state.fetchLeadsRequestId = action.meta.requestId
+      })
       .addCase(fetchLeads.fulfilled, (state, action) => {
         state.leadsLoading = false
+        // LB7 — bug #10 : ignore un fulfilled OBSOLÈTE (un fetchLeads plus
+        // récent a déjà été dispatché — même motif que isStaleResourceUpdate
+        // ci-dessus, appliqué au fetch de liste plutôt qu'à une update).
+        if (action.meta.requestId !== state.fetchLeadsRequestId) return
         state.leads = action.payload.results ?? action.payload
       })
       .addCase(fetchLeads.rejected, (state, action) => {

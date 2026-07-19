@@ -92,8 +92,12 @@ export default function InlineEdit({
         onClick={stop} onChange={(e) => setDraft(e.target.value)}
         onBlur={commit} onKeyDown={onKey}
       >
+        {/* LB4 — `disabled` par option est optionnel (undefined pour tous les
+            appelants existants = comportement inchangé) : le stade de la
+            liste s'en sert pour griser les transitions interdites, MÊME
+            garde que le drag kanban (isStageMoveAllowed, stages.js). */}
         {options.map((o) => (
-          <option key={String(o.value)} value={o.value ?? ''}>{o.label}</option>
+          <option key={String(o.value)} value={o.value ?? ''} disabled={o.disabled}>{o.label}</option>
         ))}
       </select>
     )

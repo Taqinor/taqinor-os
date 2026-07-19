@@ -82,19 +82,18 @@ export const tagList = (lead) =>
     .filter(Boolean)
 
 // Couleur stable d'une pastille de tag (palette fixe, déterministe).
-const TAG_PALETTE = [
-  '#e0f2fe', '#fef3c7', '#dcfce7', '#fae8ff', '#fee2e2',
-  '#e2e8f0', '#fdf3e0', '#dbeafe', '#fce7f3', '#ecfccb',
-]
-const TAG_TEXT = [
-  '#0369a1', '#a16207', '#15803d', '#a21caf', '#b91c1c',
-  '#475569', '#92600a', '#1d4ed8', '#be185d', '#4d7c0f',
-]
+// LB16 — les 10 paires de couleurs vivent désormais dans design/tokens.css
+// (`--tag-1-bg/--tag-1-fg … --tag-10-bg/--tag-10-fg`, clair + sombre, AA) : plus
+// aucun hex ici. `tagColor()` garde sa signature ({bg, color}) et renvoie des
+// `var(--tag-N-…)` (LeadCard ET ListView en profitent sans changement). Le
+// nombre de buckets (10) et le hash déterministe sont conservés : un tag donné
+// tombe TOUJOURS sur le même bucket (donc la même couleur) qu'auparavant.
+const TAG_BUCKETS = 10
 export const tagColor = (tag) => {
   let h = 0
   for (const c of String(tag)) h = (h * 31 + c.charCodeAt(0)) % 997
-  const i = h % TAG_PALETTE.length
-  return { bg: TAG_PALETTE[i], color: TAG_TEXT[i] }
+  const i = (h % TAG_BUCKETS) + 1
+  return { bg: `var(--tag-${i}-bg)`, color: `var(--tag-${i}-fg)` }
 }
 
 // Initiales du responsable (ex. « meryem » → ME, « Reda Kasri » → RK).
@@ -103,6 +102,31 @@ export const initials = (name) => {
   if (!parts.length) return ''
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[1][0]).toUpperCase()
+}
+
+// LB4 — rang d'avancement dans l'entonnoir, MIROIR STRICT de
+// apps/crm/services.py `_rang_funnel` : COLD est un état de PARKING, pas
+// « plus avancé » — classé SOUS toute étape active (rang -1) pour qu'un lead
+// froid soit RÉACTIVÉ par un déplacement vers n'importe quelle étape active.
+// Bug recon2-03 #7 : `PIPELINE_STAGES.indexOf('COLD')` valait 5 (le plus haut
+// rang) → tout drag COLD→actif était refusé comme un « recul ».
+export function funnelRank(stage) {
+  if (stage === 'COLD') return -1
+  return PIPELINE_STAGES.indexOf(stage)
+}
+
+// LB4 — miroir BYTE-À-BYTE de apps/crm/services.py `_bulk_stage_allowed` :
+//   - même étape → non (rien à faire) ;
+//   - Froid → n'importe quelle étape active → oui (réactivation) ;
+//   - vers Froid → oui (mise au parking, autorisée depuis n'importe où) ;
+//   - sinon → uniquement vers une étape PLUS avancée (jamais de recul).
+// Utilisé par le garde de drag (KanbanView), les options du StageMover et
+// l'InlineEdit stage de la liste — un SEUL garde, tous les chemins (souris,
+// clavier, select) obtiennent la même réponse (bug #8 meurt avec ça).
+export function isStageMoveAllowed(current, target) {
+  if (current === target) return false
+  if (current === 'COLD' || target === 'COLD') return true
+  return funnelRank(target) > funnelRank(current)
 }
 
 // Total TTC du devis le plus récent du lead (le serializer trie déjà du plus
@@ -135,7 +159,10 @@ export function groupLeadsByStage(leads) {
       color: STAGE_COLORS[key],
       leads: inStage,
       count: inStage.length,
-      totalDevis: inStage.reduce((s, l) => s + latestDevisTotal(l), 0),
+      // Un lead PERDU compte 0 dans l'argent d'étape (0 % de chance de
+      // conversion) — mêmes chiffres que la tuile Pipeline du bandeau KPI
+      // (critique Fable LB #4 : deux sommes divergentes sur le même écran).
+      totalDevis: inStage.reduce((s, l) => s + (isPerdu(l) ? 0 : latestDevisTotal(l)), 0),
     }
   })
 }
@@ -148,7 +175,11 @@ export const EMPTY_FILTERS = {
   tag: '',
   stage: '', // étape du funnel ('' = toutes)
   type_installation: '', // résidentiel/commercial/industriel/agricole ('' = tous)
-  relance: '', // '' | 'retard' (en retard) | 'semaine' (cette semaine)
+  // LB24 — 'aujourdhui' (relance_date === aujourd'hui) ajouté au trio
+  // existant (bandeau KPI « Dû aujourd'hui », blueprint D5) : jamais une 2e
+  // dimension déclarée ailleurs, le Segmented relance de FilterBar.jsx gagne
+  // la même option.
+  relance: '', // '' | 'aujourdhui' | 'retard' (en retard) | 'semaine' (cette semaine)
   perdus: 'avec', // 'avec' | 'sans' | 'seuls'
   archived: 'actifs', // 'actifs' | 'tous' | 'seuls' — dimension serveur (refetch)
   // QW3 — préférence de contact explicite ('' = toutes | 'phone_ok' | 'whatsapp_only')
@@ -158,6 +189,9 @@ export const EMPTY_FILTERS = {
   // épingle spécifiquement l'utilisateur COURANT, résolu par l'appelant
   // (LeadsPage.jsx passe `myUsername`, jamais codé en dur ici).
   mesLeads: false,
+  // LB24 — tuile KPI « Chauds » (bandeau KPI = filtres, blueprint D5) :
+  // filtre sur `score_label` (scoring.py, serializer) — '' | 'chaud'.
+  score: '',
 }
 
 // 'YYYY-MM-DD' du jour, en heure LOCALE (jamais via toISOString → pas d'UTC).
@@ -205,6 +239,12 @@ export function filterLeads(leads, filters, { myUsername } = {}) {
     if (f.type_installation && (l.type_installation ?? '') !== f.type_installation) {
       return false
     }
+    // LB24 — « Dû aujourd'hui » (tuile KPI, blueprint D5) : relance_date
+    // strictement égale à aujourd'hui (distinct de 'retard' — passé — et de
+    // 'semaine' — aujourd'hui à dimanche inclus).
+    if (f.relance === 'aujourdhui') {
+      if (!l.relance_date || l.relance_date !== today) return false
+    }
     if (f.relance === 'retard') {
       if (!l.relance_date || l.relance_date >= today) return false
     }
@@ -218,6 +258,9 @@ export function filterLeads(leads, filters, { myUsername } = {}) {
     if (f.contact_preference && l.contact_preference !== f.contact_preference) {
       return false
     }
+    // LB24 — « Chauds » (tuile KPI) : `score_label` calculé serveur
+    // (apps/crm/scoring.py) — 'Chaud' | 'Tiède' | 'Froid'.
+    if (f.score === 'chaud' && (l.score_label ?? '') !== 'Chaud') return false
     if (!q) return true
     return (
       (l.nom ?? '').toLowerCase().includes(q) ||

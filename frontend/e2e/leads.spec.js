@@ -143,3 +143,41 @@ test('VX71: lead form validation error state has no serious/critical a11y violat
 
   await modal.locator('.modal-close').first().click()
 })
+
+// LB34 — passe axe FINALE sur la page LEADS redessinée (blueprint §STRATÉGIE
+// E2E, clôture du batch LB). VX71 ci-dessus ne scanne que le FORMULAIRE lead ;
+// la refonte a ajouté des surfaces interactives (tuiles KPI `aria-pressed`,
+// ViewSwitcher `radiogroup`, colonnes nommées + chevrons de repli labellisés,
+// zones de scroll `tabindex=0`+label, menu ••• DropdownMenu, barre bulk
+// flottante). On scanne la page réelle en kanban PUIS en liste — scope
+// `.lp-page` (la surface REDESSINÉE ; le chrome global sidebar/header a son
+// propre garde et n'est pas l'objet de cette tâche) — plus la barre flottante
+// et le menu ••• ouvert (états montés au clic, jamais vus par un scan statique
+// de build). Le menu Radix est portalé HORS de `.lp-page` → scanné à part.
+// Échoue UNIQUEMENT sur serious/critical (même seuil anti-flake que VX71).
+test('LB34: la page leads redessinée (KPI + kanban + barre flottante + menu ••• + liste) — 0 violation a11y sérieuse', async ({ page }) => {
+  await gotoLeads(page) // vue kanban par défaut
+  await expect(page.locator('.lp-kpi-strip')).toBeVisible()
+  await expect(page.locator('.kb-board')).toBeVisible()
+  // Cockpit + board redessinés (KPI, ViewSwitcher, colonnes/chevrons/zones de scroll).
+  await assertNoSeriousA11yViolations(page, { include: '.lp-page' })
+
+  // Barre bulk FLOTTANTE : révélée en cochant une carte (la case existe dans le
+  // DOM en `opacity:0` jusqu'au survol/sélection → `force` sans dépendre du hover).
+  await page.locator('.kb-card-check').first().check({ force: true })
+  await expect(page.locator('.lp-bulk-float')).toBeVisible()
+  await assertNoSeriousA11yViolations(page, { include: '.lp-bulk-float' })
+  await page.keyboard.press('Escape') // vide la sélection → referme la barre
+  await expect(page.locator('.lp-bulk-float')).toHaveCount(0)
+
+  // Menu ••• ouvert (DropdownMenu Radix, portalé sur <body>).
+  await page.getByRole('button', { name: "Plus d'actions" }).click()
+  await expect(page.getByRole('menu')).toBeVisible()
+  await assertNoSeriousA11yViolations(page, { include: '[role="menu"]' })
+  await page.keyboard.press('Escape') // referme le menu avant de changer de vue
+
+  // Vue liste : table épinglée, cellules d'édition en place, chooser de colonnes.
+  await setLeadsView(page, 'liste')
+  await expect(page.locator('.lv-wrap')).toBeVisible()
+  await assertNoSeriousA11yViolations(page, { include: '.lp-page' })
+})

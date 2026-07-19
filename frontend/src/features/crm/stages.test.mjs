@@ -14,6 +14,8 @@ import {
   latestDevisTotal,
   initials,
   EMPTY_FILTERS,
+  funnelRank,
+  isStageMoveAllowed,
 } from './stages.js'
 
 test('les 6 étapes canoniques, dans l’ordre de l’entonnoir (STAGES.py)', () => {
@@ -59,6 +61,16 @@ test('groupLeadsByStage répartit, compte et totalise les devis par colonne', ()
   // Seul le devis le plus récent du lead compte (le serializer trie déjà).
   assert.equal(byKey.SIGNED.totalDevis, 2500.5)
   assert.equal(byKey.CONTACTED.count, 0)
+})
+
+test('groupLeadsByStage : un lead PERDU compte dans `count` mais JAMAIS dans totalDevis (mêmes chiffres que la tuile Pipeline)', () => {
+  const leads = [
+    { id: 1, stage: 'NEW', date_creation: '2026-06-01', devis: [{ total_ttc: '10000.00' }] },
+    { id: 2, stage: 'NEW', perdu: true, date_creation: '2026-06-02', devis: [{ total_ttc: '5000.00' }] },
+  ]
+  const byKey = Object.fromEntries(groupLeadsByStage(leads).map((c) => [c.key, c]))
+  assert.equal(byKey.NEW.count, 2)
+  assert.equal(byKey.NEW.totalDevis, 10000)
 })
 
 test('perdu = drapeau booléen `perdu`, jamais le texte du motif ni une colonne', () => {
@@ -159,6 +171,65 @@ test('filterLeads : relances en retard et cette semaine', () => {
   assert.ok(week.includes(2))
   assert.ok(!week.includes(1))
   assert.ok(!week.includes(3))
+})
+
+test('LB4 : funnelRank — COLD au rang -1 (parking, PAS le plus avancé), miroir apps/crm/services.py _rang_funnel', () => {
+  assert.equal(funnelRank('COLD'), -1)
+  assert.equal(funnelRank('NEW'), 0)
+  assert.equal(funnelRank('CONTACTED'), 1)
+  assert.equal(funnelRank('QUOTE_SENT'), 2)
+  assert.equal(funnelRank('FOLLOW_UP'), 3)
+  assert.equal(funnelRank('SIGNED'), 4)
+  // COLD est bien SOUS toute étape active (y compris NEW, rang 0).
+  assert.ok(funnelRank('COLD') < funnelRank('NEW'))
+})
+
+test('LB4 : isStageMoveAllowed — miroir byte-à-byte de _bulk_stage_allowed', () => {
+  // même étape → non (rien à faire).
+  assert.equal(isStageMoveAllowed('NEW', 'NEW'), false)
+  assert.equal(isStageMoveAllowed('COLD', 'COLD'), false)
+  // Froid → n'importe quelle étape active → oui (réactivation, bug #7).
+  assert.equal(isStageMoveAllowed('COLD', 'NEW'), true)
+  assert.equal(isStageMoveAllowed('COLD', 'CONTACTED'), true)
+  assert.equal(isStageMoveAllowed('COLD', 'SIGNED'), true)
+  // vers Froid → oui, mise au parking autorisée depuis n'importe où.
+  assert.equal(isStageMoveAllowed('NEW', 'COLD'), true)
+  assert.equal(isStageMoveAllowed('SIGNED', 'COLD'), true)
+  // sinon → uniquement vers une étape PLUS avancée (jamais de recul).
+  assert.equal(isStageMoveAllowed('NEW', 'CONTACTED'), true)
+  assert.equal(isStageMoveAllowed('FOLLOW_UP', 'NEW'), false) // recul refusé
+  assert.equal(isStageMoveAllowed('SIGNED', 'CONTACTED'), false) // recul refusé
+  assert.equal(isStageMoveAllowed('QUOTE_SENT', 'FOLLOW_UP'), true)
+})
+
+test('LB24 : filterLeads — relance "aujourdhui" (tuile KPI « Dû aujourd\'hui »)', () => {
+  const pad = (n) => String(n).padStart(2, '0')
+  const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const past = new Date(); past.setDate(past.getDate() - 5)
+  const todayD = new Date()
+  const future = new Date(); future.setDate(future.getDate() + 2)
+  const leads = [
+    { id: 1, stage: 'NEW', nom: 'Retard', relance_date: local(past) },
+    { id: 2, stage: 'NEW', nom: "Aujourd'hui", relance_date: local(todayD) },
+    { id: 3, stage: 'NEW', nom: 'Demain', relance_date: local(future) },
+    { id: 4, stage: 'NEW', nom: 'Sans' },
+  ]
+  assert.deepEqual(filterLeads(leads, { relance: 'aujourdhui' }).map((l) => l.id), [2])
+})
+
+test('LB24 : filterLeads — score "chaud" (tuile KPI « Chauds ») lit score_label du serializer', () => {
+  const leads = [
+    { id: 1, nom: 'A', score_label: 'Chaud' },
+    { id: 2, nom: 'B', score_label: 'Tiède' },
+    { id: 3, nom: 'C', score_label: 'Froid' },
+    { id: 4, nom: 'D' }, // score_label absent → jamais « chaud »
+  ]
+  assert.deepEqual(filterLeads(leads, { score: 'chaud' }).map((l) => l.id), [1])
+  assert.equal(filterLeads(leads, EMPTY_FILTERS).length, 4)
+})
+
+test('EMPTY_FILTERS : score (LB24) rejoint le trio existant, défaut vide', () => {
+  assert.equal(EMPTY_FILTERS.score, '')
 })
 
 test('helpers de carte : tags, initiales, total du dernier devis', () => {

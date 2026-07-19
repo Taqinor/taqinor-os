@@ -19,9 +19,17 @@ import {
 import {
   Button, IconButton, Spinner, FloatingActionButton,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  FadeSwap, SkeletonCard, SkeletonTableRow,
 } from '../../../ui'
+// LB27 — squelette EN FORME dans le shell (blueprint I9), même hook que
+// ClientList/DevisList/LeadWorkspace : rien avant 300ms (anti-flash), un
+// spinner discret jusqu'à 500ms, puis un squelette au-delà.
+import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
+// LB26 — hook CANONIQUE (déjà adopté par LeadWorkspace.jsx) : jamais une
+// nouvelle copie locale de useIsMobile.
+import { useIsMobile } from '../../../ui/ResponsiveDialog'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../../hooks/useEquipeMembreIds'
@@ -30,11 +38,20 @@ import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
 import ExcelImport from '../../../components/ExcelImport'
 import SavedViewsBar, { SaveViewButton } from '../../../components/SavedViewsBar'
 import FilterBar from './FilterBar'
+import LeadsKpiStrip from './LeadsKpiStrip'
 import BulkActionBar from './BulkActionBar'
 import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
 import SigneDialog from './SigneDialog'
 import LeadExpressModal from './LeadExpressModal'
+import { SIGNE_INTERCEPT } from './signeIntercept'
+// LB22 — URL partageable (blueprint D5/I7) : module PUR encode/decode
+// filtres+vue ↔ URLSearchParams (urlFilters.js) — VALID_VIEWS y vit
+// désormais en SEULE source (jamais une 2e liste déclarée ici).
+import {
+  VALID_VIEWS, hasUrlFilterState, readFiltersFromParams, readViewFromParams,
+  writeFiltersToParams,
+} from './urlFilters'
 // VX186 — KanbanView reste STATIQUE (vue par défaut la plus fréquente, zéro
 // flash de chargement au premier rendu). Les 4 autres vues + Prévision sont
 // désormais `lazy` : LeadsPage était le PLUS GROS chunk de route du repo
@@ -50,7 +67,6 @@ const ForecastView = lazy(() => import('./views/ForecastView'))  // XSAL15
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
 const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
-const VALID_VIEWS = ['kanban', 'liste', 'calendrier', 'graphique', 'carte', 'prevision']  // FG37, XSAL15
 
 // loadSavedViews inlined removed — now using useSavedViews hook (FG11).
 
@@ -67,6 +83,37 @@ function loadFilters() {
   }
 }
 
+// LB27 — squelette EN FORME de la vue active (blueprint I9) : 6 colonnes ×
+// 3 SkeletonCard en kanban/prévision (la forme du board), SkeletonTableRow en
+// liste ; calendrier/graphique/carte retombent sur le même bloc kanban (des
+// vues moins fréquentes au premier chargement, une forme neutre suffit).
+function LeadsViewSkeleton({ view }) {
+  if (view === 'liste') {
+    return (
+      <div className="lp-skeleton-liste" aria-hidden="true">
+        <table className="lv-table">
+          <tbody>
+            {Array.from({ length: 8 }).map((unused, i) => (
+              <SkeletonTableRow key={i} columns={7} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+  return (
+    <div className="lp-skeleton-kanban" aria-hidden="true">
+      {Array.from({ length: 6 }).map((unused, col) => (
+        <div key={col} className="lp-skeleton-col">
+          {Array.from({ length: 3 }).map((unused2, card) => (
+            <SkeletonCard key={card} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function LeadsPage() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
   useDocumentTitle('Leads')
@@ -78,6 +125,10 @@ export default function LeadsPage() {
   // rôle ci-dessous (normal=ON, manager=OFF, comportement historique inchangé).
   const currentUser = useSelector(s => s.auth.user)
   const roleTier = useSelector(s => s.auth.role)
+  // LB26 — Express rejoint le menu ⋯ sous 768px (le header respire) : hook
+  // CANONIQUE (ui/ResponsiveDialog, déjà adopté par LeadWorkspace) — jamais
+  // une nouvelle copie locale de useIsMobile.
+  const isMobile = useIsMobile()
 
   // Employés assignables (avatar + nom) pour les sélecteurs de responsable des
   // cartes kanban et de la liste. Ouvert à la Commerciale (endpoint dédié).
@@ -88,7 +139,13 @@ export default function LeadsPage() {
   }, [])
 
   // Vue active, persistée (kanban par défaut, façon Odoo).
+  // LB22 — priorité URL > localStorage > défaut (blueprint D5/I7) : une URL
+  // collée (`?view=liste`) gagne toujours sur la vue persistée localement —
+  // `readViewFromParams` renvoie `null` si `?view=` est absente/invalide, on
+  // retombe alors sur le comportement historique (localStorage puis kanban).
   const [view, setView] = useState(() => {
+    const fromUrl = readViewFromParams(searchParams)
+    if (fromUrl) return fromUrl
     try {
       const saved = localStorage.getItem(VIEW_KEY)
       return VALID_VIEWS.includes(saved) ? saved : 'kanban'
@@ -102,7 +159,14 @@ export default function LeadsPage() {
 
   // Filtres partagés par les quatre vues — persistés en localStorage (comme la
   // vue active) pour survivre à un rechargement de page.
+  // LB22 — priorité URL > localStorage > défauts (blueprint D5/I7) : une URL
+  // collée (3 filtres + vue) reproduit EXACTEMENT l'écran, même en
+  // navigation privée (aucun localStorage) — quand l'URL porte AU MOINS un
+  // filtre géré, elle est la SEULE source retenue (jamais un mélange avec le
+  // localStorage), le défaut « Mes leads » (VX224) ne s'applique alors pas
+  // (un lien partagé est déjà une intention explicite).
   const [filters, setFilters] = useState(() => {
+    if (hasUrlFilterState(searchParams)) return readFiltersFromParams(searchParams)
     const loaded = loadFilters()
     // VX224 — « Mes leads » ON par défaut pour le rôle `normal`, UNIQUEMENT
     // au tout premier chargement (aucun filtre encore persisté) — un choix
@@ -116,6 +180,21 @@ export default function LeadsPage() {
       localStorage.setItem(FILTERS_KEY, JSON.stringify(filters))
     } catch { /* stockage indisponible */ }
   }, [filters])
+  // LB22 — URL partageable (blueprint D5, invariant I7 : une seule écriture
+  // d'URL) : chaque changement de filtres/vue réécrit l'URL en `replace`
+  // (jamais un spam d'historique — l'utilisatrice n'a jamais navigué),
+  // débouncé 300ms pour ne pas fragmenter chaque frappe de recherche.
+  // `applySavedView` (setFilters+setView) traverse ce même effet, aucun
+  // câblage séparé nécessaire. `writeFiltersToParams` ne touche QUE ses
+  // propres clés : les deep-links `?lead=`/`?new=`/`?equipe=` traversent
+  // intacts (mise à jour fonctionnelle sur les derniers params réels, jamais
+  // une valeur `searchParams` figée par une closure obsolète).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearchParams((prev) => writeFiltersToParams(prev, filters, view), { replace: true })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [filters, view, setSearchParams])
   // VX187 — `filterLeads` recalculait en SYNCHRONE dans le commit de CHAQUE
   // frappe de la recherche (le filtre est mis à jour à chaque `onChange`) :
   // `useDeferredValue` dérive `filtered` d'une valeur qui suit `filters` avec
@@ -134,6 +213,12 @@ export default function LeadsPage() {
     if (!equipeId || !equipeMembreIds) return base
     return base.filter((l) => equipeMembreIds.has(l.owner))
   }, [leads, deferredFilters, currentUser?.username, equipeId, equipeMembreIds])
+  // Pool KPI : les leads APRÈS le filtre additif équipe (mais AVANT les
+  // filtres utilisateur — la tuile force sa dimension par-dessus `filters`).
+  const kpiPool = useMemo(() => {
+    if (!equipeId || !equipeMembreIds) return leads
+    return leads.filter((l) => equipeMembreIds.has(l.owner))
+  }, [leads, equipeId, equipeMembreIds])
 
   // Vues enregistrées nommées (FG11 — useSavedViews hook).
   const { savedViews, saveView, deleteView: deleteSavedView } = useSavedViews(SAVED_VIEWS_KEY)
@@ -145,6 +230,17 @@ export default function LeadsPage() {
     setFilters({ ...EMPTY_FILTERS, ...(v.state?.filters || v.filters || {}) })
     const savedView = v.state?.view ?? v.view
     if (VALID_VIEWS.includes(savedView)) setView(savedView)
+  }
+  // LB26 — « Copier le lien » d'une vue enregistrée (blueprint D5) : sérialise
+  // via urlFilters.js (même module que l'URL live) sur une base VIERGE (pas
+  // de `?lead=` résiduel dans un lien partagé) — le partage Reda→Meriem
+  // devient un simple collage WhatsApp.
+  const buildShareUrl = (v) => {
+    const vFilters = { ...EMPTY_FILTERS, ...(v.state?.filters || v.filters || {}) }
+    const vView = v.state?.view ?? v.view ?? 'kanban'
+    const params = writeFiltersToParams(new URLSearchParams(), vFilters, vView)
+    const qs = params.toString()
+    return `${window.location.origin}${window.location.pathname}${qs ? `?${qs}` : ''}`
   }
 
   // Formulaire lead (création / édition).
@@ -172,6 +268,8 @@ export default function LeadsPage() {
 
   // Export Excel de la liste filtrée courante (T9) — respecte les filtres.
   // VX172 — geste ouvert AVANT le premier `await` (voir downloadBlob.js).
+  // LB7 — bug recon2-03 #11 : catch silencieux (`/* ignore */`), l'export
+  // échouait sans AUCUN signal visible. toastError FR désormais (I8).
   const exportFiltered = async () => {
     const ids = filtered.map((l) => l.id)
     if (!ids.length) return
@@ -179,7 +277,9 @@ export default function LeadsPage() {
     try {
       const res = await crmApi.exportLeadsXlsx(ids)
       pending.deliver(new Blob([res.data]), 'leads.xlsx')
-    } catch { /* ignore */ }
+    } catch {
+      toastError('Export indisponible — réessayez.')
+    }
   }
 
   // Changement d'étape optimiste avec retour-arrière.
@@ -196,7 +296,13 @@ export default function LeadsPage() {
 
   // Le filtre « Archivés » est une dimension SERVEUR : on refait l'appel avec
   // le bon paramètre quand il change (les autres filtres restent côté client).
-  const refetch = () => dispatch(fetchLeads(archivedParam(filters.archived)))
+  // LB6 — useCallback : `refetch` entre dans `viewProps` (onRefetch) — une
+  // référence fraîche à chaque rendu de LeadsPage cassait le memo() des vues
+  // qui la reçoivent (bug #4).
+  const refetch = useCallback(
+    () => dispatch(fetchLeads(archivedParam(filters.archived))),
+    [dispatch, filters.archived],
+  )
   // VX55 — annule la requête en vol au démontage / changement de filtre : sans
   // ça, une réponse tardive (3G qui cale) peut écraser l'état d'un AUTRE écran
   // après navigation. `thunk.abort()` coupe le signal jusqu'à axios.
@@ -227,11 +333,18 @@ export default function LeadsPage() {
     return () => clearTimeout(t)
   }, [bulkMsg])
 
-  // Sélection effective : on ignore (sans muter l'état) les leads disparus
-  // après un refetch/filtre. Dérivé → pas d'effet ni de rendu en cascade.
+  // Sélection effective : on ignore (sans muter l'état `selected`) les leads
+  // disparus après un refetch OU masqués par un filtre. Dérivé → pas d'effet
+  // ni de rendu en cascade.
+  // LB8 — bug recon2-03 #6 : élaguait contre `leads` (TOUS les leads chargés,
+  // filtre ou pas) — un lead sélectionné puis masqué par un filtre restait
+  // bulk-actionnable EN INVISIBLE (la barre bulk agissait sur un lead que
+  // l'utilisateur ne voyait plus à l'écran). Élague désormais contre
+  // `filtered` (blueprint I5) : `selected` (l'état brut) N'EST PAS touché —
+  // retirer le filtre fait réapparaître naturellement les leads déjà cochés.
   const visibleSelected = useMemo(
-    () => pruneSelection(selected, leads.map((l) => l.id)),
-    [selected, leads],
+    () => pruneSelection(selected, filtered.map((l) => l.id)),
+    [selected, filtered],
   )
 
   // Au moins un lead archivé dans la sélection ? Sert à griser « Restaurer »
@@ -241,10 +354,36 @@ export default function LeadsPage() {
     [leads, visibleSelected],
   )
 
-  const onToggleSelect = (id) => setSelected((s) => toggleId(s, id))
-  const onToggleAll = (visibleIds) =>
-    setSelected((s) => toggleAll(s, visibleIds))
-  const clearSelection = () => setSelected(new Set())
+  // LB6 — useCallback : passées à CHAQUE carte/ligne via viewProps ;
+  // `setSelected` (useState) est stable par définition, `[]` suffit (bug #4).
+  const onToggleSelect = useCallback((id) => setSelected((s) => toggleId(s, id)), [])
+  const onToggleAll = useCallback(
+    (visibleIds) => setSelected((s) => toggleAll(s, visibleIds)),
+    [],
+  )
+  // LB25 — useCallback : référence stable pour le raccourci Échap ci-dessous
+  // (barre bulk flottante) sans le ré-abonner à chaque rendu.
+  const clearSelection = useCallback(() => setSelected(new Set()), [])
+  // LB25 — barre bulk FLOTTANTE (blueprint D5) : Échap la ferme, même geste
+  // que le bouton « Effacer » — n'écoute que tant qu'une sélection existe
+  // (jamais de listener global superflu sur le reste de la page).
+  useEffect(() => {
+    if (visibleSelected.size === 0) return undefined
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return
+      // Critique Fable LB #6 : Échap ne vide la sélection que si RIEN d'autre
+      // ne le consomme — un dialogue/menu/popover Radix ouvert (il pose
+      // defaultPrevented ou vit dans [data-state="open"]) garde son Échap ;
+      // sinon fermer un dialogue effacerait la sélection en silence.
+      if (e.defaultPrevented) return
+      if (document.querySelector(
+        '[role="dialog"][data-state="open"], [role="menu"][data-state="open"], [data-radix-popper-content-wrapper]',
+      )) return
+      clearSelection()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [visibleSelected.size, clearSelection])
 
   // Action en masse : la règle métier (funnel, garde-fous, Historique) vit
   // côté serveur. On rafraîchit, on affiche le bilan et on garde la sélection
@@ -279,6 +418,9 @@ export default function LeadsPage() {
     }
   }
 
+  // LB7 — même signal que exportFiltered (toastError FR, I8) : au lieu du
+  // bandeau `bulkMsg` local (une bannière pensée pour le BILAN d'une action
+  // en masse déjà commise, pas pour un échec réseau).
   const exportSelection = async () => {
     if (!visibleSelected.size) return
     const pending = downloadBlobInGesture()
@@ -287,7 +429,7 @@ export default function LeadsPage() {
       const res = await crmApi.exportLeadsXlsx([...visibleSelected])
       pending.deliver(new Blob([res.data]), 'leads.xlsx')
     } catch {
-      setBulkMsg("Export indisponible — réessayez.")
+      toastError('Export indisponible — réessayez.')
     } finally {
       setBulkBusy(false)
     }
@@ -359,37 +501,72 @@ export default function LeadsPage() {
   // kanban, LeadCard.jsx) : ouvre la fiche du lead directement sur la section
   // « Suivi commercial » (relance_date), même machinerie que les autres
   // ouvertures de fiche (setEditLead/setShowForm).
-  const onPlanifierRelance = (lead) => {
+  // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps ; les
+  // setters `useState` sont stables par définition, `[]` suffit (bug #4).
+  const onPlanifierRelance = useCallback((lead) => {
     setEditLead(lead)
     setFormDevisIntent(null)
     setFormFocusSection('pipeline')
     setShowForm(true)
-  }
+  }, [])
 
   // (Ré)assignation rapide du responsable depuis la carte / la liste. Le PATCH
   // journalise ancien → nouveau côté serveur (Historique) et est ouvert à la
   // Commerciale comme à l'admin.
-  const reassign = async (lead, ownerId) => {
+  // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps (bug #4).
+  // LB7 — bugs recon2-03 #5/#11 : plus de refetch intégral après ce PATCH
+  // mono-lead (updateLead.fulfilled remplace déjà le lead au complet dans le
+  // store) ; le catch silencieux toaste désormais (I8).
+  const reassign = useCallback(async (lead, ownerId) => {
     try {
       await dispatch(updateLead({ id: lead.id, data: { owner: ownerId } })).unwrap()
-      refetch()
-    } catch { /* erreur silencieuse */ }
-  }
+    } catch {
+      toastError('La réassignation a échoué — réessayez.')
+    }
+  }, [dispatch])
 
   // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.
   // perform_update journalise ancien → nouveau dans l'Historique côté serveur.
   // Renvoie la promesse pour qu'InlineEdit restaure la valeur si ça échoue.
-  const onInlineSave = (lead, field, value) => {
-    // A2 — passer un lead en « Signé » en place ouvre le dialogue d'acceptation
-    // (choix du devis + option) au lieu de modifier l'étape directement.
+  // LB3 — l'interception « Signé » est honnête (blueprint I3, bug #2) :
+  // A2 — passer un lead en « Signé » en place ouvre le dialogue d'acceptation
+  // (choix du devis + option) au lieu de modifier l'étape directement. Ancien
+  // code : `return Promise.resolve()` (faux succès) laissait useOptimisticSave
+  // GARDER l'étape optimiste 'SIGNED' + « Enregistré » alors que rien n'était
+  // enregistré. On REJETTE avec la sentinelle SIGNE_INTERCEPT : le select
+  // revient honnêtement à l'étape réelle (rollback), et l'onError de
+  // StageMover avale spécifiquement cette sentinelle sans toaster.
+  // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps (bug #4).
+  // LB7 — bug recon2-03 #5 : plus de refetch intégral après ce PATCH
+  // mono-lead. `updateLead.fulfilled` (crmSlice.js) remplace déjà le lead au
+  // COMPLET dans le store (score recalculé, stage_since_days, devis…) — le
+  // `.then(() => refetch())` re-déclenchait un GET /leads ENTIER pour un
+  // changement d'UN champ sur UN lead, en pure perte réseau.
+  const onInlineSave = useCallback((lead, field, value) => {
     if (field === 'stage' && value === CONVERSION_STAGE) {
       setSigneLead(lead)
-      return Promise.resolve()
+      return Promise.reject(SIGNE_INTERCEPT)
     }
-    return dispatch(updateLead({ id: lead.id, data: { [field]: value } }))
+    return dispatch(updateLead({ id: lead.id, data: { [field]: value } })).unwrap()
+  }, [dispatch])
+
+  // LB5 — « ✗ Perdu » passe ENFIN par le store (blueprint I2, bug #3) :
+  // LeadCard.confirmPerdu appelait crmApi.updateLead en DIRECT (contournait
+  // Redux) puis `onChanged?.()`, une prop que ni KanbanView ni ForecastView
+  // ne passaient JAMAIS — la carte restait active jusqu'à un refetch sans
+  // rapport. Callback stable unique, partagé par LeadCard/ListView/
+  // ForecastView : dispatch updateLead (le store se met à jour SEUL,
+  // updateLead.fulfilled remplace déjà le lead au complet — AUCUN refetch),
+  // toastError + relance l'erreur en échec (I8) pour que l'appelant garde la
+  // popover ouverte plutôt que de perdre le motif saisi.
+  const onMarkPerdu = useCallback((lead, motif) => (
+    dispatch(updateLead({ id: lead.id, data: { perdu: true, motif_perte: motif } }))
       .unwrap()
-      .then(() => { refetch() })
-  }
+      .catch((err) => {
+        toastError('Le lead n’a pas pu être marqué perdu — réessayez.')
+        throw err
+      })
+  ), [dispatch])
 
   // VX187 — useCallback (même raison que onOpenLead/onAutoQuote ci-dessus) :
   // passé à chaque carte/ligne comme `onChangeStage`. Seule dépendance externe
@@ -433,24 +610,14 @@ export default function LeadsPage() {
     }
   }, [dispatch])
 
-  // Only blank the page on the FIRST load. A background refetch (after saving a
-  // bill, generating a devis, changing a stage…) must NOT unmount the page —
-  // doing so tore down any open lead modal / inline devis preview mid-action.
-  // VX147 — chargement/erreur unifiés sur `StateBlock` (rôle status/alert)
-  // au lieu de `<p className="page-loading/page-error">` en hex bruts.
-  if (leadsLoading && leads.length === 0) {
-    return <StateBlock loading loadingText="Chargement des leads…" />
-  }
-  // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé. Le
-  // slice stocke déjà `err.response.data ?? err.message` ; on reconstruit la
-  // forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
-  if (error) return (
-    <StateBlock
-      error={`Erreur : ${errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}`}
-    />
-  )
-
-  const viewProps = {
+  // LB6 — useMemo : `viewProps` était un objet LITTÉRAL neuf à CHAQUE rendu
+  // de LeadsPage — même avec des callbacks individuellement stables
+  // (useCallback ci-dessus), l'objet conteneur changeait quand même de
+  // référence, ce qui aurait cassé le memo() de toute vue qui le recevrait
+  // en un seul bloc. Placé AVANT les retours anticipés loading/error : les
+  // Hooks doivent s'exécuter dans le MÊME ORDRE à chaque rendu (règle des
+  // Hooks), jamais après un retour conditionnel.
+  const viewProps = useMemo(() => ({
     leads: filtered,
     onOpenLead,
     onChangeStage: changeStage,
@@ -464,10 +631,39 @@ export default function LeadsPage() {
     onToggleSelect,
     onToggleAll,
     onInlineSave,
-  }
+    onMarkPerdu,
+  }), [
+    filtered, onOpenLead, changeStage, onAutoQuote, onPlanifierRelance, refetch,
+    busyLeadId, users, reassign, visibleSelected, onToggleSelect, onToggleAll,
+    onInlineSave, onMarkPerdu,
+  ])
+
+  // LB27 — squelette EN FORME dans le shell (blueprint I9) : au lieu de
+  // blanchir la page ENTIÈRE au premier chargement (VX147's ancien retour
+  // anticipé), le shell (en-tête + FilterBar + KPI) reste visible tout de
+  // suite — seule la zone de vue affiche un squelette qui a la FORME de la
+  // vue active. `useDelayedLoading` (même hook que ClientList/DevisList/
+  // LeadWorkspace) absorbe l'anti-flash : rien avant 300ms, un spinner
+  // discret jusqu'à 500ms, un squelette au-delà — jamais les deux ensemble.
+  // Placé AVANT le retour anticipé error (règle des Hooks, même raison que
+  // `viewProps` ci-dessus).
+  const initialLoading = leadsLoading && leads.length === 0
+  const { showSpinner, showSkeleton } = useDelayedLoading(initialLoading)
+
+  // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé. Le
+  // slice stocke déjà `err.response.data ?? err.message` ; on reconstruit la
+  // forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
+  if (error) return (
+    <StateBlock
+      error={`Erreur : ${errorMessageFrom({ response: { data: error } }, 'Impossible de charger les leads.')}`}
+    />
+  )
 
   return (
-    <div className="page lp-page">
+    // LB2 — `data-view` pilote le contrat CSS de hauteur (index.css) : le
+    // scrolleur change de propriétaire selon la vue active (board/liste vs
+    // page-grow), sans dupliquer la logique en JS.
+    <div className="page lp-page" data-view={view}>
       <div className="page-header lp-header">
         <h2>
           Pipeline
@@ -475,11 +671,16 @@ export default function LeadsPage() {
         </h2>
         <div className="page-header-actions lp-header-actions">
           <Button onClick={openNew}>+ Nouveau lead</Button>
-          <Button
-            variant="outline"
-            title="Saisie express : nom + téléphone + canal"
-            onClick={() => setShowExpressModal(true)}
-          ><Zap aria-hidden="true" size={14} /> Express</Button>
+          {/* LB26 — Express rejoint le menu ⋯ sous 768px (le header respire) :
+              les DEUX contrôles existent, seul `isMobile` décide lequel rend
+              (jamais les deux à la fois — pas un doublon caché en CSS). */}
+          {!isMobile && (
+            <Button
+              variant="outline"
+              title="Saisie express : nom + téléphone + canal"
+              onClick={() => setShowExpressModal(true)}
+            ><Zap aria-hidden="true" size={14} /> Express</Button>
+          )}
           {/* VX145(b) — Doublons/Importer/Exporter sont des fréquences basses
               face aux 2 contrôles ci-dessus ; démotés dans un menu « ⋯ »
               (pattern DropdownMenu déjà importé dans ListView.jsx). */}
@@ -495,6 +696,11 @@ export default function LeadsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {isMobile && (
+                <DropdownMenuItem onSelect={() => setShowExpressModal(true)}>
+                  <Zap aria-hidden="true" /> Express
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onSelect={() => setShowDoublons(true)}>
                 <GitMerge aria-hidden="true" /> Doublons
                 {doublonsCount > 0 && (
@@ -520,25 +726,45 @@ export default function LeadsPage() {
         </div>
       </div>
 
+      {/* LB24 — Bandeau KPI = filtres (blueprint D5), entre l'en-tête et
+          FilterBar : les tuiles lisent/écrivent le MÊME état `filters` que
+          le reste de la page (invariant D6-I7, un seul état de filtres). */}
+      <LeadsKpiStrip
+        // Critique Fable LB #3 : le pool KPI doit subir le MÊME filtre additif
+        // `?equipe=` que `filtered` — sinon les tuiles annoncent des nombres
+        // que le clic ne rend pas (« chiffre menteur », interdit par D5).
+        leads={kpiPool}
+        filters={filters}
+        setFilters={setFilters}
+        myUsername={currentUser?.username}
+      />
+
       <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
 
       <SavedViewsBar
         savedViews={savedViews}
         onApply={applySavedView}
         onDelete={deleteSavedView}
+        buildShareUrl={buildShareUrl}
       />
 
+      {/* LB25 — barre bulk FLOTTANTE (blueprint D5) : l'ancienne barre inline
+          poussait le layout à chaque sélection (le board sautait de
+          hauteur) ; MÊME composant BulkActionBar (toutes les actions +
+          BulkDestructiveConfirm conservées), seul le conteneur change. */}
       {visibleSelected.size > 0 && (
-        <BulkActionBar
-          count={visibleSelected.size}
-          users={users}
-          canDelete={canDelete}
-          hasArchivedSelected={hasArchivedSelected}
-          busy={bulkBusy}
-          onAction={runBulk}
-          onExport={exportSelection}
-          onClear={clearSelection}
-        />
+        <div className="lp-bulk-float">
+          <BulkActionBar
+            count={visibleSelected.size}
+            users={users}
+            canDelete={canDelete}
+            hasArchivedSelected={hasArchivedSelected}
+            busy={bulkBusy}
+            onAction={runBulk}
+            onExport={exportSelection}
+            onClear={clearSelection}
+          />
+        </div>
       )}
 
       {bulkMsg && (
@@ -572,7 +798,36 @@ export default function LeadsPage() {
       {/* VX187 — atténuation discrète pendant que React rattrape le filtre
           différé (jamais sur l'input lui-même, seulement la liste rendue). */}
       <div className="lp-view-area" style={isFiltersStale ? { opacity: 0.6 } : undefined}>
-        {view === 'kanban' && <KanbanView {...viewProps} />}
+        {/* LB27 — trois paliers, jamais deux affichés ensemble (blueprint
+            I9) : 0-300ms rien (le contenu réel, encore vide, ne flashe pas
+            à cette échelle) ; 300-500ms un spinner discret ; ≥500ms le
+            squelette EN FORME de la vue active, avec un crossfade FadeSwap
+            (même pattern que LeadWorkspace.jsx, LW25) vers le contenu réel
+            une fois les leads arrivés. */}
+        {showSpinner && (
+          <div className="lp-view-loading"><Spinner /> Chargement des leads…</div>
+        )}
+        {!showSpinner && (
+        <FadeSwap
+          loading={showSkeleton}
+          className="lp-view-skeleton-swap"
+          skeleton={<LeadsViewSkeleton view={view} />}
+        >
+        {/* LB9-wire — KanbanView (lane LB1, board) accepte désormais 4 props
+            OPTIONNELLES pour ses empty states à deux paliers (0 lead du tout
+            vs 0 résultat filtré), dégradant proprement quand absentes : même
+            trio que ChartsView ci-dessous (totalLeads/onClearFilters) + les
+            deux actions de coach « + Nouveau lead »/« Importer » déjà
+            câblées ailleurs sur la page (openNew, l'item ⋯ Importer). */}
+        {view === 'kanban' && (
+          <KanbanView
+            {...viewProps}
+            totalLeads={leads.length}
+            onClearFilters={() => setFilters(EMPTY_FILTERS)}
+            onNewLead={openNew}
+            onImportLeads={() => setShowImport(true)}
+          />
+        )}
         {/* VX186 — Suspense autour des vues lazy uniquement (Kanban reste
             synchrone, jamais de flash sur le rendu par défaut). */}
         <Suspense fallback={<div className="lp-view-loading"><Spinner /> Chargement de la vue…</div>}>
@@ -596,6 +851,8 @@ export default function LeadsPage() {
               prévue, glisser une carte replanifie le mois. */}
           {view === 'prevision' && <ForecastView {...viewProps} />}
         </Suspense>
+        </FadeSwap>
+        )}
       </div>
 
       {(showForm || deepLead) && (

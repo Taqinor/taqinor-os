@@ -3705,6 +3705,683 @@ attendrait la refonte n'est acceptable que si elle atterrit dans la même sessio
 - [x] LW39 — **Contrat e2e mis à jour DÉLIBÉRÉMENT : la spec et le DOM bougent dans la même tâche. @after LW37.** Appliquer les décisions du blueprint au couple DOM+spec : CONSERVÉS (`#lf-nom`, `.modal-title` « Lead — »/« Nouveau lead », `.modal-close`, `.ap-*`, `.act-*`, `a.att-name`, `.ldp-*` dont `.ldp-header .modal-close`, `data-testid="lead-devis-panel"`, `.lead-devis-badge` avec texte « N devis » (hook du CI-GATED devis.spec E4), sélecteurs SigneDialog, « + Nouveau lead », « Créer le lead », /Devis automatique/, placeholder `ex: 650` du champ facture hiver dans SectionEnergie — le helper `createLead` du CI-GATED E4/MB6 le remplit) — vérifier leur présence dans le nouveau DOM ; MIS À JOUR dans `frontend/e2e/leads.spec.js` (+ helpers partagés `frontend/e2e/helpers*.js` : `createLead`/`openLead`/`generateAutoDevis` relus ligne à ligne contre le nouveau DOM) : « Mettre à jour » → « Enregistrer », `.lead-summary-bar`/testid → `data-testid="lw-identity-rail"`, `.lead-bill-view`/`.lead-bill-input` → champ `#lf-facture-hiver` de SectionEnergie, `.form-group hasText 'Responsable'` → sélecteur par label stable. Les specs CI-GATED `devis.spec.js` E4 et `mobile.spec.js` MB6 (création lead sur iPhone) doivent passer SANS modification, ou leur mise à jour est faite ICI même. Lancer localement les specs leads+devis (`npx playwright test e2e/leads.spec.js e2e/devis.spec.js` contre le harnais E2E_PROXY) si l'environnement le permet, sinon revue ligne-à-ligne documentée dans le commit. Files : `frontend/e2e/leads.spec.js`, `frontend/e2e/activities.spec.js`, `frontend/e2e/attachments.spec.js`, `frontend/e2e/devis.spec.js` (si besoin), `frontend/e2e/helpers*.js`, `frontend/src/features/crm/workspace/*.jsx` (ids/testids manquants). DoD : `grep -n "lead-summary-bar\|Mettre à jour\|lead-bill-input" frontend/e2e` = 0 ; `grep -n "lf-nom" frontend/e2e` ≥ 1 ET présent dans SectionContact ; specs CI-gated (devis/health/mobile) inchangées. (ROUTINE — L) (@model: opus) (@lane: LW7) (@after: LW37)
 - [x] LW40 — **Démontage final : LeadForm.jsx supprimé, cartes et plans à jour. @after LW39.** Quand LW13→LW39 sont verts : supprimer l'adaptateur `pages/crm/LeadForm.jsx` et pointer les derniers imports directement sur `features/crm/workspace/LeadWorkspace` ; purger d'index.css les dernières classes `.lead-*` sans usage (`grep` croisé JSX/CSS) ; régénérer la section CRM de `docs/CODEMAP.md` (§4 : nouveaux fichiers workspace, route détail) + `python scripts/codemap_fingerprint.py --write` dans le même commit. Files : `frontend/src/pages/crm/LeadForm.jsx` (supprimé), `frontend/src/index.css`, `docs/CODEMAP.md`. DoD : `git grep -n "pages/crm/LeadForm"` = 0 ; `npm run lint` + vitest verts ; `python scripts/codemap_fingerprint.py --check` vert. (ROUTINE — M) (@model: sonnet) (@lane: LW7) (@after: LW39)
 
+### Groupe LB — Leads Board & Liste (la première page du matin) : shell borné, board qui tient dans l'écran, carte 4 zones, liste épinglée, KPI-filtres (synthèse design 5 recons + Fable, fondateur 2026-07-19)
+
+*Provenance : demande du fondateur — « the first page that has all the leads needs a lots of
+work… when I want to scroll right I need to go all the way down… make it reallyyyyy the best ».
+Reda et Meriem OUVRENT leur journée sur cette page (kanban/liste/calendrier/carte/graphique/
+prévision). Cinq recons parallèles (anatomie, recherche best-in-class, chasse aux bugs P0-P3,
+plans+contrat e2e, audit CSS) puis une synthèse Fable. Le blueprint complet — décisions D1-D6,
+contrat CSS exact de la chaîne de hauteur, spec de la carte, adjudication liste
+(refit sur place, PAS d'adoption du moteur ui/datatable), invariants d'état I1-I9, carte des
+fichiers par lane — est LA référence de chaque tâche : `scratchpad/design2/blueprint.md`
+(recopié dans `docs/design/leads-board-blueprint.md` en LB1). Verdicts : (D1) shell `.lp-page`
+borné view-aware via `data-view` (miroir du pattern `.lw-page`), kanban/prévision/liste en
+pleine largeur, scrolleur par vue ; (D2) colonnes à scroll interne + headers épinglés par
+construction, autoScroll dnd-kit, drag-to-pan, repli persisté, COLD réactivable (le serveur
+`_rang_funnel` le fait DÉJÀ — fix 100 % client) ; (D3) carte plafonnée nom→valeur→action→âge,
+rotting via `workspace/rotting.js`, menu •••, tags tokenisés ; (D4) liste refittée sur place en
+volant `useColumnPrefs`+`ColumnManager` au moteur ; (D5) KPI-tuiles=filtres, URL partageable,
+bulk flottant ; (D6) plus jamais de refetch intégral après un PATCH mono-lead, tout passe par
+le store, mémo stable partout.*
+
+> **Contraintes (chaque tâche LB).** Zéro nouvelle dépendance npm (dnd-kit/Recharts/Leaflet déjà
+> là). Clés d'étape uniquement via `features/crm/stages.js` (miroir STAGES.py, règle #2) — jamais
+> une seconde liste, jamais une seconde table de probabilités (importer `STAGE_PROBABILITY` de
+> KanbanView). Ne JAMAIS toucher `apps/ventes/quote_engine/` (règle #4). Tokens sémantiques
+> uniquement — un hex n'a le droit de naître QUE dans `design/tokens.css` (clair ET sombre, AA).
+> Contrat e2e conservé ou mis à jour DANS la même tâche : `article.kb-card`, `.kb-card-name`,
+> `tr.lv-row`, `.lv-lead-name`, `.ie-cell`, `select.ie-input`, 'Vue kanban'/'Vue liste', les 6
+> libellés d'étape, '+ Nouveau lead', '✓ Enregistré', « Plus d'actions sur la ligne » — specs
+> CI-gated `leads.spec.js`/`doublons.spec.js`/`datatable-breakpoint.spec.js` + axe VX71 (toute
+> nouvelle commande est nommée). Les goldens visuels `leads-kanban` clair+sombre (release-verify)
+> CHANGENT : régénération délibérée EN FIN DE BATCH (LB34), jamais un red surprise. UI en
+> français, `prefers-reduced-motion` respecté, cibles tactiles ≥44px. Le CSS nouveau vit dans un
+> bloc append-only `.lp-*`/`.kb-*`/`.lv-*` d'index.css. Mobile : swipe ☎/💬 et card-stack
+> conservés. Chaque tâche est autonome pour un agent worktree : le blueprint
+> (`docs/design/leads-board-blueprint.md`) + le corps de la tâche suffisent.
+
+**LANE 0 — urgence (UN agent, séquentiel, à bâtir EN PREMIER : le fix P0 fondateur + les bugs
+P1 recon-03 reçoivent leur correctif sur place MAINTENANT — chacun ≤ petit diff — et les lanes
+suivantes bâtissent dessus ; cette lane est propriétaire de LeadsPage.jsx/KanbanView.jsx/
+ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
+
+- [x] LB1 — **Recopier le blueprint dans le repo.** Copier `scratchpad/design2/blueprint.md` vers
+  `docs/design/leads-board-blueprint.md` tel quel (référence de toutes les tâches LB, comme
+  LW9 l'a fait pour la fenêtre lead). Files : `docs/design/leads-board-blueprint.md` (nouveau).
+  DoD : le fichier existe, lisible, lié depuis le corps des tâches. (ROUTINE — S) (@model: haiku) (@lane: LB0)
+- [x] LB2 — **P0 fondateur : le board tient dans l'écran — chaîne de hauteur `.lp-page` +
+  `data-view`.** Cause racine vérifiée (recon2-03 §P0) : la chaîne bornée meurt à `.route-fade`
+  (hauteur auto) ; `.kb-board{height:100%}` se résout en AUTO, `.kb-col-body{overflow-y}` ne
+  déborde JAMAIS, la page scrolle 8 649px et la scrollbar horizontale gît sous le fold.
+  Appliquer le contrat CSS EXACT du blueprint D1 : `.layout-content > .route-fade:has(> .lp-page)
+  {height:100%}` (sans toucher la règle `.lw-page` voisine) ; `.lp-page` flex column
+  height:100%/min-height:0 ; `.lp-page > :not(.lp-view-area){flex:0 0 auto}` ; `.lp-view-area`
+  flex:1/min-height:0, scrolleur vertical par défaut, `overflow:hidden` pour
+  kanban/prevision/liste via `data-view` (1 ligne JSX : `data-view={view}` sur la racine) ;
+  `.kb-board` passe de height:100% à flex:1/min-height:0 ; `.kb-col` flex column min-height:0 ;
+  `.kb-col-body` flex:1/overflow-y:auto ; `.lv-wrap` flex:1/overflow:auto ; pleine largeur
+  (`max-width:none`) pour les 3 vues denses ; scrollbars fines TOUJOURS visibles tokenisées ;
+  combler le gap responsive 769-899px (`.kb-col` en clamp). ForecastView (`.kb-board.fv-board`)
+  hérite — vérifier. Files : `frontend/src/index.css`,
+  `frontend/src/pages/crm/leads/LeadsPage.jsx`. DoD : en 1280×720 avec 60+ leads, le shell ne
+  scrolle pas en vue kanban, la scrollbar horizontale du board est visible SANS scroller, chaque
+  colonne scrolle en interne, shift+molette pan le board ; en vue liste/calendrier/graphique le
+  contenu scrolle sous des filtres épinglés ; mobile 375×812 : colonnes 85vw à scroll interne,
+  tabbar intacte. (ROUTINE — M) (@model: sonnet) (@lane: LB0)
+- [x] LB3 — **P1 : le StageMover ne ment plus « Signé ✓ Enregistré » (interception honnête).**
+  Bug recon2-03 #2 : `onInlineSave` intercepte CONVERSION_STAGE et renvoie `Promise.resolve()`
+  (faux succès) → `useOptimisticSave` garde 'SIGNED' optimiste + « Enregistré » alors que seul le
+  dialogue s'est ouvert. Fix (blueprint I3) : nouveau module
+  `frontend/src/pages/crm/leads/signeIntercept.js` (sentinelle `SIGNE_INTERCEPT` +
+  `isSigneIntercept(err)`) ; `onInlineSave` renvoie `Promise.reject(SIGNE_INTERCEPT)` après avoir
+  ouvert SigneDialog ; l'`onError` du StageMover avale la sentinelle sans toast (les vraies
+  erreurs toastent toujours) ; InlineEdit (liste) restaure déjà sur rejet — vérifier qu'aucun
+  toast parasite. Mettre à jour KanbanView.test. Files :
+  `frontend/src/pages/crm/leads/signeIntercept.js` (nouveau),
+  `frontend/src/pages/crm/leads/LeadsPage.jsx`,
+  `frontend/src/pages/crm/leads/views/KanbanView.jsx` + tests. DoD : sélectionner « Signé » dans
+  le StageMover ouvre SigneDialog et le select REVIENT à l'étape réelle sans toast d'erreur ;
+  annuler le dialogue ne laisse aucun « Enregistré » ; confirmer déplace réellement le lead.
+  (ROUTINE — S) (@model: sonnet) (@lane: LB0)
+- [x] LB4 — **P1 : un lead Froid se réactive par drag (rang funnel client aligné serveur).**
+  Bug recon2-03 #7 : `stageRank = PIPELINE_STAGES.indexOf` classe COLD au rang 5 (le plus haut) →
+  tout drag COLD→actif est bloqué « recul ». Le serveur fait DÉJÀ le bon choix
+  (`apps/crm/services.py _rang_funnel('COLD') == -1` ; `_bulk_stage_allowed` : Froid→active =
+  réactivation OK, →Froid = parking OK depuis partout, sinon avant-seulement) — AUCUNE tâche
+  backend. Fix : ajouter à `stages.js` `funnelRank(stage)` (COLD → -1) et
+  `isStageMoveAllowed(from, to)` miroir byte-à-byte de `_bulk_stage_allowed` (+ tests node) ;
+  l'utiliser dans `handleDragEnd` de KanbanView (à la place du stageRank local), dans les
+  `<option>` du StageMover (options interdites `disabled` — le chemin clavier retrouve le MÊME
+  garde, bug #8) et dans les options stage de l'InlineEdit liste. Entrer dans SIGNED continue de
+  passer par SigneDialog quel que soit le chemin. Files : `frontend/src/features/crm/stages.js`
+  (+ test node), `frontend/src/pages/crm/leads/views/KanbanView.jsx`,
+  `frontend/src/pages/crm/leads/views/ListView.jsx`. DoD : drag COLD→CONTACTED déplace la carte
+  (plus de bannière recul) ; drag FOLLOW_UP→NEW toujours bloqué ; n'importe où→COLD autorisé ;
+  les options interdites du select sont grisées ; tests verts. (ROUTINE — S) (@model: sonnet) (@lane: LB0)
+- [x] LB5 — **P1 : « ✗ Perdu » depuis une carte met l'UI à jour (chemin Redux).** Bug recon2-03
+  #3 : `confirmPerdu` de LeadCard appelle `crmApi.updateLead` en DIRECT (contourne le store) puis
+  `onChanged?.()` que KanbanView/ForecastView ne passent JAMAIS ; aucun polling n'existe (les
+  commentaires qui l'affirment MENTENT). Fix (blueprint I2) : callback stable
+  `onMarkPerdu(lead, motif)` dans LeadsPage (dispatch `updateLead({perdu:true, motif_perte})`,
+  PAS de refetch — `updateLead.fulfilled` patche le store), passé via viewProps ; LeadCard et
+  ListView l'utilisent ; supprimer la prop fantôme `onChanged` et les commentaires « polling »
+  mensongers ; toastError en échec. Files : `frontend/src/pages/crm/leads/LeadsPage.jsx`,
+  `frontend/src/pages/crm/leads/views/LeadCard.jsx`,
+  `frontend/src/pages/crm/leads/views/ListView.jsx`. DoD : marquer perdu depuis une carte kanban
+  grise la carte IMMÉDIATEMENT (style perdu) sans refetch réseau intégral ; échec réseau → toast
+  FR + état intact. (ROUTINE — S) (@model: sonnet) (@lane: LB0)
+- [x] LB6 — **P1 : mémo réparé — une frappe ne re-rend plus tout le board.** Bug recon2-03 #4 :
+  `reassign`/`onToggleSelect`/`onPlanifierRelance`/`onInlineSave`/`onToggleAll` sont des closures
+  fraîches (VX187 n'en avait mémoïsé que 3), `viewProps` est un objet neuf à chaque rendu,
+  `DraggableCard` n'est pas mémoïsé ; côté liste, l'état du popover perdu
+  (`perduMotif`/`perduTarget`/`perduBusy`) est passé à CHAQUE ligne → taper un motif re-rend la
+  table entière. Fix (blueprint I4) : `useCallback` sur TOUS les callbacks de viewProps,
+  `useMemo` sur viewProps, `memo(DraggableCard)`, et en liste UNE seule instance de popover au
+  niveau table — les lignes ne reçoivent que des primitives + callbacks stables. Ajouter un test
+  de sonde léger (rendu compté : une frappe de recherche ne re-rend aucune LeadCard). Files :
+  `frontend/src/pages/crm/leads/LeadsPage.jsx`,
+  `frontend/src/pages/crm/leads/views/KanbanView.jsx`,
+  `frontend/src/pages/crm/leads/views/ListView.jsx` + tests. DoD : sonde verte ; profiler React :
+  frappe dans la recherche → 0 re-rendu de carte ; taper un motif perdu → seule la ligne cible se
+  re-rend. (ROUTINE — M) (@model: sonnet) (@lane: LB0)
+- [x] LB7 — **P1 : plus de refetch intégral après un PATCH mono-lead + fin des catch muets +
+  garde d'obsolescence.** Bugs recon2-03 #5/#10/#11. Fix (blueprint I1/I6/I8) : `onInlineSave`
+  perd son `.then(refetch)` et `reassign` son `refetch()` (`updateLead.fulfilled` remplace déjà
+  le lead au complet — score/stage_since_days/devis inclus) ; le refetch intégral ne reste que
+  pour bulk/import/merge/Signé confirmé/création/filtre `archived` ; archive/restaurer de la
+  liste passent par les thunks `archiveLead`/`restoreLead` (déjà réduits) au lieu de crmApi
+  direct ; `toastError` FR sur reassign/exports/archive/restore ; `crmSlice` trace le requestId
+  du dernier `fetchLeads` et ignore un `fulfilled` obsolète (même motif que `leadUpdateSeq`).
+  Files : `frontend/src/pages/crm/leads/LeadsPage.jsx`,
+  `frontend/src/pages/crm/leads/views/ListView.jsx`,
+  `frontend/src/features/crm/store/crmSlice.js` + tests. DoD : une édition inline d'un champ ne
+  déclenche AUCUN GET /leads (onglet réseau) et la valeur affichée vient du payload PATCH ; un
+  refetch lent qui répond après un drag n'écrase pas l'étape optimiste ; chaque échec toaste.
+  (ROUTINE — M) (@model: sonnet) (@lane: LB0)
+- [x] LB8 — **P2 : la sélection est élaguée contre la liste FILTRÉE.** Bug recon2-03 #6 :
+  `pruneSelection` élague contre TOUS les leads → un lead sélectionné puis masqué par un filtre
+  reste bulk-actionnable en invisible. Fix (blueprint I5) : `visibleSelected` se calcule contre
+  `filtered.map(l => l.id)` ; la barre bulk affiche le compte visible. Files :
+  `frontend/src/pages/crm/leads/LeadsPage.jsx`. DoD : sélectionner 3 leads, filtrer pour n'en
+  voir qu'1 → la barre dit 1 et le bulk n'agit que sur lui ; retirer le filtre → les 3
+  redeviennent sélectionnés. (ROUTINE — S) (@model: haiku) (@lane: LB0)
+
+**LANE 1 — board & colonnes (UN agent, séquentiel — fichiers : KanbanView.jsx,
+features/kanban/*, index.css `.kb-*`) :**
+
+- [x] LB9 — **Colonnes : en-têtes riches épinglés, régions nommées, colonne vide = zone de
+  drop.** Les en-têtes sont épinglés par construction depuis LB2 (hors du corps scrollant).
+  Nouvelle mise en page (blueprint D2) : rangée titre + compteur (visible même à 0) ; rangée
+  `total MAD · Prév. pondéré` (tooltip expliquant la pondération STAGE_PROBABILITY — importée,
+  jamais re-déclarée). Chaque colonne devient `<section aria-label="Étape X — N leads">` ;
+  chaque `.kb-col-body` reçoit `tabindex="0"` + aria-label (zone de scroll atteignable clavier).
+  Colonne vide : remplacer « Aucun lead » par une zone en pointillés « Déposer un lead ici »
+  (surbrillance à l'over) ; empty state GLOBAL (0 lead) : EmptyState coach avec CTA « + Nouveau
+  lead » / « Importer » ; 0 résultat filtré : CTA « Effacer les filtres » réel. Files :
+  `frontend/src/pages/crm/leads/views/KanbanView.jsx`, `frontend/src/index.css` + tests
+  (VX147EmptyState mis à jour ici). DoD : axe vert (régions nommées), tab atteint chaque corps de
+  colonne, drop sur colonne vide fonctionne, empty states coach rendus. (ROUTINE — M)
+  (@model: sonnet) (@lane: LB1) (@after: LB8)
+- [x] LB10 — **Repli de colonne persisté (rail droppable).** Chevron labellisé dans l'en-tête →
+  colonne repliée = rail vertical 44px (libellé pivoté `writing-mode`, compteur, accent étape)
+  qui RESTE une zone droppable (surbrillance + drop autorisé) ; re-clic déplie. Persistance
+  `localStorage['taqinor.leads.kanban.collapsed']` (tableau de clés d'étape, tolérant aux clés
+  inconnues). Aucun repli par défaut. Files :
+  `frontend/src/pages/crm/leads/views/KanbanView.jsx`, `frontend/src/index.css` + tests. DoD :
+  replier « Froid » survit à un reload ; drag d'une carte sur le rail replié la dépose dans
+  l'étape ; chevrons nommés (axe vert) ; reduced-motion sans animation. (ROUTINE — M)
+  (@model: sonnet) (@lane: LB1) (@after: LB9)
+- [x] LB11 — **autoScroll dnd-kit réglé + drag-to-pan sur l'espace vide.** L'autoScroll intégré
+  de DndContext était inerte (aucun conteneur ne scrollait — LB2 l'a réveillé) : vérifier le
+  comportement sur les DEUX axes imbriqués (board x, colonne y) et ne régler
+  `autoScroll={{ thresholds: … }}` QUE si les défauts frottent — config, jamais de scroll maison
+  pendant un drag. Nouveau hook `features/kanban/usePanScroll.js` (blueprint D2) : pointerdown
+  bouton 0 sur le fond du board, ignore `closest('.kb-card, .kb-col-body, button, a, select,
+  input, [role="button"]')`, seuil 4px, setPointerCapture, curseur grab/grabbing, inactif sur
+  pointer coarse ; test node des prédicats purs. Files :
+  `frontend/src/features/kanban/usePanScroll.js` (nouveau, + test),
+  `frontend/src/pages/crm/leads/views/KanbanView.jsx`. DoD : tirer une carte vers le bord fait
+  défiler board/colonne ; cliquer-tirer le fond du board le pan ; un clic simple sur une carte
+  ouvre toujours la fiche (distance 6px intacte) ; le pan ne démarre jamais depuis une carte.
+  (ROUTINE — M) (@model: sonnet) (@lane: LB1) (@after: LB10)
+- [x] LB12 — **Restauration du focus après un drop (souris ET clavier).** Recon-05 a11y #4 : la
+  carte re-parentée perd le focus vers `<body>`. Poser `data-lead-id` sur le nœud draggable ; à
+  `onDragEnd` réussi (y compris chemin KeyboardSensor), `requestAnimationFrame` →
+  `querySelector('[data-lead-id="N"]')?.focus()`. Les annonces FR existantes (kanbanA11y)
+  continuent d'annoncer le drop. Files :
+  `frontend/src/pages/crm/leads/views/KanbanView.jsx` + tests. DoD : drop clavier
+  (Espace→flèches→Espace) → le focus est SUR la carte déplacée dans sa nouvelle colonne ;
+  Échap annule et le focus reste sur la carte d'origine. (ROUTINE — S) (@model: sonnet)
+  (@lane: LB1) (@after: LB11)
+
+**LANE 2 — la carte (UN agent, séquentiel — fichiers : LeadCard.jsx, PerduPopover.jsx nouveau,
+design/tokens.css, stages.js §tagColor, index.css `.kb-card*`) :**
+
+- [x] LB13 — **Anatomie 4 zones de la carte (le visage du pipeline).** Rebâtir LeadCard selon le
+  blueprint D3, contrat DOM conservé (`article.kb-card`, `.kb-card-name`) : tête = checkbox
+  (opacity-0 → visible hover/focus-within/sélection active/`(hover:none)`) + nom + ScoreBadge ;
+  valeur = `latestDevisTotal` sinon « est. montant_estime » + chip type d'installation ;
+  UNE ligne d'action (précédence VX24 conservée : perdu > relance retard > ☎ rappel > devis
+  expiré > next_activity > suggestion ; sur NEW non contacté, cette ligne EST le badge SLA
+  premier-contact — le timer QX31 fusionne ici) ; pied = canal + ville + pill d'âge + avatar
+  AssigneePicker. QUITTENT la face : liens tel/WA permanents (→ actions rapides révélées au
+  hover, permanentes sur hover:none — LB15 y ajoute le menu), chips readiness (→ micro-icônes
+  12px tooltipées), étoiles priorité, « Inactif N j »+horloge (→ pill d'âge), tags plafonnés
+  2+« +N ». Plus AUCUN style inline. Mettre à jour les tests pinnés DANS cette tâche (VX24
+  precedence, LeadCardFirstTouchTimer, ReadinessChips, LeadScore.vx221). Files :
+  `frontend/src/pages/crm/leads/views/LeadCard.jsx`, `frontend/src/index.css` + tests. DoD :
+  4 rangées max par carte, hiérarchie visuelle nette clair+sombre, aucun style inline, tous les
+  tests carte verts, tel:/wa hrefs toujours présents au hover. (ROUTINE — L) (@model: opus)
+  (@lane: LB2) (@after: LB8)
+- [x] LB14 — **Rampe « rotting » sur la carte (réutilise workspace/rotting.js TEL QUEL).**
+  `stage_since_days` est déjà dans le payload :
+  `rottingLevel(days, thresholdsForIndex(PIPELINE_STAGES.indexOf(stage)))` →
+  `data-rot="ok|warning|danger"` sur `article.kb-card`. Style : pill d'âge teintée
+  (`--warning`/`--destructive`), liseré intérieur gauche 3px UNIQUEMENT en danger. Jamais de rot
+  sur SIGNED/COLD (seuils null par construction) ni sur un lead perdu. Files :
+  `frontend/src/pages/crm/leads/views/LeadCard.jsx`, `frontend/src/index.css` + tests. DoD : une
+  carte QUOTE_SENT à 16 j est rouge, à 9 j ambre, à 3 j neutre ; SIGNED/COLD/perdu jamais
+  teintés ; AA dans les deux thèmes. (ROUTINE — S) (@model: sonnet) (@lane: LB2) (@after: LB13)
+- [x] LB15 — **Menu ••• au hover + PerduPopover PARTAGÉ (fin de la triplication).** Menu
+  DropdownMenu révélé hover/focus (permanent sur hover:none), labellisé « Actions du lead » :
+  Ouvrir · Planifier une relance · ⚡ Devis auto · ✗ Marquer perdu · Archiver — le bouton ✗
+  20×20 quitte la face. Extraire le popover « Marquer perdu » (motif + datalist, dupliqué
+  byte-à-byte LeadCard 389-417 / ListView 359-387) en
+  `frontend/src/pages/crm/leads/PerduPopover.jsx` UNIQUE, branché sur `onMarkPerdu` (LB5) avec
+  chargement paresseux des motifs UNE fois ; LeadCard l'adopte ici (ListView en LB21). Files :
+  `frontend/src/pages/crm/leads/PerduPopover.jsx` (nouveau),
+  `frontend/src/pages/crm/leads/views/LeadCard.jsx`, `frontend/src/index.css` + tests. DoD :
+  toutes les actions accessibles clavier via le menu, marquer perdu depuis le menu met la carte
+  à jour sans refetch, un seul composant perdu dans le code. (ROUTINE — M) (@model: sonnet)
+  (@lane: LB2) (@after: LB14)
+- [x] LB16 — **Tags tokenisés + token WhatsApp + tokens morts réparés.** Remplacer
+  `TAG_PALETTE`/`TAG_TEXT` (20 hex, stages.js:85-91) par 10 paires `--tag-N-bg/--tag-N-fg`
+  définies clair+sombre dans `design/tokens.css` ; `tagColor()` garde sa signature et renvoie
+  `var(--tag-N-…)` (LeadCard ET ListView en profitent sans changement) ; hash déterministe
+  conservé + test node. Nouveau token `--brand-whatsapp` (vert WhatsApp, clair+sombre — le seul
+  lieu de naissance d'un hex) : le fond du swipe WA passe de `var(--color-info, #25D366)` (rendu
+  BLEU — bug recon-05) à `var(--brand-whatsapp)` ; re-baser les 3 fallbacks morts
+  `--color-*-muted` de LeadCard.jsx:477/484/491 + `.kb-call-nudge`/`.lv-call-nudge` sur des
+  tokens réels. Files : `frontend/src/design/tokens.css`, `frontend/src/features/crm/stages.js`
+  (+ test), `frontend/src/pages/crm/leads/views/LeadCard.jsx`, `frontend/src/index.css`. DoD :
+  zéro hex dans stages.js/LeadCard ; l'action WhatsApp est VERTE dans les deux thèmes ; pastilles
+  de tag AA clair+sombre. (ROUTINE — M) (@model: sonnet) (@lane: LB2) (@after: LB15)
+- [x] LB17 — **Tactile + PII : cibles 44px, swipe inerte, cadenas PII.** Checkbox : zone de
+  frappe ≥44×44 via padding (tue le sliver 16px horizontal — recon-05 touch) ; le menu •••
+  (permanent au toucher) reçoit une cible 44px ; la bande swipe cachée passe en `inert`
+  (l'aria-hidden actuel laisse les `<a>` tabbables) ; quand l'utilisateur n'a pas la permission
+  PII (le serializer nullifie tel/whatsapp), remplacer les actions d'appel par un cadenas 12px
+  tooltipé « Coordonnées masquées (permission PII) » — plus jamais un blanc muet. Mettre à jour
+  SwipeAction tests. Files : `frontend/src/pages/crm/leads/views/LeadCard.jsx`,
+  `frontend/src/index.css` + tests. DoD : toutes les cibles tactiles ≥44px (vérif inline styles
+  battus) ; tab ne visite jamais la bande swipe cachée ; un compte sans PII voit le cadenas.
+  (ROUTINE — M) (@model: sonnet) (@lane: LB2) (@after: LB16)
+
+**LANE 3 — la liste (UN agent, séquentiel — fichiers : ListView.jsx, index.css `.lv-*` ;
+DÉCISION D4 : refit sur place, on N'ADOPTE PAS le moteur ui/datatable — on lui vole
+`useColumnPrefs` + `ColumnManager` en import direct) :**
+
+- [x] LB18 — **Scrolleur unique + thead sticky + colonne nom sticky + colgroup.** Depuis LB2,
+  `.lv-wrap` est LE scrolleur deux axes (un ancêtre overflow-x séparé casserait sticky — c'est
+  voulu) : `thead th {position:sticky; top:0; z-index:2; background:var(--card)}` ; la colonne
+  nom (`.lv-sticky-name`) sticky left ≥768 avec ombre de bord quand scrollé (classe togglée par
+  scroll listener passif) ; `<colgroup>` à largeurs fixes — l'édition inline ne fait plus danser
+  les colonnes (P3 #14). Contrat conservé : `tr.lv-row`, `.lv-lead-name`, `.ie-cell`,
+  `select.ie-input`. Mobile <768 : card-stack global intact, sticky-left désactivé. Files :
+  `frontend/src/pages/crm/leads/views/ListView.jsx`, `frontend/src/index.css` + tests. DoD :
+  scroller 100 lignes → le thead reste visible ; scroller à droite → le nom reste visible avec
+  ombre ; éditer une cellule ne déplace aucune largeur de colonne. (ROUTINE — M)
+  (@model: sonnet) (@lane: LB3) (@after: LB8)
+- [x] LB19 — **Choix de colonnes persisté (vol de useColumnPrefs + ColumnManager).** Déclarer le
+  modèle de colonnes de ListView en tableau ({id, label, visibleParDéfaut, mHide}) ; brancher
+  `ui/datatable/useColumnPrefs` (clé `taqinor.leads.columns`) + le composant
+  `ui/datatable/ColumnManager` comme UI de choix (bouton « Colonnes » dans la barre d'outils de
+  la vue). Les défauts responsive `.m-hide` deviennent la visibilité par défaut du modèle. PAS de
+  DataTable, PAS de FilterBuilder, PAS d'urlState du moteur (blueprint D4 — un seul état de
+  filtres sur la page). Files : `frontend/src/pages/crm/leads/views/ListView.jsx` + tests. DoD :
+  masquer « Canal » survit à un reload ; réafficher tout fonctionne ; datatable-breakpoint.spec
+  (VX180) toujours vert (il teste d'AUTRES pages — non-régression d'import). (ROUTINE — M)
+  (@model: sonnet) (@lane: LB3) (@after: LB18)
+- [x] LB20 — **Option « Par étape » (groupes repliables avec agrégats).** Segmented
+  « Plat / Par étape » (persisté `taqinor.leads.listGroup`) : en mode groupé, rangées de groupe
+  `tr.lv-group` (StatusPill étape + compteur + total MAD — mêmes nombres que les colonnes kanban,
+  via groupLeadsByStage) collantes sous le thead, repliables (chevron labellisé, état persisté),
+  l'ordre des groupes = l'ordre du funnel. Le tri s'applique DANS chaque groupe. Files :
+  `frontend/src/pages/crm/leads/views/ListView.jsx`, `frontend/src/index.css` + tests. DoD :
+  basculer Plat↔Par étape conserve tri et sélection ; replier « Froid » survit au reload ;
+  `tr.lv-row` reste le sélecteur des rangées de données (e2e intact). (ROUTINE — M)
+  (@model: sonnet) (@lane: LB3) (@after: LB19)
+- [x] LB21 — **Lignes ouvrables au clavier + adoption du PerduPopover partagé.** Chaque `tr.lv-row`
+  devient focusable (tabIndex=0, Enter/Espace ouvre — jamais depuis un contrôle interne,
+  vérif `e.target.closest`) et le nom devient un vrai élément interactif sémantique ; adopter
+  `PerduPopover` (LB15) — suppression du popover dupliqué local, une seule instance au niveau
+  table ancrée à la ligne active ; conserver le libellé « Plus d'actions sur la ligne » et les
+  hrefs tel/wa + stopPropagation (test ListViewCallReady mis à jour ici). Files :
+  `frontend/src/pages/crm/leads/views/ListView.jsx` + tests. DoD : parcours 100 % clavier :
+  focus ligne → Enter ouvre la fiche ; marquer perdu au clavier ; plus aucun code perdu dupliqué.
+  (ROUTINE — M) (@model: sonnet) (@lane: LB3) (@after: LB20, LB15)
+
+**LANE 4 — shell, filtres, KPI, URL (UN agent, séquentiel — fichiers : LeadsPage.jsx,
+FilterBar.jsx, BulkActionBar.jsx, SavedViewsBar.jsx, nouveaux LeadsKpiStrip/urlFilters,
+index.css `.lp-*`) :**
+
+- [x] LB22 — **URL partageable : ?view= + filtres dans l'URL (module pur).** Nouveau
+  `frontend/src/pages/crm/leads/urlFilters.js` : encode/decode `filters+view ↔ URLSearchParams`,
+  n'écrit QUE les clés non-défaut (EMPTY_FILTERS comme référence), PRÉSERVE `lead`/`new`/`equipe`,
+  100 % pur + test node. LeadsPage : priorité au chargement URL > localStorage > défauts (une URL
+  collée gagne toujours) ; écriture débouncée 300ms en `replace` (jamais de spam d'historique) ;
+  `?view=` honoré et écrit ; `applySavedView` écrit l'URL. Files :
+  `frontend/src/pages/crm/leads/urlFilters.js` (nouveau, + test),
+  `frontend/src/pages/crm/leads/LeadsPage.jsx`. DoD : copier l'URL avec 3 filtres + vue liste et
+  l'ouvrir en navigation privée reproduit EXACTEMENT l'écran ; `?lead=` continue d'ouvrir la
+  fiche ; e2e setLeadsView intact. (ROUTINE — M) (@model: sonnet) (@lane: LB4) (@after: LB8)
+- [x] LB23 — **Recherche débouncée.** L'input de recherche garde un état local et pousse
+  `setFilters` après 250ms (annulé au démontage) ; `useDeferredValue` reste en second étage ;
+  perf attendue avec LB6 : une frappe ne re-rend plus aucune carte. Files :
+  `frontend/src/pages/crm/leads/FilterBar.jsx` + tests. DoD : taper 10 caractères vite ne
+  produit qu'un recalcul de filtre après pause ; effacer réagit immédiatement. (ROUTINE — S)
+  (@model: haiku) (@lane: LB4) (@after: LB22)
+- [x] LB24 — **Bandeau KPI = filtres (le cockpit du matin).** Nouveau
+  `frontend/src/pages/crm/leads/LeadsKpiStrip.jsx`, rangée compacte entre header et FilterBar
+  (scroll-x mobile) : « Dû aujourd'hui » (toggle `relance='aujourdhui'` — NOUVELLE valeur de
+  filterLeads : `relance_date === today` local), « En retard » (toggle `relance='retard'`),
+  « Chauds » (toggle NOUVELLE clé `score='chaud'` sur `score_label`), « Pipeline » (affichage
+  seul : Σ latestDevisTotal des filtrés non perdus + pondéré via STAGE_PROBABILITY importée de
+  KanbanView — les MÊMES nombres que les colonnes). Tuiles 1-3 = `<button aria-pressed>` accentées
+  `--module-accent-azur` ; compte facetté : le compte d'une tuile = `filterLeads(leads,
+  {…filtresActifs, saDimension: appliquée}).length` — cliquer donne ce que le chiffre promet.
+  Étendre EMPTY_FILTERS/filterLeads dans stages.js (+ tests node) ; le Segmented relance de
+  FilterBar gagne « Aujourd'hui ». Files :
+  `frontend/src/pages/crm/leads/LeadsKpiStrip.jsx` (nouveau),
+  `frontend/src/features/crm/stages.js` (+ tests),
+  `frontend/src/pages/crm/leads/LeadsPage.jsx`, `frontend/src/pages/crm/leads/FilterBar.jsx`,
+  `frontend/src/index.css`. DoD : cliquer « En retard » filtre TOUTES les vues et la tuile passe
+  aria-pressed ; les nombres tuiles/colonnes/compteur header concordent sous n'importe quel
+  filtre ; axe vert. (ROUTINE — L) (@model: sonnet) (@lane: LB4) (@after: LB23, LB16)
+- [x] LB25 — **Barre bulk FLOTTANTE.** La barre inline (qui pousse le layout à chaque sélection)
+  devient une toolbar flottante bas-centre : `position:fixed`, `z-index:var(--z-sticky)`,
+  safe-area + au-dessus de la tabbar mobile, slide-in-up `--motion-base` (reduced-motion : sans
+  animation), ombre `--shadow-lg`. MÊME composant BulkActionBar (toutes les actions + typed
+  confirm conservées), nouveau wrapper `.lp-bulk-float`, compte visible + « Effacer ». Files :
+  `frontend/src/pages/crm/leads/LeadsPage.jsx`,
+  `frontend/src/pages/crm/leads/BulkActionBar.jsx`, `frontend/src/index.css` + tests. DoD :
+  sélectionner ne fait plus sauter le board ; la barre ne recouvre jamais la tabbar mobile ;
+  Échap/Effacer la ferme ; VX95 undo intact. (ROUTINE — M) (@model: sonnet) (@lane: LB4)
+  (@after: LB24)
+- [x] LB26 — **Vues enregistrées : « Copier le lien » + Express dans le ⋯ mobile.**
+  SavedViewsBar : prop additive optionnelle `buildShareUrl(view)` (composant partagé avec
+  ClientList — comportement inchangé quand absente) ; sur la page leads, chaque chip gagne une
+  action « Copier le lien » (sérialise via urlFilters + clipboard + toast « Lien copié »).
+  Sous 768px, le bouton Express rejoint le menu ⋯ (le header respire) — le FAB mobile reste
+  « + Nouveau lead » (texte e2e). Files : `frontend/src/components/SavedViewsBar.jsx`,
+  `frontend/src/pages/crm/leads/LeadsPage.jsx`, `frontend/src/index.css` + tests. DoD : le lien
+  copié reproduit la vue ; ClientList inchangé ; Express accessible au ⋯ en mobile. (ROUTINE — S)
+  (@model: sonnet) (@lane: LB4) (@after: LB25)
+- [x] LB27 — **Squelette EN FORME dans le shell.** Premier chargement : au lieu du StateBlock
+  plein-page, rendre le shell (header + filtres visibles immédiatement) avec un squelette en
+  forme de la vue active — 6 colonnes × 3 SkeletonCard en kanban/prévision, SkeletonTableRow en
+  liste — via `useDelayedLoading` (spinner 300ms, squelette 500ms) + `FadeSwap` (le pattern
+  maison LW25 : chaque calque colonne flex pleine hauteur). Erreur : StateBlock inchangé. Files :
+  `frontend/src/pages/crm/leads/LeadsPage.jsx`, `frontend/src/index.css` + tests. DoD : au
+  chargement lent le header est visible tout de suite et le squelette a la forme du board ;
+  chargement <300ms : aucun flash. (ROUTINE — S) (@model: sonnet) (@lane: LB4) (@after: LB26)
+
+**LANE 5 — vues secondaires (UN agent, séquentiel — fichiers : ForecastView/CalendarView/
+CarteView/ChartsView, CrmInsightsPanel) :**
+
+- [x] LB28 — **Prévision : parité complète avec le kanban.** Bugs recon2-03 #9 + gaps recon-01 :
+  ajouter KeyboardSensor + annonces FR (buildKanbanAnnouncements avec libellés de mois),
+  équivalent clavier du drag (un `<select>` mois par carte, même pattern StageMover/
+  useOptimisticSave), busy-lock réel (passer par `onInlineSave` avec busyLeadId), listeners de
+  drag isolés sur une poignée (plus sur toute la carte), EmptyState global (0 lead ouvert) +
+  hints de drop par colonne. Le shell borné LB2 s'applique (`.fv-board`) — vérifier. Totaux
+  pondérés inchangés (STAGE_PROBABILITY importée). Files :
+  `frontend/src/pages/crm/leads/views/ForecastView.jsx`, `frontend/src/index.css` + tests
+  (ForecastView ×2 mis à jour). DoD : replanifier un mois 100 % clavier ; drag pendant un drag
+  refusé (busy) ; 0 lead ouvert → EmptyState ; tests verts. (ROUTINE — M) (@model: sonnet)
+  (@lane: LB5) (@after: LB8)
+- [x] LB29 — **Calendrier + Carte : tons d'étape, aujourd'hui, hover câblé.** Calendrier : chips
+  aux tons d'étape via tokens (STAGE_COLORS), cellule du jour cerclée `--module-accent-azur`,
+  relance en retard soulignée destructive ; le double-affichage relance+visite est CONSERVÉ
+  (deux échéances réelles). Carte : câbler `hoveredId` (mort — recon-01) : survoler un lead de
+  la liste sans-GPS met le pin en avant (ou le supprimer si Leaflet rend le câblage fragile —
+  décision locale documentée en commentaire) ; re-baser les hex du popup Leaflet sur tokens via
+  CSS là où c'est atteignable ; empty states coach. Files :
+  `frontend/src/pages/crm/leads/views/CalendarView.jsx`,
+  `frontend/src/pages/crm/leads/views/CarteView.jsx`, `frontend/src/index.css` + tests
+  (CalendarView undated banner conservé). DoD : aujourd'hui identifiable d'un coup d'œil ;
+  chips AA deux thèmes ; aucun hex nouveau hors tokens.css. (ROUTINE — M) (@model: sonnet)
+  (@lane: LB5) (@after: LB28)
+- [x] LB30 — **Graphique : cache session des insights + cohérence filtres.** CrmInsightsPanel
+  re-fetche ses 3 cartes à CHAQUE bascule de vue : cache module en mémoire TTL 60s (même
+  pattern que leadPrefetch), invalidé au changement de company ; ChartsView affiche la ligne de
+  contexte « Ces graphiques suivent les filtres actifs (N leads) » ; empty states coach
+  (distinction 0 lead / 0 résultat conservée, CTA réels). Le panneau RESTE dans ChartsView
+  (décision D5 : pas de fetches d'insights dans le chargement du matin). Files :
+  `frontend/src/pages/crm/leads/views/ChartsView.jsx`,
+  `frontend/src/components/CrmInsightsPanel.jsx` + tests. DoD : basculer graphique→kanban→
+  graphique en <60s ne refait aucun appel insights ; test ch-card-wide vert. (ROUTINE — S)
+  (@model: sonnet) (@lane: LB5) (@after: LB29)
+
+**LANE 6 — polish sombre/hex + dédup (UN agent — index.css d'abord, sweep ensuite) :**
+
+- [x] LB31 — **Chasse aux hex des surfaces leads (dark mode honnête).** Recon-05 §HEX,
+  index.css UNIQUEMENT : supprimer le doublon MORT `.count-badge` (1701-1715) et tokeniser la
+  règle vivante (chips bleu-clair illisibles en sombre) ; `.data-table tr` card-stack mobile
+  `background:#fff` → `var(--card)` (chaque ligne mobile était une carte blanche en sombre) ;
+  `.gen-btn-orange` re-basé tokens ; `.link-blue`, `.lv-star` (aligné sur kb-star), `.ie-err`/
+  `.ie-placeholder`, `.data-table td::before` → tokens ; supprimer le doublon mort
+  `.kb-act-clock` (3750-3753) et les règles mortes `.lv-owner`/`.lv-avatar`. AUCUN changement
+  JSX. Files : `frontend/src/index.css`. DoD : zéro hex restant dans les plages CSS des surfaces
+  leads (hors tokens.css) ; vérification visuelle sombre : badges, card-stack mobile, étoiles,
+  erreurs inline lisibles AA. (ROUTINE — M) (@model: sonnet) (@lane: LB6) (@after: LB2)
+- [x] LB32 — **Dédup useIsMobile + ViewSwitcher sur Segmented.** Remplacer les 3 copies verbatim
+  de `useIsMobile` (FilterBar 26-37, ListView 43-54, ChartsView 31-42) par l'export canonique de
+  `ui/ResponsiveDialog` ; refondre ViewSwitcher (85 l. de role=group main-roulé + SVG bruts) sur
+  `ui/Segmented` avec icônes lucide, en CONSERVANT les noms accessibles exacts 'Vue kanban' /
+  'Vue liste' / etc. (e2e setLeadsView + E3). Files :
+  `frontend/src/pages/crm/leads/ViewSwitcher.jsx`,
+  `frontend/src/pages/crm/leads/FilterBar.jsx`,
+  `frontend/src/pages/crm/leads/views/ListView.jsx`,
+  `frontend/src/pages/crm/leads/views/ChartsView.jsx` + tests. DoD : e2e leads.spec (bascule de
+  vues) vert ; une seule définition de useIsMobile dans le repo pour ces 3 fichiers ; Segmented
+  radiogroup au clavier. (ROUTINE — S) (@model: sonnet) (@lane: LB6)
+  (@after: LB21, LB23, LB30, LB31)
+
+**LANE 7 — tests, e2e, goldens (UN agent, en queue de batch) :**
+
+- [x] LB33 — **Spec de régression « le board tient dans l'écran ».** Nouveau
+  `e2e/tests/leads-board.spec.js` (helpers gotoLeads/setLeadsView/createLead existants) : en vue
+  kanban, le scrolleur du shell ne déborde pas (scrollHeight ≈ clientHeight), la scrollbar
+  horizontale du board est DANS le viewport (le board scrolle en x sans scroller la page), un
+  `.kb-col-body` scrolle verticalement avec 20+ leads ; en vue liste, après scroll le `thead`
+  reste visible. Assertions robustes (tolérances px), pas de screenshots ici. Files :
+  `e2e/tests/leads-board.spec.js` (nouveau). DoD : spec verte en local ET en CI ; échoue si on
+  retire la règle `:has(> .lp-page)` (vérifié une fois en le commentant). (ROUTINE — M)
+  (@model: sonnet) (@lane: LB7) (@after: LB12, LB18)
+- [x] LB34 — **Goldens leads-kanban clair+sombre + passe axe finale (clôture du batch).**
+  Régénérer DÉLIBÉRÉMENT les screenshots release-verify `leads-kanban` light+dark (procédure
+  maison de mise à jour des snapshots visual.spec) après l'atterrissage de TOUTES les lanes
+  visuelles ; dérouler la passe axe VX71 sur la page redessinée (tuiles KPI, chevrons de repli,
+  zones de scroll, menus •••, barre flottante — zéro violation sérieuse) ; vérifier
+  mobile.spec/tablet.spec (VX190/VX68) inchangés ou mis à jour ici. Files : dossiers de
+  snapshots e2e (goldens), corrections a11y mineures résiduelles le cas échéant. DoD :
+  release-verify vert avec les nouveaux goldens ; axe zéro violation sérieuse sur
+  kanban/liste/KPI ; rapport d'une ligne au DONE LOG listant les goldens touchés. (ROUTINE — S)
+  (@model: sonnet) (@lane: LB7)
+  (@after: LB17, LB21, LB27, LB30, LB31, LB32, LB33)
+
+**LANE LB8R — résidus de la critique Fable finale (2026-07-19 — mineurs, prochaine session) :**
+
+- [ ] LB35 — **ForecastView : parité des trois invariants du kanban.** Sa `DraggableCard` n'est pas `memo()` (blueprint I4 — chaque frappe re-déroule `useDraggable`+`useOptimisticSave` par carte), aucun retour de focus après un drop clavier (le motif LB12 est absent — le focus atterrit sur `<body>`), et pas de drag-to-pan sur le fond. Fix : appliquer les trois motifs EXISTANTS du kanban (memo(), restauration de focus post-drop, `usePanScroll` en callback-ref) — jamais une seconde implémentation. Files : `frontend/src/pages/crm/leads/views/ForecastView.jsx` (L170-192, L304-314), `frontend/src/features/kanban/usePanScroll.js` (réutilisé tel quel). DoD : sonde memo `.mjs` (même motif que LeadsPageMemoStability) verte ; drop clavier → focus sur la carte déplacée ; pan actif sur le fond vide. (ROUTINE — M) (@model: sonnet) (@lane: LB8R)
+- [ ] LB36 — **FilterBar : « Effacer les filtres » pendant le débounce ressuscite la recherche.** Taper puis cliquer « Effacer » dans les 250 ms : `filters.q` n'a jamais changé, le resync durant-rendu ne se déclenche pas, et le timer en attente ré-applique le `q` tapé APRÈS l'effacement. Fix : annuler le timer en vol quand l'effacement/le resync ramène le texte local (garder le motif « adjust state during render », jamais un setState-in-effect). Files : `frontend/src/pages/crm/leads/FilterBar.jsx` (L44-54). DoD : test — taper « xyz » puis effacer sous 250 ms → `filters.q` reste vide après le délai. (ROUTINE — S) (@model: sonnet) (@lane: LB8R)
+- [ ] LB37 — **Commentaires menteurs survivants (blueprint I2).** `LeadCard.jsx:144-147` prétend encore « le kanban re-rend déjà périodiquement via son polling/refetch existant » (aucun polling n'existe) ; `ListView.jsx:791-796` documente la plomberie `perduMotif/perduBusy` supprimée au fold LB21. Fix : corriger/supprimer ces deux blocs (et UNIQUEMENT eux). Files : `frontend/src/pages/crm/leads/LeadCard.jsx`, `frontend/src/pages/crm/leads/views/ListView.jsx`. DoD : `grep -n "polling" LeadCard.jsx` = 0 ; plus aucune mention de perduMotif/perduBusy dans ListView. (ROUTINE — S) (@model: haiku) (@lane: LB8R)
+- [ ] LB38 — **`selectionActive` déclaré mais jamais câblé (comportement D3 différé en silence).** `LeadCard.jsx:190-194` reçoit la prop, la règle CSS `index.css:7638` existe, mais pendant une sélection active les cartes non survolées cachent toujours leur case au desktop. Fix : poser la classe (`kb-card-selection-active` ou équivalent) depuis la prop pour révéler TOUTES les cases pendant une sélection ; supprimer la règle morte sinon. Files : `frontend/src/pages/crm/leads/LeadCard.jsx`, `frontend/src/index.css`. DoD : test — une sélection non vide → chaque carte visible expose sa case sans survol. (ROUTINE — S) (@model: sonnet) (@lane: LB8R)
+- [ ] LB39 — **Pré-existant (pas de cette branche) : l'undo VX95 de changement d'étape est mort en production.** L'undo PATCHe en arrière (`LeadsPage.jsx:580-588`) et la garde du serializer (`apps/crm/serializers.py:367-380`) 400e tout recul → chaque toast « Annuler » finit en « Annulation impossible » (le test unitaire mocke le dispatch, il ne l'a jamais vu). Fix côté SERVEUR : autoriser le recul quand la requête porte un marqueur d'annulation explicite (ex. `undo=true` validé serveur, fenêtre courte), garde funnel inchangée sinon ; le client envoie ce marqueur depuis le toast. Files : `backend/django_core/apps/crm/serializers.py`, `frontend/src/pages/crm/leads/LeadsPage.jsx`, test API dans `apps/crm/tests/`. DoD : test API — PATCH recul avec marqueur = 200, sans = 400 ; test front — l'undo aboutit. (SCHEMA — M) (@model: opus) (@lane: LB8R)
+- [ ] LB40 — **Cosmétique : barre bulk vs scrollbar du board + infobulles ViewSwitcher.** La barre flottante (fixed bas-centre, z 1100) couvre le milieu de la scrollbar horizontale du board pendant une sélection, et le DragOverlay (z 999) glisse SOUS elle ; les radios icône-seule du ViewSwitcher ont perdu leurs infobulles au survol (noms sr-only seulement, `ViewSwitcher.jsx:34-38`). Fix : remonter la barre au-dessus de la scrollbar (offset bas = hauteur scrollbar) ou la décaler latéralement ; DragOverlay au-dessus de la barre pendant un drag ; `title`/Tooltip maison sur chaque radio. Files : `frontend/src/pages/crm/leads/BulkActionBar.jsx`, `frontend/src/pages/crm/leads/ViewSwitcher.jsx`, `frontend/src/index.css`. DoD : revue visuelle rig — scrollbar cliquable pendant une sélection ; survol d'un radio → libellé visible. (ROUTINE — S) (@model: sonnet) (@lane: LB8R)
+
+#### DONE LOG — Groupe LB (page leads)
+
+- 2026-07-19 — Critique Fable finale (2e appel Fable du run) : verdict NOT MERGE-READY, 2 bloqueurs + 4 importants, TOUS corrigés avant merge — usePanScroll converti en callback-ref (le pan mourait après tout passage par un board vide, ex. recherche sans résultat), sentinelle « Signé » avalée dans la cellule étape de la liste (faux « Échec » rouge persistant sur un chemin de succès), pool KPI filtré `?equipe=` (chiffre menteur D5), perdus exclus de `totalDevis` (tuile Pipeline et têtes de colonnes = MÊMES chiffres, pin .mjs ajouté), cache insights porteur de ses promesses (fini le « Chargement… » bloqué au remontage en vol), garde Échap (un overlay ouvert garde son Échap, la sélection bulk survit). Mineurs #7-#12 bankés en LB35-LB40 (lane LB8R). (ROUTINE)
+
+- 2026-07-19 — LB9-LB12 (lane board) : colonnes nommées ARIA + corps scrollable au clavier, argent par colonne + prévisionnel pondéré (STAGE_PROBABILITY importé), repli persisté en rail 44px toujours droppable, autoScroll dnd-kit + drag-to-pan sur fond vide (jamais sur une carte), focus restauré sur la carte déplacée. (ROUTINE)
+- 2026-07-19 — LB13-LB17 (lane carte, opus) : carte 4 zones plafonnée (nom→valeur→UNE action→pied), rotting via workspace/rotting.js (liseré danger), PerduPopover PARTAGÉ + menu ••• au survol, 10 jetons --tag-* clair+sombre + --brand-whatsapp (le swipe WhatsApp redevient VERT), cibles 44px sans inline (::before), bande swipe inert, cadenas PII. Suites épinglées mises à jour dans les mêmes commits. (ROUTINE)
+- 2026-07-19 — LB18-LB21 (lane liste) : scrolleur unique .lv-wrap + thead ET colonne nom sticky (+ombre de bord), colgroup table-layout:fixed, choix de colonnes persisté VOLÉ à ui/datatable (zéro fork), groupement « Par étape » avec en-têtes sticky + agrégats MAD (mêmes chiffres que le kanban), activation clavier des lignes. Au fold : PerduPopover partagé câblé (plomberie parent supprimée), paliers z tokenisés + isolation. (ROUTINE)
+- 2026-07-19 — LB22-LB27 (lane shell) : URL partageable (?view= + filtres, URL > localStorage > défauts, replace débouncé), recherche débouncée 250ms (resync durant-rendu), bandeau KPI-filtres facettés (Dû aujourd'hui/En retard/Chauds togglables + Pipeline MAD·pondéré affichage), bulk FLOTTANT (Escape ferme), « Copier le lien » sur les vues enregistrées, squelette EN FORME dans le shell (en-tête/filtres/KPI immédiats). (ROUTINE)
+- 2026-07-19 — LB28-LB30 (lane vues secondaires) : Prévision à parité clavier (KeyboardSensor + MonthMover + annonces + busy-lock + état vide), Calendrier aujourd'hui/retard soulignés tokenisés, Carte nettoyée (hoveredId mort retiré, hex → tokens), insights en cache session 60s + « suivent les filtres actifs (N) ». (ROUTINE)
+
+- 2026-07-19 LB1 — blueprint déjà recopié par le merge de `claude/leads-page-redesign` ;
+  vérifié octet-identique (hors CRLF/LF) à `scratchpad/design2/blueprint.md`. Aucun code touché.
+- 2026-07-19 LB2 — P0 fondateur corrigé : `.layout-content > .route-fade:has(> .lp-page)
+  {height:100%}` + `.lp-page` flex column bornée (miroir `.lw-page`) ; `.lp-view-area` perd son
+  `min-height:320px` fixe, devient `flex:1 1 auto;min-height:0`, `overflow:hidden` pour les 3
+  vues denses via `data-view` (1 ligne JSX sur la racine de LeadsPage.jsx) ; `.kb-board`
+  `height:100%`→`flex:1 1 auto` (se résolvait en AUTO, cause racine des 8 649px mesurés) ;
+  `.kb-col-body` `min-height:80px`→`0` (ne débordait jamais) ; `.lv-wrap` scrolleur deux axes
+  unique (`overflow:auto` + flex) ; pleine largeur (`max-width:none`) kanban/prévision/liste ;
+  scrollbars fines tokenisées toujours visibles ; gap responsive 769-899px comblé (`.kb-col`
+  clamp) ; thead sticky + `.lv-sticky-name` posés en pré-requis (D4 les activera). Raisonnement
+  statique de la chaîne : `#root`(100vh)→`.layout-main`(overflow:hidden)→`.layout-content`
+  (flex:1;overflow-y:auto)→`.route-fade`(désormais height:100% via :has)→`.lp-page`(flex column
+  height:100%)→`.lp-view-area`(flex:1 1 auto;min-height:0;overflow:hidden en vue kanban)→
+  `.kb-board`(flex:1 1 auto;min-height:0;overflow-x:auto) — chaque maillon a maintenant une
+  hauteur RÉSOLUE (plus jamais AUTO), donc `.kb-col-body{overflow-y:auto;min-height:0}` déborde
+  réellement au lieu de grandir sans fin. ForecastView (`.kb-board.fv-board`) hérite sans
+  modification (mêmes classes). `.lw-page` non touché.
+- 2026-07-19 LB3 — interception « Signé » honnête (bug #2) : nouveau
+  `pages/crm/leads/signeIntercept.js` (sentinelle `SIGNE_INTERCEPT` Symbol + `isSigneIntercept`,
+  test node dédié vert). `LeadsPage.jsx#onInlineSave` renvoie désormais `Promise.reject(SIGNE_INTERCEPT)`
+  après avoir ouvert SigneDialog (au lieu d'un faux `Promise.resolve()`) : `useOptimisticSave`
+  fait son rollback normal (le select StageMover revient à l'étape réelle) et `InlineEdit`
+  (liste) restaure déjà par rejet — zéro cas spécial côté liste. Le SEUL cas spécial vit dans
+  `StageMover`'s `onError` (KanbanView.jsx) : avale la sentinelle via `isSigneIntercept(err)`
+  sans toaster, toute autre erreur toaste comme avant. 2 tests ajoutés à KanbanView.test.jsx
+  (sentinelle → rollback sans toast ; vraie erreur → rollback ET toast) — les 2 verts en
+  raisonnement, non exécutables ici (pas de node_modules dans ce worktree).
+- 2026-07-19 LB4 — un lead Froid se réactive par drag (bug #7/#8) : `stages.js` gagne
+  `funnelRank` (COLD → -1, miroir `apps/crm/services.py _rang_funnel`) et
+  `isStageMoveAllowed(current, target)` (miroir byte-à-byte `_bulk_stage_allowed` — 4 tests node
+  verts, exécutés). `KanbanView.jsx#handleDragEnd` utilise ce garde unique au lieu du `stageRank`
+  local (COLD y valait le rang le PLUS HAUT → tout drag COLD→actif était refusé comme un recul,
+  cause racine du bug #7 alors que le serveur autorise DÉJÀ la réactivation). Options interdites
+  grisées dans le StageMover (kanban, `disabled` par `<option>`) ET dans l'InlineEdit stage de la
+  liste (`ListView.jsx` : nouveau `stageOptionsFor(currentStage)` par ligne, remplace la liste
+  plate `STAGE_OPTIONS` partagée) — le chemin clavier/select obtient enfin la MÊME réponse que le
+  drag (bug #8). `components/InlineEdit.jsx` gagne un support `disabled` PAR OPTION,
+  rétro-compatible (undefined pour tous les autres appelants = comportement inchangé). SIGNED
+  reste gardé : y entrer passe toujours par SigneDialog (LB3), en sortir en arrière reste interdit
+  sauf → Froid. Tests : 4 nouveaux cas dans `stages.test.mjs` (exécutés, verts), 2 nouveaux dans
+  `KanbanView.test.jsx` (options grisées FOLLOW_UP + réactivation COLD, raisonnement — non
+  exécutables ici), nouveau `ListViewStageGuard.test.mjs` (4 assertions source, exécutées, vertes).
+- 2026-07-19 LB5 — « ✗ Perdu » depuis une carte met l'UI à jour (bug #3) : nouveau callback
+  stable `LeadsPage.jsx#onMarkPerdu(lead, motif)` (dispatch `updateLead`, AUCUN refetch —
+  `updateLead.fulfilled` patche déjà le lead complet, toastError + relance l'erreur en échec pour
+  que l'appelant garde sa popover ouverte), ajouté à `viewProps`. `LeadCard.jsx` n'appelle plus
+  JAMAIS `crmApi.updateLead` en direct (contournait Redux) et la prop fantôme `onChanged` (jamais
+  passée par KanbanView NI ForecastView — les commentaires « resynchronisation au refetch » qui
+  l'affirmaient mentaient, aucun polling n'existe) est supprimée. `KanbanView.jsx` (DraggableCard)
+  ET `ForecastView.jsx` (bug-fix, évite une régression puisque le bouton ✗ y fonctionnait déjà en
+  direct) threadent `onMarkPerdu` jusqu'à `LeadCard`. `ListView.jsx#confirmPerdu` route désormais
+  par le MÊME callback partagé au lieu d'un `dispatch(updateLead)` local dupliqué (import
+  `updateLead` retiré, devenu inutile). Tests : nouveau `LeadsPageMarkPerdu.test.mjs` (7
+  assertions source, exécutées, vertes) ; suite existante (VX95Forgiveness, LeadCardVX24,
+  ReadinessChips, SwipeAction, FirstTouchTimer, ForecastView — 37 tests) re-exécutée, toujours
+  verte.
+- 2026-07-19 LB6 — mémo réparé (bug #4) : TOUS les callbacks de `viewProps` (LeadsPage.jsx) sont
+  désormais `useCallback` — `refetch`, `onToggleSelect`, `onToggleAll`, `reassign`,
+  `onPlanifierRelance`, `onInlineSave` (en plus des `onOpenLead`/`onAutoQuote`/`changeStage` déjà
+  faits en VX187) ; `viewProps` lui-même passe en `useMemo`, repositionné AVANT les retours
+  anticipés loading/error (règle des Hooks — un `useMemo` après un retour conditionnel change
+  l'ordre des Hooks entre rendus). `KanbanView.jsx` mémoïse `DraggableCard` (`memo()`). Côté liste
+  (bug #4 précis : `perduMotif` partagé passé identique à TOUTES les lignes → une frappe
+  re-rendait la table entière malgré `memo(ListRow)`) : la popover « ✗ Perdu » ne reçoit plus
+  `perduTarget` (objet, référence neuve à chaque frappe) mais `perduOpen` (booléen calculé par le
+  parent) + `perduMotif`/`perduBusy` CONDITIONNÉS (constante `''`/`false` pour les lignes non
+  ciblées, valeur live SEULEMENT pour la ligne ouverte) ; `confirmPerdu(lead, motif)` prend ses
+  arguments en PARAMÈTRES (au lieu de lire `perduTarget`/`perduMotif` en closure) pour rester une
+  référence stable quel que soit ce que l'utilisateur tape ; `onArchive`/`onRestore`/`onDelete`/
+  `closePerdu` passent en `useCallback` ; `armCallNudgeFor` stabilisée via un ref « toujours à
+  jour » synchronisé en effet (jamais pendant le rendu — `useCallEndedNudge` reste hors périmètre
+  de cette lane). `components/InlineEdit.jsx` inchangé (déjà touché LB4). Tests : nouveau
+  `LeadsPageMemoStability.test.mjs` (8 assertions source, exécutées, vertes) ; nouveau
+  `KanbanViewMemoStability.test.jsx` (sonde de rendu réelle — LeadCard mocké+compté, 0 re-rendu
+  sur un nouveau tableau `leads` à callbacks/objets stables, re-rendu ciblé sur `busyLeadId`) ;
+  3 tests pré-existants mis à jour DANS cette tâche pour suivre la nouvelle forme du source
+  (`LeadsPagePlanifierRelance.test.mjs`, `LeadsPageMarkPerdu.test.mjs`,
+  `axiosVX55Timeout.test.mjs` — `viewProps`/`refetch`/`confirmPerdu` littéraux changés). Suite
+  complète leads + adjacents (148 tests node) re-exécutée, verte.
+- 2026-07-19 LB7 — plus de refetch intégral après un PATCH mono-lead, fin des catch muets, garde
+  d'obsolescence (bugs #5/#10/#11) : `onInlineSave` et `reassign` (LeadsPage.jsx) perdent leur
+  `refetch()`/`.then(() => refetch())` — `updateLead.fulfilled` (crmSlice.js) remplace déjà le
+  lead au COMPLET (score/stage_since_days/devis inclus). `ListView.jsx#onArchive`/`onRestore`
+  perdent également leur `onRefetch?.()` (`archiveLead.fulfilled`/`restoreLead.fulfilled` patchent
+  déjà `is_archived` en place — la ligne se re-rend grisée/« Restaurer » seule) ; `onDelete` GARDE
+  le sien (`restaurerCorbeille` n'a pas de reducer de ré-insertion, seul un refetch ramène le lead
+  restauré dans le store). Le refetch intégral ne reste que pour bulk (`runBulk`), import
+  (`ExcelImport onDone`), merge (`DoublonsPanel onAnyMerge`), Signé confirmé (`SigneDialog`),
+  création (`onSaved`) — tous vérifiés toujours câblés. Catches silencieux tués (I8) :
+  `reassign`, `exportFiltered` (`/* ignore */` → `toastError`), `exportSelection` (bannière
+  `bulkMsg` locale → `toastError`, cohérent avec le reste), `ListView#onArchive`/`onRestore`
+  toastent désormais en échec. `crmSlice.js` gagne `fetchLeadsRequestId` (miroir
+  `leadUpdateSeq`/`isStaleResourceUpdate`) : `fetchLeads.pending` trace le requestId de la
+  DERNIÈRE requête dispatchée, `fetchLeads.fulfilled` ignore un payload dont le requestId ne
+  correspond plus (fin du flicker où un refetch lent remplaçait `state.leads` au complet avec un
+  snapshot périmé). Tests : nouveau `crmSliceFetchLeadsObsolescence.test.mjs` (4 assertions),
+  nouveau `LeadsPageNoOverfetch.test.mjs` (6 assertions) — 158 tests node (leads + adjacents)
+  re-exécutés, verts.
+- 2026-07-19 LB8 — sélection élaguée contre la liste FILTRÉE (bug #6, blueprint I5) :
+  `visibleSelected` (LeadsPage.jsx) élague désormais `pruneSelection(selected,
+  filtered.map(l => l.id))` au lieu de `leads.map(...)` (TOUS les leads chargés, filtre ou pas) —
+  un lead sélectionné puis masqué par un filtre restait bulk-actionnable EN INVISIBLE. `selected`
+  (l'état React brut) n'est jamais muté par `pruneSelection` (fonction pure) : retirer le filtre
+  fait naturellement réapparaître les leads déjà cochés sans logique supplémentaire. La barre bulk
+  (`BulkActionBar count={visibleSelected.size}`) et `runBulk` (qui n'agit que sur
+  `[...visibleSelected]`) héritent du fix sans y toucher. Tests : nouveau
+  `LeadsPageSelectionPruning.test.mjs` (4 assertions — wiring source + 3 scénarios DoD exécutés
+  contre la vraie logique pure `pruneSelection` de `features/crm/bulk.js`). Suite complète
+  leads + adjacents (162 tests node) re-exécutée, verte.
+
+**Lane LB0 (urgence) — LB1 à LB8 TOUTES livrées 2026-07-19.** Les lanes suivantes (LB1 board,
+LB2 carte, LB3 liste, LB4 shell/filtres/KPI/URL, LB5 vues secondaires, LB6 polish/dark,
+LB7 tests/e2e/goldens de la carte des fichiers — @lane LB1-LB7 ci-dessous, à ne pas confondre
+avec les tâches LB1-LB8 de cette section) peuvent désormais bâtir dessus : `funnelRank`/
+`isStageMoveAllowed` (stages.js) et `SIGNE_INTERCEPT`/`isSigneIntercept` (signeIntercept.js)
+sont les nouveaux contrats partagés ; `onMarkPerdu`/`stageOptionsFor` sont les nouveaux points
+d'extension côté carte/liste ; le contrat CSS D1 (`.lp-page`/`data-view`/`.kb-*`/`.lv-*`) est en
+place, LANE C peut poser `.lv-sticky-name` sans retoucher `index.css` (déjà prêt).
+
+- 2026-07-19 LB31 — chasse aux hex des surfaces leads (index.css UNIQUEMENT, aucun changement
+  JSX). Retokenisé : `.count-badge` live (re-basée sur `--tag-8-bg`/`--tag-8-fg`, identique
+  octet-près en clair, plus un chip bleu-clair illisible en sombre) après suppression du
+  doublon MORT (l'ancienne règle `#e2e8f0`/`#64748b`, toujours écrasée par la cascade) ;
+  `.data-table tr` card-stack mobile (`#fff`/`#e2e8f0` → `var(--card)`/`var(--border)`) et
+  `.data-table td::before` (`#94a3b8` → `var(--muted-foreground)`) — règle GLOBALE (~40 pages
+  consommatrices hors leads : DevisList/FactureList/ClientList/reporting/marketing/adsengine/…),
+  corrigée volontairement pour tuer le bug sombre partout, rayon d'action noté dans un
+  commentaire in situ ; `.gen-btn-orange` (seul consommateur ListView « ⚡ Devis auto ») re-basé
+  sur `--warning`/`--warning-foreground` (couleur sémantique la plus proche, léger glissement
+  orange→doré assumé) ; `.link-blue` (consommateur partagé RH/installations/stock/SAV/CRM) sur
+  `--info` + hover `color-mix` vers `--foreground` ; `.ie-err`/`.ie-placeholder` sur l'idiome
+  teinte-destructive déjà utilisé ailleurs dans le fichier / `--muted-foreground` ; `.lv-star`
+  aligné sur `.kb-star` (`var(--border, #d1d5db)`). Supprimé : le doublon mort `.kb-act-clock`
+  (raw hex, toujours écrasé par la version tokenisée plus bas) et les règles mortes
+  `.lv-owner`/`.lv-avatar` (zéro référence JSX repo-wide, supersédées par AssigneePicker).
+  Différé (hors périmètre nommé) : `.ie-cell:hover` (`#cbd5e1`/`#f8fafc`) — non cité par la tâche
+  ni par recon2-05, laissé pour une passe future. Aucun test existant ne référence ces classes
+  (grep vérifié) ; pas de nouveau test ajouté (tâche CSS pure, DoD = grep + vérification visuelle
+  sombre, pas de couverture automatisée demandée). `node -e` brace-balance check sur index.css
+  après coup : OK.
+- 2026-07-19 LB32 — ViewSwitcher rebâti sur `ui/Segmented` (radiogroup + roving tabindex +
+  flèches/Home/End au clavier "gratuits", au lieu du `role="group"` main-roulé + SVG bruts) ;
+  icônes lucide alignées 1:1 sur celles que CHAQUE vue importe déjà pour son propre empty state
+  (LayoutGrid/List/BarChart3/Map/CalendarClock, + `Calendar` neuf pour « Vue calendrier », seule
+  vue sans icône déjà établie). Les 6 noms accessibles pinnés ('Vue kanban'/'Vue liste'/…) sont
+  CONSERVÉS verbatim mais deviennent visuellement masqués (`.sr-only`, idiome déjà utilisé par
+  ui/Form.jsx/ui/Select.jsx/ui/SolarLoader.jsx) — Segmented rend toujours `label` en contenu
+  visible, c'était le seul moyen de garder le nom accessible pinné ET la présentation
+  icône-seule d'origine (le switcher partage sa rangée avec Nouveau/Express/⋯, header dense).
+  Conséquence directe assumée : le rôle ARIA réel passe de `button` à `radio`
+  (`role="radiogroup"` > `role="radio"`) — `frontend/e2e/helpers.js#setLeadsView` (hors
+  périmètre "Files:" nommé mais explicitement requis par le DoD "e2e leads.spec vert" ET par le
+  blueprint §STRATÉGIE E2E : « chaque tâche qui touche un hook pinné le met à jour DANS la même
+  tâche ») bascule `getByRole('button', …)` → `getByRole('radio', …)`, nom accessible inchangé.
+  index.css : `.vs-btn`/boutons joints main-roulés (rendus dead par le remplacement JSX)
+  supprimés ; `.vs-group` réduit à son seul hook de positionnement
+  (`.lp-header-actions .vs-group{margin-left:auto}`), toujours appliqué comme className sur le
+  radiogroup pour ne pas retoucher LeadsPage.jsx (hors périmètre). Dédup useIsMobile : les 3
+  copies locales verbatim (FilterBar.jsx/ListView.jsx/ChartsView.jsx, MOBILE_QUERY
+  '(max-width: 768px)') remplacées par le hook CANONIQUE `ui/ResponsiveDialog#useIsMobile`
+  (déjà adopté par LeadsPage.jsx/LeadWorkspace), appelé avec le MÊME breakpoint explicite —
+  comportement pixel-identique, zéro nouvelle copie. `useState`/`useEffect` devenus
+  entièrement inutilisés dans ChartsView.jsx (n'y servaient QUE le hook local) → import react
+  élagué à `{ useMemo }`. Tests : nouveau `ViewSwitcherSegmented.test.mjs` (5 assertions —
+  Segmented monté/plus de role=group/SVG brut, icônes lucide, 6 libellés pinnés, dédup
+  useIsMobile ×3, helpers.js role=radio) ; `ForecastView.test.mjs` mis à jour dans cette tâche
+  (assertion `key: 'prevision'` → `value: 'prevision'`, contrat Segmented). `node --test` sur
+  toute la suite leads (114 tests, `src/pages/crm/leads/**/*.test.mjs` +
+  `SavedViewsBar.test.mjs`) : verte. e2e leads.spec/tablet.spec/mobile.spec non exécutables ici
+  (pas de node_modules dans ce worktree/lane) — vérifiés par raisonnement + le nouveau test
+  source-grep sur helpers.js.
+- 2026-07-19 LB33 — spec de régression « le board tient dans l'écran » : nouveau
+  `frontend/e2e/leads-board.spec.js` (projet `chromium`, Desktop Chrome 1280×720). Un seul
+  `test.slow()` crée 20 leads réels (colonne « Nouveau » assez haute pour DÉBORDER le viewport si
+  elle n'était pas bornée — le seuil qui rend l'invariant sensible à la régression), puis prouve
+  par la MESURE (jsdom n'en calcule aucune) : (1) `.layout-content` (scrolleur du shell,
+  overflow-y:auto) ne déborde pas verticalement en kanban (scrollHeight−clientHeight ≤ 4px — c'est
+  CE qui rouvrait des milliers de px sans le fix `:has(> .lp-page)`, donc l'invariant échoue si on
+  retire la règle) ; (2) le bas de `.kb-board` tient dans le viewport ET le board défile en X
+  (scrollWidth>clientWidth, scrollLeft>0 après scroll) sans que la PAGE défile en X
+  (window.scrollX===0, débordement horizontal page ≤1px) ; (3) la `.kb-col-body` de « Nouveau »
+  déborde (scrollHeight>clientHeight) et défile (scrollTop>0) ; (4) en liste, le `thead` reste
+  ÉPINGLÉ (sa position écran ne bouge pas de plus de 4px après avoir défilé `.lv-wrap` tout en bas,
+  + `toBeInViewport`). Tolérances px robustes, aucun screenshot. Vérifié syntaxe (`node --check`
+  OK) ; non exécutable ici (pas de node_modules — Playwright tourne au fold par l'orchestrateur,
+  release-verify `--grep-invert @visual`). Sélecteurs vérifiés ligne à ligne contre le DOM réel
+  post-refonte (LeadsPage/KanbanView/ListView/index.css) + helpers existants
+  (gotoLeads/setLeadsView radio/createLead).
+- 2026-07-19 LB34 — clôture e2e du batch LB (goldens + passe axe + marche de tous les specs de la
+  lane). **Specs corrigés contre le DOM post-refonte :** `doublons.spec.js` (E11) — « Doublons »
+  a quitté l'en-tête pour l'item du menu « ⋯ » (VX145b/LB26, icône GitMerge, plus l'emoji 🔀) :
+  `getByRole('button', {name:'🔀 Doublons'})` → ouvrir `getByRole('button', {name:"Plus
+  d'actions"})` puis `getByRole('menuitem', {name:/Doublons/})` (patron Radix déjà éprouvé par
+  mobile.spec E16+). **Passe axe FINALE ajoutée à `leads.spec.js`** (LB34) : scanne la page réelle
+  en kanban (scope `.lp-page` = surface redessinée : tuiles KPI `aria-pressed`, ViewSwitcher
+  `radiogroup`, colonnes nommées, chevrons/zones de scroll labellisés), la barre bulk FLOTTANTE
+  (`.lp-bulk-float`, révélée en cochant une carte en `force`), le menu ••• Radix ouvert (portalé,
+  scanné via `[role="menu"]`) et la vue liste — 0 violation serious/critical (même seuil anti-flake
+  que VX71 ; scope `.lp-page` exclut le chrome global, hors périmètre). **Goldens `leads-kanban`
+  clair+sombre** (`visual.spec.js`) : capture INCHANGÉE côté code — le `ready` cible `.header-title`
+  (header global, toujours présent) + `networkidle`, valide sur le nouveau DOM ; la refonte CHANGE
+  forcément les pixels → régénération DÉLIBÉRÉE via `--update-snapshots` (aucune baseline n'est
+  encore commitée dans le repo, donc aucun red de comparaison ; release-verify régénère de toute
+  façon en `continue-on-error`). **mobile.spec (E16/MB6/VX190) + tablet.spec (VX68) : inchangés** —
+  vérifiés contre le nouveau DOM par raisonnement : le board borné supprime le débordement
+  horizontal page (le fix EST ce qu'E16/VX68 vérifient), `+ Nouveau lead`/`.header-title`/
+  `article.kb-card`/`tr.lv-row`/`.bottom-tabbar` tous préservés. Playwright non exécutable ici (pas
+  de node_modules) — les specs tournent au fold par l'orchestrateur (release-verify) ; `node
+  --check` OK. Commande de régénération des goldens listée au rapport.
+
 ## Group F — Design foundation & tokens
 
 

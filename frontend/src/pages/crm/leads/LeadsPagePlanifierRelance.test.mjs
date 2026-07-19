@@ -23,15 +23,20 @@ const SECTIONS_SRC = readFileSync(
   join(HERE, '..', '..', '..', 'features', 'crm', 'workspace', 'SectionsPane.jsx'), 'utf8')
 
 test('QX25 : LeadsPage définit onPlanifierRelance (setEditLead/setShowForm, comme les autres ouvertures de fiche)', () => {
-  assert.match(PAGE_SRC, /const onPlanifierRelance = \(lead\) => \{/)
-  const start = PAGE_SRC.indexOf('const onPlanifierRelance = (lead) => {')
+  // LB6 — mémoïsée (useCallback) : passée à CHAQUE carte/ligne via viewProps,
+  // une référence fraîche à chaque rendu cassait memo(LeadCard) (bug #4).
+  assert.match(PAGE_SRC, /const onPlanifierRelance = useCallback\(\(lead\) => \{/)
+  const start = PAGE_SRC.indexOf('const onPlanifierRelance = useCallback((lead) => {')
   const body = PAGE_SRC.slice(start, start + 250)
   assert.match(body, /setEditLead\(lead\)/)
   assert.match(body, /setShowForm\(true\)/)
 })
 
 test('QX25 : viewProps transmet désormais onPlanifierRelance (c\'était le trou verifié)', () => {
-  const start = PAGE_SRC.indexOf('const viewProps = {')
+  // LB6 — viewProps est désormais useMemo (bug #4) : `const viewProps = {`
+  // est devenu `const viewProps = useMemo(() => ({`.
+  const start = PAGE_SRC.indexOf('const viewProps = useMemo(() => ({')
+  assert.ok(start > 0, 'viewProps introuvable')
   const block = PAGE_SRC.slice(start, start + 400)
   assert.match(block, /onPlanifierRelance,/)
 })

@@ -1,9 +1,11 @@
-// QX28 — Lead readiness chips: the seller cannot tell a lead has a GPS
-// roof pin / entered bill / auto-quote-ready without opening the record.
-// LeadCard.jsx (kanban) gets three chips derived from EXISTING fields
-// (roof_point, facture_hiver, devis_auto.pret), and the ⚡ auto-quote button
-// is badged when roof data exists. Verified against SOURCE (no node_modules
-// in this worktree/lane).
+// QX28 — Lead readiness signals: the seller cannot tell a lead has a GPS roof
+// pin / entered bill / auto-quote-ready without opening the record. LB13 —
+// blueprint D3 : les 3 signaux dérivent des mêmes champs EXISTANTS
+// (roof_point, facture_hiver, devis_auto.pret) mais sont désormais des
+// micro-icônes 12px tooltipées dans le PIED (lucide MapPin / FileText / Zap),
+// jamais un gros chip et jamais un signal « manquant » (seule l'absence de la
+// micro-icône positive). Verified against SOURCE (no node_modules in this
+// worktree/lane).
 //   node --test src/pages/crm/leads/views/LeadCardReadinessChips.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -20,23 +22,27 @@ test('QX28 : les 3 signaux dérivent de champs EXISTANTS (aucun nouveau champ se
   assert.match(SRC, /const devisReady = !!lead\.devis_auto\?\.pret/)
 })
 
-test('QX28 : les 3 chips FR attendus sont rendus conditionnellement', () => {
+test('QX28 : les 3 micro-icônes readiness sont rendues conditionnellement (tooltip FR)', () => {
   assert.match(SRC, /\{roofReady && \(/)
-  assert.match(SRC, /Toit épinglé \(GPS\)/)
+  assert.match(SRC, /aria-label="Toit épinglé \(GPS\)"/)
   assert.match(SRC, /\{factureReady && \(/)
-  assert.match(SRC, /Facture saisie/)
+  assert.match(SRC, /aria-label="Facture saisie"/)
   assert.match(SRC, /\{devisReady && \(/)
-  assert.match(SRC, /Prêt à deviser en 1 clic/)
+  assert.match(SRC, /aria-label="Prêt à deviser en 1 clic"/)
 })
 
-test('QX28 : aucun chip ne s\'affiche pour un signal absent (jamais de chip "manquant")', () => {
+test('QX28 : aucune icône ne s\'affiche pour un signal absent (jamais de signal "manquant")', () => {
   assert.match(SRC, /\{\(roofReady \|\| factureReady \|\| devisReady\) && \(/)
 })
 
-test('QX28 : le bouton ⚡ (devis auto) est badgé quand un repère toit existe', () => {
-  const start = SRC.indexOf("className=\"kb-flash\"")
-  const block = SRC.slice(start, start + 1400)
-  assert.match(block, /roofReady \? 'Devis auto — repère toit disponible'/)
-  assert.match(block, /\{roofReady && \(/)
-  assert.match(block, /kb-flash-roof-badge/)
+test('QX28 : les micro-icônes readiness vivent dans le pied de carte (kb-readi), pas en gros chips', () => {
+  const footStart = SRC.indexOf('<div className="kb-card-foot">')
+  assert.ok(footStart > -1, 'kb-card-foot introuvable')
+  const footEnd = SRC.indexOf('{/* ── Actions rapides', footStart)
+  const foot = SRC.slice(footStart, footEnd)
+  assert.match(foot, /className="kb-readi"/)
+  assert.match(foot, /kb-readi-icon/)
+  // Les anciens gros chips readiness ont disparu.
+  assert.doesNotMatch(SRC, /kb-readiness-chips/)
+  assert.doesNotMatch(SRC, /kb-flash-roof-badge/)
 })

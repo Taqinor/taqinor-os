@@ -85,3 +85,11 @@ test('VX43 : aucune dépendance externe importée pour le geste (zéro dépendan
   assert.doesNotMatch(SRC, /from ['"]react-swipeable['"]/)
   assert.doesNotMatch(SRC, /from ['"]@use-gesture/)
 })
+
+test('LB17 : la bande swipe cachée est INERTE (inert), plus seulement aria-hidden', () => {
+  // recon-05 : aria-hidden seul laissait les <a> de la bande tabbables ;
+  // `inert` (React 19) les sort du tab order + de l'interaction tant que le
+  // panneau n'est pas révélé (offset === 0).
+  assert.match(SRC, /aria-hidden=\{swipe\.offset === 0\}/)
+  assert.match(SRC, /inert=\{swipe\.offset === 0\}/)
+})

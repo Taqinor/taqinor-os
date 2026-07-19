@@ -1697,23 +1697,6 @@ textarea.form-control {
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 20%, transparent);
 }
 
-/* ── Count badge (inline with title) ─────────────────── */
-.count-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  background: #e2e8f0;
-  color: #64748b;
-  font-size: 0.72rem;
-  font-weight: 700;
-  border-radius: 50px;
-  margin-left: 8px;
-  vertical-align: middle;
-}
-
 /* ── Count pill (inside table cell) ──────────────────── */
 .count-pill {
   display: inline-flex;
@@ -1736,12 +1719,17 @@ textarea.form-control {
 }
 
 /* ── Link ─────────────────────────────────────────────── */
+/* LB31 — tokenized (was raw #3b82f6/#2563eb, invisible-on-dark risk shared
+   across RH/installations/stock/SAV/CRM, not just leads). */
 .link-blue {
-  color: #3b82f6;
+  color: var(--info);
   text-decoration: none;
 }
 @media (hover: hover) {
-  .link-blue:hover { text-decoration: underline; color: #2563eb; }
+  .link-blue:hover {
+    text-decoration: underline;
+    color: color-mix(in oklch, var(--info) 80%, var(--foreground) 20%);
+  }
 }
 
 /* ── Text truncate ────────────────────────────────────── */
@@ -1911,6 +1899,9 @@ textarea.form-control {
 }
 
 /* ── Count badge (page header) ────────────────────────── */
+/* LB31 — re-based on the blue tag-8 pair (--tag-8-bg/--tag-8-fg) instead of
+   raw hex: byte-identical light look, dark mode gets the real dark-tag pair
+   instead of a light-blue chip stuck on a dark surface. */
 .count-badge {
   display: inline-flex;
   align-items: center;
@@ -1918,8 +1909,8 @@ textarea.form-control {
   min-width: 22px;
   height: 22px;
   padding: 0 6px;
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--tag-8-bg);
+  color: var(--tag-8-fg);
   border-radius: 50px;
   font-size: 0.72rem;
   font-weight: 700;
@@ -2662,11 +2653,16 @@ textarea.form-control {
   .modal-footer { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
 
   /* ── Listes (leads, devis, clients) : lignes → cartes ── */
+  /* LB31 — GLOBAL rule (used by ListView/DevisList/FactureList/ClientList/
+     reporting/marketing/adsengine mobile card-stacks, ~40 consumer pages,
+     not just leads): every mobile row was a hardcoded #fff card stuck on a
+     dark surface. Re-based on --card/--border — same look in light, real
+     card surface in dark. Blast radius is intentional per LB31 scope. */
   .data-table thead { display: none; }
   .data-table, .data-table tbody, .data-table tr { display: block; width: 100%; }
   .data-table tr {
-    background: #fff;
-    border: 1px solid #e2e8f0;
+    background: var(--card);
+    border: 1px solid var(--border);
     border-left: 3px solid var(--cat-navy);
     border-radius: 10px;
     margin-bottom: 10px;
@@ -2687,7 +2683,7 @@ textarea.form-control {
     font-weight: 800;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    color: #94a3b8;
+    color: var(--muted-foreground);
     text-align: left;
     flex-shrink: 0;
   }
@@ -2902,14 +2898,16 @@ textarea.form-control {
   margin-top: 1rem;
 }
 
+/* LB31 — re-based on --warning (was raw #f28e2b/#d97a1d, no dark variant);
+   single consumer, ListView.jsx « ⚡ Devis auto ». */
 .gen-btn-orange {
-  background: #f28e2b;
-  color: #fff;
+  background: var(--warning);
+  color: var(--warning-foreground);
   border: none;
 }
 
 @media (hover: hover) {
-  .gen-btn-orange:hover { background: #d97a1d; }
+  .gen-btn-orange:hover { background: color-mix(in oklch, var(--warning) 88%, black); }
 }
 
 .gen-monthly-grid {
@@ -3392,8 +3390,12 @@ textarea.form-control {
   .ie-cell:hover { border-color: #cbd5e1; background: #f8fafc; }
 }
 .ie-saving { opacity: 0.6; }
-.ie-err { border-color: #fca5a5; background: #fef2f2; }
-.ie-placeholder { color: #94a3b8; }
+/* LB31 — tokenized (destructive tint idiom used elsewhere in this file). */
+.ie-err {
+  border-color: color-mix(in oklch, var(--destructive) 45%, transparent);
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}
+.ie-placeholder { color: var(--muted-foreground); }
 .ie-display { padding: 2px 6px; }
 .ie-right { text-align: right; }
 .ie-left { text-align: left; }
@@ -3745,12 +3747,6 @@ textarea.form-control {
 @media (hover: hover) {
   .att-name:hover { text-decoration: underline; }
 }
-
-/* Pastille horloge d'activité sur les cartes kanban. */
-.kb-act-clock { display: inline-flex; align-items: center; font-size: 0.72rem; gap: 3px; }
-.kb-act-clock.overdue { color: #dc2626; }
-.kb-act-clock.today { color: #d97706; }
-.kb-act-clock.upcoming { color: #16a34a; }
 
 /* ===== migrated from src/pages/crm/leadform-extra.css (P67) ===== */
 /* LW31 — tout le bandeau/sous-barre/menu/avertissements hand-rolled de
@@ -4184,13 +4180,15 @@ textarea.form-control {
   background: var(--border, #e2e8f0);
 }
 
-/* Zone derrière les vues : surface sourde de tableau de bord. */
+/* Zone derrière les vues : surface sourde de tableau de bord.
+   LB2 — `min-height:320px` retiré : remplacé par la chaîne flex `.lp-page >
+   .lp-view-area` (bloc append-only en fin de fichier) qui borne réellement la
+   zone à la hauteur disponible du shell au lieu d'une hauteur mini fixe. */
 .lp-view-area {
   background: var(--muted, #f1f5f9);
   border-radius: var(--radius, 10px);
   padding: 0.75rem;
   margin-top: 0.75rem;
-  min-height: 320px;
 }
 
 /* Bandeau d'erreur (changement d'étape non enregistré). */
@@ -4264,51 +4262,12 @@ textarea.form-control {
   white-space: nowrap;
 }
 
-/* ── Sélecteur de vue (groupe de boutons-icônes joints, façon Odoo) ──────── */
-.vs-group {
-  display: inline-flex;
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: var(--radius-sm, 8px);
-  overflow: hidden;
-  background: var(--card, #fff);
-}
-
-.vs-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 36px;
-  background: var(--card, #fff);
-  border: none;
-  border-right: 1px solid var(--border, #e2e8f0);
-  color: var(--foreground, #0b1f3a);
-  cursor: pointer;
-  transition: background-color var(--motion-base) ease, color var(--motion-base) ease;
-}
-
-.vs-btn:last-child {
-  border-right: none;
-}
-
-@media (hover: hover) {
-  .vs-btn:hover {
-    background: var(--accent, #f1f5f9);
-  }
-}
-
-.vs-btn:focus-visible {
-  outline: 2px solid var(--ring, #94a3b8);
-  outline-offset: -2px;
-}
-
-@media (hover: hover) {
-  .vs-btn-active,
-  .vs-btn-active:hover {
-    background: var(--primary, #0b1f3a);
-    color: var(--primary-foreground, #fff);
-  }
-}
+/* ── Sélecteur de vue ─────────────────────────────────────────────────────
+   LB32 — ViewSwitcher rebâti sur `ui/Segmented` (son propre style Tailwind :
+   plus de `.vs-btn`/boutons joints main-roulés). `.vs-group` ne porte plus
+   QUE le hook de positionnement ci-dessus (`.lp-header-actions .vs-group`) —
+   conservé comme className sur le radiogroup pour ne pas retoucher
+   LeadsPage.jsx (hors périmètre de cette tâche). */
 
 /* ── Mobile ──────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
@@ -4321,11 +4280,6 @@ textarea.form-control {
     flex: 1 1 100%;
     max-width: none;
     min-height: 44px;
-  }
-
-  .vs-btn {
-    width: 44px;
-    height: 44px;
   }
 
   .lp-view-area {
@@ -4776,11 +4730,17 @@ textarea.form-control {
 
 /* ---------- Tableau ---------- */
 
+/* LB2 — `height:100%` se résolvait en AUTO (le containing block `.lp-view-area`
+   n'avait pas de hauteur explicite avant le fix de chaîne ci-dessus) : le board
+   grandissait à la colonne la plus haute au lieu de se borner au viewport, la
+   page défilait sur des milliers de px et la scrollbar horizontale gisait sous
+   le fold (bug fondateur P0, recon2-03). `flex:1 1 auto` avec un ancêtre borné
+   se résout réellement. */
 .kb-board {
   display: flex;
   align-items: stretch;
   gap: 0.75rem;
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
   padding: 0.75rem;
   overflow-x: auto;
@@ -4865,9 +4825,12 @@ textarea.form-control {
   letter-spacing: -0.01em;
 }
 
+/* LB2 — `min-height:80px` empêchait JAMAIS le corps de déborder (il ne
+   pouvait que grandir) : avec `.kb-board` réellement borné ci-dessus,
+   `min-height:0` laisse enfin `overflow-y:auto` prendre effet par colonne. */
 .kb-col-body {
-  flex: 1;
-  min-height: 80px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -5125,16 +5088,18 @@ textarea.form-control {
   margin-top: 0.4rem;
   padding: 4px 8px;
   border-radius: 6px;
-  background: var(--color-info-muted, rgba(37, 99, 235, 0.1));
+  /* LB16 — `--color-info-muted` n'a jamais existé (le littéral rgba était donc
+     toujours utilisé) : re-basé sur un token réel (teinte info sur la carte). */
+  background: color-mix(in srgb, var(--info) 12%, var(--card));
   font-size: 0.72rem;
 }
 
-.kb-call-nudge-text { flex: 1; color: var(--foreground, #0b1f3a); }
+.kb-call-nudge-text { flex: 1; color: var(--foreground); }
 
 .kb-call-nudge-log {
   border: none;
-  background: var(--color-info, #2342b5);
-  color: #fff;
+  background: var(--info);
+  color: var(--info-foreground);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 0.72rem;
@@ -5257,10 +5222,16 @@ textarea.form-control {
 /* Vue LISTE des leads CRM — style dense façon Odoo, identité navy/or.
    Préfixe lv- ; s'appuie sur .data-table (index.css) sans le modifier. */
 
+/* LB2 — scrolleur DEUX AXES unique de la vue liste (au lieu de overflow-x
+   seul) : un ancêtre overflow-x:auto casserait le sticky vertical du thead ;
+   avec UN SEUL conteneur de scroll, sticky top ET sticky left fonctionnent
+   tous les deux (D4 pose `.lv-sticky-name` plus tard sans retoucher ce bloc). */
 .lv-wrap {
   /* VX1 — --cat-navy/--cat-gold hérités de design/tokens.css (signature
      unique), plus de redéclaration locale. */
-  overflow-x: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* Densité : un cran plus serré que la table globale. */
@@ -5370,35 +5341,16 @@ textarea.form-control {
   white-space: nowrap;
 }
 
-/* ── Responsable ── */
-.lv-owner {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-.lv-avatar {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background: var(--cat-navy, #0b1f3a);
-  color: #fff;
-  font-size: 0.62rem;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  letter-spacing: 0.02em;
-}
-
 /* ── Priorité (2 étoiles) ── */
 .lv-stars {
   font-size: 0.95rem;
   letter-spacing: 1px;
   white-space: nowrap;
 }
+/* LB31 — aligned on .kb-star (was raw #d1d5db, same token the kanban side
+   already uses). */
 .lv-star {
-  color: #d1d5db;
+  color: var(--border, #d1d5db);
 }
 .lv-star-on {
   color: var(--cat-gold, #f5a623);
@@ -7110,4 +7062,887 @@ textarea.form-control {
   /* 4.34:1 encore court de 4.5 : on éclaircit la teinte (8% au lieu des 15%
      du kit) — toujours dérivée du jeton, jamais un hex. */
   background: color-mix(in oklch, var(--warning) 8%, var(--card));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB2 — Leads : shell borné view-aware (docs/design/leads-board-blueprint.md
+   D1, contrat CSS exact). Bloc APPEND-ONLY `.lp-*`/`.kb-*`/`.lv-*` — miroir du
+   pattern `.lw-page` (LW13/LW25 ci-dessus) : `.route-fade` (hauteur auto)
+   cassait la chaîne height:100% entre `.layout-content` (scrolleur borné du
+   shell) et `.lp-page` → la page grandissait au contenu (8 649px mesurés en
+   vue kanban, recon2-03 §P0) et la scrollbar horizontale du board gisait sous
+   le fold. On ne borne QUE la route leads via :has() — les autres pages
+   gardent leur croissance naturelle + le scroll de `.layout-content`. ══════ */
+.layout-content > .route-fade:has(> .lp-page) {
+  height: 100%;
+}
+.lp-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+/* Toutes les rangées du shell (header/FilterBar/SavedViewsBar/BulkActionBar/
+   bannières) restent figées à leur hauteur naturelle ; seule la zone de vue
+   s'étire — le cockpit (filtres/KPI/actions) ne défile JAMAIS. */
+.lp-page > :not(.lp-view-area) {
+  flex: 0 0 auto;
+}
+.lp-page > .lp-view-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Défaut (calendrier/graphique/carte) : la zone de vue scrolle verticalement
+     — comportement « page » actuel, mais sous un header/filtres épinglés. */
+  overflow: hidden auto;
+}
+/* Vues « planche » : la zone de vue NE scrolle PAS elle-même — chaque vue
+   possède son propre scrolleur interne (`.kb-board` horizontal + chaque
+   `.kb-col-body` vertical pour kanban/prévision ; `.lv-wrap` deux axes pour
+   la liste). Piloté par `data-view` (LeadsPage.jsx), zéro logique dupliquée. */
+.lp-page[data-view="kanban"] .lp-view-area,
+.lp-page[data-view="prevision"] .lp-view-area,
+.lp-page[data-view="liste"] .lp-view-area {
+  overflow: hidden;
+}
+/* Les 3 vues denses échappent au cap `.page{max-width:1200px}` : un board
+   full-bleed sous un header centré 1200px paraîtrait cassé (Linear/Trello
+   alignent toolbar et board). Calendrier/graphique/carte gardent le cap
+   (lisibilité). */
+.lp-page[data-view="kanban"],
+.lp-page[data-view="prevision"],
+.lp-page[data-view="liste"] {
+  max-width: none;
+}
+
+/* Liste : thead + colonne nom épinglés — activé dès maintenant (le thead
+   existe déjà), `.lv-sticky-name` posée sur la cellule nom par le refit D4
+   sans retoucher ce bloc. */
+.lv-table thead th {
+  position: sticky;
+  top: 0;
+  /* Paliers LOCAUX au scrolleur .lv-wrap : `isolation: isolate` (posé sur
+     .lv-wrap ci-dessous) confine ces jetons au tableau — ils ne concourent
+     jamais avec le chrome de page (garde MB3 : jamais un z-index en dur). */
+  z-index: var(--z-sticky);
+  background: var(--card);
+}
+/* Le scrolleur crée son PROPRE contexte d'empilement : les paliers sticky du
+   tableau (en-tête/colonne nom/coin) restent internes. */
+.lv-wrap {
+  isolation: isolate;
+}
+@media (min-width: 768px) {
+  .lv-table .lv-sticky-name {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--card);
+  }
+  /* Cellule de COIN (th nom, sticky sur les 2 axes) : au-dessus des autres th
+     (qui glissent dessous au scroll horizontal) — palier local, isolé. */
+  .lv-table thead th.lv-sticky-name {
+    z-index: var(--z-overlay);
+  }
+}
+
+/* Scrollbars fines TOUJOURS visibles (Linear/Notion), tokenisées deux thèmes —
+   sans elles, un scrolleur interne borné mais vide de scrollbar visible reste
+   aussi indécouvrable que le bug qu'on corrige. */
+.kb-board,
+.kb-col-body,
+.lv-wrap {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.kb-board::-webkit-scrollbar {
+  height: 10px;
+}
+.kb-col-body::-webkit-scrollbar {
+  width: 8px;
+}
+.kb-board::-webkit-scrollbar-thumb,
+.kb-col-body::-webkit-scrollbar-thumb,
+.lv-wrap::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+/* LB18 — colgroup à largeurs fixes (ListView.jsx) : sans table-layout:fixed
+   le <colgroup> n'est qu'indicatif — un <select> d'édition en place plus
+   large que le texte affiché ferait quand même danser les colonnes
+   voisines (P3 #14). */
+.lv-table {
+  table-layout: fixed;
+}
+/* Ombre de bord sur la colonne nom épinglée (.lv-sticky-name) une fois que
+   la table a défilé horizontalement — classe togglée par un listener de
+   scroll passif sur .lv-wrap (ListView.jsx), jamais par un re-rendu React. */
+.lv-wrap.lv-scrolled-x .lv-sticky-name {
+  box-shadow: 4px 0 6px -4px rgba(0, 0, 0, 0.25);
+}
+
+/* LB19 — barre d'outils locale de la liste (choix de colonnes, puis LB20 le
+   segmented Plat/Par étape) : HORS du scrolleur .lv-wrap pour rester
+   visible pendant le défilement vertical de la table — même recette flex
+   que .lp-view-area/.kb-board (D1) : .lv-view remplace .lv-wrap comme
+   enfant direct de .lp-view-area, .lv-wrap garde sa règle flex existante
+   inchangée (elle ne dépend pas du nom de son parent). */
+.lv-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lv-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+
+/* LB20 — option « Par étape » : rangées de groupe collantes SOUS le thead
+   sticky — `--lv-thead-h` est MESURÉE (ResizeObserver, ListView.jsx),
+   jamais un pixel deviné, posée sur .lv-wrap (le repère commun le plus
+   proche entre le thead et les rangées de groupe). */
+.lv-table tr.lv-group td {
+  position: sticky;
+  top: var(--lv-thead-h, 37px);
+  left: 0;
+  z-index: 1;
+  background: var(--muted);
+  padding: 0;
+}
+.lv-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 12px;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .lv-group-toggle:hover {
+    background: var(--accent, #e2e8f0);
+  }
+}
+.lv-group-toggle:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: -2px;
+}
+.lv-group-chevron {
+  display: inline-block;
+  width: 1em;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+.lv-group-count {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
+.lv-group-total {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--cat-navy, #0b1f3a);
+}
+
+/* LB21 — le nom (.lv-lead-name) est un <button> depuis le refit clavier
+   (élément interactif sémantique, blueprint D4) : reset des styles natifs
+   de bouton par-dessus la règle existante ci-dessus (5357) — APPEND-ONLY,
+   cette règle ne la modifie pas, elle ajoute les propriétés qu'un <button>
+   pose par défaut et qu'un <span> n'avait jamais eues. */
+.lv-lead-name {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lv-lead-name:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Ligne ouvrable au clavier (LB21) : anneau de focus visible sur tr.lv-row
+   quand elle est focus directement (Tab), pas quand le focus est descendu
+   sur un contrôle interne. */
+.lv-table tbody tr.lv-row:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: -2px;
+}
+
+/* Gap responsive 769-899px (recon-05) : le palier fixe 150px ci-dessus ne
+   s'active qu'à partir de 900px — entre 768 et 900, `.kb-col` retombait à sa
+   largeur desktop (272px) et ne montrait plus que ~3 colonnes sur iPad
+   portrait/petits laptops. Largeur fluide bornée pour ce seul intervalle. */
+@media (min-width: 769px) and (max-width: 899px) {
+  .kb-col {
+    flex: 0 0 clamp(220px, 24vw, 272px);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB9 — Ergonomie du board (docs/design/leads-board-blueprint.md D2) : en-tête
+   riche épinglé (déjà hors du corps scrollant depuis LB2), zone de scroll
+   `.kb-col-body` atteignable au clavier, zone de dépôt en pointillés sur
+   colonne vide. Append-only, même bloc `.kb-*`. ══════════════════════════ */
+
+/* Anneau de focus sur `.kb-col-body` (tabindex=0, recon-05 a11y #6) — un
+   `outline` classique déborderait sur le scrolleur voisin ; `outline-offset`
+   négatif le ramène À L'INTÉRIEUR du cadre de la colonne. */
+.kb-col-body:focus-visible {
+  outline: 2px solid var(--ring, #f5a623);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm, 8px);
+}
+
+/* Zone de dépôt d'une colonne vide : surbrillance accentuée pendant le survol
+   d'un drag (au-dessus du halo déjà posé sur `.kb-over` au niveau colonne). */
+.kb-over .kb-col-empty {
+  border-color: var(--kb-accent);
+  background: color-mix(in srgb, var(--kb-accent) 10%, transparent);
+  color: var(--foreground, #0b1f3a);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB10 — Repli de colonne persisté (docs/design/leads-board-blueprint.md D2) :
+   colonne repliée = rail vertical 44px, TOUJOURS une zone droppable (aucune
+   règle `.kb-over`/`.kb-col` de base à dupliquer — `.kb-col-collapsed` ne fait
+   QUE réduire la largeur/réorganiser l'intérieur). ═══════════════════════ */
+.kb-col-collapsed {
+  flex: 0 0 44px;
+  width: 44px;
+  align-items: center;
+}
+
+/* Rangée titre : en repli, seuls le chevron + le compteur restent (le libellé
+   quitte cette rangée pour le rail pivoté ci-dessous) — recentrés. */
+.kb-col-collapsed .kb-col-header {
+  padding: 0.5rem 0.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+.kb-col-collapsed .kb-col-title-row {
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.kb-col-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .kb-col-collapse-btn:hover {
+    background: var(--muted, #f1f5f9);
+    color: var(--foreground, #0b1f3a);
+  }
+}
+.kb-col-collapse-btn:focus-visible {
+  outline: 2px solid var(--ring, #f5a623);
+  outline-offset: 1px;
+}
+
+/* Chevron pivote pour indiquer déplier/replier — un simple `transform`, donc
+   déjà neutralisé sous `prefers-reduced-motion` par le garde global en tête
+   de fichier (transition-property y exclut `transform`). */
+.kb-col-chevron {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--motion-base) ease;
+}
+.kb-col-chevron-collapsed {
+  transform: rotate(-90deg);
+}
+
+/* Libellé pivoté du rail replié — lisible de haut en bas, compteur déjà rendu
+   juste au-dessus dans `.kb-col-header`. */
+.kb-col-rail-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--foreground, #0b1f3a);
+  padding: 0.4rem 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB11 — Drag-to-pan sur l'espace vide du board (features/kanban/
+   usePanScroll.js, docs/design/leads-board-blueprint.md D2). Curseur grab
+   sur le fond (cohérent avec `.kb-card{cursor:grab}` déjà posé) ; grabbing
+   pendant le pan réellement armé (classe posée/retirée par le hook). ═════ */
+.kb-board {
+  cursor: grab;
+}
+.kb-board.kb-board-panning {
+  cursor: grabbing;
+}
+
+/* ===== LB28 — Prévision (ForecastView) : parité clavier KanbanView =====
+   Équivalent clavier du glisser (<select> mois, MÊME motif que
+   `.kb-stage-mover`/StageMover) + hint de drop en pointillés pour une
+   colonne-mois vide (« Non daté » garde son texte neutre — jamais une cible
+   valide, cf. handleDragEnd). */
+.fv-month-mover {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 6px;
+}
+.fv-month-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.78rem;
+}
+.fv-month-status {
+  white-space: nowrap;
+}
+.fv-col-drop-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  margin: 4px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  text-align: center;
+}
+.kb-over .fv-col-drop-hint {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
+}
+
+/* ===== LB29 — Calendrier (CalendarView) : aujourd'hui + relance en retard =====
+   `.cal-cell-today`/`.cal-chip*` sont des classes PARTAGÉES avec MonthGrid/
+   CalendarPage.jsx (VX25) — on ne touche jamais la règle générique (gold,
+   ci-dessus dans ce fichier) : ces overrides sont scopés sous
+   `.lp-page[data-view="calendrier"]` (page leads UNIQUEMENT), la même
+   technique de scoping que le contrat de hauteur LB2. */
+.lp-page[data-view="calendrier"] .cal-cell-today {
+  box-shadow: inset 0 0 0 2px var(--module-accent-azur);
+  background: color-mix(in oklch, var(--module-accent-azur) 14%, var(--card));
+}
+.lp-page[data-view="calendrier"] .cal-cell-today .cal-day-number {
+  background: var(--module-accent-azur);
+  color: var(--info-foreground);
+  border-radius: 999px;
+}
+/* Relance en retard : soulignée destructive (un lead perdu porte déjà sa
+   propre pastille rouge — jamais les deux signaux à la fois). */
+.cal-chip-late .cal-chip-name {
+  text-decoration: underline;
+  text-decoration-color: var(--destructive);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB24 — Bandeau KPI = filtres (docs/design/leads-board-blueprint.md D5, « le
+   cockpit du matin ») : rangée compacte entre l'en-tête et FilterBar, scroll-x
+   sur mobile (jamais un wrap qui pousse le contenu). Tuiles 1-3 sont des
+   boutons-filtres (`aria-pressed`) accentés `--module-accent-azur` quand
+   actifs ; la tuile Pipeline (`.lp-kpi-tile-display`) est un AFFICHAGE seul,
+   jamais un filtre. ══════════════════════════════════════════════════════ */
+.lp-kpi-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.lp-kpi-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 108px;
+  padding: 6px 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 10px);
+  background: var(--card, #fff);
+  color: var(--foreground, #1e293b);
+  cursor: pointer;
+  transition: background var(--motion-fast), border-color var(--motion-fast),
+              color var(--motion-fast);
+}
+.lp-kpi-tile[aria-pressed="true"] {
+  border-color: var(--module-accent-azur);
+  background: color-mix(in srgb, var(--module-accent-azur) 12%, var(--card));
+  color: var(--module-accent-azur);
+}
+@media (hover: hover) {
+  .lp-kpi-tile:hover { background: var(--muted, #f1f5f9); }
+  .lp-kpi-tile[aria-pressed="true"]:hover {
+    background: color-mix(in srgb, var(--module-accent-azur) 18%, var(--card));
+  }
+}
+/* Tuile Pipeline : affichage seul (jamais interactive — pas de :hover/press). */
+.lp-kpi-tile-display {
+  cursor: default;
+}
+.lp-kpi-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.lp-kpi-label {
+  font-size: 0.72rem;
+  color: var(--muted-foreground, #64748b);
+  white-space: nowrap;
+}
+.lp-kpi-tile[aria-pressed="true"] .lp-kpi-label { color: inherit; }
+@media (max-width: 768px) {
+  .lp-kpi-tile { min-width: 96px; padding: 5px 10px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB25 — Barre bulk FLOTTANTE (blueprint D5) : l'ancienne barre inline
+   (`.bulk-bar`) poussait le layout à chaque sélection (le board sautait de
+   hauteur). Toolbar bas-centre fixed, même palier `--z-sticky` que le reste
+   du chrome collant (FAB/tabbar), safe-area + AU-DESSUS de la tabbar mobile
+   (même calcul que `.fab-button` ci-dessus), glissée depuis le bas. La règle
+   globale `prefers-reduced-motion` (tout en haut de ce fichier) neutralise
+   déjà l'animation (`animation-duration:0.01ms`) — aucun garde dédié requis.
+   MÊME composant BulkActionBar à l'intérieur, seul le conteneur change. ═══ */
+.lp-bulk-float {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-sticky, 1100);
+  width: min(92vw, 720px);
+  animation: lp-bulk-float-in var(--motion-base) var(--ease-out);
+}
+.lp-bulk-float .bulk-bar {
+  margin: 0;
+  box-shadow: var(--shadow-lg);
+}
+@keyframes lp-bulk-float-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (max-width: 768px) {
+  .lp-bulk-float {
+    /* Même réserve que le FAB (VX42) : 52px de tabbar + son safe-area. */
+    bottom: calc(52px + env(safe-area-inset-bottom) + 12px);
+    width: calc(100vw - 24px);
+  }
+}
+
+/* LB26 — « Copier le lien » sur une puce de vue enregistrée (blueprint D5) :
+   même famille visuelle que `.lp-saved-view-del` (ligne ~5792 ci-dessus,
+   FG11) — bouton neutre entre le libellé et la suppression, jamais teinté
+   destructif (ce n'est pas une action dangereuse). */
+.lp-saved-view-share {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border, #e2e8f0);
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+  color: var(--muted-foreground, #64748b);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+@media (hover: hover) {
+  .lp-saved-view-share:hover {
+    background: var(--muted, #f1f5f9);
+    color: var(--foreground, #1e293b);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB27 — Squelette EN FORME dans le shell (docs/design/leads-board-blueprint.md
+   I9) : même contrat que `.lw-skeleton-swap` (LW13/LW25 ci-dessus) — le
+   conteneur FadeSwap doit s'étirer en flex:1 pour hériter de la chaîne de
+   hauteur D1 (`.lp-view-area`), le calque actif de FadeSwap (`[aria-hidden]`,
+   posé sur SES DEUX enfants) hérite `height:100%` + redevient flex column,
+   sinon le squelette/contenu s'affaisse à sa hauteur intrinsèque. ══════════ */
+.lp-view-skeleton-swap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lp-view-skeleton-swap > [aria-hidden] {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lp-skeleton-kanban {
+  display: flex;
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+  padding: 4px 2px;
+}
+.lp-skeleton-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 272px;
+  min-width: 220px;
+}
+.lp-skeleton-liste {
+  height: 100%;
+  overflow: hidden;
+  padding: 4px 2px;
+}
+
+/* ===========================================================================
+   LB13 — Carte lead : anatomie à 4 zones (blueprint D3). Bloc append-only
+   `.kb-card*` : nom → valeur → UNE ligne d'action → pied. Tokens sémantiques
+   uniquement (aucun hex). Complète/écrase les règles `.kb-card*` plus haut.
+   =========================================================================== */
+
+/* Checkbox de sélection : présente en permanence mais révélée seulement au
+   survol / focus / sélection active (bruit en moins au repos, blueprint D3).
+   Toujours visible au toucher — (hover: none). LB17 durcit la cible ≥44px. */
+.kb-card-check {
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease;
+}
+/* Révélation non-hover (focus, sélection) — s'applique partout, tactile inclus. */
+.kb-card:focus-within .kb-card-check,
+.kb-card-selected .kb-card-check,
+.kb-card-selection-active .kb-card-check {
+  opacity: 1;
+}
+/* Révélation au survol — gardée par @media (hover: hover) (VX53 : pas de hover
+   collant en tactile). */
+@media (hover: hover) {
+  .kb-card:hover .kb-card-check { opacity: 1; }
+}
+@media (hover: none) {
+  .kb-card-check { opacity: 1; }
+}
+
+/* Formulaire « Marquer perdu » (PerduPopover, partagé). Le bouton ✗ 20×20 de
+   la face a été retiré en LB15 (déplacé dans le menu ••• → PerduPopover). */
+.kb-perdu-form { display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
+.kb-perdu-title { font-size: 13px; font-weight: 500; margin: 0; }
+.kb-perdu-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* Zone VALEUR : montant (devis sinon estimé) + chip type d'installation. */
+.kb-card-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+.kb-card-montant {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+.kb-card-type {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 0.64rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* UNE ligne d'action (précédence D3). Une seule tonalité à la fois. */
+.kb-card-actionline {
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.kb-actionline-perdu {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--destructive);
+}
+.kb-actionline-danger { color: var(--destructive); font-weight: 600; }
+.kb-actionline-warning { color: var(--warning-text); font-weight: 600; }
+.kb-actionline-info { color: var(--info); }
+.kb-actionline-muted { color: var(--muted-foreground); }
+.kb-act-overdue { color: var(--destructive); }
+.kb-act-today { color: var(--warning-text); }
+.kb-act-upcoming { color: var(--success); }
+/* Variante « lien » (bouton reset) : planifier une relance / renseigner la facture. */
+.kb-actionline-link {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--info);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .kb-actionline-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+}
+.kb-actionline-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 4px);
+}
+
+/* Tag « +N » (repli des tags au-delà de 2). */
+.kb-tag-more {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+/* PIED — méta canal · ville, readiness, pill d'âge. */
+.kb-foot-meta {
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.kb-readi { display: inline-flex; align-items: center; gap: 4px; }
+.kb-readi-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted-foreground);
+}
+.kb-readi-devis { color: var(--primary-text); }
+
+/* Pill d'âge « rotting » (absorbe « Inactif N j » + horloge). LB13 : neutre ;
+   LB14 la teinte via [data-rot]. */
+.kb-age-pill {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.64rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Lead perdu : atténue aussi la nouvelle zone valeur. */
+.kb-card-perdu .kb-card-value { filter: saturate(0.5); opacity: 0.9; }
+
+/* Actions rapides révélées au survol (tel / WhatsApp / ⚡ Devis auto) —
+   permanentes au toucher (hover: none). Les hrefs tel/wa restent TOUJOURS
+   dans le DOM (contrat). Trello-like : la carte s'étire légèrement au survol.
+   LB15 posera ici le menu ••• ; LB17 durcit les cibles ≥44px. */
+.kb-quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height var(--motion-base) ease, opacity var(--motion-base) ease,
+    margin-top var(--motion-base) ease;
+}
+@media (hover: hover) {
+  .kb-card:hover .kb-quick,
+  .kb-card:focus-within .kb-quick {
+    max-height: 3rem;
+    opacity: 1;
+    margin-top: 0.4rem;
+  }
+}
+@media (hover: none) {
+  .kb-quick {
+    max-height: none;
+    overflow: visible;
+    opacity: 1;
+    margin-top: 0.4rem;
+    justify-content: flex-end;
+  }
+}
+.kb-quick-tel,
+.kb-quick-wa {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 0.95rem;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+.kb-quick-tel { color: var(--success); }
+.kb-quick-wa { color: var(--brand-whatsapp); }
+@media (hover: hover) {
+  .kb-quick-tel:hover { border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+  .kb-quick-wa:hover { border-color: color-mix(in srgb, var(--brand-whatsapp) 45%, transparent); }
+}
+.kb-quick-tel:focus-visible,
+.kb-quick-wa:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* ===========================================================================
+   LB14 — Rampe « rotting » sur la carte. `data-rot` (ok|warning|danger) est
+   posé sur `article.kb-card` (features/crm/workspace/rotting.js, réutilisé tel
+   quel sur stage_since_days). La pill d'âge se teinte ; un liseré intérieur
+   gauche 3px n'apparaît QU'EN danger (discret). Jamais en SIGNED/COLD/perdu
+   (rot = 'ok' par construction). Tokens sémantiques uniquement.
+   =========================================================================== */
+.kb-card[data-rot='warning'] .kb-age-pill {
+  background: color-mix(in srgb, var(--warning) 18%, var(--card));
+  color: var(--warning-text);
+}
+.kb-card[data-rot='danger'] .kb-age-pill {
+  background: color-mix(in srgb, var(--destructive) 18%, var(--card));
+  color: var(--destructive);
+  font-weight: 700;
+}
+/* Liseré intérieur gauche 3px, UNIQUEMENT en danger — pseudo dédié (::before
+   est déjà la poignée de glissé). N'altère pas la boîte (pas de décalage). */
+.kb-card[data-rot='danger']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--radius, 10px) 0 0 var(--radius, 10px);
+  background: var(--destructive);
+  pointer-events: none;
+}
+
+/* ===========================================================================
+   LB15 — Menu ••• (DropdownMenu) révélé au survol/focus, permanent au toucher.
+   Le bouton ✗ 20×20 a quitté la face : la popover « Marquer perdu » est
+   désormais le composant partagé PerduPopover, contrôlé par le menu et ancré
+   au coin de la carte. LB17 durcira la cible tactile ≥44px.
+   =========================================================================== */
+.kb-card-menu {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+.kb-card-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 6px);
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+.kb-card:focus-within .kb-card-menu-btn,
+.kb-card-menu-btn[data-state='open'] {
+  opacity: 1;
+}
+.kb-card-menu-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  opacity: 1;
+}
+/* Révélation + fond au survol — gardés (VX53 : pas de hover collant en tactile). */
+@media (hover: hover) {
+  .kb-card:hover .kb-card-menu-btn { opacity: 1; }
+  .kb-card-menu-btn:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+@media (hover: none) {
+  .kb-card-menu-btn { opacity: 1; }
+}
+/* Ancre invisible de la popover « Marquer perdu » contrôlée (coin haut-droit). */
+.kb-perdu-anchor {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 0;
+  height: 0;
+}
+
+/* ===========================================================================
+   LB17 — Tactile (cibles ≥44px par STYLESHEET, jamais une taille inline) + PII.
+   La case et le bouton ••• gardent leur taille visuelle en pointeur fin ; en
+   pointeur COARSE, un overlay ::before de 44×44 étend la zone de frappe SANS
+   décaler la mise en page (tue le sliver 16px horizontal — recon-05 touch).
+   Les actions rapides tel/WA/⚡ passent à 44px au toucher (rangée dédiée).
+   =========================================================================== */
+.kb-check-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+@media (pointer: coarse) {
+  .kb-check-hit,
+  .kb-card-menu-btn { position: relative; }
+  .kb-check-hit::before,
+  .kb-card-menu-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .kb-quick-tel,
+  .kb-quick-wa,
+  .kb-flash.kb-quick-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+/* Cadenas PII : à la place des actions d'appel quand `lead.pii_masked`. */
+.kb-quick-lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--muted-foreground);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm, 8px);
 }

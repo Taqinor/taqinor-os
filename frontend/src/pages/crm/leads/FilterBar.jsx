@@ -9,6 +9,7 @@ import {
   tagList,
 } from '../../../features/crm/stages'
 import useCanaux from '../../../features/crm/useCanaux'
+import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import {
   Input, Button, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -20,25 +21,38 @@ const ALL = '__all'
 const toSel = (v) => (v ? v : ALL)
 const fromSel = (v) => (v === ALL ? '' : v)
 
+// LB32 — dédup : hook CANONIQUE `useIsMobile` (ui/ResponsiveDialog, déjà
+// adopté par LeadsPage.jsx/LeadWorkspace) au lieu d'une 3e copie locale
+// verbatim (identique à celles de ListView.jsx/ChartsView.jsx). Même
+// breakpoint qu'avant (768px, passé en paramètre) — comportement inchangé.
 const MOBILE_QUERY = '(max-width: 768px)'
-
-// Vrai sous 768px — la barre de filtres se replie alors derrière un bouton.
-function useIsMobile() {
-  const [mobile, setMobile] = useState(
-    () => window.matchMedia(MOBILE_QUERY).matches,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia(MOBILE_QUERY)
-    const onChange = (e) => setMobile(e.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return mobile
-}
 
 // Barre de recherche/filtres partagée par les quatre vues (façon Odoo).
 // `leads` = liste NON filtrée, pour dériver les options disponibles.
 export default function FilterBar({ filters, setFilters, leads }) {
+  // LB23 — recherche débouncée (blueprint D5/I7) : l'input reste un état
+  // LOCAL (frappe instantanée, jamais bloquée) qui ne pousse `setFilters`
+  // qu'après 250ms de pause — combiné à LB6 (viewProps mémoïsé), une frappe
+  // ne recalcule/re-rend plus aucune carte tant que l'utilisatrice tape.
+  // `useDeferredValue` (LeadsPage.jsx, VX187) reste un second étage : lui
+  // absorbe le coût du RECALCUL une fois `filters.q` mis à jour.
+  const [searchLocal, setSearchLocal] = useState(filters.q)
+  // Resynchronise l'input quand `filters.q` change depuis L'EXTÉRIEUR
+  // (« Effacer les filtres », vue enregistrée appliquée, URL collée — LB22) :
+  // motif « adjust state during render » (lint v7 interdit le setState
+  // synchrone en effet) — même pattern que SectionContact/ContextRail.
+  const [prevQ, setPrevQ] = useState(filters.q)
+  if (prevQ !== filters.q) {
+    setPrevQ(filters.q)
+    setSearchLocal(filters.q)
+  }
+  useEffect(() => {
+    if (searchLocal === filters.q) return undefined
+    const t = setTimeout(() => setFilters((f) => ({ ...f, q: searchLocal })), 250)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'à la frappe locale, `filters`/`setFilters` lus au déclenchement
+  }, [searchLocal])
+
   // Libellés de canaux depuis le référentiel géré (Paramètres → CRM) + statiques.
   const { options: canalOptions } = useCanaux()
   const owners = useMemo(() => {
@@ -79,7 +93,7 @@ export default function FilterBar({ filters, setFilters, leads }) {
 
   const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
 
-  const isMobile = useIsMobile()
+  const isMobile = useIsMobile(MOBILE_QUERY)
   const [open, setOpen] = useState(false)
   // Sur mobile, on ne déplie les contrôles que si l'utilisateur ouvre le
   // panneau ; sur desktop, ils sont toujours visibles.
@@ -95,8 +109,8 @@ export default function FilterBar({ filters, setFilters, leads }) {
           type="search"
           leading={<Search />}
           placeholder="Rechercher nom, téléphone, email…"
-          value={filters.q}
-          onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+          value={searchLocal}
+          onChange={(e) => setSearchLocal(e.target.value)}
         />
       </div>
 
@@ -229,6 +243,9 @@ export default function FilterBar({ filters, setFilters, leads }) {
         </SelectContent>
       </Select>
 
+      {/* LB24 — le Segmented relance gagne « Aujourd'hui » (miroir de la
+          tuile KPI « Dû aujourd'hui », même clé de filtre — un seul état de
+          filtres, KPI et FilterBar restent parfaitement synchronisés). */}
       <Segmented
         size="sm"
         aria-label="Filtre relance"
@@ -236,6 +253,7 @@ export default function FilterBar({ filters, setFilters, leads }) {
         onChange={setKey('relance')}
         options={[
           { value: '', label: 'Toutes relances' },
+          { value: 'aujourdhui', label: "Aujourd'hui" },
           { value: 'retard', label: 'En retard' },
           { value: 'semaine', label: 'Cette semaine' },
         ]}

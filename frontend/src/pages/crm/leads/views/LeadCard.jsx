@@ -1,40 +1,54 @@
 // Carte lead réutilisable (colonne kanban + aperçu DragOverlay).
-// Présentation pure : aucune mutation, tout vient des props et de stages.js —
-// SAUF la mini-popover « ✗ Perdu » (VX223), qui suit le même patron que
-// CallLogPopover ci-dessous : un enfant auto-contenu appelle crmApi
-// directement plutôt que de faire remonter une prop de mutation supplémentaire.
-// VX187 — memo() : chaque frappe dans la recherche/un filtre re-rendait
-// TOUTES les cartes visibles (zéro `memo(` dans tout le fichier). Ne tient
-// que si les callbacks parents sont stables (voir useCallback sur
-// onOpenLead/onAutoQuote/changeStage dans LeadsPage.jsx).
-import { useEffect, useRef, useState, memo } from 'react'
-// VX45 — emoji ⚡ fonctionnel remplacé par l'icône lucide (rendu variable
-// selon l'OS avec un emoji brut).
-import { Zap } from 'lucide-react'
+// LB13 — anatomie à 4 zones (blueprint D3) : nom → valeur → UNE ligne d'action
+// → pied. Contrat DOM conservé (`article.kb-card`, `.kb-card-name`, e2e). Plus
+// aucun style présentationnel inline sur la face de la carte : tout passe par
+// des classes `.kb-card*` (index.css). Ce qui QUITTE la face : liens tel/WA
+// permanents (→ actions rapides révélées au survol, permanentes sur
+// `(hover:none)`), chips readiness (→ micro-icônes 12px tooltipées au pied),
+// étoiles de priorité, « Inactif N j »+horloge (→ pill d'âge), tags plafonnés
+// à 2 + « +N ».
+//
+// Présentation pure : aucune mutation directe — la mini-popover « ✗ Perdu »
+// (VX223) passe par le callback stable `onMarkPerdu` (LB5, blueprint I2)
+// plutôt que d'appeler crmApi en direct (bug recon2-03 #3).
+// VX187/LB6 — memo() : chaque frappe dans la recherche/un filtre re-rendait
+// TOUTES les cartes visibles. Ne tient que si les callbacks parents sont
+// stables (useCallback sur onOpenLead/onAutoQuote/changeStage/… dans LeadsPage).
+import { useRef, useState, memo } from 'react'
+// VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
+import { Zap, MapPin, FileText, MoreHorizontal, Lock } from 'lucide-react'
 import {
   CANAL_LABELS,
-  PRIORITE_LABELS,
-  PRIORITE_STARS,
+  PIPELINE_STAGES,
+  TYPE_INSTALLATION_LABELS,
   formatMAD,
   isPerdu,
+  latestDevisTotal,
   tagColor,
   tagList,
 } from '../../../../features/crm/stages'
+// LB14 — rampe « rotting » réutilisée TELLE QUELLE (module pur, testable node).
+// Les seuils sont indexés sur l'ORDRE de PIPELINE_STAGES (jamais une clé
+// d'étape en dur) — renommer une étape reste impossible sans passer par stages.js.
+import { rottingLevel, thresholdsForIndex } from '../../../../features/crm/workspace/rotting'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import { telHref, waHref } from '../../../../lib/contactLinks'
 // VX122 — finesse française : espace fine insécable devant « : » du tooltip.
 import { nbsp } from '../../../../lib/format'
-import crmApi from '../../../../api/crmApi'
 import ExternalLink from '../../../../ui/ExternalLink'
-// VX24 — score de qualité désormais aussi visible sur la carte (ex Liste seule).
-// VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
+// VX24 — score de qualité visible sur la carte (ex Liste seule).
+// VX221 — tooltip top-3 facteurs.
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
+// VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
 import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/CallLogPopover'
-import { Button, Popover, PopoverTrigger, PopoverContent } from '../../../../ui'
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from '../../../../ui'
+// LB15 — flux « Marquer perdu » partagé (fin de la triplication carte/liste).
+import PerduPopover from '../PerduPopover'
 
 // VX43 — Swipe-to-action horizontal maison (touchstart/move/end, zéro
-// dépendance). Les liens tel:/wa.me existaient déjà mais en texte 12px noyé
-// dans la carte (kb-card-contact) — ici on les révèle en GRAND (≥44px) par un
+// dépendance). Les liens tel:/wa.me sont révélés en GRAND (≥44px) par un
 // balayage vers la gauche, le geste iOS/Android attendu sur une liste de cartes.
 //
 // Seuil de distance anti-scroll : le geste ne s'engage QUE si le mouvement est
@@ -106,11 +120,10 @@ function useSwipeReveal(enabled) {
   }
 }
 
-// VX223 — canal léger « focus au prochain ouvert », posé par le bouton
+// VX223 — canal léger « focus au prochain ouvert », posé par le lien
 // « → Renseigner la facture » ci-dessous SANS ajouter de prop de navigation
-// à travers LeadsPage.jsx/KanbanView.jsx (qui composent déjà `onOpen`) :
-// LeadForm.jsx (même fichier de la tâche) consomme cette clé une fois puis la
-// retire — jamais un focus fantôme sur un futur lead sans rapport.
+// à travers LeadsPage.jsx/KanbanView.jsx : LeadForm.jsx consomme cette clé une
+// fois puis la retire — jamais un focus fantôme sur un futur lead sans rapport.
 const PENDING_FOCUS_KEY = 'taqinor.leadform.pendingFocus'
 function requestFocusSection(leadId, section) {
   try {
@@ -127,9 +140,6 @@ const isEnRetard = (iso) => {
   const aujourdhui = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
   return iso < aujourdhui
 }
-
-// Seuil d'inactivité (jours sans modification) au-delà duquel on alerte.
-const INACTIF_JOURS = 14
 
 // QX31 — Speed-to-lead : minutes écoulées depuis `date_creation` (timestamp
 // ISO), ou null si absente/invalide. Composant présentation pure (pas de
@@ -152,16 +162,6 @@ const formatDepuis = (minutes) => {
   return `il y a ${jours} j`
 }
 
-// Nombre de jours entiers écoulés depuis `date_modification` (timestamp ISO),
-// ou null si la date est absente/invalide.
-const joursInactif = (iso) => {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
-  const jours = Math.floor((Date.now() - d.getTime()) / 86400000)
-  return jours >= 0 ? jours : null
-}
-
 // Action suggérée selon l'étape du lead (libellé + indice « cliquable »).
 // QUOTE_SENT/FOLLOW_UP sans relance → invite à planifier une relance.
 const prochaineAction = (lead) => {
@@ -174,45 +174,47 @@ const prochaineAction = (lead) => {
   return null
 }
 
+// Nombre de tags rendus « en clair » avant le repli « +N » (blueprint D3).
+const TAGS_VISIBLE = 2
 
 function LeadCard({
   lead, busy = false, onOpen, onAutoQuote, users = [], onReassign,
   selected = false, onToggleSelect, onPlanifierRelance,
-  // VX223 — notifié après un « ✗ Perdu » réussi (optionnel : le kanban se
-  // resynchronise de toute façon à son prochain refetch périodique existant).
-  onChanged,
+  // LB5 — callback stable de LeadsPage (dispatch updateLead, store seul
+  // source de vérité — jamais de refetch ni de crmApi direct depuis la carte).
+  onMarkPerdu,
+  // LB15 — action « Archiver » du menu ••• (optionnelle : masquée si non
+  // câblée, ce qui est le cas du kanban/prévision aujourd'hui). Primitive/
+  // callback stable — n'affecte pas la sonde mémo LB6.
+  onArchive,
+  // LB13 — quand une sélection est active ailleurs sur le board, la checkbox
+  // reste visible sur TOUTES les cartes (primitive stable — défaut false, non
+  // câblé par le kanban aujourd'hui : la CSS révèle déjà la checkbox au survol/
+  // focus/sélection de la carte elle-même).
+  selectionActive = false,
 }) {
   const perdu = isPerdu(lead)
   const tags = tagList(lead)
-  const etoiles = PRIORITE_STARS[lead.priorite] ?? PRIORITE_STARS.normale
   const nomComplet =
     [lead.nom, lead.prenom].filter(Boolean).join(' ') || lead.societe || '—'
-  const sousTitre = lead.ville || lead.telephone || ''
   const canal = CANAL_LABELS[lead.canal]
+  const typeLabel = TYPE_INSTALLATION_LABELS[lead.type_installation] || null
   // Devis le plus récent (le serializer trie du plus récent au plus ancien).
   const dernierDevisExpire = lead.devis?.[0]?.statut === 'expire'
-  const jInactif = joursInactif(lead.date_modification)
-  const inactif = jInactif != null && jInactif >= INACTIF_JOURS && !perdu
-  const action = prochaineAction(lead)
-  // VX24 — anatomie de carte à 2 niveaux : UNE seule pilule d'alerte
-  // prioritaire au premier plan (perdu > rappel > expiré) au lieu d'empiler
-  // jusqu'à 3 pilules en tête de carte. « Inactif N j » + horloge d'activité
-  // sont relégués en pied de carte (kb-card-foot), discrets.
-  const alertePill = perdu
-    ? { key: 'perdu', label: 'Perdu', className: 'kb-badge-perdu' }
-    : lead.contact_preference === 'phone_ok'
-      ? {
-          key: 'rappel', label: '☎ Rappel demandé',
-          className: 'kb-badge-rappel rounded-full bg-info/15 px-1.5 py-0.5 text-info',
-          title: 'Le client a demandé à être rappelé par téléphone',
-        }
-      : dernierDevisExpire
-        ? {
-            key: 'expire', label: 'Devis expiré',
-            className: 'kb-badge-expire rounded-full bg-warning/15 px-1.5 py-0.5 text-warning',
-            title: 'Le dernier devis du lead est expiré',
-          }
-        : null
+
+  // ── Zone VALEUR — total du dernier devis, sinon montant estimé (préfixe
+  //    « est. ») ; rien si aucun des deux. XSAL7 : le devis prime l'estimation.
+  const devisTotal = latestDevisTotal(lead)
+  const estimeRaw =
+    lead.montant_estime != null && lead.montant_estime !== ''
+      ? parseFloat(lead.montant_estime)
+      : null
+  const valeur = devisTotal > 0
+    ? { montant: formatMAD(devisTotal), estime: false }
+    : (estimeRaw != null && Number.isFinite(estimeRaw))
+      ? { montant: formatMAD(estimeRaw), estime: true }
+      : null
+
   const tel = telHref(lead.telephone)
   const wa = waHref(lead.whatsapp)
   // QX31 — minuteur premier contact : uniquement en colonne NEW (dès que le
@@ -222,18 +224,37 @@ function LeadCard({
   const factureManquante =
     lead.devis_auto && !lead.devis_auto.pret ? lead.devis_auto.message : null
 
-  // QX28 — chips de « préparation » : ce que le site a déjà capturé pour ce
-  // lead, invisible jusqu'ici (le vendeur ne pouvait pas distinguer un lead
-  // riche en données d'un lead vide sans ouvrir la fiche).
+  // QX28 — signaux de « préparation » captés par le site, désormais des
+  // micro-icônes 12px tooltipées dans le pied (jamais un chip « manquant » —
+  // seule l'absence du signal positif).
   const roofReady = !!lead.roof_point
   const factureReady = lead.facture_hiver != null && lead.facture_hiver !== ''
   const devisReady = !!lead.devis_auto?.pret
+
+  // ── LB13/LB14 — pill d'âge (rotting) : ancienneté dans l'étape courante.
+  //    Absorbe l'ancien « Inactif N j » + l'horloge. LB14 la teintera via
+  //    data-rot (workspace/rotting.js) ; ici, valeur brute neutre.
+  const ageJours =
+    typeof lead.stage_since_days === 'number' && lead.stage_since_days >= 0
+      ? lead.stage_since_days
+      : null
+  // LB14 — niveau de « rotting » (ok|warning|danger) selon l'ancienneté dans
+  // l'étape courante. Jamais de rot sur un lead perdu, ni sur SIGNED/COLD
+  // (thresholdsForIndex renvoie null → rottingLevel = 'ok').
+  const rot = perdu
+    ? 'ok'
+    : rottingLevel(lead.stage_since_days, thresholdsForIndex(PIPELINE_STAGES.indexOf(lead.stage)))
+
+  const relanceEnRetard = !perdu && !!lead.relance_date && isEnRetard(lead.relance_date)
+  const rappelDemande = !perdu && lead.contact_preference === 'phone_ok'
+  const action = prochaineAction(lead)
 
   const classes = [
     'kb-card',
     perdu ? 'kb-card-perdu' : '',
     busy ? 'kb-card-busy' : '',
     selected ? 'kb-card-selected' : '',
+    selectionActive ? 'kb-card-selection-active' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -246,36 +267,11 @@ function LeadCard({
   // retour dans l'onglet (visibilitychange).
   const { nudgeVisible, armCallNudge, dismissNudge } = useCallEndedNudge()
 
-  // VX223 — « ✗ Perdu » en 2 clics : (1) ouvrir la mini-popover, (2) choisir
-  // un motif (datalist des motifs gérés, texte libre toléré) → confirmer, UNE
-  // seule requête PATCH `perdu`+`motif_perte` (jamais deux, jamais le
-  // formulaire complet). Motifs chargés paresseusement à la PREMIÈRE ouverture
-  // (jamais à chaque montage de carte — un kanban a des dizaines de cartes).
+  // LB15 — le flux « ✗ Marquer perdu » (motif + datalist, chargement paresseux
+  // des motifs, PATCH via le store) vit désormais dans PerduPopover.jsx
+  // (partagé LeadCard/ListView). La carte n'en garde QUE l'état d'ouverture,
+  // piloté par l'item « ✗ Marquer perdu » du menu •••.
   const [perduOpen, setPerduOpen] = useState(false)
-  const [perduMotif, setPerduMotif] = useState('')
-  const [perduBusy, setPerduBusy] = useState(false)
-  const [motifsPerte, setMotifsPerte] = useState(null) // null = pas encore chargés
-  useEffect(() => {
-    if (!perduOpen || motifsPerte !== null) return
-    crmApi.getMotifsPerte()
-      .then((r) => setMotifsPerte(((r.data?.results ?? r.data) || []).filter((m) => !m.archived)))
-      .catch(() => setMotifsPerte([]))
-  }, [perduOpen, motifsPerte])
-  const confirmPerdu = async () => {
-    const motif = perduMotif.trim()
-    if (!motif) return
-    setPerduBusy(true)
-    try {
-      await crmApi.updateLead(lead.id, { perdu: true, motif_perte: motif })
-      setPerduOpen(false)
-      setPerduMotif('')
-      onChanged?.()
-    } catch {
-      // best-effort — la carte se resynchronise au prochain refetch du kanban
-    } finally {
-      setPerduBusy(false)
-    }
-  }
 
   return (
     <div className="kb-swipe-wrap" style={{ position: 'relative' }}>
@@ -283,6 +279,10 @@ function LeadCard({
         <div
           className="kb-swipe-actions"
           aria-hidden={swipe.offset === 0}
+          // LB17 — bande cachée réellement inerte : l'aria-hidden seul laissait
+          // les <a> tabbables (recon-05). `inert` (React 19) les sort du tab
+          // order ET de l'interaction tant que le panneau n'est pas révélé.
+          inert={swipe.offset === 0}
           style={{
             position: 'absolute', inset: 0, display: 'flex',
             justifyContent: 'flex-end', alignItems: 'stretch',
@@ -298,7 +298,7 @@ function LeadCard({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
-                background: 'var(--color-success, #16a34a)', color: '#fff',
+                background: 'var(--success)', color: 'var(--success-foreground)',
                 fontSize: '18px', textDecoration: 'none',
               }}
             >
@@ -314,7 +314,7 @@ function LeadCard({
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
-                background: 'var(--color-info, #25D366)', color: '#fff',
+                background: 'var(--brand-whatsapp)', color: 'var(--brand-whatsapp-foreground)',
                 fontSize: '18px', textDecoration: 'none',
               }}
             >
@@ -325,6 +325,7 @@ function LeadCard({
       )}
       <article
         className={classes}
+        data-rot={rot}
         onClick={onOpen ? () => onOpen(lead) : undefined}
         {...swipe.handlers}
         style={{
@@ -333,354 +334,349 @@ function LeadCard({
           position: 'relative',
         }}
       >
-      <div className="kb-card-head">
-        {onToggleSelect && (
-          <input
-            type="checkbox"
-            className="kb-card-check"
-            aria-label={`Sélectionner ${nomComplet}`}
-            checked={selected}
+        {/* ── TÊTE : checkbox (révélée) · nom · score · action perdu ── */}
+        <div className="kb-card-head">
+          {onToggleSelect && (
+            // LB17 — cible tactile ≥44×44 via le label enveloppant (stylesheet,
+            // jamais une taille inline) : tue le sliver 16px horizontal
+            // (recon-05 touch) sans agrandir la case visuelle en pointeur fin.
+            <label
+              className="kb-check-hit"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              <input
+                type="checkbox"
+                className="kb-card-check"
+                aria-label={`Sélectionner ${nomComplet}`}
+                checked={selected}
+                onChange={() => onToggleSelect(lead.id)}
+              />
+            </label>
+          )}
+          <span className="kb-card-name">{nomComplet}</span>
+          {/* VX24 — ScoreBadge partagé (features/crm) ; VX221 — tooltip top-3 facteurs. */}
+          <ScoreBadge lead={lead} />
+          {/* LB15 — menu ••• (révélé au survol/focus, permanent au toucher) :
+              toutes les actions du lead, atteignables au clavier. Le bouton ✗
+              20×20 a quitté la face (blueprint D3). */}
+          <div className="kb-card-menu" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="kb-card-menu-btn"
+                  aria-label={`Actions du lead ${nomComplet}`}
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
+                  <MoreHorizontal size={16} aria-hidden="true" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                {onOpen && (
+                  <DropdownMenuItem onSelect={() => onOpen(lead)}>Ouvrir</DropdownMenuItem>
+                )}
+                {onPlanifierRelance && (
+                  <DropdownMenuItem onSelect={() => onPlanifierRelance(lead)}>
+                    Planifier une relance
+                  </DropdownMenuItem>
+                )}
+                {onAutoQuote && lead.devis_auto?.pret && (
+                  <DropdownMenuItem onSelect={() => onAutoQuote(lead)}>
+                    <Zap size={14} aria-hidden="true" /> Devis auto
+                  </DropdownMenuItem>
+                )}
+                {!perdu && onMarkPerdu && (
+                  <DropdownMenuItem
+                    destructive
+                    onSelect={() => {
+                      // Ouverture différée d'un frame : la fermeture du menu ne
+                      // referme pas aussitôt la popover contrôlée (LB15).
+                      requestAnimationFrame(() => setPerduOpen(true))
+                    }}
+                  >
+                    ✗ Marquer perdu
+                  </DropdownMenuItem>
+                )}
+                {onArchive && (
+                  <DropdownMenuItem onSelect={() => onArchive(lead)}>Archiver</DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          {/* LB15 — popover « Marquer perdu » PARTAGÉE (contrôlée par le menu),
+              ancrée au coin de la carte. Un seul composant perdu dans le code. */}
+          {!perdu && onMarkPerdu && (
+            <PerduPopover
+              lead={lead}
+              onMarkPerdu={onMarkPerdu}
+              open={perduOpen}
+              onOpenChange={setPerduOpen}
+              anchor={<span className="kb-perdu-anchor" aria-hidden="true" />}
+              idPrefix="kb-motifs"
+            />
+          )}
+        </div>
+
+        {/* ── VALEUR : montant (devis sinon estimé) · type d'installation ── */}
+        {(valeur || typeLabel) && (
+          <div className="kb-card-value">
+            {valeur && (
+              <span
+                className="kb-card-montant num"
+                title={valeur.estime ? nbsp('Montant estimé (avant devis)') : nbsp('Total TTC du dernier devis')}
+              >
+                {valeur.estime ? 'est. ' : ''}{valeur.montant}
+              </span>
+            )}
+            {typeLabel && <span className="kb-card-type">{typeLabel}</span>}
+          </div>
+        )}
+
+        {/* ── UNE ligne d'action — précédence D3 : perdu > relance en retard >
+            ☎ rappel > devis expiré > next_activity > SLA premier-contact (NEW)
+            > facture manquante > suggestion d'étape. ── */}
+        {perdu ? (
+          <div className="kb-card-actionline kb-actionline-perdu">Perdu</div>
+        ) : relanceEnRetard ? (
+          <div className="kb-card-actionline kb-actionline-danger" title={nbsp('Relance en retard')}>
+            ⚠ Relance en retard — {formatDateFr(lead.relance_date)}
+          </div>
+        ) : rappelDemande ? (
+          <div
+            className="kb-card-actionline kb-actionline-info"
+            title="Le client a demandé à être rappelé par téléphone"
+          >
+            ☎ Rappel demandé
+          </div>
+        ) : dernierDevisExpire ? (
+          <div className="kb-card-actionline kb-actionline-warning" title="Le dernier devis du lead est expiré">
+            Devis expiré
+          </div>
+        ) : lead.next_activity ? (
+          <div
+            className={`kb-card-actionline kb-actionline-activity kb-act-${lead.next_activity.state}`}
+            title={nbsp(`Activité ${lead.next_activity.summary} — ${lead.next_activity.due_date}`)}
+          >
+            ⏰ {lead.next_activity.summary}
+          </div>
+        ) : minutesNouveau != null ? (
+          // QX31 — sur une carte NEW non contactée, la ligne d'action EST le
+          // badge SLA premier-contact (amber < 30 min, rouge ≥ 30 min).
+          <div
+            className={`kb-card-actionline kb-sla ${minutesNouveau >= 30 ? 'kb-actionline-danger' : 'kb-actionline-warning'}`}
+            title="Temps écoulé depuis la création du lead — non encore contacté"
+          >
+            ⏱ À contacter — {formatDepuis(minutesNouveau)}, non contacté
+          </div>
+        ) : factureManquante ? (
+          // VX223 — texte inerte → bouton : ouvre la fiche ET défile jusqu'à
+          // « Profil énergétique » (champ bloquant du devis auto).
+          <button
+            type="button"
+            className="kb-card-actionline kb-actionline-link kb-card-facture-manquante"
+            title={nbsp(factureManquante)}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              requestFocusSection(lead.id, 'energie')
+              onOpen?.(lead)
+            }}
+          >
+            → Renseigner la facture
+          </button>
+        ) : action ? (
+          action.planifier && onPlanifierRelance ? (
+            <button
+              type="button"
+              className="kb-card-actionline kb-actionline-link"
+              onClick={(e) => { e.stopPropagation(); onPlanifierRelance(lead) }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+            >
+              → {action.label}
+            </button>
+          ) : (
+            <div className="kb-card-actionline kb-actionline-muted">→ {action.label}</div>
+          )
+        ) : null}
+
+        {/* ── Tags plafonnés à 2 + « +N » ── */}
+        {tags.length > 0 && (
+          <div className="kb-tags">
+            {tags.slice(0, TAGS_VISIBLE).map((tag) => {
+              const { bg, color } = tagColor(tag)
+              return (
+                <span key={tag} className="kb-tag" style={{ background: bg, color }}>
+                  {tag}
+                </span>
+              )
+            })}
+            {tags.length > TAGS_VISIBLE && (
+              <span className="kb-tag-more" title={tags.slice(TAGS_VISIBLE).join(', ')}>
+                +{tags.length - TAGS_VISIBLE}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* ── PIED : canal · ville · readiness · pill d'âge · avatar ── */}
+        <div className="kb-card-foot">
+          {(canal || lead.ville) && (
+            <span className="kb-foot-meta">
+              {[canal, lead.ville].filter(Boolean).join(' · ')}
+            </span>
+          )}
+          {/* QX28 — readiness en micro-icônes 12px tooltipées (jamais un signal
+              « manquant » — seule l'absence de l'icône positive). */}
+          {(roofReady || factureReady || devisReady) && (
+            <span className="kb-readi">
+              {roofReady && (
+                <span className="kb-readi-icon" title="Un repère GPS de toiture a été capturé (site ou 3D)" aria-label="Toit épinglé (GPS)">
+                  <MapPin size={12} aria-hidden="true" />
+                </span>
+              )}
+              {factureReady && (
+                <span className="kb-readi-icon" title="Une facture d'électricité a été saisie" aria-label="Facture saisie">
+                  <FileText size={12} aria-hidden="true" />
+                </span>
+              )}
+              {devisReady && (
+                <span className="kb-readi-icon kb-readi-devis" title="Toutes les données sont réunies pour générer un devis en un clic" aria-label="Prêt à deviser en 1 clic">
+                  <Zap size={12} aria-hidden="true" />
+                </span>
+              )}
+            </span>
+          )}
+          {ageJours != null && (
+            <span
+              className="kb-age-pill"
+              title={nbsp(
+                rot === 'danger'
+                  ? `Stagne dans cette étape depuis ${ageJours} jours — à relancer`
+                  : rot === 'warning'
+                    ? `Dans cette étape depuis ${ageJours} jours — commence à traîner`
+                    : `Dans cette étape depuis ${ageJours} jour${ageJours > 1 ? 's' : ''}`,
+              )}
+            >
+              {ageJours} j
+            </span>
+          )}
+          <span
+            className="kb-card-assignee"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
-            onChange={() => onToggleSelect(lead.id)}
-          />
-        )}
-        <span className="kb-card-name">{nomComplet}</span>
-        {/* VX24 — ScoreBadge partagé (features/crm) ; VX221 — tooltip top-3 facteurs. */}
-        <ScoreBadge lead={lead} />
-        {/* VX24 — une seule pilule d'alerte prioritaire (perdu > rappel > expiré) */}
-        {alertePill && (
-          <span className={alertePill.className} title={alertePill.title}>
-            {alertePill.label}
-          </span>
-        )}
-        {/* VX223 — « ✗ Perdu » en 2 clics : mini-popover motif, jamais besoin
-            d'ouvrir la fiche pour ce geste quotidien. Absent si déjà perdu. */}
-        {!perdu && (
-          <Popover
-            open={perduOpen}
-            onOpenChange={(v) => { setPerduOpen(v); if (!v) setPerduMotif('') }}
           >
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="kb-mark-perdu"
-                title="Marquer perdu"
-                aria-label={`Marquer ${nomComplet} comme perdu`}
-                onPointerDown={(e) => e.stopPropagation()}
-                onTouchStart={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: '20px', height: '20px', border: 'none', background: 'transparent',
-                  color: 'var(--muted-foreground)', cursor: 'pointer', fontSize: '13px',
-                  lineHeight: 1, padding: 0,
-                }}
-              >
-                ✗
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '220px' }}>
-                <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>Marquer perdu</p>
-                <input
-                  className="form-control"
-                  list={`kb-motifs-${lead.id}`}
-                  placeholder="Motif de perte"
-                  value={perduMotif}
-                  onChange={(e) => setPerduMotif(e.target.value)}
-                  autoFocus
-                />
-                <datalist id={`kb-motifs-${lead.id}`}>
-                  {(motifsPerte ?? []).map((m) => <option key={m.id} value={m.nom} />)}
-                </datalist>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setPerduOpen(false)}>
-                    Annuler
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="destructive"
-                    disabled={!perduMotif.trim() || perduBusy}
-                    loading={perduBusy}
-                    onClick={confirmPerdu}
-                  >
-                    Confirmer
-                  </Button>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-        )}
-        <button
-          type="button"
-          className="kb-flash"
-          style={{ position: 'relative' }}
-          disabled={!lead.devis_auto?.pret}
-          title={lead.devis_auto?.pret
-            ? (roofReady ? 'Devis auto — repère toit disponible' : 'Devis auto')
-            : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
-          aria-label="Devis auto"
-          onPointerDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation()
-            if (onAutoQuote) onAutoQuote(lead)
-          }}
-        >
-          <Zap size={14} aria-hidden="true" />
-          {/* QX28 — badge le bouton quand un repère toit (GPS) existe : le
-              devis auto peut s'appuyer sur des données réelles, pas estimées. */}
-          {roofReady && (
-            <span
-              className="kb-flash-roof-badge"
-              style={{
-                position: 'absolute', top: '-2px', right: '-2px',
-                width: '7px', height: '7px', borderRadius: '9999px',
-                background: 'var(--color-success, #16a34a)',
-              }}
-              title="Repère toit (GPS) disponible"
-              aria-hidden="true"
+            <AssigneePicker
+              users={users}
+              value={lead.owner ?? ''}
+              onChange={(id) => onReassign?.(lead, id)}
+              size={24}
+              compact
+              disabled={!onReassign}
             />
-          )}
-        </button>
-      </div>
-
-      {sousTitre && <div className="kb-card-sub">{sousTitre}</div>}
-
-      {/* QX31 — Speed-to-lead : minuteur premier contact sur les cartes NEW
-          (« il y a 12 min, non contacté »). Disparaît dès que le lead change
-          d'étape (il n'est alors plus dans la colonne NEW). */}
-      {minutesNouveau != null && (
-        <div
-          className="kb-card-first-touch"
-          style={{ fontSize: '11px', color: minutesNouveau >= 30 ? 'var(--color-destructive, #dc2626)' : 'var(--color-warning, #d97706)', fontWeight: 500 }}
-          title="Temps écoulé depuis la création du lead — non encore contacté"
-        >
-          ⏱ {formatDepuis(minutesNouveau)}, non contacté
+          </span>
         </div>
-      )}
 
-      {/* QX28 — chips de préparation : ce que le site a déjà capturé. Visibles
-          seulement pour les signaux réellement présents (jamais un chip
-          "manquant" — juste l'absence du chip positif). */}
-      {(roofReady || factureReady || devisReady) && (
-        <div className="kb-readiness-chips" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
-          {roofReady && (
-            <span className="kb-chip kb-chip-roof"
-                  style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-success-muted, rgba(22,163,74,.12))', color: 'var(--color-success, #16a34a)' }}
-                  title="Un repère GPS de toiture a été capturé (site ou 3D)">
-              📍 Toit épinglé (GPS)
-            </span>
-          )}
-          {factureReady && (
-            <span className="kb-chip kb-chip-facture"
-                  style={{ fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-info-muted, rgba(37,99,235,.12))', color: 'var(--color-info, #2563eb)' }}
-                  title="Une facture d'électricité a été saisie">
-              🧾 Facture saisie
-            </span>
-          )}
-          {devisReady && (
-            <span className="kb-chip kb-chip-devis"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', borderRadius: '9999px', padding: '1px 8px', background: 'var(--color-primary-muted, rgba(37,99,235,.12))', color: 'var(--color-primary, #2563eb)' }}
-                  title="Toutes les données nécessaires sont réunies pour générer un devis en un clic">
-              <Zap size={11} aria-hidden="true" /> Prêt à deviser en 1 clic
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* XSAL7 — montant estimé (pipeline pondéré pré-devis), affiché
-          seulement quand présent ; le devis (s'il existe) prime ailleurs. */}
-      {lead.montant_estime != null && lead.montant_estime !== '' && (
-        <div className="kb-card-montant-estime" title="Montant estimé (avant devis)">
-          ≈ {formatMAD(parseFloat(lead.montant_estime))}
-        </div>
-      )}
-
-      {(tel || wa) && (
-        <div
-          className="kb-card-contact"
-          style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '2px' }}
-        >
-          {tel && (
-            <a
-              className="kb-card-tel"
-              href={tel}
-              title="Appeler"
-              onClick={(e) => { e.stopPropagation(); armCallNudge() }}
-              onPointerDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
+        {/* ── Actions rapides révélées au survol (permanentes sur (hover:none))
+            — tel / WhatsApp / ⚡ Devis auto. Les hrefs tel/wa restent toujours
+            présents dans le DOM (contrat). LB15 ajoute ici le menu •••. ── */}
+        <div className="kb-quick" aria-label="Actions rapides">
+          {/* LB17 — PII masquée (le serializer nullifie tel/whatsapp sans la
+              permission client_pii_voir, `lead.pii_masked`) : à la place des
+              actions d'appel, un cadenas tooltipé — plus jamais un blanc muet. */}
+          {lead.pii_masked ? (
+            <span
+              className="kb-quick-lock"
+              title="Coordonnées masquées (permission PII)"
+              aria-label="Coordonnées masquées (permission PII)"
             >
-              ☎ {lead.telephone}
-            </a>
+              <Lock size={12} aria-hidden="true" />
+            </span>
+          ) : (
+            <>
+              {tel && (
+                <a
+                  className="kb-quick-btn kb-quick-tel"
+                  href={tel}
+                  title="Appeler"
+                  aria-label={`Appeler ${nomComplet}`}
+                  onClick={(e) => { e.stopPropagation(); armCallNudge() }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
+                  ☎
+                </a>
+              )}
+              {wa && (
+                <ExternalLink
+                  className="kb-quick-btn kb-quick-wa"
+                  href={wa}
+                  title="Ouvrir WhatsApp"
+                  aria-label={`Ouvrir WhatsApp pour ${nomComplet}`}
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
+                  💬
+                </ExternalLink>
+              )}
+            </>
           )}
-          {wa && (
-            <ExternalLink
-              className="kb-card-wa"
-              href={wa}
-              title="Ouvrir WhatsApp"
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
-            >
-              WhatsApp
-            </ExternalLink>
-          )}
-        </div>
-      )}
-
-      {/* VX223 — texte inerte → bouton : ouvre la fiche ET fait défiler
-          jusqu'à la section « Profil énergétique » (champ bloquant du devis
-          auto), au lieu d'obliger à chercher soi-même où renseigner la
-          facture. */}
-      {factureManquante && (
-        <button
-          type="button"
-          className="kb-card-facture-manquante mt-0.5 cursor-pointer border-0 bg-transparent p-0 text-left text-[11px] text-warning underline-offset-2 hover:underline"
-          title={factureManquante}
-          onPointerDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation()
-            requestFocusSection(lead.id, 'energie')
-            onOpen?.(lead)
-          }}
-        >
-          → Renseigner la facture
-        </button>
-      )}
-
-      {action && (
-        action.planifier && onPlanifierRelance ? (
           <button
             type="button"
-            className="kb-card-action kb-card-action-link mt-0.5 cursor-pointer border-0 bg-transparent p-0 text-left text-[11px] text-info"
-            onClick={(e) => { e.stopPropagation(); onPlanifierRelance(lead) }}
+            className="kb-flash kb-quick-btn"
+            disabled={!lead.devis_auto?.pret}
+            title={lead.devis_auto?.pret
+              ? (roofReady ? 'Devis auto — repère toit disponible' : 'Devis auto')
+              : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
+            aria-label="Devis auto"
             onPointerDown={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (onAutoQuote) onAutoQuote(lead)
+            }}
           >
-            → {action.label}
+            <Zap size={14} aria-hidden="true" />
           </button>
-        ) : (
-          <div className="kb-card-action mt-0.5 text-[11px] text-muted-foreground">
-            → {action.label}
-          </div>
-        )
-      )}
-
-      {tags.length > 0 && (
-        <div className="kb-tags">
-          {tags.map((tag) => {
-            const { bg, color } = tagColor(tag)
-            return (
-              <span
-                key={tag}
-                className="kb-tag"
-                style={{ background: bg, color }}
-              >
-                {tag}
-              </span>
-            )
-          })}
         </div>
-      )}
 
-      <div className="kb-card-foot">
-        {canal && <span className="kb-canal">{canal}</span>}
-        <span
-          className="kb-stars"
-          title={nbsp(`Priorité : ${PRIORITE_LABELS[lead.priorite] ?? PRIORITE_LABELS.normale}`)}
-        >
-          {[0, 1].map((i) => (
-            <span
-              key={i}
-              className={i < etoiles ? 'kb-star kb-star-on' : 'kb-star'}
+        {/* VX87 — nudge post-appel : proposé au retour dans l'onglet après un
+            tap tel: (armCallNudge), jamais intrusif — dismissable, ne bloque
+            rien. */}
+        {nudgeVisible && (
+          <div
+            className="kb-call-nudge"
+            role="status"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <span className="kb-call-nudge-text">Appel terminé — noter le résultat ?</span>
+            <CallLogPopover
+              leadId={lead.id}
+              trigger={<button type="button" className="kb-call-nudge-log">Noter</button>}
+              onLogged={dismissNudge}
+            />
+            <button
+              type="button"
+              className="kb-call-nudge-dismiss"
+              aria-label="Ignorer"
+              onClick={dismissNudge}
             >
-              ★
-            </span>
-          ))}
-        </span>
-        {lead.relance_date && (
-          <span
-            className={
-              isEnRetard(lead.relance_date)
-                ? 'kb-relance kb-relance-late'
-                : 'kb-relance'
-            }
-            title="Date de relance"
-          >
-            📅 {formatDateFr(lead.relance_date)}
-          </span>
+              ✕
+            </button>
+          </div>
         )}
-        {/* VX24 — « Inactif N j » relégué en pied de carte, discret (n'était
-            plus une pilule de tête à côté de perdu/rappel/expiré). */}
-        {inactif && (
-          <span
-            className="kb-foot-inactif text-[11px] text-muted-foreground"
-            title={`Aucune modification depuis ${jInactif} jours`}
-          >
-            Inactif {jInactif} j
-          </span>
-        )}
-        {/* VX24 — horloge d'activité reléguée au pied, même traitement discret. */}
-        {lead.next_activity && (
-          <span
-            className={`kb-act-clock kb-foot-clock ${lead.next_activity.state}`}
-            title={`Activité ${lead.next_activity.summary} — ${lead.next_activity.due_date}`}
-          >
-            ⏰
-          </span>
-        )}
-        <span
-          className="kb-card-assignee"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-        >
-          <AssigneePicker
-            users={users}
-            value={lead.owner ?? ''}
-            onChange={(id) => onReassign?.(lead, id)}
-            size={24}
-            compact
-            disabled={!onReassign}
-          />
-        </span>
-      </div>
-
-      {/* VX87 — nudge post-appel : proposé au retour dans l'onglet après un
-          tap tel: (armCallNudge), jamais intrusif — dismissable, ne bloque
-          rien. */}
-      {nudgeVisible && (
-        <div
-          className="kb-call-nudge"
-          role="status"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <span className="kb-call-nudge-text">Appel terminé — noter le résultat ?</span>
-          <CallLogPopover
-            leadId={lead.id}
-            trigger={<button type="button" className="kb-call-nudge-log">Noter</button>}
-            onLogged={dismissNudge}
-          />
-          <button
-            type="button"
-            className="kb-call-nudge-dismiss"
-            aria-label="Ignorer"
-            onClick={dismissNudge}
-          >
-            ✕
-          </button>
-        </div>
-      )}
       </article>
     </div>
   )

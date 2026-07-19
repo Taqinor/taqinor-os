@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { Target, TrendingUp, AlarmClock, Gauge, Flame } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import {
@@ -12,6 +13,56 @@ import ScoreBadge from '../../../features/crm/ScoreBadge'
 //  - FG34 : ROI par canal / campagne UTM ;
 //  - FG28 : leads NEW non contactés au-delà du SLA société.
 // Les règles vivent côté serveur ; ce panneau ne fait qu'afficher.
+
+// LB30 — cache SESSION en mémoire, TTL 60s (même motif que
+// `features/crm/workspace/leadPrefetch.js`), invalidé au changement de
+// company : sans lui, basculer graphique→kanban→graphique re-fetchait les 3
+// endpoints à CHAQUE fois (`CrmInsightsPanel` démonte entièrement avec
+// `ChartsView` — LeadsPage ne rend qu'une seule vue à la fois, cf.
+// `{view === 'graphique' && <ChartsView .../>}`). Ce cache n'est JAMAIS une
+// source de vérité : un remontage au-delà du TTL refait les 3 appels comme
+// avant.
+const INSIGHTS_TTL_MS = 60_000
+// { companyId, at, attainment, roi, sla, errors, pAttainment, pRoi, pSla } —
+// l'entrée porte AUSSI ses 3 promesses en vol (critique Fable LB #5) : un
+// remontage PENDANT le vol s'abonne aux promesses au lieu de lire des champs
+// encore null et de croire le cache « déjà chargé » (spinner infini sinon).
+let insightsCache = null
+
+// loadInsights — retourne l'entrée fraîche du cache ou en crée UNE (les 3
+// appels partent une seule fois) ; les promesses ne rejettent jamais (les
+// erreurs deviennent des champs `errors.*` + valeur vide, comme avant).
+function loadInsights(companyId) {
+  const existing = readInsightsCache(companyId)
+  if (existing) return existing
+  const entry = {
+    companyId, at: Date.now(), attainment: null, roi: null, sla: null, errors: {},
+  }
+  entry.pAttainment = crmApi.getObjectifsAttainment()
+    .then((r) => { entry.attainment = r.data ?? [] })
+    .catch(() => { entry.attainment = []; entry.errors.attainment = true })
+  entry.pRoi = crmApi.getRoiSources()
+    .then((r) => { entry.roi = r.data ?? [] })
+    .catch(() => { entry.roi = []; entry.errors.roi = true })
+  entry.pSla = crmApi.getSlaBreach()
+    .then((r) => { entry.sla = r.data ?? { count: 0, results: [] } })
+    .catch(() => { entry.sla = { count: 0, results: [] }; entry.errors.sla = true })
+  insightsCache = entry
+  return entry
+}
+
+function readInsightsCache(companyId) {
+  if (!insightsCache || insightsCache.companyId !== companyId) return null
+  if (Date.now() - insightsCache.at > INSIGHTS_TTL_MS) return null
+  return insightsCache
+}
+
+/** resetInsightsCache — vide le cache (tests uniquement, même convention que
+ * `resetPrefetchCache`). */
+// eslint-disable-next-line react-refresh/only-export-components -- utilitaire de test co-localisé (même motif que STAGE_PROBABILITY, KanbanView.jsx)
+export function resetInsightsCache() {
+  insightsCache = null
+}
 
 const fmtMAD = (v) => formatMAD(v)
 
@@ -158,24 +209,37 @@ export function MesChiffresCard({
 }
 
 export default function CrmInsightsPanel() {
-  const [attainment, setAttainment] = useState(null)
-  const [roi, setRoi] = useState(null)
-  const [sla, setSla] = useState(null)
-  const [errors, setErrors] = useState({})
+  // LB30 — la company active invalide le cache (jamais d'agrégat d'une autre
+  // company affiché après un changement de compte). Lu au premier rendu :
+  // si un cache FRAIS existe déjà pour cette company, on démarre avec ses
+  // valeurs (aucun spinner « Chargement… » revu pour rien).
+  const companyId = useSelector((s) => s.auth.user?.active_company_id)
+  const cached = readInsightsCache(companyId)
+  const [attainment, setAttainment] = useState(cached?.attainment ?? null)
+  const [roi, setRoi] = useState(cached?.roi ?? null)
+  const [sla, setSla] = useState(cached?.sla ?? null)
+  const [errors, setErrors] = useState(cached?.errors ?? {})
 
   useEffect(() => {
+    // Une seule entrée par company (fraîche ou créée ici) ; on peint ce qui
+    // est déjà résolu puis on s'abonne aux promesses — un remontage PENDANT
+    // le vol reçoit donc les données à l'arrivée au lieu d'un spinner infini
+    // (critique Fable LB #5).
     let alive = true
-    crmApi.getObjectifsAttainment()
-      .then((r) => { if (alive) setAttainment(r.data ?? []) })
-      .catch(() => { if (alive) { setAttainment([]); setErrors((e) => ({ ...e, attainment: true })) } })
-    crmApi.getRoiSources()
-      .then((r) => { if (alive) setRoi(r.data ?? []) })
-      .catch(() => { if (alive) { setRoi([]); setErrors((e) => ({ ...e, roi: true })) } })
-    crmApi.getSlaBreach()
-      .then((r) => { if (alive) setSla(r.data ?? { count: 0, results: [] }) })
-      .catch(() => { if (alive) { setSla({ count: 0, results: [] }); setErrors((e) => ({ ...e, sla: true })) } })
+    const entry = loadInsights(companyId)
+    const sync = () => {
+      if (!alive) return
+      setAttainment(entry.attainment)
+      setRoi(entry.roi)
+      setSla(entry.sla)
+      setErrors({ ...entry.errors })
+    }
+    sync()
+    entry.pAttainment.then(sync)
+    entry.pRoi.then(sync)
+    entry.pSla.then(sync)
     return () => { alive = false }
-  }, [])
+  }, [companyId])
 
   const slaResults = sla?.results ?? []
 

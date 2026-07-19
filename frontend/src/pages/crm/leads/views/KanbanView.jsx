@@ -1,8 +1,8 @@
 // Vue kanban des leads CRM, façon Odoo : 6 colonnes canoniques (stages.js,
 // miroir de STAGES.py — jamais de liste d'étapes en dur ici), glisser-déposer
 // via @dnd-kit/core. Le parent gère l'optimistic update : on ne mute rien.
-import { useMemo, useState } from 'react'
-import { LayoutGrid } from 'lucide-react'
+import { memo, useCallback, useMemo, useState } from 'react'
+import { ChevronDown, LayoutGrid } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -15,16 +15,19 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import {
-  formatMAD, groupLeadsByStage, PIPELINE_STAGES, STAGE_LABELS,
+  formatMAD, groupLeadsByStage, isStageMoveAllowed, PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
 import {
   buildKanbanAnnouncements,
   kanbanScreenReaderInstructions,
 } from '../../../../features/kanban/kanbanA11y'
+import { readCollapsedStages, writeCollapsedStages } from '../../../../features/kanban/collapsedColumns'
+import { usePanScroll } from '../../../../features/kanban/usePanScroll'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
-import { EmptyState } from '../../../../ui'
+import { EmptyState, Button } from '../../../../ui'
+import { isSigneIntercept } from '../signeIntercept'
 import LeadCard from './LeadCard'
 
 // VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
@@ -43,9 +46,18 @@ const STAGE_MOVE_OPTIONS = PIPELINE_STAGES.map(
 )
 
 export function StageMover({ lead, onInlineSave }) {
+  // LB3 — l'entrée dans SIGNED rejette avec la sentinelle SIGNE_INTERCEPT
+  // (signeIntercept.js) : ce n'est PAS une erreur (SigneDialog vient de
+  // s'ouvrir, useOptimisticSave fait son rollback normal — le select revient
+  // à l'étape réelle), donc on ne toaste QUE les vrais échecs réseau.
   const { value, statusLabel, isSaving, rowProps, save } = useOptimisticSave(
     lead.stage,
-    { onError: () => toast.error("Changement d'étape non enregistré — réessayez.") },
+    {
+      onError: (err) => {
+        if (isSigneIntercept(err)) return
+        toast.error("Changement d'étape non enregistré — réessayez.")
+      },
+    },
   )
   if (!onInlineSave) return null
   const onChange = (e) => {
@@ -72,8 +84,18 @@ export function StageMover({ lead, onInlineSave }) {
         disabled={isSaving}
         onChange={onChange}
       >
+        {/* LB4 — options interdites grisées : MÊME garde que le drag
+            (isStageMoveAllowed, miroir _bulk_stage_allowed) — le chemin
+            clavier ne pouvait auparavant PAS reproduire le recul-guard
+            (bug #8). L'étape courante reste toujours sélectionnable. */}
         {STAGE_MOVE_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option
+            key={o.value}
+            value={o.value}
+            disabled={o.value !== lead.stage && !isStageMoveAllowed(lead.stage, o.value)}
+          >
+            {o.label}
+          </option>
         ))}
       </select>
       {statusLabel && (
@@ -100,14 +122,16 @@ export const STAGE_PROBABILITY = {
   COLD: 0.05,
 }
 
-// Rang d'une étape dans l'entonnoir (-1 si inconnue) — pour bloquer un recul.
-const stageRank = (stage) => PIPELINE_STAGES.indexOf(stage)
-
 // Enveloppe draggable d'une carte ; l'original reste en place (style fantôme)
 // pendant que le DragOverlay suit le pointeur.
-function DraggableCard({
+// LB6 — memo() (blueprint I4, bug #4) : sans lui, KanbanView re-rendait
+// TOUTES les instances de DraggableCard (donc ré-exécutait useDraggable +
+// recréait la sous-arborescence) à chaque rendu du parent, même quand seule
+// UNE carte avait réellement changé — LeadCard(memo) protège son PROPRE
+// re-rendu mais pas le travail de DraggableCard lui-même en amont.
+const DraggableCard = memo(function DraggableCard({
   lead, busy, onOpen, onAutoQuote, users, onReassign,
-  selected, onToggleSelect, onPlanifierRelance, onInlineSave,
+  selected, onToggleSelect, onPlanifierRelance, onInlineSave, onMarkPerdu,
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -120,53 +144,98 @@ function DraggableCard({
       className={isDragging ? 'kb-drag-wrap kb-drag-source' : 'kb-drag-wrap'}
     >
       {/* Le drag n'est rattaché qu'à la carte ; le sélecteur d'étape (clavier)
-          vit hors de la poignée pour rester utilisable au clavier/souris. */}
-      <div {...listeners} {...attributes}>
+          vit hors de la poignée pour rester utilisable au clavier/souris.
+          LB12 — `data-lead-id` sur ce MÊME nœud (celui qui porte réellement
+          `tabIndex`/`role` via `attributes` dnd-kit) : c'est lui que
+          `handleDragEnd` refocalise après un déplacement réussi. */}
+      <div data-lead-id={lead.id} {...listeners} {...attributes}>
         <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
                   users={users} onReassign={onReassign}
                   selected={selected} onToggleSelect={onToggleSelect}
-                  onPlanifierRelance={onPlanifierRelance} />
+                  onPlanifierRelance={onPlanifierRelance} onMarkPerdu={onMarkPerdu} />
       </div>
       <StageMover lead={lead} onInlineSave={onInlineSave} />
     </div>
   )
-}
+})
 
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
-function StageColumn({ col, children }) {
+// LB9 — région nommée (axe/lecteur d'écran atteignent chaque colonne par son
+// libellé + compteur) ; en-têtes déjà épinglés hors du corps scrollant depuis
+// LB2 (P0 fondateur), aucune retouche nécessaire pour ça ici.
+// LB10 — `collapsed`/`onToggleCollapse` (état + persistance possédés par
+// KanbanView, `features/kanban/collapsedColumns.js`) : une colonne repliée
+// REND SEULEMENT le rail 44px (chevron + compteur + libellé pivoté), les
+// cartes (`children`) ne sont même pas montées — mais le `<section>` garde
+// EXACTEMENT le même `ref={setNodeRef}`/`id: col.key` qu'en dépliée : elle
+// reste une zone droppable à part entière (surbrillance `kb-over` incluse).
+function StageColumn({ col, collapsed, onToggleCollapse, children }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.key })
   // Prévisionnel pondéré : total devis × probabilité de l'étape.
   const forecast = col.totalDevis * (STAGE_PROBABILITY[col.key] ?? 0)
+  const chevronLabel = collapsed
+    ? `Déplier la colonne ${col.label}`
+    : `Replier la colonne ${col.label}`
+  const sectionClassName = [
+    'kb-col',
+    isOver && 'kb-over',
+    collapsed && 'kb-col-collapsed',
+  ].filter(Boolean).join(' ')
   return (
     <section
       ref={setNodeRef}
-      className={isOver ? 'kb-col kb-over' : 'kb-col'}
+      aria-label={`Étape ${col.label} — ${col.count} lead${col.count === 1 ? '' : 's'}`}
+      className={sectionClassName}
       style={{ '--kb-accent': col.color }}
     >
       <header className="kb-col-header">
         <div className="kb-col-title-row">
-          <span className="kb-col-title">{col.label}</span>
+          <button
+            type="button"
+            className="kb-col-collapse-btn"
+            aria-expanded={!collapsed}
+            aria-label={chevronLabel}
+            title={chevronLabel}
+            onClick={onToggleCollapse}
+          >
+            <ChevronDown
+              className={collapsed ? 'kb-col-chevron kb-col-chevron-collapsed' : 'kb-col-chevron'}
+              aria-hidden="true"
+            />
+          </button>
+          {!collapsed && <span className="kb-col-title">{col.label}</span>}
           <span className="kb-col-count">{col.count}</span>
         </div>
-        {col.totalDevis > 0 && (
-          <span className="kb-col-money">{formatMAD(col.totalDevis)}</span>
-        )}
-        {col.totalDevis > 0 && (
+        {/* LB9 — une SEULE rangée « total MAD · Prév. pondéré » (au lieu de
+            deux lignes empilées) ; le tooltip explique la pondération
+            STAGE_PROBABILITY importée de plus haut (jamais une seconde table). */}
+        {!collapsed && col.totalDevis > 0 && (
           <span
-            className="kb-col-forecast block text-[11px] text-muted-foreground"
-            title={`Prévisionnel pondéré (${Math.round((STAGE_PROBABILITY[col.key] ?? 0) * 100)} %)`}
+            className="kb-col-money"
+            title={`Prévisionnel pondéré à ${Math.round((STAGE_PROBABILITY[col.key] ?? 0) * 100)} % (probabilité de conversion à cette étape)`}
           >
-            Prév. {formatMAD(forecast)}
+            {formatMAD(col.totalDevis)} · Prév. {formatMAD(forecast)}
           </span>
         )}
       </header>
-      <div className="kb-col-body">
-        {col.count === 0 ? (
-          <div className="kb-col-empty">Aucun lead</div>
-        ) : (
-          children
-        )}
-      </div>
+      {collapsed ? (
+        <div className="kb-col-rail-label">{col.label}</div>
+      ) : (
+        /* LB9 — `tabindex=0` + aria-label : zone de scroll interne atteignable
+           au clavier (recon-05 a11y #6), indépendamment du sélecteur d'étape
+           (StageMover) déjà focalisable sous chaque carte. */
+        <div
+          className="kb-col-body"
+          tabIndex={0}
+          aria-label={`Cartes de l'étape ${col.label}`}
+        >
+          {col.count === 0 ? (
+            <div className="kb-col-empty">Déposer un lead ici</div>
+          ) : (
+            children
+          )}
+        </div>
+      )}
     </section>
   )
 }
@@ -183,11 +252,27 @@ export default function KanbanView({
   onToggleSelect,
   onPlanifierRelance,
   onInlineSave,
+  onMarkPerdu,
+  // LB9 — coach d'état vide à DEUX paliers, même idiome que ChartsView
+  // (totalLeads/onClearFilters déjà câblés là-bas sur `leads.length`/
+  // `setFilters(EMPTY_FILTERS)`) : `totalLeads` (non filtré) distingue
+  // « aucun lead du tout » de « aucun résultat pour CES filtres ». Tous
+  // optionnels — tant que `<KanbanView {...viewProps} />` (LeadsPage.jsx) ne
+  // les câble pas encore, on dégrade proprement sur le message filtré
+  // générique, jamais un crash ni un CTA mort.
+  totalLeads = null,
+  onClearFilters,
+  onNewLead,
+  onImportLeads,
 }) {
   // VX135 — préférence reduced-motion lue en JS : le tilt (transform statique
   // posé par dnd-kit/CSS) et le dropAnimation (JS pur) échappent tous deux au
   // garde global CSS.
   const prefersReducedMotion = usePrefersReducedMotion()
+  // LB11 — drag-to-pan sur l'espace vide du board (features/kanban/
+  // usePanScroll.js) : ref à poser sur `.kb-board`, aucun autre câblage —
+  // le hook attache lui-même ses écouteurs natifs pointerdown/move/up/cancel.
+  const boardRef = usePanScroll()
   // Message éphémère « On ne recule pas une étape » lors d'un drag refusé.
   const [reculMsg, setReculMsg] = useState(false)
   // distance 6px : un clic simple ouvre la fiche, le drag exige un mouvement ;
@@ -202,6 +287,21 @@ export default function KanbanView({
   )
   const columns = useMemo(() => groupLeadsByStage(leads), [leads])
   const [activeLead, setActiveLead] = useState(null)
+
+  // LB10 — repli de colonne PERSISTÉ (localStorage, features/kanban/
+  // collapsedColumns.js) : lu UNE FOIS au montage (lazy useState — jamais de
+  // repli par défaut, `readCollapsedStages()` renvoie `[]` tant que
+  // l'utilisatrice n'a jamais replié une colonne), écrit à chaque bascule.
+  const [collapsedStages, setCollapsedStages] = useState(() => new Set(readCollapsedStages()))
+  const toggleCollapsed = useCallback((stageKey) => {
+    setCollapsedStages((prev) => {
+      const next = new Set(prev)
+      if (next.has(stageKey)) next.delete(stageKey)
+      else next.add(stageKey)
+      writeCollapsedStages([...next])
+      return next
+    })
+  }, [])
 
   // VX192 — annonces FR : id de lead → nom, id de colonne → libellé d'étape.
   const announcements = useMemo(() => {
@@ -222,28 +322,72 @@ export default function KanbanView({
     setActiveLead(null)
     const lead = active.data.current?.lead
     if (!lead || !over || over.id === lead.stage) return
-    // Garde-fou UI : on n'autorise jamais un recul dans l'entonnoir. Les
-    // étapes inconnues (rang -1) ne déclenchent pas le garde-fou.
-    const from = stageRank(lead.stage)
-    const to = stageRank(over.id)
-    if (from >= 0 && to >= 0 && to < from) {
+    // LB4 — garde-fou UI : MÊME règle que le serveur (isStageMoveAllowed,
+    // miroir _bulk_stage_allowed, stages.js). Bug #7 (recon2-03) : l'ancien
+    // `stageRank` local classait COLD au rang le plus HAUT → tout drag
+    // COLD→actif était refusé comme un recul, alors que le serveur autorise
+    // DÉJÀ cette réactivation (COLD est un parking, pas un rang avancé).
+    if (!isStageMoveAllowed(lead.stage, over.id)) {
       setReculMsg(true)
       window.setTimeout(() => setReculMsg(false), 4000)
       return // l'étape reste inchangée
     }
     onChangeStage(lead, over.id)
+    // LB12 — la carte déposée se RE-PARENTE dans sa nouvelle colonne (React
+    // démonte/remonte l'instance — un `key={lead.id}` qui change de tableau
+    // parent n'est jamais un simple déplacement DOM) : sans ça, le focus
+    // retombe sur `<body>` (recon-05 a11y #4). `requestAnimationFrame`
+    // laisse le re-rendu déclenché par `onChangeStage` (dispatch Redux
+    // optimiste) se poser avant de chercher le nœud dans sa NOUVELLE colonne
+    // — même chemin, souris OU clavier (KeyboardSensor passe par ce même
+    // `handleDragEnd`). Un drop refusé/annulé/sur-place ne re-parente rien :
+    // le focus reste naturellement sur la carte d'origine, aucun code requis.
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-lead-id="${lead.id}"]`)?.focus()
+    })
   }
 
   const handleDragCancel = () => setActiveLead(null)
 
   // VX147 — « 0 lead » unifié sur `EmptyState` (calqué sur ChartsView, la
   // seule vue déjà correcte) au lieu de 6 colonnes vides en texte brut.
+  // LB9 — désormais à DEUX paliers : `totalLeads === 0` (vraiment aucun lead)
+  // reçoit le coach illustré (VX40 — leads est un des 4-5 écrans les plus vus)
+  // + CTA création/import ; « filtré à 0 » garde le message générique + un
+  // CTA « Effacer les filtres » réel quand le parent le fournit.
   if (!leads || leads.length === 0) {
+    const aucunDuTout = totalLeads != null && totalLeads === 0
+    if (aucunDuTout) {
+      return (
+        <EmptyState
+          illustrated
+          title="Aucun lead"
+          description="Créez votre premier lead ou importez votre liste pour démarrer le pipeline."
+          action={(onNewLead || onImportLeads) ? (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {onNewLead && (
+                <Button type="button" size="sm" onClick={onNewLead}>+ Nouveau lead</Button>
+              )}
+              {onImportLeads && (
+                <Button type="button" variant="outline" size="sm" onClick={onImportLeads}>
+                  Importer
+                </Button>
+              )}
+            </div>
+          ) : null}
+        />
+      )
+    }
     return (
       <EmptyState
         icon={LayoutGrid}
         title="Aucun lead"
         description="Aucun lead ne correspond à ces filtres."
+        action={onClearFilters ? (
+          <Button type="button" variant="outline" size="sm" onClick={onClearFilters}>
+            Effacer les filtres
+          </Button>
+        ) : null}
       />
     )
   }
@@ -255,6 +399,11 @@ export default function KanbanView({
         announcements,
         screenReaderInstructions: kanbanScreenReaderInstructions,
       }}
+      // LB11 — autoScroll intégré à DndContext (blueprint D2) : était inerte
+      // tant qu'aucun conteneur ne scrollait réellement (LB2 l'a réveillé).
+      // Seuils réglés sur les deux axes imbriqués (board horizontal, colonne
+      // verticale) — config, jamais de scroll maison pendant un drag.
+      autoScroll={{ thresholds: { x: 0.18, y: 0.22 } }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
@@ -267,9 +416,14 @@ export default function KanbanView({
           On ne recule pas une étape
         </div>
       )}
-      <div className="kb-board">
+      <div className="kb-board" ref={boardRef}>
         {columns.map((col) => (
-          <StageColumn key={col.key} col={col}>
+          <StageColumn
+            key={col.key}
+            col={col}
+            collapsed={collapsedStages.has(col.key)}
+            onToggleCollapse={() => toggleCollapsed(col.key)}
+          >
             {col.leads.map((lead) => (
               <DraggableCard
                 key={lead.id}
@@ -283,6 +437,7 @@ export default function KanbanView({
                 onToggleSelect={onToggleSelect}
                 onPlanifierRelance={onPlanifierRelance}
                 onInlineSave={onInlineSave}
+                onMarkPerdu={onMarkPerdu}
               />
             ))}
           </StageColumn>

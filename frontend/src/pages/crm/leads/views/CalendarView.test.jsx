@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import CalendarView from './CalendarView'
 
@@ -27,5 +27,48 @@ describe('CalendarView — VX144(d) accent --warning sur les leads sans date', (
       />,
     )
     expect(screen.queryByText(/sans date de/)).toBeNull()
+  })
+})
+
+describe('CalendarView — LB29 relance en retard soulignée (destructive)', () => {
+  // Horloge FIGÉE mi-mois : la grille rend le MOIS COURANT — une date hors
+  // mois ne rend AUCUN chip (l'échec CI/fold initial), et « hier » près du
+  // 1er du mois glisserait au mois précédent (classe wall-clock #29).
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-07-15T10:00:00')) })
+  afterEach(() => { vi.useRealTimers() })
+  it('souligne (cal-chip-late) une relance dont la date est déjà passée', () => {
+    render(
+      <CalendarView
+        leads={[{ id: 3, nom: 'Retard', stage: 'NEW', relance_date: '2026-07-10' }]}
+        onOpenLead={vi.fn()}
+      />,
+    )
+    const chip = screen.getByRole('button', { name: /Retard/ })
+    expect(chip).toHaveClass('cal-chip-late')
+  })
+
+  it('ne souligne PAS une relance future', () => {
+    render(
+      <CalendarView
+        leads={[{ id: 4, nom: 'Futur', stage: 'NEW', relance_date: '2026-07-25' }]}
+        onOpenLead={vi.fn()}
+      />,
+    )
+    const chip = screen.getByRole('button', { name: /Futur/ })
+    expect(chip).not.toHaveClass('cal-chip-late')
+  })
+
+  it('ne double-signale jamais un lead perdu (pastille rouge seule, pas de soulignement)', () => {
+    render(
+      <CalendarView
+        leads={[{
+          id: 5, nom: 'PerduRetard', stage: 'COLD', perdu: true, relance_date: '2026-07-10',
+        }]}
+        onOpenLead={vi.fn()}
+      />,
+    )
+    const chip = screen.getByRole('button', { name: /PerduRetard/ })
+    expect(chip).toHaveClass('cal-chip-perdu')
+    expect(chip).not.toHaveClass('cal-chip-late')
   })
 })
