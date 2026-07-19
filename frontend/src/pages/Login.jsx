@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { setCredentials } from '../features/auth/store/authSlice'
 import api from '../api/axios'
+import identityApi from '../api/identityApi'
 // VX46 — module d'atterrissage au login (« Mes préférences »), résolu depuis
 // `moduleConfigs` (UX1) + le dernier module visité (VX11) ; repli `/dashboard`
 // inchangé quand aucune préférence n'est choisie.
@@ -104,6 +105,16 @@ export default function Login() {
   // `otp_required`, on bascule sur la saisie du code à 6 chiffres et on
   // resoumet username + password + otp. Les comptes sans 2FA ne voient jamais
   // cette étape.
+  // WIR134 / NTSEC28 — bannière/mention légale de connexion, résolue par
+  // username (pré-auth, AllowAny). Vide = aucun bandeau (écran inchangé).
+  const [banner, setBanner] = useState('')
+  const loadBanner = async () => {
+    const uname = (username || '').trim()
+    try {
+      const r = await identityApi.loginBanner.get(uname)
+      setBanner(r.data?.login_banner_text ?? '')
+    } catch { setBanner('') }
+  }
   const [otpRequired, setOtpRequired] = useState(false)
   const [otp,         setOtp]         = useState('')
 
@@ -117,6 +128,8 @@ export default function Login() {
       const body = { username, password }
       if (otpRequired) body.otp = otp.trim()
       const res = await api.post('/token/', body)
+      // WIR134 / NTSEC28 — accuse la bannière légale (best-effort) si affichée.
+      if (banner) { identityApi.loginBanner.acknowledge(username).catch(() => {}) }
       dispatch(setCredentials({
         user: { username },
         role: res.data.role || 'normal',
@@ -203,6 +216,20 @@ export default function Login() {
           </div>
         )}
 
+        {/* WIR134 / NTSEC28 — mention légale de connexion (si configurée). */}
+        {banner && (
+          <div
+            data-testid="login-banner"
+            style={{
+              marginBottom: 16, padding: '10px 12px', borderRadius: 8,
+              background: '#fef3c7', border: '1px solid #fcd34d',
+              color: '#78350f', fontSize: 13, whiteSpace: 'pre-wrap',
+            }}
+          >
+            {banner}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           {/* Identifiant */}
@@ -218,7 +245,7 @@ export default function Login() {
               placeholder="Entrez votre identifiant"
               style={baseInput}
               onFocus={onFocus}
-              onBlur={onBlur}
+              onBlur={(e) => { onBlur(e); loadBanner() }}
             />
           </div>
 

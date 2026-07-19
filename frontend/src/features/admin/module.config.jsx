@@ -25,6 +25,8 @@ const UsersManagement = lazy(() => import('../../pages/admin/UsersManagement'))
 const RolesManagement = lazy(() => import('../../pages/admin/RolesManagement'))
 // SCA22 — console fondateur des tenants (le serveur exige superuser : 403 sinon).
 const TenantsConsole = lazy(() => import('../../pages/admin/TenantsConsole'))
+// WIR134 — écran « Sécurité & Identité » (apps/identity, gouverné IsAdminRole).
+const SecuriteIdentitePage = lazy(() => import('../../pages/admin/SecuriteIdentitePage'))
 
 const config = {
   key: 'admin',
@@ -33,6 +35,8 @@ const config = {
     { path: '/admin/users', component: UsersManagement, roles: ['responsable', 'admin'] },
     { path: '/admin/roles', component: RolesManagement, roles: ['responsable', 'admin'] },
     { path: '/admin/tenants', component: TenantsConsole, roles: ['admin'] },
+    // WIR134 — Sécurité & Identité (admin only : le backend exige IsAdminRole).
+    { path: '/admin/securite-identite', component: SecuriteIdentitePage, roles: ['admin'] },
   ],
 }
 

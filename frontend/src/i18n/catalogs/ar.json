@@ -77,6 +77,8 @@
   "nav.tableau_commercial": "لوحة المبيعات",
   "nav.utilisateurs": "المستخدمون",
   "nav.roles": "الأدوار",
+  "nav.securite_identite": "الأمن والهوية",
+  "nav.gouvernance_acces": "حوكمة الوصول",
   "nav.journal": "سجل النشاط",
   "nav.parametres": "الإعدادات",
   "nav.export_sauvegarde": "تصدير / نسخ احتياطي",
