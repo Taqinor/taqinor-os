@@ -21,7 +21,8 @@ from .views import (
     CommentListView,
     CommentPrivateReplyView, CommentReplyView,
     AudienceDeliveryEstimateView, EngagementAudienceView,
-    CostPerSignatureView, CreativeLeaderboardView, CreativeScatterView,
+    CostPerSignatureView, CoverageReportView, CreativeLeaderboardView,
+    CreativeScatterView,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
@@ -154,6 +155,9 @@ urlpatterns = [
     # PUB79 — déclencheur météo (canicule ⇒ angle pompage/climatisation).
     path('reporting/creatifs/declencheur-meteo/', WeatherTriggerView.as_view(),
          name='adsengine-reporting-creatifs-declencheur-meteo'),
+    # PUB80 — rapport « trous de couverture » (formats + segments).
+    path('reporting/couverture/', CoverageReportView.as_view(),
+         name='adsengine-reporting-couverture'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).

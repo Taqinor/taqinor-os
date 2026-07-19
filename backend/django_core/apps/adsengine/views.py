@@ -1273,6 +1273,24 @@ class WeatherTriggerView(APIView):
         return Response({'suggestions': canicule_backlog_suggestions(company)})
 
 
+class CoverageReportView(APIView):
+    """PUB80 — Rapport « trous de couverture » : formats Meta jamais couverts
+    + segments démographiques à forte dépense sans créa dédiée. 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .coverage import coverage_report
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(
+            coverage_report(company, date_start=debut, date_end=fin))
+
+
 class MetaConnectionStatusView(APIView):
     """ENG22 — Statut de connexion (GET) + enregistrement des identifiants
     (POST). Les identifiants sont **write-only** : un GET ne renvoie JAMAIS un
