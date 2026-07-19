@@ -78,3 +78,24 @@ def relances_tresorerie_du_jour():
     for company in Company.objects.filter(actif=True):
         total += len(services.declencher_relances_du_jour(company))
     return total
+
+
+@shared_task(name='compta.generer_ecritures_recurrentes')
+def generer_ecritures_recurrentes_dues():
+    """WIR25 (XACC8) — Enveloppe Beat : génère les écritures dues des
+    abonnements récurrents actifs (loyer mensuel, abonnements…) en BROUILLON,
+    société par société.
+
+    IDEMPOTENT par période (``services.generer_ecritures_recurrentes`` ne
+    duplique jamais une écriture déjà générée pour une période) : rejouer le
+    même jour ne crée rien de plus (aucun double envoi). No-op tant qu'aucun
+    ``AbonnementEcriture`` n'est configuré. Renvoie le nombre total d'écritures
+    générées."""
+    from authentication.models import Company
+    from . import services
+
+    total = 0
+    for company in Company.objects.filter(actif=True):
+        resultat = services.generer_ecritures_recurrentes(company)
+        total += len(resultat['generees'])
+    return total

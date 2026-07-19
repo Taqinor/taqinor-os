@@ -1,6 +1,10 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
-import { Tabs, TabsList, TabsTrigger, TabsContent, Badge, Button, toast } from '../../ui'
+import {
+  Tabs, TabsList, TabsTrigger, TabsContent, Badge, Button, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Label, Input, Textarea, confirmLeaveIfDirty,
+} from '../../ui'
 import { ListShell, EcheanceCenter } from '../../ui/module'
 import flotteApi from '../../api/flotteApi'
 import { formatDate, formatNumber } from '../../lib/format'
@@ -23,9 +27,125 @@ import PlanRolloutDialog from './PlanRolloutDialog'
    internes (jamais des prix client ni des prix d'achat/marge).
    ========================================================================== */
 
+// WIR42 — Dialogue de création d'un plan d'entretien (`PlanEntretienViewSet`
+// full CRUD) : avant cette dialogue, seul « Dupliquer sur… » existait — le
+// tout premier plan d'un type d'actif n'avait aucun chemin de création.
+function PlanEntretienDialog({ actifs = [], onClose, onSaved }) {
+  const [actifFlotte, setActifFlotte] = useState('')
+  const [typeEntretien, setTypeEntretien] = useState('')
+  const [intervalleKm, setIntervalleKm] = useState('')
+  const [intervalleJours, setIntervalleJours] = useState('')
+  const [intervalleHeures, setIntervalleHeures] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(
+    actifFlotte && typeEntretien.trim()
+    && (intervalleKm || intervalleJours || intervalleHeures),
+  )
+  const dirty = Boolean(
+    actifFlotte || typeEntretien || intervalleKm || intervalleJours
+    || intervalleHeures || notes,
+  )
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await flotteApi.plansEntretien.create({
+        actif_flotte: Number(actifFlotte),
+        type_entretien: typeEntretien.trim(),
+        intervalle_km: intervalleKm === '' ? undefined : Number(intervalleKm),
+        intervalle_jours: intervalleJours === '' ? undefined : Number(intervalleJours),
+        intervalle_heures: intervalleHeures === '' ? undefined : Number(intervalleHeures),
+        notes,
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouveau plan d’entretien</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="plan-actif">Actif (véhicule ou engin)</Label>
+            <select
+              id="plan-actif"
+              autoFocus
+              value={actifFlotte}
+              onChange={(e) => setActifFlotte(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+            >
+              <option value="">— Choisir —</option>
+              {actifs.map((a) => (
+                <option key={a.id} value={a.id}>{a.label || `#${a.id}`}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="plan-type">Type d’entretien</Label>
+            <Input id="plan-type" value={typeEntretien} onChange={(e) => setTypeEntretien(e.target.value)} placeholder="Ex. : vidange" />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="plan-interv-km">Intervalle (km)</Label>
+              <Input id="plan-interv-km" type="number" step="any" value={intervalleKm} onChange={(e) => setIntervalleKm(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="plan-interv-jours">Intervalle (jours)</Label>
+              <Input id="plan-interv-jours" type="number" step="any" value={intervalleJours} onChange={(e) => setIntervalleJours(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="plan-interv-heures">Intervalle (heures)</Label>
+              <Input id="plan-interv-heures" type="number" step="any" value={intervalleHeures} onChange={(e) => setIntervalleHeures(e.target.value)} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Au moins un intervalle (km / jours / heures) est requis.</p>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="plan-notes">Notes</Label>
+            <Textarea id="plan-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+          </div>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Enregistrement…' : 'Créer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function PlansTab({ actifs }) {
   const { data, loading, error, reload } = useFlotteResource(flotteApi.plansEntretien.list, {})
   const [rolloutPlan, setRolloutPlan] = useState(null)
+  const [showForm, setShowForm] = useState(false)
 
   const columns = useMemo(() => [
     { id: 'actif', header: 'Actif', width: 200, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
@@ -46,10 +166,15 @@ function PlansTab({ actifs }) {
     { id: 'rollout', label: 'Dupliquer sur…', onClick: () => setRolloutPlan(row) },
   ]
 
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouveau plan</Button>
+  )
+
   return (
     <>
       <ListShell
         title="Plans d’entretien préventif"
+        actions={actions}
         columns={columns}
         rows={data}
         loading={loading}
@@ -67,12 +192,35 @@ function PlansTab({ actifs }) {
           onSaved={() => { reload(); toast.success('Plan dupliqué.') }}
         />
       )}
+      {showForm && (
+        <PlanEntretienDialog
+          actifs={actifs}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Plan créé.') }}
+        />
+      )}
     </>
   )
 }
 
 function EcheancesTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.echeancesEntretien.list, { ouvertes: 'true' })
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.echeancesEntretien.list, { ouvertes: 'true' })
+  const [generating, setGenerating] = useState(false)
+
+  const generer = async () => {
+    setGenerating(true)
+    try {
+      const res = await flotteApi.echeancesEntretien.generer()
+      const nb = res?.data?.nb_creees ?? 0
+      toast.success(nb > 0 ? `${nb} échéance(s) générée(s).` : 'Aucune nouvelle échéance due.')
+      reload()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Génération impossible.')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   const items = useMemo(
     () => (data || []).map((e) => ({
       id: `ent-${e.id}`,
@@ -89,10 +237,18 @@ function EcheancesTab() {
     { id: 'due_km', header: 'Échéance km', align: 'right', numeric: true, width: 130, accessor: (r) => r.due_km, cell: (v) => (v ? `${formatNumber(v)} km` : '—') },
     { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut, cell: (v) => <EntretienStatutPill status={v} /> },
   ], [])
+
+  const actions = (
+    <Button onClick={generer} disabled={generating}>
+      {generating ? 'Génération…' : 'Générer les échéances'}
+    </Button>
+  )
+
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
       <ListShell
         title="Échéances d’entretien"
+        actions={actions}
         columns={columns}
         rows={data}
         loading={loading}
@@ -151,8 +307,132 @@ function GaragesTab() {
   )
 }
 
-function OrdresTab() {
+// WIR45(a) — Dialogue « Nouvel OR » : `OrdresTab` n'offrait que « Approuver le
+// devis » (seul chemin de création = conversion d'un signalement) — aucun
+// chemin pour une réparation planifiée SANS signalement préalable.
+function OrdreReparationDialog({ actifs = [], garages = [], onClose, onSaved }) {
+  const [actifFlotte, setActifFlotte] = useState('')
+  const [garage, setGarage] = useState('')
+  const [description, setDescription] = useState('')
+  const [dateOuverture, setDateOuverture] = useState('')
+  const [coutMainOeuvre, setCoutMainOeuvre] = useState('')
+  const [coutPieces, setCoutPieces] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(actifFlotte && dateOuverture)
+  const dirty = Boolean(
+    actifFlotte || garage || description || dateOuverture || coutMainOeuvre || coutPieces,
+  )
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await flotteApi.ordresReparation.create({
+        actif_flotte: Number(actifFlotte),
+        garage: garage ? Number(garage) : null,
+        description,
+        date_ouverture: dateOuverture,
+        cout_main_oeuvre: coutMainOeuvre === '' ? undefined : Number(coutMainOeuvre),
+        cout_pieces: coutPieces === '' ? undefined : Number(coutPieces),
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouvel ordre de réparation</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="or-actif">Actif (véhicule ou engin)</Label>
+            <select
+              id="or-actif"
+              autoFocus
+              value={actifFlotte}
+              onChange={(e) => setActifFlotte(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+            >
+              <option value="">— Choisir —</option>
+              {actifs.map((a) => (
+                <option key={a.id} value={a.id}>{a.label || `#${a.id}`}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="or-garage">Garage (option.)</Label>
+              <select
+                id="or-garage"
+                value={garage}
+                onChange={(e) => setGarage(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Non choisi —</option>
+                {garages.map((g) => (
+                  <option key={g.id} value={g.id}>{g.nom}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="or-date-ouverture">Date d’ouverture</Label>
+              <Input id="or-date-ouverture" type="date" value={dateOuverture} onChange={(e) => setDateOuverture(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="or-description">Description des travaux</Label>
+            <Textarea id="or-description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="or-cout-mo">Coût main-d’œuvre (MAD)</Label>
+              <Input id="or-cout-mo" type="number" step="any" value={coutMainOeuvre} onChange={(e) => setCoutMainOeuvre(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="or-cout-pieces">Coût pièces (MAD)</Label>
+              <Input id="or-cout-pieces" type="number" step="any" value={coutPieces} onChange={(e) => setCoutPieces(e.target.value)} />
+            </div>
+          </div>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Enregistrement…' : 'Créer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function OrdresTab({ actifs }) {
   const { data, loading, error, reload } = useFlotteResource(flotteApi.ordresReparation.list, {})
+  const { data: garages } = useFlotteResource(flotteApi.garages.list, {})
+  const [showForm, setShowForm] = useState(false)
 
   const approuver = async (row) => {
     try {
@@ -205,19 +485,34 @@ function OrdresTab() {
       : []
   )
 
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouvel OR</Button>
+  )
+
   return (
-    <ListShell
-      title="Ordres de réparation"
-      subtitle="Main-d’œuvre + pièces (coûts d’exploitation internes)."
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      rowActions={rowActions}
-      exportName="ordres-reparation"
-      emptyTitle="Aucun ordre"
-      emptyDescription="Aucun ordre de réparation ouvert."
-    />
+    <>
+      <ListShell
+        title="Ordres de réparation"
+        subtitle="Main-d’œuvre + pièces (coûts d’exploitation internes)."
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        rowActions={rowActions}
+        exportName="ordres-reparation"
+        emptyTitle="Aucun ordre"
+        emptyDescription="Aucun ordre de réparation ouvert."
+      />
+      {showForm && (
+        <OrdreReparationDialog
+          actifs={actifs}
+          garages={garages}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Ordre de réparation créé.') }}
+        />
+      )}
+    </>
   )
 }
 
@@ -287,8 +582,137 @@ function SignalementsTab({ actifs }) {
   )
 }
 
+// WIR45(b) — Dialogue de création d'un pneumatique (`PneumatiqueViewSet` full
+// CRUD, `PneusTab` était lecture seule).
+function PneumatiqueDialog({ vehicules = [], onClose, onSaved }) {
+  const [vehiculeId, setVehiculeId] = useState('')
+  const [position, setPosition] = useState('av_g')
+  const [marque, setMarque] = useState('')
+  const [dimension, setDimension] = useState('')
+  const [dateMontage, setDateMontage] = useState('')
+  const [kmMontage, setKmMontage] = useState('')
+  const [cout, setCout] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(vehiculeId)
+  const dirty = Boolean(
+    vehiculeId || marque || dimension || dateMontage || kmMontage || cout || position !== 'av_g',
+  )
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await flotteApi.pneumatiques.create({
+        vehicule: Number(vehiculeId),
+        position,
+        marque,
+        dimension,
+        date_montage: dateMontage || null,
+        km_montage: kmMontage === '' ? undefined : Number(kmMontage),
+        cout: cout === '' ? undefined : Number(cout),
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouveau pneumatique</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pneu-vehicule">Véhicule</Label>
+              <select
+                id="pneu-vehicule"
+                autoFocus
+                value={vehiculeId}
+                onChange={(e) => setVehiculeId(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Choisir —</option>
+                {vehicules.map((v) => (
+                  <option key={v.id} value={v.id}>{v.immatriculation}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pneu-position">Position</Label>
+              <select
+                id="pneu-position"
+                value={position}
+                onChange={(e) => setPosition(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                {Object.entries(PNEU_POSITIONS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pneu-marque">Marque</Label>
+              <Input id="pneu-marque" value={marque} onChange={(e) => setMarque(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pneu-dimension">Dimension</Label>
+              <Input id="pneu-dimension" value={dimension} onChange={(e) => setDimension(e.target.value)} placeholder="Ex. : 205/55 R16" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pneu-date-montage">Date de montage</Label>
+              <Input id="pneu-date-montage" type="date" value={dateMontage} onChange={(e) => setDateMontage(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pneu-km-montage">Km au montage</Label>
+              <Input id="pneu-km-montage" type="number" step="any" value={kmMontage} onChange={(e) => setKmMontage(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pneu-cout">Coût d’achat (MAD)</Label>
+              <Input id="pneu-cout" type="number" step="any" value={cout} onChange={(e) => setCout(e.target.value)} />
+            </div>
+          </div>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Enregistrement…' : 'Créer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function PneusTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.pneumatiques.list, {})
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.pneumatiques.list, {})
+  const { data: vehicules } = useFlotteResource(flotteApi.vehicules.list, {})
+  const [showForm, setShowForm] = useState(false)
   const columns = useMemo(() => [
     { id: 'vehicule', header: 'Véhicule', width: 170, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
     { id: 'position', header: 'Position', width: 130, accessor: (r) => r.position_display || PNEU_POSITIONS[r.position] || r.position, cell: (v) => v || '—' },
@@ -297,22 +721,171 @@ function PneusTab() {
     { id: 'date_montage', header: 'Montage', width: 120, accessor: (r) => r.date_montage, cell: (v) => (v ? formatDate(v) : '—') },
     { id: 'statut', header: 'Statut', width: 110, accessor: (r) => r.statut_display || PNEU_STATUTS[r.statut] || r.statut, cell: (v) => v || '—' },
   ], [])
+
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouveau pneu</Button>
+  )
+
   return (
-    <ListShell
-      title="Pneumatiques"
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      exportName="pneumatiques"
-      emptyTitle="Aucun pneu"
-      emptyDescription="Aucun pneumatique enregistré."
-    />
+    <>
+      <ListShell
+        title="Pneumatiques"
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        exportName="pneumatiques"
+        emptyTitle="Aucun pneu"
+        emptyDescription="Aucun pneumatique enregistré."
+      />
+      {showForm && (
+        <PneumatiqueDialog
+          vehicules={vehicules}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Pneumatique enregistré.') }}
+        />
+      )}
+    </>
+  )
+}
+
+// WIR45(b) — Dialogue de création d'une pièce consommée (`PieceFlotteViewSet`
+// full CRUD, `PiecesTab` était lecture seule). Rattachement optionnel à un
+// ordre de réparation.
+function PieceDialog({ vehicules = [], ordres = [], onClose, onSaved }) {
+  const [vehiculeId, setVehiculeId] = useState('')
+  const [ordreReparationId, setOrdreReparationId] = useState('')
+  const [designation, setDesignation] = useState('')
+  const [reference, setReference] = useState('')
+  const [quantite, setQuantite] = useState('1')
+  const [coutUnitaire, setCoutUnitaire] = useState('')
+  const [datePose, setDatePose] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(vehiculeId && designation.trim())
+  const dirty = Boolean(
+    vehiculeId || ordreReparationId || designation || reference
+    || coutUnitaire || datePose || quantite !== '1',
+  )
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await flotteApi.pieces.create({
+        vehicule: Number(vehiculeId),
+        ordre_reparation: ordreReparationId ? Number(ordreReparationId) : null,
+        designation: designation.trim(),
+        reference,
+        quantite: quantite === '' ? undefined : Number(quantite),
+        cout_unitaire: coutUnitaire === '' ? undefined : Number(coutUnitaire),
+        date_pose: datePose || null,
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouvelle pièce consommée</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="piece-vehicule">Véhicule</Label>
+              <select
+                id="piece-vehicule"
+                autoFocus
+                value={vehiculeId}
+                onChange={(e) => setVehiculeId(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Choisir —</option>
+                {vehicules.map((v) => (
+                  <option key={v.id} value={v.id}>{v.immatriculation}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="piece-ordre">Ordre de réparation (option.)</Label>
+              <select
+                id="piece-ordre"
+                value={ordreReparationId}
+                onChange={(e) => setOrdreReparationId(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Non rattachée —</option>
+                {ordres.map((o) => (
+                  <option key={o.id} value={o.id}>#{o.id} — {o.actif_label || ''}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="piece-designation">Désignation</Label>
+            <Input id="piece-designation" value={designation} onChange={(e) => setDesignation(e.target.value)} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="piece-reference">Référence</Label>
+              <Input id="piece-reference" value={reference} onChange={(e) => setReference(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="piece-date-pose">Posée le</Label>
+              <Input id="piece-date-pose" type="date" value={datePose} onChange={(e) => setDatePose(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="piece-quantite">Quantité</Label>
+              <Input id="piece-quantite" type="number" step="any" value={quantite} onChange={(e) => setQuantite(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="piece-cout-unitaire">Coût unitaire (MAD)</Label>
+              <Input id="piece-cout-unitaire" type="number" step="any" value={coutUnitaire} onChange={(e) => setCoutUnitaire(e.target.value)} />
+            </div>
+          </div>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Enregistrement…' : 'Créer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 function PiecesTab() {
-  const { data, loading, error } = useFlotteResource(flotteApi.pieces.list, {})
+  const { data, loading, error, reload } = useFlotteResource(flotteApi.pieces.list, {})
+  const { data: vehicules } = useFlotteResource(flotteApi.vehicules.list, {})
+  const { data: ordres } = useFlotteResource(flotteApi.ordresReparation.list, {})
+  const [showForm, setShowForm] = useState(false)
   const columns = useMemo(() => [
     { id: 'vehicule', header: 'Véhicule', width: 170, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
     { id: 'designation', header: 'Désignation', width: 220, accessor: (r) => r.designation, cell: (v) => v || '—' },
@@ -330,18 +903,34 @@ function PiecesTab() {
     },
     { id: 'date_pose', header: 'Posée le', width: 120, accessor: (r) => r.date_pose, cell: (v) => (v ? formatDate(v) : '—') },
   ], [])
+
+  const actions = (
+    <Button onClick={() => setShowForm(true)}>Nouvelle pièce</Button>
+  )
+
   return (
-    <ListShell
-      title="Pièces"
-      subtitle="Pièces consommées (coûts d’exploitation internes)."
-      columns={columns}
-      rows={data}
-      loading={loading}
-      error={error}
-      exportName="pieces"
-      emptyTitle="Aucune pièce"
-      emptyDescription="Aucune pièce enregistrée."
-    />
+    <>
+      <ListShell
+        title="Pièces"
+        subtitle="Pièces consommées (coûts d’exploitation internes)."
+        actions={actions}
+        columns={columns}
+        rows={data}
+        loading={loading}
+        error={error}
+        exportName="pieces"
+        emptyTitle="Aucune pièce"
+        emptyDescription="Aucune pièce enregistrée."
+      />
+      {showForm && (
+        <PieceDialog
+          vehicules={vehicules}
+          ordres={ordres}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); reload(); toast.success('Pièce enregistrée.') }}
+        />
+      )}
+    </>
   )
 }
 
@@ -365,7 +954,7 @@ export default function EntretienScreen() {
         </TabsList>
         <TabsContent value="echeances"><EcheancesTab /></TabsContent>
         <TabsContent value="plans"><PlansTab actifs={actifs} /></TabsContent>
-        <TabsContent value="ordres"><OrdresTab /></TabsContent>
+        <TabsContent value="ordres"><OrdresTab actifs={actifs} /></TabsContent>
         <TabsContent value="signalements"><SignalementsTab actifs={actifs} /></TabsContent>
         <TabsContent value="garages"><GaragesTab /></TabsContent>
         <TabsContent value="pneus"><PneusTab /></TabsContent>

@@ -58,6 +58,8 @@ from .models import (
     SavedQuery,
     ScheduledExport,
     TenantTheme,
+    WorkflowDefinition,
+    WorkflowStepDefinition,
 )
 from .serializers import (
     ApiUsagePlanSerializer,
@@ -78,6 +80,8 @@ from .serializers import (
     ScheduledJobSerializer,
     TenantThemeSerializer,
     TenantUsageSnapshotSerializer,
+    WorkflowDefinitionSerializer,
+    WorkflowStepDefinitionSerializer,
     WorkflowTemplateSerializer,
 )
 
@@ -196,6 +200,62 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
             status=(status.HTTP_201_CREATED if created
                     else status.HTTP_200_OK),
         )
+
+
+class WorkflowDefinitionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """WIR51 — CRUD serveur des définitions de workflow (FG366).
+
+    Comble le « GAP BACKEND CONFIRMÉ » de l'écran Workflows : une définition
+    composée à l'écran (chaîne d'étapes) ne pouvait PAS être persistée (seule
+    l'installation d'un modèle FG369 matérialisait ces lignes). Multi-tenant :
+    ``TenantMixin`` filtre par société et impose ``company`` à la création
+    comme à la mise à jour (jamais lue du corps). Écriture réservée au palier
+    admin/responsable ; lecture ouverte à tout utilisateur authentifié. Les
+    étapes sont créées / remplacées via la liste imbriquée ``steps``."""
+
+    serializer_class = WorkflowDefinitionSerializer
+    queryset = WorkflowDefinition.objects.all().prefetch_related('steps')
+    pagination_class = None  # petite liste par société — renvoyée à plat.
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+
+class WorkflowStepDefinitionViewSet(viewsets.ModelViewSet):
+    """WIR51 — CRUD granulaire des étapes de workflow (édition fine d'une
+    étape existante, en plus de la composition imbriquée via la définition).
+
+    Le modèle ``WorkflowStepDefinition`` n'a pas de ``company`` propre : il est
+    scopé par la société de sa ``definition``. Le queryset filtre donc sur
+    ``definition__company`` et le sérialiseur refuse toute étape rattachée à
+    une définition d'un autre tenant. Écriture réservée admin/responsable."""
+
+    serializer_class = WorkflowStepDefinitionSerializer
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = WorkflowStepDefinition.objects.select_related('definition')
+        if getattr(user, 'company_id', None):
+            return qs.filter(definition__company_id=user.company_id)
+        if getattr(user, 'is_superuser', False):
+            return qs
+        return qs.none()
+
+    def get_serializer_context(self):
+        # Chemin AUTONOME : `definition` est obligatoire (une étape isolée doit
+        # se rattacher). Le contexte imbriqué (via WorkflowDefinitionViewSet) ne
+        # pose pas ce drapeau, donc les étapes imbriquées restent facultatives.
+        ctx = super().get_serializer_context()
+        ctx['require_definition'] = True
+        return ctx
 
 
 class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):

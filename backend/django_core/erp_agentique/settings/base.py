@@ -803,6 +803,13 @@ CELERY_TASK_ROUTES = {
     'rh.alertes_expiration': {'queue': 'scheduled'},
     'rh.alertes_cdd': {'queue': 'scheduled'},
     'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},
+    # WIR30 — pré-alerte SLA (J-x) + escalade à la violation.
+    'sav.scan_sla_pre_alerts_and_escalations_quotidien': {'queue': 'scheduled'},
+    # WIR50 — commandes périodiques de sécurité/gouvernance (break-glass échu,
+    # comptes dormants, escalade SLA workflow) planifiées au beat.
+    'identity.revoke_expired_break_glass': {'queue': 'scheduled'},
+    'authentication.desactiver_comptes_dormants': {'queue': 'scheduled'},
+    'core.escalate_workflow_sla': {'queue': 'scheduled'},
     'stock.recompute_reordering': {'queue': 'scheduled'},
     'core.dump_database': {'queue': 'scheduled'},
     'core.restore_drill': {'queue': 'scheduled'},
@@ -876,6 +883,12 @@ CELERY_TASK_ROUTES = {
     'innovation.feedback_digest_run': {'queue': 'scheduled'},
     # NTEDU40 — relance réinscription (notifie l'administration, quotidien).
     'education.relancer_reinscriptions': {'queue': 'scheduled'},
+    # WIR5/FLOTTE16 — génération quotidienne des échéances d'entretien flotte.
+    'flotte.generer_echeances_entretien_quotidien': {'queue': 'scheduled'},
+    # WIR25 — écritures récurrentes (XACC8) + rappels d'échéance fiscale
+    # (NTMAR15), planifiés au beat, heures creuses.
+    'compta.generer_ecritures_recurrentes': {'queue': 'scheduled'},
+    'fiscal.rappels_fiscaux': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

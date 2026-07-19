@@ -69,6 +69,9 @@ const config = {
       { to: '/rapports',             label: 'Rapports',         k: 'nav.rapports',   icon: navIcon(BarChart3),    roles: ['responsable','admin'] },
       { to: '/reporting/balance-agee', label: 'Balance âgée',   k: 'nav.balance_agee', icon: navIcon(BarChart3),  roles: ['responsable','admin'] },
       { to: '/reporting/commercial', label: 'Tableau commercial', k: 'nav.tableau_commercial', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
+      // WIR17/FG98 — cohortes de rétention/CA (route déjà enregistrée
+      // ci-dessous, jusqu'ici sans entrée de menu).
+      { to: '/reporting/cohortes',   label: 'Cohortes',         k: 'nav.cohortes',   icon: navIcon(BarChart3),    roles: ['responsable','admin'] },
       // XKB1/ZCTR7-9 — boîte d'approbations centralisée, ouverte à tout rôle
       // (chacun peut avoir des demandes en attente sur son périmètre).
       { to: '/approbations',         label: 'Approbations',     k: 'nav.approbations', icon: navIcon(Inbox), roles: ['normal','responsable','admin'] },

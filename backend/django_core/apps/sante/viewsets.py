@@ -43,7 +43,11 @@ class SalleViewSet(CompanyScopedModelViewSet):
 class PatientViewSet(CompanyScopedModelViewSet):
     """NTSAN3 — dossier administratif patient. ``numero_dossier`` est
     attribué côté serveur à la création (anti-collision, jamais un
-    ``count()+1``)."""
+    ``count()+1``). WIR54 — chaque patient créé est aussi résolu/rattaché à
+    un ``crm.Client`` (``services.resoudre_client_pour_patient`` : lien déjà
+    posé si envoyé dans le corps, sinon email de la même société, sinon
+    création) — sans quoi chaque patient créé restait un doublon jamais
+    rattaché à un dossier client CRM."""
 
     queryset = Patient.objects.select_related('client').all()
     serializer_class = PatientSerializer
@@ -63,8 +67,10 @@ class PatientViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         super().perform_create(serializer)
-        from .services import attribuer_numero_dossier
+        from .services import (
+            attribuer_numero_dossier, resoudre_client_pour_patient)
         attribuer_numero_dossier(serializer.instance)
+        resoudre_client_pour_patient(serializer.instance)
 
 
 class RendezVousViewSet(CompanyScopedModelViewSet):

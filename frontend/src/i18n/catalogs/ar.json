@@ -27,6 +27,9 @@
   "nav.section.administration": "الإدارة",
 
   "nav.dashboard": "لوحة القيادة",
+  "nav.agent_actions": "إجراءات الذكاء الاصطناعي",
+  "nav.listes_prix": "قوائم الأسعار",
+  "nav.devis_action_requise": "إجراء مطلوب",
   "nav.messages": "الرسائل",
   "nav.produits": "المنتجات",
   "nav.categories": "الفئات والعلامات",

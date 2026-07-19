@@ -17,14 +17,31 @@ beforeAll(() => {
   }
 })
 
-const { empty } = vi.hoisted(() => ({
+const { empty, anomalies, cartesCreate } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
+  anomalies: vi.fn(() => Promise.resolve({
+    data: {
+      nb_pleins: 5,
+      nb_anomalies: 1,
+      anomalies: [{
+        plein_id: 3, type: 'km_recul', gravite: 'haute',
+        message: 'Kilométrage en recul détecté', date_plein: '2026-07-01',
+      }],
+    },
+  })),
+  cartesCreate: vi.fn(() => Promise.resolve({ data: { id: 6 } })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
   default: {
     pleins: { list: empty, ocr: vi.fn() },
-    cartes: { list: empty },
+    cartes: {
+      list: empty,
+      anomalies: (...args) => anomalies(...args),
+      create: (...args) => cartesCreate(...args),
+      update: vi.fn(() => Promise.resolve({ data: {} })),
+    },
+    conducteurs: { list: () => Promise.resolve({ data: [{ id: 2, nom: 'Karim' }] }) },
     sinistres: { list: empty },
     infractions: { list: empty },
     vehicules: { list: () => Promise.resolve({ data: [{ id: 1, immatriculation: '12345-A-6' }] }) },
@@ -57,6 +74,36 @@ describe('CarburantScreen — Télématique (XFLT25 DTC)', () => {
     // DataTable rend la table desktop ET les cartes mobiles dans le DOM (le
     // point de rupture est géré en CSS) : deux correspondances attendues.
     await waitFor(() => expect(screen.getAllByText('P0300, P0171').length).toBeGreaterThan(0))
+  })
+})
+
+describe('CarburantScreen — Cartes (WIR6 anomalies)', () => {
+  it('affiche une anomalie détectée sur l’onglet Cartes', async () => {
+    const user = userEvent.setup()
+    withProviders(<CarburantScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Cartes' }))
+    await waitFor(() => expect(anomalies).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByText('Kilométrage en recul détecté')).toBeInTheDocument())
+  })
+})
+
+describe('CarburantScreen — Cartes (WIR43 création)', () => {
+  it('crée une carte carburant rattachée à un véhicule et un conducteur', async () => {
+    const user = userEvent.setup()
+    withProviders(<CarburantScreen />)
+
+    await user.click(screen.getByRole('tab', { name: 'Cartes' }))
+    await user.click(await screen.findByRole('button', { name: 'Nouvelle carte' }))
+
+    await user.type(screen.getByLabelText('N° carte'), 'CARTE-001')
+    await user.selectOptions(screen.getByLabelText('Véhicule (option.)'), '1')
+    await user.selectOptions(screen.getByLabelText('Conducteur (option.)'), '2')
+    await user.click(screen.getByRole('button', { name: 'Créer' }))
+
+    await waitFor(() => expect(cartesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ numero: 'CARTE-001', vehicule: 1, conducteur: 2 }),
+    ))
   })
 })
 

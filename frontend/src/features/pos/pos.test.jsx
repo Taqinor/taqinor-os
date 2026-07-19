@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import {
@@ -209,21 +210,34 @@ describe('tickets en attente (parquer/rappeler/supprimer)', () => {
 })
 
 // ── Rendu smoke de l'écran (API mockée, hors réseau) ────────────────────────
+// WIR7 — vi.fn() (au lieu d'arrow functions plates) pour pouvoir surcharger
+// getProduits/validerVente par test (mockResolvedValueOnce/mockRejectedValueOnce)
+// sans changer le comportement par défaut des autres tests.
 vi.mock('../../api/posApi', () => ({
   default: {
-    getProduits: () => Promise.resolve({ data: { results: [] } }),
-    searchClients: () => Promise.resolve({ data: { results: [] } }),
-    createClient: () => Promise.resolve({ data: { id: 1, nom: 'Client comptoir' } }),
-    createVente: () => Promise.resolve({ data: { id: 1 } }),
-    ajouterLigne: () => Promise.resolve({ data: {} }),
-    validerVente: () => Promise.resolve({ data: { id: 1, reference: 'VC-0001' } }),
-    getVente: () => Promise.resolve({ data: { id: 1, reference: 'VC-0001' } }),
+    getProduits: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+    searchClients: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+    createClient: vi.fn(() => Promise.resolve({ data: { id: 1, nom: 'Client comptoir' } })),
+    createVente: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    ajouterLigne: vi.fn(() => Promise.resolve({ data: {} })),
+    validerVente: vi.fn(() => Promise.resolve({ data: { id: 1, reference: 'VC-0001' } })),
+    getVente: vi.fn(() => Promise.resolve({ data: { id: 1, reference: 'VC-0001' } })),
     ticketPdfUrl: (id) => `/pos/ventes/${id}/ticket-pdf/`,
-    ticketEscpos: () => Promise.resolve({ data: { sent_to_printer: false } }),
-    ticketShareLink: () => Promise.resolve({ data: { token: 'tok123' } }),
+    ticketEscpos: vi.fn(() => Promise.resolve({ data: { sent_to_printer: false } })),
+    ticketShareLink: vi.fn(() => Promise.resolve({ data: { token: 'tok123' } })),
   },
 }))
 
+// WIR7 — mock ciblé de `toast` (le reste de '../../ui' reste réel) pour
+// vérifier le message EXACT affiché au caissier, motif du même pattern que
+// `features/ged/advanced/advanced.test.jsx` (legal-hold 403).
+vi.mock('../../ui', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, toast: { ...actual.toast, success: vi.fn(), error: vi.fn() } }
+})
+
+import posApi from '../../api/posApi'
+import { toast } from '../../ui'
 import CaisseScreen from './CaisseScreen'
 
 function withProviders(ui) {
@@ -235,10 +249,40 @@ function withProviders(ui) {
 }
 
 describe('rendu smoke de CaisseScreen', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('affiche le titre et le panier vide au chargement', async () => {
     withProviders(<CaisseScreen />)
     expect(screen.getByRole('heading', { name: /Caisse/ })).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText(/Panier vide/)).toBeInTheDocument())
     expect(screen.getByTestId('pos-total')).toHaveTextContent('0')
+  })
+
+  it('WIR7 — un encaissement sans client affiche le message réel du backend (jamais un échec silencieux)', async () => {
+    posApi.getProduits.mockResolvedValueOnce({
+      data: { results: [{ id: 9, nom: 'Panneau test', prix_vente: '100', is_archived: false }] },
+    })
+    posApi.validerVente.mockRejectedValueOnce({
+      response: { data: { detail: 'Un client est requis pour émettre la facture légale.' } },
+    })
+
+    withProviders(<CaisseScreen />)
+
+    await userEvent.type(
+      screen.getByLabelText(/Rechercher un produit/),
+      'Panneau',
+    )
+    await userEvent.click(await screen.findByText('Panneau test'))
+    await userEvent.click(screen.getByRole('button', { name: 'Encaisser' }))
+    await userEvent.click(await screen.findByRole('button', { name: /Confirmer/ }))
+
+    await waitFor(() => {
+      expect(posApi.validerVente).toHaveBeenCalled()
+      expect(toast.error).toHaveBeenCalledWith(
+        'Un client est requis pour émettre la facture légale.',
+      )
+    })
   })
 })

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
+import { Link } from 'react-router-dom'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import ExcelImport from '../../components/ExcelImport'
@@ -10,7 +11,28 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Form, FormField,
   Input, Textarea,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Badge,
 } from '../../ui'
+
+// XPUR4 — les 4 statuts fournisseur (miroir de `Fournisseur.Statut` côté
+// serveur — le blocage est déjà appliqué et testé serveur, cf.
+// apps/stock/services.py:check_fournisseur_statut_commande/paiement). Ce
+// module n'ajoute qu'un sélecteur + motif : jamais de logique de blocage
+// dupliquée côté client.
+const STATUT_OPTIONS = [
+  { value: 'actif', label: 'Actif' },
+  { value: 'bloque_commandes', label: 'Bloqué (commandes)' },
+  { value: 'bloque_paiements', label: 'Bloqué (paiements)' },
+  { value: 'bloque_total', label: 'Bloqué (total)' },
+]
+const STATUT_LABELS = Object.fromEntries(STATUT_OPTIONS.map((o) => [o.value, o.label]))
+const STATUT_TONE = {
+  actif: 'success',
+  bloque_commandes: 'warning',
+  bloque_paiements: 'warning',
+  bloque_total: 'danger',
+}
 
 // L697/L698/L699 — Écran de gestion des FOURNISSEURS : liste + édition des
 // coordonnées (personne de contact, email, téléphone, adresse). L'email est
@@ -45,6 +67,9 @@ function FournisseurForm({ fournisseur, onClose, onSaved }) {
     email: fournisseur?.email ?? '',
     telephone: fournisseur?.telephone ?? '',
     adresse: fournisseur?.adresse ?? '',
+    // XPUR4 — statut de blocage (actif par défaut, comportement historique).
+    statut: fournisseur?.statut ?? 'actif',
+    motif_blocage: fournisseur?.motif_blocage ?? '',
   })
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
@@ -70,6 +95,8 @@ function FournisseurForm({ fournisseur, onClose, onSaved }) {
         email: fields.email.trim() || null,
         telephone: fields.telephone.trim() || null,
         adresse: fields.adresse.trim() || null,
+        statut: fields.statut,
+        motif_blocage: fields.motif_blocage.trim() || null,
       }
       if (isNew) await stockApi.createFournisseur(payload)
       else await stockApi.updateFournisseur(fournisseur.id, payload)
@@ -124,6 +151,24 @@ function FournisseurForm({ fournisseur, onClose, onSaved }) {
           <FormField label="Adresse" htmlFor="fou-adr" fullWidth>
             <Textarea id="fou-adr" rows={2} value={fields.adresse}
                       onChange={(e) => setField('adresse', e.target.value)} />
+          </FormField>
+          {/* XPUR4 — statut de blocage : appliqué et testé côté serveur
+              (check_fournisseur_statut_commande/paiement) — ce sélecteur ne
+              fait que le piloter, aucune logique dupliquée ici. */}
+          <FormField label="Statut" htmlFor="fou-statut">
+            <Select value={fields.statut} onValueChange={(v) => setField('statut', v)}>
+              <SelectTrigger id="fou-statut"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {STATUT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Motif de blocage" htmlFor="fou-motif-blocage" fullWidth>
+            <Textarea id="fou-motif-blocage" rows={2} value={fields.motif_blocage}
+                      placeholder="Visible sur le message de refus BCF/paiement (optionnel)"
+                      onChange={(e) => setField('motif_blocage', e.target.value)} />
           </FormField>
 
           {errors.submit && (
@@ -264,6 +309,14 @@ export default function FournisseursStock() {
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Nom', minWidth: 160, accessor: (f) => f.nom ?? '' },
+    // XPUR4 — statut de blocage, visible en un coup d'œil sur la liste.
+    { id: 'statut', header: 'Statut', width: 150, searchable: false,
+      accessor: (f) => STATUT_LABELS[f.statut] ?? f.statut ?? 'Actif',
+      cell: (_v, f) => (
+        <Badge tone={STATUT_TONE[f.statut] ?? 'success'}>
+          {STATUT_LABELS[f.statut] ?? 'Actif'}
+        </Badge>
+      ) },
     { id: 'contact_personne', header: 'Contact', minWidth: 140,
       accessor: (f) => f.contact_personne ?? '',
       cell: (v) => v || <span className="text-muted-foreground">—</span> },
@@ -277,9 +330,17 @@ export default function FournisseursStock() {
       accessor: (f) => f.nb_produits ?? 0 },
     { id: 'nb_bons_commande', header: 'BCF', align: 'right', width: 80, searchable: false,
       accessor: (f) => f.nb_bons_commande ?? 0 },
-    { id: 'actions', header: '', width: 140, searchable: false, sortable: false,
+    { id: 'actions', header: '', width: 180, searchable: false, sortable: false,
       cell: (_v, f) => (
         <div className="flex items-center justify-end gap-1">
+          {/* XPUR25/WIR27 — fiche 360 (BCF/factures/retours/conformité/
+              accords de prix) — jusqu'ici construite mais routée nulle part. */}
+          <IconButton asChild size="md" variant="ghost" label="Fiche 360"
+                      onClick={(e) => e.stopPropagation()}>
+            <Link to={`/stock/fournisseurs/${f.id}/360`}>
+              <LayoutGrid className="size-4" aria-hidden="true" />
+            </Link>
+          </IconButton>
           {isAdmin && (
             <IconButton size="md" variant="ghost" label="Voir la performance"
                         onClick={(e) => { e.stopPropagation(); setScorecard(f) }}>

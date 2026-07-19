@@ -229,6 +229,10 @@ class ConducteurSerializer(serializers.ModelSerializer):
             'id', 'user', 'user_display', 'employe_id', 'nom', 'telephone',
             'numero_permis', 'categorie_permis',
             'date_obtention', 'date_expiration',
+            # XFLT27 — conformité transport lourd (> 3,5 t) : carte de
+            # conducteur professionnel + formation continue NARSA.
+            'carte_conducteur_pro_numero', 'carte_conducteur_pro_expiration',
+            'formation_continue_narsa_date', 'formation_continue_narsa_validite',
             'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']

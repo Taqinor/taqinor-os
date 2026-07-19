@@ -335,3 +335,59 @@ class EcheanceApiTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         ech.refresh_from_db()
         self.assertEqual(ech.statut, EcheanceEntretien.Statut.FAIT)
+
+
+# ── WIR5 — Beat Celery quotidien (avant : ni beat ni bouton) ──────────────────
+
+class GenererEcheancesEntretienQuotidienTaskTests(TestCase):
+    """Couvre ``apps.flotte.tasks.generer_echeances_entretien_quotidien`` :
+    matérialise les échéances dues pour chaque société opérationnelle
+    (idempotent, isolation par société) et est bien enregistrée au beat
+    Celery avec une route explicite (jamais laissée sur `default`)."""
+
+    def setUp(self):
+        self.co_a = make_company("ee-task-a", "EE Task A")
+        self.co_b = make_company("ee-task-b", "EE Task B")
+        veh_a = make_vehicule(self.co_a, "TSK-A", km=25000)
+        actif_a = actif_pour_vehicule(self.co_a, veh_a)
+        plan_km_due(self.co_a, actif_a)
+        veh_b = make_vehicule(self.co_b, "TSK-B", km=1000)
+        actif_b = actif_pour_vehicule(self.co_b, veh_b)
+        # Société B : plan non dû (aucune échéance ne doit être créée).
+        PlanEntretien.objects.create(
+            company=self.co_b, actif_flotte=actif_b,
+            type_entretien="vidange", intervalle_km=10000, dernier_km=0)
+
+    def test_generates_due_echeances_per_company(self):
+        from apps.flotte.tasks import generer_echeances_entretien_quotidien
+
+        resultat = generer_echeances_entretien_quotidien()
+        self.assertGreaterEqual(resultat["societes"], 2)
+        self.assertEqual(resultat["echeances_creees"], 1)
+        self.assertEqual(
+            EcheanceEntretien.objects.filter(
+                actif_flotte__company=self.co_a).count(), 1)
+        self.assertEqual(
+            EcheanceEntretien.objects.filter(
+                actif_flotte__company=self.co_b).count(), 0)
+
+    def test_idempotent_second_run(self):
+        from apps.flotte.tasks import generer_echeances_entretien_quotidien
+
+        generer_echeances_entretien_quotidien()
+        resultat = generer_echeances_entretien_quotidien()
+        self.assertEqual(resultat["echeances_creees"], 0)
+        self.assertEqual(EcheanceEntretien.objects.count(), 1)
+
+    def test_task_registered_in_beat_schedule_and_routes(self):
+        from django.conf import settings
+
+        from erp_agentique.celery import app
+
+        task_names = {e["task"] for e in app.conf.beat_schedule.values()}
+        self.assertIn(
+            "flotte.generer_echeances_entretien_quotidien", task_names)
+        self.assertEqual(
+            settings.CELERY_TASK_ROUTES[
+                "flotte.generer_echeances_entretien_quotidien"]["queue"],
+            "scheduled")

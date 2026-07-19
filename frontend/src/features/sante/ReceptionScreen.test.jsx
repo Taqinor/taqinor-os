@@ -19,6 +19,7 @@ beforeAll(() => {
 })
 
 const checkin = vi.fn(() => Promise.resolve({ data: {} }))
+const annuler = vi.fn(() => Promise.resolve({ data: { penalite_applicable: false } }))
 
 vi.mock('../../api/santeApi', () => ({
   default: {
@@ -41,6 +42,7 @@ vi.mock('../../api/santeApi', () => ({
       }),
       create: () => Promise.resolve({ data: {} }),
       checkin: (...args) => checkin(...args),
+      annuler: (...args) => annuler(...args),
     },
   },
 }))
@@ -68,6 +70,21 @@ describe('ReceptionScreen', () => {
 
     await waitFor(() => {
       expect(checkin).toHaveBeenCalledWith(20)
+    })
+  })
+
+  it('WIR53 — annule un rendez-vous depuis la réception', async () => {
+    window.confirm = vi.fn(() => true)
+    renderScreen()
+
+    await waitFor(() => {
+      expect(screen.getByText('Fatima Zahra')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Annuler ce rendez-vous/i }))
+
+    await waitFor(() => {
+      expect(annuler).toHaveBeenCalledWith(20, 'patient')
     })
   })
 })

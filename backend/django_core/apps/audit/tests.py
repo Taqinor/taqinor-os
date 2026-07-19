@@ -356,3 +356,49 @@ class TestPaieAuditTrail(AuditBase):
             AuditLog.objects.filter(action='create',
                                     object_repr__icontains='2026-02-01')
             .exists())
+
+
+class TestFournisseurAuditTrail(AuditBase):
+    """WIR1 — le RIB/coordonnées/conditions de paiement d'un ``Fournisseur``
+    alimentent la chaîne achats déjà tracée mais leur propre modification ne
+    produisait aucune ligne AuditLog jusqu'ici (perte d'audit silencieuse,
+    surface fraude)."""
+
+    def test_fournisseur_is_tracked(self):
+        from apps.audit.signals import TRACKED_MODELS
+        self.assertIn(('stock', 'Fournisseur'), TRACKED_MODELS)
+
+    def test_fournisseur_rib_update_logs_filterable_audit_entry(self):
+        from apps.stock.models import Fournisseur
+
+        fournisseur = Fournisseur.objects.create(
+            company=self.company, nom='ACME Solaire', rib='RIB-OLD')
+        resp = auth(self.directeur).patch(
+            f'/api/django/stock/fournisseurs/{fournisseur.id}/',
+            {'rib': 'RIB-NEW'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+
+        entry = AuditLog.objects.filter(
+            action='update', object_id=str(fournisseur.id),
+            content_type__app_label='stock',
+            content_type__model='fournisseur').first()
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.user_id, self.directeur.id)
+        self.assertEqual(entry.company_id, self.company.id)
+
+        # Filtrable depuis le Journal (module=stock&model=fournisseur).
+        listing = auth(self.directeur).get(
+            '/api/django/audit/entries/',
+            {'module': 'stock', 'model': 'fournisseur'})
+        self.assertEqual(listing.status_code, 200)
+        ids = [row['id'] for row in listing.data['results']]
+        self.assertIn(entry.id, ids)
+
+    def test_fournisseur_orm_create_outside_request_not_logged(self):
+        from apps.stock.models import Fournisseur
+
+        Fournisseur.objects.create(company=self.company, nom='Direct ORM')
+        self.assertFalse(
+            AuditLog.objects.filter(action='create',
+                                    object_repr__icontains='Direct ORM')
+            .exists())

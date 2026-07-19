@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -52,9 +53,14 @@ vi.mock('../../api/qhseApi', () => {
         }),
       paretoDefauts: () => res({ pareto: [], premier_passage: {} }),
       nonConformites: {
-        list: emptyList, historique: emptyList,
+        // WIR32 — `list`/`creerIntervention`/`tauxDefaillanceProduit` sont des
+        // vi.fn() (au lieu de la simple fonction `emptyList` partagée) pour
+        // que les tests NcrDetail (pont NCR↔SAV) puissent surcharger la
+        // réponse et vérifier les appels.
+        list: vi.fn(emptyList), historique: emptyList,
         poserDisposition: emptyList, depuisTicketSav: emptyList,
-        creerIntervention: emptyList, tauxDefaillanceProduit: emptyList,
+        creerIntervention: vi.fn(() => Promise.resolve({ data: {} })),
+        tauxDefaillanceProduit: vi.fn(emptyList),
       },
       capa: { list: emptyList, enRetard: emptyList },
       plansInspection: crud(), plansChantier: crud(), releves: crud(),
@@ -66,7 +72,8 @@ vi.mock('../../api/qhseApi', () => {
       dechets: crud(), bordereauxDechets: crud(), recyclageModules: crud(),
       conformitesEnvironnementales: crud(), bilansCarbone: crud(),
       indicateursEsg: crud(),
-      derogations: crud(),
+      // WIR32 — `create` en vi.fn() : dialogue de création de dérogation.
+      derogations: { ...crud(), create: vi.fn(() => Promise.resolve({ data: {} })) },
       plansControleReception: crud(), pointsControleReception: crud(),
       controlesReception: { ...crud(), statuer: emptyList },
       codesDefaut: crud(),
@@ -96,6 +103,7 @@ vi.mock('../../api/qhseApi', () => {
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import authReducer from '../auth/store/authSlice'
+import qhseApi from '../../api/qhseApi'
 import QhseCockpit from './QhseCockpit.jsx'
 import NonConformites from './NonConformites.jsx'
 import Inspections from './Inspections.jsx'
@@ -165,6 +173,71 @@ describe('NonConformites', () => {
     expect(
       await screen.findByText('Suggérer la gravité (IA)'),
     ).toBeInTheDocument()
+  })
+})
+
+describe('NonConformites — NcrDetail (WIR32 — pont NCR↔SAV + dérogation)', () => {
+  const ncrRow = {
+    id: 7, reference: 'NCR-0007', titre: 'Casse verre', statut: 'ouverte',
+    gravite: 'majeure', chantier_id: 42, date_detection: '2026-07-01',
+    date_creation: '2026-07-01', disposition: null,
+  }
+
+  // DataTable rend à la fois la table desktop et le repli carte mobile (CSS
+  // seul, `dt-desktop:hidden` — les deux existent dans le DOM en jsdom) :
+  // on cible toujours le PREMIER match (`getAllByText(...)[0]`), même patron
+  // que KbParcoursPage.test.jsx.
+  async function ouvrirNcr() {
+    const matches = await screen.findAllByText('Casse verre')
+    fireEvent.click(matches[0])
+  }
+
+  it('ouvre une intervention SAV depuis la NCR (creerIntervention, jusqu’ici sans appelant)', async () => {
+    qhseApi.nonConformites.list.mockResolvedValueOnce({ data: [ncrRow] })
+    qhseApi.nonConformites.creerIntervention.mockResolvedValueOnce({
+      data: { ticket_id: 9, ticket_reference: 'SAV-0009', created: true },
+    })
+    renderWith(<NonConformites />)
+    await ouvrirNcr()
+    const btn = await screen.findByRole(
+      'button', { name: /Créer une intervention SAV/ })
+    fireEvent.click(btn)
+    await waitFor(() => expect(qhseApi.nonConformites.creerIntervention)
+      .toHaveBeenCalledWith(7, {}))
+  })
+
+  it('affiche le taux de défaillance produit dans son onglet (tauxDefaillanceProduit)', async () => {
+    qhseApi.nonConformites.list.mockResolvedValueOnce({ data: [ncrRow] })
+    // mockResolvedValue (persistant) et non ...Once : le panneau fetch dans un
+    // useEffect que StrictMode monte deux fois — un ...Once serait consommé au
+    // premier montage et le second rendu retomberait sur la valeur par défaut.
+    qhseApi.nonConformites.tauxDefaillanceProduit.mockResolvedValue({
+      data: [{ produit_id: 3, produit_nom: 'Onduleur Huawei', nb_ncr: 4 }],
+    })
+    renderWith(<NonConformites />)
+    await ouvrirNcr()
+    // L'onglet est un trigger Radix : il s'active au focus, que `userEvent`
+    // simule (pointerdown→focus→click) mais pas `fireEvent.click` sur le libellé.
+    await userEvent.click(
+      await screen.findByRole('tab', { name: 'Taux de défaillance produit' }))
+    expect(await screen.findByText('Onduleur Huawei')).toBeInTheDocument()
+    expect(screen.getByText('4 NCR')).toBeInTheDocument()
+  })
+
+  it('crée une dérogation depuis la NCR (DerogationsRegister n’était que lecture seule)', async () => {
+    qhseApi.nonConformites.list.mockResolvedValueOnce({ data: [ncrRow] })
+    renderWith(<NonConformites />)
+    await ouvrirNcr()
+    fireEvent.click(await screen.findByRole(
+      'button', { name: /Créer une dérogation/ }))
+    fireEvent.change(
+      await screen.findByPlaceholderText("Justification de l'acceptation en l'état"),
+      { target: { value: 'Tolérance client validée' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Créer la dérogation' }))
+    await waitFor(() => expect(qhseApi.derogations.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        non_conformite: 7, justification: 'Tolérance client validée',
+      })))
   })
 })
 

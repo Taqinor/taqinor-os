@@ -38,6 +38,11 @@ const santeApi = {
     // NTSAN18 — bouton « Patient arrivé » de l'écran Réception : bascule le
     // statut en salle d'attente (le serveur reste source de vérité).
     checkin: (id) => api.patch(`/sante/rendezvous/${id}/`, { statut: 'arrive' }),
+    // WIR53 — NTSAN37 : annulation (délai + pénalité calculés côté serveur,
+    // jamais de facturation auto). `annule_par` attendu : 'patient'|'clinique'.
+    // Réponse : le RDV mis à jour + `penalite_applicable` (bool).
+    annuler: (id, annule_par) =>
+      api.post(`/sante/rendezvous/${id}/annuler/`, { annule_par }),
   },
 
   // ── Nomenclature des actes (NTSAN7 — paramétrage clinique) ──
@@ -49,6 +54,19 @@ const santeApi = {
     update: (id, data) => api.patch(`/sante/actes-medicaux/${id}/`, data),
     desactiver: (id) => api.post(`/sante/actes-medicaux/${id}/desactiver/`),
     activer: (id) => api.post(`/sante/actes-medicaux/${id}/activer/`),
+  },
+
+  // ── Prises en charge / entente préalable (NTSAN12) ── WIR53(b) : la
+  // notification `sante.alertes_prise_en_charge_expirant` pointe vers
+  // `/sante/prises-en-charge?id=<pk>` — `PrisesEnChargePage` lit ce `?id=`.
+  prisesEnCharge: {
+    list: (params) => api.get('/sante/prises-en-charge/', { params }),
+    get: (id) => api.get(`/sante/prises-en-charge/${id}/`),
+  },
+
+  // ── Conventions (NTSAN9) ── noms utilisés pour l'affichage des PEC.
+  conventions: {
+    list: (params) => api.get('/sante/conventions/', { params }),
   },
 }
 

@@ -3,12 +3,14 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Tabs, TabsList, TabsTrigger, TabsContent,
   DefinitionList, Spinner, EmptyState, Button, Label, Input,
-  toast,
+  toast, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
 import { formatMAD, formatNumber, formatDate } from '../../lib/format'
 import { ENERGIES, VEHICULE_STATUTS, optionsFrom } from './flotte'
 import { VehiculeStatutPill } from './statusPills'
+import useFlotteResource from './useFlotteResource'
 
 /* ============================================================================
    UX16 — Panneau détail d'un véhicule (tiroir latéral à onglets).
@@ -305,11 +307,128 @@ function LedgerTab({ id }) {
   )
 }
 
+// WIR47 — Types d'accessoire (miroir fidèle de `RemiseAccessoire.Type`,
+// backend/apps/flotte/models.py).
+const TYPE_ACCESSOIRES = {
+  cle: 'Clé',
+  double_cle: 'Double de clé',
+  carte_carburant: 'Carte carburant',
+  tag_jawaz: 'Tag Jawaz',
+  badge: 'Badge',
+}
+
+// WIR47 — Dialogue « Remettre un accessoire » : `remisesAccessoire.create`
+// n'avait aucun appelant — détenteurs et historique étaient DÉJÀ affichés,
+// mais impossible d'enregistrer une nouvelle remise depuis l'écran.
+function RemiseAccessoireDialog({ actifId, conducteurs = [], onClose, onSaved }) {
+  const [typeAccessoire, setTypeAccessoire] = useState('cle')
+  const [conducteurId, setConducteurId] = useState('')
+  const [dateRemise, setDateRemise] = useState('')
+  const [commentaire, setCommentaire] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const peutEnregistrer = Boolean(conducteurId && dateRemise)
+  const dirty = Boolean(conducteurId || dateRemise || commentaire || typeAccessoire !== 'cle')
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!peutEnregistrer) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await flotteApi.remisesAccessoire.create({
+        actif_flotte: actifId,
+        type_accessoire: typeAccessoire,
+        conducteur: Number(conducteurId),
+        date_remise: dateRemise,
+        commentaire,
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Remettre un accessoire</DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="remise-type">Type d’accessoire</Label>
+              <select
+                id="remise-type"
+                autoFocus
+                value={typeAccessoire}
+                onChange={(e) => setTypeAccessoire(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                {Object.entries(TYPE_ACCESSOIRES).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="remise-conducteur">Conducteur</Label>
+              <select
+                id="remise-conducteur"
+                value={conducteurId}
+                onChange={(e) => setConducteurId(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Choisir —</option>
+                {conducteurs.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nom}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="remise-date">Date de remise</Label>
+            <Input id="remise-date" type="date" value={dateRemise} onChange={(e) => setDateRemise(e.target.value)} />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="remise-commentaire">Commentaire</Label>
+            <Input id="remise-commentaire" value={commentaire} onChange={(e) => setCommentaire(e.target.value)} />
+          </div>
+
+          {serverError && (
+            <p className="text-sm text-destructive" role="alert">{serverError}</p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!peutEnregistrer || saving}>
+              {saving ? 'Enregistrement…' : 'Remettre'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // XFLT20 — Onglet « Accessoires » : détenteurs courants (clés/cartes/badges)
 // + historique des remises. Résout l'``ActifFlotte`` du véhicule (la custody
 // est trackée par actif unifié, pas directement par Vehicule).
 function AccessoiresTab({ vehiculeId }) {
   const [state, setState] = useState({ loading: true, error: null, actifId: null, detenteurs: [], remises: [] })
+  const [showForm, setShowForm] = useState(false)
+  const { data: conducteurs } = useFlotteResource(flotteApi.conducteurs.list, { actif: 'true' })
 
   const load = useCallback(() => {
     if (!vehiculeId) return undefined
@@ -357,6 +476,10 @@ function AccessoiresTab({ vehiculeId }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setShowForm(true)}>Remettre un accessoire</Button>
+      </div>
+
       <div>
         <p className="mb-2 text-sm font-medium">Détenteurs courants</p>
         {state.detenteurs.length === 0 ? (
@@ -393,6 +516,15 @@ function AccessoiresTab({ vehiculeId }) {
           </ul>
         )}
       </div>
+
+      {showForm && (
+        <RemiseAccessoireDialog
+          actifId={state.actifId}
+          conducteurs={conducteurs}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); load(); toast.success('Accessoire remis.') }}
+        />
+      )}
     </div>
   )
 }
