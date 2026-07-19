@@ -163,7 +163,8 @@ class ConsoleWiringTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         keys = {s['key'] for s in resp.data['statuses']}
         self.assertEqual(
-            keys, {'token', 'ad_account', 'page', 'pixel', 'capi', 'paused'})
+            keys, {'token', 'ad_account', 'page', 'pixel', 'capi', 'paused',
+                   'prepaid_balance'})
         self.assertNotIn(SECRET, json.dumps(resp.data))
         token_row = next(
             s for s in resp.data['statuses'] if s['key'] == 'token')

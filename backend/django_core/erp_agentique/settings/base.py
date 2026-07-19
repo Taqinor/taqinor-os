@@ -817,6 +817,11 @@ CELERY_TASK_ROUTES = {
     'adsengine.autopause_blast_radius': {'queue': 'scheduled'},
     'adsengine.run_reward_divergence_check': {'queue': 'scheduled'},
     'adsengine.run_daily_reconciliation': {'queue': 'scheduled'},
+    # PUB (batch 2) — rollup mensuel des insights, purge des miroirs expirés et
+    # veille EOL de version Graph API (beat) → queue planifiée.
+    'adsengine.rollup_insights_monthly': {'queue': 'scheduled'},
+    'adsengine.purge_expired_mirrors': {'queue': 'scheduled'},
+    'adsengine.watch_graph_version_eol': {'queue': 'scheduled'},
     'core.dump_database': {'queue': 'scheduled'},
     'core.restore_drill': {'queue': 'scheduled'},
     'core.purge_backups': {'queue': 'scheduled'},

@@ -927,6 +927,20 @@ def _perf_num(perf, *keys):
     return 0.0
 
 
+def _perf_money(perf, *keys):
+    """Montant Decimal lu au mieux dans ``perf`` (0 si absent) — SANS passer par
+    ``float`` (un ``float(100)`` → ``Decimal('100.0')`` traînerait un « .0 »
+    parasite sur les entiers ; la dépense doit rester un Decimal propre)."""
+    for key in keys:
+        val = (perf or {}).get(key)
+        if val not in (None, ''):
+            try:
+                return Decimal(str(val))
+            except (ArithmeticError, TypeError, ValueError):
+                return Decimal('0')
+    return Decimal('0')
+
+
 def language_leaderboard(company):
     """PUB77 — Classement de la performance créative PAR LANGUE.
 
@@ -950,7 +964,7 @@ def language_leaderboard(company):
             'spend': Decimal('0'), 'results': 0, 'impressions': 0,
             'asset_count': 0})
         perf = asset.perf or {}
-        g['spend'] += Decimal(str(_perf_num(perf, 'spend', 'depense')))
+        g['spend'] += _perf_money(perf, 'spend', 'depense')
         g['results'] += int(_perf_num(perf, 'results', 'resultats'))
         g['impressions'] += int(_perf_num(perf, 'impressions'))
         g['asset_count'] += 1

@@ -37,9 +37,11 @@ class DevisViewTrackingSegmentsTests(TestCase):
             telephone='+212600000002')
 
     def _devis(self, ref, **kw):
+        kw.setdefault('client', self.client_obj)
+        kw.setdefault('statut', Devis.Statut.ENVOYE)
         return Devis.objects.create(
-            company=self.company, reference=ref, client=self.client_obj,
-            taux_tva=Decimal('20'), statut=Devis.Statut.ENVOYE, **kw)
+            company=self.company, reference=ref,
+            taux_tva=Decimal('20'), **kw)
 
     def test_never_opened_bucket(self):
         self._devis(f'DEV-{MONTH}-PUB5801')
