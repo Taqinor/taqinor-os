@@ -1982,3 +1982,122 @@ def existing_lead_emails(company, emails):
         Lead.objects.filter(company=company, email__in=emails)
         .values_list('email', flat=True)
     )
+
+
+# ── PUB64 — Calculateur recyclage COLD (aide à la décision, pas une action) ──
+
+# Buckets d'âge-au-COLD (jours). Le dernier segment est ouvert (180j+).
+COLD_AGE_BUCKETS = (
+    (0, 30, '0-30j'), (30, 90, '30-90j'), (90, 180, '90-180j'),
+    (180, None, '180j+'),
+)
+
+# Jamais un taux de reconversion calculé sur un échantillon minuscule (bruit
+# statistique) — sous ce seuil, ``rate`` reste ``None``.
+MIN_SAMPLE_COLD_BUCKET = 3
+
+
+def cold_reactivation_by_age_bucket(company):
+    """PUB64 — Taux de reconversion RÉEL des leads passés COLD, par
+    ÂGE-AU-COLD (date de création → PREMIÈRE entrée en COLD, lue dans le
+    chatter ``LeadActivity`` field='stage' — les valeurs stockées sont les
+    LIBELLÉS FR de ``STAGES.STAGE_LABELS``, jamais les clés brutes). Un lead
+    sans trace d'entrée COLD explicite (créé directement COLD, activité non
+    journalisée) est EXCLU — jamais un âge inventé. « Reconverti » = a
+    quitté COLD au moins une fois ET est ACTUELLEMENT au stade SIGNED (non
+    perdu).
+
+    Un bucket avec <``MIN_SAMPLE_COLD_BUCKET`` leads renvoie ``rate=None``
+    (bruit statistique, jamais un taux fabriqué). Renvoie une liste ordonnée
+    ``[{'bucket', 'total', 'reconverted', 'rate'}, ...]``."""
+    from . import stages as stage_mod
+    from .models import Lead, LeadActivity
+
+    cold_label = stage_mod.STAGE_LABELS[stage_mod.COLD]
+
+    # Première entrée en COLD par lead (âge-au-COLD).
+    first_cold_at = {}
+    for row in (LeadActivity.objects
+                .filter(lead__company=company,
+                        kind=LeadActivity.Kind.MODIFICATION,
+                        field='stage', new_value=cold_label)
+                .order_by('lead_id', 'created_at')
+                .values('lead_id', 'created_at')):
+        first_cold_at.setdefault(row['lead_id'], row['created_at'])
+
+    if not first_cold_at:
+        return [{'bucket': label, 'total': 0, 'reconverted': 0, 'rate': None}
+                for (_, _, label) in COLD_AGE_BUCKETS]
+
+    # A quitté COLD au moins une fois (old_value=cold_label -> autre étape).
+    left_cold_ids = set(
+        LeadActivity.objects.filter(
+            lead__company=company, kind=LeadActivity.Kind.MODIFICATION,
+            field='stage', old_value=cold_label,
+            lead_id__in=list(first_cold_at))
+        .values_list('lead_id', flat=True))
+    # Repli : certaines écritures historiques peuvent porter la clé brute
+    # (jamais supposé, mais couvert honnêtement) — union, jamais un ET.
+    left_cold_ids |= set(
+        LeadActivity.objects.filter(
+            lead__company=company, kind=LeadActivity.Kind.MODIFICATION,
+            field='stage', old_value=stage_mod.COLD,
+            lead_id__in=list(first_cold_at))
+        .values_list('lead_id', flat=True))
+
+    signed_now = set(
+        Lead.objects.filter(
+            id__in=list(first_cold_at), stage=stage_mod.SIGNED, perdu=False)
+        .values_list('id', flat=True))
+    reconverted_ids = left_cold_ids & signed_now
+
+    creation_by_id = dict(
+        Lead.objects.filter(id__in=list(first_cold_at))
+        .values_list('id', 'date_creation'))
+
+    buckets = {label: {'total': 0, 'reconverted': 0}
+               for (_, _, label) in COLD_AGE_BUCKETS}
+    for lead_id, cold_at in first_cold_at.items():
+        created = creation_by_id.get(lead_id)
+        if created is None or cold_at is None:
+            continue
+        age_days = (cold_at - created).days
+        if age_days < 0:
+            continue
+        for lo, hi, label in COLD_AGE_BUCKETS:
+            if age_days >= lo and (hi is None or age_days < hi):
+                buckets[label]['total'] += 1
+                if lead_id in reconverted_ids:
+                    buckets[label]['reconverted'] += 1
+                break
+
+    result = []
+    for (_, _, label) in COLD_AGE_BUCKETS:
+        b = buckets[label]
+        rate = (round(b['reconverted'] / b['total'], 4)
+                if b['total'] >= MIN_SAMPLE_COLD_BUCKET else None)
+        result.append({
+            'bucket': label, 'total': b['total'],
+            'reconverted': b['reconverted'], 'rate': rate,
+        })
+    return result
+
+
+def new_leads_by_mode_meta(company, *, date_start, date_end):
+    """PUB64 — Nombre de leads NOUVEAUX (créés sur ``[date_start, date_end]``)
+    par ``type_installation``, restreint au canal Meta (META_ADS/
+    WHATSAPP_CTWA) — le dénominateur du CAC-par-mode courant du calculateur
+    de recyclage COLD. Un mode absent de la fenêtre est simplement absent du
+    dict (jamais un 0 fabriqué). Renvoie ``{type_installation_ou_'': count}``."""
+    from django.db.models import Count
+
+    from .models import Lead
+
+    meta_channels = [Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA]
+    rows = (Lead.objects
+            .filter(company=company, canal__in=meta_channels,
+                    date_creation__date__gte=date_start,
+                    date_creation__date__lte=date_end)
+            .values('type_installation')
+            .annotate(n=Count('id')))
+    return {(r['type_installation'] or ''): r['n'] for r in rows}

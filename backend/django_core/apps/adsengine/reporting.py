@@ -482,6 +482,79 @@ def city_heatmap(company, *, date_start=None, date_end=None):
     return {'periode': periode, 'villes': result}
 
 
+# ── PUB64 — Calculateur recyclage COLD (aide à la décision, pas une action) ──
+
+MIN_COLD_RECYCLING_LEADS = 1  # au moins un lead COLD exploitable pour parler
+
+
+def _company_spend_window(company, date_start, date_end):
+    """Dépense totale de la société (``InsightSnapshot``, niveau CAMPAGNE —
+    évite tout double-comptage avec les instantanés ad set/ad enfants) sur
+    ``[date_start, date_end]``. Même primitif ``ContentType`` que
+    ``attribution``/``metrics`` (jamais réimplémenté à un autre niveau)."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from .models import AdCampaignMirror, InsightSnapshot
+
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    total = (InsightSnapshot.objects
+             .filter(company=company, content_type=ct,
+                     date__gte=date_start, date__lte=date_end)
+             .aggregate(total=Sum('spend'))['total'])
+    return total or Decimal('0')
+
+
+def cold_recycling_report(company, *, date_start=None, date_end=None):
+    """PUB64 — Calculateur d'aide à la décision GO/NO-GO « réactiver un lead
+    COLD vs acheter un lead neuf », basé sur les taux de conversion
+    HISTORIQUES réels par âge-au-COLD
+    (``apps.crm.selectors.cold_reactivation_by_age_bucket``) et le CAC
+    COURANT par mode marché (dépense société sur la fenêtre ÷ leads Meta
+    NEUFS de ce mode, ``apps.crm.selectors.new_leads_by_mode_meta``). UN
+    CALCULATEUR D'AIDE À LA DÉCISION, PAS UNE NURTURE — aucune action n'est
+    déclenchée ici.
+
+    Fenêtre par défaut : 90 jours glissants. Données insuffisantes (aucun
+    historique COLD exploitable, ou aucun lead Meta neuf sur la fenêtre) → le
+    dit CLAIREMENT (``avertissement``) et s'abstient de toute conclusion
+    chiffrée fausse."""
+    from apps.crm.selectors import (
+        cold_reactivation_by_age_bucket, new_leads_by_mode_meta,
+    )
+
+    date_start, date_end = _default_period(date_start, date_end)
+    spend = _company_spend_window(company, date_start, date_end)
+    leads_by_mode = new_leads_by_mode_meta(
+        company, date_start=date_start, date_end=date_end)
+
+    cac_par_mode = []
+    for mode, count in sorted(leads_by_mode.items()):
+        cac_par_mode.append({
+            'mode_installation': mode or '(non renseigné)',
+            'leads_neufs_meta': count,
+            'cac_actuel': _q2(spend / count) if count else None,
+        })
+
+    buckets = cold_reactivation_by_age_bucket(company)
+    has_cold_data = sum(b['total'] for b in buckets) >= MIN_COLD_RECYCLING_LEADS
+    donnees_suffisantes = has_cold_data and bool(cac_par_mode)
+
+    return {
+        'periode': {'debut': date_start.isoformat(),
+                    'fin': date_end.isoformat()},
+        'depense_totale': _q2(spend),
+        'cac_par_mode': cac_par_mode,
+        'reconversion_par_age_cold': buckets,
+        'donnees_suffisantes': donnees_suffisantes,
+        'avertissement': (
+            None if donnees_suffisantes else
+            "Historique de leads COLD ou dépense/leads Meta neufs "
+            "insuffisants sur la période pour un calcul fiable — "
+            "abstention (aucune conclusion chiffrée)."),
+    }
+
+
 def reconciliation_csv(company, *, day=None):
     """CSV de la table de réconciliation (§5.4). Réutilise
     ``reconciliation.reconcile`` (ADSENG31, fichier disjoint) — jamais un schéma
