@@ -4,6 +4,11 @@ import adsengineApi from './adsengineApi'
 import {
   normalizePreflight, normalizeValidation, normalizeFlightTemplate,
 } from './adsengine'
+// PUB5 — picker « Audiences d'engagement » (ADSDEEP59), orphelin : construit +
+// testé mais jamais monté dans le composeur d'adset. Aucun composeur d'adset
+// dédié n'existe encore côté front — le composeur du plan de vol EST le seul
+// endroit où une audience se prépare aujourd'hui.
+import EngagementAudiencePicker from './EngagementAudiencePicker'
 
 /* ============================================================================
    ENG40 — Éditeur de plan de vol + panneau préflight (l'écran-amiral P7).
@@ -21,6 +26,11 @@ import {
    ========================================================================== */
 
 const EMPTY_VAR = { cle: '', valeur: '' }
+
+// PUB5 — ciblage de base pour l'estimation d'audience (dossier §5, doctrine
+// « montrer l'estimation AVANT usage ») : le marché est le Maroc (aucun autre
+// pays n'est jamais ciblé), jamais un ciblage inventé au-delà de ce socle.
+const BASE_TARGETING_SPEC = { geo_locations: { countries: ['MA'] } }
 
 export default function FlightPlanScreen() {
   const [templates, setTemplates] = useState([])
@@ -75,6 +85,13 @@ export default function FlightPlanScreen() {
     if (next.has(id)) next.delete(id); else next.add(id)
     return next
   })
+
+  // PUB5 — une audience d'engagement créée s'ajoute comme variable du plan
+  // (traçable dans le payload composé) plutôt que de disparaître.
+  const onAudienceCreated = (data) => {
+    if (!data?.audience_id) return
+    setVariables(vs => [...vs, { cle: 'audience_engagement', valeur: String(data.audience_id) }])
+  }
 
   const composePayload = () => ({
     nom,
@@ -210,6 +227,17 @@ export default function FlightPlanScreen() {
                     ))}
                   </ul>
                 )}
+            </section>
+
+            {/* PUB5 — Audiences d'engagement (ADSDEEP59), orphelines avant cette
+                tâche : preset + estimation AVANT usage + création, disponible
+                depuis le composeur du plan de vol. */}
+            <section className="card ae-fp-audiences" data-testid="ae-fp-audiences"
+              style={{ padding: '1rem' }}>
+              <EngagementAudiencePicker
+                targetingSpec={BASE_TARGETING_SPEC}
+                onCreated={onAudienceCreated}
+              />
             </section>
 
             {/* Actions */}
