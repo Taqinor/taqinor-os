@@ -24,7 +24,7 @@ from .models import (
     ExperimentArm, FactEntry, FactTable, FlightPhase, FlightPlan,
     GuardrailConfig,
     InstagramCommentMirror, InstagramMediaMirror, InstagramPublishJob,
-    MetaConnection, PacingState, ReconciliationSnapshot, RulePolicy,
+    MetaConnection, ReconciliationSnapshot, RulePolicy,
     WeeklyBrief,
 )
 from .serializers import (
@@ -37,7 +37,7 @@ from .serializers import (
     FactEntrySerializer, FactTableSerializer,
     FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
     InstagramCommentMirrorSerializer, InstagramMediaMirrorSerializer,
-    MetaConnectionSerializer, PacingStateSerializer,
+    MetaConnectionSerializer,
     ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
 
@@ -334,13 +334,130 @@ class GuardrailConfigViewSet(AdsengineViewSet):
     serializer_class = GuardrailConfigSerializer
 
 
+# PUB2 — Contexte MDE/coût par défaut de la file VoI. ``delta_plausible``/``p``/
+# ``cost`` ne sont PAS stockés sur le nœud (ils dépendent des volumes du test) :
+# un contexte documenté et UNIFORME sur les candidats laisse le classement être
+# piloté par S·U·R RÉELS du nœud (enjeux/incertitude/pertinence). Révisés
+# trimestriellement ; aucune migration. (Miroir de ``simulator._TESTABLE_CTX``.)
+VOI_DEFAULT_BASE_RATE = 0.02        # p — taux de base (conversion lien)
+VOI_DEFAULT_DELTA_PLAUSIBLE = 0.5   # effet plausible relatif par défaut
+VOI_DEFAULT_TEST_N = 25200          # essais/bras (volume hebdo typique)
+VOI_DEFAULT_COST = 1.0              # coût unitaire neutre (ranking par S·U·R·T)
+
+
 class AssumptionNodeViewSet(AdsengineViewSet):
     """ASG1 — CRUD des nœuds de l'Assumption Engine (dd-assumption-engine
     §3.1), company-scopé. ``company`` posée côté serveur ; ``parent`` et
-    ``invalidation_links`` isolés à la MÊME société côté serializer."""
+    ``invalidation_links`` isolés à la MÊME société côté serializer.
+
+    PUB2 — trois actions LECTURE que « L'Arbre » (TreeScreen) appelle :
+    ``file-voi`` (classement VoI réel via ``voi.rank_candidates``), ``<id>/tests``
+    (historique des décisions/tests du nœud) et ``tests/<id>/leads`` (drill leads
+    réels derrière un test, via les sélecteurs CRM — jamais un import cross-app)."""
 
     queryset = AssumptionNode.objects.all()
     serializer_class = AssumptionNodeSerializer
+
+    @action(detail=False, methods=['get'], url_path='file-voi')
+    def file_voi(self, request):
+        """ASG3 — File de priorité VoI (argmax S·U·R·T/C) de la société. Sortie
+        RÉELLE de ``voi.rank_candidates`` (nœuds non-retirés), classée décroissante
+        avec le RANG déjà calculé côté serveur (l'écran n'en recalcule rien)."""
+        from . import voi
+
+        company = request.user.company
+        ctx = {
+            'delta_plausible': VOI_DEFAULT_DELTA_PLAUSIBLE,
+            'p': VOI_DEFAULT_BASE_RATE,
+            'n': VOI_DEFAULT_TEST_N,
+            'cost': VOI_DEFAULT_COST,
+        }
+        candidates = (AssumptionNode.objects
+                      .filter(company=company)
+                      .exclude(statut=AssumptionNode.Statut.RETIRED))
+        params = {node.pk: ctx for node in candidates}
+        ranking = voi.rank_candidates(company, params)
+        rows = []
+        for rang, (node, score) in enumerate(ranking, 1):
+            rows.append({
+                'node_id': node.pk,
+                'enonce_fr': node.enonce_fr,
+                'classe': node.classe,
+                'classe_display': node.get_classe_display(),
+                'voi': round(float(score['voi']), 6),
+                'rang': rang,
+                'S': round(float(score['S']), 4),
+                'U': round(float(score['U']), 4),
+                'R': round(float(score['R']), 4),
+                'T': round(float(score['T']), 4),
+                'C': round(float(score['C']), 4),
+            })
+        return Response(rows)
+
+    @action(detail=True, methods=['get'])
+    def tests(self, request, pk=None):
+        """Historique de tests d'un nœud = les DÉCISIONS (``DecisionLog``) qui ont
+        ouvert un slot POUR ce nœud (``allocations.winner_node_id``) — « l'arbre à
+        travers le temps ». Chaque ligne porte l'expérience contenante + le résumé
+        FR de la décision. Company-scopé (``get_object`` borne déjà à la société)."""
+        node = self.get_object()
+        company = request.user.company
+        logs = (DecisionLog.objects
+                .filter(company=company, allocations__winner_node_id=node.pk)
+                .select_related('experiment')
+                .order_by('-created_at'))
+        rows = []
+        for log in logs:
+            exp = log.experiment
+            rows.append({
+                'id': log.pk,
+                'nom': (exp.name if exp else f'Décision #{log.pk}'),
+                'statut_display': (exp.get_status_display() if exp else '—'),
+                'verdict_display': (log.summary_fr or '')[:160],
+                'quand': log.created_at.date().isoformat(),
+            })
+        return Response(rows)
+
+    @action(detail=False, methods=['get'],
+            url_path=r'tests/(?P<test_id>[^/.]+)/leads')
+    def test_leads(self, request, test_id=None):
+        """Leads RÉELS derrière un test = leads attribués aux ads des bras de
+        l'expérience de cette décision (jointure ``ExperimentArm.ad_id`` ↔
+        ``meta_ad_id`` du lead). Lecture CRM UNIQUEMENT via ``apps.crm.selectors``
+        (contrat cross-app). Company-scopé : une décision d'autrui → 404."""
+        company = request.user.company
+        log = (DecisionLog.objects
+               .filter(company=company, pk=test_id)
+               .select_related('experiment')
+               .first())
+        if log is None:
+            return Response({'detail': 'Test introuvable.'}, status=404)
+        exp = log.experiment
+        ad_ids = set()
+        if exp is not None:
+            ad_ids = set(
+                ExperimentArm.objects
+                .filter(company=company, experiment=exp)
+                .exclude(ad_id='')
+                .values_list('ad_id', flat=True))
+        if not ad_ids:
+            return Response([])
+
+        from apps.crm.selectors import attribution_lead_rows, lead_card
+
+        rows = []
+        for row in attribution_lead_rows(company):
+            if row.get('meta_ad_id') and row['meta_ad_id'] in ad_ids:
+                card = lead_card(row['id'], company)
+                if card is None:
+                    continue
+                rows.append({
+                    'id': row['id'],
+                    'nom': card['label'],
+                    'stage_label': card['subtitle'],
+                    'url': card['url'],
+                })
+        return Response(rows)
 
 
 class FactTableViewSet(AdsengineViewSet):
@@ -731,14 +848,6 @@ class AnomalyEventViewSet(AdsengineViewSet):
     http_method_names = ['get', 'head', 'options']
 
 
-class PacingStateViewSet(AdsengineViewSet):
-    """ADSENG4 — Liste (lecture seule) des états de pacing mensuels."""
-
-    queryset = PacingState.objects.all()
-    serializer_class = PacingStateSerializer
-    http_method_names = ['get', 'head', 'options']
-
-
 class CreativeGenerationBatchViewSet(AdsengineViewSet):
     """ADSENG5 — CRUD des lots de génération créative + approbation par LOT.
 
@@ -957,7 +1066,9 @@ class EngineActionViewSet(AdsengineViewSet):
         en ``ValidationError`` (400), jamais une 500."""
         from rest_framework import serializers as drf_serializers
 
-        from .services import CreativePolicyNotPassed, assert_creative_ok_for_ad
+        from .services import (
+            ActionPayloadInvalid, CreativePolicyNotPassed,
+            assert_creative_ok_for_ad, validate_manual_payload)
         company = self.request.user.company
         kind = serializer.validated_data.get('kind')
         payload = serializer.validated_data.get('payload') or {}
@@ -966,6 +1077,14 @@ class EngineActionViewSet(AdsengineViewSet):
         except CreativePolicyNotPassed as exc:
             raise drf_serializers.ValidationError(
                 {'creative_asset_id': str(exc)})
+        # PUB22 — validation de payload par kind pour les kinds atteignables par
+        # POST brut sans producteur curé (create_ad / set_spend_cap / rename) :
+        # un POST direct ne passe pas par ``propose_action``, on ré-enclenche donc
+        # ICI le même contrôle avant ``save`` (jamais une action inapplicable).
+        try:
+            validate_manual_payload(kind, payload)
+        except ActionPayloadInvalid as exc:
+            raise drf_serializers.ValidationError({'payload': str(exc)})
         super().perform_create(serializer)
 
     @action(detail=True, methods=['post'])
@@ -1004,6 +1123,54 @@ class EngineActionViewSet(AdsengineViewSet):
         except Exception as exc:  # échec Meta → action déjà passée « echouee »
             return Response({'detail': str(exc)}, status=502)
         return Response(self.get_serializer(instance).data)
+
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        """PUB45 — Annule une action APPLIQUÉE en PROPOSANT son inverse (rétablir
+        le budget mémorisé, restaurer le texte…) via le circuit propose→approuve
+        normal — JAMAIS un write direct. Kind non inversible (création, pause
+        non ré-activable) → 422 + explication FR. Proposer exige ``adsengine_manage``
+        (hérité : ``annuler`` n'est pas une action d'approbation)."""
+        from .services import ActionNotInvertible, propose_inverse_action
+        instance = self.get_object()
+        try:
+            inverse = propose_inverse_action(
+                instance, reason_fr=request.data.get('reason_fr'))
+        except ActionNotInvertible as exc:
+            return Response({'detail': str(exc), 'invertible': False}, status=422)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(self.get_serializer(inverse).data, status=201)
+
+
+class ProposeCuratedActionView(APIView):
+    """PUB22 — Propose une action CURÉE (``duplicate`` / ``set_schedule`` /
+    ``create_ad_study``) via son producteur backend (résolution + validation),
+    toujours à travers ``propose_action``. Ces kinds ne peuvent PAS être proposés
+    par POST brut (ils exigent une résolution DB, ex. le créatif LIVE d'une
+    duplication) — d'où cet endpoint dédié.
+
+    ``POST /api/django/adsengine/actions/proposer/<kind>/`` avec le corps propre
+    au kind (ex. ``{adset_id, name_suffix?, reason_fr?}`` pour ``duplicate``).
+    Company-scopé, gaté ``adsengine_manage``. Naissance PAUSED intacte (aucune
+    activation). Une entrée invalide → 400, jamais une 500."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, kind):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        from .services import propose_manual_curated
+        body = request.data or {}
+        reason_fr = body.get('reason_fr')
+        params = {k: v for k, v in body.items() if k != 'reason_fr'}
+        try:
+            action = propose_manual_curated(
+                company, kind=kind, params=params, reason_fr=reason_fr)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(EngineActionSerializer(action).data, status=201)
 
 
 # ── ADSENG33 — Drill-downs de reporting (dd-attribution part d) ───────────────
@@ -2133,25 +2300,6 @@ class RealLeadsView(APIView):
         return Response(real_lead_counts(company))
 
 
-class ConversationsPerAdView(APIView):
-    """ADSDEEP25 — Conversations WhatsApp RÉELLES par ad + signatures jointes.
-
-    ``GET /api/django/adsengine/metrics/conversations-per-ad/`` — company-scopé,
-    gaté ``adsengine_view``. Compte les ``CtwaReferral`` (webhook Cloud API
-    ADSDEEP24) par ad et joint les signatures par téléphone : « cette ad a
-    produit N conversations, M signées » — complément RÉEL de la métrique
-    agrégée ``conversations`` de Meta. Aucun secret."""
-
-    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
-
-    def get(self, request):
-        company, err = _adseng_company_gate(request, 'adsengine_view')
-        if err is not None:
-            return err
-        from .metrics import conversations_per_ad
-        return Response(conversations_per_ad(company))
-
-
 class AdsCockpitView(APIView):
     """ADSDEEP22 — Cockpit par ad (écran-console quotidien du fondateur) :
     une ligne par ad combinant miniature créatif, dépense, conversations,
@@ -2531,3 +2679,276 @@ class InstagramMediaToggleCommentsView(APIView):
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
+
+
+# ── SIG4 — Console de signaux : vues MINCES sur les trois modules PURS
+# (``health.py`` deux scores, ``signal_guards.py`` le quadrant, ``cohorts.py`` le
+# filigrane de maturation). Elles AGRÈGENT les InsightSnapshot RÉELS de la société
+# et les font passer par ces modules — c'est ce qui débranche les modules « morts »
+# (aucun consommateur de prod avant SIG4). Un score/verdict de signal est
+# AFFICHAGE/ALERTE SEULEMENT : il n'entre JAMAIS dans le bandit/l'allocation (§11),
+# invariant tenu par ``test_health.py``/``test_signal_guards.py`` (le bandit
+# n'importe pas ces modules ; ces vues, oui — c'est le câblage intentionnel).
+#
+# Constantes de RÉFÉRENCE de normalisation — révisées TRIMESTRIELLEMENT (même
+# doctrine que ``signal_guards.py``), lues via ``getattr`` sur la config si un
+# champ futur les porte, sinon la constante de module. AUCUNE migration ici.
+SIGNAL_WINDOW_DAYS = 30            # fenêtre glissante d'agrégation des insights
+SIGNAL_CTR_HEALTHY = 0.02         # CTR lien « sain » ≈ score créatif plein (1.0)
+SIGNAL_CPL_HEALTHY_MAD = 100.0    # CPL de référence ≈ score opérations plein (1.0)
+
+_SIGNAL_BAND_VERT = 0.66
+_SIGNAL_BAND_ORANGE = 0.40
+
+# Libellés FR (clé stable / label) des quatre garde-fous du quadrant (SIG2). La
+# clé mappe le nom interne du garde-fou (``signal_guards``) vers la clé UI.
+_GUARD_LABELS = {
+    'frequency': ('frequence', 'Fréquence'),
+    'quality_ranking': ('classement_qualite', 'Classement qualité'),
+    'cpl': ('cpl', 'CPL'),
+    'account_quality': ('qualite_compte', 'Qualité du compte'),
+}
+
+
+def _signal_clamp01(value):
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(1.0, v))
+
+
+def _signal_band(score):
+    """Bande FR ``(cle, libelle)`` d'un score de santé 0..1 (affichage/alerte)."""
+    if score >= _SIGNAL_BAND_VERT:
+        return 'vert', 'Vert'
+    if score >= _SIGNAL_BAND_ORANGE:
+        return 'orange', 'Orange'
+    return 'rouge', 'Rouge'
+
+
+def _gather_signal_inputs(company, config):
+    """Agrège les InsightSnapshot de CAMPAGNE de la société sur la fenêtre
+    glissante et dérive les signaux NORMALISÉS 0..1 (1 = meilleur) consommés par
+    ``health.py`` / ``signal_guards.py``, plus les nombres bruts et l'âge de
+    cohorte (filigrane ``cohorts.py``). LECTURE SEULE, company-scopé — jamais une
+    autre société."""
+    import datetime
+
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Avg, Sum
+    from django.utils import timezone
+
+    from . import cohorts as cohorts_mod
+    from . import signal_guards
+    from .models import InsightSnapshot as Snap
+
+    today = timezone.now().date()
+    start = today - datetime.timedelta(days=SIGNAL_WINDOW_DAYS)
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    qs = Snap.objects.filter(
+        company=company, content_type=ct, date__gte=start)
+    agg = qs.aggregate(
+        spend=Sum('spend'), results=Sum('results'),
+        impressions=Sum('impressions'), clicks=Sum('clicks'),
+        freq=Avg('frequency'))
+    spend = float(agg['spend'] or 0)
+    results = int(agg['results'] or 0)
+    impressions = int(agg['impressions'] or 0)
+    clicks = int(agg['clicks'] or 0)
+    avg_freq = float(agg['freq']) if agg['freq'] is not None else None
+
+    ctr = (clicks / impressions) if impressions else None
+    cpl = (spend / results) if results else None
+
+    ctr_healthy = float(getattr(config, 'signal_ctr_healthy', None)
+                        or SIGNAL_CTR_HEALTHY)
+    cpl_healthy = float(getattr(config, 'signal_cpl_healthy_mad', None)
+                        or SIGNAL_CPL_HEALTHY_MAD)
+    freq_cap = float(getattr(config, 'frequency_cap', None)
+                     or signal_guards.DEFAULT_FREQUENCY_CAP)
+
+    # Normalisation (documentée) — chaque valeur reste DÉRIVÉE de données réelles.
+    ctr_norm = _signal_clamp01(ctr / ctr_healthy) if ctr is not None else 0.0
+    # Fraîcheur = proxy de fatigue inverse : fréquence 0 → 1.0, ≥ plafond → 0.0.
+    freshness_norm = (
+        _signal_clamp01((freq_cap - avg_freq) / freq_cap)
+        if avg_freq is not None and freq_cap > 0 else 0.0)
+    # CPL normalisé = INVERSE du coût (un CPL bas → proche de 1).
+    cpl_norm = (_signal_clamp01(cpl_healthy / cpl)
+                if cpl and cpl > 0 else 0.0)
+    # Livraison = régularité de diffusion (part des jours de la fenêtre avec
+    # dépense > 0) — mesure réelle, sans cible arbitraire.
+    days_with_spend = (qs.filter(spend__gt=0)
+                       .values('date').distinct().count())
+    delivery_norm = _signal_clamp01(days_with_spend / float(SIGNAL_WINDOW_DAYS))
+
+    # Âge de cohorte = ancienneté (jours) du plus VIEIL insight de la fenêtre
+    # (via ``cohorts.cohort_age_days``) — filigrane de maturation + garde-fou CPL.
+    oldest = qs.order_by('date').values_list('date', flat=True).first()
+    cohort_age = cohorts_mod.cohort_age_days(oldest, today) if oldest else 0
+
+    return {
+        'creative_signals': {'ctr': ctr_norm, 'freshness': freshness_norm},
+        'ops_signals': {'cpl': cpl_norm, 'delivery': delivery_norm},
+        'guard_signals': {
+            'frequency': avg_freq,
+            'cpl': cpl,
+            'cpl_target': cpl_healthy,
+            'cohort_age_days': cohort_age,
+            'impressions': impressions,
+            # Non synchronisés dans l'InsightSnapshot aujourd'hui : rapportés
+            # honnêtement (aucun garde-fou ne freine sur une absence de donnée).
+            'quality_ranking': None,
+            'account_quality_dropped': False,
+        },
+        'raw': {
+            'ctr': ctr, 'cpl': cpl, 'frequency': avg_freq,
+            'impressions': impressions, 'clicks': clicks, 'spend': spend,
+            'results': results, 'delivery_ratio': delivery_norm,
+            'cohort_age_days': cohort_age, 'window_days': SIGNAL_WINDOW_DAYS,
+        },
+    }
+
+
+def _guardrail_quadrant(guard_signals, config):
+    """Exécute les QUATRE garde-fous (``signal_guards.GUARDS``) — déclenchés OU
+    non — et rend une ligne UI par garde-fou : ``{key, label, valeur, seuil,
+    freine, statut_display, raison}``. Contrairement à ``evaluate_guards`` (qui ne
+    rend QUE les déclenchés), le quadrant montre les quatre, même « OK »."""
+    from . import signal_guards
+
+    rows = []
+    for guard in signal_guards.GUARDS:
+        verdict = guard(guard_signals, config)
+        key, label = _GUARD_LABELS.get(verdict.guard, (verdict.guard, verdict.guard))
+        computed = verdict.computed or {}
+        if verdict.guard == 'frequency':
+            valeur, seuil = computed.get('frequency'), computed.get('cap')
+        elif verdict.guard == 'cpl':
+            target = computed.get('cpl_target')
+            mult = computed.get('multiplier')
+            valeur = computed.get('cpl')
+            seuil = (float(target) * float(mult)
+                     if target not in (None, 0) and mult else None)
+        elif verdict.guard == 'quality_ranking':
+            valeur, seuil = computed.get('quality_ranking'), 'below_average'
+        else:  # account_quality
+            valeur, seuil = computed.get('account_quality'), None
+        if verdict.triggered:
+            statut_display = 'Freine'
+        elif valeur is None:
+            statut_display = 'Indisponible'
+        else:
+            statut_display = 'OK'
+        rows.append({
+            'key': key,
+            'label': label,
+            'valeur': (float(valeur)
+                       if isinstance(valeur, (int, float)) else valeur),
+            'seuil': (float(seuil)
+                      if isinstance(seuil, (int, float)) else seuil),
+            'freine': bool(verdict.triggered),
+            'statut_display': statut_display,
+            'raison': verdict.reason or '',
+        })
+    return rows
+
+
+class SignalsView(APIView):
+    """SIG4 — Deux scores de santé (créatif/opérations) + quadrant de garde-fous
+    durs, sur données RÉELLES de la société. ``GET /adsengine/signaux/`` —
+    company-scopé, gaté ``adsengine_view``. LECTURE SEULE. Vue mince sur
+    ``health.py`` (scores) + ``signal_guards.py`` (quadrant)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from . import health
+
+        config = GuardrailConfig.objects.filter(company=company).first()
+        data = _gather_signal_inputs(company, config)
+        creatif = health.creative_health(data['creative_signals'], config)
+        operations = health.operations_health(data['ops_signals'], config)
+        band_c = _signal_band(creatif)
+        band_o = _signal_band(operations)
+        return Response({
+            'creatif': {
+                'score': round(creatif, 4),
+                'bande': band_c[0], 'bande_display': band_c[1],
+            },
+            'operations': {
+                'score': round(operations, 4),
+                'bande': band_o[0], 'bande_display': band_o[1],
+            },
+            'guardrails': _guardrail_quadrant(data['guard_signals'], config),
+            'fenetre_jours': SIGNAL_WINDOW_DAYS,
+        })
+
+
+# Filigrane de maturation par groupe de signal (SIG3/``cohorts.py``) : chaque
+# ligne = une fenêtre de maturation RÉELLE (``cohorts.MATURATION_DAYS``) + la
+# valeur normalisée du signal correspondant, évaluée contre l'âge réel des
+# données. ``value_key`` pointe la valeur normalisée dans le dict agrégé.
+_COHORT_DRILL = {
+    'creatif': [
+        ('ctr', 'CTR — proxy immédiat', 'creative_signals', 'ctr'),
+        ('ctwa_conversations', 'Conversations 7j', 'ops_signals', 'delivery'),
+    ],
+    'operations': [
+        ('cpl', 'CPL 14-28j', 'ops_signals', 'cpl'),
+        ('signature', 'Signature 60-90j', None, None),
+    ],
+}
+
+
+class SignalCohortView(APIView):
+    """SIG4/SIG3 — Drill-down par cohorte d'un signal (``?signal=creatif`` ou
+    ``operations``) : le filigrane de maturation (``cohorts.py``) évalué contre
+    l'âge RÉEL des données de la société. ``GET /adsengine/signaux/cohorte/`` —
+    company-scopé, gaté ``adsengine_view``. LECTURE SEULE."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from . import cohorts as cohorts_mod
+
+        signal = (request.query_params.get('signal') or 'creatif').strip()
+        windows = _COHORT_DRILL.get(signal)
+        if windows is None:
+            return Response({'detail': 'Signal inconnu.'}, status=400)
+        config = GuardrailConfig.objects.filter(company=company).first()
+        data = _gather_signal_inputs(company, config)
+        age = int(data['raw']['cohort_age_days'])
+
+        rows = []
+        for idx, (signal_key, fenetre, group, value_key) in enumerate(windows, 1):
+            maturation = cohorts_mod.maturation_of(signal_key)
+            mature = cohorts_mod.is_mature(signal_key, age)
+            if mature:
+                maturite_display = 'Mûr'
+            elif maturation != cohorts_mod.UNKNOWN_MATURATION_DAYS \
+                    and age >= float(maturation) / 2.0:
+                maturite_display = 'En maturation'
+            else:
+                maturite_display = 'Précoce'
+            valeur = (data[group][value_key]
+                      if group is not None else None)
+            rows.append({
+                'id': idx,
+                'fenetre': fenetre,
+                'valeur': (round(float(valeur), 4) if valeur is not None
+                           else None),
+                'maturite_display': maturite_display,
+                'mure': bool(mature),
+                'maturation_jours': (None
+                                     if maturation == cohorts_mod.UNKNOWN_MATURATION_DAYS
+                                     else int(maturation)),
+            })
+        return Response(rows)

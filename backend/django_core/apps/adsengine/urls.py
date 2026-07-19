@@ -13,7 +13,7 @@ from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
     AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AnomalyEventViewSet,
-    ArmDailyStatViewSet, AssumptionNodeViewSet, ConversationsPerAdView,
+    ArmDailyStatViewSet, AssumptionNodeViewSet,
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
@@ -33,9 +33,10 @@ from .views import (
     MetaConnectionHealthView,
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
     MetricsDashboardView,
-    MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
+    MetricsLeadsView, MetricsPacingView, ProposeCuratedActionView, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
-    RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
+    RulePolicyViewSet, SignalCohortView, SignalsView, SimulationDetailView,
+    SimulationListView, StatusView,
     VariantFunnelView, VariantReportView, WiringHealthView,
 )
 from .whatsapp_webhook import WhatsAppCloudWebhookView
@@ -62,7 +63,6 @@ router.register(r'decisions', DecisionLogViewSet, basename='decision-log')
 # ADSENG4 — gardien + trésorerie
 router.register(r'regles', RulePolicyViewSet, basename='rule-policy')
 router.register(r'anomalies', AnomalyEventViewSet, basename='anomaly-event')
-router.register(r'pacing', PacingStateViewSet, basename='pacing-state')
 # ADSENG5 — créa + vol
 router.register(r'lots-creatifs', CreativeGenerationBatchViewSet,
                 basename='creative-batch')
@@ -154,10 +154,9 @@ urlpatterns = [
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).
     path('metrics/real-leads/', RealLeadsView.as_view(),
          name='adsengine-real-leads'),
-    # ADSDEEP25 — conversations WhatsApp RÉELLES par ad (CtwaReferral) + signés.
-    path('metrics/conversations-per-ad/', ConversationsPerAdView.as_view(),
-         name='adsengine-conversations-per-ad'),
-    # ADSDEEP22 — cockpit par ad (écran-console quotidien).
+    # ADSDEEP22 — cockpit par ad (écran-console quotidien). Les conversations
+    # WhatsApp par ad y sont une COLONNE (PUB12 : l'ancien endpoint dédié
+    # metrics/conversations-per-ad/, sans consommateur, était redondant → retiré).
     path('metrics/ads-cockpit/', AdsCockpitView.as_view(),
          name='adsengine-ads-cockpit'),
     # ADSDEEP12 — résolveur de médias frais (URL jouable non persistée).
@@ -204,6 +203,17 @@ urlpatterns = [
     path('instagram/medias/<str:media_meta_id>/commentaires-actif/',
          InstagramMediaToggleCommentsView.as_view(),
          name='adsengine-ig-media-toggle-comments'),
+    # PUB22 — proposition d'action CURÉE (duplicate/set_schedule/create_ad_study)
+    # via son producteur backend (toujours à travers propose_action). Placé AVANT
+    # le routeur pour que « actions/proposer/<kind>/ » gagne sur « actions/<pk>/ ».
+    path('actions/proposer/<str:kind>/', ProposeCuratedActionView.as_view(),
+         name='adsengine-propose-curated'),
+    # SIG4 — console de signaux (deux scores de santé + quadrant de garde-fous
+    # durs + drill-down par cohorte). Vues minces sur health.py / signal_guards.py
+    # / cohorts.py — company-scopées, lecture ``adsengine_view``.
+    path('signaux/', SignalsView.as_view(), name='adsengine-signaux'),
+    path('signaux/cohorte/', SignalCohortView.as_view(),
+         name='adsengine-signaux-cohorte'),
     # ADSDEEP59 — audiences d'engagement (picker composeur d'adset) + estimation
     # d'audience avant usage. NON gated consentement (aucune donnée CRM envoyée).
     path('audiences/engagement/', EngagementAudienceView.as_view(),

@@ -33,6 +33,9 @@ export default function ActionsLogScreen() {
   const [loading, setLoading] = useState(true)
   const [statut, setStatut] = useState('')
   const [mode, setMode] = useState('')
+  // PUB45 — état d'annulation PAR action ({ id: { ok, message } }) + id en cours.
+  const [cancelState, setCancelState] = useState({})
+  const [cancelBusy, setCancelBusy] = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -40,6 +43,23 @@ export default function ActionsLogScreen() {
       .then(r => setActions(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
       .catch(() => setActions([]))
       .finally(() => setLoading(false))
+  }, [])
+
+  // PUB45 — « Annuler » : PROPOSE l'inverse (jamais un write direct). Succès →
+  // message renvoyant vers Approbations ; 422 → explication (kind non inversible).
+  const handleCancel = useCallback((id) => {
+    setCancelBusy(id)
+    setCancelState(s => ({ ...s, [id]: null }))
+    adsengineApi.actions.cancel(id)
+      .then(() => setCancelState(s => ({
+        ...s,
+        [id]: { ok: true, message: 'Proposition inverse créée — à approuver dans « Approbations ».' },
+      })))
+      .catch(err => setCancelState(s => ({
+        ...s,
+        [id]: { ok: false, message: err?.response?.data?.detail || 'Annulation impossible.' },
+      })))
+      .finally(() => setCancelBusy(null))
   }, [])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
@@ -103,6 +123,22 @@ export default function ActionsLogScreen() {
                         : isAuto ? 'Appliquée automatiquement (dans le band)' : 'En attente d’approbation'}
                       {a.result_detail ? ` — ${a.result_detail}` : ''}
                     </p>
+                    {/* PUB45 — annuler une action APPLIQUÉE = proposer l'inverse. */}
+                    {resKey === 'applique' && (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <button type="button" className="btn btn-light" data-testid="ae-log-cancel"
+                          onClick={() => handleCancel(a.id)} disabled={cancelBusy === a.id}>
+                          Annuler (proposer l&apos;inverse)
+                        </button>
+                        {cancelState[a.id] && (
+                          <p data-testid="ae-log-cancel-msg"
+                            style={{ margin: '0.35rem 0 0', fontSize: '0.85rem',
+                              color: cancelState[a.id].ok ? '#15803d' : '#b45309' }}>
+                            {cancelState[a.id].message}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </li>
                 )
               })}

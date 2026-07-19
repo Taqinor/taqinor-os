@@ -88,6 +88,16 @@ const adsengineApi = {
     // @action backend EN : approve / reject (ADSENGINT1).
     approve: (id) => api.post(`/adsengine/actions/${id}/approve/`),
     reject: (id, payload) => api.post(`/adsengine/actions/${id}/reject/`, payload),
+    // PUB22 — proposition d'action CURÉE (duplicate/set_schedule/create_ad_study)
+    // via le producteur backend (résolution + validation) ; les kinds simples
+    // passent par `create` ({kind, reason_fr, payload}). Tout finit en
+    // propose_action (naissance PAUSED intacte, jamais un write Meta direct).
+    proposeCurated: (kind, body) =>
+      api.post(`/adsengine/actions/proposer/${kind}/`, body),
+    // PUB45 — « Annuler » une action APPLIQUÉE = PROPOSER son inverse (rétablir
+    // le budget mémorisé, restaurer le texte…) via le circuit propose→approuve
+    // normal — jamais un write direct. 422 si le kind n'est pas inversible.
+    cancel: (id, payload) => api.post(`/adsengine/actions/${id}/annuler/`, payload),
   },
 
   // ── ENG11/ENG26 — Brief hebdomadaire ──
@@ -187,6 +197,12 @@ const adsengineApi = {
     // budgétaire, fatigue, tracking, fenêtres de données). Jamais auto-chargé
     // (bouton « Lancer l'audit »).
     audit: () => api.get('/adsengine/reporting/audit/'),
+    // PUB12 — export CSV SERVEUR (ReportExportView) : source de vérité unique,
+    // inclut la table de réconciliation. Blob authentifié (jamais un CSV
+    // fabriqué côté client, qui divergerait du serveur). `params` :
+    // { table: 'variantes' | 'reconciliation', date? }.
+    export: (params) =>
+      api.get('/adsengine/reporting/export/', { params, responseType: 'blob' }),
   },
 
   // ── ADSDEEP53/54 — Boîte de réception des commentaires (posts + dark posts) ──

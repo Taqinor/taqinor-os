@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 /* ENG45 — Drill-downs reporting (ENG33) : table variantes, entonnoir campagne,
-   cohortes/lag, export CSV. Tous les chiffres = ceux de l'API mockée ; le CSV
-   est construit depuis ces mêmes chiffres. */
+   cohortes/lag, export CSV. Tous les chiffres = ceux de l'API mockée. PUB12 :
+   l'export CSV est SERVI PAR LE BACKEND (reports.export), plus fabriqué ici. */
 
 const mocks = vi.hoisted(() => ({
   variants: vi.fn(),
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   leaderboard: vi.fn(),
   scatter: vi.fn(),
   audit: vi.fn(),
+  exportCsv: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -20,6 +21,7 @@ vi.mock('./adsengineApi', () => ({
     reports: {
       variants: mocks.variants, funnel: mocks.funnel, cohorts: mocks.cohorts,
       leaderboard: mocks.leaderboard, scatter: mocks.scatter, audit: mocks.audit,
+      export: mocks.exportCsv,
     },
   },
 }))
@@ -105,16 +107,24 @@ describe('ReportsScreen (ENG45)', () => {
     expect(row).toHaveTextContent('9')
   })
 
-  it('l\'export CSV contient les chiffres des variantes', async () => {
+  it('l\'export CSV appelle le ReportExportView serveur (blob), pas un CSV client', async () => {
+    mocks.exportCsv.mockResolvedValue({ data: new Blob(['x'], { type: 'text/csv' }) })
+    // Stubs jsdom pour le téléchargement du blob.
+    const createUrl = vi.fn(() => 'blob:mock')
+    const revokeUrl = vi.fn()
+    URL.createObjectURL = createUrl
+    URL.revokeObjectURL = revokeUrl
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+
     renderScreen()
-    const link = await screen.findByTestId('ae-reports-export')
-    expect(link).toHaveAttribute('download', 'variantes-taqinor.csv')
-    const href = link.getAttribute('href')
-    expect(href).toMatch(/^data:text\/csv/)
-    const csv = decodeURIComponent(href.replace(/^data:text\/csv;charset=utf-8,/, ''))
-    expect(csv).toContain('Variante,Impressions')
-    expect(csv).toContain('Reel toiture v1,12000,34,1500,44')
-    expect(csv).toContain('Statique prix,8000,12,900,75')
+    const btn = await screen.findByTestId('ae-reports-export')
+    fireEvent.click(btn)
+
+    await waitFor(() => expect(mocks.exportCsv).toHaveBeenCalledWith({ table: 'variantes' }))
+    await waitFor(() => expect(createUrl).toHaveBeenCalled())
+    expect(clickSpy).toHaveBeenCalled()
+    clickSpy.mockRestore()
   })
 
   it('affiche des états vides quand tout est vide', async () => {

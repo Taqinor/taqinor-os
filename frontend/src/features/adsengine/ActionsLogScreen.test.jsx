@@ -6,10 +6,10 @@ import { filterActionLog, actionMode, actionResultKey } from './adsengine'
 /* ENG28 — Journal d'actions : timeline EngineAction (raison, résultat, qui a
    approuvé, auto/manuel), filtrable par statut et par mode. */
 
-const mocks = vi.hoisted(() => ({ log: vi.fn() }))
+const mocks = vi.hoisted(() => ({ log: vi.fn(), cancel: vi.fn() }))
 
 vi.mock('./adsengineApi', () => ({
-  default: { actions: { log: mocks.log } },
+  default: { actions: { log: mocks.log, cancel: mocks.cancel } },
 }))
 
 import ActionsLogScreen from './ActionsLogScreen'
@@ -72,5 +72,28 @@ describe('ActionsLogScreen (ENG28)', () => {
     fireEvent.change(screen.getByTestId('ae-log-filter-mode'), { target: { value: 'auto' } })
     await waitFor(() => expect(screen.getAllByTestId('ae-log-row')).toHaveLength(1))
     expect(screen.getByText('Fréquence trop haute')).toBeInTheDocument()
+  })
+
+  it('« Annuler » n\'apparaît que sur les actions APPLIQUÉES et propose l\'inverse', async () => {
+    mocks.cancel.mockResolvedValue({ data: { id: 99 } })
+    renderScreen()
+    await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+    // Une seule action est « appliquée » (id 2) → un seul bouton Annuler.
+    const buttons = screen.getAllByTestId('ae-log-cancel')
+    expect(buttons).toHaveLength(1)
+    fireEvent.click(buttons[0])
+    await waitFor(() => expect(mocks.cancel).toHaveBeenCalledWith(2))
+    expect(await screen.findByTestId('ae-log-cancel-msg')).toHaveTextContent('Approbations')
+  })
+
+  it('un kind non inversible affiche l\'explication renvoyée par le serveur (422)', async () => {
+    mocks.cancel.mockRejectedValue({
+      response: { data: { detail: 'Une mise en pause ne s\'annule pas automatiquement.', invertible: false } },
+    })
+    renderScreen()
+    await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-log-cancel'))
+    expect(await screen.findByTestId('ae-log-cancel-msg'))
+      .toHaveTextContent('ne s\'annule pas')
   })
 })

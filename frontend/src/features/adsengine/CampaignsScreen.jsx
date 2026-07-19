@@ -3,6 +3,7 @@ import { RefreshCw, ChevronRight } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
+import ManualActionMenu from './ManualActionMenu'
 
 /* ============================================================================
    ENG24 — Écran « Campagnes » (miroirs Meta) du moteur publicitaire.
@@ -197,6 +198,11 @@ export default function CampaignsScreen() {
                     </dd>
                   </dl>
 
+                  {/* PUB22 — proposer une action sur CETTE campagne (plafond,
+                      pause, CBO…) : chaque soumission passe par l'approbation. */}
+                  <ManualActionMenu
+                    target={{ metaId: hierarchy.meta_id, scope: 'campaign', name: hierarchy.nom }} />
+
                   <h4 style={{ margin: '0 0 0.5rem' }}>Ad sets</h4>
                   {(hierarchy.adsets || []).length === 0
                     ? <p data-testid="ae-camp-adsets-empty" style={{ color: '#64748b' }}>Aucun ad set synchronisé.</p>
@@ -243,6 +249,11 @@ export default function CampaignsScreen() {
                   <p style={{ color: '#64748b', margin: '0.5rem 0' }}>
                     Apprentissage : {openAdset.learning_badge?.label || 'Inconnu'}
                   </p>
+                  {/* PUB22 — proposer une action sur CET ad set (budget, duplication,
+                      horaire, création d'ad…) via la boîte d'approbation. */}
+                  <ManualActionMenu
+                    target={{ metaId: openAdset.meta_id, scope: 'adset', name: openAdset.nom }} />
+
                   {(openAdset.ads || []).length === 0
                     ? <p data-testid="ae-camp-ads-empty" style={{ color: '#64748b' }}>Aucune ad synchronisée.</p>
                     : (

@@ -4,7 +4,7 @@ import { BarChart3, Download, ClipboardList } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeVariants, normalizeFunnel, normalizeCohorts, normalizeLeaderboard,
-  normalizeScatter, toCsv, formatMAD, formatNumber, formatPercent,
+  normalizeScatter, formatMAD, formatNumber, formatPercent,
 } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 
@@ -15,16 +15,15 @@ import DataWindowNotice from './DataWindowNotice'
    - TABLE des variantes (impressions, réponses WhatsApp, coût, coût/réponse) ;
    - ENTONNOIR de campagne (étapes ordonnées avec leur valeur) ;
    - COHORTES avec le lag médian jusqu'à la signature.
-   L'export CSV est construit côté client à partir des variantes CHARGÉES (les
-   mêmes chiffres que l'API — jamais inventés) et proposé en lien téléchargeable.
+   L'export CSV est SERVI PAR LE BACKEND (ReportExportView, PUB12) : source de
+   vérité unique incluant la table de réconciliation — jamais un CSV fabriqué
+   côté client (qui divergerait du serveur).
 
    ADSDEEP47 — un second ONGLET « Créatifs » : classement spend-weighted par
    hook/angle/format + nuage hook rate × dépense (quadrants FR « pépites
    cachées »/« gouffres »/« gagnants confirmés »/« à surveiller »), période
    sélectionnable (7/30/90 jours).
    ========================================================================== */
-
-const CSV_HEADERS = ['Variante', 'Impressions', 'Réponses WhatsApp', 'Coût (MAD)', 'Coût par réponse (MAD)']
 
 const DIMENSIONS = [
   { key: 'hook', label: 'Accroche' },
@@ -123,15 +122,25 @@ export default function ReportsScreen() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de dimension/période
   useEffect(() => { loadCreative() }, [loadCreative])
 
-  // Export CSV : construit depuis les variantes chargées (data-URI, pas de dep).
-  const csvHref = useMemo(() => {
-    if (variants.length === 0) return null
-    const rows = variants.map(v => [
-      v.nom, v.impressions ?? '', v.reponses_whatsapp ?? '', v.cout_mad ?? '', v.cout_par_reponse ?? '',
-    ])
-    const csv = toCsv(CSV_HEADERS, rows)
-    return `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`
-  }, [variants])
+  // Export CSV : SERVI PAR LE BACKEND (PUB12). On télécharge le blob authentifié
+  // du ReportExportView (source de vérité unique, table de réconciliation
+  // incluse) puis on déclenche l'enregistrement — jamais un CSV fabriqué ici.
+  const handleExportCsv = useCallback(() => {
+    adsengineApi.reports.export({ table: 'variantes' })
+      .then(r => {
+        const blob = r.data instanceof Blob
+          ? r.data : new Blob([r.data], { type: 'text/csv;charset=utf-8' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'variantes-taqinor.csv'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+      })
+      .catch(() => {})
+  }, [])
 
   const funnelMax = useMemo(
     () => funnel.reduce((m, e) => Math.max(m, Number.isFinite(e.valeur) ? e.valeur : 0), 0) || 1,
@@ -143,12 +152,12 @@ export default function ReportsScreen() {
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <BarChart3 size={20} aria-hidden="true" /> Reporting
         </h2>
-        {tab === 'apercu' && csvHref && (
-          <a className="btn btn-primary" data-testid="ae-reports-export"
-            href={csvHref} download="variantes-taqinor.csv"
+        {tab === 'apercu' && variants.length > 0 && (
+          <button type="button" className="btn btn-primary" data-testid="ae-reports-export"
+            onClick={handleExportCsv}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
             <Download size={15} aria-hidden="true" /> Exporter en CSV
-          </a>
+          </button>
         )}
       </div>
 
