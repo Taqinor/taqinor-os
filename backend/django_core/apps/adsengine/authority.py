@@ -1,5 +1,11 @@
 """ADSENG11 — Table d'autorité par barreau, comme DONNÉES (dd-science-core §3).
 
+STATUT (PUB25, 2026-07-19) — NON CÂBLÉ en production : aucun appelant hors tests
+(``grep 'authority' apps/adsengine`` ne renvoie que ce module + ses tests). Pas
+un doublon. EN ATTENTE DE : le branchement de la table d'autorité par barreau
+dans le moteur de décision — aucune décision ne lit encore ``rung → autorité``.
+Capacité prête + testée, en attente de son point de contact ; jamais mort silencieux.
+
 Le tableau « rung → autorité de décision » du dossier, encodé en **données** (un
 dict de module), jamais en logique codée en dur. Les services CHARGENT la table
 (éventuellement avec des overrides par société) et la logique la LIT : aucune
