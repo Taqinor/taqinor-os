@@ -3838,7 +3838,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   déclenche AUCUN GET /leads (onglet réseau) et la valeur affichée vient du payload PATCH ; un
   refetch lent qui répond après un drag n'écrase pas l'étape optimiste ; chaque échec toaste.
   (ROUTINE — M) (@model: sonnet) (@lane: LB0)
-- [ ] LB8 — **P2 : la sélection est élaguée contre la liste FILTRÉE.** Bug recon2-03 #6 :
+- [x] LB8 — **P2 : la sélection est élaguée contre la liste FILTRÉE.** Bug recon2-03 #6 :
   `pruneSelection` élague contre TOUS les leads → un lead sélectionné puis masqué par un filtre
   reste bulk-actionnable en invisible. Fix (blueprint I5) : `visibleSelected` se calcule contre
   `filtered.map(l => l.id)` ; la barre bulk affiche le compte visible. Files :
@@ -4252,6 +4252,26 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   snapshot périmé). Tests : nouveau `crmSliceFetchLeadsObsolescence.test.mjs` (4 assertions),
   nouveau `LeadsPageNoOverfetch.test.mjs` (6 assertions) — 158 tests node (leads + adjacents)
   re-exécutés, verts.
+- 2026-07-19 LB8 — sélection élaguée contre la liste FILTRÉE (bug #6, blueprint I5) :
+  `visibleSelected` (LeadsPage.jsx) élague désormais `pruneSelection(selected,
+  filtered.map(l => l.id))` au lieu de `leads.map(...)` (TOUS les leads chargés, filtre ou pas) —
+  un lead sélectionné puis masqué par un filtre restait bulk-actionnable EN INVISIBLE. `selected`
+  (l'état React brut) n'est jamais muté par `pruneSelection` (fonction pure) : retirer le filtre
+  fait naturellement réapparaître les leads déjà cochés sans logique supplémentaire. La barre bulk
+  (`BulkActionBar count={visibleSelected.size}`) et `runBulk` (qui n'agit que sur
+  `[...visibleSelected]`) héritent du fix sans y toucher. Tests : nouveau
+  `LeadsPageSelectionPruning.test.mjs` (4 assertions — wiring source + 3 scénarios DoD exécutés
+  contre la vraie logique pure `pruneSelection` de `features/crm/bulk.js`). Suite complète
+  leads + adjacents (162 tests node) re-exécutée, verte.
+
+**Lane LB0 (urgence) — LB1 à LB8 TOUTES livrées 2026-07-19.** Les lanes suivantes (LB1 board,
+LB2 carte, LB3 liste, LB4 shell/filtres/KPI/URL, LB5 vues secondaires, LB6 polish/dark,
+LB7 tests/e2e/goldens de la carte des fichiers — @lane LB1-LB7 ci-dessous, à ne pas confondre
+avec les tâches LB1-LB8 de cette section) peuvent désormais bâtir dessus : `funnelRank`/
+`isStageMoveAllowed` (stages.js) et `SIGNE_INTERCEPT`/`isSigneIntercept` (signeIntercept.js)
+sont les nouveaux contrats partagés ; `onMarkPerdu`/`stageOptionsFor` sont les nouveaux points
+d'extension côté carte/liste ; le contrat CSS D1 (`.lp-page`/`data-view`/`.kb-*`/`.lv-*`) est en
+place, LANE C peut poser `.lv-sticky-name` sans retoucher `index.css` (déjà prêt).
 
 ## Group F — Design foundation & tokens
 

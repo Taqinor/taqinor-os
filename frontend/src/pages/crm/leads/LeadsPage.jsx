@@ -238,11 +238,18 @@ export default function LeadsPage() {
     return () => clearTimeout(t)
   }, [bulkMsg])
 
-  // Sélection effective : on ignore (sans muter l'état) les leads disparus
-  // après un refetch/filtre. Dérivé → pas d'effet ni de rendu en cascade.
+  // Sélection effective : on ignore (sans muter l'état `selected`) les leads
+  // disparus après un refetch OU masqués par un filtre. Dérivé → pas d'effet
+  // ni de rendu en cascade.
+  // LB8 — bug recon2-03 #6 : élaguait contre `leads` (TOUS les leads chargés,
+  // filtre ou pas) — un lead sélectionné puis masqué par un filtre restait
+  // bulk-actionnable EN INVISIBLE (la barre bulk agissait sur un lead que
+  // l'utilisateur ne voyait plus à l'écran). Élague désormais contre
+  // `filtered` (blueprint I5) : `selected` (l'état brut) N'EST PAS touché —
+  // retirer le filtre fait réapparaître naturellement les leads déjà cochés.
   const visibleSelected = useMemo(
-    () => pruneSelection(selected, leads.map((l) => l.id)),
-    [selected, leads],
+    () => pruneSelection(selected, filtered.map((l) => l.id)),
+    [selected, filtered],
   )
 
   // Au moins un lead archivé dans la sélection ? Sert à griser « Restaurer »
