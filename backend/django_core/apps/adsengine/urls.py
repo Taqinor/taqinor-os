@@ -8,6 +8,7 @@ suivantes de la lane.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .incrementality import GeoHoldoutReportView
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
@@ -140,6 +141,10 @@ urlpatterns = [
     # budgétaire, fatigue, tracking, fenêtres de données), 100 % lecture.
     path('reporting/audit/', AccountAuditView.as_view(),
          name='adsengine-reporting-audit'),
+    # PUB38 — rapport d'incrémentalité geo-holdout (zone tenue vs zones
+    # actives), 100 % lecture, aucune action automatique.
+    path('reporting/incrementalite/', GeoHoldoutReportView.as_view(),
+         name='adsengine-reporting-incrementalite'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).

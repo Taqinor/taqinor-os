@@ -1744,6 +1744,10 @@ def reporting_lead_rows(company, *, date_start=None, date_end=None):
     lead n'a pas de devis accepté (un lead au stade SIGNÉ sans devis n'a pas
     d'horodatage de signature → lag indéterminé, jamais fabriqué).
 
+    PUB38 — ``ville`` (brute, non normalisée) est incluse pour le harnais
+    d'incrémentalité geo-holdout d'``apps.adsengine`` (zone tenue vs zones
+    actives) ; additif, ignoré des consommateurs existants (entonnoir/cohortes).
+
     Lecture seule, scopée société ; jamais un lead archivé. ``date_start``/
     ``date_end`` (date, inclus) bornent ``date_creation``. Renvoie une LISTE de
     dicts (données pures)."""
@@ -1772,6 +1776,7 @@ def reporting_lead_rows(company, *, date_start=None, date_end=None):
             'created_date': (lead.date_creation.date()
                              if lead.date_creation else None),
             'signature_date': signature_date,
+            'ville': lead.ville or '',
         })
     return rows
 
