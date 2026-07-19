@@ -7230,3 +7230,41 @@ textarea.form-control {
     flex: 0 0 clamp(220px, 24vw, 272px);
   }
 }
+
+/* ===== LB28 — Prévision (ForecastView) : parité clavier KanbanView =====
+   Équivalent clavier du glisser (<select> mois, MÊME motif que
+   `.kb-stage-mover`/StageMover) + hint de drop en pointillés pour une
+   colonne-mois vide (« Non daté » garde son texte neutre — jamais une cible
+   valide, cf. handleDragEnd). */
+.fv-month-mover {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 6px;
+}
+.fv-month-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.78rem;
+}
+.fv-month-status {
+  white-space: nowrap;
+}
+.fv-col-drop-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  margin: 4px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  text-align: center;
+}
+.kb-over .fv-col-drop-hint {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
+}
