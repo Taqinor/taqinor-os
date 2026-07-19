@@ -1,5 +1,13 @@
 """AGEN5 — CONFIG du pré-linter policy/marque FR (règles, PAS de logique).
 
+STATUT (PUB25, 2026-07-19) — Consommé par ``policy_lint.py`` (moteur), lui-même
+NON CÂBLÉ au pipeline de génération en PRODUCTION : ``generation.
+generate_grounded_variants`` (câblé par PUB16) fait sa PROPRE garde d'ancrage
+numérique et n'invoque pas encore ``policy_lint``. Pas un doublon (la config des
+règles vit ICI, la logique dans ``policy_lint.py``). EN ATTENTE DE : l'insertion
+de ``policy_lint`` dans le pipeline ``tier_router``/génération. Prêt + testé ;
+jamais mort silencieux.
+
 dd-assumption-engine §10.2 point 4 : « Pré-linter policy/marque FR (UN seul
 appel par pub) ». Les RÈGLES vivent ici (données, éditables sans toucher au
 moteur ``policy_lint.py``) ; chacune porte un id, une catégorie, une action

@@ -10,14 +10,15 @@ pose une note chatter ARC8 (``records.services.log_note``) sur le
 """
 import logging
 
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from core.events import (
-    devis_accepted, devis_refused, devis_sent, lead_stage_changed, ticket_resolu,
+    appointment_effectue, devis_accepted, devis_refused, devis_sent,
+    lead_stage_changed, ticket_resolu,
 )
 
-from .models import LeadActivity
+from .models import Appointment, LeadActivity
 from .services import (
     _CONTACT_KINDS,
     avancer_stage_new_vers_contacted,
@@ -108,6 +109,32 @@ def _flip_parrainage_converti_on_devis_accepted(sender, devis, user, ancien_stat
         return
     parrainage.statut = Parrainage.Statut.CONVERTI
     parrainage.save(update_fields=['statut'])
+    _suggerer_graine_pub_parrainage(parrainage, user)
+
+
+def _suggerer_graine_pub_parrainage(parrainage, user):
+    """PUB65 — Poste, sur la fiche du PARRAIN, une note chatter suggérant une
+    graine publicitaire géo/lookalike autour de lui (jamais une action
+    automatique — un humain doit déclencher via
+    ``apps.adsengine.audiences``). Best-effort : n'échoue JAMAIS la
+    conversion du parrainage elle-même."""
+    parrain = getattr(parrainage, 'parrain', None)
+    if parrain is None:
+        return
+    try:
+        from apps.adsengine.audiences import referral_seed_suggestion
+        from apps.records.services import log_note
+
+        nom_complet = f'{parrain.nom} {parrain.prenom or ""}'.strip() or 'parrain'
+        suggestion = referral_seed_suggestion(
+            parrain_nom=nom_complet,
+            parrain_localisation=getattr(parrain, 'adresse', None))
+        log_note(parrain, user, suggestion['reason_fr'],
+                 company=parrainage.company)
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais la conversion
+        logger.warning(
+            'PUB65 : suggestion de graine pub échouée pour parrainage #%s',
+            getattr(parrainage, 'pk', '?'), exc_info=True)
 
 
 @receiver(devis_refused, dispatch_uid="crm_signal_signe_sans_devis_actif")
@@ -185,3 +212,52 @@ def _chatter_on_ticket_resolu(sender, ticket, company, user, ancien_statut,
         logger.warning(
             'ARC37 : chatter ARC8 échoué sur ticket_resolu pour ticket #%s',
             getattr(ticket, 'pk', '?'), exc_info=True)
+
+
+# ── PUB30 — appointment_effectue : transition GÉNUINE Appointment → EFFECTUE ──
+# Intra-CRM (comme le récepteur QJ7 sur LeadActivity ci-dessus), pas un
+# abonnement M6 — CE module ÉMET ici l'événement dont ``adsengine`` (jamais
+# importé par crm) s'abonne dans SON PROPRE apps.py/receivers.py, pour pousser
+# un événement CAPI dédié (même famille/gating que ADSENG32).
+
+_APPOINTMENT_OLD_STATUT_ATTR = '_pub30_old_statut'
+
+
+@receiver(pre_save, sender=Appointment,
+          dispatch_uid="crm_capture_appointment_old_statut")
+def _capture_appointment_old_statut(sender, instance, **kwargs):
+    """Capture l'ANCIEN statut (la base porte encore l'ancienne valeur) avant
+    le save — un Appointment neuf (pas de pk) → ancien statut None."""
+    old = None
+    if getattr(instance, 'pk', None):
+        old = (Appointment.objects
+               .filter(pk=instance.pk)
+               .values_list('statut', flat=True)
+               .first())
+    setattr(instance, _APPOINTMENT_OLD_STATUT_ATTR, old)
+
+
+@receiver(post_save, sender=Appointment,
+          dispatch_uid="crm_emit_appointment_effectue")
+def _emit_appointment_effectue_on_transition(sender, instance, created,
+                                             **kwargs):
+    """Sur une transition GÉNUINE vers EFFECTUE, émet ``appointment_effectue``.
+
+    Un save qui laisse le statut inchangé (ex. édition des notes d'un RDV déjà
+    EFFECTUE) ne réémet JAMAIS — même garde que ADSENG32
+    (``capi_crm._emit_on_stage_change``). Best-effort : un abonné en échec ne
+    casse jamais le save du rendez-vous."""
+    new_statut = getattr(instance, 'statut', None)
+    if new_statut != Appointment.Statut.EFFECTUE:
+        return
+    old_statut = getattr(instance, _APPOINTMENT_OLD_STATUT_ATTR, None)
+    if not created and old_statut == new_statut:
+        return  # save sans changement de statut → rien à émettre.
+    try:
+        appointment_effectue.send(
+            sender='crm.Appointment', appointment=instance,
+            company=instance.company, user=None, ancien_statut=old_statut)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'PUB30 : émission appointment_effectue échouée pour le '
+            'rendez-vous #%s', getattr(instance, 'pk', '?'), exc_info=True)

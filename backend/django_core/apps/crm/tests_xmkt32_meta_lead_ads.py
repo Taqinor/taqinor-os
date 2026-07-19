@@ -13,7 +13,11 @@ Couvre :
     dans le lead existant au lieu d'en créer un second (QJ8) ;
   - aucun scraping : la récupération passe par ``fetch_meta_lead_data``
     (Graph API officiel), jamais par un fetch de page HTML.
+  - PUB26 — signature HMAC ``X-Hub-Signature-256`` : bien formée → traité ;
+    mal signée → 403 ; secret absent → accepté quand même (rétro-compat).
 """
+import hashlib
+import hmac
 import json
 from unittest import mock
 
@@ -26,6 +30,12 @@ from apps.crm.models import Lead
 
 VERIFY_TOKEN = 'test-verify-token'
 ACCESS_TOKEN = 'test-access-token'
+APP_SECRET = 'test-app-secret'
+
+
+def _sign(secret, body: bytes) -> str:
+    return 'sha256=' + hmac.new(
+        secret.encode(), body, hashlib.sha256).hexdigest()
 
 
 def _lead_data(leadgen_id='1001', nom='Yassine Bennani',
@@ -182,3 +192,53 @@ class MetaLeadAdsIngestTests(TestCase):
         resp = self._post(_notification_payload(leadgen_id='5001'))
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+
+
+@override_settings(
+    META_LEAD_ADS_ACCESS_TOKEN=ACCESS_TOKEN, META_LEAD_ADS_APP_SECRET=APP_SECRET)
+class MetaLeadAdsSignatureTests(TestCase):
+    """PUB26 — vérification HMAC ``X-Hub-Signature-256`` du POST de notification."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor Meta Sig', slug='taqinor-meta-sig')
+        self.url = reverse('meta-lead-ads-webhook')
+
+    def _post(self, payload, *, signature=None):
+        body = json.dumps(payload).encode('utf-8')
+        headers = {}
+        if signature is not None:
+            headers['HTTP_X_HUB_SIGNATURE_256'] = signature
+        return self.client.post(
+            self.url, data=body, content_type='application/json', **headers)
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_valid_signature_is_processed(self, fetch_mock):
+        fetch_mock.return_value = _lead_data(leadgen_id='6001')
+        payload = _notification_payload(leadgen_id='6001')
+        body = json.dumps(payload).encode('utf-8')
+        resp = self._post(payload, signature=_sign(APP_SECRET, body))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
+
+    def test_missing_signature_is_rejected_403(self):
+        resp = self._post(_notification_payload(leadgen_id='6002'))
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+
+    def test_wrong_signature_is_rejected_403(self):
+        resp = self._post(
+            _notification_payload(leadgen_id='6003'),
+            signature='sha256=' + ('0' * 64))
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 0)
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    @override_settings(META_LEAD_ADS_APP_SECRET='')
+    def test_absent_secret_stays_backward_compatible(self, fetch_mock):
+        """Secret non configuré : le webhook reste ouvert (comportement
+        historique préservé) — un warning est loggué mais rien n'est bloqué."""
+        fetch_mock.return_value = _lead_data(leadgen_id='6004')
+        resp = self._post(_notification_payload(leadgen_id='6004'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)

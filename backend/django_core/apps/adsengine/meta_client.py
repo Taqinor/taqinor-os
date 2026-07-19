@@ -32,16 +32,80 @@ FORCED_STATUS = 'PAUSED'
 
 # ── ADSDEEP4 — Fenêtres d'attribution, SOURCE UNIQUE ─────────────────────────
 # ``action_attribution_windows`` demandé sur chaque pull d'insights de
-# conversion. Les fenêtres VIVANTES au 2026-07 (dossier insights-api §4). Les
-# fenêtres ``7d_view`` et ``28d_view`` sont MORTES depuis 2026-01-12 : les
-# demander renvoie SILENCIEUSEMENT aucune donnée (aucune erreur Graph) — donc
-# jamais les coder. Un test-garde (``test_attribution_windows``) échoue si l'une
-# d'elles réapparaît quelque part dans ce module.
-ATTRIBUTION_WINDOWS = ('1d_click', '7d_click', '1d_view')
+# conversion. Fenêtres VIVANTES au 2026-07 après DEUX refontes Meta (PUB39,
+# re-validées 2026-07-19 contre la doc courante) :
+#   - 2026-01-12 : ``7d_view`` et ``28d_view`` SUPPRIMÉES d'Ads Manager/API —
+#     la plus longue fenêtre de VUE disponible est désormais 1 j ;
+#   - 2026-03 : refonte du CLICK-THROUGH, désormais LINK-CLICKS-ONLY. Les
+#     interactions sociales (likes/partages/enregistrements/commentaires) et
+#     l'ancien « engaged-view » (seuil abaissé de 10 s à 5 s) basculent dans une
+#     fenêtre « engage-through » (ex « engaged-view », valeur API ``1d_ev``). On
+#     la demande EXPLICITEMENT pour ne pas PERDRE ces conversions qui ne comptent
+#     plus en click-through.
+# Sources (2026) : PPC Land « Meta restricts attribution windows… » (Insights
+# API) ; Jon Loomer « How Meta Ads Attribution Works in 2026 » ; adsuploader
+# « Meta Click Attribution in 2026: Only Link Clicks Count Now » ; valeur API
+# ``1d_ev`` = doc Ads Action Stats (Graph API v25). Les fenêtres ``7d_view``/
+# ``28d_view`` demandées renvoient SILENCIEUSEMENT aucune donnée — jamais les
+# coder. Un test-garde (``test_attribution_windows``) échoue si une fenêtre morte
+# réapparaît, ou si la liste vivante diverge de la doc.
+ATTRIBUTION_WINDOWS = ('1d_click', '7d_click', '1d_view', '1d_ev')
 
 # Fenêtres INTERDITES (mortes en silence) — listées pour la garde uniquement,
 # jamais émises.
 DEAD_ATTRIBUTION_WINDOWS = ('7d_view', '28d_view')
+
+
+# ── PUB35 — Attribution INCRÉMENTALE native Meta ─────────────────────────────
+# Contre-vérification CAUSALE des choix du bandit : les conversions ATTRIBUÉES
+# (dans la fenêtre de clic) ≠ INCRÉMENTALES (celles qui n'auraient PAS eu lieu
+# sans la pub — mesurées par le modèle d'attribution incrémentale Meta, déployé
+# progressivement depuis avr. 2025). La disponibilité de ces colonnes est en
+# DÉPLOIEMENT PROGRESSIF côté Meta, jamais garantie pour un compte donné (surtout
+# hors US) : on les DEMANDE seulement si un probe les valide, sinon on dégrade
+# proprement (aucune erreur, aucune donnée stockée). Noms candidats à revalider
+# au fil du déploiement (cf. PUB39 pour les fenêtres d'attribution).
+INCREMENTAL_ATTRIBUTION_FIELDS = (
+    'incremental_conversions',
+    'incremental_conversion_value',
+)
+
+
+def _incremental_to_float(value):
+    """PUB35 — Une métrique incrémentale peut arriver en scalaire OU en liste
+    façon AdsActionStats (``[{'value': ..}]``). Renvoie un float agrégé, ou
+    ``None`` si illisible (jamais d'exception)."""
+    if value in (None, ''):
+        return None
+    if isinstance(value, list):
+        total = None
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            try:
+                total = (total or 0.0) + float(item.get('value'))
+            except (TypeError, ValueError):
+                continue
+        return total
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_incremental_attribution(row):
+    """PUB35 — Extrait les métriques d'attribution incrémentale d'une ligne
+    d'insight (dict). Renvoie un dict ``{champ: float}`` des SEULES clés présentes
+    et lisibles, ou ``{}`` si aucune (compte sans la colonne → dégradation
+    propre : rien n'est stocké, aucun affichage incrémental)."""
+    row = row or {}
+    out = {}
+    for field in INCREMENTAL_ATTRIBUTION_FIELDS:
+        if field in row:
+            val = _incremental_to_float(row[field])
+            if val is not None:
+                out[field] = val
+    return out
 
 
 # ── Taxonomie d'erreurs ──────────────────────────────────────────────────────
@@ -348,6 +412,101 @@ class MetaClient:
             'GET', acct, params={'fields': ','.join(fields or ('currency',))})
         return payload if isinstance(payload, dict) else {}
 
+    # PUB97 — champs de trésorerie du nœud de compte (prépayé Meta Maroc).
+    # ``balance``/``amount_spent`` sont en unités MINEURES (centimes) de la
+    # devise du compte ; ``funding_source_details`` porte le mode de financement.
+    ACCOUNT_BALANCE_FIELDS = (
+        'balance', 'spend_cap', 'amount_spent', 'currency',
+        'funding_source_details')
+
+    @staticmethod
+    def _minor_to_major(value):
+        """Convertit une unité mineure Meta (centimes, str) en majeure (Decimal),
+        ou ``None`` si absente/illisible (dégradation propre)."""
+        from decimal import Decimal, InvalidOperation
+        if value in (None, ''):
+            return None
+        try:
+            return (Decimal(str(value)) / Decimal('100')).quantize(
+                Decimal('0.01'))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
+    def get_account_balance(self):
+        """PUB97 — Solde / financement du compte publicitaire (LECTURE).
+
+        Renvoie un dict normalisé (montants en unités MAJEURES de la devise du
+        compte) ::
+
+            {'balance': Decimal|None, 'spend_cap': Decimal|None,
+             'amount_spent': Decimal|None, 'currency': str,
+             'funding_source_details': dict, 'has_balance_field': bool}
+
+        Dégradation documentée : si l'API n'expose pas ``balance`` (certains
+        comptes/modes de financement), ``balance`` est ``None`` et
+        ``has_balance_field`` False — l'appelant marque la surveillance trésorerie
+        dégradée sans lever d'alarme."""
+        payload = self.get_account(fields=self.ACCOUNT_BALANCE_FIELDS)
+        fsd = payload.get('funding_source_details')
+        return {
+            'balance': self._minor_to_major(payload.get('balance')),
+            'spend_cap': self._minor_to_major(payload.get('spend_cap')),
+            'amount_spent': self._minor_to_major(payload.get('amount_spent')),
+            'currency': payload.get('currency') or '',
+            'funding_source_details': fsd if isinstance(fsd, dict) else {},
+            'has_balance_field': 'balance' in payload,
+        }
+
+    # PUB101 — santé du compte : codes Meta ``account_status`` / ``disable_reason``
+    # traduits en libellés FR. Un compte ≠ ACTIF (1) ressemble à une panne de
+    # données — on le LIT plutôt que de le deviner. Codes : dossier Graph API
+    # AdAccount (jamais devinés en dur ailleurs).
+    ACCOUNT_STATUS_FR = {
+        1: 'Actif', 2: 'Désactivé', 3: 'Impayé (non réglé)',
+        7: 'En revue de risque', 8: 'En attente de règlement',
+        9: 'Période de grâce', 100: 'Fermeture en attente',
+        101: 'Fermé', 201: 'Actif (tout)', 202: 'Fermé (tout)',
+    }
+    DISABLE_REASON_FR = {
+        0: '', 1: 'Politique d\'intégrité des annonces',
+        2: 'Revue propriété intellectuelle', 3: 'Risque de paiement',
+        4: 'Compte gris fermé', 5: 'Revue AFC', 6: 'Intégrité business (RAR)',
+        7: 'Fermeture permanente', 8: 'Compte revendeur inutilisé',
+        9: 'Compte inutilisé',
+    }
+    # Statuts SAINS (aucune alerte). Tout autre statut connu déclenche une alerte.
+    ACCOUNT_STATUS_HEALTHY = frozenset({1, 201})
+    ACCOUNT_HEALTH_FIELDS = ('account_status', 'disable_reason', 'name')
+
+    def get_account_health(self):
+        """PUB101 — Santé du compte publicitaire (LECTURE).
+
+        Renvoie ``{'account_status': int|None, 'account_status_label': str,
+        'disable_reason': int|None, 'disable_reason_label': str,
+        'is_healthy': bool, 'name': str}``. Dégradation propre si l'API n'expose
+        pas le statut (``account_status`` None → ``is_healthy`` True, pas
+        d'alarme : on ne devine pas une panne)."""
+        payload = self.get_account(fields=self.ACCOUNT_HEALTH_FIELDS)
+        raw_status = payload.get('account_status')
+        raw_reason = payload.get('disable_reason')
+        try:
+            status = int(raw_status) if raw_status is not None else None
+        except (TypeError, ValueError):
+            status = None
+        try:
+            reason = int(raw_reason) if raw_reason is not None else None
+        except (TypeError, ValueError):
+            reason = None
+        return {
+            'account_status': status,
+            'account_status_label': self.ACCOUNT_STATUS_FR.get(
+                status, '') if status is not None else '',
+            'disable_reason': reason,
+            'disable_reason_label': self.DISABLE_REASON_FR.get(reason, ''),
+            'is_healthy': status is None or status in self.ACCOUNT_STATUS_HEALTHY,
+            'name': payload.get('name') or '',
+        }
+
     def get_campaigns(self, *, fields=None, limit=None):
         return self._read_list(self._account_edge('campaigns'),
                                fields=fields or self.CAMPAIGN_SYNC_FIELDS,
@@ -370,6 +529,31 @@ class MetaClient:
         if fields:
             query['fields'] = ','.join(fields)
         return self._paged(f'{object_id}/insights', params=query)
+
+    def incremental_attribution_available(self):
+        """PUB35 — ÉTAPE 1 : les colonnes d'attribution incrémentale sont-elles
+        exposées pour CE compte publicitaire ? Déploiement progressif Meta →
+        jamais supposé, toujours vérifié avant d'ajouter les champs à un pull
+        (un champ inconnu ferait échouer TOUT l'appel insights).
+
+        Tente une lecture minimale (hier, niveau compte) des champs incrémentaux.
+        Renvoie ``True`` si l'API les accepte ET renvoie au moins une clé
+        incrémentale ; ``False`` sinon (champ inconnu, erreur Graph, ou données
+        absentes) — dégradation propre, jamais d'exception propagée."""
+        acct = str(self.ad_account_id or '').strip()
+        if not acct:
+            return False
+        node = acct if acct.startswith('act_') else f'act_{acct}'
+        try:
+            rows = self.get_insights(
+                node, fields=INCREMENTAL_ATTRIBUTION_FIELDS,
+                params={'date_preset': 'yesterday'})
+        except MetaError:
+            return False  # champ inconnu / non déployé → indisponible
+        for row in rows or []:
+            if parse_incremental_attribution(row):
+                return True
+        return False
 
     # ── Créatif LIVE (ADSDEEP11/12/13) ───────────────────────────────────────
     # Sous-champs du nœud ``creative`` demandés pour miroiter le créatif diffusé

@@ -815,6 +815,13 @@ CELERY_TASK_ROUTES = {
     # « rayon d'explosion » des créas générées (beat) → queue planifiée.
     'adsengine.decay_assumptions_weekly': {'queue': 'scheduled'},
     'adsengine.autopause_blast_radius': {'queue': 'scheduled'},
+    'adsengine.run_reward_divergence_check': {'queue': 'scheduled'},
+    'adsengine.run_daily_reconciliation': {'queue': 'scheduled'},
+    # PUB (batch 2) — rollup mensuel des insights, purge des miroirs expirés et
+    # veille EOL de version Graph API (beat) → queue planifiée.
+    'adsengine.rollup_insights_monthly': {'queue': 'scheduled'},
+    'adsengine.purge_expired_mirrors': {'queue': 'scheduled'},
+    'adsengine.watch_graph_version_eol': {'queue': 'scheduled'},
     'core.dump_database': {'queue': 'scheduled'},
     'core.restore_drill': {'queue': 'scheduled'},
     'core.purge_backups': {'queue': 'scheduled'},
@@ -850,6 +857,8 @@ CELERY_TASK_ROUTES = {
     'adsengine.sync_insights_daily': {'queue': 'scheduled'},
     # ENG11 — brief hebdomadaire déterministe.
     'adsengine.generate_weekly_brief': {'queue': 'scheduled'},
+    # PUB76 — fraîcheur hebdo des assets (chiffre périmé / créa hors saison).
+    'adsengine.flag_stale_assets': {'queue': 'scheduled'},
     # ADSDEEP62 — digest quotidien FR (dépense/conversations/leads/signatures/
     # alertes/top ad de la veille).
     'adsengine.daily_ads_digest': {'queue': 'scheduled'},
@@ -865,6 +874,10 @@ CELERY_TASK_ROUTES = {
     # ADSDEEP8/18 — sync hebdo des breakdowns + pull quotidien des leads.
     'adsengine.sync_breakdowns_weekly': {'queue': 'scheduled'},
     'adsengine.pull_meta_leads': {'queue': 'scheduled'},
+    # PUB89 — score quotidien de qualité de la chaîne d'attribution.
+    'adsengine.check_attribution_quality': {'queue': 'scheduled'},
+    # PUB94 — snapshot hebdo d'observabilité de L'Arbre (branches mortes).
+    'adsengine.flag_dead_branches_weekly': {'queue': 'scheduled'},
     # NTCRD21/32/33/34 — jobs crédit planifiés (exposition, encours, dérogations,
     # polices assurance-crédit expirantes).
     'credit.alerter_exposition_globale': {'queue': 'scheduled'},
@@ -975,6 +988,11 @@ SITE_URL = os.environ.get('SITE_URL', 'https://taqinor.ma')
 # apps/crm/webhooks.py::meta_lead_ads_webhook.
 META_LEAD_ADS_VERIFY_TOKEN = os.environ.get('META_LEAD_ADS_VERIFY_TOKEN', '')
 META_LEAD_ADS_ACCESS_TOKEN = os.environ.get('META_LEAD_ADS_ACCESS_TOKEN', '')
+# PUB26 — App Secret Meta utilisé pour vérifier `X-Hub-Signature-256` sur le
+# POST de notification (HMAC-SHA256 du corps brut, miroir exact de
+# whatsapp_webhook._check_signature). Absent : rétro-compatible (log warning,
+# payload accepté quand même) — voir apps/crm/webhooks.py::meta_lead_ads_webhook.
+META_LEAD_ADS_APP_SECRET = os.environ.get('META_LEAD_ADS_APP_SECRET', '')
 # Tenant cible des leads Meta Lead Ads (id de Company) ; à défaut, la
 # première Company (même repli que WEBSITE_LEADS_COMPANY_ID).
 META_LEAD_ADS_COMPANY_ID = os.environ.get('META_LEAD_ADS_COMPANY_ID') or None

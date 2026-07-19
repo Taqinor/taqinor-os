@@ -109,7 +109,11 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // son propre chunk (réel ~489) — croissance produit, pas une prolifération de
 // structure ; le budget gzip (2650) + PER_CHUNK_BUDGET_KB (350) restent les
 // vrais garde-fous de poids.
-const MAX_CHUNK_COUNT = 500
+// 2026-07-19 : 500 -> 540. Batch PUB 2 : nouveaux écrans adsengine (console
+// Publicité : croissance/créatif/science/finance), tous lazy-loadés = chacun son
+// propre chunk (réel ~503). Le total gzip reste sous budget (~2636/2650 Ko) —
+// pas de prolifération de structure ; palier généreux habituel.
+const MAX_CHUNK_COUNT = 540
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

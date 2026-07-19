@@ -422,6 +422,14 @@ import django.dispatch
 # ce repo : adsengine (apps/adsengine/receivers.py).
 meta_lead_captured = django.dispatch.Signal()
 
+# PUB100 — Émis quand un lead CRM est EFFACÉ (droit à l'oubli CNDP). Permet aux
+# miroirs qui portent une référence STRING au lead (adsengine :
+# ``MetaLeadMirror``/``CtwaReferral`` via ``crm_lead_id`` + ``phone_key``) de
+# propager l'effacement (anonymisation best-effort) sans que ``crm`` importe
+# ``apps.adsengine``. Arguments : company, crm_lead_id (int), phone_key (str,
+# optionnel). Abonné dans ce repo : adsengine (apps/adsengine/receivers.py).
+lead_erased = django.dispatch.Signal()
+
 # Émis à l'acceptation d'un devis.
 # Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
 devis_accepted = django.dispatch.Signal()
@@ -647,6 +655,19 @@ budget_cycle_clos = django.dispatch.Signal()
 # ``Entite``), ``user`` (peut être None).
 entite_created = django.dispatch.Signal()
 entite_deactivated = django.dispatch.Signal()
+
+# PUB30 — Émis quand un ``crm.Appointment`` (RDV terrain) bascule vers EFFECTUE
+# (transition GÉNUINE — un save sans changement de statut ne réémet jamais).
+# Câblé par ``crm`` lui-même (``apps/crm/receivers.py``, un pre_save/post_save
+# intra-app comme le récepteur QJ7 sur ``LeadActivity`` juste au-dessus), même
+# patron émetteur=abonné-ailleurs que ``ticket_resolu``. Permet à ``adsengine``
+# de pousser un événement CAPI CRM-stage dédié (« visite technique effectuée »,
+# même famille/gating que ADSENG32 — ``apps/adsengine/capi_crm.py``) sans que
+# ``crm`` importe jamais ``apps.adsengine``. Arguments : ``appointment``
+# (instance ``crm.Appointment``), ``company``, ``user`` (toujours None
+# aujourd'hui — transition détectée par signal modèle, pas par une action
+# utilisateur explicite), ``ancien_statut`` (str|None).
+appointment_effectue = django.dispatch.Signal()
 
 
 # ===========================================================================

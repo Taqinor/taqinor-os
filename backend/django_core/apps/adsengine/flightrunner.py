@@ -60,6 +60,7 @@ from .models import (
     ExperimentArm,
     FlightPhase,
     FlightPlan,
+    GuardrailConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,24 +76,49 @@ KILL_SWITCH_TTL = 60 * 60 * 24 * 30
 AUTONOMY_TTL = 60 * 60 * 24 * 30
 
 
-# ── Drapeau d'autonomie PAR société (cache — jamais un champ modèle) ──────────
+# ── Drapeau d'autonomie PAR société (DB = source de vérité, cache = accélérateur)
 # L'activation est OFF PAR DÉFAUT et ne peut être posée QUE via ``preflight.
 # activate`` (ADSENG38), qui exige d'abord que TOUTES les portes soient vertes —
 # c'est la garantie structurelle « le mode autonome ne peut PAS s'activer tant que
 # tout n'est pas vert ». Ces helpers sont bas-niveau (le gate vit dans preflight).
+# PUB21 : l'état est PERSISTÉ (``GuardrailConfig.autonomy_active``) ; le cache
+# n'est qu'un accélérateur ré-échauffé depuis la DB sur miss — un flush/restart
+# ne perd donc jamais l'état.
 def _autonomy_key(company):
     return f'adsengine:autonomy:{company.pk}'
 
 
+def _db_autonomy_active(company):
+    """Lecture de la SOURCE DE VÉRITÉ (DB). Absence de config = non activé."""
+    config = GuardrailConfig.objects.filter(company=company).first()
+    return bool(config and config.autonomy_active)
+
+
 def is_autonomy_active(company):
-    """Vrai si le mode autonome est ACTIVÉ pour cette société (OFF par défaut)."""
-    return bool(cache.get(_autonomy_key(company)))
+    """Vrai si le mode autonome est ACTIVÉ pour cette société (OFF par défaut).
+
+    PUB21 : cache d'abord (accélérateur) ; sur miss (flush/restart), on lit la DB
+    (source de vérité) et on ré-échauffe le cache — l'état survit à un flush."""
+    key = _autonomy_key(company)
+    cached = cache.get(key)
+    if cached is not None:
+        return bool(cached)
+    active = _db_autonomy_active(company)
+    cache.set(key, active, AUTONOMY_TTL)
+    return active
 
 
 def set_autonomy_active(company, active):
     """Pose/retire le drapeau d'autonomie (bas-niveau — appelé par
     ``preflight.activate``/``preflight.deactivate`` APRÈS la garde préflight,
-    jamais directement pour contourner le gate)."""
+    jamais directement pour contourner le gate).
+
+    PUB21 : écrit la DB (source de vérité) PUIS le cache (accélérateur)."""
+    active = bool(active)
+    config, _ = GuardrailConfig.objects.get_or_create(company=company)
+    if config.autonomy_active != active:
+        config.autonomy_active = active
+        config.save(update_fields=['autonomy_active'])
     if active:
         cache.set(_autonomy_key(company), True, AUTONOMY_TTL)
     else:
@@ -137,9 +163,25 @@ class FlightRunner:
     def _kill_key(self):
         return f'adsengine:killswitch:{self.company.pk}'
 
+    def _db_kill_engaged(self):
+        """Lecture de la SOURCE DE VÉRITÉ (DB). Absence de config = non engagé."""
+        config = GuardrailConfig.objects.filter(company=self.company).first()
+        return bool(config and config.kill_switch_engaged)
+
     def is_killed(self):
-        """Vrai si l'interrupteur global est engagé pour cette société."""
-        return bool(cache.get(self._kill_key()))
+        """Vrai si l'interrupteur global est engagé pour cette société.
+
+        PUB21 : la DB (``GuardrailConfig.kill_switch_engaged``) est la SOURCE DE
+        VÉRITÉ ; le cache n'est qu'un accélérateur. Sur miss (flush/restart), on
+        relit la DB et on ré-échauffe le cache — un arrêt d'urgence ne peut donc
+        JAMAIS être relâché silencieusement par un flush cache."""
+        key = self._kill_key()
+        cached = cache.get(key)
+        if cached is not None:
+            return bool(cached)
+        engaged = self._db_kill_engaged()
+        cache.set(key, engaged, KILL_SWITCH_TTL)
+        return engaged
 
     def engage_kill_switch(self, *, client=None, reason_fr=''):
         """ADSENG35 — Interrupteur GLOBAL : met en pause TOUT ce que le moteur a
@@ -153,10 +195,21 @@ class FlightRunner:
         Idempotent : ré-engager ne double aucune pause (dédup mirror par mirror
         via la garde du client PAUSED-only, et le drapeau reste levé)."""
         client = client or self._client
-        cache.set(self._kill_key(), True, KILL_SWITCH_TTL)
         reason_fr = reason_fr or (
             "Interrupteur global engagé : mise en pause de toutes les "
             "structures créées par le moteur (sécurité).")
+        # PUB21 — DB = source de vérité, écrite AVANT le cache : l'arrêt d'urgence
+        # survit à un flush/restart infra (un kill-switch de sécurité ne doit
+        # jamais disparaître tant qu'un humain ne l'a pas relâché).
+        config, _ = GuardrailConfig.objects.get_or_create(company=self.company)
+        config.kill_switch_engaged = True
+        if config.kill_switch_engaged_at is None:
+            config.kill_switch_engaged_at = timezone.now()
+        config.kill_switch_reason = reason_fr
+        config.save(update_fields=['kill_switch_engaged',
+                                   'kill_switch_engaged_at',
+                                   'kill_switch_reason'])
+        cache.set(self._kill_key(), True, KILL_SWITCH_TTL)
 
         targets = []
         if client is not None:
@@ -189,7 +242,16 @@ class FlightRunner:
     def release_kill_switch(self):
         """Relâche le drapeau kill-switch. NE DÉ-PAUSE RIEN (invariant : le
         re-lancement d'une structure est un unpause HUMAIN, jamais programmatique)
-        — les structures restent PAUSED jusqu'à une action humaine hors moteur."""
+        — les structures restent PAUSED jusqu'à une action humaine hors moteur.
+
+        PUB21 : lève l'état persisté (DB, source de vérité) PUIS purge le cache."""
+        config = GuardrailConfig.objects.filter(company=self.company).first()
+        if config is not None and (
+                config.kill_switch_engaged or config.kill_switch_engaged_at):
+            config.kill_switch_engaged = False
+            config.kill_switch_engaged_at = None
+            config.save(update_fields=['kill_switch_engaged',
+                                       'kill_switch_engaged_at'])
         cache.delete(self._kill_key())
         logger.info('flightrunner: kill-switch relâché société=%s (aucune '
                     'structure dé-pausée — unpause humain requis)',
@@ -512,7 +574,8 @@ class FlightRunner:
         }
 
     # ── Transition 4 : avancement de phase / fin de plan ─────────────────────
-    def advance_phase(self, *, today=None):
+    def advance_phase(self, *, today=None, voi_params=None,
+                      voi_experiment=None):
         """Fait avancer le plan selon la fenêtre calendaire des phases.
 
         Si la phase courante est terminée (``end_date <= today``) et qu'une phase
@@ -520,22 +583,21 @@ class FlightRunner:
         c'était la dernière → le plan passe ``TERMINE`` (ACTIVE → COMPLETED) et on
         renvoie le rapport de fin de plan. NO-OP si l'interrupteur est engagé.
 
-        ASG3 — quand l'ordonnanceur VoI est ACTIVÉ pour la société (drapeau cache
-        ``voi.voi_scheduler_active``, OFF par défaut), la transition de phase FIXE
-        est DÉSACTIVÉE : la file d'hypothèses (argmax VoI, ``voi.schedule_next``)
-        gouverne alors ce qui est testé, pas la fenêtre calendaire. Flag OFF ⇒
-        comportement calendaire historique byte-identique."""
+        ASG3/PUB17 — quand l'ordonnanceur VoI est ACTIVÉ pour la société (drapeau
+        cache ``voi.voi_scheduler_active``, OFF par défaut), la transition de phase
+        FIXE est DÉSACTIVÉE : la file d'hypothèses (argmax VoI) gouverne ce qui est
+        testé. ``voi.schedule_next`` est RÉELLEMENT appelé (il ne l'était pas avant)
+        avec l'expérience courante et le contexte MDE/coût par nœud ``voi_params``
+        (fourni par la boucle autonome qui connaît les volumes). Flag OFF ⇒
+        comportement calendaire historique BYTE-IDENTIQUE (les nouveaux paramètres
+        sont ignorés)."""
         if self.is_killed():
             return {'skipped': 'kill_switch', 'state': self.STATE_KILLED}
 
         from . import voi
         if voi.voi_scheduler_active(self.company):
-            self._log_transition(
-                self.STATE_ACTIVE, self.STATE_ACTIVE,
-                summary_fr=("Mode VoI actif : la file d'hypothèses (argmax VoI) "
-                            "gouverne les transitions — fenêtre calendaire fixe "
-                            "désactivée."))
-            return {'state': self.state(), 'advanced': False, 'voi_mode': True}
+            return self._advance_via_voi(
+                voi_params=voi_params, experiment=voi_experiment)
 
         today = today or self.today()
         phases = list(FlightPhase.objects.filter(
@@ -565,6 +627,56 @@ class FlightRunner:
 
         # Dernière phase franchie → fin de plan.
         return self.complete()
+
+    def _advance_via_voi(self, *, voi_params=None, experiment=None):
+        """PUB17 — Mode VoI ACTIF (ASG3/ASG5) : la file d'hypothèses (argmax VoI,
+        ``voi.schedule_next``) gouverne la transition — la fenêtre calendaire FIXE
+        est désactivée.
+
+        Ouvre un slot pour l'expérience courante avec le contexte MDE/coût par
+        nœud ``voi_params`` : ``schedule_next`` calcule l'argmax VoI, écrit un
+        ``DecisionLog`` OBLIGATOIRE, et renvoie le nœud gagnant (= « la phase
+        suivante »). Sans expérience ouverte OU sans contexte MDE, aucune sélection
+        n'est FORCÉE (``advanced=False``) — jamais un chiffre MDE fabriqué, jamais
+        un crash."""
+        from . import voi
+
+        experiment = experiment or self._voi_experiment()
+        if experiment is None or voi_params is None:
+            self._log_transition(
+                self.STATE_ACTIVE, self.STATE_ACTIVE,
+                summary_fr=("Mode VoI actif : la file d'hypothèses gouverne les "
+                            "transitions (fenêtre calendaire désactivée) ; aucun "
+                            "slot ouvert (expérience/contexte MDE absent)."))
+            return {'state': self.state(), 'advanced': False, 'voi_mode': True,
+                    'voi_node_id': None}
+
+        result = voi.schedule_next(
+            self.company, experiment=experiment, params=voi_params)
+        winner = result.get('winner')
+        winner_id = winner.pk if winner is not None else None
+        score = result.get('score') or {}
+        self._log_transition(
+            self.STATE_ACTIVE, self.STATE_ACTIVE,
+            summary_fr=(
+                f"Mode VoI : slot ouvert par argmax VoI (nœud {winner_id})."
+                if winner_id is not None else
+                "Mode VoI : file vide — aucun nœud testable à ordonnancer."))
+        return {
+            'state': self.state(), 'advanced': winner is not None,
+            'voi_mode': True, 'voi_node_id': winner_id,
+            'voi_score': score.get('voi'),
+            'decision_log_id': getattr(result.get('log'), 'pk', None),
+        }
+
+    def _voi_experiment(self):
+        """PUB17 — Expérience courante où tracer les décisions VoI (le
+        ``DecisionLog`` de ``schedule_next`` s'y rattache) : la plus récente
+        EN_COURS de la société, ou ``None`` (aucun slot forcé sans elle)."""
+        return (Experiment.objects
+                .filter(company=self.company,
+                        status=Experiment.Statut.EN_COURS)
+                .order_by('-created_at').first())
 
     def _current_phase(self, phases, today):
         """La phase dont la fenêtre contient ``today`` (repli : la dernière phase

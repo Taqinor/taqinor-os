@@ -13,11 +13,17 @@ const mocks = vi.hoisted(() => ({
   journal: vi.fn(),
   anomalies: vi.fn(),
   history: vi.fn(),
+  policies: vi.fn(),
+  policyCreate: vi.fn(),
+  policyUpdate: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
   default: {
-    rules: { templates: mocks.templates, dryRun: mocks.dryRun, journal: mocks.journal },
+    rules: {
+      templates: mocks.templates, dryRun: mocks.dryRun, journal: mocks.journal,
+      list: mocks.policies, create: mocks.policyCreate, update: mocks.policyUpdate,
+    },
     anomalies: { list: mocks.anomalies },
     alerts: { history: mocks.history },
   },
@@ -32,10 +38,14 @@ beforeEach(() => {
   mocks.templates.mockResolvedValue({ data: [
     { key: 'overlap', nom: 'Anti-chevauchement d\'enchères',
       condition_fr: 'deux ad sets ciblent la même audience',
-      action_fr: 'mettre en pause le moins performant' },
+      action_fr: 'mettre en pause le moins performant', cadence: 'daily' },
     { key: 'fatigue', nom: 'Fatigue créative',
-      condition_fr: 'la fréquence dépasse 3', action_fr: 'proposer une rotation de créatif' },
+      condition_fr: 'la fréquence dépasse 3', action_fr: 'proposer une rotation de créatif',
+      cadence: 'critical' },
   ] })
+  mocks.policies.mockResolvedValue({ data: [] })
+  mocks.policyCreate.mockResolvedValue({ data: { id: 1, template_key: 'overlap', enabled: true, dry_run: false } })
+  mocks.policyUpdate.mockResolvedValue({ data: { id: 2, template_key: 'fatigue', enabled: false, dry_run: true } })
   mocks.dryRun.mockResolvedValue({ data: {
     resume_fr: '2 campagnes seraient touchées',
     objets_touches: [
@@ -106,5 +116,59 @@ describe('RulesScreen (ENG43)', () => {
     const finding = screen.getByTestId('ae-rule-run-finding')
     expect(finding).toHaveTextContent('cpl 1.0 sur 3 j < 3.0 × 0.9 = 2.7 sur 7 j → vrai.')
     expect(screen.getByTestId('ae-rule-run-delta')).toHaveTextContent('100 → 115 MAD/j')
+  })
+
+  describe('PUB23 — armer/désarmer une règle', () => {
+    it('une règle sans instance est « Désarmée » par défaut', async () => {
+      renderScreen()
+      const state = await screen.findByTestId('ae-rule-state-overlap')
+      expect(state).toHaveTextContent('Désarmée')
+    })
+
+    it('Armer ouvre une confirmation avec le résumé + la cadence', async () => {
+      renderScreen()
+      fireEvent.click(await screen.findByTestId('ae-rule-arm-overlap'))
+      const confirm = await screen.findByTestId('ae-rule-arm-confirm-overlap')
+      expect(confirm).toHaveTextContent('Anti-chevauchement')
+      expect(confirm).toHaveTextContent('Quotidienne')
+      expect(confirm).toHaveTextContent('deux ad sets ciblent la même audience')
+    })
+
+    it('confirmer l\'armement crée la RulePolicy (enabled=true, dry_run=false)', async () => {
+      renderScreen()
+      fireEvent.click(await screen.findByTestId('ae-rule-arm-overlap'))
+      fireEvent.click(await screen.findByTestId('ae-rule-arm-confirm-btn-overlap'))
+      await waitFor(() => expect(mocks.policyCreate).toHaveBeenCalledWith(
+        { template_key: 'overlap', enabled: true, dry_run: false }))
+    })
+
+    it('une règle armée affiche Désarmer + l\'état armé avec cadence', async () => {
+      mocks.policies.mockResolvedValue({ data: [
+        { id: 2, template_key: 'fatigue', enabled: true, dry_run: false },
+      ] })
+      renderScreen()
+      const state = await screen.findByTestId('ae-rule-state-fatigue')
+      expect(state).toHaveTextContent('Armée')
+      expect(state).toHaveTextContent('critique')
+      expect(await screen.findByTestId('ae-rule-disarm-fatigue')).toBeInTheDocument()
+    })
+
+    it('désarmer une règle armée la remet en enabled=false, dry_run=true', async () => {
+      mocks.policies.mockResolvedValue({ data: [
+        { id: 2, template_key: 'fatigue', enabled: true, dry_run: false },
+      ] })
+      renderScreen()
+      fireEvent.click(await screen.findByTestId('ae-rule-disarm-fatigue'))
+      await waitFor(() => expect(mocks.policyUpdate).toHaveBeenCalledWith(
+        2, { enabled: false, dry_run: true }))
+    })
+
+    it('un armement refusé (403) affiche une erreur et n\'ouvre pas de crash', async () => {
+      mocks.policyCreate.mockRejectedValue(new Error('403'))
+      renderScreen()
+      fireEvent.click(await screen.findByTestId('ae-rule-arm-overlap'))
+      fireEvent.click(await screen.findByTestId('ae-rule-arm-confirm-btn-overlap'))
+      expect(await screen.findByTestId('ae-rules-arm-err')).toHaveTextContent('refusé')
+    })
   })
 })

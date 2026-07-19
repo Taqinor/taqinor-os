@@ -64,6 +64,38 @@ def build_checklist(company):
     return {'forbidden': forbidden, 'allowed': allowed}
 
 
+# PUB75 — Messages FR par raison de blocage consentement (CNDP loi 09-08).
+CONSENT_BLOCK_LABELS = {
+    'manquant': "Consentement client manquant (CNDP) : un asset montrant un "
+                "client réel exige un consentement signé.",
+    'revoque': "Consentement révoqué : l'asset ne peut plus être diffusé.",
+    'expire': "Consentement expiré : renouveler avant toute diffusion.",
+    'portee': "Portée de consentement insuffisante (photo/vidéo/témoignage/géo).",
+}
+
+
+def asset_warnings(asset):
+    """PUB83 — Avertissements NON BLOQUANTS de la check-list policy d'un asset.
+
+    Aujourd'hui : vignette manquante sur un reel/explainer — la check-list
+    signale qu'aucune vignette n'a été CHOISIE (le défaut « frame 0 » est un
+    mauvais choix par défaut). Un statique n'a pas de vignette distincte (l'image
+    EST la vignette) : pas d'avertissement. Renvoie une liste de dicts
+    ``{key, label}`` (vide si aucun avertissement)."""
+    from .models import CreativeAsset
+
+    warnings = []
+    video_types = (
+        CreativeAsset.AssetType.REEL, CreativeAsset.AssetType.EXPLAINER)
+    if asset.asset_type in video_types and not asset.thumbnail_key:
+        warnings.append({
+            'key': 'thumbnail_missing',
+            'label': ("Vignette manquante : choisissez une vignette "
+                      "(jamais la frame 0 par défaut)."),
+        })
+    return warnings
+
+
 def record_policy_check(asset, *, confirmed_keys, checked_by=None, now=None):
     """Enregistre la confirmation HUMAINE règle par règle sur ``asset``.
 
@@ -71,21 +103,63 @@ def record_policy_check(asset, *, confirmed_keys, checked_by=None, now=None):
     de la policy sont dans ``confirmed_keys`` (l'humain atteste que le créatif ne
     les enfreint pas). Le système n'évalue jamais le contenu lui-même — il
     enregistre le jugement humain. Estampille ``policy_stamp`` et sauvegarde.
+
+    PUB75 — GARDE CONSENTEMENT (CNDP) : un asset marqué « client réel »
+    (``depicts_real_client``) ne passe JAMAIS sans un ``ConsentRecord`` actif
+    couvrant ses portées requises — même si l'humain a coché toutes les règles.
+    La raison de blocage est consignée dans le tampon (``consent_block``).
     Renvoie l'asset.
     """
     forbidden, _allowed = _policy_rules(asset.company)
     required = {r['key'] for r in forbidden}
     confirmed = set(confirmed_keys or [])
     passed = required.issubset(confirmed)
+    # Garde consentement : bloque un asset client-réel sans consentement valable.
+    consent_block = asset.consent_block_reason(now=now)
+    if consent_block is not None:
+        passed = False
     stamp_time = now or timezone.now()
     checked_at = (stamp_time.isoformat() if hasattr(stamp_time, 'isoformat')
                   else str(stamp_time))
-    asset.policy_stamp = {
+    stamp = {
         'passed': passed,
         'rules_checked': sorted(confirmed),
         'checked_at': checked_at,
         'checked_by': (getattr(checked_by, 'id', checked_by)
                        if checked_by is not None else None),
     }
+    if consent_block is not None:
+        stamp['consent_block'] = consent_block
+        stamp['consent_block_label'] = CONSENT_BLOCK_LABELS.get(
+            consent_block, consent_block)
+    # PUB83 — avertissements NON BLOQUANTS (ex. vignette manquante) : consignés
+    # dans le tampon sans jamais faire échouer la validation.
+    warnings = asset_warnings(asset)
+    if warnings:
+        stamp['warnings'] = warnings
+    asset.policy_stamp = stamp
     asset.save(update_fields=['policy_stamp', 'updated_at'])
     return asset
+
+
+def revoke_consent(consent):
+    """PUB75 — Retire de la rotation tous les assets liés à un consentement révoqué.
+
+    Pour chaque ``CreativeAsset`` pointant ``consent``, dé-tamponne la policy
+    (``policy_stamp.passed=False`` + ``consent_block='revoque'``) afin que le
+    filtre de rotation existant (``asset__policy_stamp__passed=True``) l'exclue
+    aussitôt — sans rien re-vérifier du contenu. Renvoie le nombre d'assets
+    retirés. Idempotent : un asset déjà retiré pour cette raison n'est pas
+    ré-écrit."""
+    updated = 0
+    for asset in consent.assets.all():
+        stamp = dict(asset.policy_stamp or {})
+        if stamp.get('passed') is False and stamp.get('consent_block') == 'revoque':
+            continue
+        stamp['passed'] = False
+        stamp['consent_block'] = 'revoque'
+        stamp['consent_block_label'] = CONSENT_BLOCK_LABELS['revoque']
+        asset.policy_stamp = stamp
+        asset.save(update_fields=['policy_stamp', 'updated_at'])
+        updated += 1
+    return updated

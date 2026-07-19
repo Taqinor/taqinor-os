@@ -1,9 +1,12 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import {
   MessagesSquare, EyeOff, Eye, Reply, Trash2, Send, ShieldCheck,
-  AlertTriangle, Filter,
+  AlertTriangle, Filter, RefreshCw, FileText,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import SyncStatusBanner from './SyncStatusBanner'
+import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 
 /* ============================================================================
    ADSDEEP54 — Boîte de réception des commentaires (posts + dark posts).
@@ -16,10 +19,16 @@ import adsengineApi from './adsengineApi'
    « caché-vérifié » ne s'affiche QUE quand `hidden_verified` est vrai (un masqué
    non confirmé reste marqué « non vérifié »). Un compteur par objet alimente le
    cockpit (total / non répondus / masqués).
+
+   PUB41 — sondage doux (30 s, suspendu onglet masqué) : un commentaire arrivé
+   entre deux visites doit apparaître sans rafraîchissement manuel. Panne
+   réseau -> `loadError` (message dédié, JAMAIS confondu avec « aucun
+   commentaire », le silence que ce ticket tue).
    ========================================================================== */
 
 // Fenêtre Meta d'une réponse privée (miroir de PRIVATE_REPLY_WINDOW_DAYS backend).
 const PRIVATE_REPLY_WINDOW_DAYS = 7
+const COMMENTS_POLL_MS = 30000
 
 function withinPrivateReplyWindow(createdTime) {
   if (!createdTime) return true
@@ -32,6 +41,7 @@ function withinPrivateReplyWindow(createdTime) {
 export default function CommentsInboxScreen() {
   const [comments, setComments] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [objectFilter, setObjectFilter] = useState('all')
   const [showHiddenOnly, setShowHiddenOnly] = useState(false)
   const [unansweredOnly, setUnansweredOnly] = useState(false)
@@ -43,15 +53,19 @@ export default function CommentsInboxScreen() {
   const [err, setErr] = useState('')
 
   const load = useCallback(() => {
-    setLoading(true)
     adsengineApi.comments.list()
-      .then(r => setComments(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
-      .catch(() => setComments([]))
+      .then(r => {
+        setComments(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        setLoadError(false)
+      })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
-  useEffect(() => { load() }, [load])
+  // PUB41 — amorçage immédiat (comme l'ancien `useEffect(load)`) + sondage
+  // doux toutes les `COMMENTS_POLL_MS`, suspendu onglet masqué (VX56).
+  const { resume } = useVisibilityAwarePolling(
+    [{ fn: load, intervalMs: COMMENTS_POLL_MS }])
 
   // Objets distincts (posts / dark posts) pour le filtre.
   const objectOptions = useMemo(() => {
@@ -127,7 +141,24 @@ export default function CommentsInboxScreen() {
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <MessagesSquare size={20} aria-hidden="true" /> Commentaires
         </h2>
+        {/* PUB41 — reprise manuelle du sondage (ex. après une panne prolongée). */}
+        <button type="button" className="btn btn-light" data-testid="ae-comments-refresh"
+          onClick={resume}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <RefreshCw size={15} aria-hidden="true" /> Actualiser
+        </button>
       </div>
+
+      {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <SyncStatusBanner />
+
+      {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence. */}
+      {loadError && (
+        <p data-testid="ae-comments-load-error" role="alert" style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>
+          Chargement des commentaires impossible — panne de synchronisation possible.
+          {comments.length > 0 ? ' Liste peut-être obsolète (nouvelle tentative automatique en cours).' : ''}
+        </p>
+      )}
 
       {/* Compteur cockpit */}
       <div className="ae-comment-counters" data-testid="ae-comment-counters"
@@ -178,8 +209,10 @@ export default function CommentsInboxScreen() {
       {loading
         ? <p className="page-loading">Chargement…</p>
         : visible.length === 0
-          ? <p data-testid="ae-comments-empty" style={{ color: '#64748b' }}>
-              Aucun commentaire à afficher.</p>
+          ? (!loadError && (
+              <p data-testid="ae-comments-empty" style={{ color: '#64748b' }}>
+                Aucun commentaire à afficher.</p>
+            ))
           : (
             <div style={{ display: 'grid', gap: '0.75rem' }}>
               {visible.map(c => {
@@ -221,6 +254,17 @@ export default function CommentsInboxScreen() {
                     <p data-testid="ae-comment-message" style={{ margin: '0.4rem 0', color: '#334155' }}>
                       {c.message || <em style={{ color: '#94a3b8' }}>(sans texte)</em>}
                     </p>
+
+                    {/* PUB44 — lien croisé vers la fiche « histoire complète »
+                        de l'ad (résolu côté backend via l'effective_object_
+                        story_id du créatif — jamais fabriqué côté front). */}
+                    {c.ad_meta_id && (
+                      <Link to={`/publicite/ad/${c.ad_meta_id}`} data-testid={`ae-comment-ad-link-${c.id}`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          fontSize: '0.8rem', color: '#2563eb', margin: '0.1rem 0 0.3rem' }}>
+                        <FileText size={13} aria-hidden="true" /> Voir la fiche de l&apos;ad
+                      </Link>
+                    )}
 
                     {proposed.has(c.id) && (
                       <p data-testid={`ae-proposed-${c.id}`} style={{ margin: '0.2rem 0', color: '#7c3aed', fontSize: '0.8rem' }}>

@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   templates: vi.fn(),
   backlogArms: vi.fn(),
   preflight: vi.fn(),
+  // PUB5 — EngagementAudiencePicker mounted in the FlightPlan composer.
+  engagementPresets: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -28,7 +30,14 @@ vi.mock('./adsengineApi', () => ({
     flightplan: {
       templates: mocks.templates, backlogArms: mocks.backlogArms, preflight: mocks.preflight,
     },
+    audiences: { engagementPresets: mocks.engagementPresets },
   },
+}))
+
+// PUB10 — FlightPlanScreen reads adsengine_manage for Valider/Simuler; full
+// access here so the a11y/hook assertions below aren't affected.
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({ loading: false, has: () => true }),
 }))
 
 import ExperimentsScreen from './ExperimentsScreen'
@@ -58,6 +67,9 @@ beforeEach(() => {
   mocks.preflight.mockResolvedValue({ data: { pret: false, portes: [
     { key: 'loop', label: 'Signal du loop', ok: true },
     { key: 'backlog', label: 'Backlog volume + diversité', ok: false, detail: 'Runway trop court.' },
+  ] } })
+  mocks.engagementPresets.mockResolvedValue({ data: { presets: [
+    { key: 'lead_submitted', label: 'Formulaire soumis', source_type: 'lead', retention_days: 90 },
   ] } })
 })
 

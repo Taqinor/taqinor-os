@@ -1,12 +1,20 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, ExternalLink } from 'lucide-react'
+import { Bell, ExternalLink, Printer, Download } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import AlertCenter from './AlertCenter'
+import CommandPalette from './CommandPalette'
+import MetricHelp from './MetricHelp'
+import AuditScoreTile from './AuditScoreTile'
 import {
   formatMAD, formatMoney, formatNumber, formatRatio, formatPercent,
   normalizeAlerts, alertTone, normalizePacing, pacingStateTone,
   normalizeReconciliation, reconStatusTone,
 } from './adsengine'
+import DateRangeBar from './DateRangeBar'
+import { presetRange, computeDelta, formatDeltaPct } from './dateRange'
+import SyncStatusBanner from './SyncStatusBanner'
+import { normalizeSyncStatus, syncStatusFor, formatAge } from './syncStatus'
 
 /* ============================================================================
    ENG23 — Dashboard « un chiffre » du moteur publicitaire.
@@ -152,6 +160,8 @@ const SIGNAL_CARDS = [
   { key: 'creatif', label: 'Santé créative' },
   { key: 'operations', label: 'Santé opérations' },
 ]
+// PUB54 — clé MetricHelp par carte de signal.
+const SIGNAL_METRIC_HELP_KEY = { creatif: 'sante_creative', operations: 'sante_operations' }
 
 export default function DashboardScreen() {
   const [metrics, setMetrics] = useState(null)
@@ -162,6 +172,15 @@ export default function DashboardScreen() {
   const [leads, setLeads] = useState([])
   const [leadsLoading, setLeadsLoading] = useState(false)
 
+  // PUB40 — sélecteur de période + comparaison (partagé Dashboard/Cockpit/
+  // Campagnes/Journal). Défaut « 30 derniers jours », sans comparaison.
+  const [range, setRange] = useState(
+    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+
+  // PUB41 — fraîcheur : horodatage discret par tuile (les 3 tuiles spend/CPL/
+  // fréquence viennent des insights — un seul type de synchro à leur montrer).
+  const [syncStatus, setSyncStatus] = useState(null)
+
   // ENG42 — onglets Pacing / Réconciliation (chargés paresseusement).
   const [tab, setTab] = useState('overview')
   const [pacing, setPacing] = useState(null)
@@ -170,6 +189,10 @@ export default function DashboardScreen() {
   const [reconDetailId, setReconDetailId] = useState(null)
   const pacingLoaded = useRef(false)
   const reconLoaded = useRef(false)
+  // PUB47 — export CSV SERVEUR (ReportExportView, jusqu'ici sans consommateur
+  // front) pour la table de réconciliation — aucun export n'existait ici.
+  const [reconExportBusy, setReconExportBusy] = useState(false)
+  const [reconExportErr, setReconExportErr] = useState(false)
 
   // SIG4 — console de signaux (chargée paresseusement, comme pacing/recon).
   const [signals, setSignals] = useState(null)
@@ -179,7 +202,13 @@ export default function DashboardScreen() {
   const signalsLoaded = useRef(false)
 
   const load = useCallback(() => {
-    adsengineApi.metrics.dashboard()
+    // PUB40 — bornes optionnelles + comparaison (le backend renvoie un bloc
+    // `previous` quand `compare=1` ET debut/fin résolus ; sinon comportement
+    // historique inchangé, `previous` absent).
+    adsengineApi.metrics.dashboard({
+      debut: range.debut || undefined, fin: range.fin || undefined,
+      compare: (range.compare && range.debut && range.fin) ? 1 : undefined,
+    })
       .then(r => setMetrics(r.data || {}))
       .catch(() => setMetrics({}))
     adsengineApi.alerts.list()
@@ -193,7 +222,15 @@ export default function DashboardScreen() {
         .then(r => setV2(r.data || null))
         .catch(() => setV2(null))
     }
-  }, [])
+    // PUB41 — statut de fraîcheur (endpoint optionnel : garde `?.` pour ne
+    // pas casser les écrans/tests qui mockent une API réduite).
+    const syncStatusFn = adsengineApi.syncStatus?.get
+    if (syncStatusFn) {
+      syncStatusFn()
+        .then(r => setSyncStatus(normalizeSyncStatus(r.data)))
+        .catch(() => setSyncStatus(null))
+    }
+  }, [range])
 
   useEffect(() => { load() }, [load])
 
@@ -232,6 +269,25 @@ export default function DashboardScreen() {
     }
   }
 
+  // PUB47 — télécharge le CSV serveur de réconciliation (blob, jamais un
+  // ``data:`` URI fabriqué côté client — source de vérité unique, PUB12).
+  const exportReconciliationCsv = async () => {
+    setReconExportBusy(true); setReconExportErr(false)
+    try {
+      const r = await adsengineApi.reports.export({ table: 'reconciliation' })
+      const url = window.URL.createObjectURL(new Blob([r.data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'reconciliation-taqinor.csv'
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      setReconExportErr(true)
+    } finally {
+      setReconExportBusy(false)
+    }
+  }
+
   // SIG3 — drill-down par signal/cohorte (filigrane de maturation).
   const openSignalDrill = (key, label) => {
     setSignalDrill({ key, label })
@@ -244,11 +300,36 @@ export default function DashboardScreen() {
   }
   const closeSignalDrill = () => { setSignalDrill(null); setCohorts([]) }
 
+  // PUB41 — les 3 tuiles secondaires viennent d'``InsightSnapshot`` (le type
+  // « insights » du statut de synchro leur fait un horodatage commun).
+  const insightsSync = syncStatusFor(syncStatus, 'insights')
+
   return (
-    <div className="page ae-dashboard">
-      <div className="page-header">
+    <div className="page ae-dashboard ae-print-area">
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2>Tableau de bord publicitaire</h2>
+        {/* PUB47 — impression navigateur (feuille globale print.css, VX80 :
+            chrome masqué, noir-sur-blanc, tables complètes) : distinct des PDF
+            WeasyPrint client (règle #4), zéro dépendance nouvelle. */}
+        <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button type="button" className="btn btn-light" data-testid="ae-dashboard-print"
+            onClick={() => window.print()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+            <Printer size={15} aria-hidden="true" /> Imprimer / PDF
+          </button>
+          {/* PUB48 — centre de notifications persistant de la console */}
+          <AlertCenter />
+          {/* PUB51 — palette de commandes (Ctrl-K) */}
+          <CommandPalette />
+        </div>
       </div>
+
+      {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <SyncStatusBanner />
+
+      {/* PUB40 — sélecteur de période + comparaison (spend/CPL/fréquence,
+          jamais le héro coût-par-signature — voir doctrine backend). */}
+      <DateRangeBar value={range} onChange={setRange} />
 
       {/* Bandeau d'alertes ENG13 (global, toutes vues) */}
       {alerts.length > 0 && (
@@ -291,25 +372,65 @@ export default function DashboardScreen() {
           {/* Chiffres cliquables (héro + tuiles) — chacun ouvre les leads réels */}
           <div style={{ display: 'grid', gap: '1rem',
             gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '1.25rem' }}>
-            {NUMBERS.map(num => (
-              <button key={num.key} type="button"
-                className={`card ae-number ${num.hero ? 'ae-hero' : `ae-tile ae-tile-${num.key}`}`}
-                data-testid={num.hero ? 'ae-hero' : `ae-tile-${num.key}`}
-                onClick={() => openDrill(num)}
-                aria-label={`${num.label} — voir les leads`}
-                style={{ textAlign: 'left', cursor: 'pointer',
-                  gridColumn: num.hero ? '1 / -1' : 'auto',
-                  padding: num.hero ? '1.5rem' : '1rem', border: '1px solid #e2e8f0' }}>
-                <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{num.label}</div>
-                <div data-testid={`ae-value-${num.key}`}
-                  style={{ fontSize: num.hero ? '2.4rem' : '1.5rem', fontWeight: 700 }}>
-                  {fmtValue(num.fmt, metrics?.[num.key], metrics?.currency)}
+            {NUMBERS.map(num => {
+              // PUB40 — delta vs période précédente : JAMAIS pour le héro
+              // (coût-par-signature reste un chiffre GLOBAL côté backend —
+              // afficher un delta dessus fabriquerait une comparaison fausse).
+              const prev = !num.hero ? metrics?.previous?.[num.key] : null
+              const delta = prev != null ? computeDelta(metrics?.[num.key], prev) : null
+              return (
+              // PUB54 — le « ? » d'aide vit HORS du bouton (jamais un bouton
+              // imbriqué dans un bouton) : la tuile-héro/bouton reste
+              // inchangée (mêmes hooks ae-*), le « ? » est un frère positionné
+              // en coin.
+              <div key={num.key} style={{ position: 'relative',
+                gridColumn: num.hero ? '1 / -1' : 'auto' }}>
+                <button type="button"
+                  className={`card ae-number ${num.hero ? 'ae-hero' : `ae-tile ae-tile-${num.key}`}`}
+                  data-testid={num.hero ? 'ae-hero' : `ae-tile-${num.key}`}
+                  onClick={() => openDrill(num)}
+                  aria-label={`${num.label} — voir les leads`}
+                  style={{ textAlign: 'left', cursor: 'pointer', width: '100%',
+                    padding: num.hero ? '1.5rem' : '1rem', border: '1px solid #e2e8f0' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{num.label}</div>
+                  <div data-testid={`ae-value-${num.key}`}
+                    style={{ fontSize: num.hero ? '2.4rem' : '1.5rem', fontWeight: 700 }}>
+                    {fmtValue(num.fmt, metrics?.[num.key], metrics?.currency)}
+                  </div>
+                  {delta && (
+                    <span className="badge" data-testid={`ae-delta-${num.key}`}
+                      style={{ marginTop: '0.3rem', display: 'inline-block',
+                        background: delta.direction === 'up' ? '#dcfce7'
+                          : delta.direction === 'down' ? '#fee2e2' : '#f1f5f9',
+                        color: delta.direction === 'up' ? '#166534'
+                          : delta.direction === 'down' ? '#991b1b' : '#475569' }}>
+                      {formatDeltaPct(delta.pct)} vs période précédente
+                    </span>
+                  )}
+                  <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>
+                    Voir les leads →
+                  </div>
+                  {/* PUB41 — horodatage discret par tuile (jamais pour le héro,
+                      qui n'est pas un chiffre de synchro insights). */}
+                  {!num.hero && insightsSync?.last_ok_at && (
+                    <div data-testid={`ae-tile-sync-${num.key}`}
+                      style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+                      à jour il y a {formatAge(insightsSync.age_minutes)}
+                    </div>
+                  )}
+                </button>
+                <div style={{ position: 'absolute', top: num.hero ? '1.1rem' : '0.7rem', right: '0.7rem' }}>
+                  <MetricHelp metric={num.key} label={num.label} />
                 </div>
-                <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>
-                  Voir les leads →
-                </div>
-              </button>
-            ))}
+              </div>
+              )
+            })}
+          </div>
+
+          {/* PUB57 — tuile score d'audit auto-chargée (fichier autonome,
+              un seul point de montage) */}
+          <div style={{ marginBottom: '1.25rem', maxWidth: 320 }}>
+            <AuditScoreTile />
           </div>
 
           {/* ADSDEEP61 — Dashboard v2 : conversations réelles + MER mixte */}
@@ -331,7 +452,10 @@ export default function DashboardScreen() {
 
                 <div className="card" data-testid="ae-dv2-mer"
                   style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
-                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>MER mixte ({v2.window_days} j)</div>
+                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                    MER mixte ({v2.window_days} j)
+                    <MetricHelp metric="mer" label="MER mixte" />
+                  </div>
                   <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.2rem 0.6rem',
                     margin: '0.35rem 0 0', fontSize: '1.05rem' }}>
                     <dt style={{ color: '#64748b', fontWeight: 400 }}>Dépense Meta</dt>
@@ -389,10 +513,10 @@ export default function DashboardScreen() {
                       <tbody>
                         {leads.map((l, i) => (
                           <tr key={l.id ?? i} data-testid="ae-drill-lead">
-                            <td>{l.nom || l.name || '—'}</td>
-                            <td>{l.ville || l.city || '—'}</td>
-                            <td>{l.stage_label || l.etape || '—'}</td>
-                            <td>{l.devis_ref || '—'}{l.montant != null ? ` (${formatMAD(l.montant)})` : ''}</td>
+                            <td data-label="Lead">{l.nom || l.name || '—'}</td>
+                            <td data-label="Ville">{l.ville || l.city || '—'}</td>
+                            <td data-label="Étape">{l.stage_label || l.etape || '—'}</td>
+                            <td data-label="Devis">{l.devis_ref || '—'}{l.montant != null ? ` (${formatMAD(l.montant)})` : ''}</td>
                             <td>
                               {l.id != null && (
                                 <Link to={`/crm/leads/${l.id}`} className="btn btn-light"
@@ -422,22 +546,34 @@ export default function DashboardScreen() {
                 <div style={{ display: 'grid', gap: '1rem',
                   gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: '1rem' }}>
                   <div className="card" data-testid="ae-pacing-enveloppe" style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
-                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Enveloppe du mois</div>
+                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                      Enveloppe du mois
+                      <MetricHelp metric="pacing_enveloppe" label="Enveloppe du mois" />
+                    </div>
                     <div style={{ fontSize: '1.4rem', fontWeight: 700 }} data-testid="ae-pacing-enveloppe-val">
                       {formatMAD(pacing.enveloppe_mad)}</div>
                   </div>
-                  {/* Burn : cliquable vers le détail des dépenses */}
-                  <button type="button" className="card ae-pacing-burn" data-testid="ae-pacing-burn"
-                    onClick={() => setPacingDetailOpen(o => !o)}
-                    aria-label="Dépense engagée — voir le détail"
-                    style={{ textAlign: 'left', cursor: 'pointer', padding: '1rem', border: '1px solid #e2e8f0' }}>
-                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Dépense engagée (burn)</div>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 700 }} data-testid="ae-pacing-burn-val">
-                      {formatMAD(pacing.depense_mad)}</div>
-                    <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>Voir le détail →</div>
-                  </button>
+                  {/* Burn : cliquable vers le détail des dépenses. Le « ? »
+                      vit HORS du bouton (jamais un bouton dans un bouton). */}
+                  <div style={{ position: 'relative' }}>
+                    <button type="button" className="card ae-pacing-burn" data-testid="ae-pacing-burn"
+                      onClick={() => setPacingDetailOpen(o => !o)}
+                      aria-label="Dépense engagée — voir le détail"
+                      style={{ textAlign: 'left', cursor: 'pointer', width: '100%', padding: '1rem', border: '1px solid #e2e8f0' }}>
+                      <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Dépense engagée (burn)</div>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 700 }} data-testid="ae-pacing-burn-val">
+                        {formatMAD(pacing.depense_mad)}</div>
+                      <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>Voir le détail →</div>
+                    </button>
+                    <div style={{ position: 'absolute', top: '0.7rem', right: '0.7rem' }}>
+                      <MetricHelp metric="pacing_burn" label="Dépense engagée (burn)" />
+                    </div>
+                  </div>
                   <div className="card" data-testid="ae-pacing-projection" style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
-                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Projection fin de mois</div>
+                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                      Projection fin de mois
+                      <MetricHelp metric="pacing_projection" label="Projection fin de mois" />
+                    </div>
                     <div style={{ fontSize: '1.4rem', fontWeight: 700 }} data-testid="ae-pacing-projection-val">
                       {formatMAD(pacing.projection_mad)}</div>
                     {pacing.jours_restants != null && (
@@ -446,7 +582,10 @@ export default function DashboardScreen() {
                     )}
                   </div>
                   <div className="card" data-testid="ae-pacing-etat" style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
-                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>État</div>
+                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                      État
+                      <MetricHelp metric="pacing_etat" label="État du rythme" />
+                    </div>
                     <span className="badge" data-testid="ae-pacing-etat-val"
                       style={{ ...(() => { const t = pacingStateTone(pacing.etat); return { background: t.bg, color: t.color } })(),
                         fontSize: '1rem', marginTop: '0.3rem', display: 'inline-block' }}>
@@ -470,7 +609,8 @@ export default function DashboardScreen() {
                           <tbody>
                             {pacing.lignes.map(l => (
                               <tr key={l.id} data-testid="ae-pacing-detail-row">
-                                <td>{l.label}</td><td>{formatMAD(l.montant_mad)}</td>
+                                <td data-label="Poste">{l.label}</td>
+                                <td data-label="Montant">{formatMAD(l.montant_mad)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -486,10 +626,26 @@ export default function DashboardScreen() {
       {/* ── Réconciliation Meta-vs-ERP (ENG31/ENG42) ── */}
       {tab === 'reconciliation' && (
         <section className="ae-recon" data-testid="ae-recon">
+          <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '0 0 0.75rem' }}>
+            Réconciliation Meta ↔ ERP
+            <MetricHelp metric="reconciliation" label="Réconciliation Meta ↔ ERP" />
+          </p>
           {recon.length === 0
             ? <p data-testid="ae-recon-empty" style={{ color: '#64748b' }}>
                 Aucune ligne de réconciliation.</p>
             : (
+              <>
+                {/* PUB47 — CSV serveur (aucun export n'existait sur cette table) */}
+                <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                  <button type="button" className="btn btn-light" data-testid="ae-recon-export"
+                    disabled={reconExportBusy} onClick={exportReconciliationCsv}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <Download size={14} aria-hidden="true" /> Exporter en CSV
+                  </button>
+                </div>
+                {reconExportErr && (
+                  <p data-testid="ae-recon-export-err" style={{ color: '#dc2626' }}>Export impossible.</p>
+                )}
               <table className="data-table" data-testid="ae-recon-table">
                 <thead>
                   <tr><th>Campagne</th><th>Meta</th><th>ERP</th><th>Écart</th><th>Statut</th><th /></tr>
@@ -499,20 +655,21 @@ export default function DashboardScreen() {
                     const tone = reconStatusTone(r.statut)
                     return (
                       <tr key={r.id} data-testid="ae-recon-row">
-                        <td>{r.campagne}</td>
-                        <td>{formatMAD(r.meta_mad)}</td>
-                        <td>{formatMAD(r.erp_mad)}</td>
-                        <td data-testid={`ae-recon-ecart-${r.id}`}>
+                        <td data-label="Campagne">{r.campagne}</td>
+                        <td data-label="Meta">{formatMAD(r.meta_mad)}</td>
+                        <td data-label="ERP">{formatMAD(r.erp_mad)}</td>
+                        <td data-label="Écart" data-testid={`ae-recon-ecart-${r.id}`}>
                           {formatMAD(r.ecart_mad)}
                           {r.ecart_pct != null ? ` (${formatPercent(r.ecart_pct)})` : ''}
                         </td>
-                        <td>
+                        <td data-label="Statut">
                           <span className="badge" style={{ background: tone.bg, color: tone.color }}>
                             {r.statut_display}</span>
                         </td>
                         <td>
                           <button type="button" className="btn btn-light" data-testid={`ae-recon-open-${r.id}`}
-                            onClick={() => setReconDetailId(id => id === r.id ? null : r.id)}>
+                            onClick={() => setReconDetailId(id => id === r.id ? null : r.id)}
+                            style={{ minHeight: 44, minWidth: 44 }}>
                             Détail</button>
                         </td>
                       </tr>
@@ -520,6 +677,7 @@ export default function DashboardScreen() {
                   })}
                 </tbody>
               </table>
+              </>
             )}
 
           {/* Détail d'une ligne de réconciliation (Meta vs ERP, poste par poste) */}
@@ -542,7 +700,9 @@ export default function DashboardScreen() {
                       <tbody>
                         {row.lignes.map(l => (
                           <tr key={l.id} data-testid="ae-recon-detail-row">
-                            <td>{l.label}</td><td>{formatMAD(l.meta_mad)}</td><td>{formatMAD(l.erp_mad)}</td>
+                            <td data-label="Poste">{l.label}</td>
+                            <td data-label="Meta">{formatMAD(l.meta_mad)}</td>
+                            <td data-label="ERP">{formatMAD(l.erp_mad)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -567,27 +727,36 @@ export default function DashboardScreen() {
                   {SIGNAL_CARDS.map(sc => {
                     const data = signals[sc.key]
                     const tone = bandTone(data.bande)
+                    // PUB54 — le « ? » vit HORS du bouton (jamais imbriqué).
                     return (
-                      <button key={sc.key} type="button" className="card ae-signal-score"
-                        data-testid={`ae-signal-${sc.key}`}
-                        onClick={() => openSignalDrill(sc.key, sc.label)}
-                        aria-label={`${sc.label} — voir le détail par cohorte`}
-                        style={{ textAlign: 'left', cursor: 'pointer', padding: '1rem', border: '1px solid #e2e8f0' }}>
-                        <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{sc.label}</div>
-                        <div data-testid={`ae-signal-${sc.key}-score`} style={{ fontSize: '1.6rem', fontWeight: 700 }}>
-                          {formatRatio(data.score)}
+                      <div key={sc.key} style={{ position: 'relative' }}>
+                        <button type="button" className="card ae-signal-score"
+                          data-testid={`ae-signal-${sc.key}`}
+                          onClick={() => openSignalDrill(sc.key, sc.label)}
+                          aria-label={`${sc.label} — voir le détail par cohorte`}
+                          style={{ textAlign: 'left', cursor: 'pointer', width: '100%', padding: '1rem', border: '1px solid #e2e8f0' }}>
+                          <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{sc.label}</div>
+                          <div data-testid={`ae-signal-${sc.key}-score`} style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+                            {formatRatio(data.score)}
+                          </div>
+                          <span className="badge" data-testid={`ae-signal-${sc.key}-bande`}
+                            style={{ background: tone.bg, color: tone.color }}>
+                            {data.bande_display}
+                          </span>
+                        </button>
+                        <div style={{ position: 'absolute', top: '0.7rem', right: '0.7rem' }}>
+                          <MetricHelp metric={SIGNAL_METRIC_HELP_KEY[sc.key]} label={sc.label} />
                         </div>
-                        <span className="badge" data-testid={`ae-signal-${sc.key}-bande`}
-                          style={{ background: tone.bg, color: tone.color }}>
-                          {data.bande_display}
-                        </span>
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
 
                 {/* SIG2 — quadrant de garde-fous DURS (ne fait QUE freiner) */}
-                <h3 style={{ margin: '0 0 0.6rem' }}>Quadrant de garde-fous durs</h3>
+                <h3 style={{ margin: '0 0 0.6rem' }}>
+                  Quadrant de garde-fous durs
+                  <MetricHelp metric="guardrail_quadrant" label="Quadrant de garde-fous durs" />
+                </h3>
                 {signals.guardrails.length === 0
                   ? <p data-testid="ae-guardrail-empty" style={{ color: '#64748b' }}>Aucun garde-fou.</p>
                   : (
@@ -629,9 +798,9 @@ export default function DashboardScreen() {
                             <tbody>
                               {cohorts.map(c => (
                                 <tr key={c.id} data-testid="ae-signal-drill-row">
-                                  <td>{c.fenetre}</td>
-                                  <td>{formatRatio(c.valeur)}</td>
-                                  <td>{c.maturite_display}</td>
+                                  <td data-label="Fenêtre">{c.fenetre}</td>
+                                  <td data-label="Valeur">{formatRatio(c.valeur)}</td>
+                                  <td data-label="Maturité">{c.maturite_display}</td>
                                 </tr>
                               ))}
                             </tbody>

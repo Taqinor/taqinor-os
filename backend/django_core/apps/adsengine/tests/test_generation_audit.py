@@ -20,7 +20,8 @@ from authentication.models import Company
 
 from apps.adsengine import generation_audit as ga
 from apps.adsengine.models import (
-    AdMirror, AssumptionNode, CreativeAsset, CreativeGenerationBatch,
+    AdMirror, AssumptionNode, CreativeAsset, CreativeBacklogItem,
+    CreativeGenerationBatch,
     EngineAction, EngineAlert, Experiment, ExperimentArm,
 )
 
@@ -159,6 +160,69 @@ class RollbackTests(TestCase):
         self.assertTrue(self.batch.template_quarantined
                         or CreativeGenerationBatch.objects.get(
                             pk=self.batch.pk).template_quarantined)
+
+
+class AssetProvenanceTests(TestCase):
+    """PUB84 — Piste de provenance durable PAR ASSET (fait cité → version
+    table de faits → verdicts → décision humaine), consultable même après que
+    le rapport de génération d'origine se soit « dispersé »."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Prov Co', slug='prov-co')
+
+    def test_manual_asset_has_no_batch_but_keeps_policy_stamp(self):
+        asset = CreativeAsset.objects.create(
+            company=self.company,
+            asset_type=CreativeAsset.AssetType.STATIC,
+            policy_stamp={'passed': True, 'rules_checked': ['r1']})
+        prov = ga.asset_provenance(asset)
+        self.assertEqual(prov['asset_id'], asset.pk)
+        self.assertIsNone(prov['batch_id'])
+        self.assertEqual(prov['claim_verdicts'], {})
+        self.assertIsNone(prov['human_decision'])
+        self.assertIsNone(prov['meta_status'])
+        self.assertEqual(
+            prov['policy_stamp'], {'passed': True, 'rules_checked': ['r1']})
+
+    def test_generated_asset_surfaces_fact_table_version_and_verdicts(self):
+        asset = CreativeAsset.objects.create(
+            company=self.company, asset_type=CreativeAsset.AssetType.EXPLAINER,
+            policy_stamp={'passed': True})
+        batch = CreativeGenerationBatch.objects.create(
+            company=self.company, status=CreativeGenerationBatch.Statut.APPROUVEE)
+        ga.record_audit(
+            batch, fact_table_version=5,
+            claim_verdicts={'economie_pct': 'grounded'})
+        CreativeBacklogItem.objects.create(
+            company=self.company, asset=asset, batch=batch,
+            source=CreativeBacklogItem.Source.RECOMBINAISON)
+        exp = Experiment.objects.create(company=self.company, name='E')
+        ExperimentArm.objects.create(
+            company=self.company, experiment=exp, creative_asset=asset,
+            label='A', ad_id='ad-prov-1')
+        AdMirror.objects.create(
+            company=self.company, meta_id='ad-prov-1', status='ACTIVE')
+
+        prov = ga.asset_provenance(asset)
+        self.assertEqual(prov['batch_id'], batch.pk)
+        self.assertEqual(prov['fact_table_version'], 5)
+        self.assertEqual(
+            prov['claim_verdicts'], {'economie_pct': 'grounded'})
+        self.assertEqual(prov['meta_status'], 'ACTIVE')
+        self.assertEqual(prov['human_decision']['status'],
+                         CreativeGenerationBatch.Statut.APPROUVEE)
+
+    def test_quarantined_batch_flag_surfaced(self):
+        asset = CreativeAsset.objects.create(
+            company=self.company, asset_type=CreativeAsset.AssetType.STATIC,
+            policy_stamp={})
+        batch = CreativeGenerationBatch.objects.create(
+            company=self.company, template_quarantined=True)
+        CreativeBacklogItem.objects.create(
+            company=self.company, asset=asset, batch=batch,
+            source=CreativeBacklogItem.Source.RECOMBINAISON)
+        prov = ga.asset_provenance(asset)
+        self.assertTrue(prov['template_quarantined'])
 
 
 class DecayNodeTests(TestCase):

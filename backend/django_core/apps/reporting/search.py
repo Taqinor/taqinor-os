@@ -175,6 +175,19 @@ def _spec_contrat(co, q):
         'sublabel': c.get_type_contrat_display()}
 
 
+def _spec_campagne(co, q):
+    """PUB99 — campagnes publicitaires miroir (``adsengine.AdCampaignMirror``).
+    Cherchées par nom ou id Meta ; sous-libellé = statut lisible."""
+    from apps.adsengine.models import AdCampaignMirror
+    qs = AdCampaignMirror.objects.filter(**co).filter(
+        Q(name__icontains=q) | Q(meta_id__icontains=q)
+    ).order_by('-created_at')
+    return 'campagne_pub', 'Campagnes pub', qs, lambda c: {
+        'id': c.id,
+        'label': c.name or c.meta_id or '—',
+        'sublabel': c.status or ''}
+
+
 # Registre LOCAL des specs de recherche, LISTE ORDONNÉE de couples
 # ``('app.model', spec_builder)`` — clé minuscule, alignée sur
 # ``core.platform`` / ``records.ALLOWED_TARGETS``. L'ORDRE est EXACTEMENT
@@ -201,6 +214,8 @@ _SEARCH_SPECS = [
     # ARC29 — trous comblés.
     ('stock.produit', _spec_produit),
     ('contrats.contrat', _spec_contrat),
+    # PUB99 — campagnes publicitaires miroir (moteur adsengine).
+    ('adsengine.adcampaignmirror', _spec_campagne),
 ]
 
 

@@ -1,5 +1,14 @@
 """ASG5 — Format de semis YAML + validateur de l'arbre d'hypothèses (§4).
 
+STATUT (PUB25, 2026-07-19) — NON CÂBLÉ en production : aucune commande de gestion
+ne lit encore le YAML de semis (``grep 'seeding' apps/adsengine`` = ce module +
+tests uniquement). **PAS un doublon avéré, donc CONSERVÉ** : aucun autre seed de
+l'ARBRE d'hypothèses n'existe — ``seed_fact_table`` sème la table de FAITS,
+``seed_synthetic_account`` sème des données SYNTHÉTIQUES pour le simulateur,
+``seed_adsengine`` sème la config du moteur ; aucun ne lit ce format YAML §4. EN
+ATTENTE DE : la commande de semis jour-0 (point de contact IA §4) qui appellera
+``import_seed``/``preflight``. Prêt + testé ; jamais mort silencieux.
+
 Le CONTRAT du point de contact IA « au début » (§4) : au jour 0, Claude + le
 fondateur SÈMENT l'arbre (nœuds, priors en pseudo-comptes, liens d'invalidation)
 via UN fichier YAML — après quoi le moteur tourne sans IA. Ce module lit ce

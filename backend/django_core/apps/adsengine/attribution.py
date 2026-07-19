@@ -36,6 +36,17 @@ def _q2(value):
     return str(value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
 
+def _rate(numerator, denominator):
+    """PUB28/PUB37 — taux ``numerator / denominator`` arrondi à 4 décimales
+    (fraction 0..1, ex. 0.25 = 25 %), ou None si le dénominateur est nul
+    (jamais un taux zéro fabriqué — même discipline que ``cost_per_signature``)."""
+    if not denominator:
+        return None
+    return float(
+        (Decimal(numerator) / Decimal(denominator))
+        .quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP))
+
+
 def _resolve_ad_id(row, by_meta, name_to_meta):
     """Applique l'échelle de résolution à une ligne de lead. Renvoie le
     ``meta_id`` de l'ad attribuée, ou None si non résolue au niveau variante."""
@@ -65,9 +76,11 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
           'variants': [
             {'meta_id', 'name', 'spend', 'leads', 'qualified', 'signed',
              'cost_per_qualified_lead', 'cost_per_signature',
-             'lead_ids', 'signed_lead_ids'}, ...
+             'lead_ids', 'signed_lead_ids', 'junk', 'junk_rate',
+             'appointments', 'no_show', 'no_show_rate'}, ...
           ],
-          'unresolved': {'leads', 'qualified', 'signed', 'lead_ids'},
+          'unresolved': {'leads', 'qualified', 'signed', 'junk',
+                         'appointments', 'no_show', 'lead_ids'},
           'organic_excluded_count': int,
         }
 
@@ -80,7 +93,7 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
     from django.contrib.contenttypes.models import ContentType
     from django.db.models import Sum
 
-    from apps.crm.selectors import attribution_lead_rows
+    from apps.crm.selectors import attribution_lead_rows, lead_appointment_stats
     from .models import AdMirror, InsightSnapshot
 
     ad_qs = AdMirror.objects.filter(company=company)
@@ -107,24 +120,39 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             spend_by_pk[s['object_id']] = s['total'] or Decimal('0')
 
     def _new_bucket():
-        return {'leads': 0, 'qualified': 0, 'signed': 0,
+        return {'leads': 0, 'qualified': 0, 'signed': 0, 'junk': 0,
+                'appointments': 0, 'no_show': 0,
                 'lead_ids': [], 'signed_lead_ids': []}
 
     variants = {m: _new_bucket() for m in by_meta}
-    unresolved = {'leads': 0, 'qualified': 0, 'signed': 0, 'lead_ids': []}
+    unresolved = {'leads': 0, 'qualified': 0, 'signed': 0, 'junk': 0,
+                  'appointments': 0, 'no_show': 0, 'lead_ids': []}
     organic_excluded = 0
+    # PUB37 — RDV (Appointment) PAR LEAD, pour le taux de no-show par variante
+    # (signal qualité intermédiaire : une annonce qui génère des RDV fantômes
+    # coûte cher avant que le coût-par-signature ne le montre).
+    appt_stats = lead_appointment_stats(company)
 
     for row in attribution_lead_rows(company, qualifying_stage=qualifying_stage):
         meta_id = _resolve_ad_id(row, by_meta, name_to_meta)
+        appt = appt_stats.get(row['id'])
         if meta_id is not None:
             bucket = variants[meta_id]
             bucket['leads'] += 1
             bucket['lead_ids'].append(row['id'])
             if row['qualified']:
                 bucket['qualified'] += 1
+            # PUB28 — signal qualité junk, DISTINCT de « non qualifié » (un
+            # lead junk est perdu pour une raison qui n'en a jamais fait un
+            # vrai prospect — voir MotifPerte.est_junk).
+            if row.get('junk'):
+                bucket['junk'] += 1
             if row['signed']:
                 bucket['signed'] += 1
                 bucket['signed_lead_ids'].append(row['id'])
+            if appt:
+                bucket['appointments'] += appt['total']
+                bucket['no_show'] += appt['no_show']
         elif (row.get('utm_content') or row.get('utm_campaign')
               or row.get('is_meta_channel')):
             # A une intention Meta (utm ou canal) mais aucune variante résolue :
@@ -133,8 +161,13 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             unresolved['lead_ids'].append(row['id'])
             if row['qualified']:
                 unresolved['qualified'] += 1
+            if row.get('junk'):
+                unresolved['junk'] += 1
             if row['signed']:
                 unresolved['signed'] += 1
+            if appt:
+                unresolved['appointments'] += appt['total']
+                unresolved['no_show'] += appt['no_show']
         else:
             # Organique (aucun utm, canal non-Meta) : exclu du dénominateur.
             organic_excluded += 1
@@ -173,6 +206,16 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             'cost_per_signature': cps,
             'lead_ids': bucket['lead_ids'],
             'signed_lead_ids': bucket['signed_lead_ids'],
+            # PUB28 — signal qualité junk PAR AD (numéro invalide/spam/hors
+            # zone/jamais répondu — voir MotifPerte.est_junk), distinct du
+            # simple « non qualifié ».
+            'junk': bucket['junk'],
+            'junk_rate': _rate(bucket['junk'], bucket['leads']),
+            # PUB37 — taux de no-show PAR AD (RDV honorés vs fantômes),
+            # signal qualité intermédiaire avant le coût-par-signature.
+            'appointments': bucket['appointments'],
+            'no_show': bucket['no_show'],
+            'no_show_rate': _rate(bucket['no_show'], bucket['appointments']),
             # ADSDEEP20 — signatures Odoo par ad (deals traçables).
             'odoo_signed': odoo.get('signatures', 0),
             'odoo_cost_per_signature': odoo.get('cost_per_signature'),
@@ -190,4 +233,142 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
         'variants': variant_rows,
         'unresolved': unresolved,
         'organic_excluded_count': organic_excluded,
+    }
+
+
+# ── PUB36 — Entonnoir de décrochage par étape, PAR VARIANTE (ad) ─────────────
+
+def variant_stage_funnel(company, *, ad_ids=None):
+    """PUB36 — À quelle étape STAGES.py les leads de CHAQUE annonce meurent
+    (jamais CONTACTED = problème de ciblage ; meurt à QUOTE_SENT = problème de
+    prix/closing). Étend le binaire qualifié/signé de ``variant_attribution``
+    au niveau de tout l'entonnoir — même échelle de résolution ad (Tier 1/1b/2,
+    voir ``_resolve_ad_id``), même patron que ``reporting.campaign_funnel``
+    (§5.2) mais résolu PAR AD plutôt que par campagne.
+
+    Comptes CUMULATIFS « a atteint au moins l'étape X » ; COLD et perdu comptés
+    À CÔTÉ (jamais dans l'entonnoir — « Perdu » n'est pas une étape, règle #2).
+    Étapes lues via ``pipeline_stage_order()`` (jamais en dur). Renvoie ::
+
+        {
+          'variants': [
+            {'meta_id', 'name', 'total', 'cold', 'perdu',
+             'funnel': [{'stage', 'reached'}, ...]}, ...
+          ],
+          'unresolved': {'meta_id': '', 'name': '', 'total', 'cold', 'perdu',
+                         'funnel': [...]},
+          'organic_excluded_count': int,
+        }
+
+    Scopé société ; ``variant_attribution`` (binaire qualifié/signé) reste
+    inchangé (fichier disjoint, aucune duplication de la jointure d'ad)."""
+    from apps.crm.selectors import attribution_lead_rows, pipeline_stage_order
+    from .models import AdMirror
+
+    order = pipeline_stage_order()
+    funnel = order['funnel']
+    cold = order['cold']
+    rank = {s: i for i, s in enumerate(funnel)}
+
+    ad_qs = AdMirror.objects.filter(company=company)
+    if ad_ids is not None:
+        ad_qs = ad_qs.filter(meta_id__in=[str(a) for a in ad_ids])
+    ads = list(ad_qs)
+    by_meta = {a.meta_id: a for a in ads}
+    name_to_meta = {}
+    for a in ads:
+        if a.name:
+            name_to_meta.setdefault(a.name, a.meta_id)
+
+    def _new_slot():
+        return {'reached': [0] * len(funnel), 'cold': 0, 'perdu': 0, 'total': 0}
+
+    variants = {m: _new_slot() for m in by_meta}
+    unresolved = _new_slot()
+    organic_excluded = 0
+
+    for row in attribution_lead_rows(company):
+        meta_id = _resolve_ad_id(row, by_meta, name_to_meta)
+        if meta_id is not None:
+            slot = variants[meta_id]
+        elif (row.get('utm_content') or row.get('utm_campaign')
+              or row.get('is_meta_channel')):
+            slot = unresolved
+        else:
+            organic_excluded += 1
+            continue
+        slot['total'] += 1
+        if row.get('perdu'):
+            slot['perdu'] += 1
+            continue                   # perdu : à côté, jamais dans l'entonnoir.
+        stage = row.get('stage')
+        if stage == cold:
+            slot['cold'] += 1
+            continue                   # COLD : à côté.
+        if stage in rank:
+            for i in range(rank[stage] + 1):
+                slot['reached'][i] += 1
+
+    def _serialize(meta_id, name, slot):
+        return {
+            'meta_id': meta_id,
+            'name': name,
+            'total': slot['total'],
+            'cold': slot['cold'],
+            'perdu': slot['perdu'],
+            'funnel': [
+                {'stage': funnel[i], 'reached': slot['reached'][i]}
+                for i in range(len(funnel))
+            ],
+        }
+
+    variant_rows = sorted(
+        (_serialize(meta_id, by_meta[meta_id].name or '', slot)
+         for meta_id, slot in variants.items()),
+        key=lambda r: r['meta_id'])
+
+    return {
+        'variants': variant_rows,
+        'unresolved': _serialize('', '', unresolved),
+        'organic_excluded_count': organic_excluded,
+    }
+
+
+# ── PUB69 — Canal organique « carte de partage client » (parrainage_whatsapp) ─
+# Après signature, le client forwarde lui-même son lien « mon installation »
+# (``apps.ventes.services.installation_share_link``, ShareLink/UTM EXISTANTE
+# — aucun nouveau modèle). Ce canal est du bouche-à-oreille SANS dépense —
+# jamais un CPL fabriqué ici, seulement le comptage leads/qualifiés/signés.
+REFERRAL_SHARE_UTM_CAMPAIGN = 'parrainage_whatsapp'
+
+
+def referral_share_channel_summary(
+        company, *, utm_campaign=REFERRAL_SHARE_UTM_CAMPAIGN):
+    """PUB69 — Isole, DANS L'ATTRIBUTION EXISTANTE, le canal ORGANIQUE
+    « carte de partage client » comme un canal DISTINCT — remonte
+    naturellement via ``utm_campaign`` (aucune écriture Meta/CRM
+    supplémentaire n'est requise ; le webhook de capture de lead existant
+    stampe déjà ``utm_campaign`` depuis l'URL visitée). Réutilise
+    ``apps.crm.selectors.attribution_lead_rows`` (ADSENG6, MÊME sélecteur
+    que :func:`variant_attribution` — jamais réimplémenté) en filtrant sur
+    ``utm_campaign``. Renvoie ``{'utm_campaign', 'leads', 'qualified',
+    'signed', 'lead_ids', 'signed_lead_ids'}``."""
+    from apps.crm.selectors import attribution_lead_rows
+
+    leads = qualified = signed = 0
+    lead_ids, signed_lead_ids = [], []
+    for row in attribution_lead_rows(company):
+        if row.get('utm_campaign') != utm_campaign:
+            continue
+        leads += 1
+        lead_ids.append(row['id'])
+        if row['qualified']:
+            qualified += 1
+        if row['signed']:
+            signed += 1
+            signed_lead_ids.append(row['id'])
+    return {
+        'utm_campaign': utm_campaign, 'leads': leads, 'qualified': qualified,
+        'signed': signed, 'lead_ids': lead_ids,
+        'signed_lead_ids': signed_lead_ids,
     }

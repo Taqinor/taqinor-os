@@ -14,11 +14,14 @@ dans les tâches suivantes de la lane ``backend/adsengine`` :
 Tout nouveau modèle métier hérite de ``core.models.TenantModel`` (FK société +
 horodatage) et les ViewSets de ``core.viewsets.CompanyScopedModelViewSet``.
 """
+import datetime
+
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
 
@@ -70,6 +73,19 @@ class MetaConnection(TenantModel):
     # sérialiseur ne le relit JAMAIS ; un GET n'expose que sa PRÉSENCE.
     credentials = models.JSONField(
         default=dict, blank=True, verbose_name='Identifiants (write-only)')
+    # PUB20 — expiration connue du token (best-effort : renseignée à la connexion
+    # quand les identifiants portent un `expires_at`/`token_expires_at`). Null
+    # tant qu'inconnue — un System-User long-lived n'expose pas toujours d'expiry.
+    token_expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Expiration du token")
+    # PUB20 — état « token mort » : posé par les tâches de synchro dès qu'un
+    # ``MetaAuthError`` (code 190) survient (la synchro ne masque plus JAMAIS
+    # silencieusement une auth-error), remis à faux dès une synchro réussie.
+    # Source d'un bandeau ConnectionScreen/Dashboard (front = autre lane).
+    token_invalid = models.BooleanField(
+        default=False, verbose_name='Token invalide (détecté)')
+    token_invalid_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Détection du token invalide")
 
     class Meta:
         verbose_name = 'Connexion Meta'
@@ -88,6 +104,32 @@ class MetaConnection(TenantModel):
     def is_live(self):
         """Vrai si la connexion peut réellement appeler Meta : activée + token."""
         return bool(self.enabled and self.has_token)
+
+    def mark_token_invalid(self):
+        """PUB20 — Marque le token mort (auth-error 190 détectée par une synchro).
+        Idempotent : n'écrit que les champs qui changent. Horodate la PREMIÈRE
+        détection (``token_invalid_at`` conservé sur les cycles suivants)."""
+        from django.utils import timezone
+        fields = []
+        if not self.token_invalid:
+            self.token_invalid = True
+            fields.append('token_invalid')
+        if self.token_invalid_at is None:
+            self.token_invalid_at = timezone.now()
+            fields.append('token_invalid_at')
+        if fields:
+            self.save(update_fields=fields)
+        return bool(fields)
+
+    def clear_token_invalid(self):
+        """PUB20 — Le token refonctionne (synchro réussie) : lève l'état + le
+        bandeau. Idempotent (aucune écriture si déjà propre)."""
+        if self.token_invalid or self.token_invalid_at is not None:
+            self.token_invalid = False
+            self.token_invalid_at = None
+            self.save(update_fields=['token_invalid', 'token_invalid_at'])
+            return True
+        return False
 
 
 class GuardrailConfig(TenantModel):
@@ -162,6 +204,33 @@ class GuardrailConfig(TenantModel):
         default=60, verbose_name='Santé opérations — poids CPL')
     health_ops_weight_delivery = models.PositiveIntegerField(
         default=40, verbose_name='Santé opérations — poids livraison')
+
+    # ── PUB21 — Interrupteur global (kill-switch) + autonomie PERSISTÉS en base.
+    # Ces deux états vivaient uniquement en cache Redis (TTL 30 j) : un flush ou
+    # un redémarrage infra annulait SILENCIEUSEMENT un arrêt d'urgence — un
+    # kill-switch de sécurité ne DOIT jamais disparaître à un restart. La DB est
+    # désormais la SOURCE DE VÉRITÉ ; le cache reste un simple accélérateur de
+    # lecture (ré-échauffé depuis la DB sur miss). Défaut sûr : rien d'engagé.
+    kill_switch_engaged = models.BooleanField(
+        default=False, verbose_name='Interrupteur global engagé')
+    kill_switch_engaged_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Engagement de l'interrupteur")
+    kill_switch_reason = models.TextField(
+        blank=True, default='', verbose_name="Motif de l'interrupteur")
+    # OFF par défaut ; ne peut être posé que par ``preflight.activate`` (ADSENG38)
+    # APRÈS que toutes les portes préflight soient vertes — la persistance ne
+    # change pas ce gate, elle empêche seulement un flush cache de le perdre.
+    autonomy_active = models.BooleanField(
+        default=False, verbose_name='Mode autonome activé')
+    # ── PUB103 — Quatre yeux OPTIONNEL sur l'approbation ──
+    # OFF par défaut : mode solo intact (une seule personne propose ET approuve —
+    # l'usage fondateur actuel). ON : le service ``approve_action`` IMPOSE
+    # ``proposed_by ≠ approved_by`` (403 sinon) — dès qu'un media buyer est
+    # embauché, personne ne peut auto-approuver sa propre dépense. Ne peut JAMAIS
+    # autoriser une activation de campagne (interdite en dur, invariant #3).
+    require_four_eyes = models.BooleanField(
+        default=False,
+        verbose_name='Double validation (quatre yeux) sur les approbations')
 
     class Meta:
         verbose_name = 'Garde-fous publicitaires'
@@ -462,6 +531,31 @@ class InsightSnapshot(TenantModel):
     video_metrics = models.JSONField(
         default=dict, blank=True, verbose_name='Métriques vidéo')
 
+    # ── PUB32 — Diagnostics de classement Meta niveau AD (ordinaux 3 niveaux :
+    # ``above_average``/``average``/``below_average``, ou ``UNKNOWN``/'' quand
+    # indisponible <500 impr.). Ce sont des PROXYS NÉGATIFS lus par
+    # ``signal_guards.quality_ranking_guard`` (frein), JAMAIS une récompense du
+    # bandit. Renseignés seulement au niveau ad (le compte/adset ne les expose
+    # pas). Additifs : les rows historiques restent '' (guard non déclenché).
+    quality_ranking = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name='Classement de qualité')
+    engagement_rate_ranking = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name="Classement du taux d'engagement")
+    conversion_rate_ranking = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name='Classement du taux de conversion')
+
+    # ── PUB35 — Attribution INCRÉMENTALE native Meta (déploiement progressif).
+    # ``{incremental_conversions: .., incremental_conversion_value: ..}`` quand le
+    # compte expose la colonne ; ``{}`` sinon (dégradation propre — voir
+    # ``meta_client.incremental_attribution_available``). Sert de contre-lecture
+    # CAUSALE face aux résultats ATTRIBUÉS (``results``/``leads_count``) — jamais
+    # une récompense du bandit, une lecture comparative (attribué vs incrémental).
+    incremental_attribution = models.JSONField(
+        default=dict, blank=True, verbose_name='Attribution incrémentale')
+
     class Meta:
         verbose_name = 'Instantané de performance'
         verbose_name_plural = 'Instantanés de performance'
@@ -562,6 +656,59 @@ class InsightBreakdown(TenantModel):
             dimension=dimension, key=key, defaults=defaults)
 
 
+class InsightMonthlyRollup(TenantModel):
+    """PUB104 — Agrégat MENSUEL d'``InsightSnapshot`` (rollup/archivage).
+
+    ``InsightSnapshot`` (quotidien × objet, colonnes typées) grossissait sans
+    stratégie. Au-delà de N mois, on AGRÈGE le détail quotidien en un rollup
+    mensuel par (objet, mois) — les totaux ADDITIFS sont conservés, le détail
+    quotidien peut alors être purgé sans perdre les sommes de ``reporting``.
+
+    Rattaché par FK générique (comme ``InsightSnapshot``) à n'importe quel miroir.
+    Upsert idempotent par ``(company, content_type, object_id, year, month)`` :
+    ré-agréger le même mois écrase, jamais de doublon. Seules les métriques
+    ADDITIVES sont matérialisées (jamais reach/frequency — non sommables sur des
+    jours ; le CPL se recalcule spend/leads)."""
+
+    content_type = models.ForeignKey(
+        'contenttypes.ContentType', on_delete=models.CASCADE,  # on_delete: rollup rattaché à sa cible générique
+        verbose_name='Type de cible')
+    object_id = models.PositiveIntegerField(verbose_name='ID cible')
+    content_object = GenericForeignKey('content_type', 'object_id')
+    year = models.PositiveIntegerField(verbose_name='Année')
+    month = models.PositiveIntegerField(verbose_name='Mois')
+    spend = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, verbose_name='Dépense')
+    results = models.PositiveIntegerField(default=0, verbose_name='Résultats')
+    impressions = models.PositiveIntegerField(
+        default=0, verbose_name='Impressions')
+    clicks = models.PositiveIntegerField(default=0, verbose_name='Clics')
+    link_clicks = models.PositiveIntegerField(
+        default=0, verbose_name='Clics sur lien')
+    conversations = models.PositiveIntegerField(
+        default=0, verbose_name='Conversations')
+    leads_count = models.PositiveIntegerField(default=0, verbose_name='Leads')
+    days_count = models.PositiveIntegerField(
+        default=0, verbose_name='Jours agrégés')
+
+    class Meta:
+        verbose_name = 'Rollup mensuel de performance'
+        verbose_name_plural = 'Rollups mensuels de performance'
+        ordering = ['-year', '-month']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'content_type', 'object_id', 'year', 'month'],
+                name='uniq_adseng_insight_rollup'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'year', 'month'],
+                         name='adseng_rollup_co_ym_idx'),
+        ]
+
+    def __str__(self):
+        return f'Rollup {self.object_id} {self.year}-{self.month:02d}'
+
+
 class EngineAction(TenantModel):
     """ENG7 — Colonne vertébrale propose→approuve→applique du moteur.
 
@@ -619,6 +766,15 @@ class EngineAction(TenantModel):
     # laisse quand même une trace ``auto=True``. Défaut False (approbation requise).
     auto = models.BooleanField(
         default=False, verbose_name='Jouée automatiquement (ENG8)')
+    # PUB103 — proposeur (posé côté serveur au POST API). Support du garde-fou
+    # « quatre yeux » : quand ``GuardrailConfig.require_four_eyes`` est activé,
+    # ``approve_action`` refuse ``proposed_by == approved_by``. NULL = proposée
+    # par le moteur (système) — le quatre-yeux ne s'applique jamais à une
+    # proposition machine (un humain qui l'approuve EST le second regard).
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_actions_proposees',
+        verbose_name='Proposée par')
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='adsengine_actions_approuvees',
@@ -698,6 +854,9 @@ class EngineAlert(TenantModel):
         ANOMALIE = 'anomalie', 'Anomalie'
         GARDE_FOU = 'garde_fou', 'Violation de garde-fou'
         REGLE_INOPERANTE = 'regle_inoperante', 'Règle inopérante'
+        # PUB20 — token Meta expiré/invalide (code 190) : la synchro s'arrête,
+        # jamais un dashboard figé sans signal.
+        TOKEN_INVALIDE = 'token_invalide', 'Token Meta invalide'
 
     # ADSENG4 — sévérité (🔴🟠🔵) : valeurs alignées sur ``rules.SEVERITY_*``.
     class Severity(models.TextChoices):
@@ -842,6 +1001,72 @@ class CreativeAsset(TenantModel):
     format_tag = models.CharField(
         max_length=64, blank=True, default='', verbose_name='Tag format')
 
+    # ── PUB77 — Langue de la créa (fr / darija / amazigh) ────────────────────
+    # Deux variantes FR/Darija du même hook étaient indistinguables : ce champ
+    # rend la performance comparable PAR LANGUE au reporting (leaderboard splité).
+    # Vide = langue non renseignée (jamais un défaut fabriqué).
+    class Language(models.TextChoices):
+        FR = 'fr', 'Français'
+        DARIJA = 'ar-ma', 'Darija (arabe marocain)'
+        AMAZIGH = 'amazigh', 'Amazigh'
+
+    language = models.CharField(
+        max_length=10, choices=Language.choices, blank=True, default='',
+        verbose_name='Langue')
+
+    # ── PUB75 — Consentement image/témoignage (CNDP loi 09-08) ───────────────
+    # ``depicts_real_client`` marque un asset qui montre un VRAI client / chantier
+    # / visage / nom réel : la passe policy exige alors un ``ConsentRecord`` ACTIF
+    # couvrant les portées listées dans ``consent_scopes_required`` (défaut vide =
+    # un consentement actif suffit). ``consent`` relie le registre signé. Un asset
+    # généré / abstrait (défaut ``False``) n'a besoin d'aucun consentement.
+    depicts_real_client = models.BooleanField(
+        default=False, verbose_name='Montre un client réel',
+        help_text="Vrai si l'asset montre un vrai client/chantier/visage/nom.")
+    consent = models.ForeignKey(
+        'adsengine.ConsentRecord', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='assets',
+        verbose_name='Consentement (CNDP)')
+    consent_scopes_required = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Portées de consentement requises',
+        help_text="Clés parmi photo/video/temoignage/geo à couvrir (vide = un "
+                  "consentement actif suffit).")
+
+    # ── PUB76 — Expiration / rafraîchissement (fraîcheur de conformité) ───────
+    # ``facts_version`` = version de la ``FactTable`` publiée dont les chiffres
+    # de cet asset sont issus (posée à la génération ancrée) : si une version
+    # PLUS RÉCENTE est publiée, l'asset cite un chiffre potentiellement périmé
+    # (risque conformité — chiffre périmé à l'antenne). ``expires_at`` /
+    # ``review_after`` datent une revue (créa saisonnière, chiffre à re-vérifier).
+    # Le job hebdo pose ``needs_review`` + ``review_reason`` ; jamais un retrait
+    # automatique (l'humain tranche).
+    facts_version = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Version de faits citée')
+    expires_at = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    review_after = models.DateField(
+        null=True, blank=True, verbose_name='À revoir après le')
+    needs_review = models.BooleanField(
+        default=False, verbose_name='À revoir')
+    review_reason = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Motif de revue')
+
+    # ── PUB83 — Vignette CHOISIE (jamais la frame 0 par défaut) ──────────────
+    # Clé MinIO de la vignette sélectionnée pour un reel/explainer. Vide = aucune
+    # vignette choisie → la check-list policy émet un WARNING (non bloquant).
+    thumbnail_key = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Clé MinIO de la vignette')
+
+    # ── PUB82 — Beats du script persistés (rétention par SCÈNE) ──────────────
+    # Les *beats* du script généré (``video_queue.build_grounded_script``) étaient
+    # éphémères : on les PERSISTE ici pour relier chaque percentile de rétention
+    # vidéo (p25/50/75/100) à la SCÈNE jouée (« la chute arrive à la scène du
+    # prix », pas juste « à 50 % »). Liste de dicts ``{text, fact_key, ...}``.
+    script_beats = models.JSONField(
+        default=list, blank=True, verbose_name='Beats du script')
+
     class Meta:
         verbose_name = 'Asset créatif'
         verbose_name_plural = 'Assets créatifs'
@@ -854,6 +1079,33 @@ class CreativeAsset(TenantModel):
     def is_policy_passed(self):
         """Vrai si la check-list policy est explicitement passée (ENG16)."""
         return bool((self.policy_stamp or {}).get('passed') is True)
+
+    def consent_block_reason(self, *, now=None):
+        """PUB75 — Raison de blocage consentement, ou ``None`` si l'asset est
+        libre de diffusion côté consentement.
+
+        Un asset qui ne montre PAS de client réel n'a aucune contrainte (``None``).
+        Sinon il faut un ``ConsentRecord`` : absent → ``'manquant'`` ; révoqué →
+        ``'revoque'`` ; expiré → ``'expire'`` ; une portée requise non couverte →
+        ``'portee'``. Lecture seule (aucune écriture)."""
+        if not self.depicts_real_client:
+            return None
+        consent = self.consent
+        if consent is None:
+            return 'manquant'
+        if consent.revoked_at is not None:
+            return 'revoque'
+        if not consent.is_active(now=now):
+            return 'expire'
+        for scope in (self.consent_scopes_required or []):
+            if not consent.covers(scope):
+                return 'portee'
+        return None
+
+    @property
+    def has_valid_consent(self):
+        """PUB75 — Vrai si le consentement (le cas échéant) autorise la diffusion."""
+        return self.consent_block_reason() is None
 
 
 class CreativePolicy(TenantModel):
@@ -1194,6 +1446,13 @@ class AnomalyEvent(TenantModel):
         FREQUENCY_HIGH = 'frequency_high', 'Fréquence élevée'
         AUTRE = 'autre', 'Autre'
 
+    # PUB90 — retour utilisateur utile / faux-positif (bouton dans l'UI). Le
+    # vide (défaut) = « pas encore voté ». Alimente la précision PAR DÉTECTEUR et
+    # le throttle brake-only d'un détecteur constamment inutile.
+    class Feedback(models.TextChoices):
+        UTILE = 'useful', 'Utile'
+        FAUX_POSITIF = 'false_positive', 'Faux positif'
+
     kind = models.CharField(
         max_length=16, choices=Kind.choices, verbose_name="Type d'anomalie")
     entity_type = models.CharField(
@@ -1216,6 +1475,20 @@ class AnomalyEvent(TenantModel):
         'adsengine.EngineAlert', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='anomalies',
         verbose_name='Alerte émise')
+    # PUB90 — quel détecteur a produit cette anomalie (``Detection.detector``,
+    # ex. 'spend_vs_median', 'cpl_band', 'creative_fatigue'). Vide pour les
+    # anomalies antérieures à PUB90. Clé d'agrégation de la précision + throttle.
+    detector = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Détecteur')
+    feedback = models.CharField(
+        max_length=16, choices=Feedback.choices, blank=True, default='',
+        verbose_name='Retour utilisateur')
+    feedback_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Retour le')
+    feedback_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_anomaly_feedbacks',
+        verbose_name='Retour par')
 
     class Meta:
         verbose_name = 'Anomalie détectée'
@@ -2195,6 +2468,13 @@ class FactEntry(TenantModel):
     source = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Source')
     verifie_le = models.DateField(verbose_name='Vérifié le')
+    # PUB85 — dimension RÉGION optionnelle : '' = fait NATIONAL (défaut) ; une
+    # valeur (ex. « marrakech ») = surcharge régionale VÉRIFIÉE (irradiation /
+    # tarif local). La génération d'une variante ville-spécifique cite le fait
+    # régional s'il existe, sinon retombe sur le national (jamais un chiffre
+    # local inventé — règle checked-facts-only).
+    region = models.CharField(
+        max_length=60, blank=True, default='', verbose_name='Région / ville')
 
     class Meta:
         verbose_name = 'Fait'
@@ -2202,7 +2482,8 @@ class FactEntry(TenantModel):
         ordering = ['cle']
         constraints = [
             models.UniqueConstraint(
-                fields=['table', 'cle'], name='uniq_adseng_factentry_table_cle'),
+                fields=['table', 'cle', 'region'],
+                name='uniq_adseng_factentry_table_cle_region'),
         ]
 
     def save(self, *args, **kwargs):
@@ -2217,3 +2498,423 @@ class FactEntry(TenantModel):
     def __str__(self):
         suffix = f' {self.unite}' if self.unite else ''
         return f'{self.cle} = {self.valeur}{suffix}'
+
+
+class Annotation(TenantModel):
+    """PUB49 — Note de décision épinglée à une DATE, en surimpression sur les
+    courbes (Dashboard/Reporting).
+
+    La mémoire ÉCRITE qui manque pour relire une courbe des mois plus tard :
+    « budget baissé ici — Ramadan ». Company-scopée (``TenantModel``). ``portee``
+    cible la/les courbe(s) où la note apparaît (globale par défaut). Le rendu en
+    surimpression est côté front (lane console) — ici on n'expose qu'une API
+    CRUD propre.
+    """
+
+    class Portee(models.TextChoices):
+        GLOBALE = 'globale', 'Toutes les courbes'
+        DASHBOARD = 'dashboard', 'Tableau de bord'
+        REPORTING = 'reporting', 'Reporting'
+
+    date = models.DateField(verbose_name='Date épinglée')
+    texte = models.TextField(verbose_name='Texte de la note')
+    portee = models.CharField(
+        max_length=16, choices=Portee.choices, default=Portee.GLOBALE,
+        verbose_name='Portée')
+
+    class Meta:
+        verbose_name = 'Annotation de courbe'
+        verbose_name_plural = 'Annotations de courbe'
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'portee', 'date'],
+                         name='adseng_annot_co_scope_idx'),
+        ]
+
+    def __str__(self):
+        return f'Annotation {self.date}: {self.texte[:32]}'
+
+
+class ConsentRecord(TenantModel):
+    """PUB75 — Registre de consentement image / témoignage (CNDP, loi 09-08).
+
+    ``policy.py`` interdit les FAUX témoignages, mais rien ne vérifiait le
+    consentement RÉEL d'un vrai visage / chantier / nom. Ce registre porte, PAR
+    société, l'autorisation signée d'un client : les portées couvertes
+    (photo / vidéo / témoignage / géo), la date de recueil, une expiration
+    optionnelle et une éventuelle révocation. Un ``CreativeAsset`` marqué
+    « client réel » ne passe la check-list policy (ENG16) que s'il pointe un
+    consentement ACTIF couvrant les portées requises (:meth:`is_active` /
+    :meth:`covers`) — la révocation retire l'asset de la rotation
+    (``policy.revoke_consent``).
+
+    Le client est référencé par ``client_id`` (référence LÂCHE — jamais un import
+    cross-app d'un modèle client) + ``client_nom`` dénormalisé (la personne dont
+    on détient le consentement). ``reference`` est un jeton opaque pour le lien
+    de collecte simple (WhatsApp signable).
+    """
+
+    class Canal(models.TextChoices):
+        WHATSAPP = 'whatsapp', 'Lien WhatsApp signé'
+        PAPIER = 'papier', 'Formulaire papier'
+        EMAIL = 'email', 'Email'
+        VERBAL = 'verbal', 'Accord verbal consigné'
+        AUTRE = 'autre', 'Autre'
+
+    client_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Client (référence lâche)')
+    client_nom = models.CharField(
+        max_length=160, verbose_name='Nom du client / de la personne')
+    reference = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Référence du lien de collecte')
+    canal = models.CharField(
+        max_length=12, choices=Canal.choices, default=Canal.WHATSAPP,
+        verbose_name='Canal de recueil')
+    # Portées consenties — une par usage (booléens explicites, requêtables).
+    portee_photo = models.BooleanField(
+        default=False, verbose_name='Photo autorisée')
+    portee_video = models.BooleanField(
+        default=False, verbose_name='Vidéo autorisée')
+    portee_temoignage = models.BooleanField(
+        default=False, verbose_name='Témoignage (nom/citation) autorisé')
+    portee_geo = models.BooleanField(
+        default=False, verbose_name='Localisation / chantier géolocalisé autorisé')
+    date_consentement = models.DateField(
+        verbose_name='Date de recueil du consentement')
+    expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration (optionnelle)")
+    revoked_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Révoqué le')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+
+    # Correspondance clé de portée → champ booléen (source unique).
+    SCOPE_FIELDS = {
+        'photo': 'portee_photo',
+        'video': 'portee_video',
+        'temoignage': 'portee_temoignage',
+        'geo': 'portee_geo',
+    }
+
+    class Meta:
+        verbose_name = 'Consentement (CNDP)'
+        verbose_name_plural = 'Consentements (CNDP)'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'client_id'],
+                         name='adseng_consent_co_client_idx'),
+        ]
+
+    def __str__(self):
+        return f'Consentement {self.client_nom} #{self.pk}'
+
+    def covers(self, scope):
+        """Vrai si la portée ``scope`` (photo/video/temoignage/geo) est consentie.
+        Une portée inconnue n'est jamais couverte (refus par défaut)."""
+        field = self.SCOPE_FIELDS.get(scope)
+        return bool(field and getattr(self, field, False))
+
+    def is_active(self, *, now=None):
+        """Vrai si le consentement est ACTIF : non révoqué ET non expiré.
+
+        L'expiration est comparée à la date du jour (``now`` accepte un
+        ``date``/``datetime`` pour les tests). Une expiration nulle = jamais
+        expiré."""
+        if self.revoked_at is not None:
+            return False
+        if self.expiration is None:
+            return True
+        today = now or timezone.now()
+        today = today.date() if hasattr(today, 'date') else today
+        return self.expiration >= today
+
+    @property
+    def scopes(self):
+        """Liste des clés de portées consenties (pour l'API / l'affichage)."""
+        return [key for key, field in self.SCOPE_FIELDS.items()
+                if getattr(self, field, False)]
+
+    def revoke(self, *, now=None):
+        """PUB75 — Révoque le consentement et retire ses assets de la rotation.
+
+        Pose ``revoked_at`` puis délègue à ``policy.revoke_consent`` le
+        dé-tamponnage des assets liés (``policy_stamp.passed=False``) pour que le
+        filtre de rotation existant (``asset__policy_stamp__passed=True``) les
+        exclue immédiatement. Idempotent : une seconde révocation ne réécrit pas
+        ``revoked_at``."""
+        from . import policy as policy_mod
+        if self.revoked_at is None:
+            self.revoked_at = now or timezone.now()
+            self.save(update_fields=['revoked_at', 'updated_at'])
+        return policy_mod.revoke_consent(self)
+
+
+class CreativeCalendarEvent(TenantModel):
+    """PUB78 — Événement du CALENDRIER CRÉATIF marocain (fenêtre saisonnière).
+
+    ``CreativeBacklogItem.seasonal_tag`` était du texte libre sans source : ce
+    modèle donne une VÉRITÉ calendaire (Ramadan mobile, Aïds, rentrée, canicule,
+    saison agricole post-récolte) qui alimente le tri du backlog (par proximité
+    réelle) et les fenêtres de recommandation (« préparer les créas Ramadan
+    J-30 »). Company-scopé (``TenantModel``) : chaque société détient/édite son
+    calendrier ; le seed (``calendar.seed_calendar``) est idempotent.
+
+    ``lead_days`` = combien de jours AVANT ``date_debut`` la fenêtre de
+    recommandation s'ouvre (J-30 par défaut). ``market_mode`` relie
+    optionnellement un événement à un mode marché (ex. agricole)."""
+
+    tag = models.SlugField(
+        max_length=40, verbose_name='Tag saisonnier',
+        help_text="Clé de saison (ex. ramadan, aid_fitr, rentree, canicule).")
+    label = models.CharField(max_length=120, verbose_name='Libellé')
+    date_debut = models.DateField(verbose_name='Début')
+    date_fin = models.DateField(verbose_name='Fin')
+    lead_days = models.PositiveIntegerField(
+        default=30, verbose_name='Anticipation (jours)',
+        help_text="Fenêtre de recommandation ouverte J-lead_days avant le début.")
+    market_mode = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Mode marché (optionnel)')
+
+    class Meta:
+        verbose_name = 'Événement de calendrier créatif'
+        verbose_name_plural = 'Événements de calendrier créatif'
+        ordering = ['date_debut']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'tag', 'date_debut'],
+                name='uniq_adseng_calevent_co_tag_debut'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'date_debut'],
+                         name='adseng_calevent_co_debut_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.label} ({self.date_debut}→{self.date_fin})'
+
+    def recommendation_start(self):
+        """Date d'ouverture de la fenêtre de recommandation (J-lead_days)."""
+        return self.date_debut - datetime.timedelta(days=self.lead_days or 0)
+
+    def is_in_season(self, day):
+        """Vrai si ``day`` tombe dans la saison elle-même (début→fin inclus)."""
+        return self.date_debut <= day <= self.date_fin
+
+    def is_in_recommendation_window(self, day):
+        """Vrai si ``day`` est dans la fenêtre de préparation (J-lead_days→fin)."""
+        return self.recommendation_start() <= day <= self.date_fin
+
+    def days_until_start(self, day):
+        """Jours avant le début (négatif si déjà commencé/passé)."""
+        return (self.date_debut - day).days
+
+
+class BrandKit(TenantModel):
+    """PUB83 — Kit de marque PERSISTANT d'une société (une par société,
+    ``OneToOne``).
+
+    Logo, couleurs, zones de sécurité et polices sont désormais lus depuis CE
+    modèle par le ``TemplatedAdapter`` (ENG17) — au lieu d'un payload de marque
+    ad hoc reconstruit à chaque génération. ``colors`` / ``safe_zones`` /
+    ``fonts`` sont des JSON libres (le rendu Templated les consomme tels quels).
+    ``logo_key`` porte une clé MinIO (jamais un ``FileField`` — pattern SCA42,
+    comme ``CreativeAsset.file_key``)."""
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: le kit de marque disparaît avec la société (tenant, OneToOne)
+        related_name='adsengine_brand_kit', verbose_name='Société')
+    name = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Nom du kit')
+    logo_key = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Clé MinIO du logo')
+    colors = models.JSONField(
+        default=dict, blank=True, verbose_name='Couleurs',
+        help_text='Ex. {"primary": "#0A6", "secondary": "#111"}.')
+    safe_zones = models.JSONField(
+        default=dict, blank=True, verbose_name='Zones de sécurité',
+        help_text='Marges/gabarits réservés (haut/bas/côtés) par format.')
+    fonts = models.JSONField(
+        default=list, blank=True, verbose_name='Polices')
+
+    class Meta:
+        verbose_name = 'Kit de marque'
+        verbose_name_plural = 'Kits de marque'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Kit de marque société {self.company_id}'
+
+    def as_payload(self):
+        """Représentation DONNÉES consommée par le ``TemplatedAdapter`` (jamais
+        un secret ; ``logo_key`` reste une clé MinIO, pas une URL signée)."""
+        return {
+            'logo_key': self.logo_key,
+            'colors': dict(self.colors or {}),
+            'safe_zones': dict(self.safe_zones or {}),
+            'fonts': list(self.fonts or []),
+        }
+
+
+class CompetitorPage(TenantModel):
+    """PUB70 — Page concurrente SUIVIE pour la veille publicitaire (périmètre
+    HONNÊTE, ZÉRO scraping — règle #5).
+
+    L'API officielle Ad Library ne couvre PAS les pubs commerciales marocaines
+    (elle ne sert que politique / enjeux sociaux). La veille est donc MANUELLE et
+    OUTILLÉE : on suit des Pages concurrentes, on ouvre l'Ad Library WEB via un
+    lien profond (``ad_library_url``), et l'humain SAISIT les hooks/angles
+    observés (``CompetitorAdObservation``) — jamais une collecte automatisée
+    (toute automatisation = GATED : décision fondateur + dossier ``tos_risk/``).
+    Company-scopé."""
+
+    name = models.CharField(max_length=160, verbose_name='Nom du concurrent')
+    page_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID de Page Meta (view_all_page_id)')
+    country = models.CharField(
+        max_length=2, default='MA', verbose_name='Pays (ISO-2)')
+    website = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Site web')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    active = models.BooleanField(default=True, verbose_name='Suivi actif')
+
+    class Meta:
+        verbose_name = 'Page concurrente (veille)'
+        verbose_name_plural = 'Pages concurrentes (veille)'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'name'],
+                name='uniq_adseng_competpage_co_name'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def ad_library_url(self):
+        """Lien PROFOND vers l'Ad Library WEB de Meta pour cette Page (jamais un
+        appel API, jamais un scraping — juste l'URL que l'humain ouvre). Basé sur
+        ``page_id`` quand présent, sinon une recherche par nom."""
+        base = 'https://www.facebook.com/ads/library/'
+        params = f'active_status=all&ad_type=all&country={self.country or "ALL"}'
+        if self.page_id:
+            return f'{base}?{params}&view_all_page_id={self.page_id}'
+        from urllib.parse import quote
+        return f'{base}?{params}&q={quote(self.name)}&search_type=keyword_unordered'
+
+
+class CompetitorAdObservation(TenantModel):
+    """PUB70 — Observation MANUELLE d'une pub concurrente (hook / angle / format).
+
+    Saisie par l'humain (« inspiration », JAMAIS copiée verbatim) depuis l'Ad
+    Library web. Alimente une timeline de cadence par concurrent et sert de
+    matière à brief. ``source_url`` est le lien profond vers la pub observée
+    (aucune récupération automatique du contenu). Company-scopé."""
+
+    competitor_page = models.ForeignKey(
+        # on_delete: composition — une observation n'existe que pour SA page
+        # concurrente ; la page supprimée emporte ses observations (aucune
+        # ligne orpheline, aucune donnée financière). Company-scopé.
+        'adsengine.CompetitorPage', on_delete=models.CASCADE,
+        related_name='observations', verbose_name='Page concurrente')
+    observed_at = models.DateField(verbose_name="Date d'observation")
+    hook_text = models.TextField(
+        blank=True, default='', verbose_name='Accroche observée (reformulée)')
+    angle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Angle')
+    format = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Format')
+    source_url = models.CharField(
+        max_length=500, blank=True, default='',
+        verbose_name='Lien Ad Library (profond)')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+
+    class Meta:
+        verbose_name = 'Observation concurrente (veille)'
+        verbose_name_plural = 'Observations concurrentes (veille)'
+        ordering = ['-observed_at', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'competitor_page', 'observed_at'],
+                         name='adseng_compobs_co_page_idx'),
+        ]
+
+    def __str__(self):
+        return f'Obs {self.competitor_page_id} @ {self.observed_at}'
+
+
+class ProposalTemplate(TenantModel):
+    """PUB50 — Gabarit de proposition RÉUTILISABLE (combinaison nommée).
+
+    Enregistre une combinaison de valeurs (budget / planning / portée) sous un
+    nom (« Ramadan agressif », « hiver prudent ») ré-applicable en un clic depuis
+    les composeurs manuels (PUB22). ``kind`` cible le type d'action (ex.
+    ``set_schedule``, ``set_spend_cap``) ; ``payload`` porte les valeurs de
+    champs pré-remplies. **N'exécute JAMAIS rien** : appliquer un gabarit ne fait
+    que PRÉ-REMPLIR le composeur — la proposition reste un geste humain explicite.
+    Company-scopé, unique par ``(company, name)``."""
+
+    name = models.CharField(max_length=120, verbose_name='Nom du gabarit')
+    kind = models.CharField(
+        max_length=40, verbose_name="Type d'action ciblé")
+    scope = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Portée (campaign/adset/ad/global)')
+    payload = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Valeurs pré-remplies (budget/planning/portée)')
+    reason_fr = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Raison par défaut')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+
+    class Meta:
+        verbose_name = 'Gabarit de proposition'
+        verbose_name_plural = 'Gabarits de proposition'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'name'],
+                name='uniq_adseng_proposaltmpl_co_name'),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.kind})'
+
+
+class AdEngineActivity(TenantModel):
+    """PUB55 — Note MANUELLE de chatter par entité (campagne / ad set / ad).
+
+    Même pattern que ``crm.LeadActivity`` : l'acteur (``user``) et la société sont
+    posés CÔTÉ SERVEUR, jamais lus du corps. La fiche (PUB44) et le détail
+    campagne affichent un fil UNIQUE qui MÊLE ces notes manuelles aux événements
+    AUTO déjà persistés (``EngineAction`` appliquées, ``EngineAlert``) — la fusion
+    chronologique est faite à la lecture (``views``), on ne DUPLIQUE pas les
+    événements auto ici. Company-scopé."""
+
+    class Entity(models.TextChoices):
+        CAMPAIGN = 'campaign', 'Campagne'
+        ADSET = 'adset', 'Ad set'
+        AD = 'ad', 'Ad'
+
+    entity_type = models.CharField(
+        max_length=10, choices=Entity.choices, verbose_name='Type entité')
+    entity_meta_id = models.CharField(
+        max_length=64, verbose_name='ID Meta de l\'entité')
+    body = models.TextField(verbose_name='Note')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_chatter_notes',
+        verbose_name='Auteur')
+
+    class Meta:
+        verbose_name = 'Note de chatter (Publicité)'
+        verbose_name_plural = 'Notes de chatter (Publicité)'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'entity_type', 'entity_meta_id'],
+                         name='adseng_chatter_co_entity_idx'),
+        ]
+
+    def __str__(self):
+        return f'Note {self.entity_type}:{self.entity_meta_id} #{self.pk}'

@@ -1,8 +1,24 @@
 import { useEffect, useState, useCallback } from 'react'
-import { RefreshCw, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { RefreshCw, ChevronRight, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
+import ManualActionMenu from './ManualActionMenu'
+// PUB3 — panneau démographie/placement/région/heure, construit+testé mais
+// jamais monté nulle part avant cette tâche — drill par ad set ET par ad.
+import BreakdownsPanel from './BreakdownsPanel'
+import { formatDateTime } from '../../lib/format'
+import DateRangeBar from './DateRangeBar'
+import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
+import SyncStatusBanner from './SyncStatusBanner'
+
+// PUB40 — dépense totale visible (somme ``depense_mad``/``spend_mad`` des
+// campagnes listées) — pure, testable isolément.
+function totalCampaignSpend(campaigns) {
+  return (campaigns || []).reduce(
+    (sum, c) => sum + (Number(c.depense_mad ?? c.spend_mad) || 0), 0)
+}
 
 /* ============================================================================
    ENG24 — Écran « Campagnes » (miroirs Meta) du moteur publicitaire.
@@ -19,7 +35,23 @@ import DataWindowNotice from './DataWindowNotice'
    niveaux navigables) avec statuts/budgets/dépenses/leads par niveau + le
    badge d'apprentissage (ADSDEEP32) par ad set. Un fil d'Ariane permet de
    remonter d'un niveau sans recharger la liste des campagnes.
+
+   PUB13 — le détail d'un ad set (niveau 3) ne montrait que le badge
+   d'apprentissage DÉRIVÉ (learning_badge) ; `learning_stage_info` (dict BRUT
+   Meta : conversions, attribution_windows…) et `last_sig_edit` (dernière
+   édition significative — reset d'apprentissage) sont sérialisés
+   (AdSetMirrorSerializer) mais invisibles. Panneau « Apprentissage Meta » qui
+   les rend TELS QUELS (jamais reformatés/interprétés — c'est du brut Meta
+   pour l'audit).
    ========================================================================== */
+
+// PUB13 — rend une valeur BRUTE de `learning_stage_info` sans l'interpréter
+// (objet/liste → JSON compact, primitive → telle quelle).
+function formatLearningValue(v) {
+  if (v == null) return '—'
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
 
 export default function CampaignsScreen() {
   const [campaigns, setCampaigns] = useState([])
@@ -39,12 +71,30 @@ export default function CampaignsScreen() {
   // id du miroir d'ad set actuellement ouvert (3ᵉ niveau = ses ads) ; null =
   // on est encore au niveau « ad sets » de la campagne.
   const [openAdsetId, setOpenAdsetId] = useState(null)
+  // PUB3 — drill « Audience & diffusion » (BreakdownsPanel) : id du miroir
+  // (ad set OU ad, selon le niveau affiché) dont les ventilations sont
+  // ouvertes ; un seul à la fois (les deux tables ne sont jamais visibles
+  // simultanément — remis à null à chaque changement de niveau).
+  const [openBreakdownId, setOpenBreakdownId] = useState(null)
+  const toggleBreakdown = (id) =>
+    setOpenBreakdownId(cur => (cur === id ? null : id))
+
+  // PUB40 — sélecteur de période + comparaison (partagé avec Dashboard/Cockpit).
+  const [range, setRange] = useState(
+    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+  const [previousTotal, setPreviousTotal] = useState(null)
+  // PUB41 — état-ERREUR distinct de l'état-vide (jamais un silence).
+  const [loadError, setLoadError] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.campaigns.list()
-      .then(r => setCampaigns(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
-      .catch(() => setCampaigns([]))
+    const params = { debut: range.debut || undefined, fin: range.fin || undefined }
+    adsengineApi.campaigns.list(params)
+      .then(r => {
+        setCampaigns(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        setLoadError(false)
+      })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
     adsengineApi.campaigns.creativeRanking()
       .then(r => setRanking(rankCreatives(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
@@ -62,7 +112,17 @@ export default function CampaignsScreen() {
         .then(r => setCurrency(r?.data?.currency || 'MAD'))
         .catch(() => {})
     }
-  }, [])
+    // PUB40 — comparaison : dépense TOTALE de la période précédente.
+    if (range.compare && range.debut && range.fin) {
+      const prev = previousRange(range)
+      adsengineApi.campaigns.list({ debut: prev.debut, fin: prev.fin })
+        .then(r => setPreviousTotal(
+          totalCampaignSpend(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
+        .catch(() => setPreviousTotal(null))
+    } else {
+      setPreviousTotal(null)
+    }
+  }, [range])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
@@ -70,6 +130,7 @@ export default function CampaignsScreen() {
   // ADSDEEP60 — ouvre la hiérarchie d'une campagne (Ad sets → Ads).
   const openCampaign = (c) => {
     setOpenAdsetId(null)
+    setOpenBreakdownId(null)
     setHierarchy({ ...c, adsets: [] }) // affichage immédiat (ligne connue)
     setHierarchyLoading(true)
     adsengineApi.campaigns.hierarchy(c.id)
@@ -77,8 +138,9 @@ export default function CampaignsScreen() {
       .catch(() => setHierarchy({ ...c, adsets: [] }))
       .finally(() => setHierarchyLoading(false))
   }
-  const closeCampaign = () => { setHierarchy(null); setOpenAdsetId(null) }
-  const backToAdsets = () => setOpenAdsetId(null)
+  const closeCampaign = () => { setHierarchy(null); setOpenAdsetId(null); setOpenBreakdownId(null) }
+  const backToAdsets = () => { setOpenAdsetId(null); setOpenBreakdownId(null) }
+  const openAdsetLevel = (id) => { setOpenAdsetId(id); setOpenBreakdownId(null) }
 
   const syncNow = async () => {
     setSyncing(true); setMsg('')
@@ -111,9 +173,33 @@ export default function CampaignsScreen() {
 
       {msg && <p data-testid="ae-camp-msg" style={{ color: '#475569', margin: '0 0 0.75rem' }}>{msg}</p>}
 
+      {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <SyncStatusBanner />
+
+      {/* PUB40 — sélecteur de période + comparaison. */}
+      <DateRangeBar value={range} onChange={setRange} />
+      {previousTotal != null && (() => {
+        const delta = computeDelta(totalCampaignSpend(campaigns), previousTotal)
+        return (
+          <p className="card" data-testid="ae-camp-compare-summary"
+            style={{ padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
+            Dépense totale période : {formatMoney(totalCampaignSpend(campaigns), currency)}
+            {' '}({formatDeltaPct(delta.pct)} vs période précédente)
+          </p>
+        )
+      })()}
+
       {/* ADSDEEP66 — les comptes de leads affichés ici sont bornés à la
           fenêtre Meta 90 j (au-delà, seul l'ERP/Odoo fait foi). */}
       <DataWindowNotice kind="leads" />
+
+      {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence. */}
+      {loadError && (
+        <p data-testid="ae-camp-load-error" role="alert" style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>
+          Chargement des campagnes impossible — panne de synchronisation possible.
+          {campaigns.length > 0 ? ' Liste peut-être obsolète.' : ''}
+        </p>
+      )}
 
       {/* Liste des miroirs (niveau 1 — campagnes) */}
       {loading
@@ -136,7 +222,7 @@ export default function CampaignsScreen() {
                   </td>
                 </tr>
               ))}
-              {campaigns.length === 0 && (
+              {campaigns.length === 0 && !loadError && (
                 <tr><td colSpan={5} style={{ textAlign: 'center', color: '#64748b' }}>
                   Aucune campagne synchronisée</td></tr>
               )}
@@ -197,6 +283,11 @@ export default function CampaignsScreen() {
                     </dd>
                   </dl>
 
+                  {/* PUB22 — proposer une action sur CETTE campagne (plafond,
+                      pause, CBO…) : chaque soumission passe par l'approbation. */}
+                  <ManualActionMenu
+                    target={{ metaId: hierarchy.meta_id, scope: 'campaign', name: hierarchy.nom }} />
+
                   <h4 style={{ margin: '0 0 0.5rem' }}>Ad sets</h4>
                   {(hierarchy.adsets || []).length === 0
                     ? <p data-testid="ae-camp-adsets-empty" style={{ color: '#64748b' }}>Aucun ad set synchronisé.</p>
@@ -205,7 +296,7 @@ export default function CampaignsScreen() {
                         <thead>
                           <tr>
                             <th>Ad set</th><th>Statut</th><th>Apprentissage</th>
-                            <th>Budget/jour</th><th>Dépense</th><th>Leads</th><th />
+                            <th>Budget/jour</th><th>Dépense</th><th>Leads</th><th /><th />
                           </tr>
                         </thead>
                         <tbody>
@@ -222,14 +313,26 @@ export default function CampaignsScreen() {
                               <td>{formatMoney(a.depense_mad, currency)}</td>
                               <td>{formatNumber(a.nb_leads)}</td>
                               <td>
+                                {/* PUB3 — drill audience & diffusion de CET ad set */}
+                                <button type="button" className="btn btn-light" data-testid="ae-camp-adset-breakdowns"
+                                  onClick={() => toggleBreakdown(a.id)}>
+                                  {openBreakdownId === a.id ? 'Fermer les ventilations' : 'Ventilations'}
+                                </button>
+                              </td>
+                              <td>
                                 <button type="button" className="btn btn-light" data-testid="ae-camp-adset-open"
-                                  onClick={() => setOpenAdsetId(a.id)}>Ouvrir</button>
+                                  onClick={() => openAdsetLevel(a.id)}>Ouvrir</button>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     )}
+                  {openBreakdownId != null && (hierarchy.adsets || []).some(a => a.id === openBreakdownId) && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <BreakdownsPanel objectType="adset" objectId={openBreakdownId} />
+                    </div>
+                  )}
                 </>
               )
               : (
@@ -243,12 +346,43 @@ export default function CampaignsScreen() {
                   <p style={{ color: '#64748b', margin: '0.5rem 0' }}>
                     Apprentissage : {openAdset.learning_badge?.label || 'Inconnu'}
                   </p>
+                  {/* PUB22 — proposer une action sur CET ad set (budget, duplication,
+                      horaire, création d'ad…) via la boîte d'approbation. */}
+                  <ManualActionMenu
+                    target={{ metaId: openAdset.meta_id, scope: 'adset', name: openAdset.nom }} />
+
+                  {/* PUB13 — panneau « Apprentissage Meta » : learning_stage_info
+                      brut + last_sig_edit (fenêtres d'attribution, statut
+                      d'apprentissage, dernière édition significative). */}
+                  <section className="card ae-camp-learning" data-testid="ae-camp-learning-panel"
+                    style={{ padding: '0.75rem', margin: '0 0 0.9rem', border: '1px solid #e2e8f0' }}>
+                    <h4 style={{ margin: '0 0 0.4rem' }}>Apprentissage Meta</h4>
+                    <p style={{ margin: '0 0 0.5rem', color: '#64748b', fontSize: '0.85rem' }}
+                      data-testid="ae-camp-learning-last-sig-edit">
+                      Dernière édition significative : {openAdset.last_sig_edit
+                        ? formatDateTime(openAdset.last_sig_edit) : 'Aucune.'}
+                    </p>
+                    {Object.keys(openAdset.learning_stage_info || {}).length === 0
+                      ? <p data-testid="ae-camp-learning-empty" style={{ color: '#64748b', margin: 0 }}>
+                          Aucune info d&apos;apprentissage brute disponible.</p>
+                      : (
+                        <ul data-testid="ae-camp-learning-raw"
+                          style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.25rem', fontSize: '0.85rem' }}>
+                          {Object.entries(openAdset.learning_stage_info).map(([k, v]) => (
+                            <li key={k} data-testid="ae-camp-learning-row">
+                              <strong style={{ color: '#475569' }}>{k}</strong>{' : '}{formatLearningValue(v)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                  </section>
+
                   {(openAdset.ads || []).length === 0
                     ? <p data-testid="ae-camp-ads-empty" style={{ color: '#64748b' }}>Aucune ad synchronisée.</p>
                     : (
                       <table className="data-table" data-testid="ae-camp-ads-table">
                         <thead>
-                          <tr><th>Ad</th><th>Statut</th><th>Dépense</th><th>Leads</th></tr>
+                          <tr><th>Ad</th><th>Statut</th><th>Dépense</th><th>Leads</th><th /></tr>
                         </thead>
                         <tbody>
                           {openAdset.ads.map(ad => (
@@ -257,11 +391,31 @@ export default function CampaignsScreen() {
                               <td>{ad.statut_display || ad.status || '—'}</td>
                               <td>{formatMoney(ad.depense_mad, currency)}</td>
                               <td>{formatNumber(ad.nb_leads)}</td>
+                              <td>
+                                {/* PUB3 — drill audience & diffusion de CETTE ad */}
+                                <button type="button" className="btn btn-light" data-testid="ae-camp-ad-breakdowns"
+                                  onClick={() => toggleBreakdown(ad.id)}>
+                                  {openBreakdownId === ad.id ? 'Fermer les ventilations' : 'Ventilations'}
+                                </button>
+                                {/* PUB44 — lien croisé vers la fiche « histoire complète ». */}
+                                {ad.meta_id && (
+                                  <Link to={`/publicite/ad/${ad.meta_id}`} className="btn btn-light"
+                                    data-testid="ae-camp-ad-full-story"
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                    <FileText size={14} aria-hidden="true" /> Fiche
+                                  </Link>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     )}
+                  {openBreakdownId != null && (openAdset.ads || []).some(ad => ad.id === openBreakdownId) && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <BreakdownsPanel objectType="ad" objectId={openBreakdownId} />
+                    </div>
+                  )}
                 </>
               )}
         </section>

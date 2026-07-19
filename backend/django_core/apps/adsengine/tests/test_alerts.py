@@ -14,6 +14,8 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from apps.crm.models import Lead
+from apps.notifications.models import EventType, Notification
 from apps.roles.models import Role
 
 from apps.adsengine import alerts, guardrails
@@ -123,3 +125,47 @@ class AlertApiTests(TestCase):
     def test_requires_view_permission(self):
         nobody = make_user(self.company, 'nobody', [])
         self.assertEqual(auth(nobody).get(BASE).status_code, 403)
+
+
+class Pub68MetaSlaBreachNotificationTests(TestCase):
+    """PUB68 — notify_meta_leads_sla_breach : alerte SLA via le moteur
+    notify() UNIFIÉ (EventType.HOT_LEAD_UNREAD, réutilisé)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB68 Alerts Co')
+        self.owner = User.objects.create_user(
+            username='owner_pub68', password='pw',
+            email='owner68@example.com', company=self.company)
+
+    def test_meta_lead_over_sla_notifies_owner(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        old = now - datetime.timedelta(hours=5)
+        lead = Lead.objects.create(
+            company=self.company, nom='MetaSla', canal=Lead.Canal.META_ADS,
+            owner=self.owner)
+        Lead.objects.filter(pk=lead.pk).update(date_creation=old)
+        emitted = alerts.notify_meta_leads_sla_breach(
+            self.company, now=now, seuil_heures=1)
+        self.assertEqual(emitted, 1)
+        self.assertTrue(Notification.objects.filter(
+            recipient=self.owner,
+            event_type=EventType.HOT_LEAD_UNREAD).exists())
+
+    def test_no_owner_no_notification_no_crash(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        old = now - datetime.timedelta(hours=5)
+        lead = Lead.objects.create(
+            company=self.company, nom='SansOwner', canal=Lead.Canal.META_ADS)
+        Lead.objects.filter(pk=lead.pk).update(date_creation=old)
+        emitted = alerts.notify_meta_leads_sla_breach(
+            self.company, now=now, seuil_heures=1)
+        self.assertEqual(emitted, 0)
+
+    def test_under_sla_no_notification(self):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        Lead.objects.create(
+            company=self.company, nom='FraisMeta', canal=Lead.Canal.META_ADS,
+            owner=self.owner)
+        emitted = alerts.notify_meta_leads_sla_breach(
+            self.company, now=now, seuil_heures=1)
+        self.assertEqual(emitted, 0)

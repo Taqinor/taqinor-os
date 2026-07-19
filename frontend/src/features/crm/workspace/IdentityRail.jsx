@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Badge, Button, Avatar, AvatarFallback, DatePicker, FieldSavedPulse,
+  Badge, badgeVariants, Button, Avatar, AvatarFallback, DatePicker, FieldSavedPulse,
   Popover, PopoverTrigger, PopoverContent,
   Dialog, DialogContent, DialogTitle,
 } from '../../../ui'
@@ -8,6 +8,7 @@ import { initials } from '../../../ui/Avatar'
 import { normalizeMaPhone } from '../../../lib/format'
 import { useConfirmDialog, toast } from '../../../ui/confirm'
 import { useDuplicateCheck } from '../../../hooks/useDuplicateCheck'
+import { useIsAdminOrResponsable } from '../../../hooks/useHasPermission'
 import crmApi from '../../../api/crmApi'
 import AssigneePicker from '../../../components/AssigneePicker'
 import ScoreBadge from '../ScoreBadge'
@@ -147,6 +148,14 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const devisReady = !!(server.devis_auto && server.devis_auto.pret)
   const devisNotReadyMsg = (server.devis_auto && server.devis_auto.message)
     || 'Renseignez la facture du lead pour activer le devis automatique.'
+
+  // ── PUB53 — lien retour vers l'annonce Meta d'origine (pur frontend : le
+  // serializer crm expose déjà `meta_ad_id` en '__all__', aucun sélecteur
+  // adsengine n'est nécessaire côté lecture). Gaté aux rôles qui voient
+  // /publicite (responsable/admin — même liste que module.config.jsx).
+  const metaAdId = server.meta_ad_id || null
+  const canSeePublicite = useIsAdminOrResponsable()
+  const showAdBadge = !!metaAdId && canSeePublicite
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   const alreadyClient = !!server.client
@@ -313,7 +322,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
       </div>
 
       {/* Chips de préparation QX28 (ui/Badge — tokens uniquement, dark-safe) */}
-      {(roofReady || factureReady || devisReady) && (
+      {(roofReady || factureReady || devisReady || showAdBadge) && (
         <div className="lw-rail-chips">
           {roofReady && (
             <Badge tone="success" title="Un repère GPS de toiture a été capturé (site ou 3D)">
@@ -329,6 +338,19 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
             <Badge tone="success" title="Toutes les données nécessaires sont réunies pour générer un devis">
               ⚡ Prêt à deviser
             </Badge>
+          )}
+          {/* PUB53 — traçabilité retour : ce lead vient d'une ad Meta →
+              lien direct vers sa fiche « histoire complète » (PUB44). */}
+          {showAdBadge && (
+            <a
+              href={`/publicite/ad/${encodeURIComponent(metaAdId)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={badgeVariants({ tone: 'primary' })}
+              title="Ouvrir la fiche de l'annonce Meta à l'origine de ce lead"
+            >
+              📣 Vient de la pub
+            </a>
           )}
         </div>
       )}

@@ -97,3 +97,71 @@ def resolve_meta_ad_names(company, *, ad_id='', adgroup_id='', access_token=''):
                 result['campaign_id'] = str(campaign.get('id') or '')
 
     return result
+
+
+# ── PUB68 — SLA première réponse : résolution d'ad pour le temps de réponse ──
+
+def leads_response_time_by_ad_rows(company):
+    """PUB68 — Lignes brutes (temps de première réponse + ad résolu) pour le
+    calcul de la médiane PAR AD (``reporting.response_time_by_ad``). Résout
+    l'ad via la MÊME échelle qu'``attribution.variant_attribution``
+    (ADSENG6, ``attribution._resolve_ad_id`` — RÉUTILISÉE, jamais
+    réimplémentée) ; le CRM est lu UNIQUEMENT via
+    ``apps.crm.selectors.leads_response_time_rows`` (jamais un import
+    d'``apps.crm.models``). Un lead non résolu à une ad est ABSENT. Renvoie
+    ``[{'meta_id', 'name', 'response_minutes'}, ...]``."""
+    from apps.crm.selectors import leads_response_time_rows
+
+    from .attribution import _resolve_ad_id
+    from .models import AdMirror
+
+    ads = list(AdMirror.objects.filter(company=company))
+    by_meta = {a.meta_id: a for a in ads}
+    name_to_meta = {}
+    for a in ads:
+        if a.name:
+            name_to_meta.setdefault(a.name, a.meta_id)
+
+    rows = []
+    for row in leads_response_time_rows(company):
+        meta_id = _resolve_ad_id(row, by_meta, name_to_meta)
+        if meta_id is None:
+            continue
+        rows.append({
+            'meta_id': meta_id, 'name': by_meta[meta_id].name or '',
+            'response_minutes': row['response_minutes'],
+        })
+    return rows
+
+
+# ── PUB99 — KPIs pub FÉDÉRÉS vers le dashboard central reporting (ARC28) ──────
+def kpi_publicite(company):
+    """PUB99 — Tuiles KPI publicitaires fédérées (contrat ``core.platform``).
+
+    Renvoie une liste de tuiles ``{'id', 'label', 'valeur', 'unite'}`` calculées
+    sur les 7 derniers jours : dépense totale (niveau campagne, comme la
+    réconciliation) et leads Meta (miroirs). Bornée à la société. Aucune donnée
+    ⇒ tuiles à zéro (jamais d'erreur : ``reporting`` ignore un provider qui lève,
+    mais on ne lève jamais)."""
+    import datetime
+
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from .models import AdCampaignMirror, InsightSnapshot, MetaLeadMirror
+
+    today = datetime.date.today()
+    since = today - datetime.timedelta(days=6)
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    spend = (InsightSnapshot.objects
+             .filter(company=company, content_type=ct,
+                     date__gte=since, date__lte=today)
+             .aggregate(s=Sum('spend'))['s']) or 0
+    leads = MetaLeadMirror.objects.filter(
+        company=company, created_at__date__gte=since).count()
+    return [
+        {'id': 'adsengine_spend_7j', 'label': 'Dépense pub (7 j)',
+         'valeur': float(spend), 'unite': 'MAD'},
+        {'id': 'adsengine_leads_7j', 'label': 'Leads Meta (7 j)',
+         'valeur': int(leads), 'unite': 'leads'},
+    ]

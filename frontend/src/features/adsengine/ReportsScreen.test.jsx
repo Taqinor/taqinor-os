@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 /* ENG45 — Drill-downs reporting (ENG33) : table variantes, entonnoir campagne,
-   cohortes/lag, export CSV. Tous les chiffres = ceux de l'API mockée ; le CSV
-   est construit depuis ces mêmes chiffres. */
+   cohortes/lag, export CSV. Tous les chiffres = ceux de l'API mockée. PUB12 :
+   l'export CSV est SERVI PAR LE BACKEND (reports.export), plus fabriqué ici. */
 
 const mocks = vi.hoisted(() => ({
   variants: vi.fn(),
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   leaderboard: vi.fn(),
   scatter: vi.fn(),
   audit: vi.fn(),
+  exportCsv: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -20,7 +21,11 @@ vi.mock('./adsengineApi', () => ({
     reports: {
       variants: mocks.variants, funnel: mocks.funnel, cohorts: mocks.cohorts,
       leaderboard: mocks.leaderboard, scatter: mocks.scatter, audit: mocks.audit,
+      export: mocks.exportCsv,
     },
+    // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
+    // hors périmètre de ce fichier, mais montée sur l'écran (import réel).
+    alerts: { history: () => Promise.resolve({ data: [] }) },
   },
 }))
 
@@ -105,16 +110,24 @@ describe('ReportsScreen (ENG45)', () => {
     expect(row).toHaveTextContent('9')
   })
 
-  it('l\'export CSV contient les chiffres des variantes', async () => {
+  it('l\'export CSV appelle le ReportExportView serveur (blob), pas un CSV client', async () => {
+    mocks.exportCsv.mockResolvedValue({ data: new Blob(['x'], { type: 'text/csv' }) })
+    // Stubs jsdom pour le téléchargement du blob.
+    const createUrl = vi.fn(() => 'blob:mock')
+    const revokeUrl = vi.fn()
+    URL.createObjectURL = createUrl
+    URL.revokeObjectURL = revokeUrl
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+
     renderScreen()
-    const link = await screen.findByTestId('ae-reports-export')
-    expect(link).toHaveAttribute('download', 'variantes-taqinor.csv')
-    const href = link.getAttribute('href')
-    expect(href).toMatch(/^data:text\/csv/)
-    const csv = decodeURIComponent(href.replace(/^data:text\/csv;charset=utf-8,/, ''))
-    expect(csv).toContain('Variante,Impressions')
-    expect(csv).toContain('Reel toiture v1,12000,34,1500,44')
-    expect(csv).toContain('Statique prix,8000,12,900,75')
+    const btn = await screen.findByTestId('ae-reports-export')
+    fireEvent.click(btn)
+
+    await waitFor(() => expect(mocks.exportCsv).toHaveBeenCalledWith({ table: 'variantes' }))
+    await waitFor(() => expect(createUrl).toHaveBeenCalled())
+    expect(clickSpy).toHaveBeenCalled()
+    clickSpy.mockRestore()
   })
 
   it('affiche des états vides quand tout est vide', async () => {
@@ -127,6 +140,40 @@ describe('ReportsScreen (ENG45)', () => {
     expect(screen.getByTestId('ae-reports-cohorts-empty')).toBeInTheDocument()
     // Pas de lien d'export sans variante.
     expect(screen.queryByTestId('ae-reports-export')).toBeNull()
+  })
+
+  // PUB47 — impression navigateur (feuille globale print.css, VX80), zéro
+  // dépendance nouvelle : toujours visible, quel que soit l'onglet.
+  it('le bouton Imprimer appelle window.print()', async () => {
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {})
+    renderScreen()
+    const btn = await screen.findByTestId('ae-reports-print')
+    btn.click()
+    expect(printSpy).toHaveBeenCalled()
+    printSpy.mockRestore()
+  })
+
+  // PUB52 — entrée vers le comparateur côte-à-côte.
+  it('propose un lien vers le Comparateur', async () => {
+    renderScreen()
+    const link = await screen.findByTestId('ae-reports-compare-link')
+    expect(link).toHaveAttribute('href', '/publicite/comparateur')
+  })
+
+  // PUB56 — repli mobile (< 768px) : `.data-table` n'affiche le nom du champ
+  // sur les cartes que via `data-label` (index.css, pattern déjà établi de
+  // l'ERP) — sans lui, une carte mobile n'est qu'une pile de valeurs nues.
+  it('les cellules du tableau variantes portent data-label (repli carte mobile)', async () => {
+    renderScreen()
+    // La fixture renvoie plusieurs variantes → plusieurs lignes : les vérifier
+    // toutes (findAllByTestId, jamais le singulier qui lèverait « multiple »).
+    const rows = await screen.findAllByTestId('ae-reports-variant-row')
+    expect(rows.length).toBeGreaterThan(0)
+    rows.forEach(row => {
+      const cells = row.querySelectorAll('td')
+      expect(cells.length).toBeGreaterThan(0)
+      cells.forEach(td => expect(td).toHaveAttribute('data-label'))
+    })
   })
 })
 
@@ -153,6 +200,28 @@ describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {
     expect(rows[0]).toHaveTextContent('Reel pépite')
     expect(rows[0]).toHaveTextContent('Pépites cachées')
     expect(rows[1]).toHaveTextContent('Gouffres à budget')
+  })
+
+  it('PUB8 — affiche la courbe de rétention par ad vidéo (jamais un 0 fabriqué sans donnée)', async () => {
+    mocks.scatter.mockResolvedValue({ data: {
+      median_hook_rate: 0.2, median_spend: 300,
+      points: [
+        { ad_meta_id: 'a1', name: 'Reel pépite', spend: '50.00', hook_rate: 0.5,
+          quadrant: 'pepites_cachees', quadrant_label_fr: 'Pépites cachées',
+          hold_rate: 0.3, ratio_15s_to_6s: 0.5, watch_time_avg_s: 12.5,
+          retention: { p25: 0.8, p50: 0.5, p75: 0.25, p100: 0.1 } },
+        // Ad sans bundle vidéo (pas de retention) — jamais un "0 %" fabriqué.
+        { ad_meta_id: 'a2', name: 'Statique gouffre', spend: '950.00', hook_rate: 0.05,
+          quadrant: 'gouffres', quadrant_label_fr: 'Gouffres à budget' },
+      ],
+    } })
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-creatifs').click()
+    const rows = await screen.findAllByTestId('ae-creatifs-scatter-row')
+    expect(rows[0].querySelector('[data-testid="ae-creatifs-scatter-retention"]'))
+      .toHaveTextContent('80 % · 50 % · 25 % · 10 %')
+    expect(rows[1].querySelector('[data-testid="ae-creatifs-scatter-retention"]'))
+      .toHaveTextContent('—')
   })
 
   it('change de dimension et relance l\'appel API', async () => {
@@ -182,6 +251,16 @@ describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {
     screen.getByTestId('ae-reports-tab-creatifs').click()
     expect(await screen.findByTestId('ae-creatifs-leaderboard-empty')).toBeInTheDocument()
     expect(screen.getByTestId('ae-creatifs-scatter-empty')).toBeInTheDocument()
+  })
+
+  // PUB54 — aide contextuelle FR sur les métriques techniques (hook rate,
+  // coût par résultat).
+  it('le classement et le nuage ont leur « ? » sur hook rate / coût par résultat', async () => {
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-creatifs').click()
+    await screen.findAllByTestId('ae-creatifs-leaderboard-row')
+    expect(screen.getByTestId('ae-metric-help-toggle-cost_per_result')).toBeInTheDocument()
+    expect(screen.getAllByTestId('ae-metric-help-toggle-hook_rate').length).toBe(2)
   })
 })
 

@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   approve: vi.fn(),
   reject: vi.fn(),
   create: vi.fn(),
+  // PUB10 — permissions effectives ; pleines par défaut (préserve le
+  // comportement des tests existants), restreintes dans les tests dédiés.
+  permissions: ['adsengine_approve', 'adsengine_manage'],
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -20,7 +23,21 @@ vi.mock('./adsengineApi', () => ({
       pending: mocks.pending, approve: mocks.approve, reject: mocks.reject,
       create: mocks.create,
     },
+    // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
+    // hors périmètre de ce fichier, mais montée sur l'écran (import réel).
+    alerts: { history: () => Promise.resolve({ data: [] }) },
+    // PUB51 — palette de commandes (CommandPalette), montée sur l'écran mais
+    // ses données ne sont tirées qu'à l'ouverture (Ctrl-K, jamais pressé ici).
+    campaigns: { list: () => Promise.resolve({ data: [] }) },
+    metrics: { adsCockpit: () => Promise.resolve({ data: [] }) },
   },
+}))
+
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({
+    loading: false,
+    has: (code) => mocks.permissions.includes(code),
+  }),
 }))
 
 import ApprovalsScreen from './ApprovalsScreen'
@@ -42,6 +59,7 @@ beforeEach(() => {
   mocks.approve.mockResolvedValue({ data: {} })
   mocks.reject.mockResolvedValue({ data: {} })
   mocks.create.mockResolvedValue({ data: { id: 100 } })
+  mocks.permissions = ['adsengine_approve', 'adsengine_manage']
 })
 
 describe('ApprovalsScreen (ENG25)', () => {
@@ -105,6 +123,41 @@ describe('ApprovalsScreen (ENG25)', () => {
     renderScreen()
     expect(await screen.findByTestId('ae-approvals-empty')).toBeInTheDocument()
   })
+
+  // ── PUB41 — Fraîcheur + panne visibles (sondage doux + état-erreur) ─────
+  describe('PUB41 — sondage doux + état-erreur', () => {
+    it('panne réseau -> message d’erreur, PAS « aucune action en attente »', async () => {
+      mocks.pending.mockRejectedValue(new Error('network'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-approvals-load-error')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-approvals-empty')).toBeNull()
+    })
+
+    it('boîte réellement vide (succès) -> état-vide normal, pas d’erreur', async () => {
+      mocks.pending.mockResolvedValue({ data: [] })
+      renderScreen()
+      await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-approvals-empty')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-approvals-load-error')).toBeNull()
+    })
+
+    it('bouton « Actualiser » redéclenche un chargement immédiat', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(1))
+      fireEvent.click(screen.getByTestId('ae-approvals-refresh'))
+      await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(2))
+    })
+
+    it('un échec puis un succès efface le message d’erreur', async () => {
+      mocks.pending.mockRejectedValueOnce(new Error('network'))
+      renderScreen()
+      await screen.findByTestId('ae-approvals-load-error')
+      mocks.pending.mockResolvedValue({ data: ACTIONS })
+      fireEvent.click(screen.getByTestId('ae-approvals-refresh'))
+      await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3))
+      expect(screen.queryByTestId('ae-approvals-load-error')).toBeNull()
+    })
+  })
 })
 
 describe('ApprovalsScreen — avertissements + composeur EDIT_COPY (ADSDEEP35)', () => {
@@ -147,5 +200,144 @@ describe('ApprovalsScreen — avertissements + composeur EDIT_COPY (ADSDEEP35)',
     // Recharge la boîte + referme le composeur.
     await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(screen.queryByTestId('ae-composer')).toBeNull())
+  })
+})
+
+describe('PUB10 — parité permissions UI', () => {
+  it('manage-sans-approve : Approuver/Rejeter/batch sont grisés, le composeur reste actif', async () => {
+    mocks.permissions = ['adsengine_manage'] // pas adsengine_approve
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    expect(screen.getByTestId('ae-approve-11')).toBeDisabled()
+    expect(screen.getByTestId('ae-reject-11')).toBeDisabled()
+    // Cliquer un bouton désactivé n'appelle jamais l'API.
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    expect(mocks.approve).not.toHaveBeenCalled()
+    // Le composeur (adsengine_manage) reste utilisable.
+    expect(screen.getByTestId('ae-toggle-composer')).not.toBeDisabled()
+
+    // Batch : cocher une case puis le bouton de sélection reste grisé.
+    fireEvent.click(screen.getByTestId('ae-batch-toggle-11'))
+    expect(screen.getByTestId('ae-batch-approve')).toBeDisabled()
+  })
+
+  it('approve-sans-manage : le composeur est grisé, Approuver/Rejeter restent actifs', async () => {
+    mocks.permissions = ['adsengine_approve'] // pas adsengine_manage
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    expect(screen.getByTestId('ae-toggle-composer')).toBeDisabled()
+    expect(screen.getByTestId('ae-approve-11')).not.toBeDisabled()
+    expect(screen.getByTestId('ae-reject-11')).not.toBeDisabled()
+  })
+
+  it('aucune permission : tous les contrôles protégés sont grisés', async () => {
+    mocks.permissions = []
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    expect(screen.getByTestId('ae-approve-11')).toBeDisabled()
+    expect(screen.getByTestId('ae-reject-11')).toBeDisabled()
+    expect(screen.getByTestId('ae-toggle-composer')).toBeDisabled()
+  })
+
+  // PUB10/PUB51 — les raccourcis clavier A/R doivent respecter la même garde
+  // de permission que les boutons : sans adsengine_approve, ni A ni R ne
+  // doivent appeler l'API ou ouvrir le panneau de rejet.
+  it('aucune permission : les raccourcis clavier A/R sont sans effet', async () => {
+    mocks.permissions = []
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.keyDown(window, { key: 'a' })
+    expect(mocks.approve).not.toHaveBeenCalled()
+    fireEvent.keyDown(window, { key: 'r' })
+    expect(screen.queryByTestId('ae-reject-panel-11')).toBeNull()
+  })
+})
+
+describe('ApprovalsScreen — PUB51 raccourcis clavier (sans souris)', () => {
+  it('la première carte est focalisée par défaut', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    const cards = screen.getAllByTestId('ae-action-card')
+    expect(cards[0]).toHaveClass('ae-action-card-focused')
+    expect(cards[1]).not.toHaveClass('ae-action-card-focused')
+  })
+
+  it('J avance le focus, K recule', async () => {
+    renderScreen()
+    // Attendre que les cartes soient RENDUES (pas seulement `pending` appelé) :
+    // le gestionnaire clavier lit `actions` — tant qu'elles ne sont pas chargées,
+    // `j` bornerait l'index à 0 (liste vide).
+    await screen.findAllByTestId('ae-action-card')
+    fireEvent.keyDown(window, { key: 'j' })
+    let cards = screen.getAllByTestId('ae-action-card')
+    expect(cards[1]).toHaveClass('ae-action-card-focused')
+    fireEvent.keyDown(window, { key: 'j' })
+    cards = screen.getAllByTestId('ae-action-card')
+    expect(cards[2]).toHaveClass('ae-action-card-focused')
+    fireEvent.keyDown(window, { key: 'k' })
+    cards = screen.getAllByTestId('ae-action-card')
+    expect(cards[1]).toHaveClass('ae-action-card-focused')
+  })
+
+  it('A approuve la carte focalisée', async () => {
+    renderScreen()
+    await screen.findAllByTestId('ae-action-card')
+    fireEvent.keyDown(window, { key: 'j' }) // focus la 2e carte (id 12)
+    fireEvent.keyDown(window, { key: 'a' })
+    await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(12))
+  })
+
+  it('R ouvre le panneau de rejet STRUCTURÉ de la carte focalisée', async () => {
+    renderScreen()
+    await screen.findAllByTestId('ae-action-card')
+    fireEvent.keyDown(window, { key: 'r' }) // carte 0 (id 11)
+    expect(await screen.findByTestId('ae-reject-panel-11')).toBeInTheDocument()
+  })
+
+  it('jamais déclenché pendant qu\'un champ (select du motif) est focalisé', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-reject-12'))
+    const select = await screen.findByTestId('ae-reject-reason-12')
+    select.focus()
+    fireEvent.keyDown(select, { key: 'a' })
+    fireEvent.keyDown(select, { key: 'j' })
+    expect(mocks.approve).not.toHaveBeenCalled()
+    // Le focus visuel des cartes n'a pas bougé (toujours la 1re).
+    const cards = screen.getAllByTestId('ae-action-card')
+    expect(cards[0]).toHaveClass('ae-action-card-focused')
+  })
+})
+
+describe('ApprovalsScreen — PUB56 cibles tactiles ≥44×44px', () => {
+  it('Approuver/Rejeter ont une cible tactile d\'au moins 44×44px', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    const approve = screen.getByTestId('ae-approve-11')
+    const reject = screen.getByTestId('ae-reject-11')
+    expect(parseInt(approve.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+    expect(parseInt(approve.style.minWidth, 10)).toBeGreaterThanOrEqual(44)
+    expect(parseInt(reject.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+    expect(parseInt(reject.style.minWidth, 10)).toBeGreaterThanOrEqual(44)
+  })
+
+  it('la case à cocher batch a une zone de tap ≥44×44px (label enveloppant)', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    const checkbox = screen.getByTestId('ae-batch-toggle-11')
+    const label = checkbox.closest('label')
+    expect(label).not.toBeNull()
+    expect(parseInt(label.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+    expect(parseInt(label.style.minWidth, 10)).toBeGreaterThanOrEqual(44)
+  })
+
+  it('le panneau de rejet (confirmer/annuler/select) a des cibles ≥44px', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-reject-11'))
+    const confirmBtn = await screen.findByTestId('ae-reject-confirm-11')
+    const select = screen.getByTestId('ae-reject-reason-11')
+    expect(parseInt(confirmBtn.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+    expect(parseInt(select.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
   })
 })

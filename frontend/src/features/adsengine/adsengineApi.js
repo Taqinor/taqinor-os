@@ -67,6 +67,9 @@ const adsengineApi = {
     list: (params) => api.get('/adsengine/alertes/', { params }),
     // ENG43 — historique des alertes (past, pour l'écran Règles & anomalies).
     history: (params) => api.get('/adsengine/alertes/history/', { params }),
+    // PUB48 — reporte une alerte jusqu'à une date (n'affecte que la liste
+    // ACTIVE ; l'historique reste complet).
+    snooze: (id, until) => api.post(`/adsengine/alertes/${id}/snooze/`, { until }),
   },
 
   // ── ENG5/ENG24 — Campagnes (miroirs) + classement par créatif ──
@@ -88,6 +91,16 @@ const adsengineApi = {
     // @action backend EN : approve / reject (ADSENGINT1).
     approve: (id) => api.post(`/adsengine/actions/${id}/approve/`),
     reject: (id, payload) => api.post(`/adsengine/actions/${id}/reject/`, payload),
+    // PUB22 — proposition d'action CURÉE (duplicate/set_schedule/create_ad_study)
+    // via le producteur backend (résolution + validation) ; les kinds simples
+    // passent par `create` ({kind, reason_fr, payload}). Tout finit en
+    // propose_action (naissance PAUSED intacte, jamais un write Meta direct).
+    proposeCurated: (kind, body) =>
+      api.post(`/adsengine/actions/proposer/${kind}/`, body),
+    // PUB45 — « Annuler » une action APPLIQUÉE = PROPOSER son inverse (rétablir
+    // le budget mémorisé, restaurer le texte…) via le circuit propose→approuve
+    // normal — jamais un write direct. 422 si le kind n'est pas inversible.
+    cancel: (id, payload) => api.post(`/adsengine/actions/${id}/annuler/`, payload),
   },
 
   // ── ENG11/ENG26 — Brief hebdomadaire ──
@@ -112,6 +125,9 @@ const adsengineApi = {
     // DecisionLog d'une expérimentation (« pourquoi le moteur a fait X »).
     decisionLog: (id, params) =>
       api.get(`/adsengine/experiences/${id}/decisions/`, { params }),
+    // PUB87 — calculateur MDE/puissance (vue mince sur mde.py) : « avec votre
+    // volume, ~X jours pour détecter +20 % » avant lancement.
+    mde: (params) => api.get('/adsengine/experiences/mde/', { params }),
   },
 
   // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──
@@ -141,6 +157,14 @@ const adsengineApi = {
     // ADSDEEP43 — journal d'exécution ENRICHI : par règle, la dernière passe avec
     // le verdict de condition (valeurs) + le delta de l'action proposée.
     journal: () => api.get('/adsengine/regles/journal/'),
+    // PUB23 — instances RÉELLES ``RulePolicy`` de la société (état armé/
+    // désarmé), CRUD déjà exposé par ``RulePolicyViewSet`` (aucune route
+    // nouvelle) : ``list`` lit l'état ; ``create``/``update`` arment/désarment
+    // (``enabled``/``dry_run``) — jamais d'application directe, la règle armée
+    // ne fait que PROPOSER (mode par défaut ``propose``, boîte d'approbation).
+    list: (params) => api.get('/adsengine/regles/', { params }),
+    create: (payload) => api.post('/adsengine/regles/', payload),
+    update: (id, payload) => api.patch(`/adsengine/regles/${id}/`, payload),
   },
 
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
@@ -187,6 +211,12 @@ const adsengineApi = {
     // budgétaire, fatigue, tracking, fenêtres de données). Jamais auto-chargé
     // (bouton « Lancer l'audit »).
     audit: () => api.get('/adsengine/reporting/audit/'),
+    // PUB12/PUB47 — export CSV SERVEUR (ReportExportView) : source de vérité
+    // unique, inclut la table de réconciliation. Blob authentifié (jamais un
+    // CSV fabriqué côté client, qui divergerait du serveur). `params` :
+    // { table: 'variantes' | 'reconciliation', date? }.
+    export: (params) =>
+      api.get('/adsengine/reporting/export/', { params, responseType: 'blob' }),
   },
 
   // ── ADSDEEP53/54 — Boîte de réception des commentaires (posts + dark posts) ──
@@ -278,6 +308,83 @@ const adsengineApi = {
     get: (params) => api.get('/adsengine/signaux/', { params }),
     // Détail par cohorte d'un signal donné ({ signal: 'creatif'|'operations', ... }).
     cohort: (params) => api.get('/adsengine/signaux/cohorte/', { params }),
+  },
+
+  // ── PUB6/AGEN1 — Table des faits versionnée (génération ancrée) ──
+  // Routeur backend : « table-faits » (versions) + « faits » (entrées). Une
+  // seule table publiée à la fois par société ; ``publish`` dépublie l'ancienne
+  // (côté serveur, jamais un PATCH direct de statut).
+  factTables: {
+    ...resource('table-faits'),
+    publish: (id) => api.post(`/adsengine/table-faits/${id}/publish/`),
+  },
+  factEntries: {
+    ...resource('faits'),
+  },
+
+  // ── PUB41 — Fraîcheur + panne visibles (dernier sync OK par type + âge) ──
+  syncStatus: {
+    get: () => api.get('/adsengine/sync-status/'),
+  },
+
+  // ── PUB42 — File « Aujourd'hui » unifiée (écran d'accueil /publicite) ──
+  today: {
+    get: () => api.get('/adsengine/aujourd-hui/'),
+  },
+
+  // ── PUB44 — Fiche « histoire complète » d'une ad ──
+  ads: {
+    fullStory: (metaId) => api.get(`/adsengine/ads/${metaId}/histoire/`),
+  },
+
+  // ── PUB75 — Registre de consentement image/témoignage (CNDP loi 09-08) ──
+  // UI de collecte simple : enregistre un consentement recueilli (lien WhatsApp
+  // signable côté écran) ; ``revoke`` retire aussitôt les assets liés de la
+  // rotation (backend). Jamais un chiffre non vérifié n'entre ici — que du
+  // consentement humain signé.
+  consents: {
+    ...resource('consentements'),
+    revoke: (id) => api.post(`/adsengine/consentements/${id}/revoquer/`),
+  },
+
+  // ── PUB83 — Kit de marque persistant (logo/couleurs/zones/polices) ──
+  // Consommé par le TemplatedAdapter côté backend ; l'écran l'édite comme un
+  // singleton par société (OneToOne).
+  brandKit: {
+    ...resource('kit-marque'),
+  },
+
+  // ── PUB70 — Veille concurrentielle (manuelle outillée, ZÉRO scraping) ──
+  // Pages suivies + observations manuelles (hooks/angles reformulés). Le
+  // tableau `veille` agrège finding API + cadence + matière de brief.
+  competitors: {
+    ...resource('concurrents'),
+    veille: () => api.get('/adsengine/concurrents/veille/'),
+  },
+  competitorObservations: {
+    ...resource('observations-concurrents'),
+  },
+
+  // ── PUB73 — Import d'une photo de chantier dans la créathèque ──
+  // Provenance source_lane='chantier' + consentement PUB75 bloquant côté backend.
+  chantierImport: {
+    importPhoto: (payload) =>
+      api.post('/adsengine/creatifs/import-chantier/', payload),
+  },
+
+  // ── PUB50 — Gabarits de proposition réutilisables (pré-remplissage) ──
+  // Appliquer un gabarit ne fait que pré-remplir le composeur (jamais proposer).
+  proposalTemplates: {
+    ...resource('gabarits-proposition'),
+  },
+
+  // ── PUB55 — Chatter par entité (campagne/ad set/ad) ──
+  // Fil fusionné (notes manuelles + actions appliquées + alertes) ; POST = note.
+  chatter: {
+    timeline: (entityType, entityId) =>
+      api.get('/adsengine/chatter/', { params: { entity_type: entityType, entity_id: entityId } }),
+    postNote: (entityType, entityId, body) =>
+      api.post('/adsengine/chatter/', { entity_type: entityType, entity_id: entityId, body }),
   },
 }
 

@@ -7,13 +7,23 @@ Invariants prouvés :
   * sessions ≤10 000 lignes/appel, ``usersreplace`` atomique (57) ;
   * seed ≥100 requis pour un lookalike, ratio MA 1-5 %, value-based (58) ;
   * audiences d'engagement = objets Meta-side, AUCUNE donnée CRM envoyée (59).
+
+PUB58/59/60/61 — mêmes invariants pour les PREMIERS appelants production de
+57/58 (boucles de croissance ERP : devis vu/jamais-ouvert, devis expiré,
+cross-sell base installée, lookalike signatures réelles).
 """
 import hashlib
 import json
+from decimal import Decimal
 from urllib.parse import parse_qs
 
 import httpx
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
+
+from authentication.models import Company
+from apps.crm.models import Client, Lead
+from apps.installations.models import Installation
+from apps.ventes.models import Devis, ShareLink
 
 from apps.adsengine import audiences as aud
 from apps.adsengine import meta_client as mc
@@ -338,3 +348,218 @@ class MetaClientAudienceTransportTests(SimpleTestCase):
         client.delete_custom_audience(audience_id='AUD')
         self.assertEqual(captured['request'].method, 'DELETE')
         self.assertTrue(str(captured['request'].url).endswith('/AUD'))
+
+
+class Pub58DevisViewAudiencesTests(TestCase):
+    """PUB58 — sync_devis_view_audiences : PREMIER appelant production
+    d'ADSDEEP57, sur les 2 segments devis vu/jamais-ouvert (QJ1)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB58 Audiences Co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='X',
+            email='x@example.ma', telephone='+212600000010')
+
+    def _devis(self, ref, **kw):
+        return Devis.objects.create(
+            company=self.company, reference=ref, client=self.client_obj,
+            taux_tva=Decimal('20'), statut=Devis.Statut.ENVOYE, **kw)
+
+    def test_consent_off_no_network_at_all(self):
+        self._devis('DEV-PUB58A')
+        result = aud.sync_devis_view_audiences(
+            self.company, client=ExplodingClient())
+        self.assertFalse(result['jamais_ouvert']['configured'])
+        self.assertFalse(result['ouvert_non_signe']['configured'])
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_consent_on_pushes_two_distinct_segments(self):
+        never = self._devis('DEV-PUB58B')
+        opened = self._devis('DEV-PUB58C')
+        ShareLink.objects.create(
+            company=self.company, devis=opened, view_count=2)
+        client = RecordingClient()
+        result = aud.sync_devis_view_audiences(self.company, client=client)
+        self.assertEqual(result['jamais_ouvert']['name'], 'Devis jamais ouvert')
+        self.assertEqual(result['jamais_ouvert']['matched_rows'], 1)
+        self.assertEqual(result['ouvert_non_signe']['name'],
+                         'Devis ouvert non signé')
+        self.assertEqual(result['ouvert_non_signe']['matched_rows'], 1)
+        self.assertTrue(result['jamais_ouvert']['audience_id'])
+        self.assertTrue(result['ouvert_non_signe']['audience_id'])
+        self.assertIsNotNone(never)
+
+
+class Pub59ExpiredDevisAudienceTests(TestCase):
+    """PUB59 — sync_expired_devis_audience : angle « devis expiré », avec
+    exclusion des clients déjà signés PAR AILLEURS."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB59 Co')
+        self.client_expired = Client.objects.create(
+            company=self.company, nom='Expiré', prenom='Client',
+            email='expire@example.ma', telephone='+212600000020')
+        self.client_signed = Client.objects.create(
+            company=self.company, nom='Signé', prenom='Ailleurs',
+            email='signe@example.ma', telephone='+212600000021')
+
+    def test_consent_off_no_network(self):
+        Devis.objects.create(
+            company=self.company, reference='DEV-PUB59A',
+            client=self.client_expired, taux_tva=Decimal('20'),
+            statut=Devis.Statut.EXPIRE)
+        result = aud.sync_expired_devis_audience(
+            self.company, client=ExplodingClient())
+        self.assertFalse(result['configured'])
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_signed_elsewhere_excluded(self):
+        Devis.objects.create(
+            company=self.company, reference='DEV-PUB59B',
+            client=self.client_expired, taux_tva=Decimal('20'),
+            statut=Devis.Statut.EXPIRE)
+        Devis.objects.create(
+            company=self.company, reference='DEV-PUB59C',
+            client=self.client_signed, taux_tva=Decimal('20'),
+            statut=Devis.Statut.EXPIRE)
+        Devis.objects.create(
+            company=self.company, reference='DEV-PUB59D',
+            client=self.client_signed, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ACCEPTE)
+        client = RecordingClient()
+        result = aud.sync_expired_devis_audience(self.company, client=client)
+        self.assertEqual(result['name'], 'Devis expiré')
+        self.assertEqual(result['matched_rows'], 1)  # seul le client_expired
+
+
+class Pub60UpsellAudiencesTests(TestCase):
+    """PUB60 — sync_installed_base_upsell_audiences : cross-sell entretien
+    (sans contrat sav actif) + batterie (devis d'origine sans_batterie)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB60 Co')
+
+    def _signed_client(self, nom, *, option_acceptee=''):
+        client = Client.objects.create(
+            company=self.company, nom=nom, prenom='C',
+            email=f'{nom.lower()}@example.ma', telephone='+212600000030')
+        Devis.objects.create(
+            company=self.company, reference=f'DEV-PUB60-{nom}',
+            client=client, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ACCEPTE, option_acceptee=option_acceptee)
+        return client
+
+    def test_consent_off_no_network(self):
+        self._signed_client('SansTout')
+        result = aud.sync_installed_base_upsell_audiences(
+            self.company, client=ExplodingClient())
+        self.assertFalse(result['entretien']['configured'])
+        self.assertFalse(result['batterie']['configured'])
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_without_contract_and_without_battery_both_segmented(self):
+        self._signed_client('SansRien')
+        avec_batterie = self._signed_client(
+            'AvecBatterie', option_acceptee=Devis.OptionAcceptee.AVEC_BATTERIE)
+        from django.utils import timezone
+
+        from apps.sav.models import ContratMaintenance
+        ContratMaintenance.objects.create(
+            company=self.company, client=avec_batterie,
+            date_debut=timezone.now().date(), actif=True)
+
+        client = RecordingClient()
+        result = aud.sync_installed_base_upsell_audiences(
+            self.company, client=client)
+        # sans_contrat : seul 'SansRien' n'a pas de ContratMaintenance actif.
+        self.assertEqual(result['entretien']['matched_rows'], 1)
+        # sans_batterie : seul 'SansRien' (option_acceptee='') qualifie.
+        self.assertEqual(result['batterie']['matched_rows'], 1)
+
+
+class Pub61SignedLookalikeTests(TestCase):
+    """PUB61 — build_signed_customers_lookalike : graine « signatures
+    réelles » (leads SIGNÉS ERP) + lookalike dérivé, dégradation propre <100."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB61 Co')
+
+    def _signed_leads(self, n):
+        from apps.crm.stages import SIGNED
+        for i in range(n):
+            Lead.objects.create(
+                company=self.company, nom=f'Lead{i}', stage=SIGNED,
+                email=f'lead{i}@example.ma', telephone=f'+21260000{i:04d}')
+
+    def test_seed_below_100_no_lookalike_call(self):
+        self._signed_leads(5)
+        client = RecordingClient()
+        with override_settings(META_CUSTOM_AUDIENCE_CONSENT='1'):
+            result = aud.build_signed_customers_lookalike(
+                self.company, client=client)
+        self.assertTrue(result['seed_insufficient'])
+        self.assertIsNone(result['lookalike'])
+        self.assertFalse(
+            any(name == 'create_lookalike_audience' for name, _ in client.calls))
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_seed_above_100_derives_lookalike(self):
+        self._signed_leads(120)
+        client = RecordingClient()
+        result = aud.build_signed_customers_lookalike(
+            self.company, client=client)
+        self.assertFalse(result['seed_insufficient'])
+        self.assertIsNotNone(result['lookalike'])
+        self.assertTrue(result['lookalike']['audience_id'])
+        self.assertTrue(
+            any(name == 'create_lookalike_audience' for name, _ in client.calls))
+
+    def test_consent_off_no_network_regardless_of_seed_size(self):
+        self._signed_leads(150)
+        result = aud.build_signed_customers_lookalike(
+            self.company, client=ExplodingClient())
+        self.assertFalse(result['seed']['configured'])
+        self.assertIsNone(result['lookalike'])
+
+
+class Pub66GeoHaloTests(TestCase):
+    """PUB66 — fresh_installation_geo_halos : halo géo pur (aucune donnée
+    client), targeting_spec borné 500 m-2 km."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB66 Audiences Co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='C', prenom='PUB66')
+
+    def test_no_fresh_installation_empty_list(self):
+        self.assertEqual(aud.fresh_installation_geo_halos(self.company), [])
+
+    def test_halo_built_for_fresh_installation_with_gps(self):
+        Installation.objects.create(
+            company=self.company, reference='CHT-AUD66-01',
+            client=self.client_obj, gps_lat='33.573100', gps_lng='-7.589800')
+        halos = aud.fresh_installation_geo_halos(self.company)
+        self.assertEqual(len(halos), 1)
+        spec = halos[0]['targeting_spec']
+        loc = spec['geo_locations']['custom_locations'][0]
+        self.assertEqual(loc['latitude'], 33.5731)
+        self.assertEqual(loc['radius'], aud.GEO_HALO_DEFAULT_RADIUS_KM)
+        self.assertIn('halo géo', halos[0]['reason_fr'])
+
+    def test_radius_clamped_to_ma_range(self):
+        Installation.objects.create(
+            company=self.company, reference='CHT-AUD66-02',
+            client=self.client_obj, gps_lat='34.020000', gps_lng='-6.841600')
+        halos = aud.fresh_installation_geo_halos(self.company, radius_km=10)
+        loc = halos[0]['targeting_spec']['geo_locations']['custom_locations'][0]
+        self.assertEqual(loc['radius'], aud.GEO_HALO_MAX_RADIUS_KM)
+
+    def test_no_client_data_in_targeting_spec(self):
+        Installation.objects.create(
+            company=self.company, reference='CHT-AUD66-03',
+            client=self.client_obj, gps_lat='31.629500', gps_lng='-8.008900')
+        halos = aud.fresh_installation_geo_halos(self.company)
+        self.assertEqual(
+            set(halos[0]['targeting_spec'].keys()), {'geo_locations'})
+        self.assertNotIn(str(self.client_obj.pk),
+                         str(halos[0]['targeting_spec']))

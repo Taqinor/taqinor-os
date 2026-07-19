@@ -163,7 +163,8 @@ class ConsoleWiringTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         keys = {s['key'] for s in resp.data['statuses']}
         self.assertEqual(
-            keys, {'token', 'ad_account', 'page', 'pixel', 'capi', 'paused'})
+            keys, {'token', 'ad_account', 'page', 'pixel', 'capi', 'paused',
+                   'prepaid_balance'})
         self.assertNotIn(SECRET, json.dumps(resp.data))
         token_row = next(
             s for s in resp.data['statuses'] if s['key'] == 'token')
@@ -190,6 +191,63 @@ class ConsoleWiringTests(TestCase):
         resp = auth(self.viewer).patch(
             f'{BASE}/guardrail/', {'max_daily_budget_mad': 9}, format='json')
         self.assertEqual(resp.status_code, 403)
+
+    def test_guardrail_singleton_exposes_and_patches_all_fields(self):
+        """PUB9 — avant cette tâche, ce singleton (celui que ConnectionScreen
+        appelle réellement) ne mappait QUE les 2 plafonds budget : le reste de
+        GuardrailConfig (variation hebdo, fenêtre d'anomalie, bascules ENG8,
+        pacing/exploration ADSENG4, poids santé SIG1) était sérialisé côté
+        ``garde-fous/`` (ViewSet) mais invisible ici, donc jamais réellement
+        éditable depuis l'écran."""
+        api = auth(self.manager)
+        get1 = api.get(f'{BASE}/guardrail/')
+        self.assertEqual(get1.status_code, 200, get1.data)
+        for key in (
+                'weekly_change_pct_max', 'anomaly_window_hours',
+                'auto_rotate_creative', 'auto_rebalance_within_band',
+                'pacing_band_pct', 'exploration_floor_mad',
+                'exploration_floor_pct', 'health_creative_weight_ctr',
+                'health_creative_weight_freshness', 'health_ops_weight_cpl',
+                'health_ops_weight_delivery'):
+            self.assertIn(key, get1.data)
+
+        patch = api.patch(f'{BASE}/guardrail/', {
+            'weekly_change_pct_max': 30, 'anomaly_window_hours': 72,
+            'auto_rotate_creative': True, 'auto_rebalance_within_band': True,
+            'pacing_band_pct': 25, 'exploration_floor_mad': 40,
+            'exploration_floor_pct': 10, 'health_creative_weight_ctr': 70,
+            'health_creative_weight_freshness': 30,
+            'health_ops_weight_cpl': 55, 'health_ops_weight_delivery': 45,
+        }, format='json')
+        self.assertEqual(patch.status_code, 200, patch.data)
+        cfg = GuardrailConfig.objects.get(company=self.company)
+        self.assertEqual(cfg.weekly_change_pct_max, 30)
+        self.assertEqual(cfg.anomaly_window_hours, 72)
+        self.assertTrue(cfg.auto_rotate_creative)
+        self.assertTrue(cfg.auto_rebalance_within_band)
+        self.assertEqual(cfg.pacing_band_pct, 25)
+        self.assertEqual(cfg.exploration_floor_mad, 40)
+        self.assertEqual(cfg.exploration_floor_pct, 10)
+        self.assertEqual(cfg.health_creative_weight_ctr, 70)
+        self.assertEqual(cfg.health_creative_weight_freshness, 30)
+        self.assertEqual(cfg.health_ops_weight_cpl, 55)
+        self.assertEqual(cfg.health_ops_weight_delivery, 45)
+
+    def test_guardrail_singleton_bool_toggle_off_is_sent_and_saved(self):
+        """Une bascule ENG8 explicitement remise à False doit s'enregistrer
+        (contrairement aux plafonds numériques, une valeur falsy n'est jamais
+        traitée comme « absente » pour un booléen)."""
+        cfg, _ = GuardrailConfig.objects.get_or_create(
+            company=self.company, defaults={'auto_rotate_creative': True})
+        if not cfg.auto_rotate_creative:
+            cfg.auto_rotate_creative = True
+            cfg.save(update_fields=['auto_rotate_creative'])
+        resp = auth(self.manager).patch(
+            f'{BASE}/guardrail/', {'auto_rotate_creative': False},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        cfg.refresh_from_db()
+        self.assertFalse(cfg.auto_rotate_creative)
 
     # ── ENG23 — Dashboard / leads / pacing ───────────────────────────────────
     def test_metrics_dashboard_shape(self):
@@ -583,3 +641,340 @@ class ConsoleWiringTests(TestCase):
         resp = auth(self.viewer).get(f'{BASE}/reporting/cohortes/')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIsInstance(resp.data, list)
+
+    # ── PUB40 — Sélecteur de période + comparaison ───────────────────────────
+    def test_metrics_dashboard_windows_by_debut_fin(self):
+        """``?debut=&fin=`` borne spend/cpl/frequency ; omis, comportement
+        historique (somme de TOUT l'historique) inchangé."""
+        old_day = datetime.date.today() - datetime.timedelta(days=10)
+        ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        InsightSnapshot.objects.create(
+            company=self.company, content_type=ct, object_id=self.campaign.pk,
+            date=old_day, spend='999.00', results=1, frequency='3.00')
+        today = datetime.date.today()
+        resp = auth(self.viewer).get(
+            f'{BASE}/metrics/dashboard/',
+            {'debut': today.isoformat(), 'fin': today.isoformat()})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['spend'], '120.00')
+        resp_all = auth(self.viewer).get(f'{BASE}/metrics/dashboard/')
+        self.assertEqual(resp_all.status_code, 200, resp_all.data)
+        self.assertEqual(resp_all.data['spend'], '1119.00')
+
+    def test_metrics_dashboard_compare_previous_period_same_weekday(self):
+        """PUB40 — une fenêtre d'UN jour compare au MÊME jour, semaine
+        précédente (-7 j), le critère Done « hier vs même jour semaine
+        passée »."""
+        today = datetime.date.today()
+        last_week = today - datetime.timedelta(days=7)
+        ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        InsightSnapshot.objects.create(
+            company=self.company, content_type=ct, object_id=self.campaign.pk,
+            date=last_week, spend='40.00', results=2, frequency='1.00')
+        resp = auth(self.viewer).get(
+            f'{BASE}/metrics/dashboard/',
+            {'debut': today.isoformat(), 'fin': today.isoformat(),
+             'compare': '1'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['spend'], '120.00')
+        self.assertIn('previous', resp.data)
+        self.assertEqual(resp.data['previous']['spend'], '40.00')
+        self.assertEqual(resp.data['previous']['debut'], last_week.isoformat())
+
+    def test_metrics_dashboard_compare_without_range_is_noop(self):
+        resp = auth(self.viewer).get(
+            f'{BASE}/metrics/dashboard/', {'compare': '1'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotIn('previous', resp.data)
+
+    def test_ads_cockpit_windows_spend_and_leads_together(self):
+        """PUB40 — dépense (InsightSnapshot) ET leads (MetaLeadMirror) sont
+        fenêtrés ENSEMBLE : le CPL affiché reste un ratio cohérent."""
+        from django.utils import timezone
+
+        from apps.adsengine.models import MetaLeadMirror
+        today = datetime.date.today()
+        old_day = today - datetime.timedelta(days=10)
+        ad_ct = ContentType.objects.get_for_model(AdMirror)
+        InsightSnapshot.objects.create(
+            company=self.company, content_type=ad_ct, object_id=self.ad.pk,
+            date=old_day, spend='500.00', results=9)
+        MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='lg-old', ad_id=self.ad.meta_id,
+            created_time=timezone.make_aware(
+                datetime.datetime.combine(old_day, datetime.time(12, 0))))
+        MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='lg-new', ad_id=self.ad.meta_id,
+            created_time=timezone.now())
+        resp = auth(self.viewer).get(
+            f'{BASE}/metrics/ads-cockpit/',
+            {'debut': today.isoformat(), 'fin': today.isoformat()})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        row = next(r for r in resp.data if r['meta_id'] == 'ad-1')
+        # Fixture setUpTestData (30.00/2) + le lead d'AUJOURD'HUI seulement —
+        # l'instantané et le lead d'il y a 10 j sont hors fenêtre.
+        self.assertEqual(row['depense_mad'], '30.00')
+        self.assertEqual(row['nb_leads'], 1)
+        self.assertEqual(row['cpl_mad'], '30.00')
+
+    def test_ads_cockpit_without_range_unchanged(self):
+        """Omis (défaut) : comportement byte-identique — pas de fenêtrage."""
+        from apps.adsengine.models import MetaLeadMirror
+        MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='lg-1', ad_id=self.ad.meta_id)
+        resp = auth(self.viewer).get(f'{BASE}/metrics/ads-cockpit/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        row = next(r for r in resp.data if r['meta_id'] == 'ad-1')
+        self.assertEqual(row['nb_leads'], 1)
+
+    def test_campaigns_list_windows_depense_by_debut_fin(self):
+        old_day = datetime.date.today() - datetime.timedelta(days=10)
+        ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        InsightSnapshot.objects.create(
+            company=self.company, content_type=ct, object_id=self.campaign.pk,
+            date=old_day, spend='500.00', results=9)
+        today = datetime.date.today()
+        resp = auth(self.viewer).get(
+            f'{BASE}/campaigns/',
+            {'debut': today.isoformat(), 'fin': today.isoformat()})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rows = resp.data.get('results', resp.data)
+        row = next(r for r in rows if r['name'] == 'Campagne A')
+        self.assertEqual(row['depense_mad'], '120.00')
+        # Sans bornes : comportement historique (somme des deux).
+        resp_all = auth(self.viewer).get(f'{BASE}/campaigns/')
+        rows_all = resp_all.data.get('results', resp_all.data)
+        row_all = next(r for r in rows_all if r['name'] == 'Campagne A')
+        self.assertEqual(row_all['depense_mad'], '620.00')
+
+    # ── PUB41 — Fraîcheur + panne visibles ───────────────────────────────────
+    def test_sync_status_shape_never_synced_types_not_stale(self):
+        """Un type SANS historique (leads/commentaires : aucune fixture ici)
+        n'est jamais marqué `stale` — absence de donnée ≠ panne."""
+        resp = auth(self.viewer).get(f'{BASE}/sync-status/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        keys = {t['type'] for t in resp.data['types']}
+        self.assertEqual(keys, {'campaigns', 'insights', 'leads', 'comments'})
+        leads_row = next(t for t in resp.data['types'] if t['type'] == 'leads')
+        self.assertIsNone(leads_row['last_ok_at'])
+        self.assertIsNone(leads_row['age_minutes'])
+        self.assertFalse(leads_row['stale'])
+        # Les types AVEC un instantané récent (fixture setUpTestData, "today")
+        # ne sont pas stale non plus.
+        insights_row = next(t for t in resp.data['types'] if t['type'] == 'insights')
+        self.assertFalse(insights_row['stale'])
+        self.assertFalse(resp.data['stale'])
+        self.assertIsNone(resp.data['worst'])
+
+    def test_sync_status_marks_stale_past_threshold(self):
+        """Un type dont le dernier succès dépasse le seuil (26 h) devient
+        `stale` et remonte dans `worst` — le critère Done « sync cassé »."""
+        from apps.adsengine.models import CommentMirror
+        old_comment = CommentMirror.objects.create(
+            company=self.company, meta_id='cm-old', message='Ancien',
+            created_time=datetime.datetime.now(datetime.timezone.utc))
+        CommentMirror.objects.filter(pk=old_comment.pk).update(
+            updated_at=datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(hours=40))
+        resp = auth(self.viewer).get(f'{BASE}/sync-status/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['stale'])
+        comments_row = next(
+            t for t in resp.data['types'] if t['type'] == 'comments')
+        self.assertTrue(comments_row['stale'])
+        self.assertIsNotNone(comments_row['age_minutes'])
+        self.assertGreater(comments_row['age_minutes'], 26 * 60)
+        self.assertEqual(resp.data['worst']['type'], 'comments')
+
+    def test_sync_status_requires_view_permission(self):
+        resp = auth(self.nobody).get(f'{BASE}/sync-status/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_actions_log_windows_by_debut_fin(self):
+        from django.utils import timezone
+
+        from apps.adsengine.models import EngineAction
+        old_action = EngineAction.objects.create(
+            company=self.company, kind=EngineAction.Kind.PAUSE,
+            reason_fr='Ancienne action.')
+        EngineAction.objects.filter(pk=old_action.pk).update(
+            created_at=timezone.now() - datetime.timedelta(days=10))
+        new_action = EngineAction.objects.create(
+            company=self.company, kind=EngineAction.Kind.PAUSE,
+            reason_fr='Action récente.')
+        today = datetime.date.today()
+        resp = auth(self.viewer).get(
+            f'{BASE}/actions/',
+            {'debut': today.isoformat(), 'fin': today.isoformat()})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rows = resp.data.get('results', resp.data)
+        ids = {r['id'] for r in rows}
+        self.assertIn(new_action.pk, ids)
+        self.assertNotIn(old_action.pk, ids)
+        # Sans bornes : les deux apparaissent (comportement historique).
+        resp_all = auth(self.viewer).get(f'{BASE}/actions/')
+        ids_all = {r['id'] for r in resp_all.data.get('results', resp_all.data)}
+        self.assertIn(old_action.pk, ids_all)
+        self.assertIn(new_action.pk, ids_all)
+
+    # ── PUB42 — File « Aujourd'hui » unifiée ─────────────────────────────────
+    def test_today_queue_priority_order_garde_fou_first(self):
+        """garde-fous > alertes > approbations > commentaires > digest —
+        l'ordre EXACT du critère Done (« que dois-je faire ce matin ? »)."""
+        from apps.adsengine.models import CommentMirror, EngineAction
+
+        EngineAlert.objects.create(
+            company=self.company, alert_type=EngineAlert.Type.GARDE_FOU,
+            message='Plafond quotidien dépassé.', resolved=False)
+        EngineAlert.objects.create(
+            company=self.company, alert_type=EngineAlert.Type.ANOMALIE,
+            message='Fréquence anormale.', resolved=False)
+        EngineAction.objects.create(
+            company=self.company, kind=EngineAction.Kind.PAUSE,
+            reason_fr='CPL en hausse.')
+        CommentMirror.objects.create(
+            company=self.company, meta_id='today-c1', message='Question prix',
+            from_name='Client X', answered=False, is_hidden=False,
+            created_time=datetime.datetime.now(datetime.timezone.utc))
+
+        resp = auth(self.viewer).get(f'{BASE}/aujourd-hui/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        items = resp.data['items']
+        self.assertEqual(resp.data['total'], len(items))
+        categories = [it['categorie'] for it in items]
+        # garde_fou avant alerte avant approbation avant commentaire avant digest.
+        self.assertEqual(categories[0], 'garde_fou')
+        self.assertLess(
+            categories.index('garde_fou'), categories.index('alerte'))
+        self.assertLess(
+            categories.index('alerte'), categories.index('approbation'))
+        self.assertLess(
+            categories.index('approbation'), categories.index('commentaire'))
+        # Le brief (fixture setUpTestData) apparaît en dernier (digest).
+        self.assertEqual(categories[-1], 'digest')
+        # Chaque item porte un lien vers SON écran.
+        for it in items:
+            self.assertTrue(it['lien'].startswith('/publicite/'))
+
+    def test_today_queue_excludes_resolved_alerts(self):
+        EngineAlert.objects.create(
+            company=self.company, alert_type=EngineAlert.Type.GARDE_FOU,
+            message='Déjà traité.', resolved=True)
+        resp = auth(self.viewer).get(f'{BASE}/aujourd-hui/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        categories = [it['categorie'] for it in resp.data['items']]
+        self.assertNotIn('garde_fou', categories)
+
+    def test_today_queue_scoped_to_company(self):
+        EngineAlert.objects.create(
+            company=self.other, alert_type=EngineAlert.Type.GARDE_FOU,
+            message='Autre société.', resolved=False)
+        resp = auth(self.viewer).get(f'{BASE}/aujourd-hui/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        details = [it.get('detail', '') for it in resp.data['items']]
+        self.assertNotIn('Autre société.', details)
+
+    def test_today_queue_requires_view_permission(self):
+        resp = auth(self.nobody).get(f'{BASE}/aujourd-hui/')
+        self.assertEqual(resp.status_code, 403)
+
+    # ── PUB44 — Fiche « histoire complète » d'une ad ─────────────────────────
+    def test_ad_full_story_assembles_all_sections(self):
+        from apps.adsengine.models import (
+            AdCreativeMirror, AnomalyEvent, CommentMirror, EngineAction,
+            Experiment, ExperimentArm, InsightBreakdown, RulePolicy,
+        )
+
+        AdCreativeMirror.objects.create(
+            company=self.company, ad=self.ad, title='Toiture solaire',
+            body='Économisez sur votre facture.', cta_type='LEARN_MORE',
+            effective_object_story_id='story-777')
+
+        action = EngineAction.objects.create(
+            company=self.company, kind='edit_copy',
+            reason_fr="Rafraîchir l'accroche.",
+            payload={'ad_id': 'ad-1', 'creative_spec': {}})
+
+        CommentMirror.objects.create(
+            company=self.company, meta_id='cm-story-1', object_meta_id='story-777',
+            source=CommentMirror.Source.AD, from_name='Client X',
+            message='Combien ça coûte ?',
+            created_time=datetime.datetime.now(datetime.timezone.utc))
+
+        rule = RulePolicy.objects.create(
+            company=self.company, template_key='cpl_band', enabled=True)
+        AnomalyEvent.objects.create(
+            company=self.company, kind='cost_spike', entity_type='ad',
+            entity_meta_id='ad-1', message_fr='Pic de coût détecté.',
+            rule_policy=rule)
+
+        exp = Experiment.objects.create(company=self.company, name='Test hooks')
+        ExperimentArm.objects.create(
+            company=self.company, experiment=exp, ad_id='ad-1', label='Bras A')
+
+        ad_ct = ContentType.objects.get_for_model(AdMirror)
+        InsightBreakdown.objects.create(
+            company=self.company, content_type=ad_ct, object_id=self.ad.pk,
+            date=datetime.date.today(), dimension='region', key='Casablanca',
+            spend='30.00')
+
+        resp = auth(self.viewer).get(f'{BASE}/ads/ad-1/histoire/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        data = resp.data
+        self.assertEqual(data['ad']['meta_id'], 'ad-1')
+        self.assertEqual(data['creatif']['title'], 'Toiture solaire')
+        # Métriques = LA MÊME ligne que le cockpit (dépense fixture 30.00).
+        self.assertEqual(data['metriques']['depense_mad'], '30.00')
+        self.assertTrue(any(a['id'] == action.pk for a in data['actions']))
+        self.assertEqual(len(data['commentaires']), 1)
+        self.assertEqual(data['commentaires'][0]['message'], 'Combien ça coûte ?')
+        self.assertEqual(len(data['regles']), 1)
+        self.assertEqual(data['regles'][0]['rule_template_key'], 'cpl_band')
+        self.assertEqual(len(data['experiences']), 1)
+        self.assertEqual(data['experiences'][0]['experiment_nom'], 'Test hooks')
+        self.assertEqual(len(data['breakdowns']), 1)
+        self.assertEqual(data['breakdowns'][0]['key'], 'Casablanca')
+
+    def test_ad_full_story_no_creative_no_comments_still_200(self):
+        """Aucun créatif synchronisé -> commentaires = liste vide (jamais une
+        erreur, jamais un 500 sur effective_object_story_id manquant)."""
+        resp = auth(self.viewer).get(f'{BASE}/ads/ad-1/histoire/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['creatif'])
+        self.assertEqual(resp.data['commentaires'], [])
+
+    def test_ad_full_story_unknown_ad_404(self):
+        resp = auth(self.viewer).get(f'{BASE}/ads/nope-999/histoire/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_ad_full_story_scoped_to_company(self):
+        other_adset = AdSetMirror.objects.create(
+            company=self.other, meta_id='other-as', name='Other adset',
+            status='ACTIVE', campaign=AdCampaignMirror.objects.get(
+                company=self.other, meta_id='other-cmp'))
+        AdMirror.objects.create(
+            company=self.other, meta_id='other-ad', name='Other ad',
+            status='ACTIVE', adset=other_adset)
+        resp = auth(self.viewer).get(f'{BASE}/ads/other-ad/histoire/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_ad_full_story_requires_view_permission(self):
+        resp = auth(self.nobody).get(f'{BASE}/ads/ad-1/histoire/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_comments_list_carries_ad_meta_id_cross_link(self):
+        """PUB44 — lien croisé Commentaires -> fiche ad : `ad_meta_id` résolu
+        via l'effective_object_story_id du créatif (jamais une requête par
+        ligne — une seule map société)."""
+        from apps.adsengine.models import AdCreativeMirror, CommentMirror
+        AdCreativeMirror.objects.create(
+            company=self.company, ad=self.ad,
+            effective_object_story_id='story-888')
+        CommentMirror.objects.create(
+            company=self.company, meta_id='cm-2', object_meta_id='story-888',
+            source=CommentMirror.Source.AD, message='Question',
+            created_time=datetime.datetime.now(datetime.timezone.utc))
+        resp = auth(self.viewer).get(f'{BASE}/commentaires/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        row = next(r for r in resp.data if r['meta_id'] == 'cm-2')
+        self.assertEqual(row['ad_meta_id'], 'ad-1')

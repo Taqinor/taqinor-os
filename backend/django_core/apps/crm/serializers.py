@@ -562,7 +562,9 @@ class MotifPerteSerializer(serializers.ModelSerializer):
     class Meta:
         from .models import MotifPerte
         model = MotifPerte
-        fields = ['id', 'nom', 'archived', 'en_usage']
+        # PUB28 — est_junk distingue un motif JUNK (numéro invalide, spam/bot…)
+        # d'un motif de perte commercial réel (prix, concurrent…).
+        fields = ['id', 'nom', 'archived', 'est_junk', 'en_usage']
 
     def get_en_usage(self, obj):
         return _motif_en_usage(obj.company, obj.nom)

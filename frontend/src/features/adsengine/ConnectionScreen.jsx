@@ -1,19 +1,38 @@
 import { useEffect, useState, useCallback } from 'react'
-import { ShieldCheck, PlugZap } from 'lucide-react'
+import { ShieldCheck, PlugZap, ExternalLink, CircleHelp, RefreshCw } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { normalizeWiringStatuses, formatMAD } from './adsengine'
+import { WIZARD_STEPS, HEALTH_REMEDIATIONS, stepStatus } from './connectionWizard'
 
 /* ============================================================================
    ENG22 — Écran « Connexion & garde-fous » du moteur publicitaire.
    ----------------------------------------------------------------------------
-   Trois blocs :
+   Quatre blocs :
+   0. PUB46 — Assistant de connexion guidé : le wizard pas-à-pas FR (créer
+      l'app Meta, le System User, générer le jeton, trouver l'ID du compte
+      publicitaire) qui manquait à un non-technicien — 6 champs de jetons bruts
+      sans aide était plus technique qu'Ads Manager lui-même. Chaque étape
+      pointe vers Meta (liens externes) et se « vérifie » en réutilisant
+      `connection.health` DÉJÀ construit (jamais un nouveau contrat backend).
    1. Identifiants Meta — WRITE-ONLY : les champs partent TOUJOURS vides ; le
       serveur ne renvoie JAMAIS un secret (`connection.get` = statut seul). On
       n'envoie que les champs remplis (jamais d'écrasement par du vide).
    2. Statuts de câblage (ENG12 `connection.health`) — jeton / compte pub /
-      pixel / CAPI / client en pause.
-   3. Garde-fous — édition du plafond (quotidien/mensuel) et du « band »
-      d'approbation obligatoire.
+      pixel / CAPI / client en pause, avec REMÉDIATION par item (PUB46).
+   3. Garde-fous avancés (PUB9) — TOUS les champs de `GuardrailConfig` que le
+      back expose sur ``/adsengine/guardrail/`` (`GuardrailSingletonView`,
+      GET/PATCH sans id — DISTINCT du ViewSet `garde-fous/` qui sert le même
+      modèle en CRUD keyed) : avant cette tâche, ce singleton ne mappait QUE
+      les 2 plafonds budget (`max_daily_budget_mad`/`max_monthly_budget_mad`
+      → `daily_budget_ceiling_mad`/`monthly_budget_ceiling_mad`, alias posé
+      CÔTÉ SERVEUR) — PUB9 étend `GuardrailSingletonView` pour faire voyager
+      le reste (variation hebdo, fenêtre d'anomalie, bascules ENG8, pacing +
+      planchers d'exploration ADSENG4, poids santé SIG1) sous leur nom modèle
+      direct. `require_approval_above_mad` reste un GAP documenté (aucun
+      champ de stockage) — jamais montré à l'édition (un champ qui
+      n'enregistre jamais rien serait trompeur). Aide FR par champ ; aucune
+      bascule d'ACTIVATION de campagne n'existe ici (interdite en dur côté
+      service, pas un réglage).
    PAR DESIGN, AUCUN toggle d'activation n'existe à l'écran : le client Meta naît
    PAUSED (règle CLAUDE.md #3) et ne s'active jamais depuis l'ERP.
    ========================================================================== */
@@ -29,12 +48,69 @@ const CRED_FIELDS = [
 ]
 const EMPTY_CREDS = Object.fromEntries(CRED_FIELDS.map(f => [f.key, '']))
 
-// Garde-fous éditables (plafond + band d'approbation).
-const GUARD_FIELDS = [
-  { key: 'max_daily_budget_mad', label: 'Plafond quotidien (MAD)' },
-  { key: 'max_monthly_budget_mad', label: 'Plafond mensuel (MAD)' },
-  { key: 'require_approval_above_mad', label: 'Approbation obligatoire au-dessus de (MAD)' },
+// PUB9 — TOUS les champs de `GuardrailConfig` que le back expose sur ce
+// singleton (`GuardrailSingletonView` — GET/PATCH sans id, celui que
+// `adsengineApi.guardrail` appelle réellement). Les 2 plafonds budget
+// gardent leur alias HISTORIQUE (`max_daily_budget_mad`/`max_monthly_budget_
+// mad`, ≠ nom modèle `daily_budget_ceiling_mad`/`monthly_budget_ceiling_mad`
+// — ce mapping est fait CÔTÉ SERVEUR) ; tous les autres champs voyagent sous
+// leur nom modèle direct. Groupés par thème, avec une aide FR par champ.
+// `type: 'bool'` → checkbox ; `type: 'number'` → input numérique (vide = non
+// envoyé, sauf pour les bascules qui partent toujours avec une valeur).
+const GUARD_FIELD_GROUPS = [
+  {
+    label: 'Plafonds & variation',
+    fields: [
+      { key: 'max_daily_budget_mad', label: 'Plafond budget quotidien (MAD)', type: 'number',
+        help: "Seuil de garde-fou (pas un montant comptable) : le détecteur d'anomalie compare la dépense réelle des miroirs à ce plafond." },
+      { key: 'max_monthly_budget_mad', label: 'Plafond budget mensuel (MAD)', type: 'number',
+        help: 'Optionnel — laissé vide, il est dérivé automatiquement du plafond quotidien × jours du mois.' },
+      { key: 'weekly_change_pct_max', label: 'Variation hebdomadaire maximale (%)', type: 'number',
+        help: "Variation de budget autorisée par semaine, dans les deux sens, avant qu'une approbation humaine devienne obligatoire." },
+    ],
+  },
+  {
+    label: "Détection d'anomalie",
+    fields: [
+      { key: 'anomaly_window_hours', label: "Fenêtre de détection d'anomalie (heures)", type: 'number',
+        help: 'Durée d’observation « dépense en cours et zéro lead » avant de déclencher une alerte d’anomalie.' },
+    ],
+  },
+  {
+    label: 'Auto-application (ENG8)',
+    fields: [
+      { key: 'auto_rotate_creative', label: 'Auto — rotation créative', type: 'bool',
+        help: "Si activé, le moteur peut roter un créatif fatigué SANS attendre une approbation — l'action reste tracée dans le journal (auto=vrai)." },
+      { key: 'auto_rebalance_within_band', label: 'Auto — rééquilibrage budgétaire dans la bande', type: 'bool',
+        help: "Si activé, le moteur peut rééquilibrer le budget entre bras SANS approbation, tant que ça reste dans la bande de pacing ci-dessous." },
+    ],
+  },
+  {
+    label: 'Pacing & exploration (trésorerie, ADSENG4)',
+    fields: [
+      { key: 'pacing_band_pct', label: 'Bande de pacing (%)', type: 'number',
+        help: "Écart toléré entre la dépense projetée et l'enveloppe mensuelle avant qu'une alerte de pacing se déclenche." },
+      { key: 'exploration_floor_mad', label: "Plancher d'exploration (MAD/jour)", type: 'number',
+        help: "Dépense minimale garantie par jour pour un bras minoritaire du bandit — il n'est jamais totalement étouffé." },
+      { key: 'exploration_floor_pct', label: "Plancher d'exploration (%)", type: 'number',
+        help: "Même plancher exprimé en % du budget — le PLUS ÉLEVÉ des deux (MAD ou %) s'applique effectivement." },
+    ],
+  },
+  {
+    label: 'Poids des scores de santé (SIG1)',
+    fields: [
+      { key: 'health_creative_weight_ctr', label: 'Santé créatif — poids CTR', type: 'number',
+        help: "Poids relatif du CTR dans le score de santé créatif. Poids FIXES, révisés trimestriellement à la main — jamais appris (pour ne pas pousser au clickbait)." },
+      { key: 'health_creative_weight_freshness', label: 'Santé créatif — poids fraîcheur', type: 'number',
+        help: 'Poids relatif du temps écoulé depuis le dernier test dans le score de santé créatif.' },
+      { key: 'health_ops_weight_cpl', label: 'Santé opérations — poids CPL', type: 'number',
+        help: 'Poids relatif du coût par lead dans le score de santé opérations.' },
+      { key: 'health_ops_weight_delivery', label: 'Santé opérations — poids diffusion', type: 'number',
+        help: 'Poids relatif de la diffusion (delivery) dans le score de santé opérations.' },
+    ],
+  },
 ]
+const GUARD_FIELDS = GUARD_FIELD_GROUPS.flatMap(g => g.fields)
 
 export default function ConnectionScreen() {
   const [status, setStatus] = useState(null) // statut de connexion (sans secret)
@@ -61,6 +137,7 @@ export default function ConnectionScreen() {
 
   const setCred = (k) => (e) => setCreds(c => ({ ...c, [k]: e.target.value }))
   const setGuardField = (k) => (e) => setGuard(g => ({ ...g, [k]: e.target.value }))
+  const setGuardBool = (k) => (e) => setGuard(g => ({ ...g, [k]: e.target.checked }))
 
   const saveCreds = async (e) => {
     e.preventDefault()
@@ -89,7 +166,13 @@ export default function ConnectionScreen() {
     const payload = {}
     for (const f of GUARD_FIELDS) {
       const v = guard[f.key]
-      if (v !== '' && v !== null && v !== undefined) payload[f.key] = Number(v)
+      if (f.type === 'bool') {
+        // Une bascule part TOUJOURS avec une valeur explicite (false par
+        // défaut) — jamais omise, contrairement aux plafonds numériques.
+        payload[f.key] = Boolean(v)
+      } else if (v !== '' && v !== null && v !== undefined) {
+        payload[f.key] = Number(v)
+      }
     }
     try {
       await adsengineApi.guardrail.update(payload)
@@ -99,6 +182,10 @@ export default function ConnectionScreen() {
     }
   }
 
+  // PUB46 — {clé -> ok} dérivé du dernier `connection.health()` connu ; sert
+  // à la fois au wizard (statut par étape) et à la remédiation par item.
+  const healthByKey = Object.fromEntries(health.map(s => [s.key, s.ok]))
+
   return (
     <div className="page ae-connection">
       <div className="page-header">
@@ -107,6 +194,60 @@ export default function ConnectionScreen() {
 
       {msg && <p data-testid="ae-conn-msg" style={{ color: '#16a34a', margin: '0 0 0.75rem' }}>{msg}</p>}
       {err && <p data-testid="ae-conn-err" style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>{err}</p>}
+
+      {/* PUB46 — Assistant de connexion guidé (wizard pas-à-pas FR). */}
+      <section className="card" data-testid="ae-conn-wizard" style={{ padding: '1rem', marginBottom: '1rem' }}>
+        <h3 style={{ margin: '0 0 0.25rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <CircleHelp size={18} aria-hidden="true" /> Assistant de connexion guidé
+        </h3>
+        <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.85rem' }}>
+          Suivez les étapes dans l&apos;ordre, de zéro jusqu&apos;à une connexion verte —
+          aucune connaissance technique préalable requise.
+        </p>
+        <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.6rem' }}>
+          {WIZARD_STEPS.map(step => {
+            const state = stepStatus(step, healthByKey)
+            const tone = state === 'ok'
+              ? { bg: '#dcfce7', color: '#166534', label: 'Vérifié' }
+              : state === 'a_faire'
+                ? { bg: '#fee2e2', color: '#991b1b', label: 'À faire' }
+                : state === 'manuel'
+                  ? { bg: '#f1f5f9', color: '#475569', label: 'À faire manuellement' }
+                  : { bg: '#f1f5f9', color: '#475569', label: 'À vérifier' }
+            return (
+              <li key={step.key} id={`ae-conn-wizard-step-${step.numero}`}
+                data-testid={`ae-conn-wizard-step-${step.numero}`}
+                style={{ padding: '0.65rem 0.8rem', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span className="badge" style={{ background: '#eef2ff', color: '#3730a3' }}>
+                    Étape {step.numero}
+                  </span>
+                  <strong>{step.titre}</strong>
+                  <span className="badge" data-testid={`ae-conn-wizard-status-${step.numero}`}
+                    style={{ background: tone.bg, color: tone.color, marginLeft: 'auto' }}>
+                    {tone.label}
+                  </span>
+                </div>
+                <p style={{ margin: '0.35rem 0', color: '#334155' }}>{step.description}</p>
+                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <a href={step.lien} target="_blank" rel="noopener noreferrer"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                      color: '#2563eb', fontSize: '0.85rem' }}>
+                    <ExternalLink size={13} aria-hidden="true" /> {step.lienLabel}
+                  </a>
+                  {step.statutCles.length > 0 && (
+                    <button type="button" className="btn btn-light" data-testid={`ae-conn-wizard-verify-${step.numero}`}
+                      onClick={load}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}>
+                      <RefreshCw size={13} aria-hidden="true" /> Vérifier cette étape
+                    </button>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      </section>
 
       {/* Statut de connexion (jamais de secret) */}
       <section className="card" data-testid="ae-conn-status" style={{ padding: '1rem', marginBottom: '1rem' }}>
@@ -159,33 +300,72 @@ export default function ConnectionScreen() {
           ? <p style={{ margin: 0, color: '#64748b' }}>Aucun état de câblage disponible.</p>
           : (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.35rem' }}>
-              {health.map(s => (
-                <li key={s.key} data-testid={`ae-conn-health-${s.key}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span className="badge" style={{
-                    background: s.ok ? '#dcfce7' : '#fee2e2',
-                    color: s.ok ? '#166534' : '#991b1b' }}>
-                    {s.ok ? 'OK' : 'À configurer'}
-                  </span>
-                  <span>{s.label}</span>
-                  {s.detail && <span style={{ color: '#64748b', fontSize: '0.85rem' }}>— {s.detail}</span>}
+              {health.map(s => {
+                // PUB46 — remédiation FR par item : COMPLÈTE le `detail` déjà
+                // renvoyé par le backend, ne l'écrase jamais.
+                const remediation = !s.ok ? HEALTH_REMEDIATIONS[s.key] : null
+                return (
+                <li key={s.key} data-testid={`ae-conn-health-${s.key}`}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <span className="badge" style={{
+                      background: s.ok ? '#dcfce7' : '#fee2e2',
+                      color: s.ok ? '#166534' : '#991b1b' }}>
+                      {s.ok ? 'OK' : 'À configurer'}
+                    </span>
+                    <span>{s.label}</span>
+                    {s.detail && <span style={{ color: '#64748b', fontSize: '0.85rem' }}>— {s.detail}</span>}
+                  </div>
+                  {remediation && (
+                    <p data-testid={`ae-conn-remediation-${s.key}`}
+                      style={{ margin: '0.2rem 0 0 0', color: '#9a3412', fontSize: '0.8rem' }}>
+                      {remediation.message}
+                      {remediation.etape != null && (
+                        <>
+                          {' '}
+                          <a href={`#ae-conn-wizard-step-${remediation.etape}`}>
+                            Reprendre l&apos;étape {remediation.etape} ci-dessus
+                          </a>.
+                        </>
+                      )}
+                    </p>
+                  )}
                 </li>
-              ))}
+                )
+              })}
             </ul>
           )}
       </section>
 
-      {/* Garde-fous : plafond + band d'approbation */}
+      {/* PUB9 — Garde-fous avancés : TOUS les champs sérialisés, groupés,
+          avec aide FR par champ (plafonds/variation, anomalie, bascules
+          d'auto-application ENG8, pacing/exploration ADSENG4, poids santé
+          SIG1). */}
       <form onSubmit={saveGuard} data-testid="ae-conn-guard-form"
-        className="card" style={{ padding: '1rem', display: 'grid', gap: '0.6rem', maxWidth: 640 }}>
-        <h3 style={{ margin: 0 }}>Garde-fous</h3>
-        {GUARD_FIELDS.map(f => (
-          <label key={f.key} style={{ display: 'grid', gap: '0.2rem' }}>
-            <span style={{ fontSize: '0.85rem', color: '#475569' }}>{f.label}</span>
-            <input className="form-input" type="number" step="any" min="0"
-              data-testid={`ae-conn-guard-${f.key}`}
-              value={guard[f.key] ?? ''} onChange={setGuardField(f.key)} />
-          </label>
+        className="card" style={{ padding: '1rem', display: 'grid', gap: '1.1rem', maxWidth: 640 }}>
+        <h3 style={{ margin: 0 }}>Garde-fous avancés</h3>
+        {GUARD_FIELD_GROUPS.map(group => (
+          <fieldset key={group.label} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '0.75rem 0.9rem', display: 'grid', gap: '0.6rem' }}>
+            <legend style={{ padding: '0 0.4rem', fontWeight: 600, fontSize: '0.9rem' }}>{group.label}</legend>
+            {group.fields.map(f => (
+              <label key={f.key} style={{ display: 'grid', gap: '0.2rem' }}>
+                {f.type === 'bool' ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input type="checkbox" data-testid={`ae-conn-guard-${f.key}`}
+                      checked={Boolean(guard[f.key])} onChange={setGuardBool(f.key)} />
+                    <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>{f.label}</span>
+                  </span>
+                ) : (
+                  <>
+                    <span style={{ fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>{f.label}</span>
+                    <input className="form-input" type="number" step="any" min="0"
+                      data-testid={`ae-conn-guard-${f.key}`}
+                      value={guard[f.key] ?? ''} onChange={setGuardField(f.key)} />
+                  </>
+                )}
+                <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{f.help}</span>
+              </label>
+            ))}
+          </fieldset>
         ))}
         <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
           Plafond quotidien actuel : {formatMAD(guard.max_daily_budget_mad)}.

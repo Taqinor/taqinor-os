@@ -221,4 +221,98 @@ test.describe('ADSDEEP64 : console Publicité étendue (mocks ciblés, ADSENGINT
     await expect(page.getByTestId('ae-dv2-mer-spend-sparkline')).toBeVisible()
     await expect(page.getByTestId('ae-dv2-mer-ca-sparkline')).toBeVisible()
   })
+
+  // ── PUB42 — File « Aujourd'hui » unifiée ─────────────────────────────────
+  test("File « Aujourd'hui » : ordre de priorité + lien vers l'écran de chaque item", async ({ page }) => {
+    const ITEMS = [
+      { id: 'garde_fou-1', categorie: 'garde_fou', categorie_label: 'Garde-fou',
+        titre: 'Violation de garde-fou', detail: 'Plafond quotidien dépassé.',
+        lien: '/publicite/tableau-de-bord', quand: new Date().toISOString() },
+      { id: 'approbation-11', categorie: 'approbation', categorie_label: 'Approbation',
+        titre: 'Ajustement de budget', detail: 'CPL en baisse — augmenter la portée.',
+        lien: '/publicite/approbations', quand: new Date().toISOString() },
+      { id: 'commentaire-5', categorie: 'commentaire', categorie_label: 'Commentaire',
+        titre: 'Karim B.', detail: 'Combien coûte l’installation pour une villa ?',
+        lien: '/publicite/commentaires', quand: new Date().toISOString() },
+    ]
+    await page.route('**/api/django/adsengine/aujourd-hui/**', (route) =>
+      route.fulfill({ json: { items: ITEMS, total: ITEMS.length } }))
+    await page.route('**/api/django/adsengine/sync-status/**', (route) =>
+      route.fulfill({ json: { types: [], stale: false, worst: null } }))
+
+    await page.goto('/publicite')
+    await expect(page.getByRole('heading', { name: "Aujourd'hui" })).toBeVisible({ timeout: 20_000 })
+
+    const rows = page.getByTestId('ae-today-item')
+    await expect(rows).toHaveCount(3)
+    // Ordre EXACT reçu du backend (garde-fou > approbation > commentaire) —
+    // l'écran ne retrie jamais.
+    await expect(rows.nth(0)).toContainText('Violation de garde-fou')
+    await expect(rows.nth(1)).toContainText('Ajustement de budget')
+    await expect(rows.nth(2)).toContainText('Karim B.')
+
+    // Chaque item est cliquable vers SON écran (approbations ici).
+    await rows.nth(1).click()
+    await expect(page.getByRole('heading', { name: "Boîte d'approbation" })).toBeVisible({ timeout: 20_000 })
+  })
+
+  test("Nav « Aujourd'hui » : badge de comptage sur l'icône", async ({ page }) => {
+    await page.route('**/api/django/adsengine/aujourd-hui/**', (route) =>
+      route.fulfill({ json: { items: [{ id: 1 }, { id: 2 }, { id: 3 }], total: 3 } }))
+    await page.route('**/api/django/adsengine/sync-status/**', (route) =>
+      route.fulfill({ json: { types: [], stale: false, worst: null } }))
+
+    await page.goto('/publicite')
+    await expect(page.getByRole('heading', { name: "Aujourd'hui" })).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByTestId('ae-nav-today-badge').first()).toContainText('3')
+  })
+
+  // ── PUB44 — Fiche « histoire complète » d'une ad ─────────────────────────
+  test("Fiche « histoire complète » d'une ad : toutes les sections en une page + lien croisé depuis le Cockpit", async ({ page }) => {
+    const STORY = {
+      ad: { id: 1, meta_id: 'ad-1', nom: 'Reel toiture', statut: 'ACTIVE', statut_display: 'Active' },
+      creatif: { title: 'Toiture solaire', body: 'Économisez sur votre facture.', video_id: '', image_hash: '' },
+      metriques: {
+        depense_mad: '900.00', nb_leads: 5, cpl_mad: '180.00', signatures: 1,
+        cost_per_signature_mad: '900.00', frequency: '2.10',
+        fatigue: { fired: true, severity: 'critique', message_fr: 'Fatigue confirmée' },
+      },
+      actions: [{ id: 11, kind: 'edit_copy', kind_display: 'Édition du texte / créatif',
+        reason_fr: "Rafraîchir l'accroche.", status: 'approuvee', status_display: 'Approuvée' }],
+      commentaires: [{ id: 21, from_name: 'Client X', message: 'Combien ça coûte ?' }],
+      regles: [{ id: 31, kind: 'cost_spike', kind_display: 'Pic de coût',
+        message_fr: 'Pic de coût détecté.', rule_label: 'CPL hors bande' }],
+      experiences: [{ id: 41, label: 'Bras A', is_active: true, experiment_nom: 'Test hooks' }],
+      breakdowns: [{ id: 51, dimension_display: 'Région', key: 'Casablanca', date: '2026-07-18', spend: '30.00' }],
+    }
+    const ROWS = [{
+      id: 1, meta_id: 'ad-1', nom: 'Reel toiture', statut: 'ACTIVE', statut_display: 'Active',
+      learning_badge: { status: 'LEARNING', label: 'En apprentissage', tone: 'info' },
+      thumbnail_ref: null, thumbnail_kind: 'image', depense_mad: '900.00',
+      conversations: 12, nb_leads: 5, cpl_mad: '180.00', signatures: 1,
+      cost_per_signature_mad: '900.00', frequency: '2.10',
+      fatigue: { fired: true, insufficient_data: false, severity: 'critique', message_fr: 'Fatigue confirmée' },
+    }]
+    await mockMedia(page)
+    await page.route('**/api/django/adsengine/metrics/ads-cockpit/**', (route) =>
+      route.fulfill({ json: ROWS }))
+    await page.route('**/api/django/adsengine/ads/ad-1/histoire/**', (route) =>
+      route.fulfill({ json: STORY }))
+    await page.route('**/api/django/adsengine/sync-status/**', (route) =>
+      route.fulfill({ json: { types: [], stale: false, worst: null } }))
+
+    // Départ du Cockpit : lien croisé vers la fiche complète.
+    await page.goto('/publicite/cockpit')
+    await expect(page.getByRole('heading', { name: 'Cockpit par ad' })).toBeVisible({ timeout: 20_000 })
+    await page.getByTestId('ae-cockpit-full-story').first().click()
+
+    await expect(page.getByRole('heading', { name: 'Reel toiture' })).toBeVisible({ timeout: 20_000 })
+    // Toutes les sections DONE de la fiche, sur UNE SEULE page.
+    await expect(page.getByTestId('ae-ad-detail-metrics')).toContainText('900 MAD')
+    await expect(page.getByTestId('ae-ad-detail-action-row').first()).toContainText('Édition du texte / créatif')
+    await expect(page.getByTestId('ae-ad-detail-comment-row').first()).toContainText('Combien ça coûte ?')
+    await expect(page.getByTestId('ae-ad-detail-rule-row').first()).toContainText('CPL hors bande')
+    await expect(page.getByTestId('ae-ad-detail-experiment-row').first()).toContainText('Test hooks')
+    await expect(page.getByTestId('ae-ad-detail-breakdown-row').first()).toContainText('Casablanca')
+  })
 })

@@ -1,18 +1,47 @@
 """Sérialiseurs du moteur publicitaire Meta Ads (Groupe ENG)."""
+import datetime
 from decimal import Decimal
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
-    AdCampaignMirror, AdMirror, AdSetMirror, AnomalyEvent, ArmDailyStat,
-    AssumptionNode, CommentMirror, CreativeAsset, CreativeBacklogItem,
+    AdCampaignMirror, AdMirror, AdSetMirror, Annotation, AnomalyEvent,
+    ArmDailyStat,
+    AssumptionNode, BrandKit, CommentMirror,
+    CompetitorAdObservation, CompetitorPage, ConsentRecord, CreativeAsset,
+    CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
     EngineAlert, Experiment, ExperimentArm, FactEntry, FactTable,
-    FlightPhase, FlightPlan,
+    FlightPhase, FlightPlan, ProposalTemplate,
     GuardrailConfig, InsightBreakdown, InsightSnapshot,
     InstagramCommentMirror, InstagramMediaMirror, MetaConnection,
     PacingState, ReconciliationSnapshot, RulePolicy,
 )
+
+
+def _extract_token_expiry(credentials):
+    """PUB20 — Extrait au mieux l'expiration d'un token depuis les identifiants.
+
+    Accepte ``expires_at`` (epoch secondes, comme le renvoie ``debug_token`` Meta)
+    ou ``token_expires_at`` (ISO-8601). Renvoie un ``datetime`` aware ou ``None``
+    (un System-User long-lived n'a souvent aucune expiration — c'est légitime)."""
+    if not isinstance(credentials, dict):
+        return None
+    epoch = credentials.get('expires_at')
+    if isinstance(epoch, (int, float)) and epoch > 0:
+        return datetime.datetime.fromtimestamp(
+            epoch, tz=datetime.timezone.utc)
+    iso = credentials.get('token_expires_at')
+    if isinstance(iso, str) and iso.strip():
+        try:
+            parsed = datetime.datetime.fromisoformat(iso.strip())
+        except ValueError:
+            return None
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed, datetime.timezone.utc)
+        return parsed
+    return None
 
 
 def _same_company(serializer, value):
@@ -45,17 +74,57 @@ class MetaConnectionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'enabled', 'ad_account_id', 'page_id', 'pixel_id',
             'currency', 'credentials', 'has_credentials',
+            # PUB20 — état santé du token (lecture seule) pour le bandeau
+            # ConnectionScreen/Dashboard (front = lane console). `token_invalid`
+            # est posé par les tâches de synchro sur une auth-error 190.
+            'token_expires_at', 'token_invalid', 'token_invalid_at',
             'created_at', 'updated_at',
         ]
         extra_kwargs = {
             'credentials': {'write_only': True, 'required': False},
         }
         # ``currency`` : renseignée par la synchro (nœud de compte Meta), jamais
-        # par le client.
-        read_only_fields = ['currency', 'created_at', 'updated_at']
+        # par le client. Les champs d'état PUB20 sont posés côté serveur (synchro).
+        read_only_fields = [
+            'currency', 'token_expires_at', 'token_invalid',
+            'token_invalid_at', 'created_at', 'updated_at',
+        ]
 
     def get_has_credentials(self, obj):
         return bool(obj.credentials)
+
+    def _apply_token_state(self, instance, credentials):
+        """PUB20 — À la (re)connexion, renseigne au mieux ``token_expires_at``
+        si les identifiants portent une expiration (``expires_at`` epoch ou
+        ``token_expires_at`` ISO), et lève tout état « token mort » précédent
+        dès qu'un nouveau token est fourni (le client repart propre)."""
+        creds = credentials or {}
+        expiry = _extract_token_expiry(creds)
+        changed = []
+        if expiry is not None and instance.token_expires_at != expiry:
+            instance.token_expires_at = expiry
+            changed.append('token_expires_at')
+        if creds.get('access_token') and (
+                instance.token_invalid or instance.token_invalid_at):
+            instance.token_invalid = False
+            instance.token_invalid_at = None
+            changed += ['token_invalid', 'token_invalid_at']
+        if changed:
+            instance.save(update_fields=changed)
+        return instance
+
+    def create(self, validated_data):
+        credentials = validated_data.get('credentials')
+        instance = super().create(validated_data)
+        return self._apply_token_state(instance, credentials)
+
+    def update(self, instance, validated_data):
+        credentials = validated_data.get('credentials')
+        instance = super().update(instance, validated_data)
+        # Ne toucher l'état que si de nouveaux identifiants sont fournis.
+        if 'credentials' in validated_data:
+            self._apply_token_state(instance, credentials)
+        return instance
 
 
 class GuardrailConfigSerializer(serializers.ModelSerializer):
@@ -83,6 +152,18 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
 
+class AnnotationSerializer(serializers.ModelSerializer):
+    """PUB49 — Annotation de courbe (note de décision épinglée à une date).
+
+    ``company`` est absente des champs (posée côté serveur, jamais lue du corps).
+    Le rendu en surimpression sur les courbes est côté front (lane console)."""
+
+    class Meta:
+        model = Annotation
+        fields = ['id', 'date', 'texte', 'portee', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+
 class EngineActionSerializer(serializers.ModelSerializer):
     """ENG7 — Action du moteur (propose→approuve→applique).
 
@@ -98,12 +179,12 @@ class EngineActionSerializer(serializers.ModelSerializer):
         model = EngineAction
         fields = [
             'id', 'kind', 'payload', 'reason_fr', 'status', 'auto',
-            'approved_by', 'applied_at', 'result', 'error',
+            'proposed_by', 'approved_by', 'applied_at', 'result', 'error',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'status', 'auto', 'approved_by', 'applied_at', 'result', 'error',
-            'created_at', 'updated_at',
+            'status', 'auto', 'proposed_by', 'approved_by', 'applied_at',
+            'result', 'error', 'created_at', 'updated_at',
         ]
 
     def validate_reason_fr(self, value):
@@ -121,19 +202,27 @@ class EngineAlertSerializer(serializers.ModelSerializer):
     """
 
     wa_links = serializers.SerializerMethodField()
+    # PUB48 — lien profond FR vers l'entité concernée (approbation liée, écran
+    # d'origine du gabarit, ou Règles & anomalies à défaut).
+    link = serializers.SerializerMethodField()
+    # PUB48 — snooze (reporté jusqu'à cette date) : stocké dans `detail`
+    # (JSONField déjà existant, aucune migration) — exposé pour la cloche.
+    snoozed_until = serializers.SerializerMethodField()
 
     class Meta:
         model = EngineAlert
         fields = [
             'id', 'alert_type', 'message', 'action', 'detail',
-            'acknowledged', 'wa_links', 'created_at', 'updated_at',
+            'acknowledged', 'wa_links', 'link', 'snoozed_until',
+            'created_at', 'updated_at',
             # ADSENG4 — sévérité + cooldown + escalade.
             'severity', 'entity_key', 'cooldown_hours', 'unresolved_cycles',
             'resolved',
         ]
-        # ``wa_links`` est un champ déclaré (SerializerMethodField, déjà
-        # read-only) — il ne doit PAS figurer dans read_only_fields (DRF
-        # l'interdit). Ce viewset est de toute façon GET-only (ENG13).
+        # ``wa_links``/``link``/``snoozed_until`` sont des champs déclarés
+        # (SerializerMethodField, déjà read-only) — ils ne doivent PAS figurer
+        # dans read_only_fields (DRF l'interdit). Ce viewset est de toute
+        # façon GET-only (ENG13).
         read_only_fields = [
             'id', 'alert_type', 'message', 'action', 'detail',
             'acknowledged', 'created_at', 'updated_at',
@@ -144,6 +233,13 @@ class EngineAlertSerializer(serializers.ModelSerializer):
     def get_wa_links(self, obj):
         from .alerts import wa_links
         return wa_links(obj.message)
+
+    def get_link(self, obj):
+        from .alerts import deep_link_for_alert
+        return deep_link_for_alert(obj)
+
+    def get_snoozed_until(self, obj):
+        return (obj.detail or {}).get('snoozed_until')
 
 
 class CreativeAssetSerializer(serializers.ModelSerializer):
@@ -159,13 +255,30 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
     # ``<video>`` pour un reel/explainer.
     preview_url = serializers.SerializerMethodField()
     is_video = serializers.SerializerMethodField()
+    # PUB84 — piste de provenance durable (fait cité → version table de faits
+    # → verdicts → décision humaine), lecture seule sur la créathèque.
+    provenance = serializers.SerializerMethodField()
+    # PUB75 — statut consentement (CNDP) : raison de blocage lisible (ou None).
+    consent_block = serializers.SerializerMethodField()
+    has_valid_consent = serializers.BooleanField(read_only=True)
+    # PUB83 — avertissements NON BLOQUANTS de la check-list (ex. vignette manquante).
+    checklist_warnings = serializers.SerializerMethodField()
+
+    def validate_consent(self, value):
+        return _same_company(self, value)
 
     class Meta:
         model = CreativeAsset
         fields = [
             'id', 'asset_type', 'file_key', 'source_lane', 'cost_cents',
             'policy_stamp', 'is_policy_passed', 'perf', 'parent',
-            'preview_url', 'is_video',
+            'preview_url', 'is_video', 'provenance',
+            # PUB75 — consentement image/témoignage (CNDP).
+            'depicts_real_client', 'consent', 'consent_scopes_required',
+            'consent_block', 'has_valid_consent',
+            # PUB76 — fraîcheur ; PUB77 — langue ; PUB83 — vignette choisie.
+            'facts_version', 'expires_at', 'review_after', 'needs_review',
+            'review_reason', 'language', 'thumbnail_key', 'checklist_warnings',
             # ADSENG5 — composants (accroche / texte / visuel / CTA).
             'hook_id', 'hook_text', 'primary_text', 'visual_asset_key', 'cta',
             'created_at', 'updated_at',
@@ -174,8 +287,16 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
         # le remettre ici (DRF interdit un champ à la fois déclaré ET dans
         # read_only_fields).
         read_only_fields = [
-            'file_key', 'policy_stamp', 'perf', 'created_at', 'updated_at',
+            'file_key', 'policy_stamp', 'perf',
+            # PUB76 — posés par le job de fraîcheur, jamais par le client.
+            'facts_version', 'needs_review', 'review_reason',
+            'created_at', 'updated_at',
         ]
+
+    def get_checklist_warnings(self, obj):
+        """PUB83 — Avertissements non bloquants de la check-list policy."""
+        from .policy import asset_warnings
+        return asset_warnings(obj)
 
     def get_preview_url(self, obj):
         """ADSDEEP15 — URL présignée MinIO depuis ``file_key`` (None si vide/
@@ -190,6 +311,16 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
         """Un reel / explainer se rend en ``<video>`` (les statiques en ``<img>``)."""
         return obj.asset_type in (
             CreativeAsset.AssetType.REEL, CreativeAsset.AssetType.EXPLAINER)
+
+    def get_provenance(self, obj):
+        """PUB84 — Piste d'audit durable (``generation_audit.asset_provenance``,
+        AGEN9) : lecture seule, jamais recalculée ici."""
+        from .generation_audit import asset_provenance
+        return asset_provenance(obj)
+
+    def get_consent_block(self, obj):
+        """PUB75 — Raison de blocage consentement (CNDP) lisible, ou ``None``."""
+        return obj.consent_block_reason()
 
 
 class CreativePolicySerializer(serializers.ModelSerializer):
@@ -315,11 +446,16 @@ class AnomalyEventSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'kind', 'entity_type', 'entity_meta_id', 'severity',
             'message_fr', 'detail', 'resolved', 'rule_policy', 'alert',
+            'detector', 'feedback', 'feedback_at',
             'created_at', 'updated_at',
         ]
+        # PUB90 — ``feedback`` est posé UNIQUEMENT via l'action ``feedback``
+        # (acteur + horodatage serveur), jamais un PATCH direct : tout est
+        # lecture seule au niveau du serializer.
         read_only_fields = [
             'id', 'kind', 'entity_type', 'entity_meta_id', 'severity',
             'message_fr', 'detail', 'resolved', 'rule_policy', 'alert',
+            'detector', 'feedback', 'feedback_at',
             'created_at', 'updated_at',
         ]
 
@@ -482,16 +618,26 @@ class AdCampaignMirrorSerializer(serializers.ModelSerializer):
 
     def _insights(self, obj):
         """Agrégat (dépense, résultats) mémoïsé par instance (évite un double
-        calcul entre ``depense_mad`` et ``nb_leads``)."""
+        calcul entre ``depense_mad`` et ``nb_leads``).
+
+        PUB40 — borné à ``context['debut']``/``context['fin']`` (dates ISO
+        `datetime.date`, sélecteur de période de l'écran Campagnes) quand
+        présents ; absents (défaut, y compris hors contexte de requête), la
+        dépense reste cumulée sur TOUT l'historique — comportement inchangé."""
         cached = getattr(obj, '_ae_insights', None)
         if cached is None:
             from django.contrib.contenttypes.models import ContentType
             from django.db.models import Sum
             ct = ContentType.objects.get_for_model(AdCampaignMirror)
-            cached = (InsightSnapshot.objects
-                      .filter(company_id=obj.company_id, content_type=ct,
-                              object_id=obj.pk)
-                      .aggregate(spend=Sum('spend'), results=Sum('results')))
+            qs = InsightSnapshot.objects.filter(
+                company_id=obj.company_id, content_type=ct, object_id=obj.pk)
+            debut = self.context.get('debut')
+            fin = self.context.get('fin')
+            if debut is not None:
+                qs = qs.filter(date__gte=debut)
+            if fin is not None:
+                qs = qs.filter(date__lte=fin)
+            cached = qs.aggregate(spend=Sum('spend'), results=Sum('results'))
             obj._ae_insights = cached
         return cached
 
@@ -644,6 +790,14 @@ class CommentMirrorSerializer(serializers.ModelSerializer):
     synchro, jamais écrit par le client — toute action passe par la proposition
     ``EngineAction`` via les vues dédiées, jamais un PATCH direct)."""
 
+    # PUB44 — lien croisé vers la fiche « histoire complète » de l'ad (un
+    # commentaire source=AD porte l'``effective_object_story_id`` du créatif
+    # dans ``object_meta_id``, PAS le ``meta_id`` de l'ad — dossier
+    # organic-posts §3). Résolu via ``context['story_to_ad']`` (map construite
+    # UNE FOIS par ``CommentListView``, jamais une requête par ligne) ; ``None``
+    # si le contexte n'est pas fourni ou si aucune ad ne correspond.
+    ad_meta_id = serializers.SerializerMethodField()
+
     class Meta:
         model = CommentMirror
         fields = [
@@ -651,9 +805,14 @@ class CommentMirrorSerializer(serializers.ModelSerializer):
             'message', 'from_name', 'from_id', 'created_time', 'like_count',
             'reply_count', 'is_hidden', 'hidden_verified', 'can_hide',
             'can_remove', 'answered', 'permalink', 'private_reply_sent_at',
-            'fetched_at', 'created_at', 'updated_at',
+            'fetched_at', 'created_at', 'updated_at', 'ad_meta_id',
         ]
         read_only_fields = fields
+
+    def get_ad_meta_id(self, obj):
+        if obj.source != CommentMirror.Source.AD:
+            return None
+        return self.context.get('story_to_ad', {}).get(obj.object_meta_id)
 
 
 # ── ADSDEEP55/56 — Instagram (compte Business relié) ──────────────────────────
@@ -699,15 +858,25 @@ class AssumptionNodeSerializer(serializers.ModelSerializer):
     quand absente ; une valeur fournie explicitement n'est jamais écrasée.
     """
 
+    # PUB94 — flag « branche morte » calculé EN DIRECT (nœud figé sur son prior
+    # depuis ≥ N semaines) exposé SUR L'ARBRE. Lecture seule, sans stockage.
+    dead_branch = serializers.SerializerMethodField()
+
     class Meta:
         model = AssumptionNode
         fields = [
             'id', 'classe', 'enonce_fr', 'enjeux_s', 'pertinence_r',
             'tags_saison', 'parent', 'invalidation_links',
             'alpha', 'beta', 'alpha0', 'beta0', 'demi_vie_semaines',
-            'last_tested_at', 'statut', 'created_at', 'updated_at',
+            'last_tested_at', 'statut', 'dead_branch',
+            'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+    def get_dead_branch(self, obj):
+        """PUB94 — Vrai si le nœud est figé sur son prior depuis ≥ N semaines."""
+        from .posterior_drift import is_dead_branch
+        return is_dead_branch(obj)
 
     def validate_parent(self, value):
         return _same_company(self, value)
@@ -752,9 +921,109 @@ class FactEntrySerializer(serializers.ModelSerializer):
         model = FactEntry
         fields = [
             'id', 'table', 'cle', 'valeur', 'unite', 'source', 'verifie_le',
+            # PUB85 — région optionnelle ('' = national ; ville = surcharge locale).
+            'region',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
 
     def validate_table(self, value):
         return _same_company(self, value)
+
+
+class ConsentRecordSerializer(serializers.ModelSerializer):
+    """PUB75 — Consentement image/témoignage (CNDP loi 09-08). ``company`` posée
+    côté serveur ; ``revoked_at`` est en lecture seule (révoquer passe par
+    l'action ``revoquer``, jamais un PATCH direct). ``scopes``/``is_active``
+    exposent l'état pour l'UI de collecte simple."""
+
+    scopes = serializers.ListField(
+        child=serializers.CharField(), read_only=True)
+    is_active = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConsentRecord
+        fields = [
+            'id', 'client_id', 'client_nom', 'reference', 'canal',
+            'portee_photo', 'portee_video', 'portee_temoignage', 'portee_geo',
+            'date_consentement', 'expiration', 'revoked_at',
+            'note', 'scopes', 'is_active',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['revoked_at', 'created_at', 'updated_at']
+
+    def get_is_active(self, obj):
+        return obj.is_active()
+
+
+class CompetitorPageSerializer(serializers.ModelSerializer):
+    """PUB70 — Page concurrente suivie. ``ad_library_url`` (lien profond WEB) est
+    calculé côté serveur, en lecture seule (jamais un appel API, jamais un
+    scraping). ``company`` posée côté serveur."""
+
+    ad_library_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CompetitorPage
+        fields = [
+            'id', 'name', 'page_id', 'country', 'website', 'note', 'active',
+            'ad_library_url', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_ad_library_url(self, obj):
+        return obj.ad_library_url()
+
+
+class CompetitorAdObservationSerializer(serializers.ModelSerializer):
+    """PUB70 — Observation manuelle (hook/angle reformulé, jamais copié verbatim).
+    ``competitor_page`` contrainte à la MÊME société. ``company`` posée côté
+    serveur."""
+
+    competitor_name = serializers.CharField(
+        source='competitor_page.name', read_only=True)
+
+    class Meta:
+        model = CompetitorAdObservation
+        fields = [
+            'id', 'competitor_page', 'competitor_name', 'observed_at',
+            'hook_text', 'angle', 'format', 'source_url', 'note',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_competitor_page(self, value):
+        return _same_company(self, value)
+
+
+class ProposalTemplateSerializer(serializers.ModelSerializer):
+    """PUB50 — Gabarit de proposition réutilisable. ``company`` posée côté
+    serveur ; appliquer un gabarit ne fait que pré-remplir un composeur (aucune
+    exécution automatique)."""
+
+    class Meta:
+        model = ProposalTemplate
+        fields = [
+            'id', 'name', 'kind', 'scope', 'payload', 'reason_fr', 'note',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Un nom de gabarit est requis.")
+        return value.strip()
+
+
+class BrandKitSerializer(serializers.ModelSerializer):
+    """PUB83 — Kit de marque persistant (logo/couleurs/zones de sécurité/polices).
+    ``company`` posée côté serveur ; consommé par le ``TemplatedAdapter`` au lieu
+    d'un payload de marque ad hoc."""
+
+    class Meta:
+        model = BrandKit
+        fields = [
+            'id', 'name', 'logo_key', 'colors', 'safe_zones', 'fonts',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']

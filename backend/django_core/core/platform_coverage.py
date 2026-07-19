@@ -69,6 +69,11 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # jour où ils entreront dans records.ALLOWED_TARGETS.
     ('sav.equipement', 'recherche_sans_chatter'),
     ('sav.contratmaintenance', 'recherche_sans_chatter'),
+    # PUB99 — la campagne pub miroir devient cherchable (recherche globale) mais
+    # n'est PAS chatter-isée : un miroir Meta lu (jamais annoté dans l'ERP — les
+    # notes vivent sur le Lead/Devis en aval). Dérive assumée ; à retirer si un
+    # jour la campagne entre dans records.ALLOWED_TARGETS.
+    ('adsengine.adcampaignmirror', 'recherche_sans_chatter'),
     # Chatter-isé SANS recherche globale (hérité, DC33) : à retirer le jour où
     # le fournisseur deviendra cherchable.
     ('stock.fournisseur', 'chatter_sans_recherche'),
