@@ -1065,6 +1065,51 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
     ).order_by('date_creation')
 
 
+# ── PUB68 — SLA première réponse (répondre <1 min ≈ ×4-5 conversion) ────────
+
+def leads_meta_sla_depasse(company, now=None, seuil_heures=None):
+    """PUB68 — Sous-ensemble META (``META_ADS``/``WHATSAPP_CTWA``) de
+    ``leads_sla_depasse`` (YLEAD14, RÉUTILISÉ — même SLA configuré société
+    ``services.lead_sla_hours``, jamais un seuil dupliqué) : leads Meta
+    encore sans premier contact au-delà du SLA — le dénominateur de
+    l'alerte PUB68 (« lead Meta sans premier contact »). Lecture seule."""
+    from .models import Lead
+
+    base = leads_sla_depasse(company, now=now, seuil_heures=seuil_heures)
+    return base.filter(
+        canal__in=[Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA])
+
+
+def leads_response_time_rows(company):
+    """PUB68 — Temps de première réponse (minutes) par lead RÉELLEMENT
+    contacté (``first_contacted_at`` non nul), avec les clés d'attribution
+    déjà utilisées par ``attribution_lead_rows`` (ADSENG6 — ``meta_ad_id``/
+    ``utm_content``) pour que l'appelant résolve l'ad. Un lead jamais
+    contacté est ABSENT (jamais un temps de réponse infini/0 fabriqué).
+    Lecture seule, scopée société, leads vivants."""
+    from .models import Lead
+
+    rows = []
+    qs = (Lead.objects
+          .filter(company=company, is_archived=False,
+                  first_contacted_at__isnull=False)
+          .only('id', 'meta_ad_id', 'utm_content', 'date_creation',
+                'first_contacted_at'))
+    for lead in qs:
+        delta_minutes = (
+            (lead.first_contacted_at - lead.date_creation).total_seconds()
+            / 60.0)
+        if delta_minutes < 0:
+            continue
+        rows.append({
+            'id': lead.id,
+            'meta_ad_id': lead.meta_ad_id or '',
+            'utm_content': lead.utm_content or '',
+            'response_minutes': delta_minutes,
+        })
+    return rows
+
+
 def site_location_for_devis(devis):
     """DC13 — localisation du chantier à créer depuis un devis.
 

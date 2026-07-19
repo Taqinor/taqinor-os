@@ -621,6 +621,38 @@ def seasonality_report(company):
     }
 
 
+# ── PUB68 — SLA première réponse : médiane par ad ────────────────────────────
+
+def response_time_by_ad(company):
+    """PUB68 — Temps de première réponse MÉDIAN par ad (minutes) — la donnée
+    la plus documentée du marché (répondre <1 min ≈ ×4-5 conversion),
+    jusqu'ici jamais mesurée par l'ERP. Réutilise ``selectors.
+    leads_response_time_by_ad_rows`` (fichier disjoint, résolution d'ad
+    ADSENG6). Un ad sans lead contacté résolu est ABSENT (jamais une
+    médiane sur 0 valeur). Renvoie une liste triée par médiane croissante
+    (le plus réactif d'abord) ``[{'meta_id', 'name',
+    'median_response_minutes', 'sample_size'}, ...]``."""
+    import statistics
+
+    from .selectors import leads_response_time_by_ad_rows
+
+    by_ad = {}
+    for row in leads_response_time_by_ad_rows(company):
+        slot = by_ad.setdefault(
+            row['meta_id'], {'name': row['name'], 'times': []})
+        slot['times'].append(row['response_minutes'])
+
+    result = [
+        {'meta_id': meta_id, 'name': slot['name'],
+         'median_response_minutes': round(
+             statistics.median(slot['times']), 1),
+         'sample_size': len(slot['times'])}
+        for meta_id, slot in by_ad.items()
+    ]
+    result.sort(key=lambda r: r['median_response_minutes'])
+    return result
+
+
 def reconciliation_csv(company, *, day=None):
     """CSV de la table de réconciliation (§5.4). Réutilise
     ``reconciliation.reconcile`` (ADSENG31, fichier disjoint) — jamais un schéma

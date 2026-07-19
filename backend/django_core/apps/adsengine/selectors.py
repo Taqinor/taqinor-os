@@ -97,3 +97,38 @@ def resolve_meta_ad_names(company, *, ad_id='', adgroup_id='', access_token=''):
                 result['campaign_id'] = str(campaign.get('id') or '')
 
     return result
+
+
+# ── PUB68 — SLA première réponse : résolution d'ad pour le temps de réponse ──
+
+def leads_response_time_by_ad_rows(company):
+    """PUB68 — Lignes brutes (temps de première réponse + ad résolu) pour le
+    calcul de la médiane PAR AD (``reporting.response_time_by_ad``). Résout
+    l'ad via la MÊME échelle qu'``attribution.variant_attribution``
+    (ADSENG6, ``attribution._resolve_ad_id`` — RÉUTILISÉE, jamais
+    réimplémentée) ; le CRM est lu UNIQUEMENT via
+    ``apps.crm.selectors.leads_response_time_rows`` (jamais un import
+    d'``apps.crm.models``). Un lead non résolu à une ad est ABSENT. Renvoie
+    ``[{'meta_id', 'name', 'response_minutes'}, ...]``."""
+    from apps.crm.selectors import leads_response_time_rows
+
+    from .attribution import _resolve_ad_id
+    from .models import AdMirror
+
+    ads = list(AdMirror.objects.filter(company=company))
+    by_meta = {a.meta_id: a for a in ads}
+    name_to_meta = {}
+    for a in ads:
+        if a.name:
+            name_to_meta.setdefault(a.name, a.meta_id)
+
+    rows = []
+    for row in leads_response_time_rows(company):
+        meta_id = _resolve_ad_id(row, by_meta, name_to_meta)
+        if meta_id is None:
+            continue
+        rows.append({
+            'meta_id': meta_id, 'name': by_meta[meta_id].name or '',
+            'response_minutes': row['response_minutes'],
+        })
+    return rows
