@@ -13,7 +13,7 @@ from .models import (
     CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
     EngineAlert, Experiment, ExperimentArm, FactEntry, FactTable,
-    FlightPhase, FlightPlan,
+    FlightPhase, FlightPlan, ProposalTemplate,
     GuardrailConfig, InsightBreakdown, InsightSnapshot,
     InstagramCommentMirror, InstagramMediaMirror, MetaConnection,
     PacingState, ReconciliationSnapshot, RulePolicy,
@@ -970,6 +970,25 @@ class CompetitorAdObservationSerializer(serializers.ModelSerializer):
 
     def validate_competitor_page(self, value):
         return _same_company(self, value)
+
+
+class ProposalTemplateSerializer(serializers.ModelSerializer):
+    """PUB50 — Gabarit de proposition réutilisable. ``company`` posée côté
+    serveur ; appliquer un gabarit ne fait que pré-remplir un composeur (aucune
+    exécution automatique)."""
+
+    class Meta:
+        model = ProposalTemplate
+        fields = [
+            'id', 'name', 'kind', 'scope', 'payload', 'reason_fr', 'note',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Un nom de gabarit est requis.")
+        return value.strip()
 
 
 class BrandKitSerializer(serializers.ModelSerializer):

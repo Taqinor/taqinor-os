@@ -26,7 +26,7 @@ from .models import (
     ExperimentArm, FactEntry, FactTable, FlightPhase, FlightPlan,
     GuardrailConfig,
     InstagramCommentMirror, InstagramMediaMirror, InstagramPublishJob,
-    MetaConnection, ReconciliationSnapshot, RulePolicy,
+    MetaConnection, ProposalTemplate, ReconciliationSnapshot, RulePolicy,
     WeeklyBrief,
 )
 from .serializers import (
@@ -41,7 +41,7 @@ from .serializers import (
     FactEntrySerializer, FactTableSerializer,
     FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
     InstagramCommentMirrorSerializer, InstagramMediaMirrorSerializer,
-    MetaConnectionSerializer,
+    MetaConnectionSerializer, ProposalTemplateSerializer,
     ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
 
@@ -644,6 +644,23 @@ class ImportChantierPhotoView(APIView):
             'imported': True, 'asset_id': result['asset'].id,
             'message': result['message'],
         }, status=201)
+
+
+class ProposalTemplateViewSet(AdsengineViewSet):
+    """PUB50 — CRUD des gabarits de proposition réutilisables. Company-scopé ;
+    ``company`` posée côté serveur. Appliquer un gabarit (côté front) ne fait que
+    PRÉ-REMPLIR un composeur — aucune action n'est exécutée depuis ce viewset."""
+
+    queryset = ProposalTemplate.objects.all()
+    serializer_class = ProposalTemplateSerializer
+
+    def get_queryset(self):
+        # Filtre optionnel par ``kind`` (le composeur ne charge que ses gabarits).
+        qs = super().get_queryset()
+        kind = self.request.query_params.get('kind')
+        if kind:
+            qs = qs.filter(kind=kind)
+        return qs
 
 
 class BrandKitViewSet(AdsengineViewSet):

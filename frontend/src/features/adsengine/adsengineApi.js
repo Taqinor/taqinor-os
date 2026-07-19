@@ -368,6 +368,12 @@ const adsengineApi = {
     importPhoto: (payload) =>
       api.post('/adsengine/creatifs/import-chantier/', payload),
   },
+
+  // ── PUB50 — Gabarits de proposition réutilisables (pré-remplissage) ──
+  // Appliquer un gabarit ne fait que pré-remplir le composeur (jamais proposer).
+  proposalTemplates: {
+    ...resource('gabarits-proposition'),
+  },
 }
 
 export default adsengineApi

@@ -2738,3 +2738,42 @@ class CompetitorAdObservation(TenantModel):
 
     def __str__(self):
         return f'Obs {self.competitor_page_id} @ {self.observed_at}'
+
+
+class ProposalTemplate(TenantModel):
+    """PUB50 — Gabarit de proposition RÉUTILISABLE (combinaison nommée).
+
+    Enregistre une combinaison de valeurs (budget / planning / portée) sous un
+    nom (« Ramadan agressif », « hiver prudent ») ré-applicable en un clic depuis
+    les composeurs manuels (PUB22). ``kind`` cible le type d'action (ex.
+    ``set_schedule``, ``set_spend_cap``) ; ``payload`` porte les valeurs de
+    champs pré-remplies. **N'exécute JAMAIS rien** : appliquer un gabarit ne fait
+    que PRÉ-REMPLIR le composeur — la proposition reste un geste humain explicite.
+    Company-scopé, unique par ``(company, name)``."""
+
+    name = models.CharField(max_length=120, verbose_name='Nom du gabarit')
+    kind = models.CharField(
+        max_length=40, verbose_name="Type d'action ciblé")
+    scope = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Portée (campaign/adset/ad/global)')
+    payload = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Valeurs pré-remplies (budget/planning/portée)')
+    reason_fr = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Raison par défaut')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+
+    class Meta:
+        verbose_name = 'Gabarit de proposition'
+        verbose_name_plural = 'Gabarits de proposition'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'name'],
+                name='uniq_adseng_proposaltmpl_co_name'),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.kind})'

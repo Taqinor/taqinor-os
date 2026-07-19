@@ -39,7 +39,8 @@ from .views import (
     MetaConnectionHealthView,
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
     MetricsDashboardView,
-    MetricsLeadsView, MetricsPacingView, ProposeCuratedActionView, RealLeadsView,
+    MetricsLeadsView, MetricsPacingView, ProposalTemplateViewSet,
+    ProposeCuratedActionView, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
     RulePolicyViewSet, SignalCohortView, SignalsView, SimulationDetailView,
     SimulationListView, StatusView, SyncStatusView, TodayQueueView,
@@ -59,6 +60,9 @@ router.register(r'annotations', AnnotationViewSet, basename='annotation')
 router.register(r'consentements', ConsentRecordViewSet, basename='consent-record')
 # PUB83 — kit de marque persistant (logo/couleurs/zones/polices).
 router.register(r'kit-marque', BrandKitViewSet, basename='brand-kit')
+# PUB50 — gabarits de proposition réutilisables (pré-remplissage des composeurs).
+router.register(r'gabarits-proposition', ProposalTemplateViewSet,
+                basename='proposal-template')
 # PUB70 — veille concurrentielle (manuelle outillée, zéro scraping).
 router.register(r'concurrents', CompetitorPageViewSet, basename='competitor-page')
 router.register(r'observations-concurrents', CompetitorAdObservationViewSet,
