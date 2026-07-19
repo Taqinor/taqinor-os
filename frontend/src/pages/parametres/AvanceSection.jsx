@@ -19,6 +19,10 @@ import SettingsAuditFeed from './SettingsAuditFeed'
 // NTIDE7 — Campagnes innovation (boîte à idées), composant autonome (modèle
 // backend séparé, apps/innovation) — même patron que SettingsAuditFeed.
 import CampagnesInnovationSettings from '../../features/innovation/CampagnesInnovationSettings'
+// WIR112 — équipes terrain canoniques (DC40), à côté des Types d'intervention.
+import EquipeTerrainSection from './EquipeTerrainSection'
+// WIR114 (ZFSM3) — modèles de fiche d'intervention (champs de compte-rendu).
+import FicheInterventionModelesSection from './FicheInterventionModelesSection'
 
 // WIR67 — modules « customfieldables » (miroir de
 // `customfields.registry` : 8 clés natives + pilotes ARC31 contrat/vehicule
@@ -43,6 +47,7 @@ const CUSTOMFIELD_MODULES = [
 
 export default function AvanceSection({
   form, set,
+  assignables = [],
   typesItv, newType, setNewType, addType, renameType, delType,
   checklistEtapes, newEtape, setNewEtape, addEtape, renameEtape, toggleEtapeActif, delEtape,
   toggleEtapeCapture, moveEtape,
@@ -263,6 +268,12 @@ export default function AvanceSection({
           </div>
         </CardContent>
       </Card>
+
+      {/* WIR112 — Chantiers — Équipes terrain canoniques (DC40), à côté des types. */}
+      <EquipeTerrainSection assignables={assignables} />
+
+      {/* WIR114 — Modèles de fiche d'intervention (ZFSM3), à côté des types. */}
+      <FicheInterventionModelesSection />
 
       {/* Chantiers — Checklist d'exécution */}
       <Card>

@@ -19,6 +19,10 @@ vi.mock('../../api/savApi', () => ({
     saveEquipeMaintenance: vi.fn(),
     getCategoriesEquipement: vi.fn(() => Promise.resolve({ data: [] })),
     saveCategorieEquipement: vi.fn(),
+    // WIR119 — modèles de feuille de maintenance.
+    getWorksheetModeles: vi.fn(() => Promise.resolve({ data: [] })),
+    saveWorksheetModele: vi.fn(() => Promise.resolve({ data: {} })),
+    deleteWorksheetModele: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -84,6 +88,18 @@ describe('SavParametresPage', () => {
       await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
       await waitFor(() => expect(api.post).toHaveBeenCalledWith(
         '/sav/sla-settings/', expect.objectContaining({ generation_auto_visites: true })))
+    })
+  })
+
+  describe('WIR119 — onglet Feuilles de maintenance', () => {
+    it('crée un modèle de feuille de maintenance', async () => {
+      const user = userEvent.setup()
+      render(<SavParametresPage />)
+      await user.click(screen.getByRole('tab', { name: 'Feuilles de maintenance' }))
+      fireEvent.change(await screen.findByPlaceholderText('Nom du modèle'), { target: { value: 'Visite préventive' } })
+      fireEvent.click(screen.getByRole('button', { name: /Ajouter/ }))
+      await waitFor(() => expect(savApi.saveWorksheetModele).toHaveBeenCalledWith(
+        null, expect.objectContaining({ nom: 'Visite préventive', champs: [], actif: true })))
     })
   })
 })

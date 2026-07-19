@@ -42,9 +42,11 @@ const BASE_PAGE_TITLES = [
   ['/ventes/listes-prix', 'Listes de prix'],
 
   // Chantiers
+  ['/chantiers/approvisionnement', 'Approvisionnement avancé'],
   ['/chantiers', 'Chantiers'],
   ['/ma-journee', 'Ma journée'],
   ['/interventions', 'Interventions'],
+  ['/planification/astreintes', 'Astreintes & indisponibilités'],
   ['/parc', 'Parc installé'],
   ['/production', 'Production'],
 

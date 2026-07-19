@@ -28,6 +28,10 @@ const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
 const InstallationsPage = lazy(() => import('../../pages/installations/InstallationsPage'))
 const DemandesAchatList = lazy(() => import('../../pages/installations/DemandesAchatList'))
+// WIR110 — consultation approvisionnement avancé (6 familles FG310-318).
+const ApprovisionnementPage = lazy(() => import('../../pages/installations/ApprovisionnementPage'))
+// WIR114 — astreintes / indisponibilités / récurrences (FG302, ZFSM3).
+const AstreintesPage = lazy(() => import('../../pages/installations/AstreintesPage'))
 const InterventionsPage = lazy(() => import('../../pages/interventions/InterventionsPage'))
 const PlanificationPage = lazy(() => import('../../pages/installations/PlanificationPage'))
 const MaJourneePage = lazy(() => import('../../pages/interventions/MaJourneePage'))
@@ -53,8 +57,10 @@ const config = {
       { to: '/ma-journee',           label: 'Ma journée',       k: 'nav.ma_journee', icon: navIcon(CalendarClock),       roles: ['normal','responsable','admin'] },
       { to: '/chantiers',            label: 'Chantiers',        k: 'nav.chantiers',  icon: navIcon(HardHat),    roles: ['normal','responsable','admin'] },
       { to: '/chantiers/demandes-achat', label: "Demandes d'achat", k: 'nav.demandes_achat', icon: navIcon(ClipboardList), roles: ['normal','responsable','admin'] },
+      { to: '/chantiers/approvisionnement', label: 'Approvisionnement', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
       { to: '/interventions',        label: 'Interventions',    k: 'nav.interventions', icon: navIcon(Wrench), roles: ['normal','responsable','admin'] },
       { to: '/planification',        label: 'Planification',    k: 'nav.planification', icon: navIcon(CalendarClock),    roles: ['normal','responsable','admin'] },
+      { to: '/planification/astreintes', label: 'Astreintes',   icon: navIcon(CalendarClock), roles: ['responsable','admin'] },
       { to: '/parc',                 label: 'Parc installé',    k: 'nav.parc',       icon: navIcon(Boxes),  roles: ['normal','responsable','admin'] },
       { to: '/atelier',              label: 'Atelier',          k: 'nav.atelier',    icon: navIcon(Wrench),    roles: ['normal','responsable','admin'] },
       { to: '/production',           label: 'Production',       k: 'nav.production', icon: navIcon(BarChart3),   roles: ['normal','responsable','admin'] },
@@ -64,8 +70,10 @@ const config = {
   routes: [
     { path: '/chantiers', component: InstallationsPage },
     { path: '/chantiers/demandes-achat', component: DemandesAchatList },
+    { path: '/chantiers/approvisionnement', component: ApprovisionnementPage, roles: ['responsable', 'admin'] },
     { path: '/interventions', component: InterventionsPage },
     { path: '/planification', component: PlanificationPage },
+    { path: '/planification/astreintes', component: AstreintesPage, roles: ['responsable', 'admin'] },
     { path: '/ma-journee', component: MaJourneePage },
     { path: '/parc', component: ParcInstallePage },
     { path: '/atelier', component: AteliersPage },
