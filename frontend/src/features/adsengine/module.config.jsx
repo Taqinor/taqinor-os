@@ -7,7 +7,7 @@ import {
   LayoutDashboard, PlugZap, Megaphone, ClipboardCheck,
   FileText, Images, History, FlaskConical, Route, Layers,
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
-  Gauge,
+  Gauge, GitBranch,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -40,6 +40,8 @@ const ReportsScreen = lazy(() => import('./ReportsScreen'))
 const CommentsInboxScreen = lazy(() => import('./CommentsInboxScreen'))
 const InstagramScreen = lazy(() => import('./InstagramScreen'))
 const AdsCockpitScreen = lazy(() => import('./AdsCockpitScreen'))
+// ASG6 — L'Arbre (l'Assumption Engine : plan vivant, dd-assumption-engine.md §3).
+const TreeScreen = lazy(() => import('./TreeScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -66,6 +68,7 @@ const config = {
       { to: '/publicite/brief', label: 'Brief hebdomadaire', icon: <FileText size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/journal', label: "Journal d'actions", icon: <History size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/connexion', label: 'Connexion & garde-fous', icon: <PlugZap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/arbre', label: "L'Arbre", icon: <GitBranch size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -86,6 +89,7 @@ const config = {
     ['/publicite/brief', 'Publicité — Brief hebdomadaire'],
     ['/publicite/journal', "Publicité — Journal d'actions"],
     ['/publicite/connexion', 'Publicité — Connexion & garde-fous'],
+    ['/publicite/arbre', "Publicité — L'Arbre"],
   ],
   sectionLabels: { publicite: 'Publicité' },
   routes: [
@@ -105,6 +109,7 @@ const config = {
     { path: '/publicite/brief', component: BriefScreen, roles: ROLES },
     { path: '/publicite/journal', component: ActionsLogScreen, roles: ROLES },
     { path: '/publicite/connexion', component: ConnectionScreen, roles: ROLES },
+    { path: '/publicite/arbre', component: TreeScreen, roles: ROLES },
   ],
 }
 

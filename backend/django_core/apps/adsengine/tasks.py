@@ -854,6 +854,34 @@ def emit_capi_signatures():
     return {'configured': True, 'received': received, 'signed': signed}
 
 
+@shared_task(name='adsengine.decay_assumptions_weekly')
+def decay_assumptions_weekly():
+    """ASG2 — Beat HEBDO : oubli des posteriors de l'arbre d'hypothèses.
+
+    Chaque exécution = une « semaine » (dd-assumption-engine §3.2) : chaque
+    ``AssumptionNode`` non testé depuis ≥ 7 jours (et non saisonnier, non retiré)
+    s'oublie d'un cran vers son prior, à la demi-vie de sa classe. NO-OP propre
+    pour une société sans nœud. Best-effort par société ; la logique pure +
+    modèle vit dans ``assumption_decay.py``. Renvoie le nombre total de nœuds
+    oubliés."""
+    from authentication.selectors import active_companies
+
+    from . import assumption_decay
+
+    total = 0
+    for company in active_companies():
+        try:
+            total += assumption_decay.run_weekly_decay(company)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.decay_assumptions_weekly: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.decay_assumptions_weekly: %s nœud(s) oublié(s)', total)
+    return {'nodes_decayed': total}
+
+
 @shared_task(name='adsengine.generate_creative_variants')
 def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
     """ENG18 — Tâche « variantes » : 2-3 statiques d'un asset de base approuvé.
@@ -874,3 +902,50 @@ def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
         'adsengine.generate_creative_variants: %s variante(s) pour asset %s',
         len(variants), base_asset_id)
     return {'variants_created': len(variants)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# lane/gen-b — AGEN8 : auto-pause maison du rayon d'explosion (§10.2 point 5).
+# Bloc ISOLÉ (fold propre avec le co-éditeur de tasks.py) — n'ajouter ici que
+# des tâches du rayon d'explosion.
+# ─────────────────────────────────────────────────────────────────────────────
+@shared_task(name='adsengine.autopause_blast_radius')
+def autopause_blast_radius():
+    """AGEN8 — Boucle d'auto-pause maison (polling court, dd-assumption-engine
+    §10.2 point 5).
+
+    Pour chaque société active, POLLE ``effective_status`` (miroir local) des
+    créatifs GÉNÉRÉS et met en PAUSE ceux désapprouvés par Meta — dans le cycle
+    courant (Meta n'offre AUCUNE auto-pause native : absence vérifiée). Un client
+    live (connexion Meta + token) émet la pause réelle ; sans client, le bras est
+    quand même retiré du bandit + une alerte 🔴 est levée (jamais un échec
+    silencieux). Best-effort par société. NO-OP propre tant qu'aucun créatif
+    généré n'est surveillé. Renvoie ``{'companies', 'paused', 'alerted'}``."""
+    from authentication.selectors import active_companies
+
+    from . import blast_radius, meta_client
+    from .models import MetaConnection
+
+    companies = paused = alerted = 0
+    for company in active_companies():
+        companies += 1
+        client = None
+        conn = MetaConnection.objects.filter(company=company).first()
+        if conn is not None and conn.has_token:
+            try:
+                client = meta_client.MetaClient.from_connection(conn)
+            except Exception:  # pragma: no cover - défensif (token invalide)
+                client = None
+        try:
+            summary = blast_radius.poll_and_autopause(company, client=client)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.autopause_blast_radius: échec société %s',
+                getattr(company, 'pk', company), exc_info=True)
+            continue
+        paused += summary['paused']
+        alerted += summary['alerted']
+
+    result = {'companies': companies, 'paused': paused, 'alerted': alerted}
+    logger.info('adsengine.autopause_blast_radius: %s', result)
+    return result

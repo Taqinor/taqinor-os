@@ -487,6 +487,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.run_active_flightplans',
         'schedule': crontab(hour=7, minute=5),
     },
+    # ASG2 — oubli HEBDO des posteriors de l'arbre d'hypothèses (péremption §3.2 :
+    # chaque semaine sans test, (α,β) s'oublie vers le prior à la demi-vie de la
+    # classe). Lundi tôt, avant les boucles du gardien/runner. NO-OP sans nœud.
+    'adsengine-decay-assumptions-weekly': {
+        'task': 'adsengine.decay_assumptions_weekly',
+        'schedule': crontab(hour=6, minute=40, day_of_week=1),
+    },
     # ADSDEEP8 — synchro HEBDO des breakdowns (âge×genre, placements, régions,
     # heures) des campagnes miroir. Lundi, heure creuse. NO-OP sans connexion Meta.
     'adsengine-sync-breakdowns-weekly': {
@@ -505,6 +512,15 @@ app.conf.beat_schedule = {
     'adsengine-emit-capi-signatures': {
         'task': 'adsengine.emit_capi_signatures',
         'schedule': crontab(hour=7, minute=35),
+    },
+    # ── lane/gen-b — AGEN8 : auto-pause maison du rayon d'explosion (bloc isolé,
+    # fold propre avec le co-éditeur de celery.py). Polling COURT (toutes les
+    # 30 min) de effective_status des créatifs générés : un refus Meta est mis
+    # en PAUSE dans le cycle courant (Meta n'offre aucune auto-pause native).
+    # NO-OP propre tant qu'aucun créatif généré n'est surveillé.
+    'adsengine-autopause-blast-radius': {
+        'task': 'adsengine.autopause_blast_radius',
+        'schedule': crontab(minute='*/30'),
     },
     # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
     # Best-effort, une alerte par jour et par société (dédup), no-op tant que

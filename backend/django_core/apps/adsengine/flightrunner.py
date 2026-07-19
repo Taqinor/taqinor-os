@@ -518,9 +518,24 @@ class FlightRunner:
         Si la phase courante est terminée (``end_date <= today``) et qu'une phase
         suivante existe → on lance ses structures PAUSED (nouvelle phase). Si
         c'était la dernière → le plan passe ``TERMINE`` (ACTIVE → COMPLETED) et on
-        renvoie le rapport de fin de plan. NO-OP si l'interrupteur est engagé."""
+        renvoie le rapport de fin de plan. NO-OP si l'interrupteur est engagé.
+
+        ASG3 — quand l'ordonnanceur VoI est ACTIVÉ pour la société (drapeau cache
+        ``voi.voi_scheduler_active``, OFF par défaut), la transition de phase FIXE
+        est DÉSACTIVÉE : la file d'hypothèses (argmax VoI, ``voi.schedule_next``)
+        gouverne alors ce qui est testé, pas la fenêtre calendaire. Flag OFF ⇒
+        comportement calendaire historique byte-identique."""
         if self.is_killed():
             return {'skipped': 'kill_switch', 'state': self.STATE_KILLED}
+
+        from . import voi
+        if voi.voi_scheduler_active(self.company):
+            self._log_transition(
+                self.STATE_ACTIVE, self.STATE_ACTIVE,
+                summary_fr=("Mode VoI actif : la file d'hypothèses (argmax VoI) "
+                            "gouverne les transitions — fenêtre calendaire fixe "
+                            "désactivée."))
+            return {'state': self.state(), 'advanced': False, 'voi_mode': True}
 
         today = today or self.today()
         phases = list(FlightPhase.objects.filter(
