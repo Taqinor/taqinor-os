@@ -315,11 +315,16 @@ class AnomalyEventSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'kind', 'entity_type', 'entity_meta_id', 'severity',
             'message_fr', 'detail', 'resolved', 'rule_policy', 'alert',
+            'detector', 'feedback', 'feedback_at',
             'created_at', 'updated_at',
         ]
+        # PUB90 — ``feedback`` est posé UNIQUEMENT via l'action ``feedback``
+        # (acteur + horodatage serveur), jamais un PATCH direct : tout est
+        # lecture seule au niveau du serializer.
         read_only_fields = [
             'id', 'kind', 'entity_type', 'entity_meta_id', 'severity',
             'message_fr', 'detail', 'resolved', 'rule_policy', 'alert',
+            'detector', 'feedback', 'feedback_at',
             'created_at', 'updated_at',
         ]
 

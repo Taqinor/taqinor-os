@@ -698,11 +698,45 @@ class RulePolicyViewSet(AdsengineViewSet):
 
 
 class AnomalyEventViewSet(AdsengineViewSet):
-    """ADSENG4 — Liste (lecture seule) des anomalies détectées par le gardien."""
+    """ADSENG4 — Liste (lecture seule) des anomalies + PUB90 : feedback
+    utile/faux-positif et précision par détecteur."""
 
     queryset = AnomalyEvent.objects.all()
     serializer_class = AnomalyEventSerializer
-    http_method_names = ['get', 'head', 'options']
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def feedback(self, request, pk=None):
+        """PUB90 — Vote utile/faux-positif sur une anomalie (acteur + horodatage
+        posés côté serveur). ``{"vote": "useful"|"false_positive"}``. Alimente la
+        précision par détecteur + le throttle brake-only. Idempotent (re-voter
+        remplace le vote)."""
+        from django.utils import timezone
+        anomaly_event = self.get_object()
+        vote = request.data.get('vote')
+        valid = {c[0] for c in AnomalyEvent.Feedback.choices}
+        if vote not in valid:
+            return Response(
+                {'detail': 'Vote attendu : useful ou false_positive.'},
+                status=400)
+        anomaly_event.feedback = vote
+        anomaly_event.feedback_at = timezone.now()
+        anomaly_event.feedback_by = request.user
+        anomaly_event.save(
+            update_fields=['feedback', 'feedback_at', 'feedback_by',
+                           'updated_at'])
+        return Response(self.get_serializer(anomaly_event).data)
+
+    @action(detail=False, methods=['get'], url_path='detecteurs',
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def detectors(self, request):
+        """PUB90 — Précision + état de throttle PAR DÉTECTEUR (visible dans
+        l'UI). Company-scopé (queryset hérité). Un détecteur constamment inutile
+        (≥ 5 faux positifs) apparaît ``throttled`` (cadence réduite)."""
+        from . import anomaly as anomaly_mod
+        company = request.user.company
+        return Response({'detecteurs': anomaly_mod.all_detector_stats(company)})
 
 
 class PacingStateViewSet(AdsengineViewSet):

@@ -1194,6 +1194,13 @@ class AnomalyEvent(TenantModel):
         FREQUENCY_HIGH = 'frequency_high', 'Fréquence élevée'
         AUTRE = 'autre', 'Autre'
 
+    # PUB90 — retour utilisateur utile / faux-positif (bouton dans l'UI). Le
+    # vide (défaut) = « pas encore voté ». Alimente la précision PAR DÉTECTEUR et
+    # le throttle brake-only d'un détecteur constamment inutile.
+    class Feedback(models.TextChoices):
+        UTILE = 'useful', 'Utile'
+        FAUX_POSITIF = 'false_positive', 'Faux positif'
+
     kind = models.CharField(
         max_length=16, choices=Kind.choices, verbose_name="Type d'anomalie")
     entity_type = models.CharField(
@@ -1216,6 +1223,20 @@ class AnomalyEvent(TenantModel):
         'adsengine.EngineAlert', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='anomalies',
         verbose_name='Alerte émise')
+    # PUB90 — quel détecteur a produit cette anomalie (``Detection.detector``,
+    # ex. 'spend_vs_median', 'cpl_band', 'creative_fatigue'). Vide pour les
+    # anomalies antérieures à PUB90. Clé d'agrégation de la précision + throttle.
+    detector = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Détecteur')
+    feedback = models.CharField(
+        max_length=16, choices=Feedback.choices, blank=True, default='',
+        verbose_name='Retour utilisateur')
+    feedback_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Retour le')
+    feedback_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_anomaly_feedbacks',
+        verbose_name='Retour par')
 
     class Meta:
         verbose_name = 'Anomalie détectée'
