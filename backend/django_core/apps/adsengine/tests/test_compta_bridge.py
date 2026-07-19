@@ -1,8 +1,10 @@
-"""PUB96 — Tests du pont comptable (adsengine → compta), volet dépense.
+"""PUB96/PUB98 — Tests du pont comptable (adsengine → compta).
 
 Prouve : la dépense publicitaire du mois entre en compta comme écriture
 BROUILLON équilibrée (débit 6144 / crédit 4486), JAMAIS validée, JAMAIS de double
-écriture (idempotence par période), NO-OP à dépense nulle, scoping société.
+écriture (idempotence par période), NO-OP à dépense nulle, scoping société ; et
+l'ingestion d'une facture Meta pose une facture fournisseur BROUILLON avec TVA
+auto-liquidée compensée + signale l'écart vs spend synchronisé.
 """
 import datetime
 from decimal import Decimal
@@ -83,3 +85,55 @@ class ComptaBridgeSpendTests(TestCase):
             EcritureComptable.objects.filter(company=other).count(), 0)
         self.assertEqual(
             compta_bridge.monthly_ad_spend(other, 2026, 7), Decimal('0'))
+
+
+class ComptaBridgeInvoiceTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(nom='Fac Co', slug='fac-co')
+        self.camp = AdCampaignMirror.objects.create(
+            company=self.company, meta_id='c1', name='Solaire', status='PAUSED')
+        self.ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        InsightSnapshot.objects.create(
+            company=self.company, content_type=self.ct, object_id=self.camp.pk,
+            date=datetime.date(2026, 7, 10), spend=Decimal('1000.00'))
+
+    def test_invoice_draft_with_reverse_charge_vat(self):
+        result = compta_bridge.ingest_meta_invoice(
+            self.company, year=2026, month=7, montant_ht='1000.00')
+        ecriture = result['ecriture']
+        self.assertEqual(ecriture.statut, EcritureComptable.Statut.BROUILLON)
+        self.assertEqual(result['montant_tva'], Decimal('200.00'))
+        # Écriture équilibrée avec TVA auto-liquidée compensée.
+        lignes = {li.compte.numero: li for li in
+                  LigneEcriture.objects.filter(ecriture=ecriture)}
+        self.assertEqual(lignes['34552'].debit, Decimal('200.00'))
+        self.assertEqual(lignes['44552'].credit, Decimal('200.00'))
+        total_debit = sum(li.debit for li in ecriture.lignes.all())
+        total_credit = sum(li.credit for li in ecriture.lignes.all())
+        self.assertEqual(total_debit, total_credit)
+
+    def test_ecart_vs_spend_signaled(self):
+        result = compta_bridge.ingest_meta_invoice(
+            self.company, year=2026, month=7, montant_ht='1050.00')
+        self.assertEqual(result['spend_synchronise'], Decimal('1000.00'))
+        self.assertEqual(result['ecart_vs_spend'], Decimal('50.00'))
+
+    def test_invoice_idempotent(self):
+        first = compta_bridge.ingest_meta_invoice(
+            self.company, year=2026, month=7, montant_ht='1000.00')
+        second = compta_bridge.ingest_meta_invoice(
+            self.company, year=2026, month=7, montant_ht='1000.00')
+        self.assertTrue(first['created'])
+        self.assertFalse(second['created'])
+        self.assertEqual(first['ecriture'].pk, second['ecriture'].pk)
+
+    def test_parse_csv_amount(self):
+        csv_content = 'date,amount\n2026-07-01,600.00\n2026-07-15,400.00\n'
+        self.assertEqual(
+            compta_bridge.parse_meta_invoice_csv(csv_content),
+            Decimal('1000.00'))
+
+    def test_parse_csv_graceful_on_garbage(self):
+        self.assertEqual(
+            compta_bridge.parse_meta_invoice_csv('not,a,valid\ninvoice,x,y'),
+            Decimal('0'))
