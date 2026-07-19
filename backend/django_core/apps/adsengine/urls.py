@@ -11,7 +11,8 @@ from rest_framework.routers import DefaultRouter
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
-    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AnomalyEventViewSet,
+    AdCampaignMirrorViewSet, AdObjectionsView, AdPreviewsView, AdsCockpitView,
+    AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet, ConversationsPerAdView,
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
@@ -144,6 +145,9 @@ urlpatterns = [
     # PUB71 — mine de questions des commentaires (thèmes + candidats seed_brief).
     path('reporting/creatifs/faq/', CommentFaqView.as_view(),
          name='adsengine-reporting-creatifs-faq'),
+    # PUB72 — top objections CRM par variante d'annonce + angles suggérés.
+    path('reporting/creatifs/objections/', AdObjectionsView.as_view(),
+         name='adsengine-reporting-creatifs-objections'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).

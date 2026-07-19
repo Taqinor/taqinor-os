@@ -1228,6 +1228,21 @@ class CommentFaqView(APIView):
         return Response(mine_comment_questions(company))
 
 
+class AdObjectionsView(APIView):
+    """PUB72 — Top objections PAR VARIANTE d'annonce (motif_perte + notes de
+    chatter CRM, tags mots-clés purs) + angles suggérés en backlog. 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .comment_mining import mine_ad_objections
+        return Response(mine_ad_objections(company))
+
+
 class MetaConnectionStatusView(APIView):
     """ENG22 — Statut de connexion (GET) + enregistrement des identifiants
     (POST). Les identifiants sont **write-only** : un GET ne renvoie JAMAIS un

@@ -1776,6 +1776,55 @@ def reporting_lead_rows(company, *, date_start=None, date_end=None):
     return rows
 
 
+# ── PUB72 — Mine d'objections (motif_perte + notes chatter) ──────────────────
+
+def objection_mining_rows(company):
+    """PUB72 — Lignes texte-libre PAR LEAD pour la mine d'objections
+    (``apps.adsengine.comment_mining.mine_ad_objections``) : ``motif_perte`` +
+    le corps des activités de chatter texte-libre (notes/appels/e-mails —
+    JAMAIS les entrées structurées création/modification, qui ne portent pas
+    d'objection), avec les MÊMES clés d'attribution que
+    ``attribution_lead_rows`` (``meta_ad_id``/``utm_content``/
+    ``utm_campaign``) pour permettre la résolution PAR VARIANTE d'annonce en
+    aval. Point d'entrée cross-app SANCTIONNÉ pour ``apps.adsengine`` (le CRM
+    est lu UNIQUEMENT via ce sélecteur, jamais un import de
+    ``apps.crm.models``). Lecture seule, scopée société ; jamais un lead
+    archivé. Renvoie une LISTE de dicts (jamais un queryset de modèles)."""
+    from .models import Lead, LeadActivity
+
+    qs = (Lead.objects
+          .filter(company=company, is_archived=False)
+          .only('id', 'meta_ad_id', 'utm_content', 'utm_campaign', 'canal',
+                'motif_perte'))
+    leads = list(qs)
+    lead_ids = [lead.id for lead in leads]
+
+    notes_by_lead = {}
+    if lead_ids:
+        text_kinds = (LeadActivity.Kind.NOTE, LeadActivity.Kind.APPEL,
+                      LeadActivity.Kind.EMAIL)
+        activities = (LeadActivity.objects
+                      .filter(lead_id__in=lead_ids, kind__in=text_kinds)
+                      .only('lead_id', 'body'))
+        for act in activities:
+            if act.body:
+                notes_by_lead.setdefault(act.lead_id, []).append(act.body)
+
+    meta_channels = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+    rows = []
+    for lead in leads:
+        rows.append({
+            'id': lead.id,
+            'meta_ad_id': lead.meta_ad_id or '',
+            'utm_content': lead.utm_content or '',
+            'utm_campaign': lead.utm_campaign or '',
+            'is_meta_channel': lead.canal in meta_channels,
+            'motif_perte': lead.motif_perte or '',
+            'notes': notes_by_lead.get(lead.id, []),
+        })
+    return rows
+
+
 def lead_criteria_for_territoire(company, lead_id):
     """NTCRM1 — Contexte plat de matching territoire pour un lead réel,
     exposé aux AUTRES apps (``apps.territoires.views``) au lieu d'un import
