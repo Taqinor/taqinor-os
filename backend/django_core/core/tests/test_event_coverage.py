@@ -67,3 +67,51 @@ class EventBusCoverageTests(SimpleTestCase):
         # DEVIS_ACCEPTED est produit (notifications.signals) — preuve que le
         # scan de producteurs fonctionne, pas juste une liste vide.
         self.assertIn("DEVIS_ACCEPTED", produced)
+
+
+class EventCatalogCoverageTests(SimpleTestCase):
+    """WIR139 — le catalogue d'événements ne peut pas dériver du bus réel."""
+
+    def test_every_signal_is_catalogued(self):
+        """Chaque signal de core.events a une entrée au catalogue (NTPLT12)."""
+        uncatalogued = event_coverage.uncatalogued_events()
+        self.assertEqual(
+            uncatalogued, set(),
+            "Signaux core.events absents de core.event_catalog.CATALOG : "
+            f"{sorted(uncatalogued)}. Ajoutez leur entrée (contrat "
+            "d'intégration stable).",
+        )
+
+    def test_catalog_has_no_stale_entries(self):
+        """Aucune entrée de catalogue ne pointe un signal supprimé/renommé."""
+        stale = event_coverage.catalogued_but_undeclared()
+        self.assertEqual(
+            stale, set(),
+            "Entrées de catalogue sans signal core.events correspondant : "
+            f"{sorted(stale)}.",
+        )
+
+    def test_catalog_payload_keys_match_real_emitters(self):
+        """Les clés cataloguées = kwargs réels des émetteurs (WIR139).
+
+        Échoue dès qu'un émetteur diverge de son entrée de catalogue — le
+        contrat d'intégration ne peut donc plus dériver silencieusement."""
+        mismatches = event_coverage.catalog_payload_mismatches()
+        self.assertEqual(
+            mismatches, {},
+            "Divergence catalogue / kwargs réels des émetteurs "
+            "(catalogué vs réel) : "
+            + "; ".join(
+                f"{name}: {sorted(cat)} vs {sorted(real)}"
+                for name, (cat, real) in sorted(mismatches.items())
+            )
+            + ". Alignez core.event_catalog.CATALOG sur les kwargs réels des "
+            "signaux (ou normalisez l'émetteur).",
+        )
+
+    def test_parity_scanner_sees_real_kwargs(self):
+        """Le scanner remonte bien des kwargs réels, pas une liste vide."""
+        emitted = event_coverage.emitter_payload_keys()
+        # conge_approuve est émis avec demande/user/annule (rh/services.py).
+        self.assertEqual(
+            emitted.get("conge_approuve"), {"demande", "user", "annule"})

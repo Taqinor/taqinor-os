@@ -18,6 +18,11 @@ L'app métier (stock/ventes…) câble un scan planifié (Celery beat / commande
 qui : (a) lit ses données via ses selectors, (b) appelle ``scan_for_outliers``,
 (c) persiste via ``record_outliers`` pour SA société. core ne planifie rien
 lui-même — il fournit le moteur générique.
+
+WIR140 — ``adsengine.anomaly`` est un moteur SÉPARÉ et DÉLIBÉRÉMENT distinct de
+ce socle (ratios relatifs SMB, pas de z-score ; ``AnomalyEvent`` ad-spécifique,
+pas ``AnomalyFlag``). Il ne consomme pas ce module et ne doit pas — voir
+``docs/engine/anomaly-engine-separation.md``.
 """
 from __future__ import annotations
 

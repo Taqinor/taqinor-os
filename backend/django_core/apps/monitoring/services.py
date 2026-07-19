@@ -330,27 +330,21 @@ def warranty_curve_overlay(installation, *, years=None, today=None,
 def _create_underperf_ticket(installation, flag, user):
     """Crée UN ticket SAV préventif pour un drapeau de sous-performance.
 
-    Réutilise la création de ticket SAV (références collision-proof). Le client
-    vient du chantier. No-op (None) si le chantier n'a pas de client.
+    WIR88 — passe par la frontière services de l'app SAV
+    (``apps.sav.services.creer_ticket_preventif``) au lieu d'instancier
+    ``sav.Ticket`` directement (M3 : pas d'import de models cross-app). Le
+    client vient du chantier. No-op (None) si le chantier n'a pas de client.
     """
-    from apps.sav.models import Ticket
-    from apps.ventes.utils.references import create_with_reference
+    from apps.sav import services as sav_services
 
     client = getattr(installation, 'client', None)
     if client is None:
         return None
-    company = installation.company
     ratio = flag.ratio_pct
 
-    def _save(ref):
-        return Ticket.objects.create(
-            reference=ref, company=company, client=client,
-            installation=installation, type=Ticket.Type.PREVENTIF,
-            statut=Ticket.Statut.NOUVEAU,
-            priorite=Ticket.Priorite.HAUTE,
-            description=(
-                'Sous-performance détectée par la supervision : production '
-                f'à {ratio} % de l\'attendu sur 12 mois. Vérification requise.'),
-            created_by=user)
-
-    return create_with_reference(Ticket, 'SAV', company, _save)
+    return sav_services.creer_ticket_preventif(
+        company=installation.company, client=client, installation=installation,
+        description=(
+            'Sous-performance détectée par la supervision : production '
+            f'à {ratio} % de l\'attendu sur 12 mois. Vérification requise.'),
+        created_by=user)

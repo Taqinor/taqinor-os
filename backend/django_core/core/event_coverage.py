@@ -274,3 +274,98 @@ def catalogued_but_undeclared() -> set[str]:
     l'autre sens de la dérive."""
     from core import event_catalog
     return event_catalog.catalog_names() - set(declared_signals())
+
+
+# --- WIR139 — parité clés cataloguées / kwargs réels des émetteurs -----------
+
+# Signaux déclarés dont AUCUN émetteur statique (`<signal>.send(...)`) n'existe
+# dans le code (« seams » posés côté récepteur seul) : la parité de payload ne
+# peut donc pas être vérifiée par introspection du source. Leur entrée au
+# catalogue reste purement documentaire tant qu'un producteur n'existe pas.
+NO_STATIC_EMITTER = {
+    # ``document_produit`` : signal générique consommé par ged/receivers, jamais
+    # émis directement aujourd'hui (voir apps/ged/services.py — « jamais appelé
+    # directement par l'app »).
+    "document_produit",
+}
+
+
+def emitter_payload_keys() -> dict:
+    """{nom_signal -> set(kwargs)} relevés sur les appels ``<signal>.send(...)``.
+
+    Balaie tous les ``.py`` de ``apps/`` et ``core/`` HORS tests/migrations et,
+    pour chaque appel ``send`` porté par un signal de ``core.events`` (importé
+    directement, aliasé, ou accédé via ``events.<name>``), relève les NOMS des
+    arguments nommés (hors ``sender``). Un signal émis à plusieurs endroits
+    reçoit l'UNION de ses clés — le catalogue documente donc toutes les clés que
+    l'événement peut porter. C'est le pendant « émetteur » d'``uncatalogued_events``
+    (couverture des NOMS) : il vérifie la parité des CLÉS de payload (WIR139).
+    """
+    declared = set(declared_signals())
+    keys: dict = {name: set() for name in declared}
+    for root in (APPS_ROOT, CORE_ROOT):
+        for path in root.rglob("*.py"):
+            if "migrations" in path.parts:
+                continue
+            if path.name.startswith("test"):
+                continue
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except (OSError, SyntaxError, UnicodeDecodeError):
+                continue
+            # nom local (alias éventuel) -> nom réel du signal dans core.events.
+            alias: dict = {}
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ImportFrom):
+                    continue
+                is_events = node.module == "core.events" or (
+                    node.module == "events" and (node.level or 0) >= 1)
+                if is_events:
+                    for a in node.names:
+                        alias[a.asname or a.name] = a.name
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "send"):
+                    continue
+                obj = node.func.value
+                sig = None
+                if isinstance(obj, ast.Name) and obj.id in alias:
+                    sig = alias[obj.id]
+                elif (isinstance(obj, ast.Attribute)
+                      and isinstance(obj.value, ast.Name)
+                      and obj.value.id == "events"):
+                    sig = obj.attr
+                if sig in declared:
+                    keys[sig] |= {
+                        kw.arg for kw in node.keywords
+                        if kw.arg and kw.arg != "sender"
+                    }
+    return keys
+
+
+def catalog_payload_mismatches() -> dict:
+    """{nom_signal -> (clés_cataloguées, clés_réelles)} pour chaque divergence.
+
+    Pour tout signal DÉCLARÉ, CATALOGUÉ et doté d'au moins un émetteur statique
+    (hors ``NO_STATIC_EMITTER``), compare l'ensemble des clés de payload du
+    catalogue à l'union des kwargs réellement envoyés. Un dict non vide fait
+    échouer le test de parité WIR139 : un émetteur qui change ses kwargs sans
+    mettre le catalogue à jour (ou l'inverse) casse le build au lieu de laisser
+    le contrat d'intégration dériver silencieusement."""
+    from core import event_catalog
+    emitted = emitter_payload_keys()
+    mismatches: dict = {}
+    for name in set(declared_signals()) & event_catalog.catalog_names():
+        if name in NO_STATIC_EMITTER:
+            continue
+        real = emitted.get(name, set())
+        if not real:
+            # Aucun émetteur trouvé (ni listé NO_STATIC_EMITTER) : signalé pour
+            # forcer soit un émetteur, soit une réservation explicite.
+            mismatches[name] = (set(event_catalog.entry(name)["payload"]), set())
+            continue
+        catalogued = set(event_catalog.entry(name)["payload"])
+        if catalogued != real:
+            mismatches[name] = (catalogued, real)
+    return mismatches

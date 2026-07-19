@@ -175,6 +175,31 @@ def create_corrective_ticket(*, company, client, installation, description,
     return create_with_reference(Ticket, 'SAV', company, _create)
 
 
+def creer_ticket_preventif(*, company, client, installation, description,
+                           created_by=None,
+                           priorite=None):
+    """WIR88 — crée un ticket SAV PRÉVENTIF (référence sans collision).
+
+    Fonction FINE appelée depuis ``apps.monitoring.services`` (frontière
+    cross-app : monitoring ne connaît QUE cette fonction, jamais ``sav.models``).
+    ``client`` doit être déjà résolu par l'appelant. ``priorite`` par défaut =
+    HAUTE. Référence via l'utilitaire commun (jamais ``count()+1``). Renvoie le
+    ``Ticket`` créé."""
+    from apps.ventes.utils.references import create_with_reference
+    from .models import Ticket
+
+    if priorite is None:
+        priorite = Ticket.Priorite.HAUTE
+
+    def _create(ref):
+        return Ticket.objects.create(
+            company=company, reference=ref, client=client,
+            installation=installation, type=Ticket.Type.PREVENTIF,
+            statut=Ticket.Statut.NOUVEAU, priorite=priorite,
+            description=description, created_by=created_by)
+    return create_with_reference(Ticket, 'SAV', company, _create)
+
+
 def create_ticket_from_projet_tache(*, company, client, description):
     """ZPRJ11 — crée un ticket SAV CORRECTIF depuis une tâche de projet.
 

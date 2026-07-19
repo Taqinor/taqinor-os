@@ -189,3 +189,27 @@ class CplBandEngineWiringTests(TestCase):
         # Template alerte-seule : jamais d'EngineAction.
         self.assertEqual(
             EngineAction.objects.filter(company=self.company).count(), 0)
+
+
+class AnomalyEngineSeparationTests(SimpleTestCase):
+    """WIR140 — la séparation avec le socle ``core.anomaly`` est délibérée.
+
+    Garde de non-régression : ce moteur ads (ratios SMB relatifs → ``AnomalyEvent``)
+    reste distinct du socle fondation (z-score → ``core.AnomalyFlag``). Un futur
+    refactor qui le rattacherait au socle casse ce test. Décision tracée dans
+    ``docs/engine/anomaly-engine-separation.md``.
+    """
+
+    def test_adsengine_anomaly_does_not_import_core_anomaly(self):
+        import inspect
+        source = inspect.getsource(anomaly)
+        self.assertNotIn('core.anomaly', source)
+        self.assertNotIn('from core import anomaly', source)
+
+    def test_both_engines_have_distinct_entry_points(self):
+        from core import anomaly as core_anomaly
+        # Socle : z-score générique.
+        self.assertTrue(hasattr(core_anomaly, 'scan_for_outliers'))
+        # Ads : détecteurs ratio-relatifs propres, aucun z-score partagé.
+        self.assertTrue(hasattr(anomaly, 'detect_spend_anomaly'))
+        self.assertFalse(hasattr(anomaly, 'scan_for_outliers'))

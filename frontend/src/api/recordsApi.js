@@ -29,6 +29,13 @@ const recordsApi = {
       source, id, snoozed_until: snoozedUntil || null,
     }),
 
+  // ── Abonnements / followers (XKB34, WIR72) — mêmes ALLOWED_TARGETS ──
+  // `mine` filtre côté serveur sur l'utilisateur courant (jamais d'id client).
+  getMyFollow: (model, id) =>
+    api.get('/records/followers/', { params: { model, id, mine: 1 } }),
+  follow: (model, id) => api.post('/records/followers/', { model, id }),
+  unfollow: (followerId) => api.delete(`/records/followers/${followerId}/`),
+
   // ── Tags (FG9) ──
   getTags: (q) => api.get('/records/tags/', { params: q ? { q } : {} }),
   createTag: (nom, couleur) => api.post('/records/tags/', { nom, couleur: couleur || '' }),

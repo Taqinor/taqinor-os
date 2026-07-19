@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob — pas un module de composants : le
    fast-refresh ne s'y applique pas. */
 import { lazy } from 'react'
-import { Leaf } from 'lucide-react'
+import { Leaf, Gauge } from 'lucide-react'
 
 /* ============================================================================
    NTESG6 — Configuration du module ESG / RSE (reporting ESG/durabilité
@@ -17,6 +17,8 @@ import { Leaf } from 'lucide-react'
 const EsgCockpit = lazy(() => import('../../pages/esg/EsgCockpit'))
 // NTESG12 — matrice de matérialité (registre des parties prenantes RSE).
 const MatriceMaterialite = lazy(() => import('../../pages/esg/MatriceMaterialite'))
+// WIR130 — bibliothèque de facteurs d'émission versionnée (NTESG16).
+const FacteursEmission = lazy(() => import('../../pages/esg/FacteursEmission'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -29,16 +31,19 @@ const config = {
     items: [
       { to: '/esg', label: 'Cockpit ESG', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/esg/materialite', label: 'Matrice de matérialité', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/esg/facteurs', label: "Facteurs d'émission", icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
     ['/esg', 'Cockpit ESG'],
     ['/esg/materialite', 'Matrice de matérialité'],
+    ['/esg/facteurs', "Facteurs d'émission"],
   ],
   sectionLabels: { esg: 'ESG / RSE' },
   routes: [
     { path: '/esg', component: EsgCockpit, roles: ROLES },
     { path: '/esg/materialite', component: MatriceMaterialite, roles: ROLES },
+    { path: '/esg/facteurs', component: FacteursEmission, roles: ROLES },
   ],
 }
 

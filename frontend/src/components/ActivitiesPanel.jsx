@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import recordsApi from '../api/recordsApi'
 import AssigneePicker from './AssigneePicker'
+import FollowToggle from './FollowToggle'
 import { DatePicker } from '../ui/DatePicker'
 import { today as todayDate } from '../ui/date-utils'
 
@@ -172,9 +173,12 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
     <div className="act-panel">
       <div className="act-head">
         <span className="act-count">{open.length} activité(s) ouverte(s)</span>
-        <button type="button" className="btn btn-sm btn-primary" onClick={() => setAdding(v => !v)}>
-          {adding ? 'Fermer' : '＋ Planifier une activité'}
-        </button>
+        <div className="act-head-actions">
+          <FollowToggle model={model} id={id} />
+          <button type="button" className="btn btn-sm btn-primary" onClick={() => setAdding(v => !v)}>
+            {adding ? 'Fermer' : '＋ Planifier une activité'}
+          </button>
+        </div>
       </div>
 
       {adding && (
