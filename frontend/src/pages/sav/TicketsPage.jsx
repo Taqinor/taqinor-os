@@ -22,6 +22,7 @@ import AttachmentsPanel from '../../components/AttachmentsPanel'
 import TicketSuiviClientPanel from './TicketSuiviClientPanel'
 import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
+import TicketWorksheetPanel from './TicketWorksheetPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import { telHref } from '../../lib/contactLinks'
@@ -817,6 +818,11 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
         {/* ── WR11/FG82 — checklist de visite de maintenance ── */}
         <CollapsibleSection icon={ShieldCheck} title="Checklist de maintenance">
           <TicketChecklistPanel ticketId={id} />
+        </CollapsibleSection>
+
+        {/* ── WIR119/ZMFG6 — feuille de maintenance (worksheet) à remplir ── */}
+        <CollapsibleSection icon={FileText} title="Feuille de maintenance">
+          <TicketWorksheetPanel ticketId={id} />
         </CollapsibleSection>
 
         {/* ── XSAV12/21/27/28, ZSAV8/9 — actions avancées (fusion, similaires,

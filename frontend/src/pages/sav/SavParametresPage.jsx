@@ -265,6 +265,145 @@ function SlaAutomationSection() {
   )
 }
 
+// ── WIR119/ZMFG6 — Modèles de feuille de maintenance (worksheets). CRUD du
+// modèle (nom, type applicable, actif) + de ses champs typés (JSON `champs`).
+const WS_TYPE_APPLICABLE = [
+  ['tous', 'Tous types'], ['preventif', 'Préventif'], ['correctif', 'Correctif'],
+]
+const WS_TYPE_CHAMP = [
+  ['texte', 'Texte'], ['nombre', 'Nombre'], ['case', 'Case à cocher'], ['mesure', 'Mesure'],
+]
+
+function WorksheetModelesSection() {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [nom, setNom] = useState('')
+  const [typeApplicable, setTypeApplicable] = useState('tous')
+  const [busyId, setBusyId] = useState(null)
+
+  const load = () => savApi.getWorksheetModeles()
+    .then((r) => setRows(r.data.results ?? r.data ?? []))
+    .catch(() => {}).finally(() => setLoading(false))
+  const charger = () => { setLoading(true); return load() }
+  useEffect(() => { load() }, [])
+
+  const add = async () => {
+    if (!nom.trim()) return
+    try {
+      await savApi.saveWorksheetModele(null, {
+        nom: nom.trim(), type_ticket_applicable: typeApplicable, champs: [], actif: true,
+      })
+      setNom(''); setTypeApplicable('tous')
+      toast.success('Modèle ajouté')
+      charger()
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+  }
+
+  const patchChamps = async (modele, champs) => {
+    setBusyId(modele.id)
+    try { await savApi.saveWorksheetModele(modele.id, { champs }); charger() }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Mise à jour impossible.') }
+    finally { setBusyId(null) }
+  }
+  const toggleActif = async (modele) => {
+    try { await savApi.saveWorksheetModele(modele.id, { actif: !modele.actif }); charger() }
+    catch { toast.error('Bascule impossible.') }
+  }
+  const del = async (modele) => {
+    if (!window.confirm(`Supprimer le modèle « ${modele.nom} » ?`)) return
+    try { await savApi.deleteWorksheetModele(modele.id); charger() }
+    catch (e) { toast.error(e?.response?.data?.detail ?? 'Suppression impossible.') }
+  }
+
+  if (loading) return <Skeleton className="h-32 w-full" />
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        Le technicien remplit ces champs typés sur le ticket (panneau « Feuille
+        de maintenance »). Activez la fonctionnalité dans l'onglet SLA /
+        Automatisation pour la rendre visible sur les tickets.
+      </p>
+      <Card className="flex flex-col gap-2 p-4">
+        <Input placeholder="Nom du modèle" value={nom} onChange={(e) => setNom(e.target.value)} />
+        <Select value={typeApplicable} onValueChange={setTypeApplicable}>
+          <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {WS_TYPE_APPLICABLE.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button type="button" size="sm" className="self-start" onClick={add}><Plus /> Ajouter</Button>
+      </Card>
+      {rows.length === 0 ? <EmptyState title="Aucun modèle de feuille" /> : (
+        <ul className="flex flex-col gap-2">
+          {rows.map((m) => (
+            <WorksheetModeleRow key={m.id} modele={m} busy={busyId === m.id}
+              onPatchChamps={(champs) => patchChamps(m, champs)}
+              onToggleActif={() => toggleActif(m)} onDelete={() => del(m)} />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function WorksheetModeleRow({ modele, busy, onPatchChamps, onToggleActif, onDelete }) {
+  const [cle, setCle] = useState('')
+  const [libelle, setLibelle] = useState('')
+  const [typeChamp, setTypeChamp] = useState('texte')
+  const [requis, setRequis] = useState(false)
+  const champs = modele.champs ?? []
+
+  const addChamp = () => {
+    if (!cle.trim() || !libelle.trim()) return
+    const next = [...champs, { cle: cle.trim(), libelle: libelle.trim(), type: typeChamp, requis }]
+    onPatchChamps(next)
+    setCle(''); setLibelle(''); setTypeChamp('texte'); setRequis(false)
+  }
+  const removeChamp = (i) => onPatchChamps(champs.filter((_, idx) => idx !== i))
+
+  return (
+    <li className="rounded-lg border border-border bg-card p-3 text-sm" data-testid={`ws-modele-${modele.id}`}>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="font-medium">{modele.nom}</span>
+        <span className="text-xs text-muted-foreground">{modele.type_ticket_applicable}</span>
+        <div className="ml-auto flex items-center gap-2">
+          <Switch checked={modele.actif} disabled={busy}
+            onCheckedChange={onToggleActif}
+            aria-label={`${modele.actif ? 'Désactiver' : 'Activer'} le modèle ${modele.nom}`} />
+          <Button size="sm" variant="ghost" onClick={onDelete}>Supprimer</Button>
+        </div>
+      </div>
+      {champs.length > 0 && (
+        <ul className="mb-2 flex flex-col gap-1">
+          {champs.map((c, i) => (
+            <li key={`${c.cle}-${i}`} className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">{c.libelle}</span>
+              <span>({c.type}{c.requis ? ', requis' : ''})</span>
+              <Button size="sm" variant="ghost" className="ml-auto" disabled={busy}
+                onClick={() => removeChamp(i)}><X /></Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Input className="w-32" placeholder="Clé" value={cle} onChange={(e) => setCle(e.target.value)} />
+        <Input className="flex-1" placeholder="Libellé" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+        <Select value={typeChamp} onValueChange={setTypeChamp}>
+          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {WS_TYPE_CHAMP.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <label className="flex items-center gap-1 text-xs">
+          <input type="checkbox" checked={requis} onChange={(e) => setRequis(e.target.checked)} /> requis
+        </label>
+        <Button type="button" size="sm" disabled={busy} onClick={addChamp}><Plus /> Champ</Button>
+      </div>
+    </li>
+  )
+}
+
 export default function SavParametresPage() {
   const [tab, setTab] = useState('categories-ticket')
 
@@ -286,6 +425,7 @@ export default function SavParametresPage() {
             <TabsTrigger value="reponses-type">Réponses types</TabsTrigger>
             <TabsTrigger value="equipes">Équipes de maintenance</TabsTrigger>
             <TabsTrigger value="categories-equipement">Catégories d'équipement</TabsTrigger>
+            <TabsTrigger value="feuilles-maintenance">Feuilles de maintenance</TabsTrigger>
             <TabsTrigger value="sla-automatisation">SLA / Automatisation</TabsTrigger>
           </TabsList>
 
@@ -342,6 +482,10 @@ export default function SavParametresPage() {
 
           <TabsContent value="categories-equipement">
             <CategoriesEquipementSection />
+          </TabsContent>
+
+          <TabsContent value="feuilles-maintenance">
+            <WorksheetModelesSection />
           </TabsContent>
 
           <TabsContent value="sla-automatisation">
