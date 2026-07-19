@@ -74,6 +74,28 @@ CONSENT_BLOCK_LABELS = {
 }
 
 
+def asset_warnings(asset):
+    """PUB83 — Avertissements NON BLOQUANTS de la check-list policy d'un asset.
+
+    Aujourd'hui : vignette manquante sur un reel/explainer — la check-list
+    signale qu'aucune vignette n'a été CHOISIE (le défaut « frame 0 » est un
+    mauvais choix par défaut). Un statique n'a pas de vignette distincte (l'image
+    EST la vignette) : pas d'avertissement. Renvoie une liste de dicts
+    ``{key, label}`` (vide si aucun avertissement)."""
+    from .models import CreativeAsset
+
+    warnings = []
+    video_types = (
+        CreativeAsset.AssetType.REEL, CreativeAsset.AssetType.EXPLAINER)
+    if asset.asset_type in video_types and not asset.thumbnail_key:
+        warnings.append({
+            'key': 'thumbnail_missing',
+            'label': ("Vignette manquante : choisissez une vignette "
+                      "(jamais la frame 0 par défaut)."),
+        })
+    return warnings
+
+
 def record_policy_check(asset, *, confirmed_keys, checked_by=None, now=None):
     """Enregistre la confirmation HUMAINE règle par règle sur ``asset``.
 
@@ -110,6 +132,11 @@ def record_policy_check(asset, *, confirmed_keys, checked_by=None, now=None):
         stamp['consent_block'] = consent_block
         stamp['consent_block_label'] = CONSENT_BLOCK_LABELS.get(
             consent_block, consent_block)
+    # PUB83 — avertissements NON BLOQUANTS (ex. vignette manquante) : consignés
+    # dans le tampon sans jamais faire échouer la validation.
+    warnings = asset_warnings(asset)
+    if warnings:
+        stamp['warnings'] = warnings
     asset.policy_stamp = stamp
     asset.save(update_fields=['policy_stamp', 'updated_at'])
     return asset

@@ -8,7 +8,7 @@ import {
   LayoutDashboard, PlugZap, Megaphone, ClipboardCheck,
   FileText, Images, History, FlaskConical, Route, Layers,
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
-  Gauge, GitBranch, Table2, Scale, ShieldCheck,
+  Gauge, GitBranch, Table2, Scale, ShieldCheck, Palette,
 } from 'lucide-react'
 // PUB47 — enveloppe d'impression (bouton « Imprimer / PDF » + print.css
 // globale) posée UNIQUEMENT au point d'enregistrement de route, sans toucher
@@ -61,6 +61,8 @@ const FactTableScreen = lazy(() => import('./FactTableScreen'))
 const ComparatorScreen = lazy(() => import('./ComparatorScreen'))
 // PUB75 — registre de consentement image/témoignage (CNDP loi 09-08).
 const ConsentScreen = lazy(() => import('./ConsentScreen'))
+// PUB83 — kit de marque persistant (logo/couleurs/zones/polices).
+const BrandKitScreen = lazy(() => import('./BrandKitScreen'))
 
 // PUB47 — cockpit imprimable A4 (bouton + print.css) sans éditer l'écran.
 // PUB52 — + lien « Comparer » vers le Comparateur, même patron non-intrusif.
@@ -109,6 +111,7 @@ const config = {
       { to: '/publicite/table-des-faits', label: 'Table des faits', icon: <Table2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/comparateur', label: 'Comparateur', icon: <Scale size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/consentements', label: 'Consentements', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/kit-marque', label: 'Kit de marque', icon: <Palette size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -133,6 +136,7 @@ const config = {
     ['/publicite/table-des-faits', 'Publicité — Table des faits'],
     ['/publicite/comparateur', 'Publicité — Comparateur'],
     ['/publicite/consentements', 'Publicité — Consentements'],
+    ['/publicite/kit-marque', 'Publicité — Kit de marque'],
     // PUB44 — fiche ad (préfixe fixe avant l'id dynamique).
     ['/publicite/ad/', 'Publicité — Fiche ad'],
     // PUB42 — le PLUS général (préfixe de tous les autres) : DERNIER, sinon
@@ -167,6 +171,7 @@ const config = {
     { path: '/publicite/table-des-faits', component: FactTableScreen, roles: ROLES },
     { path: '/publicite/comparateur', component: ComparatorScreen, roles: ROLES },
     { path: '/publicite/consentements', component: ConsentScreen, roles: ROLES },
+    { path: '/publicite/kit-marque', component: BrandKitScreen, roles: ROLES },
   ],
 }
 

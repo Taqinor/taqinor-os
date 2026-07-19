@@ -981,6 +981,13 @@ class CreativeAsset(TenantModel):
     review_reason = models.CharField(
         max_length=40, blank=True, default='', verbose_name='Motif de revue')
 
+    # ── PUB83 — Vignette CHOISIE (jamais la frame 0 par défaut) ──────────────
+    # Clé MinIO de la vignette sélectionnée pour un reel/explainer. Vide = aucune
+    # vignette choisie → la check-list policy émet un WARNING (non bloquant).
+    thumbnail_key = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Clé MinIO de la vignette')
+
     class Meta:
         verbose_name = 'Asset créatif'
         verbose_name_plural = 'Assets créatifs'
@@ -2593,3 +2600,49 @@ class CreativeCalendarEvent(TenantModel):
     def days_until_start(self, day):
         """Jours avant le début (négatif si déjà commencé/passé)."""
         return (self.date_debut - day).days
+
+
+class BrandKit(TenantModel):
+    """PUB83 — Kit de marque PERSISTANT d'une société (une par société,
+    ``OneToOne``).
+
+    Logo, couleurs, zones de sécurité et polices sont désormais lus depuis CE
+    modèle par le ``TemplatedAdapter`` (ENG17) — au lieu d'un payload de marque
+    ad hoc reconstruit à chaque génération. ``colors`` / ``safe_zones`` /
+    ``fonts`` sont des JSON libres (le rendu Templated les consomme tels quels).
+    ``logo_key`` porte une clé MinIO (jamais un ``FileField`` — pattern SCA42,
+    comme ``CreativeAsset.file_key``)."""
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: le kit de marque disparaît avec la société (tenant, OneToOne)
+        related_name='adsengine_brand_kit', verbose_name='Société')
+    name = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Nom du kit')
+    logo_key = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Clé MinIO du logo')
+    colors = models.JSONField(
+        default=dict, blank=True, verbose_name='Couleurs',
+        help_text='Ex. {"primary": "#0A6", "secondary": "#111"}.')
+    safe_zones = models.JSONField(
+        default=dict, blank=True, verbose_name='Zones de sécurité',
+        help_text='Marges/gabarits réservés (haut/bas/côtés) par format.')
+    fonts = models.JSONField(
+        default=list, blank=True, verbose_name='Polices')
+
+    class Meta:
+        verbose_name = 'Kit de marque'
+        verbose_name_plural = 'Kits de marque'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Kit de marque société {self.company_id}'
+
+    def as_payload(self):
+        """Représentation DONNÉES consommée par le ``TemplatedAdapter`` (jamais
+        un secret ; ``logo_key`` reste une clé MinIO, pas une URL signée)."""
+        return {
+            'logo_key': self.logo_key,
+            'colors': dict(self.colors or {}),
+            'safe_zones': dict(self.safe_zones or {}),
+            'fonts': list(self.fonts or []),
+        }

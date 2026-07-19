@@ -22,6 +22,7 @@ from .views import (
     CommentPrivateReplyView, CommentReplyView,
     AudienceDeliveryEstimateView, EngagementAudienceView,
     CostPerSignatureView, CreativeLeaderboardView, CreativeScatterView,
+    BrandKitViewSet,
     ConsentRecordViewSet,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
@@ -54,6 +55,8 @@ router.register(r'noeuds-hypothese', AssumptionNodeViewSet,
 router.register(r'annotations', AnnotationViewSet, basename='annotation')
 # PUB75 — registre de consentement image/témoignage (CNDP loi 09-08).
 router.register(r'consentements', ConsentRecordViewSet, basename='consent-record')
+# PUB83 — kit de marque persistant (logo/couleurs/zones/polices).
+router.register(r'kit-marque', BrandKitViewSet, basename='brand-kit')
 # AGEN1 — génération autonome : table de faits versionnée (§10.2 point 1).
 router.register(r'table-faits', FactTableViewSet, basename='fact-table')
 router.register(r'faits', FactEntryViewSet, basename='fact-entry')

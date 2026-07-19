@@ -343,6 +343,13 @@ const adsengineApi = {
     ...resource('consentements'),
     revoke: (id) => api.post(`/adsengine/consentements/${id}/revoquer/`),
   },
+
+  // ── PUB83 — Kit de marque persistant (logo/couleurs/zones/polices) ──
+  // Consommé par le TemplatedAdapter côté backend ; l'écran l'édite comme un
+  // singleton par société (OneToOne).
+  brandKit: {
+    ...resource('kit-marque'),
+  },
 }
 
 export default adsengineApi

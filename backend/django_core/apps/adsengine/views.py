@@ -19,7 +19,7 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AdCampaignMirror, Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
-    CommentMirror, ConsentRecord,
+    BrandKit, CommentMirror, ConsentRecord,
     CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
     CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
     ExperimentArm, FactEntry, FactTable, FlightPhase, FlightPlan,
@@ -31,7 +31,7 @@ from .models import (
 from .serializers import (
     AdCampaignMirrorSerializer, AnnotationSerializer, AnomalyEventSerializer,
     ArmDailyStatSerializer,
-    AssumptionNodeSerializer,
+    AssumptionNodeSerializer, BrandKitSerializer,
     CommentMirrorSerializer, ConsentRecordSerializer, CreativeAssetSerializer,
     CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
     CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
@@ -571,6 +571,17 @@ class ConsentRecordViewSet(AdsengineViewSet):
         data = self.get_serializer(consent).data
         data['assets_retires'] = retires
         return Response(data)
+
+
+class BrandKitViewSet(AdsengineViewSet):
+    """PUB83 — CRUD du kit de marque (une par société, ``OneToOne``).
+
+    Company-scopé (hérité) ; ``company`` posée côté serveur. Le
+    ``TemplatedAdapter`` lit ce kit persistant au lieu d'un payload de marque
+    ad hoc à chaque génération."""
+
+    queryset = BrandKit.objects.all()
+    serializer_class = BrandKitSerializer
 
 
 class EngineAlertViewSet(AdsengineViewSet):

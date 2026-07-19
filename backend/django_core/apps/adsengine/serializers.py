@@ -8,7 +8,7 @@ from rest_framework import serializers
 from .models import (
     AdCampaignMirror, AdMirror, AdSetMirror, Annotation, AnomalyEvent,
     ArmDailyStat,
-    AssumptionNode, CommentMirror, ConsentRecord, CreativeAsset,
+    AssumptionNode, BrandKit, CommentMirror, ConsentRecord, CreativeAsset,
     CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
     EngineAlert, Experiment, ExperimentArm, FactEntry, FactTable,
@@ -257,6 +257,8 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
     # PUB75 — statut consentement (CNDP) : raison de blocage lisible (ou None).
     consent_block = serializers.SerializerMethodField()
     has_valid_consent = serializers.BooleanField(read_only=True)
+    # PUB83 — avertissements NON BLOQUANTS de la check-list (ex. vignette manquante).
+    checklist_warnings = serializers.SerializerMethodField()
 
     def validate_consent(self, value):
         return _same_company(self, value)
@@ -270,6 +272,9 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
             # PUB75 — consentement image/témoignage (CNDP).
             'depicts_real_client', 'consent', 'consent_scopes_required',
             'consent_block', 'has_valid_consent',
+            # PUB76 — fraîcheur ; PUB77 — langue ; PUB83 — vignette choisie.
+            'facts_version', 'expires_at', 'review_after', 'needs_review',
+            'review_reason', 'language', 'thumbnail_key', 'checklist_warnings',
             # ADSENG5 — composants (accroche / texte / visuel / CTA).
             'hook_id', 'hook_text', 'primary_text', 'visual_asset_key', 'cta',
             'created_at', 'updated_at',
@@ -278,8 +283,16 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
         # le remettre ici (DRF interdit un champ à la fois déclaré ET dans
         # read_only_fields).
         read_only_fields = [
-            'file_key', 'policy_stamp', 'perf', 'created_at', 'updated_at',
+            'file_key', 'policy_stamp', 'perf',
+            # PUB76 — posés par le job de fraîcheur, jamais par le client.
+            'facts_version', 'needs_review', 'review_reason',
+            'created_at', 'updated_at',
         ]
+
+    def get_checklist_warnings(self, obj):
+        """PUB83 — Avertissements non bloquants de la check-list policy."""
+        from .policy import asset_warnings
+        return asset_warnings(obj)
 
     def get_preview_url(self, obj):
         """ADSDEEP15 — URL présignée MinIO depuis ``file_key`` (None si vide/
@@ -914,3 +927,17 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
 
     def get_is_active(self, obj):
         return obj.is_active()
+
+
+class BrandKitSerializer(serializers.ModelSerializer):
+    """PUB83 — Kit de marque persistant (logo/couleurs/zones de sécurité/polices).
+    ``company`` posée côté serveur ; consommé par le ``TemplatedAdapter`` au lieu
+    d'un payload de marque ad hoc."""
+
+    class Meta:
+        model = BrandKit
+        fields = [
+            'id', 'name', 'logo_key', 'colors', 'safe_zones', 'fonts',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']

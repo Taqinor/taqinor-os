@@ -170,6 +170,15 @@ class FalAdapter(CreativeFactoryAdapter):
         return client.get(url).content if url else None
 
 
+def brand_kit_payload(company):
+    """PUB83 — Kit de marque PERSISTANT d'une société pour le ``TemplatedAdapter``
+    (ou ``{}`` si aucun kit défini). Lecture seule ; jamais un secret."""
+    from .models import BrandKit
+
+    kit = BrandKit.objects.filter(company=company).first()
+    return kit.as_payload() if kit is not None else {}
+
+
 class TemplatedAdapter(CreativeFactoryAdapter):
     """Stamps de marque (Templated.io)."""
 
@@ -179,6 +188,20 @@ class TemplatedAdapter(CreativeFactoryAdapter):
     default_ext = 'png'
     default_content_type = 'image/png'
     base_url = 'https://api.templated.io/v1'
+
+    def run(self, company, payload=None, *, http_client=None, parent=None):
+        """PUB83 — Injecte le kit de marque PERSISTANT (``BrandKit``) dans le
+        payload de rendu AVANT l'appel Templated — au lieu d'un payload de marque
+        ad hoc. Le kit prime sur un ``brand_kit`` fourni dans le payload (source
+        de vérité unique). Sans kit défini : comportement inchangé."""
+        payload = dict(payload or {})
+        kit = brand_kit_payload(company)
+        if kit:
+            merged_input = dict(payload.get('input') or {})
+            merged_input['brand_kit'] = kit
+            payload['input'] = merged_input
+        return super().run(
+            company, payload, http_client=http_client, parent=parent)
 
     def submit(self, client, payload):
         resp = client.post(
