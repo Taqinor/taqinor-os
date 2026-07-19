@@ -23,6 +23,7 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import EinvoiceActions from '../../components/EinvoiceActions'
 import { formatMAD } from '../../lib/format'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { parsePastedAmount } from '../../hooks/usePasteClean'
@@ -687,6 +688,10 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
               <p className="mb-2 text-sm font-semibold text-foreground">Pièces jointes</p>
               <AttachmentsPanel model="ventes.facture" id={facture.id} />
             </div>
+          )}
+
+          {isEdit && facture?.id && (
+            <EinvoiceActions factureId={facture.id} />
           )}
 
           <FormActions sticky={false}>
