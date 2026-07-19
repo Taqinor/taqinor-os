@@ -142,6 +142,13 @@ describe('ReportsScreen (ENG45)', () => {
     expect(printSpy).toHaveBeenCalled()
     printSpy.mockRestore()
   })
+
+  // PUB52 — entrée vers le comparateur côte-à-côte.
+  it('propose un lien vers le Comparateur', async () => {
+    renderScreen()
+    const link = await screen.findByTestId('ae-reports-compare-link')
+    expect(link).toHaveAttribute('href', '/publicite/comparateur')
+  })
 })
 
 describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {

@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { BarChart3, Download, ClipboardList, Printer } from 'lucide-react'
+import { BarChart3, Download, ClipboardList, Printer, Scale } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeVariants, normalizeFunnel, normalizeCohorts, normalizeLeaderboard,
@@ -152,6 +152,11 @@ export default function ReportsScreen() {
             <Download size={15} aria-hidden="true" /> Exporter en CSV
           </a>
         )}
+        {/* PUB52 — comparateur côte-à-côte (ads/campagnes) */}
+        <Link to="/publicite/comparateur" className="btn btn-light" data-testid="ae-reports-compare-link"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <Scale size={15} aria-hidden="true" /> Comparateur
+        </Link>
         {/* PUB47 — impression navigateur (feuille globale print.css, VX80) :
             PDF imprimable propre (A4), zéro dépendance nouvelle. Distinct des
             PDF WeasyPrint client (règle #4). */}

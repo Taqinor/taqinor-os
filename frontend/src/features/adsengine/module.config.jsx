@@ -3,11 +3,12 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
+import { Link } from 'react-router-dom'
 import {
   LayoutDashboard, PlugZap, Megaphone, ClipboardCheck,
   FileText, Images, History, FlaskConical, Route, Layers,
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
-  Gauge, GitBranch,
+  Gauge, GitBranch, Scale,
 } from 'lucide-react'
 // PUB47 — enveloppe d'impression (bouton « Imprimer / PDF » + print.css
 // globale) posée UNIQUEMENT au point d'enregistrement de route, sans toucher
@@ -46,10 +47,21 @@ const InstagramScreen = lazy(() => import('./InstagramScreen'))
 const AdsCockpitScreen = lazy(() => import('./AdsCockpitScreen'))
 // ASG6 — L'Arbre (l'Assumption Engine : plan vivant, dd-assumption-engine.md §3).
 const TreeScreen = lazy(() => import('./TreeScreen'))
+// PUB52 — comparateur côte-à-côte (ads/campagnes), nouvel écran additif.
+const ComparatorScreen = lazy(() => import('./ComparatorScreen'))
 
 // PUB47 — cockpit imprimable A4 (bouton + print.css) sans éditer l'écran.
+// PUB52 — + lien « Comparer » vers le Comparateur, même patron non-intrusif.
 function AdsCockpitScreenPrintable() {
-  return <PrintPageWrapper><AdsCockpitScreen /></PrintPageWrapper>
+  return (
+    <PrintPageWrapper extraActions={
+      <Link to="/publicite/comparateur" className="btn btn-light" data-testid="ae-cockpit-compare-link">
+        <Scale size={15} aria-hidden="true" /> Comparer
+      </Link>
+    }>
+      <AdsCockpitScreen />
+    </PrintPageWrapper>
+  )
 }
 
 const ROLES = ['responsable', 'admin']
@@ -78,6 +90,7 @@ const config = {
       { to: '/publicite/journal', label: "Journal d'actions", icon: <History size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/connexion', label: 'Connexion & garde-fous', icon: <PlugZap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/arbre', label: "L'Arbre", icon: <GitBranch size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/comparateur', label: 'Comparateur', icon: <Scale size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -99,6 +112,7 @@ const config = {
     ['/publicite/journal', "Publicité — Journal d'actions"],
     ['/publicite/connexion', 'Publicité — Connexion & garde-fous'],
     ['/publicite/arbre', "Publicité — L'Arbre"],
+    ['/publicite/comparateur', 'Publicité — Comparateur'],
   ],
   sectionLabels: { publicite: 'Publicité' },
   routes: [
@@ -119,6 +133,7 @@ const config = {
     { path: '/publicite/journal', component: ActionsLogScreen, roles: ROLES },
     { path: '/publicite/connexion', component: ConnectionScreen, roles: ROLES },
     { path: '/publicite/arbre', component: TreeScreen, roles: ROLES },
+    { path: '/publicite/comparateur', component: ComparatorScreen, roles: ROLES },
   ],
 }
 
