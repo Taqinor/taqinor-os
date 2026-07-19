@@ -80,4 +80,35 @@ describe('DashboardScreen (ENG23)', () => {
     fireEvent.click(screen.getByTestId('ae-drill-close'))
     await waitFor(() => expect(screen.queryByTestId('ae-drill-panel')).toBeNull())
   })
+
+  // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
+  describe('PUB40 — sélecteur de période', () => {
+    it('affiche la barre de période et recharge le dashboard au changement', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.dashboard).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange')).toBeInTheDocument()
+      mocks.dashboard.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-hier'))
+      await waitFor(() => expect(mocks.dashboard).toHaveBeenCalled())
+      const params = mocks.dashboard.mock.calls[0][0]
+      expect(params.debut).toBe(params.fin) // « hier » = un seul jour
+    })
+
+    it('aucun bloc `previous` -> aucun delta affiché (jamais un badge fabriqué)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.dashboard).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-delta-spend')).toBeNull()
+    })
+
+    it('bloc `previous` fourni -> delta % affiché sur les tuiles (jamais le héro)', async () => {
+      mocks.dashboard.mockResolvedValue({ data: {
+        cost_per_signature: 1850, spend: 4200, cpl: 95, frequency: 1.8,
+        previous: { spend: 3500, cpl: 100, frequency: 1.5 },
+      } })
+      renderScreen()
+      await waitFor(() => expect(mocks.dashboard).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-delta-spend')).toHaveTextContent('vs période précédente')
+      expect(screen.queryByTestId('ae-delta-cost_per_signature')).toBeNull()
+    })
+  })
 })

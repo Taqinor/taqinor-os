@@ -138,4 +138,30 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
     await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
     expect(screen.getByText('Aucune ad synchronisée')).toBeInTheDocument()
   })
+
+  // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
+  describe('PUB40 — sélecteur de période', () => {
+    it('affiche la barre de période et recharge le cockpit au changement', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange')).toBeInTheDocument()
+      mocks.adsCockpit.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-hier'))
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      const params = mocks.adsCockpit.mock.calls[0][0]
+      expect(params.debut).toBe(params.fin)
+    })
+
+    it('comparaison activée -> bandeau de dépense totale + delta', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-cockpit-compare-summary')).toBeNull()
+      mocks.adsCockpit.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-compare'))
+      // Comparaison active -> 2 appels (période courante + précédente).
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalledTimes(2))
+      expect(await screen.findByTestId('ae-cockpit-compare-summary'))
+        .toHaveTextContent('vs période précédente')
+    })
+  })
 })

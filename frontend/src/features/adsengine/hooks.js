@@ -141,6 +141,17 @@ export const AE_HOOKS = {
     cohortRow: 'ae-reports-cohort-row',
     export: 'ae-reports-export', // lien de téléchargement CSV
   },
+
+  // PUB40 — Sélecteur de période + comparaison (`DateRangeBar`, partagé par
+  // Dashboard/Cockpit/Campagnes/Journal).
+  dateRange: {
+    root: 'ae-daterange',
+    presetPrefix: 'ae-daterange-preset-', // + hier|7j|30j|personnalise
+    debut: 'ae-daterange-debut', // saisie personnalisée
+    fin: 'ae-daterange-fin',
+    compare: 'ae-daterange-compare', // case « comparer à la période précédente »
+    summary: 'ae-daterange-summary',
+  },
 }
 
 export default AE_HOOKS

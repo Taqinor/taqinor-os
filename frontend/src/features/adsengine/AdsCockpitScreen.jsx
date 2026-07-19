@@ -4,6 +4,14 @@ import adsengineApi from './adsengineApi'
 import { formatMAD, formatNumber, formatRatio, sortCockpitRows } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import AdCreativePanel from './AdCreativePanel'
+import DateRangeBar from './DateRangeBar'
+import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
+
+// PUB40 — dépense totale visible (somme ``depense_mad`` des lignes) — pure,
+// testable isolément ; une ligne sans dépense compte pour 0 (jamais NaN).
+function totalSpend(rows) {
+  return (rows || []).reduce((sum, r) => sum + (Number(r.depense_mad) || 0), 0)
+}
 
 /* ============================================================================
    ADSDEEP22 — Cockpit par ad (écran-console QUOTIDIEN du fondateur).
@@ -87,13 +95,32 @@ export default function AdsCockpitScreen() {
   const [sort, setSort] = useState({ key: 'depense_mad', dir: 'desc' })
   const [openAdId, setOpenAdId] = useState(null)
 
+  // PUB40 — sélecteur de période + comparaison (partagé avec Dashboard).
+  const [range, setRange] = useState(
+    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+  const [previousTotal, setPreviousTotal] = useState(null)
+
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.metrics.adsCockpit()
+    const params = { debut: range.debut || undefined, fin: range.fin || undefined }
+    adsengineApi.metrics.adsCockpit(params)
       .then(r => setRows(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
       .catch(() => setRows([]))
       .finally(() => setLoading(false))
-  }, [])
+
+    // Comparaison : un second appel sur la période PRÉCÉDENTE (PUB40 — un
+    // cockpit ligne-par-ligne n'a pas de bloc `previous` serveur comme le
+    // dashboard ; on compare le TOTAL dépense des deux périodes).
+    if (range.compare && range.debut && range.fin) {
+      const prev = previousRange(range)
+      adsengineApi.metrics.adsCockpit({ debut: prev.debut, fin: prev.fin })
+        .then(r => setPreviousTotal(
+          totalSpend(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
+        .catch(() => setPreviousTotal(null))
+    } else {
+      setPreviousTotal(null)
+    }
+  }, [range])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
@@ -115,12 +142,23 @@ export default function AdsCockpitScreen() {
   }
 
   const openRow = openAdId != null ? sortedRows.find(r => r.id === openAdId) : null
+  const currentTotal = totalSpend(sortedRows)
+  const compareDelta = previousTotal != null ? computeDelta(currentTotal, previousTotal) : null
 
   return (
     <div className="page ae-ads-cockpit">
       <div className="page-header">
         <h2>Cockpit par ad</h2>
       </div>
+
+      {/* PUB40 — sélecteur de période + comparaison. */}
+      <DateRangeBar value={range} onChange={setRange} />
+      {compareDelta && (
+        <p className="card" data-testid="ae-cockpit-compare-summary"
+          style={{ padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
+          Dépense totale période : {formatMAD(currentTotal)} ({formatDeltaPct(compareDelta.pct)} vs période précédente)
+        </p>
+      )}
 
       {/* ADSDEEP66 — fenêtres de données visibles à l'écran : leads (90 j,
           MetaLeadMirror ADSDEEP19) + insights (37 mois, dépense/fréquence). */}

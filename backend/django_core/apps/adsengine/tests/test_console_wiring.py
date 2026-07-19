@@ -583,3 +583,135 @@ class ConsoleWiringTests(TestCase):
         resp = auth(self.viewer).get(f'{BASE}/reporting/cohortes/')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIsInstance(resp.data, list)
+
+    # ── PUB40 — Sélecteur de période + comparaison ───────────────────────────
+    def test_metrics_dashboard_windows_by_debut_fin(self):
+        """``?debut=&fin=`` borne spend/cpl/frequency ; omis, comportement
+        historique (somme de TOUT l'historique) inchangé."""
+        old_day = datetime.date.today() - datetime.timedelta(days=10)
+        ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        InsightSnapshot.objects.create(
+            company=self.company, content_type=ct, object_id=self.campaign.pk,
+            date=old_day, spend='999.00', results=1, frequency='3.00')
+        today = datetime.date.today()
+        resp = auth(self.viewer).get(
+            f'{BASE}/metrics/dashboard/',
+            {'debut': today.isoformat(), 'fin': today.isoformat()})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['spend'], '120.00')
+        resp_all = auth(self.viewer).get(f'{BASE}/metrics/dashboard/')
+        self.assertEqual(resp_all.status_code, 200, resp_all.data)
+        self.assertEqual(resp_all.data['spend'], '1119.00')
+
+    def test_metrics_dashboard_compare_previous_period_same_weekday(self):
+        """PUB40 — une fenêtre d'UN jour compare au MÊME jour, semaine
+        précédente (-7 j), le critère Done « hier vs même jour semaine
+        passée »."""
+        today = datetime.date.today()
+        last_week = today - datetime.timedelta(days=7)
+        ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        InsightSnapshot.objects.create(
+            company=self.company, content_type=ct, object_id=self.campaign.pk,
+            date=last_week, spend='40.00', results=2, frequency='1.00')
+        resp = auth(self.viewer).get(
+            f'{BASE}/metrics/dashboard/',
+            {'debut': today.isoformat(), 'fin': today.isoformat(),
+             'compare': '1'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['spend'], '120.00')
+        self.assertIn('previous', resp.data)
+        self.assertEqual(resp.data['previous']['spend'], '40.00')
+        self.assertEqual(resp.data['previous']['debut'], last_week.isoformat())
+
+    def test_metrics_dashboard_compare_without_range_is_noop(self):
+        resp = auth(self.viewer).get(
+            f'{BASE}/metrics/dashboard/', {'compare': '1'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotIn('previous', resp.data)
+
+    def test_ads_cockpit_windows_spend_and_leads_together(self):
+        """PUB40 — dépense (InsightSnapshot) ET leads (MetaLeadMirror) sont
+        fenêtrés ENSEMBLE : le CPL affiché reste un ratio cohérent."""
+        from django.utils import timezone
+
+        from apps.adsengine.models import MetaLeadMirror
+        today = datetime.date.today()
+        old_day = today - datetime.timedelta(days=10)
+        ad_ct = ContentType.objects.get_for_model(AdMirror)
+        InsightSnapshot.objects.create(
+            company=self.company, content_type=ad_ct, object_id=self.ad.pk,
+            date=old_day, spend='500.00', results=9)
+        MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='lg-old', ad_id=self.ad.meta_id,
+            created_time=timezone.make_aware(
+                datetime.datetime.combine(old_day, datetime.time(12, 0))))
+        MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='lg-new', ad_id=self.ad.meta_id,
+            created_time=timezone.now())
+        resp = auth(self.viewer).get(
+            f'{BASE}/metrics/ads-cockpit/',
+            {'debut': today.isoformat(), 'fin': today.isoformat()})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        row = next(r for r in resp.data if r['meta_id'] == 'ad-1')
+        # Fixture setUpTestData (30.00/2) + le lead d'AUJOURD'HUI seulement —
+        # l'instantané et le lead d'il y a 10 j sont hors fenêtre.
+        self.assertEqual(row['depense_mad'], '30.00')
+        self.assertEqual(row['nb_leads'], 1)
+        self.assertEqual(row['cpl_mad'], '30.00')
+
+    def test_ads_cockpit_without_range_unchanged(self):
+        """Omis (défaut) : comportement byte-identique — pas de fenêtrage."""
+        from apps.adsengine.models import MetaLeadMirror
+        MetaLeadMirror.objects.create(
+            company=self.company, leadgen_id='lg-1', ad_id=self.ad.meta_id)
+        resp = auth(self.viewer).get(f'{BASE}/metrics/ads-cockpit/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        row = next(r for r in resp.data if r['meta_id'] == 'ad-1')
+        self.assertEqual(row['nb_leads'], 1)
+
+    def test_campaigns_list_windows_depense_by_debut_fin(self):
+        old_day = datetime.date.today() - datetime.timedelta(days=10)
+        ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        InsightSnapshot.objects.create(
+            company=self.company, content_type=ct, object_id=self.campaign.pk,
+            date=old_day, spend='500.00', results=9)
+        today = datetime.date.today()
+        resp = auth(self.viewer).get(
+            f'{BASE}/campaigns/',
+            {'debut': today.isoformat(), 'fin': today.isoformat()})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rows = resp.data.get('results', resp.data)
+        row = next(r for r in rows if r['name'] == 'Campagne A')
+        self.assertEqual(row['depense_mad'], '120.00')
+        # Sans bornes : comportement historique (somme des deux).
+        resp_all = auth(self.viewer).get(f'{BASE}/campaigns/')
+        rows_all = resp_all.data.get('results', resp_all.data)
+        row_all = next(r for r in rows_all if r['name'] == 'Campagne A')
+        self.assertEqual(row_all['depense_mad'], '620.00')
+
+    def test_actions_log_windows_by_debut_fin(self):
+        from django.utils import timezone
+
+        from apps.adsengine.models import EngineAction
+        old_action = EngineAction.objects.create(
+            company=self.company, kind=EngineAction.Kind.PAUSE,
+            reason_fr='Ancienne action.')
+        EngineAction.objects.filter(pk=old_action.pk).update(
+            created_at=timezone.now() - datetime.timedelta(days=10))
+        new_action = EngineAction.objects.create(
+            company=self.company, kind=EngineAction.Kind.PAUSE,
+            reason_fr='Action récente.')
+        today = datetime.date.today()
+        resp = auth(self.viewer).get(
+            f'{BASE}/actions/',
+            {'debut': today.isoformat(), 'fin': today.isoformat()})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        rows = resp.data.get('results', resp.data)
+        ids = {r['id'] for r in rows}
+        self.assertIn(new_action.pk, ids)
+        self.assertNotIn(old_action.pk, ids)
+        # Sans bornes : les deux apparaissent (comportement historique).
+        resp_all = auth(self.viewer).get(f'{BASE}/actions/')
+        ids_all = {r['id'] for r in resp_all.data.get('results', resp_all.data)}
+        self.assertIn(old_action.pk, ids_all)
+        self.assertIn(new_action.pk, ids_all)

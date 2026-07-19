@@ -173,4 +173,29 @@ describe('CampaignsScreen (ENG24)', () => {
       expect(screen.queryByTestId('ae-camp-hierarchy')).toBeNull()
     })
   })
+
+  // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
+  describe('PUB40 — sélecteur de période', () => {
+    it('affiche la barre de période et recharge les campagnes au changement', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange')).toBeInTheDocument()
+      mocks.list.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-hier'))
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      const params = mocks.list.mock.calls[0][0]
+      expect(params.debut).toBe(params.fin)
+    })
+
+    it('comparaison activée -> bandeau de dépense totale + delta', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-camp-compare-summary')).toBeNull()
+      mocks.list.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-compare'))
+      await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
+      expect(await screen.findByTestId('ae-camp-compare-summary'))
+        .toHaveTextContent('vs période précédente')
+    })
+  })
 })

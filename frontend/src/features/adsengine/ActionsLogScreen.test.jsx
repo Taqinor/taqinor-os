@@ -73,4 +73,29 @@ describe('ActionsLogScreen (ENG28)', () => {
     await waitFor(() => expect(screen.getAllByTestId('ae-log-row')).toHaveLength(1))
     expect(screen.getByText('Fréquence trop haute')).toBeInTheDocument()
   })
+
+  // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
+  describe('PUB40 — sélecteur de période', () => {
+    it('affiche la barre de période et recharge le journal au changement', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange')).toBeInTheDocument()
+      mocks.log.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-hier'))
+      await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+      const params = mocks.log.mock.calls[0][0]
+      expect(params.debut).toBe(params.fin)
+    })
+
+    it('comparaison activée -> bandeau de comptage + delta', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-log-compare-summary')).toBeNull()
+      mocks.log.mockClear()
+      fireEvent.click(screen.getByTestId('ae-daterange-compare'))
+      await waitFor(() => expect(mocks.log).toHaveBeenCalledTimes(2))
+      expect(await screen.findByTestId('ae-log-compare-summary'))
+        .toHaveTextContent('vs période précédente')
+    })
+  })
 })

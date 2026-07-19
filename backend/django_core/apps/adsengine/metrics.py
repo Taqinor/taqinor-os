@@ -69,7 +69,25 @@ def result_metric_for_objective(objective):
     return RESULT_METRIC_BY_OBJECTIVE.get(key, DEFAULT_RESULT_METRIC)
 
 
-def real_lead_counts(company):
+# ── PUB40 — Sélecteur de période + comparaison ─────────────────────────────
+def previous_period(start, end):
+    """PUB40 — Période de comparaison « vs période précédente ».
+
+    Une période D'UN SEUL JOUR (preset « hier ») compare au MÊME JOUR de la
+    semaine PRÉCÉDENTE (-7 j) — contrôle l'effet jour-de-semaine (« hier vs
+    même jour semaine passée », le critère Done du dashboard). Toute période
+    plus longue (7j/30j/personnalisée) compare à la période équivalente
+    IMMÉDIATEMENT précédente (period-over-period classique), bornes inclusives.
+    Pure — aucun accès base de données."""
+    length_days = (end - start).days + 1
+    if length_days <= 1:
+        shift = datetime.timedelta(days=7)
+    else:
+        shift = datetime.timedelta(days=length_days)
+    return start - shift, end - shift
+
+
+def real_lead_counts(company, start_date=None, end_date=None):
     """ADSDEEP19 — Comptes de leads RÉELS par ad et par campagne (MetaLeadMirror).
 
     Remplace le « Leads: 0 » issu des insights par le vrai nombre de leads
@@ -77,10 +95,24 @@ def real_lead_counts(company):
     d'un miroir peut être vide (le webhook leadgen ne le pousse pas) : dans ce
     cas la campagne est résolue via l'échelle miroir ``ad_id`` → ``AdMirror`` →
     ``AdSetMirror`` → ``AdCampaignMirror``. Company-scopé. Renvoie
-    ``{by_ad, by_campaign, total}`` (``by_campaign`` clé = meta_id de campagne)."""
+    ``{by_ad, by_campaign, total}`` (``by_campaign`` clé = meta_id de campagne).
+
+    PUB40 — ``start_date``/``end_date`` (optionnels, bornes inclusives sur
+    ``created_time``, la date Meta du lead) FENÊTRENT le compte pour la
+    comparaison de période du cockpit. Omis (défaut) : comportement inchangé,
+    TOUT l'historique. Un miroir SANS ``created_time`` connu est exclu d'un
+    compte fenêtré (jamais compté à l'aveugle dans une fenêtre qu'il ne peut
+    pas prouver respecter)."""
     from .models import AdMirror, MetaLeadMirror
 
-    mirrors = list(MetaLeadMirror.objects.filter(company=company))
+    qs = MetaLeadMirror.objects.filter(company=company)
+    if start_date is not None or end_date is not None:
+        qs = qs.filter(created_time__isnull=False)
+        if start_date is not None:
+            qs = qs.filter(created_time__date__gte=start_date)
+        if end_date is not None:
+            qs = qs.filter(created_time__date__lte=end_date)
+    mirrors = list(qs)
     total = len(mirrors)
     by_ad = {}
     for m in mirrors:
@@ -605,14 +637,23 @@ def _ad_fatigue_badge(recent, baseline):
     }
 
 
-def ads_cockpit_rows(company, *, as_of=None):
+def ads_cockpit_rows(company, *, as_of=None, start_date=None):
     """ADSDEEP22 — Une ligne PAR AD pour le cockpit quotidien du fondateur :
     miniature créatif (référence, pas d'URL persistée — le front résout via
     ``media.resolve``), dépense/résultats agrégés, leads RÉELS (ADSDEEP19),
     conversations WhatsApp réelles (ADSDEEP25), signatures + coût/signature
     Odoo par ad (ADSDEEP20), fréquence, badge de fatigue (ADSDEEP45) et statut
     + badge d'apprentissage HÉRITÉ de l'ad set parent (ADSDEEP32). Combine des
-    métriques DÉJÀ construites — aucune logique métier réimplémentée ici."""
+    métriques DÉJÀ construites — aucune logique métier réimplémentée ici.
+
+    PUB40 — ``start_date`` (optionnel, borne basse inclusive de la colonne
+    « Dépense »/« Leads »/« CPL »/« Fréquence », ``as_of`` reste la borne
+    haute) fenêtre le cockpit sur une période choisie (sélecteur de date +
+    comparaison). Omis (défaut) : comportement inchangé — totaux sur TOUT
+    l'historique. Dépense (InsightSnapshot) ET leads (MetaLeadMirror) ET
+    signatures (Odoo ``since``) sont fenêtrés ENSEMBLE pour que le CPL et le
+    coût/signature affichés restent des ratios cohérents (jamais une dépense
+    fenêtrée divisée par des leads all-time)."""
     from .models import AdCreativeMirror, AdMirror
     from .odoo_metrics import odoo_signatures_by_ad
     from .serializers import _LEARNING_BADGE, _META_STATUT_FR
@@ -623,7 +664,8 @@ def ads_cockpit_rows(company, *, as_of=None):
                .order_by('-created_at'))
     ad_pks = [a.pk for a in ads]
 
-    totals = _ad_window_aggregates(company, ad_pks, end_date=as_of)
+    totals = _ad_window_aggregates(
+        company, ad_pks, start_date=start_date, end_date=as_of)
     recent_start = as_of - datetime.timedelta(days=COCKPIT_RECENT_DAYS - 1)
     baseline_end = recent_start - datetime.timedelta(days=1)
     baseline_start = baseline_end - datetime.timedelta(days=COCKPIT_RECENT_DAYS - 1)
@@ -631,13 +673,20 @@ def ads_cockpit_rows(company, *, as_of=None):
     baseline_agg = _ad_window_aggregates(
         company, ad_pks, baseline_start, baseline_end)
 
-    real_leads_by_ad = real_lead_counts(company)['by_ad']
+    # PUB40 — la fenêtre de leads ne s'active QUE si une borne basse a été
+    # choisie (``start_date``) : ``as_of`` seul (défaut = aujourd'hui) NE DOIT
+    # PAS déclencher un filtrage silencieux (byte-identique sans sélection).
+    if start_date is not None:
+        real_leads_by_ad = real_lead_counts(
+            company, start_date=start_date, end_date=as_of)['by_ad']
+    else:
+        real_leads_by_ad = real_lead_counts(company)['by_ad']
     conv_by_ad = {row['ad_id']: row
                   for row in conversations_per_ad(company)['by_ad']}
     odoo_by_ad = {}
     odoo_configured = False
     try:
-        odoo_result = odoo_signatures_by_ad(company)
+        odoo_result = odoo_signatures_by_ad(company, since=start_date)
         odoo_configured = bool(odoo_result.get('configured'))
         odoo_by_ad = {row['ad_id']: row for row in odoo_result.get('ads', [])}
     except Exception:  # noqa: BLE001 — le cockpit ne casse jamais sur Odoo

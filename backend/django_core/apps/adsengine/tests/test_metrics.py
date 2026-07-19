@@ -120,3 +120,31 @@ class CostPerSignatureEndpointTests(TestCase):
     def test_endpoint_requires_view_permission(self):
         nobody = make_user(self.company, 'nobody', [])
         self.assertEqual(auth(nobody).get(URL).status_code, 403)
+
+
+class PreviousPeriodTests(TestCase):
+    """PUB40 — ``metrics.previous_period`` (pure, aucun accès base)."""
+
+    def test_single_day_compares_to_same_weekday_last_week(self):
+        import datetime
+        day = datetime.date(2026, 7, 18)  # samedi
+        prev_start, prev_end = metrics.previous_period(day, day)
+        self.assertEqual(prev_start, datetime.date(2026, 7, 11))
+        self.assertEqual(prev_end, datetime.date(2026, 7, 11))
+
+    def test_multi_day_range_compares_to_immediately_preceding_period(self):
+        import datetime
+        start = datetime.date(2026, 7, 10)
+        end = datetime.date(2026, 7, 16)  # 7 jours inclus
+        prev_start, prev_end = metrics.previous_period(start, end)
+        self.assertEqual(prev_start, datetime.date(2026, 7, 3))
+        self.assertEqual(prev_end, datetime.date(2026, 7, 9))
+
+    def test_thirty_day_range(self):
+        import datetime
+        start = datetime.date(2026, 6, 1)
+        end = datetime.date(2026, 6, 30)  # 30 jours inclus
+        prev_start, prev_end = metrics.previous_period(start, end)
+        self.assertEqual((end - start).days + 1, 30)
+        self.assertEqual((prev_end - prev_start).days + 1, 30)
+        self.assertEqual(prev_end, start - datetime.timedelta(days=1))

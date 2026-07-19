@@ -7,6 +7,8 @@ import {
   normalizeAlerts, alertTone, normalizePacing, pacingStateTone,
   normalizeReconciliation, reconStatusTone,
 } from './adsengine'
+import DateRangeBar from './DateRangeBar'
+import { presetRange, computeDelta, formatDeltaPct } from './dateRange'
 
 /* ============================================================================
    ENG23 — Dashboard « un chiffre » du moteur publicitaire.
@@ -162,6 +164,11 @@ export default function DashboardScreen() {
   const [leads, setLeads] = useState([])
   const [leadsLoading, setLeadsLoading] = useState(false)
 
+  // PUB40 — sélecteur de période + comparaison (partagé Dashboard/Cockpit/
+  // Campagnes/Journal). Défaut « 30 derniers jours », sans comparaison.
+  const [range, setRange] = useState(
+    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+
   // ENG42 — onglets Pacing / Réconciliation (chargés paresseusement).
   const [tab, setTab] = useState('overview')
   const [pacing, setPacing] = useState(null)
@@ -179,7 +186,13 @@ export default function DashboardScreen() {
   const signalsLoaded = useRef(false)
 
   const load = useCallback(() => {
-    adsengineApi.metrics.dashboard()
+    // PUB40 — bornes optionnelles + comparaison (le backend renvoie un bloc
+    // `previous` quand `compare=1` ET debut/fin résolus ; sinon comportement
+    // historique inchangé, `previous` absent).
+    adsengineApi.metrics.dashboard({
+      debut: range.debut || undefined, fin: range.fin || undefined,
+      compare: (range.compare && range.debut && range.fin) ? 1 : undefined,
+    })
       .then(r => setMetrics(r.data || {}))
       .catch(() => setMetrics({}))
     adsengineApi.alerts.list()
@@ -193,7 +206,7 @@ export default function DashboardScreen() {
         .then(r => setV2(r.data || null))
         .catch(() => setV2(null))
     }
-  }, [])
+  }, [range])
 
   useEffect(() => { load() }, [load])
 
@@ -250,6 +263,10 @@ export default function DashboardScreen() {
         <h2>Tableau de bord publicitaire</h2>
       </div>
 
+      {/* PUB40 — sélecteur de période + comparaison (spend/CPL/fréquence,
+          jamais le héro coût-par-signature — voir doctrine backend). */}
+      <DateRangeBar value={range} onChange={setRange} />
+
       {/* Bandeau d'alertes ENG13 (global, toutes vues) */}
       {alerts.length > 0 && (
         <div className="ae-alert-banner" data-testid="ae-alert-banner"
@@ -291,7 +308,13 @@ export default function DashboardScreen() {
           {/* Chiffres cliquables (héro + tuiles) — chacun ouvre les leads réels */}
           <div style={{ display: 'grid', gap: '1rem',
             gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '1.25rem' }}>
-            {NUMBERS.map(num => (
+            {NUMBERS.map(num => {
+              // PUB40 — delta vs période précédente : JAMAIS pour le héro
+              // (coût-par-signature reste un chiffre GLOBAL côté backend —
+              // afficher un delta dessus fabriquerait une comparaison fausse).
+              const prev = !num.hero ? metrics?.previous?.[num.key] : null
+              const delta = prev != null ? computeDelta(metrics?.[num.key], prev) : null
+              return (
               <button key={num.key} type="button"
                 className={`card ae-number ${num.hero ? 'ae-hero' : `ae-tile ae-tile-${num.key}`}`}
                 data-testid={num.hero ? 'ae-hero' : `ae-tile-${num.key}`}
@@ -305,11 +328,22 @@ export default function DashboardScreen() {
                   style={{ fontSize: num.hero ? '2.4rem' : '1.5rem', fontWeight: 700 }}>
                   {fmtValue(num.fmt, metrics?.[num.key], metrics?.currency)}
                 </div>
+                {delta && (
+                  <span className="badge" data-testid={`ae-delta-${num.key}`}
+                    style={{ marginTop: '0.3rem', display: 'inline-block',
+                      background: delta.direction === 'up' ? '#dcfce7'
+                        : delta.direction === 'down' ? '#fee2e2' : '#f1f5f9',
+                      color: delta.direction === 'up' ? '#166534'
+                        : delta.direction === 'down' ? '#991b1b' : '#475569' }}>
+                    {formatDeltaPct(delta.pct)} vs période précédente
+                  </span>
+                )}
                 <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>
                   Voir les leads →
                 </div>
               </button>
-            ))}
+              )
+            })}
           </div>
 
           {/* ADSDEEP61 — Dashboard v2 : conversations réelles + MER mixte */}

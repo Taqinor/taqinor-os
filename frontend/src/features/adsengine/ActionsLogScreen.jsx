@@ -3,6 +3,8 @@ import adsengineApi from './adsengineApi'
 import {
   actionTypeLabel, actionResultLabel, actionResultKey, actionMode, filterActionLog,
 } from './adsengine'
+import DateRangeBar from './DateRangeBar'
+import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
 
 /* ============================================================================
    ENG28 — Journal d'actions (timeline EngineAction) — le backstop de confiance.
@@ -34,13 +36,29 @@ export default function ActionsLogScreen() {
   const [statut, setStatut] = useState('')
   const [mode, setMode] = useState('')
 
+  // PUB40 — sélecteur de période + comparaison (partagé avec les 3 autres
+  // écrans-données). Défaut « 30 derniers jours ».
+  const [range, setRange] = useState(
+    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+  const [previousCount, setPreviousCount] = useState(null)
+
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.actions.log()
+    const params = { debut: range.debut || undefined, fin: range.fin || undefined }
+    adsengineApi.actions.log(params)
       .then(r => setActions(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
       .catch(() => setActions([]))
       .finally(() => setLoading(false))
-  }, [])
+    if (range.compare && range.debut && range.fin) {
+      const prev = previousRange(range)
+      adsengineApi.actions.log({ debut: prev.debut, fin: prev.fin })
+        .then(r => setPreviousCount(
+          (Array.isArray(r.data) ? r.data : (r.data?.results || [])).length))
+        .catch(() => setPreviousCount(null))
+    } else {
+      setPreviousCount(null)
+    }
+  }, [range])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
@@ -48,11 +66,22 @@ export default function ActionsLogScreen() {
   const visible = useMemo(
     () => filterActionLog(actions, { statut, mode }), [actions, statut, mode])
 
+  const compareDelta = previousCount != null ? computeDelta(actions.length, previousCount) : null
+
   return (
     <div className="page ae-actions-log">
       <div className="page-header">
         <h2>Journal d&apos;actions</h2>
       </div>
+
+      {/* PUB40 — sélecteur de période + comparaison. */}
+      <DateRangeBar value={range} onChange={setRange} />
+      {compareDelta && (
+        <p className="card" data-testid="ae-log-compare-summary"
+          style={{ padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
+          {actions.length} action(s) cette période ({formatDeltaPct(compareDelta.pct)} vs période précédente)
+        </p>
+      )}
 
       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <select className="form-input" data-testid="ae-log-filter-statut"

@@ -3,6 +3,15 @@ import { RefreshCw, ChevronRight } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
+import DateRangeBar from './DateRangeBar'
+import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
+
+// PUB40 — dépense totale visible (somme ``depense_mad``/``spend_mad`` des
+// campagnes listées) — pure, testable isolément.
+function totalCampaignSpend(campaigns) {
+  return (campaigns || []).reduce(
+    (sum, c) => sum + (Number(c.depense_mad ?? c.spend_mad) || 0), 0)
+}
 
 /* ============================================================================
    ENG24 — Écran « Campagnes » (miroirs Meta) du moteur publicitaire.
@@ -40,9 +49,15 @@ export default function CampaignsScreen() {
   // on est encore au niveau « ad sets » de la campagne.
   const [openAdsetId, setOpenAdsetId] = useState(null)
 
+  // PUB40 — sélecteur de période + comparaison (partagé avec Dashboard/Cockpit).
+  const [range, setRange] = useState(
+    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+  const [previousTotal, setPreviousTotal] = useState(null)
+
   const load = useCallback(() => {
     setLoading(true)
-    adsengineApi.campaigns.list()
+    const params = { debut: range.debut || undefined, fin: range.fin || undefined }
+    adsengineApi.campaigns.list(params)
       .then(r => setCampaigns(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
       .catch(() => setCampaigns([]))
       .finally(() => setLoading(false))
@@ -62,7 +77,17 @@ export default function CampaignsScreen() {
         .then(r => setCurrency(r?.data?.currency || 'MAD'))
         .catch(() => {})
     }
-  }, [])
+    // PUB40 — comparaison : dépense TOTALE de la période précédente.
+    if (range.compare && range.debut && range.fin) {
+      const prev = previousRange(range)
+      adsengineApi.campaigns.list({ debut: prev.debut, fin: prev.fin })
+        .then(r => setPreviousTotal(
+          totalCampaignSpend(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
+        .catch(() => setPreviousTotal(null))
+    } else {
+      setPreviousTotal(null)
+    }
+  }, [range])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
@@ -110,6 +135,19 @@ export default function CampaignsScreen() {
       </div>
 
       {msg && <p data-testid="ae-camp-msg" style={{ color: '#475569', margin: '0 0 0.75rem' }}>{msg}</p>}
+
+      {/* PUB40 — sélecteur de période + comparaison. */}
+      <DateRangeBar value={range} onChange={setRange} />
+      {previousTotal != null && (() => {
+        const delta = computeDelta(totalCampaignSpend(campaigns), previousTotal)
+        return (
+          <p className="card" data-testid="ae-camp-compare-summary"
+            style={{ padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
+            Dépense totale période : {formatMoney(totalCampaignSpend(campaigns), currency)}
+            {' '}({formatDeltaPct(delta.pct)} vs période précédente)
+          </p>
+        )
+      })()}
 
       {/* ADSDEEP66 — les comptes de leads affichés ici sont bornés à la
           fenêtre Meta 90 j (au-delà, seul l'ERP/Odoo fait foi). */}
