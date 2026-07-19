@@ -3849,7 +3849,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
 **LANE 1 — board & colonnes (UN agent, séquentiel — fichiers : KanbanView.jsx,
 features/kanban/*, index.css `.kb-*`) :**
 
-- [ ] LB9 — **Colonnes : en-têtes riches épinglés, régions nommées, colonne vide = zone de
+- [x] LB9 — **Colonnes : en-têtes riches épinglés, régions nommées, colonne vide = zone de
   drop.** Les en-têtes sont épinglés par construction depuis LB2 (hors du corps scrollant).
   Nouvelle mise en page (blueprint D2) : rangée titre + compteur (visible même à 0) ; rangée
   `total MAD · Prév. pondéré` (tooltip expliquant la pondération STAGE_PROBABILITY — importée,
@@ -3862,7 +3862,7 @@ features/kanban/*, index.css `.kb-*`) :**
   (VX147EmptyState mis à jour ici). DoD : axe vert (régions nommées), tab atteint chaque corps de
   colonne, drop sur colonne vide fonctionne, empty states coach rendus. (ROUTINE — M)
   (@model: sonnet) (@lane: LB1) (@after: LB8)
-- [ ] LB10 — **Repli de colonne persisté (rail droppable).** Chevron labellisé dans l'en-tête →
+- [x] LB10 — **Repli de colonne persisté (rail droppable).** Chevron labellisé dans l'en-tête →
   colonne repliée = rail vertical 44px (libellé pivoté `writing-mode`, compteur, accent étape)
   qui RESTE une zone droppable (surbrillance + drop autorisé) ; re-clic déplie. Persistance
   `localStorage['taqinor.leads.kanban.collapsed']` (tableau de clés d'étape, tolérant aux clés
@@ -3871,7 +3871,7 @@ features/kanban/*, index.css `.kb-*`) :**
   replier « Froid » survit à un reload ; drag d'une carte sur le rail replié la dépose dans
   l'étape ; chevrons nommés (axe vert) ; reduced-motion sans animation. (ROUTINE — M)
   (@model: sonnet) (@lane: LB1) (@after: LB9)
-- [ ] LB11 — **autoScroll dnd-kit réglé + drag-to-pan sur l'espace vide.** L'autoScroll intégré
+- [x] LB11 — **autoScroll dnd-kit réglé + drag-to-pan sur l'espace vide.** L'autoScroll intégré
   de DndContext était inerte (aucun conteneur ne scrollait — LB2 l'a réveillé) : vérifier le
   comportement sur les DEUX axes imbriqués (board x, colonne y) et ne régler
   `autoScroll={{ thresholds: … }}` QUE si les défauts frottent — config, jamais de scroll maison
@@ -3884,7 +3884,7 @@ features/kanban/*, index.css `.kb-*`) :**
   défiler board/colonne ; cliquer-tirer le fond du board le pan ; un clic simple sur une carte
   ouvre toujours la fiche (distance 6px intacte) ; le pan ne démarre jamais depuis une carte.
   (ROUTINE — M) (@model: sonnet) (@lane: LB1) (@after: LB10)
-- [ ] LB12 — **Restauration du focus après un drop (souris ET clavier).** Recon-05 a11y #4 : la
+- [x] LB12 — **Restauration du focus après un drop (souris ET clavier).** Recon-05 a11y #4 : la
   carte re-parentée perd le focus vers `<body>`. Poser `data-lead-id` sur le nœud draggable ; à
   `onDragEnd` réussi (y compris chemin KeyboardSensor), `requestAnimationFrame` →
   `querySelector('[data-lead-id="N"]')?.focus()`. Les annonces FR existantes (kanbanA11y)
@@ -3897,7 +3897,7 @@ features/kanban/*, index.css `.kb-*`) :**
 **LANE 2 — la carte (UN agent, séquentiel — fichiers : LeadCard.jsx, PerduPopover.jsx nouveau,
 design/tokens.css, stages.js §tagColor, index.css `.kb-card*`) :**
 
-- [ ] LB13 — **Anatomie 4 zones de la carte (le visage du pipeline).** Rebâtir LeadCard selon le
+- [x] LB13 — **Anatomie 4 zones de la carte (le visage du pipeline).** Rebâtir LeadCard selon le
   blueprint D3, contrat DOM conservé (`article.kb-card`, `.kb-card-name`) : tête = checkbox
   (opacity-0 → visible hover/focus-within/sélection active/`(hover:none)`) + nom + ScoreBadge ;
   valeur = `latestDevisTotal` sinon « est. montant_estime » + chip type d'installation ;
@@ -3913,7 +3913,7 @@ design/tokens.css, stages.js §tagColor, index.css `.kb-card*`) :**
   4 rangées max par carte, hiérarchie visuelle nette clair+sombre, aucun style inline, tous les
   tests carte verts, tel:/wa hrefs toujours présents au hover. (ROUTINE — L) (@model: opus)
   (@lane: LB2) (@after: LB8)
-- [ ] LB14 — **Rampe « rotting » sur la carte (réutilise workspace/rotting.js TEL QUEL).**
+- [x] LB14 — **Rampe « rotting » sur la carte (réutilise workspace/rotting.js TEL QUEL).**
   `stage_since_days` est déjà dans le payload :
   `rottingLevel(days, thresholdsForIndex(PIPELINE_STAGES.indexOf(stage)))` →
   `data-rot="ok|warning|danger"` sur `article.kb-card`. Style : pill d'âge teintée
@@ -3922,7 +3922,7 @@ design/tokens.css, stages.js §tagColor, index.css `.kb-card*`) :**
   `frontend/src/pages/crm/leads/views/LeadCard.jsx`, `frontend/src/index.css` + tests. DoD : une
   carte QUOTE_SENT à 16 j est rouge, à 9 j ambre, à 3 j neutre ; SIGNED/COLD/perdu jamais
   teintés ; AA dans les deux thèmes. (ROUTINE — S) (@model: sonnet) (@lane: LB2) (@after: LB13)
-- [ ] LB15 — **Menu ••• au hover + PerduPopover PARTAGÉ (fin de la triplication).** Menu
+- [x] LB15 — **Menu ••• au hover + PerduPopover PARTAGÉ (fin de la triplication).** Menu
   DropdownMenu révélé hover/focus (permanent sur hover:none), labellisé « Actions du lead » :
   Ouvrir · Planifier une relance · ⚡ Devis auto · ✗ Marquer perdu · Archiver — le bouton ✗
   20×20 quitte la face. Extraire le popover « Marquer perdu » (motif + datalist, dupliqué
@@ -3934,7 +3934,7 @@ design/tokens.css, stages.js §tagColor, index.css `.kb-card*`) :**
   toutes les actions accessibles clavier via le menu, marquer perdu depuis le menu met la carte
   à jour sans refetch, un seul composant perdu dans le code. (ROUTINE — M) (@model: sonnet)
   (@lane: LB2) (@after: LB14)
-- [ ] LB16 — **Tags tokenisés + token WhatsApp + tokens morts réparés.** Remplacer
+- [x] LB16 — **Tags tokenisés + token WhatsApp + tokens morts réparés.** Remplacer
   `TAG_PALETTE`/`TAG_TEXT` (20 hex, stages.js:85-91) par 10 paires `--tag-N-bg/--tag-N-fg`
   définies clair+sombre dans `design/tokens.css` ; `tagColor()` garde sa signature et renvoie
   `var(--tag-N-…)` (LeadCard ET ListView en profitent sans changement) ; hash déterministe
@@ -3946,7 +3946,7 @@ design/tokens.css, stages.js §tagColor, index.css `.kb-card*`) :**
   (+ test), `frontend/src/pages/crm/leads/views/LeadCard.jsx`, `frontend/src/index.css`. DoD :
   zéro hex dans stages.js/LeadCard ; l'action WhatsApp est VERTE dans les deux thèmes ; pastilles
   de tag AA clair+sombre. (ROUTINE — M) (@model: sonnet) (@lane: LB2) (@after: LB15)
-- [ ] LB17 — **Tactile + PII : cibles 44px, swipe inerte, cadenas PII.** Checkbox : zone de
+- [x] LB17 — **Tactile + PII : cibles 44px, swipe inerte, cadenas PII.** Checkbox : zone de
   frappe ≥44×44 via padding (tue le sliver 16px horizontal — recon-05 touch) ; le menu •••
   (permanent au toucher) reçoit une cible 44px ; la bande swipe cachée passe en `inert`
   (l'aria-hidden actuel laisse les `<a>` tabbables) ; quand l'utilisateur n'a pas la permission
@@ -3961,7 +3961,7 @@ design/tokens.css, stages.js §tagColor, index.css `.kb-card*`) :**
 DÉCISION D4 : refit sur place, on N'ADOPTE PAS le moteur ui/datatable — on lui vole
 `useColumnPrefs` + `ColumnManager` en import direct) :**
 
-- [ ] LB18 — **Scrolleur unique + thead sticky + colonne nom sticky + colgroup.** Depuis LB2,
+- [x] LB18 — **Scrolleur unique + thead sticky + colonne nom sticky + colgroup.** Depuis LB2,
   `.lv-wrap` est LE scrolleur deux axes (un ancêtre overflow-x séparé casserait sticky — c'est
   voulu) : `thead th {position:sticky; top:0; z-index:2; background:var(--card)}` ; la colonne
   nom (`.lv-sticky-name`) sticky left ≥768 avec ombre de bord quand scrollé (classe togglée par
@@ -3972,7 +3972,7 @@ DÉCISION D4 : refit sur place, on N'ADOPTE PAS le moteur ui/datatable — on lu
   scroller 100 lignes → le thead reste visible ; scroller à droite → le nom reste visible avec
   ombre ; éditer une cellule ne déplace aucune largeur de colonne. (ROUTINE — M)
   (@model: sonnet) (@lane: LB3) (@after: LB8)
-- [ ] LB19 — **Choix de colonnes persisté (vol de useColumnPrefs + ColumnManager).** Déclarer le
+- [x] LB19 — **Choix de colonnes persisté (vol de useColumnPrefs + ColumnManager).** Déclarer le
   modèle de colonnes de ListView en tableau ({id, label, visibleParDéfaut, mHide}) ; brancher
   `ui/datatable/useColumnPrefs` (clé `taqinor.leads.columns`) + le composant
   `ui/datatable/ColumnManager` comme UI de choix (bouton « Colonnes » dans la barre d'outils de
@@ -3982,7 +3982,7 @@ DÉCISION D4 : refit sur place, on N'ADOPTE PAS le moteur ui/datatable — on lu
   masquer « Canal » survit à un reload ; réafficher tout fonctionne ; datatable-breakpoint.spec
   (VX180) toujours vert (il teste d'AUTRES pages — non-régression d'import). (ROUTINE — M)
   (@model: sonnet) (@lane: LB3) (@after: LB18)
-- [ ] LB20 — **Option « Par étape » (groupes repliables avec agrégats).** Segmented
+- [x] LB20 — **Option « Par étape » (groupes repliables avec agrégats).** Segmented
   « Plat / Par étape » (persisté `taqinor.leads.listGroup`) : en mode groupé, rangées de groupe
   `tr.lv-group` (StatusPill étape + compteur + total MAD — mêmes nombres que les colonnes kanban,
   via groupLeadsByStage) collantes sous le thead, repliables (chevron labellisé, état persisté),
@@ -3991,7 +3991,7 @@ DÉCISION D4 : refit sur place, on N'ADOPTE PAS le moteur ui/datatable — on lu
   basculer Plat↔Par étape conserve tri et sélection ; replier « Froid » survit au reload ;
   `tr.lv-row` reste le sélecteur des rangées de données (e2e intact). (ROUTINE — M)
   (@model: sonnet) (@lane: LB3) (@after: LB19)
-- [ ] LB21 — **Lignes ouvrables au clavier + adoption du PerduPopover partagé.** Chaque `tr.lv-row`
+- [x] LB21 — **Lignes ouvrables au clavier + adoption du PerduPopover partagé.** Chaque `tr.lv-row`
   devient focusable (tabIndex=0, Enter/Espace ouvre — jamais depuis un contrôle interne,
   vérif `e.target.closest`) et le nom devient un vrai élément interactif sémantique ; adopter
   `PerduPopover` (LB15) — suppression du popover dupliqué local, une seule instance au niveau
@@ -4005,7 +4005,7 @@ DÉCISION D4 : refit sur place, on N'ADOPTE PAS le moteur ui/datatable — on lu
 FilterBar.jsx, BulkActionBar.jsx, SavedViewsBar.jsx, nouveaux LeadsKpiStrip/urlFilters,
 index.css `.lp-*`) :**
 
-- [ ] LB22 — **URL partageable : ?view= + filtres dans l'URL (module pur).** Nouveau
+- [x] LB22 — **URL partageable : ?view= + filtres dans l'URL (module pur).** Nouveau
   `frontend/src/pages/crm/leads/urlFilters.js` : encode/decode `filters+view ↔ URLSearchParams`,
   n'écrit QUE les clés non-défaut (EMPTY_FILTERS comme référence), PRÉSERVE `lead`/`new`/`equipe`,
   100 % pur + test node. LeadsPage : priorité au chargement URL > localStorage > défauts (une URL
@@ -4015,13 +4015,13 @@ index.css `.lp-*`) :**
   `frontend/src/pages/crm/leads/LeadsPage.jsx`. DoD : copier l'URL avec 3 filtres + vue liste et
   l'ouvrir en navigation privée reproduit EXACTEMENT l'écran ; `?lead=` continue d'ouvrir la
   fiche ; e2e setLeadsView intact. (ROUTINE — M) (@model: sonnet) (@lane: LB4) (@after: LB8)
-- [ ] LB23 — **Recherche débouncée.** L'input de recherche garde un état local et pousse
+- [x] LB23 — **Recherche débouncée.** L'input de recherche garde un état local et pousse
   `setFilters` après 250ms (annulé au démontage) ; `useDeferredValue` reste en second étage ;
   perf attendue avec LB6 : une frappe ne re-rend plus aucune carte. Files :
   `frontend/src/pages/crm/leads/FilterBar.jsx` + tests. DoD : taper 10 caractères vite ne
   produit qu'un recalcul de filtre après pause ; effacer réagit immédiatement. (ROUTINE — S)
   (@model: haiku) (@lane: LB4) (@after: LB22)
-- [ ] LB24 — **Bandeau KPI = filtres (le cockpit du matin).** Nouveau
+- [x] LB24 — **Bandeau KPI = filtres (le cockpit du matin).** Nouveau
   `frontend/src/pages/crm/leads/LeadsKpiStrip.jsx`, rangée compacte entre header et FilterBar
   (scroll-x mobile) : « Dû aujourd'hui » (toggle `relance='aujourdhui'` — NOUVELLE valeur de
   filterLeads : `relance_date === today` local), « En retard » (toggle `relance='retard'`),
@@ -4038,7 +4038,7 @@ index.css `.lp-*`) :**
   `frontend/src/index.css`. DoD : cliquer « En retard » filtre TOUTES les vues et la tuile passe
   aria-pressed ; les nombres tuiles/colonnes/compteur header concordent sous n'importe quel
   filtre ; axe vert. (ROUTINE — L) (@model: sonnet) (@lane: LB4) (@after: LB23, LB16)
-- [ ] LB25 — **Barre bulk FLOTTANTE.** La barre inline (qui pousse le layout à chaque sélection)
+- [x] LB25 — **Barre bulk FLOTTANTE.** La barre inline (qui pousse le layout à chaque sélection)
   devient une toolbar flottante bas-centre : `position:fixed`, `z-index:var(--z-sticky)`,
   safe-area + au-dessus de la tabbar mobile, slide-in-up `--motion-base` (reduced-motion : sans
   animation), ombre `--shadow-lg`. MÊME composant BulkActionBar (toutes les actions + typed
@@ -4048,7 +4048,7 @@ index.css `.lp-*`) :**
   sélectionner ne fait plus sauter le board ; la barre ne recouvre jamais la tabbar mobile ;
   Échap/Effacer la ferme ; VX95 undo intact. (ROUTINE — M) (@model: sonnet) (@lane: LB4)
   (@after: LB24)
-- [ ] LB26 — **Vues enregistrées : « Copier le lien » + Express dans le ⋯ mobile.**
+- [x] LB26 — **Vues enregistrées : « Copier le lien » + Express dans le ⋯ mobile.**
   SavedViewsBar : prop additive optionnelle `buildShareUrl(view)` (composant partagé avec
   ClientList — comportement inchangé quand absente) ; sur la page leads, chaque chip gagne une
   action « Copier le lien » (sérialise via urlFilters + clipboard + toast « Lien copié »).
@@ -4057,7 +4057,7 @@ index.css `.lp-*`) :**
   `frontend/src/pages/crm/leads/LeadsPage.jsx`, `frontend/src/index.css` + tests. DoD : le lien
   copié reproduit la vue ; ClientList inchangé ; Express accessible au ⋯ en mobile. (ROUTINE — S)
   (@model: sonnet) (@lane: LB4) (@after: LB25)
-- [ ] LB27 — **Squelette EN FORME dans le shell.** Premier chargement : au lieu du StateBlock
+- [x] LB27 — **Squelette EN FORME dans le shell.** Premier chargement : au lieu du StateBlock
   plein-page, rendre le shell (header + filtres visibles immédiatement) avec un squelette en
   forme de la vue active — 6 colonnes × 3 SkeletonCard en kanban/prévision, SkeletonTableRow en
   liste — via `useDelayedLoading` (spinner 300ms, squelette 500ms) + `FadeSwap` (le pattern
@@ -4069,7 +4069,7 @@ index.css `.lp-*`) :**
 **LANE 5 — vues secondaires (UN agent, séquentiel — fichiers : ForecastView/CalendarView/
 CarteView/ChartsView, CrmInsightsPanel) :**
 
-- [ ] LB28 — **Prévision : parité complète avec le kanban.** Bugs recon2-03 #9 + gaps recon-01 :
+- [x] LB28 — **Prévision : parité complète avec le kanban.** Bugs recon2-03 #9 + gaps recon-01 :
   ajouter KeyboardSensor + annonces FR (buildKanbanAnnouncements avec libellés de mois),
   équivalent clavier du drag (un `<select>` mois par carte, même pattern StageMover/
   useOptimisticSave), busy-lock réel (passer par `onInlineSave` avec busyLeadId), listeners de
@@ -4080,7 +4080,7 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   (ForecastView ×2 mis à jour). DoD : replanifier un mois 100 % clavier ; drag pendant un drag
   refusé (busy) ; 0 lead ouvert → EmptyState ; tests verts. (ROUTINE — M) (@model: sonnet)
   (@lane: LB5) (@after: LB8)
-- [ ] LB29 — **Calendrier + Carte : tons d'étape, aujourd'hui, hover câblé.** Calendrier : chips
+- [x] LB29 — **Calendrier + Carte : tons d'étape, aujourd'hui, hover câblé.** Calendrier : chips
   aux tons d'étape via tokens (STAGE_COLORS), cellule du jour cerclée `--module-accent-azur`,
   relance en retard soulignée destructive ; le double-affichage relance+visite est CONSERVÉ
   (deux échéances réelles). Carte : câbler `hoveredId` (mort — recon-01) : survoler un lead de
@@ -4092,7 +4092,7 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   (CalendarView undated banner conservé). DoD : aujourd'hui identifiable d'un coup d'œil ;
   chips AA deux thèmes ; aucun hex nouveau hors tokens.css. (ROUTINE — M) (@model: sonnet)
   (@lane: LB5) (@after: LB28)
-- [ ] LB30 — **Graphique : cache session des insights + cohérence filtres.** CrmInsightsPanel
+- [x] LB30 — **Graphique : cache session des insights + cohérence filtres.** CrmInsightsPanel
   re-fetche ses 3 cartes à CHAQUE bascule de vue : cache module en mémoire TTL 60s (même
   pattern que leadPrefetch), invalidé au changement de company ; ChartsView affiche la ligne de
   contexte « Ces graphiques suivent les filtres actifs (N leads) » ; empty states coach
@@ -4152,6 +4152,12 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   (@after: LB17, LB21, LB27, LB30, LB31, LB32, LB33)
 
 #### DONE LOG — Groupe LB (page leads)
+
+- 2026-07-19 — LB9-LB12 (lane board) : colonnes nommées ARIA + corps scrollable au clavier, argent par colonne + prévisionnel pondéré (STAGE_PROBABILITY importé), repli persisté en rail 44px toujours droppable, autoScroll dnd-kit + drag-to-pan sur fond vide (jamais sur une carte), focus restauré sur la carte déplacée. (ROUTINE)
+- 2026-07-19 — LB13-LB17 (lane carte, opus) : carte 4 zones plafonnée (nom→valeur→UNE action→pied), rotting via workspace/rotting.js (liseré danger), PerduPopover PARTAGÉ + menu ••• au survol, 10 jetons --tag-* clair+sombre + --brand-whatsapp (le swipe WhatsApp redevient VERT), cibles 44px sans inline (::before), bande swipe inert, cadenas PII. Suites épinglées mises à jour dans les mêmes commits. (ROUTINE)
+- 2026-07-19 — LB18-LB21 (lane liste) : scrolleur unique .lv-wrap + thead ET colonne nom sticky (+ombre de bord), colgroup table-layout:fixed, choix de colonnes persisté VOLÉ à ui/datatable (zéro fork), groupement « Par étape » avec en-têtes sticky + agrégats MAD (mêmes chiffres que le kanban), activation clavier des lignes. Au fold : PerduPopover partagé câblé (plomberie parent supprimée), paliers z tokenisés + isolation. (ROUTINE)
+- 2026-07-19 — LB22-LB27 (lane shell) : URL partageable (?view= + filtres, URL > localStorage > défauts, replace débouncé), recherche débouncée 250ms (resync durant-rendu), bandeau KPI-filtres facettés (Dû aujourd'hui/En retard/Chauds togglables + Pipeline MAD·pondéré affichage), bulk FLOTTANT (Escape ferme), « Copier le lien » sur les vues enregistrées, squelette EN FORME dans le shell (en-tête/filtres/KPI immédiats). (ROUTINE)
+- 2026-07-19 — LB28-LB30 (lane vues secondaires) : Prévision à parité clavier (KeyboardSensor + MonthMover + annonces + busy-lock + état vide), Calendrier aujourd'hui/retard soulignés tokenisés, Carte nettoyée (hoveredId mort retiré, hex → tokens), insights en cache session 60s + « suivent les filtres actifs (N) ». (ROUTINE)
 
 - 2026-07-19 LB1 — blueprint déjà recopié par le merge de `claude/leads-page-redesign` ;
   vérifié octet-identique (hors CRLF/LF) à `scratchpad/design2/blueprint.md`. Aucun code touché.
