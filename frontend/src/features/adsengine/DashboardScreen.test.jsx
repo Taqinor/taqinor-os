@@ -15,7 +15,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('./adsengineApi', () => ({
   default: {
     metrics: { dashboard: mocks.dashboard, leads: mocks.leads },
-    alerts: { list: mocks.alerts },
+    // PUB48 — cloche console (AlertCenter) : `history` distinct du bandeau `list`.
+    alerts: { list: mocks.alerts, history: () => Promise.resolve({ data: [] }) },
+    // PUB57 — tuile score d'audit auto-chargée (AuditScoreTile).
+    reports: { audit: () => Promise.resolve({ data: { score_tile: null } }) },
   },
 }))
 

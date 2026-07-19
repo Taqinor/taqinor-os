@@ -3,12 +3,17 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
+import { Link } from 'react-router-dom'
 import {
   LayoutDashboard, PlugZap, Megaphone, ClipboardCheck,
   FileText, Images, History, FlaskConical, Route, Layers,
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
-  Gauge, GitBranch, Table2,
+  Gauge, GitBranch, Table2, Scale,
 } from 'lucide-react'
+// PUB47 — enveloppe d'impression (bouton « Imprimer / PDF » + print.css
+// globale) posée UNIQUEMENT au point d'enregistrement de route, sans toucher
+// au corps d'AdsCockpitScreen (lane distincte).
+import PrintPageWrapper from './PrintPageWrapper'
 
 /* ============================================================================
    ENG21 — configuration du module « Publicité » (moteur Meta-ads autonome,
@@ -44,6 +49,22 @@ const AdsCockpitScreen = lazy(() => import('./AdsCockpitScreen'))
 const TreeScreen = lazy(() => import('./TreeScreen'))
 // PUB6/AGEN1 — Table des faits versionnée (génération créative ancrée).
 const FactTableScreen = lazy(() => import('./FactTableScreen'))
+// PUB52 — comparateur côte-à-côte (ads/campagnes), nouvel écran additif.
+const ComparatorScreen = lazy(() => import('./ComparatorScreen'))
+
+// PUB47 — cockpit imprimable A4 (bouton + print.css) sans éditer l'écran.
+// PUB52 — + lien « Comparer » vers le Comparateur, même patron non-intrusif.
+function AdsCockpitScreenPrintable() {
+  return (
+    <PrintPageWrapper extraActions={
+      <Link to="/publicite/comparateur" className="btn btn-light" data-testid="ae-cockpit-compare-link">
+        <Scale size={15} aria-hidden="true" /> Comparer
+      </Link>
+    }>
+      <AdsCockpitScreen />
+    </PrintPageWrapper>
+  )
+}
 
 const ROLES = ['responsable', 'admin']
 
@@ -72,6 +93,7 @@ const config = {
       { to: '/publicite/connexion', label: 'Connexion & garde-fous', icon: <PlugZap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/arbre', label: "L'Arbre", icon: <GitBranch size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/table-des-faits', label: 'Table des faits', icon: <Table2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/comparateur', label: 'Comparateur', icon: <Scale size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -94,11 +116,12 @@ const config = {
     ['/publicite/connexion', 'Publicité — Connexion & garde-fous'],
     ['/publicite/arbre', "Publicité — L'Arbre"],
     ['/publicite/table-des-faits', 'Publicité — Table des faits'],
+    ['/publicite/comparateur', 'Publicité — Comparateur'],
   ],
   sectionLabels: { publicite: 'Publicité' },
   routes: [
     { path: '/publicite/tableau-de-bord', component: DashboardScreen, roles: ROLES },
-    { path: '/publicite/cockpit', component: AdsCockpitScreen, roles: ROLES },
+    { path: '/publicite/cockpit', component: AdsCockpitScreenPrintable, roles: ROLES },
     { path: '/publicite/approbations', component: ApprovalsScreen, roles: ROLES },
     { path: '/publicite/campagnes', component: CampaignsScreen, roles: ROLES },
     { path: '/publicite/creatifs', component: CreativeLibraryScreen, roles: ROLES },
@@ -115,6 +138,7 @@ const config = {
     { path: '/publicite/connexion', component: ConnectionScreen, roles: ROLES },
     { path: '/publicite/arbre', component: TreeScreen, roles: ROLES },
     { path: '/publicite/table-des-faits', component: FactTableScreen, roles: ROLES },
+    { path: '/publicite/comparateur', component: ComparatorScreen, roles: ROLES },
   ],
 }
 

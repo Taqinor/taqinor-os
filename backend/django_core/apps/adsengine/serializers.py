@@ -200,19 +200,27 @@ class EngineAlertSerializer(serializers.ModelSerializer):
     """
 
     wa_links = serializers.SerializerMethodField()
+    # PUB48 — lien profond FR vers l'entité concernée (approbation liée, écran
+    # d'origine du gabarit, ou Règles & anomalies à défaut).
+    link = serializers.SerializerMethodField()
+    # PUB48 — snooze (reporté jusqu'à cette date) : stocké dans `detail`
+    # (JSONField déjà existant, aucune migration) — exposé pour la cloche.
+    snoozed_until = serializers.SerializerMethodField()
 
     class Meta:
         model = EngineAlert
         fields = [
             'id', 'alert_type', 'message', 'action', 'detail',
-            'acknowledged', 'wa_links', 'created_at', 'updated_at',
+            'acknowledged', 'wa_links', 'link', 'snoozed_until',
+            'created_at', 'updated_at',
             # ADSENG4 — sévérité + cooldown + escalade.
             'severity', 'entity_key', 'cooldown_hours', 'unresolved_cycles',
             'resolved',
         ]
-        # ``wa_links`` est un champ déclaré (SerializerMethodField, déjà
-        # read-only) — il ne doit PAS figurer dans read_only_fields (DRF
-        # l'interdit). Ce viewset est de toute façon GET-only (ENG13).
+        # ``wa_links``/``link``/``snoozed_until`` sont des champs déclarés
+        # (SerializerMethodField, déjà read-only) — ils ne doivent PAS figurer
+        # dans read_only_fields (DRF l'interdit). Ce viewset est de toute
+        # façon GET-only (ENG13).
         read_only_fields = [
             'id', 'alert_type', 'message', 'action', 'detail',
             'acknowledged', 'created_at', 'updated_at',
@@ -223,6 +231,13 @@ class EngineAlertSerializer(serializers.ModelSerializer):
     def get_wa_links(self, obj):
         from .alerts import wa_links
         return wa_links(obj.message)
+
+    def get_link(self, obj):
+        from .alerts import deep_link_for_alert
+        return deep_link_for_alert(obj)
+
+    def get_snoozed_until(self, obj):
+        return (obj.detail or {}).get('snoozed_until')
 
 
 class CreativeAssetSerializer(serializers.ModelSerializer):

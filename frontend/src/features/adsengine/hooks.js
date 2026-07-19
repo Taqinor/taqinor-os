@@ -36,6 +36,19 @@ export const AE_HOOKS = {
     batchTogglePrefix: 'ae-batch-toggle-', // + id
     batchBar: 'ae-batch-bar',
     batchApprove: 'ae-batch-approve',
+    // PUB51 — raccourcis clavier (J/K naviguer, A approuver, R rejeter ;
+    // jamais déclenchés pendant qu'un champ/select est focalisé).
+    focusedClass: 'ae-action-card-focused',
+    shortcutsHint: 'ae-shortcuts-hint',
+  },
+
+  // PUB51 — palette de commandes console (Ctrl-K) : écrans + campagnes + ads.
+  commandPalette: {
+    overlay: 'ae-command-palette-overlay',
+    root: 'ae-command-palette',
+    input: 'ae-command-palette-input',
+    item: 'ae-command-palette-item',
+    empty: 'ae-command-palette-empty',
   },
 
   // ── ENG46 — Écrans P7 (contrat DOM des NOUVEAUX écrans, axe sans violation
@@ -117,6 +130,12 @@ export const AE_HOOKS = {
     anomaly: 'ae-anomaly',
     anomalySeverity: 'ae-anomaly-severity',
     alertHistory: 'ae-alert-history',
+    // PUB23 — armer/désarmer une règle depuis la console.
+    statePrefix: 'ae-rule-state-', // + key — badge « Armée · cadence » | « Désarmée »
+    armPrefix: 'ae-rule-arm-', // + key
+    disarmPrefix: 'ae-rule-disarm-', // + key
+    armConfirmPrefix: 'ae-rule-arm-confirm-', // + key — panneau de confirmation
+    armConfirmBtnPrefix: 'ae-rule-arm-confirm-btn-', // + key
   },
 
   // Visionneuse de simulation (ENG44) — rejeu d'un run ADSENG36.
@@ -130,6 +149,27 @@ export const AE_HOOKS = {
     step: 'ae-sim-step',
     armBudget: 'ae-sim-arm-budget',
     decision: 'ae-sim-decision',
+  },
+
+  // PUB54 — aide contextuelle FR statique (« ? »), zéro dépendance. Réutilisée
+  // par n'importe quel écran adsengine (voir MetricHelp.jsx METRIC_HELP).
+  metricHelp: {
+    togglePrefix: 'ae-metric-help-toggle-', // + clé de métrique
+    popoverPrefix: 'ae-metric-help-popover-', // + clé de métrique
+  },
+
+  // PUB48 — cloche de notifications persistante de la console (historique
+  // complet, snooze par alerte, lien vers l'entité). Montée sur Dashboard/
+  // Rules/Reports/Approvals.
+  alertCenter: {
+    root: 'ae-alert-center',
+    toggle: 'ae-alert-center-toggle',
+    badge: 'ae-alert-center-badge',
+    panel: 'ae-alert-center-panel',
+    item: 'ae-alert-center-item',
+    snoozePrefix: 'ae-alert-center-snooze-', // + id
+    snoozeConfirmPrefix: 'ae-alert-center-snooze-confirm-', // + id
+    linkPrefix: 'ae-alert-center-link-', // + id
   },
 
   // Reporting (ENG45) — drill-downs + export CSV.

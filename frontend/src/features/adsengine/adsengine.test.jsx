@@ -53,9 +53,10 @@ describe('adsengine — module.config (auto-enregistrement ENG21)', () => {
     // au fil des tâches — cockpit ADSDEEP22, commentaires ADSDEEP54, IG ADSDEEP56).
     // +1 : « L'Arbre » (ASG6 — la vue plan-vivant de l'Assumption Engine).
     // +1 : « Table des faits » (PUB6/AGEN1 — versions + entrées + publication).
-    expect(config.routes).toHaveLength(18)
-    expect(config.nav.items).toHaveLength(18)
-    expect(config.titles).toHaveLength(18)
+    // +1 : « Comparateur » (PUB52 — comparaison côte-à-côte ads/campagnes).
+    expect(config.routes).toHaveLength(19)
+    expect(config.nav.items).toHaveLength(19)
+    expect(config.titles).toHaveLength(19)
 
     const routePaths = config.routes.map(r => r.path).sort()
     const navTargets = config.nav.items.map(i => i.to).sort()

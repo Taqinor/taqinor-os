@@ -10,6 +10,27 @@ import EditCopyComposer from './EditCopyComposer'
 // le back exige `adsengine_approve` (permission DISTINCTE de proposer,
 // ENG19) — découverte en 403 seulement. Masque/grise les contrôles.
 import { useAdsPermissions } from './useAdsPermissions'
+import AlertCenter from './AlertCenter'
+import CommandPalette from './CommandPalette'
+
+/* ============================================================================
+   PUB51 — Raccourcis clavier (« pile d'approbations traitable sans souris »).
+   ----------------------------------------------------------------------------
+   J/K déplacent le focus visuel entre les cartes ; A approuve la carte
+   focalisée ; R ouvre son panneau de rejet structuré (jamais un rejet
+   direct — le motif reste requis, comportement inchangé). JAMAIS déclenché
+   pendant qu'un champ texte/select est focalisé (le rejet ouvre justement un
+   ``<select>`` — taper dedans ne doit jamais être intercepté). PUB10 — A/R
+   respectent la même permission `adsengine_approve` que les boutons (un
+   utilisateur sans droit d'approbation ne doit pas pouvoir approuver au
+   clavier) ; J/K restent libres de toute permission (navigation seule).
+   ========================================================================== */
+const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
+function isTypingTarget(el) {
+  if (!el) return false
+  if (TYPING_TAGS.has(el.tagName)) return true
+  return !!el.isContentEditable
+}
 
 /* ============================================================================
    ENG25 — Boîte d'approbation (l'écran-vaisseau-amiral).
@@ -87,6 +108,46 @@ export default function ApprovalsScreen() {
     setRejectReason(REJECTION_REASONS[0].value)
   }
 
+  // PUB51 — focus visuel pour les raccourcis clavier (jamais de souris requise).
+  const [focusedIndex, setFocusedIndex] = useState(0)
+
+  // Le focus reste dans les bornes quand la liste change (approbation/rejet
+  // retire une carte, chargement initial…).
+  useEffect(() => {
+    setFocusedIndex(i => (actions.length === 0 ? 0 : Math.min(i, actions.length - 1)))
+  }, [actions.length])
+
+  useEffect(() => {
+    const onKey = (e) => {
+      // Jamais pendant qu'un champ texte/select est focalisé (ex. le motif
+      // de rejet structuré) — ni avec un modificateur (laisse Ctrl-K/copier/
+      // coller… intacts).
+      if (isTypingTarget(document.activeElement)) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const key = e.key.toLowerCase()
+      if (key === 'j') {
+        e.preventDefault()
+        setFocusedIndex(i => Math.min(i + 1, Math.max(actions.length - 1, 0)))
+      } else if (key === 'k') {
+        e.preventDefault()
+        setFocusedIndex(i => Math.max(i - 1, 0))
+      } else if (key === 'a') {
+        // PUB10 — même garde que le bouton Approuver : sans adsengine_approve,
+        // le raccourci clavier ne doit pas contourner la permission.
+        if (!canApprove) return
+        const current = actions[focusedIndex]
+        if (current) { e.preventDefault(); approve(current.id) }
+      } else if (key === 'r') {
+        // PUB10 — même garde que le bouton Rejeter.
+        if (!canApprove) return
+        const current = actions[focusedIndex]
+        if (current) { e.preventDefault(); openReject(current.id) }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [actions, focusedIndex, approve, openReject, canApprove])
+
   const confirmReject = async (id) => {
     setBusy(true); setErr('')
     try {
@@ -130,17 +191,31 @@ export default function ApprovalsScreen() {
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <ClipboardCheck size={20} aria-hidden="true" /> Boîte d&apos;approbation
         </h2>
-        <button type="button" className="btn btn-light ae-toggle-composer"
-          data-testid="ae-toggle-composer"
-          disabled={!showComposer && !canManage}
-          title={!showComposer && !canManage
-            ? "Nécessite la permission de gestion (adsengine_manage)." : undefined}
-          onClick={() => setShowComposer(v => !v)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-          <PlusCircle size={15} aria-hidden="true" />
-          {showComposer ? 'Fermer le composeur' : "Éditer le texte d'une ad"}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button type="button" className="btn btn-light ae-toggle-composer"
+            data-testid="ae-toggle-composer"
+            disabled={!showComposer && !canManage}
+            title={!showComposer && !canManage
+              ? "Nécessite la permission de gestion (adsengine_manage)." : undefined}
+            onClick={() => setShowComposer(v => !v)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+            <PlusCircle size={15} aria-hidden="true" />
+            {showComposer ? 'Fermer le composeur' : "Éditer le texte d'une ad"}
+          </button>
+          {/* PUB48 — centre de notifications persistant de la console */}
+          <AlertCenter />
+          {/* PUB51 — palette de commandes (Ctrl-K) */}
+          <CommandPalette />
+        </div>
       </div>
+
+      {/* PUB51 — rappel des raccourcis clavier (jamais requis, juste visible) */}
+      {actions.length > 0 && (
+        <p className="ae-shortcuts-hint" data-testid="ae-shortcuts-hint"
+          style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0 0 0.6rem' }}>
+          Raccourcis : <kbd>J</kbd>/<kbd>K</kbd> naviguer · <kbd>A</kbd> approuver · <kbd>R</kbd> rejeter · <kbd>Ctrl</kbd>+<kbd>K</kbd> palette
+        </p>
+      )}
 
       {showComposer && (
         <EditCopyComposer onProposed={() => { setShowComposer(false); load() }} />
@@ -157,7 +232,8 @@ export default function ApprovalsScreen() {
           <button type="button" className="btn btn-primary" data-testid="ae-batch-approve"
             disabled={busy || !canApprove}
             title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
-            onClick={approveSelected}>
+            onClick={approveSelected}
+            style={{ minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
             Approuver la sélection
           </button>
         </div>
@@ -170,20 +246,31 @@ export default function ApprovalsScreen() {
               Aucune action en attente d&apos;approbation.</p>
           : (
             <div style={{ display: 'grid', gap: '1rem' }}>
-              {actions.map(a => {
+              {actions.map((a, i) => {
                 const diff = budgetDiff(a)
                 const creative = actionCreative(a)
                 const warnings = actionWarnings(a)
                 const copyDiff = editCopyDiff(a)
+                // PUB51 — carte visuellement focalisée pour la navigation J/K.
+                const focused = i === focusedIndex
                 return (
-                  <article key={a.id} className="card ae-action-card" data-testid="ae-action-card"
-                    style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
+                  <article key={a.id}
+                    className={`card ae-action-card${focused ? ' ae-action-card-focused' : ''}`}
+                    data-testid="ae-action-card" aria-current={focused ? 'true' : undefined}
+                    style={{ padding: '1rem',
+                      border: focused ? '2px solid #2563eb' : '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
-                      <input type="checkbox" className="ae-batch-toggle"
-                        data-testid={`ae-batch-toggle-${a.id}`}
-                        checked={selected.has(a.id)} onChange={() => toggleSelect(a.id)}
-                        aria-label={`Sélectionner l'action ${actionTypeLabel(a.type)}`}
-                        style={{ marginTop: '0.3rem' }} />
+                      {/* PUB56 — cible tactile ≥44×44px (le checkbox visuel
+                          reste petit ; la zone cliquable, elle, ne l'est
+                          pas) : un label enveloppant sert de zone de tap. */}
+                      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        minWidth: 44, minHeight: 44, cursor: 'pointer', flexShrink: 0 }}>
+                        <input type="checkbox" className="ae-batch-toggle"
+                          data-testid={`ae-batch-toggle-${a.id}`}
+                          checked={selected.has(a.id)} onChange={() => toggleSelect(a.id)}
+                          aria-label={`Sélectionner l'action ${actionTypeLabel(a.type)}`}
+                          style={{ width: 18, height: 18 }} />
+                      </label>
                       <div style={{ flex: 1 }}>
                         <h3 style={{ margin: 0 }}>{actionTypeLabel(a.type)}</h3>
 
@@ -257,20 +344,24 @@ export default function ApprovalsScreen() {
                           </div>
                         )}
 
-                        {/* Contrôles STRUCTURÉS — jamais du chat */}
+                        {/* Contrôles STRUCTURÉS — jamais du chat.
+                            PUB56 — cibles tactiles ≥44px (min-height/width
+                            explicites, au-delà du min-height 36px de .btn). */}
                         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                           <button type="button" className="btn btn-success ae-approve"
                             data-testid={`ae-approve-${a.id}`} disabled={busy || !canApprove}
                             title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
                             onClick={() => approve(a.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                              minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
                             <Check size={15} aria-hidden="true" /> Approuver
                           </button>
                           <button type="button" className="btn btn-danger-outline ae-reject"
                             data-testid={`ae-reject-${a.id}`} disabled={busy || !canApprove}
                             title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
                             onClick={() => openReject(a.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                              minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
                             <X size={15} aria-hidden="true" /> Rejeter
                           </button>
                         </div>
@@ -278,13 +369,15 @@ export default function ApprovalsScreen() {
                         {/* Motif de rejet STRUCTURÉ (select — jamais du texte libre) */}
                         {rejectingId === a.id && (
                           <div className="ae-reject-panel" data-testid={`ae-reject-panel-${a.id}`}
-                            style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
+                            style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap',
+                              alignItems: 'center' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                               <span style={{ fontSize: '0.85rem', color: '#475569' }}>Motif</span>
                               <select className="form-input ae-reject-reason"
                                 data-testid={`ae-reject-reason-${a.id}`}
                                 value={rejectReason}
-                                onChange={e => setRejectReason(e.target.value)}>
+                                onChange={e => setRejectReason(e.target.value)}
+                                style={{ minHeight: 44 }}>
                                 {REJECTION_REASONS.map(r => (
                                   <option key={r.value} value={r.value}>{r.label}</option>
                                 ))}
@@ -292,11 +385,14 @@ export default function ApprovalsScreen() {
                             </label>
                             <button type="button" className="btn btn-danger ae-reject-confirm"
                               data-testid={`ae-reject-confirm-${a.id}`} disabled={busy || !canApprove}
-                              onClick={() => confirmReject(a.id)}>
+                              onClick={() => confirmReject(a.id)}
+                              style={{ minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
                               Confirmer le rejet
                             </button>
                             <button type="button" className="btn btn-light"
-                              onClick={() => setRejectingId(null)}>Annuler</button>
+                              onClick={() => setRejectingId(null)}
+                              style={{ minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
+                              Annuler</button>
                           </div>
                         )}
                       </div>

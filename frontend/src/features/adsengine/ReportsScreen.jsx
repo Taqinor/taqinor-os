@@ -1,12 +1,15 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { BarChart3, Download, ClipboardList } from 'lucide-react'
+import { BarChart3, Download, ClipboardList, Printer, Scale } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeVariants, normalizeFunnel, normalizeCohorts, normalizeLeaderboard,
   normalizeScatter, hasRetentionData, formatMAD, formatNumber, formatPercent,
 } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
+import AlertCenter from './AlertCenter'
+import CommandPalette from './CommandPalette'
+import MetricHelp from './MetricHelp'
 
 /* ============================================================================
    ENG45 — Drill-downs reporting (consomme ENG33).
@@ -147,9 +150,9 @@ export default function ReportsScreen() {
     [funnel])
 
   return (
-    <div className="page ae-reports">
-      <div className="page-header">
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+    <div className="page ae-reports ae-print-area">
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginRight: 'auto' }}>
           <BarChart3 size={20} aria-hidden="true" /> Reporting
         </h2>
         {tab === 'apercu' && variants.length > 0 && (
@@ -159,6 +162,23 @@ export default function ReportsScreen() {
             <Download size={15} aria-hidden="true" /> Exporter en CSV
           </button>
         )}
+        {/* PUB52 — comparateur côte-à-côte (ads/campagnes) */}
+        <Link to="/publicite/comparateur" className="btn btn-light" data-testid="ae-reports-compare-link"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <Scale size={15} aria-hidden="true" /> Comparateur
+        </Link>
+        {/* PUB47 — impression navigateur (feuille globale print.css, VX80) :
+            PDF imprimable propre (A4), zéro dépendance nouvelle. Distinct des
+            PDF WeasyPrint client (règle #4). */}
+        <button type="button" className="btn btn-light" data-testid="ae-reports-print"
+          onClick={() => window.print()}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <Printer size={15} aria-hidden="true" /> Imprimer / PDF
+        </button>
+        {/* PUB48 — centre de notifications persistant de la console */}
+        <AlertCenter />
+        {/* PUB51 — palette de commandes (Ctrl-K) */}
+        <CommandPalette />
       </div>
 
       <div role="tablist" aria-label="Sections du reporting"
@@ -200,11 +220,11 @@ export default function ReportsScreen() {
                     <tbody>
                       {variants.map(v => (
                         <tr key={v.id} data-testid="ae-reports-variant-row">
-                          <td>{v.nom}</td>
-                          <td>{formatNumber(v.impressions)}</td>
-                          <td>{formatNumber(v.reponses_whatsapp)}</td>
-                          <td>{formatMAD(v.cout_mad)}</td>
-                          <td>{formatMAD(v.cout_par_reponse)}</td>
+                          <td data-label="Variante">{v.nom}</td>
+                          <td data-label="Impressions">{formatNumber(v.impressions)}</td>
+                          <td data-label="Réponses WhatsApp">{formatNumber(v.reponses_whatsapp)}</td>
+                          <td data-label="Coût">{formatMAD(v.cout_mad)}</td>
+                          <td data-label="Coût / réponse">{formatMAD(v.cout_par_reponse)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -251,10 +271,10 @@ export default function ReportsScreen() {
                     <tbody>
                       {cohorts.map(c => (
                         <tr key={c.id} data-testid="ae-reports-cohort-row">
-                          <td>{c.cohorte}</td>
-                          <td>{formatNumber(c.taille)}</td>
-                          <td>{formatNumber(c.lag_jours_median)}</td>
-                          <td>{formatNumber(c.signatures)}</td>
+                          <td data-label="Cohorte">{c.cohorte}</td>
+                          <td data-label="Taille">{formatNumber(c.taille)}</td>
+                          <td data-label="Lag médian (jours)">{formatNumber(c.lag_jours_median)}</td>
+                          <td data-label="Signatures">{formatNumber(c.signatures)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -303,18 +323,20 @@ export default function ReportsScreen() {
                       <thead>
                         <tr>
                           <th>Tag</th><th>Dépense</th><th>Résultats</th>
-                          <th>Coût / résultat</th><th>Hook rate (pondéré)</th><th>Ads</th>
+                          <th>Coût / résultat<MetricHelp metric="cost_per_result" label="Coût / résultat" /></th>
+                          <th>Hook rate (pondéré)<MetricHelp metric="hook_rate" label="Hook rate" /></th>
+                          <th>Ads</th>
                         </tr>
                       </thead>
                       <tbody>
                         {leaderboard.classement.map(row => (
                           <tr key={row.id} data-testid="ae-creatifs-leaderboard-row">
-                            <td>{row.tag}</td>
-                            <td>{formatMAD(row.spend)}</td>
-                            <td>{formatNumber(row.results)}</td>
-                            <td>{formatMAD(row.costPerResult)}</td>
-                            <td>{formatPercent(row.hookRateWeighted, 1)}</td>
-                            <td>{formatNumber(row.adCount)}</td>
+                            <td data-label="Tag">{row.tag}</td>
+                            <td data-label="Dépense">{formatMAD(row.spend)}</td>
+                            <td data-label="Résultats">{formatNumber(row.results)}</td>
+                            <td data-label="Coût / résultat">{formatMAD(row.costPerResult)}</td>
+                            <td data-label="Hook rate (pondéré)">{formatPercent(row.hookRateWeighted, 1)}</td>
+                            <td data-label="Ads">{formatNumber(row.adCount)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -336,8 +358,9 @@ export default function ReportsScreen() {
                   : (
                     <table className="data-table" data-testid="ae-creatifs-scatter-table">
                       <thead>
-                        <tr>
-                          <th>Ad</th><th>Dépense</th><th>Hook rate</th><th>Quadrant</th>
+                        <tr><th>Ad</th><th>Dépense</th>
+                          <th>Hook rate<MetricHelp metric="hook_rate" label="Hook rate" /></th>
+                          <th>Quadrant</th>
                           {/* PUB8 — courbe de rétention par ad vidéo (25/50/75/100 %
                               des lectures qui atteignent chaque quartile). */}
                           <th>Rétention (25/50/75/100 %)</th>
@@ -346,11 +369,11 @@ export default function ReportsScreen() {
                       <tbody>
                         {scatter.points.map(p => (
                           <tr key={p.id} data-testid="ae-creatifs-scatter-row">
-                            <td>{p.nom}</td>
-                            <td>{formatMAD(p.spend)}</td>
-                            <td>{formatPercent(p.hookRate, 1)}</td>
-                            <td data-testid="ae-creatifs-scatter-quadrant">{p.quadrantLabel}</td>
-                            <td data-testid="ae-creatifs-scatter-retention">
+                            <td data-label="Ad">{p.nom}</td>
+                            <td data-label="Dépense">{formatMAD(p.spend)}</td>
+                            <td data-label="Hook rate">{formatPercent(p.hookRate, 1)}</td>
+                            <td data-label="Quadrant" data-testid="ae-creatifs-scatter-quadrant">{p.quadrantLabel}</td>
+                            <td data-label="Rétention (25/50/75/100 %)" data-testid="ae-creatifs-scatter-retention">
                               {hasRetentionData(p)
                                 ? [p.retention.p25, p.retention.p50, p.retention.p75, p.retention.p100]
                                     .map(v => formatPercent(v, 0)).join(' · ')

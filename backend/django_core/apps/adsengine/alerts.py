@@ -16,6 +16,7 @@ lien ``wa.me`` ouvre WhatsApp sans numéro pré-rempli (choix manuel).
 from __future__ import annotations
 
 import datetime
+import logging
 import os
 from urllib.parse import quote
 
@@ -23,6 +24,8 @@ from .rules import (
     DEFAULT_COOLDOWN_HOURS, SEVERITY_CRITICAL, SEVERITY_EMOJI,
     SEVERITY_INFO, SEVERITY_LABELS_FR, SEVERITY_WARNING,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def alert_recipients():
@@ -60,9 +63,110 @@ def create_alert(company, *, alert_type, message, action=None, detail=None):
     moment du RENDU (serializer / dashboard) — on ne stocke que le message FR."""
     from .models import EngineAlert
 
-    return EngineAlert.objects.create(
+    alert = EngineAlert.objects.create(
         company=company, alert_type=alert_type, message=message,
         action=action, detail=detail or {})
+    # PUB48 — pousse l'alerte dans le moteur de notifications unifié (console
+    # « Centre de notifications persistant »).
+    notify_alert_recipients(alert)
+    return alert
+
+
+# =============================================================================
+# PUB48 — Centre de notifications persistant (console) : historique, lu/non-lu,
+# snooze par alerte. Réutilise ``EngineAlert`` (déjà company-scopée, déjà
+# persistée) — AUCUN second modèle. Le snooze vit dans ``detail`` (JSONField
+# déjà existant) : ``detail['snoozed_until']`` = date ISO, AUCUNE migration.
+# =============================================================================
+
+def is_snoozed(alert, *, today=None):
+    """True si ``alert`` est actuellement REPORTÉE (snooze posé via
+    ``snooze_alert``). Ne masque QUE la liste ACTIVE (``alertes/``) —
+    ``history()`` continue de TOUT montrer (Done PUB48 : « historique
+    consultable »)."""
+    until = (alert.detail or {}).get('snoozed_until')
+    if not until:
+        return False
+    from django.utils import timezone
+    today = today or timezone.now().date().isoformat()
+    return str(until) >= str(today)
+
+
+def snooze_alert(alert, until_iso):
+    """Reporte ``alert`` jusqu'à ``until_iso`` (date ISO, incluse) : elle
+    disparaît de la liste ACTIVE jusque-là, sans jamais être réémise ni
+    supprimée. ``history()`` et l'entité liée restent inchangés. Idempotent
+    (écrase un snooze précédent — jamais empilé)."""
+    detail = dict(alert.detail or {})
+    detail['snoozed_until'] = str(until_iso)
+    alert.detail = detail
+    alert.save(update_fields=['detail', 'updated_at'])
+    return alert
+
+
+def unsnooze_alert(alert):
+    """Annule le report d'``alert`` (redevient visible immédiatement dans la
+    liste active). No-op si rien n'était reporté."""
+    detail = dict(alert.detail or {})
+    if 'snoozed_until' in detail:
+        del detail['snoozed_until']
+        alert.detail = detail
+        alert.save(update_fields=['detail', 'updated_at'])
+    return alert
+
+
+def deep_link_for_alert(alert):
+    """PUB48 — lien profond FR vers l'entité concernée par ``alert`` : une
+    proposition liée (``action``) pointe vers la boîte d'approbation ; sinon
+    le lien du gabarit WhatsApp d'origine (``detail['template_key']``) ; à
+    défaut l'écran « Règles & anomalies » (l'historique y reste consultable)."""
+    if getattr(alert, 'action_id', None):
+        return deep_link('approvals')
+    template_key = (alert.detail or {}).get('template_key')
+    tpl = WA_TEMPLATES.get(template_key) if template_key else None
+    if tpl:
+        return deep_link(tpl['link'])
+    base = os.environ.get('ADSENGINE_APP_BASE_URL', '') or ''
+    return base.rstrip('/') + '/publicite/regles'
+
+
+def notify_alert_recipients(alert):
+    """PUB48 — pousse ``alert`` dans le moteur de notifications UNIFIÉ de
+    l'ERP (``notifications.Notification`` — LA MÊME table que le reste de
+    l'app : la cloche globale, l'historique, le lu/non-lu EXISTENT déjà et
+    sont réutilisés tels quels, jamais un second système parallèle).
+
+    Best-effort, jamais bloquant : un échec ne doit jamais faire échouer la
+    création de l'alerte elle-même (même contrat que ``notifications.notify``).
+
+    NOTE — un ``EventType`` DÉDIÉ (``'adsengine_alert'``) suivrait le patron
+    déjà utilisé par chaque domaine (NTIDE16/NTIDE31/NTEDU40 : une petite
+    migration additive chacun), mais une migration est HORS PÉRIMÈTRE de cette
+    lane (contrat de lane, aucune migration) : on écrit donc DIRECTEMENT la
+    ligne ``Notification`` (même table, même cloche, même historique lu/
+    non-lu) plutôt que d'appeler ``notify()``, dont la porte
+    ``EventType.values`` refuserait un type non enregistré. Un futur ticket
+    peut promouvoir ceci vers un ``EventType`` propre via une migration
+    dédiée d'une ligne (voir 0041/0042/0043 pour le patron)."""
+    try:
+        from django.contrib.auth import get_user_model
+
+        from apps.notifications.models import Notification
+        User = get_user_model()
+        recipients = User.objects.filter(
+            company=alert.company, is_active=True,
+            role_legacy__in=['admin', 'responsable'])
+        link = deep_link_for_alert(alert)
+        for user in recipients:
+            Notification.objects.create(
+                company=alert.company, recipient=user,
+                event_type='adsengine_alert',
+                title=str(alert.message or '')[:255],
+                body='', link=link)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning(
+            'notify_alert_recipients échoué (alerte %s) : %s',
+            getattr(alert, 'pk', None), exc)
 
 
 # ── ADSENG18 — Gabarits d'alerte WhatsApp FR (dd-guardian §C2) ────────────────
@@ -258,6 +362,10 @@ def emit_guarded_alert(company, *, template_key, target_type='', target_id='',
             detail={'template_key': template_key, 'computed': context or {},
                     'last_sent_at': (None if dry_run else now.isoformat())})
         alert._sent = not dry_run
+        # PUB48 — la PREMIÈRE occurrence (jamais un dry-run) pousse dans le
+        # centre de notifications unifié de la console.
+        if alert._sent:
+            notify_alert_recipients(alert)
         return alert
 
     # Ré-occurrence : actualise + un cycle non résolu de plus (escalade au 3e).
@@ -279,6 +387,10 @@ def emit_guarded_alert(company, *, template_key, target_type='', target_id='',
     existing.detail = detail
     existing.save(update_fields=['message', 'detail', 'updated_at'])
     existing._sent = resend
+    # PUB48 — un RENVOI réel (hors cooldown) pousse une nouvelle notification ;
+    # une ré-occurrence dans le cooldown reste silencieuse (anti-spam inchangé).
+    if resend:
+        notify_alert_recipients(existing)
     return existing
 
 

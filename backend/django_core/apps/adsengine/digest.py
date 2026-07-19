@@ -180,6 +180,16 @@ def build_digest_data(company, *, now=None):
                        getattr(company, 'pk', None), exc_info=True)
         top_ad = None
 
+    # PUB57 — liens profonds PAR ITEM (jamais un seul lien générique vers le
+    # dashboard quand une entité précise est mentionnée) : chaque section
+    # actionnable porte SON propre lien vers l'écran où AGIR — l'alerte vers
+    # « Règles & anomalies » (son historique), la meilleure ad vers le
+    # Cockpit. Réutilisables par tout futur consommateur riche du digest ;
+    # ``send_daily_digest`` (ci-dessous) choisit déjà le plus pertinent comme
+    # lien PRINCIPAL de la notification.
+    alertes_lien = '/publicite/regles' if alertes_actives else None
+    top_ad_lien = '/publicite/cockpit' if top_ad else None
+
     return {
         'date': day.isoformat(),
         'spend': str(spend),
@@ -187,25 +197,37 @@ def build_digest_data(company, *, now=None):
         'leads': leads,
         'signatures': signatures,
         'alertes_actives': alertes_actives,
+        'alertes_lien': alertes_lien,
         'top_ad': top_ad,
+        'top_ad_lien': top_ad_lien,
     }
 
 
 def format_body(data):
     """Corps FR lisible du digest — uniquement des NOMBRES calculés dans des
-    phrases template (même doctrine anti-hallucination que ``brief.py``)."""
+    phrases template (même doctrine anti-hallucination que ``brief.py``).
+
+    PUB57 — chaque ligne ACTIONNABLE (alertes/meilleure ad) porte désormais
+    son lien profond en clair (``→ /publicite/...``) : lisible tel quel en
+    in-app (texte brut) et en email (repli texte du corps HTML)."""
     lines = [f"Récapitulatif publicité du {data['date']} :", '']
     lines.append(f"- Dépense : {data['spend']} MAD")
     lines.append(f"- Conversations WhatsApp : {data['conversations']}")
     lines.append(f"- Leads : {data['leads']}")
     if data['signatures'] is not None:
         lines.append(f"- Signatures : {data['signatures']}")
-    lines.append(f"- Alertes actives : {data['alertes_actives']}")
+    alertes_line = f"- Alertes actives : {data['alertes_actives']}"
+    if data.get('alertes_lien'):
+        alertes_line += f" → {data['alertes_lien']}"
+    lines.append(alertes_line)
     top_ad = data.get('top_ad')
     if top_ad:
-        lines.append(
+        top_ad_line = (
             f"- Meilleure ad de la veille : {top_ad['name']} "
             f"({top_ad['results']} résultat(s), {top_ad['spend']} MAD)")
+        if data.get('top_ad_lien'):
+            top_ad_line += f" → {data['top_ad_lien']}"
+        lines.append(top_ad_line)
     return '\n'.join(lines)
 
 
@@ -214,17 +236,25 @@ def send_daily_digest(company, *, now=None):
     de ``company`` (in-app + email best-effort, opt-out PAR UTILISATEUR
     respecté via ``notify()`` — ``EventType.DIGEST``, la même préférence que
     le récap N76). Renvoie le nombre de notifications ÉMISES (préférence
-    in-app active — ``notify()`` renvoie ``None`` sinon)."""
+    in-app active — ``notify()`` renvoie ``None`` sinon).
+
+    PUB57 — le lien PRINCIPAL de la notification (clic sur la cloche/l'email)
+    n'est plus TOUJOURS le dashboard générique : il pointe vers l'item le
+    plus actionnable du jour — des alertes actives priment (sécurité budget),
+    sinon la meilleure ad de la veille, sinon le dashboard par défaut."""
     from apps.notifications.models import EventType
     from apps.notifications.services import notify
 
     data = build_digest_data(company, now=now)
     body = format_body(data)
+    primary_link = (
+        data.get('alertes_lien') or data.get('top_ad_lien')
+        or '/publicite/tableau-de-bord')
     emitted = 0
     for user in _recipients(company):
         if notify(
                 user, EventType.DIGEST, 'Récapitulatif publicité quotidien',
-                body=body, link='/publicite/tableau-de-bord',
+                body=body, link=primary_link,
                 company=company) is not None:
             emitted += 1
     return emitted

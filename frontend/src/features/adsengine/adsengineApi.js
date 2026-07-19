@@ -67,6 +67,9 @@ const adsengineApi = {
     list: (params) => api.get('/adsengine/alertes/', { params }),
     // ENG43 — historique des alertes (past, pour l'écran Règles & anomalies).
     history: (params) => api.get('/adsengine/alertes/history/', { params }),
+    // PUB48 — reporte une alerte jusqu'à une date (n'affecte que la liste
+    // ACTIVE ; l'historique reste complet).
+    snooze: (id, until) => api.post(`/adsengine/alertes/${id}/snooze/`, { until }),
   },
 
   // ── ENG5/ENG24 — Campagnes (miroirs) + classement par créatif ──
@@ -151,6 +154,14 @@ const adsengineApi = {
     // ADSDEEP43 — journal d'exécution ENRICHI : par règle, la dernière passe avec
     // le verdict de condition (valeurs) + le delta de l'action proposée.
     journal: () => api.get('/adsengine/regles/journal/'),
+    // PUB23 — instances RÉELLES ``RulePolicy`` de la société (état armé/
+    // désarmé), CRUD déjà exposé par ``RulePolicyViewSet`` (aucune route
+    // nouvelle) : ``list`` lit l'état ; ``create``/``update`` arment/désarment
+    // (``enabled``/``dry_run``) — jamais d'application directe, la règle armée
+    // ne fait que PROPOSER (mode par défaut ``propose``, boîte d'approbation).
+    list: (params) => api.get('/adsengine/regles/', { params }),
+    create: (payload) => api.post('/adsengine/regles/', payload),
+    update: (id, payload) => api.patch(`/adsengine/regles/${id}/`, payload),
   },
 
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
@@ -197,9 +208,9 @@ const adsengineApi = {
     // budgétaire, fatigue, tracking, fenêtres de données). Jamais auto-chargé
     // (bouton « Lancer l'audit »).
     audit: () => api.get('/adsengine/reporting/audit/'),
-    // PUB12 — export CSV SERVEUR (ReportExportView) : source de vérité unique,
-    // inclut la table de réconciliation. Blob authentifié (jamais un CSV
-    // fabriqué côté client, qui divergerait du serveur). `params` :
+    // PUB12/PUB47 — export CSV SERVEUR (ReportExportView) : source de vérité
+    // unique, inclut la table de réconciliation. Blob authentifié (jamais un
+    // CSV fabriqué côté client, qui divergerait du serveur). `params` :
     // { table: 'variantes' | 'reconciliation', date? }.
     export: (params) =>
       api.get('/adsengine/reporting/export/', { params, responseType: 'blob' }),

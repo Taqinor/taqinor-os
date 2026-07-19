@@ -23,6 +23,9 @@ vi.mock('./adsengineApi', () => ({
       leaderboard: mocks.leaderboard, scatter: mocks.scatter, audit: mocks.audit,
       export: mocks.exportCsv,
     },
+    // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
+    // hors périmètre de ce fichier, mais montée sur l'écran (import réel).
+    alerts: { history: () => Promise.resolve({ data: [] }) },
   },
 }))
 
@@ -138,6 +141,35 @@ describe('ReportsScreen (ENG45)', () => {
     // Pas de lien d'export sans variante.
     expect(screen.queryByTestId('ae-reports-export')).toBeNull()
   })
+
+  // PUB47 — impression navigateur (feuille globale print.css, VX80), zéro
+  // dépendance nouvelle : toujours visible, quel que soit l'onglet.
+  it('le bouton Imprimer appelle window.print()', async () => {
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {})
+    renderScreen()
+    const btn = await screen.findByTestId('ae-reports-print')
+    btn.click()
+    expect(printSpy).toHaveBeenCalled()
+    printSpy.mockRestore()
+  })
+
+  // PUB52 — entrée vers le comparateur côte-à-côte.
+  it('propose un lien vers le Comparateur', async () => {
+    renderScreen()
+    const link = await screen.findByTestId('ae-reports-compare-link')
+    expect(link).toHaveAttribute('href', '/publicite/comparateur')
+  })
+
+  // PUB56 — repli mobile (< 768px) : `.data-table` n'affiche le nom du champ
+  // sur les cartes que via `data-label` (index.css, pattern déjà établi de
+  // l'ERP) — sans lui, une carte mobile n'est qu'une pile de valeurs nues.
+  it('les cellules du tableau variantes portent data-label (repli carte mobile)', async () => {
+    renderScreen()
+    const row = await screen.findByTestId('ae-reports-variant-row')
+    const cells = row.querySelectorAll('td')
+    expect(cells.length).toBeGreaterThan(0)
+    cells.forEach(td => expect(td).toHaveAttribute('data-label'))
+  })
 })
 
 describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {
@@ -214,6 +246,16 @@ describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {
     screen.getByTestId('ae-reports-tab-creatifs').click()
     expect(await screen.findByTestId('ae-creatifs-leaderboard-empty')).toBeInTheDocument()
     expect(screen.getByTestId('ae-creatifs-scatter-empty')).toBeInTheDocument()
+  })
+
+  // PUB54 — aide contextuelle FR sur les métriques techniques (hook rate,
+  // coût par résultat).
+  it('le classement et le nuage ont leur « ? » sur hook rate / coût par résultat', async () => {
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-creatifs').click()
+    await screen.findAllByTestId('ae-creatifs-leaderboard-row')
+    expect(screen.getByTestId('ae-metric-help-toggle-cost_per_result')).toBeInTheDocument()
+    expect(screen.getAllByTestId('ae-metric-help-toggle-hook_rate').length).toBe(2)
   })
 })
 

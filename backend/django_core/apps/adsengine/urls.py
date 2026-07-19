@@ -12,8 +12,8 @@ from .incrementality import GeoHoldoutReportView
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
-    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AnnotationViewSet,
-    AnomalyEventViewSet,
+    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AlertSnoozeView,
+    AnnotationViewSet, AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet,
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
@@ -156,6 +156,10 @@ urlpatterns = [
     # actives), 100 % lecture, aucune action automatique.
     path('reporting/incrementalite/', GeoHoldoutReportView.as_view(),
          name='adsengine-reporting-incrementalite'),
+    # PUB48 — reporte UNE alerte (snooze) jusqu'à une date ; ne masque QUE la
+    # liste active (``history()`` reste complet).
+    path('alertes/<int:alert_id>/snooze/', AlertSnoozeView.as_view(),
+         name='adsengine-alerte-snooze'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).

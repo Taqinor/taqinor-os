@@ -158,18 +158,22 @@ function resolvable(path) {
     if (rest.length === 0) return true // list/create sur la racine du routeur
     if (rest.length === 1) {
       // <id>/ (retrieve/update/delete) OU une action detail=False
-      return isIdSegment(rest[0]) || listActionPaths.has(rest[0])
+      if (isIdSegment(rest[0]) || listActionPaths.has(rest[0])) return true
     }
     if (rest.length === 2 && isIdSegment(rest[0])) {
       // <id>/<action>/ — action detail=True
-      return detailActionPaths.has(rest[1])
+      if (detailActionPaths.has(rest[1])) return true
     }
     // Actions à url_path paramétré (PUB2 : tests/(?P<test_id>…)/leads) —
     // liste d'abord, puis détail derrière un segment id.
     if (actionSegPatterns.some(a => !a.detail && segMatch(a.segs, rest))) return true
     if (rest.length >= 2 && isIdSegment(rest[0])
         && actionSegPatterns.some(a => a.detail && segMatch(a.segs, rest.slice(1)))) return true
-    // Sinon : repli légitime sur les patterns directs ci-dessous.
+    // Sinon : repli légitime sur les patterns directs ci-dessous — un préfixe
+    // routeur peut cohabiter avec un `path()` direct posé sous le même
+    // segment (ex. PUB48 : `alertes/<id>/snooze/` à côté du routeur
+    // `EngineAlertViewSet` GET-only, qui ne peut structurellement pas porter
+    // cette action en écriture).
   }
 
   return directPathMatches(segments)
