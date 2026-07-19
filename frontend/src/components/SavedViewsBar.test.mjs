@@ -60,3 +60,45 @@ test('LeadsPage : en-tête garde + Nouveau lead / Express / ViewSwitcher comme c
   assert.match(LEADS_SRC, /> Express/)
   assert.match(LEADS_SRC, /<ViewSwitcher view=\{view\} setView=\{setView\} \/>/)
 })
+
+// ── LB26 — « Copier le lien » (blueprint D5) ────────────────────────────────
+// Prop ADDITIVE optionnelle `buildShareUrl` : ClientList (autre consommateur
+// du composant partagé) ne la passe pas → comportement STRICTEMENT inchangé.
+
+test('LB26 : buildShareUrl est une prop OPTIONNELLE (signature additive)', () => {
+  assert.match(
+    SRC,
+    /export default function SavedViewsBar\(\{ savedViews, onApply, onDelete, buildShareUrl \}\)/,
+  )
+})
+
+test('LB26 : le bouton « Copier le lien » ne rend QUE quand buildShareUrl est fourni', () => {
+  const idx = SRC.indexOf('{buildShareUrl && (')
+  assert.ok(idx > 0)
+  const block = SRC.slice(idx, idx + 300)
+  assert.match(block, /className="lp-saved-view-share"/)
+  assert.match(block, /onClick=\{\(\) => copyLink\(v\)\}/)
+  assert.match(block, /aria-label=\{`Copier le lien de la vue \$\{v\.name\}`\}/)
+})
+
+test('LB26 : copyLink écrit dans le presse-papier puis toaste succès/erreur (jamais un échec silencieux)', () => {
+  const start = SRC.indexOf('const copyLink = async (v) => {')
+  assert.ok(start > 0)
+  const block = SRC.slice(start, start + 350)
+  assert.match(block, /navigator\.clipboard\.writeText\(buildShareUrl\(v\)\)/)
+  assert.match(block, /toastSuccess\('Lien copié\.'\)/)
+  assert.match(block, /toastError\('Copie du lien impossible\.'\)/)
+})
+
+test('LB26 : ClientList (autre consommateur du composant partagé) n’a PAS besoin de changer — buildShareUrl absente', () => {
+  const idx = CLIENTS_SRC.indexOf('<SavedViewsBar')
+  assert.ok(idx > 0)
+  const block = CLIENTS_SRC.slice(idx, idx + 200)
+  assert.doesNotMatch(block, /buildShareUrl/)
+})
+
+test('LB26 : LeadsPage câble buildShareUrl (sérialisé via urlFilters.js, base VIERGE)', () => {
+  assert.match(LEADS_SRC, /const buildShareUrl = \(v\) => \{/)
+  assert.match(LEADS_SRC, /writeFiltersToParams\(new URLSearchParams\(\), vFilters, vView\)/)
+  assert.match(LEADS_SRC, /buildShareUrl=\{buildShareUrl\}/)
+})

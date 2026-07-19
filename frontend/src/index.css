@@ -7325,3 +7325,25 @@ textarea.form-control {
     width: calc(100vw - 24px);
   }
 }
+
+/* LB26 — « Copier le lien » sur une puce de vue enregistrée (blueprint D5) :
+   même famille visuelle que `.lp-saved-view-del` (ligne ~5792 ci-dessus,
+   FG11) — bouton neutre entre le libellé et la suppression, jamais teinté
+   destructif (ce n'est pas une action dangereuse). */
+.lp-saved-view-share {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border, #e2e8f0);
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+  color: var(--muted-foreground, #64748b);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+@media (hover: hover) {
+  .lp-saved-view-share:hover {
+    background: var(--muted, #f1f5f9);
+    color: var(--foreground, #1e293b);
+  }
+}

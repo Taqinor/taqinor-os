@@ -22,6 +22,9 @@ import {
 } from '../../../ui'
 import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
+// LB26 — hook CANONIQUE (déjà adopté par LeadWorkspace.jsx) : jamais une
+// nouvelle copie locale de useIsMobile.
+import { useIsMobile } from '../../../ui/ResponsiveDialog'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../../hooks/useEquipeMembreIds'
@@ -86,6 +89,10 @@ export default function LeadsPage() {
   // rôle ci-dessous (normal=ON, manager=OFF, comportement historique inchangé).
   const currentUser = useSelector(s => s.auth.user)
   const roleTier = useSelector(s => s.auth.role)
+  // LB26 — Express rejoint le menu ⋯ sous 768px (le header respire) : hook
+  // CANONIQUE (ui/ResponsiveDialog, déjà adopté par LeadWorkspace) — jamais
+  // une nouvelle copie locale de useIsMobile.
+  const isMobile = useIsMobile()
 
   // Employés assignables (avatar + nom) pour les sélecteurs de responsable des
   // cartes kanban et de la liste. Ouvert à la Commerciale (endpoint dédié).
@@ -181,6 +188,17 @@ export default function LeadsPage() {
     setFilters({ ...EMPTY_FILTERS, ...(v.state?.filters || v.filters || {}) })
     const savedView = v.state?.view ?? v.view
     if (VALID_VIEWS.includes(savedView)) setView(savedView)
+  }
+  // LB26 — « Copier le lien » d'une vue enregistrée (blueprint D5) : sérialise
+  // via urlFilters.js (même module que l'URL live) sur une base VIERGE (pas
+  // de `?lead=` résiduel dans un lien partagé) — le partage Reda→Meriem
+  // devient un simple collage WhatsApp.
+  const buildShareUrl = (v) => {
+    const vFilters = { ...EMPTY_FILTERS, ...(v.state?.filters || v.filters || {}) }
+    const vView = v.state?.view ?? v.view ?? 'kanban'
+    const params = writeFiltersToParams(new URLSearchParams(), vFilters, vView)
+    const qs = params.toString()
+    return `${window.location.origin}${window.location.pathname}${qs ? `?${qs}` : ''}`
   }
 
   // Formulaire lead (création / édition).
@@ -598,11 +616,16 @@ export default function LeadsPage() {
         </h2>
         <div className="page-header-actions lp-header-actions">
           <Button onClick={openNew}>+ Nouveau lead</Button>
-          <Button
-            variant="outline"
-            title="Saisie express : nom + téléphone + canal"
-            onClick={() => setShowExpressModal(true)}
-          ><Zap aria-hidden="true" size={14} /> Express</Button>
+          {/* LB26 — Express rejoint le menu ⋯ sous 768px (le header respire) :
+              les DEUX contrôles existent, seul `isMobile` décide lequel rend
+              (jamais les deux à la fois — pas un doublon caché en CSS). */}
+          {!isMobile && (
+            <Button
+              variant="outline"
+              title="Saisie express : nom + téléphone + canal"
+              onClick={() => setShowExpressModal(true)}
+            ><Zap aria-hidden="true" size={14} /> Express</Button>
+          )}
           {/* VX145(b) — Doublons/Importer/Exporter sont des fréquences basses
               face aux 2 contrôles ci-dessus ; démotés dans un menu « ⋯ »
               (pattern DropdownMenu déjà importé dans ListView.jsx). */}
@@ -618,6 +641,11 @@ export default function LeadsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {isMobile && (
+                <DropdownMenuItem onSelect={() => setShowExpressModal(true)}>
+                  <Zap aria-hidden="true" /> Express
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onSelect={() => setShowDoublons(true)}>
                 <GitMerge aria-hidden="true" /> Doublons
                 {doublonsCount > 0 && (
@@ -659,6 +687,7 @@ export default function LeadsPage() {
         savedViews={savedViews}
         onApply={applySavedView}
         onDelete={deleteSavedView}
+        buildShareUrl={buildShareUrl}
       />
 
       {/* LB25 — barre bulk FLOTTANTE (blueprint D5) : l'ancienne barre inline
