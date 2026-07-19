@@ -988,12 +988,22 @@ class Canal(models.Model):
 
 class MotifPerte(models.Model):
     """Motif de perte géré (Paramètres → CRM). Le champ Lead.motif_perte reste
-    un texte libre ; cette liste sert de choix proposés. Additif."""
+    un texte libre ; cette liste sert de choix proposés. Additif.
+
+    PUB28 — ``est_junk`` distingue un motif de perte JUNK (numéro invalide,
+    spam/bot, hors zone, jamais répondu — le lead n'était jamais un prospect
+    réel) d'un motif RÉEL (prix, concurrent, reporté — un vrai prospect perdu
+    pour une raison commerciale). Sert le signal qualité manquant au veto de
+    divergence : le taux de junk PAR AD (``apps.adsengine.attribution``)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='motifs_perte')
     nom = models.CharField(max_length=150)
     archived = models.BooleanField(default=False)
+    est_junk = models.BooleanField(
+        default=False, verbose_name='Motif junk (pas un vrai prospect)',
+        help_text='Numéro invalide, spam/bot, hors zone, jamais répondu — '
+                  'distinct d\'un motif de perte commercial réel.')
 
     class Meta:
         ordering = ['nom']

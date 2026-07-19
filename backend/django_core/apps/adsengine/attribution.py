@@ -36,6 +36,17 @@ def _q2(value):
     return str(value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
 
+def _rate(numerator, denominator):
+    """PUB28/PUB37 — taux ``numerator / denominator`` arrondi à 4 décimales
+    (fraction 0..1, ex. 0.25 = 25 %), ou None si le dénominateur est nul
+    (jamais un taux zéro fabriqué — même discipline que ``cost_per_signature``)."""
+    if not denominator:
+        return None
+    return float(
+        (Decimal(numerator) / Decimal(denominator))
+        .quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP))
+
+
 def _resolve_ad_id(row, by_meta, name_to_meta):
     """Applique l'échelle de résolution à une ligne de lead. Renvoie le
     ``meta_id`` de l'ad attribuée, ou None si non résolue au niveau variante."""
@@ -65,9 +76,9 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
           'variants': [
             {'meta_id', 'name', 'spend', 'leads', 'qualified', 'signed',
              'cost_per_qualified_lead', 'cost_per_signature',
-             'lead_ids', 'signed_lead_ids'}, ...
+             'lead_ids', 'signed_lead_ids', 'junk', 'junk_rate'}, ...
           ],
-          'unresolved': {'leads', 'qualified', 'signed', 'lead_ids'},
+          'unresolved': {'leads', 'qualified', 'signed', 'junk', 'lead_ids'},
           'organic_excluded_count': int,
         }
 
@@ -107,11 +118,12 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             spend_by_pk[s['object_id']] = s['total'] or Decimal('0')
 
     def _new_bucket():
-        return {'leads': 0, 'qualified': 0, 'signed': 0,
+        return {'leads': 0, 'qualified': 0, 'signed': 0, 'junk': 0,
                 'lead_ids': [], 'signed_lead_ids': []}
 
     variants = {m: _new_bucket() for m in by_meta}
-    unresolved = {'leads': 0, 'qualified': 0, 'signed': 0, 'lead_ids': []}
+    unresolved = {'leads': 0, 'qualified': 0, 'signed': 0, 'junk': 0,
+                  'lead_ids': []}
     organic_excluded = 0
 
     for row in attribution_lead_rows(company, qualifying_stage=qualifying_stage):
@@ -122,6 +134,11 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             bucket['lead_ids'].append(row['id'])
             if row['qualified']:
                 bucket['qualified'] += 1
+            # PUB28 — signal qualité junk, DISTINCT de « non qualifié » (un
+            # lead junk est perdu pour une raison qui n'en a jamais fait un
+            # vrai prospect — voir MotifPerte.est_junk).
+            if row.get('junk'):
+                bucket['junk'] += 1
             if row['signed']:
                 bucket['signed'] += 1
                 bucket['signed_lead_ids'].append(row['id'])
@@ -133,6 +150,8 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             unresolved['lead_ids'].append(row['id'])
             if row['qualified']:
                 unresolved['qualified'] += 1
+            if row.get('junk'):
+                unresolved['junk'] += 1
             if row['signed']:
                 unresolved['signed'] += 1
         else:
@@ -173,6 +192,11 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             'cost_per_signature': cps,
             'lead_ids': bucket['lead_ids'],
             'signed_lead_ids': bucket['signed_lead_ids'],
+            # PUB28 — signal qualité junk PAR AD (numéro invalide/spam/hors
+            # zone/jamais répondu — voir MotifPerte.est_junk), distinct du
+            # simple « non qualifié ».
+            'junk': bucket['junk'],
+            'junk_rate': _rate(bucket['junk'], bucket['leads']),
             # ADSDEEP20 — signatures Odoo par ad (deals traçables).
             'odoo_signed': odoo.get('signatures', 0),
             'odoo_cost_per_signature': odoo.get('cost_per_signature'),

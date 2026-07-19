@@ -72,6 +72,10 @@ def variant_table(company, *, qualifying_stage=None):
             'cost_per_signature': v['cost_per_signature'],
             'lead_ids': v['lead_ids'],
             'signed_lead_ids': v['signed_lead_ids'],
+            # PUB28 — taux de junk PAR AD (signal qualité manquant au veto de
+            # divergence — voir crm.MotifPerte.est_junk).
+            'junk': v['junk'],
+            'junk_rate': v['junk_rate'],
         })
     return {
         'variants': variants,
@@ -207,11 +211,13 @@ def variant_table_csv(company, *, qualifying_stage=None):
     header = [
         'meta_id', 'name', 'spend', 'leads', 'qualified', 'signed',
         'cost_per_lead', 'cost_per_qualified_lead', 'cost_per_signature',
+        'junk', 'junk_rate',
     ]
     rows = [
         [v['meta_id'], v['name'], v['spend'], v['leads'], v['qualified'],
          v['signed'], v['cost_per_lead'] or '',
-         v['cost_per_qualified_lead'] or '', v['cost_per_signature'] or '']
+         v['cost_per_qualified_lead'] or '', v['cost_per_signature'] or '',
+         v['junk'], v['junk_rate'] if v['junk_rate'] is not None else '']
         for v in table['variants']
     ]
     return _csv_string(header, rows)
