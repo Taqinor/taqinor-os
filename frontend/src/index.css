@@ -6926,6 +6926,109 @@ textarea.form-control {
   margin-top: 0.75rem;
 }
 
+/* ── LW36 : AppointmentBooker (satellite embarqué par SectionVisite) —
+   30 blocs de style en ligne migrés vers tokens (recon 04 §2). Radius 6/8
+   -> --radius-sm/--radius-md (correspondance exacte, 6px/8px). ─────────── */
+.lw-booker {
+  margin-top: 0.75rem;
+}
+.lw-booker-upcoming {
+  margin-bottom: 0.5rem;
+}
+.lw-booker-upcoming-label {
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+  margin-bottom: 0.25rem;
+}
+.lw-booker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.lw-booker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  background: var(--muted);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-small);
+}
+.lw-booker-datetime {
+  font-weight: 500;
+}
+.lw-booker-notes {
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  flex: 1;
+}
+/* Actions texte discrètes (Agenda/Confirmer WhatsApp/Annuler) — jamais un
+   Button plein (trop lourd pour une ligne dense) : jeton de lien nu. */
+.lw-booker-link {
+  font-size: var(--text-caption);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.lw-booker-link--muted { color: var(--muted-foreground); }
+.lw-booker-link--success { color: var(--success); }
+.lw-booker-link--destructive { color: var(--destructive); }
+.lw-booker-link--push { margin-left: auto; }
+.lw-booker-link:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.lw-booker-wa-preview {
+  margin-top: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+}
+.lw-booker-wa-preview-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.lw-booker-wa-preview-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-family: inherit;
+}
+.lw-booker-wa-preview-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.lw-booker-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  padding: 0.625rem;
+  background: var(--muted);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+.lw-booker-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+}
+.lw-booker-field--date { flex: 1 1 180px; }
+.lw-booker-field--notes { flex: 2 1 200px; }
+.lw-booker-error {
+  width: 100%;
+  color: var(--destructive);
+  font-size: var(--text-caption);
+}
+.lw-booker-form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 /* ── LW25 : squelette d'ouverture (crossfade FadeSwap, en forme de grille) ── */
 
 /* Enveloppe de FadeSwap du corps (édition) : même remplissage flexible que
