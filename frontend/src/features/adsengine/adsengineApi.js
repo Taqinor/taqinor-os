@@ -268,6 +268,17 @@ const adsengineApi = {
     testLeads: (testId, params) =>
       api.get(`/adsengine/noeuds-hypothese/tests/${testId}/leads/`, { params }),
   },
+
+  // ── SIG1-4 — Console de signaux (dd-assumption-engine.md §11) ──
+  // Deux scores de santé (créatif vs opérations, poids fixes, jamais dans
+  // l'optimiseur) + quadrant de garde-fous DURS (fréquence/quality_ranking/
+  // CPL/qualité de compte — ne fait QUE freiner) + drill-down par cohorte
+  // (filigrane de maturation : proxy 7j → CPL 14-28j → signature 60-90j).
+  signals: {
+    get: (params) => api.get('/adsengine/signaux/', { params }),
+    // Détail par cohorte d'un signal donné ({ signal: 'creatif'|'operations', ... }).
+    cohort: (params) => api.get('/adsengine/signaux/cohorte/', { params }),
+  },
 }
 
 export default adsengineApi
