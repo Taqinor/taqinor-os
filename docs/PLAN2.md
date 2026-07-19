@@ -3768,7 +3768,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   colonne scrolle en interne, shift+molette pan le board ; en vue liste/calendrier/graphique le
   contenu scrolle sous des filtres épinglés ; mobile 375×812 : colonnes 85vw à scroll interne,
   tabbar intacte. (ROUTINE — M) (@model: sonnet) (@lane: LB0)
-- [ ] LB3 — **P1 : le StageMover ne ment plus « Signé ✓ Enregistré » (interception honnête).**
+- [x] LB3 — **P1 : le StageMover ne ment plus « Signé ✓ Enregistré » (interception honnête).**
   Bug recon2-03 #2 : `onInlineSave` intercepte CONVERSION_STAGE et renvoie `Promise.resolve()`
   (faux succès) → `useOptimisticSave` garde 'SIGNED' optimiste + « Enregistré » alors que seul le
   dialogue s'est ouvert. Fix (blueprint I3) : nouveau module
@@ -4171,6 +4171,16 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   hauteur RÉSOLUE (plus jamais AUTO), donc `.kb-col-body{overflow-y:auto;min-height:0}` déborde
   réellement au lieu de grandir sans fin. ForecastView (`.kb-board.fv-board`) hérite sans
   modification (mêmes classes). `.lw-page` non touché.
+- 2026-07-19 LB3 — interception « Signé » honnête (bug #2) : nouveau
+  `pages/crm/leads/signeIntercept.js` (sentinelle `SIGNE_INTERCEPT` Symbol + `isSigneIntercept`,
+  test node dédié vert). `LeadsPage.jsx#onInlineSave` renvoie désormais `Promise.reject(SIGNE_INTERCEPT)`
+  après avoir ouvert SigneDialog (au lieu d'un faux `Promise.resolve()`) : `useOptimisticSave`
+  fait son rollback normal (le select StageMover revient à l'étape réelle) et `InlineEdit`
+  (liste) restaure déjà par rejet — zéro cas spécial côté liste. Le SEUL cas spécial vit dans
+  `StageMover`'s `onError` (KanbanView.jsx) : avale la sentinelle via `isSigneIntercept(err)`
+  sans toaster, toute autre erreur toaste comme avant. 2 tests ajoutés à KanbanView.test.jsx
+  (sentinelle → rollback sans toast ; vraie erreur → rollback ET toast) — les 2 verts en
+  raisonnement, non exécutables ici (pas de node_modules dans ce worktree).
 
 ## Group F — Design foundation & tokens
 

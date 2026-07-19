@@ -35,6 +35,7 @@ import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
 import SigneDialog from './SigneDialog'
 import LeadExpressModal from './LeadExpressModal'
+import { SIGNE_INTERCEPT } from './signeIntercept'
 // VX186 — KanbanView reste STATIQUE (vue par défaut la plus fréquente, zéro
 // flash de chargement au premier rendu). Les 4 autres vues + Prévision sont
 // désormais `lazy` : LeadsPage était le PLUS GROS chunk de route du repo
@@ -379,12 +380,18 @@ export default function LeadsPage() {
   // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.
   // perform_update journalise ancien → nouveau dans l'Historique côté serveur.
   // Renvoie la promesse pour qu'InlineEdit restaure la valeur si ça échoue.
+  // LB3 — l'interception « Signé » est honnête (blueprint I3, bug #2) :
+  // A2 — passer un lead en « Signé » en place ouvre le dialogue d'acceptation
+  // (choix du devis + option) au lieu de modifier l'étape directement. Ancien
+  // code : `return Promise.resolve()` (faux succès) laissait useOptimisticSave
+  // GARDER l'étape optimiste 'SIGNED' + « Enregistré » alors que rien n'était
+  // enregistré. On REJETTE avec la sentinelle SIGNE_INTERCEPT : le select
+  // revient honnêtement à l'étape réelle (rollback), et l'onError de
+  // StageMover avale spécifiquement cette sentinelle sans toaster.
   const onInlineSave = (lead, field, value) => {
-    // A2 — passer un lead en « Signé » en place ouvre le dialogue d'acceptation
-    // (choix du devis + option) au lieu de modifier l'étape directement.
     if (field === 'stage' && value === CONVERSION_STAGE) {
       setSigneLead(lead)
-      return Promise.resolve()
+      return Promise.reject(SIGNE_INTERCEPT)
     }
     return dispatch(updateLead({ id: lead.id, data: { [field]: value } }))
       .unwrap()

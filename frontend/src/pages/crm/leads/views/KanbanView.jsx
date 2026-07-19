@@ -25,6 +25,7 @@ import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
 import { EmptyState } from '../../../../ui'
+import { isSigneIntercept } from '../signeIntercept'
 import LeadCard from './LeadCard'
 
 // VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
@@ -43,9 +44,18 @@ const STAGE_MOVE_OPTIONS = PIPELINE_STAGES.map(
 )
 
 export function StageMover({ lead, onInlineSave }) {
+  // LB3 — l'entrée dans SIGNED rejette avec la sentinelle SIGNE_INTERCEPT
+  // (signeIntercept.js) : ce n'est PAS une erreur (SigneDialog vient de
+  // s'ouvrir, useOptimisticSave fait son rollback normal — le select revient
+  // à l'étape réelle), donc on ne toaste QUE les vrais échecs réseau.
   const { value, statusLabel, isSaving, rowProps, save } = useOptimisticSave(
     lead.stage,
-    { onError: () => toast.error("Changement d'étape non enregistré — réessayez.") },
+    {
+      onError: (err) => {
+        if (isSigneIntercept(err)) return
+        toast.error("Changement d'étape non enregistré — réessayez.")
+      },
+    },
   )
   if (!onInlineSave) return null
   const onChange = (e) => {
