@@ -1249,6 +1249,15 @@ class Garage(models.Model):
         help_text="Identifiant Commun de l'Entreprise (15 chiffres).")
     identifiant_fiscal = models.CharField(
         max_length=20, blank=True, verbose_name='Identifiant fiscal (IF)')
+    # WIR90 — lien OPTIONNEL vers un `stock.Fournisseur` référencé (qui porte
+    # déjà ICE/IF/RC/RIB) : un garage n'est PLUS forcément un prestataire
+    # ponctuel — s'il coïncide avec un fournisseur existant, on pointe vers
+    # l'identité canonique par id NUMÉRIQUE (jamais un FK cross-app dur,
+    # modularité CLAUDE.md). null = garage ponctuel (repli sur la saisie libre
+    # nom/ICE/IF). Validation « même société » côté serveur via le sélecteur
+    # `apps.stock` (voir CoutVehicule.fournisseur_id_ref, même pattern).
+    fournisseur_id_ref = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Fournisseur (référentiel stock)')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -1266,10 +1275,18 @@ class Garage(models.Model):
 
     def clean(self):
         """XFLT26 — Valide le format de l'ICE (15 chiffres) s'il est
-        renseigné."""
+        renseigné. WIR90 — et l'appartenance société du fournisseur
+        référencé (repli sur la saisie libre si non renseigné)."""
         if self.ice and (len(self.ice) != 15 or not self.ice.isdigit()):
             raise ValidationError(
                 "L'ICE doit comporter exactement 15 chiffres.")
+        if self.fournisseur_id_ref is not None and self.company_id is not None:
+            from apps.stock.selectors import get_fournisseur_by_id
+            if get_fournisseur_by_id(
+                    self.company, self.fournisseur_id_ref) is None:
+                raise ValidationError(
+                    "Le fournisseur référencé n'appartient pas à la même "
+                    "société.")
 
     def __str__(self):
         return self.nom
@@ -3153,6 +3170,14 @@ class ContratVehicule(models.Model):
     fournisseur = models.CharField(
         max_length=150, blank=True,
         verbose_name='Fournisseur / bailleur')
+    # WIR90 — lien OPTIONNEL du bailleur/loueur vers un `stock.Fournisseur`
+    # référencé (par id NUMÉRIQUE, jamais un FK cross-app dur — modularité
+    # CLAUDE.md). Le CharField `fournisseur` reste la saisie libre par défaut ;
+    # renseigné, `fournisseur_id_ref` pointe vers l'identité canonique (ICE/IF/
+    # RC/RIB déjà portés par le fournisseur). Validation « même société » côté
+    # serveur via le sélecteur `apps.stock` (voir CoutVehicule, même pattern).
+    fournisseur_id_ref = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Fournisseur (référentiel stock)')
     garage = models.ForeignKey(
         'Garage',
         on_delete=models.SET_NULL,
@@ -3214,6 +3239,15 @@ class ContratVehicule(models.Model):
                 and self.date_fin < self.date_debut:
             raise ValidationError(
                 "La fin du contrat ne peut pas précéder le début.")
+        # WIR90 — le bailleur/loueur référencé (optionnel) doit appartenir à la
+        # même société ; le CharField `fournisseur` reste le repli en saisie libre.
+        if self.fournisseur_id_ref is not None and self.company_id is not None:
+            from apps.stock.selectors import get_fournisseur_by_id
+            if get_fournisseur_by_id(
+                    self.company, self.fournisseur_id_ref) is None:
+                raise ValidationError(
+                    "Le fournisseur référencé n'appartient pas à la même "
+                    "société.")
 
     def statut_calcule(self, today=None):
         """État RÉEL du contrat vs ``today`` (lecture seule, date injectable).
