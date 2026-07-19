@@ -151,6 +151,13 @@ export const AE_HOOKS = {
     decision: 'ae-sim-decision',
   },
 
+  // PUB54 — aide contextuelle FR statique (« ? »), zéro dépendance. Réutilisée
+  // par n'importe quel écran adsengine (voir MetricHelp.jsx METRIC_HELP).
+  metricHelp: {
+    togglePrefix: 'ae-metric-help-toggle-', // + clé de métrique
+    popoverPrefix: 'ae-metric-help-popover-', // + clé de métrique
+  },
+
   // PUB48 — cloche de notifications persistante de la console (historique
   // complet, snooze par alerte, lien vers l'entité). Montée sur Dashboard/
   // Rules/Reports/Approvals.

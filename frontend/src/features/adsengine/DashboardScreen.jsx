@@ -4,6 +4,7 @@ import { Bell, ExternalLink, Printer, Download } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
+import MetricHelp from './MetricHelp'
 import {
   formatMAD, formatMoney, formatNumber, formatRatio, formatPercent,
   normalizeAlerts, alertTone, normalizePacing, pacingStateTone,
@@ -154,6 +155,8 @@ const SIGNAL_CARDS = [
   { key: 'creatif', label: 'Santé créative' },
   { key: 'operations', label: 'Santé opérations' },
 ]
+// PUB54 — clé MetricHelp par carte de signal.
+const SIGNAL_METRIC_HELP_KEY = { creatif: 'sante_creative', operations: 'sante_operations' }
 
 export default function DashboardScreen() {
   const [metrics, setMetrics] = useState(null)
@@ -331,23 +334,32 @@ export default function DashboardScreen() {
           <div style={{ display: 'grid', gap: '1rem',
             gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', marginBottom: '1.25rem' }}>
             {NUMBERS.map(num => (
-              <button key={num.key} type="button"
-                className={`card ae-number ${num.hero ? 'ae-hero' : `ae-tile ae-tile-${num.key}`}`}
-                data-testid={num.hero ? 'ae-hero' : `ae-tile-${num.key}`}
-                onClick={() => openDrill(num)}
-                aria-label={`${num.label} — voir les leads`}
-                style={{ textAlign: 'left', cursor: 'pointer',
-                  gridColumn: num.hero ? '1 / -1' : 'auto',
-                  padding: num.hero ? '1.5rem' : '1rem', border: '1px solid #e2e8f0' }}>
-                <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{num.label}</div>
-                <div data-testid={`ae-value-${num.key}`}
-                  style={{ fontSize: num.hero ? '2.4rem' : '1.5rem', fontWeight: 700 }}>
-                  {fmtValue(num.fmt, metrics?.[num.key], metrics?.currency)}
+              // PUB54 — le « ? » d'aide vit HORS du bouton (jamais un bouton
+              // imbriqué dans un bouton) : la tuile-héro/bouton reste
+              // inchangée (mêmes hooks ae-*), le « ? » est un frère positionné
+              // en coin.
+              <div key={num.key} style={{ position: 'relative',
+                gridColumn: num.hero ? '1 / -1' : 'auto' }}>
+                <button type="button"
+                  className={`card ae-number ${num.hero ? 'ae-hero' : `ae-tile ae-tile-${num.key}`}`}
+                  data-testid={num.hero ? 'ae-hero' : `ae-tile-${num.key}`}
+                  onClick={() => openDrill(num)}
+                  aria-label={`${num.label} — voir les leads`}
+                  style={{ textAlign: 'left', cursor: 'pointer', width: '100%',
+                    padding: num.hero ? '1.5rem' : '1rem', border: '1px solid #e2e8f0' }}>
+                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{num.label}</div>
+                  <div data-testid={`ae-value-${num.key}`}
+                    style={{ fontSize: num.hero ? '2.4rem' : '1.5rem', fontWeight: 700 }}>
+                    {fmtValue(num.fmt, metrics?.[num.key], metrics?.currency)}
+                  </div>
+                  <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>
+                    Voir les leads →
+                  </div>
+                </button>
+                <div style={{ position: 'absolute', top: num.hero ? '1.1rem' : '0.7rem', right: '0.7rem' }}>
+                  <MetricHelp metric={num.key} label={num.label} />
                 </div>
-                <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>
-                  Voir les leads →
-                </div>
-              </button>
+              </div>
             ))}
           </div>
 
@@ -370,7 +382,10 @@ export default function DashboardScreen() {
 
                 <div className="card" data-testid="ae-dv2-mer"
                   style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
-                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>MER mixte ({v2.window_days} j)</div>
+                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                    MER mixte ({v2.window_days} j)
+                    <MetricHelp metric="mer" label="MER mixte" />
+                  </div>
                   <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.2rem 0.6rem',
                     margin: '0.35rem 0 0', fontSize: '1.05rem' }}>
                     <dt style={{ color: '#64748b', fontWeight: 400 }}>Dépense Meta</dt>
@@ -461,22 +476,34 @@ export default function DashboardScreen() {
                 <div style={{ display: 'grid', gap: '1rem',
                   gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', marginBottom: '1rem' }}>
                   <div className="card" data-testid="ae-pacing-enveloppe" style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
-                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Enveloppe du mois</div>
+                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                      Enveloppe du mois
+                      <MetricHelp metric="pacing_enveloppe" label="Enveloppe du mois" />
+                    </div>
                     <div style={{ fontSize: '1.4rem', fontWeight: 700 }} data-testid="ae-pacing-enveloppe-val">
                       {formatMAD(pacing.enveloppe_mad)}</div>
                   </div>
-                  {/* Burn : cliquable vers le détail des dépenses */}
-                  <button type="button" className="card ae-pacing-burn" data-testid="ae-pacing-burn"
-                    onClick={() => setPacingDetailOpen(o => !o)}
-                    aria-label="Dépense engagée — voir le détail"
-                    style={{ textAlign: 'left', cursor: 'pointer', padding: '1rem', border: '1px solid #e2e8f0' }}>
-                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Dépense engagée (burn)</div>
-                    <div style={{ fontSize: '1.4rem', fontWeight: 700 }} data-testid="ae-pacing-burn-val">
-                      {formatMAD(pacing.depense_mad)}</div>
-                    <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>Voir le détail →</div>
-                  </button>
+                  {/* Burn : cliquable vers le détail des dépenses. Le « ? »
+                      vit HORS du bouton (jamais un bouton dans un bouton). */}
+                  <div style={{ position: 'relative' }}>
+                    <button type="button" className="card ae-pacing-burn" data-testid="ae-pacing-burn"
+                      onClick={() => setPacingDetailOpen(o => !o)}
+                      aria-label="Dépense engagée — voir le détail"
+                      style={{ textAlign: 'left', cursor: 'pointer', width: '100%', padding: '1rem', border: '1px solid #e2e8f0' }}>
+                      <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Dépense engagée (burn)</div>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 700 }} data-testid="ae-pacing-burn-val">
+                        {formatMAD(pacing.depense_mad)}</div>
+                      <div style={{ color: '#2563eb', fontSize: '0.8rem', marginTop: '0.3rem' }}>Voir le détail →</div>
+                    </button>
+                    <div style={{ position: 'absolute', top: '0.7rem', right: '0.7rem' }}>
+                      <MetricHelp metric="pacing_burn" label="Dépense engagée (burn)" />
+                    </div>
+                  </div>
                   <div className="card" data-testid="ae-pacing-projection" style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
-                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Projection fin de mois</div>
+                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                      Projection fin de mois
+                      <MetricHelp metric="pacing_projection" label="Projection fin de mois" />
+                    </div>
                     <div style={{ fontSize: '1.4rem', fontWeight: 700 }} data-testid="ae-pacing-projection-val">
                       {formatMAD(pacing.projection_mad)}</div>
                     {pacing.jours_restants != null && (
@@ -485,7 +512,10 @@ export default function DashboardScreen() {
                     )}
                   </div>
                   <div className="card" data-testid="ae-pacing-etat" style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
-                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>État</div>
+                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                      État
+                      <MetricHelp metric="pacing_etat" label="État du rythme" />
+                    </div>
                     <span className="badge" data-testid="ae-pacing-etat-val"
                       style={{ ...(() => { const t = pacingStateTone(pacing.etat); return { background: t.bg, color: t.color } })(),
                         fontSize: '1rem', marginTop: '0.3rem', display: 'inline-block' }}>
@@ -525,6 +555,10 @@ export default function DashboardScreen() {
       {/* ── Réconciliation Meta-vs-ERP (ENG31/ENG42) ── */}
       {tab === 'reconciliation' && (
         <section className="ae-recon" data-testid="ae-recon">
+          <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '0 0 0.75rem' }}>
+            Réconciliation Meta ↔ ERP
+            <MetricHelp metric="reconciliation" label="Réconciliation Meta ↔ ERP" />
+          </p>
           {recon.length === 0
             ? <p data-testid="ae-recon-empty" style={{ color: '#64748b' }}>
                 Aucune ligne de réconciliation.</p>
@@ -619,27 +653,36 @@ export default function DashboardScreen() {
                   {SIGNAL_CARDS.map(sc => {
                     const data = signals[sc.key]
                     const tone = bandTone(data.bande)
+                    // PUB54 — le « ? » vit HORS du bouton (jamais imbriqué).
                     return (
-                      <button key={sc.key} type="button" className="card ae-signal-score"
-                        data-testid={`ae-signal-${sc.key}`}
-                        onClick={() => openSignalDrill(sc.key, sc.label)}
-                        aria-label={`${sc.label} — voir le détail par cohorte`}
-                        style={{ textAlign: 'left', cursor: 'pointer', padding: '1rem', border: '1px solid #e2e8f0' }}>
-                        <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{sc.label}</div>
-                        <div data-testid={`ae-signal-${sc.key}-score`} style={{ fontSize: '1.6rem', fontWeight: 700 }}>
-                          {formatRatio(data.score)}
+                      <div key={sc.key} style={{ position: 'relative' }}>
+                        <button type="button" className="card ae-signal-score"
+                          data-testid={`ae-signal-${sc.key}`}
+                          onClick={() => openSignalDrill(sc.key, sc.label)}
+                          aria-label={`${sc.label} — voir le détail par cohorte`}
+                          style={{ textAlign: 'left', cursor: 'pointer', width: '100%', padding: '1rem', border: '1px solid #e2e8f0' }}>
+                          <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{sc.label}</div>
+                          <div data-testid={`ae-signal-${sc.key}-score`} style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+                            {formatRatio(data.score)}
+                          </div>
+                          <span className="badge" data-testid={`ae-signal-${sc.key}-bande`}
+                            style={{ background: tone.bg, color: tone.color }}>
+                            {data.bande_display}
+                          </span>
+                        </button>
+                        <div style={{ position: 'absolute', top: '0.7rem', right: '0.7rem' }}>
+                          <MetricHelp metric={SIGNAL_METRIC_HELP_KEY[sc.key]} label={sc.label} />
                         </div>
-                        <span className="badge" data-testid={`ae-signal-${sc.key}-bande`}
-                          style={{ background: tone.bg, color: tone.color }}>
-                          {data.bande_display}
-                        </span>
-                      </button>
+                      </div>
                     )
                   })}
                 </div>
 
                 {/* SIG2 — quadrant de garde-fous DURS (ne fait QUE freiner) */}
-                <h3 style={{ margin: '0 0 0.6rem' }}>Quadrant de garde-fous durs</h3>
+                <h3 style={{ margin: '0 0 0.6rem' }}>
+                  Quadrant de garde-fous durs
+                  <MetricHelp metric="guardrail_quadrant" label="Quadrant de garde-fous durs" />
+                </h3>
                 {signals.guardrails.length === 0
                   ? <p data-testid="ae-guardrail-empty" style={{ color: '#64748b' }}>Aucun garde-fou.</p>
                   : (

@@ -9,6 +9,7 @@ import {
 import DataWindowNotice from './DataWindowNotice'
 import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
+import MetricHelp from './MetricHelp'
 
 /* ============================================================================
    ENG45 — Drill-downs reporting (consomme ENG33).
@@ -313,7 +314,9 @@ export default function ReportsScreen() {
                       <thead>
                         <tr>
                           <th>Tag</th><th>Dépense</th><th>Résultats</th>
-                          <th>Coût / résultat</th><th>Hook rate (pondéré)</th><th>Ads</th>
+                          <th>Coût / résultat<MetricHelp metric="cost_per_result" label="Coût / résultat" /></th>
+                          <th>Hook rate (pondéré)<MetricHelp metric="hook_rate" label="Hook rate" /></th>
+                          <th>Ads</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -346,7 +349,9 @@ export default function ReportsScreen() {
                   : (
                     <table className="data-table" data-testid="ae-creatifs-scatter-table">
                       <thead>
-                        <tr><th>Ad</th><th>Dépense</th><th>Hook rate</th><th>Quadrant</th></tr>
+                        <tr><th>Ad</th><th>Dépense</th>
+                          <th>Hook rate<MetricHelp metric="hook_rate" label="Hook rate" /></th>
+                          <th>Quadrant</th></tr>
                       </thead>
                       <tbody>
                         {scatter.points.map(p => (

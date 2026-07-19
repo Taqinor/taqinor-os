@@ -204,6 +204,16 @@ describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {
     expect(await screen.findByTestId('ae-creatifs-leaderboard-empty')).toBeInTheDocument()
     expect(screen.getByTestId('ae-creatifs-scatter-empty')).toBeInTheDocument()
   })
+
+  // PUB54 — aide contextuelle FR sur les métriques techniques (hook rate,
+  // coût par résultat).
+  it('le classement et le nuage ont leur « ? » sur hook rate / coût par résultat', async () => {
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-creatifs').click()
+    await screen.findAllByTestId('ae-creatifs-leaderboard-row')
+    expect(screen.getByTestId('ae-metric-help-toggle-cost_per_result')).toBeInTheDocument()
+    expect(screen.getAllByTestId('ae-metric-help-toggle-hook_rate').length).toBe(2)
+  })
 })
 
 describe('ReportsScreen — onglet Audit de compte (ADSDEEP63)', () => {
