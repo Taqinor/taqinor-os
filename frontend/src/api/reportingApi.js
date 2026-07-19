@@ -86,6 +86,12 @@ const reportingApi = {
   // FG99 — Rentabilité par segment (admin).
   profitability: (params) =>
     api.get('/reporting/insights/profitability/', { params }),
+  // FG29 — Vélocité par étape du pipeline (durée moyenne + leads en attente
+  // par étape). Distinct de `sales_velocity` (délai global lead→signature).
+  funnelVelocity: () => api.get('/reporting/pipeline/velocity/'),
+  // ARC40 — KPI fédérés : tuiles agrégées des providers `kpi_providers`
+  // déclarés par les modules actifs (rh/paie/contrats/compta…).
+  kpiFederes: () => api.get('/reporting/reports/kpi-federes/'),
   // QJ18 — Tableau de bord commercial (entonnoir, vélocité, classement).
   commercialDashboard: (params) =>
     api.get('/reporting/commercial/dashboard/', { params }),

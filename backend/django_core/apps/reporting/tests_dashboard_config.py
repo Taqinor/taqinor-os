@@ -106,6 +106,19 @@ class DashboardConfigCreateTests(TestCase):
         res = self.api.post(BASE_URL, payload, format='json')
         self.assertEqual(res.status_code, 201, res.data)
 
+    def test_kpi_federes_card_key_is_registered_and_valid(self):
+        """WIR100 — la clé 'kpi_federes' (tuiles KPI agrégées des modules
+        actifs, ARC40) est enregistrée dans ALL_DASHBOARD_CARDS et acceptée
+        par la validation serveur des clés de carte."""
+        self.assertIn('kpi_federes', ALL_DASHBOARD_CARDS)
+        payload = {
+            'user': self.admin.pk,
+            'menu_tier': '',
+            'cards': ['kpis', 'kpi_federes'],
+        }
+        res = self.api.post(BASE_URL, payload, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+
     def test_user_and_menu_tier_together_rejected(self):
         payload = {
             'user': self.admin.pk,

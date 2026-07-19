@@ -202,10 +202,18 @@ export function Component() {
   const [caWindowMonths, setCaWindowMonths] = useState('12')
   // VX41 — comparaison togglable « période précédente » (off par défaut).
   const [caCompare, setCaCompare] = useState(false)
+  // WIR100(b) — KPI fédérés (ARC40) : tuiles agrégées des modules actifs.
+  const [kpiFederes, setKpiFederes] = useState(null)
 
   useEffect(() => {
     dispatch(fetchDashboard())
   }, [dispatch])
+
+  useEffect(() => {
+    reportingApi.kpiFederes()
+      .then(r => setKpiFederes(r.data?.tuiles || []))
+      .catch(() => setKpiFederes(null))
+  }, [])
 
   const caWindow = useMemo(() => {
     if (!data?.ca_mensuel) return []
@@ -524,6 +532,25 @@ export function Component() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── WIR100(b) — KPI fédérés (ARC40) : tuiles agrégées des providers
+          `kpi_providers` des modules actifs (rh/paie/contrats/compta…). ── */}
+      {kpiFederes && kpiFederes.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader><CardTitle>KPI fédérés</CardTitle></CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {kpiFederes.map((t) => (
+                <Stat
+                  key={t.id}
+                  label={t.label}
+                  value={t.unite ? `${formatNumber(t.valeur)} ${t.unite}` : formatNumber(t.valeur)}
+                />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Créances clients ── */}
       {creances.length > 0 && (

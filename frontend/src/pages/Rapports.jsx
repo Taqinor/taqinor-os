@@ -441,6 +441,8 @@ export function Component() {
   const [commissions, setCommissions] = useState(null)
   // WIR22 — contrôle d'intégrité inter-documents (YSERV13).
   const [integrite, setIntegrite] = useState(null)
+  // WIR100(c) — rentabilité par segment (FG99, admin uniquement, export xlsx).
+  const [profitability, setProfitability] = useState(null)
   // État par carte : 'loading' | 'ok' | 'error'.
   const [status, setStatus] = useState({})
   // Période optionnelle (?from=&to=) appliquée à ventes/stock/service.
@@ -506,6 +508,8 @@ export function Component() {
     load('commissions', reportingApi.commissions(), setCommissions)
     // WIR22 — réservé responsable/admin (backend IsResponsableOrAdmin).
     load('integrite', reportingApi.integriteInsight(), setIntegrite)
+    // WIR100(c) — réservé admin (un 403 est traité comme « erreur »).
+    load('profitability', reportingApi.profitability(), setProfitability)
   }, [load])
 
   // Paramètres de filtre du Journal (envoyés à l'endpoint et à l'export).
@@ -952,6 +956,29 @@ export function Component() {
                                   fmt(sumBy(commissions.rows, 'base')),
                                   fmt(sumBy(commissions.rows, 'commission'))]} />
                 </>
+              )}
+            </InsightCard>
+
+            {/* WIR100(c) — Rentabilité par segment (FG99) : CA/marge agrégés par
+                type d'installation. Admin uniquement (marge = donnée interne,
+                jamais client-facing), export xlsx. */}
+            <InsightCard title="Rentabilité par segment"
+                         note="(interne — visible admin)"
+                         onExport={profitability?.rows?.length
+                           ? exportInsight('profitability') : undefined}
+                         busy={insightExportBusy.profitability}>
+              {status.profitability === 'error' && (
+                <p className="text-sm text-muted-foreground">Réservé admin.</p>
+              )}
+              {profitability && (profitability.rows || []).length === 0 && (
+                <p className="text-sm text-muted-foreground">Aucune donnée.</p>
+              )}
+              {profitability && (profitability.rows || []).length > 0 && (
+                <Table headers={['Segment', 'Chantiers', 'CA HT', 'Marge', 'Marge %']}
+                       rows={profitability.rows.map(r => [
+                         r.segment_value, fmt(r.count), `${fmt(r.revenue_ht)} DH`,
+                         `${fmt(r.margin)} DH`, `${r.margin_pct} %`,
+                       ])} />
               )}
             </InsightCard>
 
