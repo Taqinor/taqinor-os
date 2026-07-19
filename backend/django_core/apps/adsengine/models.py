@@ -16,6 +16,8 @@ horodatage) et les ViewSets de ``core.viewsets.CompanyScopedModelViewSet``.
 """
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
+from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from core.models import TenantModel
@@ -142,6 +144,24 @@ class GuardrailConfig(TenantModel):
         default=20, verbose_name="Plancher d'exploration (MAD/jour)")
     exploration_floor_pct = models.PositiveIntegerField(
         default=20, verbose_name="Plancher d'exploration (%)")
+
+    # ── SIG1 — Poids FIXES des DEUX scores de santé (§11 : une vente lente
+    # côté opérations ne doit JAMAIS salir l'allocation créative — d'où deux
+    # scores séparés plutôt qu'un composite). Poids config-driven,
+    # RÉVISÉS TRIMESTRIELLEMENT par un humain, JAMAIS appris (Goodhart : un
+    # poids CTR appris pousserait au clickbait, un poids conversations au
+    # curieux — §11 « le composite reste HORS de l'optimiseur »). Chaque paire
+    # (créatif : ctr+freshness ; opérations : cpl+delivery) est pondérée en
+    # moyenne relative — la somme n'a PAS besoin de faire 100, ``health.py``
+    # normalise par la somme des poids.
+    health_creative_weight_ctr = models.PositiveIntegerField(
+        default=60, verbose_name='Santé créatif — poids CTR')
+    health_creative_weight_freshness = models.PositiveIntegerField(
+        default=40, verbose_name='Santé créatif — poids fraîcheur')
+    health_ops_weight_cpl = models.PositiveIntegerField(
+        default=60, verbose_name='Santé opérations — poids CPL')
+    health_ops_weight_delivery = models.PositiveIntegerField(
+        default=40, verbose_name='Santé opérations — poids livraison')
 
     class Meta:
         verbose_name = 'Garde-fous publicitaires'
@@ -1301,6 +1321,21 @@ class CreativeGenerationBatch(TenantModel):
         null=True, blank=True, verbose_name='Décidé le')
     note = models.TextField(blank=True, default='', verbose_name='Note')
 
+    # ── AGEN1 — Audit de génération ancrée (§10.2 point 6 : "version table de
+    # faits, verdicts par claim, décisions, statuts Meta, id du bras" —
+    # rollback = pause + décote posterior + quarantaine gabarit). Ces champs
+    # sont posés par le PIPELINE de génération (AGEN2+/AGEN9), jamais par un
+    # client API (lecture seule côté serializer).
+    fact_table_version = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Version de la table de faits utilisée')
+    claim_verdicts = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Verdicts par claim (numérique/groundedness)')
+    template_quarantined = models.BooleanField(
+        default=False,
+        verbose_name='Gabarit en quarantaine (rollback AGEN9)')
+
     class Meta:
         verbose_name = 'Lot de génération créative'
         verbose_name_plural = 'Lots de génération créative'
@@ -1951,3 +1986,225 @@ class InstagramPublishJob(TenantModel):
 
     def __str__(self):
         return f'Publication IG {self.get_status_display()} ({self.media_type or "?"})'
+
+
+class AssumptionNode(TenantModel):
+    """ASG1 — Nœud de l'Assumption Engine : une hypothèse marketing testée en
+    continu (dd-assumption-engine §3.1).
+
+    Porte un posterior Beta(``alpha``, ``beta``) sur son taux relatif au
+    champion, et le prior Beta(``alpha0``, ``beta0``) vers lequel le posterior
+    s'oublie chaque semaine sans test (§3.2, ASG2). La CLASSE fixe la demi-vie
+    canonique de l'oubli — H = 8 sem (créatif), 13 sem (angle), 26 sem
+    (audience/structure), voir ``HALF_LIFE_WEEKS``. ``tags_saison`` porte un
+    contexte saisonnier (Ramadan, été…) : **ce n'est PAS de l'oubli** — un nœud
+    saisonnier garde des posteriors SÉPARÉS par saison, réactivés quand la
+    saison revient (§3.2 dernière phrase).
+
+    L'arbre est un DAG léger, pas un arbre pur (§3.5) : ``parent`` porte la
+    hiérarchie (utilisée par la cascade d'invalidation, ASG4 — bascule d'un
+    parent ⇒ enfants candidats périmés) ; ``invalidation_links`` porte des
+    arêtes NON hiérarchiques (« si ce nœud bascule, celui-là aussi devient
+    suspect ») pour les interactions que l'arbre one-variable-at-a-time rate.
+    """
+
+    class Classe(models.TextChoices):
+        CREATIF = 'creatif', 'Créatif'
+        ANGLE = 'angle', 'Angle'
+        AUDIENCE_STRUCTURE = 'audience_structure', 'Audience / structure'
+
+    class Statut(models.TextChoices):
+        ASSUMED = 'assumed', 'Supposé'
+        TESTING = 'testing', 'En test'
+        VALIDATED = 'validated', 'Validé'
+        STALE = 'stale', 'Périmé'
+        RETIRED = 'retired', 'Retiré'
+
+    # §3.2 — demi-vie canonique PAR CLASSE (en semaines). Défauts raisonnés
+    # depuis l'évidence de décroissance, PAS des constantes de la nature
+    # (§8.1) : ASG37 (tests terrain) les recalibrera sur données réelles après
+    # 2-3 trimestres.
+    HALF_LIFE_WEEKS = {
+        Classe.CREATIF: 8,
+        Classe.ANGLE: 13,
+        Classe.AUDIENCE_STRUCTURE: 26,
+    }
+
+    classe = models.CharField(
+        max_length=20, choices=Classe.choices, verbose_name='Classe')
+    enonce_fr = models.TextField(verbose_name='Énoncé (FR)')
+    # S — enjeux : part du budget (pondérée revenu) que la réponse pilote.
+    enjeux_s = models.FloatField(
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        verbose_name='Enjeux (S)')
+    # R — pertinence-décision : une réponse changerait-elle une action ?
+    pertinence_r = models.FloatField(
+        validators=[MinValueValidator(0.0), MaxValueValidator(1.0)],
+        verbose_name='Pertinence-décision (R)')
+    tags_saison = models.JSONField(
+        default=list, blank=True,
+        verbose_name=(
+            'Tags saison (ex. ramadan, ete — posteriors séparés, PAS'
+            " de l'oubli)"))
+    parent = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='children', verbose_name='Nœud parent')
+    invalidation_links = models.ManyToManyField(
+        'self', symmetrical=False, blank=True,
+        related_name='invalidated_by',
+        verbose_name="Liens d'invalidation (DAG, hors hiérarchie)")
+    # Posterior courant Beta(alpha, beta) — actualisé par les tests (ASG3) et
+    # oublié chaque semaine sans test vers le prior (ASG2, §3.2).
+    alpha = models.FloatField(default=1.0, verbose_name='Posterior α')
+    beta = models.FloatField(default=1.0, verbose_name='Posterior β')
+    # Prior Beta(alpha0, beta0) — cible de l'oubli ; démarrage à froid (§3.4).
+    alpha0 = models.FloatField(default=1.0, verbose_name='Prior α₀')
+    beta0 = models.FloatField(default=1.0, verbose_name='Prior β₀')
+    # Stockée explicitement (queryable) même si dérivée par défaut de la
+    # classe dans clean() — une valeur déjà posée (override) n'est jamais
+    # écrasée : seule une valeur ABSENTE reçoit le défaut de sa classe.
+    demi_vie_semaines = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Demi-vie (semaines) — défaut classe, surchargeable')
+    last_tested_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernier test le')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.ASSUMED,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Nœud hypothèse'
+        verbose_name_plural = 'Nœuds hypothèse'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='adseng_asgnode_co_st_idx'),
+        ]
+
+    def clean(self):
+        # Demi-vie : défaut de la classe si non fournie (jamais si déjà
+        # posée — c'est l'"override" du §3.2/§8.1).
+        if self.demi_vie_semaines is None and self.classe:
+            self.demi_vie_semaines = self.HALF_LIFE_WEEKS.get(self.classe)
+        errors = {}
+        if self.enjeux_s is not None and not (0.0 <= self.enjeux_s <= 1.0):
+            errors['enjeux_s'] = [
+                "L'enjeu (S) doit être compris entre 0 et 1."]
+        if self.pertinence_r is not None and not (
+                0.0 <= self.pertinence_r <= 1.0):
+            errors['pertinence_r'] = [
+                'La pertinence-décision (R) doit être comprise entre 0 et 1.']
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f'{self.get_classe_display()} — {self.enonce_fr[:40]}'
+
+
+class FactTable(TenantModel):
+    """AGEN1 — Table de faits VERSIONNÉE d'une société (dd-assumption-engine
+    §10.2 point 1 : « génération ANCRÉE sur la table de faits »).
+
+    **AUCUN chiffre publiable ne doit exister hors de cette table** : c'est la
+    SEULE source de vérité numérique pour la génération créative (Palier
+    A/B — chaque claim numérique d'une pub générée cite une ``FactEntry`` de
+    la version PUBLIÉE ; AGEN3 le fait respecter par un linter). Une seule
+    table peut être publiée par société à la fois (``uniq_adseng_facttable_
+    one_published`` — index partiel Postgres) ; publier une nouvelle version
+    dépublie automatiquement l'ancienne (:meth:`publish`, jamais deux tables
+    "actives" en même temps). La version n'est JAMAIS un ``count()+1`` côté
+    client — toujours plus-haute-utilisée+1, posée par :meth:`create_draft`
+    (même discipline que ``apps/ventes/utils/references.py``).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        PUBLIEE = 'publiee', 'Publiée'
+
+    version = models.PositiveIntegerField(verbose_name='Version')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Table de faits'
+        verbose_name_plural = 'Tables de faits'
+        ordering = ['-version']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'version'],
+                name='uniq_adseng_facttable_co_version'),
+            models.UniqueConstraint(
+                fields=['company'], condition=models.Q(statut='publiee'),
+                name='uniq_adseng_facttable_one_published'),
+        ]
+
+    @classmethod
+    def create_draft(cls, company):
+        """AGEN1 — Nouveau brouillon, version = plus-haute-utilisée+1 pour
+        cette société (JAMAIS ``count()+1`` — une table archivée ne doit
+        jamais faire collision)."""
+        from django.db import transaction
+        with transaction.atomic():
+            last = (cls.objects.select_for_update()
+                    .filter(company=company).order_by('-version').first())
+            next_version = (last.version + 1) if last else 1
+            return cls.objects.create(
+                company=company, version=next_version,
+                statut=cls.Statut.BROUILLON)
+
+    @classmethod
+    def published_for(cls, company):
+        """AGEN1 — La table PUBLIÉE active de la société, ou ``None``."""
+        return cls.objects.filter(
+            company=company, statut=cls.Statut.PUBLIEE).first()
+
+    def publish(self):
+        """AGEN1 — Publie CETTE table : dépublie toute autre table publiée de
+        la société (une seule active à la fois — "publier supersède")."""
+        from django.db import transaction
+        with transaction.atomic():
+            FactTable.objects.filter(
+                company_id=self.company_id, statut=self.Statut.PUBLIEE,
+            ).exclude(pk=self.pk).update(statut=self.Statut.BROUILLON)
+            self.statut = self.Statut.PUBLIEE
+            self.save(update_fields=['statut'])
+        return self
+
+    def __str__(self):
+        return f'Table de faits v{self.version} ({self.get_statut_display()})'
+
+
+class FactEntry(TenantModel):
+    """AGEN1 — Une entrée VÉRIFIÉE d'une :class:`FactTable` (une clé → une
+    valeur + unité + source + date de vérification).
+
+    Unique par ``(table, cle)`` — une même table ne porte jamais deux valeurs
+    pour la même clé. ``valeur`` reste un ``CharField`` (unité libre :
+    pourcentage, MAD, texte…) plutôt qu'un ``DecimalField`` figé — le linter
+    numérique (AGEN3) interprète la valeur au moment du contrôle, pas le
+    modèle."""
+
+    table = models.ForeignKey(
+        'adsengine.FactTable', on_delete=models.CASCADE,
+        related_name='entries', verbose_name='Table de faits')
+    cle = models.CharField(max_length=100, verbose_name='Clé')
+    valeur = models.CharField(max_length=255, verbose_name='Valeur')
+    unite = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Unité')
+    source = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Source')
+    verifie_le = models.DateField(verbose_name='Vérifié le')
+
+    class Meta:
+        verbose_name = 'Fait'
+        verbose_name_plural = 'Faits'
+        ordering = ['cle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['table', 'cle'], name='uniq_adseng_factentry_table_cle'),
+        ]
+
+    def __str__(self):
+        suffix = f' {self.unite}' if self.unite else ''
+        return f'{self.cle} = {self.valeur}{suffix}'
