@@ -137,6 +137,10 @@ const marketingApi = {
     scansParSupport: () =>
       api.get('/marketing/supports-offline/scans-par-support/'),
   },
+
+  // ── WIR161 — Journal d'appels commercial / click-to-call log (FG208) ──
+  // `company`/`auteur` posés côté serveur (jamais lus du corps de requête).
+  appels: resource('appels'),
 }
 
 export default marketingApi

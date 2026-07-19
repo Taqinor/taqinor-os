@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   LayoutDashboard, CalendarDays, Megaphone, Workflow, Users2, ListChecks,
-  CalendarClock, ClipboardList, Gift,
+  CalendarClock, ClipboardList, Gift, PhoneCall,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -54,6 +54,8 @@ const FideliteList = lazy(() => import('./FideliteList'))
 // NTMKT10 — supports offline QR (XMKT29), lié depuis Paramètres → Marketing
 // (`DomaineEnvoi.jsx`, `frontend/src/features/parametres/`) — pas de nav ici.
 const SupportsOffline = lazy(() => import('./SupportsOffline'))
+// WIR161 — journal d'appels commercial (click-to-call log, FG208).
+const JournalAppelsScreen = lazy(() => import('./JournalAppelsScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -71,6 +73,7 @@ const config = {
       { to: '/marketing/evenements', label: 'Événements', icon: <CalendarClock size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/enquetes', label: 'Enquêtes', icon: <ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/fidelite', label: 'Fidélité', icon: <Gift size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/marketing/appels', label: "Journal d'appels", icon: <PhoneCall size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/parametres/marketing', label: "Domaine d'envoi", icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/calendrier', label: 'Calendrier marketing', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
@@ -85,6 +88,7 @@ const config = {
     ['/marketing/evenements', 'Événements marketing'],
     ['/marketing/enquetes', 'Enquêtes'],
     ['/marketing/fidelite', 'Fidélité'],
+    ['/marketing/appels', "Journal d'appels"],
     ['/marketing/supports-offline', 'Supports offline (QR)'],
     ['/marketing', 'Tableau de bord marketing'],
   ],
@@ -103,6 +107,7 @@ const config = {
     { path: '/marketing/enquetes', component: EnquetesList, roles: ROLES },
     { path: '/marketing/enquetes/:id', component: EnqueteResultats, roles: ROLES },
     { path: '/marketing/fidelite', component: FideliteList, roles: ROLES },
+    { path: '/marketing/appels', component: JournalAppelsScreen, roles: ROLES },
     { path: '/marketing/supports-offline', component: SupportsOffline, roles: ROLES },
   ],
 }
