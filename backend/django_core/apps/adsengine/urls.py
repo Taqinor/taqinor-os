@@ -11,7 +11,8 @@ from rest_framework.routers import DefaultRouter
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
-    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AnomalyEventViewSet,
+    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AlertSnoozeView,
+    AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet, ConversationsPerAdView,
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
@@ -140,6 +141,10 @@ urlpatterns = [
     # budgétaire, fatigue, tracking, fenêtres de données), 100 % lecture.
     path('reporting/audit/', AccountAuditView.as_view(),
          name='adsengine-reporting-audit'),
+    # PUB48 — reporte UNE alerte (snooze) jusqu'à une date ; ne masque QUE la
+    # liste active (``history()`` reste complet).
+    path('alertes/<int:alert_id>/snooze/', AlertSnoozeView.as_view(),
+         name='adsengine-alerte-snooze'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).

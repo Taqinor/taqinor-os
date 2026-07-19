@@ -6,6 +6,7 @@ import {
   actionWarnings, editCopyDiff,
 } from './adsengine'
 import EditCopyComposer from './EditCopyComposer'
+import AlertCenter from './AlertCenter'
 
 /* ============================================================================
    ENG25 — Boîte d'approbation (l'écran-vaisseau-amiral).
@@ -121,13 +122,17 @@ export default function ApprovalsScreen() {
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <ClipboardCheck size={20} aria-hidden="true" /> Boîte d&apos;approbation
         </h2>
-        <button type="button" className="btn btn-light ae-toggle-composer"
-          data-testid="ae-toggle-composer"
-          onClick={() => setShowComposer(v => !v)}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-          <PlusCircle size={15} aria-hidden="true" />
-          {showComposer ? 'Fermer le composeur' : "Éditer le texte d'une ad"}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button type="button" className="btn btn-light ae-toggle-composer"
+            data-testid="ae-toggle-composer"
+            onClick={() => setShowComposer(v => !v)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+            <PlusCircle size={15} aria-hidden="true" />
+            {showComposer ? 'Fermer le composeur' : "Éditer le texte d'une ad"}
+          </button>
+          {/* PUB48 — centre de notifications persistant de la console */}
+          <AlertCenter />
+        </div>
       </div>
 
       {showComposer && (

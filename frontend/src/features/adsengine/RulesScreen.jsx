@@ -6,6 +6,7 @@ import {
   alertTone,
 } from './adsengine'
 import { formatDateTime } from '../../lib/format'
+import AlertCenter from './AlertCenter'
 
 /* ============================================================================
    PUB23 — Armer/désarmer une règle depuis la console.
@@ -136,10 +137,12 @@ export default function RulesScreen() {
 
   return (
     <div className="page ae-rules">
-      <div className="page-header">
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <SlidersHorizontal size={20} aria-hidden="true" /> Règles &amp; anomalies
         </h2>
+        {/* PUB48 — centre de notifications persistant de la console */}
+        <AlertCenter />
       </div>
 
       {err && <p data-testid="ae-rules-err" style={{ color: '#dc2626' }}>{err}</p>}

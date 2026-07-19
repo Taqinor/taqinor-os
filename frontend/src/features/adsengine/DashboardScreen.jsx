@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Bell, ExternalLink, Printer, Download } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import AlertCenter from './AlertCenter'
 import {
   formatMAD, formatMoney, formatNumber, formatRatio, formatPercent,
   normalizeAlerts, alertTone, normalizePacing, pacingStateTone,
@@ -274,11 +275,15 @@ export default function DashboardScreen() {
         {/* PUB47 — impression navigateur (feuille globale print.css, VX80 :
             chrome masqué, noir-sur-blanc, tables complètes) : distinct des PDF
             WeasyPrint client (règle #4), zéro dépendance nouvelle. */}
-        <button type="button" className="btn btn-light" data-testid="ae-dashboard-print"
-          onClick={() => window.print()}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-          <Printer size={15} aria-hidden="true" /> Imprimer / PDF
-        </button>
+        <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button type="button" className="btn btn-light" data-testid="ae-dashboard-print"
+            onClick={() => window.print()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+            <Printer size={15} aria-hidden="true" /> Imprimer / PDF
+          </button>
+          {/* PUB48 — centre de notifications persistant de la console */}
+          <AlertCenter />
+        </div>
       </div>
 
       {/* Bandeau d'alertes ENG13 (global, toutes vues) */}

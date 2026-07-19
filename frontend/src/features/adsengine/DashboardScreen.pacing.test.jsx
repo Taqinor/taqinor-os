@@ -19,7 +19,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('./adsengineApi', () => ({
   default: {
     metrics: { dashboard: mocks.dashboard, leads: mocks.leads, pacing: mocks.pacing },
-    alerts: { list: mocks.alerts },
+    // PUB48 — cloche console (AlertCenter) : `history` distinct du bandeau `list`.
+    alerts: { list: mocks.alerts, history: () => Promise.resolve({ data: [] }) },
     reconciliation: { list: mocks.reconciliation },
     reports: { export: mocks.reportsExport },
   },

@@ -67,6 +67,9 @@ const adsengineApi = {
     list: (params) => api.get('/adsengine/alertes/', { params }),
     // ENG43 — historique des alertes (past, pour l'écran Règles & anomalies).
     history: (params) => api.get('/adsengine/alertes/history/', { params }),
+    // PUB48 — reporte une alerte jusqu'à une date (n'affecte que la liste
+    // ACTIVE ; l'historique reste complet).
+    snooze: (id, until) => api.post(`/adsengine/alertes/${id}/snooze/`, { until }),
   },
 
   // ── ENG5/ENG24 — Campagnes (miroirs) + classement par créatif ──

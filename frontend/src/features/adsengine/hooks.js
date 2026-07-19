@@ -138,6 +138,20 @@ export const AE_HOOKS = {
     decision: 'ae-sim-decision',
   },
 
+  // PUB48 — cloche de notifications persistante de la console (historique
+  // complet, snooze par alerte, lien vers l'entité). Montée sur Dashboard/
+  // Rules/Reports/Approvals.
+  alertCenter: {
+    root: 'ae-alert-center',
+    toggle: 'ae-alert-center-toggle',
+    badge: 'ae-alert-center-badge',
+    panel: 'ae-alert-center-panel',
+    item: 'ae-alert-center-item',
+    snoozePrefix: 'ae-alert-center-snooze-', // + id
+    snoozeConfirmPrefix: 'ae-alert-center-snooze-confirm-', // + id
+    linkPrefix: 'ae-alert-center-link-', // + id
+  },
+
   // Reporting (ENG45) — drill-downs + export CSV.
   reports: {
     root: 'ae-reports',

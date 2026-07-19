@@ -21,6 +21,9 @@ vi.mock('./adsengineApi', () => ({
       variants: mocks.variants, funnel: mocks.funnel, cohorts: mocks.cohorts,
       leaderboard: mocks.leaderboard, scatter: mocks.scatter, audit: mocks.audit,
     },
+    // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
+    // hors périmètre de ce fichier, mais montée sur l'écran (import réel).
+    alerts: { history: () => Promise.resolve({ data: [] }) },
   },
 }))
 

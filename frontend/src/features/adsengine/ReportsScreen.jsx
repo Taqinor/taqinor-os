@@ -7,6 +7,7 @@ import {
   normalizeScatter, toCsv, formatMAD, formatNumber, formatPercent,
 } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
+import AlertCenter from './AlertCenter'
 
 /* ============================================================================
    ENG45 — Drill-downs reporting (consomme ENG33).
@@ -158,6 +159,8 @@ export default function ReportsScreen() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
           <Printer size={15} aria-hidden="true" /> Imprimer / PDF
         </button>
+        {/* PUB48 — centre de notifications persistant de la console */}
+        <AlertCenter />
       </div>
 
       <div role="tablist" aria-label="Sections du reporting"

@@ -361,18 +361,65 @@ class EngineAlertViewSet(AdsengineViewSet):
     http_method_names = ['get', 'head', 'options']
     write_permission = None
 
+    def get_queryset(self):
+        # PUB48 — la liste ACTIVE (``list()``, consommée par le bandeau
+        # Dashboard + la cloche console) masque une alerte REPORTÉE
+        # (``alerts.snooze_alert``) jusqu'à son échéance : « une alerte
+        # snoozée ne re-notifie pas avant l'échéance ». ``history()``/
+        # ``retrieve()`` restent sur la queryset COMPLÈTE (rien n'est
+        # jamais supprimé, l'historique reste consultable).
+        qs = super().get_queryset()
+        if self.action == 'list':
+            from . import alerts as alerts_module
+            from django.utils import timezone
+            today = timezone.now().date().isoformat()
+            snoozed_ids = [
+                a.id for a in qs if alerts_module.is_snoozed(a, today=today)]
+            if snoozed_ids:
+                qs = qs.exclude(id__in=snoozed_ids)
+        return qs
+
     @action(detail=False, methods=['get'], url_path='history',
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def history(self, request):
-        """ENG43 — Historique des alertes (passées/résolues incluses) pour
-        l'écran Règles & anomalies. Company-scopé (queryset hérité) ; lecture
-        ``adsengine_view``. Même sérialiseur (aucun secret exposé)."""
+        """ENG43 — Historique des alertes (passées/résolues, ET reportées
+        (snooze) — PUB48, jamais masquées ici) pour l'écran Règles & anomalies
+        + la cloche console. Company-scopé (``get_queryset`` hérité) ; le
+        filtre snooze de ``get_queryset`` ne s'applique QU'à l'action
+        ``list`` (``self.action == 'history'`` ici) — l'historique reste
+        donc TOUJOURS complet. Lecture ``adsengine_view`` ; même sérialiseur
+        (aucun secret exposé)."""
         qs = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(qs)
         if page is not None:
             return self.get_paginated_response(
                 self.get_serializer(page, many=True).data)
         return Response(self.get_serializer(qs, many=True).data)
+
+
+class AlertSnoozeView(APIView):
+    """PUB48 — Reporte UNE alerte jusqu'à une date (``{"until": "YYYY-MM-DD"}``) :
+    n'affecte QUE la liste ACTIVE (``alertes/``, ``EngineAlertViewSet.list``) —
+    ``history()`` et l'entité liée restent inchangés (rien n'est jamais
+    supprimé ni ré-émis). Écriture ``adsengine_manage`` ; company-scopé
+    (l'alerte d'une autre société → 404)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request, alert_id):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        alert = EngineAlert.objects.filter(company=company, pk=alert_id).first()
+        if alert is None:
+            return Response({'detail': 'Alerte introuvable.'}, status=404)
+        until = (request.data or {}).get('until')
+        if not until:
+            return Response(
+                {'detail': "'until' requis (YYYY-MM-DD)."}, status=400)
+        from . import alerts as alerts_module
+        alerts_module.snooze_alert(alert, until)
+        return Response(EngineAlertSerializer(alert).data)
 
 
 class CreativeAssetViewSet(AdsengineViewSet):
