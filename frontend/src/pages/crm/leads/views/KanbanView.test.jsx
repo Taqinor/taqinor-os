@@ -75,4 +75,37 @@ describe('KanbanView · StageMover (J140 clavier + L151 optimiste)', () => {
       expect(screen.getByLabelText(/Changer l'étape/)).toHaveValue('NEW'))
     expect(toast.error).not.toHaveBeenCalled()
   })
+
+  it('LB4 : les options de recul sont grisées, COLD→actif reste sélectionnable (bug #7/#8)', () => {
+    // Un lead FOLLOW_UP (rang 3) : reculer vers NEW/CONTACTED/QUOTE_SENT est
+    // interdit (disabled), avancer vers SIGNED ou parker en COLD reste permis.
+    render(
+      <StageMover
+        lead={{ id: 8, nom: 'Test2', stage: 'FOLLOW_UP' }}
+        onInlineSave={vi.fn(() => Promise.resolve())}
+      />,
+    )
+    const select = screen.getByLabelText(/Changer l'étape/)
+    const byValue = (v) => [...select.options].find((o) => o.value === v)
+    expect(byValue('NEW').disabled).toBe(true)
+    expect(byValue('CONTACTED').disabled).toBe(true)
+    expect(byValue('QUOTE_SENT').disabled).toBe(true)
+    expect(byValue('FOLLOW_UP').disabled).toBe(false) // étape courante
+    expect(byValue('SIGNED').disabled).toBe(false)
+    expect(byValue('COLD').disabled).toBe(false)
+  })
+
+  it('LB4 : un lead COLD peut réactiver vers n’importe quelle étape active (bug #7)', () => {
+    render(
+      <StageMover
+        lead={{ id: 9, nom: 'Test3', stage: 'COLD' }}
+        onInlineSave={vi.fn(() => Promise.resolve())}
+      />,
+    )
+    const select = screen.getByLabelText(/Changer l'étape/)
+    const byValue = (v) => [...select.options].find((o) => o.value === v)
+    for (const s of ['NEW', 'CONTACTED', 'QUOTE_SENT', 'FOLLOW_UP', 'SIGNED']) {
+      expect(byValue(s).disabled).toBe(false)
+    }
+  })
 })

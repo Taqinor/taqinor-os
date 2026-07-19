@@ -16,6 +16,7 @@ import {
   PRIORITE_LABELS,
   PRIORITE_STARS,
   isPerdu,
+  isStageMoveAllowed,
   tagList,
   tagColor,
 } from '../../../../features/crm/stages'
@@ -54,7 +55,15 @@ function useIsMobile() {
 }
 
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
-const STAGE_OPTIONS = PIPELINE_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] ?? s }))
+// LB4 — options d'étape calculées PAR LIGNE (dépendent de l'étape courante du
+// lead, pas une liste plate partagée) : `disabled` grise les transitions
+// interdites, MÊME garde que le drag kanban (isStageMoveAllowed) — le chemin
+// clavier/souris de la liste obtient désormais la même réponse (bug #8).
+const stageOptionsFor = (currentStage) => PIPELINE_STAGES.map((s) => ({
+  value: s,
+  label: STAGE_LABELS[s] ?? s,
+  disabled: s !== currentStage && !isStageMoveAllowed(currentStage, s),
+}))
 const PRIORITE_OPTIONS = [
   { value: 'basse', label: PRIORITE_LABELS.basse },
   { value: 'normale', label: PRIORITE_LABELS.normale },
@@ -215,7 +224,7 @@ const ListRow = memo(function ListRow({
       <td data-label="Stade" onClick={(e) => e.stopPropagation()}>
         <InlineEdit
           value={lead.stage}
-          options={STAGE_OPTIONS}
+          options={stageOptionsFor(lead.stage)}
           disabled={!onInlineSave}
           display={(
             // Pastille d'étape via StatusPill (tons tokenisés depuis

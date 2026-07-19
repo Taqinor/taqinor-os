@@ -15,7 +15,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import {
-  formatMAD, groupLeadsByStage, PIPELINE_STAGES, STAGE_LABELS,
+  formatMAD, groupLeadsByStage, isStageMoveAllowed, PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
 import {
   buildKanbanAnnouncements,
@@ -82,8 +82,18 @@ export function StageMover({ lead, onInlineSave }) {
         disabled={isSaving}
         onChange={onChange}
       >
+        {/* LB4 — options interdites grisées : MÊME garde que le drag
+            (isStageMoveAllowed, miroir _bulk_stage_allowed) — le chemin
+            clavier ne pouvait auparavant PAS reproduire le recul-guard
+            (bug #8). L'étape courante reste toujours sélectionnable. */}
         {STAGE_MOVE_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option
+            key={o.value}
+            value={o.value}
+            disabled={o.value !== lead.stage && !isStageMoveAllowed(lead.stage, o.value)}
+          >
+            {o.label}
+          </option>
         ))}
       </select>
       {statusLabel && (
@@ -109,9 +119,6 @@ export const STAGE_PROBABILITY = {
   SIGNED: 1,
   COLD: 0.05,
 }
-
-// Rang d'une étape dans l'entonnoir (-1 si inconnue) — pour bloquer un recul.
-const stageRank = (stage) => PIPELINE_STAGES.indexOf(stage)
 
 // Enveloppe draggable d'une carte ; l'original reste en place (style fantôme)
 // pendant que le DragOverlay suit le pointeur.
@@ -232,11 +239,12 @@ export default function KanbanView({
     setActiveLead(null)
     const lead = active.data.current?.lead
     if (!lead || !over || over.id === lead.stage) return
-    // Garde-fou UI : on n'autorise jamais un recul dans l'entonnoir. Les
-    // étapes inconnues (rang -1) ne déclenchent pas le garde-fou.
-    const from = stageRank(lead.stage)
-    const to = stageRank(over.id)
-    if (from >= 0 && to >= 0 && to < from) {
+    // LB4 — garde-fou UI : MÊME règle que le serveur (isStageMoveAllowed,
+    // miroir _bulk_stage_allowed, stages.js). Bug #7 (recon2-03) : l'ancien
+    // `stageRank` local classait COLD au rang le plus HAUT → tout drag
+    // COLD→actif était refusé comme un recul, alors que le serveur autorise
+    // DÉJÀ cette réactivation (COLD est un parking, pas un rang avancé).
+    if (!isStageMoveAllowed(lead.stage, over.id)) {
       setReculMsg(true)
       window.setTimeout(() => setReculMsg(false), 4000)
       return // l'étape reste inchangée

@@ -3783,7 +3783,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   le StageMover ouvre SigneDialog et le select REVIENT à l'étape réelle sans toast d'erreur ;
   annuler le dialogue ne laisse aucun « Enregistré » ; confirmer déplace réellement le lead.
   (ROUTINE — S) (@model: sonnet) (@lane: LB0)
-- [ ] LB4 — **P1 : un lead Froid se réactive par drag (rang funnel client aligné serveur).**
+- [x] LB4 — **P1 : un lead Froid se réactive par drag (rang funnel client aligné serveur).**
   Bug recon2-03 #7 : `stageRank = PIPELINE_STAGES.indexOf` classe COLD au rang 5 (le plus haut) →
   tout drag COLD→actif est bloqué « recul ». Le serveur fait DÉJÀ le bon choix
   (`apps/crm/services.py _rang_funnel('COLD') == -1` ; `_bulk_stage_allowed` : Froid→active =
@@ -4181,6 +4181,21 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   sans toaster, toute autre erreur toaste comme avant. 2 tests ajoutés à KanbanView.test.jsx
   (sentinelle → rollback sans toast ; vraie erreur → rollback ET toast) — les 2 verts en
   raisonnement, non exécutables ici (pas de node_modules dans ce worktree).
+- 2026-07-19 LB4 — un lead Froid se réactive par drag (bug #7/#8) : `stages.js` gagne
+  `funnelRank` (COLD → -1, miroir `apps/crm/services.py _rang_funnel`) et
+  `isStageMoveAllowed(current, target)` (miroir byte-à-byte `_bulk_stage_allowed` — 4 tests node
+  verts, exécutés). `KanbanView.jsx#handleDragEnd` utilise ce garde unique au lieu du `stageRank`
+  local (COLD y valait le rang le PLUS HAUT → tout drag COLD→actif était refusé comme un recul,
+  cause racine du bug #7 alors que le serveur autorise DÉJÀ la réactivation). Options interdites
+  grisées dans le StageMover (kanban, `disabled` par `<option>`) ET dans l'InlineEdit stage de la
+  liste (`ListView.jsx` : nouveau `stageOptionsFor(currentStage)` par ligne, remplace la liste
+  plate `STAGE_OPTIONS` partagée) — le chemin clavier/select obtient enfin la MÊME réponse que le
+  drag (bug #8). `components/InlineEdit.jsx` gagne un support `disabled` PAR OPTION,
+  rétro-compatible (undefined pour tous les autres appelants = comportement inchangé). SIGNED
+  reste gardé : y entrer passe toujours par SigneDialog (LB3), en sortir en arrière reste interdit
+  sauf → Froid. Tests : 4 nouveaux cas dans `stages.test.mjs` (exécutés, verts), 2 nouveaux dans
+  `KanbanView.test.jsx` (options grisées FOLLOW_UP + réactivation COLD, raisonnement — non
+  exécutables ici), nouveau `ListViewStageGuard.test.mjs` (4 assertions source, exécutées, vertes).
 
 ## Group F — Design foundation & tokens
 

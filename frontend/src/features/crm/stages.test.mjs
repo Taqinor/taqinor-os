@@ -14,6 +14,8 @@ import {
   latestDevisTotal,
   initials,
   EMPTY_FILTERS,
+  funnelRank,
+  isStageMoveAllowed,
 } from './stages.js'
 
 test('les 6 étapes canoniques, dans l’ordre de l’entonnoir (STAGES.py)', () => {
@@ -159,6 +161,35 @@ test('filterLeads : relances en retard et cette semaine', () => {
   assert.ok(week.includes(2))
   assert.ok(!week.includes(1))
   assert.ok(!week.includes(3))
+})
+
+test('LB4 : funnelRank — COLD au rang -1 (parking, PAS le plus avancé), miroir apps/crm/services.py _rang_funnel', () => {
+  assert.equal(funnelRank('COLD'), -1)
+  assert.equal(funnelRank('NEW'), 0)
+  assert.equal(funnelRank('CONTACTED'), 1)
+  assert.equal(funnelRank('QUOTE_SENT'), 2)
+  assert.equal(funnelRank('FOLLOW_UP'), 3)
+  assert.equal(funnelRank('SIGNED'), 4)
+  // COLD est bien SOUS toute étape active (y compris NEW, rang 0).
+  assert.ok(funnelRank('COLD') < funnelRank('NEW'))
+})
+
+test('LB4 : isStageMoveAllowed — miroir byte-à-byte de _bulk_stage_allowed', () => {
+  // même étape → non (rien à faire).
+  assert.equal(isStageMoveAllowed('NEW', 'NEW'), false)
+  assert.equal(isStageMoveAllowed('COLD', 'COLD'), false)
+  // Froid → n'importe quelle étape active → oui (réactivation, bug #7).
+  assert.equal(isStageMoveAllowed('COLD', 'NEW'), true)
+  assert.equal(isStageMoveAllowed('COLD', 'CONTACTED'), true)
+  assert.equal(isStageMoveAllowed('COLD', 'SIGNED'), true)
+  // vers Froid → oui, mise au parking autorisée depuis n'importe où.
+  assert.equal(isStageMoveAllowed('NEW', 'COLD'), true)
+  assert.equal(isStageMoveAllowed('SIGNED', 'COLD'), true)
+  // sinon → uniquement vers une étape PLUS avancée (jamais de recul).
+  assert.equal(isStageMoveAllowed('NEW', 'CONTACTED'), true)
+  assert.equal(isStageMoveAllowed('FOLLOW_UP', 'NEW'), false) // recul refusé
+  assert.equal(isStageMoveAllowed('SIGNED', 'CONTACTED'), false) // recul refusé
+  assert.equal(isStageMoveAllowed('QUOTE_SENT', 'FOLLOW_UP'), true)
 })
 
 test('helpers de carte : tags, initiales, total du dernier devis', () => {
