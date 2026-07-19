@@ -53,6 +53,7 @@ import SecuriteCompteSection from './SecuriteCompteSection'
 import TraductionsSection from './TraductionsSection'
 import ConfidentialiteSection from './ConfidentialiteSection'
 import ApplicationsSection from './ApplicationsSection'
+import MarketplaceSection from './MarketplaceSection'
 
 // N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
 // Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
@@ -67,6 +68,9 @@ const CONFIDENTIALITE_TAB = { key: 'confidentialite', label: 'Confidentialité',
 // ODX5 — onglet « Applications » (catalogue de modules ODX3, admin-gated).
 // Ajouté localement, même logique que N96/N94/XPLT23.
 const APPLICATIONS_TAB = { key: 'applications', label: 'Applications', group: 'avance' }
+// WIR159 — onglet « Marketplace » (catalogue d'extensions NTEXT13, lecture seule).
+// Ajouté localement, même logique que N96/N94/XPLT23/ODX5.
+const MARKETPLACE_TAB = { key: 'marketplace', label: 'Marketplace', group: 'avance' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -91,7 +95,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -924,6 +928,8 @@ export default function ParametresEntreprise() {
           {tab === 'confidentialite' && <ConfidentialiteSection />}
           {/* ODX5 — catalogue de modules (admin-gated, autonome). */}
           {tab === 'applications' && <ApplicationsSection />}
+          {/* WIR159 — catalogue d'extensions (marketplace, lecture seule). */}
+          {tab === 'marketplace' && <MarketplaceSection />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
