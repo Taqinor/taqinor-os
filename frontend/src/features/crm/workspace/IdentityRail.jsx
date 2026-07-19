@@ -295,7 +295,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
               onClick={() => onAction('plan')}
               title="Aucune activité planifiée — planifier une prochaine action"
             >
-              <Badge tone="warning">Sans prochaine action</Badge>
+              <Badge tone="warning" className="lw-badge-aa">Sans prochaine action</Badge>
               <span className="lw-rail-nextact-cta">Planifier</span>
             </button>
           )}

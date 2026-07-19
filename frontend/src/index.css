@@ -6584,7 +6584,10 @@ textarea.form-control {
   display: inline-block;
   padding: 0.05rem 0.4rem;
   border-radius: 9999px;
-  color: var(--warning);
+  /* --warning-text (VX194a) : l'ambre PLEIN sur sa teinte 12% rend 2.6:1 à
+     12px — axe E6 (critique AA). Le jeton texte-sur-fond-warning est fait
+     pour ça (repasse sur --warning en sombre, où le contraste s'inverse). */
+  color: var(--warning-text);
   background: color-mix(in oklch, var(--warning) 12%, transparent);
 }
 .lw-stage-since--danger {
@@ -7097,4 +7100,11 @@ textarea.form-control {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* E6 (axe AA) — Badge tone=warning du kit rend l'ambre plein sur teinte 12%
+   (2.6:1 à 12px). Sur les surfaces du workspace on force le jeton texte
+   AA-sûr sans toucher le kit global. */
+.lw-badge-aa {
+  color: var(--warning-text);
 }
