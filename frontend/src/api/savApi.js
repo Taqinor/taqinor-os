@@ -244,6 +244,8 @@ const savApi = {
   getSavFiabiliteParc: (params) => api.get('/sav/insights/sav-fiabilite/', { params }),
   // ZMFG4 — tableau de bord maintenance par équipe.
   getSavResumeParEquipe: () => api.get('/sav/insights/sav-resume-equipe/'),
+  // WIR121/FG89 — prévision de consommation de pièces (fenêtre glissante).
+  getSavPartsForecast: (params) => api.get('/sav/insights/sav-parts-forecast/', { params }),
   // ZSAV6 — file d'action : tickets ouverts groupés par action attendue.
   getSavFileAction: () => api.get('/sav/tickets/file-action/'),
 }
