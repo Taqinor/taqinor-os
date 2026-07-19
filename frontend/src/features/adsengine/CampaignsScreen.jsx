@@ -5,6 +5,7 @@ import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import DateRangeBar from './DateRangeBar'
 import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
+import SyncStatusBanner from './SyncStatusBanner'
 
 // PUB40 — dépense totale visible (somme ``depense_mad``/``spend_mad`` des
 // campagnes listées) — pure, testable isolément.
@@ -53,13 +54,18 @@ export default function CampaignsScreen() {
   const [range, setRange] = useState(
     () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
   const [previousTotal, setPreviousTotal] = useState(null)
+  // PUB41 — état-ERREUR distinct de l'état-vide (jamais un silence).
+  const [loadError, setLoadError] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
     const params = { debut: range.debut || undefined, fin: range.fin || undefined }
     adsengineApi.campaigns.list(params)
-      .then(r => setCampaigns(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
-      .catch(() => setCampaigns([]))
+      .then(r => {
+        setCampaigns(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        setLoadError(false)
+      })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
     adsengineApi.campaigns.creativeRanking()
       .then(r => setRanking(rankCreatives(Array.isArray(r.data) ? r.data : (r.data?.results || []))))
@@ -136,6 +142,9 @@ export default function CampaignsScreen() {
 
       {msg && <p data-testid="ae-camp-msg" style={{ color: '#475569', margin: '0 0 0.75rem' }}>{msg}</p>}
 
+      {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <SyncStatusBanner />
+
       {/* PUB40 — sélecteur de période + comparaison. */}
       <DateRangeBar value={range} onChange={setRange} />
       {previousTotal != null && (() => {
@@ -152,6 +161,14 @@ export default function CampaignsScreen() {
       {/* ADSDEEP66 — les comptes de leads affichés ici sont bornés à la
           fenêtre Meta 90 j (au-delà, seul l'ERP/Odoo fait foi). */}
       <DataWindowNotice kind="leads" />
+
+      {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence. */}
+      {loadError && (
+        <p data-testid="ae-camp-load-error" role="alert" style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>
+          Chargement des campagnes impossible — panne de synchronisation possible.
+          {campaigns.length > 0 ? ' Liste peut-être obsolète.' : ''}
+        </p>
+      )}
 
       {/* Liste des miroirs (niveau 1 — campagnes) */}
       {loading
@@ -174,7 +191,7 @@ export default function CampaignsScreen() {
                   </td>
                 </tr>
               ))}
-              {campaigns.length === 0 && (
+              {campaigns.length === 0 && !loadError && (
                 <tr><td colSpan={5} style={{ textAlign: 'center', color: '#64748b' }}>
                   Aucune campagne synchronisée</td></tr>
               )}

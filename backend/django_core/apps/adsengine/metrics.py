@@ -569,6 +569,74 @@ def dashboard_v2_metrics(company, *, as_of=None,
     }
 
 
+# ── PUB41 — Fraîcheur + panne visibles (dernier sync OK par type + âge) ───────
+# Seuil « panne probable » : le sync insights de fond (ENG6,
+# ``adsengine.sync_insights_daily``) tourne UNE FOIS PAR JOUR — 26 h (24 h +
+# 2 h de marge) évite un faux « Meta ne répond plus » qui se déclencherait
+# chaque jour juste avant le prochain passage du beat.
+SYNC_STALE_MINUTES_DEFAULT = 26 * 60
+
+# Types de synchro affichés — un par SOURCE de données déjà horodatée par la
+# synchro/le webhook existants (AUCUNE nouvelle colonne). Libellés FR stables.
+SYNC_TYPE_LABELS = {
+    'campaigns': 'Campagnes',
+    'insights': 'Insights (dépense, résultats)',
+    'leads': 'Leads Meta',
+    'comments': 'Commentaires',
+}
+
+
+def sync_status(company, *, stale_minutes=SYNC_STALE_MINUTES_DEFAULT, now=None):
+    """PUB41 — Fraîcheur de synchro PAR TYPE : dernier horodatage connu, âge
+    (minutes) et ``stale`` (panne probable, âge > ``stale_minutes``).
+
+    Dérivé de colonnes DÉJÀ écrites par la synchro/le webhook — jamais une
+    nouvelle colonne ni un nouvel effet de bord : ``AdCampaignMirror`` (sync
+    campagnes), ``InsightSnapshot`` (sync insights), ``MetaLeadMirror``
+    (webhook/pull leads), ``CommentMirror`` (sync commentaires).
+
+    DOCTRINE (empty vs erreur) : un type SANS AUCUN historique
+    (``last_ok_at`` ``None`` — jamais synchronisé, ex. tenant non connecté)
+    n'est JAMAIS marqué ``stale`` — ce n'est pas une panne, c'est une absence
+    de donnée légitime. ``stale`` ne se déclenche QUE sur un type qui a DÉJÀ
+    réussi au moins une fois et dont le silence dépasse le seuil (une vraie
+    régression). ``worst`` (le type le plus stale, ou ``None``) alimente le
+    bandeau global — un seul message, jamais 4 bandeaux redondants."""
+    from django.utils import timezone
+
+    from .models import AdCampaignMirror, CommentMirror, MetaLeadMirror
+
+    now = now or timezone.now()
+
+    def _last(qs, field='updated_at'):
+        return qs.order_by(f'-{field}').values_list(field, flat=True).first()
+
+    last_by_type = {
+        'campaigns': _last(AdCampaignMirror.objects.filter(company=company)),
+        'insights': _last(InsightSnapshot.objects.filter(company=company)),
+        'leads': _last(
+            MetaLeadMirror.objects.filter(company=company), 'created_at'),
+        'comments': _last(CommentMirror.objects.filter(company=company)),
+    }
+
+    types = []
+    for key, last in last_by_type.items():
+        age_minutes = None
+        if last is not None:
+            age_minutes = int((now - last).total_seconds() // 60)
+        types.append({
+            'type': key,
+            'label': SYNC_TYPE_LABELS[key],
+            'last_ok_at': last.isoformat() if last else None,
+            'age_minutes': age_minutes,
+            'stale': age_minutes is not None and age_minutes > stale_minutes,
+        })
+
+    stale_types = [t for t in types if t['stale']]
+    worst = max(stale_types, key=lambda t: t['age_minutes']) if stale_types else None
+    return {'types': types, 'stale': bool(stale_types), 'worst': worst}
+
+
 # ── ADSDEEP22 — Cockpit par ad (écran-console quotidien du fondateur) ─────────
 COCKPIT_RECENT_DAYS = 7
 COCKPIT_MIN_FATIGUE_SAMPLES = 3

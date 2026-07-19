@@ -6,6 +6,7 @@ import DataWindowNotice from './DataWindowNotice'
 import AdCreativePanel from './AdCreativePanel'
 import DateRangeBar from './DateRangeBar'
 import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
+import SyncStatusBanner from './SyncStatusBanner'
 
 // PUB40 — dépense totale visible (somme ``depense_mad`` des lignes) — pure,
 // testable isolément ; une ligne sans dépense compte pour 0 (jamais NaN).
@@ -99,13 +100,19 @@ export default function AdsCockpitScreen() {
   const [range, setRange] = useState(
     () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
   const [previousTotal, setPreviousTotal] = useState(null)
+  // PUB41 — état-ERREUR distinct de l'état-vide : une panne de synchro ne
+  // doit JAMAIS ressembler à « aucune ad » (le silence que ce ticket tue).
+  const [loadError, setLoadError] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
     const params = { debut: range.debut || undefined, fin: range.fin || undefined }
     adsengineApi.metrics.adsCockpit(params)
-      .then(r => setRows(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
-      .catch(() => setRows([]))
+      .then(r => {
+        setRows(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        setLoadError(false)
+      })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
 
     // Comparaison : un second appel sur la période PRÉCÉDENTE (PUB40 — un
@@ -151,6 +158,9 @@ export default function AdsCockpitScreen() {
         <h2>Cockpit par ad</h2>
       </div>
 
+      {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <SyncStatusBanner />
+
       {/* PUB40 — sélecteur de période + comparaison. */}
       <DateRangeBar value={range} onChange={setRange} />
       {compareDelta && (
@@ -164,6 +174,14 @@ export default function AdsCockpitScreen() {
           MetaLeadMirror ADSDEEP19) + insights (37 mois, dépense/fréquence). */}
       <DataWindowNotice kind="leads" />
       <DataWindowNotice kind="insights" />
+
+      {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence. */}
+      {loadError && (
+        <p data-testid="ae-cockpit-load-error" role="alert" style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>
+          Chargement du cockpit impossible — panne de synchronisation possible.
+          {sortedRows.length > 0 ? ' Liste peut-être obsolète.' : ''}
+        </p>
+      )}
 
       {loading
         ? <p className="page-loading">Chargement…</p>
@@ -222,7 +240,7 @@ export default function AdsCockpitScreen() {
                   </tr>
                 )
               })}
-              {sortedRows.length === 0 && (
+              {sortedRows.length === 0 && !loadError && (
                 <tr><td colSpan={COLUMNS.length + 3} style={{ textAlign: 'center', color: '#64748b' }}>
                   Aucune ad synchronisée</td></tr>
               )}

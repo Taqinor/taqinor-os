@@ -5,6 +5,7 @@ import {
 } from './adsengine'
 import DateRangeBar from './DateRangeBar'
 import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
+import SyncStatusBanner from './SyncStatusBanner'
 
 /* ============================================================================
    ENG28 — Journal d'actions (timeline EngineAction) — le backstop de confiance.
@@ -41,13 +42,18 @@ export default function ActionsLogScreen() {
   const [range, setRange] = useState(
     () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
   const [previousCount, setPreviousCount] = useState(null)
+  // PUB41 — état-ERREUR distinct de l'état-vide (jamais un silence).
+  const [loadError, setLoadError] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
     const params = { debut: range.debut || undefined, fin: range.fin || undefined }
     adsengineApi.actions.log(params)
-      .then(r => setActions(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
-      .catch(() => setActions([]))
+      .then(r => {
+        setActions(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        setLoadError(false)
+      })
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
     if (range.compare && range.debut && range.fin) {
       const prev = previousRange(range)
@@ -74,12 +80,23 @@ export default function ActionsLogScreen() {
         <h2>Journal d&apos;actions</h2>
       </div>
 
+      {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
+      <SyncStatusBanner />
+
       {/* PUB40 — sélecteur de période + comparaison. */}
       <DateRangeBar value={range} onChange={setRange} />
       {compareDelta && (
         <p className="card" data-testid="ae-log-compare-summary"
           style={{ padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
           {actions.length} action(s) cette période ({formatDeltaPct(compareDelta.pct)} vs période précédente)
+        </p>
+      )}
+
+      {/* PUB41 — état-ERREUR distinct de l'état-vide : jamais un silence. */}
+      {loadError && (
+        <p data-testid="ae-log-load-error" role="alert" style={{ color: '#dc2626', margin: '0 0 0.75rem' }}>
+          Chargement du journal impossible — panne de synchronisation possible.
+          {actions.length > 0 ? ' Liste peut-être obsolète.' : ''}
         </p>
       )}
 
@@ -97,7 +114,9 @@ export default function ActionsLogScreen() {
       {loading
         ? <p className="page-loading">Chargement…</p>
         : visible.length === 0
-          ? <p data-testid="ae-log-empty" style={{ color: '#64748b' }}>Aucune action à afficher.</p>
+          ? (!loadError && (
+              <p data-testid="ae-log-empty" style={{ color: '#64748b' }}>Aucune action à afficher.</p>
+            ))
           : (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.6rem' }}>
               {visible.map(a => {

@@ -279,6 +279,11 @@ const adsengineApi = {
     // Détail par cohorte d'un signal donné ({ signal: 'creatif'|'operations', ... }).
     cohort: (params) => api.get('/adsengine/signaux/cohorte/', { params }),
   },
+
+  // ── PUB41 — Fraîcheur + panne visibles (dernier sync OK par type + âge) ──
+  syncStatus: {
+    get: () => api.get('/adsengine/sync-status/'),
+  },
 }
 
 export default adsengineApi

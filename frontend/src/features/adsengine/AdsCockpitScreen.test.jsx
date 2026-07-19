@@ -9,6 +9,7 @@ import { MemoryRouter } from 'react-router-dom'
 const mocks = vi.hoisted(() => ({
   adsCockpit: vi.fn(),
   mediaResolve: vi.fn(),
+  syncStatus: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -16,6 +17,7 @@ vi.mock('./adsengineApi', () => ({
     metrics: { adsCockpit: mocks.adsCockpit },
     media: { resolve: mocks.mediaResolve },
     previews: { get: vi.fn() },
+    syncStatus: { get: mocks.syncStatus },
   },
 }))
 
@@ -54,6 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.adsCockpit.mockResolvedValue({ data: ROWS })
   mocks.mediaResolve.mockResolvedValue({ data: { url: 'https://cdn.example/img.jpg' } })
+  mocks.syncStatus.mockResolvedValue({ data: { types: [], stale: false, worst: null } })
 })
 
 describe('AdsCockpitScreen (ADSDEEP22)', () => {
@@ -162,6 +165,34 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
       await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalledTimes(2))
       expect(await screen.findByTestId('ae-cockpit-compare-summary'))
         .toHaveTextContent('vs période précédente')
+    })
+  })
+
+  // ── PUB41 — Fraîcheur + panne visibles ─────────────────────────────────
+  describe('PUB41 — état-erreur distinct de l’état-vide', () => {
+    it('panne réseau -> message d’erreur, PAS « aucune ad synchronisée »', async () => {
+      mocks.adsCockpit.mockRejectedValue(new Error('network'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-cockpit-load-error')).toBeInTheDocument()
+      expect(screen.queryByText('Aucune ad synchronisée')).toBeNull()
+    })
+
+    it('liste réellement vide (succès) -> état-vide normal, pas d’erreur', async () => {
+      mocks.adsCockpit.mockResolvedValue({ data: [] })
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      expect(screen.getByText('Aucune ad synchronisée')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-cockpit-load-error')).toBeNull()
+    })
+
+    it('bandeau global de panne monté (mock syncStatus stale)', async () => {
+      mocks.syncStatus.mockResolvedValue({ data: {
+        types: [{ type: 'insights', label: 'Insights', age_minutes: 2000, last_ok_at: '2026-07-17T08:00:00Z', stale: true }],
+        stale: true,
+        worst: { type: 'insights', label: 'Insights', age_minutes: 2000, last_ok_at: '2026-07-17T08:00:00Z' },
+      } })
+      renderScreen()
+      expect(await screen.findByTestId('ae-sync-banner')).toBeInTheDocument()
     })
   })
 })

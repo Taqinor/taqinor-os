@@ -198,4 +198,22 @@ describe('CampaignsScreen (ENG24)', () => {
         .toHaveTextContent('vs période précédente')
     })
   })
+
+  // ── PUB41 — Fraîcheur + panne visibles ─────────────────────────────────
+  describe('PUB41 — état-erreur distinct de l’état-vide', () => {
+    it('panne réseau -> message d’erreur, PAS « aucune campagne synchronisée »', async () => {
+      mocks.list.mockRejectedValue(new Error('network'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-camp-load-error')).toBeInTheDocument()
+      expect(screen.queryByText('Aucune campagne synchronisée')).toBeNull()
+    })
+
+    it('liste réellement vide (succès) -> état-vide normal, pas d’erreur', async () => {
+      mocks.list.mockResolvedValue({ data: [] })
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.getByText('Aucune campagne synchronisée')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-camp-load-error')).toBeNull()
+    })
+  })
 })

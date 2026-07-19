@@ -689,6 +689,49 @@ class ConsoleWiringTests(TestCase):
         row_all = next(r for r in rows_all if r['name'] == 'Campagne A')
         self.assertEqual(row_all['depense_mad'], '620.00')
 
+    # ── PUB41 — Fraîcheur + panne visibles ───────────────────────────────────
+    def test_sync_status_shape_never_synced_types_not_stale(self):
+        """Un type SANS historique (leads/commentaires : aucune fixture ici)
+        n'est jamais marqué `stale` — absence de donnée ≠ panne."""
+        resp = auth(self.viewer).get(f'{BASE}/sync-status/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        keys = {t['type'] for t in resp.data['types']}
+        self.assertEqual(keys, {'campaigns', 'insights', 'leads', 'comments'})
+        leads_row = next(t for t in resp.data['types'] if t['type'] == 'leads')
+        self.assertIsNone(leads_row['last_ok_at'])
+        self.assertIsNone(leads_row['age_minutes'])
+        self.assertFalse(leads_row['stale'])
+        # Les types AVEC un instantané récent (fixture setUpTestData, "today")
+        # ne sont pas stale non plus.
+        insights_row = next(t for t in resp.data['types'] if t['type'] == 'insights')
+        self.assertFalse(insights_row['stale'])
+        self.assertFalse(resp.data['stale'])
+        self.assertIsNone(resp.data['worst'])
+
+    def test_sync_status_marks_stale_past_threshold(self):
+        """Un type dont le dernier succès dépasse le seuil (26 h) devient
+        `stale` et remonte dans `worst` — le critère Done « sync cassé »."""
+        from apps.adsengine.models import CommentMirror
+        old_comment = CommentMirror.objects.create(
+            company=self.company, meta_id='cm-old', message='Ancien',
+            created_time=datetime.datetime.now(datetime.timezone.utc))
+        CommentMirror.objects.filter(pk=old_comment.pk).update(
+            updated_at=datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(hours=40))
+        resp = auth(self.viewer).get(f'{BASE}/sync-status/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['stale'])
+        comments_row = next(
+            t for t in resp.data['types'] if t['type'] == 'comments')
+        self.assertTrue(comments_row['stale'])
+        self.assertIsNotNone(comments_row['age_minutes'])
+        self.assertGreater(comments_row['age_minutes'], 26 * 60)
+        self.assertEqual(resp.data['worst']['type'], 'comments')
+
+    def test_sync_status_requires_view_permission(self):
+        resp = auth(self.nobody).get(f'{BASE}/sync-status/')
+        self.assertEqual(resp.status_code, 403)
+
     def test_actions_log_windows_by_debut_fin(self):
         from django.utils import timezone
 

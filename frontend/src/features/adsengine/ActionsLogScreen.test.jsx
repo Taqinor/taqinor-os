@@ -98,4 +98,22 @@ describe('ActionsLogScreen (ENG28)', () => {
         .toHaveTextContent('vs période précédente')
     })
   })
+
+  // ── PUB41 — Fraîcheur + panne visibles ─────────────────────────────────
+  describe('PUB41 — état-erreur distinct de l’état-vide', () => {
+    it('panne réseau -> message d’erreur, PAS « aucune action à afficher »', async () => {
+      mocks.log.mockRejectedValue(new Error('network'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-log-load-error')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-log-empty')).toBeNull()
+    })
+
+    it('journal réellement vide (succès) -> état-vide normal, pas d’erreur', async () => {
+      mocks.log.mockResolvedValue({ data: [] })
+      renderScreen()
+      await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-log-empty')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-log-load-error')).toBeNull()
+    })
+  })
 })

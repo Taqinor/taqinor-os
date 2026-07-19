@@ -1313,6 +1313,23 @@ class MetaConnectionHealthView(APIView):
         return Response({'statuses': statuses})
 
 
+class SyncStatusView(APIView):
+    """PUB41 — Fraîcheur de synchro PAR TYPE (dernier sync OK + âge minutes +
+    ``stale``), pour le bandeau global « Meta ne répond plus depuis X… » et
+    les horodatages discrets par tuile. Vue MINCE — dérivée de
+    ``metrics.sync_status`` (aucune nouvelle colonne, aucun effet de bord).
+    Lecture ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import sync_status
+        return Response(sync_status(company))
+
+
 class GuardrailSingletonView(APIView):
     """ENG3/ENG22 — Garde-fous d'UNE société vus comme un singleton (GET/PATCH
     sans id). Mappe les libellés d'écran (``max_daily_budget_mad`` /

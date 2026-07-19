@@ -125,4 +125,29 @@ describe('CommentsInboxScreen (ADSDEEP54)', () => {
     fireEvent.click(screen.getByTestId('ae-comment-reply-send-1'))
     await waitFor(() => expect(mocks.proposeReply).toHaveBeenCalledWith(1, { message: 'Merci !' }))
   })
+
+  // ── PUB41 — Fraîcheur + panne visibles (sondage doux + état-erreur) ─────
+  describe('PUB41 — sondage doux + état-erreur', () => {
+    it('panne réseau -> message d’erreur, PAS « aucun commentaire »', async () => {
+      mocks.list.mockRejectedValue(new Error('network'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-comments-load-error')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-comments-empty')).toBeNull()
+    })
+
+    it('boîte réellement vide (succès) -> état-vide normal, pas d’erreur', async () => {
+      mocks.list.mockResolvedValue({ data: [] })
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-comments-empty')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-comments-load-error')).toBeNull()
+    })
+
+    it('bouton « Actualiser » redéclenche un chargement immédiat', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
+      fireEvent.click(screen.getByTestId('ae-comments-refresh'))
+      await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
+    })
+  })
 })

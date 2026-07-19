@@ -105,6 +105,41 @@ describe('ApprovalsScreen (ENG25)', () => {
     renderScreen()
     expect(await screen.findByTestId('ae-approvals-empty')).toBeInTheDocument()
   })
+
+  // ── PUB41 — Fraîcheur + panne visibles (sondage doux + état-erreur) ─────
+  describe('PUB41 — sondage doux + état-erreur', () => {
+    it('panne réseau -> message d’erreur, PAS « aucune action en attente »', async () => {
+      mocks.pending.mockRejectedValue(new Error('network'))
+      renderScreen()
+      expect(await screen.findByTestId('ae-approvals-load-error')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-approvals-empty')).toBeNull()
+    })
+
+    it('boîte réellement vide (succès) -> état-vide normal, pas d’erreur', async () => {
+      mocks.pending.mockResolvedValue({ data: [] })
+      renderScreen()
+      await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-approvals-empty')).toBeInTheDocument()
+      expect(screen.queryByTestId('ae-approvals-load-error')).toBeNull()
+    })
+
+    it('bouton « Actualiser » redéclenche un chargement immédiat', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(1))
+      fireEvent.click(screen.getByTestId('ae-approvals-refresh'))
+      await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(2))
+    })
+
+    it('un échec puis un succès efface le message d’erreur', async () => {
+      mocks.pending.mockRejectedValueOnce(new Error('network'))
+      renderScreen()
+      await screen.findByTestId('ae-approvals-load-error')
+      mocks.pending.mockResolvedValue({ data: ACTIONS })
+      fireEvent.click(screen.getByTestId('ae-approvals-refresh'))
+      await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3))
+      expect(screen.queryByTestId('ae-approvals-load-error')).toBeNull()
+    })
+  })
 })
 
 describe('ApprovalsScreen — avertissements + composeur EDIT_COPY (ADSDEEP35)', () => {

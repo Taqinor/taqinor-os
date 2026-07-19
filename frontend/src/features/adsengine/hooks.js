@@ -152,6 +152,17 @@ export const AE_HOOKS = {
     compare: 'ae-daterange-compare', // case « comparer à la période précédente »
     summary: 'ae-daterange-summary',
   },
+
+  // PUB41 — Fraîcheur + panne visibles (`SyncStatusBanner`, montée sur
+  // Dashboard/Cockpit/Campagnes/Journal/Approbations/Commentaires) + état-
+  // erreur distinct de l'état-vide sur chaque écran qui l'affiche.
+  syncStatus: {
+    banner: 'ae-sync-banner', // bandeau global « Meta ne répond plus… »
+    // Suffixe par écran : `-cockpit`/`-camp`/`-log`/`-approvals`/`-comments`.
+    loadErrorPrefix: 'ae-', // + '<écran>-load-error' (ex. ae-cockpit-load-error)
+    refreshApprovals: 'ae-approvals-refresh', // reprise manuelle du sondage
+    refreshComments: 'ae-comments-refresh',
+  },
 }
 
 export default AE_HOOKS
