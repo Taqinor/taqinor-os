@@ -23,6 +23,10 @@ vi.mock('./adsengineApi', () => ({
     // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
     // hors périmètre de ce fichier, mais montée sur l'écran (import réel).
     alerts: { history: () => Promise.resolve({ data: [] }) },
+    // PUB51 — palette de commandes (CommandPalette), montée sur l'écran mais
+    // ses données ne sont tirées qu'à l'ouverture (Ctrl-K, jamais pressé ici).
+    campaigns: { list: () => Promise.resolve({ data: [] }) },
+    metrics: { adsCockpit: () => Promise.resolve({ data: [] }) },
   },
 }))
 
@@ -150,5 +154,58 @@ describe('ApprovalsScreen — avertissements + composeur EDIT_COPY (ADSDEEP35)',
     // Recharge la boîte + referme le composeur.
     await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(screen.queryByTestId('ae-composer')).toBeNull())
+  })
+})
+
+describe('ApprovalsScreen — PUB51 raccourcis clavier (sans souris)', () => {
+  it('la première carte est focalisée par défaut', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    const cards = screen.getAllByTestId('ae-action-card')
+    expect(cards[0]).toHaveClass('ae-action-card-focused')
+    expect(cards[1]).not.toHaveClass('ae-action-card-focused')
+  })
+
+  it('J avance le focus, K recule', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.keyDown(window, { key: 'j' })
+    let cards = screen.getAllByTestId('ae-action-card')
+    expect(cards[1]).toHaveClass('ae-action-card-focused')
+    fireEvent.keyDown(window, { key: 'j' })
+    cards = screen.getAllByTestId('ae-action-card')
+    expect(cards[2]).toHaveClass('ae-action-card-focused')
+    fireEvent.keyDown(window, { key: 'k' })
+    cards = screen.getAllByTestId('ae-action-card')
+    expect(cards[1]).toHaveClass('ae-action-card-focused')
+  })
+
+  it('A approuve la carte focalisée', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.keyDown(window, { key: 'j' }) // focus la 2e carte (id 12)
+    fireEvent.keyDown(window, { key: 'a' })
+    await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(12))
+  })
+
+  it('R ouvre le panneau de rejet STRUCTURÉ de la carte focalisée', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.keyDown(window, { key: 'r' }) // carte 0 (id 11)
+    expect(await screen.findByTestId('ae-reject-panel-11')).toBeInTheDocument()
+  })
+
+  it('jamais déclenché pendant qu\'un champ (select du motif) est focalisé', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-reject-12'))
+    const select = await screen.findByTestId('ae-reject-reason-12')
+    select.focus()
+    fireEvent.keyDown(select, { key: 'a' })
+    fireEvent.keyDown(select, { key: 'j' })
+    expect(mocks.approve).not.toHaveBeenCalled()
+    // Le focus visuel des cartes n'a pas bougé (toujours la 1re).
+    const cards = screen.getAllByTestId('ae-action-card')
+    expect(cards[0]).toHaveClass('ae-action-card-focused')
   })
 })

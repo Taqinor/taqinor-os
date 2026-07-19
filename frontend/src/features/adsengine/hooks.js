@@ -36,6 +36,19 @@ export const AE_HOOKS = {
     batchTogglePrefix: 'ae-batch-toggle-', // + id
     batchBar: 'ae-batch-bar',
     batchApprove: 'ae-batch-approve',
+    // PUB51 — raccourcis clavier (J/K naviguer, A approuver, R rejeter ;
+    // jamais déclenchés pendant qu'un champ/select est focalisé).
+    focusedClass: 'ae-action-card-focused',
+    shortcutsHint: 'ae-shortcuts-hint',
+  },
+
+  // PUB51 — palette de commandes console (Ctrl-K) : écrans + campagnes + ads.
+  commandPalette: {
+    overlay: 'ae-command-palette-overlay',
+    root: 'ae-command-palette',
+    input: 'ae-command-palette-input',
+    item: 'ae-command-palette-item',
+    empty: 'ae-command-palette-empty',
   },
 
   // ── ENG46 — Écrans P7 (contrat DOM des NOUVEAUX écrans, axe sans violation

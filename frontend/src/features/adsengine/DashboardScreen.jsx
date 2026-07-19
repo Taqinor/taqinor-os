@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Bell, ExternalLink, Printer, Download } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import AlertCenter from './AlertCenter'
+import CommandPalette from './CommandPalette'
 import {
   formatMAD, formatMoney, formatNumber, formatRatio, formatPercent,
   normalizeAlerts, alertTone, normalizePacing, pacingStateTone,
@@ -283,6 +284,8 @@ export default function DashboardScreen() {
           </button>
           {/* PUB48 — centre de notifications persistant de la console */}
           <AlertCenter />
+          {/* PUB51 — palette de commandes (Ctrl-K) */}
+          <CommandPalette />
         </div>
       </div>
 

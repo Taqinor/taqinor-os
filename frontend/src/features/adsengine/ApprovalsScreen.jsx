@@ -7,6 +7,23 @@ import {
 } from './adsengine'
 import EditCopyComposer from './EditCopyComposer'
 import AlertCenter from './AlertCenter'
+import CommandPalette from './CommandPalette'
+
+/* ============================================================================
+   PUB51 — Raccourcis clavier (« pile d'approbations traitable sans souris »).
+   ----------------------------------------------------------------------------
+   J/K déplacent le focus visuel entre les cartes ; A approuve la carte
+   focalisée ; R ouvre son panneau de rejet structuré (jamais un rejet
+   direct — le motif reste requis, comportement inchangé). JAMAIS déclenché
+   pendant qu'un champ texte/select est focalisé (le rejet ouvre justement un
+   ``<select>`` — taper dedans ne doit jamais être intercepté).
+   ========================================================================== */
+const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
+function isTypingTarget(el) {
+  if (!el) return false
+  if (TYPING_TAGS.has(el.tagName)) return true
+  return !!el.isContentEditable
+}
 
 /* ============================================================================
    ENG25 — Boîte d'approbation (l'écran-vaisseau-amiral).
@@ -79,6 +96,41 @@ export default function ApprovalsScreen() {
     setRejectReason(REJECTION_REASONS[0].value)
   }
 
+  // PUB51 — focus visuel pour les raccourcis clavier (jamais de souris requise).
+  const [focusedIndex, setFocusedIndex] = useState(0)
+
+  // Le focus reste dans les bornes quand la liste change (approbation/rejet
+  // retire une carte, chargement initial…).
+  useEffect(() => {
+    setFocusedIndex(i => (actions.length === 0 ? 0 : Math.min(i, actions.length - 1)))
+  }, [actions.length])
+
+  useEffect(() => {
+    const onKey = (e) => {
+      // Jamais pendant qu'un champ texte/select est focalisé (ex. le motif
+      // de rejet structuré) — ni avec un modificateur (laisse Ctrl-K/copier/
+      // coller… intacts).
+      if (isTypingTarget(document.activeElement)) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const key = e.key.toLowerCase()
+      if (key === 'j') {
+        e.preventDefault()
+        setFocusedIndex(i => Math.min(i + 1, Math.max(actions.length - 1, 0)))
+      } else if (key === 'k') {
+        e.preventDefault()
+        setFocusedIndex(i => Math.max(i - 1, 0))
+      } else if (key === 'a') {
+        const current = actions[focusedIndex]
+        if (current) { e.preventDefault(); approve(current.id) }
+      } else if (key === 'r') {
+        const current = actions[focusedIndex]
+        if (current) { e.preventDefault(); openReject(current.id) }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [actions, focusedIndex, approve, openReject])
+
   const confirmReject = async (id) => {
     setBusy(true); setErr('')
     try {
@@ -132,8 +184,18 @@ export default function ApprovalsScreen() {
           </button>
           {/* PUB48 — centre de notifications persistant de la console */}
           <AlertCenter />
+          {/* PUB51 — palette de commandes (Ctrl-K) */}
+          <CommandPalette />
         </div>
       </div>
+
+      {/* PUB51 — rappel des raccourcis clavier (jamais requis, juste visible) */}
+      {actions.length > 0 && (
+        <p className="ae-shortcuts-hint" data-testid="ae-shortcuts-hint"
+          style={{ color: '#94a3b8', fontSize: '0.8rem', margin: '0 0 0.6rem' }}>
+          Raccourcis : <kbd>J</kbd>/<kbd>K</kbd> naviguer · <kbd>A</kbd> approuver · <kbd>R</kbd> rejeter · <kbd>Ctrl</kbd>+<kbd>K</kbd> palette
+        </p>
+      )}
 
       {showComposer && (
         <EditCopyComposer onProposed={() => { setShowComposer(false); load() }} />
@@ -161,14 +223,19 @@ export default function ApprovalsScreen() {
               Aucune action en attente d&apos;approbation.</p>
           : (
             <div style={{ display: 'grid', gap: '1rem' }}>
-              {actions.map(a => {
+              {actions.map((a, i) => {
                 const diff = budgetDiff(a)
                 const creative = actionCreative(a)
                 const warnings = actionWarnings(a)
                 const copyDiff = editCopyDiff(a)
+                // PUB51 — carte visuellement focalisée pour la navigation J/K.
+                const focused = i === focusedIndex
                 return (
-                  <article key={a.id} className="card ae-action-card" data-testid="ae-action-card"
-                    style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
+                  <article key={a.id}
+                    className={`card ae-action-card${focused ? ' ae-action-card-focused' : ''}`}
+                    data-testid="ae-action-card" aria-current={focused ? 'true' : undefined}
+                    style={{ padding: '1rem',
+                      border: focused ? '2px solid #2563eb' : '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
                       <input type="checkbox" className="ae-batch-toggle"
                         data-testid={`ae-batch-toggle-${a.id}`}

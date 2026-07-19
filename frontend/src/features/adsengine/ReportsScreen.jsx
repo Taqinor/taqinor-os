@@ -8,6 +8,7 @@ import {
 } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import AlertCenter from './AlertCenter'
+import CommandPalette from './CommandPalette'
 
 /* ============================================================================
    ENG45 — Drill-downs reporting (consomme ENG33).
@@ -161,6 +162,8 @@ export default function ReportsScreen() {
         </button>
         {/* PUB48 — centre de notifications persistant de la console */}
         <AlertCenter />
+        {/* PUB51 — palette de commandes (Ctrl-K) */}
+        <CommandPalette />
       </div>
 
       <div role="tablist" aria-label="Sections du reporting"

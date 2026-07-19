@@ -7,6 +7,7 @@ import {
 } from './adsengine'
 import { formatDateTime } from '../../lib/format'
 import AlertCenter from './AlertCenter'
+import CommandPalette from './CommandPalette'
 
 /* ============================================================================
    PUB23 — Armer/désarmer une règle depuis la console.
@@ -141,8 +142,12 @@ export default function RulesScreen() {
         <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <SlidersHorizontal size={20} aria-hidden="true" /> Règles &amp; anomalies
         </h2>
-        {/* PUB48 — centre de notifications persistant de la console */}
-        <AlertCenter />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* PUB48 — centre de notifications persistant de la console */}
+          <AlertCenter />
+          {/* PUB51 — palette de commandes (Ctrl-K) */}
+          <CommandPalette />
+        </div>
       </div>
 
       {err && <p data-testid="ae-rules-err" style={{ color: '#dc2626' }}>{err}</p>}
