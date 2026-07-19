@@ -22,6 +22,7 @@ import {
 } from '../../ui'
 import { isDirty } from '../../ui/form-utils'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
+import CustomFieldsInput from '../../components/CustomFieldsInput'
 
 // VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
 // défaut OFF (comportement historique inchangé). Un salon = 10 leads/produits
@@ -328,6 +329,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const [initialFieldsSnapshot] = useState(initialFields)
   const [fields, setFields] = useState(initialFields)
 
+  // WIR67 — champs personnalisés du module « produit » (le backend valide/
+  // persiste `custom_data` du Produit, même motif que Lead/Client).
+  const [customData, setCustomData] = useState(produit?.custom_data || {})
+
   const dirty = isDirty(initialFieldsSnapshot, fields)
   useDirtyGuard(dirty)
 
@@ -422,6 +427,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         fournisseur_id: fields.fournisseur_id ? parseInt(fields.fournisseur_id) : null,
         garantie_mois:            fields.garantie_mois            !== '' ? parseInt(fields.garantie_mois)            : null,
         garantie_production_mois: fields.garantie_production_mois !== '' ? parseInt(fields.garantie_production_mois) : null,
+        // WIR67 — champs personnalisés du module « produit ».
+        custom_data: customData,
       }
       if (isEdit) {
         await dispatch(updateProduit({ id: produit.id, data: payload })).unwrap()
@@ -677,6 +684,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                      placeholder="ex : 300 (panneaux, 25 ans)" />
             </FormField>
           </FormSection>
+
+          {/* WIR67 — champs personnalisés (module « produit »). */}
+          <CustomFieldsInput module="produit" value={customData} onChange={setCustomData} />
 
           {isEdit && (
             <PrixFournisseursSection produitId={produit.id} fournisseurs={fournisseurs} isAdmin={isAdmin} />
