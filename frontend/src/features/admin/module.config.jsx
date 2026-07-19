@@ -27,6 +27,8 @@ const RolesManagement = lazy(() => import('../../pages/admin/RolesManagement'))
 const TenantsConsole = lazy(() => import('../../pages/admin/TenantsConsole'))
 // WIR134 — écran « Sécurité & Identité » (apps/identity, gouverné IsAdminRole).
 const SecuriteIdentitePage = lazy(() => import('../../pages/admin/SecuriteIdentitePage'))
+// WIR135 — écran « Gouvernance des accès » (accessreview + rapport roles).
+const GouvernanceAccesPage = lazy(() => import('../../pages/admin/GouvernanceAccesPage'))
 
 const config = {
   key: 'admin',
@@ -37,6 +39,8 @@ const config = {
     { path: '/admin/tenants', component: TenantsConsole, roles: ['admin'] },
     // WIR134 — Sécurité & Identité (admin only : le backend exige IsAdminRole).
     { path: '/admin/securite-identite', component: SecuriteIdentitePage, roles: ['admin'] },
+    // WIR135 — Gouvernance des accès (admin only : le backend exige IsAdminRole).
+    { path: '/admin/gouvernance-acces', component: GouvernanceAccesPage, roles: ['admin'] },
   ],
 }
 

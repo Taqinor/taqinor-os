@@ -75,6 +75,7 @@ const BASE_PAGE_TITLES = [
   ['/admin/users', 'Utilisateurs'],
   ['/admin/roles', 'Rôles'],
   ['/admin/securite-identite', 'Sécurité & Identité'],
+  ['/admin/gouvernance-acces', 'Gouvernance des accès'],
   ['/parametres/notifications', 'Préférences de notifications'],
   ['/parametres/alertes-kpi', 'Alertes KPI'],
   ['/parametres', 'Paramètres'],
