@@ -23,23 +23,25 @@ test('E3: create a lead, see it in list + kanban, open it', async ({ page }) => 
   await closeLeadModal(page)
 })
 
-test('E5: inline bill editing on a lead saves and reflects', async ({ page }) => {
+test('E5: the winter bill on a lead autosaves and reflects', async ({ page }) => {
   await gotoLeads(page)
   const name = await createLead(page, { nom: uniq('Bill') }) // no bill yet
   await openLead(page, name)
   const modal = modalXl(page)
 
-  // The subbar shows "+ Renseigner la facture" until a bill exists.
-  await modal.locator('.lead-bill-view').click()
-  const billInput = modal.locator('input.lead-bill-input').first()
-  await billInput.fill('800')
-  // The input is controlled by React state read by the save handler — make sure
-  // that state has committed before saving (else it persists an empty bill).
-  await expect(billInput).toHaveValue('800')
-  await modal.getByRole('button', { name: 'Enregistrer' }).click()
+  // LW13 — la saisie facture inline a disparu : la facture d'hiver est devenue
+  // un champ normal (#lf-facture-hiver, section Énergie), AUTOSAUVÉ par le moteur
+  // (plus de bouton de sauvegarde manuelle).
+  const bill = modal.locator('#lf-facture-hiver')
+  await bill.fill('800')
+  await expect(bill).toHaveValue('800')
+  // L'autosauvegarde confirme via le chip « ✓ Enregistré ».
+  await expect(modal.getByText('✓ Enregistré')).toBeVisible()
+  await closeLeadModal(page)
 
-  // Saved value is shown back, formatted (e.g. "800 MAD").
-  await expect(modal.locator('.lead-bill-view')).toContainText('800')
+  // Réouverture : la valeur est bien persistée.
+  await openLead(page, name)
+  await expect(modalXl(page).locator('#lf-facture-hiver')).toHaveValue('800')
   await closeLeadModal(page)
 })
 
@@ -55,21 +57,23 @@ test('E6: reassign a lead from a kanban card and from the lead view', async ({ p
   await page.locator('.ap-menu .ap-item', { hasText: SECOND_USER }).click()
   await expect(card.locator('.ap-trigger')).toHaveAttribute('title', new RegExp(SECOND_USER))
 
-  // ── from the lead view (picker + save) ──
+  // ── from the lead view (rail identité : picker → autosave) ──
   await openLead(page, name)
   const modal = modalXl(page)
   // VX71 — scan axe DYNAMIQUE : le lead EN ÉDITION (dialog ouvert, picker
   // assignee monté) est un état qu'un scan statique de build ne voit jamais.
   await assertNoSeriousA11yViolations(page, { include: '[role="dialog"]' })
-  const respGroup = modal.locator('.form-group', { hasText: 'Responsable' })
-  await respGroup.locator('.ap-trigger').click()
+  // LW13 — le responsable vit dans la triade du rail identité (.lw-rail-field),
+  // plus dans un .form-group ; l'édition est AUTOSAUVÉE (aucune sauvegarde manuelle).
+  const respField = modal.locator('.lw-rail-field', { hasText: 'Responsable' })
+  await respField.locator('.ap-trigger').click()
   await page.locator('.ap-menu .ap-item', { hasText: ADMIN.username }).click()
-  await modal.getByRole('button', { name: 'Mettre à jour' }).click()
-  await expect(modalXl(page)).toHaveCount(0)
+  await expect(modal.getByText('✓ Enregistré')).toBeVisible()
+  await closeLeadModal(page)
 
   await openLead(page, name)
   await expect(
-    modalXl(page).locator('.form-group', { hasText: 'Responsable' }).locator('.ap-name'),
+    modalXl(page).locator('.lw-rail-field', { hasText: 'Responsable' }).locator('.ap-name'),
   ).toContainText(ADMIN.username)
   await closeLeadModal(page)
 })
