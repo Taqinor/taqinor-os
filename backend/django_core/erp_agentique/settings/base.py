@@ -811,6 +811,10 @@ CELERY_TASK_ROUTES = {
     'authentication.desactiver_comptes_dormants': {'queue': 'scheduled'},
     'core.escalate_workflow_sla': {'queue': 'scheduled'},
     'stock.recompute_reordering': {'queue': 'scheduled'},
+    # ASG2 / AGEN8 — Assumption Engine : oubli hebdo des posteriors + auto-pause
+    # « rayon d'explosion » des créas générées (beat) → queue planifiée.
+    'adsengine.decay_assumptions_weekly': {'queue': 'scheduled'},
+    'adsengine.autopause_blast_radius': {'queue': 'scheduled'},
     'core.dump_database': {'queue': 'scheduled'},
     'core.restore_drill': {'queue': 'scheduled'},
     'core.purge_backups': {'queue': 'scheduled'},

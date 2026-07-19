@@ -86,6 +86,71 @@ const TABS = [
   { key: 'overview', label: 'Vue d\'ensemble' },
   { key: 'pacing', label: 'Pacing' },
   { key: 'reconciliation', label: 'Réconciliation' },
+  { key: 'signaux', label: 'Signaux' },
+]
+
+/* ============================================================================
+   SIG4 — Console de signaux (dd-assumption-engine.md §11).
+   ----------------------------------------------------------------------------
+   Ta structure 3 couches (créatif / opérations / garde-fous durs) = ce que
+   fait l'industrie : le composite reste HORS de l'optimiseur (affichage +
+   alerte seulement, jamais un poids appris à notre volume). Deux scores de
+   santé DISTINCTS (SIG1, poids fixes en config) pour qu'une vente lente ne
+   salisse jamais l'allocation créative ; le quadrant de garde-fous DURS (SIG2 :
+   fréquence/quality_ranking/CPL/qualité de compte) NE FAIT QUE freiner ; le
+   drill-down (SIG3) montre le filigrane de cohorte (proxy 7j → CPL 14-28j →
+   signature 60-90j). Helpers tenus LOCAUX à cet écran (adsengine.js est hors
+   périmètre de la lane frontend/adsengine SIG4) — aucun score n'est recalculé,
+   uniquement lu depuis l'API.
+   ========================================================================== */
+function bandTone(bande) {
+  const b = String(bande || '').toLowerCase()
+  if (b.includes('rouge') || b.includes('critique')) return { bg: '#fee2e2', color: '#991b1b' }
+  if (b.includes('orange') || b.includes('alerte')) return { bg: '#fef9c3', color: '#854d0e' }
+  if (b.includes('vert') || b.includes('ok')) return { bg: '#dcfce7', color: '#166534' }
+  return { bg: '#f1f5f9', color: '#475569' }
+}
+
+function normalizeHealthScore(raw) {
+  const o = raw && typeof raw === 'object' ? raw : {}
+  return {
+    score: Number.isFinite(Number(o.score)) ? Number(o.score) : null,
+    bande: o.bande || o.band || '',
+    bande_display: o.bande_display || o.band_display || o.bande || '—',
+  }
+}
+
+function normalizeSignals(raw) {
+  const s = raw && typeof raw === 'object' ? raw : {}
+  const guardrailsRaw = Array.isArray(s.guardrails) ? s.guardrails
+    : (Array.isArray(s.garde_fous) ? s.garde_fous : [])
+  return {
+    creatif: normalizeHealthScore(s.creatif || s.creative),
+    operations: normalizeHealthScore(s.operations || s.ops),
+    guardrails: guardrailsRaw.filter(Boolean).map((g, i) => ({
+      key: g.key ?? i,
+      label: g.label || g.nom || `Garde-fou ${i + 1}`,
+      valeur: Number.isFinite(Number(g.valeur ?? g.value)) ? Number(g.valeur ?? g.value) : null,
+      seuil: Number.isFinite(Number(g.seuil ?? g.threshold)) ? Number(g.seuil ?? g.threshold) : null,
+      freine: !!(g.freine ?? g.blocking),
+      statut_display: g.statut_display || (g.freine ?? g.blocking ? 'Freine' : 'OK'),
+    })),
+  }
+}
+
+function normalizeCohorts(raw) {
+  const list = Array.isArray(raw) ? raw : (raw?.results || raw?.cohortes || [])
+  return (list || []).filter(Boolean).map((c, i) => ({
+    id: c.id ?? i,
+    fenetre: c.fenetre || c.window || `Cohorte ${i + 1}`,
+    valeur: Number.isFinite(Number(c.valeur ?? c.value)) ? Number(c.valeur ?? c.value) : null,
+    maturite_display: c.maturite_display || c.maturity_display || '',
+  }))
+}
+
+const SIGNAL_CARDS = [
+  { key: 'creatif', label: 'Santé créative' },
+  { key: 'operations', label: 'Santé opérations' },
 ]
 
 export default function DashboardScreen() {
@@ -105,6 +170,13 @@ export default function DashboardScreen() {
   const [reconDetailId, setReconDetailId] = useState(null)
   const pacingLoaded = useRef(false)
   const reconLoaded = useRef(false)
+
+  // SIG4 — console de signaux (chargée paresseusement, comme pacing/recon).
+  const [signals, setSignals] = useState(null)
+  const [signalDrill, setSignalDrill] = useState(null) // { key, label }
+  const [cohorts, setCohorts] = useState([])
+  const [cohortsLoading, setCohortsLoading] = useState(false)
+  const signalsLoaded = useRef(false)
 
   const load = useCallback(() => {
     adsengineApi.metrics.dashboard()
@@ -152,7 +224,25 @@ export default function DashboardScreen() {
         .then(r => setRecon(normalizeReconciliation(r.data)))
         .catch(() => setRecon([]))
     }
+    if (next === 'signaux' && !signalsLoaded.current) {
+      signalsLoaded.current = true
+      adsengineApi.signals.get()
+        .then(r => setSignals(normalizeSignals(r.data)))
+        .catch(() => setSignals(normalizeSignals(null)))
+    }
   }
+
+  // SIG3 — drill-down par signal/cohorte (filigrane de maturation).
+  const openSignalDrill = (key, label) => {
+    setSignalDrill({ key, label })
+    setCohortsLoading(true)
+    setCohorts([])
+    adsengineApi.signals.cohort({ signal: key })
+      .then(r => setCohorts(normalizeCohorts(r.data)))
+      .catch(() => setCohorts([]))
+      .finally(() => setCohortsLoading(false))
+  }
+  const closeSignalDrill = () => { setSignalDrill(null); setCohorts([]) }
 
   return (
     <div className="page ae-dashboard">
@@ -461,6 +551,96 @@ export default function DashboardScreen() {
               </section>
             )
           })()}
+        </section>
+      )}
+
+      {/* ── Signaux (SIG1-4) ── */}
+      {tab === 'signaux' && (
+        <section className="ae-signals" data-testid="ae-signals">
+          {!signals
+            ? <p className="page-loading">Chargement…</p>
+            : (
+              <>
+                {/* SIG1 — deux scores de santé DISTINCTS (poids fixes, hors optimiseur) */}
+                <div style={{ display: 'grid', gap: '1rem',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginBottom: '1.25rem' }}>
+                  {SIGNAL_CARDS.map(sc => {
+                    const data = signals[sc.key]
+                    const tone = bandTone(data.bande)
+                    return (
+                      <button key={sc.key} type="button" className="card ae-signal-score"
+                        data-testid={`ae-signal-${sc.key}`}
+                        onClick={() => openSignalDrill(sc.key, sc.label)}
+                        aria-label={`${sc.label} — voir le détail par cohorte`}
+                        style={{ textAlign: 'left', cursor: 'pointer', padding: '1rem', border: '1px solid #e2e8f0' }}>
+                        <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{sc.label}</div>
+                        <div data-testid={`ae-signal-${sc.key}-score`} style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+                          {formatRatio(data.score)}
+                        </div>
+                        <span className="badge" data-testid={`ae-signal-${sc.key}-bande`}
+                          style={{ background: tone.bg, color: tone.color }}>
+                          {data.bande_display}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* SIG2 — quadrant de garde-fous DURS (ne fait QUE freiner) */}
+                <h3 style={{ margin: '0 0 0.6rem' }}>Quadrant de garde-fous durs</h3>
+                {signals.guardrails.length === 0
+                  ? <p data-testid="ae-guardrail-empty" style={{ color: '#64748b' }}>Aucun garde-fou.</p>
+                  : (
+                    <div data-testid="ae-guardrail-quadrant" style={{ display: 'grid', gap: '0.75rem',
+                      gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: '1.25rem' }}>
+                      {signals.guardrails.map(g => (
+                        <div key={g.key} className="card" data-testid={`ae-guardrail-${g.key}`}
+                          style={{ padding: '0.75rem', border: `1px solid ${g.freine ? '#dc2626' : '#e2e8f0'}` }}>
+                          <div style={{ color: '#64748b', fontSize: '0.8rem' }}>{g.label}</div>
+                          <div style={{ fontWeight: 700 }}>
+                            {formatRatio(g.valeur)}{g.seuil != null ? ` / ${formatRatio(g.seuil)}` : ''}
+                          </div>
+                          <span className="badge" data-testid={`ae-guardrail-statut-${g.key}`}
+                            style={{ background: g.freine ? '#fee2e2' : '#dcfce7',
+                              color: g.freine ? '#991b1b' : '#166534' }}>
+                            {g.statut_display}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                {/* SIG3 — drill-down par signal/cohorte (filigrane de maturation) */}
+                {signalDrill && (
+                  <section className="card ae-signal-drill" data-testid="ae-signal-drill" style={{ padding: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h3 style={{ margin: 0 }}>Détail par cohorte — {signalDrill.label}</h3>
+                      <button type="button" className="btn btn-light" data-testid="ae-signal-drill-close"
+                        onClick={closeSignalDrill}>Fermer</button>
+                    </div>
+                    {cohortsLoading
+                      ? <p className="page-loading">Chargement…</p>
+                      : cohorts.length === 0
+                        ? <p style={{ color: '#64748b' }} data-testid="ae-signal-drill-empty">
+                            Aucune cohorte pour ce signal.</p>
+                        : (
+                          <table className="data-table" data-testid="ae-signal-drill-table" style={{ marginTop: '0.5rem' }}>
+                            <thead><tr><th>Fenêtre</th><th>Valeur</th><th>Maturité</th></tr></thead>
+                            <tbody>
+                              {cohorts.map(c => (
+                                <tr key={c.id} data-testid="ae-signal-drill-row">
+                                  <td>{c.fenetre}</td>
+                                  <td>{formatRatio(c.valeur)}</td>
+                                  <td>{c.maturite_display}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                  </section>
+                )}
+              </>
+            )}
         </section>
       )}
     </div>

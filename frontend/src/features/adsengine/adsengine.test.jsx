@@ -51,9 +51,10 @@ describe('adsengine — module.config (auto-enregistrement ENG21)', () => {
     // commentaires, instagram, expérimentations, plan de vol, backlog, règles,
     // simulation, reporting, brief, journal, connexion (écrans ADSDEEP ajoutés
     // au fil des tâches — cockpit ADSDEEP22, commentaires ADSDEEP54, IG ADSDEEP56).
-    expect(config.routes).toHaveLength(16)
-    expect(config.nav.items).toHaveLength(16)
-    expect(config.titles).toHaveLength(16)
+    // +1 : « L'Arbre » (ASG6 — la vue plan-vivant de l'Assumption Engine).
+    expect(config.routes).toHaveLength(17)
+    expect(config.nav.items).toHaveLength(17)
+    expect(config.titles).toHaveLength(17)
 
     const routePaths = config.routes.map(r => r.path).sort()
     const navTargets = config.nav.items.map(i => i.to).sort()

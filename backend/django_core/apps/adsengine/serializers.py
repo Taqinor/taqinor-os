@@ -5,9 +5,10 @@ from rest_framework import serializers
 
 from .models import (
     AdCampaignMirror, AdMirror, AdSetMirror, AnomalyEvent, ArmDailyStat,
-    CommentMirror, CreativeAsset, CreativeBacklogItem,
+    AssumptionNode, CommentMirror, CreativeAsset, CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
-    EngineAlert, Experiment, ExperimentArm, FlightPhase, FlightPlan,
+    EngineAlert, Experiment, ExperimentArm, FactEntry, FactTable,
+    FlightPhase, FlightPlan,
     GuardrailConfig, InsightBreakdown, InsightSnapshot,
     InstagramCommentMirror, InstagramMediaMirror, MetaConnection,
     PacingState, ReconciliationSnapshot, RulePolicy,
@@ -74,6 +75,9 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
             # ADSENG4 — trésorerie : enveloppe mensuelle + pacing + exploration.
             'monthly_budget_ceiling_mad', 'pacing_band_pct',
             'exploration_floor_mad', 'exploration_floor_pct',
+            # SIG1 — poids fixes des deux scores de santé (créatif/opérations).
+            'health_creative_weight_ctr', 'health_creative_weight_freshness',
+            'health_ops_weight_cpl', 'health_ops_weight_delivery',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
@@ -346,10 +350,15 @@ class CreativeGenerationBatchSerializer(serializers.ModelSerializer):
         model = CreativeGenerationBatch
         fields = [
             'id', 'source_hook_asset', 'visual_ids', 'status', 'approved_by',
-            'approved_at', 'note', 'created_at', 'updated_at',
+            'approved_at', 'note',
+            # AGEN1 — audit de génération ancrée (posé par le pipeline, jamais
+            # par un client).
+            'fact_table_version', 'claim_verdicts', 'template_quarantined',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
             'status', 'approved_by', 'approved_at', 'created_at', 'updated_at',
+            'fact_table_version', 'claim_verdicts', 'template_quarantined',
         ]
 
     def validate_source_hook_asset(self, value):
@@ -677,3 +686,75 @@ class InstagramCommentMirrorSerializer(serializers.ModelSerializer):
             'fetched_at', 'created_at', 'updated_at',
         ]
         read_only_fields = fields
+
+
+# ── ASG1 — Assumption Engine (arbre vivant de croyances testées) ──────────────
+class AssumptionNodeSerializer(serializers.ModelSerializer):
+    """ASG1 — Nœud de l'Assumption Engine (dd-assumption-engine §3.1).
+
+    ``company`` est absente des champs (posée côté serveur). ``parent`` et
+    ``invalidation_links`` sont contraints à la MÊME société
+    (``_same_company``) — un DAG ne traverse jamais une frontière de tenant.
+    ``demi_vie_semaines`` reçoit le défaut de sa classe (``HALF_LIFE_WEEKS``)
+    quand absente ; une valeur fournie explicitement n'est jamais écrasée.
+    """
+
+    class Meta:
+        model = AssumptionNode
+        fields = [
+            'id', 'classe', 'enonce_fr', 'enjeux_s', 'pertinence_r',
+            'tags_saison', 'parent', 'invalidation_links',
+            'alpha', 'beta', 'alpha0', 'beta0', 'demi_vie_semaines',
+            'last_tested_at', 'statut', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_parent(self, value):
+        return _same_company(self, value)
+
+    def validate_invalidation_links(self, value):
+        for node in value:
+            _same_company(self, node)
+        return value
+
+    def validate(self, attrs):
+        if attrs.get('demi_vie_semaines') is None:
+            classe = attrs.get('classe') or getattr(
+                self.instance, 'classe', None)
+            if classe:
+                attrs['demi_vie_semaines'] = (
+                    AssumptionNode.HALF_LIFE_WEEKS.get(classe))
+        return attrs
+
+
+# ── AGEN1 — Table de faits versionnée (génération autonome ancrée) ────────────
+class FactTableSerializer(serializers.ModelSerializer):
+    """AGEN1 — Table de faits versionnée. ``version``/``statut`` sont EN
+    LECTURE SEULE : la version est toujours calculée côté serveur
+    (:meth:`FactTable.create_draft`, jamais un ``count()+1``) et le passage en
+    'publiee' passe UNIQUEMENT par l'action ``publish`` — jamais un PATCH
+    direct de statut (même discipline que ``CreativeGenerationBatch``)."""
+
+    class Meta:
+        model = FactTable
+        fields = ['id', 'version', 'statut', 'created_at', 'updated_at']
+        read_only_fields = ['version', 'statut', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        return FactTable.create_draft(validated_data['company'])
+
+
+class FactEntrySerializer(serializers.ModelSerializer):
+    """AGEN1 — Une entrée de table de faits. ``table`` est contrainte à la
+    MÊME société (``_same_company``)."""
+
+    class Meta:
+        model = FactEntry
+        fields = [
+            'id', 'table', 'cle', 'valeur', 'unite', 'source', 'verifie_le',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_table(self, value):
+        return _same_company(self, value)
