@@ -1489,15 +1489,23 @@ class EngineActionViewSet(AdsengineViewSet):
                            exc_info=True)
             raise drf_serializers.ValidationError(
                 {'payload': "Données de l'action invalides."})
-        super().perform_create(serializer)
+        # PUB103 — proposeur posé côté serveur (support du garde-fou quatre yeux).
+        # ``serializer.save(company=…)`` force la société exactement comme
+        # ``TenantMixin.perform_create`` ; on ajoute seulement ``proposed_by``.
+        serializer.save(company=company, proposed_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        """Approuve l'action (acteur posé côté serveur)."""
-        from .services import approve_action
+        """Approuve l'action (acteur posé côté serveur).
+
+        PUB103 — un proposeur qui approuve sa propre action alors que la double
+        validation est active reçoit 403 (``FourEyesViolation``)."""
+        from .services import FourEyesViolation, approve_action
         instance = self.get_object()
         try:
             approve_action(instance, user=request.user)
+        except FourEyesViolation as exc:
+            return Response({'detail': str(exc)}, status=403)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(instance).data)
@@ -2119,6 +2127,22 @@ class MetaConnectionHealthView(APIView):
             {'key': 'paused', 'ok': True,
              'detail': 'Le client naît en pause (règle de sécurité).'},
         ]
+        # PUB97 — tuile solde prépayé Meta : lit la dernière alerte trésorerie
+        # non résolue (posée par la synchro), sans jamais appeler l'API en direct.
+        bal_alert = (EngineAlert.objects
+                     .filter(company=company, entity_key='prepaid_balance',
+                             resolved=False)
+                     .order_by('-created_at').first())
+        bal_detail = (bal_alert.detail or {}) if bal_alert else {}
+        statuses.append({
+            'key': 'prepaid_balance',
+            # OK tant qu'aucune alerte de solde bas n'est ouverte ; None-safe.
+            'ok': bal_alert is None or bal_alert.severity == 'info',
+            'detail': (bal_alert.message if bal_alert else ''),
+            'days_runway': bal_detail.get('days_runway'),
+            'balance': bal_detail.get('balance'),
+            'currency': bal_detail.get('currency', ''),
+        })
         return Response({'statuses': statuses})
 
 
@@ -2509,6 +2533,51 @@ class ReconciliationListView(APIView):
                 'lignes': [],
             })
         return Response(rows)
+
+
+class ReconciliationBackfillView(APIView):
+    """PUB105 — Bouton « rattraper » depuis l'alerte de divergence.
+
+    Déclenche un backfill CIBLÉ (leads via pull-sync + insights de la campagne)
+    quand une divergence « webhook non reçu » a été flaggée. Accepte soit
+    ``alert_id`` (on lit ``campaign_meta_id``/``date`` dans le détail de
+    l'``EngineAlert`` de divergence), soit ``campaign_meta_id`` + ``date``
+    directement. Société forcée serveur. Écriture ``adsengine_manage``.
+    Idempotent (rejouable)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        data = request.data if isinstance(request.data, dict) else {}
+        campaign_meta_id = str(data.get('campaign_meta_id') or '')
+        day = data.get('date') or None
+
+        alert_id = data.get('alert_id')
+        if alert_id:
+            alert = EngineAlert.objects.filter(
+                company=company, pk=alert_id).first()
+            if alert is None:
+                return Response({'detail': 'Alerte introuvable.'}, status=404)
+            detail = alert.detail if isinstance(alert.detail, dict) else {}
+            campaign_meta_id = campaign_meta_id or str(
+                detail.get('campaign_meta_id') or '')
+            day = day or detail.get('date')
+
+        parsed_day = None
+        if day:
+            import datetime as _dt
+            try:
+                parsed_day = _dt.date.fromisoformat(str(day))
+            except (ValueError, TypeError):
+                parsed_day = None
+
+        from .tasks import backfill_after_divergence
+        summary = backfill_after_divergence(
+            company, campaign_meta_id=campaign_meta_id, day=parsed_day)
+        return Response(summary)
 
 
 def _brief_payload(brief):

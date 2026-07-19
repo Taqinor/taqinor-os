@@ -77,6 +77,12 @@ _ALLOWED_TABLES = [
     "sav_equipement",
     "sav_ticket",
     "sav_contratmaintenance",
+    # ── PUB106 — compte publicitaire Meta (LECTURE seule, scope societe). Vues
+    # de LECTURE sur les miroirs adsengine : campagnes, perf datee, leads par ad.
+    # Jamais adsengine_metaconnection (credentials write-only) ni prix d'achat.
+    "adsengine_adcampaignmirror",
+    "adsengine_insightsnapshot",
+    "adsengine_metaleadmirror",
 ]
 
 # Tables qui possedent une colonne company_id → filtrage obligatoire
@@ -101,6 +107,10 @@ _TABLES_WITH_COMPANY_ID = frozenset([
     "sav_equipement",
     "sav_ticket",
     "sav_contratmaintenance",
+    # ── PUB106 — miroirs adsengine (tous porteurs de company_id, TenantModel) ──
+    "adsengine_adcampaignmirror",
+    "adsengine_insightsnapshot",
+    "adsengine_metaleadmirror",
 ])
 
 # ERR2 — La table tenant elle-meme : son PK `id` EST le company_id. Une requete
@@ -179,6 +189,24 @@ _TABLE_DESCRIPTIONS: dict[str, str] = {
         "Contrats de maintenance preventive : client, installation, "
         "periodicite (mensuel/trimestriel/semestriel/annuel), date_debut, "
         "derniere_visite, actif, date_renouvellement."
+    ),
+    # ── PUB106 — compte publicitaire Meta (LECTURE seule) ──
+    "adsengine_adcampaignmirror": (
+        "Campagnes publicitaires Meta (miroir LECTURE) : meta_id, name (nom de "
+        "la campagne), status, objective. Une campagne regroupe des annonces."
+    ),
+    "adsengine_insightsnapshot": (
+        "Performance publicitaire datee (miroir LECTURE) : spend (depense, "
+        "devise du compte), results, leads_count (leads), conversations "
+        "(WhatsApp), impressions, clicks, date. Une ligne par jour et par objet "
+        "cible (campagne/adset/ad, via content_type_id + object_id). Pour la "
+        "depense d'une campagne, joindre object_id au adsengine_adcampaignmirror.id "
+        "quand content_type designe une campagne. Filtrer par date pour un mois."
+    ),
+    "adsengine_metaleadmirror": (
+        "Leads publicitaires Meta par annonce (miroir LECTURE) : leadgen_id, "
+        "ad_id, adset_id, campaign_id (identifiants Meta), created_time, "
+        "is_organic. Compter les lignes pour le nombre de leads d'une campagne."
     ),
 }
 

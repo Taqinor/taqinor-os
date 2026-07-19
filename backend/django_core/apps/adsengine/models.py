@@ -222,6 +222,15 @@ class GuardrailConfig(TenantModel):
     # change pas ce gate, elle empêche seulement un flush cache de le perdre.
     autonomy_active = models.BooleanField(
         default=False, verbose_name='Mode autonome activé')
+    # ── PUB103 — Quatre yeux OPTIONNEL sur l'approbation ──
+    # OFF par défaut : mode solo intact (une seule personne propose ET approuve —
+    # l'usage fondateur actuel). ON : le service ``approve_action`` IMPOSE
+    # ``proposed_by ≠ approved_by`` (403 sinon) — dès qu'un media buyer est
+    # embauché, personne ne peut auto-approuver sa propre dépense. Ne peut JAMAIS
+    # autoriser une activation de campagne (interdite en dur, invariant #3).
+    require_four_eyes = models.BooleanField(
+        default=False,
+        verbose_name='Double validation (quatre yeux) sur les approbations')
 
     class Meta:
         verbose_name = 'Garde-fous publicitaires'
@@ -647,6 +656,59 @@ class InsightBreakdown(TenantModel):
             dimension=dimension, key=key, defaults=defaults)
 
 
+class InsightMonthlyRollup(TenantModel):
+    """PUB104 — Agrégat MENSUEL d'``InsightSnapshot`` (rollup/archivage).
+
+    ``InsightSnapshot`` (quotidien × objet, colonnes typées) grossissait sans
+    stratégie. Au-delà de N mois, on AGRÈGE le détail quotidien en un rollup
+    mensuel par (objet, mois) — les totaux ADDITIFS sont conservés, le détail
+    quotidien peut alors être purgé sans perdre les sommes de ``reporting``.
+
+    Rattaché par FK générique (comme ``InsightSnapshot``) à n'importe quel miroir.
+    Upsert idempotent par ``(company, content_type, object_id, year, month)`` :
+    ré-agréger le même mois écrase, jamais de doublon. Seules les métriques
+    ADDITIVES sont matérialisées (jamais reach/frequency — non sommables sur des
+    jours ; le CPL se recalcule spend/leads)."""
+
+    content_type = models.ForeignKey(
+        'contenttypes.ContentType', on_delete=models.CASCADE,  # on_delete: rollup rattaché à sa cible générique
+        verbose_name='Type de cible')
+    object_id = models.PositiveIntegerField(verbose_name='ID cible')
+    content_object = GenericForeignKey('content_type', 'object_id')
+    year = models.PositiveIntegerField(verbose_name='Année')
+    month = models.PositiveIntegerField(verbose_name='Mois')
+    spend = models.DecimalField(
+        max_digits=16, decimal_places=2, default=0, verbose_name='Dépense')
+    results = models.PositiveIntegerField(default=0, verbose_name='Résultats')
+    impressions = models.PositiveIntegerField(
+        default=0, verbose_name='Impressions')
+    clicks = models.PositiveIntegerField(default=0, verbose_name='Clics')
+    link_clicks = models.PositiveIntegerField(
+        default=0, verbose_name='Clics sur lien')
+    conversations = models.PositiveIntegerField(
+        default=0, verbose_name='Conversations')
+    leads_count = models.PositiveIntegerField(default=0, verbose_name='Leads')
+    days_count = models.PositiveIntegerField(
+        default=0, verbose_name='Jours agrégés')
+
+    class Meta:
+        verbose_name = 'Rollup mensuel de performance'
+        verbose_name_plural = 'Rollups mensuels de performance'
+        ordering = ['-year', '-month']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'content_type', 'object_id', 'year', 'month'],
+                name='uniq_adseng_insight_rollup'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'year', 'month'],
+                         name='adseng_rollup_co_ym_idx'),
+        ]
+
+    def __str__(self):
+        return f'Rollup {self.object_id} {self.year}-{self.month:02d}'
+
+
 class EngineAction(TenantModel):
     """ENG7 — Colonne vertébrale propose→approuve→applique du moteur.
 
@@ -704,6 +766,15 @@ class EngineAction(TenantModel):
     # laisse quand même une trace ``auto=True``. Défaut False (approbation requise).
     auto = models.BooleanField(
         default=False, verbose_name='Jouée automatiquement (ENG8)')
+    # PUB103 — proposeur (posé côté serveur au POST API). Support du garde-fou
+    # « quatre yeux » : quand ``GuardrailConfig.require_four_eyes`` est activé,
+    # ``approve_action`` refuse ``proposed_by == approved_by``. NULL = proposée
+    # par le moteur (système) — le quatre-yeux ne s'applique jamais à une
+    # proposition machine (un humain qui l'approuve EST le second regard).
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='adsengine_actions_proposees',
+        verbose_name='Proposée par')
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='adsengine_actions_approuvees',

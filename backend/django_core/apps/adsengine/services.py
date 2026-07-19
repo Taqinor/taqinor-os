@@ -202,12 +202,16 @@ def _merge_warnings(payload, warns):
     return payload
 
 
-def propose_action(company, *, kind, reason_fr, payload=None, auto=False):
+def propose_action(company, *, kind, reason_fr, payload=None, auto=False,
+                   proposed_by=None):
     """Crée une action PROPOSÉE. ``reason_fr`` (une phrase FR) est obligatoire.
 
     ADSDEEP31 — pour un kind de la surface d'édition, les avertissements destinés
     à l'approbateur (reset d'apprentissage / perte de preuve sociale) sont
-    injectés dans ``payload['warnings']`` (fusionnés, jamais un doublon)."""
+    injectés dans ``payload['warnings']`` (fusionnés, jamais un doublon).
+
+    PUB103 — ``proposed_by`` (optionnel) trace l'humain qui propose ; None = le
+    moteur (système). Support du garde-fou « quatre yeux »."""
     if not (reason_fr and str(reason_fr).strip()):
         raise ValueError(
             "Une raison en une phrase (français) est obligatoire pour proposer "
@@ -219,7 +223,8 @@ def propose_action(company, *, kind, reason_fr, payload=None, auto=False):
     return EngineAction.objects.create(
         company=company, kind=kind, payload=payload,
         reason_fr=str(reason_fr).strip(),
-        status=EngineAction.Statut.PROPOSEE, auto=auto)
+        status=EngineAction.Statut.PROPOSEE, auto=auto,
+        proposed_by=proposed_by)
 
 
 # ── ADSDEEP34 — A/B test NATIF Meta (ad_studies SPLIT_TEST_V2) ───────────────
@@ -1074,13 +1079,32 @@ def _dispatch_create_post(client, payload):
         published=published, scheduled_publish_time=scheduled)
 
 
+class FourEyesViolation(Exception):
+    """PUB103 — Le proposeur tente d'approuver sa propre action alors que le
+    garde-fou « quatre yeux » (``GuardrailConfig.require_four_eyes``) est actif.
+    Traduite en 403 par le viewset."""
+
+
+def _requires_four_eyes(company):
+    """True si la société impose la double validation (défaut False = mode solo)."""
+    from .models import GuardrailConfig
+    cfg = GuardrailConfig.objects.filter(company=company).first()
+    return bool(cfg and cfg.require_four_eyes)
+
+
 def approve_action(action, *, user):
     """Approuve une action PROPOSÉE (acteur posé côté serveur).
 
     ENGFIX3 — Verrou de ligne (``select_for_update``) + re-vérification du statut
     SOUS le verrou : deux décisions concurrentes (approuver contre rejeter) ne
     peuvent pas toutes deux gagner (course dernier-écrivain). Seule une action
-    ENCORE ``proposee`` sous le verrou passe ``approuvee``."""
+    ENCORE ``proposee`` sous le verrou passe ``approuvee``.
+
+    PUB103 — quatre yeux : si ``GuardrailConfig.require_four_eyes`` est actif pour
+    la société, un proposeur HUMAIN ne peut pas approuver sa propre action
+    (``proposed_by == user`` ⇒ ``FourEyesViolation`` → 403). OFF (défaut) : mode
+    solo intact. Une proposition machine (``proposed_by`` None) n'est jamais
+    bloquée — l'humain qui l'approuve EST le second regard."""
     from django.db import transaction
     with transaction.atomic():
         locked = (EngineAction.objects
@@ -1088,6 +1112,12 @@ def approve_action(action, *, user):
                   .filter(pk=action.pk).first())
         if locked is None or locked.status != EngineAction.Statut.PROPOSEE:
             raise ValueError("Seule une action proposée peut être approuvée.")
+        if (locked.proposed_by_id is not None
+                and locked.proposed_by_id == getattr(user, 'pk', None)
+                and _requires_four_eyes(locked.company_id)):
+            raise FourEyesViolation(
+                "Double validation requise : le proposeur ne peut pas approuver "
+                "sa propre action (garde-fou quatre yeux actif).")
         locked.status = EngineAction.Statut.APPROUVEE
         locked.approved_by = user
         locked.save(update_fields=['status', 'approved_by', 'updated_at'])

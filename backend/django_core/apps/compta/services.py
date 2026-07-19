@@ -175,6 +175,12 @@ _COMPTES_CGNC = [
     # multirisque, cyber, homme-clé…), débitées lors de la proposition
     # d'écriture sur échéance de prime (apps.assurances.services).
     ('6134', 'Assurances', False, False, 'charge'),
+    # PUB96 — Publicité, publications et relations publiques (CGNC) : la dépense
+    # publicitaire Meta (spend synchronisé) est débitée ICI par l'écriture
+    # BROUILLON mensuelle proposée par apps.adsengine.compta_bridge — jamais
+    # validée automatiquement, rapprochable avec la réconciliation Meta.
+    ('6144', 'Publicité, publications et relations publiques', False, False,
+     'charge'),
     # XACC6 — Variation de stock de marchandises (inventaire permanent) : une
     # SORTIE valorisée débite cette charge (le CGNC compte la variation de
     # stock en charge, contrepartie du crédit 3111).

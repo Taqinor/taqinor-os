@@ -179,12 +179,12 @@ class EngineActionSerializer(serializers.ModelSerializer):
         model = EngineAction
         fields = [
             'id', 'kind', 'payload', 'reason_fr', 'status', 'auto',
-            'approved_by', 'applied_at', 'result', 'error',
+            'proposed_by', 'approved_by', 'applied_at', 'result', 'error',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'status', 'auto', 'approved_by', 'applied_at', 'result', 'error',
-            'created_at', 'updated_at',
+            'status', 'auto', 'proposed_by', 'approved_by', 'applied_at',
+            'result', 'error', 'created_at', 'updated_at',
         ]
 
     def validate_reason_fr(self, value):

@@ -422,6 +422,14 @@ import django.dispatch
 # ce repo : adsengine (apps/adsengine/receivers.py).
 meta_lead_captured = django.dispatch.Signal()
 
+# PUB100 — Émis quand un lead CRM est EFFACÉ (droit à l'oubli CNDP). Permet aux
+# miroirs qui portent une référence STRING au lead (adsengine :
+# ``MetaLeadMirror``/``CtwaReferral`` via ``crm_lead_id`` + ``phone_key``) de
+# propager l'effacement (anonymisation best-effort) sans que ``crm`` importe
+# ``apps.adsengine``. Arguments : company, crm_lead_id (int), phone_key (str,
+# optionnel). Abonné dans ce repo : adsengine (apps/adsengine/receivers.py).
+lead_erased = django.dispatch.Signal()
+
 # Émis à l'acceptation d'un devis.
 # Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
 devis_accepted = django.dispatch.Signal()
