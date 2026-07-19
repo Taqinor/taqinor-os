@@ -1303,6 +1303,21 @@ class CreativeGenerationBatch(TenantModel):
         null=True, blank=True, verbose_name='Décidé le')
     note = models.TextField(blank=True, default='', verbose_name='Note')
 
+    # ── AGEN1 — Audit de génération ancrée (§10.2 point 6 : "version table de
+    # faits, verdicts par claim, décisions, statuts Meta, id du bras" —
+    # rollback = pause + décote posterior + quarantaine gabarit). Ces champs
+    # sont posés par le PIPELINE de génération (AGEN2+/AGEN9), jamais par un
+    # client API (lecture seule côté serializer).
+    fact_table_version = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Version de la table de faits utilisée')
+    claim_verdicts = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Verdicts par claim (numérique/groundedness)')
+    template_quarantined = models.BooleanField(
+        default=False,
+        verbose_name='Gabarit en quarantaine (rollback AGEN9)')
+
     class Meta:
         verbose_name = 'Lot de génération créative'
         verbose_name_plural = 'Lots de génération créative'
@@ -2066,3 +2081,112 @@ class AssumptionNode(TenantModel):
 
     def __str__(self):
         return f'{self.get_classe_display()} — {self.enonce_fr[:40]}'
+
+
+class FactTable(TenantModel):
+    """AGEN1 — Table de faits VERSIONNÉE d'une société (dd-assumption-engine
+    §10.2 point 1 : « génération ANCRÉE sur la table de faits »).
+
+    **AUCUN chiffre publiable ne doit exister hors de cette table** : c'est la
+    SEULE source de vérité numérique pour la génération créative (Palier
+    A/B — chaque claim numérique d'une pub générée cite une ``FactEntry`` de
+    la version PUBLIÉE ; AGEN3 le fait respecter par un linter). Une seule
+    table peut être publiée par société à la fois (``uniq_adseng_facttable_
+    one_published`` — index partiel Postgres) ; publier une nouvelle version
+    dépublie automatiquement l'ancienne (:meth:`publish`, jamais deux tables
+    "actives" en même temps). La version n'est JAMAIS un ``count()+1`` côté
+    client — toujours plus-haute-utilisée+1, posée par :meth:`create_draft`
+    (même discipline que ``apps/ventes/utils/references.py``).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        PUBLIEE = 'publiee', 'Publiée'
+
+    version = models.PositiveIntegerField(verbose_name='Version')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+
+    class Meta:
+        verbose_name = 'Table de faits'
+        verbose_name_plural = 'Tables de faits'
+        ordering = ['-version']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'version'],
+                name='uniq_adseng_facttable_co_version'),
+            models.UniqueConstraint(
+                fields=['company'], condition=models.Q(statut='publiee'),
+                name='uniq_adseng_facttable_one_published'),
+        ]
+
+    @classmethod
+    def create_draft(cls, company):
+        """AGEN1 — Nouveau brouillon, version = plus-haute-utilisée+1 pour
+        cette société (JAMAIS ``count()+1`` — une table archivée ne doit
+        jamais faire collision)."""
+        from django.db import transaction
+        with transaction.atomic():
+            last = (cls.objects.select_for_update()
+                    .filter(company=company).order_by('-version').first())
+            next_version = (last.version + 1) if last else 1
+            return cls.objects.create(
+                company=company, version=next_version,
+                statut=cls.Statut.BROUILLON)
+
+    @classmethod
+    def published_for(cls, company):
+        """AGEN1 — La table PUBLIÉE active de la société, ou ``None``."""
+        return cls.objects.filter(
+            company=company, statut=cls.Statut.PUBLIEE).first()
+
+    def publish(self):
+        """AGEN1 — Publie CETTE table : dépublie toute autre table publiée de
+        la société (une seule active à la fois — "publier supersède")."""
+        from django.db import transaction
+        with transaction.atomic():
+            FactTable.objects.filter(
+                company_id=self.company_id, statut=self.Statut.PUBLIEE,
+            ).exclude(pk=self.pk).update(statut=self.Statut.BROUILLON)
+            self.statut = self.Statut.PUBLIEE
+            self.save(update_fields=['statut'])
+        return self
+
+    def __str__(self):
+        return f'Table de faits v{self.version} ({self.get_statut_display()})'
+
+
+class FactEntry(TenantModel):
+    """AGEN1 — Une entrée VÉRIFIÉE d'une :class:`FactTable` (une clé → une
+    valeur + unité + source + date de vérification).
+
+    Unique par ``(table, cle)`` — une même table ne porte jamais deux valeurs
+    pour la même clé. ``valeur`` reste un ``CharField`` (unité libre :
+    pourcentage, MAD, texte…) plutôt qu'un ``DecimalField`` figé — le linter
+    numérique (AGEN3) interprète la valeur au moment du contrôle, pas le
+    modèle."""
+
+    table = models.ForeignKey(
+        'adsengine.FactTable', on_delete=models.CASCADE,
+        related_name='entries', verbose_name='Table de faits')
+    cle = models.CharField(max_length=100, verbose_name='Clé')
+    valeur = models.CharField(max_length=255, verbose_name='Valeur')
+    unite = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Unité')
+    source = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Source')
+    verifie_le = models.DateField(verbose_name='Vérifié le')
+
+    class Meta:
+        verbose_name = 'Fait'
+        verbose_name_plural = 'Faits'
+        ordering = ['cle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['table', 'cle'], name='uniq_adseng_factentry_table_cle'),
+        ]
+
+    def __str__(self):
+        suffix = f' {self.unite}' if self.unite else ''
+        return f'{self.cle} = {self.valeur}{suffix}'

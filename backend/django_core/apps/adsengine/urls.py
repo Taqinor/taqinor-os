@@ -13,6 +13,7 @@ from .views import (
     AccountAuditView,
     AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet, ConversationsPerAdView,
+    FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
     CommentCountsView, CommentDeleteView, CommentHideView, CommentListView,
@@ -44,6 +45,9 @@ router.register(r'garde-fous', GuardrailConfigViewSet, basename='guardrail')
 # ASG1 — Assumption Engine (arbre vivant de croyances testées).
 router.register(r'noeuds-hypothese', AssumptionNodeViewSet,
                 basename='assumption-node')
+# AGEN1 — génération autonome : table de faits versionnée (§10.2 point 1).
+router.register(r'table-faits', FactTableViewSet, basename='fact-table')
+router.register(r'faits', FactEntryViewSet, basename='fact-entry')
 router.register(r'actions', EngineActionViewSet, basename='engine-action')
 router.register(r'alertes', EngineAlertViewSet, basename='engine-alert')
 router.register(r'creatifs', CreativeAssetViewSet, basename='creative-asset')

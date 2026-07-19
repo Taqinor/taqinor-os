@@ -7,7 +7,8 @@ from .models import (
     AdCampaignMirror, AdMirror, AdSetMirror, AnomalyEvent, ArmDailyStat,
     AssumptionNode, CommentMirror, CreativeAsset, CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
-    EngineAlert, Experiment, ExperimentArm, FlightPhase, FlightPlan,
+    EngineAlert, Experiment, ExperimentArm, FactEntry, FactTable,
+    FlightPhase, FlightPlan,
     GuardrailConfig, InsightBreakdown, InsightSnapshot,
     InstagramCommentMirror, InstagramMediaMirror, MetaConnection,
     PacingState, ReconciliationSnapshot, RulePolicy,
@@ -346,10 +347,15 @@ class CreativeGenerationBatchSerializer(serializers.ModelSerializer):
         model = CreativeGenerationBatch
         fields = [
             'id', 'source_hook_asset', 'visual_ids', 'status', 'approved_by',
-            'approved_at', 'note', 'created_at', 'updated_at',
+            'approved_at', 'note',
+            # AGEN1 — audit de génération ancrée (posé par le pipeline, jamais
+            # par un client).
+            'fact_table_version', 'claim_verdicts', 'template_quarantined',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
             'status', 'approved_by', 'approved_at', 'created_at', 'updated_at',
+            'fact_table_version', 'claim_verdicts', 'template_quarantined',
         ]
 
     def validate_source_hook_asset(self, value):
@@ -716,3 +722,36 @@ class AssumptionNodeSerializer(serializers.ModelSerializer):
                 attrs['demi_vie_semaines'] = (
                     AssumptionNode.HALF_LIFE_WEEKS.get(classe))
         return attrs
+
+
+# ── AGEN1 — Table de faits versionnée (génération autonome ancrée) ────────────
+class FactTableSerializer(serializers.ModelSerializer):
+    """AGEN1 — Table de faits versionnée. ``version``/``statut`` sont EN
+    LECTURE SEULE : la version est toujours calculée côté serveur
+    (:meth:`FactTable.create_draft`, jamais un ``count()+1``) et le passage en
+    'publiee' passe UNIQUEMENT par l'action ``publish`` — jamais un PATCH
+    direct de statut (même discipline que ``CreativeGenerationBatch``)."""
+
+    class Meta:
+        model = FactTable
+        fields = ['id', 'version', 'statut', 'created_at', 'updated_at']
+        read_only_fields = ['version', 'statut', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        return FactTable.create_draft(validated_data['company'])
+
+
+class FactEntrySerializer(serializers.ModelSerializer):
+    """AGEN1 — Une entrée de table de faits. ``table`` est contrainte à la
+    MÊME société (``_same_company``)."""
+
+    class Meta:
+        model = FactEntry
+        fields = [
+            'id', 'table', 'cle', 'valeur', 'unite', 'source', 'verifie_le',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_table(self, value):
+        return _same_company(self, value)
