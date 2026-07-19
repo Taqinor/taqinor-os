@@ -12,17 +12,20 @@ import { normalizeWiringStatuses, formatMAD } from './adsengine'
       n'envoie que les champs remplis (jamais d'écrasement par du vide).
    2. Statuts de câblage (ENG12 `connection.health`) — jeton / compte pub /
       pixel / CAPI / client en pause.
-   3. Garde-fous avancés (PUB9) — TOUS les champs sérialisés de
-      `GuardrailConfig` (plafonds, variation hebdo, fenêtre d'anomalie,
-      bascules d'auto-application ENG8, bande de pacing + planchers
-      d'exploration ADSENG4, poids des scores de santé SIG1) — avant cette
-      tâche, l'écran n'éditait que 2 champs, ET avec des clés qui NE
-      correspondaient PAS au serializer (`max_daily_budget_mad` au lieu de
-      `daily_budget_ceiling_mad`, `require_approval_above_mad` qui n'existe
-      PAS côté modèle) — les garde-fous ne s'enregistraient donc JAMAIS
-      réellement (DRF ignore silencieusement un champ inconnu). Aide FR par
-      champ ; aucune bascule d'ACTIVATION de campagne n'existe ici (interdite
-      en dur côté service, pas un réglage).
+   3. Garde-fous avancés (PUB9) — TOUS les champs de `GuardrailConfig` que le
+      back expose sur ``/adsengine/guardrail/`` (`GuardrailSingletonView`,
+      GET/PATCH sans id — DISTINCT du ViewSet `garde-fous/` qui sert le même
+      modèle en CRUD keyed) : avant cette tâche, ce singleton ne mappait QUE
+      les 2 plafonds budget (`max_daily_budget_mad`/`max_monthly_budget_mad`
+      → `daily_budget_ceiling_mad`/`monthly_budget_ceiling_mad`, alias posé
+      CÔTÉ SERVEUR) — PUB9 étend `GuardrailSingletonView` pour faire voyager
+      le reste (variation hebdo, fenêtre d'anomalie, bascules ENG8, pacing +
+      planchers d'exploration ADSENG4, poids santé SIG1) sous leur nom modèle
+      direct. `require_approval_above_mad` reste un GAP documenté (aucun
+      champ de stockage) — jamais montré à l'édition (un champ qui
+      n'enregistre jamais rien serait trompeur). Aide FR par champ ; aucune
+      bascule d'ACTIVATION de campagne n'existe ici (interdite en dur côté
+      service, pas un réglage).
    PAR DESIGN, AUCUN toggle d'activation n'existe à l'écran : le client Meta naît
    PAUSED (règle CLAUDE.md #3) et ne s'active jamais depuis l'ERP.
    ========================================================================== */
@@ -38,18 +41,22 @@ const CRED_FIELDS = [
 ]
 const EMPTY_CREDS = Object.fromEntries(CRED_FIELDS.map(f => [f.key, '']))
 
-// PUB9 — TOUS les champs sérialisés de `GuardrailConfig` (id/created_at/
-// updated_at exclus, les seuls en lecture seule), groupés par thème, avec une
-// aide FR par champ. `type: 'bool'` → checkbox ; `type: 'number'` → input
-// numérique (vide = non envoyé, sauf pour les bascules qui partent toujours
-// avec une valeur).
+// PUB9 — TOUS les champs de `GuardrailConfig` que le back expose sur ce
+// singleton (`GuardrailSingletonView` — GET/PATCH sans id, celui que
+// `adsengineApi.guardrail` appelle réellement). Les 2 plafonds budget
+// gardent leur alias HISTORIQUE (`max_daily_budget_mad`/`max_monthly_budget_
+// mad`, ≠ nom modèle `daily_budget_ceiling_mad`/`monthly_budget_ceiling_mad`
+// — ce mapping est fait CÔTÉ SERVEUR) ; tous les autres champs voyagent sous
+// leur nom modèle direct. Groupés par thème, avec une aide FR par champ.
+// `type: 'bool'` → checkbox ; `type: 'number'` → input numérique (vide = non
+// envoyé, sauf pour les bascules qui partent toujours avec une valeur).
 const GUARD_FIELD_GROUPS = [
   {
     label: 'Plafonds & variation',
     fields: [
-      { key: 'daily_budget_ceiling_mad', label: 'Plafond budget quotidien (MAD)', type: 'number',
+      { key: 'max_daily_budget_mad', label: 'Plafond budget quotidien (MAD)', type: 'number',
         help: "Seuil de garde-fou (pas un montant comptable) : le détecteur d'anomalie compare la dépense réelle des miroirs à ce plafond." },
-      { key: 'monthly_budget_ceiling_mad', label: 'Plafond budget mensuel (MAD)', type: 'number',
+      { key: 'max_monthly_budget_mad', label: 'Plafond budget mensuel (MAD)', type: 'number',
         help: 'Optionnel — laissé vide, il est dérivé automatiquement du plafond quotidien × jours du mois.' },
       { key: 'weekly_change_pct_max', label: 'Variation hebdomadaire maximale (%)', type: 'number',
         help: "Variation de budget autorisée par semaine, dans les deux sens, avant qu'une approbation humaine devienne obligatoire." },
@@ -276,7 +283,7 @@ export default function ConnectionScreen() {
           </fieldset>
         ))}
         <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
-          Plafond quotidien actuel : {formatMAD(guard.daily_budget_ceiling_mad)}.
+          Plafond quotidien actuel : {formatMAD(guard.max_daily_budget_mad)}.
         </p>
         <div>
           <button type="submit" className="btn btn-primary" data-testid="ae-conn-guard-save">

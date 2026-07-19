@@ -36,13 +36,16 @@ beforeEach(() => {
     { key: 'pixel', ok: false, detail: 'Non configuré' },
     { key: 'paused', ok: true },
   ] } })
-  // PUB9 — les VRAIS champs sérialisés (avant cette tâche, l'écran + ce test
-  // mockaient des clés qui n'existaient PAS côté modèle : max_daily_budget_mad
-  // (au lieu de daily_budget_ceiling_mad) et require_approval_above_mad
-  // (aucun champ de ce nom n'existe) — les garde-fous ne s'enregistraient
-  // donc JAMAIS réellement, DRF ignorant silencieusement un champ inconnu).
+  // PUB9 — `adsengineApi.guardrail` appelle ``/adsengine/guardrail/``
+  // (`GuardrailSingletonView`) : les 2 plafonds gardent leur alias
+  // historique (max_daily_budget_mad/max_monthly_budget_mad, mappage CÔTÉ
+  // SERVEUR) ; le reste voyage sous son nom modèle direct — avant cette
+  // tâche, ce singleton n'exposait QUE les 2 plafonds (le reste de
+  // GuardrailConfig était sérialisé ailleurs — garde-fous/ — mais invisible
+  // ici, donc jamais édité par cet écran).
   mocks.guardGet.mockResolvedValue({ data: {
-    daily_budget_ceiling_mad: 100, monthly_budget_ceiling_mad: 2000,
+    max_daily_budget_mad: 100, max_monthly_budget_mad: 2000,
+    require_approval_above_mad: null,
     weekly_change_pct_max: 20, anomaly_window_hours: 48,
     auto_rotate_creative: false, auto_rebalance_within_band: false,
     pacing_band_pct: 15, exploration_floor_mad: 20, exploration_floor_pct: 20,
@@ -91,22 +94,22 @@ describe('ConnectionScreen (ENG22)', () => {
     expect(screen.getByTestId('ae-conn-health-token')).toHaveTextContent('OK')
   })
 
-  it('PUB9 — édition du plafond quotidien (vraie clé serializer) → guardrail.update', async () => {
+  it('PUB9 — édition du plafond quotidien (alias historique) → guardrail.update', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.guardGet).toHaveBeenCalled())
-    const daily = await screen.findByTestId('ae-conn-guard-daily_budget_ceiling_mad')
+    const daily = await screen.findByTestId('ae-conn-guard-max_daily_budget_mad')
     expect(daily.value).toBe('100')
     fireEvent.change(daily, { target: { value: '150' } })
     fireEvent.click(screen.getByTestId('ae-conn-guard-save'))
     await waitFor(() => expect(mocks.guardUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ daily_budget_ceiling_mad: 150 })))
+      expect.objectContaining({ max_daily_budget_mad: 150 })))
   })
 
-  it('PUB9 — chaque champ sérialisé de GuardrailConfig est éditable (13 champs, groupés)', async () => {
+  it('PUB9 — chaque champ exposé par le singleton est éditable (13 champs, groupés)', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.guardGet).toHaveBeenCalled())
     const keys = [
-      'daily_budget_ceiling_mad', 'monthly_budget_ceiling_mad', 'weekly_change_pct_max',
+      'max_daily_budget_mad', 'max_monthly_budget_mad', 'weekly_change_pct_max',
       'anomaly_window_hours', 'auto_rotate_creative', 'auto_rebalance_within_band',
       'pacing_band_pct', 'exploration_floor_mad', 'exploration_floor_pct',
       'health_creative_weight_ctr', 'health_creative_weight_freshness',
@@ -115,6 +118,10 @@ describe('ConnectionScreen (ENG22)', () => {
     for (const key of keys) {
       expect(await screen.findByTestId(`ae-conn-guard-${key}`)).toBeInTheDocument()
     }
+    // require_approval_above_mad reste un GAP documenté (aucun champ de
+    // stockage) : jamais montré à l'édition (un champ qui n'enregistre
+    // jamais rien serait trompeur).
+    expect(screen.queryByTestId('ae-conn-guard-require_approval_above_mad')).toBeNull()
   })
 
   it('PUB9 — les bascules auto-application (ENG8) s\'éditent et s\'envoient explicitement', async () => {
@@ -133,7 +140,7 @@ describe('ConnectionScreen (ENG22)', () => {
 
   it('chaque champ de garde-fou porte une aide FR', async () => {
     renderScreen()
-    await screen.findByTestId('ae-conn-guard-daily_budget_ceiling_mad')
+    await screen.findByTestId('ae-conn-guard-max_daily_budget_mad')
     expect(screen.getByText(/détecteur d'anomalie compare la dépense/)).toBeInTheDocument()
     expect(screen.getByText(/bande de pacing ci-dessous/)).toBeInTheDocument()
   })
