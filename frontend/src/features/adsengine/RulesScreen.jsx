@@ -1,11 +1,34 @@
 import { useEffect, useState, useCallback } from 'react'
-import { SlidersHorizontal, AlertTriangle, Play } from 'lucide-react'
+import { SlidersHorizontal, AlertTriangle, Play, Power, PowerOff } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeRuleTemplate, normalizeDryRun, normalizeAnomalies, normalizeAlerts,
   alertTone,
 } from './adsengine'
 import { formatDateTime } from '../../lib/format'
+
+/* ============================================================================
+   PUB23 — Armer/désarmer une règle depuis la console.
+   ----------------------------------------------------------------------------
+   Le catalogue (ci-dessus) reste un PICKER en lecture (templates statiques) ;
+   l'état ARMÉ/DÉSARMÉ vit sur une instance ``RulePolicy`` par (société,
+   template) — CRUD déjà exposé par ``RulePolicyViewSet`` (``regles/``), aucune
+   route nouvelle. « Armer » = crée (si absente) ou met à jour l'instance en
+   ``enabled=true, dry_run=false`` — la règle passe alors en évaluation
+   PÉRIODIQUE réelle, mais reste en mode ``propose`` par défaut : elle ne fait
+   QUE déposer des propositions dans la boîte d'approbation, jamais d'écriture
+   directe (règle #3). « Désarmer » repose l'instance sur son défaut sûr
+   (``enabled=false, dry_run=true``). Cadence FR affichée = celle du gabarit
+   (catalogue/dd-guardian), pas un recalcul local.
+   ========================================================================== */
+const CADENCE_LABELS_FR = {
+  critical: 'Toutes les 6 h (critique)',
+  daily: 'Quotidienne',
+  weekly: 'Hebdomadaire',
+}
+function cadenceLabel(cadence) {
+  return CADENCE_LABELS_FR[cadence] || cadence || '—'
+}
 
 /* ============================================================================
    ENG43 — Écran « Règles & anomalies ».
@@ -28,6 +51,17 @@ export default function RulesScreen() {
   const [dryRuns, setDryRuns] = useState({}) // key → { resume_fr, objets_touches }
   const [busyKey, setBusyKey] = useState(null)
   const [err, setErr] = useState('')
+  // PUB23 — instances RulePolicy réelles (état armé/désarmé) + armement.
+  const [policies, setPolicies] = useState([])
+  const [confirmKey, setConfirmKey] = useState(null) // template en attente de confirmation d'armement
+  const [armBusyKey, setArmBusyKey] = useState(null)
+  const [armErr, setArmErr] = useState('')
+
+  const reloadPolicies = useCallback(() => (
+    adsengineApi.rules.list()
+      .then(r => setPolicies(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+      .catch(() => setPolicies([]))
+  ), [])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -46,7 +80,43 @@ export default function RulesScreen() {
     adsengineApi.rules.journal()
       .then(r => setJournal(Array.isArray(r.data?.results) ? r.data.results : []))
       .catch(() => setJournal([]))
-  }, [])
+    reloadPolicies()
+  }, [reloadPolicies])
+
+  const policyFor = (key) => policies.find(p => p.template_key === key) || null
+
+  const doArm = async (t) => {
+    setArmBusyKey(t.key); setArmErr('')
+    try {
+      const existing = policyFor(t.key)
+      if (existing) {
+        await adsengineApi.rules.update(existing.id, { enabled: true, dry_run: false })
+      } else {
+        await adsengineApi.rules.create({
+          template_key: t.key, enabled: true, dry_run: false })
+      }
+      setConfirmKey(null)
+      await reloadPolicies()
+    } catch {
+      setArmErr("Armement refusé (permission « adsengine_manage » ?).")
+    } finally {
+      setArmBusyKey(null)
+    }
+  }
+
+  const doDisarm = async (t) => {
+    const existing = policyFor(t.key)
+    if (!existing) return
+    setArmBusyKey(t.key); setArmErr('')
+    try {
+      await adsengineApi.rules.update(existing.id, { enabled: false, dry_run: true })
+      await reloadPolicies()
+    } catch {
+      setArmErr("Désarmement refusé (permission « adsengine_manage » ?).")
+    } finally {
+      setArmBusyKey(null)
+    }
+  }
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
@@ -73,6 +143,7 @@ export default function RulesScreen() {
       </div>
 
       {err && <p data-testid="ae-rules-err" style={{ color: '#dc2626' }}>{err}</p>}
+      {armErr && <p data-testid="ae-rules-arm-err" style={{ color: '#dc2626' }}>{armErr}</p>}
 
       {loading ? <p className="page-loading">Chargement…</p> : (
         <div style={{ display: 'grid', gap: '1.25rem' }}>
@@ -86,17 +157,43 @@ export default function RulesScreen() {
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
                   {templates.map(t => {
                     const dr = dryRuns[t.key]
+                    const policy = policyFor(t.key)
+                    const armed = !!(policy && policy.enabled)
                     return (
                       <article key={t.key} className="card ae-rule-template" data-testid="ae-rule-template"
                         style={{ padding: '1rem', border: '1px solid #e2e8f0' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
                           <strong>{t.nom}</strong>
-                          <button type="button" className="btn btn-primary"
-                            data-testid={`ae-rule-dryrun-${t.key}`} disabled={busyKey === t.key}
-                            onClick={() => dryRun(t.key)}
-                            style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <Play size={14} aria-hidden="true" /> Simuler (dry-run)
-                          </button>
+                          {/* PUB23 — état ARMÉ/DÉSARMÉ, toujours visible */}
+                          <span className="badge" data-testid={`ae-rule-state-${t.key}`}
+                            style={armed
+                              ? { background: '#dcfce7', color: '#166534' }
+                              : { background: '#f1f5f9', color: '#475569' }}>
+                            {armed ? `Armée · ${cadenceLabel(t.cadence)}` : 'Désarmée'}
+                          </span>
+                          <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
+                            {armed ? (
+                              <button type="button" className="btn btn-danger-outline ae-rule-disarm"
+                                data-testid={`ae-rule-disarm-${t.key}`} disabled={armBusyKey === t.key}
+                                onClick={() => doDisarm(t)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <PowerOff size={14} aria-hidden="true" /> Désarmer
+                              </button>
+                            ) : (
+                              <button type="button" className="btn btn-light ae-rule-arm"
+                                data-testid={`ae-rule-arm-${t.key}`} disabled={armBusyKey === t.key}
+                                onClick={() => setConfirmKey(t.key)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <Power size={14} aria-hidden="true" /> Armer
+                              </button>
+                            )}
+                            <button type="button" className="btn btn-primary"
+                              data-testid={`ae-rule-dryrun-${t.key}`} disabled={busyKey === t.key}
+                              onClick={() => dryRun(t.key)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                              <Play size={14} aria-hidden="true" /> Simuler (dry-run)
+                            </button>
+                          </div>
                         </div>
                         {t.description && (
                           <p style={{ margin: '0.3rem 0 0.5rem', color: '#64748b', fontSize: '0.9rem' }}>{t.description}</p>
@@ -108,6 +205,28 @@ export default function RulesScreen() {
                           <span className="badge" style={{ background: '#ede9fe', color: '#5b21b6' }}>ALORS</span>{' '}
                           {t.action_fr || '—'}
                         </p>
+
+                        {/* PUB23 — confirmation d'armement : résumé de la règle + cadence */}
+                        {confirmKey === t.key && (
+                          <div className="ae-rule-arm-confirm" data-testid={`ae-rule-arm-confirm-${t.key}`}
+                            style={{ marginTop: '0.6rem', background: '#fffbeb', border: '1px solid #fde68a',
+                              borderRadius: 6, padding: '0.75rem' }}>
+                            <p style={{ margin: '0 0 0.5rem' }}>
+                              Armer <strong>{t.nom}</strong> ? La règle sera évaluée <strong>{cadenceLabel(t.cadence)}</strong> et
+                              ne fera que PROPOSER une action (SI {t.condition_fr} ALORS {t.action_fr}) —
+                              toujours soumise à approbation.
+                            </p>
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <button type="button" className="btn btn-primary ae-rule-arm-confirm-btn"
+                                data-testid={`ae-rule-arm-confirm-btn-${t.key}`} disabled={armBusyKey === t.key}
+                                onClick={() => doArm(t)}>
+                                Confirmer l&apos;armement
+                              </button>
+                              <button type="button" className="btn btn-light"
+                                onClick={() => setConfirmKey(null)}>Annuler</button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Résultat du dry-run — VISUALISÉ */}
                         {dr && (

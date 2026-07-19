@@ -117,6 +117,12 @@ export const AE_HOOKS = {
     anomaly: 'ae-anomaly',
     anomalySeverity: 'ae-anomaly-severity',
     alertHistory: 'ae-alert-history',
+    // PUB23 — armer/désarmer une règle depuis la console.
+    statePrefix: 'ae-rule-state-', // + key — badge « Armée · cadence » | « Désarmée »
+    armPrefix: 'ae-rule-arm-', // + key
+    disarmPrefix: 'ae-rule-disarm-', // + key
+    armConfirmPrefix: 'ae-rule-arm-confirm-', // + key — panneau de confirmation
+    armConfirmBtnPrefix: 'ae-rule-arm-confirm-btn-', // + key
   },
 
   // Visionneuse de simulation (ENG44) — rejeu d'un run ADSENG36.

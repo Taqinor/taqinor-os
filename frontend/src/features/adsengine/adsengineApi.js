@@ -141,6 +141,14 @@ const adsengineApi = {
     // ADSDEEP43 — journal d'exécution ENRICHI : par règle, la dernière passe avec
     // le verdict de condition (valeurs) + le delta de l'action proposée.
     journal: () => api.get('/adsengine/regles/journal/'),
+    // PUB23 — instances RÉELLES ``RulePolicy`` de la société (état armé/
+    // désarmé), CRUD déjà exposé par ``RulePolicyViewSet`` (aucune route
+    // nouvelle) : ``list`` lit l'état ; ``create``/``update`` arment/désarment
+    // (``enabled``/``dry_run``) — jamais d'application directe, la règle armée
+    // ne fait que PROPOSER (mode par défaut ``propose``, boîte d'approbation).
+    list: (params) => api.get('/adsengine/regles/', { params }),
+    create: (payload) => api.post('/adsengine/regles/', payload),
+    update: (id, payload) => api.patch(`/adsengine/regles/${id}/`, payload),
   },
 
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──

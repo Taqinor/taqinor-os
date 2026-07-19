@@ -554,6 +554,24 @@ class RulePolicyViewSet(AdsengineViewSet):
             serializer.instance.created_by = self.request.user
             serializer.instance.save(update_fields=['created_by'])
 
+    def perform_update(self, serializer):
+        # PUB23 — « armer/désarmer » une règle depuis la console EST une mise à
+        # jour de ``enabled`` via ce même CRUD (aucune route dédiée) : on trace
+        # le basculement dans le journal UNIFIÉ de l'ERP (``audit.recorder``,
+        # ARC16 — même funnel que le reste de l'app, jamais un second système).
+        old_enabled = serializer.instance.enabled
+        super().perform_update(serializer)
+        instance = serializer.instance
+        if instance.enabled != old_enabled:
+            from apps.audit.recorder import record_field_change
+            record_field_change(
+                instance, 'enabled', old_enabled, instance.enabled,
+                field_label='Règle armée' if instance.enabled else 'Règle désarmée',
+                detail=(
+                    f'Règle « {instance.template_key} » armée '
+                    f'(cadence {instance.cadence_hours} h).' if instance.enabled
+                    else f'Règle « {instance.template_key} » désarmée.'))
+
     # ADSENG14 — catalogue FIXE (lecture) : le front rend la liste des templates
     # (style STAGES.py) sans que le fondateur puisse en inventer un (pas de
     # builder libre). GET → permission de LECTURE (adsengine_view) héritée.
