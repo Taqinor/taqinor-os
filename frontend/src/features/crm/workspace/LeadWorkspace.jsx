@@ -718,7 +718,19 @@ export default function LeadWorkspace({
   return (
     <>
       <Dialog open onOpenChange={(o) => { if (!o) requestClose() }}>
-        <DialogContent showClose={false} className="lw-dialog p-0 gap-0 overflow-hidden">
+        <DialogContent
+          showClose={false}
+          className="lw-dialog p-0 gap-0 overflow-hidden"
+          // Le cockpit quasi-plein-écran ne se ferme JAMAIS sur un pointer
+          // « extérieur » : la fermeture passe par ✕/Escape → leaveGuard.
+          // Corrige aussi le bug E4 : le clic sur le ✕ du panneau devis
+          // (Sheet satellite, portail frère) était vu comme une interaction
+          // extérieure par la couche du Dialog parent → la fenêtre entière
+          // se fermait (reproduit par sonde Playwright, Escape ne le faisait
+          // pas — seule la voie pointeur).
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
           {renderBody(DialogTitle)}
         </DialogContent>
       </Dialog>
