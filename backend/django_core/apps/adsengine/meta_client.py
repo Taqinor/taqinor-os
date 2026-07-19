@@ -393,6 +393,56 @@ class MetaClient:
             'has_balance_field': 'balance' in payload,
         }
 
+    # PUB101 — santé du compte : codes Meta ``account_status`` / ``disable_reason``
+    # traduits en libellés FR. Un compte ≠ ACTIF (1) ressemble à une panne de
+    # données — on le LIT plutôt que de le deviner. Codes : dossier Graph API
+    # AdAccount (jamais devinés en dur ailleurs).
+    ACCOUNT_STATUS_FR = {
+        1: 'Actif', 2: 'Désactivé', 3: 'Impayé (non réglé)',
+        7: 'En revue de risque', 8: 'En attente de règlement',
+        9: 'Période de grâce', 100: 'Fermeture en attente',
+        101: 'Fermé', 201: 'Actif (tout)', 202: 'Fermé (tout)',
+    }
+    DISABLE_REASON_FR = {
+        0: '', 1: 'Politique d\'intégrité des annonces',
+        2: 'Revue propriété intellectuelle', 3: 'Risque de paiement',
+        4: 'Compte gris fermé', 5: 'Revue AFC', 6: 'Intégrité business (RAR)',
+        7: 'Fermeture permanente', 8: 'Compte revendeur inutilisé',
+        9: 'Compte inutilisé',
+    }
+    # Statuts SAINS (aucune alerte). Tout autre statut connu déclenche une alerte.
+    ACCOUNT_STATUS_HEALTHY = frozenset({1, 201})
+    ACCOUNT_HEALTH_FIELDS = ('account_status', 'disable_reason', 'name')
+
+    def get_account_health(self):
+        """PUB101 — Santé du compte publicitaire (LECTURE).
+
+        Renvoie ``{'account_status': int|None, 'account_status_label': str,
+        'disable_reason': int|None, 'disable_reason_label': str,
+        'is_healthy': bool, 'name': str}``. Dégradation propre si l'API n'expose
+        pas le statut (``account_status`` None → ``is_healthy`` True, pas
+        d'alarme : on ne devine pas une panne)."""
+        payload = self.get_account(fields=self.ACCOUNT_HEALTH_FIELDS)
+        raw_status = payload.get('account_status')
+        raw_reason = payload.get('disable_reason')
+        try:
+            status = int(raw_status) if raw_status is not None else None
+        except (TypeError, ValueError):
+            status = None
+        try:
+            reason = int(raw_reason) if raw_reason is not None else None
+        except (TypeError, ValueError):
+            reason = None
+        return {
+            'account_status': status,
+            'account_status_label': self.ACCOUNT_STATUS_FR.get(
+                status, '') if status is not None else '',
+            'disable_reason': reason,
+            'disable_reason_label': self.DISABLE_REASON_FR.get(reason, ''),
+            'is_healthy': status is None or status in self.ACCOUNT_STATUS_HEALTHY,
+            'name': payload.get('name') or '',
+        }
+
     def get_campaigns(self, *, fields=None, limit=None):
         return self._read_list(self._account_edge('campaigns'),
                                fields=fields or self.CAMPAIGN_SYNC_FIELDS,

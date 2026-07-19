@@ -263,6 +263,68 @@ def check_prepaid_balance(company, conn, client):
     return None
 
 
+def check_account_health(company, conn, client):
+    """PUB101 — Santé du compte lue au sync (jamais devinée).
+
+    Rien ne lisait ``account_status``/``disable_reason`` : un compte désactivé/
+    en revue ressemblait à une panne de données. On les LIT, et un statut anormal
+    (≠ ACTIF) lève une ``EngineAlert`` typée avec un lien vers le playbook FR
+    ``docs/engine/compte-restreint.md``. Sévérité : fermé/désactivé/permanent →
+    CRITICAL ; revue/grâce/attente → WARNING. DÉDUP par ``entity_key`` (une
+    alerte ouverte à la fois, résolue au retour à l'actif). Best-effort.
+    Renvoie l'``EngineAlert`` touchée ou None."""
+    from .models import EngineAlert
+    from .rules import SEVERITY_CRITICAL, SEVERITY_WARNING
+
+    reader = getattr(client, 'get_account_health', None)
+    if not callable(reader):
+        return None
+    try:
+        health = reader() or {}
+    except Exception:  # noqa: BLE001 — la santé n'empêche jamais la synchro
+        return None
+
+    entity_key = 'account_status'
+    existing = (EngineAlert.objects
+                .filter(company=company, entity_key=entity_key, resolved=False)
+                .order_by('-created_at').first())
+
+    if health.get('is_healthy'):
+        # Retour à l'actif : résoudre une alerte ouverte.
+        if existing is not None:
+            existing.resolved = True
+            existing.save(update_fields=['resolved', 'updated_at'])
+        return None
+
+    status = health.get('account_status')
+    label = health.get('account_status_label') or f'statut {status}'
+    reason = health.get('disable_reason_label')
+    # Statuts terminaux (désactivé/fermé/fermeture) = CRITICAL ; sinon WARNING.
+    critical = status in (2, 100, 101, 202)
+    severity = SEVERITY_CRITICAL if critical else SEVERITY_WARNING
+    msg = (f"Compte publicitaire Meta « {label} »"
+           + (f" — motif : {reason}" if reason else '')
+           + ". Le moteur ne peut plus se fier aux données : voir le playbook "
+           "« compte restreint » (docs/engine/compte-restreint.md).")
+    detail = {
+        'kind': 'account_status',
+        'account_status': status,
+        'account_status_label': label,
+        'disable_reason': health.get('disable_reason'),
+        'disable_reason_label': reason,
+        'playbook': 'docs/engine/compte-restreint.md',
+    }
+    if existing is None:
+        return EngineAlert.objects.create(
+            company=company, alert_type=EngineAlert.Type.GARDE_FOU,
+            message=msg, severity=severity, entity_key=entity_key, detail=detail)
+    existing.message = msg
+    existing.severity = severity
+    existing.detail = detail
+    existing.save(update_fields=['message', 'severity', 'detail', 'updated_at'])
+    return existing
+
+
 def _sync_company(conn):
     """Synchronise UNE société depuis sa connexion Meta active (avec token).
 
@@ -292,6 +354,12 @@ def _sync_company(conn):
     try:
         check_prepaid_balance(company, conn, client)
     except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro
+        pass
+
+    # PUB101 — santé du compte lue au sync (best-effort, jamais bloquant).
+    try:
+        check_account_health(company, conn, client)
+    except Exception:  # noqa: BLE001 — la santé n'empêche jamais la synchro
         pass
 
     sync.sync_campaigns(company, client.get_campaigns())
