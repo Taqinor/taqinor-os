@@ -234,3 +234,101 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
         'unresolved': unresolved,
         'organic_excluded_count': organic_excluded,
     }
+
+
+# ── PUB36 — Entonnoir de décrochage par étape, PAR VARIANTE (ad) ─────────────
+
+def variant_stage_funnel(company, *, ad_ids=None):
+    """PUB36 — À quelle étape STAGES.py les leads de CHAQUE annonce meurent
+    (jamais CONTACTED = problème de ciblage ; meurt à QUOTE_SENT = problème de
+    prix/closing). Étend le binaire qualifié/signé de ``variant_attribution``
+    au niveau de tout l'entonnoir — même échelle de résolution ad (Tier 1/1b/2,
+    voir ``_resolve_ad_id``), même patron que ``reporting.campaign_funnel``
+    (§5.2) mais résolu PAR AD plutôt que par campagne.
+
+    Comptes CUMULATIFS « a atteint au moins l'étape X » ; COLD et perdu comptés
+    À CÔTÉ (jamais dans l'entonnoir — « Perdu » n'est pas une étape, règle #2).
+    Étapes lues via ``pipeline_stage_order()`` (jamais en dur). Renvoie ::
+
+        {
+          'variants': [
+            {'meta_id', 'name', 'total', 'cold', 'perdu',
+             'funnel': [{'stage', 'reached'}, ...]}, ...
+          ],
+          'unresolved': {'meta_id': '', 'name': '', 'total', 'cold', 'perdu',
+                         'funnel': [...]},
+          'organic_excluded_count': int,
+        }
+
+    Scopé société ; ``variant_attribution`` (binaire qualifié/signé) reste
+    inchangé (fichier disjoint, aucune duplication de la jointure d'ad)."""
+    from apps.crm.selectors import attribution_lead_rows, pipeline_stage_order
+    from .models import AdMirror
+
+    order = pipeline_stage_order()
+    funnel = order['funnel']
+    cold = order['cold']
+    rank = {s: i for i, s in enumerate(funnel)}
+
+    ad_qs = AdMirror.objects.filter(company=company)
+    if ad_ids is not None:
+        ad_qs = ad_qs.filter(meta_id__in=[str(a) for a in ad_ids])
+    ads = list(ad_qs)
+    by_meta = {a.meta_id: a for a in ads}
+    name_to_meta = {}
+    for a in ads:
+        if a.name:
+            name_to_meta.setdefault(a.name, a.meta_id)
+
+    def _new_slot():
+        return {'reached': [0] * len(funnel), 'cold': 0, 'perdu': 0, 'total': 0}
+
+    variants = {m: _new_slot() for m in by_meta}
+    unresolved = _new_slot()
+    organic_excluded = 0
+
+    for row in attribution_lead_rows(company):
+        meta_id = _resolve_ad_id(row, by_meta, name_to_meta)
+        if meta_id is not None:
+            slot = variants[meta_id]
+        elif (row.get('utm_content') or row.get('utm_campaign')
+              or row.get('is_meta_channel')):
+            slot = unresolved
+        else:
+            organic_excluded += 1
+            continue
+        slot['total'] += 1
+        if row.get('perdu'):
+            slot['perdu'] += 1
+            continue                   # perdu : à côté, jamais dans l'entonnoir.
+        stage = row.get('stage')
+        if stage == cold:
+            slot['cold'] += 1
+            continue                   # COLD : à côté.
+        if stage in rank:
+            for i in range(rank[stage] + 1):
+                slot['reached'][i] += 1
+
+    def _serialize(meta_id, name, slot):
+        return {
+            'meta_id': meta_id,
+            'name': name,
+            'total': slot['total'],
+            'cold': slot['cold'],
+            'perdu': slot['perdu'],
+            'funnel': [
+                {'stage': funnel[i], 'reached': slot['reached'][i]}
+                for i in range(len(funnel))
+            ],
+        }
+
+    variant_rows = sorted(
+        (_serialize(meta_id, by_meta[meta_id].name or '', slot)
+         for meta_id, slot in variants.items()),
+        key=lambda r: r['meta_id'])
+
+    return {
+        'variants': variant_rows,
+        'unresolved': _serialize('', '', unresolved),
+        'organic_excluded_count': organic_excluded,
+    }

@@ -1075,6 +1075,21 @@ class CampaignFunnelView(APIView):
         return Response({'etapes': etapes, 'campaigns': funnel})
 
 
+class VariantFunnelView(APIView):
+    """PUB36 — Entonnoir de décrochage par étape, PAR VARIANTE (ad) — à quelle
+    étape STAGES.py chaque annonce perd ses leads (COLD/perdu à côté)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import variant_funnel
+        funnel = variant_funnel(company)
+        return Response(funnel)
+
+
 class CohortReportView(APIView):
     """ADSENG33 — Cohortes de signature (leads/semaine → lag). ``?debut=&fin=``
     bornent la création ; cohortes non écoulées marquées incomplètes."""

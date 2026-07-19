@@ -144,6 +144,18 @@ def campaign_funnel(company, *, date_start=None, date_end=None):
     return result
 
 
+# ── PUB36 — Entonnoir de décrochage par étape, PAR VARIANTE (ad) ─────────────
+def variant_funnel(company, *, ad_ids=None):
+    """PUB36 — À quelle étape STAGES.py chaque VARIANTE (ad) perd ses leads
+    (jamais CONTACTED = ciblage ; meurt à QUOTE_SENT = prix/closing). Réutilise
+    ``attribution.variant_stage_funnel`` (ADSENG6 fichier disjoint, aucune
+    duplication de la jointure d'ad) — même contrat de forme que
+    ``campaign_funnel`` (§5.2) mais résolu par ad plutôt que par campagne.
+    Étapes lues via ``pipeline_stage_order()`` (règle #2, jamais en dur)."""
+    from .attribution import variant_stage_funnel
+    return variant_stage_funnel(company, ad_ids=ad_ids)
+
+
 # ── §5.3 — Cohortes de signature (leads par semaine → lag) ───────────────────
 def signature_cohorts(company, *, date_start=None, date_end=None, today=None,
                       lag_weeks=DEFAULT_LAG_WEEKS):
