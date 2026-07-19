@@ -2672,3 +2672,47 @@ def affectations_pour(user):
         })
 
     return items
+
+
+# ── PUB63/PUB73 — Photos de chantier exposées à la créathèque (adsengine) ────
+
+def chantier_photos(company, chantier_id, *, phase=None):
+    """PUB63/PUB73 — Photos (``records.Attachment`` images) d'un chantier
+    (Installation), optionnellement filtrées par ``phase`` (avant/pendant/après).
+
+    Point d'entrée cross-app LECTURE SEULE pour ``apps.adsengine`` (la
+    créathèque n'importe jamais ``installations.models`` ; ``records`` est une
+    app socle, import autorisé). Company-scopé. Renvoie un queryset
+    ``Attachment`` (le plus récent d'abord, ordering du modèle)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+
+    from .models import Installation
+
+    ct = ContentType.objects.get_for_model(Installation)
+    qs = Attachment.objects.filter(
+        company=company, content_type=ct, object_id=chantier_id,
+        mime__startswith='image/')
+    if phase:
+        qs = qs.filter(phase=phase)
+    return qs
+
+
+def chantier_a_photos(company, chantier_id, *, phase=None):
+    """PUB63 — Vrai si le chantier a au moins une photo (option : d'une phase
+    donnée). Lecture seule, scopée société."""
+    return chantier_photos(company, chantier_id, phase=phase).exists()
+
+
+def chantier_ville(company, chantier_id):
+    """PUB63/PUB85 — Ville du site d'un chantier (Installation), ou ``None``.
+    Lecture seule, scopée société — fait de localisation vérifié pour un brief
+    témoignage ancré (« installation à Marrakech »)."""
+    from .models import Installation
+
+    chantier = (Installation.objects
+                .filter(pk=chantier_id, company=company).first())
+    if chantier is None:
+        return None
+    return (getattr(chantier, 'site_ville', '') or '').strip() or None

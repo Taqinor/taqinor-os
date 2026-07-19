@@ -1172,3 +1172,44 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
             montant = Decimal('0')
         par_mois[cle] = par_mois.get(cle, Decimal('0')) + montant
     return par_mois
+
+
+def faits_temoignage_devis(company, devis_id):
+    """PUB63 — Faits VÉRIFIÉS d'un devis pour un brief témoignage créatif.
+
+    Point d'entrée cross-app LECTURE SEULE pour ``apps.adsengine`` (jamais un
+    import de ``ventes.models`` côté adsengine). Renvoie ``None`` si le devis
+    n'existe pas / n'appartient pas à la société. Sinon un dict :
+    ``{signed, client_id, client_nom, puissance_kwc, production_kwh,
+    economie_annuelle, ville}`` — chiffres tirés de l'ÉTUDE du devis (faits du
+    projet réel, jamais inventés ; ``None`` par champ absent). ``signed`` reflète
+    le statut « Accepté » (un deal signé)."""
+    from .models import Devis
+
+    devis = (Devis.objects.filter(pk=devis_id, company=company)
+             .select_related('client').first())
+    if devis is None:
+        return None
+    etude = devis.etude_params or {}
+    client = getattr(devis, 'client', None)
+
+    def _num(*keys):
+        for key in keys:
+            val = etude.get(key)
+            if val not in (None, ''):
+                try:
+                    return float(val)
+                except (TypeError, ValueError):
+                    return None
+        return None
+
+    return {
+        'signed': devis.statut == Devis.Statut.ACCEPTE,
+        'client_id': getattr(client, 'id', None),
+        'client_nom': str(client) if client is not None else '',
+        'puissance_kwc': _num('puissance_kwc', 'kwc', 'champ_kwc'),
+        'production_kwh': _num('annualKwh', 'production_annuelle_kwh'),
+        'economie_annuelle': _num('economies_annuelles', 'savings'),
+        'ville': (etude.get('ville') or '').strip() or None,
+        'reference': devis.reference,
+    }
