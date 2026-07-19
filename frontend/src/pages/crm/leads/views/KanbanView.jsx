@@ -22,6 +22,7 @@ import {
   kanbanScreenReaderInstructions,
 } from '../../../../features/kanban/kanbanA11y'
 import { readCollapsedStages, writeCollapsedStages } from '../../../../features/kanban/collapsedColumns'
+import { usePanScroll } from '../../../../features/kanban/usePanScroll'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
@@ -265,6 +266,10 @@ export default function KanbanView({
   // posé par dnd-kit/CSS) et le dropAnimation (JS pur) échappent tous deux au
   // garde global CSS.
   const prefersReducedMotion = usePrefersReducedMotion()
+  // LB11 — drag-to-pan sur l'espace vide du board (features/kanban/
+  // usePanScroll.js) : ref à poser sur `.kb-board`, aucun autre câblage —
+  // le hook attache lui-même ses écouteurs natifs pointerdown/move/up/cancel.
+  const boardRef = usePanScroll()
   // Message éphémère « On ne recule pas une étape » lors d'un drag refusé.
   const [reculMsg, setReculMsg] = useState(false)
   // distance 6px : un clic simple ouvre la fiche, le drag exige un mouvement ;
@@ -379,6 +384,11 @@ export default function KanbanView({
         announcements,
         screenReaderInstructions: kanbanScreenReaderInstructions,
       }}
+      // LB11 — autoScroll intégré à DndContext (blueprint D2) : était inerte
+      // tant qu'aucun conteneur ne scrollait réellement (LB2 l'a réveillé).
+      // Seuils réglés sur les deux axes imbriqués (board horizontal, colonne
+      // verticale) — config, jamais de scroll maison pendant un drag.
+      autoScroll={{ thresholds: { x: 0.18, y: 0.22 } }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
@@ -391,7 +401,7 @@ export default function KanbanView({
           On ne recule pas une étape
         </div>
       )}
-      <div className="kb-board">
+      <div className="kb-board" ref={boardRef}>
         {columns.map((col) => (
           <StageColumn
             key={col.key}

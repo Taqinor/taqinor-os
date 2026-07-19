@@ -7328,3 +7328,15 @@ textarea.form-control {
   justify-content: center;
   min-height: 0;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB11 — Drag-to-pan sur l'espace vide du board (features/kanban/
+   usePanScroll.js, docs/design/leads-board-blueprint.md D2). Curseur grab
+   sur le fond (cohérent avec `.kb-card{cursor:grab}` déjà posé) ; grabbing
+   pendant le pan réellement armé (classe posée/retirée par le hook). ═════ */
+.kb-board {
+  cursor: grab;
+}
+.kb-board.kb-board-panning {
+  cursor: grabbing;
+}
