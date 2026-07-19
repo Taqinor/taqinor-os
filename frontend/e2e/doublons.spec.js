@@ -20,7 +20,13 @@ test('E11: doublons view renders and merging a cluster completes', async ({ page
     await expect(page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })).toHaveCount(0)
   }
 
-  await page.getByRole('button', { name: '🔀 Doublons' }).click()
+  // LB (refonte leads, VX145b/LB26) — « Doublons » a été démoté de bouton
+  // d'en-tête vers un item du menu « ⋯ » (Plus d'actions), icône GitMerge au
+  // lieu de l'emoji 🔀 : on ouvre le menu puis on choisit l'item (même patron
+  // Radix que mobile.spec E16+). Le nom accessible de l'item est « Doublons »
+  // (+ le compteur de groupes s'il est >0) → match par regex, robuste au badge.
+  await page.getByRole('button', { name: "Plus d'actions" }).click()
+  await page.getByRole('menuitem', { name: /Doublons/ }).click()
   const panel = page.locator('.dbl-panel')
   await expect(panel.getByRole('heading', { name: /Doublons/ })).toBeVisible()
 
