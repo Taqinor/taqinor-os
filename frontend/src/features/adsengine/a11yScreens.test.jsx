@@ -34,6 +34,12 @@ vi.mock('./adsengineApi', () => ({
   },
 }))
 
+// PUB10 — FlightPlanScreen reads adsengine_manage for Valider/Simuler; full
+// access here so the a11y/hook assertions below aren't affected.
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({ loading: false, has: () => true }),
+}))
+
 import ExperimentsScreen from './ExperimentsScreen'
 import FlightPlanScreen from './FlightPlanScreen'
 

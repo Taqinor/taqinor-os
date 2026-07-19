@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   engagementPresets: vi.fn(),
   createEngagement: vi.fn(),
   deliveryEstimate: vi.fn(),
+  // PUB10 — pleines permissions par défaut ; restreintes dans les tests dédiés.
+  permissions: ['adsengine_manage'],
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -34,6 +36,13 @@ vi.mock('./adsengineApi', () => ({
       deliveryEstimate: mocks.deliveryEstimate,
     },
   },
+}))
+
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({
+    loading: false,
+    has: (code) => mocks.permissions.includes(code),
+  }),
 }))
 
 import FlightPlanScreen from './FlightPlanScreen'
@@ -63,6 +72,7 @@ beforeEach(() => {
   ] } })
   mocks.createEngagement.mockResolvedValue({ data: { preset: 'lead_submitted', audience_id: '901', retention_days: 90 } })
   mocks.deliveryEstimate.mockResolvedValue({ data: { estimate: { estimate_ready: true, estimate_dau: 8000 } } })
+  mocks.permissions = ['adsengine_manage']
 })
 
 describe('FlightPlanScreen (ENG40)', () => {
@@ -149,6 +159,18 @@ describe('FlightPlanScreen (ENG40)', () => {
       await waitFor(() =>
         expect(screen.getByTestId('ae-fp-var-cle-1').value).toBe('audience_engagement'))
       expect(screen.getByTestId('ae-fp-var-val-1').value).toBe('901')
+    })
+  })
+
+  describe('PUB10 — Valider/Simuler exigent adsengine_manage', () => {
+    it('sans adsengine_manage, Valider et Simuler sont grisés', async () => {
+      mocks.permissions = []
+      renderScreen()
+      fireEvent.change(await screen.findByTestId('ae-fp-template'), { target: { value: 'lancement' } })
+      expect(screen.getByTestId('ae-fp-validate')).toBeDisabled()
+      expect(screen.getByTestId('ae-fp-simulate')).toBeDisabled()
+      fireEvent.click(screen.getByTestId('ae-fp-validate'))
+      expect(mocks.validate).not.toHaveBeenCalled()
     })
   })
 })

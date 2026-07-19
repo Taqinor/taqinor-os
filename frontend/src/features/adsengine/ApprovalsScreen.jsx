@@ -6,6 +6,10 @@ import {
   actionWarnings, editCopyDiff,
 } from './adsengine'
 import EditCopyComposer from './EditCopyComposer'
+// PUB10 — la console montrait Approuver/Rejeter à tout `responsable` alors que
+// le back exige `adsengine_approve` (permission DISTINCTE de proposer,
+// ENG19) — découverte en 403 seulement. Masque/grise les contrôles.
+import { useAdsPermissions } from './useAdsPermissions'
 
 /* ============================================================================
    ENG25 — Boîte d'approbation (l'écran-vaisseau-amiral).
@@ -22,6 +26,11 @@ import EditCopyComposer from './EditCopyComposer'
    ========================================================================== */
 
 export default function ApprovalsScreen() {
+  // PUB10 — adsengine_approve gate Approuver/Rejeter (batch inclus) ;
+  // adsengine_manage gate le composeur (propose une nouvelle EngineAction).
+  const { has } = useAdsPermissions()
+  const canApprove = has('adsengine_approve')
+  const canManage = has('adsengine_manage')
   const [actions, setActions] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(() => new Set()) // ids du batch
@@ -123,6 +132,9 @@ export default function ApprovalsScreen() {
         </h2>
         <button type="button" className="btn btn-light ae-toggle-composer"
           data-testid="ae-toggle-composer"
+          disabled={!showComposer && !canManage}
+          title={!showComposer && !canManage
+            ? "Nécessite la permission de gestion (adsengine_manage)." : undefined}
           onClick={() => setShowComposer(v => !v)}
           style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
           <PlusCircle size={15} aria-hidden="true" />
@@ -143,7 +155,9 @@ export default function ApprovalsScreen() {
             background: '#eef2ff', padding: '0.6rem 0.9rem', borderRadius: 8, marginBottom: '1rem' }}>
           <span data-testid="ae-batch-count">{selectedCount} sélectionnée(s)</span>
           <button type="button" className="btn btn-primary" data-testid="ae-batch-approve"
-            disabled={busy} onClick={approveSelected}>
+            disabled={busy || !canApprove}
+            title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
+            onClick={approveSelected}>
             Approuver la sélection
           </button>
         </div>
@@ -246,13 +260,15 @@ export default function ApprovalsScreen() {
                         {/* Contrôles STRUCTURÉS — jamais du chat */}
                         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                           <button type="button" className="btn btn-success ae-approve"
-                            data-testid={`ae-approve-${a.id}`} disabled={busy}
+                            data-testid={`ae-approve-${a.id}`} disabled={busy || !canApprove}
+                            title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
                             onClick={() => approve(a.id)}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                             <Check size={15} aria-hidden="true" /> Approuver
                           </button>
                           <button type="button" className="btn btn-danger-outline ae-reject"
-                            data-testid={`ae-reject-${a.id}`} disabled={busy}
+                            data-testid={`ae-reject-${a.id}`} disabled={busy || !canApprove}
+                            title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
                             onClick={() => openReject(a.id)}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                             <X size={15} aria-hidden="true" /> Rejeter
@@ -275,7 +291,7 @@ export default function ApprovalsScreen() {
                               </select>
                             </label>
                             <button type="button" className="btn btn-danger ae-reject-confirm"
-                              data-testid={`ae-reject-confirm-${a.id}`} disabled={busy}
+                              data-testid={`ae-reject-confirm-${a.id}`} disabled={busy || !canApprove}
                               onClick={() => confirmReject(a.id)}>
                               Confirmer le rejet
                             </button>
