@@ -240,6 +240,30 @@ def attribution_lead_rows(company, qualifying_stage=None):
     return rows
 
 
+def lead_appointment_stats(company):
+    """PUB37 — Statistiques de RDV (``crm.Appointment``) PAR LEAD, pour le
+    signal qualité intermédiaire de l'attribution par variante (adsengine).
+
+    Point d'entrée cross-app LECTURE SEULE (jamais un import de
+    ``apps.crm.models`` côté adsengine) : une annonce qui génère des RDV
+    fantômes (no-show) coûte cher avant que le coût-par-signature ne le
+    montre. Renvoie ``{lead_id: {'total': int, 'no_show': int}}`` — un lead
+    sans AUCUN rendez-vous est absent du dict (jamais une entrée 0/0
+    fabriquée). Lecture seule, scopée société."""
+    from .models import Appointment
+
+    stats = {}
+    qs = (Appointment.objects
+          .filter(company=company)
+          .values_list('lead_id', 'statut'))
+    for lead_id, statut in qs:
+        slot = stats.setdefault(lead_id, {'total': 0, 'no_show': 0})
+        slot['total'] += 1
+        if statut == Appointment.Statut.NO_SHOW:
+            slot['no_show'] += 1
+    return stats
+
+
 def client_credit_warning(client, montant_ttc_nouveau=None):
     """FG41 — encours client + avertissement plafond.
 

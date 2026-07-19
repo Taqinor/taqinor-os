@@ -76,9 +76,11 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
           'variants': [
             {'meta_id', 'name', 'spend', 'leads', 'qualified', 'signed',
              'cost_per_qualified_lead', 'cost_per_signature',
-             'lead_ids', 'signed_lead_ids', 'junk', 'junk_rate'}, ...
+             'lead_ids', 'signed_lead_ids', 'junk', 'junk_rate',
+             'appointments', 'no_show', 'no_show_rate'}, ...
           ],
-          'unresolved': {'leads', 'qualified', 'signed', 'junk', 'lead_ids'},
+          'unresolved': {'leads', 'qualified', 'signed', 'junk',
+                         'appointments', 'no_show', 'lead_ids'},
           'organic_excluded_count': int,
         }
 
@@ -91,7 +93,7 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
     from django.contrib.contenttypes.models import ContentType
     from django.db.models import Sum
 
-    from apps.crm.selectors import attribution_lead_rows
+    from apps.crm.selectors import attribution_lead_rows, lead_appointment_stats
     from .models import AdMirror, InsightSnapshot
 
     ad_qs = AdMirror.objects.filter(company=company)
@@ -119,15 +121,21 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
 
     def _new_bucket():
         return {'leads': 0, 'qualified': 0, 'signed': 0, 'junk': 0,
+                'appointments': 0, 'no_show': 0,
                 'lead_ids': [], 'signed_lead_ids': []}
 
     variants = {m: _new_bucket() for m in by_meta}
     unresolved = {'leads': 0, 'qualified': 0, 'signed': 0, 'junk': 0,
-                  'lead_ids': []}
+                  'appointments': 0, 'no_show': 0, 'lead_ids': []}
     organic_excluded = 0
+    # PUB37 — RDV (Appointment) PAR LEAD, pour le taux de no-show par variante
+    # (signal qualité intermédiaire : une annonce qui génère des RDV fantômes
+    # coûte cher avant que le coût-par-signature ne le montre).
+    appt_stats = lead_appointment_stats(company)
 
     for row in attribution_lead_rows(company, qualifying_stage=qualifying_stage):
         meta_id = _resolve_ad_id(row, by_meta, name_to_meta)
+        appt = appt_stats.get(row['id'])
         if meta_id is not None:
             bucket = variants[meta_id]
             bucket['leads'] += 1
@@ -142,6 +150,9 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             if row['signed']:
                 bucket['signed'] += 1
                 bucket['signed_lead_ids'].append(row['id'])
+            if appt:
+                bucket['appointments'] += appt['total']
+                bucket['no_show'] += appt['no_show']
         elif (row.get('utm_content') or row.get('utm_campaign')
               or row.get('is_meta_channel')):
             # A une intention Meta (utm ou canal) mais aucune variante résolue :
@@ -154,6 +165,9 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
                 unresolved['junk'] += 1
             if row['signed']:
                 unresolved['signed'] += 1
+            if appt:
+                unresolved['appointments'] += appt['total']
+                unresolved['no_show'] += appt['no_show']
         else:
             # Organique (aucun utm, canal non-Meta) : exclu du dénominateur.
             organic_excluded += 1
@@ -197,6 +211,11 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             # simple « non qualifié ».
             'junk': bucket['junk'],
             'junk_rate': _rate(bucket['junk'], bucket['leads']),
+            # PUB37 — taux de no-show PAR AD (RDV honorés vs fantômes),
+            # signal qualité intermédiaire avant le coût-par-signature.
+            'appointments': bucket['appointments'],
+            'no_show': bucket['no_show'],
+            'no_show_rate': _rate(bucket['no_show'], bucket['appointments']),
             # ADSDEEP20 — signatures Odoo par ad (deals traçables).
             'odoo_signed': odoo.get('signatures', 0),
             'odoo_cost_per_signature': odoo.get('cost_per_signature'),

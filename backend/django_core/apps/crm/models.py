@@ -1279,6 +1279,11 @@ class Appointment(models.Model):
         CONFIRME = 'confirme', 'Confirmé'
         EFFECTUE = 'effectue', 'Effectué'
         ANNULE = 'annule', 'Annulé'
+        # PUB37 — additif, DISTINCT d'ANNULE : le prospect ne s'est jamais
+        # présenté (vs un RDV annulé À L'AVANCE). Une annonce qui génère des
+        # RDV fantômes coûte cher avant que le coût-par-signature ne le
+        # montre — signal qualité intermédiaire par variante (adsengine).
+        NO_SHOW = 'no_show', 'Absent (no-show)'
 
     company = models.ForeignKey(
         'authentication.Company',
