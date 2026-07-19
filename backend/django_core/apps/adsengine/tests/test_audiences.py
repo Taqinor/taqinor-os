@@ -7,13 +7,22 @@ Invariants prouvés :
   * sessions ≤10 000 lignes/appel, ``usersreplace`` atomique (57) ;
   * seed ≥100 requis pour un lookalike, ratio MA 1-5 %, value-based (58) ;
   * audiences d'engagement = objets Meta-side, AUCUNE donnée CRM envoyée (59).
+
+PUB58/59/60/61 — mêmes invariants pour les PREMIERS appelants production de
+57/58 (boucles de croissance ERP : devis vu/jamais-ouvert, devis expiré,
+cross-sell base installée, lookalike signatures réelles).
 """
 import hashlib
 import json
+from decimal import Decimal
 from urllib.parse import parse_qs
 
 import httpx
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
+
+from authentication.models import Company
+from apps.crm.models import Client
+from apps.ventes.models import Devis, ShareLink
 
 from apps.adsengine import audiences as aud
 from apps.adsengine import meta_client as mc
@@ -338,3 +347,43 @@ class MetaClientAudienceTransportTests(SimpleTestCase):
         client.delete_custom_audience(audience_id='AUD')
         self.assertEqual(captured['request'].method, 'DELETE')
         self.assertTrue(str(captured['request'].url).endswith('/AUD'))
+
+
+class Pub58DevisViewAudiencesTests(TestCase):
+    """PUB58 — sync_devis_view_audiences : PREMIER appelant production
+    d'ADSDEEP57, sur les 2 segments devis vu/jamais-ouvert (QJ1)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB58 Audiences Co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='X',
+            email='x@example.ma', telephone='+212600000010')
+
+    def _devis(self, ref, **kw):
+        return Devis.objects.create(
+            company=self.company, reference=ref, client=self.client_obj,
+            taux_tva=Decimal('20'), statut=Devis.Statut.ENVOYE, **kw)
+
+    def test_consent_off_no_network_at_all(self):
+        self._devis('DEV-PUB58A')
+        result = aud.sync_devis_view_audiences(
+            self.company, client=ExplodingClient())
+        self.assertFalse(result['jamais_ouvert']['configured'])
+        self.assertFalse(result['ouvert_non_signe']['configured'])
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_consent_on_pushes_two_distinct_segments(self):
+        never = self._devis('DEV-PUB58B')
+        opened = self._devis('DEV-PUB58C')
+        ShareLink.objects.create(
+            company=self.company, devis=opened, view_count=2)
+        client = RecordingClient()
+        result = aud.sync_devis_view_audiences(self.company, client=client)
+        self.assertEqual(result['jamais_ouvert']['name'], 'Devis jamais ouvert')
+        self.assertEqual(result['jamais_ouvert']['matched_rows'], 1)
+        self.assertEqual(result['ouvert_non_signe']['name'],
+                         'Devis ouvert non signé')
+        self.assertEqual(result['ouvert_non_signe']['matched_rows'], 1)
+        self.assertTrue(result['jamais_ouvert']['audience_id'])
+        self.assertTrue(result['ouvert_non_signe']['audience_id'])
+        self.assertIsNotNone(never)

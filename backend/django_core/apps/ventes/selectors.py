@@ -1151,3 +1151,67 @@ def carnet_commande_par_mois(company, mois_debut, mois_fin):
             montant = Decimal('0')
         par_mois[cle] = par_mois.get(cle, Decimal('0')) + montant
     return par_mois
+
+
+# ── PUB58/59/60 — Contacts pour les audiences de croissance (ADSDEEP57) ──────
+# Lecture directe des FK Devis→crm.Client/Lead déjà déclarées sur le modèle
+# (même pattern que `analyse_facturation`/`revenu_attribue_campagne`) — jamais
+# un import d'``apps.crm.models``.
+
+def _client_contact(client):
+    """Contact ``{'email', 'telephone'}`` d'un ``crm.Client`` (ou ``None`` si
+    aucun identifiant exploitable). Même contrat que
+    ``apps.crm.selectors.clients_contact_identifiers``."""
+    if client is None:
+        return None
+    email = client.email or ''
+    telephone = client.telephone or ''
+    if not email and not telephone:
+        return None
+    return {'email': email, 'telephone': telephone}
+
+
+def _devis_contact(devis):
+    """Contact ``{'email', 'telephone'}`` résolu depuis le LEAD d'origine du
+    devis si présent, sinon le client. ``None`` si aucun identifiant."""
+    if devis.lead_id and devis.lead:
+        email = devis.lead.email or ''
+        telephone = devis.lead.telephone or devis.lead.whatsapp or ''
+        if email or telephone:
+            return {'email': email, 'telephone': telephone}
+    return _client_contact(devis.client)
+
+
+def devis_view_tracking_segments(company):
+    """PUB58 — Segmente les devis ENVOYÉS non encore ACCEPTÉS/REFUSÉS/EXPIRÉS
+    de la société en deux paniers de contacts, depuis le view-tracking
+    ``ShareLink`` (QJ1) qui dort en base :
+
+      * ``jamais_ouvert`` — devis envoyé, AUCUN ``ShareLink`` consulté
+        (``view_count`` nul sur tous ses liens, ou aucun lien du tout) ;
+      * ``ouvert_non_signe`` — devis envoyé et consulté (au moins un
+        ``ShareLink`` avec ``view_count`` > 0), toujours pas accepté
+        (objection prix probable).
+
+    Chaque panier appelle un angle de relance différent (PUB58). Renvoie
+    ``{'jamais_ouvert': [...], 'ouvert_non_signe': [...]}`` (dicts
+    ``{'email', 'telephone'}``, même contrat que
+    ``apps.crm.selectors.lead_contact_identifiers``)."""
+    from .models import Devis
+
+    qs = (Devis.objects
+          .filter(company=company, statut=Devis.Statut.ENVOYE)
+          .select_related('client', 'lead')
+          .prefetch_related('share_links'))
+
+    jamais_ouvert, ouvert_non_signe = [], []
+    for devis in qs:
+        contact = _devis_contact(devis)
+        if not contact:
+            continue
+        views = [sl.view_count for sl in devis.share_links.all()]
+        if views and max(views) > 0:
+            ouvert_non_signe.append(contact)
+        else:
+            jamais_ouvert.append(contact)
+    return {'jamais_ouvert': jamais_ouvert, 'ouvert_non_signe': ouvert_non_signe}

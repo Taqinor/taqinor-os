@@ -517,3 +517,33 @@ def engagement_delivery_estimate(company, *, targeting_spec,
         return {'estimate': estimate}
     except MetaError as exc:
         return {'error': str(exc)[:255]}
+
+
+# ── PUB58 — Boucles de croissance ERP : PREMIER appelant production d'ADSDEEP57
+# (le mécanisme dormait à zéro appelant) ─────────────────────────────────────
+
+def sync_devis_view_audiences(company, *, client=None):
+    """PUB58 — Pousse les 2 Custom Audiences « devis vu / jamais ouvert »
+    depuis le view-tracking ``ShareLink`` (QJ1,
+    ``apps.ventes.selectors.devis_view_tracking_segments``) — PREMIER
+    appelant production de :func:`sync_crm_custom_audience` (ADSDEEP57).
+    Chaque segment porte un angle de relance dédié (jamais ouvert vs objection
+    prix) dans son ``name``/``description``. Même porte consentement : OFF ⇒
+    no-op propre (résumés de préviz seuls, aucun réseau). Renvoie
+    ``{'jamais_ouvert': <résumé>, 'ouvert_non_signe': <résumé>}``."""
+    from apps.ventes.selectors import devis_view_tracking_segments
+
+    segments = devis_view_tracking_segments(company)
+    return {
+        'jamais_ouvert': sync_crm_custom_audience(
+            company, name='Devis jamais ouvert',
+            contacts=segments['jamais_ouvert'],
+            description='Devis envoyé jamais consulté — relance découverte.',
+            client=client),
+        'ouvert_non_signe': sync_crm_custom_audience(
+            company, name='Devis ouvert non signé',
+            contacts=segments['ouvert_non_signe'],
+            description=("Devis consulté non signé — objection prix "
+                         "probable."),
+            client=client),
+    }
