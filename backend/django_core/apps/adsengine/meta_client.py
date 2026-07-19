@@ -32,12 +32,24 @@ FORCED_STATUS = 'PAUSED'
 
 # ── ADSDEEP4 — Fenêtres d'attribution, SOURCE UNIQUE ─────────────────────────
 # ``action_attribution_windows`` demandé sur chaque pull d'insights de
-# conversion. Les fenêtres VIVANTES au 2026-07 (dossier insights-api §4). Les
-# fenêtres ``7d_view`` et ``28d_view`` sont MORTES depuis 2026-01-12 : les
-# demander renvoie SILENCIEUSEMENT aucune donnée (aucune erreur Graph) — donc
-# jamais les coder. Un test-garde (``test_attribution_windows``) échoue si l'une
-# d'elles réapparaît quelque part dans ce module.
-ATTRIBUTION_WINDOWS = ('1d_click', '7d_click', '1d_view')
+# conversion. Fenêtres VIVANTES au 2026-07 après DEUX refontes Meta (PUB39,
+# re-validées 2026-07-19 contre la doc courante) :
+#   - 2026-01-12 : ``7d_view`` et ``28d_view`` SUPPRIMÉES d'Ads Manager/API —
+#     la plus longue fenêtre de VUE disponible est désormais 1 j ;
+#   - 2026-03 : refonte du CLICK-THROUGH, désormais LINK-CLICKS-ONLY. Les
+#     interactions sociales (likes/partages/enregistrements/commentaires) et
+#     l'ancien « engaged-view » (seuil abaissé de 10 s à 5 s) basculent dans une
+#     fenêtre « engage-through » (ex « engaged-view », valeur API ``1d_ev``). On
+#     la demande EXPLICITEMENT pour ne pas PERDRE ces conversions qui ne comptent
+#     plus en click-through.
+# Sources (2026) : PPC Land « Meta restricts attribution windows… » (Insights
+# API) ; Jon Loomer « How Meta Ads Attribution Works in 2026 » ; adsuploader
+# « Meta Click Attribution in 2026: Only Link Clicks Count Now » ; valeur API
+# ``1d_ev`` = doc Ads Action Stats (Graph API v25). Les fenêtres ``7d_view``/
+# ``28d_view`` demandées renvoient SILENCIEUSEMENT aucune donnée — jamais les
+# coder. Un test-garde (``test_attribution_windows``) échoue si une fenêtre morte
+# réapparaît, ou si la liste vivante diverge de la doc.
+ATTRIBUTION_WINDOWS = ('1d_click', '7d_click', '1d_view', '1d_ev')
 
 # Fenêtres INTERDITES (mortes en silence) — listées pour la garde uniquement,
 # jamais émises.
