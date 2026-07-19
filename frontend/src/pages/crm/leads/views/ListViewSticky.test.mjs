@@ -33,7 +33,7 @@ test('LB18 : LIST_COLUMNS déclare un modèle de colonnes (id/header/width), 13 
   assert.match(block, /id: 'actions', header: 'Actions', width: \d+, hideable: false/)
 })
 
-test('LB18 : <colgroup> précède le <thead>, une <col> par colonne du modèle (+ case à cocher)', () => {
+test('LB18/LB19 : <colgroup> précède le <thead>, une <col> par colonne VISIBLE (+ case à cocher)', () => {
   const tableStart = SRC.indexOf('<table className="data-table lv-table calm-list">')
   assert.ok(tableStart > 0)
   const theadStart = SRC.indexOf('<thead>', tableStart)
@@ -41,7 +41,9 @@ test('LB18 : <colgroup> précède le <thead>, une <col> par colonne du modèle (
   assert.ok(colgroupStart > tableStart && colgroupStart < theadStart, 'colgroup doit précéder thead')
   const block = SRC.slice(colgroupStart, theadStart)
   assert.match(block, /onToggleSelect && <col/)
-  assert.match(block, /LIST_COLUMNS\.map\(\(c\) => <col key=\{c\.id\} style=\{\{ width: c\.width \}\} \/>\)/)
+  // LB19 — filtré par colonne cachée (le nombre de <col> doit toujours
+  // correspondre au nombre de <td>/<th> réellement rendus).
+  assert.match(block, /visibleColumns\.map\(\(c\) => <col key=\{c\.id\} style=\{\{ width: c\.width \}\} \/>\)/)
 })
 
 test('LB18 : la colonne Lead (th ET td) porte .lv-sticky-name — contrat tr.lv-row/.lv-lead-name intact', () => {

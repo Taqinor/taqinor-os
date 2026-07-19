@@ -1,7 +1,7 @@
 // Vue LISTE des leads CRM — table dense et triable, façon Odoo.
 // Les étapes viennent EXCLUSIVEMENT de features/crm/stages (miroir de
 // STAGES.py) : aucune liste d'étapes n'est déclarée ici.
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState, memo } from 'react'
 import { MoreHorizontal, PhoneCall, MessageCircle, List } from 'lucide-react'
 import { useDispatch } from 'react-redux'
 import { EmptyState } from '../../../../ui'
@@ -37,6 +37,14 @@ import {
   Popover, PopoverTrigger, PopoverContent,
 } from '../../../../ui'
 import { formatMAD } from '../../../../lib/format'
+// LB19 — choix de colonnes persisté : import DIRECT de deux pièces du
+// moteur ui/datatable (blueprint D4, zéro fork) — `useColumnPrefs`
+// (persistance localStorage) + `ColumnManager`/`columnStateReducer`/
+// `initColumnState` (UI + réducteur pur d'état des colonnes). Explicitement
+// PAS `DataTable`/`FilterBuilder`/`urlState` : un seul état de filtres pour
+// toute la page (D5), cette liste n'en emprunte rien d'autre.
+import { useColumnPrefs } from '../../../../ui/datatable/useColumnPrefs'
+import { ColumnManager, columnStateReducer, initColumnState } from '../../../../ui/datatable'
 
 const MOBILE_QUERY = '(max-width: 768px)'
 
@@ -187,7 +195,7 @@ function SortableTh({ col, label, sort, onSort, className, help }) {
 const ListRow = memo(function ListRow({
   lead, checked, onToggleSelect, onOpenLead, armCallNudgeFor, onInlineSave,
   users, onReassign, onAutoQuote, canDelete, busy, onRestore, onArchive,
-  onDelete, isMobile, onOpenInsights, today,
+  onDelete, isMobile, onOpenInsights, today, hiddenCols = {},
   perduOpen, onRequestPerduOpen, closePerdu, perduMotif, setPerduMotif,
   perduBusy, confirmPerdu, motifsPerte,
 }) {
@@ -273,9 +281,12 @@ const ListRow = memo(function ListRow({
           onSave={(v) => onInlineSave(lead, 'stage', v)}
         />
       </td>
+      {!hiddenCols.score && (
       <td className="m-hide" data-label="Score">
         <ScoreBadge lead={lead} />
       </td>
+      )}
+      {!hiddenCols.telephone && (
       <td className="m-hide" onClick={(e) => e.stopPropagation()}>
         {lead.telephone ? (
           <a className="link-blue" href={`tel:${lead.telephone}`}
@@ -284,7 +295,9 @@ const ListRow = memo(function ListRow({
           </a>
         ) : '—'}
       </td>
-      <td className="m-hide">{lead.ville || '—'}</td>
+      )}
+      {!hiddenCols.ville && <td className="m-hide">{lead.ville || '—'}</td>}
+      {!hiddenCols.facture && (
       <td className="m-hide" onClick={(e) => e.stopPropagation()}>
         <InlineEdit
           value={lead.facture_hiver ?? ''}
@@ -299,7 +312,11 @@ const ListRow = memo(function ListRow({
           onSave={(v) => onInlineSave(lead, 'facture_hiver', v === '' ? null : v)}
         />
       </td>
-      <td className="m-hide">{CANAL_LABELS[lead.canal] ?? '—'}</td>
+      )}
+      {!hiddenCols.canal && (
+        <td className="m-hide">{CANAL_LABELS[lead.canal] ?? '—'}</td>
+      )}
+      {!hiddenCols.owner && (
       <td className="m-hide" onClick={(e) => e.stopPropagation()}>
         <AssigneePicker
           users={users}
@@ -309,6 +326,8 @@ const ListRow = memo(function ListRow({
           disabled={!onReassign}
         />
       </td>
+      )}
+      {!hiddenCols.priorite && (
       <td className="m-hide" onClick={(e) => e.stopPropagation()}>
         <InlineEdit
           value={lead.priorite ?? 'normale'}
@@ -326,6 +345,7 @@ const ListRow = memo(function ListRow({
           onSave={(v) => onInlineSave(lead, 'priorite', v)}
         />
       </td>
+      )}
       <td data-label="Relance" onClick={(e) => e.stopPropagation()}>
         <InlineEdit
           value={lead.relance_date ?? ''}
@@ -339,6 +359,7 @@ const ListRow = memo(function ListRow({
           onSave={(v) => onInlineSave(lead, 'relance_date', v)}
         />
       </td>
+      {!hiddenCols.next_activity && (
       <td className="m-hide">
         {lead.next_activity ? (
           <span
@@ -352,6 +373,8 @@ const ListRow = memo(function ListRow({
           </span>
         ) : <span className="lv-muted">—</span>}
       </td>
+      )}
+      {!hiddenCols.tags && (
       <td className="m-hide" onClick={(e) => e.stopPropagation()}>
         <InlineEdit
           value={lead.tags ?? ''}
@@ -377,6 +400,7 @@ const ListRow = memo(function ListRow({
           onSave={(v) => onInlineSave(lead, 'tags', v)}
         />
       </td>
+      )}
       <td data-label="Actions" onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
         {/* VX223 — « ✗ Perdu » : action à 2 clics toujours visible sur
@@ -552,6 +576,23 @@ export default function ListView({
     onScroll()
     return () => el.removeEventListener('scroll', onScroll)
   }, [])
+  // LB19 — état des colonnes : préférences localStorage lues UNE FOIS au
+  // montage (`useColumnPrefs`, clé `taqinor.leads.columns…`) puis pilotées
+  // par le réducteur PUR du moteur (`columnStateReducer` — show/hide,
+  // inchangé, zéro fork) ; toute mutation est notifiée en retour pour la
+  // persistance (même contrat que `useDataTable`, NTUX16). Colonnes
+  // core (hideable:false) ne peuvent jamais entrer dans `.hidden`
+  // (ColumnManager les exclut déjà du menu de choix).
+  const { initialColumnState, onColumnStateChange } = useColumnPrefs('leads.columns')
+  const [columnState, dispatchColumns] = useReducer(
+    columnStateReducer,
+    LIST_COLUMNS,
+    (cols) => initialColumnState || initColumnState(cols),
+  )
+  useEffect(() => {
+    onColumnStateChange(columnState)
+  }, [columnState, onColumnStateChange])
+  const hiddenCols = columnState.hidden
   // Par défaut : plus récents d'abord (date_creation desc), aucune colonne active.
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [busyId, setBusyId] = useState(null)
@@ -713,17 +754,33 @@ export default function ListView({
 
   const visibleIds = sorted.map((l) => l.id)
   const allChecked = allVisibleSelected(selected, visibleIds)
+  // LB19 — colonnes réellement rendues (modèle moins celles masquées par
+  // l'utilisateur) : réutilisé par le <colgroup> ET le colSpan de l'état
+  // vide, pour qu'ils restent TOUJOURS en phase.
+  const visibleColumns = useMemo(
+    () => LIST_COLUMNS.filter((c) => !hiddenCols[c.id]),
+    [hiddenCols],
+  )
 
   return (
-    <div className="lv-wrap" ref={wrapRef}>
-      {/* VX7 — calm color : séparateurs adoucis + actions révélées au survol. */}
-      <table className="data-table lv-table calm-list">
+    <div className="lv-view">
+      {/* LB19 — barre d'outils locale (choix de colonnes) : HORS du
+          scrolleur .lv-wrap pour rester visible pendant le défilement
+          vertical de la table. */}
+      <div className="lv-toolbar">
+        <ColumnManager columns={LIST_COLUMNS} columnState={columnState} dispatch={dispatchColumns} />
+      </div>
+      <div className="lv-wrap" ref={wrapRef}>
+        {/* VX7 — calm color : séparateurs adoucis + actions révélées au survol. */}
+        <table className="data-table lv-table calm-list">
         {/* LB18 — largeurs fixes (table-layout:fixed, index.css) : ouvrir un
             <select> d'édition en place ne fait plus danser les colonnes
-            voisines (P3 #14). */}
+            voisines (P3 #14). LB19 — filtré par colonne CACHÉE : le nombre
+            de <col> doit toujours correspondre au nombre de <td>/<th> réels
+            rendus (le navigateur aligne colgroup positionnellement). */}
         <colgroup>
           {onToggleSelect && <col style={{ width: 36 }} />}
-          {LIST_COLUMNS.map((c) => <col key={c.id} style={{ width: c.width }} />)}
+          {visibleColumns.map((c) => <col key={c.id} style={{ width: c.width }} />)}
         </colgroup>
         <thead>
           <tr>
@@ -738,6 +795,7 @@ export default function ListView({
             )}
             <SortableTh col="lead" label="Lead" sort={sort} onSort={onSort} className="lv-sticky-name" />
             <SortableTh col="stage" label="Stade" sort={sort} onSort={onSort} />
+            {!hiddenCols.score && (
             <SortableTh
               col="score" label="Score" sort={sort} onSort={onSort} className="m-hide"
               // VX47 — aide contextuelle : « d'où vient ce chiffre » n'est
@@ -754,15 +812,26 @@ export default function ListView({
                 </HelpTip>
               )}
             />
-            <SortableTh col="telephone" label="Téléphone" sort={sort} onSort={onSort} className="m-hide" />
-            <SortableTh col="ville" label="Ville" sort={sort} onSort={onSort} className="m-hide" />
-            <th className="m-hide">Facture</th>
-            <SortableTh col="canal" label="Canal" sort={sort} onSort={onSort} className="m-hide" />
-            <SortableTh col="owner" label="Responsable" sort={sort} onSort={onSort} className="m-hide" />
-            <SortableTh col="priorite" label="Priorité" sort={sort} onSort={onSort} className="m-hide" />
+            )}
+            {!hiddenCols.telephone && (
+              <SortableTh col="telephone" label="Téléphone" sort={sort} onSort={onSort} className="m-hide" />
+            )}
+            {!hiddenCols.ville && (
+              <SortableTh col="ville" label="Ville" sort={sort} onSort={onSort} className="m-hide" />
+            )}
+            {!hiddenCols.facture && <th className="m-hide">Facture</th>}
+            {!hiddenCols.canal && (
+              <SortableTh col="canal" label="Canal" sort={sort} onSort={onSort} className="m-hide" />
+            )}
+            {!hiddenCols.owner && (
+              <SortableTh col="owner" label="Responsable" sort={sort} onSort={onSort} className="m-hide" />
+            )}
+            {!hiddenCols.priorite && (
+              <SortableTh col="priorite" label="Priorité" sort={sort} onSort={onSort} className="m-hide" />
+            )}
             <SortableTh col="relance" label="Relance" sort={sort} onSort={onSort} />
-            <th className="m-hide">Prochaine activité</th>
-            <th className="m-hide">Tags</th>
+            {!hiddenCols.next_activity && <th className="m-hide">Prochaine activité</th>}
+            {!hiddenCols.tags && <th className="m-hide">Tags</th>}
             <th>Actions</th>
           </tr>
         </thead>
@@ -802,12 +871,13 @@ export default function ListView({
                 perduBusy={isPerduTarget ? perduBusy : false}
                 confirmPerdu={confirmPerdu}
                 motifsPerte={motifsPerte}
+                hiddenCols={hiddenCols}
               />
             )
           })}
           {!sorted.length && (
             <tr>
-              <td colSpan={onToggleSelect ? 13 : 12} className="lv-empty">
+              <td colSpan={(onToggleSelect ? 1 : 0) + visibleColumns.length} className="lv-empty">
                 {/* VX147 — « 0 lead » unifié sur `EmptyState` (calqué sur
                     ChartsView) au lieu du texte brut précédent. */}
                 <EmptyState
@@ -819,35 +889,36 @@ export default function ListView({
             </tr>
           )}
         </tbody>
-      </table>
-      {insightsLead && (
-        <LeadInsightsDialog
-          lead={insightsLead}
-          onClose={() => setInsightsLead(null)}
-        />
-      )}
-      {/* VX87 — nudge post-appel : proposé au retour dans l'onglet après un
-          tap tel: sur une ligne, jamais intrusif — dismissable. */}
-      {nudgeVisible && nudgeLead && (
-        <div className="lv-call-nudge" role="status">
-          <span className="lv-call-nudge-text">
-            Appel terminé avec {fullName(nudgeLead) || 'ce lead'} — noter le résultat ?
-          </span>
-          <CallLogPopover
-            leadId={nudgeLead.id}
-            trigger={<button type="button" className="lv-call-nudge-log">Noter</button>}
-            onLogged={dismissNudge}
+        </table>
+        {insightsLead && (
+          <LeadInsightsDialog
+            lead={insightsLead}
+            onClose={() => setInsightsLead(null)}
           />
-          <button
-            type="button"
-            className="lv-call-nudge-dismiss"
-            aria-label="Ignorer"
-            onClick={dismissNudge}
-          >
-            ✕
-          </button>
-        </div>
-      )}
+        )}
+        {/* VX87 — nudge post-appel : proposé au retour dans l'onglet après un
+            tap tel: sur une ligne, jamais intrusif — dismissable. */}
+        {nudgeVisible && nudgeLead && (
+          <div className="lv-call-nudge" role="status">
+            <span className="lv-call-nudge-text">
+              Appel terminé avec {fullName(nudgeLead) || 'ce lead'} — noter le résultat ?
+            </span>
+            <CallLogPopover
+              leadId={nudgeLead.id}
+              trigger={<button type="button" className="lv-call-nudge-log">Noter</button>}
+              onLogged={dismissNudge}
+            />
+            <button
+              type="button"
+              className="lv-call-nudge-dismiss"
+              aria-label="Ignorer"
+              onClick={dismissNudge}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
