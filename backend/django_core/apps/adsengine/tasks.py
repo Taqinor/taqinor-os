@@ -882,6 +882,35 @@ def decay_assumptions_weekly():
     return {'nodes_decayed': total}
 
 
+@shared_task(name='adsengine.check_attribution_quality')
+def check_attribution_quality():
+    """PUB89 — Beat QUOTIDIEN : score de qualité de la chaîne d'attribution.
+
+    Pour chaque société, mesure la complétude de la jointure de la récompense
+    proxy (``CtwaReferral`` : clid / téléphone matché / stage / ad résolue) et
+    lève une alerte BRAKE-ONLY sous le seuil (jamais une pause auto). No-op
+    propre sans enregistrement. Best-effort par société. Renvoie le nombre
+    d'alertes levées."""
+    from authentication.selectors import active_companies
+
+    from . import data_quality
+
+    alerted = 0
+    for company in active_companies():
+        try:
+            result = data_quality.check_attribution_quality(company)
+            if result.get('alert_id') is not None:
+                alerted += 1
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.check_attribution_quality: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.check_attribution_quality: %s alerte(s)', alerted)
+    return {'alerts': alerted}
+
+
 @shared_task(name='adsengine.generate_creative_variants')
 def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
     """ENG18 — Tâche « variantes » : 2-3 statiques d'un asset de base approuvé.

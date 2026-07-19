@@ -513,6 +513,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.emit_capi_signatures',
         'schedule': crontab(hour=7, minute=35),
     },
+    # PUB89 — score QUOTIDIEN de qualité de la chaîne d'attribution (complétude
+    # de jointure de la récompense proxy CtwaReferral) : alerte BRAKE-ONLY sous
+    # seuil, jamais une pause auto. NO-OP propre sans référence CTWA.
+    'adsengine-check-attribution-quality': {
+        'task': 'adsengine.check_attribution_quality',
+        'schedule': crontab(hour=7, minute=45),
+    },
     # ── lane/gen-b — AGEN8 : auto-pause maison du rayon d'explosion (bloc isolé,
     # fold propre avec le co-éditeur de celery.py). Polling COURT (toutes les
     # 30 min) de effective_status des créatifs générés : un refus Meta est mis
