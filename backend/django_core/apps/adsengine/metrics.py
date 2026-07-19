@@ -634,6 +634,9 @@ def ads_cockpit_rows(company, *, as_of=None):
     real_leads_by_ad = real_lead_counts(company)['by_ad']
     conv_by_ad = {row['ad_id']: row
                   for row in conversations_per_ad(company)['by_ad']}
+    # PUB32 — dernier classement Meta connu PAR AD (diagnostics de qualité/
+    # engagement/conversion), visibles au cockpit.
+    rankings_by_ad = _latest_rankings_by_ad(company, ad_pks, as_of)
     odoo_by_ad = {}
     odoo_configured = False
     try:
@@ -696,5 +699,42 @@ def ads_cockpit_rows(company, *, as_of=None):
                           if total.get('frequency') is not None else None),
             'fatigue': _ad_fatigue_badge(
                 recent_agg.get(ad.pk), baseline_agg.get(ad.pk)),
+            # PUB32 — diagnostics de classement Meta (proxys négatifs) par ad.
+            'classement_qualite': rankings_by_ad.get(ad.pk, {}).get(
+                'quality', ''),
+            'classement_engagement': rankings_by_ad.get(ad.pk, {}).get(
+                'engagement', ''),
+            'classement_conversion': rankings_by_ad.get(ad.pk, {}).get(
+                'conversion', ''),
         })
     return rows
+
+
+def _latest_rankings_by_ad(company, ad_pks, end_date):
+    """PUB32 — Dernier diagnostic de classement Meta connu PAR AD : le snapshot
+    le plus récent (≤ end_date) portant un ``quality_ranking`` non vide. Renvoie
+    ``{ad_pk: {'quality':.., 'engagement':.., 'conversion':..}}`` (une requête)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from .models import AdMirror, InsightSnapshot
+
+    if not ad_pks:
+        return {}
+    ct = ContentType.objects.get_for_model(AdMirror)
+    out = {}
+    for row in (InsightSnapshot.objects
+                .filter(company=company, content_type=ct,
+                        object_id__in=ad_pks, date__lte=end_date)
+                .exclude(quality_ranking='')
+                .order_by('object_id', '-date')
+                .values('object_id', 'quality_ranking',
+                        'engagement_rate_ranking', 'conversion_rate_ranking')):
+        oid = row['object_id']
+        if oid in out:
+            continue  # order_by -date : la première vue est la plus récente
+        out[oid] = {
+            'quality': row['quality_ranking'],
+            'engagement': row['engagement_rate_ranking'],
+            'conversion': row['conversion_rate_ranking'],
+        }
+    return out

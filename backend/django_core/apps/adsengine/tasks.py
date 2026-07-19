@@ -37,6 +37,12 @@ def _parse_date(value):
 AD_INSIGHT_FIELDS = (
     'spend', 'impressions', 'reach', 'clicks', 'frequency',
     'inline_link_clicks', 'results', 'actions',
+    # PUB32 — diagnostics de classement Meta (niveau ad uniquement) : proxys
+    # NÉGATIFS lus par le garde-fou dur quality_ranking_guard, jamais une
+    # récompense. NB : « opportunity score » (Ads Manager) n'est PAS exposé par
+    # l'API Insights — c'est une recommandation UI niveau compte (edge
+    # ``recommendations``), non une métrique par ad → non synchronisé ici.
+    'quality_ranking', 'engagement_rate_ranking', 'conversion_rate_ranking',
     'video_p25_watched_actions', 'video_p50_watched_actions',
     'video_p75_watched_actions', 'video_p95_watched_actions',
     'video_p100_watched_actions', 'video_play_actions',
@@ -44,6 +50,16 @@ AD_INSIGHT_FIELDS = (
     'video_30_sec_watched_actions', 'video_thruplay_watched_actions',
     'video_avg_time_watched_actions',
 )
+
+
+def _clean_ranking(value):
+    """PUB32 — Normalise un diagnostic de classement Meta (ordinal). Renvoie la
+    chaîne bornée (ex. ``below_average``/``UNKNOWN``), ou ``None`` si absente —
+    ``None`` ne réécrit jamais un classement déjà connu (protection re-sync)."""
+    if value in (None, ''):
+        return None
+    return str(value).strip()[:16] or None
+
 
 # Fenêtre glissante (jours) pour la synchro ad/adset — les insights fins sont
 # lus sur les 7 derniers jours (le détail campagne reste sur ``maximum``).
@@ -188,8 +204,9 @@ def _sync_level_insights(company, conn, client, *, level):
     node = _account_node(conn)
     if not node:
         return
-    id_field = 'ad_id' if level == 'ad' else 'adset_id'
-    mirror_model = AdMirror if level == 'ad' else AdSetMirror
+    is_ad = level == 'ad'
+    id_field = 'ad_id' if is_ad else 'adset_id'
+    mirror_model = AdMirror if is_ad else AdSetMirror
     today = datetime.date.today()
     since = today - datetime.timedelta(days=AD_INSIGHT_WINDOW_DAYS - 1)
     rows = client.get_insights(
@@ -211,6 +228,17 @@ def _sync_level_insights(company, conn, client, *, level):
             continue  # ad/adset non miroité (synchro miroirs à faire d'abord)
         day = _parse_date(row.get('date_start')) or today
         norm = normalize_insight_row(row)
+        # PUB32 — classements Meta seulement au niveau ad (l'adset ne les expose
+        # pas ; passer None les laisse intacts sur l'adset).
+        ranking_kwargs = {}
+        if is_ad:
+            ranking_kwargs = {
+                'quality_ranking': _clean_ranking(row.get('quality_ranking')),
+                'engagement_rate_ranking': _clean_ranking(
+                    row.get('engagement_rate_ranking')),
+                'conversion_rate_ranking': _clean_ranking(
+                    row.get('conversion_rate_ranking')),
+            }
         sync.upsert_insight(
             company, mirror, date=day,
             spend=norm['spend'], results=norm['results'],
@@ -219,7 +247,7 @@ def _sync_level_insights(company, conn, client, *, level):
             clicks=norm['clicks'], link_clicks=norm['link_clicks'],
             conversations=norm['conversations'],
             leads_count=norm['leads_count'],
-            video_metrics=norm['video_metrics'])
+            video_metrics=norm['video_metrics'], **ranking_kwargs)
 
 
 def _sync_company(conn):
@@ -754,6 +782,56 @@ def daily_ads_digest():
     return digest_mod.run_daily_digest_for_all()
 
 
+def _evaluate_ranking_guards_for_company(company):
+    """PUB32 — Câble le garde-fou DUR ``signal_guards.quality_ranking_guard``
+    (quadrant SIG2, BRAKE-ONLY) resté sans appelant production.
+
+    Pour chaque ad dont le dernier snapshot porte un ``quality_ranking``
+    « below_average » soutenu (≥500 impr., fenêtre Meta), émet une ``EngineAlert``
+    de FREIN recommandant la pause à un humain. C'est un frein (∈
+    ``BRAKE_ACTIONS``) : il ne propose JAMAIS d'accélération et ne CONTOURNE PAS
+    le spine propose→approve (aucune pause n'est appliquée automatiquement — la
+    décision reste humaine via la boîte d'approbation). Dédup par ad
+    (``entity_key``). Renvoie le nombre d'alertes émises."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from . import signal_guards
+    from .guardrails import ALERT_GUARDRAIL
+    from .models import AdMirror, EngineAlert, GuardrailConfig, InsightSnapshot
+
+    config = GuardrailConfig.objects.filter(company=company).first()
+    ct = ContentType.objects.get_for_model(AdMirror)
+    emitted = 0
+    for ad in AdMirror.objects.filter(company=company):
+        snap = (InsightSnapshot.objects
+                .filter(company=company, content_type=ct, object_id=ad.pk)
+                .exclude(quality_ranking='')
+                .order_by('-date').first())
+        if snap is None:
+            continue
+        verdict = signal_guards.quality_ranking_guard(
+            {'quality_ranking': snap.quality_ranking,
+             'impressions': snap.impressions}, config)
+        if not verdict.triggered:
+            continue
+        entity_key = f'ad:{ad.pk}'
+        if EngineAlert.objects.filter(
+                company=company, alert_type=ALERT_GUARDRAIL,
+                entity_key=entity_key, acknowledged=False).exists():
+            continue  # dédup : une alerte non acquittée existe déjà pour cette ad
+        logger.warning(
+            'adsengine ALERTE [quality_ranking] société=%s ad=%s: %s',
+            company.pk, ad.meta_id, verdict.reason)
+        EngineAlert.objects.create(
+            company=company, alert_type=ALERT_GUARDRAIL,
+            message=f"Ad « {ad.name or ad.meta_id} » : {verdict.reason}",
+            severity=EngineAlert.Severity.CRITIQUE, entity_key=entity_key,
+            detail={'guard': 'quality_ranking', 'ad_meta_id': ad.meta_id,
+                    **verdict.computed})
+        emitted += 1
+    return emitted
+
+
 @shared_task(name='adsengine.evaluate_guardrails')
 def evaluate_guardrails():
     """ADSENG15 — Boucle CRITIQUE du Gardien (toutes les 6 h).
@@ -763,10 +841,24 @@ def evaluate_guardrails():
     Meta scalent au spend et pénalisent les petits comptes, dd-guardian §A9).
     NO-OP propre tant qu'aucune ``RulePolicy`` critique n'est activée. Renvoie le
     récapitulatif ``{'companies': n, 'rules_evaluated': m}``."""
+    from authentication.selectors import active_companies
+
     from . import rules_engine
 
     result = rules_engine.evaluate_all(
         cadences=rules_engine.CRITICAL_CADENCES)
+    # PUB32 — quadrant de garde-fous DURS niveau ad (brake-only) : classement de
+    # qualité « below_average » soutenu → alerte de frein. Best-effort/isolé.
+    guard_alerts = 0
+    for company in active_companies():
+        try:
+            guard_alerts += _evaluate_ranking_guards_for_company(company)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.evaluate_guardrails: échec garde classement '
+                'société %s', company.pk, exc_info=True)
+    if isinstance(result, dict):
+        result['ranking_guard_alerts'] = guard_alerts
     logger.info('adsengine.evaluate_guardrails: %s', result)
     return result
 

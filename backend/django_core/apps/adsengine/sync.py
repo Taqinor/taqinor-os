@@ -263,7 +263,9 @@ def resolve_results(objective, normalized_row):
 def upsert_insight(company, target, *, date, spend=None, results=None,
                    frequency=None, cpl=None, impressions=None, reach=None,
                    clicks=None, link_clicks=None, conversations=None,
-                   leads_count=None, video_metrics=None):
+                   leads_count=None, video_metrics=None,
+                   quality_ranking=None, engagement_rate_ranking=None,
+                   conversion_rate_ranking=None):
     """Upsert un ``InsightSnapshot`` daté sur un miroir (FK générique).
 
     Clé idempotente : ``(company, content_type, object_id, date)`` — un même
@@ -298,6 +300,15 @@ def upsert_insight(company, target, *, date, spend=None, results=None,
             defaults[name] = value
     if video_metrics is not None:
         defaults['video_metrics'] = video_metrics
+    # PUB32 — diagnostics de classement Meta (niveau ad) : n'écrire que ce qui est
+    # fourni (None laissé de côté → ne réécrit jamais un classement déjà connu sur
+    # un re-sync partiel ; un adset, qui ne les expose pas, ne les touche jamais).
+    for name, value in (
+            ('quality_ranking', quality_ranking),
+            ('engagement_rate_ranking', engagement_rate_ranking),
+            ('conversion_rate_ranking', conversion_rate_ranking)):
+        if value is not None:
+            defaults[name] = value
     obj, _ = InsightSnapshot.objects.update_or_create(
         company=company, content_type=ct, object_id=target.pk, date=date,
         defaults=defaults)

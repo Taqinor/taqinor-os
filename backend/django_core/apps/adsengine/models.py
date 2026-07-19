@@ -519,6 +519,22 @@ class InsightSnapshot(TenantModel):
     video_metrics = models.JSONField(
         default=dict, blank=True, verbose_name='Métriques vidéo')
 
+    # ── PUB32 — Diagnostics de classement Meta niveau AD (ordinaux 3 niveaux :
+    # ``above_average``/``average``/``below_average``, ou ``UNKNOWN``/'' quand
+    # indisponible <500 impr.). Ce sont des PROXYS NÉGATIFS lus par
+    # ``signal_guards.quality_ranking_guard`` (frein), JAMAIS une récompense du
+    # bandit. Renseignés seulement au niveau ad (le compte/adset ne les expose
+    # pas). Additifs : les rows historiques restent '' (guard non déclenché).
+    quality_ranking = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name='Classement de qualité')
+    engagement_rate_ranking = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name="Classement du taux d'engagement")
+    conversion_rate_ranking = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name='Classement du taux de conversion')
+
     class Meta:
         verbose_name = 'Instantané de performance'
         verbose_name_plural = 'Instantanés de performance'
