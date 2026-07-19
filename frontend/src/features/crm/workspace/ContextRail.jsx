@@ -5,6 +5,10 @@ import AttachmentsPanel from '../../../components/AttachmentsPanel'
 import recordsApi from '../../../api/recordsApi'
 import TimelineTab from './TimelineTab'
 import DevisTab from './DevisTab'
+// WIR14/NTCRM13 — checklist du playbook (progression auto-générée à chaque
+// changement de stage, apps/crm/receivers.py) : portée de l'ancien LeadForm
+// (section « Playbook », origin/main 2026-07-19) vers un onglet du rail.
+import PlaybookChecklistPanel from '../../../pages/crm/leads/PlaybookChecklistPanel'
 
 // LW19 — Rail contexte (zone droite) : `ui/Tabs` (clavier/ARIA gratuits,
 // remplace le rail maison sans ARIA — recon 04 §6) avec 4 onglets — Historique
@@ -146,6 +150,7 @@ export default function ContextRail({
               {nbDevis ? `${nbDevis} devis` : 'Devis'}
             </span>
           </TabsTrigger>
+          <TabsTrigger value="playbook">Playbook</TabsTrigger>
           <TabsTrigger value="activites">Activités{openActivites ? ` (${openActivites})` : ''}</TabsTrigger>
           <TabsTrigger value="pieces">Pièces{nbPieces ? ` (${nbPieces})` : ''}</TabsTrigger>
         </TabsList>
@@ -171,6 +176,10 @@ export default function ContextRail({
             onWaPreview={onWaPreview}
             onWaReset={onWaReset}
           />
+        </TabsContent>
+
+        <TabsContent value="playbook">
+          <PlaybookChecklistPanel leadId={leadId} />
         </TabsContent>
 
         <TabsContent value="activites">
