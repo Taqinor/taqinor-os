@@ -36,7 +36,7 @@ test('LB18 : LIST_COLUMNS déclare un modèle de colonnes (id/header/width), 13 
 test('LB18/LB19 : <colgroup> précède le <thead>, une <col> par colonne VISIBLE (+ case à cocher)', () => {
   const tableStart = SRC.indexOf('<table className="data-table lv-table calm-list">')
   assert.ok(tableStart > 0)
-  const theadStart = SRC.indexOf('<thead>', tableStart)
+  const theadStart = SRC.indexOf('<thead', tableStart)
   const colgroupStart = SRC.indexOf('<colgroup>', tableStart)
   assert.ok(colgroupStart > tableStart && colgroupStart < theadStart, 'colgroup doit précéder thead')
   const block = SRC.slice(colgroupStart, theadStart)

@@ -19,6 +19,10 @@ import {
   isStageMoveAllowed,
   tagList,
   tagColor,
+  // LB20 — option « Par étape » : MÊME agrégation que le kanban (count +
+  // totalDevis par étape) pour que les deux vues affichent toujours les
+  // mêmes nombres.
+  groupLeadsByStage,
 } from '../../../../features/crm/stages'
 import { formatDate } from '../../../../lib/format'
 import AssigneePicker from '../../../../components/AssigneePicker'
@@ -31,7 +35,7 @@ import ScoreBadge from '../../../../features/crm/ScoreBadge'
 import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/CallLogPopover'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
 import {
-  Button, Checkbox, HelpTip, IconButton, StatusPill,
+  Button, Checkbox, HelpTip, IconButton, StatusPill, Segmented,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
   Popover, PopoverTrigger, PopoverContent,
@@ -104,6 +108,31 @@ const LIST_COLUMNS = [
 
 // Priorité : haute > normale > basse (ordre croissant = haute d'abord).
 const PRIO_RANK = { haute: 0, normale: 1, basse: 2 }
+
+// LB20 — option d'affichage « Plat / Par étape » + repli des groupes :
+// persistés en localStorage, MÊME patron try/catch que VX240(e)
+// (LeadExpressModal.jsx lireLastCanal/ecrireLastCanal) — jamais bloquant si
+// localStorage est indisponible (navigation privée, quota).
+const LIST_GROUP_KEY = 'taqinor.leads.listGroup'
+const lireListGroup = () => {
+  try { return localStorage.getItem(LIST_GROUP_KEY) === 'stage' ? 'stage' : 'plat' }
+  catch { return 'plat' }
+}
+const ecrireListGroup = (v) => {
+  try { localStorage.setItem(LIST_GROUP_KEY, v) }
+  catch { /* localStorage indisponible : no-op */ }
+}
+const LIST_GROUP_COLLAPSED_KEY = 'taqinor.leads.listGroupCollapsed'
+const lireGroupesReplies = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LIST_GROUP_COLLAPSED_KEY) || '[]')
+    return new Set(Array.isArray(parsed) ? parsed : [])
+  } catch { return new Set() }
+}
+const ecrireGroupesReplies = (setValue) => {
+  try { localStorage.setItem(LIST_GROUP_COLLAPSED_KEY, JSON.stringify([...setValue])) }
+  catch { /* localStorage indisponible : no-op */ }
+}
 
 const fullName = (l) => `${l.nom ?? ''} ${l.prenom ?? ''}`.trim()
 
@@ -576,6 +605,36 @@ export default function ListView({
     onScroll()
     return () => el.removeEventListener('scroll', onScroll)
   }, [])
+  // LB20 — hauteur RÉELLE du thead (mesurée, jamais devinée) : les rangées
+  // de groupe (« Par étape ») restent collées SOUS le thead sticky, pas
+  // dessus — `--lv-thead-h` posée sur .lv-wrap, consommée par .lv-group
+  // (index.css). ResizeObserver (pas juste un effet au montage) : le thead
+  // change de hauteur si le contenu de l'aide Score se déplie, etc.
+  const theadRef = useRef(null)
+  useEffect(() => {
+    const theadEl = theadRef.current
+    const wrapEl = wrapRef.current
+    if (!theadEl || !wrapEl || typeof ResizeObserver === 'undefined') return
+    const setH = () => wrapEl.style.setProperty('--lv-thead-h', `${theadEl.offsetHeight}px`)
+    setH()
+    const ro = new ResizeObserver(setH)
+    ro.observe(theadEl)
+    return () => ro.disconnect()
+  }, [])
+  // LB20 — « Plat / Par étape » : lu UNE FOIS au montage (localStorage),
+  // toute bascule est aussitôt persistée.
+  const [listGroup, setListGroup] = useState(lireListGroup)
+  useEffect(() => { ecrireListGroup(listGroup) }, [listGroup])
+  const [collapsedGroups, setCollapsedGroups] = useState(lireGroupesReplies)
+  const toggleGroupCollapsed = useCallback((stageKey) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(stageKey)) next.delete(stageKey)
+      else next.add(stageKey)
+      ecrireGroupesReplies(next)
+      return next
+    })
+  }, [])
   // LB19 — état des colonnes : préférences localStorage lues UNE FOIS au
   // montage (`useColumnPrefs`, clé `taqinor.leads.columns…`) puis pilotées
   // par le réducteur PUR du moteur (`columnStateReducer` — show/hide,
@@ -761,13 +820,80 @@ export default function ListView({
     () => LIST_COLUMNS.filter((c) => !hiddenCols[c.id]),
     [hiddenCols],
   )
+  const emptyColSpan = (onToggleSelect ? 1 : 0) + visibleColumns.length
+
+  // LB20 — mode « Par étape » : compteur + total MAD via groupLeadsByStage
+  // (MÊME fonction que le kanban — les nombres ne divergent jamais entre
+  // les deux vues), mais les LIGNES viennent d'un filtre sur `sorted` : le
+  // tri actif de la liste s'applique DANS chaque groupe (groupLeadsByStage
+  // re-trie par priorité/date en interne — bon pour ses propres `.leads`,
+  // pas pour les nôtres).
+  const groupedRows = useMemo(() => {
+    if (listGroup !== 'stage') return null
+    return groupLeadsByStage(sorted).map((g) => ({
+      ...g,
+      leads: sorted.filter((l) => l.stage === g.key),
+    }))
+  }, [sorted, listGroup])
+
+  // LB20 — extrait pour être partagé entre le mode Plat (sorted.map) et le
+  // mode Par étape (groupedRows[i].leads.map) : AUCUNE duplication du JSX
+  // de ligne, `tr.lv-row` reste le même sélecteur dans les deux modes.
+  const renderRow = (lead) => {
+    // LB6 — SEULE la ligne ciblée reçoit la valeur LIVE de
+    // perduMotif/perduBusy ; toutes les autres reçoivent une constante
+    // ('' / false) qui ne change JAMAIS entre deux rendus — memo(ListRow)
+    // bail out pour elles, seule la ligne ouverte re-rend à chaque frappe
+    // (bug #4).
+    const isPerduTarget = perduTarget?.id === lead.id
+    return (
+      <ListRow
+        key={lead.id}
+        lead={lead}
+        checked={selected.has(lead.id)}
+        onToggleSelect={onToggleSelect}
+        onOpenLead={onOpenLead}
+        armCallNudgeFor={armCallNudgeFor}
+        onInlineSave={onInlineSave}
+        users={users}
+        onReassign={onReassign}
+        onAutoQuote={onAutoQuote}
+        canDelete={canDelete}
+        busy={busyId === lead.id}
+        onRestore={onRestore}
+        onArchive={onArchive}
+        onDelete={onDelete}
+        isMobile={isMobile}
+        onOpenInsights={setInsightsLead}
+        today={today}
+        perduOpen={isPerduTarget}
+        onRequestPerduOpen={setPerduTarget}
+        closePerdu={closePerdu}
+        perduMotif={isPerduTarget ? perduMotif : ''}
+        setPerduMotif={setPerduMotif}
+        perduBusy={isPerduTarget ? perduBusy : false}
+        confirmPerdu={confirmPerdu}
+        motifsPerte={motifsPerte}
+        hiddenCols={hiddenCols}
+      />
+    )
+  }
 
   return (
     <div className="lv-view">
-      {/* LB19 — barre d'outils locale (choix de colonnes) : HORS du
-          scrolleur .lv-wrap pour rester visible pendant le défilement
-          vertical de la table. */}
+      {/* LB19/LB20 — barre d'outils locale (Plat/Par étape + choix de
+          colonnes) : HORS du scrolleur .lv-wrap pour rester visible
+          pendant le défilement vertical de la table. */}
       <div className="lv-toolbar">
+        <Segmented
+          size="sm"
+          options={[
+            { value: 'plat', label: 'Plat' },
+            { value: 'stage', label: 'Par étape' },
+          ]}
+          value={listGroup}
+          onChange={setListGroup}
+        />
         <ColumnManager columns={LIST_COLUMNS} columnState={columnState} dispatch={dispatchColumns} />
       </div>
       <div className="lv-wrap" ref={wrapRef}>
@@ -782,7 +908,7 @@ export default function ListView({
           {onToggleSelect && <col style={{ width: 36 }} />}
           {visibleColumns.map((c) => <col key={c.id} style={{ width: c.width }} />)}
         </colgroup>
-        <thead>
+        <thead ref={theadRef}>
           <tr>
             {onToggleSelect && (
               <th className="lv-check-col">
@@ -836,48 +962,9 @@ export default function ListView({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((lead) => {
-            // LB6 — SEULE la ligne ciblée reçoit la valeur LIVE de
-            // perduMotif/perduBusy ; toutes les autres reçoivent une
-            // constante ('' / false) qui ne change JAMAIS entre deux rendus
-            // — memo(ListRow) bail out pour elles, seule la ligne ouverte
-            // re-rend à chaque frappe (bug #4).
-            const isPerduTarget = perduTarget?.id === lead.id
-            return (
-              <ListRow
-                key={lead.id}
-                lead={lead}
-                checked={selected.has(lead.id)}
-                onToggleSelect={onToggleSelect}
-                onOpenLead={onOpenLead}
-                armCallNudgeFor={armCallNudgeFor}
-                onInlineSave={onInlineSave}
-                users={users}
-                onReassign={onReassign}
-                onAutoQuote={onAutoQuote}
-                canDelete={canDelete}
-                busy={busyId === lead.id}
-                onRestore={onRestore}
-                onArchive={onArchive}
-                onDelete={onDelete}
-                isMobile={isMobile}
-                onOpenInsights={setInsightsLead}
-                today={today}
-                perduOpen={isPerduTarget}
-                onRequestPerduOpen={setPerduTarget}
-                closePerdu={closePerdu}
-                perduMotif={isPerduTarget ? perduMotif : ''}
-                setPerduMotif={setPerduMotif}
-                perduBusy={isPerduTarget ? perduBusy : false}
-                confirmPerdu={confirmPerdu}
-                motifsPerte={motifsPerte}
-                hiddenCols={hiddenCols}
-              />
-            )
-          })}
           {!sorted.length && (
             <tr>
-              <td colSpan={(onToggleSelect ? 1 : 0) + visibleColumns.length} className="lv-empty">
+              <td colSpan={emptyColSpan} className="lv-empty">
                 {/* VX147 — « 0 lead » unifié sur `EmptyState` (calqué sur
                     ChartsView) au lieu du texte brut précédent. */}
                 <EmptyState
@@ -888,6 +975,35 @@ export default function ListView({
               </td>
             </tr>
           )}
+          {/* Mode Plat (défaut) : les 100 % des tests/e2e existants passent
+              par ce chemin — tr.lv-row/.ie-cell/select.ie-input inchangés. */}
+          {!!sorted.length && listGroup !== 'stage' && sorted.map(renderRow)}
+          {/* LB20 — mode « Par étape » : rangées de groupe collantes
+              (tr.lv-group, sous le thead) au-dessus des lignes de CE
+              groupe — repliables, ordre = l'ordre du funnel
+              (groupLeadsByStage itère déjà PIPELINE_STAGES dans l'ordre). */}
+          {!!sorted.length && listGroup === 'stage' && groupedRows.map((g) => (
+            <Fragment key={g.key}>
+              <tr className="lv-group">
+                <td colSpan={emptyColSpan}>
+                  <button
+                    type="button"
+                    className="lv-group-toggle"
+                    aria-expanded={!collapsedGroups.has(g.key)}
+                    onClick={() => toggleGroupCollapsed(g.key)}
+                  >
+                    <span className="lv-group-chevron" aria-hidden="true">
+                      {collapsedGroups.has(g.key) ? '▸' : '▾'}
+                    </span>
+                    <StatusPill status={g.key} label={g.label} />
+                    <span className="lv-group-count">{g.count}</span>
+                    <span className="lv-group-total">{formatMAD(g.totalDevis)}</span>
+                  </button>
+                </td>
+              </tr>
+              {!collapsedGroups.has(g.key) && g.leads.map(renderRow)}
+            </Fragment>
+          ))}
         </tbody>
         </table>
         {insightsLead && (

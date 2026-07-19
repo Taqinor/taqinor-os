@@ -73,8 +73,10 @@ test('LB19 : ListRow reçoit `hiddenCols` (défaut {} — jamais un throw si non
   assert.match(SRC, /hiddenCols=\{hiddenCols\}/)
 })
 
-test('LB19 : <colgroup> et le colSpan de l\'état vide utilisent la MÊME liste `visibleColumns` (jamais désynchronisés)', () => {
+test('LB19/LB20 : <colgroup>, colSpan de l\'état vide ET colSpan des rangées de groupe partagent `emptyColSpan` (jamais désynchronisés)', () => {
   assert.match(SRC, /const visibleColumns = useMemo\(/)
   assert.match(SRC, /visibleColumns\.map\(\(c\) => <col key=\{c\.id\} style=\{\{ width: c\.width \}\} \/>\)/)
-  assert.match(SRC, /colSpan=\{\(onToggleSelect \? 1 : 0\) \+ visibleColumns\.length\}/)
+  assert.match(SRC, /const emptyColSpan = \(onToggleSelect \? 1 : 0\) \+ visibleColumns\.length/)
+  const uses = (SRC.match(/colSpan=\{emptyColSpan\}/g) || []).length
+  assert.ok(uses >= 2, `attendu ≥2 usages de emptyColSpan (état vide + rangée de groupe), trouvé ${uses}`)
 })
