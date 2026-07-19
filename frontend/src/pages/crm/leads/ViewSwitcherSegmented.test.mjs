@@ -41,7 +41,9 @@ test('LB32 : useIsMobile importé depuis le hook CANONIQUE dans les 3 fichiers, 
     ['ListView.jsx', LV, '../../../../ui/ResponsiveDialog'],
     ['ChartsView.jsx', CV, '../../../../ui/ResponsiveDialog'],
   ]) {
-    assert.match(src, new RegExp(`import \\{ useIsMobile \\} from '${depth.replace(/\//g, '\\/')}'`), `${name} : import canonique manquant`)
+    // Correspondance de chaîne EXACTE (pas de RegExp construite : l'échappement
+    // partiel laissait les `.` en jokers — alerte CodeQL js/incomplete-sanitization).
+    assert.ok(src.includes(`import { useIsMobile } from '${depth}'`), `${name} : import canonique manquant`)
     assert.match(src, /const isMobile = useIsMobile\(MOBILE_QUERY\)/, `${name} : appel useIsMobile(MOBILE_QUERY) manquant`)
     assert.doesNotMatch(src, /function useIsMobile\(/, `${name} : copie locale résiduelle`)
   }
