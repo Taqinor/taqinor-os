@@ -54,6 +54,21 @@ _LEAD_EVENT_SOURCE = 'ERP CRM'
 
 _STASH_ATTR = '_adseng32_old_stage'
 
+# PUB30 — Table statut Appointment -> event_name Meta (DONNÉES, jamais une
+# chaîne en dur dispersée dans le code). ``crm.Appointment.Statut`` n'est PAS
+# une clé STAGES.py (règle #2 ne s'applique qu'au funnel pipeline) — c'est un
+# vocabulaire adsengine-only, donc défini ici, pas lu depuis un sélecteur crm.
+APPOINTMENT_EVENT_NAMES = {
+    'effectue': 'visite_technique_effectuee',
+}
+
+
+def appointment_event_name(statut):
+    """Nom d'événement CAPI pour un statut ``Appointment``, ou '' si non
+    mappé (jamais une exception — un statut futur non mappé est simplement
+    inéligible)."""
+    return APPOINTMENT_EVENT_NAMES.get(statut, '')
+
 
 def _sha256(value):
     return hashlib.sha256((value or '').strip().lower().encode()).hexdigest()
@@ -230,6 +245,146 @@ def emit_lead_stage_event(company, lead_id, new_stage, *, old_stage=None,
     except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
         result['reason'] = 'http_error'
         logger.warning('ADSENG32: CRM-stage CAPI event %s échoué : %s',
+                       event['event_id'], exc)
+    return result
+
+
+# ── PUB30 — Événement CAPI dédié « visite technique effectuée » ───────────────
+# MÊME FAMILLE que le CRM-stage CAPI ci-dessus (mêmes identifiants de match via
+# lead_capi_identifiers, même origine Meta requise, même gating
+# META_CRM_STAGE_CAPI_ENABLED/token/pixel) mais un ``event_name`` DISTINCT
+# (``visite_technique_effectuee``, jamais une clé STAGES.py) : le RDV terrain
+# honoré (Appointment EFFECTUE) est le signal offline le plus proche de la
+# vente, jusqu'ici invisible de Meta.
+
+def build_appointment_event(company, lead_id, appointment_id, statut, *,
+                            now=None):
+    """Construit l'événement CAPI « visite technique effectuée » (PUR — aucune
+    I/O, aucun flag). Renvoie ``{'eligible', 'reason', 'event'|None,
+    'match_quality'}`` — même contrat que ``build_stage_event``."""
+    now = int(now if now is not None else time.time())
+    event_name = appointment_event_name(statut)
+    if not event_name:
+        return {'eligible': False, 'reason': 'unmapped_statut',
+                'event': None, 'match_quality': {}}
+
+    from apps.crm.selectors import lead_capi_identifiers
+    ids = lead_capi_identifiers(company, lead_id)
+    if ids is None:
+        return {'eligible': False, 'reason': 'lead_not_found',
+                'event': None, 'match_quality': {}}
+    if not ids['is_meta_origin']:
+        return {'eligible': False, 'reason': 'not_meta_origin',
+                'event': None, 'match_quality': {}}
+
+    user_data = {}
+    if ids['leadgen_id']:
+        user_data['lead_id'] = ids['leadgen_id']
+    phone_digits = ''.join(c for c in ids['phone'] if c.isdigit())
+    if phone_digits:
+        user_data['ph'] = [_sha256(phone_digits)]
+    if ids['email']:
+        user_data['em'] = [_sha256(ids['email'])]
+    if ids['fbclid']:
+        user_data['fbc'] = f'fb.1.{now * 1000}.{ids["fbclid"]}'
+
+    if not user_data:
+        return {'eligible': False, 'reason': 'no_match_key',
+                'event': None, 'match_quality': {}}
+
+    match_quality = {
+        'has_lead_id': 'lead_id' in user_data,
+        'has_phone': 'ph' in user_data,
+        'has_email': 'em' in user_data,
+        'has_fbc': 'fbc' in user_data,
+        'match_keys': len(user_data),
+    }
+
+    # event_id DÉTERMINISTE par rendez-vous : un re-save du MÊME Appointment
+    # sur EFFECTUE (dedup côté récepteur crm) ET un rejeu Meta (48 h) sont
+    # tous deux dé-dupliqués sur cette même clé.
+    ref = ids['leadgen_id'] or str(lead_id)
+    event_id = f'apptdone:{ref}:{appointment_id}'
+    event = {
+        'event_name': event_name,
+        'event_time': now,
+        'event_id': event_id,
+        'action_source': 'system_generated',
+        'user_data': user_data,
+        'custom_data': {
+            'event_source': 'crm',
+            'lead_event_source': _LEAD_EVENT_SOURCE,
+            'appointment_id': appointment_id,
+        },
+    }
+    return {'eligible': True, 'reason': 'ok', 'event': event,
+            'match_quality': match_quality}
+
+
+def emit_appointment_effectue_event(company, lead_id, appointment_id, *,
+                                    statut='effectue', now=None,
+                                    transport=None):
+    """Émet (ou prépare) l'événement CAPI « visite technique effectuée ».
+    Best-effort : ne lève JAMAIS. MÊME chaîne de portes et MÊME gating
+    (``META_CRM_STAGE_CAPI_ENABLED``/token/pixel) que
+    ``emit_lead_stage_event`` — sans clés configurées : no-op silencieux
+    loggué (jamais une exception)."""
+    try:
+        built = build_appointment_event(
+            company, lead_id, appointment_id, statut, now=now)
+    except Exception:  # noqa: BLE001 — jamais casser l'appelant
+        logger.warning('PUB30: construction event visite-effectuée échouée',
+                       exc_info=True)
+        return {'emitted': False, 'reason': 'build_error'}
+
+    if not built['eligible']:
+        return {'emitted': False, 'reason': built['reason']}
+
+    event = built['event']
+    result = {
+        'emitted': False,
+        'event_id': event['event_id'],
+        'event_name': event['event_name'],
+        'match_quality': built['match_quality'],
+    }
+
+    if not _enabled():
+        result['reason'] = 'disabled'
+        logger.info('PUB30: visite-effectuée CAPI désactivé (flag) — event '
+                    '%s prêt (log seul)', event['event_id'])
+        return result
+
+    token = _setting(_TOKEN_KEY)
+    if not token:
+        result['reason'] = 'no_token'
+        logger.info('PUB30: visite-effectuée CAPI event %s prêt — token '
+                    'absent (log seul)', event['event_id'])
+        return result
+
+    pixel = _setting(_PIXEL_KEY)
+    if not pixel:
+        result['reason'] = 'no_pixel'
+        logger.info('PUB30: visite-effectuée CAPI event %s prêt — pixel/'
+                    'dataset absent (log seul)', event['event_id'])
+        return result
+
+    import json as _json
+    import urllib.parse
+
+    from .api_version import GRAPH_BASE_URL
+    url = (f'{GRAPH_BASE_URL}/{pixel}/events?'
+           + urllib.parse.urlencode({'access_token': token}))
+    payload = _json.dumps({'data': [event]}).encode('utf-8')
+    send = transport or _default_transport
+    try:
+        status, body = send(url, payload)
+        result['emitted'] = True
+        result['reason'] = 'sent'
+        logger.info('PUB30: visite-effectuée CAPI event %s envoyé — status %s',
+                    event['event_id'], status)
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        result['reason'] = 'http_error'
+        logger.warning('PUB30: visite-effectuée CAPI event %s échoué : %s',
                        event['event_id'], exc)
     return result
 
