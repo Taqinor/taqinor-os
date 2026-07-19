@@ -387,6 +387,19 @@ class PartieContrat(models.Model):
         related_name='parties',
         verbose_name='Contrat',
     )
+    # WIR98 — rattachement OPTIONNEL au référentiel contacts canonique
+    # (``contacts.ContactClient``, NTCRM8). FK STRING (contrats reste découplé
+    # de ``apps.contacts`` — frontière cross-app M3) et nullable/non bloquante :
+    # les champs nom/fonction/email/téléphone restent libres pour les
+    # signataires hors référentiel (témoin externe, garant tiers…). À la
+    # création, un contact fourni PRÉ-REMPLIT les champs vides côté serializer.
+    contact = models.ForeignKey(
+        'contacts.ContactClient',
+        on_delete=models.SET_NULL,  # on_delete: la partie survit, coordonnées libres conservées
+        null=True, blank=True,
+        related_name='parties_contrat',
+        verbose_name='Contact lié',
+    )
     type_partie = models.CharField(
         max_length=20, choices=TypePartie.choices,
         default=TypePartie.CLIENT, verbose_name='Rôle de la partie')

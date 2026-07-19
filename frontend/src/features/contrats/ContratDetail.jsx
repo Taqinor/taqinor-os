@@ -181,6 +181,9 @@ export default function ContratDetail() {
         { header: 'Fonction', cell: (p) => p.fonction || '—' },
         { header: 'Email', cell: (p) => p.email || '—' },
         { header: 'Téléphone', cell: (p) => p.telephone || '—' },
+        // WIR98 — contact canonique lié (référentiel contacts) quand la
+        // partie provient d'un contact plutôt que de texte libre.
+        { header: 'Contact lié', cell: (p) => p.contact_nom || '—' },
       ]}
     />
   )
