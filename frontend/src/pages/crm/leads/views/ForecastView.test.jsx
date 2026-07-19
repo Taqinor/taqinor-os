@@ -54,7 +54,7 @@ describe('ForecastView (XSAL15)', () => {
 
   it('affiche une colonne « Non daté » pour les leads sans date_cloture_prevue', () => {
     render(<ForecastView leads={leads} users={[]} />)
-    expect(screen.getByText('Non daté')).toBeInTheDocument()
+    expect(screen.getAllByText('Non daté').find((el) => el.classList.contains('kb-col-title'))).toBeInTheDocument()
     expect(screen.getByText('Ouvert sans date')).toBeInTheDocument()
   })
 
