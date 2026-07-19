@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import MetricHelp, { METRIC_HELP } from './MetricHelp'
+import MetricHelp from './MetricHelp'
+import { METRIC_HELP } from './adsengine'
 
 /* PUB54 — Aide contextuelle FR statique : un « ? » cliquable/focusable
    affiche une explication en français simple, zéro dépendance. */

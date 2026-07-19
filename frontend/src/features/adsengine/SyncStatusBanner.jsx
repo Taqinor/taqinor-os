@@ -29,7 +29,6 @@ export default function SyncStatusBanner() {
       .catch(() => setStatus(null))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
 
   if (!status || !status.stale || !status.worst) return null

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import adsengineApi from './adsengineApi'
-import { formatRatio, formatPercent } from './adsengine'
+import { formatRatio, formatPercent, beliefSummary } from './adsengine'
 
 /* ============================================================================
    ASG6 — Écran « L'Arbre » : la vue plan-vivant.
@@ -87,15 +87,8 @@ function normalizeNodes(raw) {
 // fraîcheur restent 100 % backend, doctrine de l'écran, cf. en-tête).
 // `null` si les compteurs ne sont pas exploitables (jamais un pourcentage
 // fabriqué).
-export function beliefSummary(node) {
-  const { alpha, beta, alpha0, beta0 } = node || {}
-  if (alpha == null || beta == null || (alpha + beta) <= 0) return null
-  const pct = Math.round((alpha / (alpha + beta)) * 100)
-  const priorAlpha = alpha0 ?? 0
-  const priorBeta = beta0 ?? 0
-  const nObs = Math.max(0, Math.round((alpha - priorAlpha) + (beta - priorBeta)))
-  return { pct, nObs, texte: `sûrs à ~${pct} %, sur ${nObs} obs` }
-}
+// (PUB11) `beliefSummary` vit dans adsengine.js — un composant-fichier ne doit
+// exporter que des composants (react-refresh/only-export-components).
 
 // File VoI (ASG3) — on affiche le RANG et le score déjà calculés par le
 // backend, jamais recalculés côté front.

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Table2, Send, Pencil, Trash2, Plus } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import { diffFactEntries } from './adsengine'
 
 /* ============================================================================
    PUB6/AGEN1 — Écran « Table des faits ».
@@ -21,29 +22,8 @@ import adsengineApi from './adsengineApi'
 
 const EMPTY_ENTRY = { cle: '', valeur: '', unite: '', source: '', verifie_le: '' }
 
-// Diff pur entre deux jeux d'entrées (comparaison par `cle`) — aucune valeur
-// inventée, seulement une comparaison des chiffres déjà chargés depuis l'API.
-export function diffFactEntries(fromEntries, toEntries) {
-  const from = new Map((fromEntries || []).map(e => [e.cle, e]))
-  const to = new Map((toEntries || []).map(e => [e.cle, e]))
-  const added = []
-  const removed = []
-  const changed = []
-  for (const [cle, entry] of to) {
-    if (!from.has(cle)) {
-      added.push(entry)
-    } else {
-      const prev = from.get(cle)
-      if (prev.valeur !== entry.valeur || prev.unite !== entry.unite) {
-        changed.push({ cle, avant: prev, apres: entry })
-      }
-    }
-  }
-  for (const [cle, entry] of from) {
-    if (!to.has(cle)) removed.push(entry)
-  }
-  return { added, removed, changed }
-}
+// (PUB6) `diffFactEntries` vit dans adsengine.js — un composant-fichier ne doit
+// exporter que des composants (react-refresh/only-export-components).
 
 export default function FactTableScreen() {
   const [tables, setTables] = useState([])

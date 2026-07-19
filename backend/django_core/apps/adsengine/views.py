@@ -719,6 +719,32 @@ class ExperimentViewSet(AdsengineViewSet):
                 .order_by('-created_at', '-id'))
         return Response(DecisionLogSerializer(logs, many=True).data)
 
+    @action(detail=True, methods=['post'], url_path='conclure',
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def conclure(self, request, pk=None):
+        """PUB18 (hook production) — Clôture HUMAINE d'une expérience avec
+        verdict : ``{"validated": true|false}``. Déplace le posterior du nœud
+        d'hypothèse lié via ``evidence.record_experiment_outcome`` (idempotent
+        par expérience — re-clôturer ne double jamais l'évidence). L'opérateur
+        décide, la machine enregistre — jamais l'inverse."""
+        from .evidence import record_experiment_outcome
+
+        experiment = self.get_object()  # borné société
+        validated = request.data.get('validated')
+        if not isinstance(validated, bool):
+            return Response(
+                {'detail': "Champ « validated » (booléen) requis : la clôture "
+                           "porte un verdict explicite, jamais implicite."},
+                status=400)
+        node, log = record_experiment_outcome(experiment, validated=validated)
+        if node is None:
+            return Response(
+                {'detail': "Aucun nœud d'hypothèse rattaché à cette "
+                           "expérience — verdict enregistré nulle part.",
+                 'node': None}, status=200)
+        return Response({'node': node.pk, 'decision_log': log.pk if log else None,
+                         'validated': validated}, status=200)
+
     @action(detail=True, methods=['post'], url_path='sync-ad-study',
             permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
     def sync_ad_study(self, request, pk=None):

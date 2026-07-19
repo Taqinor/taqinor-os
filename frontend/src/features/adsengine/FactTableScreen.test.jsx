@@ -27,7 +27,8 @@ vi.mock('./adsengineApi', () => ({
   },
 }))
 
-import FactTableScreen, { diffFactEntries } from './FactTableScreen'
+import FactTableScreen from './FactTableScreen'
+import { diffFactEntries } from './adsengine'
 
 const renderScreen = () => render(<MemoryRouter><FactTableScreen /></MemoryRouter>)
 

@@ -22,7 +22,8 @@ vi.mock('./adsengineApi', () => ({
   },
 }))
 
-import TreeScreen, { beliefSummary } from './TreeScreen'
+import TreeScreen from './TreeScreen'
+import { beliefSummary } from './adsengine'
 
 const renderScreen = () => render(<MemoryRouter><TreeScreen /></MemoryRouter>)
 

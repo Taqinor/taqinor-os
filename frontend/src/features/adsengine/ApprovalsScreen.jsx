@@ -130,6 +130,7 @@ export default function ApprovalsScreen() {
   // Le focus reste dans les bornes quand la liste change (approbation/rejet
   // retire une carte, chargement initial…).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-borne l'index de focus quand la liste change (retrait d'une carte)
     setFocusedIndex(i => (actions.length === 0 ? 0 : Math.min(i, actions.length - 1)))
   }, [actions.length])
 

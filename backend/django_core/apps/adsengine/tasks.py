@@ -874,6 +874,7 @@ def evaluate_guardrails():
     # PUB32 — quadrant de garde-fous DURS niveau ad (brake-only) : classement de
     # qualité « below_average » soutenu → alerte de frein. Best-effort/isolé.
     guard_alerts = 0
+    structure_alerts = 0
     for company in active_companies():
         try:
             guard_alerts += _evaluate_ranking_guards_for_company(company)
@@ -881,8 +882,28 @@ def evaluate_guardrails():
             logger.warning(
                 'adsengine.evaluate_guardrails: échec garde classement '
                 'société %s', company.pk, exc_info=True)
+        # PUB33/PUB34 — vigie vélocité d'apprentissage (par ad set actif) +
+        # santé structurelle Andromeda (par campagne active). Recommandations
+        # SEULEMENT (EngineAlert), jamais d'action — best-effort/isolé.
+        try:
+            from .anomaly import (evaluate_learning_velocity,
+                                  evaluate_structural_fragmentation)
+            from .models import AdCampaignMirror, AdSetMirror
+            for adset in AdSetMirror.objects.filter(
+                    company=company, status='ACTIVE'):
+                if evaluate_learning_velocity(company, adset):
+                    structure_alerts += 1
+            for campaign in AdCampaignMirror.objects.filter(
+                    company=company, status='ACTIVE'):
+                if evaluate_structural_fragmentation(company, campaign):
+                    structure_alerts += 1
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.evaluate_guardrails: échec vigies structure/'
+                'vélocité société %s', company.pk, exc_info=True)
     if isinstance(result, dict):
         result['ranking_guard_alerts'] = guard_alerts
+        result['structure_velocity_alerts'] = structure_alerts
     logger.info('adsengine.evaluate_guardrails: %s', result)
     return result
 
