@@ -1502,10 +1502,21 @@ class PermisTravail(models.Model):
         null=True, blank=True, verbose_name='Début de validité')
     date_fin = models.DateField(
         null=True, blank=True, verbose_name='Fin de validité')
-    delivre_par = models.CharField(
-        max_length=255, blank=True, default='', verbose_name='Délivré par')
-    valide_par = models.CharField(
-        max_length=255, blank=True, default='', verbose_name='Validé par')
+    # WIR128 — valideur/délivreur tracés par FK utilisateur (auditable), à
+    # l'image des modèles voisins (ActionCorrectivePreventive.verifiee_par,
+    # ConsignationLoto) — plus de texte libre non traçable.
+    delivre_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_permis_delivres',
+        verbose_name='Délivré par')
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_permis_valides',
+        verbose_name='Validé par')
     mesures_prevention = models.TextField(
         blank=True, default='', verbose_name='Mesures de prévention')
     notes = models.TextField(

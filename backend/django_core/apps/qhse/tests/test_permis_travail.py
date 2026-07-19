@@ -134,14 +134,39 @@ class PermisTravailApiTests(TestCase):
     # ── Transitions ──────────────────────────────────────────────────────────
 
     def test_valider(self):
+        # WIR128 — sans id explicite, le valideur = utilisateur courant (FK).
         permis = make_permis(self.company)
         resp = self.client_api.post(
-            f'{PERMIS_URL}{permis.id}/valider/',
-            {'valide_par': 'Chef sécurité'}, format='json')
+            f'{PERMIS_URL}{permis.id}/valider/', {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         permis.refresh_from_db()
         self.assertEqual(permis.statut, 'valide')
-        self.assertEqual(permis.valide_par, 'Chef sécurité')
+        self.assertEqual(permis.valide_par_id, self.user.id)
+        # Libellé lisible exposé par le sérialiseur.
+        self.assertEqual(
+            resp.data['valide_par_nom'], self.user.get_full_name()
+            or self.user.username)
+
+    def test_valider_avec_id_utilisateur_explicite(self):
+        # WIR128 — un id explicite d'utilisateur de la société est accepté.
+        autre = make_user(self.company, 'chef_secu')
+        permis = make_permis(self.company)
+        resp = self.client_api.post(
+            f'{PERMIS_URL}{permis.id}/valider/',
+            {'valide_par': autre.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        permis.refresh_from_db()
+        self.assertEqual(permis.valide_par_id, autre.id)
+
+    def test_valider_id_hors_societe_refuse(self):
+        # WIR128 — un id d'utilisateur d'une autre société est rejeté (400).
+        autre_co = make_company('permis-co-x', 'Permis Co X')
+        etranger = make_user(autre_co, 'etranger')
+        permis = make_permis(self.company)
+        resp = self.client_api.post(
+            f'{PERMIS_URL}{permis.id}/valider/',
+            {'valide_par': etranger.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
 
     def test_valider_refuse_si_cloture(self):
         permis = make_permis(self.company, statut='cloture')

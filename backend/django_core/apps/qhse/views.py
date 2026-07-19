@@ -1077,7 +1077,8 @@ class PermisTravailViewSet(_QhseBaseViewSet):
     queryset = PermisTravail.objects.all()
     serializer_class = PermisTravailSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['reference', 'titre', 'delivre_par', 'valide_par']
+    search_fields = [
+        'reference', 'titre', 'delivre_par__username', 'valide_par__username']
     ordering_fields = [
         'id', 'reference', 'date_debut', 'date_fin', 'date_creation']
 
@@ -1113,9 +1114,10 @@ class PermisTravailViewSet(_QhseBaseViewSet):
     def valider(self, request, pk=None):
         """Valide le permis (``brouillon`` → ``valide``), scopé société.
 
-        Refuse si le permis est déjà clôturé ou expiré. ``valide_par`` peut être
-        fourni au corps (chaîne libre) pour tracer le valideur ; sinon le nom de
-        l'utilisateur courant est posé côté serveur.
+        Refuse si le permis est déjà clôturé ou expiré. WIR128 — ``valide_par``
+        peut être fourni au corps (id d'utilisateur de la société) pour tracer
+        le valideur ; sinon l'utilisateur courant est posé côté serveur (lien
+        auditable, jamais du texte libre).
         """
         permis = self.get_object()
         if permis.statut in (
@@ -1123,10 +1125,19 @@ class PermisTravailViewSet(_QhseBaseViewSet):
             return Response(
                 {'detail': 'Un permis clôturé ou expiré ne peut être validé.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        valide_par = (request.data.get('valide_par')
-                      or request.user.username or '')
+        valideur = request.user
+        raw_id = request.data.get('valide_par')
+        if raw_id not in (None, ''):
+            # Un id explicite doit désigner un utilisateur de la même société.
+            candidat = type(request.user).objects.filter(
+                pk=raw_id, company=request.user.company).first()
+            if candidat is None:
+                return Response(
+                    {'valide_par': "Utilisateur inconnu pour cette société."},
+                    status=status.HTTP_400_BAD_REQUEST)
+            valideur = candidat
         permis.statut = PermisTravail.Statut.VALIDE
-        permis.valide_par = valide_par
+        permis.valide_par = valideur
         permis.save(update_fields=['statut', 'valide_par'])
         return Response(self.get_serializer(permis).data)
 

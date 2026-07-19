@@ -579,16 +579,32 @@ class PermisTravailSerializer(serializers.ModelSerializer):
         source='get_type_permis_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # WIR128 — délivreur / valideur écrits par id utilisateur (FK), affichés par
+    # nom complet (libellé lisible sans jointure côté client).
+    delivre_par_nom = serializers.SerializerMethodField()
+    valide_par_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = PermisTravail
         fields = [
             'id', 'reference', 'titre', 'type_permis', 'type_permis_display',
             'statut', 'statut_display', 'chantier_id', 'date_debut',
-            'date_fin', 'delivre_par', 'valide_par', 'mesures_prevention',
-            'notes', 'date_creation',
+            'date_fin', 'delivre_par', 'delivre_par_nom', 'valide_par',
+            'valide_par_nom', 'mesures_prevention', 'notes', 'date_creation',
         ]
         read_only_fields = ['reference', 'statut', 'date_creation']
+
+    @staticmethod
+    def _user_nom(user):
+        if user is None:
+            return ''
+        return user.get_full_name() or user.username
+
+    def get_delivre_par_nom(self, obj):
+        return self._user_nom(obj.delivre_par)
+
+    def get_valide_par_nom(self, obj):
+        return self._user_nom(obj.valide_par)
 
     def validate(self, attrs):
         debut = attrs.get('date_debut')

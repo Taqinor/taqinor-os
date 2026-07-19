@@ -38,6 +38,14 @@ def _esc(value):
     return _html.escape(str(value))
 
 
+def _user_nom(user):
+    """WIR128 — libellé lisible d'un utilisateur FK (nom complet / login), ou
+    '—' si non renseigné. Remplace l'ancien texte libre délivré/validé par."""
+    if user is None:
+        return '—'
+    return user.get_full_name() or user.username or '—'
+
+
 _LABELS = {
     'fr': {
         'permis_titre': 'Permis de travail',
@@ -163,9 +171,9 @@ def _permis_travail_html(permis, lang):
         f"<td>{_esc(permis.date_debut or '—')} → "
         f"{_esc(permis.date_fin or '—')}</td></tr>"
         f"<tr><td class='label'>{_esc(lb['delivre_par'])}</td>"
-        f"<td>{_esc(permis.delivre_par or '—')}</td></tr>"
+        f"<td>{_esc(_user_nom(permis.delivre_par))}</td></tr>"
         f"<tr><td class='label'>{_esc(lb['valide_par'])}</td>"
-        f"<td>{_esc(permis.valide_par or '—')}</td></tr>"
+        f"<td>{_esc(_user_nom(permis.valide_par))}</td></tr>"
         "</table>"
         f"<div class='row'><div class='label'>{_esc(lb['mesures'])}</div>"
         f"<div>{_esc(permis.mesures_prevention or '—')}</div></div>"
