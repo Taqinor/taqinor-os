@@ -191,6 +191,8 @@ def commercial_dashboard(request):
     }
 
     # ── Classement par commercial ─────────────────────────────────────────────
+    # WIR82 — calcul UNIQUE partagé avec insights.sales_leaderboard (export
+    # xlsx) via reporting.services.build_leaderboard, plus de doublon divergent.
     kwc_by_devis = defaultdict(Decimal)
     insts = (Installation.objects.filter(**co)
              .exclude(devis__isnull=True)
@@ -205,48 +207,8 @@ def commercial_dashboard(request):
         uid = le.owner_id or 0
         leads_by_owner[uid] += 1
 
-    lb_agg = {}
-    for d in signed_devis:
-        if d.lead_id and d.lead and d.lead.owner_id:
-            owner = d.lead.owner
-        else:
-            owner = d.created_by
-        uid = owner.id if owner else 0
-        slot = lb_agg.setdefault(uid, {
-            'commercial': _username(owner) or '—',
-            'ca_ht': Decimal('0'),
-            'nb_devis': 0,
-            'kwc': Decimal('0'),
-        })
-        # QX2 — CA sur le HT REMISÉ de l'option acceptée (chaîne canonique
-        # QX1), jamais le HT brut : le classement/CA reflète le vrai revenu
-        # signé, pas un montant gonflé par les remises ignorées.
-        from apps.ventes.utils.options import option_totaux
-        slot['ca_ht'] += Decimal(str(option_totaux(d)['ht']))
-        slot['nb_devis'] += 1
-        slot['kwc'] += kwc_by_devis.get(d.id, Decimal('0'))
-
-    leaderboard = []
-    for uid, slot in lb_agg.items():
-        total_leads_owner = leads_by_owner.get(uid, 0)
-        win_rate = (
-            round(slot['nb_devis'] / total_leads_owner * 100, 1)
-            if total_leads_owner else None
-        )
-        avg_deal = (
-            round(float(slot['ca_ht']) / slot['nb_devis'], 2)
-            if slot['nb_devis'] else 0
-        )
-        leaderboard.append({
-            'commercial': slot['commercial'],
-            'ca_ht': str(slot['ca_ht']),
-            'nb_devis_signes': slot['nb_devis'],
-            'avg_deal_ht': str(avg_deal),
-            'kwc': str(slot['kwc']),
-            'win_rate_pct': win_rate,
-        })
-
-    leaderboard.sort(key=lambda r: float(r['ca_ht']), reverse=True)
+    from apps.reporting.services import build_leaderboard
+    leaderboard = build_leaderboard(signed_devis, kwc_by_devis, leads_by_owner)
 
     # ── QX31be — délai jusqu'au PREMIER contact (speed-to-lead) ──────────────
     # De la création du lead à la première activité SORTANTE (appel/e-mail),

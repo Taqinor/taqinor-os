@@ -660,41 +660,10 @@ def sales_leaderboard(request):
     for row in leads_qs.values('owner_id').annotate(n=Count('id')):
         leads_by_owner[row['owner_id']] = row['n']
 
-    agg = {}
-    for d in signed:
-        if d.lead_id and d.lead and d.lead.owner_id:
-            owner = d.lead.owner
-        else:
-            owner = d.created_by
-        uid = owner.id if owner else 0
-        slot = agg.setdefault(uid, {
-            'commercial': _username(owner) or '—',
-            'ca_ht': Decimal('0'),
-            'nb_devis': 0,
-            'kwc': Decimal('0'),
-        })
-        # QX2 — CA sur le HT REMISÉ de l'option acceptée (chaîne canonique
-        # QX1), jamais le HT brut (revenu réel signé, non gonflé).
-        from apps.ventes.utils.options import option_totaux
-        slot['ca_ht'] += Decimal(str(option_totaux(d)['ht']))
-        slot['nb_devis'] += 1
-        slot['kwc'] += kwc_by_devis.get(d.id, Decimal('0'))
-
-    rows = []
-    for uid, slot in agg.items():
-        total_leads = leads_by_owner.get(uid, 0)
-        win_rate = round(slot['nb_devis'] / total_leads * 100, 1) if total_leads else None
-        avg_deal = round(float(slot['ca_ht']) / slot['nb_devis'], 2) if slot['nb_devis'] else 0
-        rows.append({
-            'commercial': slot['commercial'],
-            'ca_ht': str(slot['ca_ht']),
-            'nb_devis_signes': slot['nb_devis'],
-            'avg_deal_ht': str(avg_deal),
-            'kwc': str(slot['kwc']),
-            'win_rate_pct': win_rate,
-        })
-
-    rows.sort(key=lambda r: float(r['ca_ht']), reverse=True)
+    # WIR82 — calcul UNIQUE partagé avec commercial.commercial_dashboard via
+    # reporting.services.build_leaderboard (plus de doublon divergent).
+    from apps.reporting.services import build_leaderboard
+    rows = build_leaderboard(signed, kwc_by_devis, leads_by_owner)
 
     x = _maybe_xlsx(
         request, 'classement-commerciaux.xlsx',

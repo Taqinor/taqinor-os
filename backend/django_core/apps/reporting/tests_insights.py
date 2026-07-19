@@ -374,6 +374,37 @@ class TestSalesLeaderboard(InsightsBase):
         body = b''.join(resp.streaming_content) if resp.streaming else resp.content
         self.assertTrue(body.startswith(b'PK'))
 
+    def test_single_calc_matches_commercial_dashboard(self):
+        """WIR82 — le classement de sales_leaderboard et celui inline du
+        tableau de bord commercial proviennent du MÊME calcul partagé."""
+        from apps.crm.models import Client
+        owner = User.objects.create_user(
+            username='lb_shared', password='x',
+            role_legacy='responsable', company=self.company)
+        client = Client.objects.create(company=self.company, nom='CLI-SHARED')
+        produit = Produit.objects.create(
+            company=self.company, nom='P-SH', sku='SH-1',
+            prix_vente=Decimal('10000'))
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead SH', stage='SIGNED', owner=owner)
+        self._make_devis_with_ligne(
+            self.company, 'D-SH-1', client, produit, lead=lead)
+
+        lb = self.api.get('/api/django/reporting/insights/sales-leaderboard/')
+        dash = self.api.get('/api/django/reporting/commercial/dashboard/')
+        self.assertEqual(lb.status_code, 200)
+        self.assertEqual(dash.status_code, 200)
+
+        def row_for(rows, name):
+            return next((r for r in rows if r['commercial'] == name), None)
+        r_lb = row_for(lb.data['rows'], 'lb_shared')
+        r_dash = row_for(dash.data['leaderboard'], 'lb_shared')
+        self.assertIsNotNone(r_lb)
+        self.assertIsNotNone(r_dash)
+        # Mêmes chiffres depuis les deux endpoints (calcul unique).
+        for key in ('ca_ht', 'nb_devis_signes', 'avg_deal_ht', 'kwc'):
+            self.assertEqual(r_lb[key], r_dash[key], key)
+
 
 class TestCFGroupBy(InsightsBase):
     """FG94 — group-by sur champ personnalisé (visible_liste)."""
