@@ -623,7 +623,12 @@ def sync_status(company, *, stale_minutes=SYNC_STALE_MINUTES_DEFAULT, now=None):
     for key, last in last_by_type.items():
         age_minutes = None
         if last is not None:
-            age_minutes = int((now - last).total_seconds() // 60)
+            # ``last`` (auto_now/auto_now_add, aware UTC) peut être LÉGÈREMENT
+            # postérieur à un ``now`` de référence figé (fixture, ou horloge
+            # d'un hôte CI en avance) : un âge négatif n'a aucun sens (une
+            # synchro « dans le futur » est simplement la plus fraîche
+            # possible), on borne donc à 0 — jamais un âge < 0.
+            age_minutes = max(0, int((now - last).total_seconds() // 60))
         types.append({
             'type': key,
             'label': SYNC_TYPE_LABELS[key],

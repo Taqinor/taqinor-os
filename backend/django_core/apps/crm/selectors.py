@@ -187,7 +187,9 @@ def attribution_lead_rows(company, qualifying_stage=None):
         qualifié » (qui peut encore être vivant dans le funnel) ou perdu pour
         une raison commerciale réelle (prix, concurrent…). ``junk`` et
         ``qualified`` sont mutuellement exclusifs (un lead junk est perdu,
-        donc jamais qualifié).
+        donc jamais qualifié) ;
+      * ``stage``     — PUB36 : l'étape courante (clé STAGES.py) du lead, pour
+        l'entonnoir de décrochage par variante ; ``perdu`` — booléen « perdu ».
 
     Lecture seule, scopée société. Renvoie une LISTE de dicts (jamais un
     queryset de modèles — le contrat cross-app reste des données pures)."""
@@ -236,6 +238,13 @@ def attribution_lead_rows(company, qualifying_stage=None):
             'signed': is_signed,
             'qualified': is_qualified,
             'junk': is_junk,
+            # PUB36 — étape courante (clé STAGES.py) + perdu, pour l'entonnoir
+            # de décrochage PAR VARIANTE (``adsengine.attribution
+            # .variant_stage_funnel``). ``stage`` est une clé STAGES.py déjà
+            # exposée à adsengine via ``pipeline_stage_order`` (règle #2) — pas
+            # une nouvelle fuite de la taxonomie ; ``perdu`` est un booléen.
+            'stage': stage,
+            'perdu': bool(lead.perdu),
         })
     return rows
 

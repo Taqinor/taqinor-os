@@ -13,6 +13,7 @@ Couvre :
 import os
 from decimal import Decimal
 from unittest import mock
+from uuid import uuid4
 
 from django.test import TestCase
 
@@ -39,14 +40,19 @@ def _meta_lead(company, **kw):
 
 
 def _devis_with_ttc(company, lead, ttc='84000.00', devise='MAD'):
+    # SKU + référence UNIQUES par appel : ce lead peut recevoir PLUSIEURS devis
+    # (cf. test_uses_most_recent_devis) — sans suffixe, le 2ᵉ Produit viole
+    # ``stock_produit_company_id_sku_uniq`` et le 2ᵉ Devis viole
+    # ``unique_together (company, reference)``.
+    suffix = uuid4().hex[:8]
     client = Client.objects.create(company=company, nom='Client PUB31')
     produit = Produit.objects.create(
-        company=company, nom='Onduleur', sku=f'SKU-PUB31-{lead.id}',
+        company=company, nom='Onduleur', sku=f'SKU-PUB31-{lead.id}-{suffix}',
         prix_vente=Decimal('100'), quantite_stock=10)
     devis = Devis.objects.create(
-        company=company, reference=f'DEV-PUB31-{lead.id}', client=client,
-        lead=lead, statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20.00'),
-        devise=devise)
+        company=company, reference=f'DEV-PUB31-{lead.id}-{suffix}',
+        client=client, lead=lead, statut=Devis.Statut.ENVOYE,
+        taux_tva=Decimal('20.00'), devise=devise)
     ht = (Decimal(ttc) / Decimal('1.2')).quantize(Decimal('0.01'))
     LigneDevis.objects.create(
         devis=devis, produit=produit, designation='Onduleur',

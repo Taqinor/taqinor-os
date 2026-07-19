@@ -5,6 +5,7 @@ ViewSets métier (connexion, garde-fous, actions) atterrissent aux tâches
 suivantes de la lane et sont tous basés sur
 ``core.viewsets.CompanyScopedModelViewSet`` (scoping société garanti).
 """
+import logging
 import os
 
 from rest_framework.decorators import action
@@ -41,6 +42,8 @@ from .serializers import (
     MetaConnectionSerializer,
     ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class StatusView(APIView):
@@ -403,7 +406,8 @@ class AssumptionNodeViewSet(AdsengineViewSet):
     queryset = AssumptionNode.objects.all()
     serializer_class = AssumptionNodeSerializer
 
-    @action(detail=False, methods=['get'], url_path='file-voi')
+    @action(detail=False, methods=['get'], url_path='file-voi',
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def file_voi(self, request):
         """ASG3 — File de priorité VoI (argmax S·U·R·T/C) de la société. Sortie
         RÉELLE de ``voi.rank_candidates`` (nœuds non-retirés), classée décroissante
@@ -439,7 +443,8 @@ class AssumptionNodeViewSet(AdsengineViewSet):
             })
         return Response(rows)
 
-    @action(detail=True, methods=['get'])
+    @action(detail=True, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def tests(self, request, pk=None):
         """Historique de tests d'un nœud = les DÉCISIONS (``DecisionLog``) qui ont
         ouvert un slot POUR ce nœud (``allocations.winner_node_id``) — « l'arbre à
@@ -464,7 +469,8 @@ class AssumptionNodeViewSet(AdsengineViewSet):
         return Response(rows)
 
     @action(detail=False, methods=['get'],
-            url_path=r'tests/(?P<test_id>[^/.]+)/leads')
+            url_path=r'tests/(?P<test_id>[^/.]+)/leads',
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def test_leads(self, request, test_id=None):
         """Leads RÉELS derrière un test = leads attribués aux ads des bras de
         l'expérience de cette décision (jointure ``ExperimentArm.ad_id`` ↔
@@ -1243,8 +1249,11 @@ class EngineActionViewSet(AdsengineViewSet):
         # ICI le même contrôle avant ``save`` (jamais une action inapplicable).
         try:
             validate_manual_payload(kind, payload)
-        except ActionPayloadInvalid as exc:
-            raise drf_serializers.ValidationError({'payload': str(exc)})
+        except ActionPayloadInvalid:
+            logger.warning('PUB22: payload manuel invalide (kind=%s)', kind,
+                           exc_info=True)
+            raise drf_serializers.ValidationError(
+                {'payload': "Données de l'action invalides."})
         super().perform_create(serializer)
 
     @action(detail=True, methods=['post'])
@@ -1291,15 +1300,24 @@ class EngineActionViewSet(AdsengineViewSet):
         normal — JAMAIS un write direct. Kind non inversible (création, pause
         non ré-activable) → 422 + explication FR. Proposer exige ``adsengine_manage``
         (hérité : ``annuler`` n'est pas une action d'approbation)."""
-        from .services import ActionNotInvertible, propose_inverse_action
+        from .services import (
+            ActionNotInvertible, non_invertible_reason_fr,
+            propose_inverse_action)
         instance = self.get_object()
         try:
             inverse = propose_inverse_action(
                 instance, reason_fr=request.data.get('reason_fr'))
-        except ActionNotInvertible as exc:
-            return Response({'detail': str(exc), 'invertible': False}, status=422)
-        except ValueError as exc:
-            return Response({'detail': str(exc)}, status=400)
+        except ActionNotInvertible:
+            logger.warning('PUB45: annulation refusée — action %s non '
+                           'inversible', instance.pk, exc_info=True)
+            return Response(
+                {'detail': non_invertible_reason_fr(instance),
+                 'invertible': False}, status=422)
+        except ValueError:
+            logger.warning('PUB45: annulation impossible — action %s',
+                           instance.pk, exc_info=True)
+            return Response(
+                {'detail': "Impossible d'annuler cette action."}, status=400)
         return Response(self.get_serializer(inverse).data, status=201)
 
 
@@ -1328,8 +1346,11 @@ class ProposeCuratedActionView(APIView):
         try:
             action = propose_manual_curated(
                 company, kind=kind, params=params, reason_fr=reason_fr)
-        except ValueError as exc:
-            return Response({'detail': str(exc)}, status=400)
+        except ValueError:
+            logger.warning('PUB22: proposition curée refusée (kind=%s)', kind,
+                           exc_info=True)
+            return Response(
+                {'detail': "Proposition d'action invalide."}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
 
 

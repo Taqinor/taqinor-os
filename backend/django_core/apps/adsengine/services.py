@@ -579,6 +579,18 @@ def propose_inverse_action(action, *, reason_fr=None):
         kind, "Cette action n'a pas d'inverse automatique."))
 
 
+def non_invertible_reason_fr(action):
+    """PUB45 — Raison FR (sûre, curée) de non-inversibilité d'une action, pour
+    l'AFFICHAGE client — dérivée du KIND (constante ``_NOT_INVERTIBLE_REASONS``)
+    et JAMAIS du texte d'une exception attrapée (CodeQL py/stack-trace-exposure :
+    on n'expose aucune trace ni détail interne au client, seulement un message
+    métier volontairement rédigé)."""
+    if action.status != EngineAction.Statut.APPLIQUEE:
+        return "Seule une action APPLIQUÉE peut être annulée."
+    return _NOT_INVERTIBLE_REASONS.get(
+        action.kind, "Cette action n'a pas d'inverse automatique.")
+
+
 # ── ADSDEEP49-52 — Posts ORGANIQUES de Page (propose→approuve→applique) ───────
 # Kinds en constantes simples (même pattern que KIND_DUPLICATE / KIND_SET_SCHEDULE
 # / KIND_CREATE_AD_STUDY — hors de ``EngineAction.Kind`` : le ``CharField.choices``

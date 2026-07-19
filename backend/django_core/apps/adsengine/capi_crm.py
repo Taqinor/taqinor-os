@@ -241,24 +241,30 @@ def emit_lead_stage_event(company, lead_id, new_stage, *, old_stage=None,
         'match_quality': built['match_quality'],
     }
 
+    # PII hors des logs (CodeQL py/clear-text-logging-sensitive-data) : le dict
+    # ``event`` porte user_data (téléphone/email dérivés du lead) — on ne
+    # journalise QUE des identifiants non sensibles (pk lead / étape / société),
+    # jamais une valeur lue de ``event`` et jamais de PII.
+    company_pk = getattr(company, 'pk', company)
+    log_ref = f'lead {lead_id} → {new_stage} (société {company_pk})'
     if not _enabled():
         result['reason'] = 'disabled'
-        logger.info('ADSENG32: CRM-stage CAPI désactivé (flag) — event %s prêt '
-                    '(log seul)', event['event_id'])
+        logger.info('ADSENG32: CRM-stage CAPI désactivé (flag) — %s prêt '
+                    '(log seul)', log_ref)
         return result
 
     token = _setting(_TOKEN_KEY)
     if not token:
         result['reason'] = 'no_token'
-        logger.info('ADSENG32: CRM-stage CAPI event %s prêt — token absent '
-                    '(log seul)', event['event_id'])
+        logger.info('ADSENG32: CRM-stage CAPI %s prêt — token absent '
+                    '(log seul)', log_ref)
         return result
 
     pixel = _setting(_PIXEL_KEY)
     if not pixel:
         result['reason'] = 'no_pixel'
-        logger.info('ADSENG32: CRM-stage CAPI event %s prêt — pixel/dataset '
-                    'absent (log seul)', event['event_id'])
+        logger.info('ADSENG32: CRM-stage CAPI %s prêt — pixel/dataset '
+                    'absent (log seul)', log_ref)
         return result
 
     import json as _json
@@ -273,12 +279,12 @@ def emit_lead_stage_event(company, lead_id, new_stage, *, old_stage=None,
         status, body = send(url, payload)
         result['emitted'] = True
         result['reason'] = 'sent'
-        logger.info('ADSENG32: CRM-stage CAPI event %s envoyé — status %s',
-                    event['event_id'], status)
+        logger.info('ADSENG32: CRM-stage CAPI %s envoyé — status %s',
+                    log_ref, status)
     except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
         result['reason'] = 'http_error'
-        logger.warning('ADSENG32: CRM-stage CAPI event %s échoué : %s',
-                       event['event_id'], exc)
+        logger.warning('ADSENG32: CRM-stage CAPI %s échoué : %s',
+                       log_ref, exc)
     return result
 
 
@@ -381,24 +387,30 @@ def emit_appointment_effectue_event(company, lead_id, appointment_id, *,
         'match_quality': built['match_quality'],
     }
 
+    # PII hors des logs (CodeQL py/clear-text-logging-sensitive-data) : le dict
+    # ``event`` porte user_data (téléphone/email dérivés du lead) — on ne
+    # journalise QUE des identifiants non sensibles (pk RDV / lead / société),
+    # jamais une valeur lue de ``event`` et jamais de PII.
+    company_pk = getattr(company, 'pk', company)
+    log_ref = f'RDV {appointment_id} / lead {lead_id} (société {company_pk})'
     if not _enabled():
         result['reason'] = 'disabled'
-        logger.info('PUB30: visite-effectuée CAPI désactivé (flag) — event '
-                    '%s prêt (log seul)', event['event_id'])
+        logger.info('PUB30: visite-effectuée CAPI désactivé (flag) — %s prêt '
+                    '(log seul)', log_ref)
         return result
 
     token = _setting(_TOKEN_KEY)
     if not token:
         result['reason'] = 'no_token'
-        logger.info('PUB30: visite-effectuée CAPI event %s prêt — token '
-                    'absent (log seul)', event['event_id'])
+        logger.info('PUB30: visite-effectuée CAPI %s prêt — token '
+                    'absent (log seul)', log_ref)
         return result
 
     pixel = _setting(_PIXEL_KEY)
     if not pixel:
         result['reason'] = 'no_pixel'
-        logger.info('PUB30: visite-effectuée CAPI event %s prêt — pixel/'
-                    'dataset absent (log seul)', event['event_id'])
+        logger.info('PUB30: visite-effectuée CAPI %s prêt — pixel/'
+                    'dataset absent (log seul)', log_ref)
         return result
 
     import json as _json
@@ -413,12 +425,12 @@ def emit_appointment_effectue_event(company, lead_id, appointment_id, *,
         status, body = send(url, payload)
         result['emitted'] = True
         result['reason'] = 'sent'
-        logger.info('PUB30: visite-effectuée CAPI event %s envoyé — status %s',
-                    event['event_id'], status)
+        logger.info('PUB30: visite-effectuée CAPI %s envoyé — status %s',
+                    log_ref, status)
     except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
         result['reason'] = 'http_error'
-        logger.warning('PUB30: visite-effectuée CAPI event %s échoué : %s',
-                       event['event_id'], exc)
+        logger.warning('PUB30: visite-effectuée CAPI %s échoué : %s',
+                       log_ref, exc)
     return result
 
 
