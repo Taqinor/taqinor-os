@@ -16,7 +16,8 @@ from .views import (
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
-    CommentCountsView, CommentDeleteView, CommentHideView, CommentListView,
+    CommentCountsView, CommentDeleteView, CommentFaqView, CommentHideView,
+    CommentListView,
     CommentPrivateReplyView, CommentReplyView,
     AudienceDeliveryEstimateView, EngagementAudienceView,
     CostPerSignatureView, CreativeLeaderboardView, CreativeScatterView,
@@ -140,6 +141,9 @@ urlpatterns = [
     # budgétaire, fatigue, tracking, fenêtres de données), 100 % lecture.
     path('reporting/audit/', AccountAuditView.as_view(),
          name='adsengine-reporting-audit'),
+    # PUB71 — mine de questions des commentaires (thèmes + candidats seed_brief).
+    path('reporting/creatifs/faq/', CommentFaqView.as_view(),
+         name='adsengine-reporting-creatifs-faq'),
     # ADSDEEP9 — ventilations (audience & diffusion) d'un objet publicitaire.
     path('breakdowns/', BreakdownsView.as_view(), name='adsengine-breakdowns'),
     # ADSDEEP19 — comptes de leads RÉELS par ad / campagne (MetaLeadMirror).

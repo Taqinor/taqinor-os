@@ -1213,6 +1213,21 @@ class AccountAuditView(APIView):
         return Response(run_account_audit(company))
 
 
+class CommentFaqView(APIView):
+    """PUB71 — Mine de questions des commentaires : thèmes agrégés (prix/
+    garantie/subvention/durée) + candidats ``seed_brief`` pour la génération
+    ancrée. 100 % LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .comment_mining import mine_comment_questions
+        return Response(mine_comment_questions(company))
+
+
 class MetaConnectionStatusView(APIView):
     """ENG22 — Statut de connexion (GET) + enregistrement des identifiants
     (POST). Les identifiants sont **write-only** : un GET ne renvoie JAMAIS un
