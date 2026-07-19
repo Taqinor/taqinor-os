@@ -23,6 +23,7 @@ from .views import (
     AudienceDeliveryEstimateView, EngagementAudienceView,
     CostPerSignatureView, CreativeLeaderboardView, CreativeScatterView,
     BrandKitViewSet,
+    CompetitorAdObservationViewSet, CompetitorPageViewSet,
     ConsentRecordViewSet,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
@@ -57,6 +58,10 @@ router.register(r'annotations', AnnotationViewSet, basename='annotation')
 router.register(r'consentements', ConsentRecordViewSet, basename='consent-record')
 # PUB83 — kit de marque persistant (logo/couleurs/zones/polices).
 router.register(r'kit-marque', BrandKitViewSet, basename='brand-kit')
+# PUB70 — veille concurrentielle (manuelle outillée, zéro scraping).
+router.register(r'concurrents', CompetitorPageViewSet, basename='competitor-page')
+router.register(r'observations-concurrents', CompetitorAdObservationViewSet,
+                basename='competitor-observation')
 # AGEN1 — génération autonome : table de faits versionnée (§10.2 point 1).
 router.register(r'table-faits', FactTableViewSet, basename='fact-table')
 router.register(r'faits', FactEntryViewSet, basename='fact-entry')

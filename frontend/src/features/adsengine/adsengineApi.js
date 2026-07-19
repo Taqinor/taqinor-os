@@ -350,6 +350,17 @@ const adsengineApi = {
   brandKit: {
     ...resource('kit-marque'),
   },
+
+  // ── PUB70 — Veille concurrentielle (manuelle outillée, ZÉRO scraping) ──
+  // Pages suivies + observations manuelles (hooks/angles reformulés). Le
+  // tableau `veille` agrège finding API + cadence + matière de brief.
+  competitors: {
+    ...resource('concurrents'),
+    veille: () => api.get('/adsengine/concurrents/veille/'),
+  },
+  competitorObservations: {
+    ...resource('observations-concurrents'),
+  },
 }
 
 export default adsengineApi

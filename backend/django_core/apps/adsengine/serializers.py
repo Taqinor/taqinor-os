@@ -8,7 +8,8 @@ from rest_framework import serializers
 from .models import (
     AdCampaignMirror, AdMirror, AdSetMirror, Annotation, AnomalyEvent,
     ArmDailyStat,
-    AssumptionNode, BrandKit, CommentMirror, ConsentRecord, CreativeAsset,
+    AssumptionNode, BrandKit, CommentMirror,
+    CompetitorAdObservation, CompetitorPage, ConsentRecord, CreativeAsset,
     CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
     EngineAlert, Experiment, ExperimentArm, FactEntry, FactTable,
@@ -927,6 +928,46 @@ class ConsentRecordSerializer(serializers.ModelSerializer):
 
     def get_is_active(self, obj):
         return obj.is_active()
+
+
+class CompetitorPageSerializer(serializers.ModelSerializer):
+    """PUB70 — Page concurrente suivie. ``ad_library_url`` (lien profond WEB) est
+    calculé côté serveur, en lecture seule (jamais un appel API, jamais un
+    scraping). ``company`` posée côté serveur."""
+
+    ad_library_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CompetitorPage
+        fields = [
+            'id', 'name', 'page_id', 'country', 'website', 'note', 'active',
+            'ad_library_url', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_ad_library_url(self, obj):
+        return obj.ad_library_url()
+
+
+class CompetitorAdObservationSerializer(serializers.ModelSerializer):
+    """PUB70 — Observation manuelle (hook/angle reformulé, jamais copié verbatim).
+    ``competitor_page`` contrainte à la MÊME société. ``company`` posée côté
+    serveur."""
+
+    competitor_name = serializers.CharField(
+        source='competitor_page.name', read_only=True)
+
+    class Meta:
+        model = CompetitorAdObservation
+        fields = [
+            'id', 'competitor_page', 'competitor_name', 'observed_at',
+            'hook_text', 'angle', 'format', 'source_url', 'note',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_competitor_page(self, value):
+        return _same_company(self, value)
 
 
 class BrandKitSerializer(serializers.ModelSerializer):

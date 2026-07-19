@@ -19,7 +19,8 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AdCampaignMirror, Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
-    BrandKit, CommentMirror, ConsentRecord,
+    BrandKit, CommentMirror,
+    CompetitorAdObservation, CompetitorPage, ConsentRecord,
     CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
     CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
     ExperimentArm, FactEntry, FactTable, FlightPhase, FlightPlan,
@@ -32,6 +33,7 @@ from .serializers import (
     AdCampaignMirrorSerializer, AnnotationSerializer, AnomalyEventSerializer,
     ArmDailyStatSerializer,
     AssumptionNodeSerializer, BrandKitSerializer,
+    CompetitorAdObservationSerializer, CompetitorPageSerializer,
     CommentMirrorSerializer, ConsentRecordSerializer, CreativeAssetSerializer,
     CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
     CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
@@ -571,6 +573,40 @@ class ConsentRecordViewSet(AdsengineViewSet):
         data = self.get_serializer(consent).data
         data['assets_retires'] = retires
         return Response(data)
+
+
+class CompetitorPageViewSet(AdsengineViewSet):
+    """PUB70 — CRUD des Pages concurrentes suivies (veille manuelle outillée).
+
+    Company-scopé ; ``company`` posée côté serveur. Un ``GET veille/`` agrégé
+    (finding API + cadence + matière de brief) est exposé en action ``veille``.
+    ZÉRO scraping — aucun appel réseau côté serveur."""
+
+    queryset = CompetitorPage.objects.all()
+    serializer_class = CompetitorPageSerializer
+
+    @action(detail=False, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def veille(self, request):
+        """PUB70 — Tableau de veille : le finding API (couverture commerciale =
+        NON), la cadence par concurrent, et la matière de brief (hooks/angles
+        saisis). Lecture seule, company-scopé."""
+        from . import competitor_intel as ci
+
+        company = request.user.company
+        return Response({
+            'finding': ci.AD_LIBRARY_API_FINDING,
+            'cadence': ci.cadence_timeline(company),
+            'brief_material': ci.observations_as_brief_material(company),
+        })
+
+
+class CompetitorAdObservationViewSet(AdsengineViewSet):
+    """PUB70 — CRUD des observations manuelles (hooks/angles reformulés). Company-
+    scopé ; ``competitor_page`` contrainte à la même société côté serializer."""
+
+    queryset = CompetitorAdObservation.objects.all()
+    serializer_class = CompetitorAdObservationSerializer
 
 
 class BrandKitViewSet(AdsengineViewSet):

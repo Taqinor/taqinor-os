@@ -2646,3 +2646,87 @@ class BrandKit(TenantModel):
             'safe_zones': dict(self.safe_zones or {}),
             'fonts': list(self.fonts or []),
         }
+
+
+class CompetitorPage(TenantModel):
+    """PUB70 — Page concurrente SUIVIE pour la veille publicitaire (périmètre
+    HONNÊTE, ZÉRO scraping — règle #5).
+
+    L'API officielle Ad Library ne couvre PAS les pubs commerciales marocaines
+    (elle ne sert que politique / enjeux sociaux). La veille est donc MANUELLE et
+    OUTILLÉE : on suit des Pages concurrentes, on ouvre l'Ad Library WEB via un
+    lien profond (``ad_library_url``), et l'humain SAISIT les hooks/angles
+    observés (``CompetitorAdObservation``) — jamais une collecte automatisée
+    (toute automatisation = GATED : décision fondateur + dossier ``tos_risk/``).
+    Company-scopé."""
+
+    name = models.CharField(max_length=160, verbose_name='Nom du concurrent')
+    page_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='ID de Page Meta (view_all_page_id)')
+    country = models.CharField(
+        max_length=2, default='MA', verbose_name='Pays (ISO-2)')
+    website = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Site web')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    active = models.BooleanField(default=True, verbose_name='Suivi actif')
+
+    class Meta:
+        verbose_name = 'Page concurrente (veille)'
+        verbose_name_plural = 'Pages concurrentes (veille)'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'name'],
+                name='uniq_adseng_competpage_co_name'),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def ad_library_url(self):
+        """Lien PROFOND vers l'Ad Library WEB de Meta pour cette Page (jamais un
+        appel API, jamais un scraping — juste l'URL que l'humain ouvre). Basé sur
+        ``page_id`` quand présent, sinon une recherche par nom."""
+        base = 'https://www.facebook.com/ads/library/'
+        params = f'active_status=all&ad_type=all&country={self.country or "ALL"}'
+        if self.page_id:
+            return f'{base}?{params}&view_all_page_id={self.page_id}'
+        from urllib.parse import quote
+        return f'{base}?{params}&q={quote(self.name)}&search_type=keyword_unordered'
+
+
+class CompetitorAdObservation(TenantModel):
+    """PUB70 — Observation MANUELLE d'une pub concurrente (hook / angle / format).
+
+    Saisie par l'humain (« inspiration », JAMAIS copiée verbatim) depuis l'Ad
+    Library web. Alimente une timeline de cadence par concurrent et sert de
+    matière à brief. ``source_url`` est le lien profond vers la pub observée
+    (aucune récupération automatique du contenu). Company-scopé."""
+
+    competitor_page = models.ForeignKey(
+        'adsengine.CompetitorPage', on_delete=models.CASCADE,
+        related_name='observations', verbose_name='Page concurrente')
+    observed_at = models.DateField(verbose_name="Date d'observation")
+    hook_text = models.TextField(
+        blank=True, default='', verbose_name='Accroche observée (reformulée)')
+    angle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Angle')
+    format = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Format')
+    source_url = models.CharField(
+        max_length=500, blank=True, default='',
+        verbose_name='Lien Ad Library (profond)')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+
+    class Meta:
+        verbose_name = 'Observation concurrente (veille)'
+        verbose_name_plural = 'Observations concurrentes (veille)'
+        ordering = ['-observed_at', '-created_at']
+        indexes = [
+            models.Index(fields=['company', 'competitor_page', 'observed_at'],
+                         name='adseng_compobs_co_page_idx'),
+        ]
+
+    def __str__(self):
+        return f'Obs {self.competitor_page_id} @ {self.observed_at}'
