@@ -12,11 +12,19 @@
    `scripts/check_modules.py` (corrélation clé frontend ↔ manifest backend).
    ========================================================================== */
 
+/* WIR166 — DÉCISION ACTÉE : le module Appels d'offres reste BACKEND-ONLY. La
+   construction d'écrans SPA (liste AO, bordereau des prix, cautions, dossier de
+   soumission, échéances/résultats, action « générer un devis ») requiert une
+   confirmation explicite du fondateur du besoin métier ; en son absence, le
+   périmètre ODX11 est confirmé (aucun écran). Le backend (6 modèles, 8
+   ViewSets) reste pleinement exploitable via l'API ; ce module.config sert
+   d'ancrage de corrélation clé↔manifest. Rouvrir cette tâche si le besoin
+   d'écran est confirmé. */
 const config = {
   key: 'ao',
   order: 56,
   // Pas de section `nav` ni de `routes` tant qu'aucun écran AO n'est construit
-  // (hors périmètre ODX11) — la clé seule corrèle le module backend `ao`.
+  // (hors périmètre ODX11 / WIR166) — la clé seule corrèle le module backend `ao`.
   sectionLabels: { ao: "Appels d'offres" },
 }
 
