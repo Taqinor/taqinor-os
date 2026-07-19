@@ -140,8 +140,17 @@ export default function ChartsView({
     ? { top: 8, right: 8, bottom: 24, left: 0 }
     : { top: 8, right: 8, bottom: 4, left: 0 }
 
+  // LB30 — ligne de contexte : sans elle rien ne rappelle que ces 4
+  // graphiques lisent les MÊMES `leads` filtrés que le kanban/la liste
+  // (aucune classe CSS nouvelle — utilitaires Tailwind déjà en place partout
+  // dans ce fichier, index.css reste hors périmètre pour `.ch-*`).
+  const leadCount = leads.length
+
   return (
     <>
+    <p className="mb-2 text-xs text-muted-foreground">
+      Ces graphiques suivent les filtres actifs ({leadCount} lead{leadCount > 1 ? 's' : ''})
+    </p>
     <div className="ch-grid">
       <Card className="ch-card ch-card-wide">
         <CardHeader>
