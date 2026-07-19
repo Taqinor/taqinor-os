@@ -1663,9 +1663,11 @@ def pipeline_stage_order():
     cross-app pour que ``apps.adsengine`` détecte une transition AVANT (rang qui
     augmente) sans importer ``apps.crm.models`` ni ``STAGES.py`` directement.
 
-    Renvoie ``{'stages': [...], 'funnel': [...], 'signed': str, 'cold': str}``
-    où ``funnel`` = les étapes AVANT-ordonnées hors COLD (« Perdu » n'est pas une
-    étape)."""
+    Renvoie ``{'stages': [...], 'funnel': [...], 'signed': str, 'cold': str,
+    'quote_sent': str}`` où ``funnel`` = les étapes AVANT-ordonnées hors COLD
+    (« Perdu » n'est pas une étape). PUB31 ajoute ``quote_sent`` (additif) :
+    permet à ``adsengine.capi_crm`` de détecter la transition QUOTE_SENT sans
+    jamais importer ``apps.crm.stages`` directement (règle #2)."""
     from . import stages as stage_mod
     order = list(stage_mod.STAGES)
     return {
@@ -1673,6 +1675,7 @@ def pipeline_stage_order():
         'funnel': [k for k in order if k != stage_mod.COLD],
         'signed': stage_mod.SIGNED,
         'cold': stage_mod.COLD,
+        'quote_sent': stage_mod.QUOTE_SENT,
     }
 
 

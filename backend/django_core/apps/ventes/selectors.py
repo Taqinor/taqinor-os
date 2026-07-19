@@ -116,6 +116,27 @@ def get_devis_by_pk(pk):
     return Devis.objects.filter(pk=pk).first()
 
 
+def devis_value_for_lead(lead_id, company):
+    """PUB31 — montant TTC + devise du devis le plus RÉCENT lié à un lead.
+
+    Point d'entrée cross-app LECTURE SEULE, fonction FINE, pour
+    ``apps.adsengine.capi_crm`` (enrichissement OPTIONNEL, flag-gaté, de
+    l'événement CAPI CRM-stage QUOTE_SENT avec ``custom_data.value/currency`` —
+    jamais un import de ``apps.ventes.models`` côté adsengine, jamais touché le
+    chemin ``signed_contract``/``capi_odoo``, distinct et intact). Renvoie
+    ``{'value': float, 'currency': str}`` ou ``None`` si aucun devis lié."""
+    if not lead_id:
+        return None
+    from .models import Devis
+    devis = (Devis.objects
+             .filter(lead_id=lead_id, company=company)
+             .order_by('-date_creation', '-id')
+             .first())
+    if devis is None:
+        return None
+    return {'value': float(devis.total_ttc), 'currency': devis.devise or 'MAD'}
+
+
 def is_devis_accepte(devis):
     """Vrai si le devis est au statut « Accepté » (sans exposer l'enum)."""
     from .models import Devis

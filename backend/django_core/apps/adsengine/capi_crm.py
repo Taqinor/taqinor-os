@@ -33,6 +33,17 @@ Le CRM est lu UNIQUEMENT via ``apps.crm.selectors`` (jamais un import de
 récepteur ``pre_save``/``post_save`` sur ``crm.Lead`` (câblé dans ``apps.py``
 ``ready()`` via ``apps.get_model`` — pas d'import statique du modèle). Ne lève
 JAMAIS depuis le récepteur : un échec CAPI ne casse jamais un save de lead.
+
+**PUB30** ajoute un TROISIÈME événement, dédié (namespace ``apptdone:``,
+event_name ``visite_technique_effectuee``), sur la transition d'un
+``crm.Appointment`` vers EFFECTUE — même famille/gating que ci-dessus, câblé
+via ``core.events.appointment_effectue`` (émis par ``crm``, jamais importé
+ici) + ``apps/adsengine/receivers.py``. **PUB31** ajoute un enrichissement
+OPTIONNEL (flag ``META_CRM_STAGE_CAPI_VALUE_ENABLED``, OFF par défaut) :
+``custom_data.value/currency`` = montant TTC du devis lié, UNIQUEMENT sur
+QUOTE_SENT (lu via ``apps.ventes.selectors.devis_value_for_lead`` — fonction
+fine, jamais un import de ``apps.ventes.models``) — ``signed_contract``
+(capi_odoo) n'est jamais touché par ce module.
 """
 from __future__ import annotations
 
@@ -48,6 +59,10 @@ logger = logging.getLogger(__name__)
 _ENABLED_KEY = 'META_CRM_STAGE_CAPI_ENABLED'
 _TOKEN_KEY = 'META_CAPI_ACCESS_TOKEN'
 _PIXEL_KEY = 'META_CAPI_PIXEL_ID'
+# PUB31 — flag SÉPARÉ (OFF par défaut) : enrichit UNIQUEMENT l'événement
+# QUOTE_SENT avec custom_data.value/currency (montant TTC du devis lié). OFF =
+# byte-identique. Ne touche JAMAIS signed_contract (capi_odoo, intact).
+_VALUE_ENABLED_KEY = 'META_CRM_STAGE_CAPI_VALUE_ENABLED'
 
 # custom_data.lead_event_source (primary-sourced : nom de la source CRM).
 _LEAD_EVENT_SOURCE = 'ERP CRM'
@@ -84,6 +99,12 @@ def _setting(name):
 def _enabled():
     """L'intégration CRM-stage est-elle explicitement activée ?"""
     return _setting(_ENABLED_KEY).lower() in ('1', 'true', 'yes', 'on')
+
+
+def _value_enabled():
+    """PUB31 — l'enrichissement value/currency sur QUOTE_SENT est-il activé ?
+    OFF par défaut (comportement byte-identique)."""
+    return _setting(_VALUE_ENABLED_KEY).lower() in ('1', 'true', 'yes', 'on')
 
 
 def is_forward_transition(old_stage, new_stage):
@@ -164,6 +185,18 @@ def build_stage_event(company, lead_id, new_stage, *, old_stage=None, now=None):
             'lead_stage': new_stage,
         },
     }
+    # PUB31 — enrichissement OPTIONNEL (flag OFF par défaut = byte-identique) :
+    # custom_data.value/currency = montant TTC du devis lié, UNIQUEMENT sur la
+    # transition vers QUOTE_SENT (clé STAGES.py lue via le sélecteur CRM,
+    # jamais en dur). ``signed_contract`` (capi_odoo) porte déjà value/
+    # currency sur sa propre transition — ce module ne le touche jamais.
+    from apps.crm.selectors import pipeline_stage_order as _psorder
+    if new_stage == _psorder()['quote_sent'] and _value_enabled():
+        from apps.ventes.selectors import devis_value_for_lead
+        devis_value = devis_value_for_lead(lead_id, company)
+        if devis_value is not None:
+            event['custom_data']['value'] = devis_value['value']
+            event['custom_data']['currency'] = devis_value['currency']
     return {'eligible': True, 'reason': 'ok', 'event': event,
             'match_quality': match_quality}
 
