@@ -41,7 +41,10 @@ test('E5: the winter bill on a lead autosaves and reflects', async ({ page }) =>
 
   // Réouverture : la valeur est bien persistée.
   await openLead(page, name)
-  await expect(modalXl(page).locator('#lf-facture-hiver')).toHaveValue('800')
+  // À la réouverture le champ lit l'écho serveur (décimal sérialisé en chaîne
+  // « 800.00 ») — pendant la frappe, le texte tapé « 800 » ne snappe JAMAIS
+  // (draftCore SET_FIELD garde le texte tapé, critique Fable #1).
+  await expect(modalXl(page).locator('#lf-facture-hiver')).toHaveValue(/^800([.,]00)?$/)
   await closeLeadModal(page)
 })
 

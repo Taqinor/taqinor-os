@@ -196,7 +196,9 @@ describe('LW37 — rafale J/K + suggestions + icônes (migré VX224/VX249/VX45)'
     const ville = document.querySelector('#lf-ville')
     expect(ville.value).toBe('Casablanca')
     expect(ville.className).toContain('vx-suggested-field')
-    expect(screen.getByText('Suggéré — modifiable')).toBeInTheDocument()
+    // Deux champs suggérés rendent le même hint (owner VX93 + ville) — on
+    // vérifie CELUI de la ville par son id d'accessibilité.
+    expect(document.querySelector('#lf-ville-hint')).toHaveTextContent('Suggéré — modifiable')
     fireEvent.change(ville, { target: { value: 'Casablanca-Anfa' } })
     expect(document.querySelector('#lf-ville').className).not.toContain('vx-suggested-field')
   })

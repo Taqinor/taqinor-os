@@ -10,6 +10,14 @@ import PhoneHint from '../../../../components/PhoneHint'
 // de carte de visite (VX237) est une interaction locale éphémère, remise à zéro
 // à chaque changement de lead (jamais de fuite inter-leads).
 export default function SectionContact({ state, setField, errors = {}, mode, refData = {} }) {
+  // LW29 (volet front — critique Fable #7) : pour un utilisateur sans
+  // `can_view_client_pii`, le serializer NULLe et VERROUILLE les champs PII —
+  // un PATCH les jetterait en silence. On rend donc ces 6 champs désactivés
+  // avec un cadenas, au lieu de laisser croire à une édition possible.
+  const piiMasked = !!(state.server && state.server.pii_masked)
+  const piiTitle = piiMasked
+    ? 'Coordonnées masquées — votre rôle ne permet pas de voir/modifier les données personnelles.'
+    : undefined
   const v = (k) => getField(state, k) ?? ''
   const { leadId, onOpenDuplicate } = refData
 
@@ -89,7 +97,7 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
         </FormField>
         <FormField label="Téléphone" htmlFor="lf-telephone">
           <Input
-            id="lf-telephone" value={v('telephone')}
+            id="lf-telephone" value={v('telephone')} disabled={piiMasked} title={piiTitle}
             onChange={(e) => setField('telephone', e.target.value)} onPaste={onTelephonePaste}
           />
           <PhoneHint value={v('telephone')} testId="lf-tel-hint" />
@@ -98,7 +106,7 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
       <div className="form-row">
         <FormField label="WhatsApp" htmlFor="lf-whatsapp">
           <Input
-            id="lf-whatsapp" value={v('whatsapp')}
+            id="lf-whatsapp" value={v('whatsapp')} disabled={piiMasked} title={piiTitle}
             onChange={(e) => setField('whatsapp', e.target.value)} onPaste={onWhatsappPaste}
           />
         </FormField>
@@ -116,7 +124,7 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
         <div className="form-group">
           <FormField label="Email" htmlFor="lf-email" error={errors.email}>
             <Input
-              id="lf-email" type="email" invalid={!!errors.email}
+              id="lf-email" type="email" invalid={!!errors.email} disabled={piiMasked} title={piiTitle}
               value={v('email')} onChange={(e) => setField('email', e.target.value)}
             />
           </FormField>
@@ -128,14 +136,14 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
         </FormField>
         <div className="form-group fg-grow">
           <FormField label="Adresse" htmlFor="lf-adresse">
-            <Input id="lf-adresse" value={v('adresse')} onChange={(e) => setField('adresse', e.target.value)} />
+            <Input id="lf-adresse" value={v('adresse')} disabled={piiMasked} title={piiTitle} onChange={(e) => setField('adresse', e.target.value)} />
           </FormField>
         </div>
         <FormField label="GPS lat." htmlFor="lf-gps-lat">
-          <Input id="lf-gps-lat" type="number" step="any" value={v('gps_lat')} onChange={(e) => setField('gps_lat', e.target.value)} />
+          <Input id="lf-gps-lat" type="number" step="any" value={v('gps_lat')} disabled={piiMasked} title={piiTitle} onChange={(e) => setField('gps_lat', e.target.value)} />
         </FormField>
         <FormField label="GPS long." htmlFor="lf-gps-lng">
-          <Input id="lf-gps-lng" type="number" step="any" value={v('gps_lng')} onChange={(e) => setField('gps_lng', e.target.value)} />
+          <Input id="lf-gps-lng" type="number" step="any" value={v('gps_lng')} disabled={piiMasked} title={piiTitle} onChange={(e) => setField('gps_lng', e.target.value)} />
         </FormField>
       </div>
       {v('gps_lat') && v('gps_lng') && (

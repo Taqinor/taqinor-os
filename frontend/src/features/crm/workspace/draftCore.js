@@ -97,7 +97,11 @@ export function currentFields(state) {
 }
 
 export function dirtyKeys(state) {
-  return Object.keys(state.draft || {})
+  // Saleté CANONIQUE : une clé du draft textuellement différente mais
+  // numériquement égale au serveur ('800' vs '800.00') n'est PAS sale — on
+  // n'envoie rien, mais l'AFFICHAGE garde toujours le texte tapé (SET_FIELD).
+  const server = state.server || {}
+  return Object.keys(state.draft || {}).filter((k) => !canonEq(state.draft[k], server[k]))
 }
 
 export function isDirty(state) {
@@ -232,8 +236,13 @@ export function reducer(state, action) {
       // impossible ici par construction.
       if (key === 'stage') return state
       const draft = { ...state.draft }
-      if (canonEq(value, state.server ? state.server[key] : undefined)) delete draft[key]
-      else draft[key] = value
+      // TOUJOURS stocker le texte tapé (critique Fable #1) : supprimer la clé
+      // quand canonEq(value, server) faisait REVENIR le texte serveur sous le
+      // curseur (le backend sérialise les décimaux en CHAÎNES « 800.00 » —
+      // taper « 800 » redevenait « 800.00 », effacer « .00 » était impossible,
+      // « 30. » en route vers 30.5 mangeait le point). Le « phantom dirty »
+      // reste tué : la SALETÉ est canonique (cf. dirtyKeys), jamais l'affichage.
+      draft[key] = value
       // Une frappe après une confirmation « ✓ Enregistré » remet le chip global
       // à « idle » ; on ne dégrade jamais 'saving'/'error' ici.
       const saveState = state.saveState === 'saved' ? 'idle' : state.saveState
@@ -241,7 +250,7 @@ export function reducer(state, action) {
     }
 
     case 'FLUSH_START': {
-      const keys = action.keys && action.keys.length ? action.keys : Object.keys(state.draft)
+      const keys = action.keys && action.keys.length ? action.keys : dirtyKeys(state)
       const inflight = {}
       for (const k of keys) inflight[k] = state.draft[k]
       return { ...state, inflight, saveState: 'saving', saveError: null }

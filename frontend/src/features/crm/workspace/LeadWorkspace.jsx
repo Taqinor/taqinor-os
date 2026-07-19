@@ -109,10 +109,34 @@ export default function LeadWorkspace({
   // dédiée) — le SEUL jeu de seuils du bloc .lw-* reste 768/1024.
   const isTablet = useIsMobile('(min-width: 768px) and (max-width: 1023px)')
   const [contextSheetOpen, setContextSheetOpen] = useState(false)
+  // Critique Fable #8 : à 768-1023 le rail contexte n'est monté QUE dans le
+  // Sheet — « n » / actions ⌘K (lw:open-*) partaient dans le vide. Le shell
+  // ouvre d'abord le Sheet puis RE-DIFFUSE l'événement au frame suivant, une
+  // fois ContextRail monté (son écouteur fait le focus).
+  const isTabletRef = useRef(false)
+  const sheetOpenRef = useRef(false)
+  useEffect(() => { isTabletRef.current = isTablet }, [isTablet])
+  useEffect(() => { sheetOpenRef.current = contextSheetOpen }, [contextSheetOpen])
+  useEffect(() => {
+    const relay = (e) => {
+      if (e.detail && e.detail.relayed) return // jamais re-relayer son propre écho
+      if (!isTabletRef.current || sheetOpenRef.current) return
+      setContextSheetOpen(true)
+      const evt = new CustomEvent(e.type, { detail: { ...(e.detail || {}), relayed: true } })
+      requestAnimationFrame(() => requestAnimationFrame(() => window.dispatchEvent(evt)))
+    }
+    window.addEventListener('lw:open-note-composer', relay)
+    window.addEventListener('lw:open-whatsapp-composer', relay)
+    return () => {
+      window.removeEventListener('lw:open-note-composer', relay)
+      window.removeEventListener('lw:open-whatsapp-composer', relay)
+    }
+  }, [])
   const mode = lead ? 'edit' : 'create'
   const currentUserId = useSelector((s) => s.auth?.user?.id)
 
-  const draft = useLeadDraft(lead, { mode, currentUserId, onSaved })
+  const { errors, setErrors, setFromResponse } = useServerFieldErrors()
+  const draft = useLeadDraft(lead, { mode, currentUserId, onSaved, onFieldErrors: setFromResponse })
   const {
     state, field, setField, saveState, leaveGuard, changeStage, loadFresh,
   } = draft
@@ -121,7 +145,6 @@ export default function LeadWorkspace({
   // entier — on ne dépend que de scalaires.
   const leadId = lead?.id ?? null
   const leadArchived = !!lead?.is_archived
-  const { errors, setErrors, setFromResponse } = useServerFieldErrors()
 
   // ── Données de référence (partagées avec les rails / sections) ────────────
   const [users, setUsers] = useState([])
@@ -325,16 +348,14 @@ export default function LeadWorkspace({
   // SIGNED/COLD). Handlers mémoïsés → `useFocusedRecordShortcuts` reçoit un
   // objet STABLE, donc son propre effet clavier (dep array réparé,
   // providers/focusedRecordShortcuts.jsx) ne se réabonne plus à chaque rendu.
-  const onStageShortcut = useCallback((def) => { changeStage(def.stage) }, [changeStage])
+  // Les touches 1-4 appartiennent à StageControl (il s'enregistre lui-même,
+  // StageControl.jsx — critique Fable #5 : la double inscription exécutait
+  // chaque changement d'étape DEUX fois : double PATCH, double toast).
   const focusedHandlers = useMemo(() => ({
     a: () => doArchive(),
     d: () => { document.querySelector('.ap-trigger')?.focus() },
     n: () => { window.dispatchEvent(new CustomEvent('lw:open-note-composer', { detail: { leadId } })) },
-    '1': onStageShortcut,
-    '2': onStageShortcut,
-    '3': onStageShortcut,
-    '4': onStageShortcut,
-  }), [doArchive, onStageShortcut, leadId])
+  }), [doArchive, leadId])
   useFocusedRecordShortcuts('leadForm', focusedHandlers, mode === 'edit')
 
   // ── Fermeture (✕/overlay/Escape) via leaveGuard ──────────────────────────
