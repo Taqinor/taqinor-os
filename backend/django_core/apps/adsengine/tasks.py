@@ -58,6 +58,51 @@ def _account_node(conn):
     return acct if acct.startswith('act_') else f'act_{acct}'
 
 
+def _handle_meta_auth_error(conn, exc):
+    """PUB20 — Un ``MetaAuthError`` (token 190) ne doit JAMAIS être avalé en
+    silence : la synchro marque la connexion (état + bandeau) et émet une
+    ``EngineAlert`` ``token_invalide`` CRITIQUE. Dédup best-effort par connexion
+    (une alerte non acquittée déjà présente → pas de réémission à chaque beat).
+
+    Best-effort : ni le marquage ni l'alerte ne relèvent l'exception — la société
+    est neutralisée, les suivantes continuent. Renvoie l'alerte créée ou ``None``.
+    """
+    from .guardrails import ALERT_TOKEN_INVALID
+    from .models import EngineAlert
+
+    company = conn.company
+    logger.warning(
+        'adsengine ALERTE [token_invalide] société=%s connexion=%s: %s',
+        getattr(company, 'pk', None), conn.pk, exc)
+    try:
+        conn.mark_token_invalid()
+    except Exception:  # noqa: BLE001 — l'état ne doit pas empêcher l'alerte
+        logger.warning(
+            'adsengine: échec marquage token invalide société %s',
+            getattr(company, 'pk', None), exc_info=True)
+    entity_key = f'connection:{conn.pk}'
+    message = (
+        "Connexion Meta rompue : le token d'accès est expiré ou invalide "
+        "(code 190). La synchronisation publicitaire est à l'arrêt jusqu'au "
+        "renouvellement du token dans « Connexion ».")
+    try:
+        already = EngineAlert.objects.filter(
+            company=company, alert_type=ALERT_TOKEN_INVALID,
+            entity_key=entity_key, acknowledged=False).exists()
+        if already:
+            return None
+        return EngineAlert.objects.create(
+            company=company, alert_type=ALERT_TOKEN_INVALID, message=message,
+            severity=EngineAlert.Severity.CRITIQUE, entity_key=entity_key,
+            detail={'code': getattr(exc, 'code', None),
+                    'subcode': getattr(exc, 'subcode', None)})
+    except Exception:  # pragma: no cover - défensif, l'alerte est déjà loggée
+        logger.warning(
+            'adsengine: échec persistance alerte token_invalide société %s',
+            getattr(company, 'pk', None), exc_info=True)
+        return None
+
+
 # ── ADSDEEP32 — Phase d'apprentissage par ad set (learning_stage_info) ────────
 # Champs demandés à l'edge ``adsets`` pour miroiter la phase d'apprentissage.
 ADSET_LEARNING_FIELDS = ('id', 'learning_stage_info')
@@ -246,6 +291,10 @@ def _sync_company(conn):
                 spend=row.get('spend'), results=row.get('results'),
                 frequency=row.get('frequency'), cpl=row.get('cpl'))
 
+    # PUB20 — la synchro a réussi de bout en bout : le token refonctionne, on
+    # lève tout état « token mort » posé lors d'un cycle précédent (idempotent).
+    conn.clear_token_invalid()
+
 
 # ── ADSDEEP8 — Spécifications de breakdown (combos LÉGAUX uniquement) ─────────
 # Dossier insights-api §2 : seules certaines permutations passent, et les
@@ -361,7 +410,7 @@ def sync_breakdowns_weekly():
     live. Best-effort par société. Renvoie le nombre de campagnes traitées."""
     from authentication.selectors import active_companies
 
-    from .meta_client import MetaClient
+    from .meta_client import MetaAuthError, MetaClient
     from .models import AdCampaignMirror, MetaConnection
 
     processed = 0
@@ -375,6 +424,9 @@ def sync_breakdowns_weekly():
             for camp in AdCampaignMirror.objects.filter(company=company):
                 sync_breakdowns_for_campaign(company, client, camp)
                 processed += 1
+        except MetaAuthError as exc:
+            _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
+            continue
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.sync_breakdowns_weekly: échec société %s',
@@ -598,7 +650,7 @@ def pull_meta_leads():
     Meta active. NO-OP propre sans connexion live. Best-effort par société."""
     from authentication.selectors import active_companies
 
-    from .meta_client import MetaClient
+    from .meta_client import MetaAuthError, MetaClient
     from .models import MetaConnection
 
     total = 0
@@ -610,6 +662,9 @@ def pull_meta_leads():
         try:
             client = MetaClient.from_connection(conn)
             total += pull_ad_leads_for_company(company, conn, client)
+        except MetaAuthError as exc:
+            _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
+            continue
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.pull_meta_leads: échec société %s',
@@ -629,6 +684,7 @@ def sync_insights_daily():
     """
     from authentication.selectors import active_companies
 
+    from .meta_client import MetaAuthError
     from .models import MetaConnection
 
     synced = 0
@@ -640,6 +696,10 @@ def sync_insights_daily():
         try:
             _sync_company(conn)
             synced += 1
+        except MetaAuthError as exc:
+            # PUB20 — token mort : alerte + bandeau, jamais un swallow silencieux.
+            _handle_meta_auth_error(conn, exc)
+            continue
         except Exception:  # pragma: no cover - défensif, isolation société
             logger.warning(
                 'adsengine.sync_insights_daily: échec société %s',

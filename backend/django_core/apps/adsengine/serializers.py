@@ -1,6 +1,8 @@
 """Sérialiseurs du moteur publicitaire Meta Ads (Groupe ENG)."""
+import datetime
 from decimal import Decimal
 
+from django.utils import timezone
 from rest_framework import serializers
 
 from .models import (
@@ -13,6 +15,30 @@ from .models import (
     InstagramCommentMirror, InstagramMediaMirror, MetaConnection,
     PacingState, ReconciliationSnapshot, RulePolicy,
 )
+
+
+def _extract_token_expiry(credentials):
+    """PUB20 — Extrait au mieux l'expiration d'un token depuis les identifiants.
+
+    Accepte ``expires_at`` (epoch secondes, comme le renvoie ``debug_token`` Meta)
+    ou ``token_expires_at`` (ISO-8601). Renvoie un ``datetime`` aware ou ``None``
+    (un System-User long-lived n'a souvent aucune expiration — c'est légitime)."""
+    if not isinstance(credentials, dict):
+        return None
+    epoch = credentials.get('expires_at')
+    if isinstance(epoch, (int, float)) and epoch > 0:
+        return datetime.datetime.fromtimestamp(
+            epoch, tz=datetime.timezone.utc)
+    iso = credentials.get('token_expires_at')
+    if isinstance(iso, str) and iso.strip():
+        try:
+            parsed = datetime.datetime.fromisoformat(iso.strip())
+        except ValueError:
+            return None
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed, datetime.timezone.utc)
+        return parsed
+    return None
 
 
 def _same_company(serializer, value):
@@ -45,17 +71,57 @@ class MetaConnectionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'enabled', 'ad_account_id', 'page_id', 'pixel_id',
             'currency', 'credentials', 'has_credentials',
+            # PUB20 — état santé du token (lecture seule) pour le bandeau
+            # ConnectionScreen/Dashboard (front = lane console). `token_invalid`
+            # est posé par les tâches de synchro sur une auth-error 190.
+            'token_expires_at', 'token_invalid', 'token_invalid_at',
             'created_at', 'updated_at',
         ]
         extra_kwargs = {
             'credentials': {'write_only': True, 'required': False},
         }
         # ``currency`` : renseignée par la synchro (nœud de compte Meta), jamais
-        # par le client.
-        read_only_fields = ['currency', 'created_at', 'updated_at']
+        # par le client. Les champs d'état PUB20 sont posés côté serveur (synchro).
+        read_only_fields = [
+            'currency', 'token_expires_at', 'token_invalid',
+            'token_invalid_at', 'created_at', 'updated_at',
+        ]
 
     def get_has_credentials(self, obj):
         return bool(obj.credentials)
+
+    def _apply_token_state(self, instance, credentials):
+        """PUB20 — À la (re)connexion, renseigne au mieux ``token_expires_at``
+        si les identifiants portent une expiration (``expires_at`` epoch ou
+        ``token_expires_at`` ISO), et lève tout état « token mort » précédent
+        dès qu'un nouveau token est fourni (le client repart propre)."""
+        creds = credentials or {}
+        expiry = _extract_token_expiry(creds)
+        changed = []
+        if expiry is not None and instance.token_expires_at != expiry:
+            instance.token_expires_at = expiry
+            changed.append('token_expires_at')
+        if creds.get('access_token') and (
+                instance.token_invalid or instance.token_invalid_at):
+            instance.token_invalid = False
+            instance.token_invalid_at = None
+            changed += ['token_invalid', 'token_invalid_at']
+        if changed:
+            instance.save(update_fields=changed)
+        return instance
+
+    def create(self, validated_data):
+        credentials = validated_data.get('credentials')
+        instance = super().create(validated_data)
+        return self._apply_token_state(instance, credentials)
+
+    def update(self, instance, validated_data):
+        credentials = validated_data.get('credentials')
+        instance = super().update(instance, validated_data)
+        # Ne toucher l'état que si de nouveaux identifiants sont fournis.
+        if 'credentials' in validated_data:
+            self._apply_token_state(instance, credentials)
+        return instance
 
 
 class GuardrailConfigSerializer(serializers.ModelSerializer):

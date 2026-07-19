@@ -70,6 +70,19 @@ class MetaConnection(TenantModel):
     # sérialiseur ne le relit JAMAIS ; un GET n'expose que sa PRÉSENCE.
     credentials = models.JSONField(
         default=dict, blank=True, verbose_name='Identifiants (write-only)')
+    # PUB20 — expiration connue du token (best-effort : renseignée à la connexion
+    # quand les identifiants portent un `expires_at`/`token_expires_at`). Null
+    # tant qu'inconnue — un System-User long-lived n'expose pas toujours d'expiry.
+    token_expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Expiration du token")
+    # PUB20 — état « token mort » : posé par les tâches de synchro dès qu'un
+    # ``MetaAuthError`` (code 190) survient (la synchro ne masque plus JAMAIS
+    # silencieusement une auth-error), remis à faux dès une synchro réussie.
+    # Source d'un bandeau ConnectionScreen/Dashboard (front = autre lane).
+    token_invalid = models.BooleanField(
+        default=False, verbose_name='Token invalide (détecté)')
+    token_invalid_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Détection du token invalide")
 
     class Meta:
         verbose_name = 'Connexion Meta'
@@ -88,6 +101,32 @@ class MetaConnection(TenantModel):
     def is_live(self):
         """Vrai si la connexion peut réellement appeler Meta : activée + token."""
         return bool(self.enabled and self.has_token)
+
+    def mark_token_invalid(self):
+        """PUB20 — Marque le token mort (auth-error 190 détectée par une synchro).
+        Idempotent : n'écrit que les champs qui changent. Horodate la PREMIÈRE
+        détection (``token_invalid_at`` conservé sur les cycles suivants)."""
+        from django.utils import timezone
+        fields = []
+        if not self.token_invalid:
+            self.token_invalid = True
+            fields.append('token_invalid')
+        if self.token_invalid_at is None:
+            self.token_invalid_at = timezone.now()
+            fields.append('token_invalid_at')
+        if fields:
+            self.save(update_fields=fields)
+        return bool(fields)
+
+    def clear_token_invalid(self):
+        """PUB20 — Le token refonctionne (synchro réussie) : lève l'état + le
+        bandeau. Idempotent (aucune écriture si déjà propre)."""
+        if self.token_invalid or self.token_invalid_at is not None:
+            self.token_invalid = False
+            self.token_invalid_at = None
+            self.save(update_fields=['token_invalid', 'token_invalid_at'])
+            return True
+        return False
 
 
 class GuardrailConfig(TenantModel):
@@ -698,6 +737,9 @@ class EngineAlert(TenantModel):
         ANOMALIE = 'anomalie', 'Anomalie'
         GARDE_FOU = 'garde_fou', 'Violation de garde-fou'
         REGLE_INOPERANTE = 'regle_inoperante', 'Règle inopérante'
+        # PUB20 — token Meta expiré/invalide (code 190) : la synchro s'arrête,
+        # jamais un dashboard figé sans signal.
+        TOKEN_INVALIDE = 'token_invalide', 'Token Meta invalide'
 
     # ADSENG4 — sévérité (🔴🟠🔵) : valeurs alignées sur ``rules.SEVERITY_*``.
     class Severity(models.TextChoices):
