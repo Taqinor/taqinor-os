@@ -7,9 +7,9 @@ import api from '../../api/axios'
 import { formatMAD } from '../../lib/format'
 import {
   Badge, Button, Card, DataTable, DateRangePicker, EmptyState, Form,
-  FormActions, FormField, FormSection, Select, SelectTrigger, SelectValue,
-  SelectContent, SelectItem, Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
-  Textarea, toast,
+  FormActions, FormField, FormSection, Input, Label, Select, SelectTrigger,
+  SelectValue, SelectContent, SelectItem, Spinner, Tabs, TabsList, TabsTrigger,
+  TabsContent, Textarea, toast,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog } from '../../ui/confirm'
@@ -565,6 +565,188 @@ function ApprobationsFileTab() {
   )
 }
 
+// WIR62 / XKB2 — Demandes d'approbation ad-hoc : un admin définit un type
+// (champs requis, palier approbateur), un employé soumet une demande, un
+// approbateur décide. Le backend (automation) porte toute la logique et la
+// séparation des tâches (SOD) ; cet onglet n'est que l'UI qui manquait.
+function DemandesAdHocTab() {
+  const [types, setTypes] = useState([])
+  const [demandes, setDemandes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  // Formulaire « définir un type » (admin ; le backend 403 les non-admins).
+  const [typeForm, setTypeForm] = useState({ nom: '', champs: '', palier: 'responsable' })
+  // Formulaire « soumettre une demande ».
+  const [demTypeId, setDemTypeId] = useState('')
+  const [demValues, setDemValues] = useState({})
+
+  const load = () => {
+    setLoading(true)
+    Promise.all([
+      automationApi.getApprovalRequestTypes(),
+      automationApi.getApprovalRequests({ status: 'pending' }),
+    ])
+      .then(([t, d]) => {
+        setTypes(Array.isArray(t.data) ? t.data : (t.data?.results ?? []))
+        setDemandes(Array.isArray(d.data) ? d.data : (d.data?.results ?? []))
+      })
+      .catch(() => toast.error('Chargement impossible.'))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const creerType = async () => {
+    if (!typeForm.nom.trim()) { toast.error('Nom du type requis.'); return }
+    setBusy(true)
+    try {
+      const champs_requis = typeForm.champs
+        .split(',').map((c) => c.trim()).filter(Boolean)
+      await automationApi.saveApprovalRequestType(null, {
+        nom: typeForm.nom.trim(),
+        champs_requis,
+        palier_approbateur: typeForm.palier,
+        enabled: true,
+      })
+      toast.success('Type créé.')
+      setTypeForm({ nom: '', champs: '', palier: 'responsable' })
+      load()
+    } catch { toast.error('Création impossible (réservé admin ?).') }
+    finally { setBusy(false) }
+  }
+
+  const selectedType = types.find((t) => String(t.id) === String(demTypeId))
+  const soumettre = async () => {
+    if (!demTypeId) { toast.error('Choisissez un type de demande.'); return }
+    setBusy(true)
+    try {
+      await automationApi.createApprovalRequest({
+        request_type: demTypeId,
+        payload: demValues,
+      })
+      toast.success('Demande soumise.')
+      setDemTypeId(''); setDemValues({})
+      load()
+    } catch { toast.error('Soumission impossible (champs requis manquants ?).') }
+    finally { setBusy(false) }
+  }
+
+  const decider = async (id, approve) => {
+    setBusy(true)
+    try {
+      if (approve) await automationApi.approveApprovalRequest(id, '')
+      else await automationApi.rejectApprovalRequest(id, 'Refusé')
+      toast.success('Décision enregistrée.')
+      load()
+    } catch { toast.error('Décision impossible (séparation des tâches ?).') }
+    finally { setBusy(false) }
+  }
+
+  if (loading) return <Spinner />
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* (a) Admin — définir un type de demande. */}
+      <Card className="space-y-3 p-5">
+        <h3 className="text-sm font-semibold">Définir un type de demande (admin)</h3>
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <Label>Nom</Label>
+            <Input value={typeForm.nom} placeholder="Note de frais"
+                   onChange={(e) => setTypeForm((f) => ({ ...f, nom: e.target.value }))} />
+          </div>
+          <div>
+            <Label>Champs requis (séparés par des virgules)</Label>
+            <Input value={typeForm.champs} placeholder="montant, motif"
+                   onChange={(e) => setTypeForm((f) => ({ ...f, champs: e.target.value }))} />
+          </div>
+          <div>
+            <Label>Palier approbateur</Label>
+            <Select value={typeForm.palier}
+                    onValueChange={(v) => setTypeForm((f) => ({ ...f, palier: v }))}>
+              <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="responsable">Responsable</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button type="button" onClick={creerType} disabled={busy}>Créer le type</Button>
+        </div>
+        {types.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {types.map((t) => (
+              <Badge key={t.id} tone={t.enabled ? 'info' : 'neutral'}>{t.nom}</Badge>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* (b) Employé — soumettre une demande. */}
+      <Card className="space-y-3 p-5">
+        <h3 className="text-sm font-semibold">Soumettre une demande</h3>
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <Label>Type</Label>
+            <Select value={demTypeId} onValueChange={(v) => { setDemTypeId(v); setDemValues({}) }}>
+              <SelectTrigger className="w-56"><SelectValue placeholder="Choisir un type" /></SelectTrigger>
+              <SelectContent>
+                {types.filter((t) => t.enabled).map((t) => (
+                  <SelectItem key={t.id} value={String(t.id)}>{t.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {(selectedType?.champs_requis || []).map((champ) => (
+            <div key={champ}>
+              <Label>{champ}</Label>
+              <Input
+                value={demValues[champ] || ''}
+                onChange={(e) => setDemValues((v) => ({ ...v, [champ]: e.target.value }))}
+              />
+            </div>
+          ))}
+          <Button type="button" onClick={soumettre} disabled={busy || !demTypeId}>
+            Soumettre
+          </Button>
+        </div>
+      </Card>
+
+      {/* (c) Approbateur — demandes en attente + décision. */}
+      <Card className="p-5">
+        <h3 className="mb-3 text-sm font-semibold">Demandes en attente</h3>
+        {demandes.length === 0 ? (
+          <EmptyState icon={Inbox} title="Aucune demande en attente"
+                      description="Les demandes soumises apparaîtront ici." />
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {demandes.map((d) => (
+              <li key={d.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+                <span className="flex flex-col">
+                  <span className="font-medium">{d.request_type_nom || `Demande #${d.id}`}</span>
+                  <span className="text-muted-foreground">
+                    {d.demandeur_nom || '—'}
+                    {d.min_approbations > 1 && ` · ${d.approvals_count}/${d.min_approbations} approbations`}
+                  </span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Button type="button" variant="outline" size="sm" disabled={busy}
+                          onClick={() => decider(d.id, true)}>
+                    <CheckCircle2 className="size-3.5" /> Approuver
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" disabled={busy}
+                          onClick={() => decider(d.id, false)}>
+                    <XCircle className="size-3.5" /> Refuser
+                  </Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  )
+}
+
 export default function ApprobationsPage() {
   return (
     <div className="page">
@@ -573,17 +755,22 @@ export default function ApprobationsPage() {
         <div className="page-subtitle">
           Boîte unique — automatisations, contrats, GED, réquisitions
           installations et étapes de workflow en attente de votre décision, plus
-          la gestion de vos délégations d'absence.
+          les demandes d'approbation ad-hoc et la gestion de vos délégations
+          d'absence.
         </div>
       </div>
 
       <Tabs defaultValue="file">
         <TabsList>
           <TabsTrigger value="file">File</TabsTrigger>
+          <TabsTrigger value="demandes">Demandes ad-hoc</TabsTrigger>
           <TabsTrigger value="delegations">Délégations</TabsTrigger>
         </TabsList>
         <TabsContent value="file">
           <ApprobationsFileTab />
+        </TabsContent>
+        <TabsContent value="demandes">
+          <DemandesAdHocTab />
         </TabsContent>
         <TabsContent value="delegations">
           <DelegationsTab />
