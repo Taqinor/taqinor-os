@@ -64,7 +64,7 @@ waves:
       ARC sweeps that consume the noyau primitives, and the SCA kit
       DocumentMetier (SCA30-38) which composes ARC1/2/6/8/10/11 into one
       abstraction — both gated on ARC-noyau reaching its threshold.
-    groups: [ARC-sweep, SCA-kit-document, ADSENG, ADSDEEP, ASG, AGEN, SIG]
+    groups: [ARC-sweep, SCA-kit-document, ADSENG, ADSDEEP, ASG, AGEN, SIG, PUB]
   B:
     order: 3
     description: >-
@@ -161,6 +161,12 @@ edges:
     wave: A2
     after:
       ADSENG: 60
+  # PUB (2026-07-19) : audit fondateur 14 agents — câblage front↔back, boucles
+  # fermées, console, croissance, créatif, science, finance. Bâti sur ADSDEEP.
+  - group: PUB
+    wave: A2
+    after:
+      ADSDEEP: 60
   - group: SCA-kit-document
     wave: A2
     after:
