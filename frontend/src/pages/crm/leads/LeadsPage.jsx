@@ -467,7 +467,10 @@ export default function LeadsPage() {
   }
 
   return (
-    <div className="page lp-page">
+    // LB2 — `data-view` pilote le contrat CSS de hauteur (index.css) : le
+    // scrolleur change de propriétaire selon la vue active (board/liste vs
+    // page-grow), sans dupliquer la logique en JS.
+    <div className="page lp-page" data-view={view}>
       <div className="page-header lp-header">
         <h2>
           Pipeline

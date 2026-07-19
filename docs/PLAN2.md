@@ -3745,11 +3745,11 @@ P1 recon-03 reçoivent leur correctif sur place MAINTENANT — chacun ≤ petit 
 suivantes bâtissent dessus ; cette lane est propriétaire de LeadsPage.jsx/KanbanView.jsx/
 ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
 
-- [ ] LB1 — **Recopier le blueprint dans le repo.** Copier `scratchpad/design2/blueprint.md` vers
+- [x] LB1 — **Recopier le blueprint dans le repo.** Copier `scratchpad/design2/blueprint.md` vers
   `docs/design/leads-board-blueprint.md` tel quel (référence de toutes les tâches LB, comme
   LW9 l'a fait pour la fenêtre lead). Files : `docs/design/leads-board-blueprint.md` (nouveau).
   DoD : le fichier existe, lisible, lié depuis le corps des tâches. (ROUTINE — S) (@model: haiku) (@lane: LB0)
-- [ ] LB2 — **P0 fondateur : le board tient dans l'écran — chaîne de hauteur `.lp-page` +
+- [x] LB2 — **P0 fondateur : le board tient dans l'écran — chaîne de hauteur `.lp-page` +
   `data-view`.** Cause racine vérifiée (recon2-03 §P0) : la chaîne bornée meurt à `.route-fade`
   (hauteur auto) ; `.kb-board{height:100%}` se résout en AUTO, `.kb-col-body{overflow-y}` ne
   déborde JAMAIS, la page scrolle 8 649px et la scrollbar horizontale gît sous le fold.
@@ -4152,6 +4152,25 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   (@after: LB17, LB21, LB27, LB30, LB31, LB32, LB33)
 
 #### DONE LOG — Groupe LB (page leads)
+
+- 2026-07-19 LB1 — blueprint déjà recopié par le merge de `claude/leads-page-redesign` ;
+  vérifié octet-identique (hors CRLF/LF) à `scratchpad/design2/blueprint.md`. Aucun code touché.
+- 2026-07-19 LB2 — P0 fondateur corrigé : `.layout-content > .route-fade:has(> .lp-page)
+  {height:100%}` + `.lp-page` flex column bornée (miroir `.lw-page`) ; `.lp-view-area` perd son
+  `min-height:320px` fixe, devient `flex:1 1 auto;min-height:0`, `overflow:hidden` pour les 3
+  vues denses via `data-view` (1 ligne JSX sur la racine de LeadsPage.jsx) ; `.kb-board`
+  `height:100%`→`flex:1 1 auto` (se résolvait en AUTO, cause racine des 8 649px mesurés) ;
+  `.kb-col-body` `min-height:80px`→`0` (ne débordait jamais) ; `.lv-wrap` scrolleur deux axes
+  unique (`overflow:auto` + flex) ; pleine largeur (`max-width:none`) kanban/prévision/liste ;
+  scrollbars fines tokenisées toujours visibles ; gap responsive 769-899px comblé (`.kb-col`
+  clamp) ; thead sticky + `.lv-sticky-name` posés en pré-requis (D4 les activera). Raisonnement
+  statique de la chaîne : `#root`(100vh)→`.layout-main`(overflow:hidden)→`.layout-content`
+  (flex:1;overflow-y:auto)→`.route-fade`(désormais height:100% via :has)→`.lp-page`(flex column
+  height:100%)→`.lp-view-area`(flex:1 1 auto;min-height:0;overflow:hidden en vue kanban)→
+  `.kb-board`(flex:1 1 auto;min-height:0;overflow-x:auto) — chaque maillon a maintenant une
+  hauteur RÉSOLUE (plus jamais AUTO), donc `.kb-col-body{overflow-y:auto;min-height:0}` déborde
+  réellement au lieu de grandir sans fin. ForecastView (`.kb-board.fv-board`) hérite sans
+  modification (mêmes classes). `.lw-page` non touché.
 
 ## Group F — Design foundation & tokens
 
