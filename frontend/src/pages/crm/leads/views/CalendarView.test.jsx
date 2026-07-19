@@ -29,3 +29,42 @@ describe('CalendarView — VX144(d) accent --warning sur les leads sans date', (
     expect(screen.queryByText(/sans date de/)).toBeNull()
   })
 })
+
+describe('CalendarView — LB29 relance en retard soulignée (destructive)', () => {
+  it('souligne (cal-chip-late) une relance dont la date est déjà passée', () => {
+    render(
+      <CalendarView
+        leads={[{ id: 3, nom: 'Retard', stage: 'NEW', relance_date: '2000-01-01' }]}
+        onOpenLead={vi.fn()}
+      />,
+    )
+    const chip = screen.getByRole('button', { name: /Retard/ })
+    expect(chip).toHaveClass('cal-chip-late')
+  })
+
+  it('ne souligne PAS une relance future', () => {
+    const dans10ans = `${new Date().getFullYear() + 10}-01-01`
+    render(
+      <CalendarView
+        leads={[{ id: 4, nom: 'Futur', stage: 'NEW', relance_date: dans10ans }]}
+        onOpenLead={vi.fn()}
+      />,
+    )
+    const chip = screen.getByRole('button', { name: /Futur/ })
+    expect(chip).not.toHaveClass('cal-chip-late')
+  })
+
+  it('ne double-signale jamais un lead perdu (pastille rouge seule, pas de soulignement)', () => {
+    render(
+      <CalendarView
+        leads={[{
+          id: 5, nom: 'PerduRetard', stage: 'COLD', perdu: true, relance_date: '2000-01-01',
+        }]}
+        onOpenLead={vi.fn()}
+      />,
+    )
+    const chip = screen.getByRole('button', { name: /PerduRetard/ })
+    expect(chip).toHaveClass('cal-chip-perdu')
+    expect(chip).not.toHaveClass('cal-chip-late')
+  })
+})

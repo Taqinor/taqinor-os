@@ -7268,3 +7268,27 @@ textarea.form-control {
   color: var(--primary);
   background: color-mix(in oklch, var(--primary) 8%, transparent);
 }
+
+/* ===== LB29 — Calendrier (CalendarView) : aujourd'hui + relance en retard =====
+   `.cal-cell-today`/`.cal-chip*` sont des classes PARTAGÉES avec MonthGrid/
+   CalendarPage.jsx (VX25) — on ne touche jamais la règle générique (gold,
+   ci-dessus dans ce fichier) : ces overrides sont scopés sous
+   `.lp-page[data-view="calendrier"]` (page leads UNIQUEMENT), la même
+   technique de scoping que le contrat de hauteur LB2. */
+.lp-page[data-view="calendrier"] .cal-cell-today {
+  box-shadow: inset 0 0 0 2px var(--module-accent-azur);
+  background: color-mix(in oklch, var(--module-accent-azur) 14%, var(--card));
+}
+.lp-page[data-view="calendrier"] .cal-cell-today .cal-day-number {
+  background: var(--module-accent-azur);
+  color: var(--info-foreground);
+  border-radius: 999px;
+}
+/* Relance en retard : soulignée destructive (un lead perdu porte déjà sa
+   propre pastille rouge — jamais les deux signaux à la fois). */
+.cal-chip-late .cal-chip-name {
+  text-decoration: underline;
+  text-decoration-color: var(--destructive);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
