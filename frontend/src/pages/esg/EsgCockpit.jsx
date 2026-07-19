@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Leaf, Users, Landmark, FileText, FileSpreadsheet, Lock, Award } from 'lucide-react'
+import {
+  Leaf, Users, Landmark, FileText, FileSpreadsheet, Lock, Award, Plus,
+  GitCompare, FileDown,
+} from 'lucide-react'
 import esgApi from '../../api/esgApi'
 import {
   Card, CardHeader, CardTitle, CardContent, Badge, Button, Progress,
-  EmptyState, Skeleton,
+  EmptyState, Skeleton, Dialog, DialogContent, DialogFooter, DialogHeader,
+  DialogTitle, Input, Label,
 } from '../../ui'
 import { downloadXlsx } from '../../api/importApi'
 import { downloadBlob } from '../../utils/downloadBlob'
@@ -47,6 +51,17 @@ export default function EsgCockpit() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  // WIR129 — création de période.
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createForm, setCreateForm] = useState({ libelle: '', date_debut: '', date_fin: '' })
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
+  // WIR129 — comparateur N / N-1.
+  const [comparePeriode, setComparePeriode] = useState('')
+  const [compareReference, setCompareReference] = useState('')
+  const [compareResult, setCompareResult] = useState(null)
+  const [comparing, setComparing] = useState(false)
+  const [compareError, setCompareError] = useState('')
 
   // Fetch seule (aucun setState synchrone) : c'est ce que l'effet de montage
   // appelle — un effet ne doit synchroniser que via des callbacks async
@@ -111,6 +126,66 @@ export default function EsgCockpit() {
     }
   }
 
+  const telechargerDpef = async (periode) => {
+    setBusyId(periode.id)
+    try {
+      const res = await esgApi.periodes.dpef(periode.id)
+      downloadBlob(res.data, `dpef-${periode.id}.md`)
+    } catch {
+      window.alert("L'export DPEF est indisponible.")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const creerPeriode = async () => {
+    setCreateError('')
+    if (!createForm.libelle.trim() || !createForm.date_debut || !createForm.date_fin) {
+      setCreateError('Libellé, date de début et date de fin sont requis.')
+      return
+    }
+    setCreating(true)
+    try {
+      await esgApi.periodes.create({
+        libelle: createForm.libelle.trim(),
+        date_debut: createForm.date_debut,
+        date_fin: createForm.date_fin,
+      })
+      setCreateOpen(false)
+      setCreateForm({ libelle: '', date_debut: '', date_fin: '' })
+      await load()
+    } catch (err) {
+      const data = err?.response?.data
+      const msg = data?.libelle?.[0] || data?.date_fin?.[0] || data?.detail
+        || 'La création a échoué.'
+      setCreateError(msg)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const comparer = async () => {
+    setCompareError('')
+    setCompareResult(null)
+    if (!comparePeriode || !compareReference) {
+      setCompareError('Sélectionnez une période et sa référence (N-1).')
+      return
+    }
+    if (comparePeriode === compareReference) {
+      setCompareError('La période et sa référence doivent être différentes.')
+      return
+    }
+    setComparing(true)
+    try {
+      const res = await esgApi.periodes.comparer(comparePeriode, compareReference)
+      setCompareResult(res.data)
+    } catch {
+      setCompareError('La comparaison a échoué (serveur indisponible ?).')
+    } finally {
+      setComparing(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="ui-root page">
@@ -143,12 +218,17 @@ export default function EsgCockpit() {
 
   return (
     <div className="ui-root page">
-      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
-        <h2>ESG / RSE</h2>
-        <p className="text-sm text-muted-foreground">
-          Reporting ESG/durabilité consolidé — agrégation en lecture seule des
-          indicateurs QHSE/RH/flotte, jamais de chiffre inventé.
-        </p>
+      <div className="page-header flex items-start justify-between" style={{ marginBottom: '1.25rem' }}>
+        <div>
+          <h2>ESG / RSE</h2>
+          <p className="text-sm text-muted-foreground">
+            Reporting ESG/durabilité consolidé — agrégation en lecture seule des
+            indicateurs QHSE/RH/flotte, jamais de chiffre inventé.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Plus size={16} /> Nouvelle période
+        </Button>
       </div>
 
       {badge && (
@@ -263,6 +343,13 @@ export default function EsgCockpit() {
                         >
                           <FileSpreadsheet /> xlsx
                         </Button>
+                        <Button
+                          variant="outline" size="sm"
+                          disabled={busyId === p.id}
+                          onClick={() => telechargerDpef(p)}
+                        >
+                          <FileDown /> DPEF
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -272,6 +359,150 @@ export default function EsgCockpit() {
           )}
         </CardContent>
       </Card>
+
+      {/* WIR129 — Comparateur N vs N-1 (NTESG11). */}
+      {periodes.length >= 2 && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <GitCompare size={18} strokeWidth={1.75} aria-hidden="true" />
+              Comparer deux périodes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <Label htmlFor="cmp-periode">Période (N)</Label>
+                <select
+                  id="cmp-periode" className="form-select"
+                  value={comparePeriode}
+                  onChange={(e) => setComparePeriode(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {periodes.map((p) => (
+                    <option key={p.id} value={p.id}>{p.libelle}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="cmp-reference">Référence (N-1)</Label>
+                <select
+                  id="cmp-reference" className="form-select"
+                  value={compareReference}
+                  onChange={(e) => setCompareReference(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {periodes.map((p) => (
+                    <option key={p.id} value={p.id}>{p.libelle}</option>
+                  ))}
+                </select>
+              </div>
+              <Button size="sm" disabled={comparing} onClick={comparer}>
+                Comparer
+              </Button>
+            </div>
+            {compareError && (
+              <p className="form-error mt-2" role="alert">{compareError}</p>
+            )}
+            {compareResult && (
+              <div className="mt-4 space-y-4">
+                {Object.entries(compareResult.piliers ?? {}).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Aucun indicateur comparable entre ces deux périodes.
+                  </p>
+                ) : (
+                  Object.entries(compareResult.piliers).map(([pilier, lignes]) => (
+                    <div key={pilier}>
+                      <h4 className="mb-1 font-medium">
+                        {PILIER_META[pilier]?.label ?? pilier}
+                      </h4>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border text-left">
+                            <th className="px-2 py-1">Indicateur</th>
+                            <th className="px-2 py-1 text-right">N-1</th>
+                            <th className="px-2 py-1 text-right">N</th>
+                            <th className="px-2 py-1 text-right">Écart</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lignes.map((l) => (
+                            <tr key={l.code} className="border-b border-border/60">
+                              <td className="px-2 py-1">{l.libelle || l.code}</td>
+                              {l.comparable ? (
+                                <>
+                                  <td className="px-2 py-1 text-right">{l.valeur_reference}</td>
+                                  <td className="px-2 py-1 text-right">{l.valeur_n}</td>
+                                  <td className="px-2 py-1 text-right">
+                                    {l.variation_abs > 0 ? '+' : ''}{l.variation_abs}
+                                    {l.variation_pct != null && (
+                                      <span className="text-muted-foreground">
+                                        {' '}({l.variation_pct > 0 ? '+' : ''}{l.variation_pct} %)
+                                      </span>
+                                    )}
+                                  </td>
+                                </>
+                              ) : (
+                                <td className="px-2 py-1 text-muted-foreground" colSpan={3}>
+                                  {l.raison || 'Non comparable'}
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* WIR129 — Dialogue de création de période. */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nouvelle période de reporting</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="periode-libelle">Libellé</Label>
+              <Input
+                id="periode-libelle" value={createForm.libelle}
+                placeholder="ex : Exercice 2026"
+                onChange={(e) => setCreateForm((f) => ({ ...f, libelle: e.target.value }))}
+              />
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <Label htmlFor="periode-debut">Date de début</Label>
+                <Input
+                  id="periode-debut" type="date" value={createForm.date_debut}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, date_debut: e.target.value }))}
+                />
+              </div>
+              <div className="flex-1">
+                <Label htmlFor="periode-fin">Date de fin</Label>
+                <Input
+                  id="periode-fin" type="date" value={createForm.date_fin}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, date_fin: e.target.value }))}
+                />
+              </div>
+            </div>
+            {createError && (
+              <p className="form-error" role="alert">{createError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Annuler</Button>
+            <Button disabled={creating} onClick={creerPeriode}>
+              {creating ? 'Création…' : 'Créer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

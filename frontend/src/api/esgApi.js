@@ -21,6 +21,14 @@ const esgApi = {
     figer: (id) => api.post(`/esg/periodes-esg/${id}/figer/`),
     // Données ESG effectives (snapshot gelé si figée, aperçu live sinon).
     indicateurs: (id) => api.get(`/esg/periodes-esg/${id}/indicateurs/`),
+    // Comparateur N vs N-1 (NTESG11) — écarts entre deux périodes scopées.
+    comparer: (periodeId, referenceId) =>
+      api.get('/esg/periodes-esg/comparer/', {
+        params: { periode: periodeId, reference: referenceId },
+      }),
+    // Export DPEF-friendly (NTESG14) — gabarit Markdown, téléchargement binaire.
+    dpef: (id) =>
+      api.get(`/esg/periodes-esg/${id}/dpef/`, { responseType: 'blob' }),
     // Rapport PDF GRI-lite (NTESG4) — téléchargement binaire.
     rapportPdf: (id) =>
       api.get(`/esg/periodes-esg/${id}/rapport-pdf/`, { responseType: 'blob' }),
