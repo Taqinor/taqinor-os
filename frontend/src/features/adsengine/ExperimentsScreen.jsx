@@ -34,6 +34,72 @@ function phaseTone(statut) {
   return { bg: '#f1f5f9', color: '#64748b' }
 }
 
+/* PUB87 — Calculateur MDE/puissance (vue mince sur mde.py) : avant de lancer une
+   expérience, l'opérateur voit « avec votre volume, ~X jours pour détecter
+   +20 % ». Tous les chiffres viennent de l'API mde (backend) — rien n'est calculé
+   ici. L'appel est GARDÉ : si l'API mde n'est pas câblée, le panneau reste inerte
+   (jamais un crash). */
+function MdeCalculator() {
+  const [p, setP] = useState('0.02')
+  const [volume, setVolume] = useState('300')
+  const [cible, setCible] = useState('0.20')
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+
+  const compute = useCallback(() => {
+    const req = adsengineApi.experiments.mde?.({ p, volume, cible })
+    if (!req || typeof req.then !== 'function') return
+    req
+      .then(r => { setResult(r.data); setError('') })
+      .catch(() => { setResult(null); setError('Calcul indisponible.') })
+  }, [p, volume, cible])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- calcul au montage
+  useEffect(() => { compute() }, [compute])
+
+  return (
+    <section className="card ae-exp-mde" data-testid="ae-exp-mde"
+      style={{ padding: '1rem', marginBottom: '1rem' }}>
+      <h3 style={{ margin: '0 0 0.6rem' }}>Avant de lancer — combien de temps ?</h3>
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={{ display: 'grid', gap: '0.2rem' }}>
+          <span style={{ fontSize: '0.8rem', color: '#475569' }}>Taux de base (p)</span>
+          <input className="form-input" data-testid="ae-mde-p" type="number" step="any"
+            value={p} onChange={e => setP(e.target.value)} style={{ width: 110 }} />
+        </label>
+        <label style={{ display: 'grid', gap: '0.2rem' }}>
+          <span style={{ fontSize: '0.8rem', color: '#475569' }}>Volume (essais/bras/jour)</span>
+          <input className="form-input" data-testid="ae-mde-volume" type="number" step="any"
+            value={volume} onChange={e => setVolume(e.target.value)} style={{ width: 130 }} />
+        </label>
+        <label style={{ display: 'grid', gap: '0.2rem' }}>
+          <span style={{ fontSize: '0.8rem', color: '#475569' }}>Effet cible (fraction)</span>
+          <input className="form-input" data-testid="ae-mde-cible" type="number" step="any"
+            value={cible} onChange={e => setCible(e.target.value)} style={{ width: 110 }} />
+        </label>
+        <button type="button" className="btn btn-primary" data-testid="ae-mde-compute"
+          onClick={compute}>Calculer</button>
+      </div>
+      {error && <p data-testid="ae-mde-error" style={{ color: '#b91c1c', marginTop: '0.6rem' }}>{error}</p>}
+      {result && (
+        <>
+          <p data-testid="ae-mde-phrase" style={{ margin: '0.7rem 0 0.4rem', fontWeight: 600 }}>
+            {result.phrase_fr}
+          </p>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {(result.mde_par_horizon || []).map(h => (
+              <li key={h.jours} data-testid="ae-mde-horizon" className="badge"
+                style={{ background: '#f1f5f9', color: '#475569' }}>
+                {h.jours} j : {h.mde_relatif_pct == null ? '—' : `${h.mde_relatif_pct} %`} détectable
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  )
+}
+
 export default function ExperimentsScreen() {
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
@@ -98,6 +164,9 @@ export default function ExperimentsScreen() {
           <FlaskConical size={20} aria-hidden="true" /> Expérimentations
         </h2>
       </div>
+
+      {/* PUB87 — calculateur MDE/puissance avant lancement (interactif). */}
+      <MdeCalculator />
 
       {loading
         ? <p className="page-loading">Chargement…</p>

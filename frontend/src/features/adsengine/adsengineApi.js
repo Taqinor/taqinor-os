@@ -112,6 +112,9 @@ const adsengineApi = {
     // DecisionLog d'une expérimentation (« pourquoi le moteur a fait X »).
     decisionLog: (id, params) =>
       api.get(`/adsengine/experiences/${id}/decisions/`, { params }),
+    // PUB87 — calculateur MDE/puissance (vue mince sur mde.py) : « avec votre
+    // volume, ~X jours pour détecter +20 % » avant lancement.
+    mde: (params) => api.get('/adsengine/experiences/mde/', { params }),
   },
 
   // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──

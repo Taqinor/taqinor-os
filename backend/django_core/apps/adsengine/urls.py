@@ -32,6 +32,7 @@ from .views import (
     MetaConnectionHealthView,
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
     MetricsDashboardView,
+    MdeCalculatorView,
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, RegretRegistryView,
     ReportExportView,
@@ -140,6 +141,10 @@ urlpatterns = [
     # PUB86 — registre de qualité des décisions (regret réalisé par type).
     path('reporting/regret/', RegretRegistryView.as_view(),
          name='adsengine-reporting-regret'),
+    # PUB87 — calculateur MDE/puissance (vue mince sur mde.py) pour la création
+    # d'expérience : « ~X jours pour détecter +20 % avec votre volume ».
+    path('experiences/mde/', MdeCalculatorView.as_view(),
+         name='adsengine-experiences-mde'),
     # ADSDEEP63 — audit de compte à la demande (structure/naming, fragmentation
     # budgétaire, fatigue, tracking, fenêtres de données), 100 % lecture.
     path('reporting/audit/', AccountAuditView.as_view(),

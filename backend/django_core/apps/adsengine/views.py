@@ -1198,6 +1198,68 @@ class RegretRegistryView(APIView):
             company, date_start=debut, date_end=fin))
 
 
+def _adseng_parse_float(value, default=None):
+    """``float`` d'une entrée libre, ou ``default`` (jamais une 500)."""
+    if value is None or value == '':
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+class MdeCalculatorView(APIView):
+    """PUB87 — Calculateur MDE / puissance opérateur : vue MINCE sur ``mde.py``
+    (aucun recalcul métier ré-implémenté). À la création d'une expérience,
+    répond « avec votre volume, ~X jours pour détecter +20 % » de façon
+    interactive. Company-scopé, gaté ``adsengine_view``.
+
+    ``?p=`` taux de base (proportion, 0<p<1), ``?volume=`` essais/bras/jour
+    (>0), ``?cible=`` effet relatif visé (fraction, défaut 0,20 = +20 %). Toute
+    entrée invalide → 400 explicite en FR (jamais une 500)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from . import mde
+
+        p = _adseng_parse_float(request.query_params.get('p'))
+        volume = _adseng_parse_float(request.query_params.get('volume'))
+        cible = _adseng_parse_float(request.query_params.get('cible'), 0.20)
+
+        if p is None or not (0.0 < p < 1.0):
+            return Response(
+                {'detail': 'Taux de base p attendu dans ]0 ; 1[.'}, status=400)
+        if volume is None or volume <= 0:
+            return Response(
+                {'detail': 'Volume (essais/bras/jour) strictement positif '
+                           'attendu.'}, status=400)
+        if cible <= 0:
+            return Response(
+                {'detail': 'Effet relatif cible strictement positif attendu.'},
+                status=400)
+
+        jours = mde.days_to_detect(p, cible, volume)
+        by_h = mde.mde_by_horizon(p, volume)
+        mde_par_horizon = [
+            {'jours': d,
+             'mde_relatif_pct': (round(v * 100, 1)
+                                 if v != float('inf') else None)}
+            for d, v in sorted(by_h.items())]
+        phrase = (
+            f"Avec votre volume (~{volume:g} essais/bras/jour), il faut "
+            f"~{jours} jour(s) pour détecter un effet de "
+            f"+{cible * 100:g} % de façon fiable.")
+        return Response({
+            'p': p, 'volume': volume, 'cible_relative': cible,
+            'jours_pour_cible': jours, 'phrase_fr': phrase,
+            'mde_par_horizon': mde_par_horizon,
+        })
+
+
 class CreativeScatterView(APIView):
     """ADSDEEP47 — Nuage de points hook rate × dépense (quadrants FR « pépites
     cachées »/« gouffres »/« gagnants confirmés »/« à surveiller »).
