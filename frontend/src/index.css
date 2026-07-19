@@ -6325,9 +6325,11 @@ textarea.form-control {
   transition: background var(--motion-fast) var(--ease-standard),
     color var(--motion-fast) var(--ease-standard);
 }
-.lw-secnav-chip:hover {
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--muted-foreground) 10%, transparent);
+@media (hover: hover) {
+  .lw-secnav-chip:hover {
+    color: var(--foreground);
+    background: color-mix(in oklch, var(--muted-foreground) 10%, transparent);
+  }
 }
 .lw-secnav-chip[aria-current="true"] {
   color: var(--foreground);
@@ -6366,8 +6368,10 @@ textarea.form-control {
   color: var(--foreground);
   border-radius: var(--radius-md);
 }
-.lw-section-head:hover {
-  background: color-mix(in oklch, var(--muted-foreground) 6%, transparent);
+@media (hover: hover) {
+  .lw-section-head:hover {
+    background: color-mix(in oklch, var(--muted-foreground) 6%, transparent);
+  }
 }
 .lw-section-icon {
   flex: 0 0 auto;
@@ -6413,8 +6417,10 @@ textarea.form-control {
   font-size: var(--text-small);
   text-decoration: none;
 }
-.lw-gps-link:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .lw-gps-link:hover {
+    text-decoration: underline;
+  }
 }
 
 /* ── LW14 : rail identité — identité, contact, chips QX28, pile d'actions ──── */
@@ -6461,8 +6467,10 @@ textarea.form-control {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.lw-rail-contact-link:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .lw-rail-contact-link:hover {
+    text-decoration: underline;
+  }
 }
 
 .lw-rail-chips {
@@ -6555,8 +6563,10 @@ textarea.form-control {
   opacity: 0.75;
   transition: opacity var(--motion-fast) var(--ease-standard);
 }
-.lw-stage-pill--ghost:hover {
-  opacity: 1;
+@media (hover: hover) {
+  .lw-stage-pill--ghost:hover {
+    opacity: 1;
+  }
 }
 .lw-stage-pill--current {
   cursor: default;
@@ -6732,9 +6742,11 @@ textarea.form-control {
   transition: background var(--motion-fast) var(--ease-standard),
     color var(--motion-fast) var(--ease-standard);
 }
-.lw-context-filter-chip:hover {
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--muted-foreground) 10%, transparent);
+@media (hover: hover) {
+  .lw-context-filter-chip:hover {
+    color: var(--foreground);
+    background: color-mix(in oklch, var(--muted-foreground) 10%, transparent);
+  }
 }
 .lw-context-filter-chip.is-active {
   color: var(--foreground);
@@ -6774,13 +6786,19 @@ textarea.form-control {
     background-color var(--motion-fast) var(--ease-standard),
     color var(--motion-fast) var(--ease-standard);
 }
-.chatter-item:hover .lw-context-pin-toggle,
+@media (hover: hover) {
+  .chatter-item:hover .lw-context-pin-toggle {
+    opacity: 1;
+  }
+}
 .lw-context-pin-toggle:focus-visible {
   opacity: 1;
 }
-.lw-context-pin-toggle:hover {
-  background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
-  color: var(--foreground);
+@media (hover: hover) {
+  .lw-context-pin-toggle:hover {
+    background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
+    color: var(--foreground);
+  }
 }
 
 /* ── LW21 : onglet Devis — CTA devis auto, cartes chaîne document. ───────── */
@@ -6847,8 +6865,10 @@ textarea.form-control {
   color: var(--foreground);
   cursor: pointer;
 }
-.lw-context-devis-ref:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .lw-context-devis-ref:hover {
+    text-decoration: underline;
+  }
 }
 .lw-context-devis-card-body {
   display: flex;
