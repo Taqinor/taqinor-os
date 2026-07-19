@@ -308,13 +308,130 @@ class GuardrailConfigViewSet(AdsengineViewSet):
     serializer_class = GuardrailConfigSerializer
 
 
+# PUB2 — Contexte MDE/coût par défaut de la file VoI. ``delta_plausible``/``p``/
+# ``cost`` ne sont PAS stockés sur le nœud (ils dépendent des volumes du test) :
+# un contexte documenté et UNIFORME sur les candidats laisse le classement être
+# piloté par S·U·R RÉELS du nœud (enjeux/incertitude/pertinence). Révisés
+# trimestriellement ; aucune migration. (Miroir de ``simulator._TESTABLE_CTX``.)
+VOI_DEFAULT_BASE_RATE = 0.02        # p — taux de base (conversion lien)
+VOI_DEFAULT_DELTA_PLAUSIBLE = 0.5   # effet plausible relatif par défaut
+VOI_DEFAULT_TEST_N = 25200          # essais/bras (volume hebdo typique)
+VOI_DEFAULT_COST = 1.0              # coût unitaire neutre (ranking par S·U·R·T)
+
+
 class AssumptionNodeViewSet(AdsengineViewSet):
     """ASG1 — CRUD des nœuds de l'Assumption Engine (dd-assumption-engine
     §3.1), company-scopé. ``company`` posée côté serveur ; ``parent`` et
-    ``invalidation_links`` isolés à la MÊME société côté serializer."""
+    ``invalidation_links`` isolés à la MÊME société côté serializer.
+
+    PUB2 — trois actions LECTURE que « L'Arbre » (TreeScreen) appelle :
+    ``file-voi`` (classement VoI réel via ``voi.rank_candidates``), ``<id>/tests``
+    (historique des décisions/tests du nœud) et ``tests/<id>/leads`` (drill leads
+    réels derrière un test, via les sélecteurs CRM — jamais un import cross-app)."""
 
     queryset = AssumptionNode.objects.all()
     serializer_class = AssumptionNodeSerializer
+
+    @action(detail=False, methods=['get'], url_path='file-voi')
+    def file_voi(self, request):
+        """ASG3 — File de priorité VoI (argmax S·U·R·T/C) de la société. Sortie
+        RÉELLE de ``voi.rank_candidates`` (nœuds non-retirés), classée décroissante
+        avec le RANG déjà calculé côté serveur (l'écran n'en recalcule rien)."""
+        from . import voi
+
+        company = request.user.company
+        ctx = {
+            'delta_plausible': VOI_DEFAULT_DELTA_PLAUSIBLE,
+            'p': VOI_DEFAULT_BASE_RATE,
+            'n': VOI_DEFAULT_TEST_N,
+            'cost': VOI_DEFAULT_COST,
+        }
+        candidates = (AssumptionNode.objects
+                      .filter(company=company)
+                      .exclude(statut=AssumptionNode.Statut.RETIRED))
+        params = {node.pk: ctx for node in candidates}
+        ranking = voi.rank_candidates(company, params)
+        rows = []
+        for rang, (node, score) in enumerate(ranking, 1):
+            rows.append({
+                'node_id': node.pk,
+                'enonce_fr': node.enonce_fr,
+                'classe': node.classe,
+                'classe_display': node.get_classe_display(),
+                'voi': round(float(score['voi']), 6),
+                'rang': rang,
+                'S': round(float(score['S']), 4),
+                'U': round(float(score['U']), 4),
+                'R': round(float(score['R']), 4),
+                'T': round(float(score['T']), 4),
+                'C': round(float(score['C']), 4),
+            })
+        return Response(rows)
+
+    @action(detail=True, methods=['get'])
+    def tests(self, request, pk=None):
+        """Historique de tests d'un nœud = les DÉCISIONS (``DecisionLog``) qui ont
+        ouvert un slot POUR ce nœud (``allocations.winner_node_id``) — « l'arbre à
+        travers le temps ». Chaque ligne porte l'expérience contenante + le résumé
+        FR de la décision. Company-scopé (``get_object`` borne déjà à la société)."""
+        node = self.get_object()
+        company = request.user.company
+        logs = (DecisionLog.objects
+                .filter(company=company, allocations__winner_node_id=node.pk)
+                .select_related('experiment')
+                .order_by('-created_at'))
+        rows = []
+        for log in logs:
+            exp = log.experiment
+            rows.append({
+                'id': log.pk,
+                'nom': (exp.name if exp else f'Décision #{log.pk}'),
+                'statut_display': (exp.get_status_display() if exp else '—'),
+                'verdict_display': (log.summary_fr or '')[:160],
+                'quand': log.created_at.date().isoformat(),
+            })
+        return Response(rows)
+
+    @action(detail=False, methods=['get'],
+            url_path=r'tests/(?P<test_id>[^/.]+)/leads')
+    def test_leads(self, request, test_id=None):
+        """Leads RÉELS derrière un test = leads attribués aux ads des bras de
+        l'expérience de cette décision (jointure ``ExperimentArm.ad_id`` ↔
+        ``meta_ad_id`` du lead). Lecture CRM UNIQUEMENT via ``apps.crm.selectors``
+        (contrat cross-app). Company-scopé : une décision d'autrui → 404."""
+        company = request.user.company
+        log = (DecisionLog.objects
+               .filter(company=company, pk=test_id)
+               .select_related('experiment')
+               .first())
+        if log is None:
+            return Response({'detail': 'Test introuvable.'}, status=404)
+        exp = log.experiment
+        ad_ids = set()
+        if exp is not None:
+            ad_ids = set(
+                ExperimentArm.objects
+                .filter(company=company, experiment=exp)
+                .exclude(ad_id='')
+                .values_list('ad_id', flat=True))
+        if not ad_ids:
+            return Response([])
+
+        from apps.crm.selectors import attribution_lead_rows, lead_card
+
+        rows = []
+        for row in attribution_lead_rows(company):
+            if row.get('meta_ad_id') and row['meta_ad_id'] in ad_ids:
+                card = lead_card(row['id'], company)
+                if card is None:
+                    continue
+                rows.append({
+                    'id': row['id'],
+                    'nom': card['label'],
+                    'stage_label': card['subtitle'],
+                    'url': card['url'],
+                })
+        return Response(rows)
 
 
 class FactTableViewSet(AdsengineViewSet):
