@@ -34,7 +34,8 @@ from .views import (
     MetricsDashboardView,
     MetricsLeadsView, MetricsPacingView, PacingStateViewSet, RealLeadsView,
     ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
-    RulePolicyViewSet, SimulationDetailView, SimulationListView, StatusView,
+    RulePolicyViewSet, SignalCohortView, SignalsView, SimulationDetailView,
+    SimulationListView, StatusView,
     VariantReportView, WiringHealthView,
 )
 from .whatsapp_webhook import WhatsAppCloudWebhookView
@@ -195,6 +196,12 @@ urlpatterns = [
     path('instagram/medias/<str:media_meta_id>/commentaires-actif/',
          InstagramMediaToggleCommentsView.as_view(),
          name='adsengine-ig-media-toggle-comments'),
+    # SIG4 — console de signaux (deux scores de santé + quadrant de garde-fous
+    # durs + drill-down par cohorte). Vues minces sur health.py / signal_guards.py
+    # / cohorts.py — company-scopées, lecture ``adsengine_view``.
+    path('signaux/', SignalsView.as_view(), name='adsengine-signaux'),
+    path('signaux/cohorte/', SignalCohortView.as_view(),
+         name='adsengine-signaux-cohorte'),
     # ADSDEEP59 — audiences d'engagement (picker composeur d'adset) + estimation
     # d'audience avant usage. NON gated consentement (aucune donnée CRM envoyée).
     path('audiences/engagement/', EngagementAudienceView.as_view(),

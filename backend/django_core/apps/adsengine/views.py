@@ -2490,3 +2490,276 @@ class InstagramMediaToggleCommentsView(APIView):
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
+
+
+# ── SIG4 — Console de signaux : vues MINCES sur les trois modules PURS
+# (``health.py`` deux scores, ``signal_guards.py`` le quadrant, ``cohorts.py`` le
+# filigrane de maturation). Elles AGRÈGENT les InsightSnapshot RÉELS de la société
+# et les font passer par ces modules — c'est ce qui débranche les modules « morts »
+# (aucun consommateur de prod avant SIG4). Un score/verdict de signal est
+# AFFICHAGE/ALERTE SEULEMENT : il n'entre JAMAIS dans le bandit/l'allocation (§11),
+# invariant tenu par ``test_health.py``/``test_signal_guards.py`` (le bandit
+# n'importe pas ces modules ; ces vues, oui — c'est le câblage intentionnel).
+#
+# Constantes de RÉFÉRENCE de normalisation — révisées TRIMESTRIELLEMENT (même
+# doctrine que ``signal_guards.py``), lues via ``getattr`` sur la config si un
+# champ futur les porte, sinon la constante de module. AUCUNE migration ici.
+SIGNAL_WINDOW_DAYS = 30            # fenêtre glissante d'agrégation des insights
+SIGNAL_CTR_HEALTHY = 0.02         # CTR lien « sain » ≈ score créatif plein (1.0)
+SIGNAL_CPL_HEALTHY_MAD = 100.0    # CPL de référence ≈ score opérations plein (1.0)
+
+_SIGNAL_BAND_VERT = 0.66
+_SIGNAL_BAND_ORANGE = 0.40
+
+# Libellés FR (clé stable / label) des quatre garde-fous du quadrant (SIG2). La
+# clé mappe le nom interne du garde-fou (``signal_guards``) vers la clé UI.
+_GUARD_LABELS = {
+    'frequency': ('frequence', 'Fréquence'),
+    'quality_ranking': ('classement_qualite', 'Classement qualité'),
+    'cpl': ('cpl', 'CPL'),
+    'account_quality': ('qualite_compte', 'Qualité du compte'),
+}
+
+
+def _signal_clamp01(value):
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, min(1.0, v))
+
+
+def _signal_band(score):
+    """Bande FR ``(cle, libelle)`` d'un score de santé 0..1 (affichage/alerte)."""
+    if score >= _SIGNAL_BAND_VERT:
+        return 'vert', 'Vert'
+    if score >= _SIGNAL_BAND_ORANGE:
+        return 'orange', 'Orange'
+    return 'rouge', 'Rouge'
+
+
+def _gather_signal_inputs(company, config):
+    """Agrège les InsightSnapshot de CAMPAGNE de la société sur la fenêtre
+    glissante et dérive les signaux NORMALISÉS 0..1 (1 = meilleur) consommés par
+    ``health.py`` / ``signal_guards.py``, plus les nombres bruts et l'âge de
+    cohorte (filigrane ``cohorts.py``). LECTURE SEULE, company-scopé — jamais une
+    autre société."""
+    import datetime
+
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Avg, Sum
+    from django.utils import timezone
+
+    from . import cohorts as cohorts_mod
+    from . import signal_guards
+    from .models import InsightSnapshot as Snap
+
+    today = timezone.now().date()
+    start = today - datetime.timedelta(days=SIGNAL_WINDOW_DAYS)
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    qs = Snap.objects.filter(
+        company=company, content_type=ct, date__gte=start)
+    agg = qs.aggregate(
+        spend=Sum('spend'), results=Sum('results'),
+        impressions=Sum('impressions'), clicks=Sum('clicks'),
+        freq=Avg('frequency'))
+    spend = float(agg['spend'] or 0)
+    results = int(agg['results'] or 0)
+    impressions = int(agg['impressions'] or 0)
+    clicks = int(agg['clicks'] or 0)
+    avg_freq = float(agg['freq']) if agg['freq'] is not None else None
+
+    ctr = (clicks / impressions) if impressions else None
+    cpl = (spend / results) if results else None
+
+    ctr_healthy = float(getattr(config, 'signal_ctr_healthy', None)
+                        or SIGNAL_CTR_HEALTHY)
+    cpl_healthy = float(getattr(config, 'signal_cpl_healthy_mad', None)
+                        or SIGNAL_CPL_HEALTHY_MAD)
+    freq_cap = float(getattr(config, 'frequency_cap', None)
+                     or signal_guards.DEFAULT_FREQUENCY_CAP)
+
+    # Normalisation (documentée) — chaque valeur reste DÉRIVÉE de données réelles.
+    ctr_norm = _signal_clamp01(ctr / ctr_healthy) if ctr is not None else 0.0
+    # Fraîcheur = proxy de fatigue inverse : fréquence 0 → 1.0, ≥ plafond → 0.0.
+    freshness_norm = (
+        _signal_clamp01((freq_cap - avg_freq) / freq_cap)
+        if avg_freq is not None and freq_cap > 0 else 0.0)
+    # CPL normalisé = INVERSE du coût (un CPL bas → proche de 1).
+    cpl_norm = (_signal_clamp01(cpl_healthy / cpl)
+                if cpl and cpl > 0 else 0.0)
+    # Livraison = régularité de diffusion (part des jours de la fenêtre avec
+    # dépense > 0) — mesure réelle, sans cible arbitraire.
+    days_with_spend = (qs.filter(spend__gt=0)
+                       .values('date').distinct().count())
+    delivery_norm = _signal_clamp01(days_with_spend / float(SIGNAL_WINDOW_DAYS))
+
+    # Âge de cohorte = ancienneté (jours) du plus VIEIL insight de la fenêtre
+    # (via ``cohorts.cohort_age_days``) — filigrane de maturation + garde-fou CPL.
+    oldest = qs.order_by('date').values_list('date', flat=True).first()
+    cohort_age = cohorts_mod.cohort_age_days(oldest, today) if oldest else 0
+
+    return {
+        'creative_signals': {'ctr': ctr_norm, 'freshness': freshness_norm},
+        'ops_signals': {'cpl': cpl_norm, 'delivery': delivery_norm},
+        'guard_signals': {
+            'frequency': avg_freq,
+            'cpl': cpl,
+            'cpl_target': cpl_healthy,
+            'cohort_age_days': cohort_age,
+            'impressions': impressions,
+            # Non synchronisés dans l'InsightSnapshot aujourd'hui : rapportés
+            # honnêtement (aucun garde-fou ne freine sur une absence de donnée).
+            'quality_ranking': None,
+            'account_quality_dropped': False,
+        },
+        'raw': {
+            'ctr': ctr, 'cpl': cpl, 'frequency': avg_freq,
+            'impressions': impressions, 'clicks': clicks, 'spend': spend,
+            'results': results, 'delivery_ratio': delivery_norm,
+            'cohort_age_days': cohort_age, 'window_days': SIGNAL_WINDOW_DAYS,
+        },
+    }
+
+
+def _guardrail_quadrant(guard_signals, config):
+    """Exécute les QUATRE garde-fous (``signal_guards.GUARDS``) — déclenchés OU
+    non — et rend une ligne UI par garde-fou : ``{key, label, valeur, seuil,
+    freine, statut_display, raison}``. Contrairement à ``evaluate_guards`` (qui ne
+    rend QUE les déclenchés), le quadrant montre les quatre, même « OK »."""
+    from . import signal_guards
+
+    rows = []
+    for guard in signal_guards.GUARDS:
+        verdict = guard(guard_signals, config)
+        key, label = _GUARD_LABELS.get(verdict.guard, (verdict.guard, verdict.guard))
+        computed = verdict.computed or {}
+        if verdict.guard == 'frequency':
+            valeur, seuil = computed.get('frequency'), computed.get('cap')
+        elif verdict.guard == 'cpl':
+            target = computed.get('cpl_target')
+            mult = computed.get('multiplier')
+            valeur = computed.get('cpl')
+            seuil = (float(target) * float(mult)
+                     if target not in (None, 0) and mult else None)
+        elif verdict.guard == 'quality_ranking':
+            valeur, seuil = computed.get('quality_ranking'), 'below_average'
+        else:  # account_quality
+            valeur, seuil = computed.get('account_quality'), None
+        if verdict.triggered:
+            statut_display = 'Freine'
+        elif valeur is None:
+            statut_display = 'Indisponible'
+        else:
+            statut_display = 'OK'
+        rows.append({
+            'key': key,
+            'label': label,
+            'valeur': (float(valeur)
+                       if isinstance(valeur, (int, float)) else valeur),
+            'seuil': (float(seuil)
+                      if isinstance(seuil, (int, float)) else seuil),
+            'freine': bool(verdict.triggered),
+            'statut_display': statut_display,
+            'raison': verdict.reason or '',
+        })
+    return rows
+
+
+class SignalsView(APIView):
+    """SIG4 — Deux scores de santé (créatif/opérations) + quadrant de garde-fous
+    durs, sur données RÉELLES de la société. ``GET /adsengine/signaux/`` —
+    company-scopé, gaté ``adsengine_view``. LECTURE SEULE. Vue mince sur
+    ``health.py`` (scores) + ``signal_guards.py`` (quadrant)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from . import health
+
+        config = GuardrailConfig.objects.filter(company=company).first()
+        data = _gather_signal_inputs(company, config)
+        creatif = health.creative_health(data['creative_signals'], config)
+        operations = health.operations_health(data['ops_signals'], config)
+        band_c = _signal_band(creatif)
+        band_o = _signal_band(operations)
+        return Response({
+            'creatif': {
+                'score': round(creatif, 4),
+                'bande': band_c[0], 'bande_display': band_c[1],
+            },
+            'operations': {
+                'score': round(operations, 4),
+                'bande': band_o[0], 'bande_display': band_o[1],
+            },
+            'guardrails': _guardrail_quadrant(data['guard_signals'], config),
+            'fenetre_jours': SIGNAL_WINDOW_DAYS,
+        })
+
+
+# Filigrane de maturation par groupe de signal (SIG3/``cohorts.py``) : chaque
+# ligne = une fenêtre de maturation RÉELLE (``cohorts.MATURATION_DAYS``) + la
+# valeur normalisée du signal correspondant, évaluée contre l'âge réel des
+# données. ``value_key`` pointe la valeur normalisée dans le dict agrégé.
+_COHORT_DRILL = {
+    'creatif': [
+        ('ctr', 'CTR — proxy immédiat', 'creative_signals', 'ctr'),
+        ('ctwa_conversations', 'Conversations 7j', 'ops_signals', 'delivery'),
+    ],
+    'operations': [
+        ('cpl', 'CPL 14-28j', 'ops_signals', 'cpl'),
+        ('signature', 'Signature 60-90j', None, None),
+    ],
+}
+
+
+class SignalCohortView(APIView):
+    """SIG4/SIG3 — Drill-down par cohorte d'un signal (``?signal=creatif`` ou
+    ``operations``) : le filigrane de maturation (``cohorts.py``) évalué contre
+    l'âge RÉEL des données de la société. ``GET /adsengine/signaux/cohorte/`` —
+    company-scopé, gaté ``adsengine_view``. LECTURE SEULE."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from . import cohorts as cohorts_mod
+
+        signal = (request.query_params.get('signal') or 'creatif').strip()
+        windows = _COHORT_DRILL.get(signal)
+        if windows is None:
+            return Response({'detail': 'Signal inconnu.'}, status=400)
+        config = GuardrailConfig.objects.filter(company=company).first()
+        data = _gather_signal_inputs(company, config)
+        age = int(data['raw']['cohort_age_days'])
+
+        rows = []
+        for idx, (signal_key, fenetre, group, value_key) in enumerate(windows, 1):
+            maturation = cohorts_mod.maturation_of(signal_key)
+            mature = cohorts_mod.is_mature(signal_key, age)
+            if mature:
+                maturite_display = 'Mûr'
+            elif maturation != cohorts_mod.UNKNOWN_MATURATION_DAYS \
+                    and age >= float(maturation) / 2.0:
+                maturite_display = 'En maturation'
+            else:
+                maturite_display = 'Précoce'
+            valeur = (data[group][value_key]
+                      if group is not None else None)
+            rows.append({
+                'id': idx,
+                'fenetre': fenetre,
+                'valeur': (round(float(valeur), 4) if valeur is not None
+                           else None),
+                'maturite_display': maturite_display,
+                'mure': bool(mature),
+                'maturation_jours': (None
+                                     if maturation == cohorts_mod.UNKNOWN_MATURATION_DAYS
+                                     else int(maturation)),
+            })
+        return Response(rows)
