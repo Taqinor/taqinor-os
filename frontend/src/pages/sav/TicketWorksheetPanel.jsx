@@ -53,6 +53,9 @@ export default function TicketWorksheetPanel({ ticketId }) {
   const [busy, setBusy] = useState(false)
 
   const loadModeles = useCallback(() => {
+    // savApi.getWorksheetModeles peut être absent (mocks partiels préexistants
+    // dans d'autres tests) : dégrade silencieusement plutôt que de planter.
+    if (!savApi.getWorksheetModeles) { setModeles([]); return }
     savApi.getWorksheetModeles()
       .then((r) => setModeles((r.data?.results ?? r.data ?? []).filter((m) => m.actif)))
       .catch(() => setModeles([]))
@@ -62,6 +65,13 @@ export default function TicketWorksheetPanel({ ticketId }) {
     let cancelled = false
     setLoading(true)
     setError(null)
+    // savApi.getTicketWorksheet peut être absent (idem) : dégrade sur un
+    // panneau « pas encore de feuille » plutôt que de planter.
+    if (!savApi.getTicketWorksheet) {
+      setWorksheet(null)
+      setLoading(false)
+      return () => { cancelled = true }
+    }
     savApi.getTicketWorksheet(ticketId)
       .then((r) => {
         if (cancelled) return

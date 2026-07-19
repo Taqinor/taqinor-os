@@ -276,9 +276,11 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     api.get('/stock/produits/')
       .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
     // WIR117/XSAV25 — pièces compatibles avec l'équipement lié (compatibles
-    // d'abord dans le picker). Vide silencieusement si pas d'équipement mappé.
-    savApi.getPiecesCompatibles(id)
-      .then((r) => setPiecesCompatibles(r.data?.results ?? [])).catch(() => {})
+    // d'abord dans le picker). Vide silencieusement si pas d'équipement mappé,
+    // et aussi si savApi.getPiecesCompatibles est absent (mocks partiels
+    // préexistants dans d'autres tests qui rendent TicketDetail).
+    savApi.getPiecesCompatibles?.(id)
+      ?.then((r) => setPiecesCompatibles(r.data?.results ?? [])).catch?.(() => {})
     // Équipements du chantier concerné (pour lier l'équipement précis).
     if (current.installation) {
       savApi.getEquipements({ installation: current.installation })

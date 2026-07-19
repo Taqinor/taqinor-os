@@ -15,11 +15,20 @@ function MyStatusBar() {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({ status_emoji: '', status_text: '' })
 
-  const load = () => messagesApi.status.me()
-    .then((r) => setMe(r.data)).catch(() => setMe(null))
+  // messagesApi.status peut être absent (mocks partiels préexistants dans
+  // d'autres tests) : dégrade silencieusement plutôt que de faire planter
+  // tout le sous-arbre de rendu.
+  const load = () => {
+    // setMe est différé (jamais appelé de façon synchrone dans l'effet, même
+    // sur le chemin dégradé) pour respecter react-hooks/set-state-in-effect.
+    if (!messagesApi.status?.me) return Promise.resolve().then(() => setMe(null))
+    return messagesApi.status.me()
+      .then((r) => setMe(r.data)).catch(() => setMe(null))
+  }
   useEffect(() => { load() }, [])
 
   const save = async () => {
+    if (!messagesApi.status?.setStatus) return
     try {
       const r = await messagesApi.status.setStatus({
         status_emoji: draft.status_emoji, status_text: draft.status_text,
@@ -28,10 +37,12 @@ function MyStatusBar() {
     } catch { /* best-effort */ }
   }
   const clear = async () => {
+    if (!messagesApi.status?.clear) return
     try { const r = await messagesApi.status.clear(); setMe(r.data) }
     catch { /* best-effort */ }
   }
   const toggleDnd = async () => {
+    if (!messagesApi.status?.setDnd) return
     try {
       const active = me?.is_dnd
       const body = active
@@ -109,6 +120,7 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
   // WIR156 — statuts des collègues (indicateur emoji / DND dans la liste).
   const [colleagues, setColleagues] = useState({})
   useEffect(() => {
+    if (!messagesApi.status?.colleagues) return
     messagesApi.status.colleagues()
       .then((r) => {
         const byId = {}
