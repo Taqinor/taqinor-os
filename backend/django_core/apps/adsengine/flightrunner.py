@@ -574,7 +574,8 @@ class FlightRunner:
         }
 
     # ── Transition 4 : avancement de phase / fin de plan ─────────────────────
-    def advance_phase(self, *, today=None):
+    def advance_phase(self, *, today=None, voi_params=None,
+                      voi_experiment=None):
         """Fait avancer le plan selon la fenêtre calendaire des phases.
 
         Si la phase courante est terminée (``end_date <= today``) et qu'une phase
@@ -582,22 +583,21 @@ class FlightRunner:
         c'était la dernière → le plan passe ``TERMINE`` (ACTIVE → COMPLETED) et on
         renvoie le rapport de fin de plan. NO-OP si l'interrupteur est engagé.
 
-        ASG3 — quand l'ordonnanceur VoI est ACTIVÉ pour la société (drapeau cache
-        ``voi.voi_scheduler_active``, OFF par défaut), la transition de phase FIXE
-        est DÉSACTIVÉE : la file d'hypothèses (argmax VoI, ``voi.schedule_next``)
-        gouverne alors ce qui est testé, pas la fenêtre calendaire. Flag OFF ⇒
-        comportement calendaire historique byte-identique."""
+        ASG3/PUB17 — quand l'ordonnanceur VoI est ACTIVÉ pour la société (drapeau
+        cache ``voi.voi_scheduler_active``, OFF par défaut), la transition de phase
+        FIXE est DÉSACTIVÉE : la file d'hypothèses (argmax VoI) gouverne ce qui est
+        testé. ``voi.schedule_next`` est RÉELLEMENT appelé (il ne l'était pas avant)
+        avec l'expérience courante et le contexte MDE/coût par nœud ``voi_params``
+        (fourni par la boucle autonome qui connaît les volumes). Flag OFF ⇒
+        comportement calendaire historique BYTE-IDENTIQUE (les nouveaux paramètres
+        sont ignorés)."""
         if self.is_killed():
             return {'skipped': 'kill_switch', 'state': self.STATE_KILLED}
 
         from . import voi
         if voi.voi_scheduler_active(self.company):
-            self._log_transition(
-                self.STATE_ACTIVE, self.STATE_ACTIVE,
-                summary_fr=("Mode VoI actif : la file d'hypothèses (argmax VoI) "
-                            "gouverne les transitions — fenêtre calendaire fixe "
-                            "désactivée."))
-            return {'state': self.state(), 'advanced': False, 'voi_mode': True}
+            return self._advance_via_voi(
+                voi_params=voi_params, experiment=voi_experiment)
 
         today = today or self.today()
         phases = list(FlightPhase.objects.filter(
@@ -627,6 +627,56 @@ class FlightRunner:
 
         # Dernière phase franchie → fin de plan.
         return self.complete()
+
+    def _advance_via_voi(self, *, voi_params=None, experiment=None):
+        """PUB17 — Mode VoI ACTIF (ASG3/ASG5) : la file d'hypothèses (argmax VoI,
+        ``voi.schedule_next``) gouverne la transition — la fenêtre calendaire FIXE
+        est désactivée.
+
+        Ouvre un slot pour l'expérience courante avec le contexte MDE/coût par
+        nœud ``voi_params`` : ``schedule_next`` calcule l'argmax VoI, écrit un
+        ``DecisionLog`` OBLIGATOIRE, et renvoie le nœud gagnant (= « la phase
+        suivante »). Sans expérience ouverte OU sans contexte MDE, aucune sélection
+        n'est FORCÉE (``advanced=False``) — jamais un chiffre MDE fabriqué, jamais
+        un crash."""
+        from . import voi
+
+        experiment = experiment or self._voi_experiment()
+        if experiment is None or voi_params is None:
+            self._log_transition(
+                self.STATE_ACTIVE, self.STATE_ACTIVE,
+                summary_fr=("Mode VoI actif : la file d'hypothèses gouverne les "
+                            "transitions (fenêtre calendaire désactivée) ; aucun "
+                            "slot ouvert (expérience/contexte MDE absent)."))
+            return {'state': self.state(), 'advanced': False, 'voi_mode': True,
+                    'voi_node_id': None}
+
+        result = voi.schedule_next(
+            self.company, experiment=experiment, params=voi_params)
+        winner = result.get('winner')
+        winner_id = winner.pk if winner is not None else None
+        score = result.get('score') or {}
+        self._log_transition(
+            self.STATE_ACTIVE, self.STATE_ACTIVE,
+            summary_fr=(
+                f"Mode VoI : slot ouvert par argmax VoI (nœud {winner_id})."
+                if winner_id is not None else
+                "Mode VoI : file vide — aucun nœud testable à ordonnancer."))
+        return {
+            'state': self.state(), 'advanced': winner is not None,
+            'voi_mode': True, 'voi_node_id': winner_id,
+            'voi_score': score.get('voi'),
+            'decision_log_id': getattr(result.get('log'), 'pk', None),
+        }
+
+    def _voi_experiment(self):
+        """PUB17 — Expérience courante où tracer les décisions VoI (le
+        ``DecisionLog`` de ``schedule_next`` s'y rattache) : la plus récente
+        EN_COURS de la société, ou ``None`` (aucun slot forcé sans elle)."""
+        return (Experiment.objects
+                .filter(company=self.company,
+                        status=Experiment.Statut.EN_COURS)
+                .order_by('-created_at').first())
 
     def _current_phase(self, phases, today):
         """La phase dont la fenêtre contient ``today`` (repli : la dernière phase
