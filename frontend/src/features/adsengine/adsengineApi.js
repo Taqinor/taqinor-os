@@ -250,6 +250,35 @@ const adsengineApi = {
     dropAsset: (campagneId, formData) =>
       api.post(`/adsengine/backlog/${campagneId}/assets/`, formData),
   },
+
+  // ── ASG1/ASG3/ASG6 — Assumption Engine : « l'arbre EST l'historique du plan » ──
+  // Routeur backend FR prévu : « noeuds-hypothese » (dd-assumption-engine.md §3/§5).
+  // Écran-lecture seule : cet écran n'affiche QUE ce que l'API renvoie — aucun
+  // score (VoI/incertitude/fraîcheur) n'est recalculé côté front.
+  assumptions: {
+    // Nœuds de l'arbre : classe, statut (assumed/testing/validated/stale/retired),
+    // fraîcheur dérivée de last_tested_at + demi-vie de classe (§3.2).
+    nodes: (params) => api.get('/adsengine/noeuds-hypothese/', { params }),
+    // File de priorité VoI (ASG3, argmax S×U×R×T/C) — ordre déjà calculé backend.
+    queue: (params) => api.get('/adsengine/noeuds-hypothese/file-voi/', { params }),
+    // Historique d'un nœud = ses tests passés (« l'arbre à travers le temps »).
+    tests: (nodeId, params) =>
+      api.get(`/adsengine/noeuds-hypothese/${nodeId}/tests/`, { params }),
+    // Leads réels derrière un test donné (même doctrine de traçabilité qu'ENG23).
+    testLeads: (testId, params) =>
+      api.get(`/adsengine/noeuds-hypothese/tests/${testId}/leads/`, { params }),
+  },
+
+  // ── SIG1-4 — Console de signaux (dd-assumption-engine.md §11) ──
+  // Deux scores de santé (créatif vs opérations, poids fixes, jamais dans
+  // l'optimiseur) + quadrant de garde-fous DURS (fréquence/quality_ranking/
+  // CPL/qualité de compte — ne fait QUE freiner) + drill-down par cohorte
+  // (filigrane de maturation : proxy 7j → CPL 14-28j → signature 60-90j).
+  signals: {
+    get: (params) => api.get('/adsengine/signaux/', { params }),
+    // Détail par cohorte d'un signal donné ({ signal: 'creatif'|'operations', ... }).
+    cohort: (params) => api.get('/adsengine/signaux/cohorte/', { params }),
+  },
 }
 
 export default adsengineApi
