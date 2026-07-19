@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { History } from 'lucide-react'
 import auditApi from '../../api/auditApi'
+import { formatDateTime } from '../../lib/format'
 import {
   Button, Spinner, EmptyState,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -110,13 +111,5 @@ export default function ObjectHistoryButton({
 }
 
 function formatQuand(iso) {
-  if (!iso) return ''
-  try {
-    return new Date(iso).toLocaleString('fr-FR', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    })
-  } catch {
-    return iso
-  }
+  return iso ? formatDateTime(iso) : ''
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import voipApi from '../../api/voipApi'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    WIR160 — Journal d'appels + widget click-to-call. Composer un numéro et
@@ -98,7 +99,7 @@ export default function VoipJournalPage() {
                 <td>{a.numero}</td>
                 <td>{a.cible?.libelle || '—'}</td>
                 <td>{a.statut}{a.issue ? ` (${a.issue})` : ''}</td>
-                <td>{a.started_at ? new Date(a.started_at).toLocaleString('fr-FR') : '—'}</td>
+                <td>{a.started_at ? formatDateTime(a.started_at) : '—'}</td>
                 <td>{a.duree_secondes != null ? `${a.duree_secondes}s` : '—'}</td>
               </tr>
             ))}
