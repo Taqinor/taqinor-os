@@ -24,7 +24,7 @@ from .models import (
     ExperimentArm, FactEntry, FactTable, FlightPhase, FlightPlan,
     GuardrailConfig,
     InstagramCommentMirror, InstagramMediaMirror, InstagramPublishJob,
-    MetaConnection, PacingState, ReconciliationSnapshot, RulePolicy,
+    MetaConnection, ReconciliationSnapshot, RulePolicy,
     WeeklyBrief,
 )
 from .serializers import (
@@ -37,7 +37,7 @@ from .serializers import (
     FactEntrySerializer, FactTableSerializer,
     FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
     InstagramCommentMirrorSerializer, InstagramMediaMirrorSerializer,
-    MetaConnectionSerializer, PacingStateSerializer,
+    MetaConnectionSerializer,
     ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
 
@@ -819,14 +819,6 @@ class AnomalyEventViewSet(AdsengineViewSet):
 
     queryset = AnomalyEvent.objects.all()
     serializer_class = AnomalyEventSerializer
-    http_method_names = ['get', 'head', 'options']
-
-
-class PacingStateViewSet(AdsengineViewSet):
-    """ADSENG4 — Liste (lecture seule) des états de pacing mensuels."""
-
-    queryset = PacingState.objects.all()
-    serializer_class = PacingStateSerializer
     http_method_names = ['get', 'head', 'options']
 
 
@@ -2207,25 +2199,6 @@ class RealLeadsView(APIView):
             return err
         from .metrics import real_lead_counts
         return Response(real_lead_counts(company))
-
-
-class ConversationsPerAdView(APIView):
-    """ADSDEEP25 — Conversations WhatsApp RÉELLES par ad + signatures jointes.
-
-    ``GET /api/django/adsengine/metrics/conversations-per-ad/`` — company-scopé,
-    gaté ``adsengine_view``. Compte les ``CtwaReferral`` (webhook Cloud API
-    ADSDEEP24) par ad et joint les signatures par téléphone : « cette ad a
-    produit N conversations, M signées » — complément RÉEL de la métrique
-    agrégée ``conversations`` de Meta. Aucun secret."""
-
-    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
-
-    def get(self, request):
-        company, err = _adseng_company_gate(request, 'adsengine_view')
-        if err is not None:
-            return err
-        from .metrics import conversations_per_ad
-        return Response(conversations_per_ad(company))
 
 
 class AdsCockpitView(APIView):

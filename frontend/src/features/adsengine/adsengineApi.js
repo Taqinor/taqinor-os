@@ -187,6 +187,12 @@ const adsengineApi = {
     // budgétaire, fatigue, tracking, fenêtres de données). Jamais auto-chargé
     // (bouton « Lancer l'audit »).
     audit: () => api.get('/adsengine/reporting/audit/'),
+    // PUB12 — export CSV SERVEUR (ReportExportView) : source de vérité unique,
+    // inclut la table de réconciliation. Blob authentifié (jamais un CSV
+    // fabriqué côté client, qui divergerait du serveur). `params` :
+    // { table: 'variantes' | 'reconciliation', date? }.
+    export: (params) =>
+      api.get('/adsengine/reporting/export/', { params, responseType: 'blob' }),
   },
 
   // ── ADSDEEP53/54 — Boîte de réception des commentaires (posts + dark posts) ──
