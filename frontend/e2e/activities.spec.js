@@ -9,6 +9,8 @@ test('E9: log an activity and see it in the cockpit', async ({ page }) => {
   await openLead(page, name)
   const modal = page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
 
+  // LW13/LW19 — les activités vivent dans un onglet du rail contexte (blueprint D3).
+  await modal.getByRole('tab', { name: /Activités/ }).click()
   await modal.getByRole('button', { name: /Planifier une activité/ }).click()
   const summary = uniq('Appel')
   const actForm = modal.locator('.act-form')

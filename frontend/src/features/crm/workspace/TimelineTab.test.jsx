@@ -171,6 +171,22 @@ describe('LW20 — composer (état MOTEUR via props, jamais local)', () => {
     renderTab({ composer: composerBase({ file }) })
     expect(screen.getByTestId('chatter-note-file-preview')).toHaveTextContent('photo.jpg')
   })
+
+  // VX111 (migré de LeadFormVX111NoteAttachment) — une note AVEC pièce jointe
+  // part en multipart (FormData), jamais en JSON ; le chemin JSON sans fichier
+  // est déjà couvert ci-dessus.
+  it('note AVEC pièce jointe : POST multipart FormData (jamais du JSON)', async () => {
+    const file = new File(['x'], 'photo.png', { type: 'image/png' })
+    renderTab({ composer: composerBase({ note: 'photo toiture', file }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Noter' }))
+    await waitFor(() => expect(apiPost).toHaveBeenCalled())
+    const [url, body, config] = apiPost.mock.calls[0]
+    expect(url).toBe('/crm/leads/7/noter/')
+    expect(body).toBeInstanceOf(FormData)
+    expect(body.get('body')).toBe('photo toiture')
+    expect(body.get('file')).toBe(file)
+    expect(config.headers['Content-Type']).toBe('multipart/form-data')
+  })
 })
 
 describe('LW20 — source des entrées (chatter_recent en 1er rendu, historique ensuite)', () => {

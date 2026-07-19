@@ -12,19 +12,23 @@ import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
 
-const LEAD_FORM = read('../pages/crm/LeadForm.jsx')
+// LW37 — le câblage VX239 a migré de LeadForm.jsx (fondue en adaptateur en LW13)
+// vers SectionContact du cockpit ; LeadExpressModal/ClientForm/ClientQuick sont
+// inchangés.
+const SECTION_CONTACT = read('../features/crm/workspace/sections/SectionContact.jsx')
 const LEAD_EXPRESS = read('../pages/crm/leads/LeadExpressModal.jsx')
 const CLIENT_FORM = read('../pages/crm/ClientForm.jsx')
 const CLIENT_QUICK = read('../pages/ventes/ClientQuickCreateModal.jsx')
 
-test('VX239 : LeadForm utilise le hook extrait useDuplicateCheck (exclut son propre lead en édition)', () => {
-  assert.match(LEAD_FORM, /import \{ useDuplicateCheck \} from '..\/..\/hooks\/useDuplicateCheck'/)
-  assert.match(LEAD_FORM, /const dupMatches = useDuplicateCheck\(\s*\n\s*fields\.telephone, fields\.email, \{ exclude: isEdit \? lead\.id : undefined \}\)/)
+test('VX239 : SectionContact utilise le hook extrait useDuplicateCheck (exclut son propre lead en édition)', () => {
+  assert.match(SECTION_CONTACT, /import \{ useDuplicateCheck \} from '\.\.\/\.\.\/\.\.\/\.\.\/hooks\/useDuplicateCheck'/)
+  assert.match(SECTION_CONTACT, /const dupMatches = useDuplicateCheck\(v\('telephone'\), v\('email'\), \{/)
+  assert.match(SECTION_CONTACT, /exclude: mode === 'edit' \? leadId : undefined/)
 })
 
-test('VX239 : LeadForm/LeadExpressModal posent <PhoneHint> (extrait de ClientForm)', () => {
-  assert.match(LEAD_FORM, /import PhoneHint from '..\/..\/components\/PhoneHint'/)
-  assert.match(LEAD_FORM, /<PhoneHint value=\{fields\.telephone\} testId="lf-tel-hint" \/>/)
+test('VX239 : SectionContact/LeadExpressModal posent <PhoneHint> (extrait de ClientForm)', () => {
+  assert.match(SECTION_CONTACT, /import PhoneHint from '\.\.\/\.\.\/\.\.\/\.\.\/components\/PhoneHint'/)
+  assert.match(SECTION_CONTACT, /<PhoneHint value=\{v\('telephone'\)\} testId="lf-tel-hint" \/>/)
   assert.match(LEAD_EXPRESS, /import PhoneHint from '..\/..\/..\/components\/PhoneHint'/)
   assert.match(LEAD_EXPRESS, /<PhoneHint value=\{telephone\} testId="lem-tel-hint" \/>/)
 })
