@@ -8,7 +8,8 @@ from rest_framework import serializers
 from .models import (
     AdCampaignMirror, AdMirror, AdSetMirror, Annotation, AnomalyEvent,
     ArmDailyStat,
-    AssumptionNode, CommentMirror, CreativeAsset, CreativeBacklogItem,
+    AssumptionNode, CommentMirror, ConsentRecord, CreativeAsset,
+    CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
     EngineAlert, Experiment, ExperimentArm, FactEntry, FactTable,
     FlightPhase, FlightPlan,
@@ -253,6 +254,12 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
     # ``<video>`` pour un reel/explainer.
     preview_url = serializers.SerializerMethodField()
     is_video = serializers.SerializerMethodField()
+    # PUB75 — statut consentement (CNDP) : raison de blocage lisible (ou None).
+    consent_block = serializers.SerializerMethodField()
+    has_valid_consent = serializers.BooleanField(read_only=True)
+
+    def validate_consent(self, value):
+        return _same_company(self, value)
 
     class Meta:
         model = CreativeAsset
@@ -260,6 +267,9 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
             'id', 'asset_type', 'file_key', 'source_lane', 'cost_cents',
             'policy_stamp', 'is_policy_passed', 'perf', 'parent',
             'preview_url', 'is_video',
+            # PUB75 — consentement image/témoignage (CNDP).
+            'depicts_real_client', 'consent', 'consent_scopes_required',
+            'consent_block', 'has_valid_consent',
             # ADSENG5 — composants (accroche / texte / visuel / CTA).
             'hook_id', 'hook_text', 'primary_text', 'visual_asset_key', 'cta',
             'created_at', 'updated_at',
@@ -284,6 +294,10 @@ class CreativeAssetSerializer(serializers.ModelSerializer):
         """Un reel / explainer se rend en ``<video>`` (les statiques en ``<img>``)."""
         return obj.asset_type in (
             CreativeAsset.AssetType.REEL, CreativeAsset.AssetType.EXPLAINER)
+
+    def get_consent_block(self, obj):
+        """PUB75 — Raison de blocage consentement (CNDP) lisible, ou ``None``."""
+        return obj.consent_block_reason()
 
 
 class CreativePolicySerializer(serializers.ModelSerializer):
@@ -875,3 +889,28 @@ class FactEntrySerializer(serializers.ModelSerializer):
 
     def validate_table(self, value):
         return _same_company(self, value)
+
+
+class ConsentRecordSerializer(serializers.ModelSerializer):
+    """PUB75 — Consentement image/témoignage (CNDP loi 09-08). ``company`` posée
+    côté serveur ; ``revoked_at`` est en lecture seule (révoquer passe par
+    l'action ``revoquer``, jamais un PATCH direct). ``scopes``/``is_active``
+    exposent l'état pour l'UI de collecte simple."""
+
+    scopes = serializers.ListField(
+        child=serializers.CharField(), read_only=True)
+    is_active = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConsentRecord
+        fields = [
+            'id', 'client_id', 'client_nom', 'reference', 'canal',
+            'portee_photo', 'portee_video', 'portee_temoignage', 'portee_geo',
+            'date_consentement', 'expiration', 'revoked_at',
+            'note', 'scopes', 'is_active',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['revoked_at', 'created_at', 'updated_at']
+
+    def get_is_active(self, obj):
+        return obj.is_active()

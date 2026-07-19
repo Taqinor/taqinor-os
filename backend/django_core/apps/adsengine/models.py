@@ -19,6 +19,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
 
@@ -927,6 +928,25 @@ class CreativeAsset(TenantModel):
     format_tag = models.CharField(
         max_length=64, blank=True, default='', verbose_name='Tag format')
 
+    # ── PUB75 — Consentement image/témoignage (CNDP loi 09-08) ───────────────
+    # ``depicts_real_client`` marque un asset qui montre un VRAI client / chantier
+    # / visage / nom réel : la passe policy exige alors un ``ConsentRecord`` ACTIF
+    # couvrant les portées listées dans ``consent_scopes_required`` (défaut vide =
+    # un consentement actif suffit). ``consent`` relie le registre signé. Un asset
+    # généré / abstrait (défaut ``False``) n'a besoin d'aucun consentement.
+    depicts_real_client = models.BooleanField(
+        default=False, verbose_name='Montre un client réel',
+        help_text="Vrai si l'asset montre un vrai client/chantier/visage/nom.")
+    consent = models.ForeignKey(
+        'adsengine.ConsentRecord', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='assets',
+        verbose_name='Consentement (CNDP)')
+    consent_scopes_required = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Portées de consentement requises',
+        help_text="Clés parmi photo/video/temoignage/geo à couvrir (vide = un "
+                  "consentement actif suffit).")
+
     class Meta:
         verbose_name = 'Asset créatif'
         verbose_name_plural = 'Assets créatifs'
@@ -939,6 +959,33 @@ class CreativeAsset(TenantModel):
     def is_policy_passed(self):
         """Vrai si la check-list policy est explicitement passée (ENG16)."""
         return bool((self.policy_stamp or {}).get('passed') is True)
+
+    def consent_block_reason(self, *, now=None):
+        """PUB75 — Raison de blocage consentement, ou ``None`` si l'asset est
+        libre de diffusion côté consentement.
+
+        Un asset qui ne montre PAS de client réel n'a aucune contrainte (``None``).
+        Sinon il faut un ``ConsentRecord`` : absent → ``'manquant'`` ; révoqué →
+        ``'revoque'`` ; expiré → ``'expire'`` ; une portée requise non couverte →
+        ``'portee'``. Lecture seule (aucune écriture)."""
+        if not self.depicts_real_client:
+            return None
+        consent = self.consent
+        if consent is None:
+            return 'manquant'
+        if consent.revoked_at is not None:
+            return 'revoque'
+        if not consent.is_active(now=now):
+            return 'expire'
+        for scope in (self.consent_scopes_required or []):
+            if not consent.covers(scope):
+                return 'portee'
+        return None
+
+    @property
+    def has_valid_consent(self):
+        """PUB75 — Vrai si le consentement (le cas échéant) autorise la diffusion."""
+        return self.consent_block_reason() is None
 
 
 class CreativePolicy(TenantModel):
@@ -2337,3 +2384,117 @@ class Annotation(TenantModel):
 
     def __str__(self):
         return f'Annotation {self.date}: {self.texte[:32]}'
+
+
+class ConsentRecord(TenantModel):
+    """PUB75 — Registre de consentement image / témoignage (CNDP, loi 09-08).
+
+    ``policy.py`` interdit les FAUX témoignages, mais rien ne vérifiait le
+    consentement RÉEL d'un vrai visage / chantier / nom. Ce registre porte, PAR
+    société, l'autorisation signée d'un client : les portées couvertes
+    (photo / vidéo / témoignage / géo), la date de recueil, une expiration
+    optionnelle et une éventuelle révocation. Un ``CreativeAsset`` marqué
+    « client réel » ne passe la check-list policy (ENG16) que s'il pointe un
+    consentement ACTIF couvrant les portées requises (:meth:`is_active` /
+    :meth:`covers`) — la révocation retire l'asset de la rotation
+    (``policy.revoke_consent``).
+
+    Le client est référencé par ``client_id`` (référence LÂCHE — jamais un import
+    cross-app d'un modèle client) + ``client_nom`` dénormalisé (la personne dont
+    on détient le consentement). ``reference`` est un jeton opaque pour le lien
+    de collecte simple (WhatsApp signable).
+    """
+
+    class Canal(models.TextChoices):
+        WHATSAPP = 'whatsapp', 'Lien WhatsApp signé'
+        PAPIER = 'papier', 'Formulaire papier'
+        EMAIL = 'email', 'Email'
+        VERBAL = 'verbal', 'Accord verbal consigné'
+        AUTRE = 'autre', 'Autre'
+
+    client_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Client (référence lâche)')
+    client_nom = models.CharField(
+        max_length=160, verbose_name='Nom du client / de la personne')
+    reference = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Référence du lien de collecte')
+    canal = models.CharField(
+        max_length=12, choices=Canal.choices, default=Canal.WHATSAPP,
+        verbose_name='Canal de recueil')
+    # Portées consenties — une par usage (booléens explicites, requêtables).
+    portee_photo = models.BooleanField(
+        default=False, verbose_name='Photo autorisée')
+    portee_video = models.BooleanField(
+        default=False, verbose_name='Vidéo autorisée')
+    portee_temoignage = models.BooleanField(
+        default=False, verbose_name='Témoignage (nom/citation) autorisé')
+    portee_geo = models.BooleanField(
+        default=False, verbose_name='Localisation / chantier géolocalisé autorisé')
+    date_consentement = models.DateField(
+        verbose_name='Date de recueil du consentement')
+    expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration (optionnelle)")
+    revoked_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Révoqué le')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+
+    # Correspondance clé de portée → champ booléen (source unique).
+    SCOPE_FIELDS = {
+        'photo': 'portee_photo',
+        'video': 'portee_video',
+        'temoignage': 'portee_temoignage',
+        'geo': 'portee_geo',
+    }
+
+    class Meta:
+        verbose_name = 'Consentement (CNDP)'
+        verbose_name_plural = 'Consentements (CNDP)'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'client_id'],
+                         name='adseng_consent_co_client_idx'),
+        ]
+
+    def __str__(self):
+        return f'Consentement {self.client_nom} #{self.pk}'
+
+    def covers(self, scope):
+        """Vrai si la portée ``scope`` (photo/video/temoignage/geo) est consentie.
+        Une portée inconnue n'est jamais couverte (refus par défaut)."""
+        field = self.SCOPE_FIELDS.get(scope)
+        return bool(field and getattr(self, field, False))
+
+    def is_active(self, *, now=None):
+        """Vrai si le consentement est ACTIF : non révoqué ET non expiré.
+
+        L'expiration est comparée à la date du jour (``now`` accepte un
+        ``date``/``datetime`` pour les tests). Une expiration nulle = jamais
+        expiré."""
+        if self.revoked_at is not None:
+            return False
+        if self.expiration is None:
+            return True
+        today = now or timezone.now()
+        today = today.date() if hasattr(today, 'date') else today
+        return self.expiration >= today
+
+    @property
+    def scopes(self):
+        """Liste des clés de portées consenties (pour l'API / l'affichage)."""
+        return [key for key, field in self.SCOPE_FIELDS.items()
+                if getattr(self, field, False)]
+
+    def revoke(self, *, now=None):
+        """PUB75 — Révoque le consentement et retire ses assets de la rotation.
+
+        Pose ``revoked_at`` puis délègue à ``policy.revoke_consent`` le
+        dé-tamponnage des assets liés (``policy_stamp.passed=False``) pour que le
+        filtre de rotation existant (``asset__policy_stamp__passed=True``) les
+        exclue immédiatement. Idempotent : une seconde révocation ne réécrit pas
+        ``revoked_at``."""
+        from . import policy as policy_mod
+        if self.revoked_at is None:
+            self.revoked_at = now or timezone.now()
+            self.save(update_fields=['revoked_at', 'updated_at'])
+        return policy_mod.revoke_consent(self)

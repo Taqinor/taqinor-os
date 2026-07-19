@@ -333,6 +333,16 @@ const adsengineApi = {
   ads: {
     fullStory: (metaId) => api.get(`/adsengine/ads/${metaId}/histoire/`),
   },
+
+  // ── PUB75 — Registre de consentement image/témoignage (CNDP loi 09-08) ──
+  // UI de collecte simple : enregistre un consentement recueilli (lien WhatsApp
+  // signable côté écran) ; ``revoke`` retire aussitôt les assets liés de la
+  // rotation (backend). Jamais un chiffre non vérifié n'entre ici — que du
+  // consentement humain signé.
+  consents: {
+    ...resource('consentements'),
+    revoke: (id) => api.post(`/adsengine/consentements/${id}/revoquer/`),
+  },
 }
 
 export default adsengineApi

@@ -19,7 +19,7 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     AdCampaignMirror, Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
-    CommentMirror,
+    CommentMirror, ConsentRecord,
     CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
     CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
     ExperimentArm, FactEntry, FactTable, FlightPhase, FlightPlan,
@@ -32,7 +32,7 @@ from .serializers import (
     AdCampaignMirrorSerializer, AnnotationSerializer, AnomalyEventSerializer,
     ArmDailyStatSerializer,
     AssumptionNodeSerializer,
-    CommentMirrorSerializer, CreativeAssetSerializer,
+    CommentMirrorSerializer, ConsentRecordSerializer, CreativeAssetSerializer,
     CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
     CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
     EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
@@ -546,6 +546,31 @@ class FactEntryViewSet(AdsengineViewSet):
 
     queryset = FactEntry.objects.all()
     serializer_class = FactEntrySerializer
+
+
+class ConsentRecordViewSet(AdsengineViewSet):
+    """PUB75 — CRUD du registre de consentement image/témoignage (CNDP loi 09-08).
+
+    Company-scopé (hérité) ; ``company`` posée côté serveur. La révocation passe
+    par l'action dédiée ``revoquer`` (jamais un PATCH direct de ``revoked_at``) :
+    elle retire aussitôt de la rotation les assets liés (``policy.revoke_consent``).
+    L'UI de collecte simple (lien WhatsApp signable) enregistre ici le
+    consentement recueilli.
+    """
+
+    queryset = ConsentRecord.objects.all()
+    serializer_class = ConsentRecordSerializer
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def revoquer(self, request, pk=None):
+        """PUB75 — Révoque le consentement : les assets « client réel » qui le
+        citent sont immédiatement retirés de la rotation (policy passed=False)."""
+        consent = self.get_object()
+        retires = consent.revoke()
+        data = self.get_serializer(consent).data
+        data['assets_retires'] = retires
+        return Response(data)
 
 
 class EngineAlertViewSet(AdsengineViewSet):
