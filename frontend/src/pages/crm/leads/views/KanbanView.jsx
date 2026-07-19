@@ -144,8 +144,11 @@ const DraggableCard = memo(function DraggableCard({
       className={isDragging ? 'kb-drag-wrap kb-drag-source' : 'kb-drag-wrap'}
     >
       {/* Le drag n'est rattaché qu'à la carte ; le sélecteur d'étape (clavier)
-          vit hors de la poignée pour rester utilisable au clavier/souris. */}
-      <div {...listeners} {...attributes}>
+          vit hors de la poignée pour rester utilisable au clavier/souris.
+          LB12 — `data-lead-id` sur ce MÊME nœud (celui qui porte réellement
+          `tabIndex`/`role` via `attributes` dnd-kit) : c'est lui que
+          `handleDragEnd` refocalise après un déplacement réussi. */}
+      <div data-lead-id={lead.id} {...listeners} {...attributes}>
         <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
                   users={users} onReassign={onReassign}
                   selected={selected} onToggleSelect={onToggleSelect}
@@ -330,6 +333,18 @@ export default function KanbanView({
       return // l'étape reste inchangée
     }
     onChangeStage(lead, over.id)
+    // LB12 — la carte déposée se RE-PARENTE dans sa nouvelle colonne (React
+    // démonte/remonte l'instance — un `key={lead.id}` qui change de tableau
+    // parent n'est jamais un simple déplacement DOM) : sans ça, le focus
+    // retombe sur `<body>` (recon-05 a11y #4). `requestAnimationFrame`
+    // laisse le re-rendu déclenché par `onChangeStage` (dispatch Redux
+    // optimiste) se poser avant de chercher le nœud dans sa NOUVELLE colonne
+    // — même chemin, souris OU clavier (KeyboardSensor passe par ce même
+    // `handleDragEnd`). Un drop refusé/annulé/sur-place ne re-parente rien :
+    // le focus reste naturellement sur la carte d'origine, aucun code requis.
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-lead-id="${lead.id}"]`)?.focus()
+    })
   }
 
   const handleDragCancel = () => setActiveLead(null)
