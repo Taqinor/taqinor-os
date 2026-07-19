@@ -513,6 +513,15 @@ app.conf.beat_schedule = {
         'task': 'adsengine.emit_capi_signatures',
         'schedule': crontab(hour=7, minute=35),
     },
+    # ── lane/gen-b — AGEN8 : auto-pause maison du rayon d'explosion (bloc isolé,
+    # fold propre avec le co-éditeur de celery.py). Polling COURT (toutes les
+    # 30 min) de effective_status des créatifs générés : un refus Meta est mis
+    # en PAUSE dans le cycle courant (Meta n'offre aucune auto-pause native).
+    # NO-OP propre tant qu'aucun créatif généré n'est surveillé.
+    'adsengine-autopause-blast-radius': {
+        'task': 'adsengine.autopause_blast_radius',
+        'schedule': crontab(minute='*/30'),
+    },
     # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
     # Best-effort, une alerte par jour et par société (dédup), no-op tant que
     # le seuil société vaut 0 (défaut).
