@@ -34,6 +34,15 @@ const automationApi = {
   getDelegations: (params) => api.get('/automation/approval-delegations/', { params }),
   createDelegation: (data) => api.post('/automation/approval-delegations/', data),
   deleteDelegation: (id) => api.delete(`/automation/approval-delegations/${id}/`),
+
+  // ── WIR61 / XPLT4 — Webhooks entrants tokenisés (par règle webhook_inbound).
+  // Le `token` et l'`url_path` sont générés côté serveur ; la rotation invalide
+  // immédiatement l'ancien token. `hmac_secret` optionnel (signature entrante).
+  getWebhooks: (params) => api.get('/automation/incoming-webhooks/', { params }),
+  createWebhook: (data) => api.post('/automation/incoming-webhooks/', data),
+  rotateWebhook: (id) => api.post(`/automation/incoming-webhooks/${id}/rotate/`),
+  updateWebhook: (id, data) => api.patch(`/automation/incoming-webhooks/${id}/`, data),
+  deleteWebhook: (id) => api.delete(`/automation/incoming-webhooks/${id}/`),
 }
 
 export default automationApi
