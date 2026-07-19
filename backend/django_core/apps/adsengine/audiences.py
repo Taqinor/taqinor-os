@@ -593,3 +593,59 @@ def sync_installed_base_upsell_audiences(company, *, client=None):
                          "d'origine."),
             client=client),
     }
+
+
+# ── PUB61 — Lookalike « signatures réelles » (@after ADSDEEP57/58) ───────────
+
+def _signed_seed_contacts(company):
+    """PUB61 — Contacts (email/téléphone) des leads SIGNÉS de la société — la
+    graine « signatures réelles » du lookalike. Combine DEUX sélecteurs CRM
+    déjà exposés à ``apps.adsengine`` (jamais un import d'``apps.crm.models``) :
+    ``attribution_lead_rows`` (ADSENG6, isole les ids des leads SIGNÉS) puis
+    ``lead_contact_identifiers`` (XMKT36, résout email/téléphone pour ces
+    ids) — aucun nouveau sélecteur CRM requis."""
+    from apps.crm.selectors import attribution_lead_rows, lead_contact_identifiers
+
+    signed_ids = [r['id'] for r in attribution_lead_rows(company) if r['signed']]
+    return lead_contact_identifiers(company, signed_ids)
+
+
+def build_signed_customers_lookalike(company, *, seed_name='Signatures réelles',
+                                     lookalike_name=None,
+                                     ratio=MA_LOOKALIKE_MAX_RATIO,
+                                     value_based=False, client=None):
+    """PUB61 — Lookalike « signatures réelles » : la graine = contacts des
+    deals SIGNÉS ERP (leads au stade SIGNED, STAGES.py — une donnée de graine
+    strictement meilleure que tout pixel concurrent).
+
+    Construit d'abord la Custom Audience seed (ADSDEEP57,
+    :func:`sync_crm_custom_audience`) puis, si assez de contacts ont été
+    matchés (≥100, dossier §1/§2), demande le lookalike dérivé (ADSDEEP58,
+    :func:`create_lookalike_from_seed` — RÉUTILISÉ, jamais réimplémenté).
+    <100 contacts matchés → AUCUN appel lookalike, message clair
+    (``seed_insufficient``). Même porte consentement que le seed (OFF ⇒
+    aucun réseau, ni pour le seed ni pour le lookalike puisqu'aucun
+    ``audience_id`` réel n'existe alors).
+
+    Renvoie ``{'seed': <résumé sync>, 'lookalike': <résumé lookalike>|None,
+    'seed_insufficient': bool}``."""
+    contacts = _signed_seed_contacts(company)
+    seed_summary = sync_crm_custom_audience(
+        company, name=seed_name, contacts=contacts,
+        description='Graine lookalike — clients aux deals réellement signés.',
+        client=client)
+
+    matched = seed_summary['matched_rows']
+    result = {'seed': seed_summary, 'lookalike': None,
+              'seed_insufficient': matched < LOOKALIKE_MIN_SEED}
+    if matched < LOOKALIKE_MIN_SEED or not seed_summary['audience_id']:
+        # Seed trop petit, OU consentement OFF/erreur amont (aucune audience
+        # seed réelle créée) : rien à dériver.
+        return result
+
+    result['lookalike'] = create_lookalike_from_seed(
+        company, name=lookalike_name or f'Lookalike — {seed_name}',
+        origin_audience_id=seed_summary['audience_id'],
+        seed_matched_count=matched, ratio=ratio, value_based=value_based,
+        client=client)
+    return result

@@ -21,7 +21,7 @@ import httpx
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from authentication.models import Company
-from apps.crm.models import Client
+from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis, ShareLink
 
 from apps.adsengine import audiences as aud
@@ -474,3 +474,48 @@ class Pub60UpsellAudiencesTests(TestCase):
         self.assertEqual(result['entretien']['matched_rows'], 1)
         # sans_batterie : seul 'SansRien' (option_acceptee='') qualifie.
         self.assertEqual(result['batterie']['matched_rows'], 1)
+
+
+class Pub61SignedLookalikeTests(TestCase):
+    """PUB61 — build_signed_customers_lookalike : graine « signatures
+    réelles » (leads SIGNÉS ERP) + lookalike dérivé, dégradation propre <100."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB61 Co')
+
+    def _signed_leads(self, n):
+        from apps.crm.stages import SIGNED
+        for i in range(n):
+            Lead.objects.create(
+                company=self.company, nom=f'Lead{i}', stage=SIGNED,
+                email=f'lead{i}@example.ma', telephone=f'+21260000{i:04d}')
+
+    def test_seed_below_100_no_lookalike_call(self):
+        self._signed_leads(5)
+        client = RecordingClient()
+        with override_settings(META_CUSTOM_AUDIENCE_CONSENT='1'):
+            result = aud.build_signed_customers_lookalike(
+                self.company, client=client)
+        self.assertTrue(result['seed_insufficient'])
+        self.assertIsNone(result['lookalike'])
+        self.assertFalse(
+            any(name == 'create_lookalike_audience' for name, _ in client.calls))
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_seed_above_100_derives_lookalike(self):
+        self._signed_leads(120)
+        client = RecordingClient()
+        result = aud.build_signed_customers_lookalike(
+            self.company, client=client)
+        self.assertFalse(result['seed_insufficient'])
+        self.assertIsNotNone(result['lookalike'])
+        self.assertTrue(result['lookalike']['audience_id'])
+        self.assertTrue(
+            any(name == 'create_lookalike_audience' for name, _ in client.calls))
+
+    def test_consent_off_no_network_regardless_of_seed_size(self):
+        self._signed_leads(150)
+        result = aud.build_signed_customers_lookalike(
+            self.company, client=ExplodingClient())
+        self.assertFalse(result['seed']['configured'])
+        self.assertIsNone(result['lookalike'])
