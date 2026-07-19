@@ -554,6 +554,23 @@ class RulePolicyViewSet(AdsengineViewSet):
             serializer.instance.created_by = self.request.user
             serializer.instance.save(update_fields=['created_by'])
 
+    # PUB91 — backtest de la règle sur l'historique RÉEL (dry-run avant armement).
+    # Lecture seule (adsengine_view) : AUCUNE EngineAction n'est créée. ``?jours=``
+    # borne la fenêtre (défaut 90 = dernier trimestre).
+    @action(detail=True, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def backtest(self, request, pk=None):
+        """PUB91 — « Qu'aurait fait cette règle sur votre dernier trimestre ? »
+        Rejoue la règle jour par jour sur les snapshots réels et liste les
+        actions qu'elle AURAIT proposées (jamais exécutées)."""
+        from .rule_backtest import DEFAULT_BACKTEST_DAYS, backtest_rule
+        policy = self.get_object()
+        try:
+            days = int(request.query_params.get('jours', DEFAULT_BACKTEST_DAYS))
+        except (TypeError, ValueError):
+            days = DEFAULT_BACKTEST_DAYS
+        return Response(backtest_rule(policy, days=days))
+
     # ADSENG14 — catalogue FIXE (lecture) : le front rend la liste des templates
     # (style STAGES.py) sans que le fondateur puisse en inventer un (pas de
     # builder libre). GET → permission de LECTURE (adsengine_view) héritée.
