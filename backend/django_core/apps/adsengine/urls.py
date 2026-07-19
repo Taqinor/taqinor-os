@@ -22,6 +22,7 @@ from .views import (
     CostPerSignatureView, CreativeLeaderboardView, CreativeScatterView,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
+    ExplorationLedgerView,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
     ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
     GuardrailConfigViewSet, GuardrailSingletonView,
@@ -141,6 +142,9 @@ urlpatterns = [
     # PUB86 — registre de qualité des décisions (regret réalisé par type).
     path('reporting/regret/', RegretRegistryView.as_view(),
          name='adsengine-reporting-regret'),
+    # PUB88 — livre de compte mensuel exploration vs exploitation.
+    path('reporting/exploration/', ExplorationLedgerView.as_view(),
+         name='adsengine-reporting-exploration'),
     # PUB87 — calculateur MDE/puissance (vue mince sur mde.py) pour la création
     # d'expérience : « ~X jours pour détecter +20 % avec votre volume ».
     path('experiences/mde/', MdeCalculatorView.as_view(),

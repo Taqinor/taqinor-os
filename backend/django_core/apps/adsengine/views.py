@@ -1260,6 +1260,24 @@ class MdeCalculatorView(APIView):
         })
 
 
+class ExplorationLedgerView(APIView):
+    """PUB88 — Livre de compte MENSUEL exploration vs exploitation (MAD dépensés
+    à explorer vs sur le gagnant confirmé). Company-scopé, gaté
+    ``adsengine_view``. ``?debut=&fin=`` (dates ISO) bornent la fenêtre."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import exploration_ledger
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response({'mois': exploration_ledger(
+            company, date_start=debut, date_end=fin)})
+
+
 class CreativeScatterView(APIView):
     """ADSDEEP47 — Nuage de points hook rate × dépense (quadrants FR « pépites
     cachées »/« gouffres »/« gagnants confirmés »/« à surveiller »).
