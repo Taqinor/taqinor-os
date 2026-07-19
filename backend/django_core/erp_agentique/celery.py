@@ -522,6 +522,14 @@ app.conf.beat_schedule = {
         'task': 'adsengine.autopause_blast_radius',
         'schedule': crontab(minute='*/30'),
     },
+    # PUB15 — détecteur HEBDO de divergence CRM/proxy du bandit (ADSENG9). Lundi
+    # (après les autres boucles hebdo). Une divergence proxy/CRM ≥2 positions avec
+    # ≥10 leads qualifiés PROPOSE un REBALANCE humain-approuvé (jamais appliqué
+    # seul). NO-OP propre sans bras d'expérience.
+    'adsengine-run-reward-divergence-check': {
+        'task': 'adsengine.run_reward_divergence_check',
+        'schedule': crontab(hour=7, minute=45, day_of_week=1),
+    },
     # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
     # Best-effort, une alerte par jour et par société (dédup), no-op tant que
     # le seuil société vaut 0 (défaut).

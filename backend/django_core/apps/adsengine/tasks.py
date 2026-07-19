@@ -902,6 +902,39 @@ def evaluate_optimization_rules():
     return result
 
 
+@shared_task(name='adsengine.run_reward_divergence_check')
+def run_reward_divergence_check():
+    """PUB15 — Boucle HEBDO du détecteur de divergence CRM/proxy du bandit
+    (ADSENG9 ``rewards.run_divergence_check``, resté sans appelant production).
+
+    Pour chaque société active, compare le classement PROXY des bras (conversation
+    démarrée / impression) au classement du COÛT CRM (coût-par-lead-qualifié). Une
+    divergence ≥2 positions avec ≥10 leads qualifiés cumulés PROPOSE un REBALANCE
+    (``EngineAction`` propose-only : ``status=proposee``, ``auto=False``) visible
+    dans Approbations — le moteur ne réalloue JAMAIS seul (véto CRM, jamais
+    pilotage : approbation humaine requise). Best-effort par société ; NO-OP propre
+    sans bras/expérience. Renvoie le nombre de propositions REBALANCE créées."""
+    from authentication.selectors import active_companies
+
+    from . import rewards
+
+    proposed = 0
+    for company in active_companies():
+        try:
+            _decision, action = rewards.run_divergence_check(company)
+            if action is not None:
+                proposed += 1
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.run_reward_divergence_check: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.run_reward_divergence_check: %s proposition(s) REBALANCE',
+        proposed)
+    return {'rebalance_proposed': proposed}
+
+
 @shared_task(name='adsengine.evaluate_quarter_hourly')
 def evaluate_quarter_hourly():
     """ADSDEEP42 — Boucle QUART-HORAIRE du Gardien (toutes les 15 min).
