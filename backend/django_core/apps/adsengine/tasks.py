@@ -177,6 +177,92 @@ def _sync_level_insights(company, conn, client, *, level):
             video_metrics=norm['video_metrics'])
 
 
+def check_prepaid_balance(company, conn, client):
+    """PUB97 — Surveillance du solde prépayé Meta (trésorerie).
+
+    Meta Maroc = prépayé : à zéro, la diffusion s'arrête et ressemble à « pas de
+    données » (angle mort du guard zéro-délivrance qui exige spend>0). On lit le
+    solde/funding du compte, on estime le runway = solde / dépense quotidienne
+    courante (médiane 7 j, niveau campagne), et on émet une ``EngineAlert`` typée
+    quand le solde couvre moins de N jours. DÉDUP par ``entity_key`` : une seule
+    alerte ouverte à la fois ; résolue quand le solde redevient sain. Best-effort
+    (jamais bloquant pour la synchro). Renvoie l'``EngineAlert`` touchée ou None.
+
+    Dégradation documentée : si l'API n'expose pas ``balance`` (mode de
+    financement sans solde prépayé), on pose une alerte INFO unique et on n'alarme
+    jamais à tort."""
+    import datetime as _dt
+    from statistics import median
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from . import anomaly
+    from .models import AdCampaignMirror, EngineAlert, InsightSnapshot
+    from .rules import SEVERITY_INFO
+
+    reader = getattr(client, 'get_account_balance', None)
+    if not callable(reader):
+        return None
+    try:
+        info = reader() or {}
+    except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro
+        return None
+
+    # Dépense quotidienne courante : médiane des spends campagne des 7 derniers
+    # jours (unités majeures de la devise du compte, comme le solde normalisé).
+    today = _dt.date.today()
+    since = today - _dt.timedelta(days=6)
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    daily = {}
+    for snap in InsightSnapshot.objects.filter(
+            company=company, content_type=ct, date__gte=since, date__lte=today):
+        if snap.spend is not None:
+            daily[snap.date] = daily.get(snap.date, 0.0) + float(snap.spend)
+    avg_daily = median(daily.values()) if daily else 0.0
+
+    balance = info.get('balance')
+    det = anomaly.detect_low_balance(
+        float(balance) if balance is not None else None, avg_daily,
+        currency=info.get('currency') or (conn.currency or ''))
+
+    entity_key = 'prepaid_balance'
+    existing = (EngineAlert.objects
+                .filter(company=company, entity_key=entity_key, resolved=False)
+                .order_by('-created_at').first())
+    detail = dict(det.computed)
+    detail['kind'] = anomaly.KIND_LOW_BALANCE
+    detail['has_balance_field'] = info.get('has_balance_field', False)
+
+    if det.fired:
+        if existing is None:
+            return EngineAlert.objects.create(
+                company=company, alert_type=EngineAlert.Type.ANOMALIE,
+                message=det.message_fr, severity=det.severity,
+                entity_key=entity_key, detail=detail)
+        existing.message = det.message_fr
+        existing.severity = det.severity
+        existing.detail = detail
+        existing.save(update_fields=['message', 'severity', 'detail',
+                                     'updated_at'])
+        return existing
+
+    if det.insufficient_data:
+        # Dégradation documentée (solde indisponible) : une alerte INFO unique.
+        if existing is None:
+            return EngineAlert.objects.create(
+                company=company, alert_type=EngineAlert.Type.ANOMALIE,
+                message=det.message_fr, severity=SEVERITY_INFO,
+                entity_key=entity_key, detail=detail)
+        return existing
+
+    # Solde sain : résoudre une alerte ouverte le cas échéant.
+    if existing is not None:
+        existing.resolved = True
+        existing.detail = detail
+        existing.save(update_fields=['resolved', 'detail', 'updated_at'])
+    return None
+
+
 def _sync_company(conn):
     """Synchronise UNE société depuis sa connexion Meta active (avec token).
 
@@ -200,6 +286,12 @@ def _sync_company(conn):
             conn.currency = currency
             conn.save(update_fields=['currency'])
     except Exception:  # noqa: BLE001 — la devise n'empêche jamais la synchro
+        pass
+
+    # PUB97 — surveillance du solde prépayé Meta (best-effort, jamais bloquant).
+    try:
+        check_prepaid_balance(company, conn, client)
+    except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro
         pass
 
     sync.sync_campaigns(company, client.get_campaigns())

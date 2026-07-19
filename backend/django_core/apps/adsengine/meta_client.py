@@ -348,6 +348,51 @@ class MetaClient:
             'GET', acct, params={'fields': ','.join(fields or ('currency',))})
         return payload if isinstance(payload, dict) else {}
 
+    # PUB97 — champs de trésorerie du nœud de compte (prépayé Meta Maroc).
+    # ``balance``/``amount_spent`` sont en unités MINEURES (centimes) de la
+    # devise du compte ; ``funding_source_details`` porte le mode de financement.
+    ACCOUNT_BALANCE_FIELDS = (
+        'balance', 'spend_cap', 'amount_spent', 'currency',
+        'funding_source_details')
+
+    @staticmethod
+    def _minor_to_major(value):
+        """Convertit une unité mineure Meta (centimes, str) en majeure (Decimal),
+        ou ``None`` si absente/illisible (dégradation propre)."""
+        from decimal import Decimal, InvalidOperation
+        if value in (None, ''):
+            return None
+        try:
+            return (Decimal(str(value)) / Decimal('100')).quantize(
+                Decimal('0.01'))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
+    def get_account_balance(self):
+        """PUB97 — Solde / financement du compte publicitaire (LECTURE).
+
+        Renvoie un dict normalisé (montants en unités MAJEURES de la devise du
+        compte) ::
+
+            {'balance': Decimal|None, 'spend_cap': Decimal|None,
+             'amount_spent': Decimal|None, 'currency': str,
+             'funding_source_details': dict, 'has_balance_field': bool}
+
+        Dégradation documentée : si l'API n'expose pas ``balance`` (certains
+        comptes/modes de financement), ``balance`` est ``None`` et
+        ``has_balance_field`` False — l'appelant marque la surveillance trésorerie
+        dégradée sans lever d'alarme."""
+        payload = self.get_account(fields=self.ACCOUNT_BALANCE_FIELDS)
+        fsd = payload.get('funding_source_details')
+        return {
+            'balance': self._minor_to_major(payload.get('balance')),
+            'spend_cap': self._minor_to_major(payload.get('spend_cap')),
+            'amount_spent': self._minor_to_major(payload.get('amount_spent')),
+            'currency': payload.get('currency') or '',
+            'funding_source_details': fsd if isinstance(fsd, dict) else {},
+            'has_balance_field': 'balance' in payload,
+        }
+
     def get_campaigns(self, *, fields=None, limit=None):
         return self._read_list(self._account_edge('campaigns'),
                                fields=fields or self.CAMPAIGN_SYNC_FIELDS,

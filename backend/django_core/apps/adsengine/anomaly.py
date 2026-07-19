@@ -44,6 +44,15 @@ KIND_OTHER = 'autre'
 # n'applique PAS ``choices`` au ``.save()``, donc aucune migration requise pour
 # un nouveau kind qui suit ce pattern).
 KIND_CREATIVE_FATIGUE = 'creative_fatigue'
+# PUB97 — solde prépayé Meta bas (kind constante simple, aucune migration —
+# même pattern que ci-dessus). Meta Maroc = prépayé : à zéro, la diffusion
+# s'arrête et ressemble à « pas de données » (angle mort du guard zéro-délivrance
+# qui exige spend>0).
+KIND_LOW_BALANCE = 'low_prepaid_balance'
+
+# Seuil trésorerie par défaut : alerter quand le solde couvre moins de N jours de
+# la dépense quotidienne courante. CRITICAL sous la moitié du seuil.
+BALANCE_MIN_DAYS_RUNWAY = 5.0
 
 
 @dataclass(frozen=True)
@@ -347,6 +356,64 @@ def detect_creative_fatigue(*, frequency, ctr_current, ctr_baseline,
         + " — fatigue créative confirmée : rotation conseillée.")
     return Detection('creative_fatigue', True, False, severity,
                      KIND_CREATIVE_FATIGUE, message, computed)
+
+
+# ── PUB97 — Solde prépayé Meta (trésorerie) ─────────────────────────────────
+def detect_low_balance(balance, avg_daily_spend, *,
+                       min_days_runway=BALANCE_MIN_DAYS_RUNWAY, currency=''):
+    """PUB97 — Solde prépayé Meta trop bas pour la dépense courante.
+
+    ``balance`` et ``avg_daily_spend`` sont en unités MAJEURES de la devise du
+    compte (le client convertit les unités mineures Meta). Fonction PURE.
+
+    Dégradation documentée (jamais un faux positif) :
+      * ``balance`` ``None`` ⇒ l'API n'expose pas le champ (certains comptes/
+        modes de financement) → ``insufficient_data`` (info), pas d'alarme ;
+      * ``avg_daily_spend`` ≤ 0 ⇒ pas de dépense courante → aucune estimation de
+        runway possible → ``insufficient_data`` (info).
+
+    Sinon ``runway = balance / avg_daily_spend`` (jours) : sous ``min_days_runway``
+    ⇒ WARNING ; sous la moitié ⇒ CRITICAL (la diffusion va s'arrêter)."""
+    unit = f' {currency}' if currency else ''
+    if balance is None:
+        return _insufficient(
+            'prepaid_balance', KIND_LOW_BALANCE,
+            "Solde prépayé Meta indisponible via l'API (champ absent pour ce "
+            "compte / mode de financement) — surveillance trésorerie dégradée.",
+            {'balance': None, 'avg_daily_spend': None})
+    try:
+        bal = float(balance)
+        ads = float(avg_daily_spend)
+    except (TypeError, ValueError):
+        return _insufficient(
+            'prepaid_balance', KIND_LOW_BALANCE,
+            "Solde ou dépense courante illisible — vérification impossible.")
+    if ads <= 0:
+        return _insufficient(
+            'prepaid_balance', KIND_LOW_BALANCE,
+            "Aucune dépense courante — estimation de trésorerie impossible "
+            "(pas d'alarme).", {'balance': round(bal, 2), 'avg_daily_spend': ads})
+    runway = bal / ads
+    computed = {'balance': round(bal, 2), 'avg_daily_spend': round(ads, 2),
+                'days_runway': round(runway, 1),
+                'min_days_runway': float(min_days_runway),
+                'currency': currency}
+    if runway < (min_days_runway / 2.0):
+        return Detection(
+            'prepaid_balance', True, False, SEVERITY_CRITICAL, KIND_LOW_BALANCE,
+            (f"Solde prépayé Meta ≈ {bal:g}{unit} : couvre {runway:.1f} j de "
+             f"dépense (~{ads:g}{unit}/j). La diffusion va s'arrêter — "
+             f"recharger le compte."),
+            computed)
+    if runway < min_days_runway:
+        return Detection(
+            'prepaid_balance', True, False, SEVERITY_WARNING, KIND_LOW_BALANCE,
+            (f"Solde prépayé Meta ≈ {bal:g}{unit} : ne couvre plus que "
+             f"{runway:.1f} j de dépense (~{ads:g}{unit}/j, seuil "
+             f"{min_days_runway:g} j) — prévoir une recharge."),
+            computed)
+    return Detection('prepaid_balance', False, False, SEVERITY_INFO,
+                     KIND_LOW_BALANCE, '', computed)
 
 
 # ── Matérialisation (câblage DB — le seul point non pur du module) ────────────

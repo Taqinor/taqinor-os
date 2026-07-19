@@ -1296,6 +1296,22 @@ class MetaConnectionHealthView(APIView):
             {'key': 'paused', 'ok': True,
              'detail': 'Le client naît en pause (règle de sécurité).'},
         ]
+        # PUB97 — tuile solde prépayé Meta : lit la dernière alerte trésorerie
+        # non résolue (posée par la synchro), sans jamais appeler l'API en direct.
+        bal_alert = (EngineAlert.objects
+                     .filter(company=company, entity_key='prepaid_balance',
+                             resolved=False)
+                     .order_by('-created_at').first())
+        bal_detail = (bal_alert.detail or {}) if bal_alert else {}
+        statuses.append({
+            'key': 'prepaid_balance',
+            # OK tant qu'aucune alerte de solde bas n'est ouverte ; None-safe.
+            'ok': bal_alert is None or bal_alert.severity == 'info',
+            'detail': (bal_alert.message if bal_alert else ''),
+            'days_runway': bal_detail.get('days_runway'),
+            'balance': bal_detail.get('balance'),
+            'currency': bal_detail.get('currency', ''),
+        })
         return Response({'statuses': statuses})
 
 
