@@ -58,6 +58,10 @@ class StatusView(APIView):
 
 # ENG12 — clés d'environnement dont l'endpoint santé rapporte la PRÉSENCE (jamais
 # la valeur). Lead Ads (webhook), CAPI (conversions serveur), fabrique créative.
+# PUB29 — étendu aux familles de clés jusque-là INVISIBLES de l'écran santé :
+# CAPI CRM-stage (ADSENG32), CAPI CRM Dataset/signatures Odoo (ADSDEEP27-29),
+# connecteur Odoo lecture seule (ADSENG-ODOO), webhook WhatsApp Cloud (ADSDEEP24)
+# — chacune une boucle déjà codée et testée qui attend juste sa clé.
 WIRING_ENV_KEYS = (
     'META_LEAD_ADS_APP_SECRET',
     'META_LEAD_ADS_VERIFY_TOKEN',
@@ -68,6 +72,20 @@ WIRING_ENV_KEYS = (
     'TEMPLATED_API_KEY',
     'ELEVENLABS_API_KEY',
     'JSON2VIDEO_API_KEY',
+    # PUB29 — CAPI par étape du pipeline CRM (Conversion Leads, ADSENG32).
+    'META_CRM_STAGE_CAPI_ENABLED',
+    # PUB29 — CAPI CRM Dataset (signatures Odoo, ADSDEEP27-29).
+    'CAPI_CRM_DATASET_ID',
+    'CAPI_CRM_ACCESS_TOKEN',
+    # PUB29 — connecteur Odoo lecture seule (coût-par-signature réel).
+    'ODOO_URL',
+    'ODOO_DB',
+    'ODOO_USERNAME',
+    'ODOO_API_KEY',
+    # PUB29 — webhook WhatsApp Cloud API (attribution CTWA, ADSDEEP24).
+    'WHATSAPP_CLOUD_VERIFY_TOKEN',
+    'WHATSAPP_CLOUD_APP_SECRET',
+    'WHATSAPP_CLOUD_COMPANY_ID',
 )
 
 
@@ -162,6 +180,12 @@ class WiringHealthView(APIView):
         from .meta_client import rate_limit_status
         rate_limit = rate_limit_status(conn.ad_account_id) if conn else None
 
+        # PUB29 — boucles déjà codées/testées qui attendent SEULEMENT leur clé
+        # (le fondateur ne pouvait pas les voir avant) : ON/OFF + remédiation FR
+        # exacte par boucle. Panneau ConnectionScreen « Boucles en attente
+        # d'activation » (frontend, lane console) consomme ce même payload.
+        from .audit import pending_activation_loops
+
         return Response({
             'keys': keys,
             'connection': connection,
@@ -176,6 +200,8 @@ class WiringHealthView(APIView):
             'rate_limit': rate_limit,
             # ADSDEEP16 — sonde d'accès à l'asset Page (lecture d'un post diffusé).
             'page_asset_access': _page_asset_probe(company, conn),
+            # PUB29 — boucles en attente d'activation (ON/OFF + remédiation FR).
+            'boucles_en_attente': pending_activation_loops(),
         })
 
 
