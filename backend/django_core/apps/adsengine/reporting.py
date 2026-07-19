@@ -253,9 +253,12 @@ def _default_period(date_start, date_end):
 
 def _ad_window_rows(company, *, date_start, date_end):
     """Une ligne par ``AdMirror`` de la société AYANT au moins un instantané sur
-    la période : dépense/résultats cumulés + hook rate dérivé (ADSDEEP44).
-    Company-scopé. Un ad sans instantané sur la période est simplement absent
-    (jamais une ligne à zéro fabriquée)."""
+    la période : dépense/résultats cumulés + le bundle vidéo dérivé COMPLET
+    (ADSDEEP44 — hook/hold rate, ratio 15s/6s, courbe de rétention, temps de
+    visionnage moyen ; PUB8 : avant cette tâche, seul ``hook_rate`` survivait
+    ici, le reste étant calculé puis JETÉ). Company-scopé. Un ad sans
+    instantané sur la période est simplement absent (jamais une ligne à zéro
+    fabriquée)."""
     from django.contrib.contenttypes.models import ContentType
 
     from . import metrics as metrics_mod
@@ -279,6 +282,11 @@ def _ad_window_rows(company, *, date_start, date_end):
             'format_tag': ad.format_tag,
             'spend': spend, 'results': results,
             'hook_rate': video['hook_rate'],
+            # PUB8 — bundle complet conservé (plus jamais jeté).
+            'hold_rate': video['hold_rate'],
+            'ratio_15s_to_6s': video['ratio_15s_to_6s'],
+            'retention': video['retention'],
+            'watch_time_avg_s': video['watch_time_avg_s'],
         })
     return rows
 
@@ -336,12 +344,22 @@ def creative_leaderboard(company, *, dimension='hook', date_start=None,
     }
 
 
+def _round4_or_none(value):
+    return round(value, 4) if value is not None else None
+
+
 def creative_scatter(company, *, date_start=None, date_end=None):
     """ADSDEEP47 — Nuage de points hook rate × dépense, classé en 4 quadrants
     FR autour de la MÉDIANE (hook rate, dépense) des ads du lot — jamais un
     seuil absolu (un petit compte SMB n'a pas la même échelle qu'un gros).
     Seuls les ads avec un hook rate CALCULABLE (données vidéo présentes) et
-    une dépense > 0 entrent dans le nuage (jamais un point fabriqué à 0)."""
+    une dépense > 0 entrent dans le nuage (jamais un point fabriqué à 0).
+
+    PUB8 — chaque point porte aussi le reste du bundle vidéo dérivé
+    (``hold_rate``/``ratio_15s_to_6s``/``retention``/``watch_time_avg_s``,
+    ``metrics.derived_ad_video_metrics``) — c'est la seule surface reporting
+    PAR AD (le leaderboard groupe par tag) : la courbe de rétention par ad
+    vidéo (ReportsScreen onglet Créatifs + drill cockpit) se lit ici."""
     date_start, date_end = _default_period(date_start, date_end)
     rows = _ad_window_rows(company, date_start=date_start, date_end=date_end)
     plottable = [
@@ -369,12 +387,21 @@ def creative_scatter(company, *, date_start=None, date_end=None):
             quadrant = QUADRANT_CONFIRMED_WINNER
         else:
             quadrant = QUADRANT_WATCH
+        retention = r.get('retention') or {}
         points.append({
             'ad_meta_id': r['ad_meta_id'], 'name': r['name'],
             'hook_tag': r['hook_tag'], 'angle_tag': r['angle_tag'],
             'format_tag': r['format_tag'], 'spend': str(r['spend']),
             'hook_rate': round(r['hook_rate'], 4), 'quadrant': quadrant,
             'quadrant_label_fr': QUADRANT_LABELS_FR[quadrant],
+            # PUB8 — reste du bundle vidéo (null-safe par clé, jamais un 0
+            # fabriqué pour un point manquant).
+            'hold_rate': _round4_or_none(r.get('hold_rate')),
+            'ratio_15s_to_6s': _round4_or_none(r.get('ratio_15s_to_6s')),
+            'retention': {k: _round4_or_none(v) for k, v in retention.items()},
+            'watch_time_avg_s': (
+                round(r['watch_time_avg_s'], 1)
+                if r.get('watch_time_avg_s') is not None else None),
         })
     return {
         'periode': periode, 'points': points,

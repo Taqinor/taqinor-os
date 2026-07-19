@@ -4,7 +4,7 @@ import { BarChart3, Download, ClipboardList } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeVariants, normalizeFunnel, normalizeCohorts, normalizeLeaderboard,
-  normalizeScatter, toCsv, formatMAD, formatNumber, formatPercent,
+  normalizeScatter, hasRetentionData, toCsv, formatMAD, formatNumber, formatPercent,
 } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 
@@ -327,7 +327,12 @@ export default function ReportsScreen() {
                   : (
                     <table className="data-table" data-testid="ae-creatifs-scatter-table">
                       <thead>
-                        <tr><th>Ad</th><th>Dépense</th><th>Hook rate</th><th>Quadrant</th></tr>
+                        <tr>
+                          <th>Ad</th><th>Dépense</th><th>Hook rate</th><th>Quadrant</th>
+                          {/* PUB8 — courbe de rétention par ad vidéo (25/50/75/100 %
+                              des lectures qui atteignent chaque quartile). */}
+                          <th>Rétention (25/50/75/100 %)</th>
+                        </tr>
                       </thead>
                       <tbody>
                         {scatter.points.map(p => (
@@ -336,6 +341,12 @@ export default function ReportsScreen() {
                             <td>{formatMAD(p.spend)}</td>
                             <td>{formatPercent(p.hookRate, 1)}</td>
                             <td data-testid="ae-creatifs-scatter-quadrant">{p.quadrantLabel}</td>
+                            <td data-testid="ae-creatifs-scatter-retention">
+                              {hasRetentionData(p)
+                                ? [p.retention.p25, p.retention.p50, p.retention.p75, p.retention.p100]
+                                    .map(v => formatPercent(v, 0)).join(' · ')
+                                : '—'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

@@ -735,8 +735,27 @@ export function normalizeScatter(raw) {
       hookRate: numOrNull(p.hook_rate),
       quadrant: p.quadrant || '',
       quadrantLabel: p.quadrant_label_fr || SCATTER_QUADRANT_LABELS[p.quadrant] || '',
+      // PUB8 — reste du bundle vidéo dérivé (métriques.derived_ad_video_metrics),
+      // conservé jusqu'ici plutôt que jeté après le hook rate.
+      holdRate: numOrNull(p.hold_rate),
+      ratio15sTo6s: numOrNull(p.ratio_15s_to_6s),
+      watchTimeAvgS: numOrNull(p.watch_time_avg_s),
+      retention: {
+        p25: numOrNull(p.retention?.p25),
+        p50: numOrNull(p.retention?.p50),
+        p75: numOrNull(p.retention?.p75),
+        p100: numOrNull(p.retention?.p100),
+      },
     })),
   }
+}
+
+// PUB8 — un point a une courbe de rétention exploitable si AU MOINS un
+// quartile est calculable (jamais un point « vide » rendu comme s'il portait
+// une donnée réelle — une ad statique ou sans lecture n'a aucun quartile).
+export function hasRetentionData(point) {
+  const r = point?.retention || {}
+  return [r.p25, r.p50, r.p75, r.p100].some(v => v != null)
 }
 
 // Construit un CSV depuis des en-têtes + lignes (échappement RFC-4180 simple).

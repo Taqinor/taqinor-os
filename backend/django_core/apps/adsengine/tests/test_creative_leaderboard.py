@@ -193,6 +193,40 @@ class CreativeScatterTests(TestCase):
         self.assertEqual(data['points'], [])
         self.assertIsNone(data['median_spend'])
 
+    def test_points_carry_the_full_video_bundle(self):
+        # PUB8 — hold_rate/ratio_15s_to_6s/retention/watch_time_avg_s ne
+        # doivent plus être jetés : ils voyagent avec le point (la seule
+        # surface reporting PAR AD vidéo).
+        day = datetime.date(2026, 7, 16)
+        ad = self._ad('vid1')
+        self._snap(ad, day, spend='120.00', impressions=1000, video_metrics={
+            's6': 400, 's15': 200, 'p25': 800, 'p50': 500, 'p75': 250,
+            'p100': 100, 'plays': 1000, 'thruplay': 300, 'avg_time': 12.5,
+        })
+        data = reporting.creative_scatter(
+            self.company, date_start=day, date_end=day)
+        point = data['points'][0]
+        self.assertAlmostEqual(point['hold_rate'], 0.3, places=4)  # thruplay/plays
+        self.assertIn('retention', point)
+        self.assertAlmostEqual(point['retention']['p25'], 0.8, places=4)
+        self.assertAlmostEqual(point['retention']['p100'], 0.1, places=4)
+        self.assertAlmostEqual(point['ratio_15s_to_6s'], 0.5, places=4)
+        self.assertAlmostEqual(point['watch_time_avg_s'], 12.5, places=1)
+
+    def test_static_ad_has_null_video_bundle_never_a_fabricated_zero(self):
+        day = datetime.date(2026, 7, 16)
+        ad = self._ad('static1')
+        # hook rate calculable (s6 présent) mais AUCUNE autre donnée vidéo.
+        self._snap(ad, day, spend='60.00', impressions=1000,
+                   video_metrics={'s6': 100})
+        data = reporting.creative_scatter(
+            self.company, date_start=day, date_end=day)
+        point = data['points'][0]
+        self.assertIsNone(point['hold_rate'])
+        self.assertIsNone(point['watch_time_avg_s'])
+        self.assertEqual(point['retention'], {
+            'p25': None, 'p50': None, 'p75': None, 'p100': None})
+
 
 class CreativeLeaderboardEndpointTests(TestCase):
     def setUp(self):
