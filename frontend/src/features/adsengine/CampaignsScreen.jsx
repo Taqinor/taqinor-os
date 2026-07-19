@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { RefreshCw, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { RefreshCw, ChevronRight, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
@@ -303,7 +304,7 @@ export default function CampaignsScreen() {
                     : (
                       <table className="data-table" data-testid="ae-camp-ads-table">
                         <thead>
-                          <tr><th>Ad</th><th>Statut</th><th>Dépense</th><th>Leads</th></tr>
+                          <tr><th>Ad</th><th>Statut</th><th>Dépense</th><th>Leads</th><th /></tr>
                         </thead>
                         <tbody>
                           {openAdset.ads.map(ad => (
@@ -312,6 +313,16 @@ export default function CampaignsScreen() {
                               <td>{ad.statut_display || ad.status || '—'}</td>
                               <td>{formatMoney(ad.depense_mad, currency)}</td>
                               <td>{formatNumber(ad.nb_leads)}</td>
+                              <td>
+                                {/* PUB44 — lien croisé vers la fiche « histoire complète ». */}
+                                {ad.meta_id && (
+                                  <Link to={`/publicite/ad/${ad.meta_id}`} className="btn btn-light"
+                                    data-testid="ae-camp-ad-full-story"
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                    <FileText size={14} aria-hidden="true" /> Fiche
+                                  </Link>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

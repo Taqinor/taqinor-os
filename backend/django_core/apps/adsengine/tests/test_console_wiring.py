@@ -819,3 +819,104 @@ class ConsoleWiringTests(TestCase):
     def test_today_queue_requires_view_permission(self):
         resp = auth(self.nobody).get(f'{BASE}/aujourd-hui/')
         self.assertEqual(resp.status_code, 403)
+
+    # ── PUB44 — Fiche « histoire complète » d'une ad ─────────────────────────
+    def test_ad_full_story_assembles_all_sections(self):
+        from apps.adsengine.models import (
+            AdCreativeMirror, AnomalyEvent, CommentMirror, EngineAction,
+            Experiment, ExperimentArm, InsightBreakdown, RulePolicy,
+        )
+
+        AdCreativeMirror.objects.create(
+            company=self.company, ad=self.ad, title='Toiture solaire',
+            body='Économisez sur votre facture.', cta_type='LEARN_MORE',
+            effective_object_story_id='story-777')
+
+        action = EngineAction.objects.create(
+            company=self.company, kind='edit_copy',
+            reason_fr="Rafraîchir l'accroche.",
+            payload={'ad_id': 'ad-1', 'creative_spec': {}})
+
+        CommentMirror.objects.create(
+            company=self.company, meta_id='cm-story-1', object_meta_id='story-777',
+            source=CommentMirror.Source.AD, from_name='Client X',
+            message='Combien ça coûte ?',
+            created_time=datetime.datetime.now(datetime.timezone.utc))
+
+        rule = RulePolicy.objects.create(
+            company=self.company, template_key='cpl_band', enabled=True)
+        AnomalyEvent.objects.create(
+            company=self.company, kind='cost_spike', entity_type='ad',
+            entity_meta_id='ad-1', message_fr='Pic de coût détecté.',
+            rule_policy=rule)
+
+        exp = Experiment.objects.create(company=self.company, name='Test hooks')
+        ExperimentArm.objects.create(
+            company=self.company, experiment=exp, ad_id='ad-1', label='Bras A')
+
+        ad_ct = ContentType.objects.get_for_model(AdMirror)
+        InsightBreakdown.objects.create(
+            company=self.company, content_type=ad_ct, object_id=self.ad.pk,
+            date=datetime.date.today(), dimension='region', key='Casablanca',
+            spend='30.00')
+
+        resp = auth(self.viewer).get(f'{BASE}/ads/ad-1/histoire/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        data = resp.data
+        self.assertEqual(data['ad']['meta_id'], 'ad-1')
+        self.assertEqual(data['creatif']['title'], 'Toiture solaire')
+        # Métriques = LA MÊME ligne que le cockpit (dépense fixture 30.00).
+        self.assertEqual(data['metriques']['depense_mad'], '30.00')
+        self.assertTrue(any(a['id'] == action.pk for a in data['actions']))
+        self.assertEqual(len(data['commentaires']), 1)
+        self.assertEqual(data['commentaires'][0]['message'], 'Combien ça coûte ?')
+        self.assertEqual(len(data['regles']), 1)
+        self.assertEqual(data['regles'][0]['rule_template_key'], 'cpl_band')
+        self.assertEqual(len(data['experiences']), 1)
+        self.assertEqual(data['experiences'][0]['experiment_nom'], 'Test hooks')
+        self.assertEqual(len(data['breakdowns']), 1)
+        self.assertEqual(data['breakdowns'][0]['key'], 'Casablanca')
+
+    def test_ad_full_story_no_creative_no_comments_still_200(self):
+        """Aucun créatif synchronisé -> commentaires = liste vide (jamais une
+        erreur, jamais un 500 sur effective_object_story_id manquant)."""
+        resp = auth(self.viewer).get(f'{BASE}/ads/ad-1/histoire/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['creatif'])
+        self.assertEqual(resp.data['commentaires'], [])
+
+    def test_ad_full_story_unknown_ad_404(self):
+        resp = auth(self.viewer).get(f'{BASE}/ads/nope-999/histoire/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_ad_full_story_scoped_to_company(self):
+        other_adset = AdSetMirror.objects.create(
+            company=self.other, meta_id='other-as', name='Other adset',
+            status='ACTIVE', campaign=AdCampaignMirror.objects.get(
+                company=self.other, meta_id='other-cmp'))
+        AdMirror.objects.create(
+            company=self.other, meta_id='other-ad', name='Other ad',
+            status='ACTIVE', adset=other_adset)
+        resp = auth(self.viewer).get(f'{BASE}/ads/other-ad/histoire/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_ad_full_story_requires_view_permission(self):
+        resp = auth(self.nobody).get(f'{BASE}/ads/ad-1/histoire/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_comments_list_carries_ad_meta_id_cross_link(self):
+        """PUB44 — lien croisé Commentaires -> fiche ad : `ad_meta_id` résolu
+        via l'effective_object_story_id du créatif (jamais une requête par
+        ligne — une seule map société)."""
+        from apps.adsengine.models import AdCreativeMirror, CommentMirror
+        AdCreativeMirror.objects.create(
+            company=self.company, ad=self.ad,
+            effective_object_story_id='story-888')
+        CommentMirror.objects.create(
+            company=self.company, meta_id='cm-2', object_meta_id='story-888',
+            source=CommentMirror.Source.AD, message='Question',
+            created_time=datetime.datetime.now(datetime.timezone.utc))
+        resp = auth(self.viewer).get(f'{BASE}/commentaires/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        row = next(r for r in resp.data if r['meta_id'] == 'cm-2')
+        self.assertEqual(row['ad_meta_id'], 'ad-1')

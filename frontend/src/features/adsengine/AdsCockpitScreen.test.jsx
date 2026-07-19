@@ -143,6 +143,15 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
     expect(screen.getByText('Aucune ad synchronisée')).toBeInTheDocument()
   })
 
+  // ── PUB44 — Lien croisé vers la fiche « histoire complète » ─────────────
+  it('chaque ligne porte un lien vers sa fiche complète', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+    const links = screen.getAllByTestId('ae-cockpit-full-story')
+    expect(links.length).toBeGreaterThan(0)
+    expect(links[0]).toHaveAttribute('href', expect.stringMatching(/^\/publicite\/ad\/ad-\d$/))
+  })
+
   // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
   describe('PUB40 — sélecteur de période', () => {
     it('affiche la barre de période et recharge le cockpit au changement', async () => {

@@ -922,3 +922,144 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
                 recent_agg.get(ad.pk), baseline_agg.get(ad.pk)),
         })
     return rows
+
+
+# ── PUB44 — Fiche « histoire complète » d'une ad ───────────────────────────
+def ad_full_story(company, meta_id):
+    """PUB44 — « Que se passe-t-il avec CETTE ad » en UN appel : créatif +
+    métriques + actions passées + commentaires + règles l'ayant touchée +
+    expériences + ventilations — aujourd'hui éclaté sur 6 écrans.
+
+    RÉUTILISE les sélecteurs déjà construits, aucune logique métier
+    dupliquée : ``ads_cockpit_rows`` pour les métriques (MÊME ligne que le
+    cockpit — le O(n_ads) qu'elle coûte est accepté ici, c'est un écran
+    détail par ad, pas une liste chaude), le même filtre que
+    ``BreakdownsView`` (ADSDEEP9) pour les ventilations,
+    ``InsightBreakdownSerializer`` pour leur forme. ``None`` si l'ad
+    n'existe pas dans la société (404 côté vue — jamais de fuite cross-
+    tenant).
+
+    Trois conventions de clé COHABITENT dans ``EngineAction.payload`` selon
+    le ``kind`` (aucune n'est un choix arbitraire — chacune est celle déjà
+    écrite par ``services.py``/``rules_engine.py`` pour ce kind) :
+    ``target_type='ad'``+``target_meta_id`` (pause/rotate_creative/règles
+    v2 scope=ad), ``ad_id`` (edit_copy), ``source_ad_id`` (duplicate)."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Q
+
+    from .models import (
+        AdMirror, AnomalyEvent, CommentMirror, EngineAction, ExperimentArm,
+        InsightBreakdown)
+
+    ad = AdMirror.objects.filter(company=company, meta_id=meta_id).first()
+    if ad is None:
+        return None
+
+    cockpit_row = next(
+        (r for r in ads_cockpit_rows(company) if r['meta_id'] == meta_id),
+        None)
+
+    # Créatif — texte complet (titre/body/description/CTA/permalien IG), le
+    # MÊME contrat que `AdCreativePanel.jsx` (ADSDEEP14) — jamais un
+    # deuxième format de créatif inventé pour cet écran.
+    creative = getattr(ad, 'creative_mirror', None)
+    creatif = None
+    if creative is not None:
+        creatif = {
+            'video_id': creative.video_id, 'image_hash': creative.image_hash,
+            'title': creative.title, 'body': creative.body,
+            'description': creative.description, 'cta_type': creative.cta_type,
+            'instagram_permalink_url': creative.instagram_permalink_url,
+            'effective_object_story_id': creative.effective_object_story_id,
+        }
+
+    actions_qs = (EngineAction.objects.filter(company=company)
+                  .filter(Q(payload__target_type='ad',
+                            payload__target_meta_id=meta_id)
+                          | Q(payload__ad_id=meta_id)
+                          | Q(payload__source_ad_id=meta_id))
+                  .order_by('-created_at'))
+    actions = [{
+        'id': a.pk, 'kind': a.kind, 'kind_display': a.get_kind_display(),
+        'reason_fr': a.reason_fr, 'status': a.status,
+        'status_display': a.get_status_display(), 'auto': a.auto,
+        'created_at': a.created_at.isoformat(),
+    } for a in actions_qs]
+
+    # Commentaires — pour une ad (source=AD), `object_meta_id` porte
+    # l'`effective_object_story_id` du CRÉATIF (dark post), jamais le
+    # `meta_id` de l'ad (dossier organic-posts §3, models.py CommentMirror).
+    # Aucun créatif synchronisé = aucun post connu = liste vide (pas une erreur).
+    comments = []
+    story_id = creative.effective_object_story_id if creative is not None else ''
+    if story_id:
+        comments_qs = (CommentMirror.objects
+                       .filter(company=company, object_meta_id=story_id,
+                               source=CommentMirror.Source.AD)
+                       .order_by('-created_time'))
+        comments = [{
+            'id': c.pk, 'from_name': c.from_name, 'message': c.message,
+            'created_time': (
+                c.created_time.isoformat() if c.created_time else None),
+            'is_hidden': c.is_hidden, 'hidden_verified': c.hidden_verified,
+            'answered': c.answered,
+        } for c in comments_qs]
+
+    # Règles l'ayant touchée — anomalies détectées sur CETTE ad
+    # (entity_type/entity_meta_id, jamais une FK dure — survit à une
+    # resynchro, cf. AnomalyEvent.__doc__).
+    rules_qs = (AnomalyEvent.objects
+                .filter(company=company, entity_type='ad', entity_meta_id=meta_id)
+                .select_related('rule_policy')
+                .order_by('-created_at'))
+    regles = [{
+        'id': r.pk, 'kind': r.kind, 'kind_display': r.get_kind_display(),
+        'severity': r.severity, 'message_fr': r.message_fr,
+        'resolved': r.resolved,
+        'rule_template_key': (r.rule_policy.template_key if r.rule_policy else None),
+        'rule_label': (r.rule_policy.get_template_key_display()
+                       if r.rule_policy else None),
+        'created_at': r.created_at.isoformat(),
+    } for r in rules_qs]
+
+    # Expériences — bras dont CETTE ad porte le créatif candidat
+    # (ExperimentArm.ad_id, la seule jointure per-ad du sous-système bandit —
+    # Experiment lui-même ne descend qu'au niveau campagne/ad set).
+    arms_qs = (ExperimentArm.objects
+               .filter(company=company, ad_id=meta_id)
+               .select_related('experiment')
+               .order_by('-created_at'))
+    experiences = [{
+        'id': arm.pk, 'label': arm.label or f'Bras #{arm.pk}',
+        'is_active': arm.is_active,
+        'experiment_id': arm.experiment_id,
+        'experiment_nom': arm.experiment.name if arm.experiment_id else '',
+        'experiment_statut': (arm.experiment.status if arm.experiment_id else ''),
+    } for arm in arms_qs]
+
+    # Ventilations — MÊME filtre que BreakdownsView (content_type + PK de
+    # l'ad, jamais son meta_id — ADSDEEP9) + son propre serializer (aucune
+    # deuxième forme de ventilation inventée pour cet écran).
+    from .serializers import InsightBreakdownSerializer
+    ct = ContentType.objects.get_for_model(AdMirror)
+    breakdowns_qs = (
+        InsightBreakdown.objects
+        .filter(company=company, content_type=ct, object_id=ad.pk)
+        .order_by('-date'))
+    breakdowns = InsightBreakdownSerializer(breakdowns_qs, many=True).data
+
+    return {
+        'ad': {
+            'id': ad.id, 'meta_id': ad.meta_id, 'nom': ad.name,
+            'statut': ad.status,
+            'statut_display': (
+                cockpit_row['statut_display'] if cockpit_row else ad.status),
+        },
+        'creatif': creatif,
+        'metriques': cockpit_row,
+        'actions': actions,
+        'commentaires': comments,
+        'regles': regles,
+        'experiences': experiences,
+        'breakdowns': breakdowns,
+    }

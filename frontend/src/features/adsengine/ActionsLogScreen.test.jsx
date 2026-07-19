@@ -74,6 +74,35 @@ describe('ActionsLogScreen (ENG28)', () => {
     expect(screen.getByText('Fréquence trop haute')).toBeInTheDocument()
   })
 
+  // ── PUB44 — Lien croisé vers la fiche « histoire complète » ─────────────
+  describe('PUB44 — lien croisé vers la fiche ad', () => {
+    it('action avec payload.ad_id résoluble -> lien affiché', async () => {
+      mocks.log.mockResolvedValue({ data: [
+        { id: 4, type: 'edit_copy', reason_fr: 'Nouvelle accroche', statut: 'approuve',
+          payload: { ad_id: 'ad-42' } },
+      ] })
+      renderScreen()
+      const link = await screen.findByTestId('ae-log-ad-link')
+      expect(link).toHaveAttribute('href', '/publicite/ad/ad-42')
+    })
+
+    it('action avec target_type=ad résoluble -> lien affiché', async () => {
+      mocks.log.mockResolvedValue({ data: [
+        { id: 5, type: 'pause', reason_fr: 'Fatigue', statut: 'approuve',
+          payload: { target_type: 'ad', target_meta_id: 'ad-7' } },
+      ] })
+      renderScreen()
+      const link = await screen.findByTestId('ae-log-ad-link')
+      expect(link).toHaveAttribute('href', '/publicite/ad/ad-7')
+    })
+
+    it('action sans payload résoluble -> aucun lien (jamais fabriqué)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-log-ad-link')).toBeNull()
+    })
+  })
+
   // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
   describe('PUB40 — sélecteur de période', () => {
     it('affiche la barre de période et recharge le journal au changement', async () => {

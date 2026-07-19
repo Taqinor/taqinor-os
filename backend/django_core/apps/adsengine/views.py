@@ -2179,6 +2179,29 @@ class AdPreviewsView(APIView):
         return Response({'format': ad_format, 'body': body})
 
 
+class AdFullStoryView(APIView):
+    """PUB44 — Fiche « histoire complète » d'une ad (créatif + métriques +
+    actions passées + commentaires + règles + expériences + ventilations)
+    en UNE requête — aujourd'hui éclaté sur 6 écrans. Vue MINCE, dérivée de
+    ``metrics.ad_full_story`` (réutilise ``ads_cockpit_rows`` + les mêmes
+    filtres que ``BreakdownsView``/``CommentListView`` — aucun recalcul
+    métier). ``GET /api/django/adsengine/ads/<meta_id>/histoire/`` — company-
+    scopé (un id d'une autre société → 404, jamais de fuite cross-tenant),
+    gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request, meta_id):
+        company, err = _adseng_company_gate(request, 'adsengine_view')
+        if err is not None:
+            return err
+        from .metrics import ad_full_story
+        story = ad_full_story(company, meta_id)
+        if story is None:
+            return Response({'detail': 'Ad introuvable.'}, status=404)
+        return Response(story)
+
+
 class RealLeadsView(APIView):
     """ADSDEEP19 — Comptes de leads RÉELS par ad / par campagne (MetaLeadMirror).
 
@@ -2283,7 +2306,15 @@ class CommentListView(APIView):
         unanswered = _truthy_param(request.query_params.get('unanswered'))
         if unanswered:
             qs = qs.filter(answered=False)
-        return Response(CommentMirrorSerializer(qs, many=True).data)
+        # PUB44 — lien croisé vers la fiche « histoire complète » de l'ad :
+        # UNE requête pour toute la société (jamais une par commentaire).
+        from .models import AdCreativeMirror
+        story_to_ad = dict(
+            AdCreativeMirror.objects.filter(company=company)
+            .exclude(effective_object_story_id='')
+            .values_list('effective_object_story_id', 'ad__meta_id'))
+        return Response(CommentMirrorSerializer(
+            qs, many=True, context={'story_to_ad': story_to_ad}).data)
 
 
 class CommentCountsView(APIView):

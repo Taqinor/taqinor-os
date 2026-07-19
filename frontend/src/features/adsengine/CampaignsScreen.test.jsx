@@ -44,8 +44,8 @@ beforeEach(() => {
         learning_badge: { label: 'En apprentissage', tone: 'info' },
         budget_quotidien_mad: 40, depense_mad: 300, nb_leads: 7,
         ads: [
-          { id: 111, nom: 'Reel toiture', statut_display: 'Actif', depense_mad: 150, nb_leads: 4 },
-          { id: 112, nom: 'Statique prix', statut_display: 'Actif', depense_mad: 150, nb_leads: 3 },
+          { id: 111, meta_id: 'ad-111', nom: 'Reel toiture', statut_display: 'Actif', depense_mad: 150, nb_leads: 4 },
+          { id: 112, meta_id: 'ad-112', nom: 'Statique prix', statut_display: 'Actif', depense_mad: 150, nb_leads: 3 },
         ] },
       { id: 12, nom: 'Ad set pompage', statut_display: 'En pause',
         learning_badge: { label: 'Optimisé', tone: 'success' },
@@ -147,6 +147,11 @@ describe('CampaignsScreen (ENG24)', () => {
       expect(breadcrumb).toHaveTextContent('Campagnes')
       expect(breadcrumb).toHaveTextContent('Solaire résidentiel Casa')
       expect(breadcrumb).toHaveTextContent('Ad set toiture')
+
+      // PUB44 — chaque ad porte un lien croisé vers sa fiche complète.
+      const links = screen.getAllByTestId('ae-camp-ad-full-story')
+      expect(links).toHaveLength(2)
+      expect(links[0]).toHaveAttribute('href', '/publicite/ad/ad-111')
     })
 
     it('« Retour aux ad sets » remonte au 2ᵉ niveau sans recharger la hiérarchie', async () => {

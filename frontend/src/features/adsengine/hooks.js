@@ -181,6 +181,28 @@ export const AE_HOOKS = {
     loadError: 'ae-today-load-error',
     navBadge: 'ae-nav-today-badge', // pastille de comptage sur l'icône de nav
   },
+
+  // PUB44 — Fiche « histoire complète » d'une ad (`/publicite/ad/:id`) +
+  // liens croisés depuis Cockpit/Campagnes/Journal/Commentaires.
+  adDetail: {
+    root: 'ae-ad-detail',
+    statut: 'ae-ad-detail-statut',
+    notFound: 'ae-ad-detail-not-found',
+    loadError: 'ae-ad-detail-load-error',
+    noCreative: 'ae-ad-detail-no-creative',
+    metrics: 'ae-ad-detail-metrics',
+    fatigue: 'ae-ad-detail-fatigue',
+    actionRow: 'ae-ad-detail-action-row',
+    commentRow: 'ae-ad-detail-comment-row',
+    ruleRow: 'ae-ad-detail-rule-row',
+    experimentRow: 'ae-ad-detail-experiment-row',
+    breakdownRow: 'ae-ad-detail-breakdown-row',
+    // Liens croisés (chaque écran source porte son propre hook) :
+    crossLinkCockpit: 'ae-cockpit-full-story',
+    crossLinkCampaigns: 'ae-camp-ad-full-story',
+    crossLinkJournal: 'ae-log-ad-link',
+    crossLinkCommentsPrefix: 'ae-comment-ad-link-', // + id de commentaire
+  },
 }
 
 export default AE_HOOKS

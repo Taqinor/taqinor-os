@@ -30,6 +30,8 @@ import TodayNavIcon from './TodayNavIcon'
 
 // PUB42 — file « Aujourd'hui » unifiée (écran d'accueil /publicite).
 const TodayScreen = lazy(() => import('./TodayScreen'))
+// PUB44 — fiche « histoire complète » d'une ad (deep-link, pas de nav item).
+const AdDetailScreen = lazy(() => import('./AdDetailScreen'))
 const DashboardScreen = lazy(() => import('./DashboardScreen'))
 const ConnectionScreen = lazy(() => import('./ConnectionScreen'))
 const CampaignsScreen = lazy(() => import('./CampaignsScreen'))
@@ -100,6 +102,8 @@ const config = {
     ['/publicite/journal', "Publicité — Journal d'actions"],
     ['/publicite/connexion', 'Publicité — Connexion & garde-fous'],
     ['/publicite/arbre', "Publicité — L'Arbre"],
+    // PUB44 — fiche ad (préfixe fixe avant l'id dynamique).
+    ['/publicite/ad/', 'Publicité — Fiche ad'],
     // PUB42 — le PLUS général (préfixe de tous les autres) : DERNIER, sinon
     // il matcherait `/publicite/tableau-de-bord` etc. avant leur propre entrée
     // (routes.meta.js fait un `find` sur `startsWith`, premier match gagne).
@@ -110,6 +114,8 @@ const config = {
     // PUB42 — écran d'accueil (chemin exact, aucune ambiguïté de préfixe côté
     // react-router : chaque `path` reste un match littéral indépendant).
     { path: '/publicite', component: TodayScreen, roles: ROLES },
+    // PUB44 — fiche « histoire complète » d'une ad (deep-link, sans item nav).
+    { path: '/publicite/ad/:id', component: AdDetailScreen, roles: ROLES },
     { path: '/publicite/tableau-de-bord', component: DashboardScreen, roles: ROLES },
     { path: '/publicite/cockpit', component: AdsCockpitScreen, roles: ROLES },
     { path: '/publicite/approbations', component: ApprovalsScreen, roles: ROLES },

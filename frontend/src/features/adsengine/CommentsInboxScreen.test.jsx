@@ -45,7 +45,7 @@ const COMMENTS = [
   { id: 3, meta_id: 'c3', object_meta_id: 'dark-1', source: 'ad',
     message: 'Prix ?', from_name: 'Sara', created_time: older,
     is_hidden: true, hidden_verified: false, answered: false,
-    private_reply_sent_at: null },
+    private_reply_sent_at: null, ad_meta_id: 'ad-9' },
   { id: 4, meta_id: 'c4', object_meta_id: 'dark-1', source: 'ad',
     message: 'Merci répondu', from_name: 'Karim', created_time: stale,
     is_hidden: false, hidden_verified: false, answered: true,
@@ -148,6 +148,21 @@ describe('CommentsInboxScreen (ADSDEEP54)', () => {
       await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
       fireEvent.click(screen.getByTestId('ae-comments-refresh'))
       await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
+    })
+  })
+
+  // ── PUB44 — Lien croisé vers la fiche « histoire complète » ─────────────
+  describe('PUB44 — lien croisé vers la fiche ad', () => {
+    it('commentaire avec ad_meta_id résolu -> lien affiché', async () => {
+      renderScreen()
+      const link = await screen.findByTestId('ae-comment-ad-link-3')
+      expect(link).toHaveAttribute('href', '/publicite/ad/ad-9')
+    })
+
+    it('commentaire sans ad_meta_id (ex. post organique) -> aucun lien', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.queryByTestId('ae-comment-ad-link-1')).toBeNull()
     })
   })
 })

@@ -1,4 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import { Link } from 'react-router-dom'
+import { FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   actionTypeLabel, actionResultLabel, actionResultKey, actionMode, filterActionLog,
@@ -6,6 +8,18 @@ import {
 import DateRangeBar from './DateRangeBar'
 import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
 import SyncStatusBanner from './SyncStatusBanner'
+
+// PUB44 — l'ad ciblée par une EngineAction, quand résoluble : 3 conventions
+// de clé cohabitent dans `payload` selon le `kind` (les mêmes que côté
+// backend, metrics.ad_full_story) — jamais une 4ᵉ inventée ici.
+function actionAdMetaId(action) {
+  const p = action?.payload
+  if (!p || typeof p !== 'object') return null
+  if (p.target_type === 'ad' && p.target_meta_id) return p.target_meta_id
+  if (p.ad_id) return p.ad_id
+  if (p.source_ad_id) return p.source_ad_id
+  return null
+}
 
 /* ============================================================================
    ENG28 — Journal d'actions (timeline EngineAction) — le backstop de confiance.
@@ -124,6 +138,7 @@ export default function ActionsLogScreen() {
                 const resKey = actionResultKey(a)
                 const resTone = resKey === 'rejete' || resKey === 'echec' ? '#991b1b'
                   : resKey === 'applique' || resKey === 'approuve' ? '#166534' : '#854d0e'
+                const adMetaId = actionAdMetaId(a)
                 return (
                   <li key={a.id} className="card ae-log-row" data-testid="ae-log-row"
                     style={{ padding: '0.75rem', border: '1px solid #e2e8f0' }}>
@@ -151,6 +166,15 @@ export default function ActionsLogScreen() {
                         : isAuto ? 'Appliquée automatiquement (dans le band)' : 'En attente d’approbation'}
                       {a.result_detail ? ` — ${a.result_detail}` : ''}
                     </p>
+                    {/* PUB44 — lien croisé vers la fiche « histoire complète »
+                        de l'ad ciblée, quand résoluble depuis le payload. */}
+                    {adMetaId && (
+                      <Link to={`/publicite/ad/${adMetaId}`} data-testid="ae-log-ad-link"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          marginTop: '0.35rem', fontSize: '0.8rem', color: '#2563eb' }}>
+                        <FileText size={13} aria-hidden="true" /> Voir la fiche de l&apos;ad
+                      </Link>
+                    )}
                   </li>
                 )
               })}

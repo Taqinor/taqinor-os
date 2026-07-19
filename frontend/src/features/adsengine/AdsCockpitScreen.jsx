@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { ArrowDown, ArrowUp, ArrowUpDown, Video, ImageOff } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowDown, ArrowUp, ArrowUpDown, Video, ImageOff, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { formatMAD, formatNumber, formatRatio, sortCockpitRows } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
@@ -256,6 +257,7 @@ export default function AdsCockpitScreen() {
                 ))}
                 <th>Fatigue</th>
                 <th />
+                <th aria-label="Fiche complète" />
               </tr>
             </thead>
             <tbody>
@@ -290,11 +292,19 @@ export default function AdsCockpitScreen() {
                         {openAdId === row.id ? 'Fermer' : 'Détail'}
                       </button>
                     </td>
+                    <td>
+                      {/* PUB44 — lien croisé vers la fiche « histoire complète ». */}
+                      <Link to={`/publicite/ad/${row.meta_id}`} className="btn btn-light"
+                        data-testid="ae-cockpit-full-story"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <FileText size={14} aria-hidden="true" /> Fiche complète
+                      </Link>
+                    </td>
                   </tr>
                 )
               })}
               {sortedRows.length === 0 && !loadError && (
-                <tr><td colSpan={COLUMNS.length + 3} style={{ textAlign: 'center', color: '#64748b' }}>
+                <tr><td colSpan={COLUMNS.length + 4} style={{ textAlign: 'center', color: '#64748b' }}>
                   Aucune ad synchronisée</td></tr>
               )}
             </tbody>

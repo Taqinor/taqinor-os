@@ -289,6 +289,11 @@ const adsengineApi = {
   today: {
     get: () => api.get('/adsengine/aujourd-hui/'),
   },
+
+  // ── PUB44 — Fiche « histoire complète » d'une ad ──
+  ads: {
+    fullStory: (metaId) => api.get(`/adsengine/ads/${metaId}/histoire/`),
+  },
 }
 
 export default adsengineApi

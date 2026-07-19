@@ -11,7 +11,8 @@ from rest_framework.routers import DefaultRouter
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
-    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AnomalyEventViewSet,
+    AdCampaignMirrorViewSet, AdFullStoryView, AdPreviewsView, AdsCockpitView,
+    AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet, ConversationsPerAdView,
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
@@ -164,6 +165,10 @@ urlpatterns = [
     # ADSDEEP13 — proxy previews (iframe Meta, jamais persistée).
     path('ads/<str:ad_meta_id>/previews/', AdPreviewsView.as_view(),
          name='adsengine-ad-previews'),
+    # PUB44 — fiche « histoire complète » d'une ad (créatif + métriques +
+    # actions + commentaires + règles + expériences + ventilations).
+    path('ads/<str:meta_id>/histoire/', AdFullStoryView.as_view(),
+         name='adsengine-ad-full-story'),
     # ADSDEEP24 — récepteur webhook WhatsApp Cloud API (CTWA referral). Public,
     # gated WHATSAPP_CLOUD_VERIFY_TOKEN + WHATSAPP_CLOUD_APP_SECRET (404 sinon).
     path('whatsapp/webhook/', WhatsAppCloudWebhookView.as_view(),

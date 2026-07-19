@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import {
   MessagesSquare, EyeOff, Eye, Reply, Trash2, Send, ShieldCheck,
-  AlertTriangle, Filter, RefreshCw,
+  AlertTriangle, Filter, RefreshCw, FileText,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import SyncStatusBanner from './SyncStatusBanner'
@@ -253,6 +254,17 @@ export default function CommentsInboxScreen() {
                     <p data-testid="ae-comment-message" style={{ margin: '0.4rem 0', color: '#334155' }}>
                       {c.message || <em style={{ color: '#94a3b8' }}>(sans texte)</em>}
                     </p>
+
+                    {/* PUB44 — lien croisé vers la fiche « histoire complète »
+                        de l'ad (résolu côté backend via l'effective_object_
+                        story_id du créatif — jamais fabriqué côté front). */}
+                    {c.ad_meta_id && (
+                      <Link to={`/publicite/ad/${c.ad_meta_id}`} data-testid={`ae-comment-ad-link-${c.id}`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          fontSize: '0.8rem', color: '#2563eb', margin: '0.1rem 0 0.3rem' }}>
+                        <FileText size={13} aria-hidden="true" /> Voir la fiche de l&apos;ad
+                      </Link>
+                    )}
 
                     {proposed.has(c.id) && (
                       <p data-testid={`ae-proposed-${c.id}`} style={{ margin: '0.2rem 0', color: '#7c3aed', fontSize: '0.8rem' }}>

@@ -53,11 +53,19 @@ describe('adsengine — module.config (auto-enregistrement ENG21)', () => {
     // au fil des tâches — cockpit ADSDEEP22, commentaires ADSDEEP54, IG ADSDEEP56).
     // +1 : « L'Arbre » (ASG6 — la vue plan-vivant de l'Assumption Engine).
     // +1 : « Aujourd'hui » (PUB42 — file unifiée, écran d'accueil /publicite).
-    expect(config.routes).toHaveLength(18)
+    // +1 route SANS item nav : « Fiche ad » (PUB44 — deep-link uniquement,
+    // même patron que /crm/leads/:id — jamais un point d'entrée de nav).
+    expect(config.routes).toHaveLength(19)
     expect(config.nav.items).toHaveLength(18)
-    expect(config.titles).toHaveLength(18)
+    expect(config.titles).toHaveLength(19)
 
-    const routePaths = config.routes.map(r => r.path).sort()
+    // PUB44 — /publicite/ad/:id est une route DÉTAIL sans item de nav
+    // correspondant (même patron que /crm/leads/:id) : exclue de la parité
+    // stricte nav↔routes ci-dessous, vérifiée séparément.
+    expect(config.routes.some(r => r.path === '/publicite/ad/:id')).toBe(true)
+    const detailRoutePaths = new Set(['/publicite/ad/:id'])
+    const routePaths = config.routes
+      .map(r => r.path).filter(p => !detailRoutePaths.has(p)).sort()
     const navTargets = config.nav.items.map(i => i.to).sort()
     expect(navTargets).toEqual(routePaths)
 
