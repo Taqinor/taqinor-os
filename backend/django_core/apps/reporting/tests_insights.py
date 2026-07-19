@@ -613,3 +613,28 @@ class TestProfitability(InsightsBase):
         self.assertEqual(resp.status_code, 200)
         body = b''.join(resp.streaming_content) if resp.streaming else resp.content
         self.assertTrue(body.startswith(b'PK'))
+
+
+class TestCfModuleModelSingleSource(TestCase):
+    """WIR83 — `_cf_module_model` dérive de la source unique (registre
+    customfields), sans liste dupliquée."""
+
+    def test_resolves_native_modules_via_registry(self):
+        from apps.reporting.insights import _cf_module_model
+        from apps.customfields import registry
+        for key in ('lead', 'client', 'produit', 'devis',
+                    'installation', 'ticket'):
+            self.assertIs(_cf_module_model(key), registry.get_model(key), key)
+
+    def test_unknown_module_returns_none(self):
+        from apps.reporting.insights import _cf_module_model
+        self.assertIsNone(_cf_module_model('module_inexistant_zzz'))
+
+    def test_no_hardcoded_model_imports_in_helper(self):
+        """La fonction ne doit plus re-hardcoder la liste (dérive interdite)."""
+        import inspect
+        from apps.reporting.insights import _cf_module_model
+        src = inspect.getsource(_cf_module_model)
+        self.assertIn('registry.get_model', src)
+        # Aucune branche if module == '...' hardcodée ne subsiste.
+        self.assertNotIn("if module ==", src)

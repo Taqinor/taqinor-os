@@ -787,26 +787,16 @@ def cf_group_by(request):
 
 
 def _cf_module_model(module):
-    """Résout un module CustomField vers le modèle Django porteur de custom_data."""
-    if module == 'lead':
-        from apps.crm.models import Lead
-        return Lead
-    if module == 'client':
-        from apps.crm.models import Client
-        return Client
-    if module == 'produit':
-        from apps.stock.models import Produit
-        return Produit
-    if module == 'devis':
-        from apps.ventes.models import Devis
-        return Devis
-    if module == 'installation':
-        from apps.installations.models import Installation
-        return Installation
-    if module == 'ticket':
-        from apps.sav.models import Ticket
-        return Ticket
-    return None
+    """Résout un module CustomField vers le modèle Django porteur de custom_data.
+
+    WIR83 — source UNIQUE : délègue au registre data-driven de customfields
+    (``registry.get_model``, ARC14/ARC31) au lieu de re-hardcoder la liste des
+    modules déjà déclarée par ``CustomFieldDef.Module`` / ``_register_native_modules``.
+    Toute app nouvellement enregistrée devient ainsi automatiquement analysable
+    ici, sans dérive possible entre les deux endroits.
+    """
+    from apps.customfields import registry
+    return registry.get_model(module)
 
 
 # ── FG98 — Analyse cohortes / saisonnalité ────────────────────────────────────
