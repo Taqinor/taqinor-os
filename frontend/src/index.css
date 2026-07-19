@@ -7246,39 +7246,23 @@ textarea.form-control {
   opacity: 0;
   transition: opacity var(--motion-fast) ease;
 }
-.kb-card:hover .kb-card-check,
+/* Révélation non-hover (focus, sélection) — s'applique partout, tactile inclus. */
 .kb-card:focus-within .kb-card-check,
 .kb-card-selected .kb-card-check,
 .kb-card-selection-active .kb-card-check {
   opacity: 1;
 }
+/* Révélation au survol — gardée par @media (hover: hover) (VX53 : pas de hover
+   collant en tactile). */
+@media (hover: hover) {
+  .kb-card:hover .kb-card-check { opacity: 1; }
+}
 @media (hover: none) {
   .kb-card-check { opacity: 1; }
 }
 
-/* Bouton « ✗ Marquer perdu » (tête) — plus aucun style inline. LB15 le
-   remplacera par le menu ••• + PerduPopover ; LB17 durcit la cible tactile. */
-.kb-mark-perdu {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
-  border-radius: var(--radius-sm, 6px);
-}
-.kb-mark-perdu:hover { color: var(--destructive); }
-.kb-mark-perdu:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
+/* Formulaire « Marquer perdu » (PerduPopover, partagé). Le bouton ✗ 20×20 de
+   la face a été retiré en LB15 (déplacé dans le menu ••• → PerduPopover). */
 .kb-perdu-form { display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
 .kb-perdu-title { font-size: 13px; font-weight: 500; margin: 0; }
 .kb-perdu-actions { display: flex; justify-content: flex-end; gap: 6px; }
@@ -7338,7 +7322,9 @@ textarea.form-control {
   color: var(--info);
   cursor: pointer;
 }
-.kb-actionline-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+@media (hover: hover) {
+  .kb-actionline-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+}
 .kb-actionline-link:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
@@ -7432,8 +7418,10 @@ textarea.form-control {
 }
 .kb-quick-tel { color: var(--success); }
 .kb-quick-wa { color: var(--brand-whatsapp); }
-.kb-quick-tel:hover { border-color: color-mix(in srgb, var(--success) 45%, transparent); }
-.kb-quick-wa:hover { border-color: color-mix(in srgb, var(--brand-whatsapp) 45%, transparent); }
+@media (hover: hover) {
+  .kb-quick-tel:hover { border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+  .kb-quick-wa:hover { border-color: color-mix(in srgb, var(--brand-whatsapp) 45%, transparent); }
+}
 .kb-quick-tel:focus-visible,
 .kb-quick-wa:focus-visible {
   outline: 2px solid var(--ring);
@@ -7495,19 +7483,22 @@ textarea.form-control {
   opacity: 0;
   transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease;
 }
-.kb-card:hover .kb-card-menu-btn,
 .kb-card:focus-within .kb-card-menu-btn,
 .kb-card-menu-btn[data-state='open'] {
   opacity: 1;
-}
-.kb-card-menu-btn:hover {
-  background: var(--muted);
-  color: var(--foreground);
 }
 .kb-card-menu-btn:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
   opacity: 1;
+}
+/* Révélation + fond au survol — gardés (VX53 : pas de hover collant en tactile). */
+@media (hover: hover) {
+  .kb-card:hover .kb-card-menu-btn { opacity: 1; }
+  .kb-card-menu-btn:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
 }
 @media (hover: none) {
   .kb-card-menu-btn { opacity: 1; }

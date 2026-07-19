@@ -53,7 +53,10 @@ test('LB5 : ForecastView forwarde AUSSI onMarkPerdu (bug-fix : ne passait déjà
 
 test('LB5 : LeadCard n\'appelle plus JAMAIS crmApi.updateLead en direct — passe par onMarkPerdu (prop)', () => {
   assert.doesNotMatch(CARD_SRC, /crmApi\.updateLead\(/)
-  assert.match(CARD_SRC, /await onMarkPerdu\(lead, motif\)/)
+  // LB15 — le flux « perdu » a été extrait dans PerduPopover (partagé). LeadCard
+  // n'appelle plus onMarkPerdu directement : il le TRANSMET au composant partagé
+  // (qui, lui, fait `await onMarkPerdu(lead, motif)` — jamais de crmApi direct).
+  assert.match(CARD_SRC, /<PerduPopover[\s\S]{0,160}onMarkPerdu=\{onMarkPerdu\}/)
   // La prop fantôme `onChanged` n'est plus DÉCLARÉE (seul un commentaire
   // documente encore l'ancien bug) : elle n'apparaît plus dans la destructure
   // des props de LeadCard.
