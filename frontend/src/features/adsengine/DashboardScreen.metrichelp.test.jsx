@@ -27,6 +27,8 @@ vi.mock('./adsengineApi', () => ({
     alerts: { list: mocks.alerts, history: () => Promise.resolve({ data: [] }) },
     reconciliation: { list: mocks.reconciliation },
     signals: { get: mocks.signalsGet, cohort: () => Promise.resolve({ data: [] }) },
+    // PUB57 — tuile score d'audit auto-chargée (AuditScoreTile).
+    reports: { audit: () => Promise.resolve({ data: { score_tile: null } }) },
   },
 }))
 

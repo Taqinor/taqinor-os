@@ -5,6 +5,7 @@ import adsengineApi from './adsengineApi'
 import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
 import MetricHelp from './MetricHelp'
+import AuditScoreTile from './AuditScoreTile'
 import {
   formatMAD, formatMoney, formatNumber, formatRatio, formatPercent,
   normalizeAlerts, alertTone, normalizePacing, pacingStateTone,
@@ -361,6 +362,12 @@ export default function DashboardScreen() {
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* PUB57 — tuile score d'audit auto-chargée (fichier autonome,
+              un seul point de montage) */}
+          <div style={{ marginBottom: '1.25rem', maxWidth: 320 }}>
+            <AuditScoreTile />
           </div>
 
           {/* ADSDEEP61 — Dashboard v2 : conversations réelles + MER mixte */}

@@ -20,6 +20,8 @@ vi.mock('./adsengineApi', () => ({
     metrics: { dashboard: mocks.dashboard, dashboardV2: mocks.dashboardV2, leads: mocks.leads },
     // PUB48 — cloche console (AlertCenter) : `history` distinct du bandeau `list`.
     alerts: { list: mocks.alerts, history: () => Promise.resolve({ data: [] }) },
+    // PUB57 — tuile score d'audit auto-chargée (AuditScoreTile).
+    reports: { audit: () => Promise.resolve({ data: { score_tile: null } }) },
   },
 }))
 

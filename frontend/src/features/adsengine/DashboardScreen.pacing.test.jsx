@@ -22,7 +22,9 @@ vi.mock('./adsengineApi', () => ({
     // PUB48 — cloche console (AlertCenter) : `history` distinct du bandeau `list`.
     alerts: { list: mocks.alerts, history: () => Promise.resolve({ data: [] }) },
     reconciliation: { list: mocks.reconciliation },
-    reports: { export: mocks.reportsExport },
+    // PUB57 — tuile score d'audit auto-chargée (AuditScoreTile) partage la
+    // même clé `reports` que l'export CSV (PUB47).
+    reports: { export: mocks.reportsExport, audit: () => Promise.resolve({ data: { score_tile: null } }) },
   },
 }))
 

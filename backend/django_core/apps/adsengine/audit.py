@@ -268,3 +268,61 @@ def run_account_audit(company, *, now=None):
 
     now_dt = now if isinstance(now, datetime.date) else datetime.date.today()
     return {'genere_le': now_dt.isoformat(), 'sections': sections}
+
+
+# =============================================================================
+# PUB57 — Tuile Dashboard « score d'audit » auto-chargée + tendance hebdo.
+# L'audit (ci-dessus) est délibérément SANS score agrégé opaque (chaque item
+# porte un chiffre réel + un lien, jamais un chiffre inventé) — cette tuile ne
+# CONTREDIT PAS cette doctrine : le score qu'elle affiche est la part
+# TRANSPARENTE de sections RÉELLEMENT 'ok' parmi celles évaluables (jamais
+# 'inconnu'), donc toujours traçable jusqu'aux 5 sections ci-dessus.
+# =============================================================================
+AUDIT_SCORE_CACHE_PREFIX = 'adsengine:audit_score'
+# 40 j : assez de marge pour toujours retrouver le point « il y a 7 jours »
+# même si un jour de calcul a été manqué (weekend, panne...).
+AUDIT_SCORE_CACHE_TTL = 40 * 24 * 3600
+AUDIT_SCORE_DELTA_DAYS = 7
+
+
+def _audit_score_cache_key(company, day):
+    return f'{AUDIT_SCORE_CACHE_PREFIX}:{getattr(company, "pk", company)}:{day.isoformat()}'
+
+
+def account_audit_score(company, *, now=None, audit=None):
+    """PUB57 — Score de compte 0-100 (part des sections évaluables 'ok') +
+    delta hebdomadaire.
+
+    Le delta compare au score mis en CACHE (Django, ``django.core.cache`` —
+    Redis en prod) il y a ~7 jours : AUCUNE migration, rien n'est persisté en
+    base. Un flush cache ou un premier calcul dégrade proprement en
+    ``delta_hebdo: None`` (« pas encore d'historique »), jamais une exception
+    ni un delta halluciné. Réutilise l'audit déjà calculé si fourni
+    (``audit=``) pour ne jamais recalculer les 5 sections deux fois."""
+    audit = audit if audit is not None else run_account_audit(company, now=now)
+    sections = audit.get('sections') or {}
+    evaluated = [s for s in sections.values() if s.get('statut') != STATUT_INCONNU]
+    ok_count = sum(1 for s in evaluated if s.get('statut') == STATUT_OK)
+    attention_count = sum(1 for s in evaluated if s.get('statut') == STATUT_ATTENTION)
+    total = len(evaluated)
+    score = round((ok_count / total) * 100) if total else None
+
+    today = now if isinstance(now, datetime.date) else datetime.date.today()
+    score_7d_ago = None
+    try:
+        from django.core.cache import cache
+        cache.set(_audit_score_cache_key(company, today), score, AUDIT_SCORE_CACHE_TTL)
+        score_7d_ago = cache.get(_audit_score_cache_key(
+            company, today - datetime.timedelta(days=AUDIT_SCORE_DELTA_DAYS)))
+    except Exception:  # pragma: no cover - défensif (cache indisponible)
+        logger.warning('adsdeep63: cache score d\'audit indisponible', exc_info=True)
+
+    delta_hebdo = (
+        score - score_7d_ago
+        if (score is not None and score_7d_ago is not None) else None)
+
+    return {
+        'score': score, 'ok_count': ok_count, 'attention_count': attention_count,
+        'total_sections': total, 'delta_hebdo': delta_hebdo,
+        'genere_le': audit.get('genere_le'),
+    }

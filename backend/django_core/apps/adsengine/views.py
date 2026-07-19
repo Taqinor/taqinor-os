@@ -1274,8 +1274,12 @@ class AccountAuditView(APIView):
         company, err = _adseng_reporting_company(request)
         if err is not None:
             return err
-        from .audit import run_account_audit
-        return Response(run_account_audit(company))
+        from .audit import account_audit_score, run_account_audit
+        data = run_account_audit(company)
+        # PUB57 — tuile Dashboard : score transparent (dérivé des 5 sections
+        # ci-dessus) + delta hebdo, additif (les 5 sections restent inchangées).
+        data['score_tile'] = account_audit_score(company, audit=data)
+        return Response(data)
 
 
 class MetaConnectionStatusView(APIView):
