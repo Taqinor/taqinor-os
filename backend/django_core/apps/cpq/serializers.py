@@ -10,7 +10,7 @@ from core.rules import validate_condition_group
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
     OffreGroupee, LigneOffreGroupee, PrixContractuel,
-    QuestionConfigurateur,
+    QuestionConfigurateur, SeuilMargeFamille, RegleApprobationRemise,
 )
 
 
@@ -104,3 +104,53 @@ class QuestionConfigurateurSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuestionConfigurateur
         fields = ['id', 'ordre', 'texte', 'type', 'options', 'actif', 'champ']
+
+
+class SeuilMargeFamilleSerializer(serializers.ModelSerializer):
+    """WIR105 — CRUD du garde-fou de marge par famille (NTCPQ6).
+
+    ``categorie`` est validée même-société ; ``company`` posée côté serveur."""
+    categorie_nom = serializers.CharField(
+        source='categorie.nom', read_only=True, default=None)
+
+    class Meta:
+        model = SeuilMargeFamille
+        fields = ['id', 'categorie', 'categorie_nom', 'marge_min_pct']
+
+    def validate_categorie(self, categorie):
+        request = self.context.get('request')
+        if request is not None and categorie is not None \
+                and categorie.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Cette catégorie n'appartient pas à votre société.")
+        return categorie
+
+
+class RegleApprobationRemiseSerializer(serializers.ModelSerializer):
+    """WIR105 — CRUD des paliers d'approbation par profondeur de remise
+    (NTCPQ7/8). ``company`` posée côté serveur."""
+    niveau_approbation_display = serializers.CharField(
+        source='get_niveau_approbation_display', read_only=True)
+
+    class Meta:
+        model = RegleApprobationRemise
+        fields = [
+            'id', 'libelle', 'remise_min_pct', 'remise_max_pct',
+            'niveau_approbation', 'niveau_approbation_display',
+            'nombre_approbateurs', 'priorite', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate(self, attrs):
+        """Bornes cohérentes : si les deux bornes sont fournies,
+        ``remise_min_pct`` ≤ ``remise_max_pct``."""
+        lo = attrs.get('remise_min_pct')
+        hi = attrs.get('remise_max_pct')
+        if self.instance is not None:
+            lo = lo if 'remise_min_pct' in attrs else self.instance.remise_min_pct
+            hi = hi if 'remise_max_pct' in attrs else self.instance.remise_max_pct
+        if lo is not None and hi is not None and lo > hi:
+            raise serializers.ValidationError({
+                'remise_max_pct':
+                    'La borne max doit être ≥ la borne min.'})
+        return attrs

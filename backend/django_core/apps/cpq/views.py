@@ -15,12 +15,13 @@ from authentication.permissions import IsResponsableOrAdmin, IsAnyRole
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ, OffreGroupee,
     PrixContractuel, QuestionConfigurateur, SessionConfigurateur,
-    ReponseConfigurateur,
+    ReponseConfigurateur, SeuilMargeFamille, RegleApprobationRemise,
 )
 from .serializers import (
     OptionProduitSerializer, ContrainteCompatibiliteSerializer,
     RegleProduitCPQSerializer, OffreGroupeeSerializer,
     PrixContractuelSerializer, QuestionConfigurateurSerializer,
+    SeuilMargeFamilleSerializer, RegleApprobationRemiseSerializer,
 )
 from . import selectors, services
 
@@ -126,6 +127,33 @@ class PrixContractuelViewSet(CompanyScopedModelViewSet):
 class QuestionConfigurateurViewSet(CompanyScopedModelViewSet):
     queryset = QuestionConfigurateur.objects.all()
     serializer_class = QuestionConfigurateurSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class SeuilMargeFamilleViewSet(CompanyScopedModelViewSet):
+    """WIR105 — CRUD des seuils de marge par famille (NTCPQ6), pour un écran
+    Paramètres CPQ (plus de dépendance au Django admin). Lecture tout rôle,
+    écriture réservée Directeur / Commercial responsable."""
+    queryset = SeuilMargeFamille.objects.select_related('categorie').all()
+    serializer_class = SeuilMargeFamilleSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class RegleApprobationRemiseViewSet(CompanyScopedModelViewSet):
+    """WIR105 — CRUD des paliers d'approbation par profondeur de remise
+    (NTCPQ7/8), pour un écran Paramètres CPQ. Écriture réservée Directeur /
+    Commercial responsable ; ces paliers pilotent l'approbation NTCPQ7/8
+    résolue par ``services.resoudre_regle_remise``."""
+    queryset = RegleApprobationRemise.objects.all()
+    serializer_class = RegleApprobationRemiseSerializer
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
