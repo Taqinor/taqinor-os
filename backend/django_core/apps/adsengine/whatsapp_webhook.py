@@ -108,6 +108,34 @@ def _lead_id_for_phone(company, phone):
         return None
 
 
+def _ensure_lead_id_for_phone(company, phone, ad_id):
+    """PUB27 — Comme ``_lead_id_for_phone``, mais AUTO-CRÉE un Lead minimal
+    (via ``apps.crm.services`` — jamais un import des modèles crm) quand aucun
+    lead n'existe pour ce téléphone : sans elle, une conversation WhatsApp-
+    first sans Lead préalable stockait un ``CtwaReferral`` orphelin
+    (``crm_lead_id=None``) et perdait son attribution par ad.
+
+    Un lead déjà trouvé est renvoyé TEL QUEL (comportement inchangé — aucune
+    écriture). Dédup par téléphone déléguée à
+    ``crm.services.create_minimal_lead_from_ctwa`` (jamais de doublon).
+    Best-effort : un échec de création laisse ``crm_lead_id=None`` (repli sur
+    le comportement historique), jamais bloquant pour l'enregistrement du
+    ``CtwaReferral``."""
+    lead_id = _lead_id_for_phone(company, phone)
+    if lead_id is not None or not phone:
+        return lead_id
+    try:
+        from apps.crm.services import create_minimal_lead_from_ctwa
+        lead = create_minimal_lead_from_ctwa(
+            company=company, phone=phone, ad_id=ad_id)
+        return lead.pk if lead is not None else None
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le CtwaReferral
+        logger.warning(
+            'adsengine.whatsapp_webhook: auto-création lead CTWA échouée.',
+            exc_info=True)
+        return None
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class WhatsAppCloudWebhookView(View):
     """ADSDEEP24 — Webhook WhatsApp Cloud API (vérification GET + messages POST).
@@ -171,12 +199,12 @@ class WhatsAppCloudWebhookView(View):
                         if not wa_message_id:
                             continue
                         phone = str(msg.get('from') or '').strip()
+                        ad_id = str(referral.get('source_id') or '')[:64]
                         CtwaReferral.objects.update_or_create(
                             company=company,
                             wa_message_id=wa_message_id[:128],
                             defaults={
-                                'ad_id': str(
-                                    referral.get('source_id') or '')[:64],
+                                'ad_id': ad_id,
                                 'ctwa_clid': str(
                                     referral.get('ctwa_clid') or '')[:255],
                                 'source_type': str(
@@ -184,8 +212,11 @@ class WhatsAppCloudWebhookView(View):
                                 'headline': str(referral.get('headline') or ''),
                                 'ts': _parse_ts(msg.get('timestamp')),
                                 'phone_key': _phone_key(phone)[:32],
-                                'crm_lead_id': _lead_id_for_phone(
-                                    company, phone),
+                                # PUB27 — auto-crée un Lead minimal quand aucun
+                                # lead n'existe pour ce téléphone (jamais un
+                                # referral orphelin qui perd son attribution).
+                                'crm_lead_id': _ensure_lead_id_for_phone(
+                                    company, phone, ad_id),
                             })
                         stored += 1
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
