@@ -500,6 +500,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.sync_breakdowns_weekly',
         'schedule': crontab(hour=7, minute=15, day_of_week=1),
     },
+    # PUB94 — snapshot HEBDO d'observabilité de L'Arbre : flag « branche morte »
+    # (nœud figé sur son prior depuis N semaines). Lundi, après l'oubli hebdo.
+    # Alerte INFO brake-only, jamais un re-test auto. NO-OP propre sans nœud.
+    'adsengine-flag-dead-branches-weekly': {
+        'task': 'adsengine.flag_dead_branches_weekly',
+        'schedule': crontab(hour=6, minute=50, day_of_week=1),
+    },
     # ADSDEEP18 — pull-sync QUOTIDIEN des leads lead-form (convergence avec le
     # webhook, idempotent par leadgen_id). NO-OP propre sans connexion Meta live.
     'adsengine-pull-meta-leads': {

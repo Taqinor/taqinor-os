@@ -911,6 +911,33 @@ def check_attribution_quality():
     return {'alerts': alerted}
 
 
+@shared_task(name='adsengine.flag_dead_branches_weekly')
+def flag_dead_branches_weekly():
+    """PUB94 — Beat HEBDO : snapshot d'observabilité de L'Arbre (branches mortes).
+
+    Pour chaque société, détecte les nœuds d'hypothèse figés sur leur prior depuis
+    ≥ N semaines (branche morte : moteur amont cassé ou hypothèse abandonnée) et
+    lève une alerte INFO BRAKE-ONLY par nœud (jamais un re-test/une action auto —
+    le re-test ne passe que par la file VoI). No-op propre sans nœud. Best-effort
+    par société. Renvoie le nombre de branches mortes signalées."""
+    from authentication.selectors import active_companies
+
+    from . import posterior_drift
+
+    total = 0
+    for company in active_companies():
+        try:
+            total += posterior_drift.flag_dead_branches(company)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.flag_dead_branches_weekly: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.flag_dead_branches_weekly: %s branche(s) morte(s)', total)
+    return {'dead_branches': total}
+
+
 @shared_task(name='adsengine.generate_creative_variants')
 def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
     """ENG18 — Tâche « variantes » : 2-3 statiques d'un asset de base approuvé.
