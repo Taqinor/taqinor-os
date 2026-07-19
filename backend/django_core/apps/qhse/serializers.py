@@ -30,6 +30,7 @@ from .models import (
     ReleveCourbeIV, ReponseCritere, RetourClientQualite,
     RevueVeilleReglementaire, Secouriste,
     SignalementPublic, VeilleReglementaire,
+    CheckinSecurite, DemandeActionFournisseur,
 )
 
 
@@ -1446,3 +1447,76 @@ class VeilleReglementaireSerializer(serializers.ModelSerializer):
 
     def validate_responsable(self, value):
         return _meme_societe(self, value, 'Responsable')
+
+
+# ── WIR115 — Check-in sécurité (technicien seul sur site) ────────────────────
+class CheckinSecuriteSerializer(serializers.ModelSerializer):
+    """Cycle check-in/check-out d'un technicien seul sur site à risque.
+
+    ``company`` posée côté serveur ; ``technicien`` par défaut = utilisateur
+    courant (posé au ``perform_create`` de la vue) mais surchargeable par un
+    membre de la même société. ``escalade_declenchee``/``escalade_le`` ne sont
+    pilotés que par la tâche d'escalade (lecture seule au CRUD)."""
+    technicien_nom = serializers.SerializerMethodField()
+    en_retard = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CheckinSecurite
+        fields = [
+            'id', 'technicien', 'technicien_nom', 'intervention_id',
+            'site_ref', 'heure_checkin', 'heure_checkout_prevue',
+            'heure_checkout_reelle', 'delai_escalade_min',
+            'escalade_declenchee', 'escalade_le', 'en_retard', 'date_creation',
+        ]
+        read_only_fields = [
+            'escalade_declenchee', 'escalade_le', 'date_creation',
+        ]
+        extra_kwargs = {'technicien': {'required': False}}
+
+    @staticmethod
+    def _nom(user):
+        return (user.get_full_name() or user.username) if user else ''
+
+    def get_technicien_nom(self, obj):
+        return self._nom(obj.technicien)
+
+    def get_en_retard(self, obj):
+        return obj.en_retard()
+
+    def validate_technicien(self, value):
+        return _meme_societe(self, value, 'Technicien')
+
+
+# ── WIR115 — SCAR : demande d'action corrective fournisseur ──────────────────
+class DemandeActionFournisseurSerializer(serializers.ModelSerializer):
+    """SCAR — demande d'action corrective adressée à un fournisseur.
+
+    ``company`` posée côté serveur. Le ``statut`` et les champs de réponse /
+    vérification sont en lecture seule au CRUD : ils n'avancent que par les
+    actions ``repondre`` / ``verifier`` de la vue (jamais un PATCH direct)."""
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = DemandeActionFournisseur
+        fields = [
+            'id', 'fournisseur', 'fournisseur_nom', 'ncr_source',
+            'description_defaut', 'echeance_reponse',
+            'cause_racine_fournisseur', 'action_fournisseur',
+            'preuve_attachment_ids', 'statut', 'statut_display',
+            'date_reponse', 'efficace', 'date_verification', 'verifiee_par',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'cause_racine_fournisseur', 'action_fournisseur',
+            'date_reponse', 'efficace', 'date_verification', 'verifiee_par',
+            'date_creation',
+        ]
+
+    def validate_fournisseur(self, value):
+        return _meme_societe(self, value, 'Fournisseur')
+
+    def validate_ncr_source(self, value):
+        return _meme_societe(self, value, 'NCR source')

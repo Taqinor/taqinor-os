@@ -263,4 +263,22 @@ qhseApi.nonConformites.creerIntervention = (id, data) =>
 qhseApi.nonConformites.tauxDefaillanceProduit = () =>
   api.get('/qhse/non-conformites/taux-defaillance-produit/')
 
+// ── WIR115 — Check-in sécurité (technicien seul sur site) ────────────────────
+qhseApi.checkinsSecurite = {
+  ...crud('checkins-securite'),
+  // Enregistre le check-out réel (maintenant) — clôt le cycle.
+  checkout: (id) => api.post(`/qhse/checkins-securite/${id}/checkout/`),
+}
+
+// ── WIR115 — SCAR : demande d'action corrective fournisseur ──────────────────
+qhseApi.demandesActionFournisseur = {
+  ...crud('demandes-action-fournisseur'),
+  // Réponse fournisseur (émise → répondue) : cause racine + action.
+  repondre: (id, data) =>
+    api.post(`/qhse/demandes-action-fournisseur/${id}/repondre/`, data),
+  // Vérification d'efficacité (répondue → vérifiée/close) : { efficace }.
+  verifier: (id, data) =>
+    api.post(`/qhse/demandes-action-fournisseur/${id}/verifier/`, data),
+}
+
 export default qhseApi

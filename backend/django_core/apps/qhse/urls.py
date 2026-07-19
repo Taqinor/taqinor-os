@@ -38,6 +38,7 @@ from .views import (
     RetourClientQualiteViewSet, RevueVeilleReglementaireViewSet,
     SecouristeViewSet, SignalementPublicViewSet,
     VeilleReglementaireViewSet,
+    CheckinSecuriteViewSet, DemandeActionFournisseurViewSet,
 )
 
 router = DefaultRouter()
@@ -105,6 +106,10 @@ router.register(
 router.register(r'demandes-changement', DemandeChangementViewSet)
 router.register(r'veilles-reglementaires', VeilleReglementaireViewSet)
 router.register(r'revues-veille', RevueVeilleReglementaireViewSet)
+# WIR115 — Check-in sécurité (technicien seul sur site) + SCAR (demande
+# d'action corrective fournisseur), jusqu'ici sans exposition REST.
+router.register(r'checkins-securite', CheckinSecuriteViewSet)
+router.register(r'demandes-action-fournisseur', DemandeActionFournisseurViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

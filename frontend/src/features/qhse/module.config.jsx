@@ -4,7 +4,7 @@
    fast-refresh ne s'y applique pas. */
 import { lazy } from 'react'
 import {
-  ShieldCheck, AlertOctagon, ClipboardCheck, ShieldAlert, Leaf,
+  ShieldCheck, AlertOctagon, ClipboardCheck, ShieldAlert, Leaf, UserCheck,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -19,6 +19,8 @@ const NonConformites = lazy(() => import('./NonConformites'))
 const Inspections = lazy(() => import('./Inspections'))
 const Risques = lazy(() => import('./Risques'))
 const Environnement = lazy(() => import('./Environnement'))
+// WIR115 — check-in sécurité (technicien seul sur site) + SCAR fournisseur.
+const CheckinsSecurite = lazy(() => import('./CheckinsSecurite'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -34,6 +36,7 @@ const config = {
       { to: '/qhse/inspections', label: 'Inspections & audits', icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/qhse/risques', label: 'Risques & permis', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/qhse/environnement', label: 'Environnement & ESG', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/qhse/checkins-securite', label: 'Check-ins sécurité', icon: <UserCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -42,6 +45,7 @@ const config = {
     ['/qhse/inspections', 'Inspections & audits — QHSE'],
     ['/qhse/risques', 'Risques & permis — QHSE'],
     ['/qhse/environnement', 'Environnement & ESG — QHSE'],
+    ['/qhse/checkins-securite', 'Check-ins sécurité — QHSE'],
     ['/qhse', 'Cockpit QHSE'],
   ],
   sectionLabels: { qhse: 'QHSE' },
@@ -51,6 +55,7 @@ const config = {
     { path: '/qhse/inspections', component: Inspections, roles: ROLES },
     { path: '/qhse/risques', component: Risques, roles: ROLES },
     { path: '/qhse/environnement', component: Environnement, roles: ROLES },
+    { path: '/qhse/checkins-securite', component: CheckinsSecurite, roles: ROLES },
   ],
 }
 
