@@ -4139,7 +4139,7 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   `e2e/tests/leads-board.spec.js` (nouveau). DoD : spec verte en local ET en CI ; échoue si on
   retire la règle `:has(> .lp-page)` (vérifié une fois en le commentant). (ROUTINE — M)
   (@model: sonnet) (@lane: LB7) (@after: LB12, LB18)
-- [ ] LB34 — **Goldens leads-kanban clair+sombre + passe axe finale (clôture du batch).**
+- [x] LB34 — **Goldens leads-kanban clair+sombre + passe axe finale (clôture du batch).**
   Régénérer DÉLIBÉRÉMENT les screenshots release-verify `leads-kanban` light+dark (procédure
   maison de mise à jour des snapshots visual.spec) après l'atterrissage de TOUTES les lanes
   visuelles ; dérouler la passe axe VX71 sur la page redessinée (tuiles KPI, chevrons de repli,
@@ -4342,6 +4342,27 @@ place, LANE C peut poser `.lv-sticky-name` sans retoucher `index.css` (déjà pr
   release-verify `--grep-invert @visual`). Sélecteurs vérifiés ligne à ligne contre le DOM réel
   post-refonte (LeadsPage/KanbanView/ListView/index.css) + helpers existants
   (gotoLeads/setLeadsView radio/createLead).
+- 2026-07-19 LB34 — clôture e2e du batch LB (goldens + passe axe + marche de tous les specs de la
+  lane). **Specs corrigés contre le DOM post-refonte :** `doublons.spec.js` (E11) — « Doublons »
+  a quitté l'en-tête pour l'item du menu « ⋯ » (VX145b/LB26, icône GitMerge, plus l'emoji 🔀) :
+  `getByRole('button', {name:'🔀 Doublons'})` → ouvrir `getByRole('button', {name:"Plus
+  d'actions"})` puis `getByRole('menuitem', {name:/Doublons/})` (patron Radix déjà éprouvé par
+  mobile.spec E16+). **Passe axe FINALE ajoutée à `leads.spec.js`** (LB34) : scanne la page réelle
+  en kanban (scope `.lp-page` = surface redessinée : tuiles KPI `aria-pressed`, ViewSwitcher
+  `radiogroup`, colonnes nommées, chevrons/zones de scroll labellisés), la barre bulk FLOTTANTE
+  (`.lp-bulk-float`, révélée en cochant une carte en `force`), le menu ••• Radix ouvert (portalé,
+  scanné via `[role="menu"]`) et la vue liste — 0 violation serious/critical (même seuil anti-flake
+  que VX71 ; scope `.lp-page` exclut le chrome global, hors périmètre). **Goldens `leads-kanban`
+  clair+sombre** (`visual.spec.js`) : capture INCHANGÉE côté code — le `ready` cible `.header-title`
+  (header global, toujours présent) + `networkidle`, valide sur le nouveau DOM ; la refonte CHANGE
+  forcément les pixels → régénération DÉLIBÉRÉE via `--update-snapshots` (aucune baseline n'est
+  encore commitée dans le repo, donc aucun red de comparaison ; release-verify régénère de toute
+  façon en `continue-on-error`). **mobile.spec (E16/MB6/VX190) + tablet.spec (VX68) : inchangés** —
+  vérifiés contre le nouveau DOM par raisonnement : le board borné supprime le débordement
+  horizontal page (le fix EST ce qu'E16/VX68 vérifient), `+ Nouveau lead`/`.header-title`/
+  `article.kb-card`/`tr.lv-row`/`.bottom-tabbar` tous préservés. Playwright non exécutable ici (pas
+  de node_modules) — les specs tournent au fold par l'orchestrateur (release-verify) ; `node
+  --check` OK. Commande de régénération des goldens listée au rapport.
 
 ## Group F — Design foundation & tokens
 
