@@ -98,7 +98,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/contrats/services.py:4470` | update_or_create | CompteurUsage.objects | cible_id, code_compteur, company, periode_debut, periode_fin, type_cible |
 | `backend/django_core/apps/contrats/services.py:4775` | get_or_create | EtapeDunningLog.objects | company, contrat, etape |
 | `backend/django_core/apps/contrats/views.py:2633` | get_or_create | ParametresLocation.objects | company |
-| `backend/django_core/apps/cpq/views.py:181` | update_or_create | ReponseConfigurateur.objects | question, session |
+| `backend/django_core/apps/cpq/views.py:209` | update_or_create | ReponseConfigurateur.objects | question, session |
 | `backend/django_core/apps/credit/services.py:224` | update_or_create | LimiteCredit.objects | client |
 | `backend/django_core/apps/credit/tasks.py:76` | update_or_create | EncoursCache.objects | client |
 | `backend/django_core/apps/credit/views.py:375` | get_or_create | ReglageCredit.objects | company |
@@ -243,7 +243,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/roles/management/commands/init_roles.py:53` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/sante/models.py:708` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/models.py:138` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/sav/services.py:1055` | get_or_create | TicketFollower.objects | company, ticket, user |
+| `backend/django_core/apps/sav/services.py:1080` | get_or_create | TicketFollower.objects | company, ticket, user |
 | `backend/django_core/apps/sav/views.py:1229` | get_or_create | TicketFollower.objects | company, ticket, user |
 | `backend/django_core/apps/sav/views.py:1711` | get_or_create | TicketChecklistItem.objects | cle, ticket |
 | `backend/django_core/apps/stock/management/commands/backfill_unites_mesure.py:52` | get_or_create | UniteMesure.objects | code, company |
