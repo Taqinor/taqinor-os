@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Leaf } from 'lucide-react'
+import { Leaf, PlusCircle } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
-import { Tabs, TabsList, TabsTrigger, TabsContent, Badge, Card } from '../../ui'
+import {
+  Tabs, TabsList, TabsTrigger, TabsContent, Badge, Card,
+  Dialog, DialogContent, DialogTitle, Button, Label, Input, Textarea, toast,
+} from '../../ui'
+import { FieldSelect } from './QhseForm'
 import { BarArrondie } from '../../ui/charts'
 import { formatDate, formatNumber } from '../../lib/format'
 import { QhseResourceList } from './QhseResourceList'
@@ -122,8 +126,303 @@ function BilanCarboneChart() {
   )
 }
 
+/* ============================================================================
+   WIR127 — création par onglet (Environnement & ESG).
+   ----------------------------------------------------------------------------
+   Le backend supporte toute la création/cycle de vie, mais les 10 registres
+   restaient en lecture seule. Un dialogue générique piloté par une spec de
+   champs ouvre au minimum la CRÉATION sur chaque onglet — déchets/BSD et bilan
+   carbone en priorité (loi 28-00). `company`/`auteur` sont posés côté serveur.
+   ========================================================================== */
+
+const CURRENT_YEAR = new Date().getFullYear()
+
+const ENV_CREATE_SPECS = {
+  dechets: {
+    title: 'Nouveau déchet', create: (d) => qhseApi.dechets.create(d),
+    fields: [
+      { name: 'libelle', label: 'Libellé', type: 'text', required: true },
+      { name: 'code', label: 'Code', type: 'text' },
+      {
+        name: 'categorie', label: 'Catégorie', type: 'select', default: 'non_dangereux',
+        options: [
+          { value: 'dangereux', label: 'Dangereux' },
+          { value: 'non_dangereux', label: 'Non dangereux' },
+          { value: 'inerte', label: 'Inerte' },
+        ],
+      },
+      {
+        name: 'mode_traitement', label: 'Mode de traitement', type: 'select', default: 'recyclage',
+        options: [
+          { value: 'recyclage', label: 'Recyclage / valorisation' },
+          { value: 'enfouissement', label: 'Enfouissement' },
+          { value: 'incineration', label: 'Incinération' },
+          { value: 'traitement_specialise', label: 'Traitement spécialisé' },
+          { value: 'autre', label: 'Autre' },
+        ],
+      },
+      { name: 'unite', label: 'Unité', type: 'text', default: 'kg' },
+    ],
+  },
+  bordereauxDechets: {
+    title: 'Nouveau bordereau (BSD)', create: (d) => qhseApi.bordereauxDechets.create(d),
+    fields: [
+      {
+        name: 'dechet', label: 'Déchet', type: 'loadedSelect', required: true, numeric: true,
+        loadOptions: () => qhseApi.dechets.list(),
+        mapRow: (r) => ({ value: String(r.id), label: r.libelle }),
+      },
+      { name: 'quantite', label: 'Quantité', type: 'number' },
+      { name: 'producteur', label: 'Producteur', type: 'text' },
+      { name: 'transporteur', label: 'Transporteur', type: 'text' },
+      { name: 'eliminateur', label: 'Éliminateur', type: 'text' },
+      { name: 'chantier_id', label: 'Chantier (id)', type: 'number' },
+    ],
+  },
+  recyclageModules: {
+    title: 'Nouveau recyclage PV', create: (d) => qhseApi.recyclageModules.create(d),
+    fields: [
+      { name: 'marque', label: 'Marque', type: 'text' },
+      { name: 'modele', label: 'Modèle', type: 'text' },
+      { name: 'nombre_modules', label: 'Nombre de modules', type: 'number', required: true, default: '1' },
+      { name: 'masse_kg', label: 'Masse (kg)', type: 'number' },
+      {
+        name: 'motif', label: 'Motif', type: 'select', default: 'fin_de_vie',
+        options: [
+          { value: 'casse', label: 'Casse / bris' },
+          { value: 'declassement', label: 'Déclassement (performance)' },
+          { value: 'renovation', label: 'Rénovation / remplacement' },
+          { value: 'fin_de_vie', label: 'Fin de vie' },
+          { value: 'autre', label: 'Autre' },
+        ],
+      },
+      { name: 'filiere', label: 'Filière', type: 'text' },
+    ],
+  },
+  conformitesEnvironnementales: {
+    title: 'Nouvelle conformité', create: (d) => qhseApi.conformitesEnvironnementales.create(d),
+    fields: [
+      { name: 'intitule', label: 'Intitulé', type: 'text', required: true },
+      {
+        name: 'type_conformite', label: 'Type', type: 'select', default: 'autorisation',
+        options: [
+          { value: 'autorisation', label: 'Autorisation environnementale' },
+          { value: 'etude_impact', label: "Étude d'impact (EIE)" },
+          { value: 'enregistrement_dechets', label: 'Enregistrement déchets' },
+          { value: 'rejets', label: 'Conformité rejets (eau / air)' },
+          { value: 'commission_locale', label: 'Commission locale (sécurité)' },
+        ],
+      },
+      { name: 'autorite', label: 'Autorité', type: 'text' },
+      { name: 'date_expiration', label: "Date d'expiration", type: 'date' },
+    ],
+  },
+  bilansCarbone: {
+    title: 'Nouveau bilan carbone', create: (d) => qhseApi.bilansCarbone.create(d),
+    fields: [
+      { name: 'libelle', label: 'Libellé', type: 'text', required: true },
+      { name: 'annee', label: 'Année', type: 'number', required: true, default: String(CURRENT_YEAR) },
+      { name: 'perimetre', label: 'Périmètre', type: 'text' },
+    ],
+  },
+  indicateursEsg: {
+    title: 'Nouvel indicateur ESG', create: (d) => qhseApi.indicateursEsg.create(d),
+    fields: [
+      { name: 'code', label: 'Code', type: 'text', required: true },
+      { name: 'libelle', label: 'Libellé', type: 'text', required: true },
+      {
+        name: 'pilier', label: 'Pilier', type: 'select', default: 'environnement',
+        options: [
+          { value: 'environnement', label: 'Environnement' },
+          { value: 'social', label: 'Social' },
+          { value: 'gouvernance', label: 'Gouvernance' },
+        ],
+      },
+      { name: 'valeur', label: 'Valeur', type: 'number' },
+      { name: 'unite', label: 'Unité', type: 'text' },
+      { name: 'annee', label: 'Année', type: 'number', default: String(CURRENT_YEAR) },
+    ],
+  },
+  aspectsEnvironnementaux: {
+    title: 'Nouvel aspect environnemental', create: (d) => qhseApi.aspectsEnvironnementaux.create(d),
+    fields: [
+      { name: 'activite', label: 'Activité', type: 'text', required: true },
+      { name: 'aspect', label: 'Aspect', type: 'text', required: true },
+      { name: 'impact', label: 'Impact', type: 'text' },
+      {
+        name: 'condition', label: 'Condition', type: 'select', default: 'normale',
+        options: [
+          { value: 'normale', label: 'Normale' },
+          { value: 'anormale', label: 'Anormale' },
+          { value: 'urgence', label: 'Urgence' },
+        ],
+      },
+      { name: 'frequence', label: 'Fréquence', type: 'number' },
+      { name: 'gravite', label: 'Gravité', type: 'number' },
+    ],
+  },
+  relevesConsommation: {
+    title: 'Nouveau relevé de consommation', create: (d) => qhseApi.relevesConsommation.create(d),
+    fields: [
+      { name: 'site_libelle', label: 'Site', type: 'text', required: true },
+      {
+        name: 'type_energie', label: "Type d'énergie", type: 'select', default: 'electricite',
+        options: [
+          { value: 'electricite', label: 'Électricité (kWh)' },
+          { value: 'gasoil', label: 'Gasoil (L)' },
+          { value: 'essence', label: 'Essence (L)' },
+          { value: 'eau', label: 'Eau (m³)' },
+        ],
+      },
+      { name: 'periode', label: 'Période', type: 'text' },
+      { name: 'quantite', label: 'Quantité', type: 'number', required: true },
+      {
+        name: 'source', label: 'Source', type: 'select', default: 'facture',
+        options: [
+          { value: 'facture', label: 'Facture' },
+          { value: 'compteur', label: 'Compteur' },
+        ],
+      },
+    ],
+  },
+  demandesChangement: {
+    title: 'Nouvelle demande de changement (MOC)', create: (d) => qhseApi.demandesChangement.create(d),
+    fields: [
+      {
+        name: 'type_changement', label: 'Type', type: 'select', default: 'procede',
+        options: [
+          { value: 'procede', label: 'Procédé' },
+          { value: 'equipement', label: 'Équipement' },
+          { value: 'organisation', label: 'Organisation' },
+          { value: 'document', label: 'Document' },
+        ],
+      },
+      { name: 'description', label: 'Description', type: 'textarea', required: true },
+      { name: 'justification', label: 'Justification', type: 'textarea' },
+      {
+        name: 'classification_impact', label: 'Impact', type: 'select', default: 'faible',
+        options: [
+          { value: 'faible', label: 'Faible' },
+          { value: 'moyen', label: 'Moyen' },
+          { value: 'fort', label: 'Fort' },
+        ],
+      },
+    ],
+  },
+  veillesReglementaires: {
+    title: 'Nouvelle veille réglementaire', create: (d) => qhseApi.veillesReglementaires.create(d),
+    fields: [
+      { name: 'texte_suivi', label: 'Texte suivi', type: 'text', required: true },
+      { name: 'source', label: 'Source', type: 'text' },
+      { name: 'cadence_jours', label: 'Cadence (jours)', type: 'number' },
+    ],
+  },
+}
+
+function EnvCreateDialog({ spec, onClose, onDone }) {
+  const initial = useMemo(() => {
+    const o = {}
+    for (const f of spec.fields) o[f.name] = f.default ?? ''
+    return o
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spec])
+  const [form, setForm] = useState(initial)
+  const [saving, setSaving] = useState(false)
+  const [loaded, setLoaded] = useState({})
+
+  useEffect(() => {
+    let cancelled = false
+    spec.fields.filter((f) => f.type === 'loadedSelect').forEach((f) => {
+      f.loadOptions()
+        .then((r) => {
+          const rows = r?.data?.results ?? r?.data ?? []
+          if (!cancelled) {
+            setLoaded((prev) => ({ ...prev, [f.name]: (Array.isArray(rows) ? rows : []).map(f.mapRow) }))
+          }
+        })
+        .catch(() => {})
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spec])
+
+  const setField = (k, v) => setForm((prev) => ({ ...prev, [k]: v }))
+
+  async function save() {
+    for (const f of spec.fields) {
+      if (f.required && (form[f.name] === '' || form[f.name] == null)) {
+        toast.error(`${f.label} est requis.`); return
+      }
+    }
+    const payload = {}
+    for (const f of spec.fields) {
+      const v = form[f.name]
+      if (v === '' || v == null) continue
+      payload[f.name] = (f.type === 'number' || f.numeric) ? Number(v) : v
+    }
+    setSaving(true)
+    try {
+      await spec.create(payload)
+      toast.success('Enregistrement créé.')
+      onDone(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogTitle>{spec.title}</DialogTitle>
+        <div className="flex flex-col gap-3">
+          {spec.fields.map((f) => {
+            const opts = f.type === 'loadedSelect' ? (loaded[f.name] || []) : f.options
+            const isSelect = f.type === 'select' || f.type === 'loadedSelect'
+            return (
+              <div key={f.name}>
+                <Label>{f.label}{f.required ? ' *' : ''}</Label>
+                {isSelect ? (
+                  <FieldSelect
+                    value={String(form[f.name] ?? '')}
+                    onValueChange={(v) => setField(f.name, v)}
+                    options={opts}
+                  />
+                ) : f.type === 'textarea' ? (
+                  <Textarea rows={2} aria-label={f.label}
+                    value={form[f.name]} onChange={(e) => setField(f.name, e.target.value)} />
+                ) : (
+                  <Input aria-label={f.label}
+                    type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'}
+                    value={form[f.name]} onChange={(e) => setField(f.name, e.target.value)} />
+                )}
+              </div>
+            )
+          })}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR127 — bouton d'ouverture du dialogue de création d'un onglet.
+function CreerButton({ onClick, label = 'Nouveau' }) {
+  return (
+    <Button size="sm" onClick={onClick}>
+      <PlusCircle size={15} aria-hidden="true" /> {label}
+    </Button>
+  )
+}
+
 export default function Environnement() {
   const [tab, setTab] = useState('dechets')
+  // WIR127 — état du dialogue de création (clé de spec) + nonce de rechargement.
+  const [createKey, setCreateKey] = useState(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
+  const bumpReload = () => setReloadNonce((n) => n + 1)
 
   const dechetsCols = useMemo(() => [
     { id: 'libelle', header: 'Déchet', accessor: (r) => r.libelle },
@@ -305,6 +604,8 @@ export default function Environnement() {
             fetcher={() => qhseApi.dechets.list()}
             columns={dechetsCols}
             exportName="qhse-dechets"
+            deps={[reloadNonce]}
+            actions={<CreerButton onClick={() => setCreateKey('dechets')} label="Nouveau déchet" />}
           />
           <QhseResourceList
             title="Bordereaux de suivi (BSD)"
@@ -312,6 +613,8 @@ export default function Environnement() {
             fetcher={() => qhseApi.bordereauxDechets.list()}
             columns={bsdCols}
             exportName="qhse-bsd"
+            deps={[reloadNonce]}
+            actions={<CreerButton onClick={() => setCreateKey('bordereauxDechets')} label="Nouveau BSD" />}
           />
         </TabsContent>
 
@@ -322,6 +625,8 @@ export default function Environnement() {
             fetcher={() => qhseApi.recyclageModules.list()}
             columns={recyclageCols}
             exportName="qhse-recyclage-modules"
+            deps={[reloadNonce]}
+            actions={<CreerButton onClick={() => setCreateKey('recyclageModules')} label="Nouveau recyclage" />}
           />
         </TabsContent>
 
@@ -332,6 +637,8 @@ export default function Environnement() {
             fetcher={() => qhseApi.conformitesEnvironnementales.list()}
             columns={conformiteCols}
             exportName="qhse-conformites-env"
+            deps={[reloadNonce]}
+            actions={<CreerButton onClick={() => setCreateKey('conformitesEnvironnementales')} label="Nouvelle conformité" />}
           />
         </TabsContent>
 
@@ -343,6 +650,8 @@ export default function Environnement() {
             fetcher={() => qhseApi.bilansCarbone.list()}
             columns={bilanCols}
             exportName="qhse-bilans-carbone"
+            deps={[reloadNonce]}
+            actions={<CreerButton onClick={() => setCreateKey('bilansCarbone')} label="Nouveau bilan" />}
           />
         </TabsContent>
 
@@ -353,6 +662,8 @@ export default function Environnement() {
             fetcher={() => qhseApi.indicateursEsg.list()}
             columns={esgCols}
             exportName="qhse-indicateurs-esg"
+            deps={[reloadNonce]}
+            actions={<CreerButton onClick={() => setCreateKey('indicateursEsg')} label="Nouvel indicateur" />}
           />
         </TabsContent>
 
@@ -363,6 +674,8 @@ export default function Environnement() {
             fetcher={() => qhseApi.aspectsEnvironnementaux.list()}
             columns={aspectsCols}
             exportName="qhse-aspects-environnementaux"
+            deps={[reloadNonce]}
+            actions={<CreerButton onClick={() => setCreateKey('aspectsEnvironnementaux')} label="Nouvel aspect" />}
           />
           <QhseResourceList
             title="Relevés de consommation par site"
@@ -370,6 +683,8 @@ export default function Environnement() {
             fetcher={() => qhseApi.relevesConsommation.list()}
             columns={consommationCols}
             exportName="qhse-releves-consommation"
+            deps={[reloadNonce]}
+            actions={<CreerButton onClick={() => setCreateKey('relevesConsommation')} label="Nouveau relevé" />}
           />
         </TabsContent>
 
@@ -381,6 +696,8 @@ export default function Environnement() {
             fetcher={() => qhseApi.demandesChangement.list()}
             columns={mocCols}
             exportName="qhse-demandes-changement"
+            deps={[reloadNonce]}
+            actions={<CreerButton onClick={() => setCreateKey('demandesChangement')} label="Nouvelle demande" />}
           />
           <QhseResourceList
             title="Veille réglementaire"
@@ -388,9 +705,20 @@ export default function Environnement() {
             fetcher={() => qhseApi.veillesReglementaires.list()}
             columns={veilleCols}
             exportName="qhse-veille-reglementaire"
+            deps={[reloadNonce]}
+            actions={<CreerButton onClick={() => setCreateKey('veillesReglementaires')} label="Nouvelle veille" />}
           />
         </TabsContent>
       </Tabs>
+
+      {/* WIR127 — dialogue de création générique (piloté par la spec de l'onglet) */}
+      {createKey && (
+        <EnvCreateDialog
+          spec={ENV_CREATE_SPECS[createKey]}
+          onClose={() => setCreateKey(null)}
+          onDone={bumpReload}
+        />
+      )}
     </div>
   )
 }

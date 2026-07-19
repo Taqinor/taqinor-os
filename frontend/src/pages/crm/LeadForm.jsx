@@ -20,6 +20,9 @@ import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
 // VX23 — chatter réutilisable (regroupement par jour, avatars, notes/logs).
 import ChatterTimeline, { parseMarketingTouch } from '../../components/ChatterTimeline'
+// WIR19 — historique AuditLog record-scopé (visible au propriétaire sans la
+// permission globale journal_activite_voir).
+import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
 import AppointmentBooker from './leads/AppointmentBooker'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 // WIR14/NTCRM13 — checklist du playbook (progression auto-générée à chaque
@@ -1936,6 +1939,15 @@ export default function LeadForm({
             {/* ── Historique (chatter) ── */}
             {isEdit && (
               <Sec id="historique" title="Historique">
+                {/* WIR19 — traçabilité AuditLog de CE lead, ouverte au
+                    propriétaire même sans la permission Journal globale. */}
+                <div className="chatter-audit-history" style={{ marginBottom: 12 }}>
+                  <ObjectHistoryButton
+                    contentType="crm.lead"
+                    objectId={lead.id}
+                    label="Historique des modifications"
+                  />
+                </div>
                 <div className="chatter-note-box">
                   <input className="form-control" placeholder="Écrire une note (appel, commentaire…)"
                          value={noteBody} onChange={e => setNoteBody(e.target.value)}

@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   LayoutDashboard, CalendarDays, Megaphone, Workflow, Users2, ListChecks,
-  CalendarClock, ClipboardList, Gift, FormInput,
+  CalendarClock, ClipboardList, Gift, FormInput, PhoneCall,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -56,6 +56,8 @@ const FideliteList = lazy(() => import('./FideliteList'))
 const SupportsOffline = lazy(() => import('./SupportsOffline'))
 // WIR64/FG206 — formulaires d'intake (landing publique de capture de lead).
 const FormulairesIntakeList = lazy(() => import('./FormulairesIntakeList'))
+// WIR161 — journal d'appels commercial (click-to-call log, FG208).
+const JournalAppelsScreen = lazy(() => import('./JournalAppelsScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -74,6 +76,7 @@ const config = {
       { to: '/marketing/enquetes', label: 'Enquêtes', icon: <ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/fidelite', label: 'Fidélité', icon: <Gift size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/formulaires-intake', label: "Formulaires d'intake", icon: <FormInput size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/marketing/appels', label: "Journal d'appels", icon: <PhoneCall size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/parametres/marketing', label: "Domaine d'envoi", icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/calendrier', label: 'Calendrier marketing', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
@@ -89,6 +92,7 @@ const config = {
     ['/marketing/enquetes', 'Enquêtes'],
     ['/marketing/fidelite', 'Fidélité'],
     ['/marketing/formulaires-intake', "Formulaires d'intake"],
+    ['/marketing/appels', "Journal d'appels"],
     ['/marketing/supports-offline', 'Supports offline (QR)'],
     ['/marketing', 'Tableau de bord marketing'],
   ],
@@ -108,6 +112,7 @@ const config = {
     { path: '/marketing/enquetes/:id', component: EnqueteResultats, roles: ROLES },
     { path: '/marketing/fidelite', component: FideliteList, roles: ROLES },
     { path: '/marketing/formulaires-intake', component: FormulairesIntakeList, roles: ROLES },
+    { path: '/marketing/appels', component: JournalAppelsScreen, roles: ROLES },
     { path: '/marketing/supports-offline', component: SupportsOffline, roles: ROLES },
   ],
 }

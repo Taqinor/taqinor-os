@@ -146,6 +146,9 @@ const marketingApi = {
     // URL publique de la landing (partageable), pour information dans l'admin.
     lienPublic: (slug) => `/api/django/marketing/intake/${slug}/`,
   },
+  // ── WIR161 — Journal d'appels commercial / click-to-call log (FG208) ──
+  // `company`/`auteur` posés côté serveur (jamais lus du corps de requête).
+  appels: resource('appels'),
 }
 
 export default marketingApi

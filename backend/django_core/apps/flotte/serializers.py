@@ -947,10 +947,15 @@ class GarageSerializer(serializers.ModelSerializer):
     l'e-facturation DGI ; l'ICE doit comporter exactement 15 chiffres.
     """
 
+    # WIR90 — nom du stock.Fournisseur référencé (identité canonique), ou None.
+    fournisseur_label = serializers.SerializerMethodField()
+
     class Meta:
         model = Garage
         fields = [
             'id', 'nom', 'adresse', 'telephone', 'ice', 'identifiant_fiscal',
+            # WIR90 — lien optionnel vers un stock.Fournisseur référencé.
+            'fournisseur_id_ref', 'fournisseur_label',
             'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -959,6 +964,29 @@ class GarageSerializer(serializers.ModelSerializer):
         if value and (len(value) != 15 or not value.isdigit()):
             raise serializers.ValidationError(
                 "L'ICE doit comporter exactement 15 chiffres.")
+        return value
+
+    def get_fournisseur_label(self, obj):
+        # WIR90 — repli sur la saisie libre (nom du garage) : le label ne sert
+        # qu'à afficher l'identité canonique quand un fournisseur est lié.
+        if not obj.fournisseur_id_ref:
+            return None
+        from apps.stock.selectors import get_fournisseur_by_id
+        fournisseur = get_fournisseur_by_id(obj.company, obj.fournisseur_id_ref)
+        return fournisseur.nom if fournisseur is not None else None
+
+    def validate_fournisseur_id_ref(self, value):
+        # WIR90 — même société uniquement (sélecteur cross-app apps.stock) ;
+        # jamais un import des models de stock (modularité CLAUDE.md).
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        from apps.stock.selectors import get_fournisseur_by_id
+        if company is not None \
+                and get_fournisseur_by_id(company, value) is None:
+            raise serializers.ValidationError(
+                "Ce fournisseur n'appartient pas à votre société.")
         return value
 
 
@@ -1944,12 +1972,17 @@ class ContratVehiculeSerializer(serializers.ModelSerializer):
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     statut_calcule = serializers.SerializerMethodField()
+    # WIR90 — nom du stock.Fournisseur référencé (identité canonique), ou None.
+    fournisseur_label = serializers.SerializerMethodField()
 
     class Meta:
         model = ContratVehicule
         fields = [
             'id', 'vehicule', 'vehicule_label', 'type_contrat',
-            'type_contrat_display', 'fournisseur', 'garage', 'date_debut',
+            'type_contrat_display', 'fournisseur',
+            # WIR90 — lien optionnel du bailleur/loueur vers un stock.Fournisseur.
+            'fournisseur_id_ref', 'fournisseur_label',
+            'garage', 'date_debut',
             'date_fin', 'montant_recurrent', 'periodicite',
             'periodicite_display', 'services_inclus', 'km_contractuel_an',
             'statut', 'statut_display', 'statut_calcule', 'notes',
@@ -1962,6 +1995,29 @@ class ContratVehiculeSerializer(serializers.ModelSerializer):
 
     def get_statut_calcule(self, obj):
         return obj.statut_calcule()
+
+    def get_fournisseur_label(self, obj):
+        # WIR90 — le CharField `fournisseur` reste le repli en saisie libre ;
+        # ce label n'affiche l'identité canonique que si un fournisseur est lié.
+        if not obj.fournisseur_id_ref:
+            return None
+        from apps.stock.selectors import get_fournisseur_by_id
+        fournisseur = get_fournisseur_by_id(obj.company, obj.fournisseur_id_ref)
+        return fournisseur.nom if fournisseur is not None else None
+
+    def validate_fournisseur_id_ref(self, value):
+        # WIR90 — même société uniquement (sélecteur cross-app apps.stock) ;
+        # jamais un import des models de stock (modularité CLAUDE.md).
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        from apps.stock.selectors import get_fournisseur_by_id
+        if company is not None \
+                and get_fournisseur_by_id(company, value) is None:
+            raise serializers.ValidationError(
+                "Ce fournisseur n'appartient pas à votre société.")
+        return value
 
     def validate(self, attrs):
         request = self.context.get('request')
