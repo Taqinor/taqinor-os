@@ -51,6 +51,26 @@ const parametresApi = {
   // value vide ("" / null) supprime la surcharge (retour au catalogue statique).
   saveTranslationOverrides: (items) =>
     api.put('/parametres/traductions/bulk/', { items }),
+  // WIR66 — référentiels société (ARC23/24/27) : taux de TVA, conditions de
+  // paiement, unités de mesure. Lecture pour tout rôle ; écriture réservée
+  // admin/responsable côté serveur. `company` toujours forcée serveur.
+  getTauxTva: () => api.get('/parametres/taux-tva/'),
+  createTauxTva: (data) => api.post('/parametres/taux-tva/', data),
+  updateTauxTva: (id, data) => api.patch(`/parametres/taux-tva/${id}/`, data),
+  deleteTauxTva: (id) => api.delete(`/parametres/taux-tva/${id}/`),
+  setDefautTauxTva: (id) => api.post(`/parametres/taux-tva/${id}/set_defaut/`),
+  getConditionsPaiement: () => api.get('/parametres/conditions-paiement/'),
+  createConditionPaiement: (data) =>
+    api.post('/parametres/conditions-paiement/', data),
+  updateConditionPaiement: (id, data) =>
+    api.patch(`/parametres/conditions-paiement/${id}/`, data),
+  deleteConditionPaiement: (id) =>
+    api.delete(`/parametres/conditions-paiement/${id}/`),
+  getUnitesMesure: () => api.get('/parametres/unites-mesure/'),
+  createUniteMesure: (data) => api.post('/parametres/unites-mesure/', data),
+  updateUniteMesure: (id, data) =>
+    api.patch(`/parametres/unites-mesure/${id}/`, data),
+  deleteUniteMesure: (id) => api.delete(`/parametres/unites-mesure/${id}/`),
 }
 
 export default parametresApi

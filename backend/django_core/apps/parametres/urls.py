@@ -6,6 +6,11 @@ from .views_statuses import StatutConfigViewSet
 from .views_email import EmailTemplateViewSet
 from .views_approvals import ApprovalPolicyViewSet
 from .views_translations import TranslationOverrideViewSet
+from .views_referentiels import (
+    ConditionPaiementViewSet,
+    TauxTVAViewSet,
+    UniteMesureViewSet,
+)
 
 # N58 — configuration d'affichage des statuts métier (chantier/SAV/BC).
 # Routeur isolé (registre dédié) pour ne pas perturber les vues fonctions.
@@ -28,6 +33,16 @@ approvals_router.register(r'approbations', ApprovalPolicyViewSet,
 translations_router = DefaultRouter()
 translations_router.register(r'traductions', TranslationOverrideViewSet,
                              basename='translation-override')
+
+# WIR66 — référentiels société (TVA / conditions de paiement / unités de
+# mesure), seedés au signup mais sans API jusqu'ici. Routeur isolé.
+referentiels_router = DefaultRouter()
+referentiels_router.register(r'taux-tva', TauxTVAViewSet,
+                             basename='taux-tva')
+referentiels_router.register(r'conditions-paiement', ConditionPaiementViewSet,
+                             basename='condition-paiement')
+referentiels_router.register(r'unites-mesure', UniteMesureViewSet,
+                             basename='unite-mesure')
 
 urlpatterns = [
     path('', views.get_profile),
@@ -63,4 +78,7 @@ urlpatterns = [
     path('', include(approvals_router.urls)),
     # N94 — surcharges de traduction de l'interface (CRUD + bulk + effective).
     path('', include(translations_router.urls)),
+    # WIR66 — référentiels société : taux de TVA, conditions de paiement,
+    # unités de mesure (lecture tout rôle, écriture admin/responsable).
+    path('', include(referentiels_router.urls)),
 ]
