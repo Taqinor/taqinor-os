@@ -280,12 +280,20 @@ def upsert_insight(company, target, *, date, spend=None, results=None,
     explicitement (les rows historiques restent intacts).
     """
     ct = ContentType.objects.get_for_model(target)
-    defaults = {
-        'spend': _to_decimal(spend),
-        'results': _to_int(results),
-        'frequency': _to_decimal(frequency),
-        'cpl': _to_decimal(cpl),
-    }
+    # PUB24 — les 4 champs CŒUR (spend/results/frequency/cpl) sont désormais
+    # None-protégés EXACTEMENT comme les colonnes ADSDEEP1 : un appel PARTIEL (Meta
+    # ne renvoie pas un champ un jour donné, ou un appelant ancien à 4 arguments)
+    # n'écrase plus une métrique existante en NULL/0. Seule une valeur réellement
+    # fournie — y compris 0 explicite — est écrite ; None = « non fourni », jamais
+    # écrit (un re-sync partiel préserve les métriques déjà en base).
+    defaults = {}
+    for name, value in (
+            ('spend', _to_decimal(spend)),
+            ('results', _to_int(results)),
+            ('frequency', _to_decimal(frequency)),
+            ('cpl', _to_decimal(cpl))):
+        if value is not None:
+            defaults[name] = value
     # Colonnes ADSDEEP1 : n'écrire que ce qui est réellement fourni (None laissé
     # de côté pour ne jamais annuler une valeur déjà en base sur un re-sync
     # partiel). ``video_metrics`` a un défaut {} en base : ne l'écrire que si
