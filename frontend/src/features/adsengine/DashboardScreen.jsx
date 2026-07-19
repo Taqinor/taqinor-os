@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, ExternalLink } from 'lucide-react'
+import { Bell, ExternalLink, Printer, Download } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   formatMAD, formatMoney, formatNumber, formatRatio, formatPercent,
@@ -170,6 +170,10 @@ export default function DashboardScreen() {
   const [reconDetailId, setReconDetailId] = useState(null)
   const pacingLoaded = useRef(false)
   const reconLoaded = useRef(false)
+  // PUB47 — export CSV SERVEUR (ReportExportView, jusqu'ici sans consommateur
+  // front) pour la table de réconciliation — aucun export n'existait ici.
+  const [reconExportBusy, setReconExportBusy] = useState(false)
+  const [reconExportErr, setReconExportErr] = useState(false)
 
   // SIG4 — console de signaux (chargée paresseusement, comme pacing/recon).
   const [signals, setSignals] = useState(null)
@@ -232,6 +236,25 @@ export default function DashboardScreen() {
     }
   }
 
+  // PUB47 — télécharge le CSV serveur de réconciliation (blob, jamais un
+  // ``data:`` URI fabriqué côté client — source de vérité unique, PUB12).
+  const exportReconciliationCsv = async () => {
+    setReconExportBusy(true); setReconExportErr(false)
+    try {
+      const r = await adsengineApi.reports.export({ table: 'reconciliation' })
+      const url = window.URL.createObjectURL(new Blob([r.data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'reconciliation-taqinor.csv'
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      setReconExportErr(true)
+    } finally {
+      setReconExportBusy(false)
+    }
+  }
+
   // SIG3 — drill-down par signal/cohorte (filigrane de maturation).
   const openSignalDrill = (key, label) => {
     setSignalDrill({ key, label })
@@ -245,9 +268,17 @@ export default function DashboardScreen() {
   const closeSignalDrill = () => { setSignalDrill(null); setCohorts([]) }
 
   return (
-    <div className="page ae-dashboard">
-      <div className="page-header">
+    <div className="page ae-dashboard ae-print-area">
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2>Tableau de bord publicitaire</h2>
+        {/* PUB47 — impression navigateur (feuille globale print.css, VX80 :
+            chrome masqué, noir-sur-blanc, tables complètes) : distinct des PDF
+            WeasyPrint client (règle #4), zéro dépendance nouvelle. */}
+        <button type="button" className="btn btn-light" data-testid="ae-dashboard-print"
+          onClick={() => window.print()}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <Printer size={15} aria-hidden="true" /> Imprimer / PDF
+        </button>
       </div>
 
       {/* Bandeau d'alertes ENG13 (global, toutes vues) */}
@@ -490,6 +521,18 @@ export default function DashboardScreen() {
             ? <p data-testid="ae-recon-empty" style={{ color: '#64748b' }}>
                 Aucune ligne de réconciliation.</p>
             : (
+              <>
+                {/* PUB47 — CSV serveur (aucun export n'existait sur cette table) */}
+                <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                  <button type="button" className="btn btn-light" data-testid="ae-recon-export"
+                    disabled={reconExportBusy} onClick={exportReconciliationCsv}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <Download size={14} aria-hidden="true" /> Exporter en CSV
+                  </button>
+                </div>
+                {reconExportErr && (
+                  <p data-testid="ae-recon-export-err" style={{ color: '#dc2626' }}>Export impossible.</p>
+                )}
               <table className="data-table" data-testid="ae-recon-table">
                 <thead>
                   <tr><th>Campagne</th><th>Meta</th><th>ERP</th><th>Écart</th><th>Statut</th><th /></tr>
@@ -520,6 +563,7 @@ export default function DashboardScreen() {
                   })}
                 </tbody>
               </table>
+              </>
             )}
 
           {/* Détail d'une ligne de réconciliation (Meta vs ERP, poste par poste) */}

@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   alerts: vi.fn(),
   pacing: vi.fn(),
   reconciliation: vi.fn(),
+  reportsExport: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -20,6 +21,7 @@ vi.mock('./adsengineApi', () => ({
     metrics: { dashboard: mocks.dashboard, leads: mocks.leads, pacing: mocks.pacing },
     alerts: { list: mocks.alerts },
     reconciliation: { list: mocks.reconciliation },
+    reports: { export: mocks.reportsExport },
   },
 }))
 
@@ -45,6 +47,11 @@ beforeEach(() => {
       ecart_mad: 200, ecart_pct: 0.017, statut: 'ecart', statut_display: 'Écart mineur',
       lignes: [{ id: 1, label: '10 juil', meta_mad: 600, erp_mad: 590 }] },
   ] })
+  mocks.reportsExport.mockResolvedValue({ data: new Blob(['csv']) })
+  // jsdom ne fournit pas createObjectURL/revokeObjectURL (PUB47 — export CSV
+  // serveur en blob téléchargeable).
+  globalThis.URL.createObjectURL = vi.fn(() => 'blob:fake')
+  globalThis.URL.revokeObjectURL = vi.fn()
 })
 
 describe('DashboardScreen — ENG42 Pacing', () => {
@@ -91,5 +98,31 @@ describe('DashboardScreen — ENG42 Réconciliation', () => {
     fireEvent.click(await screen.findByTestId('ae-recon-open-3'))
     expect(await screen.findByTestId('ae-recon-detail')).toHaveTextContent('Résidentiel Casa')
     expect(screen.getByTestId('ae-recon-detail-row')).toHaveTextContent('10 juil')
+  })
+
+  // PUB47 — export CSV serveur (ReportExportView, jusqu'ici sans consommateur
+  // sur cette table) + impression navigateur (window.print(), print.css VX80).
+  it('exporte la réconciliation en CSV serveur (table=reconciliation)', async () => {
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-tab-reconciliation'))
+    fireEvent.click(await screen.findByTestId('ae-recon-export'))
+    await waitFor(() => expect(mocks.reportsExport).toHaveBeenCalledWith(
+      { table: 'reconciliation' }))
+  })
+
+  it('un export CSV en échec affiche une erreur', async () => {
+    mocks.reportsExport.mockRejectedValue(new Error('500'))
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-tab-reconciliation'))
+    fireEvent.click(await screen.findByTestId('ae-recon-export'))
+    expect(await screen.findByTestId('ae-recon-export-err')).toBeInTheDocument()
+  })
+
+  it('le bouton Imprimer appelle window.print()', async () => {
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {})
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-dashboard-print'))
+    expect(printSpy).toHaveBeenCalled()
+    printSpy.mockRestore()
   })
 })

@@ -195,6 +195,12 @@ const adsengineApi = {
     // budgétaire, fatigue, tracking, fenêtres de données). Jamais auto-chargé
     // (bouton « Lancer l'audit »).
     audit: () => api.get('/adsengine/reporting/audit/'),
+    // PUB47/PUB12 — export CSV SERVEUR (``ReportExportView``, ADSENG33 — déjà
+    // construit, jusqu'ici sans consommateur front) : ``table`` = 'variantes'
+    // (défaut) | 'reconciliation' (+ ``date`` ISO du jour réconcilié).
+    // ``responseType: 'blob'`` : le corps est le fichier, pas du JSON.
+    export: (params) => api.get(
+      '/adsengine/reporting/export/', { params, responseType: 'blob' }),
   },
 
   // ── ADSDEEP53/54 — Boîte de réception des commentaires (posts + dark posts) ──

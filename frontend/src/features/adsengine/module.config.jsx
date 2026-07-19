@@ -9,6 +9,10 @@ import {
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
   Gauge, GitBranch,
 } from 'lucide-react'
+// PUB47 — enveloppe d'impression (bouton « Imprimer / PDF » + print.css
+// globale) posée UNIQUEMENT au point d'enregistrement de route, sans toucher
+// au corps d'AdsCockpitScreen (lane distincte).
+import PrintPageWrapper from './PrintPageWrapper'
 
 /* ============================================================================
    ENG21 — configuration du module « Publicité » (moteur Meta-ads autonome,
@@ -42,6 +46,11 @@ const InstagramScreen = lazy(() => import('./InstagramScreen'))
 const AdsCockpitScreen = lazy(() => import('./AdsCockpitScreen'))
 // ASG6 — L'Arbre (l'Assumption Engine : plan vivant, dd-assumption-engine.md §3).
 const TreeScreen = lazy(() => import('./TreeScreen'))
+
+// PUB47 — cockpit imprimable A4 (bouton + print.css) sans éditer l'écran.
+function AdsCockpitScreenPrintable() {
+  return <PrintPageWrapper><AdsCockpitScreen /></PrintPageWrapper>
+}
 
 const ROLES = ['responsable', 'admin']
 
@@ -94,7 +103,7 @@ const config = {
   sectionLabels: { publicite: 'Publicité' },
   routes: [
     { path: '/publicite/tableau-de-bord', component: DashboardScreen, roles: ROLES },
-    { path: '/publicite/cockpit', component: AdsCockpitScreen, roles: ROLES },
+    { path: '/publicite/cockpit', component: AdsCockpitScreenPrintable, roles: ROLES },
     { path: '/publicite/approbations', component: ApprovalsScreen, roles: ROLES },
     { path: '/publicite/campagnes', component: CampaignsScreen, roles: ROLES },
     { path: '/publicite/creatifs', component: CreativeLibraryScreen, roles: ROLES },

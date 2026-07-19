@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { BarChart3, Download, ClipboardList } from 'lucide-react'
+import { BarChart3, Download, ClipboardList, Printer } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeVariants, normalizeFunnel, normalizeCohorts, normalizeLeaderboard,
@@ -138,9 +138,9 @@ export default function ReportsScreen() {
     [funnel])
 
   return (
-    <div className="page ae-reports">
-      <div className="page-header">
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+    <div className="page ae-reports ae-print-area">
+      <div className="page-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginRight: 'auto' }}>
           <BarChart3 size={20} aria-hidden="true" /> Reporting
         </h2>
         {tab === 'apercu' && csvHref && (
@@ -150,6 +150,14 @@ export default function ReportsScreen() {
             <Download size={15} aria-hidden="true" /> Exporter en CSV
           </a>
         )}
+        {/* PUB47 — impression navigateur (feuille globale print.css, VX80) :
+            PDF imprimable propre (A4), zéro dépendance nouvelle. Distinct des
+            PDF WeasyPrint client (règle #4). */}
+        <button type="button" className="btn btn-light" data-testid="ae-reports-print"
+          onClick={() => window.print()}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+          <Printer size={15} aria-hidden="true" /> Imprimer / PDF
+        </button>
       </div>
 
       <div role="tablist" aria-label="Sections du reporting"

@@ -128,6 +128,17 @@ describe('ReportsScreen (ENG45)', () => {
     // Pas de lien d'export sans variante.
     expect(screen.queryByTestId('ae-reports-export')).toBeNull()
   })
+
+  // PUB47 — impression navigateur (feuille globale print.css, VX80), zéro
+  // dépendance nouvelle : toujours visible, quel que soit l'onglet.
+  it('le bouton Imprimer appelle window.print()', async () => {
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {})
+    renderScreen()
+    const btn = await screen.findByTestId('ae-reports-print')
+    btn.click()
+    expect(printSpy).toHaveBeenCalled()
+    printSpy.mockRestore()
+  })
 })
 
 describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {
