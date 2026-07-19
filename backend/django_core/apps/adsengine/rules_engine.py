@@ -47,12 +47,21 @@ OPTIMIZATION_CADENCES = frozenset({CADENCE_DAILY, CADENCE_WEEKLY})
 
 def _window_start_date(now, days):
     """Date de début de fenêtre glissante (les insights sont datés au jour)."""
-    base = now
-    if isinstance(base, datetime.datetime):
-        base = base.date()
-    elif not isinstance(base, datetime.date):
-        base = datetime.date.today()
+    base = _as_of_date(now)
     return base - datetime.timedelta(days=max(1, int(days)) - 1)
+
+
+def _as_of_date(now):
+    """Borne HAUTE « as-of » d'une fenêtre (la date de ``now``). En évaluation
+    live ``now`` ≈ aujourd'hui (donc borner à cette date est un no-op : aucun
+    snapshot futur n'existe) ; en BACKTEST historique (PUB91) ``now`` = un jour
+    passé, et cette borne empêche toute FUITE de données futures (lookahead
+    bias) dans le rejeu d'une règle."""
+    if isinstance(now, datetime.datetime):
+        return now.date()
+    if isinstance(now, datetime.date):
+        return now
+    return datetime.date.today()
 
 
 # ── Évaluateurs par template (registre ; d'autres lanes/tasks en câblent plus) ─
@@ -72,6 +81,7 @@ def _eval_frequency_high(company, policy, template, *, now, config):
     window_days = int(params.get('window_days', 7))
     min_samples = int(params.get('min_samples', 3))
     start = _window_start_date(now, window_days)
+    end = _as_of_date(now)  # borne haute as-of (no-op live, anti-fuite backtest)
     ct = ContentType.objects.get_for_model(AdSetMirror)
 
     findings = []
@@ -80,7 +90,7 @@ def _eval_frequency_high(company, policy, template, *, now, config):
     for adset in adsets:
         agg = (InsightSnapshot.objects
                .filter(company=company, content_type=ct, object_id=adset.pk,
-                       date__gte=start)
+                       date__gte=start, date__lte=end)
                .aggregate(freq=Max('frequency'), n=Count('id')))
         n = agg['n'] or 0
         freq = agg['freq']
@@ -249,11 +259,17 @@ def _derived_metric(snaps, metric):
 
 
 def _window_snaps(company, ct, obj_pk, *, now, days):
-    """Snapshots d'un objet sur une fenêtre glissante de ``days`` jours."""
+    """Snapshots d'un objet sur une fenêtre glissante de ``days`` jours.
+
+    Bornée en HAUT par la date de ``now`` (``_as_of_date``) : no-op en live,
+    mais empêche la fuite de données futures lors d'un backtest historique
+    (PUB91)."""
     from .models import InsightSnapshot
     start = _window_start_date(now, days)
+    end = _as_of_date(now)
     return list(InsightSnapshot.objects.filter(
-        company=company, content_type=ct, object_id=obj_pk, date__gte=start))
+        company=company, content_type=ct, object_id=obj_pk,
+        date__gte=start, date__lte=end))
 
 
 def _eval_metric_threshold(company, policy, template, *, now, config):

@@ -849,6 +849,23 @@ class RulePolicyViewSet(AdsengineViewSet):
                     f'(cadence {instance.cadence_hours} h).' if instance.enabled
                     else f'Règle « {instance.template_key} » désarmée.'))
 
+    # PUB91 — backtest de la règle sur l'historique RÉEL (dry-run avant armement).
+    # Lecture seule (adsengine_view) : AUCUNE EngineAction n'est créée. ``?jours=``
+    # borne la fenêtre (défaut 90 = dernier trimestre).
+    @action(detail=True, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def backtest(self, request, pk=None):
+        """PUB91 — « Qu'aurait fait cette règle sur votre dernier trimestre ? »
+        Rejoue la règle jour par jour sur les snapshots réels et liste les
+        actions qu'elle AURAIT proposées (jamais exécutées)."""
+        from .rule_backtest import DEFAULT_BACKTEST_DAYS, backtest_rule
+        policy = self.get_object()
+        try:
+            days = int(request.query_params.get('jours', DEFAULT_BACKTEST_DAYS))
+        except (TypeError, ValueError):
+            days = DEFAULT_BACKTEST_DAYS
+        return Response(backtest_rule(policy, days=days))
+
     # ADSENG14 — catalogue FIXE (lecture) : le front rend la liste des templates
     # (style STAGES.py) sans que le fondateur puisse en inventer un (pas de
     # builder libre). GET → permission de LECTURE (adsengine_view) héritée.
@@ -993,11 +1010,52 @@ class RulePolicyViewSet(AdsengineViewSet):
 
 
 class AnomalyEventViewSet(AdsengineViewSet):
-    """ADSENG4 — Liste (lecture seule) des anomalies détectées par le gardien."""
+    """ADSENG4 — Liste (lecture seule) des anomalies + PUB90 : feedback
+    utile/faux-positif et précision par détecteur."""
 
     queryset = AnomalyEvent.objects.all()
     serializer_class = AnomalyEventSerializer
-    http_method_names = ['get', 'head', 'options']
+    # POST est activé UNIQUEMENT pour l'action ``feedback`` (PUB90) ; la création
+    # d'anomalie par API reste interdite (les anomalies naissent du gardien).
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def create(self, request, *args, **kwargs):
+        """La création d'anomalie par API est interdite (405) : une anomalie est
+        matérialisée par le moteur (ENG9), jamais par un client."""
+        return Response(status=405)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def feedback(self, request, pk=None):
+        """PUB90 — Vote utile/faux-positif sur une anomalie (acteur + horodatage
+        posés côté serveur). ``{"vote": "useful"|"false_positive"}``. Alimente la
+        précision par détecteur + le throttle brake-only. Idempotent (re-voter
+        remplace le vote)."""
+        from django.utils import timezone
+        anomaly_event = self.get_object()
+        vote = request.data.get('vote')
+        valid = {c[0] for c in AnomalyEvent.Feedback.choices}
+        if vote not in valid:
+            return Response(
+                {'detail': 'Vote attendu : useful ou false_positive.'},
+                status=400)
+        anomaly_event.feedback = vote
+        anomaly_event.feedback_at = timezone.now()
+        anomaly_event.feedback_by = request.user
+        anomaly_event.save(
+            update_fields=['feedback', 'feedback_at', 'feedback_by',
+                           'updated_at'])
+        return Response(self.get_serializer(anomaly_event).data)
+
+    @action(detail=False, methods=['get'], url_path='detecteurs',
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def detectors(self, request):
+        """PUB90 — Précision + état de throttle PAR DÉTECTEUR (visible dans
+        l'UI). Company-scopé (queryset hérité). Un détecteur constamment inutile
+        (≥ 5 faux positifs) apparaît ``throttled`` (cadence réduite)."""
+        from . import anomaly as anomaly_mod
+        company = request.user.company
+        return Response({'detecteurs': anomaly_mod.all_detector_stats(company)})
 
 
 class CreativeGenerationBatchViewSet(AdsengineViewSet):
@@ -1566,6 +1624,105 @@ class CreativeLeaderboardView(APIView):
         data = creative_leaderboard(
             company, dimension=dimension, date_start=debut, date_end=fin)
         return Response(data)
+
+
+class RegretRegistryView(APIView):
+    """PUB86 — Registre de qualité des décisions (regret réalisé, MAD laissés sur
+    la table) PAR TYPE DE DÉCISION. Company-scopé, gaté ``adsengine_view``.
+    ``?debut=&fin=`` (dates ISO) bornent la fenêtre. Peu de données → intervalle
+    honnête (``insufficient_data`` + ``interval``), jamais un chiffre sec."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .decision_quality import regret_registry
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(regret_registry(
+            company, date_start=debut, date_end=fin))
+
+
+def _adseng_parse_float(value, default=None):
+    """``float`` d'une entrée libre, ou ``default`` (jamais une 500)."""
+    if value is None or value == '':
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+class MdeCalculatorView(APIView):
+    """PUB87 — Calculateur MDE / puissance opérateur : vue MINCE sur ``mde.py``
+    (aucun recalcul métier ré-implémenté). À la création d'une expérience,
+    répond « avec votre volume, ~X jours pour détecter +20 % » de façon
+    interactive. Company-scopé, gaté ``adsengine_view``.
+
+    ``?p=`` taux de base (proportion, 0<p<1), ``?volume=`` essais/bras/jour
+    (>0), ``?cible=`` effet relatif visé (fraction, défaut 0,20 = +20 %). Toute
+    entrée invalide → 400 explicite en FR (jamais une 500)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from . import mde
+
+        p = _adseng_parse_float(request.query_params.get('p'))
+        volume = _adseng_parse_float(request.query_params.get('volume'))
+        cible = _adseng_parse_float(request.query_params.get('cible'), 0.20)
+
+        if p is None or not (0.0 < p < 1.0):
+            return Response(
+                {'detail': 'Taux de base p attendu dans ]0 ; 1[.'}, status=400)
+        if volume is None or volume <= 0:
+            return Response(
+                {'detail': 'Volume (essais/bras/jour) strictement positif '
+                           'attendu.'}, status=400)
+        if cible <= 0:
+            return Response(
+                {'detail': 'Effet relatif cible strictement positif attendu.'},
+                status=400)
+
+        jours = mde.days_to_detect(p, cible, volume)
+        by_h = mde.mde_by_horizon(p, volume)
+        mde_par_horizon = [
+            {'jours': d,
+             'mde_relatif_pct': (round(v * 100, 1)
+                                 if v != float('inf') else None)}
+            for d, v in sorted(by_h.items())]
+        phrase = (
+            f"Avec votre volume (~{volume:g} essais/bras/jour), il faut "
+            f"~{jours} jour(s) pour détecter un effet de "
+            f"+{cible * 100:g} % de façon fiable.")
+        return Response({
+            'p': p, 'volume': volume, 'cible_relative': cible,
+            'jours_pour_cible': jours, 'phrase_fr': phrase,
+            'mde_par_horizon': mde_par_horizon,
+        })
+
+
+class ExplorationLedgerView(APIView):
+    """PUB88 — Livre de compte MENSUEL exploration vs exploitation (MAD dépensés
+    à explorer vs sur le gagnant confirmé). Company-scopé, gaté
+    ``adsengine_view``. ``?debut=&fin=`` (dates ISO) bornent la fenêtre."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import exploration_ledger
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response({'mois': exploration_ledger(
+            company, date_start=debut, date_end=fin)})
 
 
 class CreativeScatterView(APIView):

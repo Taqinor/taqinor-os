@@ -500,6 +500,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.sync_breakdowns_weekly',
         'schedule': crontab(hour=7, minute=15, day_of_week=1),
     },
+    # PUB94 — snapshot HEBDO d'observabilité de L'Arbre : flag « branche morte »
+    # (nœud figé sur son prior depuis N semaines). Lundi, après l'oubli hebdo.
+    # Alerte INFO brake-only, jamais un re-test auto. NO-OP propre sans nœud.
+    'adsengine-flag-dead-branches-weekly': {
+        'task': 'adsengine.flag_dead_branches_weekly',
+        'schedule': crontab(hour=6, minute=50, day_of_week=1),
+    },
     # ADSDEEP18 — pull-sync QUOTIDIEN des leads lead-form (convergence avec le
     # webhook, idempotent par leadgen_id). NO-OP propre sans connexion Meta live.
     'adsengine-pull-meta-leads': {
@@ -512,6 +519,13 @@ app.conf.beat_schedule = {
     'adsengine-emit-capi-signatures': {
         'task': 'adsengine.emit_capi_signatures',
         'schedule': crontab(hour=7, minute=35),
+    },
+    # PUB89 — score QUOTIDIEN de qualité de la chaîne d'attribution (complétude
+    # de jointure de la récompense proxy CtwaReferral) : alerte BRAKE-ONLY sous
+    # seuil, jamais une pause auto. NO-OP propre sans référence CTWA.
+    'adsengine-check-attribution-quality': {
+        'task': 'adsengine.check_attribution_quality',
+        'schedule': crontab(hour=7, minute=45),
     },
     # ── lane/gen-b — AGEN8 : auto-pause maison du rayon d'explosion (bloc isolé,
     # fold propre avec le co-éditeur de celery.py). Polling COURT (toutes les

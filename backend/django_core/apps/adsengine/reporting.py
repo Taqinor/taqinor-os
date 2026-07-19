@@ -29,6 +29,12 @@ import io
 import statistics
 from decimal import Decimal, ROUND_HALF_UP
 
+from . import allocation
+
+# PUB88 — un bras est un « gagnant confirmé » quand sa probabilité d'être le
+# meilleur atteint le seuil de maturité de phase (dd-science-core §4 : P ≥ 80 %).
+CONFIRMED_WINNER_PROB = allocation.PHASE_ADVANCE_PROB  # 0.80
+
 # Buckets de lag par défaut (semaines) pour les cohortes de signature (§5.3).
 DEFAULT_LAG_WEEKS = (1, 2, 4, 8, 12)
 
@@ -785,6 +791,99 @@ def response_time_by_ad(company):
         for meta_id, slot in by_ad.items()
     ]
     result.sort(key=lambda r: r['median_response_minutes'])
+    return result
+
+
+# ── PUB88 — Livre de compte de l'exploration (exploration vs exploitation) ────
+# Le plancher d'exploration (20 %) est de l'argent RÉEL : on rend visible, en
+# ligne mensuelle, « MAD dépensés à explorer vs sur le gagnant confirmé » pour
+# que le coût d'apprentissage devienne pilotable. Lecture des ALLOCATIONS
+# loggées (``DecisionLog.allocations`` : budget_mad + prob_best par bras) — la
+# source de vérité de ce que le moteur a dirigé, jamais une ré-estimation.
+def classify_allocation(budget_map, prob_map, *,
+                        confirm_threshold=CONFIRMED_WINNER_PROB):
+    """Répartit le budget d'UNE décision en (exploration, exploitation). Pure.
+
+    ``budget_map`` : ``{label: mad}`` (``allocations.budget_mad``). ``prob_map`` :
+    ``{label: P(meilleur)}`` (``allocations.prob_best``). Exploitation = budget
+    dirigé vers un bras dont ``P(meilleur) ≥ confirm_threshold`` (gagnant
+    confirmé) ; exploration = tout le reste (plancher + budget sur les bras non
+    confirmés). Sans gagnant confirmé, 100 % est de l'exploration. Renvoie
+    ``(exploration_mad, exploitation_mad)``.
+    """
+    exploration = 0.0
+    exploitation = 0.0
+    for label, mad in (budget_map or {}).items():
+        try:
+            amount = float(mad)
+        except (TypeError, ValueError):
+            continue
+        prob = 0.0
+        try:
+            prob = float((prob_map or {}).get(label, 0.0))
+        except (TypeError, ValueError):
+            prob = 0.0
+        if prob >= confirm_threshold:
+            exploitation += amount
+        else:
+            exploration += amount
+    return (exploration, exploitation)
+
+
+def _month_key(dt):
+    """Clé mensuelle ``YYYY-MM`` d'un datetime aware/naïf (jamais une exception)."""
+    return f'{dt.year:04d}-{dt.month:02d}'
+
+
+def exploration_ledger(company, *, date_start=None, date_end=None,
+                       confirm_threshold=CONFIRMED_WINNER_PROB):
+    """PUB88 — Livre de compte MENSUEL exploration vs exploitation (society-scopé).
+
+    Lit chaque ``DecisionLog`` de la société (allocations loggées), classe son
+    budget via :func:`classify_allocation`, et agrège par mois de décision.
+    Renvoie une liste ordonnée du plus ancien au plus récent ::
+
+        [{'mois', 'exploration_mad', 'exploitation_mad', 'total_mad',
+          'exploration_pct', 'decisions'}, …]
+
+    ``exploration_pct`` est None quand le total du mois est nul (jamais un 0 %
+    trompeur). Les montants sont arrondis au centime.
+    """
+    from .models import DecisionLog
+
+    qs = DecisionLog.objects.filter(company=company)
+    if date_start is not None:
+        qs = qs.filter(created_at__date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(created_at__date__lte=date_end)
+
+    months = {}
+    for log in qs:
+        allocations = log.allocations or {}
+        budget_map = allocations.get('budget_mad') or {}
+        prob_map = allocations.get('prob_best') or {}
+        expl, exploit = classify_allocation(
+            budget_map, prob_map, confirm_threshold=confirm_threshold)
+        key = _month_key(log.created_at)
+        slot = months.setdefault(
+            key, {'exploration': 0.0, 'exploitation': 0.0, 'decisions': 0})
+        slot['exploration'] += expl
+        slot['exploitation'] += exploit
+        slot['decisions'] += 1
+
+    result = []
+    for key in sorted(months):
+        slot = months[key]
+        total = slot['exploration'] + slot['exploitation']
+        result.append({
+            'mois': key,
+            'exploration_mad': round(slot['exploration'], 2),
+            'exploitation_mad': round(slot['exploitation'], 2),
+            'total_mad': round(total, 2),
+            'exploration_pct': (round(slot['exploration'] / total * 100, 1)
+                                if total > 0 else None),
+            'decisions': slot['decisions'],
+        })
     return result
 
 

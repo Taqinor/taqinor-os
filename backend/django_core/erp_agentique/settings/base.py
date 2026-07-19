@@ -867,6 +867,10 @@ CELERY_TASK_ROUTES = {
     # ADSDEEP8/18 — sync hebdo des breakdowns + pull quotidien des leads.
     'adsengine.sync_breakdowns_weekly': {'queue': 'scheduled'},
     'adsengine.pull_meta_leads': {'queue': 'scheduled'},
+    # PUB89 — score quotidien de qualité de la chaîne d'attribution.
+    'adsengine.check_attribution_quality': {'queue': 'scheduled'},
+    # PUB94 — snapshot hebdo d'observabilité de L'Arbre (branches mortes).
+    'adsengine.flag_dead_branches_weekly': {'queue': 'scheduled'},
     # NTCRD21/32/33/34 — jobs crédit planifiés (exposition, encours, dérogations,
     # polices assurance-crédit expirantes).
     'credit.alerter_exposition_globale': {'queue': 'scheduled'},

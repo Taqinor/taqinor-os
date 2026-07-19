@@ -535,19 +535,100 @@ def detect_visual_reuse_fatigue(reuse_count, distinct_hook_count, *,
                      KIND_VISUAL_FATIGUE, message, computed)
 
 
+# ── PUB90 — Feedback utile/faux-positif : précision par détecteur + throttle ──
+# Chaque fausse alarme érode la confiance. Un utilisateur vote « utile » ou
+# « faux positif » sur une anomalie ; on suit la PRÉCISION par détecteur et, sous
+# une constance d'inutilité, on FREINE ce détecteur (cadence réduite). Le throttle
+# est BRAKE-ONLY : il ne fait que SUPPRIMER des enregistrements redondants, jamais
+# lever une nouvelle alerte auto (invariant règle #3).
+DETECTOR_THROTTLE_MIN_FALSE_POSITIVES = 5   # votes « inutile » avant de freiner
+DETECTOR_THROTTLE_COOLDOWN_HOURS = 24       # 1 anomalie / fenêtre quand throttlé
+DETECTOR_THROTTLE_FACTOR = 4                 # facteur de cadence affiché
+
+
+def precision(useful, labelled):
+    """Précision = fraction de retours « utile » parmi les votés. Pure.
+
+    None quand rien n'a été voté (jamais un 0 % trompeur : « pas de vote » ≠
+    « détecteur inutile »)."""
+    return (useful / labelled) if labelled else None
+
+
+def is_detector_throttled(company, detector, *,
+                          min_false_positives=DETECTOR_THROTTLE_MIN_FALSE_POSITIVES):
+    """Vrai si ce détecteur a été voté « faux positif » au moins
+    ``min_false_positives`` fois pour la société → cadence à réduire (brake-only).
+    Un détecteur vide n'est jamais throttlé."""
+    if not detector:
+        return False
+    from .models import AnomalyEvent
+    fp = AnomalyEvent.objects.filter(
+        company=company, detector=detector,
+        feedback=AnomalyEvent.Feedback.FAUX_POSITIF).count()
+    return fp >= min_false_positives
+
+
+def detector_stats(company, detector):
+    """Statistiques de confiance d'UN détecteur (society-scopé) : total, votés,
+    utiles, faux positifs, précision, et état de throttle (VISIBLE dans l'UI)."""
+    from .models import AnomalyEvent
+    qs = AnomalyEvent.objects.filter(company=company, detector=detector)
+    labelled = qs.exclude(feedback='').count()
+    useful = qs.filter(feedback=AnomalyEvent.Feedback.UTILE).count()
+    fp = qs.filter(feedback=AnomalyEvent.Feedback.FAUX_POSITIF).count()
+    throttled = fp >= DETECTOR_THROTTLE_MIN_FALSE_POSITIVES
+    prec = precision(useful, labelled)
+    return {
+        'detector': detector, 'total': qs.count(), 'labelled': labelled,
+        'useful': useful, 'false_positive': fp,
+        'precision': (round(prec, 4) if prec is not None else None),
+        'throttled': throttled,
+        'throttle_factor': DETECTOR_THROTTLE_FACTOR if throttled else 1,
+    }
+
+
+def all_detector_stats(company):
+    """Stats de confiance de TOUS les détecteurs ayant produit une anomalie pour
+    la société (les détecteurs sans anomalie sont absents — jamais fabriqués)."""
+    from .models import AnomalyEvent
+    detectors = (AnomalyEvent.objects.filter(company=company)
+                 .exclude(detector='')
+                 .values_list('detector', flat=True).distinct())
+    return [detector_stats(company, d) for d in sorted(set(detectors))]
+
+
 # ── Matérialisation (câblage DB — le seul point non pur du module) ────────────
 def record_anomaly(company, detection, *, entity_type='', entity_meta_id='',
-                   rule_policy=None, alert=None):
+                   rule_policy=None, alert=None, now=None):
     """Crée une ``AnomalyEvent`` à partir d'un ``Detection`` DÉCLENCHÉ. Appelé
     par le moteur (jamais pour un ``insufficient_data`` — ce n'est pas une
     anomalie, seulement une lacune de données). ``detail`` = ``computed`` (déjà
-    JSON-natif : floats/ints/strings, aucun Decimal)."""
+    JSON-natif : floats/ints/strings, aucun Decimal). Le ``detector`` est stocké
+    (clé de la précision PUB90).
+
+    **Throttle BRAKE-ONLY (PUB90)** : si le détecteur a été voté inutile ≥ 5 fois,
+    sa cadence est réduite — on n'enregistre pas une anomalie du même détecteur
+    plus d'une fois par fenêtre de ``DETECTOR_THROTTLE_COOLDOWN_HOURS`` (renvoie
+    ``None``). Jamais une nouvelle alerte : uniquement un frein."""
+    from django.utils import timezone
+
     from .models import AnomalyEvent
+
+    detector = detection.detector
+    if detector and is_detector_throttled(company, detector):
+        now = now or timezone.now()
+        window_start = now - datetime.timedelta(
+            hours=DETECTOR_THROTTLE_COOLDOWN_HOURS)
+        recent = AnomalyEvent.objects.filter(
+            company=company, detector=detector,
+            created_at__gte=window_start).exists()
+        if recent:
+            return None
     return AnomalyEvent.objects.create(
         company=company, kind=detection.kind, entity_type=entity_type,
         entity_meta_id=entity_meta_id, severity=detection.severity,
         message_fr=detection.message_fr, detail=detection.computed,
-        rule_policy=rule_policy, alert=alert)
+        detector=detector, rule_policy=rule_policy, alert=alert)
 
 
 # ── PUB33/PUB34 — Matérialisation directe en ``EngineAlert`` (recommandation) ─

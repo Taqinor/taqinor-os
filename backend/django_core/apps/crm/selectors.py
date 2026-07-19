@@ -1952,6 +1952,44 @@ def objection_mining_rows(company):
     return rows
 
 
+def organic_referral_lead_series(company, *, date_start=None, date_end=None):
+    """PUB95 — Comptes QUOTIDIENS de leads par CATÉGORIE de canal, pour la
+    détection de cannibalisation par ``apps.adsengine`` (« les pubs créent-elles
+    des leads ou déplacent-elles l'organique ? »). Point d'entrée cross-app
+    LECTURE SEULE (jamais un import de ``apps.crm.models`` côté adsengine).
+
+    Ne renvoie que des COMPTES par catégorie — ``paid`` (Meta/CTWA, piloté par la
+    dépense pub), ``referral`` (parrainage / référence), ``organic`` (tout le reste
+    non payant) — jamais la taxonomie de canal crm brute (même discipline que
+    ``attribution_lead_rows``). Scopé société ; jamais un lead archivé.
+    ``date_start``/``date_end`` (date, inclus) bornent ``date_creation``. Renvoie
+    ``{'YYYY-MM-DD': {'paid': int, 'organic': int, 'referral': int}}``."""
+    from .models import Lead
+
+    qs = Lead.objects.filter(company=company, is_archived=False)
+    if date_start is not None:
+        qs = qs.filter(date_creation__date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date_creation__date__lte=date_end)
+
+    paid_canaux = {Lead.Canal.META_ADS, Lead.Canal.WHATSAPP_CTWA}
+    referral_canaux = {Lead.Canal.REFERENCE}
+
+    series = {}
+    for lead in qs.only('canal', 'date_creation'):
+        if not lead.date_creation:
+            continue
+        key = lead.date_creation.date().isoformat()
+        slot = series.setdefault(key, {'paid': 0, 'organic': 0, 'referral': 0})
+        if lead.canal in paid_canaux:
+            slot['paid'] += 1
+        elif lead.canal in referral_canaux:
+            slot['referral'] += 1
+        else:
+            slot['organic'] += 1
+    return series
+
+
 def lead_criteria_for_territoire(company, lead_id):
     """NTCRM1 — Contexte plat de matching territoire pour un lead réel,
     exposé aux AUTRES apps (``apps.territoires.views``) au lieu d'un import

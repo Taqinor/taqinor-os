@@ -93,3 +93,89 @@ def probability_best(arms, k=DEFAULT_K, seed=DEFAULT_SEED,
     """
     return prob_best(posteriors(arms, alpha0=alpha0, beta0=beta0),
                      k=k, seed=seed, rng=rng)
+
+
+# ── PUB93 — Variante à DÉCOTE EXPONENTIELLE (non-stationnarité), derrière un flag ─
+# Les impressions d'il y a 6 semaines pèsent aujourd'hui comme celles d'hier —
+# mais la fatigue créative solaire se joue EN SEMAINES : une variante saturée hier
+# ne l'était pas il y a un mois. Cette variante PURE, À CÔTÉ de :func:`posteriors`
+# (jamais un remplacement), pondère chaque période par une décote exponentielle de
+# son ÂGE : les buckets récents dominent. Elle vit derrière un flag (``decay``) :
+# **OFF ⇒ BYTE-IDENTIQUE** à ``posteriors`` sur les totaux (poids tous = 1, somme
+# entière, aucun flottant), garanti par golden test. Le flag applicatif
+# (GuardrailConfig / feature-flag) est câblé PLUS TARD par le service ; ici c'est
+# un simple argument déterministe.
+DEFAULT_DECAY_HALF_LIFE_PERIODS = 3.0   # demi-vie de la décote (en périodes/sem)
+
+
+def _decay_rho(half_life_periods):
+    """Facteur de décote par période ``ρ = 0.5^(1/H)`` (miroir assumption_decay).
+
+    À ``H`` périodes, ``ρ^H = 0.5`` : le poids d'une observation est divisé par 2
+    toutes les ``H`` périodes d'âge. Fonction pure ; ``H`` doit être > 0.
+    """
+    if half_life_periods <= 0:
+        raise ValueError('La demi-vie de décote doit être strictement positive.')
+    return 0.5 ** (1.0 / half_life_periods)
+
+
+def decayed_posteriors(arm_series, *, decay=False,
+                       half_life_periods=DEFAULT_DECAY_HALF_LIFE_PERIODS,
+                       alpha0=DEFAULT_PRIOR_ALPHA, beta0=DEFAULT_PRIOR_BETA):
+    """Postérieurs Beta à décote exponentielle par période. Fonction PURE.
+
+    ``arm_series`` : par bras, une LISTE de buckets de période ordonnés du plus
+    ANCIEN au plus RÉCENT, chacun ``{'impressions', 'conversions'}``. Le bucket le
+    plus récent a l'âge 0 (poids 1) ; un bucket d'âge ``a`` pèse ``ρ^a`` avec
+    ``ρ = 0.5^(1/H)`` ::
+
+        alpha_i = alpha0 + Σ_p ρ^age_p · conversions_p
+        beta_i  = beta0  + Σ_p ρ^age_p · (impressions_p − conversions_p)
+
+    **Flag ``decay`` :**
+
+    * ``decay=False`` (OFF, défaut) — AUCUNE décote : poids tous égaux à 1, somme
+      entière → résultat **byte-identique** à ``posteriors`` appliqué aux totaux
+      cumulés du bras (propriété garantie par golden test) ;
+    * ``decay=True`` (ON) — décote exponentielle : les périodes récentes dominent.
+
+    Renvoie une liste de tuples ``(alpha, beta)``.
+    """
+    rho = _decay_rho(half_life_periods) if decay else None
+    result = []
+    for buckets in arm_series:
+        buckets = list(buckets or [])
+        n = len(buckets)
+        conv_acc = 0.0 if decay else 0
+        fail_acc = 0.0 if decay else 0
+        for idx, bucket in enumerate(buckets):
+            conv = max(int(bucket.get('conversions', 0)), 0)
+            imp = max(int(bucket.get('impressions', 0)), 0)
+            failures = max(imp - conv, 0)
+            if decay:
+                age = n - 1 - idx            # 0 = période la plus récente
+                weight = rho ** age
+                conv_acc += weight * conv
+                fail_acc += weight * failures
+            else:
+                conv_acc += conv             # somme entière → byte-identique
+                fail_acc += failures
+        result.append((alpha0 + conv_acc, beta0 + fail_acc))
+    return result
+
+
+def decayed_probability_best(arm_series, *, decay=False,
+                             half_life_periods=DEFAULT_DECAY_HALF_LIFE_PERIODS,
+                             k=DEFAULT_K, seed=DEFAULT_SEED,
+                             alpha0=DEFAULT_PRIOR_ALPHA,
+                             beta0=DEFAULT_PRIOR_BETA, rng=None):
+    """Probabilité d'être le meilleur sur des postérieurs à décote. Pure.
+
+    Enchaîne :func:`decayed_posteriors` (flag ``decay``) et :func:`prob_best`.
+    ``decay=False`` ⇒ mêmes postérieurs que ``posteriors`` sur les totaux, donc
+    même vecteur que ``probability_best`` sur les agrégats cumulés.
+    """
+    post = decayed_posteriors(
+        arm_series, decay=decay, half_life_periods=half_life_periods,
+        alpha0=alpha0, beta0=beta0)
+    return prob_best(post, k=k, seed=seed, rng=rng)

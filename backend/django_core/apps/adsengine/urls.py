@@ -27,6 +27,7 @@ from .views import (
     CreativeScatterView,
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
+    ExplorationLedgerView,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
     GroundedGenerationView,
     ExperimentViewSet, FactoryLaneRoiView, FlightPhaseViewSet,
@@ -39,8 +40,10 @@ from .views import (
     MetaConnectionHealthView,
     MetaConnectionStatusView, MetaConnectionViewSet, MetricsDashboardV2View,
     MetricsDashboardView,
+    MdeCalculatorView,
     MetricsLeadsView, MetricsPacingView, ProposeCuratedActionView, RealLeadsView,
-    ReconciliationListView, ReconciliationSnapshotViewSet, ReportExportView,
+    ReconciliationListView, ReconciliationSnapshotViewSet, RegretRegistryView,
+    ReportExportView,
     RulePolicyViewSet, SignalCohortView, SignalsView, SimulationDetailView,
     SimulationListView, StatusView, SyncStatusView, TodayQueueView,
     VariantFunnelView, VariantReportView, VisualFatigueView,
@@ -159,6 +162,16 @@ urlpatterns = [
          name='adsengine-reporting-creatifs-classement'),
     path('reporting/creatifs/nuage/', CreativeScatterView.as_view(),
          name='adsengine-reporting-creatifs-nuage'),
+    # PUB86 — registre de qualité des décisions (regret réalisé par type).
+    path('reporting/regret/', RegretRegistryView.as_view(),
+         name='adsengine-reporting-regret'),
+    # PUB88 — livre de compte mensuel exploration vs exploitation.
+    path('reporting/exploration/', ExplorationLedgerView.as_view(),
+         name='adsengine-reporting-exploration'),
+    # PUB87 — calculateur MDE/puissance (vue mince sur mde.py) pour la création
+    # d'expérience : « ~X jours pour détecter +20 % avec votre volume ».
+    path('experiences/mde/', MdeCalculatorView.as_view(),
+         name='adsengine-experiences-mde'),
     # ADSDEEP63 — audit de compte à la demande (structure/naming, fragmentation
     # budgétaire, fatigue, tracking, fenêtres de données), 100 % lecture.
     path('reporting/audit/', AccountAuditView.as_view(),

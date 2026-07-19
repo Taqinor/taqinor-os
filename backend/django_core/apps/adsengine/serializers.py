@@ -418,11 +418,16 @@ class AnomalyEventSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'kind', 'entity_type', 'entity_meta_id', 'severity',
             'message_fr', 'detail', 'resolved', 'rule_policy', 'alert',
+            'detector', 'feedback', 'feedback_at',
             'created_at', 'updated_at',
         ]
+        # PUB90 — ``feedback`` est posé UNIQUEMENT via l'action ``feedback``
+        # (acteur + horodatage serveur), jamais un PATCH direct : tout est
+        # lecture seule au niveau du serializer.
         read_only_fields = [
             'id', 'kind', 'entity_type', 'entity_meta_id', 'severity',
             'message_fr', 'detail', 'resolved', 'rule_policy', 'alert',
+            'detector', 'feedback', 'feedback_at',
             'created_at', 'updated_at',
         ]
 
@@ -825,15 +830,25 @@ class AssumptionNodeSerializer(serializers.ModelSerializer):
     quand absente ; une valeur fournie explicitement n'est jamais écrasée.
     """
 
+    # PUB94 — flag « branche morte » calculé EN DIRECT (nœud figé sur son prior
+    # depuis ≥ N semaines) exposé SUR L'ARBRE. Lecture seule, sans stockage.
+    dead_branch = serializers.SerializerMethodField()
+
     class Meta:
         model = AssumptionNode
         fields = [
             'id', 'classe', 'enonce_fr', 'enjeux_s', 'pertinence_r',
             'tags_saison', 'parent', 'invalidation_links',
             'alpha', 'beta', 'alpha0', 'beta0', 'demi_vie_semaines',
-            'last_tested_at', 'statut', 'created_at', 'updated_at',
+            'last_tested_at', 'statut', 'dead_branch',
+            'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
+
+    def get_dead_branch(self, obj):
+        """PUB94 — Vrai si le nœud est figé sur son prior depuis ≥ N semaines."""
+        from .posterior_drift import is_dead_branch
+        return is_dead_branch(obj)
 
     def validate_parent(self, value):
         return _same_company(self, value)

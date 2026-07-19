@@ -20,6 +20,8 @@ correspondent à ``GuardrailConfig`` (``exploration_floor_pct``,
 """
 from __future__ import annotations
 
+import numpy as np
+
 # Défauts (dd-science-core §7 « Config defaults » ; miroir GuardrailConfig).
 DEFAULT_FLOOR_PCT = 0.20          # exploration_floor_pct = 20 %
 DEFAULT_MIN_ARM_MAD = 20.0        # exploration_floor_mad = 20 MAD/jour
@@ -154,3 +156,106 @@ def challenger_phase_complete(prob_best_max, weeks_running,
     """
     return (float(prob_best_max) >= float(min_prob)
             or int(weeks_running) >= week_cap)
+
+
+# ── PUB92 — Arrêt par PERTE ESPÉRÉE (règle NOUVELLE, À CÔTÉ de la précédente) ──
+# challenger_phase_complete (ci-dessus, INCHANGÉE — byte-identique) arrête sur
+# P(meilleur) ≥ 80 % OU 4 semaines. Sur données MINCES, ces deux seuils sont
+# grossiers : ils stoppent trop tard une victoire nette et forcent une décision
+# sur une vraie égalité au plafond. La règle bayésienne « expected loss » est plus
+# nette : on arrête quand le COÛT ATTENDU DE SE TROMPER (committer sur le leader
+# alors qu'un autre bras était meilleur) tombe sous un seuil en MAD. C'est le
+# critère « threshold of caring » de Stucchio/GrowthBook, exprimé en MAD/jour.
+#
+# Cette fonction NE REMPLACE PAS challenger_phase_complete : les deux vivent côte à
+# côte (golden tests des deux), le moteur choisit laquelle consommer. Pure (numpy
+# déterministe sous graine, comme bandit.py — aucune I/O).
+EXPECTED_LOSS_K = 10_000            # tirages Monte-Carlo (miroir bandit.DEFAULT_K)
+EXPECTED_LOSS_SEED = 0             # graine → déterministe / auditable
+DEFAULT_STOP_THRESHOLD_MAD = 5.0   # coût attendu de se tromper < 5 MAD/jour
+
+
+def _leader_index(posteriors):
+    """Index du bras leader = plus forte moyenne postérieure ``α/(α+β)``. Pure."""
+    means = [a / (a + b) if (a + b) > 0 else 0.0 for a, b in posteriors]
+    return int(max(range(len(means)), key=lambda i: means[i]))
+
+
+def expected_loss_rate(posteriors, *, leader_index=None, k=EXPECTED_LOSS_K,
+                       seed=EXPECTED_LOSS_SEED, rng=None):
+    """Perte espérée (en points de TAUX) de committer sur le leader. Pure.
+
+    ``E[max(0, max_j θ_j − θ_leader)]`` estimée par Monte-Carlo sur les postérieurs
+    Beta (déterministe sous ``seed``). C'est la « perte espérée » bayésienne : ce
+    qu'on abandonne EN MOYENNE en figeant le leader alors qu'un autre bras pouvait
+    être meilleur. 0 pour < 2 bras. ``leader_index`` None → plus forte moyenne.
+    """
+    n = len(posteriors)
+    if n < 2:
+        return 0.0
+    if leader_index is None:
+        leader_index = _leader_index(posteriors)
+    generator = rng if rng is not None else np.random.default_rng(seed)
+    draws = np.column_stack([generator.beta(a, b, k) for a, b in posteriors])
+    best = draws.max(axis=1)
+    leader = draws[:, leader_index]
+    return float(np.maximum(best - leader, 0.0).mean())
+
+
+def expected_loss_mad(posteriors, daily_budget_mad, *, leader_index=None,
+                      k=EXPECTED_LOSS_K, seed=EXPECTED_LOSS_SEED, rng=None):
+    """Perte espérée QUOTIDIENNE en MAD de committer sur le leader. Pure.
+
+    ``perte_relative = perte_espérée_taux / moyenne(θ_leader)`` (fraction de
+    performance abandonnée) puis ``× budget/jour`` → MAD/jour exposés à une
+    mauvaise allocation. 0 pour < 2 bras ou un leader de taux nul (rien à perdre
+    à ce budget). Déterministe sous ``seed``.
+    """
+    n = len(posteriors)
+    if n < 2:
+        return 0.0
+    if leader_index is None:
+        leader_index = _leader_index(posteriors)
+    a, b = posteriors[leader_index]
+    leader_mean = a / (a + b) if (a + b) > 0 else 0.0
+    if leader_mean <= 0:
+        return 0.0
+    loss_rate = expected_loss_rate(
+        posteriors, leader_index=leader_index, k=k, seed=seed, rng=rng)
+    relative = loss_rate / leader_mean
+    return float(relative * float(daily_budget_mad))
+
+
+def expected_loss_stop(posteriors, daily_budget_mad, *,
+                       threshold_mad=DEFAULT_STOP_THRESHOLD_MAD,
+                       leader_index=None, k=EXPECTED_LOSS_K,
+                       seed=EXPECTED_LOSS_SEED, rng=None):
+    """PUB92 — Règle d'arrêt à PERTE ESPÉRÉE (NOUVELLE, à côté de
+    :func:`challenger_phase_complete` qui reste inchangée).
+
+    Arrête quand la perte espérée quotidienne (:func:`expected_loss_mad`) de
+    committer sur le leader tombe SOUS ``threshold_mad``. Plus net sur données
+    minces : une victoire nette a une perte espérée quasi nulle (stop tôt), tandis
+    qu'une vraie égalité incertaine garde une perte espérée élevée (on continue).
+    Ne PROMEUT / n'applique rien (règle #3). Renvoie ::
+
+        {'should_stop': bool, 'expected_loss_mad': float,
+         'threshold_mad': float, 'leader_index': int}
+
+    Déterministe sous ``seed``. Fonction pure.
+    """
+    n = len(posteriors)
+    if n == 0:
+        return {'should_stop': False, 'expected_loss_mad': 0.0,
+                'threshold_mad': float(threshold_mad), 'leader_index': None}
+    if leader_index is None:
+        leader_index = _leader_index(posteriors)
+    loss_mad = expected_loss_mad(
+        posteriors, daily_budget_mad, leader_index=leader_index,
+        k=k, seed=seed, rng=rng)
+    return {
+        'should_stop': loss_mad < float(threshold_mad),
+        'expected_loss_mad': round(loss_mad, 4),
+        'threshold_mad': float(threshold_mad),
+        'leader_index': leader_index,
+    }
