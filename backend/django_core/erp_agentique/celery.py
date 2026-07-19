@@ -530,6 +530,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.run_reward_divergence_check',
         'schedule': crontab(hour=7, minute=45, day_of_week=1),
     },
+    # PUB19 — réconciliation QUOTIDIENNE Meta↔ERP (ADSENG31). Après la synchro
+    # ENG6 (06:45) : persiste un ReconciliationSnapshot/campagne et alerte 🟠 sur
+    # une divergence NOUVELLE au-delà du seuil. NO-OP propre sans campagne.
+    'adsengine-run-daily-reconciliation': {
+        'task': 'adsengine.run_daily_reconciliation',
+        'schedule': crontab(hour=7, minute=55),
+    },
     # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
     # Best-effort, une alerte par jour et par société (dédup), no-op tant que
     # le seuil société vaut 0 (défaut).

@@ -1063,6 +1063,45 @@ def emit_capi_signatures():
     return {'configured': True, 'received': received, 'signed': signed}
 
 
+@shared_task(name='adsengine.run_daily_reconciliation')
+def run_daily_reconciliation():
+    """PUB19 — Beat QUOTIDIEN : réconcilie Meta vs ERP et PERSISTE un
+    ``ReconciliationSnapshot`` par campagne (ADSENG31).
+
+    La fonction persist+alerte de ``reconciliation.py`` était MORTE : seul le CSV
+    on-demand appelait ``reconcile`` (calcul sans persistance). Ce beat appelle
+    ``reconciliation.run_daily_reconciliation`` qui upserte un snapshot par
+    campagne (idempotent par ``(company, date, campaign)``) et, sur une divergence
+    NOUVELLE au-delà du seuil (plancher absolu + ratio), émet une ``EngineAlert``
+    🟠 « divergence silencieuse » (jamais deux fois pour la même divergence).
+    Best-effort par société ; NO-OP propre sans campagne miroir. Renvoie
+    ``{'companies', 'snapshots'}``."""
+    from authentication.selectors import active_companies
+
+    from . import reconciliation
+    from .models import AdCampaignMirror
+
+    companies = 0
+    snapshots = 0
+    for company in active_companies():
+        if not AdCampaignMirror.objects.filter(company=company).exists():
+            continue  # rien à réconcilier tant qu'aucune campagne n'est miroitée
+        try:
+            contract = reconciliation.run_daily_reconciliation(company)
+            companies += 1
+            snapshots += len(contract.get('campaigns', []))
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.run_daily_reconciliation: échec société %s',
+                company.pk, exc_info=True)
+            continue
+
+    logger.info(
+        'adsengine.run_daily_reconciliation: %s société(s), %s snapshot(s)',
+        companies, snapshots)
+    return {'companies': companies, 'snapshots': snapshots}
+
+
 @shared_task(name='adsengine.decay_assumptions_weekly')
 def decay_assumptions_weekly():
     """ASG2 — Beat HEBDO : oubli des posteriors de l'arbre d'hypothèses.
