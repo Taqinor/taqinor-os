@@ -530,6 +530,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.run_reward_divergence_check',
         'schedule': crontab(hour=7, minute=45, day_of_week=1),
     },
+    # PUB76 — fraîcheur HEBDO des assets : marque « à revoir » un asset citant
+    # une version de FactTable révisée depuis (chiffre périmé à l'antenne) ou une
+    # créa saisonnière/expirée. Lundi, heure creuse. NO-OP propre sans asset daté.
+    'adsengine-flag-stale-assets': {
+        'task': 'adsengine.flag_stale_assets',
+        'schedule': crontab(hour=6, minute=50, day_of_week=1),
+    },
     # PUB19 — réconciliation QUOTIDIENNE Meta↔ERP (ADSENG31). Après la synchro
     # ENG6 (06:45) : persiste un ReconciliationSnapshot/campagne et alerte 🟠 sur
     # une divergence NOUVELLE au-delà du seuil. NO-OP propre sans campagne.

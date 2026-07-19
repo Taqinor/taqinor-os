@@ -195,6 +195,8 @@ def generate_grounded_variants(company, seed_brief, *, components=None,
                 hook_tag=candidate.get('hook_tag', ''),
                 angle_tag=candidate.get('angle_tag', ''),
                 format_tag=candidate.get('format_tag', ''),
+                # PUB76 — trace la version de faits citée (fraîcheur/conformité).
+                facts_version=(table.version if table else None),
                 policy_stamp={},  # PENDING — jamais auto-validé
             )
             entry['asset_id'] = asset.id

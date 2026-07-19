@@ -852,6 +852,8 @@ CELERY_TASK_ROUTES = {
     'adsengine.sync_insights_daily': {'queue': 'scheduled'},
     # ENG11 — brief hebdomadaire déterministe.
     'adsengine.generate_weekly_brief': {'queue': 'scheduled'},
+    # PUB76 — fraîcheur hebdo des assets (chiffre périmé / créa hors saison).
+    'adsengine.flag_stale_assets': {'queue': 'scheduled'},
     # ADSDEEP62 — digest quotidien FR (dépense/conversations/leads/signatures/
     # alertes/top ad de la veille).
     'adsengine.daily_ads_digest': {'queue': 'scheduled'},

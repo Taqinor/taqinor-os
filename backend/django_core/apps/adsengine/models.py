@@ -947,6 +947,25 @@ class CreativeAsset(TenantModel):
         help_text="Clés parmi photo/video/temoignage/geo à couvrir (vide = un "
                   "consentement actif suffit).")
 
+    # ── PUB76 — Expiration / rafraîchissement (fraîcheur de conformité) ───────
+    # ``facts_version`` = version de la ``FactTable`` publiée dont les chiffres
+    # de cet asset sont issus (posée à la génération ancrée) : si une version
+    # PLUS RÉCENTE est publiée, l'asset cite un chiffre potentiellement périmé
+    # (risque conformité — chiffre périmé à l'antenne). ``expires_at`` /
+    # ``review_after`` datent une revue (créa saisonnière, chiffre à re-vérifier).
+    # Le job hebdo pose ``needs_review`` + ``review_reason`` ; jamais un retrait
+    # automatique (l'humain tranche).
+    facts_version = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Version de faits citée')
+    expires_at = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    review_after = models.DateField(
+        null=True, blank=True, verbose_name='À revoir après le')
+    needs_review = models.BooleanField(
+        default=False, verbose_name='À revoir')
+    review_reason = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Motif de revue')
+
     class Meta:
         verbose_name = 'Asset créatif'
         verbose_name_plural = 'Assets créatifs'
