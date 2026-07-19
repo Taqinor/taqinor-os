@@ -1098,6 +1098,24 @@ class EngineActionViewSet(AdsengineViewSet):
             return Response({'detail': str(exc)}, status=502)
         return Response(self.get_serializer(instance).data)
 
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        """PUB45 — Annule une action APPLIQUÉE en PROPOSANT son inverse (rétablir
+        le budget mémorisé, restaurer le texte…) via le circuit propose→approuve
+        normal — JAMAIS un write direct. Kind non inversible (création, pause
+        non ré-activable) → 422 + explication FR. Proposer exige ``adsengine_manage``
+        (hérité : ``annuler`` n'est pas une action d'approbation)."""
+        from .services import ActionNotInvertible, propose_inverse_action
+        instance = self.get_object()
+        try:
+            inverse = propose_inverse_action(
+                instance, reason_fr=request.data.get('reason_fr'))
+        except ActionNotInvertible as exc:
+            return Response({'detail': str(exc), 'invertible': False}, status=422)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(self.get_serializer(inverse).data, status=201)
+
 
 class ProposeCuratedActionView(APIView):
     """PUB22 — Propose une action CURÉE (``duplicate`` / ``set_schedule`` /

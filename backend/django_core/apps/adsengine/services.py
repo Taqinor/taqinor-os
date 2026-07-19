@@ -79,6 +79,12 @@ class ActionPayloadInvalid(ValueError):
     ``ValueError`` — traduite en 400 par la vue, jamais une 500."""
 
 
+class ActionNotInvertible(ValueError):
+    """PUB45 — Levée si une action appliquée n'a pas d'inverse AUTOMATIQUE (kind
+    de création, mise en pause non ré-activable — règle #3, ou valeur précédente
+    non mémorisée). Sous-classe de ``ValueError`` — la vue rend une explication."""
+
+
 # Kinds qui créent une ad et peuvent donc référencer un ``CreativeAsset``.
 _AD_CREATING_KINDS = frozenset({
     EngineAction.Kind.CREATE_AD, EngineAction.Kind.ROTATE_CREATIVE,
@@ -440,6 +446,137 @@ def propose_manual_curated(company, *, kind, params, reason_fr=None):
             company, name=(params.get('name') or ''),
             cells=params.get('cells'), reason_fr=reason_fr)
     raise ActionPayloadInvalid(f"Kind curé inconnu : {kind}.")
+
+
+# ── PUB45 — Annuler une action APPLIQUÉE = proposer son INVERSE ────────────────
+# L'annulation ne fait JAMAIS un write direct : elle CRÉE une proposition inverse
+# qui repasse par le circuit propose→approuve normal. Seule une poignée de kinds a
+# un inverse automatique (rétablir une valeur MÉMORISÉE) ; les autres sont
+# expliqués (une CRÉATION ne s'annule pas par ce circuit — on met en pause l'objet
+# né PAUSED ; une PAUSE ne se ré-active pas — règle #3).
+_INVERTIBLE_BUDGET_KINDS = frozenset({
+    EngineAction.Kind.REBALANCE_BUDGET, KIND_INCREASE_PACE,
+    KIND_REBALANCE_ADSET_BUDGET,
+})
+
+# Explications FR pour les kinds SANS inverse automatique (rendues à l'opérateur).
+_NOT_INVERTIBLE_REASONS = {
+    EngineAction.Kind.CREATE_CAMPAIGN: (
+        "Une création de campagne ne s'annule pas par ce circuit : mettre en "
+        "pause la campagne créée (elle est née PAUSED)."),
+    EngineAction.Kind.CREATE_ADSET: (
+        "Une création d'ad set ne s'annule pas par ce circuit : mettre en pause "
+        "l'ad set créé (né PAUSED)."),
+    EngineAction.Kind.CREATE_AD: (
+        "Une création d'ad ne s'annule pas par ce circuit : mettre en pause "
+        "l'ad créée (née PAUSED)."),
+    EngineAction.Kind.ROTATE_CREATIVE: (
+        "Une rotation crée une NOUVELLE ad (née PAUSED) : mettre en pause l'ad "
+        "créée plutôt que d'annuler."),
+    EngineAction.Kind.PAUSE: (
+        "Une mise en pause ne s'annule pas automatiquement : ré-activer est "
+        "interdit (règle #3). Ré-activer manuellement côté Meta si nécessaire."),
+    KIND_PAUSE_FOR_MONTH: (
+        "Une pause pour le mois ne s'annule pas automatiquement : ré-activer est "
+        "interdit (règle #3)."),
+    KIND_DUPLICATE: (
+        "Une duplication crée de nouveaux objets (nés PAUSED) : les mettre en "
+        "pause plutôt que d'annuler."),
+    KIND_ENABLE_CBO: (
+        "L'activation CBO n'a pas d'inverse automatique."),
+    KIND_SET_SCHEDULE: (
+        "Un horaire n'a pas d'inverse automatique : reposer un horaire différent."),
+    KIND_CREATE_AD_STUDY: (
+        "Une étude A/B native ne s'annule pas par ce circuit."),
+}
+
+
+def propose_inverse_action(action, *, reason_fr=None):
+    """PUB45 — Propose l'action INVERSE d'une action APPLIQUÉE, via le circuit
+    propose→approuve normal (jamais un write direct). Rétablit la valeur
+    MÉMORISÉE sur l'action d'origine (budget précédent ``current_budget``, texte
+    précédent ``current_creative``…). Lève ``ActionNotInvertible`` (avec une
+    explication FR) pour tout kind sans inverse automatique. La proposition
+    inverse porte ``payload['inverse_of']`` = pk de l'action annulée (traçabilité)."""
+    if action.status != EngineAction.Statut.APPLIQUEE:
+        raise ActionNotInvertible(
+            "Seule une action APPLIQUÉE peut être annulée.")
+    payload = action.payload or {}
+    kind = action.kind
+
+    if kind in _INVERTIBLE_BUDGET_KINDS:
+        previous = payload.get('current_budget')
+        if previous is None:
+            raise ActionNotInvertible(
+                "Le budget précédent n'a pas été mémorisé sur cette action : "
+                "ré-proposer le budget voulu manuellement.")
+        inv_reason = reason_fr or (
+            f"Annuler l'action #{action.pk} : rétablir le budget précédent.")
+        return propose_action(
+            action.company, kind=EngineAction.Kind.REBALANCE_BUDGET,
+            reason_fr=inv_reason,
+            payload={
+                'adset_id': payload.get('adset_id', ''),
+                'daily_budget': previous,
+                'current_budget': payload.get('daily_budget'),
+                'inverse_of': action.pk,
+            })
+
+    if kind == EngineAction.Kind.EDIT_COPY:
+        previous_creative = payload.get('current_creative')
+        if not previous_creative:
+            raise ActionNotInvertible(
+                "Le texte/créatif précédent n'a pas été mémorisé sur cette "
+                "action : ré-proposer le texte voulu manuellement.")
+        inv_reason = reason_fr or (
+            f"Annuler l'action #{action.pk} : rétablir le texte précédent.")
+        return propose_action(
+            action.company, kind=EngineAction.Kind.EDIT_COPY,
+            reason_fr=inv_reason,
+            payload={
+                'ad_id': payload.get('ad_id', ''),
+                'current_creative': payload.get('creative_spec'),
+                'creative_spec': previous_creative,
+                'inverse_of': action.pk,
+            })
+
+    if kind == EngineAction.Kind.SET_SPEND_CAP:
+        previous = payload.get('previous_spend_cap')
+        if previous is None:
+            raise ActionNotInvertible(
+                "Le plafond de dépense précédent n'a pas été mémorisé : reposer "
+                "un plafond manuellement.")
+        inv_reason = reason_fr or (
+            f"Annuler l'action #{action.pk} : rétablir le plafond précédent.")
+        return propose_action(
+            action.company, kind=EngineAction.Kind.SET_SPEND_CAP,
+            reason_fr=inv_reason,
+            payload={
+                'campaign_id': payload.get('campaign_id', ''),
+                'spend_cap': previous,
+                'previous_spend_cap': payload.get('spend_cap'),
+                'inverse_of': action.pk,
+            })
+
+    if kind == EngineAction.Kind.RENAME:
+        previous = payload.get('previous_name')
+        if not previous:
+            raise ActionNotInvertible(
+                "Le nom précédent n'a pas été mémorisé : renommer manuellement.")
+        inv_reason = reason_fr or (
+            f"Annuler l'action #{action.pk} : rétablir le nom précédent.")
+        return propose_action(
+            action.company, kind=EngineAction.Kind.RENAME,
+            reason_fr=inv_reason,
+            payload={
+                'object_id': payload.get('object_id', ''),
+                'name': previous,
+                'previous_name': payload.get('name'),
+                'inverse_of': action.pk,
+            })
+
+    raise ActionNotInvertible(_NOT_INVERTIBLE_REASONS.get(
+        kind, "Cette action n'a pas d'inverse automatique."))
 
 
 # ── ADSDEEP49-52 — Posts ORGANIQUES de Page (propose→approuve→applique) ───────

@@ -94,6 +94,10 @@ const adsengineApi = {
     // propose_action (naissance PAUSED intacte, jamais un write Meta direct).
     proposeCurated: (kind, body) =>
       api.post(`/adsengine/actions/proposer/${kind}/`, body),
+    // PUB45 — « Annuler » une action APPLIQUÉE = PROPOSER son inverse (rétablir
+    // le budget mémorisé, restaurer le texte…) via le circuit propose→approuve
+    // normal — jamais un write direct. 422 si le kind n'est pas inversible.
+    cancel: (id, payload) => api.post(`/adsengine/actions/${id}/annuler/`, payload),
   },
 
   // ── ENG11/ENG26 — Brief hebdomadaire ──
