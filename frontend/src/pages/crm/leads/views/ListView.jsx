@@ -232,10 +232,24 @@ const ListRow = memo(function ListRow({
   const stars = PRIORITE_STARS[lead.priorite] ?? 1
   const tags = tagList(lead)
   const enRetard = lead.relance_date && lead.relance_date < today
+  // LB21 — ligne ouvrable au clavier (recon-05 a11y #5 : onClick sur <tr>,
+  // aucun tabIndex/role/onKeyDown). Enter/Espace ouvrent la fiche SEULEMENT
+  // quand la touche vient de la ligne elle-même — JAMAIS d'un contrôle
+  // interne (checkbox, select d'édition en place, lien tel:/wa, bouton
+  // d'action…) : ces contrôles gèrent DÉJÀ leur propre activation clavier
+  // native, un second déclenchement ouvrirait la fiche par-dessus.
+  const onRowKeyDown = (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    if (e.target.closest('button, a, input, select, textarea, [role="button"]')) return
+    e.preventDefault()
+    onOpenLead(lead)
+  }
   return (
     <tr
       className={`lv-row${perdu ? ' lv-row-perdu' : ''}${lead.is_archived ? ' lv-row-archived' : ''}${checked ? ' lv-row-selected' : ''}`}
       onClick={() => onOpenLead(lead)}
+      tabIndex={0}
+      onKeyDown={onRowKeyDown}
     >
       {onToggleSelect && (
         <td
@@ -251,10 +265,18 @@ const ListRow = memo(function ListRow({
       )}
       <td data-label="Lead" className="lv-sticky-name">
         <div className="lv-lead-cell">
-          <span className="lv-lead-name">
+          {/* LB21 — le nom devient un vrai élément interactif sémantique
+              (blueprint D4) : un <button> dédié, découvrable au clavier/AT
+              indépendamment du reste de la ligne (stopPropagation évite le
+              double déclenchement via le onClick de <tr>). */}
+          <button
+            type="button"
+            className="lv-lead-name"
+            onClick={(e) => { e.stopPropagation(); onOpenLead(lead) }}
+          >
             {fullName(lead) || '—'}
             {perdu && <span className="lv-badge-perdu">Perdu</span>}
-          </span>
+          </button>
           {lead.societe ? (
             <span className="lv-lead-societe">{lead.societe}</span>
           ) : null}

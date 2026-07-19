@@ -7308,6 +7308,33 @@ textarea.form-control {
   color: var(--cat-navy, #0b1f3a);
 }
 
+/* LB21 — le nom (.lv-lead-name) est un <button> depuis le refit clavier
+   (élément interactif sémantique, blueprint D4) : reset des styles natifs
+   de bouton par-dessus la règle existante ci-dessus (5357) — APPEND-ONLY,
+   cette règle ne la modifie pas, elle ajoute les propriétés qu'un <button>
+   pose par défaut et qu'un <span> n'avait jamais eues. */
+.lv-lead-name {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lv-lead-name:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Ligne ouvrable au clavier (LB21) : anneau de focus visible sur tr.lv-row
+   quand elle est focus directement (Tab), pas quand le focus est descendu
+   sur un contrôle interne. */
+.lv-table tbody tr.lv-row:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: -2px;
+}
+
 /* Gap responsive 769-899px (recon-05) : le palier fixe 150px ci-dessus ne
    s'active qu'à partir de 900px — entre 768 et 900, `.kb-col` retombait à sa
    largeur desktop (272px) et ne montrait plus que ~3 colonnes sur iPad

@@ -51,9 +51,11 @@ test('LB18 : la colonne Lead (th ET td) porte .lv-sticky-name — contrat tr.lv-
   const start = SRC.indexOf('<td data-label="Lead"')
   assert.ok(start > 0)
   assert.match(SRC.slice(start, start + 60), /className="lv-sticky-name"/)
-  // Contrat e2e inchangé (leads.spec E3/E7, datatable-breakpoint.spec).
+  // Contrat e2e inchangé (leads.spec E3/E7, datatable-breakpoint.spec) —
+  // .lv-lead-name est un <button> depuis LB21 (élément sémantique
+  // interactif), le sélecteur CSS/e2e (classe, pas balise) est inchangé.
   assert.match(SRC, /className=\{`lv-row/)
-  assert.match(SRC, /<span className="lv-lead-name">/)
+  assert.match(SRC, /className="lv-lead-name"/)
 })
 
 test('LB18 : listener de scroll PASSIF sur .lv-wrap (jamais un re-rendu React pour l\'ombre de bord)', () => {
