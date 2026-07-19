@@ -204,6 +204,7 @@ export default function TimelineTab({
           type="file"
           accept={NOTE_ACCEPT}
           className="chatter-note-file-input"
+          aria-label="Joindre un fichier à la note"
           onChange={(e) => setComposer({ file: e.target.files?.[0] ?? null })}
         />
         <IconButton

@@ -263,16 +263,16 @@ button:active, [role="button"]:active, a.btn:active,
    `-webkit-overflow-scrolling: touch` (défilement inertiel iOS — sans elle,
    le scroll saccade « step-by-step » sur Safari mobile) + `overscroll-
    behavior-x: contain` (empêche le scroll horizontal de « fuiter » vers une
-   navigation retour/avant du navigateur). Appliquée aux 4 conteneurs
+   navigation retour/avant du navigateur). Appliquée aux conteneurs
    `overflow-x: auto` prouvés sans elle — `.lines-table-wrap`, `.lv-wrap`
-   (liste leads), `.kb-board` (kanban), `.lead-nav` mobile (@media 720px
-   plus bas). `.agent-sql-code` EXCLU : CSS mort, 0 consommateur, sa
-   suppression appartient à VX121, pas à cette tâche. */
+   (liste leads), `.kb-board` (kanban). `.lead-nav` (ancien rail mobile
+   @media 720px) est mort et supprimé en LW34 — retiré d'ici aussi.
+   `.agent-sql-code` EXCLU : CSS mort, 0 consommateur, sa suppression
+   appartient à VX121, pas à cette tâche. */
 .scroll-x-touch,
 .lines-table-wrap,
 .lv-wrap,
-.kb-board,
-.lead-nav {
+.kb-board {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
 }
@@ -1390,84 +1390,22 @@ button:active, [role="button"]:active, a.btn:active,
   .modal-body::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
 }
 
-/* ── Navigateur de sections (formulaire lead) ─────────── */
-.lead-form-layout {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-.lead-nav {
-  width: 152px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 14px 8px;
-  background: var(--muted);
-  border-right: 1px solid var(--border);
-  overflow-y: auto;
-}
-/* VX143 — rail tokenisé (thème clair/sombre) : barre d'accent à gauche +
-   même icône que la section active, au lieu d'un simple fond hex figé. */
-.lead-nav button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-  border: none;
-  border-left: 3px solid transparent;
-  background: transparent;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  font-size: 0.8rem;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.lead-nav-icon { flex-shrink: 0; opacity: 0.75; }
-.lead-nav-badge {
-  margin-left: auto;
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 12%, transparent);
-  border-radius: 999px;
-  padding: 1px 6px;
-  line-height: 1.4;
-}
-@media (hover: hover) {
-  .lead-nav button:hover { background: var(--accent); }
-}
-.lead-nav button.active {
-  border-left-color: var(--primary);
-  background: color-mix(in srgb, var(--primary) 10%, transparent);
-  color: var(--primary);
-  font-weight: 700;
-}
-.lead-nav button.active .lead-nav-icon { opacity: 1; }
-@media (max-width: 720px) {
-  .lead-form-layout { flex-direction: column; }
-  .lead-nav {
-    width: auto;
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 8px;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-}
+/* LW34 — l'ancien navigateur de sections .lead-form-layout/.lead-nav* (rail
+   152px, breakpoint 720px) appartenait au LeadForm pré-LW13 : 0 usage JSX
+   vivant (grep confirmé — LeadWorkspace/SectionsPane utilisent .lw-secnav/
+   .lw-sections, un patron entièrement différent). Bloc supprimé — c'est lui
+   qui créait la bande morte 721-767px (recon 04 §5) : le seul breakpoint qui
+   reste dans la fenêtre lead est 768 (.lw-* + ResponsiveDialog). */
 
-/* ── En-tête de la fiche lead : badge « N devis » + ⚡ Devis auto ── */
-.lead-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
+/* ── Badge « N devis » (ContextRail, onglet Devis) ─────────────────────────
+   LW31 — hook CI-GATED (devis.spec.js E4 : `.lead-devis-badge` contient
+   « N devis ») : la CLASSE reste posée telle quelle, seul le style hex hérité
+   de l'ancien en-tête LeadForm (disparu en LW13) est retokenisé. `.lead-head-
+   actions`/`.lead-head-error`/`.lead-archived-badge` (voisines mortes,
+   0 usage JSX vivant — grep confirmé) sont supprimées. */
 .lead-devis-badge {
   border: 1px solid var(--cat-navy);
-  background: #fff;
+  background: var(--card);
   color: var(--cat-navy);
   border-radius: 999px;
   padding: 5px 12px;
@@ -1480,31 +1418,19 @@ button:active, [role="button"]:active, a.btn:active,
 @media (hover: hover) {
   .lead-devis-badge:hover {
     background: var(--cat-navy);
-    color: #fff;
+    color: var(--color-lune);
   }
 }
 .lead-devis-badge.is-zero {
-  border-color: #cbd5e1;
-  color: #94a3b8;
+  border-color: var(--border);
+  color: var(--muted-foreground);
   font-weight: 600;
 }
 @media (hover: hover) {
   .lead-devis-badge.is-zero:hover {
-    background: #f1f5f9;
-    color: #64748b;
+    background: var(--muted);
+    color: var(--muted-foreground);
   }
-}
-.lead-head-error { margin: 10px 24px 0; flex-shrink: 0; }
-/* Pastille « Archivé » dans l'en-tête de la fiche lead */
-.lead-archived-badge {
-  margin-left: 10px;
-  border-radius: 999px;
-  padding: 3px 10px;
-  font-size: 0.72rem;
-  font-weight: 700;
-  background: #e2e8f0;
-  color: #475569;
-  vertical-align: middle;
 }
 /* Astérisque doré : champ requis pour le devis automatique */
 .req-auto { color: var(--cat-gold); font-weight: 700; }
@@ -3248,17 +3174,28 @@ textarea.form-control {
 .chatter-item {
   padding: 0.5rem 0.75rem;
   border-radius: var(--radius-md);
-  background: #f8fafc;
-  border: 1px solid #eef2f7;
+  background: var(--muted);
+  border: 1px solid var(--border);
   font-size: 0.85rem;
 }
 
-.chatter-note { background: #fffbeb; border-color: #fde68a; }
+/* LW31 (suite, retour QA visuelle sombre) — les 3 fonds/textes ci-dessous
+   étaient en hex fixes (crème/vert clairs, gris #94a3b8…) : illisibles en
+   thème sombre (fond quasi blanc figé + texte pâle qui ne s'inverse jamais).
+   Migration en jetons « soft » (même patron que .lw-banner--warning/success
+   plus haut) — teinte = color-mix sur --card, AA garanti dans les 2 thèmes. */
+.chatter-note {
+  background: color-mix(in oklch, var(--warning) 14%, var(--card));
+  border-color: color-mix(in oklch, var(--warning) 45%, transparent);
+}
 
-.chatter-creation { background: #ecfdf5; border-color: #a7f3d0; }
+.chatter-creation {
+  background: color-mix(in oklch, var(--success) 14%, var(--card));
+  border-color: color-mix(in oklch, var(--success) 45%, transparent);
+}
 
 .chatter-meta {
-  color: #94a3b8;
+  color: var(--muted-foreground);
   font-size: 0.75rem;
   margin-left: 6px;
 }
@@ -3270,8 +3207,8 @@ textarea.form-control {
   padding: 0 6px;
   font-size: 0.68rem;
   font-weight: 600;
-  color: #475569;
-  background: #e2e8f0;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
   border-radius: 999px;
   vertical-align: middle;
 }
@@ -3287,7 +3224,7 @@ textarea.form-control {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  color: #94a3b8;
+  color: var(--muted-foreground);
   margin: 0.25rem 0 0.1rem;
 }
 
@@ -3306,7 +3243,7 @@ textarea.form-control {
 .chatter-item-autolog {
   background: transparent;
   border-color: transparent;
-  color: #94a3b8;
+  color: var(--muted-foreground);
   padding-left: 0;
 }
 
@@ -3314,17 +3251,17 @@ textarea.form-control {
   display: inline-block;
   margin-right: 3px;
   vertical-align: -1px;
-  color: #cbd5e1;
+  color: var(--border);
 }
 
-.chatter-attachment { background: #f8fafc; border: 1px solid #eef2f7; border-radius: 8px; padding: 0.5rem 0.75rem; }
+.chatter-attachment { background: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.75rem; }
 
 .chatter-attachment-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 0.85rem;
-  color: #1d4ed8;
+  color: var(--info);
   text-decoration: none;
 }
 
@@ -3340,7 +3277,7 @@ textarea.form-control {
   align-items: center;
   gap: 3px;
   font-size: 0.8rem;
-  color: #1d4ed8;
+  color: var(--info);
   text-decoration: none;
 }
 
@@ -3817,152 +3754,16 @@ textarea.form-control {
 .kb-act-clock.upcoming { color: #16a34a; }
 
 /* ===== migrated from src/pages/crm/leadform-extra.css (P67) ===== */
-/* Compléments fiche lead : avatar responsable d'entête, barre d'actions devis
-   (style Odoo) et édition inline de la facture. */
-
-.lead-head-owner { display: inline-flex; align-items: center; margin-right: 4px; }
-
-/* VX24 — LeadSummaryBar : bandeau de faits clés (score, montant estimé,
-   prochaine activité, jours depuis modif.) façon Attio, en tête de fiche. */
-.lead-summary-bar {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  flex-wrap: wrap;
-  padding: 8px 20px;
-  font-size: 0.82rem;
-  color: var(--muted-foreground, #475569);
-  border-bottom: 1px solid var(--border, #e2e8f0);
-}
-
-.lead-summary-item { display: inline-flex; align-items: center; gap: 4px; }
-
-/* Barre d'actions sous l'entête : facture inline (gauche) + devis (droite). */
-.lead-subbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 10px 20px;
-  background: var(--muted, #f1f5f9);
-  border-bottom: 1px solid var(--border, #e2e8f0);
-}
-
-.lead-subbar-bills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.lead-subbar-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: 600;
-  color: var(--muted-foreground, #475569);
-  font-size: 0.85rem;
-}
-
-/* VX45 — icône lucide remplaçant l'emoji 💡 (rendu variable selon l'OS). */
-.lead-subbar-icon { flex-shrink: 0; }
-.lead-bill-input { width: 110px; }
-
-.lead-bill-view {
-  background: var(--card, #fff);
-  border: 1px dashed var(--border, #cbd5e1);
-  border-radius: var(--radius-sm, 8px);
-  padding: 4px 10px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--foreground, #1e293b);
-  cursor: pointer;
-}
-@media (hover: hover) {
-  .lead-bill-view:hover {
-    border-color: var(--primary, #2563eb);
-    background: color-mix(in srgb, var(--primary, #2563eb) 8%, var(--card, #fff));
-  }
-}
-.lead-bill-edit-hint { color: var(--primary, #2563eb); margin-left: 6px; }
-.lead-bill-empty { color: var(--primary, #2563eb); font-weight: 600; }
-
-.lead-subbar-devis { display: flex; align-items: center; gap: 8px; }
-
-.lead-devis-menu-wrap { position: relative; display: inline-block; }
-.lead-devis-menu {
-  position: absolute;
-  /* MB3 — menu déroulant d'actions devis = DROPDOWN (barème de tokens). Rendu
-     dans la fiche lead (.ldp-panel, --z-modal) : le palier joue dans ce
-     contexte, au-dessus du contenu de la fiche. */
-  z-index: var(--z-dropdown, 1000);
-  top: calc(100% + 4px);
-  right: 0;
-  min-width: 200px;
-  background: var(--popover, #fff);
-  color: var(--popover-foreground, inherit);
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: var(--radius, 10px);
-  box-shadow: var(--shadow-ui-lg, 0 16px 40px rgba(0, 0, 0, 0.16));
-  padding: 4px;
-}
-.lead-devis-menu-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 0;
-  border-radius: 7px;
-  padding: 8px 10px;
-  font-size: 0.86rem;
-  color: var(--foreground, #1e293b);
-  cursor: pointer;
-}
-@media (hover: hover) {
-  .lead-devis-menu-item:hover:not(:disabled) { background: var(--accent, #f1f5f9); }
-}
-.lead-devis-menu-item:disabled { color: var(--muted-foreground, #94a3b8); cursor: not-allowed; }
-
-/* Affinages 2026-06 : avertissement doublon (non bloquant), lien carte GPS,
-   erreurs en ligne (facture inline, note). */
-.lead-dup-warning {
-  margin: 0 0 10px;
-  padding: 8px 12px;
-  background: #fffbeb;
-  border: 1px solid #fcd34d;
-  border-radius: var(--radius-md);
-  font-size: 0.85rem;
-  color: #92400e;
-}
-.lead-dup-link {
-  background: none;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  font-weight: 700;
-  color: #b45309;
-  text-decoration: underline;
-  cursor: pointer;
-}
-.lead-gps-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #2563eb;
-  text-decoration: none;
-}
-@media (hover: hover) {
-  .lead-gps-link:hover { text-decoration: underline; }
-}
-.lead-bill-error { color: #dc2626; font-size: 0.82rem; }
+/* LW31 — tout le bandeau/sous-barre/menu/avertissements hand-rolled de
+   l'ancien LeadForm (avatar d'entête, LeadSummaryBar, sous-barre facture
+   inline, menu devis, bannière doublon, lien GPS) a été SUPPRIMÉ : LeadForm
+   est devenu un adaptateur vers LeadWorkspace (LW13) qui reconstruit ces
+   fonctions avec `ui/DropdownMenu`, un `Dialog` doublons, `.lw-gps-link` et
+   les formulaires de section — 0 usage JSX vivant restait ici (grep confirmé
+   classe par classe). `.form-error` reste : classe de message d'erreur
+   générique partagée par d'autres écrans hors fenêtre lead (ClientForm,
+   PlanActiviteDialog, ActivitiesPanel…) — hors périmètre LW31. */
 .form-error { color: #dc2626; font-size: 0.85rem; margin: 4px 0 0; }
-
-/* A4 — actions en ligne sur les devis d'un lead (facture / chantier). */
-.lead-devis-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-}
-.lead-devis-pdf-hint { color: var(--muted-foreground, #64748b); white-space: nowrap; }
 
 /* ===== migrated from src/pages/crm/leads/bulkactionbar.css (P67) ===== */
 /* Barre d'actions en masse — collante sous le filtre, surface tokenisée pour
@@ -6233,7 +6034,11 @@ textarea.form-control {
 .lw-title {
   margin: 0;
   min-width: 0;
-  font-size: 1.05rem;
+  /* LW33 — échelle typo stricte (blueprint D4#3) : titre de dialogue = chrome
+     compact, pas le « nom du lead » (ce rôle est .lw-rail-name → --text-h2,
+     ci-dessous) ; --text-body, line-height propre gardé (titre 1 ligne
+     tronquée, pas un paragraphe). */
+  font-size: var(--text-body);
   line-height: 1.3;
   font-weight: 600;
   color: var(--foreground);
@@ -6245,7 +6050,7 @@ textarea.form-control {
   margin-left: 0.5rem;
   padding: 0.05rem 0.4rem;
   border-radius: 9999px;
-  font-size: 0.7rem;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--muted-foreground);
   background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
@@ -6253,17 +6058,17 @@ textarea.form-control {
 .lw-nav {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 .lw-nav-pos {
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
 
 /* Chip d'état de sauvegarde (autosauvegarde). */
 .lw-savechip {
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   padding: 0.15rem 0.55rem;
   border-radius: 9999px;
   border: 1px solid transparent;
@@ -6295,7 +6100,7 @@ textarea.form-control {
   margin: 0.5rem 1rem 0;
   padding: 0.55rem 0.75rem;
   border-radius: var(--radius-md);
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--foreground);
 }
 .lw-banner-actions {
@@ -6347,20 +6152,24 @@ textarea.form-control {
   border-left: 1px solid var(--border);
   padding: 1rem;
 }
+/* LW33 — le nom du lead est LE titre --text-h2 de la fenêtre (blueprint
+   D4#3) : seul élément du bloc .lw-* promu à ce palier. */
 .lw-rail-name {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--text-h2);
+  line-height: var(--text-h2-lh);
+  letter-spacing: var(--text-h2-ls);
   font-weight: 600;
   color: var(--foreground);
 }
 .lw-rail-sub {
   margin: 0.15rem 0 0;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 .lw-rail-hint {
   margin: 0.5rem 0 0;
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 
@@ -6369,25 +6178,97 @@ textarea.form-control {
   display: contents;
 }
 
-/* Pied de création. */
-.lw-footer {
+/* Pied de création. LW34 — passe par `ui/FormActions` (barre collante mobile
+   déjà gérée par le kit) ; cette classe ne garde que ce que FormActions ne
+   fixe pas déjà (rester un item flex non-écrasable de .lw-root). */
+.lw-footer-create {
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border-top: 1px solid var(--border);
 }
 .lw-footer-error {
   margin-right: auto;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--destructive);
 }
 
-/* 768-1023px : on empile les 3 zones (le corps entier défile) — données
-   préservées ; le breakpoint UNIQUE reste 768 (Dialog↔Sheet). */
-@media (max-width: 1023px) {
+/* LW34 — barre-pouce mobile (<768) : Appeler/WhatsApp/Note toujours
+   atteignables sans défiler le formulaire, safe-area iOS respectée. Item
+   flex non-écrasable de .lw-root (même famille que .lw-topbar/.lw-footer-
+   create), sous le corps scrollable. */
+.lw-thumbbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.lw-thumbbar-btn {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.5rem 0.25rem;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: var(--text-small);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.lw-thumbbar-btn:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+.lw-thumbbar-btn[aria-disabled="true"],
+.lw-thumbbar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (hover: hover) {
+  .lw-thumbbar-btn:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: color-mix(in oklch, var(--muted-foreground) 8%, transparent);
+  }
+}
+
+/* LW34 — ContextRail dans un Sheet à la demande (768-1023, bouton
+   « Contexte »). Padding du kit neutralisé : .lw-zone.lw-rail-context a déjà
+   le sien (1rem) — même patron que .lw-dialog/.lw-sheet (p-0, la grille
+   interne gère tout). */
+.lw-context-sheet {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* LW34 — 768-1023 : rail identité + centre en 2 colonnes ; le rail contexte
+   quitte la grille (LeadWorkspace.jsx le rend dans un Sheet à la demande via
+   le bouton « Contexte » du bandeau — patron LeadDevisPanel). Données
+   préservées, aucune perte de zone : juste un 3e panneau qui devient un
+   panneau à la demande plutôt qu'un panneau toujours visible. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .lw-body--edit {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  /* Le squelette d'ouverture (LW25) rend encore 3 panneaux ; à ce palier le
+     rail contexte réel n'est plus dans la grille (Sheet à la demande) — son
+     ombre de squelette doit disparaître avec lui, sinon elle déborde du
+     gabarit 2 colonnes (3e enfant sans piste dédiée). */
+  .lw-body--edit .lw-rail-context.lw-skeleton-pane {
+    display: none;
+  }
+}
+
+/* LW34 — <768 : empilement — bande identité compacte → sections accordéon →
+   onglets contexte (ordre DOM naturel ; le rail contexte reste EN LIGNE ici,
+   seule la tablette le sort en Sheet). SEUL breakpoint restant du bloc
+   .lw-* : la bande morte 721-767px de l'ancien .lead-form-layout à 720px
+   (recon 04 §5) a disparu avec lui. */
+@media (max-width: 767px) {
   .lw-body--edit {
     display: block;
     overflow-y: auto;
@@ -6407,27 +6288,36 @@ textarea.form-control {
 
 /* ── LW11 : centre (nav-chips sticky, sections repliables, port des champs) ── */
 
-/* Nav-chips horizontaux STICKY en tête du centre (scroll-spy). */
+/* Nav-chips horizontaux STICKY en tête du centre (scroll-spy). LW33 (retour
+   QA visuelle orchestrateur) — à centre étroit (~750px), la rangée déborde
+   sans AUCUN indice qu'elle défile : scrollbar masquée (déjà présente à
+   l'œil comme un artefact, pas une affordance) + dégradé de bord (mask-image)
+   pour suggérer « il y a plus à droite ». Le scroll horizontal existait déjà
+   (overflow-x:auto) — seul l'indice manquait. */
 .lw-secnav {
   position: sticky;
   top: 0;
   z-index: 1;
   display: flex;
-  gap: 0.25rem;
+  gap: 0.5rem;
   align-items: center;
   padding: 0.5rem 0.75rem;
   overflow-x: auto;
+  scrollbar-width: none;
   background: var(--card);
   border-bottom: 1px solid var(--border);
+  mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
 }
+.lw-secnav::-webkit-scrollbar { display: none; }
 .lw-secnav-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.5rem;
   flex: 0 0 auto;
   padding: 0.25rem 0.6rem;
   border-radius: 9999px;
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
   background: transparent;
   border: 1px solid transparent;
@@ -6484,14 +6374,16 @@ textarea.form-control {
   flex: 0 0 auto;
   color: var(--muted-foreground);
 }
+/* LW33 — titre de section = --text-h3 (blueprint D4#3). */
 .lw-section-title {
   flex: 1 1 auto;
-  font-size: 0.95rem;
+  font-size: var(--text-h3);
+  line-height: var(--text-h3-lh);
   font-weight: 600;
 }
 .lw-section-chevron {
   flex: 0 0 auto;
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 .lw-section-body {
@@ -6503,7 +6395,7 @@ textarea.form-control {
   margin: 0 0 0.6rem;
   padding: 0.5rem 0.65rem;
   border-radius: var(--radius-md);
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--foreground);
   border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
   background: color-mix(in oklch, var(--warning) 12%, transparent);
@@ -6519,7 +6411,7 @@ textarea.form-control {
 }
 .lw-gps-link {
   color: var(--info);
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   text-decoration: none;
 }
 .lw-gps-link:hover {
@@ -6531,7 +6423,7 @@ textarea.form-control {
 .lw-rail-head {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   margin-bottom: 0.85rem;
 }
 .lw-rail-avatar {
@@ -6545,12 +6437,12 @@ textarea.form-control {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 .lw-rail-archived {
   padding: 0.05rem 0.4rem;
   border-radius: 9999px;
-  font-size: 0.65rem;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--muted-foreground);
   background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
@@ -6559,11 +6451,11 @@ textarea.form-control {
 .lw-rail-contact {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.5rem;
   margin-bottom: 0.85rem;
 }
 .lw-rail-contact-link {
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--info);
   text-decoration: none;
   white-space: nowrap;
@@ -6577,14 +6469,14 @@ textarea.form-control {
 .lw-rail-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  gap: 0.5rem;
   margin-bottom: 0.85rem;
 }
 
 .lw-rail-actions {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 .lw-rail-actions > * {
   width: 100%;
@@ -6606,17 +6498,20 @@ textarea.form-control {
 .lw-rail-field {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.5rem;
 }
+/* LW33 — micro-label MAJUSCULE tracké : même famille que l'utilitaire
+   .text-eyebrow (design/tokens.css) — --text-caption reste un palier de
+   l'échelle typo officielle (recon 06), pas une valeur inventée. */
 .lw-rail-label {
-  font-size: 0.72rem;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--muted-foreground);
 }
 .lw-rail-nextact {
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--foreground);
 }
 .lw-rail-nextact[data-state="overdue"] {
@@ -6625,7 +6520,7 @@ textarea.form-control {
 .lw-rail-nextact-empty {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   padding: 0;
   background: transparent;
   border: 0;
@@ -6634,7 +6529,7 @@ textarea.form-control {
   text-align: left;
 }
 .lw-rail-nextact-cta {
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   color: var(--info);
   text-decoration: underline;
 }
@@ -6647,7 +6542,7 @@ textarea.form-control {
 .lw-stage-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 .lw-stage-pill {
   padding: 0;
@@ -6667,10 +6562,12 @@ textarea.form-control {
 .lw-stage-pill--current {
   cursor: default;
 }
-/* Ancienneté d'étape : neutre par défaut, chauffe avec la rampe rotting. */
+/* Ancienneté d'étape : neutre par défaut, chauffe avec la rampe rotting. Le
+   compteur de jours passe par `.num` dans le JSX (StageControl.jsx, LW33) —
+   ce `font-variant-numeric` reste pour le mot « depuis…j » hors du span.num. */
 .lw-stage-since {
   margin: 0.35rem 0 0;
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
 }
@@ -6702,7 +6599,7 @@ textarea.form-control {
 }
 .lw-rail-score-title {
   margin: 0 0 0.5rem;
-  font-size: 0.9rem;
+  font-size: var(--text-body);
   font-weight: 600;
   color: var(--foreground);
 }
@@ -6712,25 +6609,25 @@ textarea.form-control {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
 }
 .lw-rail-score-reasons li {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--foreground);
 }
 .lw-rail-score-empty {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 .lw-rail-score-foot {
   margin: 0.6rem 0 0;
   padding-top: 0.5rem;
   border-top: 1px solid var(--border);
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 
@@ -6745,7 +6642,7 @@ textarea.form-control {
   margin-bottom: 0.6rem;
   padding: 0.5rem 0.65rem;
   border-radius: var(--radius-md);
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: var(--foreground);
 }
 .lw-banner-card--warning {
@@ -6758,7 +6655,7 @@ textarea.form-control {
 }
 .lw-banner-link {
   color: var(--info);
-  font-size: 0.82rem;
+  font-size: var(--text-small);
   text-decoration: underline;
   white-space: nowrap;
 }
@@ -6769,7 +6666,7 @@ textarea.form-control {
 .lw-dup-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
 }
 .lw-dup-table th,
 .lw-dup-table td {
@@ -6778,7 +6675,7 @@ textarea.form-control {
   border-bottom: 1px solid var(--border);
 }
 .lw-dup-table th {
-  font-size: 0.72rem;
+  font-size: var(--text-caption);
   text-transform: uppercase;
   letter-spacing: 0.02em;
   color: var(--muted-foreground);
@@ -6796,7 +6693,7 @@ textarea.form-control {
 .lw-context-devis {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.75rem;
 }
 
 /* Onglet Activités : bouton « Appliquer un plan » au-dessus du panneau. */
@@ -6811,11 +6708,11 @@ textarea.form-control {
 .lw-context-touch-summary {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
+  gap: 0.5rem 0.75rem;
   padding: 0.4rem 0.6rem;
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--info) 8%, transparent);
-  font-size: 0.78rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
 }
 
@@ -6823,12 +6720,12 @@ textarea.form-control {
 .lw-context-filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  gap: 0.5rem;
 }
 .lw-context-filter-chip {
   padding: 0.2rem 0.55rem;
   border-radius: 9999px;
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: var(--muted-foreground);
   background: transparent;
   border: 1px solid var(--border);
@@ -6852,7 +6749,7 @@ textarea.form-control {
 .lw-context-chatter-pinned {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
   margin-bottom: 0.35rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px dashed var(--border);
@@ -6894,7 +6791,7 @@ textarea.form-control {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 .lw-context-devis-missing {
   padding: 0.5rem 0.65rem;
@@ -6908,7 +6805,7 @@ textarea.form-control {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.5rem;
 }
 .lw-context-missing-link {
   padding: 0;
@@ -6918,7 +6815,7 @@ textarea.form-control {
   text-decoration: underline;
   cursor: pointer;
   font: inherit;
-  font-size: 0.82rem;
+  font-size: var(--text-small);
 }
 
 /* Cartes devis (chaîne document, statut devis JAMAIS le funnel lead). */
@@ -6934,7 +6831,7 @@ textarea.form-control {
   background: var(--card);
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 .lw-context-devis-card-head {
   display: flex;
@@ -6959,7 +6856,7 @@ textarea.form-control {
   align-items: baseline;
   justify-content: space-between;
   gap: 0.5rem;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
 }
 .lw-context-devis-date {
   color: var(--muted-foreground);
@@ -6967,11 +6864,28 @@ textarea.form-control {
 .lw-context-devis-track {
   margin: 0.1rem 0;
 }
+/* LW33 — actions secondaires (Facture/Chantier, devis accepté) révélées au
+   survol de la carte, patron "group-hover" (blueprint D4#7, sans reflow :
+   uniquement opacity, l'espace reste réservé par le flex normal). GARDÉ
+   derrière `@media (hover: hover)` : sur tactile (aucun hover fiable), ces
+   actions sont des CTA métier de premier plan (générer facture/chantier) —
+   jamais masquées, toujours visibles. `:focus-within` garde l'accès clavier
+   même sur pointeur fin. */
 .lw-context-devis-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
+}
+@media (hover: hover) {
+  .lw-context-devis-actions {
+    opacity: 0;
+    transition: opacity var(--motion-fast) var(--ease-standard);
+  }
+  .lw-context-devis-card:hover .lw-context-devis-actions,
+  .lw-context-devis-actions:focus-within {
+    opacity: 1;
+  }
 }
 
 /* ── LW22 : barre d'envoi WhatsApp multi-devis FR/Darija. ─────────────────── */
@@ -6986,8 +6900,10 @@ textarea.form-control {
 }
 .lw-context-wa-langue {
   display: inline-flex;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
+/* LW33 — seul vrai « corps » de texte du bloc .lw-* (message WhatsApp
+   multi-lignes lu comme du contenu, pas un label) : --text-body. */
 .lw-context-wa-preview {
   white-space: pre-wrap;
   word-break: break-word;
@@ -6995,7 +6911,8 @@ textarea.form-control {
   padding: 0.75rem;
   border-radius: var(--radius-md);
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: var(--text-body);
+  line-height: var(--text-body-lh);
   margin: 0;
 }
 .lw-context-wa-links {
@@ -7007,6 +6924,109 @@ textarea.form-control {
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 0.75rem;
+}
+
+/* ── LW36 : AppointmentBooker (satellite embarqué par SectionVisite) —
+   30 blocs de style en ligne migrés vers tokens (recon 04 §2). Radius 6/8
+   -> --radius-sm/--radius-md (correspondance exacte, 6px/8px). ─────────── */
+.lw-booker {
+  margin-top: 0.75rem;
+}
+.lw-booker-upcoming {
+  margin-bottom: 0.5rem;
+}
+.lw-booker-upcoming-label {
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+  margin-bottom: 0.25rem;
+}
+.lw-booker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.lw-booker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  background: var(--muted);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-small);
+}
+.lw-booker-datetime {
+  font-weight: 500;
+}
+.lw-booker-notes {
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  flex: 1;
+}
+/* Actions texte discrètes (Agenda/Confirmer WhatsApp/Annuler) — jamais un
+   Button plein (trop lourd pour une ligne dense) : jeton de lien nu. */
+.lw-booker-link {
+  font-size: var(--text-caption);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.lw-booker-link--muted { color: var(--muted-foreground); }
+.lw-booker-link--success { color: var(--success); }
+.lw-booker-link--destructive { color: var(--destructive); }
+.lw-booker-link--push { margin-left: auto; }
+.lw-booker-link:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.lw-booker-wa-preview {
+  margin-top: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+}
+.lw-booker-wa-preview-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.lw-booker-wa-preview-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-family: inherit;
+}
+.lw-booker-wa-preview-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.lw-booker-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  padding: 0.625rem;
+  background: var(--muted);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+.lw-booker-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+}
+.lw-booker-field--date { flex: 1 1 180px; }
+.lw-booker-field--notes { flex: 2 1 200px; }
+.lw-booker-error {
+  width: 100%;
+  color: var(--destructive);
+  font-size: var(--text-caption);
+}
+.lw-booker-form-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 /* ── LW25 : squelette d'ouverture (crossfade FadeSwap, en forme de grille) ── */

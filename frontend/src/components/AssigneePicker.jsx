@@ -5,10 +5,44 @@
 
    Reconstruit sur le Popover (G28) + jetons sémantiques (la feuille
    assigneepicker.css est supprimée). Props/API/comportement préservés 1:1 :
-   { users, value, onChange, size, disabled, allowUnassigned, compact }. */
+   { users, value, onChange, size, disabled, allowUnassigned, compact }.
+
+   LW32 — l'avatar interne bascule sur `ui/Avatar` (Radix, tokenisé) au lieu
+   de l'ancien `components/Avatar` (palette 15 hex inline, recon 04 §1) :
+   couleur stable PAR RESPONSABLE via `--owner-color-{1..10}` (hash de l'ID,
+   pas du nom — un renommage ne fait pas sauter la couleur). Rendu en jeton
+   « soft » (même patron que les badges tonaux du fichier : fond = teinte
+   diluée de la couleur, texte = la couleur pleine) pour un contraste AA
+   garanti dans les deux thèmes sans dépendre d'un blanc figé. */
 import * as PopoverPrimitive from '@radix-ui/react-popover'
 import { cn } from '../lib/cn'
-import Avatar from './Avatar'
+import { Avatar, AvatarImage, AvatarFallback, initials } from '../ui/Avatar'
+
+const OWNER_COLOR_SLOTS = 10
+function ownerColorVar(id) {
+  if (id == null || id === '') return 'var(--muted-foreground)'
+  let h = 0
+  for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) % 997
+  return `var(--owner-color-${(h % OWNER_COLOR_SLOTS) + 1})`
+}
+
+function PickerAvatar({ userId, name, src, size }) {
+  const colorVar = ownerColorVar(userId)
+  return (
+    <Avatar
+      className="ring-0"
+      style={{ width: size, height: size, minWidth: size }}
+    >
+      {src && <AvatarImage src={src} alt={name || 'Non assigné'} />}
+      <AvatarFallback
+        className="ap-avatar-fallback text-[10px] font-bold"
+        style={{ background: `color-mix(in oklch, ${colorVar} 18%, var(--card))`, color: colorVar }}
+      >
+        {name ? initials(name) : '?'}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
 
 export default function AssigneePicker({
   users = [],
@@ -44,7 +78,7 @@ export default function AssigneePicker({
             disabled && 'cursor-default opacity-70',
           )}
         >
-          <Avatar name={currentName} src={current?.avatar_url} size={size} />
+          <PickerAvatar userId={current?.id} name={currentName} src={current?.avatar_url} size={size} />
           {!compact && (
             <span className="ap-name truncate font-semibold">{currentName || 'Non assigné'}</span>
           )}
@@ -64,7 +98,7 @@ export default function AssigneePicker({
                 onClick={() => pick(null)}
                 className="ap-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent"
               >
-                <Avatar name={null} size={22} />
+                <PickerAvatar userId={null} name={null} size={22} />
                 <span>Non assigné</span>
               </button>
             </PopoverPrimitive.Close>
@@ -76,7 +110,7 @@ export default function AssigneePicker({
                 onClick={() => pick(u.id)}
                 className="ap-item flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent"
               >
-                <Avatar name={u.username} src={u.avatar_url} size={22} />
+                <PickerAvatar userId={u.id} name={u.username} src={u.avatar_url} size={22} />
                 <span className="flex flex-col leading-tight">
                   {u.username}
                   {u.poste && <span className="text-xs font-medium text-muted-foreground">{u.poste}</span>}

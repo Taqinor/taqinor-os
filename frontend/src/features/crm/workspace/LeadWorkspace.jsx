@@ -7,7 +7,7 @@ import {
   createLead, archiveLead, restoreLead,
 } from '../store/crmSlice'
 import {
-  Button, IconButton, Switch,
+  Button, IconButton, Switch, FormActions,
   Dialog, DialogContent, DialogTitle,
   Sheet, SheetContent, SheetTitle,
   SkeletonAvatar, SkeletonLine, SkeletonText, SkeletonCard, FadeSwap,
@@ -18,6 +18,7 @@ import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { isTypingTarget } from '../../../providers/shortcuts'
 import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
 import { pushRecentEntity } from '../../../providers/commandActions'
+import { normalizeMaPhone } from '../../../lib/format'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
 import { schedulePrefetch } from './leadPrefetch'
 import { getField } from './draftCore'
@@ -102,6 +103,12 @@ export default function LeadWorkspace({
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const isMobile = useIsMobile()
+  // LW34 — 768-1023 : rail identité + centre en 2 colonnes, rail contexte
+  // sorti de la grille (Sheet à la demande, bouton « Contexte » du bandeau).
+  // Même famille que `isMobile` ci-dessus (useIsMobile générique, requête
+  // dédiée) — le SEUL jeu de seuils du bloc .lw-* reste 768/1024.
+  const isTablet = useIsMobile('(min-width: 768px) and (max-width: 1023px)')
+  const [contextSheetOpen, setContextSheetOpen] = useState(false)
   const mode = lead ? 'edit' : 'create'
   const currentUserId = useSelector((s) => s.auth?.user?.id)
 
@@ -382,6 +389,15 @@ export default function LeadWorkspace({
   const nomTitre = mode === 'edit'
     ? `Lead — ${getField(state, 'nom') || ''} ${getField(state, 'prenom') || ''}`.trim()
     : 'Nouveau lead'
+
+  // LW34 — barre-pouce mobile (Appeler · WhatsApp · Note) : même résolution
+  // téléphone que IdentityRail.jsx (callPhone/waPhone — mêmes deux lignes),
+  // dupliquée ici à dessein : deux dérivations de présentation indépendantes
+  // du même state, pas une logique métier partagée (aucune mutation).
+  const telephoneWs = (getField(state, 'telephone') || '').trim()
+  const whatsappWs = (getField(state, 'whatsapp') || '').trim()
+  const callPhone = telephoneWs || whatsappWs
+  const waPhone = normalizeMaPhone(whatsappWs || telephoneWs)
   // LW26 — tenu à jour à CHAQUE rendu (jamais une dépendance d'effet, cf.
   // pushRecentEntity ci-dessus : seul l'effet « ouverture » le LIT).
   useEffect(() => { nomTitreRef.current = nomTitre })
@@ -424,6 +440,18 @@ export default function LeadWorkspace({
           )}
         </div>
         <div className="lw-topbar-right">
+          {/* LW34 — 768-1023 : le rail contexte quitte la grille (2 colonnes
+              seulement) ; ce bouton l'ouvre en Sheet côté droit (patron
+              LeadDevisPanel). Absent en dehors de ce palier — aucun état mort
+              dans le DOM desktop/mobile. */}
+          {mode === 'edit' && isTablet && (
+            <Button
+              type="button" variant="ghost" size="sm" className="lw-context-toggle"
+              onClick={() => setContextSheetOpen(true)}
+            >
+              Contexte
+            </Button>
+          )}
           {mode === 'edit' && <SaveChip saveState={saveState} onRetry={draft.retry} />}
           <button type="button" className="modal-close" onClick={requestClose} aria-label="Fermer">✕</button>
         </div>
@@ -508,23 +536,81 @@ export default function LeadWorkspace({
                 leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
               }}
             />
+            {/* LW34 — 768-1023 : le rail contexte quitte la grille 2 colonnes,
+                rendu UNE SEULE FOIS (jamais dupliqué — mêmes compteurs
+                Activités/Pièces, même sessionStorage d'onglet) soit ici en
+                ligne (≥1024), soit dans le Sheet ci-dessous (tablette). */}
+            {!isTablet && (
+              <ContextRail
+                state={state}
+                users={users}
+                historique={historique}
+                refreshHistorique={refreshHistorique}
+                onAction={onAction}
+                // Câblage moteur (demande lane 3) : composer/wa vivent dans le
+                // réducteur — le repli local de ContextRail devient inactif et
+                // le miroir sessionStorage anti-perte couvre aussi la note.
+                dispatch={draft.dispatch}
+              />
+            )}
+          </div>
+        </FadeSwap>
+      )}
+
+      {mode === 'edit' && isTablet && (
+        <Sheet open={contextSheetOpen} onOpenChange={setContextSheetOpen}>
+          <SheetContent side="right" className="lw-context-sheet">
+            <SheetTitle className="sr-only">Contexte du lead</SheetTitle>
             <ContextRail
               state={state}
               users={users}
               historique={historique}
               refreshHistorique={refreshHistorique}
               onAction={onAction}
-              // Câblage moteur (demande lane 3) : composer/wa vivent dans le
-              // réducteur — le repli local de ContextRail devient inactif et
-              // le miroir sessionStorage anti-perte couvre aussi la note.
               dispatch={draft.dispatch}
             />
-          </div>
-        </FadeSwap>
+          </SheetContent>
+        </Sheet>
+      )}
+
+      {/* LW34 — barre-pouce mobile (<768) : les 3 actions rapides du rail
+          identité (☎/🟢 déjà là, plus « Note ») en sticky bas safe-area,
+          toujours atteignables sans défiler le formulaire. La « Note »
+          réutilise l'événement `lw:open-note-composer` déjà écouté par
+          ContextRail (câblage lane 4, inchangé). */}
+      {mode === 'edit' && isMobile && (
+        <div className="lw-thumbbar" role="toolbar" aria-label="Actions rapides">
+          <a
+            className="lw-thumbbar-btn"
+            href={callPhone ? `tel:${callPhone}` : undefined}
+            aria-disabled={!callPhone}
+            onClick={(e) => { if (!callPhone) e.preventDefault() }}
+          >
+            <span aria-hidden="true">☎</span>
+            <span>Appeler</span>
+          </a>
+          <button
+            type="button"
+            className="lw-thumbbar-btn"
+            disabled={!waPhone}
+            onClick={() => { if (waPhone) window.open(`https://wa.me/${waPhone}`, '_blank', 'noopener') }}
+          >
+            <span aria-hidden="true">🟢</span>
+            <span>WhatsApp</span>
+          </button>
+          <button
+            type="button"
+            className="lw-thumbbar-btn"
+            onClick={() => window.dispatchEvent(new Event('lw:open-note-composer'))}
+          >
+            <span aria-hidden="true">📝</span>
+            <span>Note</span>
+          </button>
+        </div>
       )}
 
       {mode === 'create' && (
-        <footer className="lw-footer">
+        <FormActions className="lw-footer-create">
           {/* VX224/VX92 — « Créer un autre » : création uniquement, persisté. */}
           <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
             <Switch
@@ -544,7 +630,7 @@ export default function LeadWorkspace({
           <Button type="submit" form={CREATE_FORM_ID} loading={saving} disabled={saving}>
             {saving ? 'Enregistrement…' : 'Créer le lead'}
           </Button>
-        </footer>
+        </FormActions>
       )}
     </div>
   )
