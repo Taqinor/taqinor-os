@@ -1208,6 +1208,30 @@ def clients_contact_identifiers(company):
     ]
 
 
+def leads_ville_rows(company):
+    """PUB62 — Une ligne par lead PORTANT une ville renseignée : id, ville,
+    signé (stade SIGNED, jamais perdu — STAGES.py, jamais codé en dur).
+    Scopé société, leads vivants. Un lead SANS ville est simplement ABSENT
+    (jamais une ville vide fabriquée — règle checked-facts). Point d'entrée
+    cross-app pour la carte chaleur ville d'``apps.adsengine.reporting``
+    (jamais un import d'``apps.crm.models`` côté adsengine)."""
+    from . import stages as stage_mod
+    from .models import Lead
+
+    rows = []
+    qs = (Lead.objects
+          .filter(company=company, is_archived=False)
+          .exclude(ville__isnull=True).exclude(ville__exact='')
+          .only('id', 'ville', 'stage', 'perdu'))
+    for lead in qs:
+        rows.append({
+            'id': lead.id,
+            'ville': lead.ville.strip(),
+            'signed': lead.stage == stage_mod.SIGNED and not lead.perdu,
+        })
+    return rows
+
+
 # ── XMKT17 — Coût & ROI MAD par campagne (compta.Campagne) ─────────────────
 
 def revenu_attribue_campagne(company, nom_campagne):

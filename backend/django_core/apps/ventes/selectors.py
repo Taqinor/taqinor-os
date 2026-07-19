@@ -1299,3 +1299,28 @@ def signed_clients_cross_sell_segments(company):
         if devis.option_acceptee != Devis.OptionAcceptee.AVEC_BATTERIE:
             sans_batterie.append(contact)
     return {'sans_contrat': sans_contrat, 'sans_batterie': sans_batterie}
+
+
+def devis_accepted_totals_by_lead(company, lead_ids):
+    """PUB62 — Total TTC des devis ACCEPTÉS par ``lead_id`` (somme si un lead
+    a plusieurs devis signés) — le « ticket moyen » de la carte chaleur
+    ville. Lecture directe de la FK ``Devis.lead``. Renvoie
+    ``{lead_id: Decimal}`` — un ``lead_id`` sans devis accepté est ABSENT
+    (jamais un 0 fabriqué)."""
+    from decimal import Decimal
+
+    from .models import Devis
+
+    lead_ids = list(lead_ids or [])
+    if not lead_ids:
+        return {}
+    totals = {}
+    for devis in (Devis.objects
+                  .filter(company=company, statut=Devis.Statut.ACCEPTE,
+                          lead_id__in=lead_ids)):
+        try:
+            amount = Decimal(str(devis.total_ttc or 0))
+        except Exception:
+            amount = Decimal('0')
+        totals[devis.lead_id] = totals.get(devis.lead_id, Decimal('0')) + amount
+    return totals

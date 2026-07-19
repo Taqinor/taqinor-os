@@ -383,6 +383,105 @@ def creative_scatter(company, *, date_start=None, date_end=None):
     }
 
 
+# ── PUB62 — Carte chaleur ville : CPL, coût-par-signature, ticket moyen ──────
+
+def _normalize_place_fr(value):
+    return (value or '').strip().lower()
+
+
+def city_heatmap(company, *, date_start=None, date_end=None):
+    """PUB62 — Carte chaleur ville : CPL, coût-par-signature ET ticket moyen
+    SIGNÉ par ville (une ville chère en CPL mais à gros tickets industriels
+    peut gagner). Croise le breakdown RÉGION Meta (``InsightBreakdown``,
+    ADSDEEP7, synchronisé au niveau CAMPAGNE) avec les villes RÉELLES
+    saisies sur les leads (``apps.crm.selectors.leads_ville_rows``) et le
+    total TTC des devis ACCEPTÉS qui leur sont liés
+    (``apps.ventes.selectors.devis_accepted_totals_by_lead``) — jamais un
+    import des modèles crm/ventes.
+
+    Le rapprochement ville↔région Meta est TEXTUEL (une région Meta MA type
+    « Casablanca-Settat » contient généralement le nom de ville usuel) —
+    correspondance dans les deux sens, insensible à la casse ; une ville sans
+    correspondance de région n'a simplement pas de CPL/coût-par-signature
+    (jamais un chiffre à 0 fabriqué). Une ville SANS AUCUNE donnée
+    n'apparaît PAS dans la table (règle checked-facts : les villes sans
+    données sont OMISES, jamais un « 0 »).
+
+    Renvoie ``{'periode': {...}|None, 'villes': [{'ville', 'region_meta',
+    'spend', 'leads', 'cpl', 'signed', 'cout_par_signature',
+    'ticket_moyen_ttc'}, ...]}`` — triable côté appelant sur les 3
+    métriques."""
+    from decimal import Decimal
+
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from apps.crm.selectors import leads_ville_rows
+    from apps.ventes.selectors import devis_accepted_totals_by_lead
+    from .models import AdCampaignMirror, InsightBreakdown
+
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    qs = InsightBreakdown.objects.filter(
+        company=company, content_type=ct,
+        dimension=InsightBreakdown.Dimension.REGION)
+    if date_start is not None:
+        qs = qs.filter(date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date__lte=date_end)
+    regions = [
+        {'key': r['key'], 'spend': r['spend'] or Decimal('0')}
+        for r in qs.values('key').annotate(spend=Sum('spend'))
+        if r['key']
+    ]
+
+    lead_rows = leads_ville_rows(company)
+    signed_lead_ids = [r['id'] for r in lead_rows if r['signed']]
+    totals_by_lead = devis_accepted_totals_by_lead(company, signed_lead_ids)
+
+    cities = {}
+    for row in lead_rows:
+        slot = cities.setdefault(row['ville'], {
+            'leads': 0, 'signed': 0, 'signed_total': Decimal('0')})
+        slot['leads'] += 1
+        if row['signed']:
+            slot['signed'] += 1
+            slot['signed_total'] += totals_by_lead.get(row['id'], Decimal('0'))
+
+    result = []
+    for ville, slot in cities.items():
+        norm = _normalize_place_fr(ville)
+        matched_region, spend = None, None
+        for region in regions:
+            rnorm = _normalize_place_fr(region['key'])
+            if norm and rnorm and (norm in rnorm or rnorm in norm):
+                matched_region, spend = region['key'], region['spend']
+                break
+        leads = slot['leads']
+        signed = slot['signed']
+        result.append({
+            'ville': ville,
+            'region_meta': matched_region,
+            'spend': _q2(spend) if spend is not None else None,
+            'leads': leads,
+            'cpl': (_q2(spend / leads)
+                    if spend is not None and leads else None),
+            'signed': signed,
+            'cout_par_signature': (_q2(spend / signed)
+                                   if spend is not None and signed else None),
+            'ticket_moyen_ttc': (_q2(slot['signed_total'] / signed)
+                                 if signed else None),
+        })
+    result.sort(key=lambda r: r['ville'])
+
+    periode = None
+    if date_start is not None or date_end is not None:
+        periode = {
+            'debut': date_start.isoformat() if date_start else None,
+            'fin': date_end.isoformat() if date_end else None,
+        }
+    return {'periode': periode, 'villes': result}
+
+
 def reconciliation_csv(company, *, day=None):
     """CSV de la table de réconciliation (§5.4). Réutilise
     ``reconciliation.reconcile`` (ADSENG31, fichier disjoint) — jamais un schéma

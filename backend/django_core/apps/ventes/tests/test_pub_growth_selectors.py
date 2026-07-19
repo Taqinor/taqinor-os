@@ -16,8 +16,8 @@ from apps.crm.models import Client, Lead
 from apps.sav.models import ContratMaintenance
 from apps.ventes.models import Devis, ShareLink
 from apps.ventes.selectors import (
-    devis_view_tracking_segments, expired_devis_contacts,
-    signed_clients_cross_sell_segments,
+    devis_accepted_totals_by_lead, devis_view_tracking_segments,
+    expired_devis_contacts, signed_clients_cross_sell_segments,
 )
 
 MONTH = timezone.now().strftime('%Y%m')
@@ -183,3 +183,34 @@ class SignedClientsCrossSellSegmentsTests(TestCase):
         # même si un devis PLUS RÉCENT du même client a une batterie.
         self.assertEqual(len(result['sans_batterie']), 1)
         self.assertIsNotNone(premier)
+
+
+class DevisAcceptedTotalsByLeadTests(TestCase):
+    """PUB62 — total TTC des devis acceptés par lead (ticket moyen ville)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB62 Ventes Co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='Ville')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Lead Ville', ville='Agadir')
+
+    def test_empty_lead_ids_returns_empty_dict(self):
+        self.assertEqual(devis_accepted_totals_by_lead(self.company, []), {})
+
+    def test_lead_without_accepted_devis_absent(self):
+        Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-PUB6201',
+            client=self.client_obj, lead=self.lead, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ENVOYE)
+        totals = devis_accepted_totals_by_lead(self.company, [self.lead.id])
+        self.assertEqual(totals, {})
+
+    def test_sums_multiple_accepted_devis_for_same_lead(self):
+        for i in range(2):
+            Devis.objects.create(
+                company=self.company, reference=f'DEV-{MONTH}-PUB620{i+2}',
+                client=self.client_obj, lead=self.lead, taux_tva=Decimal('20'),
+                statut=Devis.Statut.ACCEPTE)
+        totals = devis_accepted_totals_by_lead(self.company, [self.lead.id])
+        self.assertIn(self.lead.id, totals)
