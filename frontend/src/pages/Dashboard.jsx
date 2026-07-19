@@ -13,6 +13,8 @@ const PremiersPasWidget = lazy(() => import('../components/PremiersPasWidget'))
 // NTUX11 — historique de navigation récente unifié (autonome : ne rend rien
 // si aucune entité récente).
 const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntitiesWidget'))
+// WIR144 — tuiles KPI crédit fédérées (kpi_providers) sur le cockpit direction.
+const CreditKpiCards = lazy(() => import('../features/credit/CreditKpiCards'))
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -994,6 +996,15 @@ export function Component() {
                 </Badge>
               </div>
             </Card>
+            </ErrorBoundary>
+          )}
+
+          {/* WIR144 — KPI crédit fédérés (kpi_providers) sur le cockpit direction. */}
+          {profile === 'directeur' && (
+            <ErrorBoundary>
+              <Suspense fallback={null}>
+                <CreditKpiCards />
+              </Suspense>
             </ErrorBoundary>
           )}
 
