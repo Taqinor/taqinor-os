@@ -61,27 +61,19 @@ test('LB6 : KanbanView mémoïse DraggableCard (memo())', () => {
   assert.match(KANBAN_SRC, /const DraggableCard = memo\(function DraggableCard\(/)
 })
 
-test('LB6 : ListView — la popover « ✗ Perdu » ne reçoit plus perdu Target (objet) mais perduOpen (booléen)', () => {
+test('LB6/LB21 : ListRow ne reçoit AUCUNE plomberie perdu — seulement onMarkPerdu (stable)', () => {
   const rowSignatureStart = LIST_SRC.indexOf('const ListRow = memo(function ListRow({')
   const rowSignature = LIST_SRC.slice(rowSignatureStart, rowSignatureStart + 400)
-  assert.match(rowSignature, /perduOpen, onRequestPerduOpen, closePerdu, perduMotif, setPerduMotif/)
-  assert.doesNotMatch(rowSignature, /\bperduTarget\b/)
+  assert.match(rowSignature, /onMarkPerdu/)
+  assert.doesNotMatch(rowSignature, /\bperduTarget\b|\bperduOpen\b|\bperduMotif\b|\bperduBusy\b|\bmotifsPerte\b/)
 })
 
-test('LB6 : ListView — confirmPerdu prend (lead, motif) en PARAMÈTRES (jamais perduTarget/perduMotif en closure)', () => {
-  assert.match(LIST_SRC, /const confirmPerdu = useCallback\(async \(lead, motif\) => \{/)
+test('LB6/LB21 : plus AUCUN état perdu dans le parent (le PerduPopover partagé le porte)', () => {
+  assert.doesNotMatch(LIST_SRC, /setPerduTarget|setPerduMotif|setPerduBusy|setMotifsPerte/)
 })
 
-test('LB6 : ListView — seule la ligne ciblée reçoit la valeur live de perduMotif\\/perduBusy (les autres : constante)', () => {
-  const start = LIST_SRC.indexOf('const isPerduTarget = perduTarget?.id === lead.id')
-  assert.ok(start > 0)
-  const block = LIST_SRC.slice(start, start + 1300)
-  assert.match(block, /perduMotif=\{isPerduTarget \? perduMotif : ''\}/)
-  assert.match(block, /perduBusy=\{isPerduTarget \? perduBusy : false\}/)
-})
-
-test('LB6 : ListView — onArchive/onRestore/onDelete/armCallNudgeFor/closePerdu sont useCallback', () => {
-  for (const name of ['onArchive', 'onRestore', 'onDelete', 'armCallNudgeFor', 'closePerdu']) {
+test('LB6 : ListView — onArchive/onRestore/onDelete/armCallNudgeFor sont useCallback', () => {
+  for (const name of ['onArchive', 'onRestore', 'onDelete', 'armCallNudgeFor']) {
     const start = LIST_SRC.indexOf(`const ${name} = useCallback(`)
     assert.ok(start > 0, `${name} n'est pas useCallback`)
   }

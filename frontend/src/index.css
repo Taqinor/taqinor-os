@@ -7189,8 +7189,16 @@ textarea.form-control {
 .lv-table thead th {
   position: sticky;
   top: 0;
-  z-index: 2;
+  /* Paliers LOCAUX au scrolleur .lv-wrap : `isolation: isolate` (posé sur
+     .lv-wrap ci-dessous) confine ces jetons au tableau — ils ne concourent
+     jamais avec le chrome de page (garde MB3 : jamais un z-index en dur). */
+  z-index: var(--z-sticky);
   background: var(--card);
+}
+/* Le scrolleur crée son PROPRE contexte d'empilement : les paliers sticky du
+   tableau (en-tête/colonne nom/coin) restent internes. */
+.lv-wrap {
+  isolation: isolate;
 }
 @media (min-width: 768px) {
   .lv-table .lv-sticky-name {
@@ -7198,6 +7206,11 @@ textarea.form-control {
     left: 0;
     z-index: 1;
     background: var(--card);
+  }
+  /* Cellule de COIN (th nom, sticky sur les 2 axes) : au-dessus des autres th
+     (qui glissent dessous au scroll horizontal) — palier local, isolé. */
+  .lv-table thead th.lv-sticky-name {
+    z-index: var(--z-overlay);
   }
 }
 
@@ -7671,6 +7684,8 @@ textarea.form-control {
   height: 100%;
   overflow: hidden;
   padding: 4px 2px;
+}
+
 /* ===========================================================================
    LB13 — Carte lead : anatomie à 4 zones (blueprint D3). Bloc append-only
    `.kb-card*` : nom → valeur → UNE ligne d'action → pied. Tokens sémantiques

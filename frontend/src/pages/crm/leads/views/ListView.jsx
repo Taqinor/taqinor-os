@@ -33,6 +33,7 @@ import LeadInsightsDialog from '../LeadInsightsDialog'
 import ScoreBadge from '../../../../features/crm/ScoreBadge'
 // VX87 — nudge post-appel « Appel terminé — noter le résultat ? ».
 import CallLogPopover, { useCallEndedNudge } from '../../../../features/crm/CallLogPopover'
+import PerduPopover from '../PerduPopover'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
 import {
   Button, Checkbox, HelpTip, IconButton, StatusPill, Segmented,
@@ -225,8 +226,7 @@ const ListRow = memo(function ListRow({
   lead, checked, onToggleSelect, onOpenLead, armCallNudgeFor, onInlineSave,
   users, onReassign, onAutoQuote, canDelete, busy, onRestore, onArchive,
   onDelete, isMobile, onOpenInsights, today, hiddenCols = {},
-  perduOpen, onRequestPerduOpen, closePerdu, perduMotif, setPerduMotif,
-  perduBusy, confirmPerdu, motifsPerte,
+  onMarkPerdu,
 }) {
   const perdu = isPerdu(lead)
   const stars = PRIORITE_STARS[lead.priorite] ?? 1
@@ -458,53 +458,21 @@ const ListRow = memo(function ListRow({
             la ligne (pas enfouie dans le menu « ⋯ » mobile — le
             geste le plus fréquent du quotidien commercial). Absente
             si déjà perdu. */}
+        {/* LB21(fold) — le mini-flux « Marquer perdu » vit dans le composant
+            PARTAGÉ PerduPopover (LB15) : une seule implémentation carte+liste,
+            état interne (motifs lazy, busy, rejet garde la popover ouverte). */}
         {!perdu && (
-          <Popover
-            open={perduOpen}
-            onOpenChange={(v) => (v ? onRequestPerduOpen(lead) : closePerdu())}
-          >
-            <PopoverTrigger asChild>
-              <IconButton
-                label="Marquer perdu"
-                variant="ghost"
-                size="icon"
-                className="size-8"
-              >
+          <PerduPopover
+            lead={lead}
+            onMarkPerdu={onMarkPerdu}
+            idPrefix="lv"
+            align="start"
+            trigger={(
+              <IconButton label="Marquer perdu" variant="ghost" size="icon" className="size-8">
                 ✗
               </IconButton>
-            </PopoverTrigger>
-            <PopoverContent align="start">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '220px' }}>
-                <p style={{ fontSize: '13px', fontWeight: 500, margin: 0 }}>Marquer perdu</p>
-                <input
-                  className="form-control"
-                  list={`lv-motifs-${lead.id}`}
-                  placeholder="Motif de perte"
-                  value={perduMotif}
-                  onChange={(e) => setPerduMotif(e.target.value)}
-                  autoFocus
-                />
-                <datalist id={`lv-motifs-${lead.id}`}>
-                  {(motifsPerte ?? []).map((m) => <option key={m.id} value={m.nom} />)}
-                </datalist>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
-                  <Button type="button" variant="outline" size="sm" onClick={closePerdu}>
-                    Annuler
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="destructive"
-                    disabled={!perduMotif.trim() || perduBusy}
-                    loading={perduBusy}
-                    onClick={() => confirmPerdu(lead, perduMotif)}
-                  >
-                    Confirmer
-                  </Button>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+            )}
+          />
         )}
         {(() => {
           // Actions de ligne dans l'ordre — partagées entre l'affichage
@@ -685,41 +653,9 @@ export default function ListView({
   // mini-popover, (2) choisir un motif → confirmer, UNE seule requête PATCH
   // `perdu`+`motif_perte`. Une seule popover à la fois dans la table (comme le
   // nudge post-appel ci-dessous) — `perduTarget` porte le lead ciblé.
-  const [perduTarget, setPerduTarget] = useState(null)
-  const [perduMotif, setPerduMotif] = useState('')
-  const [perduBusy, setPerduBusy] = useState(false)
-  const [motifsPerte, setMotifsPerte] = useState(null) // null = pas encore chargés
-  useEffect(() => {
-    if (!perduTarget || motifsPerte !== null) return
-    crmApi.getMotifsPerte()
-      .then((r) => setMotifsPerte(((r.data?.results ?? r.data) || []).filter((m) => !m.archived)))
-      .catch(() => setMotifsPerte([]))
-  }, [perduTarget, motifsPerte])
-  // LB6 — callbacks stables (bug #4) : `setPerduTarget` (useState) est déjà
-  // stable, passé directement comme `onRequestPerduOpen` à chaque ligne.
-  const closePerdu = useCallback(() => { setPerduTarget(null); setPerduMotif('') }, [])
-  // LB5 — passe par le callback stable de LeadsPage (onMarkPerdu, blueprint
-  // I2) : store seul source de vérité, AUCUN refetch (updateLead.fulfilled
-  // patche déjà le lead complet). Le toast d'échec est déjà émis par
-  // onMarkPerdu. LB6 — signature `(lead, motif)` en PARAMÈTRES (au lieu de
-  // lire `perduTarget`/`perduMotif` en closure) : la référence reste stable
-  // quel que soit ce que l'utilisateur tape, `[onMarkPerdu, closePerdu]`
-  // suffit (bug #4 — taper un motif ne re-rendait auparavant PAS que la ligne
-  // ciblée, faute de quoi TOUTE la table re-rendait à chaque frappe).
-  const confirmPerdu = useCallback(async (lead, motif) => {
-    const trimmed = (motif ?? '').trim()
-    if (!trimmed || !lead || !onMarkPerdu) return
-    setPerduBusy(true)
-    try {
-      await onMarkPerdu(lead, trimmed)
-      closePerdu()
-    } catch {
-      // Échec : toast déjà affiché par onMarkPerdu, popover reste ouverte
-      // (le motif saisi n'est pas perdu, l'utilisateur peut retenter).
-    } finally {
-      setPerduBusy(false)
-    }
-  }, [onMarkPerdu, closePerdu])
+  // LB21(fold) — l'état « Marquer perdu » (cible/motif/busy/motifs lazy) vit
+  // désormais DANS le composant partagé PerduPopover (LB15) : plus aucune
+  // plomberie parent, chaque ligne reste memo-stable (props primitives).
 
   // VX87 — nudge post-appel : armé au tap tel: (mémorise QUEL lead a été
   // appelé, une table n'a qu'un seul nudge visible à la fois — comme un
@@ -867,7 +803,6 @@ export default function ListView({
     // ('' / false) qui ne change JAMAIS entre deux rendus — memo(ListRow)
     // bail out pour elles, seule la ligne ouverte re-rend à chaque frappe
     // (bug #4).
-    const isPerduTarget = perduTarget?.id === lead.id
     return (
       <ListRow
         key={lead.id}
@@ -888,14 +823,7 @@ export default function ListView({
         isMobile={isMobile}
         onOpenInsights={setInsightsLead}
         today={today}
-        perduOpen={isPerduTarget}
-        onRequestPerduOpen={setPerduTarget}
-        closePerdu={closePerdu}
-        perduMotif={isPerduTarget ? perduMotif : ''}
-        setPerduMotif={setPerduMotif}
-        perduBusy={isPerduTarget ? perduBusy : false}
-        confirmPerdu={confirmPerdu}
-        motifsPerte={motifsPerte}
+        onMarkPerdu={onMarkPerdu}
         hiddenCols={hiddenCols}
       />
     )

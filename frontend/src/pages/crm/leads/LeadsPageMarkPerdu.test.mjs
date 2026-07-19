@@ -65,11 +65,11 @@ test('LB5 : LeadCard n\'appelle plus JAMAIS crmApi.updateLead en direct — pass
   assert.doesNotMatch(destructure, /\bonChanged\b/)
 })
 
-test('LB5 : ListView.confirmPerdu passe par onMarkPerdu, plus de dispatch(updateLead) local dupliqué', () => {
+test('LB5/LB21 : ListView délègue « Marquer perdu » au PerduPopover PARTAGÉ (une seule implémentation carte+liste)', () => {
   assert.doesNotMatch(LIST_SRC, /dispatch\(updateLead\(/)
-  // LB6 — confirmPerdu prend (lead, motif) en PARAMÈTRES (au lieu de lire
-  // perduTarget/perduMotif en closure), pour rester une référence STABLE
-  // (bug #4) ; le call-site (bouton Confirmer) passe (lead, perduMotif).
-  assert.match(LIST_SRC, /await onMarkPerdu\(lead, trimmed\)/)
-  assert.match(LIST_SRC, /onClick=\{\(\) => confirmPerdu\(lead, perduMotif\)\}/)
+  // LB21(fold) — plus AUCUNE plomberie locale : le composant partagé (LB15)
+  // porte motifs lazy/busy/rejet, et n'appelle QUE onMarkPerdu(lead, motif).
+  assert.match(LIST_SRC, /import PerduPopover from '\.\.\/PerduPopover'/)
+  assert.match(LIST_SRC, /<PerduPopover[\s\S]{0,200}onMarkPerdu=\{onMarkPerdu\}/)
+  assert.doesNotMatch(LIST_SRC, /const confirmPerdu = /)
 })
