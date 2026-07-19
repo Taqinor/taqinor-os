@@ -38,12 +38,21 @@ export default function CommercialDashboard() {
   const [loadingWL, setLoadingWL] = useState(true)
   const [errDash, setErrDash] = useState(false)
   const [errWL, setErrWL] = useState(false)
+  // WIR100(a) — vélocité par étape (FG29) : durée moyenne + leads actuellement
+  // en attente dans chaque étape (distinct de sales_velocity global).
+  const [velocity, setVelocity] = useState(null)
 
   useEffect(() => {
     reportingApi.commercialDashboard()
       .then(r => { setDash(r.data); setErrDash(false) })
       .catch(() => setErrDash(true))
       .finally(() => setLoadingDash(false))
+  }, [])
+
+  useEffect(() => {
+    reportingApi.funnelVelocity()
+      .then(r => setVelocity(r.data?.velocity || []))
+      .catch(() => setVelocity(null))
   }, [])
 
   useEffect(() => {
@@ -188,6 +197,30 @@ export default function CommercialDashboard() {
                   </p>
                 </CardContent>
               </Card>
+
+              {/* WIR100(a) — Vélocité par étape (FG29) : durée moyenne de séjour
+                  + leads actuellement en attente (goulots réels). */}
+              {velocity && (
+                <Card>
+                  <CardContent className="pt-4">
+                    <CardTitle className="mb-4 text-sm uppercase tracking-wide text-muted-foreground">
+                      Vélocité par étape
+                    </CardTitle>
+                    <Table
+                      aria-label="Vélocité par étape"
+                      columns={[
+                        { key: 'label', header: 'Étape' },
+                        { key: 'avg_days', header: 'Durée moy.', align: 'right', cell: (r) => jours(r.avg_days) },
+                        { key: 'currently_in_stage', header: 'En attente', align: 'right' },
+                        { key: 'sample_count', header: 'Échantillon', align: 'right' },
+                      ]}
+                      rows={velocity}
+                      getRowKey={(r) => r.stage}
+                      empty={<EmptyState icon={Clock} title="Aucune mesure" description="Pas encore de transitions d'étape mesurées." />}
+                    />
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </ErrorBoundary>

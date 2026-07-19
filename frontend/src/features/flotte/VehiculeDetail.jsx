@@ -7,6 +7,9 @@ import {
   confirmLeaveIfDirty,
 } from '../../ui'
 import flotteApi from '../../api/flotteApi'
+// WIR145 — couverture assurance de l'actif véhicule (registre consolidé
+// NTASS20, lecture seule via l'API assurances).
+import assurancesApi from '../assurances/assurancesApi'
 import { formatMAD, formatNumber, formatDate } from '../../lib/format'
 import { ENERGIES, VEHICULE_STATUTS, optionsFrom } from './flotte'
 import { VehiculeStatutPill } from './statusPills'
@@ -573,6 +576,7 @@ export default function VehiculeDetail({ vehicule, onClose, onChanged }) {
             <TabsTrigger value="eco">Éco-conduite</TabsTrigger>
             <TabsTrigger value="amortissement">Amortissement</TabsTrigger>
             <TabsTrigger value="tsav">TSAV</TabsTrigger>
+            <TabsTrigger value="assurances">Assurances</TabsTrigger>
           </TabsList>
 
           <TabsContent value="identite">
@@ -665,6 +669,49 @@ export default function VehiculeDetail({ vehicule, onClose, onChanged }) {
                   ]}
                 />
               )}
+            />
+          </TabsContent>
+
+          {/* WIR145(a) — polices d'entreprise + police auto flotte couvrant ce
+              véhicule (type_actif=VEHICULE), lecture seule. */}
+          <TabsContent value="assurances">
+            <ComputedTab
+              id={v?.id}
+              fetcher={(id) => assurancesApi.getCouvertureActif('VEHICULE', id)}
+              emptyLabel="Aucune police ne couvre ce véhicule"
+              render={(d) => {
+                const flotte = d.polices_flotte || []
+                const entreprise = d.polices_entreprise || []
+                if (flotte.length === 0 && entreprise.length === 0) {
+                  return <p className="text-sm text-muted-foreground">Aucune police ne couvre ce véhicule.</p>
+                }
+                return (
+                  <div className="flex flex-col gap-4">
+                    {flotte.length > 0 && (
+                      <div>
+                        <h4 className="mb-1 text-sm font-semibold">Assurance auto (flotte)</h4>
+                        <DefinitionList
+                          items={flotte.map((p) => ({
+                            term: `Police ${p.numero_police}`,
+                            description: `${p.assureur || '—'}${p.date_echeance ? ` · échéance ${formatDate(p.date_echeance)}` : ''}`,
+                          }))}
+                        />
+                      </div>
+                    )}
+                    {entreprise.length > 0 && (
+                      <div>
+                        <h4 className="mb-1 text-sm font-semibold">Polices d'entreprise couvrantes</h4>
+                        <DefinitionList
+                          items={entreprise.map((p) => ({
+                            term: `${p.type_police} — ${p.numero_police}`,
+                            description: `${p.assureur || '—'}${p.date_echeance ? ` · échéance ${formatDate(p.date_echeance)}` : ''}`,
+                          }))}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              }}
             />
           </TabsContent>
         </Tabs>

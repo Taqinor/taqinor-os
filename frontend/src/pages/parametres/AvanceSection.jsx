@@ -1,8 +1,9 @@
 // Onglet « Avancé » de la page Paramètres (hypothèses ROI, logique de devis,
 // types d'intervention, checklist d'exécution, champs personnalisés). Restylé
 // sur le système de design (@/ui) ; champs, libellés et comportement identiques.
+import { useState } from 'react'
 import {
-  Plus, Trash2, Pencil, Check, X, ChevronUp, ChevronDown,
+  Plus, Trash2, Pencil, Check, X, ChevronUp, ChevronDown, BarChart3, Download,
 } from 'lucide-react'
 import { formatMAD } from '../../lib/format'
 import {
@@ -10,6 +11,8 @@ import {
   Checkbox, Switch, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import reportingApi from '../../api/reportingApi'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import { SectionTitle, Field } from './peComponents'
 // VX233 — feed d'audit extrait, paramétrable par section (filtre dynamique ici).
 import SettingsAuditFeed from './SettingsAuditFeed'
@@ -34,6 +37,32 @@ export default function AvanceSection({
     * (Number(form.rendement_global) || 0)
     * (Number(form.onee_tarif_kwh) || 0))
   const fmtMad = (n) => formatMAD(n, { decimals: 0, withSymbol: false })
+
+  // WIR101 — répartition d'un champ personnalisé listable (group-by FG94) :
+  // ouvre un panneau table + export xlsx sans quitter l'écran d'administration.
+  const [cfDist, setCfDist] = useState(null)
+  const [cfDistBusy, setCfDistBusy] = useState(false)
+  const openCfDist = (d) => {
+    setCfDist({ code: d.code, libelle: d.libelle, rows: null, total: 0, error: false })
+    reportingApi.cfGroupBy(cfModule, d.code)
+      .then(r => setCfDist({
+        code: d.code, libelle: d.libelle,
+        rows: r.data?.rows || [], total: r.data?.total || 0, error: false,
+      }))
+      .catch(() => setCfDist({
+        code: d.code, libelle: d.libelle, rows: [], total: 0, error: true,
+      }))
+  }
+  const closeCfDist = () => setCfDist(null)
+  const exportCfDist = () => {
+    if (!cfDist) return
+    const pending = downloadBlobInGesture()
+    setCfDistBusy(true)
+    reportingApi.cfGroupByXlsx(cfModule, cfDist.code)
+      .then(r => pending.deliver(r.data, `repartition-${cfDist.code}.xlsx`))
+      .catch(() => {})
+      .finally(() => setCfDistBusy(false))
+  }
 
   return (
     <>
@@ -301,7 +330,7 @@ export default function AvanceSection({
           <div className="mb-2 flex items-center gap-1.5">
             <div className="w-[140px]">
               <Select value={cfModule}
-                      onValueChange={v => { setCfModule(v); loadCfDefs(v) }}>
+                      onValueChange={v => { setCfModule(v); loadCfDefs(v); closeCfDist() }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="lead">Leads</SelectItem>
@@ -394,6 +423,13 @@ export default function AvanceSection({
                 {/* L810 — toggle actif/inactif (soft-disable, custom_data conservé). */}
                 <Switch checked={!!d.actif} onCheckedChange={() => toggleCfActif(d)}
                         aria-label={d.actif ? 'Désactiver le champ' : 'Réactiver le champ'} />
+                {/* WIR101 — répartition (group-by) pour les champs listables. */}
+                {d.visible_liste && (
+                  <IconButton size="md" variant="outline" label="Voir la répartition"
+                              onClick={() => openCfDist(d)}>
+                    <BarChart3 className="size-4" aria-hidden="true" />
+                  </IconButton>
+                )}
                 <IconButton size="md" variant="outline" label="Modifier le champ"
                             onClick={() => openCfEdit(d)}>
                   <Pencil className="size-4" aria-hidden="true" />
@@ -439,6 +475,55 @@ export default function AvanceSection({
             </label>
             <Button type="button" onClick={addCf}><Plus className="size-4" aria-hidden="true" /></Button>
           </div>
+
+          {/* WIR101 — panneau de répartition d'un champ listable (group-by FG94). */}
+          {cfDist && (
+            <div className="mt-4 rounded-md border border-border p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-foreground">
+                  Répartition — {cfDist.libelle}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button type="button" variant="outline" size="sm"
+                          disabled={cfDistBusy || !cfDist.rows || cfDist.rows.length === 0}
+                          onClick={exportCfDist}>
+                    <Download className="size-3.5" aria-hidden="true" /> Excel
+                  </Button>
+                  <IconButton size="md" variant="ghost" label="Fermer" onClick={closeCfDist}>
+                    <X className="size-4" aria-hidden="true" />
+                  </IconButton>
+                </div>
+              </div>
+              {cfDist.error ? (
+                <p className="text-sm text-muted-foreground">Répartition indisponible.</p>
+              ) : cfDist.rows === null ? (
+                <p className="text-sm text-muted-foreground">Chargement…</p>
+              ) : cfDist.rows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucune valeur pour ce champ.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11.5px] uppercase text-muted-foreground">
+                      <th className="py-1">Valeur</th>
+                      <th className="py-1 text-right">Nombre</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cfDist.rows.map((r) => (
+                      <tr key={r.valeur} className="border-t border-border/60">
+                        <td className="py-1.5">{r.valeur}</td>
+                        <td className="py-1.5 text-right tabular-nums">{r.count}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-border font-medium">
+                      <td className="py-1.5">Total</td>
+                      <td className="py-1.5 text-right tabular-nums">{cfDist.total}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </>

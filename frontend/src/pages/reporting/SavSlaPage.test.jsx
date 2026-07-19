@@ -18,6 +18,21 @@ vi.mock('../../api/reportingApi', () => ({
         reouverture: { total_reouvertures: 2, taux_pour_100_tickets: 4.8 },
       },
     })),
+    // WIR102 — analytique SAV additionnelle (pivot / coût moyen / taux d'attache).
+    savTauxAttache: vi.fn(() => Promise.resolve({
+      data: { total: 8, avec_contrat: 6, taux_pct: 75.0 },
+    })),
+    savTicketsPivot: vi.fn(() => Promise.resolve({
+      data: {
+        row_keys: [['karim']],
+        col_keys: [['ouvert'], ['clos']],
+        cells: { karim: { ouvert: 2, clos: 3 } },
+        row_totals: { karim: 5 },
+      },
+    })),
+    savTicketsCoutMoyen: vi.fn(() => Promise.resolve({
+      data: { rows: [{ technicien_responsable__username: 'nadia', cout_moyen: 120.5, n: 5 }] },
+    })),
   },
 }))
 
@@ -32,5 +47,14 @@ describe('SavSlaPage (XSAV8)', () => {
     expect(screen.getByText('Haute')).toBeInTheDocument()
     expect(screen.getByText('sami')).toBeInTheDocument()
     await waitFor(() => expect(reportingApi.savSlaInsight).toHaveBeenCalled())
+  })
+
+  it('WIR102 — affiche taux d’attache, pivot tickets et coût moyen', async () => {
+    render(<SavSlaPage />)
+
+    expect(await screen.findByText('Taux d’attache contrat')).toBeInTheDocument()
+    expect(await screen.findByText('Tickets par technicien et statut')).toBeInTheDocument()
+    expect(await screen.findByText('Coût interne moyen par technicien')).toBeInTheDocument()
+    await waitFor(() => expect(reportingApi.savTauxAttache).toHaveBeenCalled())
   })
 })

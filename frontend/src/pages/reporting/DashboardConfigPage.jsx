@@ -36,6 +36,8 @@ const CARD_LABELS = {
   commercial: 'Commercial',
   // WIR22 — badge du contrôle d'intégrité inter-documents (YSERV13).
   integrite: "Contrôle d'intégrité",
+  // WIR100 — KPI fédérés (ARC40) : tuiles agrégées des modules actifs.
+  kpi_federes: 'KPI fédérés',
 }
 const ALL_CARDS = Object.keys(CARD_LABELS)
 

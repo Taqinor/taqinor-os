@@ -64,6 +64,13 @@ vi.mock('../../api/automationApi', () => ({
     getDelegations: vi.fn(() => Promise.resolve({ data: { results: mockDelegations } })),
     createDelegation: vi.fn(() => Promise.resolve({ data: mockDelegations[0] })),
     deleteDelegation: vi.fn(() => Promise.resolve({ data: {} })),
+    // WIR62 — onglet Demandes ad-hoc (chargé seulement à l'activation du tab).
+    getApprovalRequestTypes: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+    getApprovalRequests: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+    saveApprovalRequestType: vi.fn(() => Promise.resolve({ data: {} })),
+    createApprovalRequest: vi.fn(() => Promise.resolve({ data: {} })),
+    approveApprovalRequest: vi.fn(() => Promise.resolve({ data: {} })),
+    rejectApprovalRequest: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
