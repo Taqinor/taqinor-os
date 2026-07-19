@@ -106,6 +106,19 @@ function fmtMAD(value) {
   return formatMAD(value, { decimals: 0 })
 }
 
+// LW5 — date du jour civil en LOCAL, jamais en UTC : `toISOString()` restitue
+// toujours la date UTC, qui décale d'un jour du côté du fuseau local dès que
+// l'heure système passe minuit dans l'un des deux référentiels sans avoir
+// encore passé minuit dans l'autre (à UTC+1 — Maroc — c'est le cas entre
+// 00h00 et 01h00 locales). Utilisée à la fois pour le défaut du champ date
+// (L121) et pour la comparaison « date future » (confirm ci-dessous) : les
+// deux doivent parler le même référentiel que le sélecteur de date natif,
+// lui-même toujours local. `now` est injectable pour les tests (horloge
+// mockée), jamais autrement appelé qu'avec l'horloge réelle en production.
+function todayLocalStr(now = new Date()) {
+  return now.toLocaleDateString('fr-CA') // « AAAA-MM-JJ », comme <input type="date">
+}
+
 export default function SigneDialog({ lead, onClose, onConfirmed }) {
   const [loading, setLoading] = useState(true)
   const [devisList, setDevisList] = useState([])
@@ -118,7 +131,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
   // sur le devis) — pas d'état dérivé synchronisé via un effet.
   const [optionChoice, setOptionChoice] = useState('')
   const [nom, setNom] = useState('')
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(() => todayLocalStr())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   // Aperçu PDF inline du devis sélectionné (PDF.js canvas, comme le panneau
@@ -204,7 +217,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed }) {
     }
     // La date d'acceptation se propage en date de signature du chantier : une
     // date dans le futur demande une confirmation explicite avant d'enregistrer.
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayLocalStr()
     if (date > today
         && !window.confirm('Date d\'acceptation dans le futur — confirmer ?')) {
       return

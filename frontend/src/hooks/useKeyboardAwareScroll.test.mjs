@@ -15,7 +15,9 @@ import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const HOOK_SRC = readFileSync(join(HERE, 'useKeyboardAwareScroll.js'), 'utf8')
-const LEAD_FORM_SRC = readFileSync(join(HERE, '../pages/crm/LeadForm.jsx'), 'utf8')
+// LW37 — le point de montage lead a migré de LeadForm.jsx vers SectionsPane
+// (le seul conteneur scrollable du cockpit sur mobile).
+const SECTIONS_PANE_SRC = readFileSync(join(HERE, '../features/crm/workspace/SectionsPane.jsx'), 'utf8')
 const DEVIS_GEN_SRC = readFileSync(join(HERE, '../pages/ventes/DevisGenerator.jsx'), 'utf8')
 
 test('VX51 : exporte useKeyboardAwareScroll (default + nommé)', () => {
@@ -50,9 +52,9 @@ test('VX51 : ne recentre que si le champ actif dépasse le bord visible (haut ou
   assert.match(HOOK_SRC, /if \(hiddenBelow \|\| hiddenAbove\)/)
 })
 
-test('VX51 : monté dans LeadForm', () => {
-  assert.match(LEAD_FORM_SRC, /import useKeyboardAwareScroll from '\.\.\/\.\.\/hooks\/useKeyboardAwareScroll'/)
-  assert.match(LEAD_FORM_SRC, /useKeyboardAwareScroll\(\)/)
+test('VX51 : monté dans SectionsPane (cockpit lead)', () => {
+  assert.match(SECTIONS_PANE_SRC, /import \{ useKeyboardAwareScroll \} from '\.\.\/\.\.\/\.\.\/hooks\/useKeyboardAwareScroll'/)
+  assert.match(SECTIONS_PANE_SRC, /useKeyboardAwareScroll\(\{ containerRef: scrollRef \}\)/)
 })
 
 test('VX51 : monté dans DevisGenerator', () => {

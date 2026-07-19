@@ -38,7 +38,7 @@ class LeadActivitySerializer(serializers.ModelSerializer):
         model = LeadActivity
         fields = [
             'id', 'kind', 'field', 'field_label', 'old_value', 'new_value',
-            'body', 'outcome', 'bulk', 'user_nom', 'created_at',
+            'body', 'outcome', 'bulk', 'pinned', 'user_nom', 'created_at',
             'attachment_url', 'attachment_filename', 'attachment_mime',
         ]
 
@@ -205,6 +205,15 @@ class LeadSerializer(serializers.ModelSerializer):
     # la ligne archivée le montre. Silencieux si le lead n'est pas archivé.
     archived_by_nom = serializers.CharField(
         source='archived_by.username', read_only=True, default=None)
+    # LW29 — masquage PII rendu VISIBLE (au lieu de silencieux) : le front
+    # peut afficher les champs PII_FIELDS verrouillés-cadenas plutôt que de
+    # laisser croire à une édition qui sera jetée (drop silencieux au PATCH).
+    # Même condition EXACTE que get_fields()/to_representation() ci-dessous
+    # — source unique, jamais une seconde règle qui pourrait diverger.
+    pii_masked = serializers.SerializerMethodField()
+    # LW30 — 50 dernières LeadActivity embarquées sur le RETRIEVE seulement
+    # (jamais list() — payload) : voir get_fields() plus bas.
+    chatter_recent = serializers.SerializerMethodField()
 
     @staticmethod
     def _canonical_phone(value):
@@ -407,25 +416,53 @@ class LeadSerializer(serializers.ModelSerializer):
     PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
                   'gps_lat', 'gps_lng')
 
-    def get_fields(self):
-        fields = super().get_fields()
+    def _pii_masked(self):
+        """LW29 — condition UNIQUE de masquage PII, réutilisée par
+        get_fields()/to_representation() ET par le champ calculé
+        ``pii_masked`` — jamais une seconde règle qui pourrait diverger."""
         request = self.context.get('request')
         user = getattr(request, 'user', None)
-        if user is not None and not getattr(user, 'can_view_client_pii', True):
+        return user is not None and not getattr(user, 'can_view_client_pii', True)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if self._pii_masked():
             for name in self.PII_FIELDS:
                 if name in fields:
                     fields[name].read_only = True
+        # LW30 — chatter_recent n'est embarqué que sur le RETRIEVE (flag de
+        # contexte posé par LeadViewSet.retrieve() uniquement) ; ABSENT du
+        # payload list() — jamais juste null, la clé elle-même disparaît.
+        if not self.context.get('include_chatter_recent'):
+            fields.pop('chatter_recent', None)
         return fields
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        request = self.context.get('request')
-        user = getattr(request, 'user', None)
-        if user is not None and not getattr(user, 'can_view_client_pii', True):
+        if self._pii_masked():
             for name in self.PII_FIELDS:
                 if name in data:
                     data[name] = None
         return data
+
+    def get_pii_masked(self, obj):
+        """LW29 — expose EXPLICITEMENT si les champs PII_FIELDS sont
+        masqués pour l'utilisateur courant, pour que le front les rende
+        verrouillés-cadenas au lieu de laisser croire à une édition qui
+        sera jetée (drop silencieux au PATCH)."""
+        return self._pii_masked()
+
+    def get_chatter_recent(self, obj):
+        """LW30 — 50 dernières LeadActivity (auto + notes), épingle-d'abord
+        (tri LW28), ``select_related('user','attachment')`` pour éviter tout
+        N+1 (même garde que LW8). Calculée uniquement quand get_fields() a
+        gardé le champ (RETRIEVE) — jamais appelée sur une liste."""
+        rows = (
+            obj.activites
+            .select_related('user', 'attachment')
+            .order_by('-pinned', '-created_at')[:50]
+        )
+        return LeadActivitySerializer(rows, many=True).data
 
     def get_client_nom(self, obj):
         if not obj.client_id:

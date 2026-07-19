@@ -177,6 +177,16 @@ export function canonicalPhoneMA(value) {
  * (apps/ventes/utils/phone.py) : sert à VALIDER côté front avant d'appeler les
  * endpoints WhatsApp (un numéro non normalisable → bouton désactivé, pas
  * d'aller-retour 400).
+ *
+ * LW7 — avant, TOUTE suite de chiffres passait (`normalizeMaPhone('123')`
+ * renvoyait « 212123 ») : `leadPhoneOk`/`waPhoneOk` (LeadForm.jsx,
+ * RelancesPage.jsx, FactureList.jsx) étaient vrais pour du bruit, le bouton
+ * WhatsApp s'armait sur un numéro invalide et l'envoi partait au 400 côté
+ * serveur (recon 05 P2#6). La validation est désormais alignée sur
+ * `canonicalPhoneMA` ci-dessus : 9 chiffres locaux commençant par 5/6/7 après
+ * retrait de l'indicatif, sinon `null`. Pur normalisateur : jamais appelé à
+ * chaque frappe, jamais de reformatage en direct — seulement pour
+ * valider/préparer un envoi (écho canonisé serveur uniquement).
  */
 export function normalizeMaPhone(value) {
   if (!value) return null
@@ -188,7 +198,9 @@ export function normalizeMaPhone(value) {
   else if (digits.startsWith('0')) local = digits.slice(1)
   else local = digits
   local = local.replace(/^0+/, '')
-  if (!local) return null
+  if (local.length !== 9 || !(local[0] === '6' || local[0] === '7' || local[0] === '5')) {
+    return null
+  }
   return '212' + local
 }
 

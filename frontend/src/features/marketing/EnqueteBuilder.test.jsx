@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import {
   addQuestion, removeQuestion, updateQuestion, optionsFromText, optionsToText,
-} from './enqueteBuilder'
+} from './enqueteRules'
 
-describe('enqueteBuilder — manipulation du tableau questions (logique pure)', () => {
+describe('enqueteRules — manipulation du tableau questions (logique pure)', () => {
   it('addQuestion ajoute une question texte vide', () => {
     const questions = addQuestion([])
     expect(questions).toHaveLength(1)

@@ -12,6 +12,9 @@ test('E10: attach a file to a lead, then open/download it', async ({ page }) => 
   await openLead(page, name)
   const modal = page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
 
+  // LW13/LW19 — les pièces jointes vivent dans un onglet du rail contexte.
+  await modal.getByRole('tab', { name: /Pièces/ }).click()
+
   const fname = `e2e-${Date.now()}.pdf`
   const [resp] = await Promise.all([
     page.waitForResponse((r) => r.url().includes('/attachments') && r.request().method() === 'POST'),
