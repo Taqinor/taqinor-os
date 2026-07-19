@@ -26,7 +26,7 @@ import { useSavedViews } from '../../../hooks/useSavedViews'
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../../hooks/useEquipeMembreIds'
 import useDocumentTitle from '../../../hooks/useDocumentTitle'
-import LeadForm from '../LeadForm'
+import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
 import ExcelImport from '../../../components/ExcelImport'
 import SavedViewsBar, { SaveViewButton } from '../../../components/SavedViewsBar'
 import FilterBar from './FilterBar'
@@ -599,7 +599,7 @@ export default function LeadsPage() {
       </div>
 
       {(showForm || deepLead) && (
-        <LeadForm
+        <LeadWorkspace
           lead={showForm ? editLead : deepLead}
           onClose={closeForm}
           onSaved={onSaved}

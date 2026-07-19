@@ -64,7 +64,7 @@ waves:
       ARC sweeps that consume the noyau primitives, and the SCA kit
       DocumentMetier (SCA30-38) which composes ARC1/2/6/8/10/11 into one
       abstraction — both gated on ARC-noyau reaching its threshold.
-    groups: [ARC-sweep, SCA-kit-document, ADSENG, ADSDEEP, ASG, AGEN, SIG]
+    groups: [ARC-sweep, SCA-kit-document, ADSENG, ADSDEEP, ASG, AGEN, SIG, PUB]
   B:
     order: 3
     description: >-
@@ -161,6 +161,12 @@ edges:
     wave: A2
     after:
       ADSENG: 60
+  # PUB (2026-07-19) : audit fondateur 14 agents — câblage front↔back, boucles
+  # fermées, console, croissance, créatif, science, finance. Bâti sur ADSDEEP.
+  - group: PUB
+    wave: A2
+    after:
+      ADSDEEP: 60
   - group: SCA-kit-document
     wave: A2
     after:
@@ -374,6 +380,10 @@ edges:
 # docs/PLAN.md, docs/PLAN2.md, docs/new_tasks_plan.md, docs/FRONTEND_GAP_PLAN.md
 # on 2026-07-09/10 (SCA1 build).
 unmapped_ok:
+  # LW — Lead Workspace (refonte fenêtre lead, Groupe LW de PLAN2) : construit
+  # et livré dans la session 2026-07-19 ; résidus LW41+ = petites retouches
+  # frontend sans prérequis de vague.
+  - LW
   # docs/PLAN.md — legacy/near-drained single-off groups predating the ARC/NT
   # wave thesis; a handful of open tasks remain but the groups themselves are
   # not part of the noyau -> NTPLT+NTSEC -> Tier-1 -> floods ordering.

@@ -117,7 +117,8 @@ test('MB2: le catalogue passe en une seule colonne sous 768px', () => {
 test('MB2: les largeurs fixes héritées ont leur garde mobile', () => {
   const mobile = mobileShellBlock()
   assert.match(ruleBody(mobile, '.gen-page') ?? '', /max-width:\s*100%/, '.gen-page doit être borné à 100% sur mobile')
-  assert.match(ruleBody(mobile, '.lead-bill-input') ?? '', /width:\s*auto/, '.lead-bill-input ne doit plus être figé à 110px sur mobile')
+  // LW40 — `.lead-bill-input` (facture inline de l'ancien LeadForm) a été
+  // SUPPRIMÉ avec la refonte workspace : plus de règle à garder sur mobile.
   assert.match(ruleBody(mobile, '.devis-totals') ?? '', /min-width:\s*0/, '.devis-totals (min-width 260px) doit pouvoir rétrécir sur mobile')
   assert.match(ruleBody(mobile, '.nb-panel') ?? '', /min\(320px,\s*calc\(100vw - 16px\)\)/, '.nb-panel (320px fixe) doit être borné au viewport sur mobile')
 })

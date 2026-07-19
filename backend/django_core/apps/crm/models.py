@@ -922,6 +922,10 @@ class LeadActivity(models.Model):
     # Marque une entrée issue d'une action « en masse » (édition groupée de
     # plusieurs leads) — l'Historique l'affiche avec un badge « en masse ».
     bulk = models.BooleanField(default=False)
+    # LW28 — note épinglée : mise en avant hors chronologie en tête de
+    # l'Historique (`historique/` trie `(-pinned, -created_at)`). Additif,
+    # défaut False → comportement historique strictement inchangé.
+    pinned = models.BooleanField(default=False, verbose_name='Épinglée')
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='lead_activities')

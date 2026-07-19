@@ -13,20 +13,22 @@ import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
 
-const LEAD_FORM = read('../pages/crm/LeadForm.jsx')
+// LW37 — le collage intelligent lead a migré de LeadForm.jsx vers SectionContact
+// du cockpit ; les autres surfaces sont inchangées.
+const SECTION_CONTACT = read('../features/crm/workspace/sections/SectionContact.jsx')
 const LEAD_EXPRESS = read('../pages/crm/leads/LeadExpressModal.jsx')
 const CLIENT_FORM = read('../pages/crm/ClientForm.jsx')
 const CLIENT_QUICK = read('../pages/ventes/ClientQuickCreateModal.jsx')
 const DEVIS_GEN = read('../pages/ventes/DevisGenerator.jsx')
 const FACTURE_FORM = read('../pages/ventes/FactureForm.jsx')
 
-test('VX237 : LeadForm — Nom (carte), Téléphone, WhatsApp posent onPaste', () => {
-  assert.match(LEAD_FORM, /import \{ usePasteClean, parsePastedPhone, parsePasteCard \} from '..\/..\/hooks\/usePasteClean'/)
-  assert.match(LEAD_FORM, /onPaste=\{onNomPaste\}/)
-  assert.match(LEAD_FORM, /onPaste=\{onTelephonePaste\}/)
-  assert.match(LEAD_FORM, /onPaste=\{onWhatsappPaste\}/)
+test('VX237 : SectionContact — Nom (carte), Téléphone, WhatsApp posent onPaste', () => {
+  assert.match(SECTION_CONTACT, /import \{ usePasteClean, parsePastedPhone, parsePasteCard \} from '\.\.\/\.\.\/\.\.\/\.\.\/hooks\/usePasteClean'/)
+  assert.match(SECTION_CONTACT, /onPaste=\{onNomPaste\}/)
+  assert.match(SECTION_CONTACT, /onPaste=\{onTelephonePaste\}/)
+  assert.match(SECTION_CONTACT, /onPaste=\{onWhatsappPaste\}/)
   // jamais une répartition automatique : bouton de confirmation présent.
-  assert.match(LEAD_FORM, /Répartir/)
+  assert.match(SECTION_CONTACT, /Répartir/)
 })
 
 test('VX237 : LeadExpressModal — Nom (carte) + Téléphone posent onPaste', () => {

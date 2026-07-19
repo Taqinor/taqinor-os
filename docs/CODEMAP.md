@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev` on 2026-06-29, refreshed for the functional-domain expansion wave (5 parallel worktree lanes: apps/compta clôture de période + OD manuelles + à-nouveaux FG115–117; apps/ventes solar string-design + inverter match + tilt/azimut FG246/247/249; apps/installations jalons/modèles-de-projet/réunions FG293/296/298; **NEW app apps/flotte** Vehicule+EnginRoulant FLOTTE1/2/4; **NEW app apps/ged** Cabinet/Folder/Document/Version GED1/2/3 — all additive, company-scoped, tested), on top of the prior `dev-uiwave-20260621` world-class UI wave (34 frontend UI/UX tasks: premium DataTable, calm chrome, foundation hooks/primitives, page redesigns) (PLAN2 priority-queue run — Group Q Devis↔Toiture-3D pipeline backend (Q1–Q7: Devis.roof_layout/roof_image + layout endpoints, Lead roof_point/roof_outline/bill_kwh + per-lead token, build_devis_from_layout() service, MinIO roof-image, layout-aware quote data with byte-identical no-layout path, tokenized /proposal data endpoint + e-sign accept); Group R agentic layer — NEW APP `apps/agent` (in-code action registry + `/api/django/agent/` catalogue, AG1), FastAPI registry-driven tools with propose→confirm (`/sql-agent/confirm`, AG2) surfaced on /query, assistant confirm/result cards (AG3), domain agent actions in ventes/crm/stock/sav/installations `agent_actions.py` (AG4–AG9), Groq-Whisper assistant voice `/sql-agent/transcribe` (AG10) + voice/hands-free chat (AG11/AG12); Group S internal team chat — NEW APP `apps/chat` (Conversation/Member/Message/Attachment/Reaction/Mention, company+membership scoped, `/api/django/chat/`, S1–S9), self-hosted faster-whisper `/chat/transcribe` (NEW dep, `CHAT_TRANSCRIPTION_ENABLED`, S10) + Celery transcription pipeline (S11), full React `features/messaging` UI + `/messages` route (S12–S20); design/UI/reporting polish (F120–F123 OKLCH tokens, G124–G128 primitives, K147/N161/K148/K149/J146/P167 chart kit + dashboard + table unification); P171 DataTable→@tanstack engine swap (API-compatible, full parity). ADDITIVE migrations: ventes/0024, crm/0024, chat/0001, notifications/0007. Founder standing consent recorded in CLAUDE.md lifting the ARCH/AUTH/COST/DECISION/GALLERY/DEP gate. + 2026-06-22 greenfield-foundations run: 7 NEW apps stood up (apps/rh DossierEmploye master FG154/DC29, apps/paie ParametrePaie/BaremeIR PAIE1/2/4, apps/gestion_projet Projet/ProjetChantier PROJ1, apps/contrats Contrat CONTRAT1/2, apps/qhse NCR/CAPA QHSE1/9/10, apps/kb KbArticle KB1, apps/litiges Reclamation LITIGE1) — additive, multi-tenant, admin-gated, tested; INSTALLED_APPS+urls wired; 13 tasks ticked. BLOCKED: S21 WebSocket/Channels (needs provisioned ASGI/nginx-WS infra), I134/I138 ⌘K palette (reconcile with existing providers).) + 2026-06-22 `claude/serene-ptolemy-dj5cs0` wave-1 run: 8 parallel worktree lanes — FG122 (compta consolidated treasury position + AR/AP/payroll/TVA projection, GL-only selector + read endpoint), M4 (last `ventes → audit` back-edge removed — PDF audit capture now flows through the `core.events.document_pdf_generated` bus with an `audit` receiver; new import-linter contract pins it), FG157 (apps/rh `Remuneration` gated by the new `salaires_voir` permission), PAIE3 (apps/paie 2026 Moroccan legal payroll defaults seeded editable + `valide_par_fondateur` flag), PROJ5 (apps/gestion_projet `Tache` WBS with self-FK sub-tasks), QHSE5 (apps/qhse auto-conformity min/max on `PointControleModele`/`ReleveControle`), FG350 (frontend global `CopilotPanel` drawer reusing the FastAPI agent), GED5 (frontend `/ged` arborescent navigator over existing ged endpoints) — all additive, multi-tenant, tested; ADDITIVE migrations rh/0004, paie/0002, qhse/0004, gestion_projet/0005. + wave-2 (same run): FG123 (compta `RapprochementBancaire`/`LigneReleve`/`PointageReleve` — statement↔GL pointing, écart-zero close, no écriture), FG49 (ventes account-coded grand-livre export CGNC 3421/7111/4455, xlsx+csv, configurable codes), FG351 (apps/agent registry guarded write actions `ventes.devis.create`/`crm.client.create`/`crm.lead.create` via propose→confirm + FastAPI dynamic action_tools), FG158 (rh `DossierEmploye` emergency-contact + extended coordinates fields), PAIE5 (paie family-charge deduction params + `compute_ir` helper), GED6 (ged `DocumentLien` generic-target link via `records.ALLOWED_TARGETS` +ventes.boncommande), PROJ6 (gestion_projet `DependanceTache` FS/SS/FF/SF + lag with cycle guards), QHSE6 (qhse hold-point gating selector/endpoint) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0006, rh/0005, paie/0003, ged/0002, gestion_projet/0006 (FG49/FG351/QHSE6 need none); import-linter stays 4/4. + wave-3 (same run, 7 lanes): FG124 (compta `Caisse`/`MouvementCaisse`/`ClotureCaisse` petty-cash with optional GL posting honouring the FG115 period lock), FG50 (ventes acompte transfer/refund on facture cancel — re-point Paiement or reversing negative Paiement, chatter, no migration), FG159 (rh `DocumentEmploye` vault reusing `records.Attachment` MinIO storage + optional expiry), PAIE6 (paie `Rubrique` configurable payslip-line catalogue + idempotent seed), GED7 (ged `migrate_attachments_to_ged` command importing records.Attachment into Documents reusing file_key + DocumentLien), PROJ7 (gestion_projet `Jalon` milestones + `facturation_pct`), QHSE7 (qhse `ReleveCourbeIV` PV string I-V curve + fill factor) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0007, rh/0006, paie/0004, gestion_projet/0007, qhse/0005 (FG50/GED7 need none); import-linter stays 4/4. FG352 (RAG/pgvector, DEP:langchain-textsplitters) intentionally left [ ] for a focused run. + 2026-06-22 `claude/plan-md-completion-ysbchz` drain: 8 parallel worktree lanes off PLAN.md (compta FG125–130, ventes FG51/53/248/250/251, core FG355–359 NoOp-AI, rh FG160–165, paie PAIE7–12, ged GED8–13, gestion_projet PROJ8–13, qhse QHSE8/11–15 — 46 tasks; ADDITIVE migrations across those apps + customfields/0003; new NoOp scaffolds add no external dependency; GED12 semantic embedding OFF by default). + 2026-06-23 PLAN2 **Group U** drain (U1–U14, 10 parallel worktree lanes, one self-merge): lead-modal stays-open UX (U1), mouse-wheel + mobile-header CSS regressions (U2/U3), WhatsApp-send flips devis→envoyé via a NEW `core.events.devis_sent` event (U4), surface generated factures/BC in the devis list + BC-state warning (U5/U8), hide/badge superseded devis revisions (U7), auto-create chantier on devis acceptance via the `devis_accepted` bus (U6), stock reservation on the direct generer-facture path (U9), relance-escalation reset on full payment (U10), phantom-signé flag on post-acceptance refusal (U11, flag-only), direct nullable lead FK on Facture/BonCommande (U12), avatar same-origin proxy fix (U13), GED « Documents » write UI + `documents/televerser/` upload (U14) — additive, multi-tenant, tested; ADDITIVE migrations ventes/0027_devis_date_envoi + 0028_boncommande_lead_facture_lead. + 2026-06-24 PLAN.md batch-1 drain (8 parallel worktree lanes off the FG/module wave plan, adversarial review + local CI incl. makemigrations-check & full affected test run, one self-merge): 7 shipped — FG52 (ventes multi-currency `devise`/`taux_change` + CompanyProfile default), FG166 (rh `Pointage` clock-in/out), CONTRAT6 (contrats `confidentialite` gated on `menu_tier`), FLOTTE5 (flotte `ActifFlotte` unified asset ref), PAIE13 (paie multi-profile base-salary + proration), GED14 (ged inline `apercu` preview), PROJ14 (gestion_projet delay detection). ADDITIVE migrations ventes/0029 + parametres/0025, rh/0008, contrats/0005, flotte/0005, paie/0006. **FG131 (compta 3-way match) DEFERRED/backed-out** — the build duplicated stock's BonCommandeFournisseur/FactureFournisseur (reverse-accessor clash); needs a rebuild reusing stock procurement via selectors/services (left `[ ]`). + 2026-06-27 `claude/lucid-banzai-33af1c` PLAN.md wave-1 drain (5 parallel worktree lanes, one self-merge): PAIE14 (paie heures-sup majorées 25/50/100 %), FG167 (rh `FeuilleTemps` timesheets + labour-hours selector), CONTRAT7 (contrats `ModeleContrat` + `/instancier/`), FLOTTE7 (flotte `Conducteur` + permis), QHSE16 (qhse `Audit`/`ReponseCritere` + score → NCR) — all additive, multi-tenant, tested; ADDITIVE migrations paie/0007, rh/0009, contrats/0006, flotte/0006, qhse/0010. No new external/paid dependency, no auth change. Validated on the docker CI harness (511 affected-app tests green, makemigrations --check clean). + 2026-06-27 same run waves 2+3 (9 more file-disjoint lanes): GED15 (ged document version history + restore, `restored_from` audit), PROJ15 (gestion_projet `RessourceProfil`/`Equipe`, internal cout_horaire), FG39 (crm `ObjectifCommercial` + attainment selector, backend), FG5 (notifications `WorkingHoursConfig`/`Holiday` + calendar helpers + `seed_ma_holidays`, opt-in), FG86 (sav `Ticket.share_token` + public read-only tracking endpoint, allowlist no cout/chatter), KB5 (kb `seed_kb_templates` 5 SOP/ONEE/82-21 gabarits), FG96 (reporting `DashboardConfig` per-user/role, backend), FG102 (publicapi webhook deliveries history + replay + test, backend), FG297 (installations `DocumentProjet`/`RevisionDocument` versioned project-doc register) — all additive, multi-tenant, tested; ADDITIVE migrations ged/0008, gestion_projet/0010, crm/0028, notifications/0010, sav/0009, reporting/0003, installations/0014 (KB5/FG102 need none); import-linter stays 4/4. No new external/paid dependency, no auth change. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-1 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI, one self-merge): FG135 (compta `NoteFrais` notes de frais + remboursements, justificatif photo, écritures équilibrées, verrou de période, réf NDF race-safe), FG291 (installations `Projet` programme multi-chantiers regroupant chantiers/devis/tickets par FK chaînes, machine d'états propre — NEW arch component), FG255 (ventes `ev_charger_sizing` borne VE couplée au PV, math pure), FG361 (core `forecast.py` prévision CA/devis mensuels, Holt-Winters statsmodels + repli pur Python), FG172 (rh `Competence`/`CompetenceEmploye` matrice de compétences), CONTRAT13 (contrats `RegleApprobation` par montant/type + résolveur), FLOTTE13 (flotte conso L/100 km & kWh/100 km depuis pleins+odomètre, endpoint scopé), GED17 (ged `Document.statut` cycle de vie brouillon→…→obsolète, machine d'états gardée, distinct de STAGES.py) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0011, installations/0016, rh/0014, contrats/0010, ged/0011 (FG255/FG361/FLOTTE13 need none). **NEW external dependency `statsmodels==0.14.4`** (FG361, import défensif + repli si absente). Adversarial review fixed 2 CI-red issues pre-merge (FG361 garde NaN avant clamp, FLOTTE13 action `consommation` en lecture tout rôle) + an FG135 reference race; core stays a foundation layer (import-linter 4/4). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-2 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI): FG136 (compta `BaremeIndemnite`+`IndemniteChantier` indemnités km/per-diem, haversine, écritures équilibrées + verrou de période), FG292 (installations `ProjetTache` tâches/sous-tâches + prédécesseur avec gardes anti-cycle — étend l'ARCH Projet FG291), FG256 (ventes `battery_storage_sizing` autoconso-max vs backup-heures, math pure), FG362 (core `win_probability.py` scorer pur fondation + `reporting/pipeline.py` pondéré par lead, repli statique), FG173 (rh `Habilitation` électriques NF C 18-510 + expiry), CONTRAT14 (contrats `EtapeApprobation` workflow depuis `RegleApprobation`, ne touche pas `Contrat.statut`), FLOTTE14 (flotte `CarteCarburant` + détecteur d'anomalies pleins), QHSE19 (qhse `RetourClientQualite` satisfaction 1–5) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0012, installations/0017, rh/0015, contrats/0011, flotte/0012, qhse/0013 (FG256/FG362 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). Fixed an FG136 constraint Q-order migration drift pre-merge (makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-3 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI incl. the 8 wave-3 test modules run green before push): FG137 (compta `DeclarationTVA` préparation TVA collectée−déductible par régime/méthode + export), FG294 (installations `BudgetProjet`/`BudgetEngagement` budget vs réel agrégé cross-app via get_model/selectors, alerte dépassement — ARCH), FG257 (ventes `simulate_bankable_yield` P50/P90 + Performance Ratio, math pure), FG363 (core `churn_risk.py` scorer pur fondation), FG174 (rh `Certification` non-électriques + expiry), CONTRAT15 (contrats `ContratActivity` chatter/journal des transitions), FLOTTE15 (flotte `PlanEntretien` entretien préventif km/date/heures via ActifFlotte), GED18 (ged `DemandeApprobation` workflow réutilisant la machine d'états GED17) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0013, installations/0018, rh/0016, contrats/0012, flotte/0013, ged/0012 (FG257/FG363 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, FG363 stdlib-only). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-4 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-4 test modules before push — **ZERO migrations this wave**, all aggregation/pure-math/helper tasks): FG138 (compta `releve_deductions_tva` annexe TVA déductible depuis le GL, réconcilie FG137), FG295 (installations `projet_pnl` P&L consolidé revenu−coûts par Projet, réutilise les agrégats cross-app FG294), FG258 (ventes `hourly_self_consumption` profil autoconso 8760 h + parser xlsx openpyxl déjà présent), FG364 (core `stock_reorder.py` prévision rupture/réappro, stdlib seul), FG175 (rh `echeances_rh` moteur d'alertes d'expiration unifié + commande notifiant via `notifications.notify`), PROJ18 (gestion_projet `plan_de_charge` capacité vs affecté), PAIE20 (paie helper `cimr_salariale` CIMR optionnelle par employé, champs préexistants), QHSE20 (qhse `iso9001_readiness` tableau de bord) — all additive, multi-tenant, tested; NO migrations; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-5 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-5 test modules before push): FG139 (compta `RetenueSource` RAS retenue à la source + bordereau de versement, export `?export=csv`), FG299 (installations `plan_de_charge_equipes` capacité vs affecté des techniciens/équipes sur interventions), FG259 (ventes `net_metering_savings` valorisation surplus injecté par tranche loi 13-09), FG365 (core `payment_delay.py` prédiction de retard de paiement, stdlib seul), FG176 (rh `verifier_habilitation_requise` garde d'affectation par habilitation, blocage doux), CONTRAT16 (contrats `SignatureContrat` e-sign in-app loi 53-05, preuve serveur, bascule statut signé), FLOTTE16 (flotte `EcheanceEntretien` génération idempotente d'échéances dues + alertes), GED19 (ged `AclGed` ACL par dossier/document héritage+override, rétrocompatible) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0014, contrats/0013, flotte/0014, ged/0013 (FG299/FG259/FG365/FG176 need none). No new external/paid dependency, no auth change; import-linter 4/4. Fixed a GED19 CheckConstraint `condition=` migration drift pre-merge (Django 5.1 deconstruction; Meta.constraints aligned with the migration, makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-6 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-6 test modules before push): FG140 (compta aide au calcul de l'IS — barème progressif + cotisation minimale + 4 acomptes + régularisation, selectors-only), FG300 (installations `conflits_affectation` double-booking technicien/camionnette même jour), FG260 (ventes `tariff_escalation_projection` escalade ONEE 20-25 ans + VAN/TRI stdlib), **FG366 (core moteur de workflow BPM générique `WorkflowDefinition/StepDefinition/Instance/StepInstance` cible générique contenttypes + SLA/escalades — NEW ARCH component dans la fondation, import-linter 4/4)**, FG177 (rh `VisiteMedicale` du travail + aptitude + expiry, alimente FG175), PROJ19 (gestion_projet `conflits_affectation` ressources chevauchantes), PAIE21 (paie frais professionnels — déjà présent, tests ajoutés), QHSE21 (qhse `EvaluationRisque`/`LigneEvaluationRisque` document unique, criticité=gravité×probabilité) — all additive, multi-tenant, tested; ADDITIVE migrations core/0002 (BPM), rh/0017, qhse/0014 (FG140/FG300/FG260/PROJ19/PAIE21 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-7 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 9 wave-7 test modules before push): FG141 (compta `export_fec` export FEC DGI 18 colonnes, `?export=fec`), FG301 (installations `nivellement_charge` rééquilibrage des interventions surchargées sans conflit, lecture seule), FG261 (ventes `optimize_subscribed_power` réduction puissance souscrite post-PV C&I), FG367 (core `rules.py` évaluateur de conditions ET/OU/NON + actions séquentielles, pur fondation), FG178 (rh `EpiCatalogue`/`DotationEpi` dotation EPI nominative), CONTRAT17 (contrats auto signé→actif sur signature), FLOTTE17 (flotte `Garage`/`OrdreReparation` ordres de réparation + coûts), GED20 (ged `PartageGed` partage tokenisé public expiry/password/quota) — all additive, multi-tenant, tested; ADDITIVE migrations rh/0018, flotte/0015, ged/0014 (FG141/FG301/FG261/FG367/CONTRAT17 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). GED20 introduces a PUBLIC AllowAny tokenized document endpoint (token-only resolution, expiry/quota/password-hash, no cross-tenant leak — security model calqué sur ventes.ShareLink). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-8 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 8 wave-8 test modules before push): FG142 (compta `liasse_fiscale` trousse liasse fiscale bilan+CPC+balance+annexe-TVA, réutilise les sélecteurs), FG302 (installations `IndisponibiliteRessource` calendrier de disponibilité technicien/camionnette + sélecteur d'exclusion), FG262 (ventes `module_degradation_curve` dégradation modules + planchers de garantie), FG368 (core `core/jobs.py` + `ScheduledJobViewSet` liste/exécution des jobs Celery Beat, admin, câblé `/api/django/core/`), FG179 (rh péremption/contrôle EPI dérivés + alertes, alimente FG175), PROJ20 (gestion_projet `nivellement_charge` rééquilibrage ressources projet), PAIE22 (paie calcul IR — déjà présent PAIE5, 30 tests ajoutés), QHSE22 (qhse `document_unique_valide`/`exiger_document_unique` gate document unique avant pose) — all additive, multi-tenant, tested; ADDITIVE migrations installations/0019, rh/0019 (FG142/FG262/FG368/PROJ20/PAIE22/QHSE22 need none). FG368 added a root-URLConf line (`api/django/core/` → `core.urls`, orchestrator wiring step). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, jobs via celery infra). Wave-9 PLAN.md drain (2026-06-29, 8 parallel file-disjoint worktree lanes): rh `EmargementEpi` (FG180), contrats `VersionContrat` (CONTRAT18), flotte `Pneumatique`/`PieceFlotte` (FLOTTE18), ged watermarking flags `Document.watermark_diffusion`/`PartageGed.watermark` (GED21, lazy PyMuPDF/Pillow — no hard dep), core workflow-template library + `/api/django/core/` workflow-templates route (FG369), plus selector/endpoint-only FG143 (compta état 9421), FG303 (installations van planning), FG263 (ventes PPA model) — all additive & company-scoped, 4 additive migrations (rh 0020, contrats 0014, flotte 0016, ged 0015). Wave-10 PLAN.md drain (2026-06-29, 7 parallel file-disjoint worktree lanes in apps disjoint from wave 9): crm `ConcurrentPerte` (lost-deal competitor capture FG242), gestion_projet `BudgetProjet`/`LigneBudgetProjet` (PROJ21), qhse `PermisTravail` (QHSE23), kb `KbArticleAcl`/`KbLecture` (role ACL + read tracking KB7), sav `AlarmeOnduleur` (inverter alarms FG280), plus paie allocations-familiales employer charge (PAIE23, fields on ParametrePaie/BulletinPaie) and selector-only LITIGE6 (disputes dashboard) — all additive & company-scoped, 6 additive migrations (crm 0029, gestion_projet 0013, kb 0005, paie 0011, qhse 0015, sav 0011). Wave-11 PLAN.md drain (2026-06-29, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes off the merged base): compta `TimbreFiscal` (droit de timbre cash FG144), rh `AccidentTravail` (HSE/accidents register FG181), installations `SousTraitant` (subcontractor registry FG304), ged `PolitiqueRetention` (non-destructive retention policies GED22), flotte `EcheanceReglementaire` (regulatory deadlines FLOTTE19), plus pure-math FG264 (ventes pumping-cycle water yield) — all additive & company-scoped, 5 additive migrations (compta 0015, rh 0021, installations 0020, ged 0016, flotte 0017). Wave-12 PLAN.md drain (2026-06-29, 3 parallel file-disjoint lanes resuming wave-10 app lanes): qhse `ConsignationLoto` (LOTO on a work permit QHSE24), crm `PointContact` (multi-touch attribution journal FG204), plus paie taxe de formation professionnelle employer charge (PAIE24, BulletinPaie snapshot) — all additive & company-scoped, 3 additive migrations (paie 0012, qhse 0016, crm 0030). Wave-13 PLAN.md drain (2026-06-30, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes): compta `RetenueGarantie`/`CautionBancaire` (FG145), rh `PresquAccident` (near-miss FG182), installations `OrdreSousTraitance` (subcontractor work orders FG305), ged `ArchivageLegal` (legal write-once GED23), flotte `BaremeVignette` + `Vehicule.puissance_fiscale` (TSAV FLOTTE20), plus selector-only PROJ22 (committed-vs-actual project cost) — all additive & company-scoped, 5 additive migrations (compta 0016, rh 0022, installations 0021, ged 0017, flotte 0018).
-Structure fingerprint: 8676dc5f96fd227ad3ec47d2328ffbc9aa0050b0d68dcb94981470d1d12a0d97
-Plan fingerprint: 9cef6f5424be29f75e8fbdf89d9b521821583ec300b5cfdffaa6a05aab9d3935
+Structure fingerprint: 48bfaa2b87b39b46fccb1d5da212c7e05b79c99d3c4fc78e13e56644c15ca93a
+Plan fingerprint: ce985f2547e4f5f9635bff50cf150d49d9d9761756eb53489b73af1150fab4dc
 
 > This file is **regenerated by the build pipeline**. It is derived by reading the
 > actual source (models, urls, serializers, settings, docker-compose, requirements,
@@ -539,6 +539,7 @@ module per backend area. The **design system** (refonte UI) lives in `design/`
 | `/dashboard` | Dashboard |
 | `/crm` | ClientList |
 | `/crm/leads` | LeadsPage (kanban / list / calendar / charts) |
+| `/crm/leads/:id` | LeadDetailPage → LeadWorkspace (full-page cockpit) |
 | `/activites` | MesActivitesPage |
 | `/calendrier` | CalendarPage (agenda) |
 | `/crm/parrainage` | ParrainagePage (referrals) |
@@ -574,7 +575,7 @@ module per backend area. The **design system** (refonte UI) lives in `design/`
 
 ### Features (`frontend/src/features`)
 - **auth** — session/JWT; `authSlice.js` (fetchMe, login/logout thunks).
-- **crm** — leads/clients state; `crmSlice.js`, `bulk.js` (selection logic), `stages.js` (mirrors STAGES.py + CONVERSION_STAGE — CI-checked).
+- **crm** — leads/clients state; `crmSlice.js`, `bulk.js` (selection logic), `stages.js` (mirrors STAGES.py + CONVERSION_STAGE — CI-checked); **`workspace/`** — the lead cockpit (ex-`pages/crm/LeadForm.jsx`, removed LW40): shell `LeadWorkspace.jsx` (3 zones — `IdentityRail`/`SectionsPane`+`sections/`/`ContextRail` with `TimelineTab`/`DevisTab`/`StageControl`) over the pure autosave engine `draftCore.js` (no-loss reducer) via `useLeadDraft.js`; `leadPrefetch.js`, `rotting.js`; consumers `ScoreBadge.jsx`, `CallLogPopover.jsx`, `components/ChatterTimeline.jsx`.
 - **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill for the quote generator: GHI/ONEE/ROI, panel/inverter/battery sizing, pompage HMT+débit→pump+VEICHI variateur, all TTC), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
 - **installations** — chantiers; `installationsSlice.js`, `statuses.js` (stage constants).
 - **stock** — catalogue/inventory/procurement; `stockSlice.js`, `catalogue.js`, `emplacements.js`, `procurement.js`.
@@ -587,7 +588,7 @@ module per backend area. The **design system** (refonte UI) lives in `design/`
 - **adsengine** — « Publicité » console for the Meta Ads engine (§4), a `module.config.jsx`-registered coquille (not a Redux slice — `hooks.js`/`adsengineApi.js` + `adsengine.js` label maps) under `/publicite`, gated responsable/admin: DashboardScreen (+ Pacing/Reconciliation tabs, ADSDEEP61 v2 conversations/MER tiles), AdsCockpitScreen (ADSDEEP22 per-ad daily cockpit), ConnectionScreen, CampaignsScreen (ADSDEEP60 3-level drill-down), ApprovalsScreen (the flagship propose→approve box, ADSDEEP35 EDIT_COPY diff+warnings), CommentsInboxScreen (ADSDEEP54), InstagramScreen (ADSDEEP56), BriefScreen, CreativeLibraryScreen, ActionsLogScreen, ExperimentsScreen, FlightPlanScreen, BacklogScreen, RulesScreen (ADSDEEP43 journal), SimulationScreen, ReportsScreen (Créatifs leaderboard + Audit tabs), TreeScreen (ASG6 « L'Arbre » — living-plan view of AssumptionNodes by statut/fraîcheur + VoI queue + history, `/publicite/arbre`); DashboardScreen gained a « Signaux » tab (SIG4 — two health scores + hard-guardrail quadrant + cohort drill-down); shared `DataWindowNotice.jsx` (ADSDEEP66 no-silent-caps banners); `TenantBrand.jsx` (white-label-clean fallback, no hardcoded brand — SCA29); DOM test hooks prefixed `ae-*`.
 
 ### Pages (`frontend/src/pages`)
-- **crm/** — ClientList, LeadForm, LeadsPage, ParrainagePage + `leads/` (ViewSwitcher, FilterBar, BulkActionBar, DoublonsPanel, SigneDialog, views/Kanban|List|Calendar|Charts).
+- **crm/** — ClientList, LeadsPage, ParrainagePage + `leads/` (LeadDetailPage → `features/crm/workspace/LeadWorkspace`, ViewSwitcher, FilterBar, BulkActionBar, DoublonsPanel, SigneDialog, views/Kanban|List|Calendar|Charts). The lead cockpit itself lives in `features/crm/workspace/` (ex-`LeadForm.jsx`, removed LW40).
 - **ventes/** — DevisList, DevisGenerator, DevisForm, FactureList, FactureForm, AvoirsPage, RelancesPage, VentesKanban.
 - **stock/** — StockList, ProduitForm, MouvementsPage, BonsCommandeFournisseur, OcrStockImport.
 - **installations/** — InstallationsPage, ParcInstallePage, InstallationDetail, ChantierChecklist/Photos/Timeline.
@@ -854,7 +855,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (867)**
+**Done (845)**
 
 - `ERR1` — [FastAPI] NL→SQL agent has no SELECT-only enforcement in code…
 - `ERR2` — [FastAPI] NL→SQL tenant isolation is defeatable four ways…
@@ -1281,7 +1282,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `WIR16` — Monter l'écran Plan de compte sur la fiche client
 - `WIR17` — Reporting : deux entrées de navigation manquantes (Cohortes + dossier documentaire…
 - `WIR18` — Ajouter l'onglet Sécurité (+ export CSV) au Journal d'activité
-- `WIR19` — Bouton Historique sur les fiches lead/devis/ticket pour non-privilégiés
 - `WIR20` — Corriger le préfixe d'URL cassé d'`auditAnalytics()` et afficher ses données
 - `WIR22` — Notifier un admin quand le contrôle d'intégrité inter-documents détecte des anomalies
 - `WIR23` — Entrées de navigation pour trois écrans construits mais orphelins : `/ia/actions`…
@@ -1309,73 +1309,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `WIR45` — EntretienScreen : création directe d'OR + saisie pneus/pièces
 - `WIR46` — Saisie du budget flotte et des coûts d'exploitation divers
 - `WIR47` — Action « Remettre un accessoire » (clés/carte/badge/tag)
-- `WIR48` — Imports CSV/XLSX véhicules/contrats/dossiers RH + modes d'import restreints
 - `WIR49` — Filet de sécurité Django admin pour les modèles Flotte critiques
 - `WIR50` — Planifier les trois commandes périodiques orphelines de sécurité/gouvernance…
 - `WIR51` — CRUD serveur des définitions de workflow…
 - `WIR52` — Brancher le bouton « Registre phytosanitaire PDF » déjà codé côté client
 - `WIR53` — Santé : annulation de rendez-vous + réparer le lien de notification « prise en charge »
 - `WIR54` — Appeler `resoudre_client_pour_patient` à la création d'un patient
-- `WIR55` — Enregistrer le module frontend Crédit client (7 composants construits, zéro montage) et…
-- `WIR56` — Assurances : écran de création de police (bouton « Nouvelle police » = lien mort) +…
-- `WIR57` — Enregistrer le module frontend Hôtellerie (5 écrans construits, aucun registre)
-- `WIR58` — Encaisser une facture/devis existant au comptoir POS
-- `WIR61` — Étendre le rule-builder Automatisations aux 5 déclencheurs manquants + panneau webhook…
-- `WIR62` — Système de demandes d'approbation ad-hoc (`ApprovalRequestType`/`ApprovalRequest`) …
-- `WIR64` — Construire la capture de lead publique de `FormulaireIntake` (FG206) — PRÉALABLE à…
-- `WIR65` — Compléter le calendrier marketing unifié avec les 3 sources manquantes
-- `WIR66` — API CRUD des référentiels `TauxTVA`/`ConditionPaiement`/`UniteMesure` + section…
-- `WIR67` — Champs personnalisés : couvrir les 11 modules enregistrés + activer `kb_article`
-- `WIR68` — Câbler chatter + export/import des Entités
-- `WIR69` — Adminops : peupler le tableau de bord d'adoption + lien PDF du journal d'administration
-- `WIR70` — Surfacer les surfaces GED déjà exposées : timeline, rapport ACL, favoris/récents/vues…
-- `WIR71` — Surfacer les lectures obligatoires KB
-- `WIR72` — Bouton suivre/ne plus suivre réutilisant `records.Follower`
-- `WIR77` — Afficher le CLV, le rollback de campagne de révision et le nom du client sur les…
-- `WIR81` — Consolider les deux moteurs « territoire » et retirer le double montage d'URL du legacy
-- `WIR82` — Un seul calcul de classement commercial
-- `WIR83` — Une seule source pour la correspondance module→modèle des champs personnalisés
-- `WIR88` — Router `_create_underperf_ticket` via `apps.sav.services` (frontière services, pas…
-- `WIR90` — Liens optionnels vers `stock.Fournisseur` pour `Garage` et `ContratVehicule` (éviter la…
-- `WIR97` — Ancrer les référentiels ARC23/24/27 comme sources uniques via FK (au lieu de miroirs de…
-- `WIR98` — Rattacher `PartieContrat` au référentiel contacts canonique
-- `WIR100` — Brancher les 3 endpoints reporting orphelins comme cartes de tableau de bord
-- `WIR101` — Brancher le group-by champ personnalisé depuis l'écran d'administration des custom…
-- `WIR102` — Analytique SAV : pivot/coût moyen/taux d'attache sur un écran de reporting existant
-- `WIR105` — CPQ : trancher le configurateur guidé (FG211) + écrans de configuration des règles
-- `WIR106` — Écrans e-facturation DGI (`einvoice`) et calendrier fiscal (`fiscal`), aujourd'hui…
-- `WIR110` — Approvisionnement avancé installations : 6 familles d'endpoints sans écran
-- `WIR111` — Logistique avancée : étendre Magasin/Logistique aux 8 endpoints voisins non couverts
-- `WIR112` — Écran Équipe canonique (DC40) + clarifier les 3 référentiels « Équipe »
-- `WIR114` — Interventions avancées : astreintes/indisponibilités, modèles de fiche + récurrences…
-- `WIR115` — Décider du sort des 20+ modèles QHSE sans aucune API — `CheckinSecurite` d'abord
-- `WIR116` — Bouton « Étiquettes QR » équipement + lien public
-- `WIR117` — SAV Paramètres : picker de pièces compatibles + alias e-mail des catégories
-- `WIR119` — Panneau worksheet de maintenance sur le ticket + onglet modèles en Paramètres
-- `WIR120` — Section « Avancé » du contrat de maintenance SAV
-- `WIR121` — Surfacer les 4 endpoints d'analyse SAV fleet-wide
-- `WIR124` — Câbler les actions d'écriture des 4 onglets d'`Inspections.jsx` (ITP, Audits…
-- `WIR125` — Rendre opérable la notation de fin de chantier (`NotationFinChantier`)
-- `WIR127` — Câbler les actions d'écriture des 10 onglets d'`Environnement.jsx` — bilan carbone et…
-- `WIR128` — Remplacer `PermisTravail.delivre_par`/`valide_par` (texte libre) par des FK…
-- `WIR129` — Cockpit ESG : création de période + comparateur N/N-1 + export DPEF
-- `WIR130` — Registres ESG : documents de politique RSE + bibliothèque de facteurs d'émission
-- `WIR132` — Écran Garanties flotte (`GarantieFlotte`, XFLT14)
-- `WIR133` — DÉCISION fondateur — sinistres/infractions/télématique/trajets chantier : saisie…
-- `WIR134` — Écran d'administration « Sécurité & Identité » (module `apps/identity`, zéro frontend)
-- `WIR135` — Écran d'administration « Gouvernance des accès » (`apps/accessreview` + rapport de…
-- `WIR137` — Surfacer la progression des jobs de fond (`core/jobs-status/`)
-- `WIR139` — Aligner le catalogue d'événements sur les vrais kwargs des signaux + garde de parité…
-- `WIR140` — Évaluer la consolidation d'`adsengine/anomaly.py` sur le socle `core.anomaly`
-- `WIR144` — Afficher le flux KPI fédéré `kpi_providers` sur au moins un tableau de bord
-- `WIR145` — Surfaces assurances : couverture par actif sur la fiche véhicule, checklist conformité…
-- `WIR154` — Écrans d'administration Notifications : règles de routage, calendrier ouvré/fériés…
-- `WIR156` — Chat : statut personnalisé + Ne pas déranger + présence des collègues
-- `WIR158` — Afficher le changelog public dans l'ERP
-- `WIR159` — Écran « Marketplace » du catalogue d'extensions
-- `WIR160` — UI du softphone VoIP (config, identifiants, click-to-call, journal)
-- `WIR161` — Écran journal d'appels commercial (click-to-call log)
-- `WIR166` — Module Appels d'offres : écrans SPA (ou hors-périmètre confirmé) + lien lead CRM
 - `XMFG17` — Nomenclature multi-niveaux (sous-kits)
 - `XMFG18` — Révisions de nomenclature + duplication de kit
 - `XMFG19` — Remplacement de masse d'un composant dans toutes les nomenclatures
@@ -1447,6 +1386,46 @@ Things this map could not fully verify from source — do not over-trust:
 - `ZSAL9` — Avertissements de vente configurables par produit / par client (sale warnings)
 - `ZSTK5` — Étiquette de colis (contenu + code-barres colis)
 - `ZSTK13` — Réglages société stock (barcode / lots-séries / multi-emplacements / colis) — surface…
+- `LW1` — P0 : le corps de la fiche lead ne scrolle pas, le bouton Enregistrer est hors…
+- `LW2` — Perte de données #1 : le raccourci d'étape 1-4 « blanchit » les éditions non sauvées
+- `LW3` — Perte de données #2/#4 + fuites inter-leads : l'état satellite survit à la navigation…
+- `LW4` — Perte de données #3 : « a »/bouton Archiver jettent les éditions sans confirmation +…
+- `LW5` — SigneDialog : la date « futur » se trompe d'un jour le soir (UTC vs local)
+- `LW6` — AppointmentBooker : annulation avalée en silence + `<form>` imbriqué invalide
+- `LW7` — normalizeMaPhone accepte n'importe quoi → bouton WhatsApp armé sur un numéro invalide
+- `LW8` — Backend : N+1 confirmé sur le chatter `historique/`
+- `LW9` — Le moteur d'état `useLeadDraft` : la perte de données devient structurellement…
+- `LW10` — Le shell `LeadWorkspace` : une fenêtre, deux enveloppes, le scroll juste par…
+- `LW11` — Le centre : `SectionsPane` + les 6 fichiers de sections, port 1:1 des champs
+- `LW12` — Mode création : le formulaire rapide, défauts intelligents et « créer un autre » intacts
+- `LW13` — Bascule des appelants : la liste, la route détail, et LeadForm devient un adaptateur
+- `LW14` — `IdentityRail` : l'identité, la préparation et les actions à demeure
+- `LW15` — La triade obligatoire : responsable · prochaine action · relance, toujours visibles et…
+- `LW16` — `StageControl` : l'étape en StatusPill, le pourrissement visible, SIGNED toujours gardé
+- `LW17` — Le score s'explique enfin : popover `score_reasons` + réutilisation `scoreTooltip`
+- `LW18` — Bannières intelligentes : doublons, « déjà client ? », carte collée
+- `LW19` — `ContextRail` : les onglets Historique · Devis · Activités · Pièces avec compteurs
+- `LW20` — `TimelineTab` : le chatter devient le fil unique — filtre, épingle, parcours multi-touch
+- `LW21` — `DevisTab` : la chaîne document en cartes + le CTA devis-auto qui dit ce qui manque
+- `LW22` — WhatsApp dans DevisTab : multi-sélection, FR/Darija, aperçu — l'état dans le moteur
+- `LW23` — Raccourcis propres : registre exact, « d » réparé, « n » pour noter
+- `LW24` — Pré-chargement des voisins de file : J/K devient instantané
+- `LW25` — Skeleton à l'ouverture, en forme de la vraie grille
+- `LW26` — Palette de commandes : la fiche courante répond à ⌘K
+- `LW27` — Chatter : +11 champs métier journalisés (`TRACKED_FIELDS`)
+- `LW28` — `LeadActivity.pinned` : la note épinglée (UNE migration additive)
+- `LW29` — `pii_masked` : le masquage PII devient VISIBLE au lieu de silencieux
+- `LW30` — `chatter_recent` embarqué sur le GET détail : l'ouverture passe de 4 requêtes à 3
+- `LW31` — Zéro hex dans la fenêtre : migration Badge/tokens des chips et bannières héritées
+- `LW32` — Un seul Avatar : `components/Avatar.jsx` → `ui/Avatar` + `--owner-color-1..10` sur les…
+- `LW33` — Rythme, motion et micro-feedback : la passe « premium » du workspace
+- `LW34` — Responsive vrai : 768-1024 à 2 colonnes + Sheet contexte, mobile à barre-pouce
+- `LW35` — A11y : la nav de sections et les onglets parlent aux lecteurs d'écran
+- `LW36` — AppointmentBooker sort de l'inline : 30 blocs de styles → tokens/kit
+- `LW37` — Le harnais unitaire migre vers LeadWorkspace : les 12 suites existantes + le moteur…
+- `LW38` — Régression anti-perte : la suite « rafale » qui verrouille les 4 bugs pour toujours
+- `LW39` — Contrat e2e mis à jour DÉLIBÉRÉMENT : la spec et le DOM bougent dans la même tâche
+- `LW40` — Démontage final : LeadForm.jsx supprimé, cartes et plans à jour
 - `QW8` — Make QW4's email leg actually fire (today it's config-dead by default)
 - `QX1` — [CRITICAL] `remise_globale` reaches the ENTIRE billing chain
 - `QX2` — Fix the discount's OTHER consumers: founder KPIs, Meta CAPI value, DGI/UBL export
@@ -1724,7 +1703,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VX250` — La fiche annonce son état et ses relations : « en attente de… » + compteurs (@lane…
 - `VX251` — Le dispatch au glisser-déposer : réaffecter une intervention comme
 
-**Open — to build (74)**
+**Open — to build (256)**
 
 - `ERR114` — [ventes/quote_engine]
 - `N100` — Build out multi-tenant operation on the existing tenant_id foundation (strict…
@@ -1735,45 +1714,100 @@ Things this map could not fully verify from source — do not over-trust:
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `ODX20` — App Achats — étape 2 (vues/urls/flux stock/frontend)
 - `ODX22` — Étendre les contrats import-linter au graphe post-découpage
+- `WIR19` — Bouton Historique sur les fiches lead/devis/ticket pour non-privilégiés
 - `WIR21` — Basculer les 4 écrans à vues sauvegardées sur le système serveur `uxviews` (+ lien menu…
+- `WIR48` — Imports CSV/XLSX véhicules/contrats/dossiers RH + modes d'import restreints
+- `WIR55` — Enregistrer le module frontend Crédit client (7 composants construits, zéro montage) et…
+- `WIR56` — Assurances : écran de création de police (bouton « Nouvelle police » = lien mort) +…
+- `WIR57` — Enregistrer le module frontend Hôtellerie (5 écrans construits, aucun registre)
+- `WIR58` — Encaisser une facture/devis existant au comptoir POS
 - `WIR59` — Onboarding « Premiers pas » : câbler les 4 événements manquants et fusionner les deux…
 - `WIR60` — Construire l'endpoint FastAPI `/kb/redaction` (toolbar IA de l'éditeur KB : 404…
+- `WIR61` — Étendre le rule-builder Automatisations aux 5 déclencheurs manquants + panneau webhook…
+- `WIR62` — Système de demandes d'approbation ad-hoc (`ApprovalRequestType`/`ApprovalRequest`) …
 - `WIR63` — Monter les deux composants adsengine orphelins (EngagementAudiencePicker +…
+- `WIR64` — Construire la capture de lead publique de `FormulaireIntake` (FG206) — PRÉALABLE à…
+- `WIR65` — Compléter le calendrier marketing unifié avec les 3 sources manquantes
+- `WIR66` — API CRUD des référentiels `TauxTVA`/`ConditionPaiement`/`UniteMesure` + section…
+- `WIR67` — Champs personnalisés : couvrir les 11 modules enregistrés + activer `kb_article`
+- `WIR68` — Câbler chatter + export/import des Entités
+- `WIR69` — Adminops : peupler le tableau de bord d'adoption + lien PDF du journal d'administration
+- `WIR70` — Surfacer les surfaces GED déjà exposées : timeline, rapport ACL, favoris/récents/vues…
+- `WIR71` — Surfacer les lectures obligatoires KB
+- `WIR72` — Bouton suivre/ne plus suivre réutilisant `records.Follower`
 - `WIR73` — Planifier `migrate_attachments_to_ged` en récurrent
 - `WIR74` — Formulaires de création des 4 onglets d'`EcheancesPage.jsx` (contrats)
 - `WIR75` — Compléter les onglets et champs personnalisés de `ContratDetail.jsx`
 - `WIR76` — Formulaires de création sur `FinancesPage.jsx` (contrats)
+- `WIR77` — Afficher le CLV, le rollback de campagne de révision et le nom du client sur les…
 - `WIR78` — MÉTA — Corriger les cases [x] mensongères des plans (backend livré, frontend jamais…
 - `WIR79` — MÉTA — Mettre à jour `docs/FRONTEND_GAP_PLAN.md` (entrées périmées)
 - `WIR80` — MÉTA — Garde « réconcilier avant de construire » sur 3 tâches ouvertes qui créeraient…
+- `WIR81` — Consolider les deux moteurs « territoire » et retirer le double montage d'URL du legacy
+- `WIR82` — Un seul calcul de classement commercial
+- `WIR83` — Une seule source pour la correspondance module→modèle des champs personnalisés
 - `WIR84` — Consolider (ou câbler) les tableaux de bord Quote-to-Cash de ventes sans consommateur
 - `WIR85` — Brancher l'écriture de stock automatique (inventaire permanent XACC6, zéro appelant en…
 - `WIR86` — DÉCISION — Programme/Projet multi-chantiers (FG291-301) : consolider ou construire
 - `WIR87` — Sous-traitant : pointer l'UI sur le master DC34 et fusionner…
+- `WIR88` — Router `_create_underperf_ticket` via `apps.sav.services` (frontière services, pas…
 - `WIR89` — Contrôle de cohérence CNSS/AMO/CIMR entre `rh.DossierEmploye` et `paie.ProfilPaie`
+- `WIR90` — Liens optionnels vers `stock.Fournisseur` pour `Garage` et `ContratVehicule` (éviter la…
 - `WIR91` — Rattacher `education.Famille` à `crm.Client` (jamais dupliquer les coordonnées)
 - `WIR92` — String-FK optionnel `employe_id` (rh.DossierEmploye) sur `sante.Praticien`
 - `WIR93` — Trancher et réconcilier les deux systèmes de limite/hold crédit (après livraison de…
 - `WIR94` — Router les documents du portail client vers le stockage GED canonique
 - `WIR95` — Remplacer les références opaques `*_id` du module portail par de vraies FK…
 - `WIR96` — Câbler `OuverturePartage` et `RelanceDevisAbandonne` des deux côtés (ventes →…
+- `WIR97` — Ancrer les référentiels ARC23/24/27 comme sources uniques via FK (au lieu de miroirs de…
+- `WIR98` — Rattacher `PartieContrat` au référentiel contacts canonique
 - `WIR99` — Brancher `crm.SiteProfile` sur le pré-remplissage du générateur de devis + écran…
+- `WIR100` — Brancher les 3 endpoints reporting orphelins comme cartes de tableau de bord
+- `WIR101` — Brancher le group-by champ personnalisé depuis l'écran d'administration des custom…
+- `WIR102` — Analytique SAV : pivot/coût moyen/taux d'attache sur un écran de reporting existant
 - `WIR103` — Exposer le palier avancé facturation/recouvrement (note de débit + proforma d'abord)
 - `WIR104` — Trancher la localité du cluster réglementaire/mise-en-service de ventes…
+- `WIR105` — CPQ : trancher le configurateur guidé (FG211) + écrans de configuration des règles
+- `WIR106` — Écrans e-facturation DGI (`einvoice`) et calendrier fiscal (`fiscal`), aujourd'hui…
 - `WIR107` — UI des sous-ensembles comptables avancés à plus forte valeur (NTFIN + écritures…
 - `WIR108` — Fiche fournisseur : acomptes, avoirs, contacts multiples et catégories
 - `WIR109` — Écrans inventaire/stock avancé : lots FEFO, inventaire annuel, revalorisations…
+- `WIR110` — Approvisionnement avancé installations : 6 familles d'endpoints sans écran
+- `WIR111` — Logistique avancée : étendre Magasin/Logistique aux 8 endpoints voisins non couverts
+- `WIR112` — Écran Équipe canonique (DC40) + clarifier les 3 référentiels « Équipe »
 - `WIR113` — Suivi GPS terrain (XFSM23) : clarifier le périmètre avant de construire (et réconcilier…
+- `WIR114` — Interventions avancées : astreintes/indisponibilités, modèles de fiche + récurrences…
+- `WIR115` — Décider du sort des 20+ modèles QHSE sans aucune API — `CheckinSecurite` d'abord
+- `WIR116` — Bouton « Étiquettes QR » équipement + lien public
+- `WIR117` — SAV Paramètres : picker de pièces compatibles + alias e-mail des catégories
 - `WIR118` — Formulaire de création de prêt d'équipement (loaner)
+- `WIR119` — Panneau worksheet de maintenance sur le ticket + onglet modèles en Paramètres
+- `WIR120` — Section « Avancé » du contrat de maintenance SAV
+- `WIR121` — Surfacer les 4 endpoints d'analyse SAV fleet-wide
 - `WIR122` — Monitoring : câbler suppression de relevé, historique mensuel + export CSV, drill-down…
 - `WIR123` — Écran Abonnements de supervision (revenu récurrent)
+- `WIR124` — Câbler les actions d'écriture des 4 onglets d'`Inspections.jsx` (ITP, Audits…
+- `WIR125` — Rendre opérable la notation de fin de chantier (`NotationFinChantier`)
 - `WIR126` — Câbler les actions d'écriture des onglets de `Risques.jsx` — Incidents et Permis/LOTO…
+- `WIR127` — Câbler les actions d'écriture des 10 onglets d'`Environnement.jsx` — bilan carbone et…
+- `WIR128` — Remplacer `PermisTravail.delivre_par`/`valide_par` (texte libre) par des FK…
+- `WIR129` — Cockpit ESG : création de période + comparateur N/N-1 + export DPEF
+- `WIR130` — Registres ESG : documents de politique RSE + bibliothèque de facteurs d'émission
 - `WIR131` — Surfacer Feedback 360° et Badges de reconnaissance RH
+- `WIR132` — Écran Garanties flotte (`GarantieFlotte`, XFLT14)
+- `WIR133` — DÉCISION fondateur — sinistres/infractions/télématique/trajets chantier : saisie…
+- `WIR134` — Écran d'administration « Sécurité & Identité » (module `apps/identity`, zéro frontend)
+- `WIR135` — Écran d'administration « Gouvernance des accès » (`apps/accessreview` + rapport de…
 - `WIR136` — Nettoyer le montage d'URL identity/accessreview
+- `WIR137` — Surfacer la progression des jobs de fond (`core/jobs-status/`)
 - `WIR138` — Trancher le socle e-signature canonique (parquer ou brancher `core.esign`)
+- `WIR139` — Aligner le catalogue d'événements sur les vrais kwargs des signaux + garde de parité…
+- `WIR140` — Évaluer la consolidation d'`adsengine/anomaly.py` sur le socle `core.anomaly`
 - `WIR141` — Vertical agriculture : formulaires CRUD manquants + écran Irrigation
 - `WIR142` — Écrans d'administration santé (admissions, conventions/grilles, actes…
 - `WIR143` — Construire le module frontend `education` en entier (zéro fichier frontend aujourd'hui)
+- `WIR144` — Afficher le flux KPI fédéré `kpi_providers` sur au moins un tableau de bord
+- `WIR145` — Surfaces assurances : couverture par actif sur la fiche véhicule, checklist conformité…
 - `WIR146` — Écrans opérationnels hospitality : check-in/out (fiche de police), recettes, événements…
 - `WIR147` — Immobilier : CRUD du patrimoine (Site/Bâtiment/Niveau/Local) + écran Locataires
 - `WIR148` — Écran de gestion des Baux (signature, révision, dépôt, échéancier, quittancement…
@@ -1782,18 +1816,145 @@ Things this map could not fully verify from source — do not over-trust:
 - `WIR151` — Formulaire de création de commande retrait (Click & Collect)
 - `WIR152` — Écrans Tiers : répertoire unifié + rapport de doublons
 - `WIR153` — Hygiène IA : panneau diagnostic `/sql-agent/schema`, retrait des outils LangChain…
+- `WIR154` — Écrans d'administration Notifications : règles de routage, calendrier ouvré/fériés…
 - `WIR155` — Chat : actions rapides du composeur (fils, rappels, favoris, envoi programmé…
+- `WIR156` — Chat : statut personnalisé + Ne pas déranger + présence des collègues
 - `WIR157` — Chat admin : politique de rétention (loi 09-08/CNDP) + alias email de canal + export de…
+- `WIR158` — Afficher le changelog public dans l'ERP
+- `WIR159` — Écran « Marketplace » du catalogue d'extensions
+- `WIR160` — UI du softphone VoIP (config, identifiants, click-to-call, journal)
+- `WIR161` — Écran journal d'appels commercial (click-to-call log)
 - `WIR162` — Événements marketing : billets, questions, types, communications
 - `WIR163` — API + écran de gestion pour `ged.AclGed`
 - `WIR164` — GED avancée (périmètre fondateur à confirmer) : checklist/OCR/tampons + moteur de…
 - `WIR165` — Brancher un émetteur réel pour `core.events.document_produit` (ou documenter l'abandon…
+- `WIR166` — Module Appels d'offres : écrans SPA (ou hors-périmètre confirmé) + lien lead CRM
 - `WIR167` — Compléter `docs/CODEMAP.md` §4 : sections manquantes `paie`, `pos`, `portail`…
 - `WIR168` — Marquer explicitement les apps backend volontairement headless (`module.config.jsx`…
 - `XACC12` — Position fiscale des tiers (exonérations avec attestation)
 - `XPOS19` — E-commerce transactionnel : checkout direct des petits articles (panier → paiement CMI…
 - `YAPIC6` — Contrôle CI « schéma OpenAPI sans avertissement » + snapshot versionné
 - `YCASH5` — Annulation d'une facture après acompte : réversion de l'acompte tracée mais AUCUNE…
+- `LW41` — `chatter_recent` doit vraiment économiser la requête historique
+- `LW42` — `changeStage` : messages d'erreur fidèles
+- `LW43` — Gardes d'identité sur les données d'affichage hors-moteur
+- `LW44` — ⌘K : Récents au bon nom + focus WhatsApp réel
+- `LW45` — Hygiène résiduelle : cache préchargement au logout + chips QX28 état manquant +…
+- `PUB1` — Routes backend `signaux/` + `signaux/cohorte/`
+- `PUB2` — Actions `file-voi/`, `<id>/tests/`, `tests/<id>/leads/` sur `noeuds-hypothese/`
+- `PUB3` — Monter `BreakdownsPanel` (démographie/placement/région/heure)
+- `PUB4` — Monter `DaypartingGrid`
+- `PUB5` — Monter `EngagementAudiencePicker`
+- `PUB6` — Écran « Table des faits » (AGEN1)
+- `PUB7` — Réparer l'affichage des échecs d'action
+- `PUB8` — Surfacer `video_metrics` complets
+- `PUB9` — Éditeur complet des garde-fous
+- `PUB10` — Parité permissions UI
+- `PUB11` — Surfacer les stats de l'Arbre
+- `PUB12` — Décider les endpoints orphelins
+- `PUB13` — Surfacer `learning_stage_info` brut + `last_sig_edit`
+- `PUB14` — E2e des écrans non couverts
+- `PUB15` — Câbler `rewards.py` (boucle de récompense du bandit)
+- `PUB16` — Câbler le pipeline de génération IA ancrée
+- `PUB17` — Câbler réellement le scheduler VoI
+- `PUB18` — Nourrir les postérieurs de l'Arbre avec les résultats RÉELS
+- `PUB19` — Planifier `run_daily_reconciliation`
+- `PUB20` — Mort du token = alerte, jamais le silence
+- `PUB21` — Persister autonomie + kill-switch en base
+- `PUB22` — Composeurs manuels pour TOUS les kinds d'action
+- `PUB23` — Armer les règles depuis l'UI
+- `PUB24` — Protéger `upsert_insight` des re-syncs partiels
+- `PUB25` — Statuer sur chaque module mort restant
+- `PUB26` — Vérifier la signature HMAC du webhook Lead Ads
+- `PUB27` — CTWA sans lead existant = attribution échouée
+- `PUB28` — Taxonomie junk-lead + taux par annonce
+- `PUB29` — Étendre `wiring-health` + audit aux clés manquantes
+- `PUB30` — Événement CAPI « visite technique effectuée »
+- `PUB31` — Valeur estimée du devis sur l'événement QUOTE_SENT
+- `PUB32` — Sync des diagnostics de classement Meta
+- `PUB33` — Vigie vélocité d'apprentissage
+- `PUB34` — Règle de santé structurelle (doctrine Andromeda 2025)
+- `PUB35` — Ingestion des colonnes « Incremental Attribution » natives Meta
+- `PUB36` — Cockpit de décrochage par étape, PAR variante
+- `PUB37` — Flag no-show sur les RDV + taux par annonce
+- `PUB38` — Harnais d'incrémentalité geo-holdout (GeoLift-style)
+- `PUB39` — Re-valider les fenêtres d'attribution (refonte Meta mars 2026)
+- `PUB40` — Sélecteur de période + comparaison partout
+- `PUB41` — Fraîcheur + panne visibles
+- `PUB42` — File « Aujourd'hui » unifiée
+- `PUB43` — Vues enregistrées un-clic
+- `PUB44` — Fiche « histoire complète » d'une ad
+- `PUB45` — Annuler = proposer l'inverse
+- `PUB46` — Assistant de connexion guidé
+- `PUB47` — Exports dignes d'être montrés
+- `PUB48` — Centre de notifications persistant
+- `PUB49` — Annotations de décision sur les courbes
+- `PUB50` — Gabarits de proposition réutilisables
+- `PUB51` — Raccourcis + palette de commandes
+- `PUB52` — Comparateur côte-à-côte
+- `PUB53` — Liens retour Lead/Devis → annonce d'origine
+- `PUB54` — Aide contextuelle FR (« ? » pédagogiques)
+- `PUB55` — Chatter de campagne (pattern CRM)
+- `PUB56` — Tables responsives mobiles
+- `PUB57` — Digest quotidien actionnable + tuile score d'audit
+- `PUB58` — Audiences « devis vu / jamais ouvert »
+- `PUB59` — Audience « devis expiré »
+- `PUB60` — Audiences cross-sell base installée
+- `PUB61` — Lookalike « signatures réelles »
+- `PUB62` — Carte chaleur ville : CPL, coût-par-signature, ticket moyen
+- `PUB63` — Pipeline témoignage → brief créatif
+- `PUB64` — Calculateur recyclage COLD
+- `PUB65` — Parrainage → graine publicitaire
+- `PUB66` — Halo géographique autour des installations
+- `PUB67` — Saisonnalité pilotée par l'historique RÉEL
+- `PUB68` — SLA première réponse + temps-de-réponse par annonce
+- `PUB69` — Carte de partage client trackable
+- `PUB70` — Veille concurrentielle (Ad Library, périmètre honnête)
+- `PUB71` — Mine de questions des commentaires
+- `PUB72` — Mine des objections CRM
+- `PUB73` — Pipeline photo-chantier → créathèque
+- `PUB74` — Fatigue au niveau du VISUEL
+- `PUB75` — Registre de consentement image/témoignage (CNDP loi 09-08)
+- `PUB76` — Expiration/rafraîchissement des assets
+- `PUB77` — Champ langue + parseur
+- `PUB78` — Calendrier créatif marocain
+- `PUB79` — Déclencheur météo
+- `PUB80` — Couverture formats + segments
+- `PUB81` — ROI par lane de fabrique
+- `PUB82` — Rétention par scène de script
+- `PUB83` — Kit de marque + vignette
+- `PUB84` — Provenance durable par asset
+- `PUB85` — Variantes localisées par ville
+- `PUB86` — Registre de qualité des décisions (regret)
+- `PUB87` — Calculateur MDE/puissance opérateur
+- `PUB88` — Livre de compte de l'exploration
+- `PUB89` — Score qualité de la chaîne d'attribution
+- `PUB90` — Feedback utile/faux-positif sur les alertes
+- `PUB91` — Backtest de règle sur l'historique réel
+- `PUB92` — Arrêt par perte espérée
+- `PUB93` — Fenêtre glissante du bandit (non-stationnarité)
+- `PUB94` — Dérive des postérieurs + branches mortes
+- `PUB95` — Détection de cannibalisation
+- `PUB96` — La dépense pub entre en compta
+- `PUB97` — Surveillance du solde prépayé Meta
+- `PUB98` — TVA auto-liquidation des factures Meta
+- `PUB99` — Enregistrer adsengine au registre plateforme (ARC28)
+- `PUB100` — Rétention/purge CNDP des miroirs
+- `PUB101` — Santé du compte lue, pas devinée
+- `PUB102` — Vigie de version Graph API
+- `PUB103` — Quatre yeux optionnel sur l'approbation
+- `PUB104` — Rollup/archivage des snapshots
+- `PUB105` — Rejeu webhook/backfill après panne
+- `PUB106` — Chat NL « interroge ton compte pub »
+- `PUB107` — [GATED: décision WhatsApp Cloud API (même porte qu'ADSENG34)] Boîte de réception…
+- `PUB108` — [GATED: décision WhatsApp Cloud API] Réponse instantanée + qualification WhatsApp Flows
+- `PUB109` — [GATED: décision WhatsApp Cloud API] Relances drip marketing WhatsApp
+- `PUB110` — [GATED: clé LLM + revue anti-hallucination (même porte que le commentaire LLM des…
+- `PUB111` — [GATED: budget fondateur — dépendance payante] Tier vidéo AI-UGC (Arcads/Creatify-style)
+- `PUB112` — [GATED: décision fondateur — touche le cœur décisionnel] Bandit « toujours actif » au…
+- `PUB113` — [GATED: vertical SK Paysages — décision produit fondateur] Généraliser le moteur…
+- `PUB114` — [GATED: numéro dédié + coût télécom] Suivi d'appels par annonce + rappel SMS d'appel…
+- `PUB115` — Garde de contrat API front↔back
 - `QXG1` — [GATED: founder account]
 - `QXG2` — [GATED: founder account]
 - `QXG3` — [GATED: founder data]

@@ -2,10 +2,22 @@
    Contrôle minimal, style cohérent avec la fiche existante.
    Un clic sur « Planifier une visite » révèle un mini-formulaire
    (date/heure + notes optionnelles) ; la soumission POST /crm/appointments/
-   et affiche les RDV existants du lead. Aucun état global Redux : local only. */
+   et affiche les RDV existants du lead. Aucun état global Redux : local only.
+
+   LW36 — sortie de l'inline : les 30 blocs de style en ligne (px bruts,
+   radius 6/8/10 — recon 04 §2) migrent vers des classes `.lw-booker*`
+   (index.css, tokens) + les primitives du kit compatibles SANS changement de
+   comportement (Badge pour la pastille de statut, Button/Input/Label pour
+   les contrôles) — aucune logique touchée (LW6 a déjà traité cancel/form). */
 import { useState, useEffect, useCallback } from 'react'
 import crmApi from '../../../api/crmApi'
 import { formatDateTime } from '../../../lib/format'
+import { Badge, Button, Input, Label } from '../../../ui'
+// LW6 — toast d'erreur explicite quand l'annulation échoue (import direct,
+// même convention que PlaybookChecklistPanel.jsx/KanbanView.jsx dans ce
+// même dossier — ce fichier est un composant JSX, jamais exécuté sous
+// `node --test`, donc aucune contrainte d'import paresseux ici).
+import { toast } from '../../../ui/confirm'
 
 const STATUS_LABELS = {
   planifie: 'Planifié',
@@ -35,6 +47,10 @@ export default function AppointmentBooker({ leadId }) {
   const [error, setError] = useState(null)
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
+  // LW6 — id du RDV en cours d'annulation (bouton désactivé pendant la
+  // requête, jamais un échec silencieux qui laisse croire au commercial que
+  // le RDV a bien été annulé alors qu'il tient toujours — double-booking).
+  const [cancellingId, setCancellingId] = useState(null)
   // VX245(b) — aperçu du message de confirmation WhatsApp avant ouverture de
   // wa.me : { apptId, message, wa_url } | null.
   const [waPreview, setWaPreview] = useState(null)
@@ -49,8 +65,12 @@ export default function AppointmentBooker({ leadId }) {
 
   useEffect(() => { load() }, [load])
 
+  // LW6 — plus de balise `form` (soumission au clic ET à Entrée, gérée
+  // localement ci-dessous) : `e` peut désormais être un KeyboardEvent, un
+  // MouseEvent, ou absent — `preventDefault` optionnel, jamais requis
+  // (aucune soumission de formulaire natif à bloquer).
   async function handleBook(e) {
-    e.preventDefault()
+    e?.preventDefault?.()
     if (!scheduledAt) { setError('La date et heure sont requises.'); return }
     setSaving(true)
     setError(null)
@@ -71,12 +91,20 @@ export default function AppointmentBooker({ leadId }) {
     }
   }
 
+  // LW6 — l'échec était avalé en silence (`catch {}`) : le commercial
+  // croyait le RDV annulé alors qu'il tenait toujours (double-booking client
+  // réel, recon 05 P2#11). Toast d'erreur explicite + bouton désactivé
+  // pendant la requête ; en échec, `load()` n'est PAS rappelé — la liste
+  // reste honnête, le RDV toujours affiché puisqu'il n'a pas été annulé.
   async function handleCancel(apptId) {
+    setCancellingId(apptId)
     try {
       await crmApi.updateAppointment(apptId, { statut: 'annule' })
       load()
     } catch {
-      // best-effort
+      toast.error('Annulation du rendez-vous impossible — réessayez.')
+    } finally {
+      setCancellingId(null)
     }
   }
 
@@ -114,58 +142,34 @@ export default function AppointmentBooker({ leadId }) {
   const upcoming = appointments.filter(a => a.statut !== 'annule' && a.statut !== 'effectue')
 
   return (
-    <div style={{ marginTop: 12 }}>
+    <div className="lw-booker">
       {/* Liste des RDV existants */}
-      {/* VX193 — les variables `--color-*` référencées ici n'existent nulle
-          part dans tokens.css (aucun fallback appliqué en dark mode, où le
-          navigateur retombe sur `unset`) ; migrées vers les vrais tokens
-          (`--muted-foreground`, `--muted`, `--success`, `--warning`,
-          `--destructive`). */}
       {!loading && upcoming.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 12, color: 'var(--muted-foreground)', marginBottom: 4 }}>
-            Visites planifiées
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div className="lw-booker-upcoming">
+          <div className="lw-booker-upcoming-label">Visites planifiées</div>
+          <div className="lw-booker-list">
             {upcoming.map(a => (
-              <div key={a.id} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '6px 10px',
-                background: 'var(--muted)',
-                borderRadius: 6, fontSize: 13,
-              }}>
-                <span style={{ fontWeight: 500 }}>
+              <div key={a.id} className="lw-booker-row">
+                <span className="lw-booker-datetime">
                   {/* VX75 — variante lisible « 18 juin 2026, 14:05 » via
                       formatDateTime(..., { long: true }), une seule source
                       de vérité (lib/format.js) au lieu d'un toLocaleString
                       natif dupliqué. */}
                   {formatDateTime(a.scheduled_at, { long: true })}
                 </span>
-                <span style={{
-                  fontSize: 11, padding: '2px 6px', borderRadius: 10,
-                  background: a.statut === 'confirme'
-                    ? 'color-mix(in oklch, var(--success) 18%, transparent)'
-                    : 'color-mix(in oklch, var(--warning) 18%, transparent)',
-                  color: a.statut === 'confirme'
-                    ? 'var(--success)'
-                    : 'var(--warning)',
-                }}>
+                {/* LW36 — pastille de statut : ui/Badge (tons tokenisés),
+                    remplace le fond/texte conditionnel en inline. */}
+                <Badge tone={a.statut === 'confirme' ? 'success' : 'warning'}>
                   {STATUS_LABELS[a.statut] ?? a.statut}
-                </span>
+                </Badge>
                 {a.notes && (
-                  <span style={{ color: 'var(--muted-foreground)', fontSize: 12, flex: 1 }}>
-                    — {a.notes}
-                  </span>
+                  <span className="lw-booker-notes">— {a.notes}</span>
                 )}
                 {/* VX245(a) — .ics d'événement unique pour CE rendez-vous. */}
                 <button
                   type="button"
                   onClick={() => handleDownloadIcs(a.id)}
-                  style={{
-                    fontSize: 11, color: 'var(--muted-foreground)',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '0 4px', marginLeft: 'auto',
-                  }}
+                  className="lw-booker-link lw-booker-link--muted lw-booker-link--push"
                   title="Télécharger un fichier .ics pour cet unique rendez-vous"
                 >
                   📅 Agenda
@@ -175,11 +179,7 @@ export default function AppointmentBooker({ leadId }) {
                 <button
                   type="button"
                   onClick={() => handleConfirmWhatsapp(a.id)}
-                  style={{
-                    fontSize: 11, color: 'var(--success)',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '0 4px',
-                  }}
+                  className="lw-booker-link lw-booker-link--success"
                   title="Aperçu du message de confirmation WhatsApp"
                 >
                   Confirmer par WhatsApp
@@ -187,132 +187,107 @@ export default function AppointmentBooker({ leadId }) {
                 <button
                   type="button"
                   onClick={() => handleCancel(a.id)}
-                  style={{
-                    fontSize: 11, color: 'var(--destructive)',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '0 4px',
-                  }}
+                  disabled={cancellingId === a.id}
+                  className="lw-booker-link lw-booker-link--destructive"
                   title="Annuler ce rendez-vous"
                 >
-                  Annuler
+                  {cancellingId === a.id ? 'Annulation…' : 'Annuler'}
                 </button>
               </div>
             ))}
           </div>
-          {/* VX245(b) — aperçu inline (pas de Dialog ici — composant léger,
-              styles inline cohérents avec le reste du fichier) avant
-              ouverture de wa.me. Jamais un envoi automatique. */}
+          {/* VX245(b) — aperçu inline (pas de Dialog ici — composant léger)
+              avant ouverture de wa.me. Jamais un envoi automatique. */}
           {waPreview && (
-            <div style={{
-              marginTop: 6, padding: '8px 10px',
-              background: 'var(--muted)',
-              border: '1px solid var(--border)',
-              borderRadius: 8, fontSize: 12,
-            }}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            <div className="lw-booker-wa-preview">
+              <div className="lw-booker-wa-preview-title">
                 Aperçu du message WhatsApp
               </div>
-              <pre style={{
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0,
-                fontFamily: 'inherit',
-              }}>
+              <pre className="lw-booker-wa-preview-text">
                 {waPreview.message}
               </pre>
-              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  style={{ fontSize: 12, padding: '3px 10px' }}
-                  disabled={!waPreview.wa_url}
-                  onClick={openWhatsapp}
-                >
+              <div className="lw-booker-wa-preview-actions">
+                <Button type="button" variant="default" size="sm" disabled={!waPreview.wa_url} onClick={openWhatsapp}>
                   Ouvrir WhatsApp
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline-secondary"
-                  style={{ fontSize: 12, padding: '3px 10px' }}
-                  onClick={() => setWaPreview(null)}
-                >
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setWaPreview(null)}>
                   Annuler
-                </button>
+                </Button>
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Bouton / formulaire — VX193 : disclosure sans aria-expanded/
-          aria-controls, labels nus (pas de htmlFor/id), erreur non annoncée. */}
+      {/* Bouton / formulaire — disclosure : aria-expanded reflète l'état
+          réel (ce bouton n'existe que quand !open, donc toujours false tant
+          qu'il est rendu) ; aria-controls pointe vers le groupe ci-dessous
+          (id="appt-booker-form", hook stable — testé en LW6). */}
       {!open ? (
-        <button
-          type="button"
-          className="btn btn-outline-secondary"
-          style={{ fontSize: 13, padding: '4px 12px' }}
+        <Button
+          type="button" variant="outline" size="sm" className="lw-booker-toggle"
           aria-expanded={false}
           aria-controls="appt-booker-form"
           onClick={() => setOpen(true)}
         >
           + Planifier une visite
-        </button>
+        </Button>
       ) : (
-        <form id="appt-booker-form" onSubmit={handleBook} style={{
-          display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end',
-          padding: '10px', background: 'var(--muted)',
-          borderRadius: 8, border: '1px solid var(--border)',
-        }}>
-          <div className="form-group" style={{ flex: '1 1 180px', margin: 0 }}>
-            <label className="form-label" htmlFor="appt-scheduled-at" style={{ fontSize: 12 }}>
-              Date et heure <span style={{ color: 'var(--destructive)' }}>*</span>
-            </label>
-            <input
+        // LW6 — une balise `form` ici imbriquait un formulaire DANS le
+        // formulaire de LeadForm (HTML invalide, propriété du Enter
+        // fragile, recon 05 P2#10). `div role="group"` = équivalent
+        // sémantique pour un groupe de contrôles ; la soumission au clic
+        // (bouton Confirmer) et à Entrée (onKeyDown ci-dessous, réservé aux
+        // champs texte — comme un formulaire natif, jamais sur les boutons
+        // qui gèrent déjà Entrée eux-mêmes) est gérée localement.
+        <div
+          id="appt-booker-form"
+          role="group"
+          aria-label="Planifier une visite"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !saving) {
+              e.preventDefault()
+              handleBook(e)
+            }
+          }}
+          className="lw-booker-form"
+        >
+          <div className="lw-booker-field lw-booker-field--date">
+            <Label htmlFor="appt-scheduled-at" required>Date et heure</Label>
+            <Input
               id="appt-scheduled-at"
               type="datetime-local"
-              className="form-control"
-              style={{ fontSize: 13 }}
               value={scheduledAt}
               onChange={e => setScheduledAt(e.target.value)}
-              aria-invalid={!!error}
+              invalid={!!error}
               aria-describedby={error ? 'appt-error' : undefined}
               required
             />
           </div>
-          <div className="form-group" style={{ flex: '2 1 200px', margin: 0 }}>
-            <label className="form-label" htmlFor="appt-notes" style={{ fontSize: 12 }}>Notes (optionnel)</label>
-            <input
+          <div className="lw-booker-field lw-booker-field--notes">
+            <Label htmlFor="appt-notes">Notes (optionnel)</Label>
+            <Input
               id="appt-notes"
               type="text"
-              className="form-control"
-              style={{ fontSize: 13 }}
               value={notes}
               onChange={e => setNotes(e.target.value)}
               placeholder="Objet de la visite…"
             />
           </div>
           {error && (
-            <div id="appt-error" role="alert" style={{ width: '100%', color: 'var(--destructive)', fontSize: 12 }}>
+            <div id="appt-error" role="alert" className="lw-booker-error">
               {error}
             </div>
           )}
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              style={{ fontSize: 13, padding: '4px 14px' }}
-              disabled={saving}
-            >
+          <div className="lw-booker-form-actions">
+            <Button type="button" variant="default" size="sm" disabled={saving} onClick={handleBook}>
               {saving ? 'Enregistrement…' : 'Confirmer'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline-secondary"
-              style={{ fontSize: 13, padding: '4px 12px' }}
-              onClick={() => { setOpen(false); setError(null) }}
-            >
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => { setOpen(false); setError(null) }}>
               Annuler
-            </button>
+            </Button>
           </div>
-        </form>
+        </div>
       )}
     </div>
   )
