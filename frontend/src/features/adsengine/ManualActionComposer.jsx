@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Send, BookmarkPlus, Wand2 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+// PUB4 — grille dayparting (ADSDEEP36) montée pour le kind set_schedule.
+import DaypartingGrid from './DaypartingGrid'
 
 /* ============================================================================
    PUB22 — Composeur d'action manuel GÉNÉRIQUE (piloté par manualActions.js).
@@ -74,6 +76,9 @@ export default function ManualActionComposer({ descriptor, target, onProposed })
       if (f.type === 'json') {
         if (raw == null || String(raw).trim() === '') { out[f.name] = undefined; continue }
         try { out[f.name] = JSON.parse(raw) } catch { jsonError = `Champ « ${f.label} » : JSON invalide.` }
+      } else if (f.type === 'daypart') {
+        // PUB4 — la valeur est déjà un objet {jour:[24]} (contrôlé) : pas de parse.
+        out[f.name] = raw
       } else {
         out[f.name] = raw
       }
@@ -145,18 +150,26 @@ export default function ManualActionComposer({ descriptor, target, onProposed })
       {descriptor.fields.map(f => (
         <label key={f.name} style={{ display: 'block', marginBottom: '0.5rem' }}>
           <span style={{ fontSize: '0.85rem', color: '#475569' }}>{f.label}</span>
-          {f.type === 'json'
+          {f.type === 'daypart'
             ? (
-              <textarea className="form-input" data-testid={`ae-maction-field-${f.name}`}
-                value={values[f.name] || ''} onChange={e => setField(f.name, e.target.value)}
-                placeholder={f.placeholder} rows={3} required={f.required} />
-            ) : (
-              <input className="form-input" data-testid={`ae-maction-field-${f.name}`}
-                type={f.type === 'number' ? 'number' : 'text'}
-                step={f.type === 'number' ? 'any' : undefined}
-                value={values[f.name] || ''} onChange={e => setField(f.name, e.target.value)}
-                placeholder={f.placeholder} required={f.required} />
-            )}
+              // PUB4 — grille heure×jour (ADSDEEP36) montée dans le composeur.
+              <div data-testid={`ae-maction-field-${f.name}`}>
+                <DaypartingGrid value={values[f.name]}
+                  onChange={g => setField(f.name, g)} />
+              </div>
+            )
+            : f.type === 'json'
+              ? (
+                <textarea className="form-input" data-testid={`ae-maction-field-${f.name}`}
+                  value={values[f.name] || ''} onChange={e => setField(f.name, e.target.value)}
+                  placeholder={f.placeholder} rows={3} required={f.required} />
+              ) : (
+                <input className="form-input" data-testid={`ae-maction-field-${f.name}`}
+                  type={f.type === 'number' ? 'number' : 'text'}
+                  step={f.type === 'number' ? 'any' : undefined}
+                  value={values[f.name] || ''} onChange={e => setField(f.name, e.target.value)}
+                  placeholder={f.placeholder} required={f.required} />
+              )}
         </label>
       ))}
 

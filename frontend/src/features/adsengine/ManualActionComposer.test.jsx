@@ -116,4 +116,24 @@ describe('ManualActionComposer', () => {
     expect(payload.kind).toBe('set_spend_cap')
     expect(payload.payload.spend_cap).toBe('9000')
   })
+
+  it('PUB4 : set_schedule monte la grille dayparting et propose une action', async () => {
+    const descriptor = findAction('set_schedule', 'adset')
+    render(<ManualActionComposer descriptor={descriptor}
+      target={{ metaId: 'as-1', scope: 'adset' }} />)
+    // La grille (ADSDEEP36) est VISIBLE dans le composeur.
+    expect(screen.getByTestId('dp-grid')).toBeInTheDocument()
+    // Bascule une heure puis propose (mode curated → proposeCurated).
+    fireEvent.click(screen.getByTestId('dp-cell-mon-9'))
+    fireEvent.change(screen.getByTestId('ae-maction-reason'), { target: { value: 'Heures ouvrables.' } })
+    fireEvent.click(screen.getByTestId('ae-maction-submit'))
+    await waitFor(() => expect(mocks.proposeCurated).toHaveBeenCalled())
+    const [kind, params] = mocks.proposeCurated.mock.calls[0]
+    expect(kind).toBe('set_schedule')
+    expect(params.adset_id).toBe('as-1')
+    // Le payload porte la grille (objet {jour:[24]}), pas un JSON brut.
+    expect(params.grid).toBeTypeOf('object')
+    expect(Array.isArray(params.grid.mon)).toBe(true)
+    expect(params.reason_fr).toBe('Heures ouvrables.')
+  })
 })
