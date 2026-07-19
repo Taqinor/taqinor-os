@@ -145,6 +145,24 @@ class GuardrailConfig(TenantModel):
     exploration_floor_pct = models.PositiveIntegerField(
         default=20, verbose_name="Plancher d'exploration (%)")
 
+    # ── SIG1 — Poids FIXES des DEUX scores de santé (§11 : une vente lente
+    # côté opérations ne doit JAMAIS salir l'allocation créative — d'où deux
+    # scores séparés plutôt qu'un composite). Poids config-driven,
+    # RÉVISÉS TRIMESTRIELLEMENT par un humain, JAMAIS appris (Goodhart : un
+    # poids CTR appris pousserait au clickbait, un poids conversations au
+    # curieux — §11 « le composite reste HORS de l'optimiseur »). Chaque paire
+    # (créatif : ctr+freshness ; opérations : cpl+delivery) est pondérée en
+    # moyenne relative — la somme n'a PAS besoin de faire 100, ``health.py``
+    # normalise par la somme des poids.
+    health_creative_weight_ctr = models.PositiveIntegerField(
+        default=60, verbose_name='Santé créatif — poids CTR')
+    health_creative_weight_freshness = models.PositiveIntegerField(
+        default=40, verbose_name='Santé créatif — poids fraîcheur')
+    health_ops_weight_cpl = models.PositiveIntegerField(
+        default=60, verbose_name='Santé opérations — poids CPL')
+    health_ops_weight_delivery = models.PositiveIntegerField(
+        default=40, verbose_name='Santé opérations — poids livraison')
+
     class Meta:
         verbose_name = 'Garde-fous publicitaires'
         verbose_name_plural = 'Garde-fous publicitaires'

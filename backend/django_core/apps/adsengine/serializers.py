@@ -75,6 +75,9 @@ class GuardrailConfigSerializer(serializers.ModelSerializer):
             # ADSENG4 — trésorerie : enveloppe mensuelle + pacing + exploration.
             'monthly_budget_ceiling_mad', 'pacing_band_pct',
             'exploration_floor_mad', 'exploration_floor_pct',
+            # SIG1 — poids fixes des deux scores de santé (créatif/opérations).
+            'health_creative_weight_ctr', 'health_creative_weight_freshness',
+            'health_ops_weight_cpl', 'health_ops_weight_delivery',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
