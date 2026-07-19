@@ -31,13 +31,17 @@ test('LB6 : TOUS les callbacks de viewProps sont useCallback (jamais une closure
   assert.match(PAGE_SRC, /const changeStage = useCallback\(/)
 })
 
-test('LB6 : viewProps est useMemo, placé AVANT les retours anticipés loading/error (règle des Hooks)', () => {
+test('LB6→LB27 : viewProps est useMemo, placé AVANT useDelayedLoading et le retour anticipé error (règle des Hooks)', () => {
   const viewPropsIdx = PAGE_SRC.indexOf('const viewProps = useMemo(')
   assert.ok(viewPropsIdx > 0, 'viewProps n\'est pas useMemo')
-  const loadingReturnIdx = PAGE_SRC.indexOf('if (leadsLoading && leads.length === 0)')
+  // LB27 — le retour anticipé PLEIN-PAGE loading a disparu (blueprint I9,
+  // squelette EN FORME dans le shell) ; `initialLoading` reste un hook
+  // dérivé placé, comme viewProps, AVANT le seul retour anticipé restant
+  // (error).
+  const initialLoadingIdx = PAGE_SRC.indexOf('const initialLoading = leadsLoading && leads.length === 0')
   const errorReturnIdx = PAGE_SRC.indexOf('if (error) return (')
-  assert.ok(loadingReturnIdx > 0 && errorReturnIdx > 0, 'retours anticipés introuvables')
-  assert.ok(viewPropsIdx < loadingReturnIdx, 'viewProps doit précéder le retour anticipé loading')
+  assert.ok(initialLoadingIdx > 0 && errorReturnIdx > 0, 'retour anticipé error ou initialLoading introuvable')
+  assert.ok(viewPropsIdx < initialLoadingIdx, 'viewProps doit précéder initialLoading/useDelayedLoading')
   assert.ok(viewPropsIdx < errorReturnIdx, 'viewProps doit précéder le retour anticipé error')
 })
 

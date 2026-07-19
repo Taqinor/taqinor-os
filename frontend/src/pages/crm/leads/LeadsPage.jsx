@@ -19,7 +19,12 @@ import {
 import {
   Button, IconButton, Spinner, FloatingActionButton,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  FadeSwap, SkeletonCard, SkeletonTableRow,
 } from '../../../ui'
+// LB27 — squelette EN FORME dans le shell (blueprint I9), même hook que
+// ClientList/DevisList/LeadWorkspace : rien avant 300ms (anti-flash), un
+// spinner discret jusqu'à 500ms, puis un squelette au-delà.
+import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
 // LB26 — hook CANONIQUE (déjà adopté par LeadWorkspace.jsx) : jamais une
@@ -76,6 +81,37 @@ function loadFilters() {
   } catch {
     return EMPTY_FILTERS
   }
+}
+
+// LB27 — squelette EN FORME de la vue active (blueprint I9) : 6 colonnes ×
+// 3 SkeletonCard en kanban/prévision (la forme du board), SkeletonTableRow en
+// liste ; calendrier/graphique/carte retombent sur le même bloc kanban (des
+// vues moins fréquentes au premier chargement, une forme neutre suffit).
+function LeadsViewSkeleton({ view }) {
+  if (view === 'liste') {
+    return (
+      <div className="lp-skeleton-liste" aria-hidden="true">
+        <table className="lv-table">
+          <tbody>
+            {Array.from({ length: 8 }).map((unused, i) => (
+              <SkeletonTableRow key={i} columns={7} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+  return (
+    <div className="lp-skeleton-kanban" aria-hidden="true">
+      {Array.from({ length: 6 }).map((unused, col) => (
+        <div key={col} className="lp-skeleton-col">
+          {Array.from({ length: 3 }).map((unused2, card) => (
+            <SkeletonCard key={card} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export default function LeadsPage() {
@@ -587,14 +623,18 @@ export default function LeadsPage() {
     onInlineSave, onMarkPerdu,
   ])
 
-  // Only blank the page on the FIRST load. A background refetch (after saving a
-  // bill, generating a devis, changing a stage…) must NOT unmount the page —
-  // doing so tore down any open lead modal / inline devis preview mid-action.
-  // VX147 — chargement/erreur unifiés sur `StateBlock` (rôle status/alert)
-  // au lieu de `<p className="page-loading/page-error">` en hex bruts.
-  if (leadsLoading && leads.length === 0) {
-    return <StateBlock loading loadingText="Chargement des leads…" />
-  }
+  // LB27 — squelette EN FORME dans le shell (blueprint I9) : au lieu de
+  // blanchir la page ENTIÈRE au premier chargement (VX147's ancien retour
+  // anticipé), le shell (en-tête + FilterBar + KPI) reste visible tout de
+  // suite — seule la zone de vue affiche un squelette qui a la FORME de la
+  // vue active. `useDelayedLoading` (même hook que ClientList/DevisList/
+  // LeadWorkspace) absorbe l'anti-flash : rien avant 300ms, un spinner
+  // discret jusqu'à 500ms, un squelette au-delà — jamais les deux ensemble.
+  // Placé AVANT le retour anticipé error (règle des Hooks, même raison que
+  // `viewProps` ci-dessus).
+  const initialLoading = leadsLoading && leads.length === 0
+  const { showSpinner, showSkeleton } = useDelayedLoading(initialLoading)
+
   // ERR61 — message FR lisible plutôt qu'un objet d'erreur brut sérialisé. Le
   // slice stocke déjà `err.response.data ?? err.message` ; on reconstruit la
   // forme attendue par `errorMessageFrom` (qui lit `error.response.data`).
@@ -740,6 +780,21 @@ export default function LeadsPage() {
       {/* VX187 — atténuation discrète pendant que React rattrape le filtre
           différé (jamais sur l'input lui-même, seulement la liste rendue). */}
       <div className="lp-view-area" style={isFiltersStale ? { opacity: 0.6 } : undefined}>
+        {/* LB27 — trois paliers, jamais deux affichés ensemble (blueprint
+            I9) : 0-300ms rien (le contenu réel, encore vide, ne flashe pas
+            à cette échelle) ; 300-500ms un spinner discret ; ≥500ms le
+            squelette EN FORME de la vue active, avec un crossfade FadeSwap
+            (même pattern que LeadWorkspace.jsx, LW25) vers le contenu réel
+            une fois les leads arrivés. */}
+        {showSpinner && (
+          <div className="lp-view-loading"><Spinner /> Chargement des leads…</div>
+        )}
+        {!showSpinner && (
+        <FadeSwap
+          loading={showSkeleton}
+          className="lp-view-skeleton-swap"
+          skeleton={<LeadsViewSkeleton view={view} />}
+        >
         {/* LB9-wire — KanbanView (lane LB1, board) accepte désormais 4 props
             OPTIONNELLES pour ses empty states à deux paliers (0 lead du tout
             vs 0 résultat filtré), dégradant proprement quand absentes : même
@@ -778,6 +833,8 @@ export default function LeadsPage() {
               prévue, glisser une carte replanifie le mois. */}
           {view === 'prevision' && <ForecastView {...viewProps} />}
         </Suspense>
+        </FadeSwap>
+        )}
       </div>
 
       {(showForm || deepLead) && (

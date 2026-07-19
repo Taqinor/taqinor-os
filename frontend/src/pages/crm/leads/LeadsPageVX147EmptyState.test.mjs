@@ -15,11 +15,16 @@ const KANBAN = readFileSync(join(HERE, 'views/KanbanView.jsx'), 'utf8')
 const LIST = readFileSync(join(HERE, 'views/ListView.jsx'), 'utf8')
 const CARTE = readFileSync(join(HERE, 'views/CarteView.jsx'), 'utf8')
 
-test('VX147 : LeadsPage ne rend plus .page-loading/.page-error (StateBlock à la place)', () => {
+test('VX147→LB27 : LeadsPage ne rend plus .page-loading/.page-error (StateBlock reste pour l’erreur)', () => {
   assert.doesNotMatch(LEADS_PAGE, /className="page-loading"/)
   assert.doesNotMatch(LEADS_PAGE, /className="page-error"/)
   assert.match(LEADS_PAGE, /import StateBlock from '..\/..\/..\/components\/StateBlock'/)
-  assert.match(LEADS_PAGE, /<StateBlock loading loadingText=/)
+  // LB27 (blueprint I9) : le retour anticipé PLEIN-PAGE `<StateBlock
+  // loading .../>` a disparu — remplacé par un squelette EN FORME DANS le
+  // shell (header/FilterBar/KPI visibles immédiatement). L'erreur reste
+  // INCHANGÉE (StateBlock plein-page, blueprint : « Erreur : StateBlock
+  // inchangé »).
+  assert.doesNotMatch(LEADS_PAGE, /return <StateBlock loading loadingText=/)
   assert.match(LEADS_PAGE, /<StateBlock\s*\n\s*error=/)
 })
 

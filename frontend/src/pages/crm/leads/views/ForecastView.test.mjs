@@ -16,6 +16,8 @@ const SRC = readFileSync(join(HERE, 'ForecastView.jsx'), 'utf8')
 const KANBAN_SRC = readFileSync(join(HERE, 'KanbanView.jsx'), 'utf8')
 const LEADSPAGE_SRC = readFileSync(join(HERE, '..', 'LeadsPage.jsx'), 'utf8')
 const VIEWSWITCHER_SRC = readFileSync(join(HERE, '..', 'ViewSwitcher.jsx'), 'utf8')
+// LB22 — VALID_VIEWS a déménagé dans urlFilters.js (source unique).
+const URLFILTERS_SRC = readFileSync(join(HERE, '..', 'urlFilters.js'), 'utf8')
 
 test('XSAL15 : ForecastView réutilise STAGE_PROBABILITY de KanbanView (jamais une 2e table)', () => {
   assert.match(SRC, /import \{ STAGE_PROBABILITY \} from '\.\/KanbanView'/)
@@ -56,6 +58,10 @@ test('XSAL15 : la vue est enregistrée dans ViewSwitcher et LeadsPage (VALID_VIE
   // VX186 — LeadsPage charge ses vues en `lazy()` (le plus gros chunk de route
   // du repo) : ForecastView reste enregistré, via un import dynamique.
   assert.match(LEADSPAGE_SRC, /const ForecastView = lazy\(\(\) => import\('\.\/views\/ForecastView'\)\)/)
-  assert.match(LEADSPAGE_SRC, /'kanban', 'liste', 'calendrier', 'graphique', 'carte', 'prevision'/)
+  // LB22 — VALID_VIEWS a déménagé dans urlFilters.js (source UNIQUE, réutilisée
+  // par l'encodage d'URL) : LeadsPage l'IMPORTE désormais au lieu de la
+  // redéclarer localement.
+  assert.match(LEADSPAGE_SRC, /import \{\s*\n\s*VALID_VIEWS,/)
+  assert.match(URLFILTERS_SRC, /'kanban', 'liste', 'calendrier', 'graphique', 'carte', 'prevision'/)
   assert.match(LEADSPAGE_SRC, /\{view === 'prevision' && <ForecastView \{\.\.\.viewProps\} \/>\}/)
 })
