@@ -279,6 +279,18 @@ const adsengineApi = {
     // Détail par cohorte d'un signal donné ({ signal: 'creatif'|'operations', ... }).
     cohort: (params) => api.get('/adsengine/signaux/cohorte/', { params }),
   },
+
+  // ── PUB6/AGEN1 — Table des faits versionnée (génération ancrée) ──
+  // Routeur backend : « table-faits » (versions) + « faits » (entrées). Une
+  // seule table publiée à la fois par société ; ``publish`` dépublie l'ancienne
+  // (côté serveur, jamais un PATCH direct de statut).
+  factTables: {
+    ...resource('table-faits'),
+    publish: (id) => api.post(`/adsengine/table-faits/${id}/publish/`),
+  },
+  factEntries: {
+    ...resource('faits'),
+  },
 }
 
 export default adsengineApi
