@@ -24,7 +24,7 @@ import {
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
-import { EmptyState } from '../../../../ui'
+import { EmptyState, Button } from '../../../../ui'
 import { isSigneIntercept } from '../signeIntercept'
 import LeadCard from './LeadCard'
 
@@ -155,6 +155,9 @@ const DraggableCard = memo(function DraggableCard({
 })
 
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
+// LB9 — région nommée (axe/lecteur d'écran atteignent chaque colonne par son
+// libellé + compteur) ; en-têtes déjà épinglés hors du corps scrollant depuis
+// LB2 (P0 fondateur), aucune retouche nécessaire pour ça ici.
 function StageColumn({ col, children }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.key })
   // Prévisionnel pondéré : total devis × probabilité de l'étape.
@@ -162,6 +165,7 @@ function StageColumn({ col, children }) {
   return (
     <section
       ref={setNodeRef}
+      aria-label={`Étape ${col.label} — ${col.count} lead${col.count === 1 ? '' : 's'}`}
       className={isOver ? 'kb-col kb-over' : 'kb-col'}
       style={{ '--kb-accent': col.color }}
     >
@@ -170,21 +174,28 @@ function StageColumn({ col, children }) {
           <span className="kb-col-title">{col.label}</span>
           <span className="kb-col-count">{col.count}</span>
         </div>
-        {col.totalDevis > 0 && (
-          <span className="kb-col-money">{formatMAD(col.totalDevis)}</span>
-        )}
+        {/* LB9 — une SEULE rangée « total MAD · Prév. pondéré » (au lieu de
+            deux lignes empilées) ; le tooltip explique la pondération
+            STAGE_PROBABILITY importée de plus haut (jamais une seconde table). */}
         {col.totalDevis > 0 && (
           <span
-            className="kb-col-forecast block text-[11px] text-muted-foreground"
-            title={`Prévisionnel pondéré (${Math.round((STAGE_PROBABILITY[col.key] ?? 0) * 100)} %)`}
+            className="kb-col-money"
+            title={`Prévisionnel pondéré à ${Math.round((STAGE_PROBABILITY[col.key] ?? 0) * 100)} % (probabilité de conversion à cette étape)`}
           >
-            Prév. {formatMAD(forecast)}
+            {formatMAD(col.totalDevis)} · Prév. {formatMAD(forecast)}
           </span>
         )}
       </header>
-      <div className="kb-col-body">
+      {/* LB9 — `tabindex=0` + aria-label : zone de scroll interne atteignable
+          au clavier (recon-05 a11y #6), indépendamment du sélecteur d'étape
+          (StageMover) déjà focalisable sous chaque carte. */}
+      <div
+        className="kb-col-body"
+        tabIndex={0}
+        aria-label={`Cartes de l'étape ${col.label}`}
+      >
         {col.count === 0 ? (
-          <div className="kb-col-empty">Aucun lead</div>
+          <div className="kb-col-empty">Déposer un lead ici</div>
         ) : (
           children
         )}
@@ -206,6 +217,17 @@ export default function KanbanView({
   onPlanifierRelance,
   onInlineSave,
   onMarkPerdu,
+  // LB9 — coach d'état vide à DEUX paliers, même idiome que ChartsView
+  // (totalLeads/onClearFilters déjà câblés là-bas sur `leads.length`/
+  // `setFilters(EMPTY_FILTERS)`) : `totalLeads` (non filtré) distingue
+  // « aucun lead du tout » de « aucun résultat pour CES filtres ». Tous
+  // optionnels — tant que `<KanbanView {...viewProps} />` (LeadsPage.jsx) ne
+  // les câble pas encore, on dégrade proprement sur le message filtré
+  // générique, jamais un crash ni un CTA mort.
+  totalLeads = null,
+  onClearFilters,
+  onNewLead,
+  onImportLeads,
 }) {
   // VX135 — préférence reduced-motion lue en JS : le tilt (transform statique
   // posé par dnd-kit/CSS) et le dropAnimation (JS pur) échappent tous deux au
@@ -262,12 +284,43 @@ export default function KanbanView({
 
   // VX147 — « 0 lead » unifié sur `EmptyState` (calqué sur ChartsView, la
   // seule vue déjà correcte) au lieu de 6 colonnes vides en texte brut.
+  // LB9 — désormais à DEUX paliers : `totalLeads === 0` (vraiment aucun lead)
+  // reçoit le coach illustré (VX40 — leads est un des 4-5 écrans les plus vus)
+  // + CTA création/import ; « filtré à 0 » garde le message générique + un
+  // CTA « Effacer les filtres » réel quand le parent le fournit.
   if (!leads || leads.length === 0) {
+    const aucunDuTout = totalLeads != null && totalLeads === 0
+    if (aucunDuTout) {
+      return (
+        <EmptyState
+          illustrated
+          title="Aucun lead"
+          description="Créez votre premier lead ou importez votre liste pour démarrer le pipeline."
+          action={(onNewLead || onImportLeads) ? (
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {onNewLead && (
+                <Button type="button" size="sm" onClick={onNewLead}>+ Nouveau lead</Button>
+              )}
+              {onImportLeads && (
+                <Button type="button" variant="outline" size="sm" onClick={onImportLeads}>
+                  Importer
+                </Button>
+              )}
+            </div>
+          ) : null}
+        />
+      )
+    }
     return (
       <EmptyState
         icon={LayoutGrid}
         title="Aucun lead"
         description="Aucun lead ne correspond à ces filtres."
+        action={onClearFilters ? (
+          <Button type="button" variant="outline" size="sm" onClick={onClearFilters}>
+            Effacer les filtres
+          </Button>
+        ) : null}
       />
     )
   }

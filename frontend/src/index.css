@@ -7230,3 +7230,26 @@ textarea.form-control {
     flex: 0 0 clamp(220px, 24vw, 272px);
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB9 — Ergonomie du board (docs/design/leads-board-blueprint.md D2) : en-tête
+   riche épinglé (déjà hors du corps scrollant depuis LB2), zone de scroll
+   `.kb-col-body` atteignable au clavier, zone de dépôt en pointillés sur
+   colonne vide. Append-only, même bloc `.kb-*`. ══════════════════════════ */
+
+/* Anneau de focus sur `.kb-col-body` (tabindex=0, recon-05 a11y #6) — un
+   `outline` classique déborderait sur le scrolleur voisin ; `outline-offset`
+   négatif le ramène À L'INTÉRIEUR du cadre de la colonne. */
+.kb-col-body:focus-visible {
+  outline: 2px solid var(--ring, #f5a623);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm, 8px);
+}
+
+/* Zone de dépôt d'une colonne vide : surbrillance accentuée pendant le survol
+   d'un drag (au-dessus du halo déjà posé sur `.kb-over` au niveau colonne). */
+.kb-over .kb-col-empty {
+  border-color: var(--kb-accent);
+  background: color-mix(in srgb, var(--kb-accent) 10%, transparent);
+  color: var(--foreground, #0b1f3a);
+}
