@@ -1278,3 +1278,128 @@ def watch_graph_version_eol():
         logger.warning(
             'adsengine.watch_graph_version_eol: échec', exc_info=True)
     return {'months_until_eol': api_version.months_until_graph_eol()}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUB104 — Rollup/archivage mensuel des snapshots d'insight.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Le détail quotidien plus vieux que N mois est agrégé en rollup mensuel puis
+# purgé (agrégats conservés). Surchargeable via settings.
+_DEFAULT_ROLLUP_AFTER_MONTHS = 13
+
+# Colonnes ADDITIVES agrégées (jamais reach/frequency — non sommables ; cpl se
+# recalcule spend/leads).
+_ROLLUP_SUM_FIELDS = (
+    'spend', 'results', 'impressions', 'clicks', 'link_clicks',
+    'conversations', 'leads_count')
+
+
+def _rollup_cutoff(today, months):
+    """(year, month) du 1er mois ENCORE conservé en détail (les mois STRICTEMENT
+    antérieurs sont agrégés). ``today`` moins ``months`` mois."""
+    idx = (today.year * 12 + (today.month - 1)) - int(months)
+    year, month0 = divmod(idx, 12)
+    return year, month0 + 1
+
+
+def rollup_insights_monthly(*, today=None, months=None, purge=True):
+    """PUB104 — Agrège les ``InsightSnapshot`` au-delà de N mois en rollups
+    mensuels (idempotent), puis PURGE le détail quotidien agrégé (``purge``).
+
+    Pour chaque (société, cible, mois) antérieur au seuil, somme les colonnes
+    additives et upserte un ``InsightMonthlyRollup`` (``update_or_create`` sur
+    la clé unique → jamais de doublon, ré-exécution sûre). Les totaux sont
+    IDENTIQUES avant/après (le rollup somme exactement le détail). ``purge=False``
+    calcule le rollup sans supprimer le détail. Renvoie
+    ``{'rollups', 'snapshots_purged'}``."""
+    import datetime as _dt
+
+    from django.db.models import Sum
+
+    from .models import InsightMonthlyRollup, InsightSnapshot
+
+    today = today or _dt.date.today()
+    if months is None:
+        from django.conf import settings
+        months = getattr(settings, 'ADSENGINE_ROLLUP_AFTER_MONTHS',
+                         _DEFAULT_ROLLUP_AFTER_MONTHS)
+    cut_year, cut_month = _rollup_cutoff(today, months)
+    cutoff_first = _dt.date(cut_year, cut_month, 1)
+
+    # Regroupe le détail antérieur au seuil par (company, ct, obj, année, mois).
+    old = InsightSnapshot.objects.filter(date__lt=cutoff_first)
+    grouped = (old
+               .values('company_id', 'content_type_id', 'object_id',
+                       'date__year', 'date__month')
+               .annotate(
+                   _spend=Sum('spend'), _results=Sum('results'),
+                   _impressions=Sum('impressions'), _clicks=Sum('clicks'),
+                   _link_clicks=Sum('link_clicks'),
+                   _conversations=Sum('conversations'),
+                   _leads_count=Sum('leads_count')))
+
+    rollups = 0
+    for g in grouped:
+        defaults = {
+            'spend': g['_spend'] or 0,
+            'results': g['_results'] or 0,
+            'impressions': g['_impressions'] or 0,
+            'clicks': g['_clicks'] or 0,
+            'link_clicks': g['_link_clicks'] or 0,
+            'conversations': g['_conversations'] or 0,
+            'leads_count': g['_leads_count'] or 0,
+        }
+        InsightMonthlyRollup.objects.update_or_create(
+            company_id=g['company_id'], content_type_id=g['content_type_id'],
+            object_id=g['object_id'], year=g['date__year'],
+            month=g['date__month'], defaults=defaults)
+        rollups += 1
+
+    purged = 0
+    if purge:
+        purged, _ = old.delete()
+    result = {'rollups': rollups, 'snapshots_purged': purged}
+    logger.info('adsengine.rollup_insights_monthly: %s', result)
+    return result
+
+
+def total_spend_and_leads(company, target, *, up_to=None):
+    """PUB104 — Total (dépense, leads) tout-historique d'un objet, combinant les
+    rollups mensuels ARCHIVÉS et le détail quotidien encore présent — INVARIANT
+    aux rollups (identique avant/après archivage). ``up_to`` (date, optionnel)
+    borne la fenêtre. Renvoie ``{'spend', 'leads_count'}``."""
+    from decimal import Decimal
+
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from .models import InsightMonthlyRollup, InsightSnapshot
+
+    ct = ContentType.objects.get_for_model(target)
+    snaps = InsightSnapshot.objects.filter(
+        company=company, content_type=ct, object_id=target.pk)
+    rolls = InsightMonthlyRollup.objects.filter(
+        company=company, content_type=ct, object_id=target.pk)
+    if up_to is not None:
+        snaps = snaps.filter(date__lte=up_to)
+        # Un rollup est inclus si son mois est ≤ le mois de ``up_to``.
+        rolls = rolls.filter(year__lt=up_to.year) | rolls.filter(
+            year=up_to.year, month__lte=up_to.month)
+
+    s_snap = snaps.aggregate(s=Sum('spend'), l=Sum('leads_count'))
+    s_roll = rolls.aggregate(s=Sum('spend'), l=Sum('leads_count'))
+    spend = (s_snap['s'] or Decimal('0')) + (s_roll['s'] or Decimal('0'))
+    leads = (s_snap['l'] or 0) + (s_roll['l'] or 0)
+    return {'spend': spend, 'leads_count': leads}
+
+
+@shared_task(name='adsengine.rollup_insights_monthly')
+def rollup_insights_monthly_task():
+    """PUB104 — Beat (mensuel) : rollup/archivage des snapshots. Best-effort."""
+    try:
+        return rollup_insights_monthly()
+    except Exception:  # pragma: no cover - défensif
+        logger.warning(
+            'adsengine.rollup_insights_monthly: échec', exc_info=True)
+        return {'rollups': 0, 'snapshots_purged': 0}
