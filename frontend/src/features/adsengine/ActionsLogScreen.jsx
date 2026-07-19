@@ -101,7 +101,12 @@ export default function ActionsLogScreen() {
                       {a.approuve_par
                         ? `Approuvée par ${a.approuve_par}`
                         : isAuto ? 'Appliquée automatiquement (dans le band)' : 'En attente d’approbation'}
-                      {a.result_detail ? ` — ${a.result_detail}` : ''}
+                      {/* PUB7 — le serializer expose `error` (texte de l'échec OU
+                          du motif de rejet) et `result` (JSON, appliquée avec
+                          succès) — PAS `result_detail` (n'existe pas côté API,
+                          donc jamais rempli : les raisons d'échec ne
+                          s'affichaient JAMAIS). */}
+                      {a.error ? ` — ${a.error}` : ''}
                     </p>
                   </li>
                 )

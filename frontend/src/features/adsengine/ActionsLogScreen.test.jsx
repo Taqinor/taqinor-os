@@ -73,4 +73,29 @@ describe('ActionsLogScreen (ENG28)', () => {
     await waitFor(() => expect(screen.getAllByTestId('ae-log-row')).toHaveLength(1))
     expect(screen.getByText('Fréquence trop haute')).toBeInTheDocument()
   })
+
+  it('PUB7 — une action échouée montre sa raison réelle (`error`, pas `result_detail`)', async () => {
+    mocks.log.mockResolvedValue({ data: [
+      { id: 4, type: 'adjust_budget', reason_fr: 'Rééquilibrage automatique',
+        statut: 'echec', mode: 'manuel', created_at: '2026-07-13',
+        error: 'Meta a refusé : jeton expiré.', result_detail: 'jamais affiché' },
+    ] })
+    renderScreen()
+    await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+    expect(await screen.findByText(/Meta a refusé : jeton expiré\./)).toBeInTheDocument()
+    expect(screen.queryByText(/jamais affiché/)).toBeNull()
+  })
+
+  it('PUB7 — un rejet montre le motif porté dans `error`', async () => {
+    mocks.log.mockResolvedValue({ data: [
+      { id: 5, type: 'pause', reason_fr: 'Fréquence élevée', statut: 'rejete',
+        approuve_par: 'Meryem', mode: 'manuel', created_at: '2026-07-13',
+        error: 'Trop tôt — laisser la phase apprentissage se terminer.' },
+    ] })
+    renderScreen()
+    await waitFor(() => expect(mocks.log).toHaveBeenCalled())
+    expect(await screen.findByText(
+      /Approuvée par Meryem — Trop tôt — laisser la phase apprentissage se terminer\./,
+    )).toBeInTheDocument()
+  })
 })
