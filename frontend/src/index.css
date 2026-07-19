@@ -7107,4 +7107,7 @@ textarea.form-control {
    AA-sûr sans toucher le kit global. */
 .lw-badge-aa {
   color: var(--warning-text);
+  /* 4.34:1 encore court de 4.5 : on éclaircit la teinte (8% au lieu des 15%
+     du kit) — toujours dérivée du jeton, jamais un hex. */
+  background: color-mix(in oklch, var(--warning) 8%, var(--card));
 }
