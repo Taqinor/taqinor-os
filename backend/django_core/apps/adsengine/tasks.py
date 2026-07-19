@@ -854,6 +854,34 @@ def emit_capi_signatures():
     return {'configured': True, 'received': received, 'signed': signed}
 
 
+@shared_task(name='adsengine.decay_assumptions_weekly')
+def decay_assumptions_weekly():
+    """ASG2 — Beat HEBDO : oubli des posteriors de l'arbre d'hypothèses.
+
+    Chaque exécution = une « semaine » (dd-assumption-engine §3.2) : chaque
+    ``AssumptionNode`` non testé depuis ≥ 7 jours (et non saisonnier, non retiré)
+    s'oublie d'un cran vers son prior, à la demi-vie de sa classe. NO-OP propre
+    pour une société sans nœud. Best-effort par société ; la logique pure +
+    modèle vit dans ``assumption_decay.py``. Renvoie le nombre total de nœuds
+    oubliés."""
+    from authentication.selectors import active_companies
+
+    from . import assumption_decay
+
+    total = 0
+    for company in active_companies():
+        try:
+            total += assumption_decay.run_weekly_decay(company)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.decay_assumptions_weekly: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.decay_assumptions_weekly: %s nœud(s) oublié(s)', total)
+    return {'nodes_decayed': total}
+
+
 @shared_task(name='adsengine.generate_creative_variants')
 def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
     """ENG18 — Tâche « variantes » : 2-3 statiques d'un asset de base approuvé.
