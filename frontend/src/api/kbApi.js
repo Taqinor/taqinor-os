@@ -129,6 +129,16 @@ const kbApi = {
   createAssignation: (data) => api.post('/kb/parcours-assignations/', data),
   assignationProgression: (id) =>
     api.get(`/kb/parcours-assignations/${id}/progression/`),
+
+  // ── XKB7 / WIR71 — lectures obligatoires (article ↔ utilisateur/rôle) ──
+  // Filtre ?article=<id>. La société est posée côté serveur ; exactement un de
+  // utilisateur/role_cible par assignation (validé côté serializer).
+  listLecturesObligatoires: (params) =>
+    api.get('/kb/lectures-obligatoires/', { params }),
+  createLectureObligatoire: (data) =>
+    api.post('/kb/lectures-obligatoires/', data),
+  removeLectureObligatoire: (id) =>
+    api.delete(`/kb/lectures-obligatoires/${id}/`),
 }
 
 export default kbApi
