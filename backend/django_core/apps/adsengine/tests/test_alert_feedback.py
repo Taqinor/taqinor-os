@@ -136,6 +136,14 @@ class AnomalyFeedbackEndpointTests(TestCase):
             {'vote': 'peut_etre'}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_anomaly_creation_via_api_is_forbidden(self):
+        # POST est activé pour l'action feedback, mais créer une anomalie par API
+        # reste interdit (405) — les anomalies naissent du gardien.
+        api, _ = self._api(['adsengine_manage', 'adsengine_view'])
+        resp = api.post('/api/django/adsengine/anomalies/',
+                        {'kind': 'cost_spike'}, format='json')
+        self.assertEqual(resp.status_code, 405)
+
     def test_detectors_endpoint_shows_throttle(self):
         for _ in range(5):
             AnomalyEvent.objects.create(

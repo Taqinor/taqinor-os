@@ -720,7 +720,14 @@ class AnomalyEventViewSet(AdsengineViewSet):
 
     queryset = AnomalyEvent.objects.all()
     serializer_class = AnomalyEventSerializer
+    # POST est activé UNIQUEMENT pour l'action ``feedback`` (PUB90) ; la création
+    # d'anomalie par API reste interdite (les anomalies naissent du gardien).
     http_method_names = ['get', 'post', 'head', 'options']
+
+    def create(self, request, *args, **kwargs):
+        """La création d'anomalie par API est interdite (405) : une anomalie est
+        matérialisée par le moteur (ENG9), jamais par un client."""
+        return Response(status=405)
 
     @action(detail=True, methods=['post'],
             permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
