@@ -530,6 +530,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.purge_expired_mirrors',
         'schedule': crontab(hour=3, minute=40),
     },
+    # PUB102 — vigie HEBDO de l'EOL de la version Graph API (lundi, heure creuse).
+    # Alerte quand la version approche sa fin de vie (~2 ans) ; JAMAIS de bump
+    # automatique. No-op tant qu'aucune société active.
+    'adsengine-watch-graph-version-eol': {
+        'task': 'adsengine.watch_graph_version_eol',
+        'schedule': crontab(hour=6, minute=30, day_of_week=1),
+    },
     # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
     # Best-effort, une alerte par jour et par société (dédup), no-op tant que
     # le seuil société vaut 0 (défaut).

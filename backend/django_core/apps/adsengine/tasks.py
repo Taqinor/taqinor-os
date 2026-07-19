@@ -1189,3 +1189,92 @@ def purge_expired_mirrors():
 
     logger.info('adsengine.purge_expired_mirrors: %s', result)
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUB102 — Vigie de version Graph API (EOL).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Seuil d'alerte : prévenir quand l'EOL est à N mois (ou moins). Surchargeable
+# via settings ; jamais un bump automatique (la montée reste un geste humain).
+_DEFAULT_GRAPH_EOL_ALERT_MONTHS = 4
+
+
+def check_graph_version_eol(*, today=None):
+    """PUB102 — Alerte si la version Graph API approche de son EOL.
+
+    ``GRAPH_VERSION`` est épinglée à la main sans veille d'EOL — le drift v19
+    (morte depuis 02/2025) qui a motivé ``api_version`` peut se reproduire. On
+    calcule les mois restants avant l'EOL approximative (sortie + ~24 mois) et on
+    lève une ``EngineAlert`` (garde-fou) quand c'est ≤ seuil. **Jamais de bump
+    automatique** : l'alerte invite à changer ``GRAPH_VERSION`` à la main.
+
+    Alerte GLOBALE (pas par société — la version est une constante repo) : posée
+    sur la première société active, dédupliquée par ``entity_key``. Best-effort.
+    Renvoie l'``EngineAlert`` touchée ou None."""
+    from django.conf import settings
+
+    from authentication.selectors import active_companies
+
+    from . import api_version
+    from .models import EngineAlert
+    from .rules import SEVERITY_CRITICAL, SEVERITY_WARNING
+
+    try:
+        threshold = int(getattr(
+            settings, 'ADSENGINE_GRAPH_EOL_ALERT_MONTHS',
+            _DEFAULT_GRAPH_EOL_ALERT_MONTHS))
+    except (TypeError, ValueError):
+        threshold = _DEFAULT_GRAPH_EOL_ALERT_MONTHS
+
+    months = api_version.months_until_graph_eol(today=today)
+    company = next(iter(active_companies()), None)
+    if company is None:
+        return None
+
+    entity_key = f'graph_eol:{api_version.GRAPH_VERSION}'
+    existing = (EngineAlert.objects
+                .filter(company=company, entity_key=entity_key, resolved=False)
+                .order_by('-created_at').first())
+
+    if months > threshold:
+        return None  # loin de l'EOL : rien à signaler
+
+    eol = api_version.graph_version_eol_date()
+    severity = SEVERITY_CRITICAL if months <= 0 else SEVERITY_WARNING
+    when = ("a EXPIRÉ" if months <= 0
+            else f"expire dans ~{months} mois ({eol.isoformat()})")
+    msg = (f"Version Graph API {api_version.GRAPH_VERSION} {when}. "
+           "Planifier la montée de version (changer GRAPH_VERSION dans "
+           "apps/adsengine/api_version.py) — jamais de bump automatique.")
+    detail = {'kind': 'graph_version_eol',
+              'graph_version': api_version.GRAPH_VERSION,
+              'months_until_eol': months, 'eol_date': eol.isoformat()}
+    if existing is None:
+        alert = EngineAlert.objects.create(
+            company=company, alert_type=EngineAlert.Type.GARDE_FOU,
+            message=msg, severity=severity, entity_key=entity_key,
+            detail=detail)
+    else:
+        existing.message = msg
+        existing.severity = severity
+        existing.detail = detail
+        existing.save(update_fields=['message', 'severity', 'detail',
+                                     'updated_at'])
+        alert = existing
+    logger.info('adsengine.check_graph_version_eol: %s mois avant EOL', months)
+    return alert
+
+
+@shared_task(name='adsengine.watch_graph_version_eol')
+def watch_graph_version_eol():
+    """PUB102 — Beat (hebdo) : vigie d'EOL de la version Graph API. Best-effort ;
+    ne bumpe JAMAIS. Renvoie les mois restants avant l'EOL."""
+    from . import api_version
+
+    try:
+        check_graph_version_eol()
+    except Exception:  # pragma: no cover - défensif
+        logger.warning(
+            'adsengine.watch_graph_version_eol: échec', exc_info=True)
+    return {'months_until_eol': api_version.months_until_graph_eol()}
