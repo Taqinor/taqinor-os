@@ -142,20 +142,235 @@ function EquipesMaintenanceSection() {
   )
 }
 
-// ── Catégories d'équipement (ZMFG2) — nom + commentaire, sans gestion de
-// l'alias e-mail/équipe responsable (édité via l'API pour l'instant). ──
+// ── Catégories d'équipement (ZMFG2/ZMFG7/WIR117) — nom + alias e-mail +
+// équipe responsable. L'alias e-mail route un message entrant (FG373) vers un
+// ticket correctif pré-catégorisé (câblé dans apps.py) ; l'équipe responsable
+// est affectée automatiquement. Jusqu'ici seul `nom` était éditable. ──
 function CategoriesEquipementSection() {
+  const [rows, setRows] = useState([])
+  const [equipes, setEquipes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ nom: '', alias_email: '', equipe_responsable: '' })
+  const [busy, setBusy] = useState(false)
+  const [edits, setEdits] = useState({})
+
+  const load = () => savApi.getCategoriesEquipement()
+    .then((r) => setRows(r.data.results ?? r.data ?? []))
+    .catch(() => {})
+    .finally(() => setLoading(false))
+
+  useEffect(() => {
+    load()
+    savApi.getEquipesMaintenance()
+      .then((r) => setEquipes(r.data.results ?? r.data ?? []))
+      .catch(() => {})
+  }, [])
+
+  const add = async () => {
+    const nom = form.nom.trim()
+    if (!nom) return
+    setBusy(true)
+    try {
+      await savApi.saveCategorieEquipement(null, {
+        nom,
+        alias_email: form.alias_email.trim() || null,
+        equipe_responsable: form.equipe_responsable || null,
+      })
+      setForm({ nom: '', alias_email: '', equipe_responsable: '' })
+      toast.success("Catégorie d'équipement ajoutée")
+      setLoading(true); load()
+    } catch (e) {
+      toast.error(e?.response?.data?.alias_email ?? e?.response?.data?.detail ?? 'Ajout impossible.')
+    } finally { setBusy(false) }
+  }
+
+  const rowEdit = (row) => edits[row.id] ?? {
+    alias_email: row.alias_email ?? '',
+    equipe_responsable: row.equipe_responsable ? String(row.equipe_responsable) : '',
+  }
+  const setRowEdit = (id, patch) =>
+    setEdits((e) => ({ ...e, [id]: { ...rowEdit({ id, ...e[id] }), ...patch } }))
+
+  const saveRow = async (row) => {
+    const e = rowEdit(row)
+    try {
+      await savApi.saveCategorieEquipement(row.id, {
+        alias_email: e.alias_email.trim() || null,
+        equipe_responsable: e.equipe_responsable || null,
+      })
+      toast.success('Catégorie mise à jour')
+      setEdits((prev) => { const n = { ...prev }; delete n[row.id]; return n })
+      setLoading(true); load()
+    } catch (err) {
+      toast.error(err?.response?.data?.alias_email ?? err?.response?.data?.detail ?? 'Enregistrement impossible.')
+    }
+  }
+
+  if (loading) return <Skeleton className="h-24 w-full" />
+
   return (
-    <SimpleRefListEditor
-      loadFn={savApi.getCategoriesEquipement}
-      saveFn={savApi.saveCategorieEquipement}
-      nameField="nom"
-      label="catégorie d'équipement"
-      emptyLabel="Aucune catégorie d'équipement"
-      isArchived={() => false}
-      archivePayload={() => ({})}
-      unarchivePayload={() => ({})}
-    />
+    <div className="flex flex-col gap-3">
+      <div className="grid items-end gap-2 sm:grid-cols-[2fr_2fr_2fr_auto]">
+        <Input placeholder="Nouvelle catégorie…" value={form.nom}
+               onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))}
+               onKeyDown={(e) => { if (e.key === 'Enter') add() }} />
+        <Input type="email" placeholder="Alias e-mail (optionnel)…" value={form.alias_email}
+               onChange={(e) => setForm((f) => ({ ...f, alias_email: e.target.value }))} />
+        <Select value={form.equipe_responsable || '__none'}
+                onValueChange={(v) => setForm((f) => ({ ...f, equipe_responsable: v === '__none' ? '' : v }))}>
+          <SelectTrigger><SelectValue placeholder="— Équipe responsable —" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none">— Aucune équipe —</SelectItem>
+            {equipes.map((eq) => (
+              <SelectItem key={eq.id} value={String(eq.id)}>{eq.nom}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button type="button" size="sm" loading={busy} onClick={add}><Plus /> Ajouter</Button>
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState title="Aucune catégorie d'équipement" />
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {rows.map((r) => {
+            const e = rowEdit(r)
+            return (
+              <li key={r.id}
+                  className="grid items-end gap-2 rounded-lg border border-border bg-card px-3 py-2 sm:grid-cols-[2fr_2fr_2fr_auto]">
+                <span className="text-sm font-medium">{r.nom}</span>
+                <Input type="email" aria-label={`Alias e-mail — ${r.nom}`}
+                       placeholder="Alias e-mail…" value={e.alias_email}
+                       onChange={(ev) => setRowEdit(r.id, { alias_email: ev.target.value })} />
+                <Select value={e.equipe_responsable || '__none'}
+                        onValueChange={(v) => setRowEdit(r.id, { equipe_responsable: v === '__none' ? '' : v })}>
+                  <SelectTrigger aria-label={`Équipe responsable — ${r.nom}`}>
+                    <SelectValue placeholder="— Équipe —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— Aucune équipe —</SelectItem>
+                    {equipes.map((eq) => (
+                      <SelectItem key={eq.id} value={String(eq.id)}>{eq.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" size="sm" variant="outline" onClick={() => saveRow(r)}>
+                  <Check /> Enregistrer
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// ── Compatibilités pièces (XSAV25/WIR117) — mappe une pièce catalogue comme
+// compatible avec un produit d'équipement, pour que le picker de pièces du
+// ticket la propose EN PREMIER. CRUD minimal (ajout + suppression). ──
+function CompatibilitesPieceSection() {
+  const [rows, setRows] = useState([])
+  const [produits, setProduits] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ produit_equipement: '', piece: '', note: '' })
+  const [busy, setBusy] = useState(false)
+
+  const load = () => savApi.getCompatibilitesPiece()
+    .then((r) => setRows(r.data.results ?? r.data ?? []))
+    .catch(() => {})
+    .finally(() => setLoading(false))
+
+  useEffect(() => {
+    load()
+    api.get('/stock/produits/')
+      .then((r) => setProduits(r.data.results ?? r.data ?? []))
+      .catch(() => {})
+  }, [])
+
+  const add = async () => {
+    if (!form.produit_equipement || !form.piece) return
+    setBusy(true)
+    try {
+      await savApi.saveCompatibilitePiece(null, {
+        produit_equipement: form.produit_equipement,
+        piece: form.piece,
+        note: form.note.trim(),
+      })
+      setForm({ produit_equipement: '', piece: '', note: '' })
+      toast.success('Compatibilité ajoutée')
+      setLoading(true); load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Ajout impossible.')
+    } finally { setBusy(false) }
+  }
+
+  const remove = async (id) => {
+    try {
+      await savApi.deleteCompatibilitePiece(id)
+      setLoading(true); load()
+    } catch { toast.error('Suppression impossible.') }
+  }
+
+  const produitOptions = (placeholder) => (
+    <SelectContent>
+      <SelectItem value="__none">{placeholder}</SelectItem>
+      {produits.map((p) => (
+        <SelectItem key={p.id} value={String(p.id)}>{p.nom}{p.sku ? ` (${p.sku})` : ''}</SelectItem>
+      ))}
+    </SelectContent>
+  )
+
+  if (loading) return <Skeleton className="h-24 w-full" />
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Associez une pièce catalogue à un produit d'équipement : le picker de
+        pièces du ticket (équipement lié) proposera ces pièces en premier.
+      </p>
+      <div className="grid items-end gap-2 sm:grid-cols-[2fr_2fr_2fr_auto]">
+        <Select value={form.produit_equipement || '__none'}
+                onValueChange={(v) => setForm((f) => ({ ...f, produit_equipement: v === '__none' ? '' : v }))}>
+          <SelectTrigger aria-label="Produit d'équipement">
+            <SelectValue placeholder="— Produit d'équipement —" />
+          </SelectTrigger>
+          {produitOptions("— Produit d'équipement —")}
+        </Select>
+        <Select value={form.piece || '__none'}
+                onValueChange={(v) => setForm((f) => ({ ...f, piece: v === '__none' ? '' : v }))}>
+          <SelectTrigger aria-label="Pièce compatible">
+            <SelectValue placeholder="— Pièce compatible —" />
+          </SelectTrigger>
+          {produitOptions('— Pièce compatible —')}
+        </Select>
+        <Input placeholder="Note (optionnel)…" value={form.note}
+               onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} />
+        <Button type="button" size="sm" loading={busy}
+                disabled={!form.produit_equipement || !form.piece} onClick={add}>
+          <Plus /> Ajouter
+        </Button>
+      </div>
+      {rows.length === 0 ? (
+        <EmptyState title="Aucune compatibilité" />
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {rows.map((r) => (
+            <li key={r.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+              <span>
+                <span className="font-medium">{r.produit_equipement_nom ?? `#${r.produit_equipement}`}</span>
+                {' → '}
+                {r.piece_nom ?? `#${r.piece}`}
+                {r.note ? ` · ${r.note}` : ''}
+              </span>
+              <Button type="button" size="sm" variant="ghost" onClick={() => remove(r.id)}>
+                <X /> Supprimer
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -286,6 +501,7 @@ export default function SavParametresPage() {
             <TabsTrigger value="reponses-type">Réponses types</TabsTrigger>
             <TabsTrigger value="equipes">Équipes de maintenance</TabsTrigger>
             <TabsTrigger value="categories-equipement">Catégories d'équipement</TabsTrigger>
+            <TabsTrigger value="compatibilites-piece">Pièces compatibles</TabsTrigger>
             <TabsTrigger value="sla-automatisation">SLA / Automatisation</TabsTrigger>
           </TabsList>
 
@@ -342,6 +558,10 @@ export default function SavParametresPage() {
 
           <TabsContent value="categories-equipement">
             <CategoriesEquipementSection />
+          </TabsContent>
+
+          <TabsContent value="compatibilites-piece">
+            <CompatibilitesPieceSection />
           </TabsContent>
 
           <TabsContent value="sla-automatisation">
