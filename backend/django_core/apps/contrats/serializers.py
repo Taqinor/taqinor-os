@@ -123,6 +123,9 @@ class ContratSerializer(serializers.ModelSerializer):
             'sequence_dunning',
             'confidentialite', 'confidentialite_display',
             'responsable', 'responsable_nom',
+            # WIR77 — nom lisible du client lié (résolu cross-app via
+            # crm.selectors, jamais un import de crm.Client).
+            'client_nom',
             'created_by', 'date_creation', 'custom_data',
         ]
         read_only_fields = [
@@ -131,6 +134,9 @@ class ContratSerializer(serializers.ModelSerializer):
         ]
 
     responsable_nom = serializers.SerializerMethodField()
+    # WIR77 — nom du client lié (lecture cross-app, même motif que
+    # responsable_nom). None si aucun client ou client hors société.
+    client_nom = serializers.SerializerMethodField()
 
     def validate(self, attrs):
         # ARC14 — champs personnalisés (pilote) : valider/nettoyer
@@ -149,6 +155,14 @@ class ContratSerializer(serializers.ModelSerializer):
 
     def get_responsable_nom(self, obj):
         return getattr(obj.responsable, 'username', None)
+
+    def get_client_nom(self, obj):
+        """WIR77 — libellé du client via crm.selectors (lecture cross-app,
+        frontière M3). Dégrade en None sans client / hors société."""
+        if not obj.client_id:
+            return None
+        from apps.crm import selectors as crm_selectors
+        return crm_selectors.client_label(obj.company, obj.client_id)
 
     def get_echeance_preavis(self, obj):
         echeance = obj.echeance_preavis()
