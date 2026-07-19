@@ -52,6 +52,13 @@ const coreApi = {
     run: (task) => api.post('/core/jobs/run/', { task }),
   },
 
+  // WIR137 / NTPLT29 — MES jobs de fond (exports lourds, imports longs) avec
+  // progression. Lecture seule, doublement scopé société + utilisateur côté
+  // serveur (jamais les jobs d'un collègue).
+  jobsStatus: {
+    list: () => api.get('/core/jobs-status/'),
+  },
+
   // FG369 — bibliothèque de modèles de workflow installables.
   workflowTemplates: {
     list: () => api.get('/core/workflow-templates/'),
