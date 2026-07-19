@@ -1,8 +1,10 @@
 // Carte lead réutilisable (colonne kanban + aperçu DragOverlay).
-// Présentation pure : aucune mutation, tout vient des props et de stages.js —
-// SAUF la mini-popover « ✗ Perdu » (VX223), qui suit le même patron que
-// CallLogPopover ci-dessous : un enfant auto-contenu appelle crmApi
-// directement plutôt que de faire remonter une prop de mutation supplémentaire.
+// Présentation pure : aucune mutation directe — la mini-popover « ✗ Perdu »
+// (VX223) passe désormais par le callback stable `onMarkPerdu` (LB5,
+// blueprint I2) plutôt que d'appeler crmApi en direct (bug recon2-03 #3 :
+// l'ancien code contournait Redux puis appelait `onChanged?.()`, une prop que
+// ni KanbanView ni ForecastView ne passaient JAMAIS — la carte restait
+// active jusqu'à un refetch sans rapport).
 // VX187 — memo() : chaque frappe dans la recherche/un filtre re-rendait
 // TOUTES les cartes visibles (zéro `memo(` dans tout le fichier). Ne tient
 // que si les callbacks parents sont stables (voir useCallback sur
@@ -178,9 +180,9 @@ const prochaineAction = (lead) => {
 function LeadCard({
   lead, busy = false, onOpen, onAutoQuote, users = [], onReassign,
   selected = false, onToggleSelect, onPlanifierRelance,
-  // VX223 — notifié après un « ✗ Perdu » réussi (optionnel : le kanban se
-  // resynchronise de toute façon à son prochain refetch périodique existant).
-  onChanged,
+  // LB5 — callback stable de LeadsPage (dispatch updateLead, store seul
+  // source de vérité — jamais de refetch ni de crmApi direct depuis la carte).
+  onMarkPerdu,
 }) {
   const perdu = isPerdu(lead)
   const tags = tagList(lead)
@@ -263,15 +265,17 @@ function LeadCard({
   }, [perduOpen, motifsPerte])
   const confirmPerdu = async () => {
     const motif = perduMotif.trim()
-    if (!motif) return
+    if (!motif || !onMarkPerdu) return
     setPerduBusy(true)
     try {
-      await crmApi.updateLead(lead.id, { perdu: true, motif_perte: motif })
+      // LB5 — passe par le store (LeadsPage.onMarkPerdu) : la carte se grise
+      // IMMÉDIATEMENT via le state Redux, aucun refetch. Le toast d'échec est
+      // déjà émis par onMarkPerdu — on garde la popover ouverte pour retenter.
+      await onMarkPerdu(lead, motif)
       setPerduOpen(false)
       setPerduMotif('')
-      onChanged?.()
     } catch {
-      // best-effort — la carte se resynchronise au prochain refetch du kanban
+      // Échec : toast déjà affiché par onMarkPerdu, popover reste ouverte.
     } finally {
       setPerduBusy(false)
     }

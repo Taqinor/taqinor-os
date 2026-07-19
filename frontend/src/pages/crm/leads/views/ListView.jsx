@@ -6,7 +6,7 @@ import { MoreHorizontal, PhoneCall, MessageCircle, List } from 'lucide-react'
 import { useDispatch } from 'react-redux'
 import { EmptyState } from '../../../../ui'
 import { useIsAdmin } from '../../../../hooks/useHasPermission'
-import { archiveLead, restoreLead, deleteLead, updateLead } from '../../../../features/crm/store/crmSlice'
+import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
 import crmApi from '../../../../api/crmApi'
 import { toastWithUndo, toastError } from '../../../../lib/toast'
 import {
@@ -498,7 +498,7 @@ const ListRow = memo(function ListRow({
 
 export default function ListView({
   leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign,
-  selected = new Set(), onToggleSelect, onToggleAll, onInlineSave,
+  selected = new Set(), onToggleSelect, onToggleAll, onInlineSave, onMarkPerdu,
 }) {
   const dispatch = useDispatch()
   const canDelete = useIsAdmin() // règle existante : destroy = admin
@@ -525,18 +525,20 @@ export default function ListView({
       .catch(() => setMotifsPerte([]))
   }, [perduTarget, motifsPerte])
   const closePerdu = () => { setPerduTarget(null); setPerduMotif('') }
+  // LB5 — passe désormais par le callback stable de LeadsPage (onMarkPerdu,
+  // blueprint I2) au lieu d'un dispatch(updateLead) local dupliqué : store
+  // seul source de vérité, AUCUN refetch (updateLead.fulfilled patche déjà le
+  // lead complet). Le toast d'échec est déjà émis par onMarkPerdu.
   const confirmPerdu = async () => {
     const motif = perduMotif.trim()
-    if (!motif || !perduTarget) return
+    if (!motif || !perduTarget || !onMarkPerdu) return
     setPerduBusy(true)
     try {
-      await dispatch(updateLead({
-        id: perduTarget.id, data: { perdu: true, motif_perte: motif },
-      })).unwrap()
-      onRefetch?.()
+      await onMarkPerdu(perduTarget, motif)
       closePerdu()
     } catch {
-      toastError('Le lead n’a pas pu être marqué perdu — réessayez.')
+      // Échec : toast déjà affiché par onMarkPerdu, popover reste ouverte
+      // (le motif saisi n'est pas perdu, l'utilisateur peut retenter).
     } finally {
       setPerduBusy(false)
     }

@@ -92,7 +92,14 @@ function groupByMonth(leads) {
   return columns
 }
 
-function DraggableCard({ lead, busy, onOpen, onAutoQuote, users, onReassign, onPlanifierRelance }) {
+// LB5 (bug-fix) — `onMarkPerdu` threadé jusqu'à LeadCard : sans lui, la
+// mini-popover « ✗ Perdu » de la carte appellerait un prop absent et
+// échouerait silencieusement (LeadCard ne fait plus JAMAIS de crmApi direct,
+// LB5). Avant ce fix, ForecastView ne passait déjà rien (ni `onChanged` ni
+// mutation) — corriger ici évite d'introduire une régression sur cette vue.
+function DraggableCard({
+  lead, busy, onOpen, onAutoQuote, users, onReassign, onPlanifierRelance, onMarkPerdu,
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
     data: { lead },
@@ -107,7 +114,7 @@ function DraggableCard({ lead, busy, onOpen, onAutoQuote, users, onReassign, onP
     >
       <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
                 users={users} onReassign={onReassign}
-                onPlanifierRelance={onPlanifierRelance} />
+                onPlanifierRelance={onPlanifierRelance} onMarkPerdu={onMarkPerdu} />
     </div>
   )
 }
@@ -154,7 +161,7 @@ function MonthColumn({ col, children }) {
 
 export default function ForecastView({
   leads, onOpenLead, onAutoQuote, busyLeadId, users, onReassign,
-  onPlanifierRelance, onInlineSave,
+  onPlanifierRelance, onInlineSave, onMarkPerdu,
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -202,6 +209,7 @@ export default function ForecastView({
                 users={users}
                 onReassign={onReassign}
                 onPlanifierRelance={onPlanifierRelance}
+                onMarkPerdu={onMarkPerdu}
               />
             ))}
           </MonthColumn>

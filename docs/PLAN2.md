@@ -3798,7 +3798,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   `frontend/src/pages/crm/leads/views/ListView.jsx`. DoD : drag COLD→CONTACTED déplace la carte
   (plus de bannière recul) ; drag FOLLOW_UP→NEW toujours bloqué ; n'importe où→COLD autorisé ;
   les options interdites du select sont grisées ; tests verts. (ROUTINE — S) (@model: sonnet) (@lane: LB0)
-- [ ] LB5 — **P1 : « ✗ Perdu » depuis une carte met l'UI à jour (chemin Redux).** Bug recon2-03
+- [x] LB5 — **P1 : « ✗ Perdu » depuis une carte met l'UI à jour (chemin Redux).** Bug recon2-03
   #3 : `confirmPerdu` de LeadCard appelle `crmApi.updateLead` en DIRECT (contourne le store) puis
   `onChanged?.()` que KanbanView/ForecastView ne passent JAMAIS ; aucun polling n'existe (les
   commentaires qui l'affirment MENTENT). Fix (blueprint I2) : callback stable
@@ -4196,6 +4196,20 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   sauf → Froid. Tests : 4 nouveaux cas dans `stages.test.mjs` (exécutés, verts), 2 nouveaux dans
   `KanbanView.test.jsx` (options grisées FOLLOW_UP + réactivation COLD, raisonnement — non
   exécutables ici), nouveau `ListViewStageGuard.test.mjs` (4 assertions source, exécutées, vertes).
+- 2026-07-19 LB5 — « ✗ Perdu » depuis une carte met l'UI à jour (bug #3) : nouveau callback
+  stable `LeadsPage.jsx#onMarkPerdu(lead, motif)` (dispatch `updateLead`, AUCUN refetch —
+  `updateLead.fulfilled` patche déjà le lead complet, toastError + relance l'erreur en échec pour
+  que l'appelant garde sa popover ouverte), ajouté à `viewProps`. `LeadCard.jsx` n'appelle plus
+  JAMAIS `crmApi.updateLead` en direct (contournait Redux) et la prop fantôme `onChanged` (jamais
+  passée par KanbanView NI ForecastView — les commentaires « resynchronisation au refetch » qui
+  l'affirmaient mentaient, aucun polling n'existe) est supprimée. `KanbanView.jsx` (DraggableCard)
+  ET `ForecastView.jsx` (bug-fix, évite une régression puisque le bouton ✗ y fonctionnait déjà en
+  direct) threadent `onMarkPerdu` jusqu'à `LeadCard`. `ListView.jsx#confirmPerdu` route désormais
+  par le MÊME callback partagé au lieu d'un `dispatch(updateLead)` local dupliqué (import
+  `updateLead` retiré, devenu inutile). Tests : nouveau `LeadsPageMarkPerdu.test.mjs` (7
+  assertions source, exécutées, vertes) ; suite existante (VX95Forgiveness, LeadCardVX24,
+  ReadinessChips, SwipeAction, FirstTouchTimer, ForecastView — 37 tests) re-exécutée, toujours
+  verte.
 
 ## Group F — Design foundation & tokens
 

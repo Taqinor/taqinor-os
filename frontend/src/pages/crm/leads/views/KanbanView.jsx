@@ -124,7 +124,7 @@ export const STAGE_PROBABILITY = {
 // pendant que le DragOverlay suit le pointeur.
 function DraggableCard({
   lead, busy, onOpen, onAutoQuote, users, onReassign,
-  selected, onToggleSelect, onPlanifierRelance, onInlineSave,
+  selected, onToggleSelect, onPlanifierRelance, onInlineSave, onMarkPerdu,
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -142,7 +142,7 @@ function DraggableCard({
         <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
                   users={users} onReassign={onReassign}
                   selected={selected} onToggleSelect={onToggleSelect}
-                  onPlanifierRelance={onPlanifierRelance} />
+                  onPlanifierRelance={onPlanifierRelance} onMarkPerdu={onMarkPerdu} />
       </div>
       <StageMover lead={lead} onInlineSave={onInlineSave} />
     </div>
@@ -200,6 +200,7 @@ export default function KanbanView({
   onToggleSelect,
   onPlanifierRelance,
   onInlineSave,
+  onMarkPerdu,
 }) {
   // VX135 — préférence reduced-motion lue en JS : le tilt (transform statique
   // posé par dnd-kit/CSS) et le dropAnimation (JS pur) échappent tous deux au
@@ -301,6 +302,7 @@ export default function KanbanView({
                 onToggleSelect={onToggleSelect}
                 onPlanifierRelance={onPlanifierRelance}
                 onInlineSave={onInlineSave}
+                onMarkPerdu={onMarkPerdu}
               />
             ))}
           </StageColumn>

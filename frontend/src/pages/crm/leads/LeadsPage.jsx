@@ -398,6 +398,24 @@ export default function LeadsPage() {
       .then(() => { refetch() })
   }
 
+  // LB5 — « ✗ Perdu » passe ENFIN par le store (blueprint I2, bug #3) :
+  // LeadCard.confirmPerdu appelait crmApi.updateLead en DIRECT (contournait
+  // Redux) puis `onChanged?.()`, une prop que ni KanbanView ni ForecastView
+  // ne passaient JAMAIS — la carte restait active jusqu'à un refetch sans
+  // rapport. Callback stable unique, partagé par LeadCard/ListView/
+  // ForecastView : dispatch updateLead (le store se met à jour SEUL,
+  // updateLead.fulfilled remplace déjà le lead au complet — AUCUN refetch),
+  // toastError + relance l'erreur en échec (I8) pour que l'appelant garde la
+  // popover ouverte plutôt que de perdre le motif saisi.
+  const onMarkPerdu = useCallback((lead, motif) => (
+    dispatch(updateLead({ id: lead.id, data: { perdu: true, motif_perte: motif } }))
+      .unwrap()
+      .catch((err) => {
+        toastError('Le lead n’a pas pu être marqué perdu — réessayez.')
+        throw err
+      })
+  ), [dispatch])
+
   // VX187 — useCallback (même raison que onOpenLead/onAutoQuote ci-dessus) :
   // passé à chaque carte/ligne comme `onChangeStage`. Seule dépendance externe
   // réelle : `dispatch` (stable, useDispatch) — `setStageError`/`setBusyLeadId`
@@ -471,6 +489,7 @@ export default function LeadsPage() {
     onToggleSelect,
     onToggleAll,
     onInlineSave,
+    onMarkPerdu,
   }
 
   return (
