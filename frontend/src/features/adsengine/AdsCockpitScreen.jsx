@@ -1,10 +1,14 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Video, ImageOff } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import { formatMAD, formatNumber, formatRatio, sortCockpitRows } from './adsengine'
+import { formatMAD, formatNumber, formatPercent, formatRatio, sortCockpitRows } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import AdCreativePanel from './AdCreativePanel'
 import ManualActionMenu from './ManualActionMenu'
+// PUB3 — panneau démographie/placement/région/heure, construit+testé mais
+// jamais monté nulle part avant cette tâche (breakdowns/ est synchronisé
+// chaque semaine côté back mais restait invisible).
+import BreakdownsPanel from './BreakdownsPanel'
 
 /* ============================================================================
    ADSDEEP22 — Cockpit par ad (écran-console QUOTIDIEN du fondateur).
@@ -71,6 +75,54 @@ function AdThumbnail({ mediaRef, kind }) {
         style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6 }} />
     : <span data-testid="ae-cockpit-thumb-loading" style={{ display: 'inline-block', width: 36, height: 36,
         background: '#f1f5f9', borderRadius: 6 }} />
+}
+
+// PUB8 — courbe de rétention (25/50/75/100 %) d'UNE ad vidéo, réutilisant
+// l'endpoint de reporting déjà câblé (``reports.scatter`` — ADSDEEP47) plutôt
+// qu'un nouvel endpoint : le bundle vidéo complet (metrics.derived_ad_video_
+// metrics) y voyage désormais par point (PUB8, reporting.py) au lieu d'être
+// jeté après le hook rate. Aucune donnée si l'ad n'est pas vidéo ou n'a pas
+// de lecture calculable (jamais un 0 fabriqué).
+function AdRetentionCurve({ adMetaId, kind }) {
+  const [point, setPoint] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise avant résolution (changement d'ad)
+    setPoint(null)
+    if (kind !== 'video' || !adMetaId) return undefined
+    setLoading(true)
+    adsengineApi.reports.scatter()
+      .then(r => {
+        if (!alive) return
+        const points = Array.isArray(r.data?.points) ? r.data.points : []
+        setPoint(points.find(p => p.ad_meta_id === adMetaId) || null)
+      })
+      .catch(() => { if (alive) setPoint(null) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [adMetaId, kind])
+
+  if (kind !== 'video') return null
+  if (loading) {
+    return <p data-testid="ae-cockpit-retention-loading" style={{ color: '#64748b', margin: '0.75rem 0 0' }}>
+      Chargement de la rétention…</p>
+  }
+  const retention = point?.retention
+  const values = retention ? [retention.p25, retention.p50, retention.p75, retention.p100] : []
+  if (!values.some(v => v != null)) return null
+
+  return (
+    <div data-testid="ae-cockpit-retention" style={{ marginTop: '0.75rem' }}>
+      <strong style={{ fontSize: '0.85rem', color: '#475569' }}>
+        Courbe de rétention (25 / 50 / 75 / 100 %)
+      </strong>
+      <p style={{ margin: '0.25rem 0 0' }}>
+        {values.map(v => formatPercent(v, 0)).join(' · ')}
+      </p>
+    </div>
+  )
 }
 
 function fatigueTone(fatigue) {
@@ -213,6 +265,15 @@ export default function AdsCockpitScreen() {
           <ManualActionMenu
             target={{ metaId: openRow.meta_id, scope: 'ad', name: openRow.nom }}
             onProposed={load} />
+
+          {/* PUB8 — courbe de rétention (ad vidéo uniquement). */}
+          <AdRetentionCurve adMetaId={openRow.meta_id} kind={openRow.thumbnail_kind} />
+
+          {/* PUB3 — drill démographie/placement/région/heure de CETTE ad
+              (id du miroir, pas le meta_id — même clé que breakdowns/). */}
+          <div style={{ marginTop: '1rem' }}>
+            <BreakdownsPanel objectType="ad" objectId={openRow.id} />
+          </div>
         </section>
       )}
     </div>

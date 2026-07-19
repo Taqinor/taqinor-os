@@ -165,6 +165,28 @@ describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {
     expect(rows[1]).toHaveTextContent('Gouffres à budget')
   })
 
+  it('PUB8 — affiche la courbe de rétention par ad vidéo (jamais un 0 fabriqué sans donnée)', async () => {
+    mocks.scatter.mockResolvedValue({ data: {
+      median_hook_rate: 0.2, median_spend: 300,
+      points: [
+        { ad_meta_id: 'a1', name: 'Reel pépite', spend: '50.00', hook_rate: 0.5,
+          quadrant: 'pepites_cachees', quadrant_label_fr: 'Pépites cachées',
+          hold_rate: 0.3, ratio_15s_to_6s: 0.5, watch_time_avg_s: 12.5,
+          retention: { p25: 0.8, p50: 0.5, p75: 0.25, p100: 0.1 } },
+        // Ad sans bundle vidéo (pas de retention) — jamais un "0 %" fabriqué.
+        { ad_meta_id: 'a2', name: 'Statique gouffre', spend: '950.00', hook_rate: 0.05,
+          quadrant: 'gouffres', quadrant_label_fr: 'Gouffres à budget' },
+      ],
+    } })
+    renderScreen()
+    screen.getByTestId('ae-reports-tab-creatifs').click()
+    const rows = await screen.findAllByTestId('ae-creatifs-scatter-row')
+    expect(rows[0].querySelector('[data-testid="ae-creatifs-scatter-retention"]'))
+      .toHaveTextContent('80 % · 50 % · 25 % · 10 %')
+    expect(rows[1].querySelector('[data-testid="ae-creatifs-scatter-retention"]'))
+      .toHaveTextContent('—')
+  })
+
   it('change de dimension et relance l\'appel API', async () => {
     renderScreen()
     screen.getByTestId('ae-reports-tab-creatifs').click()

@@ -4,6 +4,10 @@ import adsengineApi from './adsengineApi'
 import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import ManualActionMenu from './ManualActionMenu'
+// PUB3 — panneau démographie/placement/région/heure, construit+testé mais
+// jamais monté nulle part avant cette tâche — drill par ad set ET par ad.
+import BreakdownsPanel from './BreakdownsPanel'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    ENG24 — Écran « Campagnes » (miroirs Meta) du moteur publicitaire.
@@ -20,7 +24,23 @@ import ManualActionMenu from './ManualActionMenu'
    niveaux navigables) avec statuts/budgets/dépenses/leads par niveau + le
    badge d'apprentissage (ADSDEEP32) par ad set. Un fil d'Ariane permet de
    remonter d'un niveau sans recharger la liste des campagnes.
+
+   PUB13 — le détail d'un ad set (niveau 3) ne montrait que le badge
+   d'apprentissage DÉRIVÉ (learning_badge) ; `learning_stage_info` (dict BRUT
+   Meta : conversions, attribution_windows…) et `last_sig_edit` (dernière
+   édition significative — reset d'apprentissage) sont sérialisés
+   (AdSetMirrorSerializer) mais invisibles. Panneau « Apprentissage Meta » qui
+   les rend TELS QUELS (jamais reformatés/interprétés — c'est du brut Meta
+   pour l'audit).
    ========================================================================== */
+
+// PUB13 — rend une valeur BRUTE de `learning_stage_info` sans l'interpréter
+// (objet/liste → JSON compact, primitive → telle quelle).
+function formatLearningValue(v) {
+  if (v == null) return '—'
+  if (typeof v === 'object') return JSON.stringify(v)
+  return String(v)
+}
 
 export default function CampaignsScreen() {
   const [campaigns, setCampaigns] = useState([])
@@ -40,6 +60,13 @@ export default function CampaignsScreen() {
   // id du miroir d'ad set actuellement ouvert (3ᵉ niveau = ses ads) ; null =
   // on est encore au niveau « ad sets » de la campagne.
   const [openAdsetId, setOpenAdsetId] = useState(null)
+  // PUB3 — drill « Audience & diffusion » (BreakdownsPanel) : id du miroir
+  // (ad set OU ad, selon le niveau affiché) dont les ventilations sont
+  // ouvertes ; un seul à la fois (les deux tables ne sont jamais visibles
+  // simultanément — remis à null à chaque changement de niveau).
+  const [openBreakdownId, setOpenBreakdownId] = useState(null)
+  const toggleBreakdown = (id) =>
+    setOpenBreakdownId(cur => (cur === id ? null : id))
 
   const load = useCallback(() => {
     setLoading(true)
@@ -71,6 +98,7 @@ export default function CampaignsScreen() {
   // ADSDEEP60 — ouvre la hiérarchie d'une campagne (Ad sets → Ads).
   const openCampaign = (c) => {
     setOpenAdsetId(null)
+    setOpenBreakdownId(null)
     setHierarchy({ ...c, adsets: [] }) // affichage immédiat (ligne connue)
     setHierarchyLoading(true)
     adsengineApi.campaigns.hierarchy(c.id)
@@ -78,8 +106,9 @@ export default function CampaignsScreen() {
       .catch(() => setHierarchy({ ...c, adsets: [] }))
       .finally(() => setHierarchyLoading(false))
   }
-  const closeCampaign = () => { setHierarchy(null); setOpenAdsetId(null) }
-  const backToAdsets = () => setOpenAdsetId(null)
+  const closeCampaign = () => { setHierarchy(null); setOpenAdsetId(null); setOpenBreakdownId(null) }
+  const backToAdsets = () => { setOpenAdsetId(null); setOpenBreakdownId(null) }
+  const openAdsetLevel = (id) => { setOpenAdsetId(id); setOpenBreakdownId(null) }
 
   const syncNow = async () => {
     setSyncing(true); setMsg('')
@@ -211,7 +240,7 @@ export default function CampaignsScreen() {
                         <thead>
                           <tr>
                             <th>Ad set</th><th>Statut</th><th>Apprentissage</th>
-                            <th>Budget/jour</th><th>Dépense</th><th>Leads</th><th />
+                            <th>Budget/jour</th><th>Dépense</th><th>Leads</th><th /><th />
                           </tr>
                         </thead>
                         <tbody>
@@ -228,14 +257,26 @@ export default function CampaignsScreen() {
                               <td>{formatMoney(a.depense_mad, currency)}</td>
                               <td>{formatNumber(a.nb_leads)}</td>
                               <td>
+                                {/* PUB3 — drill audience & diffusion de CET ad set */}
+                                <button type="button" className="btn btn-light" data-testid="ae-camp-adset-breakdowns"
+                                  onClick={() => toggleBreakdown(a.id)}>
+                                  {openBreakdownId === a.id ? 'Fermer les ventilations' : 'Ventilations'}
+                                </button>
+                              </td>
+                              <td>
                                 <button type="button" className="btn btn-light" data-testid="ae-camp-adset-open"
-                                  onClick={() => setOpenAdsetId(a.id)}>Ouvrir</button>
+                                  onClick={() => openAdsetLevel(a.id)}>Ouvrir</button>
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     )}
+                  {openBreakdownId != null && (hierarchy.adsets || []).some(a => a.id === openBreakdownId) && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <BreakdownsPanel objectType="adset" objectId={openBreakdownId} />
+                    </div>
+                  )}
                 </>
               )
               : (
@@ -254,12 +295,38 @@ export default function CampaignsScreen() {
                   <ManualActionMenu
                     target={{ metaId: openAdset.meta_id, scope: 'adset', name: openAdset.nom }} />
 
+                  {/* PUB13 — panneau « Apprentissage Meta » : learning_stage_info
+                      brut + last_sig_edit (fenêtres d'attribution, statut
+                      d'apprentissage, dernière édition significative). */}
+                  <section className="card ae-camp-learning" data-testid="ae-camp-learning-panel"
+                    style={{ padding: '0.75rem', margin: '0 0 0.9rem', border: '1px solid #e2e8f0' }}>
+                    <h4 style={{ margin: '0 0 0.4rem' }}>Apprentissage Meta</h4>
+                    <p style={{ margin: '0 0 0.5rem', color: '#64748b', fontSize: '0.85rem' }}
+                      data-testid="ae-camp-learning-last-sig-edit">
+                      Dernière édition significative : {openAdset.last_sig_edit
+                        ? formatDateTime(openAdset.last_sig_edit) : 'Aucune.'}
+                    </p>
+                    {Object.keys(openAdset.learning_stage_info || {}).length === 0
+                      ? <p data-testid="ae-camp-learning-empty" style={{ color: '#64748b', margin: 0 }}>
+                          Aucune info d&apos;apprentissage brute disponible.</p>
+                      : (
+                        <ul data-testid="ae-camp-learning-raw"
+                          style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.25rem', fontSize: '0.85rem' }}>
+                          {Object.entries(openAdset.learning_stage_info).map(([k, v]) => (
+                            <li key={k} data-testid="ae-camp-learning-row">
+                              <strong style={{ color: '#475569' }}>{k}</strong>{' : '}{formatLearningValue(v)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                  </section>
+
                   {(openAdset.ads || []).length === 0
                     ? <p data-testid="ae-camp-ads-empty" style={{ color: '#64748b' }}>Aucune ad synchronisée.</p>
                     : (
                       <table className="data-table" data-testid="ae-camp-ads-table">
                         <thead>
-                          <tr><th>Ad</th><th>Statut</th><th>Dépense</th><th>Leads</th></tr>
+                          <tr><th>Ad</th><th>Statut</th><th>Dépense</th><th>Leads</th><th /></tr>
                         </thead>
                         <tbody>
                           {openAdset.ads.map(ad => (
@@ -268,11 +335,23 @@ export default function CampaignsScreen() {
                               <td>{ad.statut_display || ad.status || '—'}</td>
                               <td>{formatMoney(ad.depense_mad, currency)}</td>
                               <td>{formatNumber(ad.nb_leads)}</td>
+                              <td>
+                                {/* PUB3 — drill audience & diffusion de CETTE ad */}
+                                <button type="button" className="btn btn-light" data-testid="ae-camp-ad-breakdowns"
+                                  onClick={() => toggleBreakdown(ad.id)}>
+                                  {openBreakdownId === ad.id ? 'Fermer les ventilations' : 'Ventilations'}
+                                </button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     )}
+                  {openBreakdownId != null && (openAdset.ads || []).some(ad => ad.id === openBreakdownId) && (
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <BreakdownsPanel objectType="ad" objectId={openBreakdownId} />
+                    </div>
+                  )}
                 </>
               )}
         </section>

@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
   approve: vi.fn(),
   reject: vi.fn(),
   create: vi.fn(),
+  // PUB10 — permissions effectives ; pleines par défaut (préserve le
+  // comportement des tests existants), restreintes dans les tests dédiés.
+  permissions: ['adsengine_approve', 'adsengine_manage'],
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -21,6 +24,13 @@ vi.mock('./adsengineApi', () => ({
       create: mocks.create,
     },
   },
+}))
+
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({
+    loading: false,
+    has: (code) => mocks.permissions.includes(code),
+  }),
 }))
 
 import ApprovalsScreen from './ApprovalsScreen'
@@ -42,6 +52,7 @@ beforeEach(() => {
   mocks.approve.mockResolvedValue({ data: {} })
   mocks.reject.mockResolvedValue({ data: {} })
   mocks.create.mockResolvedValue({ data: { id: 100 } })
+  mocks.permissions = ['adsengine_approve', 'adsengine_manage']
 })
 
 describe('ApprovalsScreen (ENG25)', () => {
@@ -147,5 +158,42 @@ describe('ApprovalsScreen — avertissements + composeur EDIT_COPY (ADSDEEP35)',
     // Recharge la boîte + referme le composeur.
     await waitFor(() => expect(mocks.pending).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(screen.queryByTestId('ae-composer')).toBeNull())
+  })
+})
+
+describe('PUB10 — parité permissions UI', () => {
+  it('manage-sans-approve : Approuver/Rejeter/batch sont grisés, le composeur reste actif', async () => {
+    mocks.permissions = ['adsengine_manage'] // pas adsengine_approve
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    expect(screen.getByTestId('ae-approve-11')).toBeDisabled()
+    expect(screen.getByTestId('ae-reject-11')).toBeDisabled()
+    // Cliquer un bouton désactivé n'appelle jamais l'API.
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    expect(mocks.approve).not.toHaveBeenCalled()
+    // Le composeur (adsengine_manage) reste utilisable.
+    expect(screen.getByTestId('ae-toggle-composer')).not.toBeDisabled()
+
+    // Batch : cocher une case puis le bouton de sélection reste grisé.
+    fireEvent.click(screen.getByTestId('ae-batch-toggle-11'))
+    expect(screen.getByTestId('ae-batch-approve')).toBeDisabled()
+  })
+
+  it('approve-sans-manage : le composeur est grisé, Approuver/Rejeter restent actifs', async () => {
+    mocks.permissions = ['adsengine_approve'] // pas adsengine_manage
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    expect(screen.getByTestId('ae-toggle-composer')).toBeDisabled()
+    expect(screen.getByTestId('ae-approve-11')).not.toBeDisabled()
+    expect(screen.getByTestId('ae-reject-11')).not.toBeDisabled()
+  })
+
+  it('aucune permission : tous les contrôles protégés sont grisés', async () => {
+    mocks.permissions = []
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    expect(screen.getByTestId('ae-approve-11')).toBeDisabled()
+    expect(screen.getByTestId('ae-reject-11')).toBeDisabled()
+    expect(screen.getByTestId('ae-toggle-composer')).toBeDisabled()
   })
 })

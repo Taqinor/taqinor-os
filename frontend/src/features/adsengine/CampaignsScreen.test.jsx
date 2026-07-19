@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   syncNow: vi.fn(),
   ranking: vi.fn(),
   connGet: vi.fn(),
+  breakdownsList: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -22,6 +23,7 @@ vi.mock('./adsengineApi', () => ({
       syncNow: mocks.syncNow, creativeRanking: mocks.ranking,
     },
     connection: { get: mocks.connGet },
+    breakdowns: { list: mocks.breakdownsList },
   },
 }))
 
@@ -42,6 +44,10 @@ beforeEach(() => {
     adsets: [
       { id: 11, nom: 'Ad set toiture', statut_display: 'Actif',
         learning_badge: { label: 'En apprentissage', tone: 'info' },
+        // PUB13 — brut Meta (conversions/fenêtres d'attribution) + dernière
+        // édition significative.
+        learning_stage_info: { conversions: 12, attribution_windows: ['7d_click'] },
+        last_sig_edit: '2026-07-10T09:00:00Z',
         budget_quotidien_mad: 40, depense_mad: 300, nb_leads: 7,
         ads: [
           { id: 111, nom: 'Reel toiture', statut_display: 'Actif', depense_mad: 150, nb_leads: 4 },
@@ -59,6 +65,7 @@ beforeEach(() => {
     { id: 'b', nom: 'Statique prix', reponses_whatsapp: 10, cout_mad: 500 },  // 50/rép (meilleur)
     { id: 'c', nom: 'Explainer', reponses_whatsapp: 0, cout_mad: 300 },       // sans réponse → dernier
   ] })
+  mocks.breakdownsList.mockResolvedValue({ data: [] })
 })
 
 describe('rankCreatives (helper de tri — pur)', () => {
@@ -147,6 +154,55 @@ describe('CampaignsScreen (ENG24)', () => {
       expect(breadcrumb).toHaveTextContent('Campagnes')
       expect(breadcrumb).toHaveTextContent('Solaire résidentiel Casa')
       expect(breadcrumb).toHaveTextContent('Ad set toiture')
+    })
+
+    it('PUB3 — drill des ventilations par ad set, puis par ad', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      fireEvent.click(screen.getAllByTestId('ae-camp-open')[0])
+      await screen.findByTestId('ae-camp-hierarchy')
+
+      // Niveau ad set : ouvrir les ventilations du 1er ad set (id 11).
+      fireEvent.click(screen.getAllByTestId('ae-camp-adset-breakdowns')[0])
+      await waitFor(() => expect(mocks.breakdownsList).toHaveBeenCalledWith({
+        object_type: 'adset', object_id: 11,
+      }))
+      expect(await screen.findByTestId('ae-breakdowns-panel')).toBeInTheDocument()
+
+      // Descendre au niveau ads : le panneau ad set disparaît, on peut ouvrir
+      // les ventilations d'une ad (id 111).
+      fireEvent.click(screen.getAllByTestId('ae-camp-adset-open')[0])
+      await screen.findByTestId('ae-camp-ads-table')
+      expect(screen.queryByTestId('ae-breakdowns-panel')).toBeNull()
+
+      fireEvent.click(screen.getAllByTestId('ae-camp-ad-breakdowns')[0])
+      await waitFor(() => expect(mocks.breakdownsList).toHaveBeenCalledWith({
+        object_type: 'ad', object_id: 111,
+      }))
+      expect(await screen.findByTestId('ae-breakdowns-panel')).toBeInTheDocument()
+    })
+
+    it('PUB13 — le panneau « Apprentissage Meta » montre learning_stage_info brut + last_sig_edit', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      fireEvent.click(screen.getAllByTestId('ae-camp-open')[0])
+      await screen.findByTestId('ae-camp-hierarchy')
+      fireEvent.click(screen.getAllByTestId('ae-camp-adset-open')[0])
+
+      const panel = await screen.findByTestId('ae-camp-learning-panel')
+      expect(panel).toHaveTextContent('conversions : 12')
+      expect(within(panel).getByTestId('ae-camp-learning-last-sig-edit')).not.toHaveTextContent('Aucune.')
+    })
+
+    it('PUB13 — état vide sans learning_stage_info', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      fireEvent.click(screen.getAllByTestId('ae-camp-open')[0])
+      await screen.findByTestId('ae-camp-hierarchy')
+      // 2ᵉ ad set (id 12, « Ad set pompage ») n'a ni learning_stage_info ni last_sig_edit.
+      fireEvent.click(screen.getAllByTestId('ae-camp-adset-open')[1])
+      expect(await screen.findByTestId('ae-camp-learning-empty')).toBeInTheDocument()
+      expect(screen.getByTestId('ae-camp-learning-last-sig-edit')).toHaveTextContent('Aucune.')
     })
 
     it('« Retour aux ad sets » remonte au 2ᵉ niveau sans recharger la hiérarchie', async () => {

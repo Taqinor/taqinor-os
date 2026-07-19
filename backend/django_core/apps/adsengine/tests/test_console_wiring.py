@@ -191,6 +191,63 @@ class ConsoleWiringTests(TestCase):
             f'{BASE}/guardrail/', {'max_daily_budget_mad': 9}, format='json')
         self.assertEqual(resp.status_code, 403)
 
+    def test_guardrail_singleton_exposes_and_patches_all_fields(self):
+        """PUB9 — avant cette tâche, ce singleton (celui que ConnectionScreen
+        appelle réellement) ne mappait QUE les 2 plafonds budget : le reste de
+        GuardrailConfig (variation hebdo, fenêtre d'anomalie, bascules ENG8,
+        pacing/exploration ADSENG4, poids santé SIG1) était sérialisé côté
+        ``garde-fous/`` (ViewSet) mais invisible ici, donc jamais réellement
+        éditable depuis l'écran."""
+        api = auth(self.manager)
+        get1 = api.get(f'{BASE}/guardrail/')
+        self.assertEqual(get1.status_code, 200, get1.data)
+        for key in (
+                'weekly_change_pct_max', 'anomaly_window_hours',
+                'auto_rotate_creative', 'auto_rebalance_within_band',
+                'pacing_band_pct', 'exploration_floor_mad',
+                'exploration_floor_pct', 'health_creative_weight_ctr',
+                'health_creative_weight_freshness', 'health_ops_weight_cpl',
+                'health_ops_weight_delivery'):
+            self.assertIn(key, get1.data)
+
+        patch = api.patch(f'{BASE}/guardrail/', {
+            'weekly_change_pct_max': 30, 'anomaly_window_hours': 72,
+            'auto_rotate_creative': True, 'auto_rebalance_within_band': True,
+            'pacing_band_pct': 25, 'exploration_floor_mad': 40,
+            'exploration_floor_pct': 10, 'health_creative_weight_ctr': 70,
+            'health_creative_weight_freshness': 30,
+            'health_ops_weight_cpl': 55, 'health_ops_weight_delivery': 45,
+        }, format='json')
+        self.assertEqual(patch.status_code, 200, patch.data)
+        cfg = GuardrailConfig.objects.get(company=self.company)
+        self.assertEqual(cfg.weekly_change_pct_max, 30)
+        self.assertEqual(cfg.anomaly_window_hours, 72)
+        self.assertTrue(cfg.auto_rotate_creative)
+        self.assertTrue(cfg.auto_rebalance_within_band)
+        self.assertEqual(cfg.pacing_band_pct, 25)
+        self.assertEqual(cfg.exploration_floor_mad, 40)
+        self.assertEqual(cfg.exploration_floor_pct, 10)
+        self.assertEqual(cfg.health_creative_weight_ctr, 70)
+        self.assertEqual(cfg.health_creative_weight_freshness, 30)
+        self.assertEqual(cfg.health_ops_weight_cpl, 55)
+        self.assertEqual(cfg.health_ops_weight_delivery, 45)
+
+    def test_guardrail_singleton_bool_toggle_off_is_sent_and_saved(self):
+        """Une bascule ENG8 explicitement remise à False doit s'enregistrer
+        (contrairement aux plafonds numériques, une valeur falsy n'est jamais
+        traitée comme « absente » pour un booléen)."""
+        cfg, _ = GuardrailConfig.objects.get_or_create(
+            company=self.company, defaults={'auto_rotate_creative': True})
+        if not cfg.auto_rotate_creative:
+            cfg.auto_rotate_creative = True
+            cfg.save(update_fields=['auto_rotate_creative'])
+        resp = auth(self.manager).patch(
+            f'{BASE}/guardrail/', {'auto_rotate_creative': False},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        cfg.refresh_from_db()
+        self.assertFalse(cfg.auto_rotate_creative)
+
     # ── ENG23 — Dashboard / leads / pacing ───────────────────────────────────
     def test_metrics_dashboard_shape(self):
         resp = auth(self.viewer).get(f'{BASE}/metrics/dashboard/')

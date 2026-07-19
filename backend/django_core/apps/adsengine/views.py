@@ -1509,10 +1509,18 @@ class MetaConnectionHealthView(APIView):
 
 class GuardrailSingletonView(APIView):
     """ENG3/ENG22 — Garde-fous d'UNE société vus comme un singleton (GET/PATCH
-    sans id). Mappe les libellés d'écran (``max_daily_budget_mad`` /
-    ``max_monthly_budget_mad``) sur les champs modèle
-    (``daily_budget_ceiling_mad`` / ``monthly_budget_ceiling_mad``). Company-
-    scopé ; lecture ``adsengine_view`` / écriture ``adsengine_manage``."""
+    sans id). Mappe les libellés d'écran HISTORIQUES (``max_daily_budget_mad``
+    / ``max_monthly_budget_mad``) sur les 2 champs modèle correspondants
+    (``daily_budget_ceiling_mad`` / ``monthly_budget_ceiling_mad``).
+
+    PUB9 — TOUS les AUTRES champs de ``GuardrailConfig`` (weekly_change_pct_
+    max, anomaly_window_hours, les 2 bascules ENG8, pacing/exploration
+    ADSENG4, les 4 poids santé SIG1) voyagent désormais aussi, sous leur nom
+    modèle DIRECT (identique à ``GuardrailConfigSerializer``/``garde-fous/``
+    — même donnée, deux surfaces) : avant cette tâche, ce singleton n'exposait
+    QUE les 2 plafonds budget, et ``ConnectionScreen`` n'en éditait donc que 2.
+    Company-scopé ; lecture ``adsengine_view`` / écriture ``adsengine_manage``.
+    """
 
     permission_classes = [IsAuthenticated]  # affiné par get_permissions
 
@@ -1520,15 +1528,31 @@ class GuardrailSingletonView(APIView):
         _w = self.request.method in ('POST', 'PATCH', 'PUT', 'DELETE')
         return [HasPermissionOrLegacy('adsengine_manage' if _w else 'adsengine_view')()]
 
-    @staticmethod
-    def _payload(cfg):
-        return {
-            'max_daily_budget_mad': cfg.daily_budget_ceiling_mad,
-            'max_monthly_budget_mad': cfg.monthly_budget_ceiling_mad,
-            # Aucun champ de stockage pour la bande d'approbation (aucune
-            # migration ajoutée) : exposée None. GAP documenté.
-            'require_approval_above_mad': None,
-        }
+    # Alias HISTORIQUES (nom écran ≠ nom modèle) — seuls les 2 plafonds budget.
+    _ALIASED_FIELDS = {
+        'max_daily_budget_mad': 'daily_budget_ceiling_mad',
+        'max_monthly_budget_mad': 'monthly_budget_ceiling_mad',
+    }
+    # PUB9 — le reste de GuardrailConfig, sous son nom modèle DIRECT.
+    _DIRECT_FIELDS = (
+        'weekly_change_pct_max', 'anomaly_window_hours',
+        'auto_rotate_creative', 'auto_rebalance_within_band',
+        'pacing_band_pct', 'exploration_floor_mad', 'exploration_floor_pct',
+        'health_creative_weight_ctr', 'health_creative_weight_freshness',
+        'health_ops_weight_cpl', 'health_ops_weight_delivery',
+    )
+    _BOOL_FIELDS = {'auto_rotate_creative', 'auto_rebalance_within_band'}
+
+    @classmethod
+    def _payload(cls, cfg):
+        data = {screen_key: getattr(cfg, model_field)
+                for screen_key, model_field in cls._ALIASED_FIELDS.items()}
+        for field in cls._DIRECT_FIELDS:
+            data[field] = getattr(cfg, field)
+        # Aucun champ de stockage pour la bande d'approbation (aucune
+        # migration ajoutée) : exposée None. GAP documenté.
+        data['require_approval_above_mad'] = None
+        return data
 
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
@@ -1543,12 +1567,8 @@ class GuardrailSingletonView(APIView):
             return err
         cfg, _ = GuardrailConfig.objects.get_or_create(company=company)
         data = request.data if isinstance(request.data, dict) else {}
-        mapping = {
-            'max_daily_budget_mad': 'daily_budget_ceiling_mad',
-            'max_monthly_budget_mad': 'monthly_budget_ceiling_mad',
-        }
         changed = []
-        for src, field in mapping.items():
+        for src, field in self._ALIASED_FIELDS.items():
             if src in data and data[src] not in (None, ''):
                 try:
                     setattr(cfg, field, int(float(data[src])))
@@ -1556,6 +1576,22 @@ class GuardrailSingletonView(APIView):
                     return Response(
                         {'detail': f'Valeur invalide pour {src}.'}, status=400)
                 changed.append(field)
+        for field in self._DIRECT_FIELDS:
+            if field not in data:
+                continue
+            value = data[field]
+            if field in self._BOOL_FIELDS:
+                setattr(cfg, field, bool(value))
+                changed.append(field)
+                continue
+            if value in (None, ''):
+                continue
+            try:
+                setattr(cfg, field, int(float(value)))
+            except (TypeError, ValueError):
+                return Response(
+                    {'detail': f'Valeur invalide pour {field}.'}, status=400)
+            changed.append(field)
         if changed:
             cfg.save(update_fields=changed + ['updated_at'])
         return Response(self._payload(cfg))

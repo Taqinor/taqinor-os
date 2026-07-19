@@ -7,7 +7,7 @@ import {
   LayoutDashboard, PlugZap, Megaphone, ClipboardCheck,
   FileText, Images, History, FlaskConical, Route, Layers,
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
-  Gauge, GitBranch,
+  Gauge, GitBranch, Table2,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -42,6 +42,8 @@ const InstagramScreen = lazy(() => import('./InstagramScreen'))
 const AdsCockpitScreen = lazy(() => import('./AdsCockpitScreen'))
 // ASG6 — L'Arbre (l'Assumption Engine : plan vivant, dd-assumption-engine.md §3).
 const TreeScreen = lazy(() => import('./TreeScreen'))
+// PUB6/AGEN1 — Table des faits versionnée (génération créative ancrée).
+const FactTableScreen = lazy(() => import('./FactTableScreen'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -69,6 +71,7 @@ const config = {
       { to: '/publicite/journal', label: "Journal d'actions", icon: <History size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/connexion', label: 'Connexion & garde-fous', icon: <PlugZap size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/publicite/arbre', label: "L'Arbre", icon: <GitBranch size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/publicite/table-des-faits', label: 'Table des faits', icon: <Table2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -90,6 +93,7 @@ const config = {
     ['/publicite/journal', "Publicité — Journal d'actions"],
     ['/publicite/connexion', 'Publicité — Connexion & garde-fous'],
     ['/publicite/arbre', "Publicité — L'Arbre"],
+    ['/publicite/table-des-faits', 'Publicité — Table des faits'],
   ],
   sectionLabels: { publicite: 'Publicité' },
   routes: [
@@ -110,6 +114,7 @@ const config = {
     { path: '/publicite/journal', component: ActionsLogScreen, roles: ROLES },
     { path: '/publicite/connexion', component: ConnectionScreen, roles: ROLES },
     { path: '/publicite/arbre', component: TreeScreen, roles: ROLES },
+    { path: '/publicite/table-des-faits', component: FactTableScreen, roles: ROLES },
   ],
 }
 

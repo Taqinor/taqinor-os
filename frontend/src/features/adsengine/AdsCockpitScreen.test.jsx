@@ -9,6 +9,8 @@ import { MemoryRouter } from 'react-router-dom'
 const mocks = vi.hoisted(() => ({
   adsCockpit: vi.fn(),
   mediaResolve: vi.fn(),
+  breakdownsList: vi.fn(),
+  reportsScatter: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -16,6 +18,9 @@ vi.mock('./adsengineApi', () => ({
     metrics: { adsCockpit: mocks.adsCockpit },
     media: { resolve: mocks.mediaResolve },
     previews: { get: vi.fn() },
+    breakdowns: { list: mocks.breakdownsList },
+    // PUB8 — courbe de rétention (réutilise reporting/creatifs/nuage/).
+    reports: { scatter: mocks.reportsScatter },
   },
 }))
 
@@ -54,6 +59,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.adsCockpit.mockResolvedValue({ data: ROWS })
   mocks.mediaResolve.mockResolvedValue({ data: { url: 'https://cdn.example/img.jpg' } })
+  mocks.breakdownsList.mockResolvedValue({ data: [] })
+  mocks.reportsScatter.mockResolvedValue({ data: { points: [] } })
 })
 
 describe('AdsCockpitScreen (ADSDEEP22)', () => {
@@ -130,6 +137,41 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
     expect(within(detail).getByTestId('ae-creative-panel')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('ae-cockpit-detail-close'))
     expect(screen.queryByTestId('ae-cockpit-detail')).toBeNull()
+  })
+
+  it('PUB8 — le détail d’une ad vidéo montre sa courbe de rétention', async () => {
+    mocks.reportsScatter.mockResolvedValue({ data: { points: [
+      { ad_meta_id: 'ad-1', name: 'Reel toiture', retention: { p25: 0.8, p50: 0.5, p75: 0.25, p100: 0.1 } },
+    ] } })
+    renderScreen()
+    await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+    // Ligne 0 (par défaut, tri dépense décroissante) = Reel toiture (vidéo).
+    fireEvent.click(screen.getAllByTestId('ae-cockpit-open')[0])
+    await waitFor(() => expect(mocks.reportsScatter).toHaveBeenCalled())
+    const curve = await screen.findByTestId('ae-cockpit-retention')
+    expect(curve).toHaveTextContent('80 %')
+    expect(curve).toHaveTextContent('10 %')
+  })
+
+  it('PUB8 — aucune courbe de rétention pour une ad image', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+    // Ligne 1 = « Statique prix » (image, kind !== 'video').
+    fireEvent.click(screen.getAllByTestId('ae-cockpit-open')[1])
+    await screen.findByTestId('ae-cockpit-detail')
+    expect(mocks.reportsScatter).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('ae-cockpit-retention')).toBeNull()
+  })
+
+  it('PUB3 — le détail d’une ad monte le panneau de ventilations sur SON id', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+    fireEvent.click(screen.getAllByTestId('ae-cockpit-open')[0])
+    const detail = await screen.findByTestId('ae-cockpit-detail')
+    expect(within(detail).getByTestId('ae-breakdowns-panel')).toBeInTheDocument()
+    await waitFor(() => expect(mocks.breakdownsList).toHaveBeenCalledWith({
+      object_type: 'ad', object_id: 1,
+    }))
   })
 
   it('état vide : aucune ad synchronisée', async () => {

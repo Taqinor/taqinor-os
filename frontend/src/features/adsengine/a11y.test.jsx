@@ -28,6 +28,12 @@ vi.mock('./adsengineApi', () => ({
   },
 }))
 
+// PUB10 — ApprovalsScreen reads adsengine_approve/adsengine_manage; full
+// access here (permission-gating itself is covered by ApprovalsScreen.test.jsx).
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({ loading: false, has: () => true }),
+}))
+
 import DashboardScreen from './DashboardScreen'
 import ApprovalsScreen from './ApprovalsScreen'
 

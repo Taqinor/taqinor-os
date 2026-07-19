@@ -4,6 +4,15 @@ import adsengineApi from './adsengineApi'
 import {
   normalizePreflight, normalizeValidation, normalizeFlightTemplate,
 } from './adsengine'
+// PUB5 — picker « Audiences d'engagement » (ADSDEEP59), orphelin : construit +
+// testé mais jamais monté dans le composeur d'adset. Aucun composeur d'adset
+// dédié n'existe encore côté front — le composeur du plan de vol EST le seul
+// endroit où une audience se prépare aujourd'hui.
+import EngagementAudiencePicker from './EngagementAudiencePicker'
+// PUB10 — Valider/Simuler exigent `adsengine_manage` côté back
+// (FlightPlanViewSet.validate/simulate) ; les griser sans la permission évite
+// une découverte en 403.
+import { useAdsPermissions } from './useAdsPermissions'
 
 /* ============================================================================
    ENG40 — Éditeur de plan de vol + panneau préflight (l'écran-amiral P7).
@@ -22,7 +31,15 @@ import {
 
 const EMPTY_VAR = { cle: '', valeur: '' }
 
+// PUB5 — ciblage de base pour l'estimation d'audience (dossier §5, doctrine
+// « montrer l'estimation AVANT usage ») : le marché est le Maroc (aucun autre
+// pays n'est jamais ciblé), jamais un ciblage inventé au-delà de ce socle.
+const BASE_TARGETING_SPEC = { geo_locations: { countries: ['MA'] } }
+
 export default function FlightPlanScreen() {
+  // PUB10 — permission de composition (valider/simuler un plan).
+  const { has } = useAdsPermissions()
+  const canManage = has('adsengine_manage')
   const [templates, setTemplates] = useState([])
   const [arms, setArms] = useState([])
   const [preflight, setPreflight] = useState({ pret: false, portes: [], manquantes: [] })
@@ -75,6 +92,13 @@ export default function FlightPlanScreen() {
     if (next.has(id)) next.delete(id); else next.add(id)
     return next
   })
+
+  // PUB5 — une audience d'engagement créée s'ajoute comme variable du plan
+  // (traçable dans le payload composé) plutôt que de disparaître.
+  const onAudienceCreated = (data) => {
+    if (!data?.audience_id) return
+    setVariables(vs => [...vs, { cle: 'audience_engagement', valeur: String(data.audience_id) }])
+  }
 
   const composePayload = () => ({
     nom,
@@ -212,14 +236,28 @@ export default function FlightPlanScreen() {
                 )}
             </section>
 
+            {/* PUB5 — Audiences d'engagement (ADSDEEP59), orphelines avant cette
+                tâche : preset + estimation AVANT usage + création, disponible
+                depuis le composeur du plan de vol. */}
+            <section className="card ae-fp-audiences" data-testid="ae-fp-audiences"
+              style={{ padding: '1rem' }}>
+              <EngagementAudiencePicker
+                targetingSpec={BASE_TARGETING_SPEC}
+                onCreated={onAudienceCreated}
+              />
+            </section>
+
             {/* Actions */}
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               <button type="button" className="btn btn-primary" data-testid="ae-fp-validate"
-                disabled={busy || !composed} onClick={validate}>
+                disabled={busy || !composed || !canManage}
+                title={!canManage ? "Nécessite la permission de gestion (adsengine_manage)." : undefined}
+                onClick={validate}>
                 Valider le plan
               </button>
               <button type="button" className="btn btn-success" data-testid="ae-fp-simulate"
-                disabled={busy || !composed}
+                disabled={busy || !composed || !canManage}
+                title={!canManage ? "Nécessite la permission de gestion (adsengine_manage)." : undefined}
                 onClick={simulate}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
                 <PlayCircle size={15} aria-hidden="true" /> Lancer la simulation
