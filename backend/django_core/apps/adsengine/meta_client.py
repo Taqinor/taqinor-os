@@ -412,6 +412,101 @@ class MetaClient:
             'GET', acct, params={'fields': ','.join(fields or ('currency',))})
         return payload if isinstance(payload, dict) else {}
 
+    # PUB97 — champs de trésorerie du nœud de compte (prépayé Meta Maroc).
+    # ``balance``/``amount_spent`` sont en unités MINEURES (centimes) de la
+    # devise du compte ; ``funding_source_details`` porte le mode de financement.
+    ACCOUNT_BALANCE_FIELDS = (
+        'balance', 'spend_cap', 'amount_spent', 'currency',
+        'funding_source_details')
+
+    @staticmethod
+    def _minor_to_major(value):
+        """Convertit une unité mineure Meta (centimes, str) en majeure (Decimal),
+        ou ``None`` si absente/illisible (dégradation propre)."""
+        from decimal import Decimal, InvalidOperation
+        if value in (None, ''):
+            return None
+        try:
+            return (Decimal(str(value)) / Decimal('100')).quantize(
+                Decimal('0.01'))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
+    def get_account_balance(self):
+        """PUB97 — Solde / financement du compte publicitaire (LECTURE).
+
+        Renvoie un dict normalisé (montants en unités MAJEURES de la devise du
+        compte) ::
+
+            {'balance': Decimal|None, 'spend_cap': Decimal|None,
+             'amount_spent': Decimal|None, 'currency': str,
+             'funding_source_details': dict, 'has_balance_field': bool}
+
+        Dégradation documentée : si l'API n'expose pas ``balance`` (certains
+        comptes/modes de financement), ``balance`` est ``None`` et
+        ``has_balance_field`` False — l'appelant marque la surveillance trésorerie
+        dégradée sans lever d'alarme."""
+        payload = self.get_account(fields=self.ACCOUNT_BALANCE_FIELDS)
+        fsd = payload.get('funding_source_details')
+        return {
+            'balance': self._minor_to_major(payload.get('balance')),
+            'spend_cap': self._minor_to_major(payload.get('spend_cap')),
+            'amount_spent': self._minor_to_major(payload.get('amount_spent')),
+            'currency': payload.get('currency') or '',
+            'funding_source_details': fsd if isinstance(fsd, dict) else {},
+            'has_balance_field': 'balance' in payload,
+        }
+
+    # PUB101 — santé du compte : codes Meta ``account_status`` / ``disable_reason``
+    # traduits en libellés FR. Un compte ≠ ACTIF (1) ressemble à une panne de
+    # données — on le LIT plutôt que de le deviner. Codes : dossier Graph API
+    # AdAccount (jamais devinés en dur ailleurs).
+    ACCOUNT_STATUS_FR = {
+        1: 'Actif', 2: 'Désactivé', 3: 'Impayé (non réglé)',
+        7: 'En revue de risque', 8: 'En attente de règlement',
+        9: 'Période de grâce', 100: 'Fermeture en attente',
+        101: 'Fermé', 201: 'Actif (tout)', 202: 'Fermé (tout)',
+    }
+    DISABLE_REASON_FR = {
+        0: '', 1: 'Politique d\'intégrité des annonces',
+        2: 'Revue propriété intellectuelle', 3: 'Risque de paiement',
+        4: 'Compte gris fermé', 5: 'Revue AFC', 6: 'Intégrité business (RAR)',
+        7: 'Fermeture permanente', 8: 'Compte revendeur inutilisé',
+        9: 'Compte inutilisé',
+    }
+    # Statuts SAINS (aucune alerte). Tout autre statut connu déclenche une alerte.
+    ACCOUNT_STATUS_HEALTHY = frozenset({1, 201})
+    ACCOUNT_HEALTH_FIELDS = ('account_status', 'disable_reason', 'name')
+
+    def get_account_health(self):
+        """PUB101 — Santé du compte publicitaire (LECTURE).
+
+        Renvoie ``{'account_status': int|None, 'account_status_label': str,
+        'disable_reason': int|None, 'disable_reason_label': str,
+        'is_healthy': bool, 'name': str}``. Dégradation propre si l'API n'expose
+        pas le statut (``account_status`` None → ``is_healthy`` True, pas
+        d'alarme : on ne devine pas une panne)."""
+        payload = self.get_account(fields=self.ACCOUNT_HEALTH_FIELDS)
+        raw_status = payload.get('account_status')
+        raw_reason = payload.get('disable_reason')
+        try:
+            status = int(raw_status) if raw_status is not None else None
+        except (TypeError, ValueError):
+            status = None
+        try:
+            reason = int(raw_reason) if raw_reason is not None else None
+        except (TypeError, ValueError):
+            reason = None
+        return {
+            'account_status': status,
+            'account_status_label': self.ACCOUNT_STATUS_FR.get(
+                status, '') if status is not None else '',
+            'disable_reason': reason,
+            'disable_reason_label': self.DISABLE_REASON_FR.get(reason, ''),
+            'is_healthy': status is None or status in self.ACCOUNT_STATUS_HEALTHY,
+            'name': payload.get('name') or '',
+        }
+
     def get_campaigns(self, *, fields=None, limit=None):
         return self._read_list(self._account_edge('campaigns'),
                                fields=fields or self.CAMPAIGN_SYNC_FIELDS,

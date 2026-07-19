@@ -82,6 +82,51 @@ def installation_gps_map(installation_ids):
     return {iid: (lat, lng) for iid, lat, lng in rows}
 
 
+def active_installation_locations(company):
+    """PUB79 — Chantiers ACTIFS (hors ``CLOTURE``) avec GPS + ville, pour les
+    déclencheurs cross-app lisant la météo par emplacement (ex.
+    ``apps.adsengine.weather_trigger`` — canicule ⇒ angle pompage/climatisation)
+    — jamais un import direct d'``Installation`` hors de ce module. Un chantier
+    sans GPS est simplement absent (jamais une coordonnée fabriquée). Lecture
+    seule, scopée société. Renvoie une LISTE de dicts ``{installation_id,
+    ville, gps_lat, gps_lng}``."""
+    from .models import Installation
+    qs = (Installation.objects
+          .filter(company=company)
+          .exclude(statut=Installation.Statut.CLOTURE)
+          .exclude(gps_lat__isnull=True)
+          .exclude(gps_lng__isnull=True)
+          .only('id', 'site_ville', 'gps_lat', 'gps_lng'))
+    return [
+        {'installation_id': i.id, 'ville': i.site_ville or '',
+         'gps_lat': i.gps_lat, 'gps_lng': i.gps_lng}
+        for i in qs
+    ]
+
+
+def fresh_installation_geo_seeds(company, *, days=14, today=None):
+    """PUB66 — Chantiers CRÉÉS dans les ``days`` derniers jours, AVEC un GPS
+    exploitable (lat/lng non nuls) — la base du halo géographique
+    publicitaire autour d'une installation fraîche. Ne renvoie AUCUNE donnée
+    client (ni nom, ni adresse) : uniquement id/référence/coordonnées — le
+    ciblage géo PUR ne nécessite aucun consentement (contrairement à toute
+    mention/photo du chantier, gatée PUB75, hors périmètre ici). Scopé
+    société. Renvoie ``[{'id', 'reference', 'gps_lat', 'gps_lng'}, ...]``."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import Installation
+
+    today = today or timezone.now()
+    since = today - timedelta(days=days)
+    return list(
+        Installation.objects
+        .filter(company=company, date_creation__gte=since,
+                gps_lat__isnull=False, gps_lng__isnull=False)
+        .values('id', 'reference', 'gps_lat', 'gps_lng'))
+
+
 def installation_qs_for_remise():
     """Queryset Installation prêt pour la fiche de remise (relations préchargées).
     L'appelant applique son propre scope société puis filtre par pk."""
@@ -2672,3 +2717,55 @@ def affectations_pour(user):
         })
 
     return items
+
+
+# ── PUB63/PUB73 — Photos de chantier exposées à la créathèque (adsengine) ────
+
+def chantier_photos(company, chantier_id, *, phase=None):
+    """PUB63/PUB73 — Photos (``records.Attachment`` images) d'un chantier
+    (Installation), optionnellement filtrées par ``phase`` (avant/pendant/après).
+
+    Point d'entrée cross-app LECTURE SEULE pour ``apps.adsengine`` (la
+    créathèque n'importe jamais ``installations.models`` ; ``records`` est une
+    app socle, import autorisé). Company-scopé. Renvoie un queryset
+    ``Attachment`` (le plus récent d'abord, ordering du modèle)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+
+    from .models import Installation
+
+    ct = ContentType.objects.get_for_model(Installation)
+    qs = Attachment.objects.filter(
+        company=company, content_type=ct, object_id=chantier_id,
+        mime__startswith='image/')
+    if phase:
+        qs = qs.filter(phase=phase)
+    return qs
+
+
+def chantier_a_photos(company, chantier_id, *, phase=None):
+    """PUB63 — Vrai si le chantier a au moins une photo (option : d'une phase
+    donnée). Lecture seule, scopée société."""
+    return chantier_photos(company, chantier_id, phase=phase).exists()
+
+
+def chantier_photo(company, chantier_id, attachment_id):
+    """PUB73 — Une photo précise (``records.Attachment`` image) d'un chantier,
+    scopée société ET chantier (``None`` si l'attachment n'appartient pas à ce
+    chantier / cette société). Point d'entrée cross-app LECTURE SEULE pour la
+    créathèque (``apps.adsengine``)."""
+    return chantier_photos(company, chantier_id).filter(pk=attachment_id).first()
+
+
+def chantier_ville(company, chantier_id):
+    """PUB63/PUB85 — Ville du site d'un chantier (Installation), ou ``None``.
+    Lecture seule, scopée société — fait de localisation vérifié pour un brief
+    témoignage ancré (« installation à Marrakech »)."""
+    from .models import Installation
+
+    chantier = (Installation.objects
+                .filter(pk=chantier_id, company=company).first())
+    if chantier is None:
+        return None
+    return (getattr(chantier, 'site_ville', '') or '').strip() or None

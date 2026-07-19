@@ -1484,6 +1484,39 @@ def share_link_for_bcf(bcf):
     return ShareLink.for_bon_commande_fournisseur(bcf)
 
 
+# ── PUB69 — Carte de partage client trackable (« mon installation ») ────────
+# Canal UTM dédié, remonte dans l'attribution existante comme canal DISTINCT
+# (`apps.adsengine.attribution.referral_share_channel_summary`).
+INSTALLATION_SHARE_UTM_CAMPAIGN = 'parrainage_whatsapp'
+
+
+def installation_share_link(devis, *, base_url=''):
+    """PUB69 — Réutilise l'infra ``ShareLink``/UTM EXISTANTE de ventes
+    (``ShareLink.for_devis``, QJ1 — RÉUTILISÉE, aucun nouveau modèle) pour
+    générer (ou récupérer) le lien « mon installation » du client APRÈS
+    SIGNATURE — un devis ACCEPTÉ seulement (avant signature, ce n'est pas
+    encore « son installation »). ``None`` si le devis n'est pas accepté.
+
+    Renvoie ``(ShareLink, url)`` ; ``url`` porte les UTM canal
+    ``parrainage_whatsapp`` (bouche-à-oreille organique mesuré) — remonte
+    dans l'attribution existante comme canal DISTINCT, sans toucher le
+    canal Meta."""
+    from django.conf import settings
+
+    from .models import Devis, ShareLink
+
+    if devis is None or devis.statut != Devis.Statut.ACCEPTE:
+        return None, ''
+    link = ShareLink.for_devis(devis)
+    base = base_url or getattr(settings, 'PUBLIC_BASE_URL', '') or ''
+    query = (
+        'utm_source=client&utm_medium=whatsapp'
+        f'&utm_campaign={INSTALLATION_SHARE_UTM_CAMPAIGN}')
+    path = f'/proposition/{link.token}?{query}'
+    url = (base.rstrip('/') + path) if base else path
+    return link, url
+
+
 def bcf_share_url(bcf, request=None):
     """QS3 — URL publique absolue vers le PDF tokenisé d'un BCF fournisseur.
 

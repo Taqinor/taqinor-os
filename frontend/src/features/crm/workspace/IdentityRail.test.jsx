@@ -4,6 +4,17 @@ import { initState } from './draftCore'
 import IdentityRail from './IdentityRail'
 import crmApi from '../../../api/crmApi'
 
+// PUB53 — badge « Vient de la pub » gaté au rôle voyant /publicite. Comme
+// ViewsManagerPopover.test.jsx, on mocke le hook plutôt que de monter un vrai
+// Provider redux (ce fichier n'en a jamais eu besoin jusqu'ici) ; défaut à
+// `true` pour ne rien changer aux tests LW14/LW15/LW17/LW18 existants (aucun
+// n'affecte meta_ad_id, donc le badge reste absent chez eux quel que soit
+// le rôle).
+const isAdminOrResponsableMock = vi.fn(() => true)
+vi.mock('../../../hooks/useHasPermission', () => ({
+  useIsAdminOrResponsable: () => isAdminOrResponsableMock(),
+}))
+
 /* crmApi mocké → aucune requête réelle au montage ; chaque test peut surcharger
    le retour (mockResolvedValueOnce) pour les bannières LW18. */
 vi.mock('../../../api/crmApi', () => ({
@@ -212,5 +223,39 @@ describe('LW18 — bannières intelligentes (doublons · client_match)', () => {
     expect(await screen.findByText('Karim B.')).toBeInTheDocument()
     expect(screen.queryByText(/doublon/)).toBeNull()
     expect(screen.queryByText(/correspond au client/)).toBeNull()
+  })
+})
+
+describe('PUB53 — badge « Vient de la pub » (traçabilité retour lead Meta → ad)', () => {
+  let onAction
+  beforeEach(() => {
+    onAction = vi.fn()
+    isAdminOrResponsableMock.mockReturnValue(true)
+  })
+
+  it('affiche le badge + lien vers /publicite/ad/:id pour un lead Meta, rôle autorisé', () => {
+    render(<IdentityRail
+      state={makeState({ meta_ad_id: '120210000000001' })}
+      onAction={onAction}
+      users={[]}
+    />)
+    const link = screen.getByRole('link', { name: /Vient de la pub/ })
+    expect(link).toHaveAttribute('href', '/publicite/ad/120210000000001')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('masque le badge quand le lead n\'a pas de meta_ad_id (lead non-Meta)', () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(screen.queryByRole('link', { name: /Vient de la pub/ })).toBeNull()
+  })
+
+  it('masque le badge pour un rôle qui ne voit pas /publicite, même sur un lead Meta', () => {
+    isAdminOrResponsableMock.mockReturnValue(false)
+    render(<IdentityRail
+      state={makeState({ meta_ad_id: '120210000000001' })}
+      onAction={onAction}
+      users={[]}
+    />)
+    expect(screen.queryByRole('link', { name: /Vient de la pub/ })).toBeNull()
   })
 })

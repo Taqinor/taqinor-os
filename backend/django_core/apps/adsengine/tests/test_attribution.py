@@ -148,3 +148,38 @@ class VariantAttributionTests(TestCase):
         rows = metrics.cost_per_signature(self.company)
         camp_row = next(r for r in rows if r['campaign_meta_id'] == 'cmp_1')
         self.assertEqual(camp_row['signed_count'], 1)
+
+
+class Pub69ReferralShareChannelTests(TestCase):
+    """PUB69 — referral_share_channel_summary : le canal « carte de partage
+    client » (parrainage_whatsapp) isolé, DISTINCT, dans l'attribution
+    existante — sans dépense (bouche-à-oreille), jamais un CPL fabriqué."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PUB69 Attr Co')
+
+    def test_no_referral_leads_zeroed_but_present(self):
+        result = attribution.referral_share_channel_summary(self.company)
+        self.assertEqual(result['leads'], 0)
+        self.assertEqual(result['utm_campaign'], 'parrainage_whatsapp')
+
+    def test_referral_lead_counted_distinctly_from_meta(self):
+        Lead.objects.create(
+            company=self.company, nom='Voisin', stage=SIGNED,
+            canal=Lead.Canal.WHATSAPP_CTWA,
+            utm_campaign='parrainage_whatsapp')
+        # Bruit Meta réel : ne doit JAMAIS entrer dans ce canal organique.
+        Lead.objects.create(
+            company=self.company, nom='MetaLead', stage=SIGNED,
+            utm_campaign='Solaire Casa')
+        result = attribution.referral_share_channel_summary(self.company)
+        self.assertEqual(result['leads'], 1)
+        self.assertEqual(result['signed'], 1)
+
+    def test_custom_utm_campaign_parameter(self):
+        Lead.objects.create(
+            company=self.company, nom='Autre', stage=NEW,
+            utm_campaign='autre_canal')
+        result = attribution.referral_share_channel_summary(
+            self.company, utm_campaign='autre_canal')
+        self.assertEqual(result['leads'], 1)

@@ -8,6 +8,8 @@ import { normalizeAdFullStory } from './adFullStory'
 import { formatMAD, formatNumber, formatRatio } from './adsengine'
 import AdCreativePanel from './AdCreativePanel'
 import SyncStatusBanner from './SyncStatusBanner'
+// PUB55 — fil de chatter (notes manuelles + événements auto) de CETTE ad.
+import AdChatter from './AdChatter'
 
 /* ============================================================================
    PUB44 — Fiche « histoire complète » d'une ad (``/publicite/ad/:id``).
@@ -252,6 +254,11 @@ export default function AdDetailScreen() {
               </tbody>
             </table>
           )}
+      </section>
+
+      {/* ── PUB55 — Chatter de l'ad (notes + actions appliquées + alertes) ── */}
+      <section className="card" data-testid="ae-ad-detail-chatter" style={{ padding: '1rem', marginTop: '1rem' }}>
+        <AdChatter entityType="ad" entityId={metaId} />
       </section>
     </div>
   )

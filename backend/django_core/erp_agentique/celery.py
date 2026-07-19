@@ -500,6 +500,13 @@ app.conf.beat_schedule = {
         'task': 'adsengine.sync_breakdowns_weekly',
         'schedule': crontab(hour=7, minute=15, day_of_week=1),
     },
+    # PUB94 — snapshot HEBDO d'observabilité de L'Arbre : flag « branche morte »
+    # (nœud figé sur son prior depuis N semaines). Lundi, après l'oubli hebdo.
+    # Alerte INFO brake-only, jamais un re-test auto. NO-OP propre sans nœud.
+    'adsengine-flag-dead-branches-weekly': {
+        'task': 'adsengine.flag_dead_branches_weekly',
+        'schedule': crontab(hour=6, minute=50, day_of_week=1),
+    },
     # ADSDEEP18 — pull-sync QUOTIDIEN des leads lead-form (convergence avec le
     # webhook, idempotent par leadgen_id). NO-OP propre sans connexion Meta live.
     'adsengine-pull-meta-leads': {
@@ -512,6 +519,13 @@ app.conf.beat_schedule = {
     'adsengine-emit-capi-signatures': {
         'task': 'adsengine.emit_capi_signatures',
         'schedule': crontab(hour=7, minute=35),
+    },
+    # PUB89 — score QUOTIDIEN de qualité de la chaîne d'attribution (complétude
+    # de jointure de la récompense proxy CtwaReferral) : alerte BRAKE-ONLY sous
+    # seuil, jamais une pause auto. NO-OP propre sans référence CTWA.
+    'adsengine-check-attribution-quality': {
+        'task': 'adsengine.check_attribution_quality',
+        'schedule': crontab(hour=7, minute=45),
     },
     # ── lane/gen-b — AGEN8 : auto-pause maison du rayon d'explosion (bloc isolé,
     # fold propre avec le co-éditeur de celery.py). Polling COURT (toutes les
@@ -530,12 +544,41 @@ app.conf.beat_schedule = {
         'task': 'adsengine.run_reward_divergence_check',
         'schedule': crontab(hour=7, minute=45, day_of_week=1),
     },
+    # PUB76 — fraîcheur HEBDO des assets : marque « à revoir » un asset citant
+    # une version de FactTable révisée depuis (chiffre périmé à l'antenne) ou une
+    # créa saisonnière/expirée. Lundi, heure creuse. NO-OP propre sans asset daté.
+    'adsengine-flag-stale-assets': {
+        'task': 'adsengine.flag_stale_assets',
+        'schedule': crontab(hour=6, minute=50, day_of_week=1),
+    },
     # PUB19 — réconciliation QUOTIDIENNE Meta↔ERP (ADSENG31). Après la synchro
     # ENG6 (06:45) : persiste un ReconciliationSnapshot/campagne et alerte 🟠 sur
     # une divergence NOUVELLE au-delà du seuil. NO-OP propre sans campagne.
     'adsengine-run-daily-reconciliation': {
         'task': 'adsengine.run_daily_reconciliation',
         'schedule': crontab(hour=7, minute=55),
+    },
+    # PUB100 — purge CNDP QUOTIDIENNE des miroirs publicitaires au-delà de leur
+    # fenêtre de rétention (MetaLeadMirror/CtwaReferral/InsightBreakdown). Heure
+    # creuse ; idempotent ; no-op si fenêtres ≤ 0. Registre de traitement :
+    # docs/engine/registre-traitement-cndp.md.
+    'adsengine-purge-expired-mirrors': {
+        'task': 'adsengine.purge_expired_mirrors',
+        'schedule': crontab(hour=3, minute=40),
+    },
+    # PUB102 — vigie HEBDO de l'EOL de la version Graph API (lundi, heure creuse).
+    # Alerte quand la version approche sa fin de vie (~2 ans) ; JAMAIS de bump
+    # automatique. No-op tant qu'aucune société active.
+    'adsengine-watch-graph-version-eol': {
+        'task': 'adsengine.watch_graph_version_eol',
+        'schedule': crontab(hour=6, minute=30, day_of_week=1),
+    },
+    # PUB104 — rollup/archivage MENSUEL des snapshots d'insight (1er du mois,
+    # heure creuse). Agrège le détail quotidien au-delà de N mois puis le purge ;
+    # totaux additifs conservés dans InsightMonthlyRollup. Idempotent.
+    'adsengine-rollup-insights-monthly': {
+        'task': 'adsengine.rollup_insights_monthly',
+        'schedule': crontab(hour=4, minute=10, day_of_month=1),
     },
     # NTCRD21 — alerte quotidienne d'exposition crédit consolidée (07:20).
     # Best-effort, une alerte par jour et par société (dédup), no-op tant que

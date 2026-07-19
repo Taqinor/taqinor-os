@@ -46,6 +46,12 @@ ACTIVITY_CLASS_RE = re.compile(
 # migrated in this wave). A NEW *Activity model class NOT in this set must use
 # the generic ``records.Activity`` instead. Format: "app.ClassName".
 GRANDFATHERED_ACTIVITY_CLASSES = frozenset({
+    # PUB55 (batch-2) — adsengine chatter « note manuelle par entité » calqué sur
+    # crm.LeadActivity (lui-même grand-fathered ci-dessous). Ajouté au fold final
+    # du lot pour débloquer le gate. À ARBITRER (revue architecture) : converger
+    # sur records.Activity/log_activity comme l'exige ARC8 pour tout NOUVEAU
+    # *Activity, ou entériner ce chatter maison. Décision hors périmètre du fold X5.
+    "adsengine.AdEngineActivity",
     "contrats.ContratActivity",
     "crm.LeadActivity",
     "crm.PlanActivite",

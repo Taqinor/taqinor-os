@@ -47,6 +47,10 @@ CATALOG = {
         'Un lead Meta Lead Ads est capturé (webhook CRM).',
         ['lead', 'company', 'leadgen_id', 'ad_id', 'adset_id',
          'campaign_id', 'form_id', 'created_time', 'is_organic']),
+    'lead_erased': _e(
+        'Un lead CRM est effacé (droit à l\'oubli CNDP) — propage '
+        'l\'anonymisation aux miroirs qui le référencent par STRING.',
+        ['company', 'crm_lead_id', 'phone_key']),
     'devis_accepted': _e(
         'Un devis passe à « accepté ».',
         ['devis', 'user', 'ancien_statut']),

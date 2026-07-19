@@ -125,6 +125,9 @@ const adsengineApi = {
     // DecisionLog d'une expérimentation (« pourquoi le moteur a fait X »).
     decisionLog: (id, params) =>
       api.get(`/adsengine/experiences/${id}/decisions/`, { params }),
+    // PUB87 — calculateur MDE/puissance (vue mince sur mde.py) : « avec votre
+    // volume, ~X jours pour détecter +20 % » avant lancement.
+    mde: (params) => api.get('/adsengine/experiences/mde/', { params }),
   },
 
   // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──
@@ -332,6 +335,56 @@ const adsengineApi = {
   // ── PUB44 — Fiche « histoire complète » d'une ad ──
   ads: {
     fullStory: (metaId) => api.get(`/adsengine/ads/${metaId}/histoire/`),
+  },
+
+  // ── PUB75 — Registre de consentement image/témoignage (CNDP loi 09-08) ──
+  // UI de collecte simple : enregistre un consentement recueilli (lien WhatsApp
+  // signable côté écran) ; ``revoke`` retire aussitôt les assets liés de la
+  // rotation (backend). Jamais un chiffre non vérifié n'entre ici — que du
+  // consentement humain signé.
+  consents: {
+    ...resource('consentements'),
+    revoke: (id) => api.post(`/adsengine/consentements/${id}/revoquer/`),
+  },
+
+  // ── PUB83 — Kit de marque persistant (logo/couleurs/zones/polices) ──
+  // Consommé par le TemplatedAdapter côté backend ; l'écran l'édite comme un
+  // singleton par société (OneToOne).
+  brandKit: {
+    ...resource('kit-marque'),
+  },
+
+  // ── PUB70 — Veille concurrentielle (manuelle outillée, ZÉRO scraping) ──
+  // Pages suivies + observations manuelles (hooks/angles reformulés). Le
+  // tableau `veille` agrège finding API + cadence + matière de brief.
+  competitors: {
+    ...resource('concurrents'),
+    veille: () => api.get('/adsengine/concurrents/veille/'),
+  },
+  competitorObservations: {
+    ...resource('observations-concurrents'),
+  },
+
+  // ── PUB73 — Import d'une photo de chantier dans la créathèque ──
+  // Provenance source_lane='chantier' + consentement PUB75 bloquant côté backend.
+  chantierImport: {
+    importPhoto: (payload) =>
+      api.post('/adsengine/creatifs/import-chantier/', payload),
+  },
+
+  // ── PUB50 — Gabarits de proposition réutilisables (pré-remplissage) ──
+  // Appliquer un gabarit ne fait que pré-remplir le composeur (jamais proposer).
+  proposalTemplates: {
+    ...resource('gabarits-proposition'),
+  },
+
+  // ── PUB55 — Chatter par entité (campagne/ad set/ad) ──
+  // Fil fusionné (notes manuelles + actions appliquées + alertes) ; POST = note.
+  chatter: {
+    timeline: (entityType, entityId) =>
+      api.get('/adsengine/chatter/', { params: { entity_type: entityType, entity_id: entityId } }),
+    postNote: (entityType, entityId, body) =>
+      api.post('/adsengine/chatter/', { entity_type: entityType, entity_id: entityId, body }),
   },
 }
 

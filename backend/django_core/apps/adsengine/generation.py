@@ -51,12 +51,28 @@ def _digits(text):
     return re.sub(r'\D', '', text or '')
 
 
-def _published_facts(company):
-    """(table publiée, {clé: FactEntry}) de la société, ou (None, {})."""
+def _published_facts(company, *, region=None):
+    """(table publiée, {clé: FactEntry}) de la société, ou (None, {}).
+
+    PUB85 — Résolution RÉGIONALE : on part des faits NATIONAUX (``region=''``),
+    puis, si une ``region`` (ville) est demandée, on SURCHARGE chaque clé par la
+    valeur régionale VÉRIFIÉE quand elle existe (irradiation/tarif local). Une
+    ville sans fait régional garde donc la valeur nationale (jamais un chiffre
+    local inventé). Comparaison de région insensible à la casse/espaces."""
     table = FactTable.published_for(company)
     if table is None:
         return None, {}
-    return table, {e.cle: e for e in table.entries.all()}
+    entries = list(table.entries.all())
+    facts = {}
+    for e in entries:
+        if not (getattr(e, 'region', '') or '').strip():
+            facts[e.cle] = e  # base nationale
+    if region:
+        key = region.strip().lower()
+        for e in entries:
+            if (getattr(e, 'region', '') or '').strip().lower() == key:
+                facts[e.cle] = e  # surcharge régionale vérifiée
+    return table, facts
 
 
 def _default_generator():
@@ -112,6 +128,8 @@ def _check_variant_grounding(variant, facts):
             'valeur': entry.valeur,
             'unite': entry.unite,
             'source': entry.source,
+            # PUB85 — trace si la valeur citée est régionale ('' = nationale).
+            'region': getattr(entry, 'region', '') or '',
         })
         covered.update(_digits(d) for d in _extract_numbers(entry.valeur))
 
@@ -129,10 +147,19 @@ def _check_variant_grounding(variant, facts):
     }
 
 
+def resolve_facts_for_region(company, region=None):
+    """PUB85 — Faits publiés résolus pour une ``region`` (ville) : dict
+    ``{clé: FactEntry}`` avec surcharge régionale sur le socle national. Utilitaire
+    de lecture pour la génération ville-spécifique et le reporting."""
+    _table, facts = _published_facts(company, region=region)
+    return facts
+
+
 def generate_grounded_variants(company, seed_brief, *, components=None,
                                asset_type=CreativeAsset.AssetType.STATIC,
                                generator=None, max_variants=3,
-                               create_assets=True, source_lane='gen'):
+                               create_assets=True, source_lane='gen',
+                               region=None):
     """Génère des variantes ANCRÉES depuis un *seed-brief* de quelques mots.
 
     * ``company`` — société propriétaire (multi-tenant : force le scope).
@@ -158,12 +185,14 @@ def generate_grounded_variants(company, seed_brief, *, components=None,
             'reason': f'{GEN_ENV_KEY} absent — génération désactivée',
         }
 
-    table, facts = _published_facts(company)
+    table, facts = _published_facts(company, region=region)
     context = {
         'seed_brief': (seed_brief or '').strip(),
         'components': list(components or []),
+        'region': (region or '').strip() or None,
         'facts': [
-            {'cle': e.cle, 'valeur': e.valeur, 'unite': e.unite}
+            {'cle': e.cle, 'valeur': e.valeur, 'unite': e.unite,
+             'region': getattr(e, 'region', '') or ''}
             for e in facts.values()
         ],
         'asset_type': asset_type,
@@ -195,6 +224,8 @@ def generate_grounded_variants(company, seed_brief, *, components=None,
                 hook_tag=candidate.get('hook_tag', ''),
                 angle_tag=candidate.get('angle_tag', ''),
                 format_tag=candidate.get('format_tag', ''),
+                # PUB76 — trace la version de faits citée (fraîcheur/conformité).
+                facts_version=(table.version if table else None),
                 policy_stamp={},  # PENDING — jamais auto-validé
             )
             entry['asset_id'] = asset.id
@@ -206,6 +237,7 @@ def generate_grounded_variants(company, seed_brief, *, components=None,
     return {
         'enabled': True,
         'table_version': table.version if table else None,
+        'region': (region or '').strip() or None,
         'variants': variants_report,
         'assets': assets,
         'rejected': rejected,

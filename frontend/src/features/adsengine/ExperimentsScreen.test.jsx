@@ -11,11 +11,15 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   get: vi.fn(),
   decisionLog: vi.fn(),
+  mde: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
   default: {
-    experiments: { list: mocks.list, get: mocks.get, decisionLog: mocks.decisionLog },
+    experiments: {
+      list: mocks.list, get: mocks.get, decisionLog: mocks.decisionLog,
+      mde: mocks.mde,
+    },
   },
 }))
 
@@ -47,6 +51,15 @@ beforeEach(() => {
       decision_fr: 'Le moteur a donné plus de budget au Créatif A car il a 72 % de chances d\'être le meilleur.',
       chiffres: { p_best: 0.72 } },
   ] })
+  mocks.mde.mockResolvedValue({ data: {
+    p: 0.02, volume: 300, cible_relative: 0.20, jours_pour_cible: 14,
+    phrase_fr: 'Avec votre volume (~300 essais/bras/jour), il faut ~14 jour(s) pour détecter un effet de +20 % de façon fiable.',
+    mde_par_horizon: [
+      { jours: 7, mde_relatif_pct: 28.3 },
+      { jours: 14, mde_relatif_pct: 20.0 },
+      { jours: 28, mde_relatif_pct: 14.1 },
+    ],
+  } })
 })
 
 describe('ExperimentsScreen (ENG39)', () => {
@@ -96,5 +109,24 @@ describe('ExperimentsScreen (ENG39)', () => {
     mocks.list.mockResolvedValue({ data: [] })
     renderScreen()
     expect(await screen.findByTestId('ae-exp-empty')).toBeInTheDocument()
+  })
+
+  it('PUB87 — affiche le calcul MDE (jours pour détecter +20 %) avant lancement', async () => {
+    renderScreen()
+    // Le panneau interroge l'API mde au montage avec les valeurs par défaut.
+    await waitFor(() => expect(mocks.mde).toHaveBeenCalled())
+    expect(await screen.findByTestId('ae-mde-phrase'))
+      .toHaveTextContent('~14 jour(s) pour détecter un effet de +20 %')
+    expect(screen.getAllByTestId('ae-mde-horizon').length).toBe(3)
+  })
+
+  it('PUB87 — recalcule le MDE quand l\'opérateur change le volume', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.mde).toHaveBeenCalled())
+    mocks.mde.mockClear()
+    fireEvent.change(screen.getByTestId('ae-mde-volume'), { target: { value: '600' } })
+    fireEvent.click(screen.getByTestId('ae-mde-compute'))
+    await waitFor(() => expect(mocks.mde).toHaveBeenCalledWith(
+      expect.objectContaining({ volume: '600' })))
   })
 })

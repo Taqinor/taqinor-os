@@ -264,6 +264,154 @@ def _sync_level_insights(company, conn, client, *, level,
             incremental_attribution=incremental, **ranking_kwargs)
 
 
+def check_prepaid_balance(company, conn, client):
+    """PUB97 — Surveillance du solde prépayé Meta (trésorerie).
+
+    Meta Maroc = prépayé : à zéro, la diffusion s'arrête et ressemble à « pas de
+    données » (angle mort du guard zéro-délivrance qui exige spend>0). On lit le
+    solde/funding du compte, on estime le runway = solde / dépense quotidienne
+    courante (médiane 7 j, niveau campagne), et on émet une ``EngineAlert`` typée
+    quand le solde couvre moins de N jours. DÉDUP par ``entity_key`` : une seule
+    alerte ouverte à la fois ; résolue quand le solde redevient sain. Best-effort
+    (jamais bloquant pour la synchro). Renvoie l'``EngineAlert`` touchée ou None.
+
+    Dégradation documentée : si l'API n'expose pas ``balance`` (mode de
+    financement sans solde prépayé), on pose une alerte INFO unique et on n'alarme
+    jamais à tort."""
+    import datetime as _dt
+    from statistics import median
+
+    from django.contrib.contenttypes.models import ContentType
+
+    from . import anomaly
+    from .models import AdCampaignMirror, EngineAlert, InsightSnapshot
+    from .rules import SEVERITY_INFO
+
+    reader = getattr(client, 'get_account_balance', None)
+    if not callable(reader):
+        return None
+    try:
+        info = reader() or {}
+    except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro
+        return None
+
+    # Dépense quotidienne courante : médiane des spends campagne des 7 derniers
+    # jours (unités majeures de la devise du compte, comme le solde normalisé).
+    today = _dt.date.today()
+    since = today - _dt.timedelta(days=6)
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    daily = {}
+    for snap in InsightSnapshot.objects.filter(
+            company=company, content_type=ct, date__gte=since, date__lte=today):
+        if snap.spend is not None:
+            daily[snap.date] = daily.get(snap.date, 0.0) + float(snap.spend)
+    avg_daily = median(daily.values()) if daily else 0.0
+
+    balance = info.get('balance')
+    det = anomaly.detect_low_balance(
+        float(balance) if balance is not None else None, avg_daily,
+        currency=info.get('currency') or (conn.currency or ''))
+
+    entity_key = 'prepaid_balance'
+    existing = (EngineAlert.objects
+                .filter(company=company, entity_key=entity_key, resolved=False)
+                .order_by('-created_at').first())
+    detail = dict(det.computed)
+    detail['kind'] = anomaly.KIND_LOW_BALANCE
+    detail['has_balance_field'] = info.get('has_balance_field', False)
+
+    if det.fired:
+        if existing is None:
+            return EngineAlert.objects.create(
+                company=company, alert_type=EngineAlert.Type.ANOMALIE,
+                message=det.message_fr, severity=det.severity,
+                entity_key=entity_key, detail=detail)
+        existing.message = det.message_fr
+        existing.severity = det.severity
+        existing.detail = detail
+        existing.save(update_fields=['message', 'severity', 'detail',
+                                     'updated_at'])
+        return existing
+
+    if det.insufficient_data:
+        # Dégradation documentée (solde indisponible) : une alerte INFO unique.
+        if existing is None:
+            return EngineAlert.objects.create(
+                company=company, alert_type=EngineAlert.Type.ANOMALIE,
+                message=det.message_fr, severity=SEVERITY_INFO,
+                entity_key=entity_key, detail=detail)
+        return existing
+
+    # Solde sain : résoudre une alerte ouverte le cas échéant.
+    if existing is not None:
+        existing.resolved = True
+        existing.detail = detail
+        existing.save(update_fields=['resolved', 'detail', 'updated_at'])
+    return None
+
+
+def check_account_health(company, conn, client):
+    """PUB101 — Santé du compte lue au sync (jamais devinée).
+
+    Rien ne lisait ``account_status``/``disable_reason`` : un compte désactivé/
+    en revue ressemblait à une panne de données. On les LIT, et un statut anormal
+    (≠ ACTIF) lève une ``EngineAlert`` typée avec un lien vers le playbook FR
+    ``docs/engine/compte-restreint.md``. Sévérité : fermé/désactivé/permanent →
+    CRITICAL ; revue/grâce/attente → WARNING. DÉDUP par ``entity_key`` (une
+    alerte ouverte à la fois, résolue au retour à l'actif). Best-effort.
+    Renvoie l'``EngineAlert`` touchée ou None."""
+    from .models import EngineAlert
+    from .rules import SEVERITY_CRITICAL, SEVERITY_WARNING
+
+    reader = getattr(client, 'get_account_health', None)
+    if not callable(reader):
+        return None
+    try:
+        health = reader() or {}
+    except Exception:  # noqa: BLE001 — la santé n'empêche jamais la synchro
+        return None
+
+    entity_key = 'account_status'
+    existing = (EngineAlert.objects
+                .filter(company=company, entity_key=entity_key, resolved=False)
+                .order_by('-created_at').first())
+
+    if health.get('is_healthy'):
+        # Retour à l'actif : résoudre une alerte ouverte.
+        if existing is not None:
+            existing.resolved = True
+            existing.save(update_fields=['resolved', 'updated_at'])
+        return None
+
+    status = health.get('account_status')
+    label = health.get('account_status_label') or f'statut {status}'
+    reason = health.get('disable_reason_label')
+    # Statuts terminaux (désactivé/fermé/fermeture) = CRITICAL ; sinon WARNING.
+    critical = status in (2, 100, 101, 202)
+    severity = SEVERITY_CRITICAL if critical else SEVERITY_WARNING
+    msg = (f"Compte publicitaire Meta « {label} »"
+           + (f" — motif : {reason}" if reason else '')
+           + ". Le moteur ne peut plus se fier aux données : voir le playbook "
+           "« compte restreint » (docs/engine/compte-restreint.md).")
+    detail = {
+        'kind': 'account_status',
+        'account_status': status,
+        'account_status_label': label,
+        'disable_reason': health.get('disable_reason'),
+        'disable_reason_label': reason,
+        'playbook': 'docs/engine/compte-restreint.md',
+    }
+    if existing is None:
+        return EngineAlert.objects.create(
+            company=company, alert_type=EngineAlert.Type.GARDE_FOU,
+            message=msg, severity=severity, entity_key=entity_key, detail=detail)
+    existing.message = msg
+    existing.severity = severity
+    existing.detail = detail
+    existing.save(update_fields=['message', 'severity', 'detail', 'updated_at'])
+    return existing
+
+
 def _sync_company(conn):
     """Synchronise UNE société depuis sa connexion Meta active (avec token).
 
@@ -287,6 +435,18 @@ def _sync_company(conn):
             conn.currency = currency
             conn.save(update_fields=['currency'])
     except Exception:  # noqa: BLE001 — la devise n'empêche jamais la synchro
+        pass
+
+    # PUB97 — surveillance du solde prépayé Meta (best-effort, jamais bloquant).
+    try:
+        check_prepaid_balance(company, conn, client)
+    except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro
+        pass
+
+    # PUB101 — santé du compte lue au sync (best-effort, jamais bloquant).
+    try:
+        check_account_health(company, conn, client)
+    except Exception:  # noqa: BLE001 — la santé n'empêche jamais la synchro
         pass
 
     sync.sync_campaigns(company, client.get_campaigns())
@@ -1151,6 +1311,62 @@ def decay_assumptions_weekly():
     return {'nodes_decayed': total}
 
 
+@shared_task(name='adsengine.check_attribution_quality')
+def check_attribution_quality():
+    """PUB89 — Beat QUOTIDIEN : score de qualité de la chaîne d'attribution.
+
+    Pour chaque société, mesure la complétude de la jointure de la récompense
+    proxy (``CtwaReferral`` : clid / téléphone matché / stage / ad résolue) et
+    lève une alerte BRAKE-ONLY sous le seuil (jamais une pause auto). No-op
+    propre sans enregistrement. Best-effort par société. Renvoie le nombre
+    d'alertes levées."""
+    from authentication.selectors import active_companies
+
+    from . import data_quality
+
+    alerted = 0
+    for company in active_companies():
+        try:
+            result = data_quality.check_attribution_quality(company)
+            if result.get('alert_id') is not None:
+                alerted += 1
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.check_attribution_quality: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.check_attribution_quality: %s alerte(s)', alerted)
+    return {'alerts': alerted}
+
+
+@shared_task(name='adsengine.flag_dead_branches_weekly')
+def flag_dead_branches_weekly():
+    """PUB94 — Beat HEBDO : snapshot d'observabilité de L'Arbre (branches mortes).
+
+    Pour chaque société, détecte les nœuds d'hypothèse figés sur leur prior depuis
+    ≥ N semaines (branche morte : moteur amont cassé ou hypothèse abandonnée) et
+    lève une alerte INFO BRAKE-ONLY par nœud (jamais un re-test/une action auto —
+    le re-test ne passe que par la file VoI). No-op propre sans nœud. Best-effort
+    par société. Renvoie le nombre de branches mortes signalées."""
+    from authentication.selectors import active_companies
+
+    from . import posterior_drift
+
+    total = 0
+    for company in active_companies():
+        try:
+            total += posterior_drift.flag_dead_branches(company)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.flag_dead_branches_weekly: échec société %s',
+                company.pk, exc_info=True)
+            continue
+    logger.info(
+        'adsengine.flag_dead_branches_weekly: %s branche(s) morte(s)', total)
+    return {'dead_branches': total}
+
+
 @shared_task(name='adsengine.generate_creative_variants')
 def generate_creative_variants(base_asset_id, brand_fields=None, count=2):
     """ENG18 — Tâche « variantes » : 2-3 statiques d'un asset de base approuvé.
@@ -1280,3 +1496,451 @@ def autopause_blast_radius():
     result = {'companies': companies, 'paused': paused, 'alerted': alerted}
     logger.info('adsengine.autopause_blast_radius: %s', result)
     return result
+
+
+# ── PUB76 — Fraîcheur des assets (chiffre périmé à l'antenne = risque conf.) ──
+
+def flag_stale_assets_for_company(company, *, today=None):
+    """PUB76 — Marque « à revoir » les assets d'une société devenus périmés.
+
+    Trois motifs, par ordre de priorité (le plus critique gagne) :
+      1. ``fait_revise`` — l'asset cite une version de ``FactTable`` ANTÉRIEURE à
+         la version publiée courante (chiffre potentiellement périmé à
+         l'antenne) ;
+      2. ``expire`` — ``expires_at`` atteint ;
+      3. ``a_revoir`` — ``review_after`` atteint (créa saisonnière à re-vérifier).
+    JAMAIS un retrait automatique — on pose seulement ``needs_review`` +
+    ``review_reason`` (l'humain tranche). Idempotent : un asset déjà marqué du
+    même motif n'est pas ré-écrit. Renvoie ``{fait_revise, expire, a_revoir}``.
+    """
+    from .models import CreativeAsset, FactTable
+
+    today = today or datetime.date.today()
+    published = FactTable.published_for(company)
+    current_version = published.version if published else None
+    flagged = {'fait_revise': 0, 'expire': 0, 'a_revoir': 0}
+
+    def _flag(qs, reason):
+        n = 0
+        for asset in qs:
+            if asset.needs_review and asset.review_reason == reason:
+                continue  # déjà marqué de ce motif — idempotent
+            asset.needs_review = True
+            asset.review_reason = reason
+            asset.save(update_fields=[
+                'needs_review', 'review_reason', 'updated_at'])
+            n += 1
+        return n
+
+    # 1. Faits révisés (priorité — peut « améliorer » un motif date existant).
+    if current_version is not None:
+        stale = CreativeAsset.objects.filter(
+            company=company, facts_version__isnull=False,
+            facts_version__lt=current_version)
+        flagged['fait_revise'] = _flag(stale, 'fait_revise')
+
+    # 2. Expiration (n'écrase jamais un asset déjà marqué).
+    expired = CreativeAsset.objects.filter(
+        company=company, needs_review=False,
+        expires_at__isnull=False, expires_at__lte=today)
+    flagged['expire'] = _flag(expired, 'expire')
+
+    # 3. Revue saisonnière due (n'écrase jamais un asset déjà marqué).
+    review_due = CreativeAsset.objects.filter(
+        company=company, needs_review=False,
+        review_after__isnull=False, review_after__lte=today)
+    flagged['a_revoir'] = _flag(review_due, 'a_revoir')
+
+    return flagged
+
+
+@shared_task(name='adsengine.flag_stale_assets')
+def flag_stale_assets():
+    """PUB76 — Passe HEBDO de fraîcheur des assets, toutes sociétés confondues.
+
+    Best-effort par société (une exception n'arrête jamais les suivantes).
+    NO-OP propre pour une société sans asset daté / sans table révisée. Renvoie
+    le total d'assets marqués « à revoir » par motif."""
+    from authentication.selectors import active_companies
+
+    totals = {'fait_revise': 0, 'expire': 0, 'a_revoir': 0}
+    for company in active_companies():
+        try:
+            counts = flag_stale_assets_for_company(company)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'adsengine.flag_stale_assets: échec société %s',
+                getattr(company, 'pk', company), exc_info=True)
+            continue
+        for key in totals:
+            totals[key] += counts[key]
+
+    logger.info('adsengine.flag_stale_assets: %s', totals)
+    return totals
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUB100 — Rétention / purge CNDP des miroirs publicitaires.
+#
+# ``MetaLeadMirror`` / ``InsightBreakdown`` / ``CtwaReferral`` grossissaient sans
+# fin ni purge. Fenêtres de rétention CONFIGURABLES par réglage Django (défauts
+# CNDP prudents), purge périodique au-delà de la fenêtre. La propagation de
+# l'effacement d'un lead CRM (anonymisation) vit dans ``receivers.on_lead_erased``
+# (événement domaine ``core.events.lead_erased``). Registre de traitement :
+# ``docs/engine/registre-traitement-cndp.md``.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Fenêtres de rétention (jours) — surchargeables via settings. Défauts : ~13 mois
+# pour garder un an glissant d'attribution + marge, jamais indéfini.
+_DEFAULT_LEAD_MIRROR_RETENTION_DAYS = 400
+_DEFAULT_BREAKDOWN_RETENTION_DAYS = 400
+_DEFAULT_CTWA_RETENTION_DAYS = 400
+
+
+def _retention_days(setting_name, default):
+    """Fenêtre de rétention (jours) depuis les settings Django, ou le défaut.
+    Une valeur ≤ 0 DÉSACTIVE la purge de ce miroir (conservation illimitée
+    explicite — jamais un accident)."""
+    from django.conf import settings
+    try:
+        return int(getattr(settings, setting_name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+@shared_task(name='adsengine.purge_expired_mirrors')
+def purge_expired_mirrors():
+    """PUB100 — Purge CNDP des miroirs au-delà de leur fenêtre de rétention.
+
+    Supprime les ``MetaLeadMirror`` / ``CtwaReferral`` (datés par ``created_at``)
+    et ``InsightBreakdown`` (daté par ``date``) plus vieux que leur fenêtre
+    configurée. Toutes sociétés confondues (la fenêtre est une politique
+    d'entreprise, pas par société). Idempotent : une seconde exécution ne trouve
+    plus rien à purger. Une fenêtre ≤ 0 désactive la purge de ce miroir.
+
+    Renvoie le compte supprimé par miroir."""
+    import datetime as _dt
+
+    from django.utils import timezone as _tz
+
+    from .models import CtwaReferral, InsightBreakdown, MetaLeadMirror
+
+    now = _tz.now()
+    today = _dt.date.today()
+    result = {}
+
+    lead_days = _retention_days(
+        'ADSENGINE_LEAD_MIRROR_RETENTION_DAYS',
+        _DEFAULT_LEAD_MIRROR_RETENTION_DAYS)
+    if lead_days > 0:
+        cutoff = now - _dt.timedelta(days=lead_days)
+        deleted, _ = MetaLeadMirror.objects.filter(
+            created_at__lt=cutoff).delete()
+        result['meta_lead_mirror'] = deleted
+
+    ctwa_days = _retention_days(
+        'ADSENGINE_CTWA_RETENTION_DAYS', _DEFAULT_CTWA_RETENTION_DAYS)
+    if ctwa_days > 0:
+        cutoff = now - _dt.timedelta(days=ctwa_days)
+        deleted, _ = CtwaReferral.objects.filter(
+            created_at__lt=cutoff).delete()
+        result['ctwa_referral'] = deleted
+
+    bkdn_days = _retention_days(
+        'ADSENGINE_BREAKDOWN_RETENTION_DAYS',
+        _DEFAULT_BREAKDOWN_RETENTION_DAYS)
+    if bkdn_days > 0:
+        cutoff_date = today - _dt.timedelta(days=bkdn_days)
+        deleted, _ = InsightBreakdown.objects.filter(
+            date__lt=cutoff_date).delete()
+        result['insight_breakdown'] = deleted
+
+    logger.info('adsengine.purge_expired_mirrors: %s', result)
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUB102 — Vigie de version Graph API (EOL).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Seuil d'alerte : prévenir quand l'EOL est à N mois (ou moins). Surchargeable
+# via settings ; jamais un bump automatique (la montée reste un geste humain).
+_DEFAULT_GRAPH_EOL_ALERT_MONTHS = 4
+
+
+def check_graph_version_eol(*, today=None):
+    """PUB102 — Alerte si la version Graph API approche de son EOL.
+
+    ``GRAPH_VERSION`` est épinglée à la main sans veille d'EOL — le drift v19
+    (morte depuis 02/2025) qui a motivé ``api_version`` peut se reproduire. On
+    calcule les mois restants avant l'EOL approximative (sortie + ~24 mois) et on
+    lève une ``EngineAlert`` (garde-fou) quand c'est ≤ seuil. **Jamais de bump
+    automatique** : l'alerte invite à changer ``GRAPH_VERSION`` à la main.
+
+    Alerte GLOBALE (pas par société — la version est une constante repo) : posée
+    sur la première société active, dédupliquée par ``entity_key``. Best-effort.
+    Renvoie l'``EngineAlert`` touchée ou None."""
+    from django.conf import settings
+
+    from authentication.selectors import active_companies
+
+    from . import api_version
+    from .models import EngineAlert
+    from .rules import SEVERITY_CRITICAL, SEVERITY_WARNING
+
+    try:
+        threshold = int(getattr(
+            settings, 'ADSENGINE_GRAPH_EOL_ALERT_MONTHS',
+            _DEFAULT_GRAPH_EOL_ALERT_MONTHS))
+    except (TypeError, ValueError):
+        threshold = _DEFAULT_GRAPH_EOL_ALERT_MONTHS
+
+    months = api_version.months_until_graph_eol(today=today)
+    company = next(iter(active_companies()), None)
+    if company is None:
+        return None
+
+    entity_key = f'graph_eol:{api_version.GRAPH_VERSION}'
+    existing = (EngineAlert.objects
+                .filter(company=company, entity_key=entity_key, resolved=False)
+                .order_by('-created_at').first())
+
+    if months > threshold:
+        return None  # loin de l'EOL : rien à signaler
+
+    eol = api_version.graph_version_eol_date()
+    severity = SEVERITY_CRITICAL if months <= 0 else SEVERITY_WARNING
+    when = ("a EXPIRÉ" if months <= 0
+            else f"expire dans ~{months} mois ({eol.isoformat()})")
+    msg = (f"Version Graph API {api_version.GRAPH_VERSION} {when}. "
+           "Planifier la montée de version (changer GRAPH_VERSION dans "
+           "apps/adsengine/api_version.py) — jamais de bump automatique.")
+    detail = {'kind': 'graph_version_eol',
+              'graph_version': api_version.GRAPH_VERSION,
+              'months_until_eol': months, 'eol_date': eol.isoformat()}
+    if existing is None:
+        alert = EngineAlert.objects.create(
+            company=company, alert_type=EngineAlert.Type.GARDE_FOU,
+            message=msg, severity=severity, entity_key=entity_key,
+            detail=detail)
+    else:
+        existing.message = msg
+        existing.severity = severity
+        existing.detail = detail
+        existing.save(update_fields=['message', 'severity', 'detail',
+                                     'updated_at'])
+        alert = existing
+    logger.info('adsengine.check_graph_version_eol: %s mois avant EOL', months)
+    return alert
+
+
+@shared_task(name='adsengine.watch_graph_version_eol')
+def watch_graph_version_eol():
+    """PUB102 — Beat (hebdo) : vigie d'EOL de la version Graph API. Best-effort ;
+    ne bumpe JAMAIS. Renvoie les mois restants avant l'EOL."""
+    from . import api_version
+
+    try:
+        check_graph_version_eol()
+    except Exception:  # pragma: no cover - défensif
+        logger.warning(
+            'adsengine.watch_graph_version_eol: échec', exc_info=True)
+    return {'months_until_eol': api_version.months_until_graph_eol()}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUB104 — Rollup/archivage mensuel des snapshots d'insight.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Le détail quotidien plus vieux que N mois est agrégé en rollup mensuel puis
+# purgé (agrégats conservés). Surchargeable via settings.
+_DEFAULT_ROLLUP_AFTER_MONTHS = 13
+
+# Colonnes ADDITIVES agrégées (jamais reach/frequency — non sommables ; cpl se
+# recalcule spend/leads).
+_ROLLUP_SUM_FIELDS = (
+    'spend', 'results', 'impressions', 'clicks', 'link_clicks',
+    'conversations', 'leads_count')
+
+
+def _rollup_cutoff(today, months):
+    """(year, month) du 1er mois ENCORE conservé en détail (les mois STRICTEMENT
+    antérieurs sont agrégés). ``today`` moins ``months`` mois."""
+    idx = (today.year * 12 + (today.month - 1)) - int(months)
+    year, month0 = divmod(idx, 12)
+    return year, month0 + 1
+
+
+def rollup_insights_monthly(*, today=None, months=None, purge=True):
+    """PUB104 — Agrège les ``InsightSnapshot`` au-delà de N mois en rollups
+    mensuels (idempotent), puis PURGE le détail quotidien agrégé (``purge``).
+
+    Pour chaque (société, cible, mois) antérieur au seuil, somme les colonnes
+    additives et upserte un ``InsightMonthlyRollup`` (``update_or_create`` sur
+    la clé unique → jamais de doublon, ré-exécution sûre). Les totaux sont
+    IDENTIQUES avant/après (le rollup somme exactement le détail). ``purge=False``
+    calcule le rollup sans supprimer le détail. Renvoie
+    ``{'rollups', 'snapshots_purged'}``."""
+    import datetime as _dt
+
+    from django.db.models import Sum
+
+    from .models import InsightMonthlyRollup, InsightSnapshot
+
+    today = today or _dt.date.today()
+    if months is None:
+        from django.conf import settings
+        months = getattr(settings, 'ADSENGINE_ROLLUP_AFTER_MONTHS',
+                         _DEFAULT_ROLLUP_AFTER_MONTHS)
+    cut_year, cut_month = _rollup_cutoff(today, months)
+    cutoff_first = _dt.date(cut_year, cut_month, 1)
+
+    # Regroupe le détail antérieur au seuil par (company, ct, obj, année, mois).
+    old = InsightSnapshot.objects.filter(date__lt=cutoff_first)
+    grouped = (old
+               .values('company_id', 'content_type_id', 'object_id',
+                       'date__year', 'date__month')
+               .annotate(
+                   _spend=Sum('spend'), _results=Sum('results'),
+                   _impressions=Sum('impressions'), _clicks=Sum('clicks'),
+                   _link_clicks=Sum('link_clicks'),
+                   _conversations=Sum('conversations'),
+                   _leads_count=Sum('leads_count')))
+
+    rollups = 0
+    for g in grouped:
+        defaults = {
+            'spend': g['_spend'] or 0,
+            'results': g['_results'] or 0,
+            'impressions': g['_impressions'] or 0,
+            'clicks': g['_clicks'] or 0,
+            'link_clicks': g['_link_clicks'] or 0,
+            'conversations': g['_conversations'] or 0,
+            'leads_count': g['_leads_count'] or 0,
+        }
+        InsightMonthlyRollup.objects.update_or_create(
+            company_id=g['company_id'], content_type_id=g['content_type_id'],
+            object_id=g['object_id'], year=g['date__year'],
+            month=g['date__month'], defaults=defaults)
+        rollups += 1
+
+    purged = 0
+    if purge:
+        purged, _ = old.delete()
+    result = {'rollups': rollups, 'snapshots_purged': purged}
+    logger.info('adsengine.rollup_insights_monthly: %s', result)
+    return result
+
+
+def total_spend_and_leads(company, target, *, up_to=None):
+    """PUB104 — Total (dépense, leads) tout-historique d'un objet, combinant les
+    rollups mensuels ARCHIVÉS et le détail quotidien encore présent — INVARIANT
+    aux rollups (identique avant/après archivage). ``up_to`` (date, optionnel)
+    borne la fenêtre. Renvoie ``{'spend', 'leads_count'}``."""
+    from decimal import Decimal
+
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from .models import InsightMonthlyRollup, InsightSnapshot
+
+    ct = ContentType.objects.get_for_model(target)
+    snaps = InsightSnapshot.objects.filter(
+        company=company, content_type=ct, object_id=target.pk)
+    rolls = InsightMonthlyRollup.objects.filter(
+        company=company, content_type=ct, object_id=target.pk)
+    if up_to is not None:
+        snaps = snaps.filter(date__lte=up_to)
+        # Un rollup est inclus si son mois est ≤ le mois de ``up_to``.
+        rolls = rolls.filter(year__lt=up_to.year) | rolls.filter(
+            year=up_to.year, month__lte=up_to.month)
+
+    s_snap = snaps.aggregate(s=Sum('spend'), l=Sum('leads_count'))
+    s_roll = rolls.aggregate(s=Sum('spend'), l=Sum('leads_count'))
+    spend = (s_snap['s'] or Decimal('0')) + (s_roll['s'] or Decimal('0'))
+    leads = (s_snap['l'] or 0) + (s_roll['l'] or 0)
+    return {'spend': spend, 'leads_count': leads}
+
+
+@shared_task(name='adsengine.rollup_insights_monthly')
+def rollup_insights_monthly_task():
+    """PUB104 — Beat (mensuel) : rollup/archivage des snapshots. Best-effort."""
+    try:
+        return rollup_insights_monthly()
+    except Exception:  # pragma: no cover - défensif
+        logger.warning(
+            'adsengine.rollup_insights_monthly: échec', exc_info=True)
+        return {'rollups': 0, 'snapshots_purged': 0}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUB105 — Rejeu / backfill ciblé après panne de webhook.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def backfill_after_divergence(company, *, campaign_meta_id='', day=None):
+    """PUB105 — Rattrape une divergence « webhook non reçu » par un backfill ciblé.
+
+    La réconciliation (ADSENG31) FLAGGE « webhook non reçu » mais ne réparait
+    rien. Ce backfill RÉPARE : il rejoue le pull-sync des leads (idempotent par
+    ``leadgen_id`` — jamais un doublon) et re-synchronise les insights de la
+    campagne visée, puis re-calcule la réconciliation du jour pour rafraîchir le
+    statut. Idempotent (rejouable sans effet de bord). NO-OP propre sans
+    connexion Meta live (rien à rattraper sans accès API).
+
+    Note CTWA : les conversations Click-to-WhatsApp arrivent UNIQUEMENT par
+    webhook (Meta ne les re-sert pas) — non re-fetchables ici ; seuls leads +
+    insights sont rattrapables. Renvoie un résumé."""
+    import datetime as _dt
+
+    from .meta_client import MetaClient
+    from .models import AdCampaignMirror, MetaConnection
+
+    conn = MetaConnection.objects.filter(company=company, enabled=True).first()
+    if conn is None or not conn.is_live:
+        return {'status': 'no_connection', 'leads_processed': 0,
+                'insights_refreshed': 0}
+
+    client = MetaClient.from_connection(conn)
+    summary = {'status': 'ok', 'leads_processed': 0, 'insights_refreshed': 0}
+
+    # 1) Leads via le pull-sync EXISTANT (idempotent, convergent avec le webhook).
+    try:
+        summary['leads_processed'] = pull_ad_leads_for_company(
+            company, conn, client)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('adsengine.backfill: pull leads échoué (%s)',
+                       company.pk, exc_info=True)
+
+    # 2) Insights de la/les campagne(s) visée(s) (upsert idempotent par date).
+    from . import sync
+
+    camps = AdCampaignMirror.objects.filter(company=company)
+    if campaign_meta_id:
+        camps = camps.filter(meta_id=str(campaign_meta_id))
+    today = _dt.date.today()
+    for camp in camps:
+        try:
+            rows = client.get_insights(
+                camp.meta_id,
+                params={'date_preset': 'maximum', 'time_increment': 1})
+            for row in rows or []:
+                d = _parse_date(row.get('date_start')) or today
+                sync.upsert_insight(
+                    company, camp, date=d, spend=row.get('spend'),
+                    results=row.get('results'), frequency=row.get('frequency'),
+                    cpl=row.get('cpl'))
+            summary['insights_refreshed'] += 1
+        except Exception:  # noqa: BLE001 — une campagne en échec n'arrête pas
+            continue
+
+    # 3) Re-calcule la réconciliation du jour pour rafraîchir le statut/l'alerte.
+    try:
+        from . import reconciliation
+        recon_day = day or today
+        reconciliation.run_daily_reconciliation(company, recon_day)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('adsengine.backfill: réconciliation échouée (%s)',
+                       company.pk, exc_info=True)
+
+    logger.info('adsengine.backfill_after_divergence: %s', summary)
+    return summary

@@ -18,28 +18,31 @@ from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AdCampaignMirror, Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
-    CommentMirror,
+    AdCampaignMirror, AdEngineActivity,
+    Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
+    BrandKit, CommentMirror,
+    CompetitorAdObservation, CompetitorPage, ConsentRecord,
     CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
     CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
     ExperimentArm, FactEntry, FactTable, FlightPhase, FlightPlan,
     GuardrailConfig,
     InstagramCommentMirror, InstagramMediaMirror, InstagramPublishJob,
-    MetaConnection, ReconciliationSnapshot, RulePolicy,
+    MetaConnection, ProposalTemplate, ReconciliationSnapshot, RulePolicy,
     WeeklyBrief,
 )
 from .serializers import (
     AdCampaignMirrorSerializer, AnnotationSerializer, AnomalyEventSerializer,
     ArmDailyStatSerializer,
-    AssumptionNodeSerializer,
-    CommentMirrorSerializer, CreativeAssetSerializer,
+    AssumptionNodeSerializer, BrandKitSerializer,
+    CompetitorAdObservationSerializer, CompetitorPageSerializer,
+    CommentMirrorSerializer, ConsentRecordSerializer, CreativeAssetSerializer,
     CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
     CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
     EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
     FactEntrySerializer, FactTableSerializer,
     FlightPhaseSerializer, FlightPlanSerializer, GuardrailConfigSerializer,
     InstagramCommentMirrorSerializer, InstagramMediaMirrorSerializer,
-    MetaConnectionSerializer,
+    MetaConnectionSerializer, ProposalTemplateSerializer,
     ReconciliationSnapshotSerializer, RulePolicySerializer,
 )
 
@@ -548,6 +551,180 @@ class FactEntryViewSet(AdsengineViewSet):
     serializer_class = FactEntrySerializer
 
 
+class ConsentRecordViewSet(AdsengineViewSet):
+    """PUB75 — CRUD du registre de consentement image/témoignage (CNDP loi 09-08).
+
+    Company-scopé (hérité) ; ``company`` posée côté serveur. La révocation passe
+    par l'action dédiée ``revoquer`` (jamais un PATCH direct de ``revoked_at``) :
+    elle retire aussitôt de la rotation les assets liés (``policy.revoke_consent``).
+    L'UI de collecte simple (lien WhatsApp signable) enregistre ici le
+    consentement recueilli.
+    """
+
+    queryset = ConsentRecord.objects.all()
+    serializer_class = ConsentRecordSerializer
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def revoquer(self, request, pk=None):
+        """PUB75 — Révoque le consentement : les assets « client réel » qui le
+        citent sont immédiatement retirés de la rotation (policy passed=False)."""
+        consent = self.get_object()
+        retires = consent.revoke()
+        data = self.get_serializer(consent).data
+        data['assets_retires'] = retires
+        return Response(data)
+
+
+class CompetitorPageViewSet(AdsengineViewSet):
+    """PUB70 — CRUD des Pages concurrentes suivies (veille manuelle outillée).
+
+    Company-scopé ; ``company`` posée côté serveur. Un ``GET veille/`` agrégé
+    (finding API + cadence + matière de brief) est exposé en action ``veille``.
+    ZÉRO scraping — aucun appel réseau côté serveur."""
+
+    queryset = CompetitorPage.objects.all()
+    serializer_class = CompetitorPageSerializer
+
+    @action(detail=False, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def veille(self, request):
+        """PUB70 — Tableau de veille : le finding API (couverture commerciale =
+        NON), la cadence par concurrent, et la matière de brief (hooks/angles
+        saisis). Lecture seule, company-scopé."""
+        from . import competitor_intel as ci
+
+        company = request.user.company
+        return Response({
+            'finding': ci.AD_LIBRARY_API_FINDING,
+            'cadence': ci.cadence_timeline(company),
+            'brief_material': ci.observations_as_brief_material(company),
+        })
+
+
+class CompetitorAdObservationViewSet(AdsengineViewSet):
+    """PUB70 — CRUD des observations manuelles (hooks/angles reformulés). Company-
+    scopé ; ``competitor_page`` contrainte à la même société côté serializer."""
+
+    queryset = CompetitorAdObservation.objects.all()
+    serializer_class = CompetitorAdObservationSerializer
+
+
+class AdChatterView(APIView):
+    """PUB55 — Fil de chatter par entité (campagne / ad set / ad).
+
+    ``GET ?entity_type=&entity_id=`` renvoie le fil FUSIONNÉ (notes manuelles +
+    actions appliquées + alertes, le plus récent d'abord). ``POST {entity_type,
+    entity_id, body}`` pose une note manuelle — acteur + société côté serveur
+    (jamais lus du corps), pattern ``crm.LeadActivity``. Company-scopé."""
+
+    _ENTITIES = {'campaign', 'adset', 'ad'}
+
+    def _resolve(self, request, perm):
+        return _adseng_company_gate(request, perm)
+
+    def get(self, request):
+        company, err = self._resolve(request, 'adsengine_view')
+        if err is not None:
+            return err
+        entity_type = request.query_params.get('entity_type')
+        entity_id = request.query_params.get('entity_id')
+        if entity_type not in self._ENTITIES or not entity_id:
+            return Response(
+                {'detail': 'entity_type (campaign/adset/ad) et entity_id requis.'},
+                status=400)
+        from . import chatter
+        return Response(chatter.build_timeline(company, entity_type, entity_id))
+
+    def post(self, request):
+        company, err = self._resolve(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        body = request.data or {}
+        entity_type = body.get('entity_type')
+        entity_id = body.get('entity_id')
+        text = (body.get('body') or '').strip()
+        if entity_type not in self._ENTITIES or not entity_id:
+            return Response(
+                {'detail': 'entity_type (campaign/adset/ad) et entity_id requis.'},
+                status=400)
+        if not text:
+            return Response({'detail': 'Une note (body) est requise.'}, status=400)
+        note = AdEngineActivity.objects.create(
+            company=company, entity_type=entity_type,
+            entity_meta_id=str(entity_id), body=text, user=request.user)
+        return Response({
+            'id': note.id, 'kind': 'note', 'body': note.body,
+            'at': note.created_at.isoformat(),
+            'author': request.user.username, 'source': 'note',
+        }, status=201)
+
+
+class ImportChantierPhotoView(APIView):
+    """PUB73 — Importe une photo de chantier dans la créathèque
+    (``CreativeAsset(source_lane='chantier')``).
+
+    Corps : ``{chantier_id, attachment_id, client_id, puissance_kwc?, ville?,
+    note?, auto_flagged?}``. Écriture ``adsengine_manage`` ; company-scopé.
+    BLOQUÉ (400) sans consentement photo client actif (PUB75) — refus expliqué."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        body = request.data or {}
+        chantier_id = body.get('chantier_id')
+        attachment_id = body.get('attachment_id')
+        client_id = body.get('client_id')
+        if not (chantier_id and attachment_id):
+            return Response(
+                {'detail': 'chantier_id et attachment_id requis.'}, status=400)
+        from . import creative_factory as cf
+        result = cf.import_chantier_photo(
+            company, chantier_id=chantier_id, attachment_id=attachment_id,
+            client_id=client_id, puissance_kwc=body.get('puissance_kwc'),
+            ville=body.get('ville'), note=body.get('note', ''),
+            auto_flagged=bool(body.get('auto_flagged')))
+        if not result['imported']:
+            return Response(
+                {'detail': result['message'],
+                 'blocked_reason': result['blocked_reason']}, status=400)
+        return Response({
+            'imported': True, 'asset_id': result['asset'].id,
+            'message': result['message'],
+        }, status=201)
+
+
+class ProposalTemplateViewSet(AdsengineViewSet):
+    """PUB50 — CRUD des gabarits de proposition réutilisables. Company-scopé ;
+    ``company`` posée côté serveur. Appliquer un gabarit (côté front) ne fait que
+    PRÉ-REMPLIR un composeur — aucune action n'est exécutée depuis ce viewset."""
+
+    queryset = ProposalTemplate.objects.all()
+    serializer_class = ProposalTemplateSerializer
+
+    def get_queryset(self):
+        # Filtre optionnel par ``kind`` (le composeur ne charge que ses gabarits).
+        qs = super().get_queryset()
+        kind = self.request.query_params.get('kind')
+        if kind:
+            qs = qs.filter(kind=kind)
+        return qs
+
+
+class BrandKitViewSet(AdsengineViewSet):
+    """PUB83 — CRUD du kit de marque (une par société, ``OneToOne``).
+
+    Company-scopé (hérité) ; ``company`` posée côté serveur. Le
+    ``TemplatedAdapter`` lit ce kit persistant au lieu d'un payload de marque
+    ad hoc à chaque génération."""
+
+    queryset = BrandKit.objects.all()
+    serializer_class = BrandKitSerializer
+
+
 class EngineAlertViewSet(AdsengineViewSet):
     """ENG13 — Liste (lecture seule) des alertes moteur pour le dashboard.
 
@@ -849,6 +1026,23 @@ class RulePolicyViewSet(AdsengineViewSet):
                     f'(cadence {instance.cadence_hours} h).' if instance.enabled
                     else f'Règle « {instance.template_key} » désarmée.'))
 
+    # PUB91 — backtest de la règle sur l'historique RÉEL (dry-run avant armement).
+    # Lecture seule (adsengine_view) : AUCUNE EngineAction n'est créée. ``?jours=``
+    # borne la fenêtre (défaut 90 = dernier trimestre).
+    @action(detail=True, methods=['get'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def backtest(self, request, pk=None):
+        """PUB91 — « Qu'aurait fait cette règle sur votre dernier trimestre ? »
+        Rejoue la règle jour par jour sur les snapshots réels et liste les
+        actions qu'elle AURAIT proposées (jamais exécutées)."""
+        from .rule_backtest import DEFAULT_BACKTEST_DAYS, backtest_rule
+        policy = self.get_object()
+        try:
+            days = int(request.query_params.get('jours', DEFAULT_BACKTEST_DAYS))
+        except (TypeError, ValueError):
+            days = DEFAULT_BACKTEST_DAYS
+        return Response(backtest_rule(policy, days=days))
+
     # ADSENG14 — catalogue FIXE (lecture) : le front rend la liste des templates
     # (style STAGES.py) sans que le fondateur puisse en inventer un (pas de
     # builder libre). GET → permission de LECTURE (adsengine_view) héritée.
@@ -993,11 +1187,52 @@ class RulePolicyViewSet(AdsengineViewSet):
 
 
 class AnomalyEventViewSet(AdsengineViewSet):
-    """ADSENG4 — Liste (lecture seule) des anomalies détectées par le gardien."""
+    """ADSENG4 — Liste (lecture seule) des anomalies + PUB90 : feedback
+    utile/faux-positif et précision par détecteur."""
 
     queryset = AnomalyEvent.objects.all()
     serializer_class = AnomalyEventSerializer
-    http_method_names = ['get', 'head', 'options']
+    # POST est activé UNIQUEMENT pour l'action ``feedback`` (PUB90) ; la création
+    # d'anomalie par API reste interdite (les anomalies naissent du gardien).
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def create(self, request, *args, **kwargs):
+        """La création d'anomalie par API est interdite (405) : une anomalie est
+        matérialisée par le moteur (ENG9), jamais par un client."""
+        return Response(status=405)
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def feedback(self, request, pk=None):
+        """PUB90 — Vote utile/faux-positif sur une anomalie (acteur + horodatage
+        posés côté serveur). ``{"vote": "useful"|"false_positive"}``. Alimente la
+        précision par détecteur + le throttle brake-only. Idempotent (re-voter
+        remplace le vote)."""
+        from django.utils import timezone
+        anomaly_event = self.get_object()
+        vote = request.data.get('vote')
+        valid = {c[0] for c in AnomalyEvent.Feedback.choices}
+        if vote not in valid:
+            return Response(
+                {'detail': 'Vote attendu : useful ou false_positive.'},
+                status=400)
+        anomaly_event.feedback = vote
+        anomaly_event.feedback_at = timezone.now()
+        anomaly_event.feedback_by = request.user
+        anomaly_event.save(
+            update_fields=['feedback', 'feedback_at', 'feedback_by',
+                           'updated_at'])
+        return Response(self.get_serializer(anomaly_event).data)
+
+    @action(detail=False, methods=['get'], url_path='detecteurs',
+            permission_classes=[HasPermissionOrLegacy('adsengine_view')])
+    def detectors(self, request):
+        """PUB90 — Précision + état de throttle PAR DÉTECTEUR (visible dans
+        l'UI). Company-scopé (queryset hérité). Un détecteur constamment inutile
+        (≥ 5 faux positifs) apparaît ``throttled`` (cadence réduite)."""
+        from . import anomaly as anomaly_mod
+        company = request.user.company
+        return Response({'detecteurs': anomaly_mod.all_detector_stats(company)})
 
 
 class CreativeGenerationBatchViewSet(AdsengineViewSet):
@@ -1254,15 +1489,23 @@ class EngineActionViewSet(AdsengineViewSet):
                            exc_info=True)
             raise drf_serializers.ValidationError(
                 {'payload': "Données de l'action invalides."})
-        super().perform_create(serializer)
+        # PUB103 — proposeur posé côté serveur (support du garde-fou quatre yeux).
+        # ``serializer.save(company=…)`` force la société exactement comme
+        # ``TenantMixin.perform_create`` ; on ajoute seulement ``proposed_by``.
+        serializer.save(company=company, proposed_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
-        """Approuve l'action (acteur posé côté serveur)."""
-        from .services import approve_action
+        """Approuve l'action (acteur posé côté serveur).
+
+        PUB103 — un proposeur qui approuve sa propre action alors que la double
+        validation est active reçoit 403 (``FourEyesViolation``)."""
+        from .services import FourEyesViolation, approve_action
         instance = self.get_object()
         try:
             approve_action(instance, user=request.user)
+        except FourEyesViolation as exc:
+            return Response({'detail': str(exc)}, status=403)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(self.get_serializer(instance).data)
@@ -1568,6 +1811,105 @@ class CreativeLeaderboardView(APIView):
         return Response(data)
 
 
+class RegretRegistryView(APIView):
+    """PUB86 — Registre de qualité des décisions (regret réalisé, MAD laissés sur
+    la table) PAR TYPE DE DÉCISION. Company-scopé, gaté ``adsengine_view``.
+    ``?debut=&fin=`` (dates ISO) bornent la fenêtre. Peu de données → intervalle
+    honnête (``insufficient_data`` + ``interval``), jamais un chiffre sec."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .decision_quality import regret_registry
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(regret_registry(
+            company, date_start=debut, date_end=fin))
+
+
+def _adseng_parse_float(value, default=None):
+    """``float`` d'une entrée libre, ou ``default`` (jamais une 500)."""
+    if value is None or value == '':
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+class MdeCalculatorView(APIView):
+    """PUB87 — Calculateur MDE / puissance opérateur : vue MINCE sur ``mde.py``
+    (aucun recalcul métier ré-implémenté). À la création d'une expérience,
+    répond « avec votre volume, ~X jours pour détecter +20 % » de façon
+    interactive. Company-scopé, gaté ``adsengine_view``.
+
+    ``?p=`` taux de base (proportion, 0<p<1), ``?volume=`` essais/bras/jour
+    (>0), ``?cible=`` effet relatif visé (fraction, défaut 0,20 = +20 %). Toute
+    entrée invalide → 400 explicite en FR (jamais une 500)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from . import mde
+
+        p = _adseng_parse_float(request.query_params.get('p'))
+        volume = _adseng_parse_float(request.query_params.get('volume'))
+        cible = _adseng_parse_float(request.query_params.get('cible'), 0.20)
+
+        if p is None or not (0.0 < p < 1.0):
+            return Response(
+                {'detail': 'Taux de base p attendu dans ]0 ; 1[.'}, status=400)
+        if volume is None or volume <= 0:
+            return Response(
+                {'detail': 'Volume (essais/bras/jour) strictement positif '
+                           'attendu.'}, status=400)
+        if cible <= 0:
+            return Response(
+                {'detail': 'Effet relatif cible strictement positif attendu.'},
+                status=400)
+
+        jours = mde.days_to_detect(p, cible, volume)
+        by_h = mde.mde_by_horizon(p, volume)
+        mde_par_horizon = [
+            {'jours': d,
+             'mde_relatif_pct': (round(v * 100, 1)
+                                 if v != float('inf') else None)}
+            for d, v in sorted(by_h.items())]
+        phrase = (
+            f"Avec votre volume (~{volume:g} essais/bras/jour), il faut "
+            f"~{jours} jour(s) pour détecter un effet de "
+            f"+{cible * 100:g} % de façon fiable.")
+        return Response({
+            'p': p, 'volume': volume, 'cible_relative': cible,
+            'jours_pour_cible': jours, 'phrase_fr': phrase,
+            'mde_par_horizon': mde_par_horizon,
+        })
+
+
+class ExplorationLedgerView(APIView):
+    """PUB88 — Livre de compte MENSUEL exploration vs exploitation (MAD dépensés
+    à explorer vs sur le gagnant confirmé). Company-scopé, gaté
+    ``adsengine_view``. ``?debut=&fin=`` (dates ISO) bornent la fenêtre."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import exploration_ledger
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response({'mois': exploration_ledger(
+            company, date_start=debut, date_end=fin)})
+
+
 class CreativeScatterView(APIView):
     """ADSDEEP47 — Nuage de points hook rate × dépense (quadrants FR « pépites
     cachées »/« gouffres »/« gagnants confirmés »/« à surveiller »).
@@ -1604,6 +1946,102 @@ class AccountAuditView(APIView):
         # ci-dessus) + delta hebdo, additif (les 5 sections restent inchangées).
         data['score_tile'] = account_audit_score(company, audit=data)
         return Response(data)
+
+
+class CommentFaqView(APIView):
+    """PUB71 — Mine de questions des commentaires : thèmes agrégés (prix/
+    garantie/subvention/durée) + candidats ``seed_brief`` pour la génération
+    ancrée. 100 % LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .comment_mining import mine_comment_questions
+        return Response(mine_comment_questions(company))
+
+
+class AdObjectionsView(APIView):
+    """PUB72 — Top objections PAR VARIANTE d'annonce (motif_perte + notes de
+    chatter CRM, tags mots-clés purs) + angles suggérés en backlog. 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .comment_mining import mine_ad_objections
+        return Response(mine_ad_objections(company))
+
+
+class VisualFatigueView(APIView):
+    """PUB74 — Fatigue au niveau du VISUEL (``visual_asset_key`` réutilisé sur
+    N créas malgré des hooks différents, + déclin CTR cross-ads). 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .metrics import visual_fatigue_report
+        return Response(visual_fatigue_report(company))
+
+
+class WeatherTriggerView(APIView):
+    """PUB79 — Déclencheur météo (canicule ⇒ angle pompage/climatisation),
+    suggestions de backlog SEULEMENT (jamais une action automatique). 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .weather_trigger import canicule_backlog_suggestions
+        return Response({'suggestions': canicule_backlog_suggestions(company)})
+
+
+class CoverageReportView(APIView):
+    """PUB80 — Rapport « trous de couverture » : formats Meta jamais couverts
+    + segments démographiques à forte dépense sans créa dédiée. 100 %
+    LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .coverage import coverage_report
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(
+            coverage_report(company, date_start=debut, date_end=fin))
+
+
+class FactoryLaneRoiView(APIView):
+    """PUB81 — ROI par LANE de fabrique créative (coût-par-résultat par
+    ``source_lane`` : zapcap/fal/templated/elevenlabs/json2video/chantier/
+    ugc/manuel). 100 % LECTURE, company-scopé, gaté ``adsengine_view``."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_view')]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import factory_lane_roi
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(
+            factory_lane_roi(company, date_start=debut, date_end=fin))
 
 
 class MetaConnectionStatusView(APIView):
@@ -1689,6 +2127,22 @@ class MetaConnectionHealthView(APIView):
             {'key': 'paused', 'ok': True,
              'detail': 'Le client naît en pause (règle de sécurité).'},
         ]
+        # PUB97 — tuile solde prépayé Meta : lit la dernière alerte trésorerie
+        # non résolue (posée par la synchro), sans jamais appeler l'API en direct.
+        bal_alert = (EngineAlert.objects
+                     .filter(company=company, entity_key='prepaid_balance',
+                             resolved=False)
+                     .order_by('-created_at').first())
+        bal_detail = (bal_alert.detail or {}) if bal_alert else {}
+        statuses.append({
+            'key': 'prepaid_balance',
+            # OK tant qu'aucune alerte de solde bas n'est ouverte ; None-safe.
+            'ok': bal_alert is None or bal_alert.severity == 'info',
+            'detail': (bal_alert.message if bal_alert else ''),
+            'days_runway': bal_detail.get('days_runway'),
+            'balance': bal_detail.get('balance'),
+            'currency': bal_detail.get('currency', ''),
+        })
         return Response({'statuses': statuses})
 
 
@@ -2079,6 +2533,51 @@ class ReconciliationListView(APIView):
                 'lignes': [],
             })
         return Response(rows)
+
+
+class ReconciliationBackfillView(APIView):
+    """PUB105 — Bouton « rattraper » depuis l'alerte de divergence.
+
+    Déclenche un backfill CIBLÉ (leads via pull-sync + insights de la campagne)
+    quand une divergence « webhook non reçu » a été flaggée. Accepte soit
+    ``alert_id`` (on lit ``campaign_meta_id``/``date`` dans le détail de
+    l'``EngineAlert`` de divergence), soit ``campaign_meta_id`` + ``date``
+    directement. Société forcée serveur. Écriture ``adsengine_manage``.
+    Idempotent (rejouable)."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        data = request.data if isinstance(request.data, dict) else {}
+        campaign_meta_id = str(data.get('campaign_meta_id') or '')
+        day = data.get('date') or None
+
+        alert_id = data.get('alert_id')
+        if alert_id:
+            alert = EngineAlert.objects.filter(
+                company=company, pk=alert_id).first()
+            if alert is None:
+                return Response({'detail': 'Alerte introuvable.'}, status=404)
+            detail = alert.detail if isinstance(alert.detail, dict) else {}
+            campaign_meta_id = campaign_meta_id or str(
+                detail.get('campaign_meta_id') or '')
+            day = day or detail.get('date')
+
+        parsed_day = None
+        if day:
+            import datetime as _dt
+            try:
+                parsed_day = _dt.date.fromisoformat(str(day))
+            except (ValueError, TypeError):
+                parsed_day = None
+
+        from .tasks import backfill_after_divergence
+        summary = backfill_after_divergence(
+            company, campaign_meta_id=campaign_meta_id, day=parsed_day)
+        return Response(summary)
 
 
 def _brief_payload(brief):

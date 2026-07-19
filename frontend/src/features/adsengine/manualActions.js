@@ -90,8 +90,11 @@ export const MANUAL_ACTIONS = [
     reasonPlaceholder: 'ex. Dupliquer le gagnant pour une nouvelle audience.',
   },
   {
+    // PUB4 — grille visuelle (DaypartingGrid, ADSDEEP36) au lieu d'un JSON brut :
+    // le type `daypart` monte la grille heure×jour dans le composeur ; la valeur
+    // (objet {jour:[24]}) part telle quelle dans le payload set_schedule.
     kind: 'set_schedule', scope: 'adset', mode: 'curated', label: 'Poser un horaire (dayparting natif)',
-    fields: [{ name: 'grid', label: 'Grille horaire (JSON)', type: 'json', required: true, placeholder: '{"mon":[9,10,11]}' }],
+    fields: [{ name: 'grid', label: 'Grille horaire (dayparting)', type: 'daypart', required: true }],
     buildPayload: (v, t) => ({ adset_id: t.metaId, grid: v.grid }),
     reasonPlaceholder: 'ex. Diffuser seulement aux heures ouvrables.',
   },

@@ -29,6 +29,12 @@ import io
 import statistics
 from decimal import Decimal, ROUND_HALF_UP
 
+from . import allocation
+
+# PUB88 — un bras est un « gagnant confirmé » quand sa probabilité d'être le
+# meilleur atteint le seuil de maturité de phase (dd-science-core §4 : P ≥ 80 %).
+CONFIRMED_WINNER_PROB = allocation.PHASE_ADVANCE_PROB  # 0.80
+
 # Buckets de lag par défaut (semaines) pour les cohortes de signature (§5.3).
 DEFAULT_LAG_WEEKS = (1, 2, 4, 8, 12)
 
@@ -434,6 +440,453 @@ def creative_scatter(company, *, date_start=None, date_end=None):
     }
 
 
+# ── PUB81 — ROI par LANE de fabrique créative ─────────────────────────────
+def factory_lane_roi(company, *, date_start=None, date_end=None):
+    """PUB81 — ``CreativeAsset.cost_cents`` est peuplé par chaque adaptateur
+    (zapcap/fal/templated/elevenlabs/json2video/chantier/ugc… via
+    ``source_lane``) et n'était lu NULLE PART : coût-par-résultat PAR LANE de
+    fabrique, quelle filière de production rapporte. Un asset sans lane
+    (``source_lane=''``, ex. upload manuel direct) est groupé sous
+    ``'manuel'``. Le coût est compté UNE FOIS par asset distinct de la lane
+    (coût de production sunk, indépendant du nombre d'ads qui le réutilisent) ;
+    les résultats sont sommés sur TOUTES les ads nées des assets de la lane,
+    sur la période (défaut 30 jours glissants, comme le leaderboard créatif
+    ADSDEEP47). Jointure : ``CreativeAsset`` → ``ExperimentArm.ad_id`` →
+    ``AdMirror`` → ``InsightSnapshot``. Company-scopé ; jamais un coût-par-
+    résultat fabriqué (``None`` quand aucun résultat)."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from .models import AdMirror, CreativeAsset, ExperimentArm, InsightSnapshot
+
+    date_start, date_end = _default_period(date_start, date_end)
+    periode = {'debut': date_start.isoformat(), 'fin': date_end.isoformat()}
+
+    assets = list(CreativeAsset.objects.filter(company=company)
+                  .only('id', 'source_lane', 'cost_cents'))
+    if not assets:
+        return {'lanes': [], 'periode': periode}
+    asset_by_id = {a.id: a for a in assets}
+
+    arms = list(ExperimentArm.objects
+                .filter(company=company, creative_asset_id__in=asset_by_id)
+                .exclude(ad_id=''))
+    ad_meta_ids = {arm.ad_id for arm in arms}
+    ad_by_meta = {
+        a.meta_id: a for a in
+        AdMirror.objects.filter(company=company, meta_id__in=ad_meta_ids)
+    } if ad_meta_ids else {}
+
+    results_by_pk = {}
+    if ad_by_meta:
+        ct = ContentType.objects.get_for_model(AdMirror)
+        ad_pks = [a.pk for a in ad_by_meta.values()]
+        qs = (InsightSnapshot.objects
+              .filter(company=company, content_type=ct, object_id__in=ad_pks,
+                      date__gte=date_start, date__lte=date_end)
+              .values('object_id')
+              .annotate(results=Sum('results'), spend=Sum('spend')))
+        results_by_pk = {row['object_id']: row for row in qs}
+
+    lanes = {}
+    for arm in arms:
+        asset = asset_by_id.get(arm.creative_asset_id)
+        ad = ad_by_meta.get(arm.ad_id)
+        if asset is None or ad is None:
+            continue
+        lane_key = asset.source_lane or 'manuel'
+        slot = lanes.setdefault(lane_key, {
+            'asset_ids': set(), 'results': 0, 'spend': Decimal('0')})
+        slot['asset_ids'].add(asset.id)
+        agg = results_by_pk.get(ad.pk) or {}
+        slot['results'] += agg.get('results') or 0
+        slot['spend'] += agg.get('spend') or Decimal('0')
+
+    rows = []
+    for lane_key, slot in lanes.items():
+        cost_cents_total = sum(
+            asset_by_id[aid].cost_cents for aid in slot['asset_ids'])
+        results = slot['results']
+        cost_per_result_centimes = (
+            round(cost_cents_total / results, 2) if results else None)
+        rows.append({
+            'lane': lane_key,
+            'assets_count': len(slot['asset_ids']),
+            'cost_cents_total': cost_cents_total,
+            'results': results,
+            'spend_mad': str(slot['spend']),
+            'cost_per_result_centimes': cost_per_result_centimes,
+        })
+    # Meilleur ROI (coût-par-résultat le plus bas) d'abord ; lanes sans
+    # résultat mesurable en fin de liste (jamais un zéro fabriqué en tête).
+    rows.sort(key=lambda r: (r['cost_per_result_centimes'] is None,
+                             r['cost_per_result_centimes'] or 0))
+    return {'lanes': rows, 'periode': periode}
+
+
+# ── PUB62 — Carte chaleur ville : CPL, coût-par-signature, ticket moyen ──────
+
+def _normalize_place_fr(value):
+    return (value or '').strip().lower()
+
+
+def city_heatmap(company, *, date_start=None, date_end=None):
+    """PUB62 — Carte chaleur ville : CPL, coût-par-signature ET ticket moyen
+    SIGNÉ par ville (une ville chère en CPL mais à gros tickets industriels
+    peut gagner). Croise le breakdown RÉGION Meta (``InsightBreakdown``,
+    ADSDEEP7, synchronisé au niveau CAMPAGNE) avec les villes RÉELLES
+    saisies sur les leads (``apps.crm.selectors.leads_ville_rows``) et le
+    total TTC des devis ACCEPTÉS qui leur sont liés
+    (``apps.ventes.selectors.devis_accepted_totals_by_lead``) — jamais un
+    import des modèles crm/ventes.
+
+    Le rapprochement ville↔région Meta est TEXTUEL (une région Meta MA type
+    « Casablanca-Settat » contient généralement le nom de ville usuel) —
+    correspondance dans les deux sens, insensible à la casse ; une ville sans
+    correspondance de région n'a simplement pas de CPL/coût-par-signature
+    (jamais un chiffre à 0 fabriqué). Une ville SANS AUCUNE donnée
+    n'apparaît PAS dans la table (règle checked-facts : les villes sans
+    données sont OMISES, jamais un « 0 »).
+
+    Renvoie ``{'periode': {...}|None, 'villes': [{'ville', 'region_meta',
+    'spend', 'leads', 'cpl', 'signed', 'cout_par_signature',
+    'ticket_moyen_ttc'}, ...]}`` — triable côté appelant sur les 3
+    métriques."""
+    from decimal import Decimal
+
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from apps.crm.selectors import leads_ville_rows
+    from apps.ventes.selectors import devis_accepted_totals_by_lead
+    from .models import AdCampaignMirror, InsightBreakdown
+
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    qs = InsightBreakdown.objects.filter(
+        company=company, content_type=ct,
+        dimension=InsightBreakdown.Dimension.REGION)
+    if date_start is not None:
+        qs = qs.filter(date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date__lte=date_end)
+    regions = [
+        {'key': r['key'], 'spend': r['spend'] or Decimal('0')}
+        for r in qs.values('key').annotate(spend=Sum('spend'))
+        if r['key']
+    ]
+
+    lead_rows = leads_ville_rows(company)
+    signed_lead_ids = [r['id'] for r in lead_rows if r['signed']]
+    totals_by_lead = devis_accepted_totals_by_lead(company, signed_lead_ids)
+
+    cities = {}
+    for row in lead_rows:
+        slot = cities.setdefault(row['ville'], {
+            'leads': 0, 'signed': 0, 'signed_total': Decimal('0')})
+        slot['leads'] += 1
+        if row['signed']:
+            slot['signed'] += 1
+            slot['signed_total'] += totals_by_lead.get(row['id'], Decimal('0'))
+
+    result = []
+    for ville, slot in cities.items():
+        norm = _normalize_place_fr(ville)
+        matched_region, spend = None, None
+        for region in regions:
+            rnorm = _normalize_place_fr(region['key'])
+            if norm and rnorm and (norm in rnorm or rnorm in norm):
+                matched_region, spend = region['key'], region['spend']
+                break
+        leads = slot['leads']
+        signed = slot['signed']
+        result.append({
+            'ville': ville,
+            'region_meta': matched_region,
+            'spend': _q2(spend) if spend is not None else None,
+            'leads': leads,
+            'cpl': (_q2(spend / leads)
+                    if spend is not None and leads else None),
+            'signed': signed,
+            'cout_par_signature': (_q2(spend / signed)
+                                   if spend is not None and signed else None),
+            'ticket_moyen_ttc': (_q2(slot['signed_total'] / signed)
+                                 if signed else None),
+        })
+    result.sort(key=lambda r: r['ville'])
+
+    periode = None
+    if date_start is not None or date_end is not None:
+        periode = {
+            'debut': date_start.isoformat() if date_start else None,
+            'fin': date_end.isoformat() if date_end else None,
+        }
+    return {'periode': periode, 'villes': result}
+
+
+# ── PUB64 — Calculateur recyclage COLD (aide à la décision, pas une action) ──
+
+MIN_COLD_RECYCLING_LEADS = 1  # au moins un lead COLD exploitable pour parler
+
+
+def _company_spend_window(company, date_start, date_end):
+    """Dépense totale de la société (``InsightSnapshot``, niveau CAMPAGNE —
+    évite tout double-comptage avec les instantanés ad set/ad enfants) sur
+    ``[date_start, date_end]``. Même primitif ``ContentType`` que
+    ``attribution``/``metrics`` (jamais réimplémenté à un autre niveau)."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from .models import AdCampaignMirror, InsightSnapshot
+
+    ct = ContentType.objects.get_for_model(AdCampaignMirror)
+    total = (InsightSnapshot.objects
+             .filter(company=company, content_type=ct,
+                     date__gte=date_start, date__lte=date_end)
+             .aggregate(total=Sum('spend'))['total'])
+    return total or Decimal('0')
+
+
+def cold_recycling_report(company, *, date_start=None, date_end=None):
+    """PUB64 — Calculateur d'aide à la décision GO/NO-GO « réactiver un lead
+    COLD vs acheter un lead neuf », basé sur les taux de conversion
+    HISTORIQUES réels par âge-au-COLD
+    (``apps.crm.selectors.cold_reactivation_by_age_bucket``) et le CAC
+    COURANT par mode marché (dépense société sur la fenêtre ÷ leads Meta
+    NEUFS de ce mode, ``apps.crm.selectors.new_leads_by_mode_meta``). UN
+    CALCULATEUR D'AIDE À LA DÉCISION, PAS UNE NURTURE — aucune action n'est
+    déclenchée ici.
+
+    Fenêtre par défaut : 90 jours glissants. Données insuffisantes (aucun
+    historique COLD exploitable, ou aucun lead Meta neuf sur la fenêtre) → le
+    dit CLAIREMENT (``avertissement``) et s'abstient de toute conclusion
+    chiffrée fausse."""
+    from apps.crm.selectors import (
+        cold_reactivation_by_age_bucket, new_leads_by_mode_meta,
+    )
+
+    date_start, date_end = _default_period(date_start, date_end)
+    spend = _company_spend_window(company, date_start, date_end)
+    leads_by_mode = new_leads_by_mode_meta(
+        company, date_start=date_start, date_end=date_end)
+
+    cac_par_mode = []
+    for mode, count in sorted(leads_by_mode.items()):
+        cac_par_mode.append({
+            'mode_installation': mode or '(non renseigné)',
+            'leads_neufs_meta': count,
+            'cac_actuel': _q2(spend / count) if count else None,
+        })
+
+    buckets = cold_reactivation_by_age_bucket(company)
+    has_cold_data = sum(b['total'] for b in buckets) >= MIN_COLD_RECYCLING_LEADS
+    donnees_suffisantes = has_cold_data and bool(cac_par_mode)
+
+    return {
+        'periode': {'debut': date_start.isoformat(),
+                    'fin': date_end.isoformat()},
+        'depense_totale': _q2(spend),
+        'cac_par_mode': cac_par_mode,
+        'reconversion_par_age_cold': buckets,
+        'donnees_suffisantes': donnees_suffisantes,
+        'avertissement': (
+            None if donnees_suffisantes else
+            "Historique de leads COLD ou dépense/leads Meta neufs "
+            "insuffisants sur la période pour un calcul fiable — "
+            "abstention (aucune conclusion chiffrée)."),
+    }
+
+
+# ── PUB67 — Saisonnalité pilotée par l'historique RÉEL (recommandation seule) ─
+
+MIN_MONTHS_COVERAGE_SEASONALITY = 12
+
+
+def seasonality_report(company):
+    """PUB67 — Rapport « votre saisonnalité » : vélocité de signature RÉELLE
+    mois-par-mois PAR MODE MARCHÉ (``apps.ventes.selectors.
+    signature_velocity_by_month_and_mode`` + ``pacing.
+    monthly_signature_shares``, RÉUTILISÉ) → RECOMMANDATION de réallocation
+    budgétaire saisonnière. Distinct du calendrier fixe générique PUB78 —
+    ici c'est la donnée Taqinor RÉELLE. RECOMMANDATION SEULE, jamais une
+    action automatique.
+
+    <``MIN_MONTHS_COVERAGE_SEASONALITY`` mois-calendaires distincts de
+    données → le dit EXPLICITEMENT et s'abstient de toute recommandation
+    (jamais un signal saisonnier fabriqué sur un historique trop court)."""
+    from . import pacing
+    from apps.ventes.selectors import signature_velocity_by_month_and_mode
+
+    data = signature_velocity_by_month_and_mode(company)
+    if data['mois_couverts'] < MIN_MONTHS_COVERAGE_SEASONALITY:
+        return {
+            'donnees_suffisantes': False,
+            'mois_couverts': data['mois_couverts'],
+            'seuil_requis': MIN_MONTHS_COVERAGE_SEASONALITY,
+            'avertissement': (
+                f"Seulement {data['mois_couverts']} mois-calendaires "
+                f"distincts de devis signés — "
+                f"{MIN_MONTHS_COVERAGE_SEASONALITY} requis pour un cycle "
+                f"annuel complet. Abstention (aucune recommandation)."),
+            'par_mode': [],
+        }
+
+    par_mode = []
+    for mode, months in sorted(data['par_mode'].items()):
+        total = sum(months.values())
+        if total == 0:
+            continue
+        shares = pacing.monthly_signature_shares(months)
+        pic = max(shares, key=shares.get)
+        creux = min(shares, key=shares.get)
+        par_mode.append({
+            'mode_installation': mode,
+            'total_signatures': total,
+            'repartition_mensuelle': {m: round(s, 4)
+                                      for m, s in shares.items()},
+            'mois_pic': pic,
+            'mois_creux': creux,
+            'recommandation_fr': (
+                f"{mode} : pic historique en mois {pic} "
+                f"({shares[pic] * 100:.0f} % des signatures), creux en "
+                f"mois {creux} ({shares[creux] * 100:.0f} %) — envisager "
+                f"de réallouer le budget vers le mois {pic} à l'approche "
+                f"de la saison (recommandation seule, aucune action "
+                f"automatique)."),
+        })
+    return {
+        'donnees_suffisantes': True,
+        'mois_couverts': data['mois_couverts'],
+        'seuil_requis': MIN_MONTHS_COVERAGE_SEASONALITY,
+        'avertissement': None,
+        'par_mode': par_mode,
+    }
+
+
+# ── PUB68 — SLA première réponse : médiane par ad ────────────────────────────
+
+def response_time_by_ad(company):
+    """PUB68 — Temps de première réponse MÉDIAN par ad (minutes) — la donnée
+    la plus documentée du marché (répondre <1 min ≈ ×4-5 conversion),
+    jusqu'ici jamais mesurée par l'ERP. Réutilise ``selectors.
+    leads_response_time_by_ad_rows`` (fichier disjoint, résolution d'ad
+    ADSENG6). Un ad sans lead contacté résolu est ABSENT (jamais une
+    médiane sur 0 valeur). Renvoie une liste triée par médiane croissante
+    (le plus réactif d'abord) ``[{'meta_id', 'name',
+    'median_response_minutes', 'sample_size'}, ...]``."""
+    import statistics
+
+    from .selectors import leads_response_time_by_ad_rows
+
+    by_ad = {}
+    for row in leads_response_time_by_ad_rows(company):
+        slot = by_ad.setdefault(
+            row['meta_id'], {'name': row['name'], 'times': []})
+        slot['times'].append(row['response_minutes'])
+
+    result = [
+        {'meta_id': meta_id, 'name': slot['name'],
+         'median_response_minutes': round(
+             statistics.median(slot['times']), 1),
+         'sample_size': len(slot['times'])}
+        for meta_id, slot in by_ad.items()
+    ]
+    result.sort(key=lambda r: r['median_response_minutes'])
+    return result
+
+
+# ── PUB88 — Livre de compte de l'exploration (exploration vs exploitation) ────
+# Le plancher d'exploration (20 %) est de l'argent RÉEL : on rend visible, en
+# ligne mensuelle, « MAD dépensés à explorer vs sur le gagnant confirmé » pour
+# que le coût d'apprentissage devienne pilotable. Lecture des ALLOCATIONS
+# loggées (``DecisionLog.allocations`` : budget_mad + prob_best par bras) — la
+# source de vérité de ce que le moteur a dirigé, jamais une ré-estimation.
+def classify_allocation(budget_map, prob_map, *,
+                        confirm_threshold=CONFIRMED_WINNER_PROB):
+    """Répartit le budget d'UNE décision en (exploration, exploitation). Pure.
+
+    ``budget_map`` : ``{label: mad}`` (``allocations.budget_mad``). ``prob_map`` :
+    ``{label: P(meilleur)}`` (``allocations.prob_best``). Exploitation = budget
+    dirigé vers un bras dont ``P(meilleur) ≥ confirm_threshold`` (gagnant
+    confirmé) ; exploration = tout le reste (plancher + budget sur les bras non
+    confirmés). Sans gagnant confirmé, 100 % est de l'exploration. Renvoie
+    ``(exploration_mad, exploitation_mad)``.
+    """
+    exploration = 0.0
+    exploitation = 0.0
+    for label, mad in (budget_map or {}).items():
+        try:
+            amount = float(mad)
+        except (TypeError, ValueError):
+            continue
+        prob = 0.0
+        try:
+            prob = float((prob_map or {}).get(label, 0.0))
+        except (TypeError, ValueError):
+            prob = 0.0
+        if prob >= confirm_threshold:
+            exploitation += amount
+        else:
+            exploration += amount
+    return (exploration, exploitation)
+
+
+def _month_key(dt):
+    """Clé mensuelle ``YYYY-MM`` d'un datetime aware/naïf (jamais une exception)."""
+    return f'{dt.year:04d}-{dt.month:02d}'
+
+
+def exploration_ledger(company, *, date_start=None, date_end=None,
+                       confirm_threshold=CONFIRMED_WINNER_PROB):
+    """PUB88 — Livre de compte MENSUEL exploration vs exploitation (society-scopé).
+
+    Lit chaque ``DecisionLog`` de la société (allocations loggées), classe son
+    budget via :func:`classify_allocation`, et agrège par mois de décision.
+    Renvoie une liste ordonnée du plus ancien au plus récent ::
+
+        [{'mois', 'exploration_mad', 'exploitation_mad', 'total_mad',
+          'exploration_pct', 'decisions'}, …]
+
+    ``exploration_pct`` est None quand le total du mois est nul (jamais un 0 %
+    trompeur). Les montants sont arrondis au centime.
+    """
+    from .models import DecisionLog
+
+    qs = DecisionLog.objects.filter(company=company)
+    if date_start is not None:
+        qs = qs.filter(created_at__date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(created_at__date__lte=date_end)
+
+    months = {}
+    for log in qs:
+        allocations = log.allocations or {}
+        budget_map = allocations.get('budget_mad') or {}
+        prob_map = allocations.get('prob_best') or {}
+        expl, exploit = classify_allocation(
+            budget_map, prob_map, confirm_threshold=confirm_threshold)
+        key = _month_key(log.created_at)
+        slot = months.setdefault(
+            key, {'exploration': 0.0, 'exploitation': 0.0, 'decisions': 0})
+        slot['exploration'] += expl
+        slot['exploitation'] += exploit
+        slot['decisions'] += 1
+
+    result = []
+    for key in sorted(months):
+        slot = months[key]
+        total = slot['exploration'] + slot['exploitation']
+        result.append({
+            'mois': key,
+            'exploration_mad': round(slot['exploration'], 2),
+            'exploitation_mad': round(slot['exploitation'], 2),
+            'total_mad': round(total, 2),
+            'exploration_pct': (round(slot['exploration'] / total * 100, 1)
+                                if total > 0 else None),
+            'decisions': slot['decisions'],
+        })
+    return result
+
+
 def reconciliation_csv(company, *, day=None):
     """CSV de la table de réconciliation (§5.4). Réutilise
     ``reconciliation.reconcile`` (ADSENG31, fichier disjoint) — jamais un schéma
@@ -452,3 +905,129 @@ def reconciliation_csv(company, *, day=None):
         for c in contract['campaigns']
     ]
     return _csv_string(header, rows)
+
+
+# ── PUB77 — Performance créative COMPARABLE PAR LANGUE (fr / darija / amazigh) ─
+#
+# Deux variantes FR/Darija du même hook étaient indistinguables : on splite la
+# performance des ``CreativeAsset`` par ``language``. La perf vient du champ
+# ``perf`` de l'asset (remontée d'insights : impressions/spend/résultats). Un
+# asset sans langue renseignée est compté À PART (``untagged_count``) — jamais
+# regroupé sous une langue fabriquée (règle checked-facts-only).
+
+def _perf_num(perf, *keys):
+    """Nombre (float) lu au mieux dans le dict ``perf`` (0.0 si absent)."""
+    for key in keys:
+        val = (perf or {}).get(key)
+        if val not in (None, ''):
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return 0.0
+    return 0.0
+
+
+def _perf_money(perf, *keys):
+    """Montant Decimal lu au mieux dans ``perf`` (0 si absent) — SANS passer par
+    ``float`` (un ``float(100)`` → ``Decimal('100.0')`` traînerait un « .0 »
+    parasite sur les entiers ; la dépense doit rester un Decimal propre)."""
+    for key in keys:
+        val = (perf or {}).get(key)
+        if val not in (None, ''):
+            try:
+                return Decimal(str(val))
+            except (ArithmeticError, TypeError, ValueError):
+                return Decimal('0')
+    return Decimal('0')
+
+
+def language_leaderboard(company):
+    """PUB77 — Classement de la performance créative PAR LANGUE.
+
+    Groupe les ``CreativeAsset`` de la société par ``language`` (fr / ar-ma /
+    amazigh) et agrège leur perf (dépense / résultats / impressions). Renvoie
+    ``{classement: [...], untagged_count}`` — un asset sans langue est compté
+    séparément, jamais rangé sous une langue inventée. Le coût-par-résultat est
+    ``None`` sans résultat (jamais un 0 trompeur). Lecture seule, company-scopé."""
+    from .models import CreativeAsset
+
+    labels = dict(CreativeAsset.Language.choices)
+    groups = {}
+    untagged = 0
+    for asset in CreativeAsset.objects.filter(company=company):
+        lang = asset.language or ''
+        if not lang:
+            untagged += 1
+            continue
+        g = groups.setdefault(lang, {
+            'language': lang, 'language_label': labels.get(lang, lang),
+            'spend': Decimal('0'), 'results': 0, 'impressions': 0,
+            'asset_count': 0})
+        perf = asset.perf or {}
+        g['spend'] += _perf_money(perf, 'spend', 'depense')
+        g['results'] += int(_perf_num(perf, 'results', 'resultats'))
+        g['impressions'] += int(_perf_num(perf, 'impressions'))
+        g['asset_count'] += 1
+
+    classement = []
+    for lang, g in groups.items():
+        cost_per_result = (
+            _q2(g['spend'] / g['results']) if g['results'] else None)
+        classement.append({
+            'language': lang, 'language_label': g['language_label'],
+            'spend': str(g['spend']), 'results': g['results'],
+            'impressions': g['impressions'], 'asset_count': g['asset_count'],
+            'cost_per_result': cost_per_result,
+        })
+    classement.sort(key=lambda r: Decimal(r['spend']), reverse=True)
+    return {'classement': classement, 'untagged_count': untagged}
+
+
+# ── PUB82 — Rétention par SCÈNE de script (beat ↔ percentile vidéo) ───────────
+#
+# Les percentiles de rétention Meta (p25/p50/p75/p100) disent « à quel % du film
+# l'audience chute » ; en les reliant aux *beats* PERSISTÉS du script
+# (``CreativeAsset.script_beats``) on répond « à quelle SCÈNE » (« la chute
+# arrive à la scène du prix »). Beats répartis uniformément sur la durée.
+
+RETENTION_PERCENTILES = (25, 50, 75, 100)
+
+
+def _beat_index_at_percentile(percentile, n_beats):
+    """Index de la scène jouée au repère ``percentile`` % (beats uniformes)."""
+    if n_beats <= 0:
+        return None
+    idx = int(percentile / 100.0 * n_beats)
+    return min(n_beats - 1, idx)
+
+
+def script_beat_retention(asset):
+    """PUB82 — Mapping beat↔percentile de rétention pour un asset vidéo.
+
+    Renvoie ``{beat_count, mapping: [{percentile, retention, beat_index,
+    beat_text, fact_key}]}`` — chaque percentile pointe la SCÈNE jouée à ce
+    repère + la valeur de rétention (``asset.perf['retention']``, ou ``None`` si
+    non mesurée : jamais un chiffre fabriqué). ``beat_count == 0`` (aucun beat
+    persisté) → mapping vide."""
+    beats = list(asset.script_beats or [])
+    n = len(beats)
+    retention = (asset.perf or {}).get('retention') or {}
+    mapping = []
+    for p in RETENTION_PERCENTILES:
+        idx = _beat_index_at_percentile(p, n)
+        beat = beats[idx] if idx is not None else None
+        beat_text = ''
+        fact_key = None
+        if isinstance(beat, dict):
+            beat_text = beat.get('text', '') or ''
+            fact_key = beat.get('fact_key')
+        elif beat is not None:
+            beat_text = str(beat)
+        mapping.append({
+            'percentile': p,
+            'retention': retention.get(f'p{p}'),
+            'beat_index': idx,
+            'beat_text': beat_text,
+            'fact_key': fact_key,
+        })
+    return {'beat_count': n, 'mapping': mapping}

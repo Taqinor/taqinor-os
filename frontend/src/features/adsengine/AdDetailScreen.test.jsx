@@ -18,6 +18,11 @@ vi.mock('./adsengineApi', () => ({
     media: { resolve: mocks.mediaResolve },
     previews: { get: vi.fn() },
     syncStatus: { get: mocks.syncStatus },
+    // PUB55 — AdChatter (embarqué) charge son fil au montage.
+    chatter: {
+      timeline: vi.fn(() => Promise.resolve({ data: [] })),
+      postNote: vi.fn(() => Promise.resolve({ data: {} })),
+    },
   },
 }))
 

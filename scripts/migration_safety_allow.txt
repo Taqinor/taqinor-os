@@ -3,6 +3,12 @@
 # migration (not listed here) that adds a unique/not-null constraint to a
 # populated table in one step, or names an index/constraint that no models.py
 # Meta declares. Baseline captured 2026-07-13 — all pre-existing migrations.
+# 2026-07-19 (batch-2 PUB): adsengine/0032 named constraint
+# 'uniq_adseng_factentry_table_cle', LEGITIMATELY superseded by 0045_pub85_
+# factentry_region (RemoveConstraint + AddConstraint 'uniq_adseng_factentry_
+# table_cle_region', which is what models.py Meta now declares). Historical
+# migration, no drift — reviewed and allowlisted.
+backend/django_core/apps/adsengine/migrations/0032_creativegenerationbatch_claim_verdicts_and_more.py
 backend/django_core/apps/automation/migrations/0003_approvalrequesttype_approvalrequest.py
 backend/django_core/apps/automation/migrations/0004_approvaldelegation_decided_on_behalf_of.py
 backend/django_core/apps/automation/migrations/0005_incomingwebhooktrigger.py

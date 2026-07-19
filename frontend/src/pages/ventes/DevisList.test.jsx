@@ -626,3 +626,43 @@ describe('DevisList — VX82 : titre d’onglet dédié', () => {
     expect(document.title).toBe('Devis')
   })
 })
+
+describe('DevisList — PUB53 : lien retour Devis → annonce Meta d\'origine', () => {
+  const withMetaLead = () => ([{
+    id: 80, reference: 'DEV-PUB53-A', client_nom: 'ACME', statut: 'brouillon',
+    date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+    lead: 9, lead_nom: 'Karim B.', lead_meta_ad_id: '120210000000001',
+  }])
+
+  it('affiche le badge « Vient de la pub » + lien vers /publicite/ad/:id pour un rôle admin/responsable', () => {
+    renderList({ loading: false, devis: withMetaLead(), role: 'admin' })
+    const row = screen.getByText('DEV-PUB53-A').closest('tr')
+    const link = within(row).getByRole('link', { name: /Vient de la pub/ })
+    expect(link).toHaveAttribute('href', '/publicite/ad/120210000000001')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('masque le badge quand le lead lié n\'a pas de meta_ad_id', () => {
+    renderList({
+      loading: false,
+      role: 'admin',
+      devis: [{
+        id: 81, reference: 'DEV-PUB53-B', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+        lead: 10, lead_nom: 'Sans Pub',
+      }],
+    })
+    const row = screen.getByText('DEV-PUB53-B').closest('tr')
+    expect(within(row).queryByRole('link', { name: /Vient de la pub/ })).toBeNull()
+    // Le badge « ↗ Lead » historique reste, lui, inchangé.
+    expect(within(row).getByRole('button', { name: /Sans Pub/ })).toBeVisible()
+  })
+
+  it('masque le badge pour un rôle qui ne voit pas /publicite (ex. commercial)', () => {
+    renderList({ loading: false, devis: withMetaLead(), role: 'commercial' })
+    const row = screen.getByText('DEV-PUB53-A').closest('tr')
+    expect(within(row).queryByRole('link', { name: /Vient de la pub/ })).toBeNull()
+    // Le lien retour vers le lead, lui, reste visible (gate distinct).
+    expect(within(row).getByRole('button', { name: /Karim B\./ })).toBeVisible()
+  })
+})

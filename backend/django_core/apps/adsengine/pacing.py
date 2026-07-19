@@ -145,6 +145,21 @@ def weekday_shares(daily_spend):
     return {d: means[d] / total for d in range(7)}
 
 
+def monthly_signature_shares(counts_by_month):
+    """PUB67 — Parts par MOIS CALENDAIRE (1-12) d'un décompte de signatures,
+    normalisées à 1,0 — même primitif que :func:`weekday_shares` mais sur
+    l'axe saisonnier ANNUEL plutôt qu'hebdomadaire (réutilisé par
+    ``reporting.seasonality_report``, dd-treasury §a). ``counts_by_month`` :
+    dict ``{1..12: int}`` (un mois sans signature simplement absent — jamais
+    un 0 fabriqué en ENTRÉE). Total nul → parts uniformes 1/12 (plancher
+    honnête, même logique de démarrage à froid que :func:`weekday_shares`)."""
+    uniform = {m: 1.0 / 12.0 for m in range(1, 13)}
+    total = sum(float(v or 0) for v in counts_by_month.values())
+    if total <= 0:
+        return uniform
+    return {m: (float(counts_by_month.get(m, 0)) / total) for m in range(1, 13)}
+
+
 def seasonality_expected_spend(monthly_ceiling, period_start, days_elapsed,
                                shares):
     """Dépense attendue à date, pondérée par la saisonnalité jour-de-semaine.

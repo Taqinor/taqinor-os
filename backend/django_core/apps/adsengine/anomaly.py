@@ -52,6 +52,16 @@ KIND_CREATIVE_FATIGUE = 'creative_fatigue'
 KIND_LEARNING_VELOCITY = 'apprentissage_lent'
 # PUB34 — santé structurelle (doctrine Andromeda : fragmentation ad sets/créas).
 KIND_STRUCTURAL_FRAGMENTATION = 'fragmentation_structurelle'
+# PUB74 — kind EN CONSTANTE SIMPLE (même pattern qu'ADSDEEP45 ci-dessus) :
+# fatigue au niveau du VISUEL (``visual_asset_key``), DISTINCTE de la fatigue
+# par ad ci-dessus (fréquence/CTR d'UNE ad) — ici le signal est « le même
+# visuel ressert sur N créas malgré des hooks différents ».
+KIND_VISUAL_FATIGUE = 'visual_fatigue'
+# PUB97 — solde prépayé Meta bas (kind constante simple, aucune migration —
+# même pattern que ci-dessus). Meta Maroc = prépayé : à zéro, la diffusion
+# s'arrête et ressemble à « pas de données » (angle mort du guard zéro-délivrance
+# qui exige spend>0).
+KIND_LOW_BALANCE = 'low_prepaid_balance'
 
 # PUB33 — Meta cible ~50 événements d'optimisation (résultats de la campagne
 # d'optimisation) par ad set sur une fenêtre glissante de 7 jours pour sortir
@@ -68,6 +78,10 @@ IDEAL_ACTIVE_ADSETS_MIN = 2
 IDEAL_ACTIVE_ADSETS_MAX = 3
 IDEAL_CREATIVES_MIN = 15
 IDEAL_CREATIVES_MAX = 25
+
+# PUB97 — Seuil trésorerie par défaut : alerter quand le solde couvre moins de N
+# jours de la dépense quotidienne courante. CRITICAL sous la moitié du seuil.
+BALANCE_MIN_DAYS_RUNWAY = 5.0
 
 
 @dataclass(frozen=True)
@@ -476,19 +490,212 @@ def detect_structural_fragmentation(active_adset_count, creatives_per_adset=None
                      KIND_STRUCTURAL_FRAGMENTATION, message, computed)
 
 
+# ── PUB74 — Fatigue au niveau du VISUEL (visual_asset_key réutilisé) ─────────
+# ``visual_asset_key`` (ADSENG5) identifie précisément un visuel réutilisable
+# à travers plusieurs ``CreativeAsset`` (recombinaison hook × visuel) — AUCUNE
+# analytique ne s'en sert jusqu'ici. Le signal : un visuel qui ressert sur
+# beaucoup de créas MALGRÉ des accroches différentes est un candidat à la
+# lassitude visuelle, indépendant de la fatigue par-ad (fréquence/CTR d'UNE
+# ad, ci-dessus) — le câblage DB (regroupement par visuel + déclin CTR
+# cross-ads) vit dans ``metrics.visual_fatigue_report``.
+DEFAULT_VISUAL_REUSE_THRESHOLDS = {
+    'min_reuse': 3,
+    'min_distinct_hooks': 2,
+    'ctr_decline_warn': 0.25,
+}
+
+
+def detect_visual_reuse_fatigue(reuse_count, distinct_hook_count, *,
+                                min_reuse=3, min_distinct_hooks=2,
+                                ctr_decline_pct=None, ctr_decline_warn=0.25):
+    """PUB74 — Un visuel réutilisé sur ``reuse_count`` créas MALGRÉ
+    ``distinct_hook_count`` accroches différentes est un signal de lassitude
+    visuelle. Confirmé (WARNING) dès ``reuse_count >= min_reuse`` ET
+    ``distinct_hook_count >= min_distinct_hooks`` (sinon simple recyclage
+    normal d'un visuel avec le MÊME hook — pas un signal) ; ESCALADE en
+    CRITICAL si le déclin de CTR cross-ads fourni (``ctr_decline_pct``, du
+    plus ancien ad utilisant ce visuel au plus récent) dépasse
+    ``ctr_decline_warn``. ``ctr_decline_pct`` est OPTIONNEL (calculé par
+    l'appelant) : son absence n'empêche jamais la détection de fuite de
+    réutilisation elle-même. Fonction PURE — aucun I/O, aucun import de
+    modèle."""
+    computed = {
+        'reuse_count': reuse_count, 'distinct_hook_count': distinct_hook_count,
+        'min_reuse': min_reuse, 'min_distinct_hooks': min_distinct_hooks,
+        'ctr_decline_pct': (round(ctr_decline_pct, 4)
+                            if ctr_decline_pct is not None else None),
+    }
+    if reuse_count < min_reuse or distinct_hook_count < min_distinct_hooks:
+        return Detection('visual_fatigue', False, False, SEVERITY_WARNING,
+                         KIND_VISUAL_FATIGUE, '', computed)
+
+    severity = SEVERITY_WARNING
+    decline_suffix = ''
+    if ctr_decline_pct is not None and ctr_decline_pct >= ctr_decline_warn:
+        severity = SEVERITY_CRITICAL
+        decline_suffix = (
+            f", CTR en baisse de {ctr_decline_pct * 100:.0f} % entre le "
+            f"1er et le dernier usage")
+    message = (
+        f"Visuel réutilisé sur {reuse_count} créas malgré {distinct_hook_count} "
+        f"accroches différentes{decline_suffix} — lassitude visuelle probable, "
+        f"tester un nouveau visuel.")
+    return Detection('visual_fatigue', True, False, severity,
+                     KIND_VISUAL_FATIGUE, message, computed)
+
+
+# ── PUB90 — Feedback utile/faux-positif : précision par détecteur + throttle ──
+# Chaque fausse alarme érode la confiance. Un utilisateur vote « utile » ou
+# « faux positif » sur une anomalie ; on suit la PRÉCISION par détecteur et, sous
+# une constance d'inutilité, on FREINE ce détecteur (cadence réduite). Le throttle
+# est BRAKE-ONLY : il ne fait que SUPPRIMER des enregistrements redondants, jamais
+# lever une nouvelle alerte auto (invariant règle #3).
+DETECTOR_THROTTLE_MIN_FALSE_POSITIVES = 5   # votes « inutile » avant de freiner
+DETECTOR_THROTTLE_COOLDOWN_HOURS = 24       # 1 anomalie / fenêtre quand throttlé
+DETECTOR_THROTTLE_FACTOR = 4                 # facteur de cadence affiché
+
+
+def precision(useful, labelled):
+    """Précision = fraction de retours « utile » parmi les votés. Pure.
+
+    None quand rien n'a été voté (jamais un 0 % trompeur : « pas de vote » ≠
+    « détecteur inutile »)."""
+    return (useful / labelled) if labelled else None
+
+
+def is_detector_throttled(company, detector, *,
+                          min_false_positives=DETECTOR_THROTTLE_MIN_FALSE_POSITIVES):
+    """Vrai si ce détecteur a été voté « faux positif » au moins
+    ``min_false_positives`` fois pour la société → cadence à réduire (brake-only).
+    Un détecteur vide n'est jamais throttlé."""
+    if not detector:
+        return False
+    from .models import AnomalyEvent
+    fp = AnomalyEvent.objects.filter(
+        company=company, detector=detector,
+        feedback=AnomalyEvent.Feedback.FAUX_POSITIF).count()
+    return fp >= min_false_positives
+
+
+def detector_stats(company, detector):
+    """Statistiques de confiance d'UN détecteur (society-scopé) : total, votés,
+    utiles, faux positifs, précision, et état de throttle (VISIBLE dans l'UI)."""
+    from .models import AnomalyEvent
+    qs = AnomalyEvent.objects.filter(company=company, detector=detector)
+    labelled = qs.exclude(feedback='').count()
+    useful = qs.filter(feedback=AnomalyEvent.Feedback.UTILE).count()
+    fp = qs.filter(feedback=AnomalyEvent.Feedback.FAUX_POSITIF).count()
+    throttled = fp >= DETECTOR_THROTTLE_MIN_FALSE_POSITIVES
+    prec = precision(useful, labelled)
+    return {
+        'detector': detector, 'total': qs.count(), 'labelled': labelled,
+        'useful': useful, 'false_positive': fp,
+        'precision': (round(prec, 4) if prec is not None else None),
+        'throttled': throttled,
+        'throttle_factor': DETECTOR_THROTTLE_FACTOR if throttled else 1,
+    }
+
+
+def all_detector_stats(company):
+    """Stats de confiance de TOUS les détecteurs ayant produit une anomalie pour
+    la société (les détecteurs sans anomalie sont absents — jamais fabriqués)."""
+    from .models import AnomalyEvent
+    detectors = (AnomalyEvent.objects.filter(company=company)
+                 .exclude(detector='')
+                 .values_list('detector', flat=True).distinct())
+    return [detector_stats(company, d) for d in sorted(set(detectors))]
+
+
+# ── PUB97 — Solde prépayé Meta (trésorerie) ─────────────────────────────────
+def detect_low_balance(balance, avg_daily_spend, *,
+                       min_days_runway=BALANCE_MIN_DAYS_RUNWAY, currency=''):
+    """PUB97 — Solde prépayé Meta trop bas pour la dépense courante.
+
+    ``balance`` et ``avg_daily_spend`` sont en unités MAJEURES de la devise du
+    compte (le client convertit les unités mineures Meta). Fonction PURE.
+
+    Dégradation documentée (jamais un faux positif) :
+      * ``balance`` ``None`` ⇒ l'API n'expose pas le champ (certains comptes/
+        modes de financement) → ``insufficient_data`` (info), pas d'alarme ;
+      * ``avg_daily_spend`` ≤ 0 ⇒ pas de dépense courante → aucune estimation de
+        runway possible → ``insufficient_data`` (info).
+
+    Sinon ``runway = balance / avg_daily_spend`` (jours) : sous ``min_days_runway``
+    ⇒ WARNING ; sous la moitié ⇒ CRITICAL (la diffusion va s'arrêter)."""
+    unit = f' {currency}' if currency else ''
+    if balance is None:
+        return _insufficient(
+            'prepaid_balance', KIND_LOW_BALANCE,
+            "Solde prépayé Meta indisponible via l'API (champ absent pour ce "
+            "compte / mode de financement) — surveillance trésorerie dégradée.",
+            {'balance': None, 'avg_daily_spend': None})
+    try:
+        bal = float(balance)
+        ads = float(avg_daily_spend)
+    except (TypeError, ValueError):
+        return _insufficient(
+            'prepaid_balance', KIND_LOW_BALANCE,
+            "Solde ou dépense courante illisible — vérification impossible.")
+    if ads <= 0:
+        return _insufficient(
+            'prepaid_balance', KIND_LOW_BALANCE,
+            "Aucune dépense courante — estimation de trésorerie impossible "
+            "(pas d'alarme).", {'balance': round(bal, 2), 'avg_daily_spend': ads})
+    runway = bal / ads
+    computed = {'balance': round(bal, 2), 'avg_daily_spend': round(ads, 2),
+                'days_runway': round(runway, 1),
+                'min_days_runway': float(min_days_runway),
+                'currency': currency}
+    if runway < (min_days_runway / 2.0):
+        return Detection(
+            'prepaid_balance', True, False, SEVERITY_CRITICAL, KIND_LOW_BALANCE,
+            (f"Solde prépayé Meta ≈ {bal:g}{unit} : couvre {runway:.1f} j de "
+             f"dépense (~{ads:g}{unit}/j). La diffusion va s'arrêter — "
+             f"recharger le compte."),
+            computed)
+    if runway < min_days_runway:
+        return Detection(
+            'prepaid_balance', True, False, SEVERITY_WARNING, KIND_LOW_BALANCE,
+            (f"Solde prépayé Meta ≈ {bal:g}{unit} : ne couvre plus que "
+             f"{runway:.1f} j de dépense (~{ads:g}{unit}/j, seuil "
+             f"{min_days_runway:g} j) — prévoir une recharge."),
+            computed)
+    return Detection('prepaid_balance', False, False, SEVERITY_INFO,
+                     KIND_LOW_BALANCE, '', computed)
+
+
 # ── Matérialisation (câblage DB — le seul point non pur du module) ────────────
 def record_anomaly(company, detection, *, entity_type='', entity_meta_id='',
-                   rule_policy=None, alert=None):
+                   rule_policy=None, alert=None, now=None):
     """Crée une ``AnomalyEvent`` à partir d'un ``Detection`` DÉCLENCHÉ. Appelé
     par le moteur (jamais pour un ``insufficient_data`` — ce n'est pas une
     anomalie, seulement une lacune de données). ``detail`` = ``computed`` (déjà
-    JSON-natif : floats/ints/strings, aucun Decimal)."""
+    JSON-natif : floats/ints/strings, aucun Decimal). Le ``detector`` est stocké
+    (clé de la précision PUB90).
+
+    **Throttle BRAKE-ONLY (PUB90)** : si le détecteur a été voté inutile ≥ 5 fois,
+    sa cadence est réduite — on n'enregistre pas une anomalie du même détecteur
+    plus d'une fois par fenêtre de ``DETECTOR_THROTTLE_COOLDOWN_HOURS`` (renvoie
+    ``None``). Jamais une nouvelle alerte : uniquement un frein."""
+    from django.utils import timezone
+
     from .models import AnomalyEvent
+
+    detector = detection.detector
+    if detector and is_detector_throttled(company, detector):
+        now = now or timezone.now()
+        window_start = now - datetime.timedelta(
+            hours=DETECTOR_THROTTLE_COOLDOWN_HOURS)
+        recent = AnomalyEvent.objects.filter(
+            company=company, detector=detector,
+            created_at__gte=window_start).exists()
+        if recent:
+            return None
     return AnomalyEvent.objects.create(
         company=company, kind=detection.kind, entity_type=entity_type,
         entity_meta_id=entity_meta_id, severity=detection.severity,
         message_fr=detection.message_fr, detail=detection.computed,
-        rule_policy=rule_policy, alert=alert)
+        detector=detector, rule_policy=rule_policy, alert=alert)
 
 
 # ── PUB33/PUB34 — Matérialisation directe en ``EngineAlert`` (recommandation) ─
