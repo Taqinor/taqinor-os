@@ -165,10 +165,15 @@ describe('ReportsScreen (ENG45)', () => {
   // l'ERP) — sans lui, une carte mobile n'est qu'une pile de valeurs nues.
   it('les cellules du tableau variantes portent data-label (repli carte mobile)', async () => {
     renderScreen()
-    const row = await screen.findByTestId('ae-reports-variant-row')
-    const cells = row.querySelectorAll('td')
-    expect(cells.length).toBeGreaterThan(0)
-    cells.forEach(td => expect(td).toHaveAttribute('data-label'))
+    // La fixture renvoie plusieurs variantes → plusieurs lignes : les vérifier
+    // toutes (findAllByTestId, jamais le singulier qui lèverait « multiple »).
+    const rows = await screen.findAllByTestId('ae-reports-variant-row')
+    expect(rows.length).toBeGreaterThan(0)
+    rows.forEach(row => {
+      const cells = row.querySelectorAll('td')
+      expect(cells.length).toBeGreaterThan(0)
+      cells.forEach(td => expect(td).toHaveAttribute('data-label'))
+    })
   })
 })
 

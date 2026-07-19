@@ -88,7 +88,11 @@ describe('AuditScoreTile (PUB57)', () => {
       score: 80, ok_count: 4, attention_count: 1, total_sections: 5, delta_hebdo: null,
     } } })
     renderTile()
-    const tile = await screen.findByTestId('ae-audit-score-tile')
+    // `ae-audit-score-tile` existe aussi en état de chargement (une <div>) :
+    // attendre l'état CHARGÉ (la valeur du score) pour que la tuile soit bien
+    // devenue le <Link> (ancre) avant de vérifier son href.
+    await screen.findByTestId('ae-audit-score-tile-value')
+    const tile = screen.getByTestId('ae-audit-score-tile')
     expect(tile).toHaveAttribute('href', '/publicite/reporting')
   })
 })

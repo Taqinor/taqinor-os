@@ -264,7 +264,10 @@ describe('ApprovalsScreen — PUB51 raccourcis clavier (sans souris)', () => {
 
   it('J avance le focus, K recule', async () => {
     renderScreen()
-    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    // Attendre que les cartes soient RENDUES (pas seulement `pending` appelé) :
+    // le gestionnaire clavier lit `actions` — tant qu'elles ne sont pas chargées,
+    // `j` bornerait l'index à 0 (liste vide).
+    await screen.findAllByTestId('ae-action-card')
     fireEvent.keyDown(window, { key: 'j' })
     let cards = screen.getAllByTestId('ae-action-card')
     expect(cards[1]).toHaveClass('ae-action-card-focused')
@@ -278,7 +281,7 @@ describe('ApprovalsScreen — PUB51 raccourcis clavier (sans souris)', () => {
 
   it('A approuve la carte focalisée', async () => {
     renderScreen()
-    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    await screen.findAllByTestId('ae-action-card')
     fireEvent.keyDown(window, { key: 'j' }) // focus la 2e carte (id 12)
     fireEvent.keyDown(window, { key: 'a' })
     await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(12))
@@ -286,7 +289,7 @@ describe('ApprovalsScreen — PUB51 raccourcis clavier (sans souris)', () => {
 
   it('R ouvre le panneau de rejet STRUCTURÉ de la carte focalisée', async () => {
     renderScreen()
-    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    await screen.findAllByTestId('ae-action-card')
     fireEvent.keyDown(window, { key: 'r' }) // carte 0 (id 11)
     expect(await screen.findByTestId('ae-reject-panel-11')).toBeInTheDocument()
   })

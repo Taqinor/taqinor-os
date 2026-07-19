@@ -19,6 +19,10 @@ ON_DEMAND_ALLOWLIST = {
     # ENG18 — génération de variantes créatives : déclenchée à la demande
     # depuis la bibliothèque créative (jamais périodique).
     'adsengine.generate_creative_variants',
+    # PUB16 — génération de variantes ANCRÉES (FactTable) : déclenchée à la
+    # demande depuis l'endpoint de génération IA (``.delay()`` dans une action
+    # de viewset, key-gated GEN_ENV_KEY ; jamais périodique).
+    'adsengine.generate_grounded_variants',
     # NTADM10 — création d'un environnement sandbox : orchestrée à la demande
     # depuis l'endpoint ``adminops/sandbox/creer/`` (jamais périodique ; la
     # purge NTADM11 et le rappel NTADM35 sont, eux, planifiés dans le beat).

@@ -387,12 +387,12 @@ def emit_appointment_effectue_event(company, lead_id, appointment_id, *,
         'match_quality': built['match_quality'],
     }
 
-    # PII hors des logs (CodeQL py/clear-text-logging-sensitive-data) : le dict
-    # ``event`` porte user_data (téléphone/email dérivés du lead) — on ne
-    # journalise QUE des identifiants non sensibles (pk RDV / lead / société),
-    # jamais une valeur lue de ``event`` et jamais de PII.
+    # PII hors des logs (CodeQL py/clear-text-logging-sensitive-data) : on ne
+    # journalise QUE lead + société (entiers non sensibles), jamais ``event``
+    # (user_data). Pas le pk RDV : CodeQL classe le paramètre ``appointment_id``
+    # « private » (faux positif) — le RDV reste corrélable via ``event_id``.
     company_pk = getattr(company, 'pk', company)
-    log_ref = f'RDV {appointment_id} / lead {lead_id} (société {company_pk})'
+    log_ref = f'lead {lead_id} — visite effectuée (société {company_pk})'
     if not _enabled():
         result['reason'] = 'disabled'
         logger.info('PUB30: visite-effectuée CAPI désactivé (flag) — %s prêt '

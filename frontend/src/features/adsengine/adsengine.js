@@ -572,6 +572,10 @@ export function normalizeRuleTemplate(raw) {
     description: t.description || t.desc || '',
     condition_fr: t.condition_fr || t.condition || '',
     action_fr: t.action_fr || t.action || '',
+    // PUB23 — la cadence (critical/daily/weekly) est affichée en clair par
+    // RulesScreen (confirmation d'armement + état armé) ; la préserver ici,
+    // sinon `cadenceLabel(t.cadence)` retombe sur « — ».
+    cadence: t.cadence || t.frequency || '',
   }
 }
 
