@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Upload, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
-  Wrench, Pencil, ShieldCheck, Trash2, ChevronRight, Activity,
+  Wrench, Pencil, ShieldCheck, Trash2, ChevronRight, Activity, QrCode,
 } from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
@@ -447,6 +447,8 @@ export default function EquipementsPage() {
   const [xlsxBusy, setXlsxBusy] = useState(false)
   // VX109 — import Excel/CSV du parc d'équipements.
   const [showImport, setShowImport] = useState(false)
+  // WIR116 — génération des étiquettes QR (lien public /e/<token>).
+  const [labelsBusy, setLabelsBusy] = useState(false)
 
   const reload = () => dispatch(fetchEquipements())
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -482,6 +484,28 @@ export default function EquipementsPage() {
 
   // L625 — clic sur un badge de ligne : pose le filtre garantie à cet état.
   const filterByGarantie = (etat) => setF('garantie', filters.garantie === etat ? '' : etat)
+
+  // WIR116/FG85/XSAV19 — imprime les étiquettes QR du parc filtré. Le QR encode
+  // le lien public « Signaler un problème » (/e/<token>) ; le scan interne
+  // EQUIP:<id> reste inchangé côté serveur. Onglet ouvert dans le geste (Safari).
+  const printLabels = async () => {
+    if (!rows.length) return
+    const win = window.open('', '_blank', 'noopener')
+    setLabelsBusy(true)
+    try {
+      const res = await savApi.etiquettesEquipements(rows.map((r) => r.id), { public: true })
+      const blob = new Blob([res.data], { type: 'text/html' })
+      const url = URL.createObjectURL(blob)
+      if (win && !win.closed) win.location = url
+      else window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch {
+      if (win && !win.closed) win.close()
+      toast.error('Génération des étiquettes indisponible.')
+    } finally {
+      setLabelsBusy(false)
+    }
+  }
 
   const columns = useMemo(() => [
     {
@@ -553,6 +577,11 @@ export default function EquipementsPage() {
             {/* WR11/FG290 — échéancier des garanties par parc. */}
             <Button variant="outline" size="sm" onClick={() => setShowRegistre(true)}>
               <ShieldCheck /> Registre des garanties
+            </Button>
+            {/* WIR116 — étiquettes QR (lien public /e/<token>). */}
+            <Button variant="outline" size="sm" disabled={labelsBusy || rows.length === 0}
+                    onClick={printLabels}>
+              {labelsBusy ? <Spinner /> : <QrCode />} Imprimer étiquettes QR
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <Upload /> Importer
