@@ -73,7 +73,11 @@ test('VX55 : fetchDevis transmet le signal du thunk à chaque page', () => {
 })
 
 test('VX55 : LeadsPage annule le thunk fetchLeads au cleanup d\'effet (démontage/changement de filtre)', () => {
-  const start = LEADS_PAGE_SRC.indexOf('const refetch = () => dispatch(fetchLeads(')
+  // LB6 — `refetch` est désormais useCallback (bug #4) : la déclaration
+  // littérale a changé, l'effet d'annulation (thunk.abort) ci-dessous n'a
+  // PAS bougé (effet séparé, indépendant de `refetch`).
+  const start = LEADS_PAGE_SRC.indexOf('const refetch = useCallback(')
+  assert.ok(start > 0, 'refetch introuvable')
   const block = LEADS_PAGE_SRC.slice(start, start + 600)
   assert.match(block, /const thunk = dispatch\(fetchLeads\(archivedParam\(filters\.archived\)\)\)/)
   assert.match(block, /return \(\) => thunk\??\.abort\??\.\(\)/)

@@ -35,6 +35,7 @@ import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
 import SigneDialog from './SigneDialog'
 import LeadExpressModal from './LeadExpressModal'
+import { SIGNE_INTERCEPT } from './signeIntercept'
 // VX186 — KanbanView reste STATIQUE (vue par défaut la plus fréquente, zéro
 // flash de chargement au premier rendu). Les 4 autres vues + Prévision sont
 // désormais `lazy` : LeadsPage était le PLUS GROS chunk de route du repo
@@ -172,6 +173,8 @@ export default function LeadsPage() {
 
   // Export Excel de la liste filtrée courante (T9) — respecte les filtres.
   // VX172 — geste ouvert AVANT le premier `await` (voir downloadBlob.js).
+  // LB7 — bug recon2-03 #11 : catch silencieux (`/* ignore */`), l'export
+  // échouait sans AUCUN signal visible. toastError FR désormais (I8).
   const exportFiltered = async () => {
     const ids = filtered.map((l) => l.id)
     if (!ids.length) return
@@ -179,7 +182,9 @@ export default function LeadsPage() {
     try {
       const res = await crmApi.exportLeadsXlsx(ids)
       pending.deliver(new Blob([res.data]), 'leads.xlsx')
-    } catch { /* ignore */ }
+    } catch {
+      toastError('Export indisponible — réessayez.')
+    }
   }
 
   // Changement d'étape optimiste avec retour-arrière.
@@ -196,7 +201,13 @@ export default function LeadsPage() {
 
   // Le filtre « Archivés » est une dimension SERVEUR : on refait l'appel avec
   // le bon paramètre quand il change (les autres filtres restent côté client).
-  const refetch = () => dispatch(fetchLeads(archivedParam(filters.archived)))
+  // LB6 — useCallback : `refetch` entre dans `viewProps` (onRefetch) — une
+  // référence fraîche à chaque rendu de LeadsPage cassait le memo() des vues
+  // qui la reçoivent (bug #4).
+  const refetch = useCallback(
+    () => dispatch(fetchLeads(archivedParam(filters.archived))),
+    [dispatch, filters.archived],
+  )
   // VX55 — annule la requête en vol au démontage / changement de filtre : sans
   // ça, une réponse tardive (3G qui cale) peut écraser l'état d'un AUTRE écran
   // après navigation. `thunk.abort()` coupe le signal jusqu'à axios.
@@ -227,11 +238,18 @@ export default function LeadsPage() {
     return () => clearTimeout(t)
   }, [bulkMsg])
 
-  // Sélection effective : on ignore (sans muter l'état) les leads disparus
-  // après un refetch/filtre. Dérivé → pas d'effet ni de rendu en cascade.
+  // Sélection effective : on ignore (sans muter l'état `selected`) les leads
+  // disparus après un refetch OU masqués par un filtre. Dérivé → pas d'effet
+  // ni de rendu en cascade.
+  // LB8 — bug recon2-03 #6 : élaguait contre `leads` (TOUS les leads chargés,
+  // filtre ou pas) — un lead sélectionné puis masqué par un filtre restait
+  // bulk-actionnable EN INVISIBLE (la barre bulk agissait sur un lead que
+  // l'utilisateur ne voyait plus à l'écran). Élague désormais contre
+  // `filtered` (blueprint I5) : `selected` (l'état brut) N'EST PAS touché —
+  // retirer le filtre fait réapparaître naturellement les leads déjà cochés.
   const visibleSelected = useMemo(
-    () => pruneSelection(selected, leads.map((l) => l.id)),
-    [selected, leads],
+    () => pruneSelection(selected, filtered.map((l) => l.id)),
+    [selected, filtered],
   )
 
   // Au moins un lead archivé dans la sélection ? Sert à griser « Restaurer »
@@ -241,9 +259,13 @@ export default function LeadsPage() {
     [leads, visibleSelected],
   )
 
-  const onToggleSelect = (id) => setSelected((s) => toggleId(s, id))
-  const onToggleAll = (visibleIds) =>
-    setSelected((s) => toggleAll(s, visibleIds))
+  // LB6 — useCallback : passées à CHAQUE carte/ligne via viewProps ;
+  // `setSelected` (useState) est stable par définition, `[]` suffit (bug #4).
+  const onToggleSelect = useCallback((id) => setSelected((s) => toggleId(s, id)), [])
+  const onToggleAll = useCallback(
+    (visibleIds) => setSelected((s) => toggleAll(s, visibleIds)),
+    [],
+  )
   const clearSelection = () => setSelected(new Set())
 
   // Action en masse : la règle métier (funnel, garde-fous, Historique) vit
@@ -279,6 +301,9 @@ export default function LeadsPage() {
     }
   }
 
+  // LB7 — même signal que exportFiltered (toastError FR, I8) : au lieu du
+  // bandeau `bulkMsg` local (une bannière pensée pour le BILAN d'une action
+  // en masse déjà commise, pas pour un échec réseau).
   const exportSelection = async () => {
     if (!visibleSelected.size) return
     const pending = downloadBlobInGesture()
@@ -287,7 +312,7 @@ export default function LeadsPage() {
       const res = await crmApi.exportLeadsXlsx([...visibleSelected])
       pending.deliver(new Blob([res.data]), 'leads.xlsx')
     } catch {
-      setBulkMsg("Export indisponible — réessayez.")
+      toastError('Export indisponible — réessayez.')
     } finally {
       setBulkBusy(false)
     }
@@ -359,37 +384,72 @@ export default function LeadsPage() {
   // kanban, LeadCard.jsx) : ouvre la fiche du lead directement sur la section
   // « Suivi commercial » (relance_date), même machinerie que les autres
   // ouvertures de fiche (setEditLead/setShowForm).
-  const onPlanifierRelance = (lead) => {
+  // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps ; les
+  // setters `useState` sont stables par définition, `[]` suffit (bug #4).
+  const onPlanifierRelance = useCallback((lead) => {
     setEditLead(lead)
     setFormDevisIntent(null)
     setFormFocusSection('pipeline')
     setShowForm(true)
-  }
+  }, [])
 
   // (Ré)assignation rapide du responsable depuis la carte / la liste. Le PATCH
   // journalise ancien → nouveau côté serveur (Historique) et est ouvert à la
   // Commerciale comme à l'admin.
-  const reassign = async (lead, ownerId) => {
+  // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps (bug #4).
+  // LB7 — bugs recon2-03 #5/#11 : plus de refetch intégral après ce PATCH
+  // mono-lead (updateLead.fulfilled remplace déjà le lead au complet dans le
+  // store) ; le catch silencieux toaste désormais (I8).
+  const reassign = useCallback(async (lead, ownerId) => {
     try {
       await dispatch(updateLead({ id: lead.id, data: { owner: ownerId } })).unwrap()
-      refetch()
-    } catch { /* erreur silencieuse */ }
-  }
+    } catch {
+      toastError('La réassignation a échoué — réessayez.')
+    }
+  }, [dispatch])
 
   // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.
   // perform_update journalise ancien → nouveau dans l'Historique côté serveur.
   // Renvoie la promesse pour qu'InlineEdit restaure la valeur si ça échoue.
-  const onInlineSave = (lead, field, value) => {
-    // A2 — passer un lead en « Signé » en place ouvre le dialogue d'acceptation
-    // (choix du devis + option) au lieu de modifier l'étape directement.
+  // LB3 — l'interception « Signé » est honnête (blueprint I3, bug #2) :
+  // A2 — passer un lead en « Signé » en place ouvre le dialogue d'acceptation
+  // (choix du devis + option) au lieu de modifier l'étape directement. Ancien
+  // code : `return Promise.resolve()` (faux succès) laissait useOptimisticSave
+  // GARDER l'étape optimiste 'SIGNED' + « Enregistré » alors que rien n'était
+  // enregistré. On REJETTE avec la sentinelle SIGNE_INTERCEPT : le select
+  // revient honnêtement à l'étape réelle (rollback), et l'onError de
+  // StageMover avale spécifiquement cette sentinelle sans toaster.
+  // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps (bug #4).
+  // LB7 — bug recon2-03 #5 : plus de refetch intégral après ce PATCH
+  // mono-lead. `updateLead.fulfilled` (crmSlice.js) remplace déjà le lead au
+  // COMPLET dans le store (score recalculé, stage_since_days, devis…) — le
+  // `.then(() => refetch())` re-déclenchait un GET /leads ENTIER pour un
+  // changement d'UN champ sur UN lead, en pure perte réseau.
+  const onInlineSave = useCallback((lead, field, value) => {
     if (field === 'stage' && value === CONVERSION_STAGE) {
       setSigneLead(lead)
-      return Promise.resolve()
+      return Promise.reject(SIGNE_INTERCEPT)
     }
-    return dispatch(updateLead({ id: lead.id, data: { [field]: value } }))
+    return dispatch(updateLead({ id: lead.id, data: { [field]: value } })).unwrap()
+  }, [dispatch])
+
+  // LB5 — « ✗ Perdu » passe ENFIN par le store (blueprint I2, bug #3) :
+  // LeadCard.confirmPerdu appelait crmApi.updateLead en DIRECT (contournait
+  // Redux) puis `onChanged?.()`, une prop que ni KanbanView ni ForecastView
+  // ne passaient JAMAIS — la carte restait active jusqu'à un refetch sans
+  // rapport. Callback stable unique, partagé par LeadCard/ListView/
+  // ForecastView : dispatch updateLead (le store se met à jour SEUL,
+  // updateLead.fulfilled remplace déjà le lead au complet — AUCUN refetch),
+  // toastError + relance l'erreur en échec (I8) pour que l'appelant garde la
+  // popover ouverte plutôt que de perdre le motif saisi.
+  const onMarkPerdu = useCallback((lead, motif) => (
+    dispatch(updateLead({ id: lead.id, data: { perdu: true, motif_perte: motif } }))
       .unwrap()
-      .then(() => { refetch() })
-  }
+      .catch((err) => {
+        toastError('Le lead n’a pas pu être marqué perdu — réessayez.')
+        throw err
+      })
+  ), [dispatch])
 
   // VX187 — useCallback (même raison que onOpenLead/onAutoQuote ci-dessus) :
   // passé à chaque carte/ligne comme `onChangeStage`. Seule dépendance externe
@@ -433,6 +493,34 @@ export default function LeadsPage() {
     }
   }, [dispatch])
 
+  // LB6 — useMemo : `viewProps` était un objet LITTÉRAL neuf à CHAQUE rendu
+  // de LeadsPage — même avec des callbacks individuellement stables
+  // (useCallback ci-dessus), l'objet conteneur changeait quand même de
+  // référence, ce qui aurait cassé le memo() de toute vue qui le recevrait
+  // en un seul bloc. Placé AVANT les retours anticipés loading/error : les
+  // Hooks doivent s'exécuter dans le MÊME ORDRE à chaque rendu (règle des
+  // Hooks), jamais après un retour conditionnel.
+  const viewProps = useMemo(() => ({
+    leads: filtered,
+    onOpenLead,
+    onChangeStage: changeStage,
+    onAutoQuote,
+    onPlanifierRelance,
+    onRefetch: refetch,
+    busyLeadId,
+    users,
+    onReassign: reassign,
+    selected: visibleSelected,
+    onToggleSelect,
+    onToggleAll,
+    onInlineSave,
+    onMarkPerdu,
+  }), [
+    filtered, onOpenLead, changeStage, onAutoQuote, onPlanifierRelance, refetch,
+    busyLeadId, users, reassign, visibleSelected, onToggleSelect, onToggleAll,
+    onInlineSave, onMarkPerdu,
+  ])
+
   // Only blank the page on the FIRST load. A background refetch (after saving a
   // bill, generating a devis, changing a stage…) must NOT unmount the page —
   // doing so tore down any open lead modal / inline devis preview mid-action.
@@ -450,24 +538,11 @@ export default function LeadsPage() {
     />
   )
 
-  const viewProps = {
-    leads: filtered,
-    onOpenLead,
-    onChangeStage: changeStage,
-    onAutoQuote,
-    onPlanifierRelance,
-    onRefetch: refetch,
-    busyLeadId,
-    users,
-    onReassign: reassign,
-    selected: visibleSelected,
-    onToggleSelect,
-    onToggleAll,
-    onInlineSave,
-  }
-
   return (
-    <div className="page lp-page">
+    // LB2 — `data-view` pilote le contrat CSS de hauteur (index.css) : le
+    // scrolleur change de propriétaire selon la vue active (board/liste vs
+    // page-grow), sans dupliquer la logique en JS.
+    <div className="page lp-page" data-view={view}>
       <div className="page-header lp-header">
         <h2>
           Pipeline

@@ -1,7 +1,7 @@
 // Vue kanban des leads CRM, façon Odoo : 6 colonnes canoniques (stages.js,
 // miroir de STAGES.py — jamais de liste d'étapes en dur ici), glisser-déposer
 // via @dnd-kit/core. Le parent gère l'optimistic update : on ne mute rien.
-import { useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { LayoutGrid } from 'lucide-react'
 import {
   DndContext,
@@ -15,7 +15,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import {
-  formatMAD, groupLeadsByStage, PIPELINE_STAGES, STAGE_LABELS,
+  formatMAD, groupLeadsByStage, isStageMoveAllowed, PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
 import {
   buildKanbanAnnouncements,
@@ -25,6 +25,7 @@ import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
 import { EmptyState } from '../../../../ui'
+import { isSigneIntercept } from '../signeIntercept'
 import LeadCard from './LeadCard'
 
 // VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
@@ -43,9 +44,18 @@ const STAGE_MOVE_OPTIONS = PIPELINE_STAGES.map(
 )
 
 export function StageMover({ lead, onInlineSave }) {
+  // LB3 — l'entrée dans SIGNED rejette avec la sentinelle SIGNE_INTERCEPT
+  // (signeIntercept.js) : ce n'est PAS une erreur (SigneDialog vient de
+  // s'ouvrir, useOptimisticSave fait son rollback normal — le select revient
+  // à l'étape réelle), donc on ne toaste QUE les vrais échecs réseau.
   const { value, statusLabel, isSaving, rowProps, save } = useOptimisticSave(
     lead.stage,
-    { onError: () => toast.error("Changement d'étape non enregistré — réessayez.") },
+    {
+      onError: (err) => {
+        if (isSigneIntercept(err)) return
+        toast.error("Changement d'étape non enregistré — réessayez.")
+      },
+    },
   )
   if (!onInlineSave) return null
   const onChange = (e) => {
@@ -72,8 +82,18 @@ export function StageMover({ lead, onInlineSave }) {
         disabled={isSaving}
         onChange={onChange}
       >
+        {/* LB4 — options interdites grisées : MÊME garde que le drag
+            (isStageMoveAllowed, miroir _bulk_stage_allowed) — le chemin
+            clavier ne pouvait auparavant PAS reproduire le recul-guard
+            (bug #8). L'étape courante reste toujours sélectionnable. */}
         {STAGE_MOVE_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
+          <option
+            key={o.value}
+            value={o.value}
+            disabled={o.value !== lead.stage && !isStageMoveAllowed(lead.stage, o.value)}
+          >
+            {o.label}
+          </option>
         ))}
       </select>
       {statusLabel && (
@@ -100,14 +120,16 @@ export const STAGE_PROBABILITY = {
   COLD: 0.05,
 }
 
-// Rang d'une étape dans l'entonnoir (-1 si inconnue) — pour bloquer un recul.
-const stageRank = (stage) => PIPELINE_STAGES.indexOf(stage)
-
 // Enveloppe draggable d'une carte ; l'original reste en place (style fantôme)
 // pendant que le DragOverlay suit le pointeur.
-function DraggableCard({
+// LB6 — memo() (blueprint I4, bug #4) : sans lui, KanbanView re-rendait
+// TOUTES les instances de DraggableCard (donc ré-exécutait useDraggable +
+// recréait la sous-arborescence) à chaque rendu du parent, même quand seule
+// UNE carte avait réellement changé — LeadCard(memo) protège son PROPRE
+// re-rendu mais pas le travail de DraggableCard lui-même en amont.
+const DraggableCard = memo(function DraggableCard({
   lead, busy, onOpen, onAutoQuote, users, onReassign,
-  selected, onToggleSelect, onPlanifierRelance, onInlineSave,
+  selected, onToggleSelect, onPlanifierRelance, onInlineSave, onMarkPerdu,
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -125,12 +147,12 @@ function DraggableCard({
         <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
                   users={users} onReassign={onReassign}
                   selected={selected} onToggleSelect={onToggleSelect}
-                  onPlanifierRelance={onPlanifierRelance} />
+                  onPlanifierRelance={onPlanifierRelance} onMarkPerdu={onMarkPerdu} />
       </div>
       <StageMover lead={lead} onInlineSave={onInlineSave} />
     </div>
   )
-}
+})
 
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
 function StageColumn({ col, children }) {
@@ -183,6 +205,7 @@ export default function KanbanView({
   onToggleSelect,
   onPlanifierRelance,
   onInlineSave,
+  onMarkPerdu,
 }) {
   // VX135 — préférence reduced-motion lue en JS : le tilt (transform statique
   // posé par dnd-kit/CSS) et le dropAnimation (JS pur) échappent tous deux au
@@ -222,11 +245,12 @@ export default function KanbanView({
     setActiveLead(null)
     const lead = active.data.current?.lead
     if (!lead || !over || over.id === lead.stage) return
-    // Garde-fou UI : on n'autorise jamais un recul dans l'entonnoir. Les
-    // étapes inconnues (rang -1) ne déclenchent pas le garde-fou.
-    const from = stageRank(lead.stage)
-    const to = stageRank(over.id)
-    if (from >= 0 && to >= 0 && to < from) {
+    // LB4 — garde-fou UI : MÊME règle que le serveur (isStageMoveAllowed,
+    // miroir _bulk_stage_allowed, stages.js). Bug #7 (recon2-03) : l'ancien
+    // `stageRank` local classait COLD au rang le plus HAUT → tout drag
+    // COLD→actif était refusé comme un recul, alors que le serveur autorise
+    // DÉJÀ cette réactivation (COLD est un parking, pas un rang avancé).
+    if (!isStageMoveAllowed(lead.stage, over.id)) {
       setReculMsg(true)
       window.setTimeout(() => setReculMsg(false), 4000)
       return // l'étape reste inchangée
@@ -283,6 +307,7 @@ export default function KanbanView({
                 onToggleSelect={onToggleSelect}
                 onPlanifierRelance={onPlanifierRelance}
                 onInlineSave={onInlineSave}
+                onMarkPerdu={onMarkPerdu}
               />
             ))}
           </StageColumn>

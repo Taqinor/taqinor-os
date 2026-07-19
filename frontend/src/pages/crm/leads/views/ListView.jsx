@@ -1,12 +1,12 @@
 // Vue LISTE des leads CRM — table dense et triable, façon Odoo.
 // Les étapes viennent EXCLUSIVEMENT de features/crm/stages (miroir de
 // STAGES.py) : aucune liste d'étapes n'est déclarée ici.
-import { Fragment, useEffect, useMemo, useState, memo } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
 import { MoreHorizontal, PhoneCall, MessageCircle, List } from 'lucide-react'
 import { useDispatch } from 'react-redux'
 import { EmptyState } from '../../../../ui'
 import { useIsAdmin } from '../../../../hooks/useHasPermission'
-import { archiveLead, restoreLead, deleteLead, updateLead } from '../../../../features/crm/store/crmSlice'
+import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
 import crmApi from '../../../../api/crmApi'
 import { toastWithUndo, toastError } from '../../../../lib/toast'
 import {
@@ -16,6 +16,7 @@ import {
   PRIORITE_LABELS,
   PRIORITE_STARS,
   isPerdu,
+  isStageMoveAllowed,
   tagList,
   tagColor,
 } from '../../../../features/crm/stages'
@@ -54,7 +55,15 @@ function useIsMobile() {
 }
 
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
-const STAGE_OPTIONS = PIPELINE_STAGES.map((s) => ({ value: s, label: STAGE_LABELS[s] ?? s }))
+// LB4 — options d'étape calculées PAR LIGNE (dépendent de l'étape courante du
+// lead, pas une liste plate partagée) : `disabled` grise les transitions
+// interdites, MÊME garde que le drag kanban (isStageMoveAllowed) — le chemin
+// clavier/souris de la liste obtient désormais la même réponse (bug #8).
+const stageOptionsFor = (currentStage) => PIPELINE_STAGES.map((s) => ({
+  value: s,
+  label: STAGE_LABELS[s] ?? s,
+  disabled: s !== currentStage && !isStageMoveAllowed(currentStage, s),
+}))
 const PRIORITE_OPTIONS = [
   { value: 'basse', label: PRIORITE_LABELS.basse },
   { value: 'normale', label: PRIORITE_LABELS.normale },
@@ -141,11 +150,21 @@ function SortableTh({ col, label, sort, onSort, className, help }) {
 // lignes de la table, pas seulement celle concernée. `checked` est un
 // booléen dédié (pas le `Set` `selected` entier) pour que memo() compare une
 // primitive, pas une référence qui change de forme à chaque sélection.
+// LB6 — la popover « ✗ Perdu » reçoit désormais des PRIMITIVES + callbacks
+// stables uniquement (blueprint I4, bug #4) : `perduOpen` (booléen, calculé
+// par le parent) au lieu de `perduTarget` (l'objet lead entier — changeait de
+// référence à chaque frappe pour TOUTES les lignes) ; `perduMotif`/`perduBusy`
+// sont désormais CONDITIONNÉS par la ligne appelante (le parent passe une
+// valeur constante '' / false aux lignes non ciblées, la valeur live SEULEMENT
+// à la ligne ouverte) — taper un motif ne re-rend plus que la ligne ciblée.
+// `confirmPerdu(lead, motif)` prend ses arguments en paramètres (au lieu de
+// lire `perduTarget`/`perduMotif` en closure) : sa référence reste STABLE
+// quel que soit ce que l'utilisateur tape.
 const ListRow = memo(function ListRow({
   lead, checked, onToggleSelect, onOpenLead, armCallNudgeFor, onInlineSave,
   users, onReassign, onAutoQuote, canDelete, busy, onRestore, onArchive,
   onDelete, isMobile, onOpenInsights, today,
-  perduTarget, setPerduTarget, closePerdu, perduMotif, setPerduMotif,
+  perduOpen, onRequestPerduOpen, closePerdu, perduMotif, setPerduMotif,
   perduBusy, confirmPerdu, motifsPerte,
 }) {
   const perdu = isPerdu(lead)
@@ -215,7 +234,7 @@ const ListRow = memo(function ListRow({
       <td data-label="Stade" onClick={(e) => e.stopPropagation()}>
         <InlineEdit
           value={lead.stage}
-          options={STAGE_OPTIONS}
+          options={stageOptionsFor(lead.stage)}
           disabled={!onInlineSave}
           display={(
             // Pastille d'étape via StatusPill (tons tokenisés depuis
@@ -342,8 +361,8 @@ const ListRow = memo(function ListRow({
             si déjà perdu. */}
         {!perdu && (
           <Popover
-            open={perduTarget?.id === lead.id}
-            onOpenChange={(v) => (v ? setPerduTarget(lead) : closePerdu())}
+            open={perduOpen}
+            onOpenChange={(v) => (v ? onRequestPerduOpen(lead) : closePerdu())}
           >
             <PopoverTrigger asChild>
               <IconButton
@@ -379,7 +398,7 @@ const ListRow = memo(function ListRow({
                     variant="destructive"
                     disabled={!perduMotif.trim() || perduBusy}
                     loading={perduBusy}
-                    onClick={confirmPerdu}
+                    onClick={() => confirmPerdu(lead, perduMotif)}
                   >
                     Confirmer
                   </Button>
@@ -489,7 +508,7 @@ const ListRow = memo(function ListRow({
 
 export default function ListView({
   leads, onOpenLead, onAutoQuote, onRefetch, users = [], onReassign,
-  selected = new Set(), onToggleSelect, onToggleAll, onInlineSave,
+  selected = new Set(), onToggleSelect, onToggleAll, onInlineSave, onMarkPerdu,
 }) {
   const dispatch = useDispatch()
   const canDelete = useIsAdmin() // règle existante : destroy = admin
@@ -515,36 +534,62 @@ export default function ListView({
       .then((r) => setMotifsPerte(((r.data?.results ?? r.data) || []).filter((m) => !m.archived)))
       .catch(() => setMotifsPerte([]))
   }, [perduTarget, motifsPerte])
-  const closePerdu = () => { setPerduTarget(null); setPerduMotif('') }
-  const confirmPerdu = async () => {
-    const motif = perduMotif.trim()
-    if (!motif || !perduTarget) return
+  // LB6 — callbacks stables (bug #4) : `setPerduTarget` (useState) est déjà
+  // stable, passé directement comme `onRequestPerduOpen` à chaque ligne.
+  const closePerdu = useCallback(() => { setPerduTarget(null); setPerduMotif('') }, [])
+  // LB5 — passe par le callback stable de LeadsPage (onMarkPerdu, blueprint
+  // I2) : store seul source de vérité, AUCUN refetch (updateLead.fulfilled
+  // patche déjà le lead complet). Le toast d'échec est déjà émis par
+  // onMarkPerdu. LB6 — signature `(lead, motif)` en PARAMÈTRES (au lieu de
+  // lire `perduTarget`/`perduMotif` en closure) : la référence reste stable
+  // quel que soit ce que l'utilisateur tape, `[onMarkPerdu, closePerdu]`
+  // suffit (bug #4 — taper un motif ne re-rendait auparavant PAS que la ligne
+  // ciblée, faute de quoi TOUTE la table re-rendait à chaque frappe).
+  const confirmPerdu = useCallback(async (lead, motif) => {
+    const trimmed = (motif ?? '').trim()
+    if (!trimmed || !lead || !onMarkPerdu) return
     setPerduBusy(true)
     try {
-      await dispatch(updateLead({
-        id: perduTarget.id, data: { perdu: true, motif_perte: motif },
-      })).unwrap()
-      onRefetch?.()
+      await onMarkPerdu(lead, trimmed)
       closePerdu()
     } catch {
-      toastError('Le lead n’a pas pu être marqué perdu — réessayez.')
+      // Échec : toast déjà affiché par onMarkPerdu, popover reste ouverte
+      // (le motif saisi n'est pas perdu, l'utilisateur peut retenter).
     } finally {
       setPerduBusy(false)
     }
-  }
+  }, [onMarkPerdu, closePerdu])
 
   // VX87 — nudge post-appel : armé au tap tel: (mémorise QUEL lead a été
   // appelé, une table n'a qu'un seul nudge visible à la fois — comme un
   // vendeur ne passe qu'un appel à la fois), proposé au retour dans l'onglet.
   const { nudgeVisible, armCallNudge, dismissNudge } = useCallEndedNudge()
   const [nudgeLead, setNudgeLead] = useState(null)
-  const armCallNudgeFor = (lead) => { setNudgeLead(lead); armCallNudge() }
+  // LB6 — `armCallNudge` (renvoyé par useCallEndedNudge, features/crm/
+  // CallLogPopover.jsx) est une closure FRAÎCHE à chaque rendu — un ref
+  // toujours à jour (synchronisé en effet, JAMAIS écrit pendant le rendu)
+  // laisse `armCallNudgeFor` rester stable (`[]`) sans modifier ce hook
+  // partagé (hors périmètre de cette lane). L'effet s'exécute après le
+  // commit, donc AVANT que l'utilisateur ne clique réellement sur tel:.
+  const armCallNudgeRef = useRef(armCallNudge)
+  useEffect(() => { armCallNudgeRef.current = armCallNudge })
+  const armCallNudgeFor = useCallback((lead) => {
+    setNudgeLead(lead)
+    armCallNudgeRef.current()
+  }, [])
 
-  const onArchive = async (lead) => {
+  // LB6 — useCallback : passées à CHAQUE ligne, une référence fraîche à
+  // chaque rendu de ListView (ex. après un simple changement de `busyId`)
+  // cassait memo(ListRow) pour TOUTES les lignes (bug #4).
+  // LB7 — bugs recon2-03 #5/#11 : archiveLead.fulfilled/restoreLead.fulfilled
+  // (crmSlice.js) remplacent déjà le lead au complet dans le store (is_archived
+  // inclus — la ligne se re-rend grisée/« Restaurer » SEULE, sans refetch) ;
+  // plus de refetch intégral après ce PATCH mono-lead (I1). Catch externe
+  // silencieux → toastError (I8) ; les catches internes (undo) toastaient déjà.
+  const onArchive = useCallback(async (lead) => {
     setBusyId(lead.id)
     try {
       await dispatch(archiveLead(lead.id)).unwrap()
-      onRefetch?.()
       // VX95 — l'archivage est déjà commis côté serveur : « Annuler » relance
       // l'action inverse (restaurerLead), pas un commit différé.
       toastWithUndo({
@@ -552,31 +597,32 @@ export default function ListView({
         onUndo: async () => {
           try {
             await dispatch(restoreLead(lead.id)).unwrap()
-            onRefetch?.()
           } catch { toastError('Restauration impossible.') }
         },
       })
-    } catch { /* erreur silencieuse */ } finally { setBusyId(null) }
-  }
+    } catch {
+      toastError("L'archivage a échoué — réessayez.")
+    } finally { setBusyId(null) }
+  }, [dispatch])
 
-  const onRestore = async (lead) => {
+  const onRestore = useCallback(async (lead) => {
     setBusyId(lead.id)
     try {
       await dispatch(restoreLead(lead.id)).unwrap()
-      onRefetch?.()
       toastWithUndo({
         message: 'Lead restauré.',
         onUndo: async () => {
           try {
             await dispatch(archiveLead(lead.id)).unwrap()
-            onRefetch?.()
           } catch { toastError('Archivage impossible.') }
         },
       })
-    } catch { /* erreur silencieuse */ } finally { setBusyId(null) }
-  }
+    } catch {
+      toastError('La restauration a échoué — réessayez.')
+    } finally { setBusyId(null) }
+  }, [dispatch])
 
-  const onDelete = async (lead) => {
+  const onDelete = useCallback(async (lead) => {
     // VX96 — la suppression est RÉVERSIBLE (soft-delete + corbeille 30 min) :
     // plus de copie « irréversible », et un toast « Annuler » restaure le lead.
     if (!window.confirm('Supprimer ce lead ? Il ira à la corbeille (restaurable 30 min).')) return
@@ -599,7 +645,7 @@ export default function ListView({
       // 409 : lead lié à un devis → on archive plutôt que de supprimer.
       window.alert(err?.detail ?? 'Suppression impossible.')
     } finally { setBusyId(null) }
-  }
+  }, [dispatch, onRefetch])
 
   const onSort = (key) =>
     setSort((s) =>
@@ -675,36 +721,44 @@ export default function ListView({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((lead) => (
-            <ListRow
-              key={lead.id}
-              lead={lead}
-              checked={selected.has(lead.id)}
-              onToggleSelect={onToggleSelect}
-              onOpenLead={onOpenLead}
-              armCallNudgeFor={armCallNudgeFor}
-              onInlineSave={onInlineSave}
-              users={users}
-              onReassign={onReassign}
-              onAutoQuote={onAutoQuote}
-              canDelete={canDelete}
-              busy={busyId === lead.id}
-              onRestore={onRestore}
-              onArchive={onArchive}
-              onDelete={onDelete}
-              isMobile={isMobile}
-              onOpenInsights={setInsightsLead}
-              today={today}
-              perduTarget={perduTarget}
-              setPerduTarget={setPerduTarget}
-              closePerdu={closePerdu}
-              perduMotif={perduMotif}
-              setPerduMotif={setPerduMotif}
-              perduBusy={perduBusy}
-              confirmPerdu={confirmPerdu}
-              motifsPerte={motifsPerte}
-            />
-          ))}
+          {sorted.map((lead) => {
+            // LB6 — SEULE la ligne ciblée reçoit la valeur LIVE de
+            // perduMotif/perduBusy ; toutes les autres reçoivent une
+            // constante ('' / false) qui ne change JAMAIS entre deux rendus
+            // — memo(ListRow) bail out pour elles, seule la ligne ouverte
+            // re-rend à chaque frappe (bug #4).
+            const isPerduTarget = perduTarget?.id === lead.id
+            return (
+              <ListRow
+                key={lead.id}
+                lead={lead}
+                checked={selected.has(lead.id)}
+                onToggleSelect={onToggleSelect}
+                onOpenLead={onOpenLead}
+                armCallNudgeFor={armCallNudgeFor}
+                onInlineSave={onInlineSave}
+                users={users}
+                onReassign={onReassign}
+                onAutoQuote={onAutoQuote}
+                canDelete={canDelete}
+                busy={busyId === lead.id}
+                onRestore={onRestore}
+                onArchive={onArchive}
+                onDelete={onDelete}
+                isMobile={isMobile}
+                onOpenInsights={setInsightsLead}
+                today={today}
+                perduOpen={isPerduTarget}
+                onRequestPerduOpen={setPerduTarget}
+                closePerdu={closePerdu}
+                perduMotif={isPerduTarget ? perduMotif : ''}
+                setPerduMotif={setPerduMotif}
+                perduBusy={isPerduTarget ? perduBusy : false}
+                confirmPerdu={confirmPerdu}
+                motifsPerte={motifsPerte}
+              />
+            )
+          })}
           {!sorted.length && (
             <tr>
               <td colSpan={onToggleSelect ? 13 : 12} className="lv-empty">

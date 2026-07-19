@@ -105,6 +105,31 @@ export const initials = (name) => {
   return (parts[0][0] + parts[1][0]).toUpperCase()
 }
 
+// LB4 — rang d'avancement dans l'entonnoir, MIROIR STRICT de
+// apps/crm/services.py `_rang_funnel` : COLD est un état de PARKING, pas
+// « plus avancé » — classé SOUS toute étape active (rang -1) pour qu'un lead
+// froid soit RÉACTIVÉ par un déplacement vers n'importe quelle étape active.
+// Bug recon2-03 #7 : `PIPELINE_STAGES.indexOf('COLD')` valait 5 (le plus haut
+// rang) → tout drag COLD→actif était refusé comme un « recul ».
+export function funnelRank(stage) {
+  if (stage === 'COLD') return -1
+  return PIPELINE_STAGES.indexOf(stage)
+}
+
+// LB4 — miroir BYTE-À-BYTE de apps/crm/services.py `_bulk_stage_allowed` :
+//   - même étape → non (rien à faire) ;
+//   - Froid → n'importe quelle étape active → oui (réactivation) ;
+//   - vers Froid → oui (mise au parking, autorisée depuis n'importe où) ;
+//   - sinon → uniquement vers une étape PLUS avancée (jamais de recul).
+// Utilisé par le garde de drag (KanbanView), les options du StageMover et
+// l'InlineEdit stage de la liste — un SEUL garde, tous les chemins (souris,
+// clavier, select) obtiennent la même réponse (bug #8 meurt avec ça).
+export function isStageMoveAllowed(current, target) {
+  if (current === target) return false
+  if (current === 'COLD' || target === 'COLD') return true
+  return funnelRank(target) > funnelRank(current)
+}
+
 // Total TTC du devis le plus récent du lead (le serializer trie déjà du plus
 // récent au plus ancien) — 0 si aucun devis.
 export const latestDevisTotal = (lead) => {

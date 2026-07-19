@@ -3745,11 +3745,11 @@ P1 recon-03 reçoivent leur correctif sur place MAINTENANT — chacun ≤ petit 
 suivantes bâtissent dessus ; cette lane est propriétaire de LeadsPage.jsx/KanbanView.jsx/
 ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
 
-- [ ] LB1 — **Recopier le blueprint dans le repo.** Copier `scratchpad/design2/blueprint.md` vers
+- [x] LB1 — **Recopier le blueprint dans le repo.** Copier `scratchpad/design2/blueprint.md` vers
   `docs/design/leads-board-blueprint.md` tel quel (référence de toutes les tâches LB, comme
   LW9 l'a fait pour la fenêtre lead). Files : `docs/design/leads-board-blueprint.md` (nouveau).
   DoD : le fichier existe, lisible, lié depuis le corps des tâches. (ROUTINE — S) (@model: haiku) (@lane: LB0)
-- [ ] LB2 — **P0 fondateur : le board tient dans l'écran — chaîne de hauteur `.lp-page` +
+- [x] LB2 — **P0 fondateur : le board tient dans l'écran — chaîne de hauteur `.lp-page` +
   `data-view`.** Cause racine vérifiée (recon2-03 §P0) : la chaîne bornée meurt à `.route-fade`
   (hauteur auto) ; `.kb-board{height:100%}` se résout en AUTO, `.kb-col-body{overflow-y}` ne
   déborde JAMAIS, la page scrolle 8 649px et la scrollbar horizontale gît sous le fold.
@@ -3768,7 +3768,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   colonne scrolle en interne, shift+molette pan le board ; en vue liste/calendrier/graphique le
   contenu scrolle sous des filtres épinglés ; mobile 375×812 : colonnes 85vw à scroll interne,
   tabbar intacte. (ROUTINE — M) (@model: sonnet) (@lane: LB0)
-- [ ] LB3 — **P1 : le StageMover ne ment plus « Signé ✓ Enregistré » (interception honnête).**
+- [x] LB3 — **P1 : le StageMover ne ment plus « Signé ✓ Enregistré » (interception honnête).**
   Bug recon2-03 #2 : `onInlineSave` intercepte CONVERSION_STAGE et renvoie `Promise.resolve()`
   (faux succès) → `useOptimisticSave` garde 'SIGNED' optimiste + « Enregistré » alors que seul le
   dialogue s'est ouvert. Fix (blueprint I3) : nouveau module
@@ -3783,7 +3783,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   le StageMover ouvre SigneDialog et le select REVIENT à l'étape réelle sans toast d'erreur ;
   annuler le dialogue ne laisse aucun « Enregistré » ; confirmer déplace réellement le lead.
   (ROUTINE — S) (@model: sonnet) (@lane: LB0)
-- [ ] LB4 — **P1 : un lead Froid se réactive par drag (rang funnel client aligné serveur).**
+- [x] LB4 — **P1 : un lead Froid se réactive par drag (rang funnel client aligné serveur).**
   Bug recon2-03 #7 : `stageRank = PIPELINE_STAGES.indexOf` classe COLD au rang 5 (le plus haut) →
   tout drag COLD→actif est bloqué « recul ». Le serveur fait DÉJÀ le bon choix
   (`apps/crm/services.py _rang_funnel('COLD') == -1` ; `_bulk_stage_allowed` : Froid→active =
@@ -3798,7 +3798,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   `frontend/src/pages/crm/leads/views/ListView.jsx`. DoD : drag COLD→CONTACTED déplace la carte
   (plus de bannière recul) ; drag FOLLOW_UP→NEW toujours bloqué ; n'importe où→COLD autorisé ;
   les options interdites du select sont grisées ; tests verts. (ROUTINE — S) (@model: sonnet) (@lane: LB0)
-- [ ] LB5 — **P1 : « ✗ Perdu » depuis une carte met l'UI à jour (chemin Redux).** Bug recon2-03
+- [x] LB5 — **P1 : « ✗ Perdu » depuis une carte met l'UI à jour (chemin Redux).** Bug recon2-03
   #3 : `confirmPerdu` de LeadCard appelle `crmApi.updateLead` en DIRECT (contourne le store) puis
   `onChanged?.()` que KanbanView/ForecastView ne passent JAMAIS ; aucun polling n'existe (les
   commentaires qui l'affirment MENTENT). Fix (blueprint I2) : callback stable
@@ -3810,7 +3810,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   `frontend/src/pages/crm/leads/views/ListView.jsx`. DoD : marquer perdu depuis une carte kanban
   grise la carte IMMÉDIATEMENT (style perdu) sans refetch réseau intégral ; échec réseau → toast
   FR + état intact. (ROUTINE — S) (@model: sonnet) (@lane: LB0)
-- [ ] LB6 — **P1 : mémo réparé — une frappe ne re-rend plus tout le board.** Bug recon2-03 #4 :
+- [x] LB6 — **P1 : mémo réparé — une frappe ne re-rend plus tout le board.** Bug recon2-03 #4 :
   `reassign`/`onToggleSelect`/`onPlanifierRelance`/`onInlineSave`/`onToggleAll` sont des closures
   fraîches (VX187 n'en avait mémoïsé que 3), `viewProps` est un objet neuf à chaque rendu,
   `DraggableCard` n'est pas mémoïsé ; côté liste, l'état du popover perdu
@@ -3824,7 +3824,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   `frontend/src/pages/crm/leads/views/ListView.jsx` + tests. DoD : sonde verte ; profiler React :
   frappe dans la recherche → 0 re-rendu de carte ; taper un motif perdu → seule la ligne cible se
   re-rend. (ROUTINE — M) (@model: sonnet) (@lane: LB0)
-- [ ] LB7 — **P1 : plus de refetch intégral après un PATCH mono-lead + fin des catch muets +
+- [x] LB7 — **P1 : plus de refetch intégral après un PATCH mono-lead + fin des catch muets +
   garde d'obsolescence.** Bugs recon2-03 #5/#10/#11. Fix (blueprint I1/I6/I8) : `onInlineSave`
   perd son `.then(refetch)` et `reassign` son `refetch()` (`updateLead.fulfilled` remplace déjà
   le lead au complet — score/stage_since_days/devis inclus) ; le refetch intégral ne reste que
@@ -3838,7 +3838,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   déclenche AUCUN GET /leads (onglet réseau) et la valeur affichée vient du payload PATCH ; un
   refetch lent qui répond après un drag n'écrase pas l'étape optimiste ; chaque échec toaste.
   (ROUTINE — M) (@model: sonnet) (@lane: LB0)
-- [ ] LB8 — **P2 : la sélection est élaguée contre la liste FILTRÉE.** Bug recon2-03 #6 :
+- [x] LB8 — **P2 : la sélection est élaguée contre la liste FILTRÉE.** Bug recon2-03 #6 :
   `pruneSelection` élague contre TOUS les leads → un lead sélectionné puis masqué par un filtre
   reste bulk-actionnable en invisible. Fix (blueprint I5) : `visibleSelected` se calcule contre
   `filtered.map(l => l.id)` ; la barre bulk affiche le compte visible. Files :
@@ -4152,6 +4152,126 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   (@after: LB17, LB21, LB27, LB30, LB31, LB32, LB33)
 
 #### DONE LOG — Groupe LB (page leads)
+
+- 2026-07-19 LB1 — blueprint déjà recopié par le merge de `claude/leads-page-redesign` ;
+  vérifié octet-identique (hors CRLF/LF) à `scratchpad/design2/blueprint.md`. Aucun code touché.
+- 2026-07-19 LB2 — P0 fondateur corrigé : `.layout-content > .route-fade:has(> .lp-page)
+  {height:100%}` + `.lp-page` flex column bornée (miroir `.lw-page`) ; `.lp-view-area` perd son
+  `min-height:320px` fixe, devient `flex:1 1 auto;min-height:0`, `overflow:hidden` pour les 3
+  vues denses via `data-view` (1 ligne JSX sur la racine de LeadsPage.jsx) ; `.kb-board`
+  `height:100%`→`flex:1 1 auto` (se résolvait en AUTO, cause racine des 8 649px mesurés) ;
+  `.kb-col-body` `min-height:80px`→`0` (ne débordait jamais) ; `.lv-wrap` scrolleur deux axes
+  unique (`overflow:auto` + flex) ; pleine largeur (`max-width:none`) kanban/prévision/liste ;
+  scrollbars fines tokenisées toujours visibles ; gap responsive 769-899px comblé (`.kb-col`
+  clamp) ; thead sticky + `.lv-sticky-name` posés en pré-requis (D4 les activera). Raisonnement
+  statique de la chaîne : `#root`(100vh)→`.layout-main`(overflow:hidden)→`.layout-content`
+  (flex:1;overflow-y:auto)→`.route-fade`(désormais height:100% via :has)→`.lp-page`(flex column
+  height:100%)→`.lp-view-area`(flex:1 1 auto;min-height:0;overflow:hidden en vue kanban)→
+  `.kb-board`(flex:1 1 auto;min-height:0;overflow-x:auto) — chaque maillon a maintenant une
+  hauteur RÉSOLUE (plus jamais AUTO), donc `.kb-col-body{overflow-y:auto;min-height:0}` déborde
+  réellement au lieu de grandir sans fin. ForecastView (`.kb-board.fv-board`) hérite sans
+  modification (mêmes classes). `.lw-page` non touché.
+- 2026-07-19 LB3 — interception « Signé » honnête (bug #2) : nouveau
+  `pages/crm/leads/signeIntercept.js` (sentinelle `SIGNE_INTERCEPT` Symbol + `isSigneIntercept`,
+  test node dédié vert). `LeadsPage.jsx#onInlineSave` renvoie désormais `Promise.reject(SIGNE_INTERCEPT)`
+  après avoir ouvert SigneDialog (au lieu d'un faux `Promise.resolve()`) : `useOptimisticSave`
+  fait son rollback normal (le select StageMover revient à l'étape réelle) et `InlineEdit`
+  (liste) restaure déjà par rejet — zéro cas spécial côté liste. Le SEUL cas spécial vit dans
+  `StageMover`'s `onError` (KanbanView.jsx) : avale la sentinelle via `isSigneIntercept(err)`
+  sans toaster, toute autre erreur toaste comme avant. 2 tests ajoutés à KanbanView.test.jsx
+  (sentinelle → rollback sans toast ; vraie erreur → rollback ET toast) — les 2 verts en
+  raisonnement, non exécutables ici (pas de node_modules dans ce worktree).
+- 2026-07-19 LB4 — un lead Froid se réactive par drag (bug #7/#8) : `stages.js` gagne
+  `funnelRank` (COLD → -1, miroir `apps/crm/services.py _rang_funnel`) et
+  `isStageMoveAllowed(current, target)` (miroir byte-à-byte `_bulk_stage_allowed` — 4 tests node
+  verts, exécutés). `KanbanView.jsx#handleDragEnd` utilise ce garde unique au lieu du `stageRank`
+  local (COLD y valait le rang le PLUS HAUT → tout drag COLD→actif était refusé comme un recul,
+  cause racine du bug #7 alors que le serveur autorise DÉJÀ la réactivation). Options interdites
+  grisées dans le StageMover (kanban, `disabled` par `<option>`) ET dans l'InlineEdit stage de la
+  liste (`ListView.jsx` : nouveau `stageOptionsFor(currentStage)` par ligne, remplace la liste
+  plate `STAGE_OPTIONS` partagée) — le chemin clavier/select obtient enfin la MÊME réponse que le
+  drag (bug #8). `components/InlineEdit.jsx` gagne un support `disabled` PAR OPTION,
+  rétro-compatible (undefined pour tous les autres appelants = comportement inchangé). SIGNED
+  reste gardé : y entrer passe toujours par SigneDialog (LB3), en sortir en arrière reste interdit
+  sauf → Froid. Tests : 4 nouveaux cas dans `stages.test.mjs` (exécutés, verts), 2 nouveaux dans
+  `KanbanView.test.jsx` (options grisées FOLLOW_UP + réactivation COLD, raisonnement — non
+  exécutables ici), nouveau `ListViewStageGuard.test.mjs` (4 assertions source, exécutées, vertes).
+- 2026-07-19 LB5 — « ✗ Perdu » depuis une carte met l'UI à jour (bug #3) : nouveau callback
+  stable `LeadsPage.jsx#onMarkPerdu(lead, motif)` (dispatch `updateLead`, AUCUN refetch —
+  `updateLead.fulfilled` patche déjà le lead complet, toastError + relance l'erreur en échec pour
+  que l'appelant garde sa popover ouverte), ajouté à `viewProps`. `LeadCard.jsx` n'appelle plus
+  JAMAIS `crmApi.updateLead` en direct (contournait Redux) et la prop fantôme `onChanged` (jamais
+  passée par KanbanView NI ForecastView — les commentaires « resynchronisation au refetch » qui
+  l'affirmaient mentaient, aucun polling n'existe) est supprimée. `KanbanView.jsx` (DraggableCard)
+  ET `ForecastView.jsx` (bug-fix, évite une régression puisque le bouton ✗ y fonctionnait déjà en
+  direct) threadent `onMarkPerdu` jusqu'à `LeadCard`. `ListView.jsx#confirmPerdu` route désormais
+  par le MÊME callback partagé au lieu d'un `dispatch(updateLead)` local dupliqué (import
+  `updateLead` retiré, devenu inutile). Tests : nouveau `LeadsPageMarkPerdu.test.mjs` (7
+  assertions source, exécutées, vertes) ; suite existante (VX95Forgiveness, LeadCardVX24,
+  ReadinessChips, SwipeAction, FirstTouchTimer, ForecastView — 37 tests) re-exécutée, toujours
+  verte.
+- 2026-07-19 LB6 — mémo réparé (bug #4) : TOUS les callbacks de `viewProps` (LeadsPage.jsx) sont
+  désormais `useCallback` — `refetch`, `onToggleSelect`, `onToggleAll`, `reassign`,
+  `onPlanifierRelance`, `onInlineSave` (en plus des `onOpenLead`/`onAutoQuote`/`changeStage` déjà
+  faits en VX187) ; `viewProps` lui-même passe en `useMemo`, repositionné AVANT les retours
+  anticipés loading/error (règle des Hooks — un `useMemo` après un retour conditionnel change
+  l'ordre des Hooks entre rendus). `KanbanView.jsx` mémoïse `DraggableCard` (`memo()`). Côté liste
+  (bug #4 précis : `perduMotif` partagé passé identique à TOUTES les lignes → une frappe
+  re-rendait la table entière malgré `memo(ListRow)`) : la popover « ✗ Perdu » ne reçoit plus
+  `perduTarget` (objet, référence neuve à chaque frappe) mais `perduOpen` (booléen calculé par le
+  parent) + `perduMotif`/`perduBusy` CONDITIONNÉS (constante `''`/`false` pour les lignes non
+  ciblées, valeur live SEULEMENT pour la ligne ouverte) ; `confirmPerdu(lead, motif)` prend ses
+  arguments en PARAMÈTRES (au lieu de lire `perduTarget`/`perduMotif` en closure) pour rester une
+  référence stable quel que soit ce que l'utilisateur tape ; `onArchive`/`onRestore`/`onDelete`/
+  `closePerdu` passent en `useCallback` ; `armCallNudgeFor` stabilisée via un ref « toujours à
+  jour » synchronisé en effet (jamais pendant le rendu — `useCallEndedNudge` reste hors périmètre
+  de cette lane). `components/InlineEdit.jsx` inchangé (déjà touché LB4). Tests : nouveau
+  `LeadsPageMemoStability.test.mjs` (8 assertions source, exécutées, vertes) ; nouveau
+  `KanbanViewMemoStability.test.jsx` (sonde de rendu réelle — LeadCard mocké+compté, 0 re-rendu
+  sur un nouveau tableau `leads` à callbacks/objets stables, re-rendu ciblé sur `busyLeadId`) ;
+  3 tests pré-existants mis à jour DANS cette tâche pour suivre la nouvelle forme du source
+  (`LeadsPagePlanifierRelance.test.mjs`, `LeadsPageMarkPerdu.test.mjs`,
+  `axiosVX55Timeout.test.mjs` — `viewProps`/`refetch`/`confirmPerdu` littéraux changés). Suite
+  complète leads + adjacents (148 tests node) re-exécutée, verte.
+- 2026-07-19 LB7 — plus de refetch intégral après un PATCH mono-lead, fin des catch muets, garde
+  d'obsolescence (bugs #5/#10/#11) : `onInlineSave` et `reassign` (LeadsPage.jsx) perdent leur
+  `refetch()`/`.then(() => refetch())` — `updateLead.fulfilled` (crmSlice.js) remplace déjà le
+  lead au COMPLET (score/stage_since_days/devis inclus). `ListView.jsx#onArchive`/`onRestore`
+  perdent également leur `onRefetch?.()` (`archiveLead.fulfilled`/`restoreLead.fulfilled` patchent
+  déjà `is_archived` en place — la ligne se re-rend grisée/« Restaurer » seule) ; `onDelete` GARDE
+  le sien (`restaurerCorbeille` n'a pas de reducer de ré-insertion, seul un refetch ramène le lead
+  restauré dans le store). Le refetch intégral ne reste que pour bulk (`runBulk`), import
+  (`ExcelImport onDone`), merge (`DoublonsPanel onAnyMerge`), Signé confirmé (`SigneDialog`),
+  création (`onSaved`) — tous vérifiés toujours câblés. Catches silencieux tués (I8) :
+  `reassign`, `exportFiltered` (`/* ignore */` → `toastError`), `exportSelection` (bannière
+  `bulkMsg` locale → `toastError`, cohérent avec le reste), `ListView#onArchive`/`onRestore`
+  toastent désormais en échec. `crmSlice.js` gagne `fetchLeadsRequestId` (miroir
+  `leadUpdateSeq`/`isStaleResourceUpdate`) : `fetchLeads.pending` trace le requestId de la
+  DERNIÈRE requête dispatchée, `fetchLeads.fulfilled` ignore un payload dont le requestId ne
+  correspond plus (fin du flicker où un refetch lent remplaçait `state.leads` au complet avec un
+  snapshot périmé). Tests : nouveau `crmSliceFetchLeadsObsolescence.test.mjs` (4 assertions),
+  nouveau `LeadsPageNoOverfetch.test.mjs` (6 assertions) — 158 tests node (leads + adjacents)
+  re-exécutés, verts.
+- 2026-07-19 LB8 — sélection élaguée contre la liste FILTRÉE (bug #6, blueprint I5) :
+  `visibleSelected` (LeadsPage.jsx) élague désormais `pruneSelection(selected,
+  filtered.map(l => l.id))` au lieu de `leads.map(...)` (TOUS les leads chargés, filtre ou pas) —
+  un lead sélectionné puis masqué par un filtre restait bulk-actionnable EN INVISIBLE. `selected`
+  (l'état React brut) n'est jamais muté par `pruneSelection` (fonction pure) : retirer le filtre
+  fait naturellement réapparaître les leads déjà cochés sans logique supplémentaire. La barre bulk
+  (`BulkActionBar count={visibleSelected.size}`) et `runBulk` (qui n'agit que sur
+  `[...visibleSelected]`) héritent du fix sans y toucher. Tests : nouveau
+  `LeadsPageSelectionPruning.test.mjs` (4 assertions — wiring source + 3 scénarios DoD exécutés
+  contre la vraie logique pure `pruneSelection` de `features/crm/bulk.js`). Suite complète
+  leads + adjacents (162 tests node) re-exécutée, verte.
+
+**Lane LB0 (urgence) — LB1 à LB8 TOUTES livrées 2026-07-19.** Les lanes suivantes (LB1 board,
+LB2 carte, LB3 liste, LB4 shell/filtres/KPI/URL, LB5 vues secondaires, LB6 polish/dark,
+LB7 tests/e2e/goldens de la carte des fichiers — @lane LB1-LB7 ci-dessous, à ne pas confondre
+avec les tâches LB1-LB8 de cette section) peuvent désormais bâtir dessus : `funnelRank`/
+`isStageMoveAllowed` (stages.js) et `SIGNE_INTERCEPT`/`isSigneIntercept` (signeIntercept.js)
+sont les nouveaux contrats partagés ; `onMarkPerdu`/`stageOptionsFor` sont les nouveaux points
+d'extension côté carte/liste ; le contrat CSS D1 (`.lp-page`/`data-view`/`.kb-*`/`.lv-*`) est en
+place, LANE C peut poser `.lv-sticky-name` sans retoucher `index.css` (déjà prêt).
 
 ## Group F — Design foundation & tokens
 

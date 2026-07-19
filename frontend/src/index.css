@@ -4184,13 +4184,15 @@ textarea.form-control {
   background: var(--border, #e2e8f0);
 }
 
-/* Zone derrière les vues : surface sourde de tableau de bord. */
+/* Zone derrière les vues : surface sourde de tableau de bord.
+   LB2 — `min-height:320px` retiré : remplacé par la chaîne flex `.lp-page >
+   .lp-view-area` (bloc append-only en fin de fichier) qui borne réellement la
+   zone à la hauteur disponible du shell au lieu d'une hauteur mini fixe. */
 .lp-view-area {
   background: var(--muted, #f1f5f9);
   border-radius: var(--radius, 10px);
   padding: 0.75rem;
   margin-top: 0.75rem;
-  min-height: 320px;
 }
 
 /* Bandeau d'erreur (changement d'étape non enregistré). */
@@ -4776,11 +4778,17 @@ textarea.form-control {
 
 /* ---------- Tableau ---------- */
 
+/* LB2 — `height:100%` se résolvait en AUTO (le containing block `.lp-view-area`
+   n'avait pas de hauteur explicite avant le fix de chaîne ci-dessus) : le board
+   grandissait à la colonne la plus haute au lieu de se borner au viewport, la
+   page défilait sur des milliers de px et la scrollbar horizontale gisait sous
+   le fold (bug fondateur P0, recon2-03). `flex:1 1 auto` avec un ancêtre borné
+   se résout réellement. */
 .kb-board {
   display: flex;
   align-items: stretch;
   gap: 0.75rem;
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
   padding: 0.75rem;
   overflow-x: auto;
@@ -4865,9 +4873,12 @@ textarea.form-control {
   letter-spacing: -0.01em;
 }
 
+/* LB2 — `min-height:80px` empêchait JAMAIS le corps de déborder (il ne
+   pouvait que grandir) : avec `.kb-board` réellement borné ci-dessus,
+   `min-height:0` laisse enfin `overflow-y:auto` prendre effet par colonne. */
 .kb-col-body {
-  flex: 1;
-  min-height: 80px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -5257,10 +5268,16 @@ textarea.form-control {
 /* Vue LISTE des leads CRM — style dense façon Odoo, identité navy/or.
    Préfixe lv- ; s'appuie sur .data-table (index.css) sans le modifier. */
 
+/* LB2 — scrolleur DEUX AXES unique de la vue liste (au lieu de overflow-x
+   seul) : un ancêtre overflow-x:auto casserait le sticky vertical du thead ;
+   avec UN SEUL conteneur de scroll, sticky top ET sticky left fonctionnent
+   tous les deux (D4 pose `.lv-sticky-name` plus tard sans retoucher ce bloc). */
 .lv-wrap {
   /* VX1 — --cat-navy/--cat-gold hérités de design/tokens.css (signature
      unique), plus de redéclaration locale. */
-  overflow-x: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* Densité : un cran plus serré que la table globale. */
@@ -7110,4 +7127,106 @@ textarea.form-control {
   /* 4.34:1 encore court de 4.5 : on éclaircit la teinte (8% au lieu des 15%
      du kit) — toujours dérivée du jeton, jamais un hex. */
   background: color-mix(in oklch, var(--warning) 8%, var(--card));
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB2 — Leads : shell borné view-aware (docs/design/leads-board-blueprint.md
+   D1, contrat CSS exact). Bloc APPEND-ONLY `.lp-*`/`.kb-*`/`.lv-*` — miroir du
+   pattern `.lw-page` (LW13/LW25 ci-dessus) : `.route-fade` (hauteur auto)
+   cassait la chaîne height:100% entre `.layout-content` (scrolleur borné du
+   shell) et `.lp-page` → la page grandissait au contenu (8 649px mesurés en
+   vue kanban, recon2-03 §P0) et la scrollbar horizontale du board gisait sous
+   le fold. On ne borne QUE la route leads via :has() — les autres pages
+   gardent leur croissance naturelle + le scroll de `.layout-content`. ══════ */
+.layout-content > .route-fade:has(> .lp-page) {
+  height: 100%;
+}
+.lp-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+/* Toutes les rangées du shell (header/FilterBar/SavedViewsBar/BulkActionBar/
+   bannières) restent figées à leur hauteur naturelle ; seule la zone de vue
+   s'étire — le cockpit (filtres/KPI/actions) ne défile JAMAIS. */
+.lp-page > :not(.lp-view-area) {
+  flex: 0 0 auto;
+}
+.lp-page > .lp-view-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Défaut (calendrier/graphique/carte) : la zone de vue scrolle verticalement
+     — comportement « page » actuel, mais sous un header/filtres épinglés. */
+  overflow: hidden auto;
+}
+/* Vues « planche » : la zone de vue NE scrolle PAS elle-même — chaque vue
+   possède son propre scrolleur interne (`.kb-board` horizontal + chaque
+   `.kb-col-body` vertical pour kanban/prévision ; `.lv-wrap` deux axes pour
+   la liste). Piloté par `data-view` (LeadsPage.jsx), zéro logique dupliquée. */
+.lp-page[data-view="kanban"] .lp-view-area,
+.lp-page[data-view="prevision"] .lp-view-area,
+.lp-page[data-view="liste"] .lp-view-area {
+  overflow: hidden;
+}
+/* Les 3 vues denses échappent au cap `.page{max-width:1200px}` : un board
+   full-bleed sous un header centré 1200px paraîtrait cassé (Linear/Trello
+   alignent toolbar et board). Calendrier/graphique/carte gardent le cap
+   (lisibilité). */
+.lp-page[data-view="kanban"],
+.lp-page[data-view="prevision"],
+.lp-page[data-view="liste"] {
+  max-width: none;
+}
+
+/* Liste : thead + colonne nom épinglés — activé dès maintenant (le thead
+   existe déjà), `.lv-sticky-name` posée sur la cellule nom par le refit D4
+   sans retoucher ce bloc. */
+.lv-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card);
+}
+@media (min-width: 768px) {
+  .lv-table .lv-sticky-name {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--card);
+  }
+}
+
+/* Scrollbars fines TOUJOURS visibles (Linear/Notion), tokenisées deux thèmes —
+   sans elles, un scrolleur interne borné mais vide de scrollbar visible reste
+   aussi indécouvrable que le bug qu'on corrige. */
+.kb-board,
+.kb-col-body,
+.lv-wrap {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.kb-board::-webkit-scrollbar {
+  height: 10px;
+}
+.kb-col-body::-webkit-scrollbar {
+  width: 8px;
+}
+.kb-board::-webkit-scrollbar-thumb,
+.kb-col-body::-webkit-scrollbar-thumb,
+.lv-wrap::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+/* Gap responsive 769-899px (recon-05) : le palier fixe 150px ci-dessus ne
+   s'active qu'à partir de 900px — entre 768 et 900, `.kb-col` retombait à sa
+   largeur desktop (272px) et ne montrait plus que ~3 colonnes sur iPad
+   portrait/petits laptops. Largeur fluide bornée pour ce seul intervalle. */
+@media (min-width: 769px) and (max-width: 899px) {
+  .kb-col {
+    flex: 0 0 clamp(220px, 24vw, 272px);
+  }
 }
