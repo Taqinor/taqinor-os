@@ -17,6 +17,7 @@ from .views import (
     ArmDailyStatViewSet, AssumptionNodeViewSet,
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
+    ImportChantierPhotoView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
     CommentCountsView, CommentDeleteView, CommentHideView, CommentListView,
     CommentPrivateReplyView, CommentReplyView,
@@ -145,6 +146,10 @@ urlpatterns = [
     # PUB16 — génération IA ancrée (« Générer des variantes ancrées »).
     path('generation/variantes-ancrees/', GroundedGenerationView.as_view(),
          name='adsengine-generation-variantes-ancrees'),
+    # PUB73 — import d'une photo de chantier dans la créathèque (provenance +
+    # consentement PUB75 bloquant).
+    path('creatifs/import-chantier/', ImportChantierPhotoView.as_view(),
+         name='adsengine-import-chantier-photo'),
     # ADSENG33 — drill-downs de reporting (table variante / entonnoir / cohortes
     # / export CSV).
     path('reporting/variantes/', VariantReportView.as_view(),

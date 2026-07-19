@@ -2705,6 +2705,14 @@ def chantier_a_photos(company, chantier_id, *, phase=None):
     return chantier_photos(company, chantier_id, phase=phase).exists()
 
 
+def chantier_photo(company, chantier_id, attachment_id):
+    """PUB73 — Une photo précise (``records.Attachment`` image) d'un chantier,
+    scopée société ET chantier (``None`` si l'attachment n'appartient pas à ce
+    chantier / cette société). Point d'entrée cross-app LECTURE SEULE pour la
+    créathèque (``apps.adsengine``)."""
+    return chantier_photos(company, chantier_id).filter(pk=attachment_id).first()
+
+
 def chantier_ville(company, chantier_id):
     """PUB63/PUB85 — Ville du site d'un chantier (Installation), ou ``None``.
     Lecture seule, scopée société — fait de localisation vérifié pour un brief

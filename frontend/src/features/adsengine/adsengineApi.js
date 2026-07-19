@@ -361,6 +361,13 @@ const adsengineApi = {
   competitorObservations: {
     ...resource('observations-concurrents'),
   },
+
+  // ── PUB73 — Import d'une photo de chantier dans la créathèque ──
+  // Provenance source_lane='chantier' + consentement PUB75 bloquant côté backend.
+  chantierImport: {
+    importPhoto: (payload) =>
+      api.post('/adsengine/creatifs/import-chantier/', payload),
+  },
 }
 
 export default adsengineApi

@@ -609,6 +609,43 @@ class CompetitorAdObservationViewSet(AdsengineViewSet):
     serializer_class = CompetitorAdObservationSerializer
 
 
+class ImportChantierPhotoView(APIView):
+    """PUB73 — Importe une photo de chantier dans la créathèque
+    (``CreativeAsset(source_lane='chantier')``).
+
+    Corps : ``{chantier_id, attachment_id, client_id, puissance_kwc?, ville?,
+    note?, auto_flagged?}``. Écriture ``adsengine_manage`` ; company-scopé.
+    BLOQUÉ (400) sans consentement photo client actif (PUB75) — refus expliqué."""
+
+    permission_classes = [HasPermissionOrLegacy('adsengine_manage')]
+
+    def post(self, request):
+        company, err = _adseng_company_gate(request, 'adsengine_manage')
+        if err is not None:
+            return err
+        body = request.data or {}
+        chantier_id = body.get('chantier_id')
+        attachment_id = body.get('attachment_id')
+        client_id = body.get('client_id')
+        if not (chantier_id and attachment_id):
+            return Response(
+                {'detail': 'chantier_id et attachment_id requis.'}, status=400)
+        from . import creative_factory as cf
+        result = cf.import_chantier_photo(
+            company, chantier_id=chantier_id, attachment_id=attachment_id,
+            client_id=client_id, puissance_kwc=body.get('puissance_kwc'),
+            ville=body.get('ville'), note=body.get('note', ''),
+            auto_flagged=bool(body.get('auto_flagged')))
+        if not result['imported']:
+            return Response(
+                {'detail': result['message'],
+                 'blocked_reason': result['blocked_reason']}, status=400)
+        return Response({
+            'imported': True, 'asset_id': result['asset'].id,
+            'message': result['message'],
+        }, status=201)
+
+
 class BrandKitViewSet(AdsengineViewSet):
     """PUB83 — CRUD du kit de marque (une par société, ``OneToOne``).
 

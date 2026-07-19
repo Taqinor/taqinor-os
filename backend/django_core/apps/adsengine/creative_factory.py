@@ -170,6 +170,82 @@ class FalAdapter(CreativeFactoryAdapter):
         return client.get(url).content if url else None
 
 
+def _active_photo_consent(company, client_id, *, now=None):
+    """PUB73 — Consentement PHOTO actif d'un client (ou None). Réutilise la
+    garde PUB75 (couvre au moins la portée ``photo``)."""
+    from .models import ConsentRecord
+
+    if not client_id:
+        return None
+    for consent in ConsentRecord.objects.filter(
+            company=company, client_id=client_id, revoked_at__isnull=True):
+        if consent.is_active(now=now) and consent.covers('photo'):
+            return consent
+    return None
+
+
+def import_chantier_photo(company, *, chantier_id, attachment_id, client_id,
+                          puissance_kwc=None, ville=None, note='',
+                          auto_flagged=False, now=None):
+    """PUB73 — Importe une photo de CHANTIER (``records.Attachment``) dans la
+    créathèque comme ``CreativeAsset(source_lane='chantier')``.
+
+    Les techniciens uploadent déjà des photos géotaguées ; les meilleures
+    n'atteignaient jamais la bibliothèque créative. Cette action (sélection
+    manuelle, ou import auto FLAGGÉ via ``auto_flagged``) crée un asset PENDING
+    avec la provenance chantier + les métadonnées ville/kWc. **BLOQUÉ sans
+    consentement client actif (PUB75, portée photo)** — refus EXPLIQUÉ, jamais un
+    usage d'image sans accord. Lecture cross-app de la photo via
+    ``installations.selectors`` (jamais un import de ses modèles).
+
+    Renvoie ``{imported, blocked_reason, asset}`` — ``blocked_reason`` (FR, ou
+    None) : ``consentement_manquant`` ou ``photo_introuvable``."""
+    from apps.installations import selectors as inst_selectors
+
+    from .models import CreativeAsset
+
+    consent = _active_photo_consent(company, client_id, now=now)
+    if consent is None:
+        return {'imported': False, 'asset': None,
+                'blocked_reason': 'consentement_manquant',
+                'message': ("Consentement photo client manquant (CNDP) : "
+                            "importez seulement une photo dont le client a "
+                            "signé l'usage de son image.")}
+
+    attachment = inst_selectors.chantier_photo(
+        company, chantier_id, attachment_id)
+    if attachment is None:
+        return {'imported': False, 'asset': None,
+                'blocked_reason': 'photo_introuvable',
+                'message': "Photo de chantier introuvable pour ce chantier."}
+
+    resolved_ville = ville or inst_selectors.chantier_ville(company, chantier_id)
+    # Métadonnées ville/kWc portées en clair sur l'accroche (provenance lisible)
+    # — la provenance MACHINE reste ``source_lane='chantier'``.
+    meta_bits = []
+    if puissance_kwc:
+        meta_bits.append(f'{puissance_kwc:g} kWc')
+    if resolved_ville:
+        meta_bits.append(f'à {resolved_ville}')
+    hook = 'Chantier' + (' — ' + ' '.join(meta_bits) if meta_bits else '')
+
+    asset = CreativeAsset.objects.create(
+        company=company,
+        asset_type=CreativeAsset.AssetType.STATIC,
+        file_key=getattr(attachment, 'file_key', '') or '',
+        source_lane='chantier',
+        depicts_real_client=True,
+        consent=consent,
+        consent_scopes_required=['photo'],
+        hook_text=hook,
+        primary_text=note or '',
+        policy_stamp={},  # PENDING — check-list humaine (ENG16) requise
+    )
+    return {'imported': True, 'asset': asset, 'blocked_reason': None,
+            'auto_flagged': bool(auto_flagged),
+            'message': 'Photo importée dans la créathèque (en attente de validation).'}
+
+
 def brand_kit_payload(company):
     """PUB83 — Kit de marque PERSISTANT d'une société pour le ``TemplatedAdapter``
     (ou ``{}`` si aucun kit défini). Lecture seule ; jamais un secret."""
