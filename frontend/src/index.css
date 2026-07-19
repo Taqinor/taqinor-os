@@ -7354,9 +7354,11 @@ textarea.form-control {
   color: var(--muted-foreground, #64748b);
   cursor: pointer;
 }
-.kb-col-collapse-btn:hover {
-  background: var(--muted, #f1f5f9);
-  color: var(--foreground, #0b1f3a);
+@media (hover: hover) {
+  .kb-col-collapse-btn:hover {
+    background: var(--muted, #f1f5f9);
+    color: var(--foreground, #0b1f3a);
+  }
 }
 .kb-col-collapse-btn:focus-visible {
   outline: 2px solid var(--ring, #f5a623);

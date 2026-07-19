@@ -32,11 +32,21 @@ test('LB25 : clearSelection est stabilisée (useCallback) — référence stable
 test('LB25 : Échap ferme la barre bulk flottante (même geste que « Effacer »)', () => {
   const idx = PAGE_SRC.indexOf("if (visibleSelected.size === 0) return undefined")
   assert.ok(idx > 0)
-  const block = PAGE_SRC.slice(idx, idx + 350)
-  assert.match(block, /e\.key === 'Escape'/)
+  // Fenêtre élargie : la garde de la critique Fable #6 (commentaire + 2
+  // early-returns) vit entre le test de touche et clearSelection().
+  const block = PAGE_SRC.slice(idx, idx + 1000)
+  assert.match(block, /e\.key !== 'Escape'\) return/)
   assert.match(block, /clearSelection\(\)/)
   assert.match(block, /window\.addEventListener\('keydown', onKeyDown\)/)
   assert.match(block, /window\.removeEventListener\('keydown', onKeyDown\)/)
+})
+
+test('LB25 (critique Fable #6) : Échap n\'efface JAMAIS la sélection à travers un overlay ouvert', () => {
+  const idx = PAGE_SRC.indexOf("if (visibleSelected.size === 0) return undefined")
+  const block = PAGE_SRC.slice(idx, idx + 1000)
+  assert.match(block, /if \(e\.defaultPrevented\) return/)
+  assert.match(block, /\[role="dialog"\]\[data-state="open"\]/)
+  assert.match(block, /data-radix-popper-content-wrapper/)
 })
 
 test('LB25 : .lp-bulk-float est fixed, palier --z-sticky, safe-area, au-dessus de la tabbar mobile', () => {

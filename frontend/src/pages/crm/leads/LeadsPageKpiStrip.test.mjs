@@ -22,8 +22,19 @@ test('LB24 : LeadsKpiStrip est monté AVANT FilterBar, câblé sur filters/setFi
   assert.ok(kpiIdx > 0 && filterBarIdx > 0)
   assert.ok(kpiIdx < filterBarIdx, 'LeadsKpiStrip doit précéder FilterBar (rangée cockpit)')
   const block = PAGE_SRC.slice(kpiIdx, filterBarIdx)
-  assert.match(block, /leads=\{leads\}/)
+  // Critique Fable LB #6→#3 : le bandeau reçoit le pool APRÈS le filtre
+  // additif ?equipe= (kpiPool), jamais `leads` brut — sinon les tuiles
+  // annoncent des nombres que le clic ne rend pas (« chiffre menteur » D5).
+  assert.match(block, /leads=\{kpiPool\}/)
   assert.match(block, /filters=\{filters\}/)
   assert.match(block, /setFilters=\{setFilters\}/)
   assert.match(block, /myUsername=\{currentUser\?\.username\}/)
+})
+
+test('LB24 (critique Fable #3) : kpiPool applique le filtre équipe (même règle que `filtered`)', () => {
+  const idx = PAGE_SRC.indexOf('const kpiPool = useMemo(')
+  assert.ok(idx > 0, 'kpiPool introuvable')
+  const block = PAGE_SRC.slice(idx, idx + 300)
+  assert.match(block, /if \(!equipeId \|\| !equipeMembreIds\) return leads/)
+  assert.match(block, /equipeMembreIds\.has\(l\.owner\)/)
 })
