@@ -126,4 +126,15 @@ describe('DashboardScreen — ENG42 Réconciliation', () => {
     expect(printSpy).toHaveBeenCalled()
     printSpy.mockRestore()
   })
+
+  // PUB56 — repli mobile (< 768px) : chaque cellule porte data-label pour que
+  // le repli carte (index.css, pattern déjà établi de l'ERP) affiche le nom
+  // du champ au lieu d'une pile de valeurs nues.
+  it('les cellules de la table de réconciliation portent data-label', async () => {
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-tab-reconciliation'))
+    const row = await screen.findByTestId('ae-recon-row')
+    expect(row.querySelector('td[data-label="Campagne"]')).not.toBeNull()
+    expect(row.querySelector('td[data-label="Écart"]')).not.toBeNull()
+  })
 })

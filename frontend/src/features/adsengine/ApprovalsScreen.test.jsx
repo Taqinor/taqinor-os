@@ -209,3 +209,36 @@ describe('ApprovalsScreen — PUB51 raccourcis clavier (sans souris)', () => {
     expect(cards[0]).toHaveClass('ae-action-card-focused')
   })
 })
+
+describe('ApprovalsScreen — PUB56 cibles tactiles ≥44×44px', () => {
+  it('Approuver/Rejeter ont une cible tactile d\'au moins 44×44px', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    const approve = screen.getByTestId('ae-approve-11')
+    const reject = screen.getByTestId('ae-reject-11')
+    expect(parseInt(approve.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+    expect(parseInt(approve.style.minWidth, 10)).toBeGreaterThanOrEqual(44)
+    expect(parseInt(reject.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+    expect(parseInt(reject.style.minWidth, 10)).toBeGreaterThanOrEqual(44)
+  })
+
+  it('la case à cocher batch a une zone de tap ≥44×44px (label enveloppant)', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    const checkbox = screen.getByTestId('ae-batch-toggle-11')
+    const label = checkbox.closest('label')
+    expect(label).not.toBeNull()
+    expect(parseInt(label.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+    expect(parseInt(label.style.minWidth, 10)).toBeGreaterThanOrEqual(44)
+  })
+
+  it('le panneau de rejet (confirmer/annuler/select) a des cibles ≥44px', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-reject-11'))
+    const confirmBtn = await screen.findByTestId('ae-reject-confirm-11')
+    const select = screen.getByTestId('ae-reject-reason-11')
+    expect(parseInt(confirmBtn.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+    expect(parseInt(select.style.minHeight, 10)).toBeGreaterThanOrEqual(44)
+  })
+})

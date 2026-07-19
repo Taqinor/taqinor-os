@@ -443,10 +443,10 @@ export default function DashboardScreen() {
                       <tbody>
                         {leads.map((l, i) => (
                           <tr key={l.id ?? i} data-testid="ae-drill-lead">
-                            <td>{l.nom || l.name || '—'}</td>
-                            <td>{l.ville || l.city || '—'}</td>
-                            <td>{l.stage_label || l.etape || '—'}</td>
-                            <td>{l.devis_ref || '—'}{l.montant != null ? ` (${formatMAD(l.montant)})` : ''}</td>
+                            <td data-label="Lead">{l.nom || l.name || '—'}</td>
+                            <td data-label="Ville">{l.ville || l.city || '—'}</td>
+                            <td data-label="Étape">{l.stage_label || l.etape || '—'}</td>
+                            <td data-label="Devis">{l.devis_ref || '—'}{l.montant != null ? ` (${formatMAD(l.montant)})` : ''}</td>
                             <td>
                               {l.id != null && (
                                 <Link to={`/crm/leads/${l.id}`} className="btn btn-light"
@@ -539,7 +539,8 @@ export default function DashboardScreen() {
                           <tbody>
                             {pacing.lignes.map(l => (
                               <tr key={l.id} data-testid="ae-pacing-detail-row">
-                                <td>{l.label}</td><td>{formatMAD(l.montant_mad)}</td>
+                                <td data-label="Poste">{l.label}</td>
+                                <td data-label="Montant">{formatMAD(l.montant_mad)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -584,20 +585,21 @@ export default function DashboardScreen() {
                     const tone = reconStatusTone(r.statut)
                     return (
                       <tr key={r.id} data-testid="ae-recon-row">
-                        <td>{r.campagne}</td>
-                        <td>{formatMAD(r.meta_mad)}</td>
-                        <td>{formatMAD(r.erp_mad)}</td>
-                        <td data-testid={`ae-recon-ecart-${r.id}`}>
+                        <td data-label="Campagne">{r.campagne}</td>
+                        <td data-label="Meta">{formatMAD(r.meta_mad)}</td>
+                        <td data-label="ERP">{formatMAD(r.erp_mad)}</td>
+                        <td data-label="Écart" data-testid={`ae-recon-ecart-${r.id}`}>
                           {formatMAD(r.ecart_mad)}
                           {r.ecart_pct != null ? ` (${formatPercent(r.ecart_pct)})` : ''}
                         </td>
-                        <td>
+                        <td data-label="Statut">
                           <span className="badge" style={{ background: tone.bg, color: tone.color }}>
                             {r.statut_display}</span>
                         </td>
                         <td>
                           <button type="button" className="btn btn-light" data-testid={`ae-recon-open-${r.id}`}
-                            onClick={() => setReconDetailId(id => id === r.id ? null : r.id)}>
+                            onClick={() => setReconDetailId(id => id === r.id ? null : r.id)}
+                            style={{ minHeight: 44, minWidth: 44 }}>
                             Détail</button>
                         </td>
                       </tr>
@@ -628,7 +630,9 @@ export default function DashboardScreen() {
                       <tbody>
                         {row.lignes.map(l => (
                           <tr key={l.id} data-testid="ae-recon-detail-row">
-                            <td>{l.label}</td><td>{formatMAD(l.meta_mad)}</td><td>{formatMAD(l.erp_mad)}</td>
+                            <td data-label="Poste">{l.label}</td>
+                            <td data-label="Meta">{formatMAD(l.meta_mad)}</td>
+                            <td data-label="ERP">{formatMAD(l.erp_mad)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -724,9 +728,9 @@ export default function DashboardScreen() {
                             <tbody>
                               {cohorts.map(c => (
                                 <tr key={c.id} data-testid="ae-signal-drill-row">
-                                  <td>{c.fenetre}</td>
-                                  <td>{formatRatio(c.valeur)}</td>
-                                  <td>{c.maturite_display}</td>
+                                  <td data-label="Fenêtre">{c.fenetre}</td>
+                                  <td data-label="Valeur">{formatRatio(c.valeur)}</td>
+                                  <td data-label="Maturité">{c.maturite_display}</td>
                                 </tr>
                               ))}
                             </tbody>

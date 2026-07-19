@@ -210,7 +210,8 @@ export default function ApprovalsScreen() {
             background: '#eef2ff', padding: '0.6rem 0.9rem', borderRadius: 8, marginBottom: '1rem' }}>
           <span data-testid="ae-batch-count">{selectedCount} sélectionnée(s)</span>
           <button type="button" className="btn btn-primary" data-testid="ae-batch-approve"
-            disabled={busy} onClick={approveSelected}>
+            disabled={busy} onClick={approveSelected}
+            style={{ minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
             Approuver la sélection
           </button>
         </div>
@@ -237,11 +238,17 @@ export default function ApprovalsScreen() {
                     style={{ padding: '1rem',
                       border: focused ? '2px solid #2563eb' : '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
-                      <input type="checkbox" className="ae-batch-toggle"
-                        data-testid={`ae-batch-toggle-${a.id}`}
-                        checked={selected.has(a.id)} onChange={() => toggleSelect(a.id)}
-                        aria-label={`Sélectionner l'action ${actionTypeLabel(a.type)}`}
-                        style={{ marginTop: '0.3rem' }} />
+                      {/* PUB56 — cible tactile ≥44×44px (le checkbox visuel
+                          reste petit ; la zone cliquable, elle, ne l'est
+                          pas) : un label enveloppant sert de zone de tap. */}
+                      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        minWidth: 44, minHeight: 44, cursor: 'pointer', flexShrink: 0 }}>
+                        <input type="checkbox" className="ae-batch-toggle"
+                          data-testid={`ae-batch-toggle-${a.id}`}
+                          checked={selected.has(a.id)} onChange={() => toggleSelect(a.id)}
+                          aria-label={`Sélectionner l'action ${actionTypeLabel(a.type)}`}
+                          style={{ width: 18, height: 18 }} />
+                      </label>
                       <div style={{ flex: 1 }}>
                         <h3 style={{ margin: 0 }}>{actionTypeLabel(a.type)}</h3>
 
@@ -315,18 +322,22 @@ export default function ApprovalsScreen() {
                           </div>
                         )}
 
-                        {/* Contrôles STRUCTURÉS — jamais du chat */}
+                        {/* Contrôles STRUCTURÉS — jamais du chat.
+                            PUB56 — cibles tactiles ≥44px (min-height/width
+                            explicites, au-delà du min-height 36px de .btn). */}
                         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                           <button type="button" className="btn btn-success ae-approve"
                             data-testid={`ae-approve-${a.id}`} disabled={busy}
                             onClick={() => approve(a.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                              minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
                             <Check size={15} aria-hidden="true" /> Approuver
                           </button>
                           <button type="button" className="btn btn-danger-outline ae-reject"
                             data-testid={`ae-reject-${a.id}`} disabled={busy}
                             onClick={() => openReject(a.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                              minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
                             <X size={15} aria-hidden="true" /> Rejeter
                           </button>
                         </div>
@@ -334,13 +345,15 @@ export default function ApprovalsScreen() {
                         {/* Motif de rejet STRUCTURÉ (select — jamais du texte libre) */}
                         {rejectingId === a.id && (
                           <div className="ae-reject-panel" data-testid={`ae-reject-panel-${a.id}`}
-                            style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
+                            style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap',
+                              alignItems: 'center' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                               <span style={{ fontSize: '0.85rem', color: '#475569' }}>Motif</span>
                               <select className="form-input ae-reject-reason"
                                 data-testid={`ae-reject-reason-${a.id}`}
                                 value={rejectReason}
-                                onChange={e => setRejectReason(e.target.value)}>
+                                onChange={e => setRejectReason(e.target.value)}
+                                style={{ minHeight: 44 }}>
                                 {REJECTION_REASONS.map(r => (
                                   <option key={r.value} value={r.value}>{r.label}</option>
                                 ))}
@@ -348,11 +361,14 @@ export default function ApprovalsScreen() {
                             </label>
                             <button type="button" className="btn btn-danger ae-reject-confirm"
                               data-testid={`ae-reject-confirm-${a.id}`} disabled={busy}
-                              onClick={() => confirmReject(a.id)}>
+                              onClick={() => confirmReject(a.id)}
+                              style={{ minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
                               Confirmer le rejet
                             </button>
                             <button type="button" className="btn btn-light"
-                              onClick={() => setRejectingId(null)}>Annuler</button>
+                              onClick={() => setRejectingId(null)}
+                              style={{ minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
+                              Annuler</button>
                           </div>
                         )}
                       </div>

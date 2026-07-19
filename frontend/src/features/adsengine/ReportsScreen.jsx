@@ -211,11 +211,11 @@ export default function ReportsScreen() {
                     <tbody>
                       {variants.map(v => (
                         <tr key={v.id} data-testid="ae-reports-variant-row">
-                          <td>{v.nom}</td>
-                          <td>{formatNumber(v.impressions)}</td>
-                          <td>{formatNumber(v.reponses_whatsapp)}</td>
-                          <td>{formatMAD(v.cout_mad)}</td>
-                          <td>{formatMAD(v.cout_par_reponse)}</td>
+                          <td data-label="Variante">{v.nom}</td>
+                          <td data-label="Impressions">{formatNumber(v.impressions)}</td>
+                          <td data-label="Réponses WhatsApp">{formatNumber(v.reponses_whatsapp)}</td>
+                          <td data-label="Coût">{formatMAD(v.cout_mad)}</td>
+                          <td data-label="Coût / réponse">{formatMAD(v.cout_par_reponse)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -262,10 +262,10 @@ export default function ReportsScreen() {
                     <tbody>
                       {cohorts.map(c => (
                         <tr key={c.id} data-testid="ae-reports-cohort-row">
-                          <td>{c.cohorte}</td>
-                          <td>{formatNumber(c.taille)}</td>
-                          <td>{formatNumber(c.lag_jours_median)}</td>
-                          <td>{formatNumber(c.signatures)}</td>
+                          <td data-label="Cohorte">{c.cohorte}</td>
+                          <td data-label="Taille">{formatNumber(c.taille)}</td>
+                          <td data-label="Lag médian (jours)">{formatNumber(c.lag_jours_median)}</td>
+                          <td data-label="Signatures">{formatNumber(c.signatures)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -322,12 +322,12 @@ export default function ReportsScreen() {
                       <tbody>
                         {leaderboard.classement.map(row => (
                           <tr key={row.id} data-testid="ae-creatifs-leaderboard-row">
-                            <td>{row.tag}</td>
-                            <td>{formatMAD(row.spend)}</td>
-                            <td>{formatNumber(row.results)}</td>
-                            <td>{formatMAD(row.costPerResult)}</td>
-                            <td>{formatPercent(row.hookRateWeighted, 1)}</td>
-                            <td>{formatNumber(row.adCount)}</td>
+                            <td data-label="Tag">{row.tag}</td>
+                            <td data-label="Dépense">{formatMAD(row.spend)}</td>
+                            <td data-label="Résultats">{formatNumber(row.results)}</td>
+                            <td data-label="Coût / résultat">{formatMAD(row.costPerResult)}</td>
+                            <td data-label="Hook rate (pondéré)">{formatPercent(row.hookRateWeighted, 1)}</td>
+                            <td data-label="Ads">{formatNumber(row.adCount)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -356,10 +356,10 @@ export default function ReportsScreen() {
                       <tbody>
                         {scatter.points.map(p => (
                           <tr key={p.id} data-testid="ae-creatifs-scatter-row">
-                            <td>{p.nom}</td>
-                            <td>{formatMAD(p.spend)}</td>
-                            <td>{formatPercent(p.hookRate, 1)}</td>
-                            <td data-testid="ae-creatifs-scatter-quadrant">{p.quadrantLabel}</td>
+                            <td data-label="Ad">{p.nom}</td>
+                            <td data-label="Dépense">{formatMAD(p.spend)}</td>
+                            <td data-label="Hook rate">{formatPercent(p.hookRate, 1)}</td>
+                            <td data-label="Quadrant" data-testid="ae-creatifs-scatter-quadrant">{p.quadrantLabel}</td>
                           </tr>
                         ))}
                       </tbody>

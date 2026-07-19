@@ -149,6 +149,17 @@ describe('ReportsScreen (ENG45)', () => {
     const link = await screen.findByTestId('ae-reports-compare-link')
     expect(link).toHaveAttribute('href', '/publicite/comparateur')
   })
+
+  // PUB56 — repli mobile (< 768px) : `.data-table` n'affiche le nom du champ
+  // sur les cartes que via `data-label` (index.css, pattern déjà établi de
+  // l'ERP) — sans lui, une carte mobile n'est qu'une pile de valeurs nues.
+  it('les cellules du tableau variantes portent data-label (repli carte mobile)', async () => {
+    renderScreen()
+    const row = await screen.findByTestId('ae-reports-variant-row')
+    const cells = row.querySelectorAll('td')
+    expect(cells.length).toBeGreaterThan(0)
+    cells.forEach(td => expect(td).toHaveAttribute('data-label'))
+  })
 })
 
 describe('ReportsScreen — onglet Créatifs (ADSDEEP47)', () => {
