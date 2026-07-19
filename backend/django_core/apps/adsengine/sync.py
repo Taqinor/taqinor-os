@@ -263,7 +263,10 @@ def resolve_results(objective, normalized_row):
 def upsert_insight(company, target, *, date, spend=None, results=None,
                    frequency=None, cpl=None, impressions=None, reach=None,
                    clicks=None, link_clicks=None, conversations=None,
-                   leads_count=None, video_metrics=None):
+                   leads_count=None, video_metrics=None,
+                   quality_ranking=None, engagement_rate_ranking=None,
+                   conversion_rate_ranking=None,
+                   incremental_attribution=None):
     """Upsert un ``InsightSnapshot`` daté sur un miroir (FK générique).
 
     Clé idempotente : ``(company, content_type, object_id, date)`` — un même
@@ -277,12 +280,20 @@ def upsert_insight(company, target, *, date, spend=None, results=None,
     explicitement (les rows historiques restent intacts).
     """
     ct = ContentType.objects.get_for_model(target)
-    defaults = {
-        'spend': _to_decimal(spend),
-        'results': _to_int(results),
-        'frequency': _to_decimal(frequency),
-        'cpl': _to_decimal(cpl),
-    }
+    # PUB24 — les 4 champs CŒUR (spend/results/frequency/cpl) sont désormais
+    # None-protégés EXACTEMENT comme les colonnes ADSDEEP1 : un appel PARTIEL (Meta
+    # ne renvoie pas un champ un jour donné, ou un appelant ancien à 4 arguments)
+    # n'écrase plus une métrique existante en NULL/0. Seule une valeur réellement
+    # fournie — y compris 0 explicite — est écrite ; None = « non fourni », jamais
+    # écrit (un re-sync partiel préserve les métriques déjà en base).
+    defaults = {}
+    for name, value in (
+            ('spend', _to_decimal(spend)),
+            ('results', _to_int(results)),
+            ('frequency', _to_decimal(frequency)),
+            ('cpl', _to_decimal(cpl))):
+        if value is not None:
+            defaults[name] = value
     # Colonnes ADSDEEP1 : n'écrire que ce qui est réellement fourni (None laissé
     # de côté pour ne jamais annuler une valeur déjà en base sur un re-sync
     # partiel). ``video_metrics`` a un défaut {} en base : ne l'écrire que si
@@ -298,6 +309,20 @@ def upsert_insight(company, target, *, date, spend=None, results=None,
             defaults[name] = value
     if video_metrics is not None:
         defaults['video_metrics'] = video_metrics
+    # PUB32 — diagnostics de classement Meta (niveau ad) : n'écrire que ce qui est
+    # fourni (None laissé de côté → ne réécrit jamais un classement déjà connu sur
+    # un re-sync partiel ; un adset, qui ne les expose pas, ne les touche jamais).
+    for name, value in (
+            ('quality_ranking', quality_ranking),
+            ('engagement_rate_ranking', engagement_rate_ranking),
+            ('conversion_rate_ranking', conversion_rate_ranking)):
+        if value is not None:
+            defaults[name] = value
+    # PUB35 — attribution incrémentale : n'écrire QUE si un dict non vide est
+    # fourni (compte sans la colonne → None → jamais d'écrasement d'une lecture
+    # incrémentale déjà connue par un re-sync dégradé).
+    if incremental_attribution:
+        defaults['incremental_attribution'] = incremental_attribution
     obj, _ = InsightSnapshot.objects.update_or_create(
         company=company, content_type=ct, object_id=target.pk, date=date,
         defaults=defaults)

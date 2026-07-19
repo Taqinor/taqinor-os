@@ -32,6 +32,8 @@ ACTIVE_STATUSES = frozenset({'ACTIVE', 'ACTIF'})
 ALERT_ANOMALY = 'anomalie'
 ALERT_GUARDRAIL = 'garde_fou'
 ALERT_INOPERATIVE = 'regle_inoperante'
+# PUB20 — token Meta mort (code 190) détecté par une tâche de synchro.
+ALERT_TOKEN_INVALID = 'token_invalide'
 
 
 class GuardrailViolation(Exception):

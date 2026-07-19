@@ -1,5 +1,13 @@
 """SIG3 — Filigrane de cohorte (« cohort watermark », fa-signals §4.3 / dd §11).
 
+STATUT (PUB25, 2026-07-19) — NON CÂBLÉ en production (SIG3 non pris par PUB1) :
+aucun appelant hors tests. Pas un doublon (le ``signature_cohorts`` de
+``reporting.py`` est une AUTRE fonction — cohortes de signatures de reporting, pas
+le filigrane de maturité de ce module). EN ATTENTE DE : la lecture du filigrane de
+maturité par l'allocation/les garde-fous ; à noter, ``signal_guards.cpl_guard``
+porte DÉJÀ sa propre garde de maturation de cohorte (14 j). Capacité prête + testée ;
+jamais mort silencieux.
+
 Les signaux MÛRISSENT à des vitesses différentes (proxy 7 j → CPL 14-28 j →
 signature 60-90 j). La règle : **ancrer chaque signal sur la date d'impression /
 clic et n'INTÉGRER un signal au score QUE pour les cohortes plus VIEILLES que la

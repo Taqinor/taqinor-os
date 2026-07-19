@@ -1,5 +1,12 @@
 """ASG4 — Cascade d'invalidation de l'arbre d'hypothèses (§3.5).
 
+STATUT (PUB25, 2026-07-19) — CÂBLÉ UNIQUEMENT dans le simulateur
+(``simulator.py`` appelle ``invalidate_cascade``) ; la cascade n'est PAS
+déclenchée en PRODUCTION. Pas un doublon. EN ATTENTE DE : un point de déclenchement
+réel — p.ex. sur une évidence significative (PUB18 ``evidence.py``) qui déplace
+franchement un posterior → invalider en cascade les nœuds LIÉS via les
+``invalidation_links``. Capacité prête + testée ; jamais mort silencieux.
+
 L'arbre est un DAG léger, pas un arbre pur (§3.5). Quand la croyance d'un nœud
 BASCULE (un test le contredit, un humain l'invalide), ses dépendants deviennent
 SUSPECTS et doivent être re-testés — mais **jamais automatiquement** : ils sont

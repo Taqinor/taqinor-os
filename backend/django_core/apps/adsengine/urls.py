@@ -12,7 +12,8 @@ from .incrementality import GeoHoldoutReportView
 from .odoo_views import OdooCostPerSignatureView
 from .views import (
     AccountAuditView,
-    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AnomalyEventViewSet,
+    AdCampaignMirrorViewSet, AdPreviewsView, AdsCockpitView, AnnotationViewSet,
+    AnomalyEventViewSet,
     ArmDailyStatViewSet, AssumptionNodeViewSet,
     FactEntryViewSet, FactTableViewSet,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
@@ -24,6 +25,7 @@ from .views import (
     CreativeAssetViewSet, CreativeBacklogItemViewSet,
     CreativeGenerationBatchViewSet, CreativePolicyViewSet, DecisionLogViewSet,
     EngineActionViewSet, EngineAlertViewSet, ExperimentArmViewSet,
+    GroundedGenerationView,
     ExperimentViewSet, FlightPhaseViewSet, FlightPlanViewSet,
     GuardrailConfigViewSet, GuardrailSingletonView,
     InstagramCommentDeleteView, InstagramCommentHideView,
@@ -47,6 +49,8 @@ router.register(r'garde-fous', GuardrailConfigViewSet, basename='guardrail')
 # ASG1 — Assumption Engine (arbre vivant de croyances testées).
 router.register(r'noeuds-hypothese', AssumptionNodeViewSet,
                 basename='assumption-node')
+# PUB49 — annotations de courbe (notes de décision épinglées à une date).
+router.register(r'annotations', AnnotationViewSet, basename='annotation')
 # AGEN1 — génération autonome : table de faits versionnée (§10.2 point 1).
 router.register(r'table-faits', FactTableViewSet, basename='fact-table')
 router.register(r'faits', FactEntryViewSet, basename='fact-entry')
@@ -121,6 +125,9 @@ urlpatterns = [
          BacklogLotApproveView.as_view(), name='adsengine-backlog-lot-approve'),
     path('backlog/<int:campagne_id>/assets/',
          BacklogDropAssetView.as_view(), name='adsengine-backlog-drop-asset'),
+    # PUB16 — génération IA ancrée (« Générer des variantes ancrées »).
+    path('generation/variantes-ancrees/', GroundedGenerationView.as_view(),
+         name='adsengine-generation-variantes-ancrees'),
     # ADSENG33 — drill-downs de reporting (table variante / entonnoir / cohortes
     # / export CSV).
     path('reporting/variantes/', VariantReportView.as_view(),

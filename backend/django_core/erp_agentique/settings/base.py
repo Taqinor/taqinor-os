@@ -815,6 +815,8 @@ CELERY_TASK_ROUTES = {
     # « rayon d'explosion » des créas générées (beat) → queue planifiée.
     'adsengine.decay_assumptions_weekly': {'queue': 'scheduled'},
     'adsengine.autopause_blast_radius': {'queue': 'scheduled'},
+    'adsengine.run_reward_divergence_check': {'queue': 'scheduled'},
+    'adsengine.run_daily_reconciliation': {'queue': 'scheduled'},
     'core.dump_database': {'queue': 'scheduled'},
     'core.restore_drill': {'queue': 'scheduled'},
     'core.purge_backups': {'queue': 'scheduled'},
