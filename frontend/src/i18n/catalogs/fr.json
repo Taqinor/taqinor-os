@@ -77,6 +77,8 @@
   "nav.tableau_commercial": "Tableau commercial",
   "nav.utilisateurs": "Utilisateurs",
   "nav.roles": "Rôles",
+  "nav.securite_identite": "Sécurité & Identité",
+  "nav.gouvernance_acces": "Gouvernance des accès",
   "nav.journal": "Journal d'activité",
   "nav.parametres": "Paramètres",
   "nav.export_sauvegarde": "Export / Sauvegarde",

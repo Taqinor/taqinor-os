@@ -741,6 +741,40 @@ class Produit(models.Model):
     def __str__(self):
         return self.nom
 
+    def _sync_unite_ref(self):
+        """WIR97 / ARC27 — maintient la FK ``unite`` alignée sur le code MAÎTRE
+        ``unite_stock``.
+
+        Relie le produit à l'unité ACTIVE du référentiel Paramètres
+        (``parametres.UniteMesure``) de même code, ou délie (``None``) si aucune
+        ne correspond. Rend la FK EFFECTIVEMENT la source du libellé lu par
+        ``ProduitSerializer.unite_stock_display`` — au lieu d'un miroir figé par
+        un backfill ponctuel. Purement additif : ``unite_stock`` reste MAÎTRE ;
+        sans société ou sans unité de référence correspondante, on retombe sur
+        le code brut (comportement historique, aucune régression)."""
+        if not self.company_id:
+            return
+        # parametres est une app de FONDATION (import descendant autorisé,
+        # cf. CLAUDE.md) — jamais un import cross-app d'une app métier.
+        from apps.parametres.models import UniteMesure
+        code = (self.unite_stock or '').strip()
+        match = None
+        if code:
+            match = UniteMesure.objects.filter(
+                company_id=self.company_id, code=code, actif=True).first()
+        self.unite = match
+
+    def save(self, *args, **kwargs):
+        # Ne resynchronise la FK unité que sur un save COMPLET ou une MAJ
+        # touchant ``unite_stock`` — jamais quand le backfill pose ``unite``
+        # seule (``update_fields=['unite']``), pour rester idempotent avec lui.
+        update_fields = kwargs.get('update_fields')
+        if update_fields is None or 'unite_stock' in update_fields:
+            self._sync_unite_ref()
+            if update_fields is not None and 'unite' not in update_fields:
+                kwargs['update_fields'] = list(update_fields) + ['unite']
+        super().save(*args, **kwargs)
+
 
 # ── XSTK15 — Conditionnements d'achat (touret/carton…) ───────────────────────
 

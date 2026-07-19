@@ -94,6 +94,18 @@ const messagesApi = {
   // ── Membres de la société (pour @mentions + ajout de membres) ──
   // Réutilise l'endpoint /users/ existant (portée société côté serveur).
   listCompanyMembers: () => api.get('/users/'),
+
+  // ── WIR156 / XKB26 — Statut personnalisé + Ne pas déranger + présence ──
+  // Le statut est TOUJOURS celui de l'appelant (jamais un autre user_id) ;
+  // `colleagues` liste les statuts des collègues de la société (lecture seule).
+  status: {
+    me: () => api.get('/chat/status/me/'),
+    setStatus: (data) => api.post('/chat/status/me/', data),
+    clear: () => api.post('/chat/status/clear/'),
+    // Body: { start: iso|null, end: iso|null } ; null/null lève le NPD.
+    setDnd: (data) => api.post('/chat/status/dnd/', data),
+    colleagues: () => api.get('/chat/status/colleagues/'),
+  },
 }
 
 export default messagesApi

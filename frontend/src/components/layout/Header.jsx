@@ -23,6 +23,7 @@ import GlobalSearch from './GlobalSearch'
 import CompanySwitcher from './CompanySwitcher'
 import NotificationBell from './NotificationBell'
 import ChatBell from './ChatBell'
+import BackgroundJobsBell from './BackgroundJobsBell'
 import Breadcrumbs from './Breadcrumbs'
 import LanguageSwitcher from './LanguageSwitcher'
 // VX9 — Lanceur d'applications (overlay grille), déclenché par le bouton
@@ -160,6 +161,8 @@ export default function Header({ onMenu }) {
           >
             <Bot size={19} aria-hidden="true" />
           </button>
+          {/* WIR137 — progression des jobs de fond (exports lourds/imports). */}
+          <BackgroundJobsBell />
           <ChatBell />
           <NotificationBell />
         </div>

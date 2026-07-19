@@ -108,7 +108,8 @@ class PermisTravailAdmin(admin.ModelAdmin):
                     'chantier_id', 'date_debut', 'date_fin', 'company',
                     'date_creation')
     list_filter = ('type_permis', 'statut')
-    search_fields = ('reference', 'titre', 'delivre_par', 'valide_par')
+    search_fields = ('reference', 'titre', 'delivre_par__username',
+                     'valide_par__username')
 
 
 @admin.register(ConsignationLoto)

@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
   RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye, Lock, LockOpen,
-  Trash2,
+  Trash2, Info, Link2,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 import { formatDate } from '../../lib/format'
@@ -26,6 +26,7 @@ import {
 } from '../../ui'
 import { buildFolderTree, flattenVisible, countFolders } from './tree.js'
 import GedSearch from './GedSearch.jsx'
+import GedDocumentInsights from './GedDocumentInsights.jsx'
 import { DataTable } from '../../ui/datatable'
 import ExternalLink from '../../ui/ExternalLink'
 
@@ -78,6 +79,25 @@ export default function GedNavigator() {
   const [uploadDlg, setUploadDlg] = useState(false)
   // GED14 — document à prévisualiser (clic sur une ligne → modale d'aperçu).
   const [previewDoc, setPreviewDoc] = useState(null)
+  // WIR70 — panneau « Détails » (timeline + ACL) d'un document.
+  const [insightsDoc, setInsightsDoc] = useState(null)
+
+  // WIR70 — crée un lien de dépôt public pour le dossier sélectionné et copie
+  // l'URL publique (la page PublicDepotPage fonctionne déjà côté public).
+  const createDepotLink = async () => {
+    if (!selected) return
+    try {
+      const r = await gedApi.createDepotPublic({ folder: selected.id })
+      const token = r.data?.token
+      const url = token ? `${window.location.origin}/ged/depot/${token}` : null
+      if (url && navigator.clipboard) {
+        try { await navigator.clipboard.writeText(url) } catch { /* best-effort */ }
+      }
+      toast.success(url ? `Lien de dépôt créé et copié : ${url}` : 'Lien de dépôt créé.')
+    } catch (e) {
+      toast.error(e?.response?.data?.detail ?? 'Création du lien impossible.')
+    }
+  }
   // XGED14 — multi-sélection de documents pour les opérations en lot.
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -367,6 +387,10 @@ export default function GedNavigator() {
                         onClick={() => setFolderDlg({ mode: 'move', folder: selected })}>
                         <MoveRight className="size-4" aria-hidden="true" /> Déplacer
                       </Button>
+                      {/* WIR70 — lien de dépôt public tokenisé pour ce dossier. */}
+                      <Button size="sm" variant="ghost" onClick={createDepotLink}>
+                        <Link2 className="size-4" aria-hidden="true" /> Lien de dépôt
+                      </Button>
                       <Button size="sm" variant="default"
                         onClick={() => setUploadDlg(true)}>
                         <Upload className="size-4" aria-hidden="true" /> Téléverser
@@ -473,6 +497,12 @@ export default function GedNavigator() {
                                 onClick={() => setPreviewDoc(d)}>
                                 <Eye className="size-4" aria-hidden="true" /> Aperçu
                               </Button>
+                              {/* WIR70 — timeline + « qui voit ce document et pourquoi ». */}
+                              <Button size="sm" variant="ghost"
+                                aria-label={`Détails de ${d.nom}`}
+                                onClick={() => setInsightsDoc(d)}>
+                                <Info className="size-4" aria-hidden="true" /> Détails
+                              </Button>
                               {d.is_locked ? (
                                 <Button size="sm" variant="ghost"
                                   aria-label={`Archiver ${d.nom}`}
@@ -512,6 +542,10 @@ export default function GedNavigator() {
       <UploadDialog open={uploadDlg} onOpenChange={setUploadDlg}
         folder={selected} onUploaded={onDocumentUploaded} />
       <DocumentPreviewDialog document={previewDoc} onClose={() => setPreviewDoc(null)} />
+      {/* WIR70 — panneau Détails (timeline + rapport ACL + favori). */}
+      {insightsDoc && (
+        <GedDocumentInsights document={insightsDoc} onClose={() => setInsightsDoc(null)} />
+      )}
     </div>
   )
 }

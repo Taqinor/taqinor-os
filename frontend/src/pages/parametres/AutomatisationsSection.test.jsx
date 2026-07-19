@@ -7,7 +7,10 @@ import userEvent from '@testing-library/user-event'
    automationApi.proposeDraft) qui crée TOUJOURS une règle désactivée ; la
    confirmation reste le bouton "Activer" déjà existant de la liste. */
 
-const { proposeDraft, getRules, getRuns, getApprovals, getTemplates } = vi.hoisted(() => ({
+const {
+  proposeDraft, getRules, getRuns, getApprovals, getTemplates,
+  getWebhooks, createWebhook, rotateWebhook, updateWebhook, deleteWebhook,
+} = vi.hoisted(() => ({
   proposeDraft: vi.fn(() => Promise.resolve({
     data: { id: 99, nom: 'Relance J+2', enabled: false, trigger_type: 'devis_accepted', action_type: 'create_activity' },
   })),
@@ -15,10 +18,19 @@ const { proposeDraft, getRules, getRuns, getApprovals, getTemplates } = vi.hoist
   getRuns: vi.fn(() => Promise.resolve({ data: { results: [] } })),
   getApprovals: vi.fn(() => Promise.resolve({ data: { results: [] } })),
   getTemplates: vi.fn(() => Promise.resolve({ data: [] })),
+  // WIR61 — webhooks entrants (panneau IncomingWebhookPanel).
+  getWebhooks: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+  createWebhook: vi.fn(() => Promise.resolve({ data: {} })),
+  rotateWebhook: vi.fn(() => Promise.resolve({ data: {} })),
+  updateWebhook: vi.fn(() => Promise.resolve({ data: {} })),
+  deleteWebhook: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 
 vi.mock('../../api/automationApi', () => ({
-  default: { proposeDraft, getRules, getRuns, getApprovals, getTemplates },
+  default: {
+    proposeDraft, getRules, getRuns, getApprovals, getTemplates,
+    getWebhooks, createWebhook, rotateWebhook, updateWebhook, deleteWebhook,
+  },
 }))
 
 import AutomatisationsSection from './AutomatisationsSection'
@@ -61,5 +73,38 @@ describe('AutomatisationsSection — XPLT18 générer une règle (IA)', () => {
 
     expect(await screen.findByText('Décrivez la règle souhaitée.')).toBeInTheDocument()
     expect(proposeDraft).not.toHaveBeenCalled()
+  })
+})
+
+describe('AutomatisationsSection — WIR61 (12 déclencheurs + webhooks)', () => {
+  it('sait libeller les 5 déclencheurs jusqu’ici manquants', async () => {
+    // Une règle par nouveau déclencheur : la liste affiche son libellé FR
+    // (triggerLabel) — ce qui prouve que TRIGGERS couvre les 12 clés backend.
+    getRules.mockResolvedValue({
+      data: {
+        results: [
+          { id: 1, nom: 'R1', enabled: true, trigger_type: 'webhook_inbound', action_type: 'send_email', trigger_config: {}, action_config: {} },
+          { id: 2, nom: 'R2', enabled: true, trigger_type: 'record_state_change', action_type: 'send_email', trigger_config: {}, action_config: {} },
+          { id: 3, nom: 'R3', enabled: true, trigger_type: 'date_echeance_champ', action_type: 'send_email', trigger_config: {}, action_config: {} },
+          { id: 4, nom: 'R4', enabled: true, trigger_type: 'projet_status_change', action_type: 'send_email', trigger_config: {}, action_config: {} },
+          { id: 5, nom: 'R5', enabled: true, trigger_type: 'projet_phase_change', action_type: 'send_email', trigger_config: {}, action_config: {} },
+        ],
+      },
+    })
+    render(<AutomatisationsSection />)
+    await screen.findByText('Automatisations')
+    for (const label of [
+      'Webhook entrant', "Changement d'état d'un enregistrement",
+      'Échéance de champ (± N jours)', 'Changement de statut de projet',
+      'Changement de phase de projet',
+    ]) {
+      expect(await screen.findByText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('charge le panneau des webhooks entrants au montage', async () => {
+    render(<AutomatisationsSection />)
+    await screen.findByText('Webhooks entrants')
+    await waitFor(() => expect(getWebhooks).toHaveBeenCalled())
   })
 })
