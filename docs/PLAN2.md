@@ -3824,7 +3824,7 @@ ListView.jsx/stages.js/crmSlice.js pendant sa durée) :**
   `frontend/src/pages/crm/leads/views/ListView.jsx` + tests. DoD : sonde verte ; profiler React :
   frappe dans la recherche → 0 re-rendu de carte ; taper un motif perdu → seule la ligne cible se
   re-rend. (ROUTINE — M) (@model: sonnet) (@lane: LB0)
-- [ ] LB7 — **P1 : plus de refetch intégral après un PATCH mono-lead + fin des catch muets +
+- [x] LB7 — **P1 : plus de refetch intégral après un PATCH mono-lead + fin des catch muets +
   garde d'obsolescence.** Bugs recon2-03 #5/#10/#11. Fix (blueprint I1/I6/I8) : `onInlineSave`
   perd son `.then(refetch)` et `reassign` son `refetch()` (`updateLead.fulfilled` remplace déjà
   le lead au complet — score/stage_since_days/devis inclus) ; le refetch intégral ne reste que
@@ -4233,6 +4233,25 @@ CarteView/ChartsView, CrmInsightsPanel) :**
   (`LeadsPagePlanifierRelance.test.mjs`, `LeadsPageMarkPerdu.test.mjs`,
   `axiosVX55Timeout.test.mjs` — `viewProps`/`refetch`/`confirmPerdu` littéraux changés). Suite
   complète leads + adjacents (148 tests node) re-exécutée, verte.
+- 2026-07-19 LB7 — plus de refetch intégral après un PATCH mono-lead, fin des catch muets, garde
+  d'obsolescence (bugs #5/#10/#11) : `onInlineSave` et `reassign` (LeadsPage.jsx) perdent leur
+  `refetch()`/`.then(() => refetch())` — `updateLead.fulfilled` (crmSlice.js) remplace déjà le
+  lead au COMPLET (score/stage_since_days/devis inclus). `ListView.jsx#onArchive`/`onRestore`
+  perdent également leur `onRefetch?.()` (`archiveLead.fulfilled`/`restoreLead.fulfilled` patchent
+  déjà `is_archived` en place — la ligne se re-rend grisée/« Restaurer » seule) ; `onDelete` GARDE
+  le sien (`restaurerCorbeille` n'a pas de reducer de ré-insertion, seul un refetch ramène le lead
+  restauré dans le store). Le refetch intégral ne reste que pour bulk (`runBulk`), import
+  (`ExcelImport onDone`), merge (`DoublonsPanel onAnyMerge`), Signé confirmé (`SigneDialog`),
+  création (`onSaved`) — tous vérifiés toujours câblés. Catches silencieux tués (I8) :
+  `reassign`, `exportFiltered` (`/* ignore */` → `toastError`), `exportSelection` (bannière
+  `bulkMsg` locale → `toastError`, cohérent avec le reste), `ListView#onArchive`/`onRestore`
+  toastent désormais en échec. `crmSlice.js` gagne `fetchLeadsRequestId` (miroir
+  `leadUpdateSeq`/`isStaleResourceUpdate`) : `fetchLeads.pending` trace le requestId de la
+  DERNIÈRE requête dispatchée, `fetchLeads.fulfilled` ignore un payload dont le requestId ne
+  correspond plus (fin du flicker où un refetch lent remplaçait `state.leads` au complet avec un
+  snapshot périmé). Tests : nouveau `crmSliceFetchLeadsObsolescence.test.mjs` (4 assertions),
+  nouveau `LeadsPageNoOverfetch.test.mjs` (6 assertions) — 158 tests node (leads + adjacents)
+  re-exécutés, verts.
 
 ## Group F — Design foundation & tokens
 

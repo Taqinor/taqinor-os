@@ -173,6 +173,8 @@ export default function LeadsPage() {
 
   // Export Excel de la liste filtrée courante (T9) — respecte les filtres.
   // VX172 — geste ouvert AVANT le premier `await` (voir downloadBlob.js).
+  // LB7 — bug recon2-03 #11 : catch silencieux (`/* ignore */`), l'export
+  // échouait sans AUCUN signal visible. toastError FR désormais (I8).
   const exportFiltered = async () => {
     const ids = filtered.map((l) => l.id)
     if (!ids.length) return
@@ -180,7 +182,9 @@ export default function LeadsPage() {
     try {
       const res = await crmApi.exportLeadsXlsx(ids)
       pending.deliver(new Blob([res.data]), 'leads.xlsx')
-    } catch { /* ignore */ }
+    } catch {
+      toastError('Export indisponible — réessayez.')
+    }
   }
 
   // Changement d'étape optimiste avec retour-arrière.
@@ -290,6 +294,9 @@ export default function LeadsPage() {
     }
   }
 
+  // LB7 — même signal que exportFiltered (toastError FR, I8) : au lieu du
+  // bandeau `bulkMsg` local (une bannière pensée pour le BILAN d'une action
+  // en masse déjà commise, pas pour un échec réseau).
   const exportSelection = async () => {
     if (!visibleSelected.size) return
     const pending = downloadBlobInGesture()
@@ -298,7 +305,7 @@ export default function LeadsPage() {
       const res = await crmApi.exportLeadsXlsx([...visibleSelected])
       pending.deliver(new Blob([res.data]), 'leads.xlsx')
     } catch {
-      setBulkMsg("Export indisponible — réessayez.")
+      toastError('Export indisponible — réessayez.')
     } finally {
       setBulkBusy(false)
     }
@@ -383,12 +390,16 @@ export default function LeadsPage() {
   // journalise ancien → nouveau côté serveur (Historique) et est ouvert à la
   // Commerciale comme à l'admin.
   // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps (bug #4).
+  // LB7 — bugs recon2-03 #5/#11 : plus de refetch intégral après ce PATCH
+  // mono-lead (updateLead.fulfilled remplace déjà le lead au complet dans le
+  // store) ; le catch silencieux toaste désormais (I8).
   const reassign = useCallback(async (lead, ownerId) => {
     try {
       await dispatch(updateLead({ id: lead.id, data: { owner: ownerId } })).unwrap()
-      refetch()
-    } catch { /* erreur silencieuse */ }
-  }, [dispatch, refetch])
+    } catch {
+      toastError('La réassignation a échoué — réessayez.')
+    }
+  }, [dispatch])
 
   // Édition en place d'un champ de la liste (T4) : PATCH d'UN seul champ.
   // perform_update journalise ancien → nouveau dans l'Historique côté serveur.
@@ -402,15 +413,18 @@ export default function LeadsPage() {
   // revient honnêtement à l'étape réelle (rollback), et l'onError de
   // StageMover avale spécifiquement cette sentinelle sans toaster.
   // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps (bug #4).
+  // LB7 — bug recon2-03 #5 : plus de refetch intégral après ce PATCH
+  // mono-lead. `updateLead.fulfilled` (crmSlice.js) remplace déjà le lead au
+  // COMPLET dans le store (score recalculé, stage_since_days, devis…) — le
+  // `.then(() => refetch())` re-déclenchait un GET /leads ENTIER pour un
+  // changement d'UN champ sur UN lead, en pure perte réseau.
   const onInlineSave = useCallback((lead, field, value) => {
     if (field === 'stage' && value === CONVERSION_STAGE) {
       setSigneLead(lead)
       return Promise.reject(SIGNE_INTERCEPT)
     }
-    return dispatch(updateLead({ id: lead.id, data: { [field]: value } }))
-      .unwrap()
-      .then(() => { refetch() })
-  }, [dispatch, refetch])
+    return dispatch(updateLead({ id: lead.id, data: { [field]: value } })).unwrap()
+  }, [dispatch])
 
   // LB5 — « ✗ Perdu » passe ENFIN par le store (blueprint I2, bug #3) :
   // LeadCard.confirmPerdu appelait crmApi.updateLead en DIRECT (contournait

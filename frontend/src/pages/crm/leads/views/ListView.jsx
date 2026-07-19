@@ -581,11 +581,15 @@ export default function ListView({
   // LB6 — useCallback : passées à CHAQUE ligne, une référence fraîche à
   // chaque rendu de ListView (ex. après un simple changement de `busyId`)
   // cassait memo(ListRow) pour TOUTES les lignes (bug #4).
+  // LB7 — bugs recon2-03 #5/#11 : archiveLead.fulfilled/restoreLead.fulfilled
+  // (crmSlice.js) remplacent déjà le lead au complet dans le store (is_archived
+  // inclus — la ligne se re-rend grisée/« Restaurer » SEULE, sans refetch) ;
+  // plus de refetch intégral après ce PATCH mono-lead (I1). Catch externe
+  // silencieux → toastError (I8) ; les catches internes (undo) toastaient déjà.
   const onArchive = useCallback(async (lead) => {
     setBusyId(lead.id)
     try {
       await dispatch(archiveLead(lead.id)).unwrap()
-      onRefetch?.()
       // VX95 — l'archivage est déjà commis côté serveur : « Annuler » relance
       // l'action inverse (restaurerLead), pas un commit différé.
       toastWithUndo({
@@ -593,29 +597,30 @@ export default function ListView({
         onUndo: async () => {
           try {
             await dispatch(restoreLead(lead.id)).unwrap()
-            onRefetch?.()
           } catch { toastError('Restauration impossible.') }
         },
       })
-    } catch { /* erreur silencieuse */ } finally { setBusyId(null) }
-  }, [dispatch, onRefetch])
+    } catch {
+      toastError("L'archivage a échoué — réessayez.")
+    } finally { setBusyId(null) }
+  }, [dispatch])
 
   const onRestore = useCallback(async (lead) => {
     setBusyId(lead.id)
     try {
       await dispatch(restoreLead(lead.id)).unwrap()
-      onRefetch?.()
       toastWithUndo({
         message: 'Lead restauré.',
         onUndo: async () => {
           try {
             await dispatch(archiveLead(lead.id)).unwrap()
-            onRefetch?.()
           } catch { toastError('Archivage impossible.') }
         },
       })
-    } catch { /* erreur silencieuse */ } finally { setBusyId(null) }
-  }, [dispatch, onRefetch])
+    } catch {
+      toastError('La restauration a échoué — réessayez.')
+    } finally { setBusyId(null) }
+  }, [dispatch])
 
   const onDelete = useCallback(async (lead) => {
     // VX96 — la suppression est RÉVERSIBLE (soft-delete + corbeille 30 min) :
