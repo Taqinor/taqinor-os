@@ -44,7 +44,6 @@ export default function LeadsKpiStrip({ leads, filters, setFilters, myUsername }
         (s, l) => s + latestDevisTotal(l) * (STAGE_PROBABILITY[l.stage] ?? 0), 0,
       ),
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leads, filters, myUsername])
 
   const dueTodayActive = filters.relance === 'aujourdhui'

@@ -48,10 +48,13 @@ export default function FilterBar({ filters, setFilters, leads }) {
   const [searchLocal, setSearchLocal] = useState(filters.q)
   // Resynchronise l'input quand `filters.q` change depuis L'EXTÉRIEUR
   // (« Effacer les filtres », vue enregistrée appliquée, URL collée — LB22) :
-  // ces chemins réagissent donc IMMÉDIATEMENT, sans attendre le débounce.
-  useEffect(() => {
+  // motif « adjust state during render » (lint v7 interdit le setState
+  // synchrone en effet) — même pattern que SectionContact/ContextRail.
+  const [prevQ, setPrevQ] = useState(filters.q)
+  if (prevQ !== filters.q) {
+    setPrevQ(filters.q)
     setSearchLocal(filters.q)
-  }, [filters.q])
+  }
   useEffect(() => {
     if (searchLocal === filters.q) return undefined
     const t = setTimeout(() => setFilters((f) => ({ ...f, q: searchLocal })), 250)
