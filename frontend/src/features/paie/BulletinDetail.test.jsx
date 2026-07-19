@@ -97,8 +97,10 @@ describe('BulletinDetail — cycle de vie du bulletin (WIR39)', () => {
 
       await userEvent.click(within(dialog).getByRole('button', { name: 'Rectifier' }))
 
+      // rectifier passe `bulletin.id` (77, numérique) là où marquer-payé passe
+      // le param d'URL (chaîne) — les deux atteignent la même route côté axios.
       await waitFor(() => expect(paieApi.rectifierBulletin).toHaveBeenCalledWith(
-        '77', expect.objectContaining({
+        77, expect.objectContaining({
           periode_cible: 6, type_bulletin: 'rectificatif',
         })))
     })

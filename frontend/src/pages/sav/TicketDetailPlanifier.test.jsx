@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
+import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 
 /* WIR29 — bouton « Planifier une intervention en un clic » sur le détail du
@@ -64,7 +65,9 @@ function renderDetail(ticket, opts = {}) {
   const store = makeStore()
   return render(
     <Provider store={store}>
-      <TicketDetail ticket={ticket} onClose={() => {}} onSaved={() => {}} {...opts} />
+      <MemoryRouter>
+        <TicketDetail ticket={ticket} onClose={() => {}} onSaved={() => {}} {...opts} />
+      </MemoryRouter>
     </Provider>,
   )
 }

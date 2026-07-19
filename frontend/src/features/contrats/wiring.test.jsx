@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -221,7 +222,9 @@ describe('ModelesPage — création directe modèle/clause (WIR9)', () => {
       nom: 'O&M Standard', type_contrat_defaut: 'vente',
     }))
     await waitFor(() => expect(screen.getByText('Modèles (1)')).toBeInTheDocument())
-    expect(screen.getByText('O&M Standard')).toBeInTheDocument()
+    // Le nom peut apparaître dans plus d'un emplacement (ligne de liste +
+    // aperçu) : la présence (≥1) suffit à prouver l'ajout au registre.
+    expect(screen.getAllByText('O&M Standard').length).toBeGreaterThan(0)
   })
 
   it('crée une clause réutilisable depuis la bibliothèque vide', async () => {
@@ -231,7 +234,9 @@ describe('ModelesPage — création directe modèle/clause (WIR9)', () => {
       </MemoryRouter>,
     )
     await waitFor(() => expect(screen.getByText('Modèles (0)')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('tab', { name: /Clauses/ }))
+    // Onglet Radix : activation au focus → userEvent (fireEvent.click ne
+    // bascule pas l'onglet sous jsdom).
+    await userEvent.click(screen.getByRole('tab', { name: /Clauses/ }))
 
     fireEvent.click(await screen.findByRole('button', { name: /Nouvelle clause/ }))
     fireEvent.change(await screen.findByLabelText(/^Titre/), {
@@ -247,6 +252,6 @@ describe('ModelesPage — création directe modèle/clause (WIR9)', () => {
       corps: 'Les parties s’engagent à…',
     }))
     await waitFor(() => expect(screen.getByText('Clauses (1)')).toBeInTheDocument())
-    expect(screen.getByText('Confidentialité générale')).toBeInTheDocument()
+    expect(screen.getAllByText('Confidentialité générale').length).toBeGreaterThan(0)
   })
 })

@@ -74,6 +74,13 @@ class WorkflowStepDefinitionSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id']
         extra_kwargs = {'definition': {'required': False}}
+        # La contrainte d'unicité (definition, ordre) génère sinon un
+        # `UniqueTogetherValidator` qui FORCE `definition` requis au niveau
+        # champ (ignorant `required: False`, erreur `code='required'`) — ce qui
+        # cassait la création IMBRIQUÉE où le parent impose `definition` via
+        # `_sync_steps`. On le retire : l'unicité reste garantie par la
+        # contrainte DB + la renumérotation 1..n de `_sync_steps`.
+        validators = []
 
     def validate_definition(self, value):
         request = self.context.get('request')

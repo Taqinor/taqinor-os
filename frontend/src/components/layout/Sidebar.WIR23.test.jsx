@@ -28,33 +28,35 @@ function renderSidebar({ path = '/dashboard', collapsed = false, ...opts } = {})
   )
 }
 
+// Les libellés passent par `tr(item.k, …)` → i18n : hors I18nProvider (ce test),
+// le nom accessible est la CLÉ, pas le libellé traduit. On vérifie donc la
+// PRÉSENCE des liens par leur `href` (l'intention documentée en tête de fichier),
+// robuste au fait que le catalogue ne soit pas chargé ici.
+function linkHrefs() {
+  return screen.getAllByRole('link').map((l) => l.getAttribute('href'))
+}
+
 describe('Sidebar — WIR23 : trois écrans orphelins désormais cliquables', () => {
-  it('« Actions IA » apparaît dans la section INTELLIGENCE et pointe vers /ia/actions', () => {
+  it('« Actions IA » (section INTELLIGENCE) pointe vers /ia/actions', () => {
     renderSidebar()
-    const link = screen.getByRole('link', { name: /Actions IA/ })
-    expect(link).toHaveAttribute('href', '/ia/actions')
+    expect(linkHrefs()).toContain('/ia/actions')
   })
 
   it('« Action requise » (devis) pointe vers /ventes/devis/action-requise', () => {
-    // Deux menus portent le libellé « Action requise » (SAV ZSAV6 + ce miroir
-    // ventes QX29/QX30, même motif volontaire) : on distingue par href, jamais
-    // par un nom ambigu.
     renderSidebar()
-    const links = screen.getAllByRole('link', { name: /Action requise/ })
-    const hrefs = links.map((l) => l.getAttribute('href'))
-    expect(hrefs).toContain('/ventes/devis/action-requise')
+    expect(linkHrefs()).toContain('/ventes/devis/action-requise')
   })
 
   it('« Listes de prix » pointe vers /ventes/listes-prix', () => {
     renderSidebar()
-    const link = screen.getByRole('link', { name: /Listes de prix/ })
-    expect(link).toHaveAttribute('href', '/ventes/listes-prix')
+    expect(linkHrefs()).toContain('/ventes/listes-prix')
   })
 
-  it('un rôle normal voit toujours Actions IA et Listes de prix (lecture ouverte), pas Action requise (responsable/admin)', () => {
+  it('un rôle normal voit Actions IA et Listes de prix (lecture ouverte), pas Action requise (responsable/admin)', () => {
     renderSidebar({ role: 'normal' })
-    expect(screen.getByRole('link', { name: /Actions IA/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Listes de prix/ })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /Action requise/ })).not.toBeInTheDocument()
+    const hrefs = linkHrefs()
+    expect(hrefs).toContain('/ia/actions')
+    expect(hrefs).toContain('/ventes/listes-prix')
+    expect(hrefs).not.toContain('/ventes/devis/action-requise')
   })
 })
