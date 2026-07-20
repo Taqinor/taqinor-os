@@ -1031,3 +1031,172 @@ def script_beat_retention(asset):
             'fact_key': fact_key,
         })
     return {'beat_count': n, 'mapping': mapping}
+
+
+# ── DATAPUB2 — Bilan d'attribution des leads Odoo (jamais de lead ignoré) ─────
+# Ordre + libellés FR stables des paliers d'attribution (voir odoo_leads.py).
+_ATTRIBUTION_TIERS_FR = (
+    ('telephone', 'Téléphone (exact)'),
+    ('formulaire', 'Formulaire — annonce'),
+    ('formulaire_campagne', 'Formulaire — campagne'),
+    ('nom', 'Nom du lead (estimation)'),
+    ('date', 'Fenêtre date (estimation)'),
+)
+
+
+def attribution_bilan(company, *, date_start=None):
+    """DATAPUB2 — Bilan d'attribution : le fondateur DOIT voir TOUS ses leads
+    Odoo et où chacun en est. Réutilise ``odoo_leads.odoo_leads_by_ad`` (la MÊME
+    attribution que le cockpit — jamais un second calcul) et le met en forme :
+
+        {
+          'configured': bool,
+          'total': int,          # tous les leads Odoo lus
+          'attributed': int, 'unattributed': int,
+          'tiers': [ {key, label, count}, ... ],   # ordre FR stable
+          'unattributed_by_source': [ {source_name, count}, ... desc ],
+          'note': str,
+          'odoo_error': str,     # seulement si la lecture Odoo échoue
+        }
+
+    ``date_start`` (optionnel) borne la lecture (comme le cockpit). Sans config
+    Odoo → ``configured=False`` + compteurs à zéro (no-op propre)."""
+    from .odoo_leads import odoo_leads_by_ad
+
+    res = odoo_leads_by_ad(company, since=date_start)
+    counts = res.get('tiers', {})
+    bilan = {
+        'configured': res.get('configured', False),
+        'total': res.get('total', 0),
+        'attributed': res.get('attributed', 0),
+        'unattributed': res.get('unattributed', 0),
+        'tiers': [
+            {'key': key, 'label': label, 'count': counts.get(key, 0)}
+            for key, label in _ATTRIBUTION_TIERS_FR
+        ],
+        'unattributed_by_source': res.get('unattributed_by_source', []),
+        'note': res.get('note', ''),
+    }
+    if res.get('odoo_error') is not None:
+        bilan['odoo_error'] = res['odoo_error']
+    return bilan
+
+
+# ── DATAPUB3 — Leads Odoo dans le temps (avec attribué + dépense en overlay) ──
+def _spend_by_day(company, *, ad_meta_id=None, date_start=None, date_end=None):
+    """``{date_iso: Decimal}`` de dépense PAR JOUR. Par défaut la dépense SOCIÉTÉ
+    (``InsightSnapshot`` niveau CAMPAGNE — pas de double-comptage, même primitif
+    que ``_company_spend_window``) ; avec ``ad_meta_id``, la dépense de CETTE
+    annonce (niveau ad). Bornée si date_start/date_end fournis."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from .models import AdCampaignMirror, AdMirror, InsightSnapshot
+
+    if ad_meta_id:
+        ad = (AdMirror.objects
+              .filter(company=company, meta_id=ad_meta_id)
+              .only('id').first())
+        if ad is None:
+            return {}
+        ct = ContentType.objects.get_for_model(AdMirror)
+        qs = InsightSnapshot.objects.filter(
+            company=company, content_type=ct, object_id=ad.pk)
+    else:
+        ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        qs = InsightSnapshot.objects.filter(company=company, content_type=ct)
+    if date_start is not None:
+        qs = qs.filter(date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date__lte=date_end)
+    rows = qs.values('date').annotate(spend=Sum('spend'))
+    return {r['date'].isoformat(): (r['spend'] or Decimal('0'))
+            for r in rows if r['date'] is not None}
+
+
+def _iso_week_key(date_iso):
+    """'YYYY-MM-DD' → clé de semaine ISO 'YYYY-Www' (lundi). Une chaîne non-date
+    (ex. 'inconnu') est renvoyée telle quelle."""
+    try:
+        d = datetime.date.fromisoformat(date_iso)
+    except (ValueError, TypeError):
+        return date_iso
+    year, week, _ = d.isocalendar()
+    return f'{year}-W{week:02d}'
+
+
+def leads_timeseries(company, *, granularity='day', ad_meta_id=None,
+                     date_start=None, date_end=None):
+    """DATAPUB3 — Série temporelle des leads Odoo (par JOUR ou SEMAINE) avec
+    l'overlay ATTRIBUÉ et la DÉPENSE. Le nombre de leads vient de
+    ``odoo_leads.leads_by_day`` (TOUS les leads Odoo par leur date Odoo — pas
+    seulement les attribués) ; la dépense de ``_spend_by_day``. ``ad_meta_id``
+    (optionnel) restreint au drill d'UNE annonce (leads directs + dépense ad).
+    Renvoie ::
+
+        {'configured': bool, 'granularity': 'day'|'week',
+         'points': [ {period, leads_total, leads_attributed, spend} ],
+         'odoo_error': str}   # seulement si la lecture Odoo échoue
+
+    Une période avec de la DÉPENSE mais aucun lead (ou l'inverse) reste montrée —
+    jamais masquée."""
+    from .odoo_leads import leads_by_day
+
+    gran = 'week' if granularity == 'week' else 'day'
+    leads_res = leads_by_day(company, ad_meta_id=ad_meta_id)
+    spend_by_day = _spend_by_day(
+        company, ad_meta_id=ad_meta_id,
+        date_start=date_start, date_end=date_end)
+
+    # Union JOUR de (leads, dépense).
+    per_day = {}
+
+    def _slot(day_iso):
+        return per_day.setdefault(
+            day_iso, {'leads_total': 0, 'leads_attributed': 0,
+                      'spend': Decimal('0')})
+
+    for row in leads_res['days']:
+        slot = _slot(row['date'])
+        slot['leads_total'] += row['total']
+        slot['leads_attributed'] += row['attributed']
+    for day_iso, spend in spend_by_day.items():
+        _slot(day_iso)['spend'] += spend
+
+    def _in_bounds(day_iso):
+        if day_iso == 'inconnu':
+            # Un lead sans date n'entre dans aucune période bornée.
+            return date_start is None and date_end is None
+        try:
+            d = datetime.date.fromisoformat(day_iso)
+        except (ValueError, TypeError):
+            return True
+        if date_start is not None and d < date_start:
+            return False
+        if date_end is not None and d > date_end:
+            return False
+        return True
+
+    # Rollup JOUR → période (jour ou semaine ISO).
+    buckets = {}
+    for day_iso, vals in per_day.items():
+        if not _in_bounds(day_iso):
+            continue
+        key = _iso_week_key(day_iso) if gran == 'week' else day_iso
+        bucket = buckets.setdefault(
+            key, {'leads_total': 0, 'leads_attributed': 0,
+                  'spend': Decimal('0')})
+        bucket['leads_total'] += vals['leads_total']
+        bucket['leads_attributed'] += vals['leads_attributed']
+        bucket['spend'] += vals['spend']
+
+    points = [
+        {'period': key, 'leads_total': bucket['leads_total'],
+         'leads_attributed': bucket['leads_attributed'],
+         'spend': _q2(bucket['spend'])}
+        for key, bucket in sorted(buckets.items())]
+    out = {'configured': leads_res['configured'], 'granularity': gran,
+           'points': points}
+    if leads_res.get('odoo_error') is not None:
+        out['odoo_error'] = leads_res['odoo_error']
+    return out

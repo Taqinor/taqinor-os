@@ -215,6 +215,14 @@ const adsengineApi = {
     // budgétaire, fatigue, tracking, fenêtres de données). Jamais auto-chargé
     // (bouton « Lancer l'audit »).
     audit: () => api.get('/adsengine/reporting/audit/'),
+    // DATAPUB2 — bilan d'attribution des leads Odoo (total, par palier, non
+    // attribués par source). `params` : { debut? }.
+    attributionBilan: (params) =>
+      api.get('/adsengine/reporting/attribution-bilan/', { params }),
+    // DATAPUB3 — leads Odoo dans le temps (attribué + dépense en overlay).
+    // `params` : { granularite: 'jour'|'semaine', ad?, debut?, fin? }.
+    leadsTimeseries: (params) =>
+      api.get('/adsengine/reporting/leads-timeseries/', { params }),
     // PUB12/PUB47 — export CSV SERVEUR (ReportExportView) : source de vérité
     // unique, inclut la table de réconciliation. Blob authentifié (jamais un
     // CSV fabriqué côté client, qui divergerait du serveur). `params` :

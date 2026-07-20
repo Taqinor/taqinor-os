@@ -66,6 +66,44 @@ function periodParams(days) {
   return { debut: iso(debut), fin: iso(fin) }
 }
 
+// DATAPUB3 — graphe SVG fait-main (aucune lib de charts, idiome du module) :
+// barres = leads Odoo (clair = total, foncé = attribués), courbe = dépense.
+function LeadsTimeseriesChart({ points }) {
+  if (!points || points.length === 0) return null
+  const maxLeads = Math.max(...points.map(p => p.leads_total || 0), 1)
+  const maxSpend = Math.max(...points.map(p => Number(p.spend) || 0), 1)
+  const barW = 26
+  const gap = 10
+  const h = 160
+  const w = points.length * (barW + gap) + gap
+  const xAt = (i) => gap + i * (barW + gap)
+  const spendLine = points.map((p, i) => {
+    const cx = xAt(i) + barW / 2
+    const cy = h - ((Number(p.spend) || 0) / maxSpend) * h
+    return `${cx},${Number.isFinite(cy) ? cy : h}`
+  }).join(' ')
+  return (
+    <svg data-testid="ae-leads-chart" role="img"
+      aria-label="Leads Odoo dans le temps (barres) et dépense (courbe)"
+      viewBox={`0 0 ${w} ${h}`} width="100%" height={h}
+      preserveAspectRatio="none" style={{ display: 'block' }}>
+      {points.map((p, i) => {
+        const totalH = ((p.leads_total || 0) / maxLeads) * h
+        const attrH = ((p.leads_attributed || 0) / maxLeads) * h
+        return (
+          <g key={p.period}>
+            <rect x={xAt(i)} y={h - totalH} width={barW} height={totalH}
+              fill="#bfdbfe" data-testid="ae-leads-bar-total" />
+            <rect x={xAt(i)} y={h - attrH} width={barW} height={attrH}
+              fill="#2563eb" data-testid="ae-leads-bar-attributed" />
+          </g>
+        )
+      })}
+      <polyline points={spendLine} fill="none" stroke="#f59e0b" strokeWidth="2" />
+    </svg>
+  )
+}
+
 export default function ReportsScreen() {
   const [tab, setTab] = useState('apercu')
   const [variants, setVariants] = useState([])
@@ -93,6 +131,33 @@ export default function ReportsScreen() {
       .catch(() => setAuditError(true))
       .finally(() => setAuditLoading(false))
   }, [])
+
+  // DATAPUB2 — bilan d'attribution des leads Odoo (chargé à l'ouverture de
+  // l'onglet, jamais au montage : évite un appel Odoo inutile sur les autres
+  // onglets).
+  const [bilan, setBilan] = useState(null)
+  const [bilanLoading, setBilanLoading] = useState(false)
+
+  const loadBilan = useCallback(() => {
+    setBilanLoading(true)
+    adsengineApi.reports.attributionBilan()
+      .then(r => setBilan(r.data))
+      .catch(() => setBilan(null))
+      .finally(() => setBilanLoading(false))
+  }, [])
+
+  // DATAPUB3 — série temporelle des leads Odoo (jour/semaine).
+  const [leadsSeries, setLeadsSeries] = useState(null)
+  const [leadsGran, setLeadsGran] = useState('jour')
+  const [leadsLoading, setLeadsLoading] = useState(false)
+
+  const loadLeads = useCallback(() => {
+    setLeadsLoading(true)
+    adsengineApi.reports.leadsTimeseries({ granularite: leadsGran })
+      .then(r => setLeadsSeries(r.data))
+      .catch(() => setLeadsSeries(null))
+      .finally(() => setLeadsLoading(false))
+  }, [leadsGran])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -124,6 +189,13 @@ export default function ReportsScreen() {
   useEffect(() => { load() }, [load])
   // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de dimension/période
   useEffect(() => { loadCreative() }, [loadCreative])
+  // DATAPUB2 — charge le bilan la première fois que l'onglet est ouvert.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'onglet
+  useEffect(() => { if (tab === 'attribution' && bilan === null) loadBilan() }, [tab, bilan, loadBilan])
+  // DATAPUB3 — (re)charge la série leads à l'ouverture de l'onglet et au
+  // changement de granularité.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'onglet
+  useEffect(() => { if (tab === 'leads') loadLeads() }, [tab, loadLeads])
 
   // Export CSV : SERVI PAR LE BACKEND (PUB12). On télécharge le blob authentifié
   // du ReportExportView (source de vérité unique, table de réconciliation
@@ -191,6 +263,14 @@ export default function ReportsScreen() {
           data-testid="ae-reports-tab-creatifs"
           className={`btn ${tab === 'creatifs' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setTab('creatifs')}>Créatifs</button>
+        <button type="button" role="tab" aria-selected={tab === 'attribution'}
+          data-testid="ae-reports-tab-attribution"
+          className={`btn ${tab === 'attribution' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setTab('attribution')}>Attribution</button>
+        <button type="button" role="tab" aria-selected={tab === 'leads'}
+          data-testid="ae-reports-tab-leads"
+          className={`btn ${tab === 'leads' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setTab('leads')}>Leads dans le temps</button>
         <button type="button" role="tab" aria-selected={tab === 'audit'}
           data-testid="ae-reports-tab-audit"
           className={`btn ${tab === 'audit' ? 'btn-primary' : 'btn-secondary'}`}
@@ -385,6 +465,147 @@ export default function ReportsScreen() {
                     </table>
                   )}
               </section>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'attribution' && (
+        <div style={{ display: 'grid', gap: '1.25rem' }} data-testid="ae-attribution">
+          {bilanLoading && <p className="page-loading">Chargement…</p>}
+          {!bilanLoading && !bilan && (
+            <p data-testid="ae-attribution-empty" style={{ color: '#64748b' }}>
+              Bilan d&apos;attribution indisponible.
+            </p>
+          )}
+          {!bilanLoading && bilan && !bilan.configured && (
+            <p data-testid="ae-attribution-unconfigured" style={{ color: '#64748b' }}>
+              Odoo n&apos;est pas connecté : aucun lead à attribuer pour l&apos;instant.
+            </p>
+          )}
+          {!bilanLoading && bilan && bilan.odoo_error && (
+            <p data-testid="ae-attribution-error" style={{ color: '#b91c1c' }}>
+              Lecture Odoo en échec : {bilan.odoo_error}
+            </p>
+          )}
+          {!bilanLoading && bilan && (
+            <>
+              {/* Bandeau : tous les leads Odoo, jamais ignorés en silence. */}
+              <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                <div data-testid="ae-attribution-total">
+                  <div style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+                    {formatNumber(bilan.total)}
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Leads Odoo</div>
+                </div>
+                <div data-testid="ae-attribution-attributed">
+                  <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#166534' }}>
+                    {formatNumber(bilan.attributed)}
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Attribués</div>
+                </div>
+                <div data-testid="ae-attribution-unattributed">
+                  <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#92400e' }}>
+                    {formatNumber(bilan.unattributed)}
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: '0.85rem' }}>Non attribués</div>
+                </div>
+              </div>
+
+              {/* Répartition par palier. */}
+              <section data-testid="ae-attribution-tiers">
+                <h3 style={{ margin: '0 0 0.6rem' }}>Attribution par palier</h3>
+                <table className="data-table" data-testid="ae-attribution-tiers-table">
+                  <thead>
+                    <tr><th>Palier</th><th>Leads</th></tr>
+                  </thead>
+                  <tbody>
+                    {bilan.tiers.map(t => (
+                      <tr key={t.key} data-testid="ae-attribution-tier-row">
+                        <td data-label="Palier">{t.label}</td>
+                        <td data-label="Leads">{formatNumber(t.count)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+
+              {/* Non attribués PAR nom de source (le fondateur voit où ça coince). */}
+              <section data-testid="ae-attribution-unattributed-sources">
+                <h3 style={{ margin: '0 0 0.6rem' }}>
+                  Non attribués par source
+                </h3>
+                {bilan.unattributed_by_source.length === 0
+                  ? <p data-testid="ae-attribution-sources-empty" style={{ color: '#64748b' }}>
+                      Aucun lead non attribué.</p>
+                  : (
+                    <table className="data-table" data-testid="ae-attribution-sources-table">
+                      <thead>
+                        <tr><th>Nom de source</th><th>Leads</th></tr>
+                      </thead>
+                      <tbody>
+                        {bilan.unattributed_by_source.map((s, i) => (
+                          <tr key={i} data-testid="ae-attribution-source-row">
+                            <td data-label="Nom de source">{s.source_name || '(vide)'}</td>
+                            <td data-label="Leads">{formatNumber(s.count)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+              </section>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'leads' && (
+        <div style={{ display: 'grid', gap: '1rem' }} data-testid="ae-leads">
+          <div role="group" aria-label="Granularité" style={{ display: 'flex', gap: '0.4rem' }}>
+            {[{ key: 'jour', label: 'Par jour' }, { key: 'semaine', label: 'Par semaine' }].map(g => (
+              <button key={g.key} type="button"
+                data-testid={`ae-leads-gran-${g.key}`}
+                aria-pressed={leadsGran === g.key}
+                className={`btn ${leadsGran === g.key ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setLeadsGran(g.key)}>{g.label}</button>
+            ))}
+          </div>
+
+          {leadsLoading && <p className="page-loading">Chargement…</p>}
+          {!leadsLoading && leadsSeries && !leadsSeries.configured && (
+            <p data-testid="ae-leads-unconfigured" style={{ color: '#64748b' }}>
+              Odoo n&apos;est pas connecté : aucun lead à afficher.
+            </p>
+          )}
+          {!leadsLoading && leadsSeries && (leadsSeries.points || []).length === 0
+            && leadsSeries.configured && (
+            <p data-testid="ae-leads-empty" style={{ color: '#64748b' }}>
+              Aucun lead sur la période.
+            </p>
+          )}
+          {!leadsLoading && leadsSeries && (leadsSeries.points || []).length > 0 && (
+            <>
+              <div style={{ display: 'flex', gap: '1.25rem', fontSize: '0.8rem', color: '#475569' }}>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#bfdbfe', marginRight: 4 }} />Leads (total)</span>
+                <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#2563eb', marginRight: 4 }} />Attribués</span>
+                <span><span style={{ display: 'inline-block', width: 10, height: 2, background: '#f59e0b', marginRight: 4, verticalAlign: 'middle' }} />Dépense</span>
+              </div>
+              <LeadsTimeseriesChart points={leadsSeries.points} />
+              <table className="data-table" data-testid="ae-leads-table">
+                <thead>
+                  <tr><th>Période</th><th>Leads</th><th>Attribués</th><th>Dépense</th></tr>
+                </thead>
+                <tbody>
+                  {leadsSeries.points.map(p => (
+                    <tr key={p.period} data-testid="ae-leads-row">
+                      <td data-label="Période">{p.period}</td>
+                      <td data-label="Leads">{formatNumber(p.leads_total)}</td>
+                      <td data-label="Attribués">{formatNumber(p.leads_attributed)}</td>
+                      <td data-label="Dépense">{formatMAD(p.spend)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </>
           )}
         </div>

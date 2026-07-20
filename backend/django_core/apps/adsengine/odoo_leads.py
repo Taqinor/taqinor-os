@@ -306,6 +306,86 @@ def _campaign_row(campaign_id, bucket, spend_by_ad, campaign_names):
     }
 
 
+def _resolve_attributions(company, since=None, client=None):
+    """DATAPUB1/3 — Cœur d'attribution PARTAGÉ : charge les leads Odoo et résout
+    le palier de CHACUN (passe empreinte de formulaire + premier-gagnant). Résolu
+    UNE fois, consommé par ``odoo_leads_by_ad`` (agrégation annonce/campagne) ET
+    ``leads_by_day`` (agrégation temporelle) — jamais deux implémentations.
+
+    Renvoie ``(configured, odoo_error, results)`` où ``results`` est une liste
+    alignée sur les leads : ``{'lead': dict, 'tier': str|None, 'ad_id': str|None,
+    'campaign_id': str|None, 'camp_ads': list|None}``. ``tier`` ∈ exact /
+    formulaire / formulaire_campagne / nom / date / None (non attribué). Ne lève
+    JAMAIS (dégradation propre)."""
+    from .odoo_metrics import _phone_to_ad
+
+    odoo_error = None
+    try:
+        leads = odoo_all_leads(client=client)
+    except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
+        leads = []
+        odoo_error = f"{type(exc).__name__}: {exc}"[:300]
+
+    phone_to_ad = _phone_to_ad(company)
+    name_match = _name_matcher(company)
+    date_to_ads = _active_ad_dates(company, since)
+    ad_to_campaign = _ad_to_campaign(company)
+
+    # ── Passe 1 — EMPREINTE de chaque formulaire : l'ensemble des annonces que
+    # ses leads DÉJÀ placés (téléphone exact ou nom) touchent. Les leads non
+    # plaçables du même formulaire en hériteront (palier formulaire).
+    form_footprint = {}   # form_key → set(ad_id)
+    scratch = []          # (lead, exact_ad, name_ad, form_key)
+    for lead in leads:
+        phone = lead.get('phone_norm') or ''
+        exact_ad = phone_to_ad.get(phone) if phone else None
+        parsed = parse_odoo_lead_name(lead.get('source_name'))
+        name_ad = name_match(parsed) if parsed is not None else None
+        fkey = _form_key(lead.get('source_name'))
+        if fkey:
+            footprint = form_footprint.setdefault(fkey, set())
+            if exact_ad:
+                footprint.add(exact_ad)
+            if name_ad:
+                footprint.add(name_ad)
+        scratch.append((lead, exact_ad, name_ad, fkey))
+
+    # ── Passe 2 — attribution premier-gagnant.
+    results = []
+    for lead, exact_ad, name_ad, fkey in scratch:
+        tier = ad_id = campaign_id = camp_ads = None
+        if exact_ad:
+            tier, ad_id = 'exact', exact_ad
+        elif fkey and form_footprint.get(fkey):
+            ads = form_footprint[fkey]
+            if len(ads) == 1:
+                tier, ad_id = 'formulaire', next(iter(ads))
+            else:
+                dominant = _dominant_campaign(ads, ad_to_campaign)
+                if dominant is not None:
+                    tier = 'formulaire_campagne'
+                    campaign_id, camp_ads = dominant
+        # Repli si le palier formulaire n'a pas abouti (campagne non résolvable).
+        if tier is None and name_ad:
+            tier, ad_id = 'nom', name_ad
+        if tier is None:
+            day = _lead_day(lead.get('date'))
+            ads_on_day = date_to_ads.get(day) if day is not None else None
+            if ads_on_day and len(ads_on_day) == 1:
+                tier, ad_id = 'date', next(iter(ads_on_day))
+        results.append({
+            'lead': lead, 'tier': tier, 'ad_id': ad_id,
+            'campaign_id': campaign_id, 'camp_ads': camp_ads})
+    return odoo_is_configured(), odoo_error, results
+
+
+# Mappe le palier résolu vers le compteur du bilan et le seau par annonce.
+_TIER_TO_TALLY = {'exact': 'telephone', 'formulaire': 'formulaire',
+                  'nom': 'nom', 'date': 'date'}
+_TIER_TO_BUCKET = {'exact': 'exact', 'formulaire': 'formulaire',
+                   'nom': 'estimes', 'date': 'estimes'}
+
+
 def odoo_leads_by_ad(company, since=None, client=None):
     """DATAPUB1/FIXPUB6 — Leads Odoo attribués (annonce OU campagne) + CPL Odoo.
 
@@ -328,40 +408,11 @@ def odoo_leads_by_ad(company, since=None, client=None):
     → fenêtre date. ``cpl_odoo`` = dépense (InsightSnapshot ADSDEEP2, bornée
     ``since``) ÷ leads. Ne lève JAMAIS (dégradation propre)."""
     from .models import AdMirror
-    from .odoo_metrics import _ad_spend_by_meta, _phone_to_ad
+    from .odoo_metrics import _ad_spend_by_meta
 
-    odoo_error = None
-    try:
-        leads = odoo_all_leads(client=client)
-    except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
-        leads = []
-        odoo_error = f"{type(exc).__name__}: {exc}"[:300]
+    configured, odoo_error, results = _resolve_attributions(
+        company, since=since, client=client)
 
-    phone_to_ad = _phone_to_ad(company)
-    name_match = _name_matcher(company)
-    date_to_ads = _active_ad_dates(company, since)
-    ad_to_campaign = _ad_to_campaign(company)
-
-    # ── Passe 1 — EMPREINTE de chaque formulaire : l'ensemble des annonces que
-    # ses leads DÉJÀ placés (téléphone exact ou nom) touchent. Les leads non
-    # plaçables du même formulaire en hériteront (palier formulaire).
-    form_footprint = {}   # form_key → set(ad_id)
-    per_lead = []         # (lead, exact_ad, name_ad, form_key)
-    for lead in leads:
-        phone = lead.get('phone_norm') or ''
-        exact_ad = phone_to_ad.get(phone) if phone else None
-        parsed = parse_odoo_lead_name(lead.get('source_name'))
-        name_ad = name_match(parsed) if parsed is not None else None
-        fkey = _form_key(lead.get('source_name'))
-        if fkey:
-            footprint = form_footprint.setdefault(fkey, set())
-            if exact_ad:
-                footprint.add(exact_ad)
-            if name_ad:
-                footprint.add(name_ad)
-        per_lead.append((lead, exact_ad, name_ad, fkey))
-
-    # ── Passe 2 — attribution premier-gagnant.
     ad_buckets = {}       # ad_id → {exact, formulaire, estimes, lead_ids}
     camp_buckets = {}     # campaign_id → {leads, ad_ids:set, lead_ids}
     tiers = {'telephone': 0, 'formulaire': 0, 'formulaire_campagne': 0,
@@ -369,54 +420,27 @@ def odoo_leads_by_ad(company, since=None, client=None):
     unattributed_sources = Counter()
     attributed = unattributed = 0
 
-    for lead, exact_ad, name_ad, fkey in per_lead:
+    for res in results:
+        lead = res['lead']
         lead_id = lead.get('lead_id')
-        # 1 — téléphone EXACT.
-        if exact_ad:
-            _add_ad(ad_buckets, exact_ad, 'exact', lead_id)
-            tiers['telephone'] += 1
+        tier = res['tier']
+        if tier in _TIER_TO_BUCKET:
+            _add_ad(ad_buckets, res['ad_id'], _TIER_TO_BUCKET[tier], lead_id)
+            tiers[_TIER_TO_TALLY[tier]] += 1
             attributed += 1
-            continue
-        # 2 — FORMULAIRE (empreinte des leads placés du même formulaire).
-        placed = False
-        if fkey and form_footprint.get(fkey):
-            ads = form_footprint[fkey]
-            if len(ads) == 1:
-                _add_ad(ad_buckets, next(iter(ads)), 'formulaire', lead_id)
-                tiers['formulaire'] += 1
-                attributed += 1
-                placed = True
-            else:
-                dominant = _dominant_campaign(ads, ad_to_campaign)
-                if dominant is not None:
-                    camp_id, camp_ads = dominant
-                    cb = camp_buckets.setdefault(
-                        camp_id, {'leads': 0, 'ad_ids': set(), 'lead_ids': []})
-                    cb['leads'] += 1
-                    cb['ad_ids'].update(camp_ads)
-                    if lead_id is not None:
-                        cb['lead_ids'].append(lead_id)
-                    tiers['formulaire_campagne'] += 1
-                    attributed += 1
-                    placed = True
-        if placed:
-            continue
-        # 3 — NOM (estimation individuelle, ADSDEEP21).
-        if name_ad:
-            _add_ad(ad_buckets, name_ad, 'estimes', lead_id)
-            tiers['nom'] += 1
+        elif tier == 'formulaire_campagne':
+            cb = camp_buckets.setdefault(
+                res['campaign_id'],
+                {'leads': 0, 'ad_ids': set(), 'lead_ids': []})
+            cb['leads'] += 1
+            cb['ad_ids'].update(res['camp_ads'] or [])
+            if lead_id is not None:
+                cb['lead_ids'].append(lead_id)
+            tiers['formulaire_campagne'] += 1
             attributed += 1
-            continue
-        # 4 — fenêtre DATE : une SEULE annonce active ce jour-là.
-        day = _lead_day(lead.get('date'))
-        ads_on_day = date_to_ads.get(day) if day is not None else None
-        if ads_on_day and len(ads_on_day) == 1:
-            _add_ad(ad_buckets, next(iter(ads_on_day)), 'estimes', lead_id)
-            tiers['date'] += 1
-            attributed += 1
-            continue
-        unattributed += 1
-        unattributed_sources[(lead.get('source_name') or '').strip()] += 1
+        else:
+            unattributed += 1
+            unattributed_sources[(lead.get('source_name') or '').strip()] += 1
 
     # ── Dépense ad-level (une requête, bornée since) pour annonces + campagnes.
     all_ad_ids = set(ad_buckets)
@@ -437,7 +461,7 @@ def odoo_leads_by_ad(company, since=None, client=None):
                  for cid in sorted(camp_buckets)]
 
     result = {
-        'configured': odoo_is_configured(),
+        'configured': configured,
         'ads': ads,
         'campaigns': campaigns,
         'attributed': attributed,
@@ -452,3 +476,37 @@ def odoo_leads_by_ad(company, since=None, client=None):
     if odoo_error is not None:
         result['odoo_error'] = odoo_error
     return result
+
+
+def leads_by_day(company, since=None, client=None, ad_meta_id=None):
+    """DATAPUB3 — Leads Odoo agrégés PAR JOUR (date Odoo), avec le sous-total
+    ATTRIBUÉ (tout palier). Réutilise ``_resolve_attributions`` — la MÊME
+    attribution que le cockpit/bilan, jamais un second calcul. Renvoie ::
+
+        {'configured': bool,
+         'days': [ {date: 'YYYY-MM-DD'|'inconnu', total: int, attributed: int} ],
+         'odoo_error': str}   # seulement si la lecture Odoo échoue
+
+    ``ad_meta_id`` (optionnel, drill de la fiche ad) : ne compte QUE les leads
+    attribués DIRECTEMENT à cette annonce (exact/formulaire/nom/date ; les leads
+    formulaire_campagne, rattachés à une campagne et non à une annonce unique,
+    sont exclus — honnête). Jours triés croissants ; un lead sans date lisible
+    tombe dans le seau ``'inconnu'`` (jamais ignoré)."""
+    configured, odoo_error, results = _resolve_attributions(
+        company, since=since, client=client)
+    by_day = {}
+    for res in results:
+        if ad_meta_id is not None and res['ad_id'] != ad_meta_id:
+            continue
+        day = _lead_day(res['lead'].get('date')) or 'inconnu'
+        bucket = by_day.setdefault(day, {'total': 0, 'attributed': 0})
+        bucket['total'] += 1
+        if res['tier'] is not None:
+            bucket['attributed'] += 1
+    days = [{'date': day, 'total': bucket['total'],
+             'attributed': bucket['attributed']}
+            for day, bucket in sorted(by_day.items())]
+    out = {'configured': configured, 'days': days}
+    if odoo_error is not None:
+        out['odoo_error'] = odoo_error
+    return out
