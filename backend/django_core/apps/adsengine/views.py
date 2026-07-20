@@ -1692,6 +1692,65 @@ class CampaignFunnelView(APIView):
         return Response({'etapes': etapes, 'campaigns': funnel})
 
 
+class AttributionBilanView(APIView):
+    """DATAPUB2 — Bilan d'attribution des leads Odoo : total lu, répartition par
+    palier (téléphone/formulaire/nom/date) et NON-attribués listés par nom de
+    source. Company-scopé, gaté ``adsengine_view``. ``?debut=`` (date ISO) borne
+    la lecture. ``GET /api/django/adsengine/reporting/attribution-bilan/``."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import attribution_bilan
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        return Response(attribution_bilan(company, date_start=debut))
+
+
+class LeadsTimeseriesView(APIView):
+    """DATAPUB3 — Leads Odoo dans le temps (par jour/semaine) avec l'attribué et
+    la dépense en overlay. ``?granularite=jour|semaine&ad=<meta_id>&debut=&fin=``.
+    Company-scopé, gaté ``adsengine_view``.
+    ``GET /api/django/adsengine/reporting/leads-timeseries/``."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import leads_timeseries
+        gran = ('week'
+                if request.query_params.get('granularite') == 'semaine'
+                else 'day')
+        ad = request.query_params.get('ad') or None
+        debut = _adseng_parse_date(request.query_params.get('debut'))
+        fin = _adseng_parse_date(request.query_params.get('fin'))
+        return Response(leads_timeseries(
+            company, granularity=gran, ad_meta_id=ad,
+            date_start=debut, date_end=fin))
+
+
+class AudienceView(APIView):
+    """DATAPUB4 — Audience (démographie) : reach(—)/impressions/clics/résultats/
+    dépense agrégés par GENRE et par ÂGE (ventilations age_gender) + couverture
+    par dimension (âge×genre/placement/région/horaire). ``?ad=<meta_id>`` draille
+    sur une annonce. Company-scopé, gaté ``adsengine_view``.
+    ``GET /api/django/adsengine/reporting/audience/``."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import audience_breakdown
+        ad = request.query_params.get('ad') or None
+        return Response(audience_breakdown(company, ad_meta_id=ad))
+
+
 class VariantFunnelView(APIView):
     """PUB36 — Entonnoir de décrochage par étape, PAR VARIANTE (ad) — à quelle
     étape STAGES.py chaque annonce perd ses leads (COLD/perdu à côté)."""

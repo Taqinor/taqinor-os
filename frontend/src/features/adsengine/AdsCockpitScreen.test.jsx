@@ -209,9 +209,9 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
     expect(links[0]).toHaveAttribute('href', expect.stringMatching(/^\/publicite\/ad\/ad-\d$/))
   })
 
-  // ── FIXPUB9 — devise du compte Meta + colonnes Odoo ──────────────────────
+  // ── FIXPUB9 / DATAPUB6 — devise du compte Meta + colonnes Odoo ───────────
   describe('FIXPUB9 — devise + colonnes Odoo', () => {
-    it('étiquette les montants Meta dans la devise du compte (ex. USD), CPL (Odoo) reste en MAD', async () => {
+    it('étiquette les montants Meta dans la devise du compte (ex. USD), CPL (Odoo) suit la devise du compte', async () => {
       mocks.connGet.mockResolvedValue({ data: { currency: 'USD' } })
       mocks.adsCockpit.mockResolvedValue({ data: [
         { ...ROWS[0], leads_odoo: 4, cpl_odoo: '225.00' },
@@ -221,7 +221,9 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
       const row = screen.getByTestId('ae-cockpit-row')
       expect(row).toHaveTextContent('900 USD') // dépense (Meta)
       expect(row).toHaveTextContent('180 USD') // CPL (Meta)
-      expect(row).toHaveTextContent('225 MAD') // CPL (Odoo) — reste en MAD
+      // DATAPUB6 — CPL (Odoo) = dépense (devise du COMPTE, USD) / leads Odoo :
+      // étiqueté avec la devise du compte, jamais forcé en MAD.
+      expect(row).toHaveTextContent('225 USD')
       expect(row).toHaveTextContent('4') // Leads (Odoo)
     })
 
@@ -411,6 +413,44 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
       const rows = screen.getAllByTestId('ae-cockpit-row')
       // Tri restauré (croissant par leads) : Explainer(0) en tête.
       expect(within(rows[0]).getByText('Explainer')).toBeInTheDocument()
+    })
+  })
+
+  // ── DATAPUB5 — Sélecteur de colonnes (parité Ads Manager) ────────────────
+  describe('DATAPUB5 — sélecteur de colonnes', () => {
+    it('ajoute une colonne masquée par défaut (Impressions) et la persiste', async () => {
+      mocks.adsCockpit.mockResolvedValue({ data: [
+        { ...ROWS[0], impressions: 12000, reach: 8000, ctr: 0.021, cpm_mad: '75.00' },
+      ] })
+      const { unmount } = renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      // Masquée par défaut (pas d'en-tête triable).
+      expect(screen.queryByTestId('ae-cockpit-sort-impressions')).toBeNull()
+      // Ouvre le sélecteur et coche « Impressions ».
+      fireEvent.click(screen.getByTestId('ae-cockpit-columns-toggle'))
+      fireEvent.click(within(screen.getByTestId('ae-cockpit-column-impressions')).getByRole('checkbox'))
+      // La colonne apparaît (en-tête + valeur groupée).
+      expect(screen.getByTestId('ae-cockpit-sort-impressions')).toBeInTheDocument()
+      expect(screen.getByTestId('ae-cockpit-row')).toHaveTextContent('12 000')
+      // Persistée.
+      await waitFor(() => expect(
+        JSON.parse(window.localStorage.getItem('ae-cockpit-columns'))).toContain('impressions'))
+      unmount()
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalledTimes(2))
+      expect(screen.getByTestId('ae-cockpit-sort-impressions')).toBeInTheDocument()
+    })
+
+    it('CTR/CPC/CPM manquants -> « — », jamais fabriqués', async () => {
+      mocks.adsCockpit.mockResolvedValue({ data: [
+        { ...ROWS[2], impressions: null, ctr: null, cpc_mad: null, cpm_mad: null },
+      ] })
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-cockpit-columns-toggle'))
+      fireEvent.click(within(screen.getByTestId('ae-cockpit-column-ctr')).getByRole('checkbox'))
+      // La cellule CTR d'une valeur nulle est « — » (formatPercent(null)).
+      expect(screen.getByTestId('ae-cockpit-row')).toHaveTextContent('—')
     })
   })
 })
