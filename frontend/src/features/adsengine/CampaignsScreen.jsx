@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { RefreshCw, ChevronRight, FileText } from 'lucide-react'
+import { RefreshCw, History, ChevronRight, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { formatMoney, formatNumber, rankCreatives } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
@@ -61,6 +61,9 @@ export default function CampaignsScreen() {
   const [realLeads, setRealLeads] = useState({})
   const [syncing, setSyncing] = useState(false)
   const [msg, setMsg] = useState('')
+  // FIXPUB3 — récupération complète de l'historique (distinct de sync-now,
+  // qui ne couvre que la fenêtre habituelle).
+  const [backfilling, setBackfilling] = useState(false)
   // Devise du compte Meta (les budgets/dépenses sont dans CETTE devise, souvent
   // USD — jamais forcés en MAD). 'MAD' en repli tant qu'elle n'est pas connue.
   const [currency, setCurrency] = useState('MAD')
@@ -157,6 +160,20 @@ export default function CampaignsScreen() {
     }
   }
 
+  // FIXPUB3 — « Récupérer tout l'historique » : au-delà de la fenêtre
+  // habituelle de sync-now (route posée par la lane backend parallèle).
+  const fullBackfill = async () => {
+    setBackfilling(true); setMsg('')
+    try {
+      await adsengineApi.campaigns.fullBackfill()
+      setMsg("Récupération de tout l'historique lancée…")
+    } catch {
+      setMsg("Récupération de tout l'historique impossible.")
+    } finally {
+      setBackfilling(false)
+    }
+  }
+
   const openAdset = openAdsetId != null
     ? (hierarchy?.adsets || []).find(a => a.id === openAdsetId)
     : null
@@ -165,12 +182,22 @@ export default function CampaignsScreen() {
     <div className="page ae-campaigns">
       <div className="page-header">
         <h2>Campagnes</h2>
-        <button type="button" className="btn btn-primary" data-testid="ae-camp-sync"
-          disabled={syncing} onClick={syncNow}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-          <RefreshCw size={15} aria-hidden="true" />
-          {syncing ? 'Synchronisation…' : 'Synchroniser'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button type="button" className="btn btn-primary" data-testid="ae-camp-sync"
+            disabled={syncing} onClick={syncNow}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+            <RefreshCw size={15} aria-hidden="true" />
+            {syncing ? 'Synchronisation…' : 'Synchroniser'}
+          </button>
+          {/* FIXPUB3 — récupère TOUT l'historique Meta (au-delà de la
+              fenêtre habituelle de sync-now). */}
+          <button type="button" className="btn btn-light" data-testid="ae-camp-backfill"
+            disabled={backfilling} onClick={fullBackfill}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+            <History size={15} aria-hidden="true" />
+            {backfilling ? 'Récupération…' : "Récupérer tout l'historique"}
+          </button>
+        </div>
       </div>
 
       {msg && <p data-testid="ae-camp-msg" style={{ color: '#475569', margin: '0 0 0.75rem' }}>{msg}</p>}
