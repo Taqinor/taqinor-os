@@ -9,7 +9,7 @@ ATTRIBUTION D'UN LEAD À UNE ANNONCE — quatre paliers, premier gagnant :
   1. EXACT (téléphone) — le ``phone_norm`` du lead correspond au ``phone_key``
      (QW10) d'un ``MetaLeadMirror`` de la société (ADSDEEP17) → son ``ad_id`` ;
   2. FORMULAIRE (DATAPUB1, LE GROS GAIN) — la plupart des leads Odoo portent le
-     NOM d'un formulaire Meta (« TAQINOR FORM-4.0 », « DAZZLEMEDAI-TAQINOR
+     NOM d'un formulaire Meta (« <SOCIÉTÉ> FORM-4.0 », « <AGENCE>-<SOCIÉTÉ>
      FORM-jj/mm »). On regroupe les leads par formulaire (``_form_key``) et on
      apprend l'EMPREINTE de chaque formulaire — l'ensemble des annonces que ses
      leads DÉJÀ placés (téléphone exact ou nom) touchent. Les leads non plaçables
