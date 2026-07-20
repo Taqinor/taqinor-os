@@ -209,9 +209,9 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
     expect(links[0]).toHaveAttribute('href', expect.stringMatching(/^\/publicite\/ad\/ad-\d$/))
   })
 
-  // ── FIXPUB9 — devise du compte Meta + colonnes Odoo ──────────────────────
+  // ── FIXPUB9 / DATAPUB6 — devise du compte Meta + colonnes Odoo ───────────
   describe('FIXPUB9 — devise + colonnes Odoo', () => {
-    it('étiquette les montants Meta dans la devise du compte (ex. USD), CPL (Odoo) reste en MAD', async () => {
+    it('étiquette les montants Meta dans la devise du compte (ex. USD), CPL (Odoo) suit la devise du compte', async () => {
       mocks.connGet.mockResolvedValue({ data: { currency: 'USD' } })
       mocks.adsCockpit.mockResolvedValue({ data: [
         { ...ROWS[0], leads_odoo: 4, cpl_odoo: '225.00' },
@@ -221,7 +221,9 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
       const row = screen.getByTestId('ae-cockpit-row')
       expect(row).toHaveTextContent('900 USD') // dépense (Meta)
       expect(row).toHaveTextContent('180 USD') // CPL (Meta)
-      expect(row).toHaveTextContent('225 MAD') // CPL (Odoo) — reste en MAD
+      // DATAPUB6 — CPL (Odoo) = dépense (devise du COMPTE, USD) / leads Odoo :
+      // étiqueté avec la devise du compte, jamais forcé en MAD.
+      expect(row).toHaveTextContent('225 USD')
       expect(row).toHaveTextContent('4') // Leads (Odoo)
     })
 

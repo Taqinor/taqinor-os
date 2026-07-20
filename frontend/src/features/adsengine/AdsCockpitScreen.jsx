@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDown, ArrowUp, ArrowUpDown, Video, ImageOff, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import { formatMAD, formatMoney, formatNumber, formatPercent, formatRatio, sortCockpitRows } from './adsengine'
+import { formatMoney, formatNumber, formatPercent, formatRatio, sortCockpitRows } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import AdCreativePanel from './AdCreativePanel'
 import ManualActionMenu from './ManualActionMenu'
@@ -61,8 +61,11 @@ const ALL_COLUMNS = [
   // FIXPUB9 — compte RÉEL Odoo/CRM, à côté du compte Meta (nb_leads).
   { key: 'leads_odoo', label: 'Leads (Odoo)', render: (r) => formatNumber(r.leads_odoo) },
   { key: 'cpl_mad', label: 'CPL', render: (r, c) => r.cpl_mad == null ? '—' : formatMoney(r.cpl_mad, c) },
-  // CPL sur les leads Odoo (numérateur = dépense en devise du COMPTE).
-  { key: 'cpl_odoo', label: 'CPL (Odoo)', render: (r) => r.cpl_odoo == null ? '—' : formatMAD(r.cpl_odoo) },
+  // DATAPUB6 — CPL sur les leads Odoo : le numérateur est la DÉPENSE, dans la
+  // devise du COMPTE publicitaire (souvent USD), pas des MAD. On l'étiquette
+  // avec la devise du compte (comme le coût/signature) — jamais forcé en MAD
+  // (la doctrine ERP-MAD ne vaut que pour des montants réellement en MAD).
+  { key: 'cpl_odoo', label: 'CPL (Odoo)', render: (r, c) => r.cpl_odoo == null ? '—' : formatMoney(r.cpl_odoo, c) },
   { key: 'signatures', label: 'Signatures', render: (r) => formatNumber(r.signatures) },
   { key: 'cost_per_signature_mad', label: 'Coût / signature', render: (r, c) => r.cost_per_signature_mad == null ? '—' : formatMoney(r.cost_per_signature_mad, c) },
   { key: 'frequency', label: 'Fréquence', render: (r) => r.frequency == null ? '—' : formatRatio(r.frequency) },
