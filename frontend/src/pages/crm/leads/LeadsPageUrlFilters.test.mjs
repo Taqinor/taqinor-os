@@ -39,6 +39,19 @@ test('LB49 : le défaut de connexion (vue rang 1) ne s\'applique que sans URL et
   assert.match(block, /applySavedView\(savedViews\[0\]\)/)
 })
 
+test('LB56 : les 4 priorités tiennent après le refactor picker — URL > session > rang 1 > kanban', () => {
+  // 1. URL d'abord (vue).
+  const viewInit = PAGE_SRC.slice(PAGE_SRC.indexOf('const [view, setView] = useState(() => {'), PAGE_SRC.indexOf('const [view, setView] = useState(() => {') + 400)
+  assert.match(viewInit, /if \(fromUrl\) return fromUrl/)
+  // 2. Session ensuite… 4. kanban en dernier recours.
+  assert.match(viewInit, /sessionStorage\.getItem\(VIEW_KEY\)/)
+  assert.match(viewInit, /return VALID_VIEWS\.includes\(saved\) \? saved : 'kanban'/)
+  // 3. Rang 1 gardé par initSource (URL/session gagnent toujours).
+  assert.match(PAGE_SRC, /url: !!readViewFromParams\(searchParams\) \|\| hasUrlFilterState\(searchParams\)/)
+  // Le picker n'introduit AUCUNE écriture de vue hors applySavedView/setView.
+  assert.match(PAGE_SRC, /const applySavedView = useCallback\(\(v\) => \{\s*setActiveViewName\(v\.name\)/)
+})
+
 test('LB22 : les filtres initiaux priorisent l’URL (hasUrlFilterState) — jamais un mélange avec localStorage', () => {
   const start = PAGE_SRC.indexOf('const [filters, setFilters] = useState(() => {')
   assert.ok(start > 0)

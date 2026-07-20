@@ -2403,6 +2403,11 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
     """
     queryset = SavedView.objects.all()
     serializer_class = SavedViewSerializer
+    # Pagination COUPÉE : listes personnelles minuscules, et surtout le
+    # paramètre de filtre `?page=crm.leads` entrerait en collision avec le
+    # `?page=<n>` du paginateur DRF (→ 404 « Page non valide », attrapé au
+    # rig). Sans paginateur, `page` redevient un filtre libre.
+    pagination_class = None
 
     def get_permissions(self):
         return [IsAnyRole()]

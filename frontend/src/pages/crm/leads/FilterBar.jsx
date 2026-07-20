@@ -9,6 +9,9 @@ import {
   tagList,
 } from '../../../features/crm/stages'
 import useCanaux from '../../../features/crm/useCanaux'
+// LB52 — facettes construites par le helper PUR partagé avec la rangée
+// desktop conditionnelle de LeadsPage (jamais deux logiques).
+import { buildLeadFacets } from './leadFacets'
 import {
   Input, Button, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -20,12 +23,6 @@ import {
 const ALL = '__all'
 const toSel = (v) => (v ? v : ALL)
 const fromSel = (v) => (v === ALL ? '' : v)
-
-const RELANCE_LABELS = {
-  aujourdhui: "Aujourd'hui",
-  retard: 'En retard',
-  semaine: 'Cette semaine',
-}
 
 // Barre de recherche/filtres partagée par les quatre vues — LB43 (retour
 // fondateur) : anatomie Odoo 17 vérifiée à la source (SearchBar +
@@ -85,17 +82,6 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
   const setPerdus = (value) => setFilters({ ...filters, perdus: value })
   const setArchived = (value) => setFilters({ ...filters, archived: value })
 
-  // VX223 — chip « Rappels demandés » : le signal le plus chaud
-  // (`contact_preference==='phone_ok'`, badge passif sur LeadCard), toujours
-  // visible — jamais replié derrière « Filtres ».
-  const rappelsActifs = filters.contact_preference === 'phone_ok'
-  const toggleRappels = () => setKey('contact_preference')(rappelsActifs ? '' : 'phone_ok')
-
-  // VX224 — chip « Mes leads » : défaut ON pour le rôle `normal` (posé une
-  // seule fois par LeadsPage.jsx à l'ouverture initiale, jamais ici).
-  const mesLeadsActif = !!filters.mesLeads
-  const toggleMesLeads = () => setKey('mesLeads')(!mesLeadsActif)
-
   const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
 
   const [open, setOpen] = useState(false)
@@ -106,21 +92,7 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
   const activeCount = Object.keys(EMPTY_FILTERS)
     .filter((k) => k !== 'q' && filters[k] !== EMPTY_FILTERS[k]).length
 
-  // LB43 — facettes Odoo : une chip « Dimension : valeur ✕ » par filtre actif,
-  // dans la barre même (web.SearchBar.Facets). Exclues : `q` (déjà dans
-  // l'input) et les dimensions portées par une chip dédiée toujours visible
-  // (mesLeads ; contact_preference quand c'est le mode « ☎ Rappels »).
-  const facets = []
-  if (filters.stage) facets.push({ key: 'stage', dim: 'Étape', label: STAGE_LABELS[filters.stage] ?? filters.stage })
-  if (filters.type_installation) facets.push({ key: 'type_installation', dim: 'Marché', label: TYPE_INSTALLATION_LABELS[filters.type_installation] ?? filters.type_installation })
-  if (filters.canal) facets.push({ key: 'canal', dim: 'Canal', label: canalOptions.find((o) => o.value === filters.canal)?.label ?? filters.canal })
-  if (filters.contact_preference === 'whatsapp_only') facets.push({ key: 'contact_preference', dim: 'Contact', label: 'WhatsApp uniquement' })
-  if (filters.owner) facets.push({ key: 'owner', dim: 'Responsable', label: filters.owner })
-  if (filters.priorite) facets.push({ key: 'priorite', dim: 'Priorité', label: PRIORITE_LABELS[filters.priorite] ?? filters.priorite })
-  if (filters.tag) facets.push({ key: 'tag', dim: 'Tag', label: filters.tag })
-  if (filters.relance) facets.push({ key: 'relance', dim: 'Relance', label: RELANCE_LABELS[filters.relance] ?? filters.relance })
-  if (filters.perdus !== EMPTY_FILTERS.perdus) facets.push({ key: 'perdus', dim: 'Perdus', label: filters.perdus === 'sans' ? 'Sans' : 'Seuls' })
-  if ((filters.archived ?? 'actifs') !== EMPTY_FILTERS.archived) facets.push({ key: 'archived', dim: 'Archivés', label: filters.archived === 'tous' ? 'Inclus' : 'Seuls' })
+  const facets = buildLeadFacets(filters, canalOptions)
 
   const facetChips = facets.map((f) => (
     <span key={f.key} className="fb-facet">
@@ -134,33 +106,6 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
       ><X aria-hidden="true" /></button>
     </span>
   ))
-
-  const chipsFrequentes = (
-    <>
-      {/* VX224 — chip « Mes leads ». */}
-      <Button
-        type="button"
-        variant={mesLeadsActif ? 'default' : 'outline'}
-        size="sm"
-        className="fb-chip-mes-leads"
-        aria-pressed={mesLeadsActif}
-        onClick={toggleMesLeads}
-      >
-        Mes leads
-      </Button>
-      {/* VX223 — chip « Rappels demandés ». */}
-      <Button
-        type="button"
-        variant={rappelsActifs ? 'default' : 'outline'}
-        size="sm"
-        className="fb-chip-rappels"
-        aria-pressed={rappelsActifs}
-        onClick={toggleRappels}
-      >
-        ☎ Rappels demandés
-      </Button>
-    </>
-  )
 
   return (
     <div className="fb-bar">
@@ -206,9 +151,7 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
           {mobile && facets.length > 0 && (
             <div className="fb-panel-facets">{facetChips}</div>
           )}
-          {mobile && (
-            <div className="fb-panel-chips">{chipsFrequentes}</div>
-          )}
+
       <Select value={toSel(filters.stage)} onValueChange={(v) => setKey('stage')(fromSel(v))}>
         <SelectTrigger className="fb-select" aria-label="Filtrer par étape">
           <SelectValue />
@@ -352,9 +295,7 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
         </PopoverContent>
       </Popover>
 
-      {!mobile && facetChips}
 
-      {!mobile && chipsFrequentes}
 
     </div>
   )

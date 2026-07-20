@@ -30,13 +30,16 @@ test('LB43 : Express est un item du menu ⋯ — sans condition de gabarit', () 
   assert.doesNotMatch(block, /isMobile/)
 })
 
-test('LB47 : au téléphone, ⋯ porte le changement de vue (items VIEWS) et les vues enregistrées', () => {
+test('LB47→LB54 : au téléphone, ⋯ porte le changement de vue (items VIEWS) ; les vues enregistrées vivent dans le PICKER', () => {
   assert.match(SRC, /import ViewSwitcher, \{ VIEWS \} from '\.\/ViewSwitcher'/)
   const idx = SRC.indexOf('{VIEWS.map((vw) => {')
   assert.ok(idx > 0, 'items de vues ⋯ introuvables')
   const before = SRC.slice(Math.max(0, idx - 600), idx)
   assert.match(before, /\{isMobile && \(/)
-  assert.match(SRC, /savedViews\.map\(\(v\) => \(\s*<DropdownMenuItem key=\{v\.name\} onSelect=\{\(\) => applySavedView\(v\)\}>/)
+  // LB54 : plus d'items SavedView dans ⋯ — le LeadViewPicker (rendu desktop
+  // ET mobile) les porte.
+  assert.doesNotMatch(SRC, /savedViews\.map\(\(v\) => \(\s*<DropdownMenuItem/)
+  assert.match(SRC, /<LeadViewPicker/)
 })
 
 test('LB47 : la création au téléphone = le FAB (nom accessible « + Nouveau lead ») — plus de bouton d\'en-tête mobile', () => {

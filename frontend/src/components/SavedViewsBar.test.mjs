@@ -32,11 +32,12 @@ test('SaveViewButton : déclencheur exporté séparément, pas de rangée dédi�
   assert.match(SRC, /⭐ Enregistrer cette vue/)
 })
 
-test('LeadsPage : consomme SavedViewsBar ; « Enregistrer cette vue » vit dans le menu ⋯ (LB43, ligne de contrôle unique)', () => {
-  assert.match(LEADS_SRC, /import SavedViewsBar from '\.\.\/\.\.\/\.\.\/components\/SavedViewsBar'/)
-  assert.match(LEADS_SRC, /<DropdownMenuItem onSelect=\{saveCurrentView\}>/)
-  assert.match(LEADS_SRC, /⭐ Enregistrer cette vue/)
-  assert.match(LEADS_SRC, /<SavedViewsBar[\s\S]*?onApply=\{applySavedView\}[\s\S]*?onDelete=\{deleteSavedView\}[\s\S]*?\/>/)
+test('LeadsPage : le PICKER porte les vues (LB50) — SavedViewsBar reste le composant des AUTRES écrans, LeadsPage ne le rend plus', () => {
+  // LB50 (blueprint cockpit) : le titre EST le sélecteur de vues ; les chips
+  // inline et l'item ⋯ « Enregistrer » ont déménagé dans LeadViewPicker.
+  assert.match(LEADS_SRC, /import LeadViewPicker from '\.\/LeadViewPicker'/)
+  assert.match(LEADS_SRC, /<LeadViewPicker[\s\S]*?onApply=\{applySavedView\}[\s\S]*?onSave=\{saveCurrentView\}[\s\S]*?onDelete=\{deleteSavedView\}[\s\S]*?\/>/)
+  assert.doesNotMatch(LEADS_SRC, /<SavedViewsBar/)
   assert.doesNotMatch(LEADS_SRC, /lp-saved-view-chip/)
 })
 

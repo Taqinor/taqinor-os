@@ -40,9 +40,14 @@ import { useEquipeMembreIds } from '../../../hooks/useEquipeMembreIds'
 import useDocumentTitle from '../../../hooks/useDocumentTitle'
 import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
 import ExcelImport from '../../../components/ExcelImport'
-import SavedViewsBar from '../../../components/SavedViewsBar'
+// LB50 — le titre EST le sélecteur de vues (blueprint cockpit) ; la barre
+// SavedViewsBar reste le composant des AUTRES écrans (ClientList).
+import LeadViewPicker from './LeadViewPicker'
+import QuickFilterChips from './QuickFilterChips'
+import PipelineTotal from './PipelineTotal'
+import { buildLeadFacets } from './leadFacets'
+import useCanaux from '../../../features/crm/useCanaux'
 import FilterBar from './FilterBar'
-import LeadsKpiStrip from './LeadsKpiStrip'
 import BulkActionBar from './BulkActionBar'
 import DoublonsPanel from './DoublonsPanel'
 import SigneDialog from './SigneDialog'
@@ -220,6 +225,10 @@ export default function LeadsPage() {
   const isFiltersStale = deferredFilters !== filters
   // VX236 — `?equipe=<id>` : filtre additif sur les membres de l'équipe
   // (posé APRÈS filterLeads, jamais une 2e logique de filtre dupliquée).
+  // LB52 — facettes desktop (rangée sœur conditionnelle) : même helper pur
+  // que le panneau mobile de FilterBar.
+  const { options: canalOptions } = useCanaux()
+  const facets = useMemo(() => buildLeadFacets(filters, canalOptions), [filters, canalOptions])
   const equipeId = searchParams.get('equipe')
   const equipeMembreIds = useEquipeMembreIds(equipeId)
   const filtered = useMemo(() => {
@@ -254,9 +263,15 @@ export default function LeadsPage() {
   const deleteSavedView = (name) => {
     const v = savedViews.find((x) => x.name === name)
     if (v) deleteView(v.id)
+    // Supprimer la vue ACTIVE rend son nom mensonger — retour au libellé neutre.
+    if (name === activeViewName) setActiveViewName('Pipeline')
   }
   const moveSavedView = (v, dir) => moveView(v.id, dir)
+  // LB50 — libellé du trigger du picker : « Pipeline » par défaut, le nom
+  // de la vue enregistrée après application (le compteur, lui, vit toujours).
+  const [activeViewName, setActiveViewName] = useState('Pipeline')
   const applySavedView = useCallback((v) => {
+    setActiveViewName(v.name)
     setFilters({ ...EMPTY_FILTERS, ...(v.state?.filters || v.filters || {}) })
     const savedView = v.state?.view ?? v.view
     if (VALID_VIEWS.includes(savedView)) setView(savedView)
@@ -718,29 +733,39 @@ export default function LeadsPage() {
           [titre|🔍|Filtres|⋯] — KPI et chips vivent dans le panneau Filtres,
           les vues et le changement de vue dans ⋯, la création dans le FAB. */}
       <div className="page-header lp-header lp-controlbar">
-        <h2 className="lp-cb-title">
-          Pipeline
-          <span className="count-badge">{filtered.length}</span>
-        </h2>
+        <LeadViewPicker
+          activeName={activeViewName}
+          count={filtered.length}
+          savedViews={savedViews}
+          onApply={applySavedView}
+          onSave={saveCurrentView}
+          onMove={moveSavedView}
+          onDelete={deleteSavedView}
+          buildShareUrl={buildShareUrl}
+        />
         <FilterBar
           filters={filters}
           setFilters={setFilters}
           leads={leads}
           mobile={isMobile}
           panelTop={isMobile ? (
-            <LeadsKpiStrip
-              leads={kpiPool}
-              filters={filters}
-              setFilters={setFilters}
-              myUsername={currentUser?.username}
-            />
+            <>
+              <QuickFilterChips
+                leads={kpiPool}
+                filters={filters}
+                setFilters={setFilters}
+                myUsername={currentUser?.username}
+              />
+              <PipelineTotal leads={kpiPool} filters={filters} myUsername={currentUser?.username} />
+            </>
           ) : null}
         />
-        {/* LB24→LB46 — bandeau KPI = filtres (blueprint D5), compacté en chips
-            DANS la ligne (critique Fable LB #3 : pool kpiPool, jamais leads
-            brut). Sur mobile il rend DANS le panneau Filtres (panelTop). */}
+        {/* LB51 — chips-filtres comptées (fusion tuiles KPI + chips
+            fréquentes ; critique Fable LB #3 : pool kpiPool, jamais leads
+            brut) + total Pipeline discret (masqué < 1600px). Sur mobile les
+            deux rendent DANS le panneau Filtres (panelTop). */}
         {!isMobile && (
-          <LeadsKpiStrip
+          <QuickFilterChips
             leads={kpiPool}
             filters={filters}
             setFilters={setFilters}
@@ -748,14 +773,7 @@ export default function LeadsPage() {
           />
         )}
         {!isMobile && (
-          <SavedViewsBar
-            inline
-            savedViews={savedViews}
-            onApply={applySavedView}
-            onDelete={deleteSavedView}
-            onMove={moveSavedView}
-            buildShareUrl={buildShareUrl}
-          />
+          <PipelineTotal leads={kpiPool} filters={filters} myUsername={currentUser?.username} />
         )}
         <div className="page-header-actions lp-header-actions">
           <DropdownMenu>
@@ -787,9 +805,6 @@ export default function LeadsPage() {
               <DropdownMenuItem onSelect={exportFiltered}>
                 <Download /> Exporter Excel
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={saveCurrentView}>
-                ⭐ Enregistrer cette vue
-              </DropdownMenuItem>
               {/* LB47 — au téléphone, ⋯ porte AUSSI le changement de vue
                   (items depuis la MÊME liste VIEWS que le sélecteur desktop)
                   et l'application des vues enregistrées du compte. */}
@@ -810,12 +825,6 @@ export default function LeadsPage() {
                       </DropdownMenuItem>
                     )
                   })}
-                  {savedViews.length > 0 && <DropdownMenuSeparator />}
-                  {savedViews.map((v) => (
-                    <DropdownMenuItem key={v.name} onSelect={() => applySavedView(v)}>
-                      ⭐ {v.name}
-                    </DropdownMenuItem>
-                  ))}
                 </>
               )}
             </DropdownMenuContent>
@@ -829,6 +838,34 @@ export default function LeadsPage() {
           {!isMobile && <ViewSwitcher view={view} setView={setView} />}
         </div>
       </div>
+
+      {/* LB52 — rangée facettes CONDITIONNELLE (Twenty ViewBarDetails /
+          Linear) : hors DOM à 0 facette — le chrome au repos = UNE rangée. */}
+      {!isMobile && facets.length > 0 && (
+        <div className="lp-facet-row">
+          {facets.map((f) => (
+            <span key={f.key} className="fb-facet">
+              <span className="fb-facet-dim">{f.dim}</span>
+              <span className="fb-facet-val">{f.label}</span>
+              <button
+                type="button"
+                className="fb-facet-x"
+                aria-label={`Retirer le filtre ${f.dim} : ${f.label}`}
+                onClick={() => setFilters((prev) => ({ ...prev, [f.key]: EMPTY_FILTERS[f.key] }))}
+              ><X aria-hidden="true" /></button>
+            </span>
+          ))}
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="fb-clear"
+            onClick={() => setFilters(EMPTY_FILTERS)}
+          >
+            Effacer les filtres
+          </Button>
+        </div>
+      )}
 
       {/* LB25 — barre bulk FLOTTANTE (blueprint D5) : l'ancienne barre inline
           poussait le layout à chaque sélection (le board sautait de
