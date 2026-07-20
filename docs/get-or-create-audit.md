@@ -41,10 +41,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/sync.py:181` | update_or_create | AdCreativeMirror.objects | ad, company |
 | `backend/django_core/apps/adsengine/sync.py:242` | update_or_create | PagePostMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/sync.py:326` | update_or_create | InsightSnapshot.objects | company, content_type, date, object_id |
-| `backend/django_core/apps/adsengine/tasks.py:1948` | update_or_create | InsightMonthlyRollup.objects | company_id, content_type_id, month, object_id, year |
-| `backend/django_core/apps/adsengine/views.py:2078` | get_or_create | MetaConnection.objects | company |
-| `backend/django_core/apps/adsengine/views.py:2235` | get_or_create | GuardrailConfig.objects | company |
-| `backend/django_core/apps/adsengine/views.py:2242` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/tasks.py:1973` | update_or_create | InsightMonthlyRollup.objects | company_id, content_type_id, month, object_id, year |
+| `backend/django_core/apps/adsengine/views.py:2137` | get_or_create | MetaConnection.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2294` | get_or_create | GuardrailConfig.objects | company |
+| `backend/django_core/apps/adsengine/views.py:2301` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py:203` | update_or_create | CtwaReferral.objects | company, wa_message_id |
 | `backend/django_core/apps/assurances/services.py:340` | update_or_create | IndemnisationSinistre.objects | declaration |
 | `backend/django_core/apps/automation/views.py:400` | get_or_create | IncomingWebhookTrigger.objects | rule |
