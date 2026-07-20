@@ -130,7 +130,15 @@ function assertNoHorizontalOverflow(page, path) {
 // a `position: fixed` regression re-introduced over an in-flow element), and
 // is backed up by the same Y-coordinate bounds as a belt-and-braces check.
 async function assertNotObscured(page, locator, label) {
-  await locator.scrollIntoViewIfNeeded()
+  // CENTRE la cible dans son scrolleur (scrollIntoView natif) : le
+  // scrollIntoViewIfNeeded protocolaire colle la cible au BORD du scrollport
+  // en ignorant scroll-padding — où un en-tête sticky LÉGITIME (thead épinglé
+  // de la liste, en-tête d'étape LB41) recouvre son haut par construction
+  // (rouge MB6 mobile-safari : carte fraîche sous l'en-tête « Nouveau »).
+  // Centrée, la cible n'est jamais sous le chrome haut/bas — et une VRAIE
+  // régression de chrome fixe la recouvre au centre aussi : le garde reste
+  // entier pour ce qu'il a été écrit (tab-bar basse, header fixe).
+  await locator.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'nearest' }))
   await expect(locator, `${label} is visible`).toBeVisible()
   let box = await locator.boundingBox()
   // MB6 robustesse — un pied de page COLLANT (position:sticky bottom:0, ex.
