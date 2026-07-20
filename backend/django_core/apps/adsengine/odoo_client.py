@@ -202,18 +202,51 @@ class OdooClient:
                           args, kwargs or {}])
 
     def search_read(self, model, domain=None, *, fields=None, limit=None,
-                    order=None):
+                    order=None, offset=None):
         """``search_read`` LECTURE SEULE : renvoie toujours une liste (jamais
-        None). ``domain`` par défaut ``[]`` (tout, aucun filtre utilisateur)."""
+        None). ``domain`` par défaut ``[]`` (tout, aucun filtre utilisateur).
+        ``offset`` (DATAPUB1) permet la pagination par ``search_read_all``."""
         kwargs = {}
         if fields is not None:
             kwargs['fields'] = list(fields)
         if limit is not None:
             kwargs['limit'] = limit
+        if offset is not None:
+            kwargs['offset'] = offset
         if order is not None:
             kwargs['order'] = order
         rows = self._execute_kw(model, 'search_read', [domain or []], kwargs)
         return rows if isinstance(rows, list) else []
+
+    # DATAPUB1 — Taille de page défensive : on lit TOUS les enregistrements en
+    # bornant CHAQUE page, pour ne dépendre d'AUCUNE limite implicite (un
+    # proxy/serveur Odoo, ou la couche web ``web_search_read``, peut plafonner
+    # une lecture « sans limite » à ~80/100 lignes — parité de données : le
+    # fondateur veut TOUS ses leads, pas la première page).
+    READ_PAGE_SIZE = 500
+
+    def search_read_all(self, model, domain=None, *, fields=None, order=None,
+                        page_size=None):
+        """``search_read`` PAGINÉ : boucle par pages de ``page_size`` (défaut
+        ``READ_PAGE_SIZE``) en avançant l'``offset`` jusqu'à une page INCOMPLÈTE
+        (moins de ``page_size`` lignes), puis concatène. Garantit qu'aucune
+        limite serveur implicite ne tronque silencieusement la lecture. Un
+        ``order`` STABLE (ex. ``id``) est requis pour une pagination cohérente ;
+        l'appelant le fournit. Renvoie la liste complète (jamais None)."""
+        page_size = page_size or self.READ_PAGE_SIZE
+        out = []
+        offset = 0
+        # Garde-fou : borne dure sur le nombre de pages (jamais une boucle
+        # infinie si le serveur ignorait l'offset). 500 pages × 500 = 250 000.
+        for _ in range(500):
+            rows = self.search_read(
+                model, domain, fields=fields, order=order,
+                limit=page_size, offset=offset)
+            out.extend(rows)
+            if len(rows) < page_size:
+                break
+            offset += page_size
+        return out
 
     def search_count(self, model, domain=None):
         """``search_count`` LECTURE SEULE : nombre d'enregistrements."""
@@ -267,11 +300,14 @@ class OdooClient:
     def read_leads(self, since=None):
         """LECTURE SEULE — tous les ``crm.lead`` (aucun filtre utilisateur : on
         lit TOUS les commerciaux). ``since`` (date/datetime/str) borne
-        ``create_date >=``. Renvoie les dicts bruts (champs ``LEAD_FIELDS``)."""
+        ``create_date >=``. Renvoie les dicts bruts (champs ``LEAD_FIELDS``).
+
+        DATAPUB1 — lecture PAGINÉE (``search_read_all``) : aucune limite serveur
+        implicite ne peut tronquer la base de leads (parité de données)."""
         domain = []
         if since is not None:
             domain.append(['create_date', '>=', _as_odoo_dt(since)])
-        return self.search_read(
+        return self.search_read_all(
             'crm.lead', domain,
             fields=self._existing_fields('crm.lead', self.LEAD_FIELDS),
             order='id')
