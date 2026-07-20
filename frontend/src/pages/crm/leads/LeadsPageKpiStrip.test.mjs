@@ -16,12 +16,16 @@ test('LB24 : LeadsPage importe LeadsKpiStrip', () => {
   assert.match(PAGE_SRC, /import LeadsKpiStrip from '\.\/LeadsKpiStrip'/)
 })
 
-test('LB24 : LeadsKpiStrip est monté AVANT FilterBar, câblé sur filters/setFilters/leads', () => {
+test('LB24→LB43 : FilterBar vit DANS la ligne de contrôle, LeadsKpiStrip juste dessous, câblé sur filters/setFilters/leads', () => {
   const kpiIdx = PAGE_SRC.indexOf('<LeadsKpiStrip')
   const filterBarIdx = PAGE_SRC.indexOf('<FilterBar filters={filters} setFilters={setFilters} leads={leads} />')
-  assert.ok(kpiIdx > 0 && filterBarIdx > 0)
-  assert.ok(kpiIdx < filterBarIdx, 'LeadsKpiStrip doit précéder FilterBar (rangée cockpit)')
-  const block = PAGE_SRC.slice(kpiIdx, filterBarIdx)
+  const controlbarIdx = PAGE_SRC.indexOf('lp-controlbar')
+  assert.ok(kpiIdx > 0 && filterBarIdx > 0 && controlbarIdx > 0)
+  // LB43 (retour fondateur) : la barre recherche/filtres est un ENFANT de la
+  // ligne de contrôle unique (façon Odoo) — elle précède donc le bandeau KPI.
+  assert.ok(controlbarIdx < filterBarIdx && filterBarIdx < kpiIdx,
+    'ordre attendu : lp-controlbar → FilterBar → LeadsKpiStrip')
+  const block = PAGE_SRC.slice(kpiIdx, kpiIdx + 700)
   // Critique Fable LB #6→#3 : le bandeau reçoit le pool APRÈS le filtre
   // additif ?equipe= (kpiPool), jamais `leads` brut — sinon les tuiles
   // annoncent des nombres que le clic ne rend pas (« chiffre menteur » D5).

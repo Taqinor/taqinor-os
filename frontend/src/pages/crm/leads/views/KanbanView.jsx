@@ -221,14 +221,9 @@ function StageColumn({ col, collapsed, onToggleCollapse, children }) {
       {collapsed ? (
         <div className="kb-col-rail-label">{col.label}</div>
       ) : (
-        /* LB9 — `tabindex=0` + aria-label : zone de scroll interne atteignable
-           au clavier (recon-05 a11y #6), indépendamment du sélecteur d'étape
-           (StageMover) déjà focalisable sous chaque carte. */
-        <div
-          className="kb-col-body"
-          tabIndex={0}
-          aria-label={`Cartes de l'étape ${col.label}`}
-        >
+        /* LB41 — le corps ne scrolle plus au desktop (board = scrolleur
+           unique) : le tabindex clavier a déménagé sur .kb-board. */
+        <div className="kb-col-body">
           {col.count === 0 ? (
             <div className="kb-col-empty">Déposer un lead ici</div>
           ) : (
@@ -416,7 +411,10 @@ export default function KanbanView({
           On ne recule pas une étape
         </div>
       )}
-      <div className="kb-board" ref={boardRef}>
+      {/* LB41 — le board est LE scrolleur (2 axes) : focalisable pour le
+          défilement clavier (l'ancien tabindex des corps de colonne l'a
+          rejoint — ils ne scrollent plus). */}
+      <div className="kb-board" ref={boardRef} tabIndex={0} aria-label="Board du pipeline">
         {columns.map((col) => (
           <StageColumn
             key={col.key}

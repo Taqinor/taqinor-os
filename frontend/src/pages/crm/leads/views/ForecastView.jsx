@@ -342,7 +342,9 @@ export default function ForecastView({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="kb-board fv-board">
+      {/* LB41 — même contrat que le kanban : le board est le scrolleur unique
+          des deux axes, focalisable pour le défilement clavier. */}
+      <div className="kb-board fv-board" tabIndex={0} aria-label="Board de prévision">
         {columns.map((col) => (
           <MonthColumn key={col.key} col={col}>
             {col.leads.map((lead) => (

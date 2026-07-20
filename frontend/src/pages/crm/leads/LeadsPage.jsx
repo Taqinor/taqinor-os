@@ -27,16 +27,13 @@ import {
 import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
 import { useSavedViews } from '../../../hooks/useSavedViews'
-// LB26 — hook CANONIQUE (déjà adopté par LeadWorkspace.jsx) : jamais une
-// nouvelle copie locale de useIsMobile.
-import { useIsMobile } from '../../../ui/ResponsiveDialog'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../../hooks/useEquipeMembreIds'
 import useDocumentTitle from '../../../hooks/useDocumentTitle'
 import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
 import ExcelImport from '../../../components/ExcelImport'
-import SavedViewsBar, { SaveViewButton } from '../../../components/SavedViewsBar'
+import SavedViewsBar from '../../../components/SavedViewsBar'
 import FilterBar from './FilterBar'
 import LeadsKpiStrip from './LeadsKpiStrip'
 import BulkActionBar from './BulkActionBar'
@@ -125,11 +122,6 @@ export default function LeadsPage() {
   // rôle ci-dessous (normal=ON, manager=OFF, comportement historique inchangé).
   const currentUser = useSelector(s => s.auth.user)
   const roleTier = useSelector(s => s.auth.role)
-  // LB26 — Express rejoint le menu ⋯ sous 768px (le header respire) : hook
-  // CANONIQUE (ui/ResponsiveDialog, déjà adopté par LeadWorkspace) — jamais
-  // une nouvelle copie locale de useIsMobile.
-  const isMobile = useIsMobile()
-
   // Employés assignables (avatar + nom) pour les sélecteurs de responsable des
   // cartes kanban et de la liste. Ouvert à la Commerciale (endpoint dédié).
   const [users, setUsers] = useState([])
@@ -664,26 +656,19 @@ export default function LeadsPage() {
     // scrolleur change de propriétaire selon la vue active (board/liste vs
     // page-grow), sans dupliquer la logique en JS.
     <div className="page lp-page" data-view={view}>
-      <div className="page-header lp-header">
-        <h2>
+      {/* LB43 (retour fondateur) — UNE ligne de contrôle façon Odoo (anatomie
+          vérifiée à la source : boutons d'action → titre → recherche+facettes
+          → navigation) : titre+compteur, la barre recherche/facettes/Filtres
+          (FilterBar) au centre, et à droite ⋯ (Express/Doublons/Importer/
+          Exporter/Enregistrer la vue — tout ce qui est basse fréquence),
+          + Nouveau, et le sélecteur de vues. Plus jamais 3 rangées de chrome. */}
+      <div className="page-header lp-header lp-controlbar">
+        <h2 className="lp-cb-title">
           Pipeline
           <span className="count-badge">{filtered.length}</span>
         </h2>
+        <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
         <div className="page-header-actions lp-header-actions">
-          <Button onClick={openNew}>+ Nouveau lead</Button>
-          {/* LB26 — Express rejoint le menu ⋯ sous 768px (le header respire) :
-              les DEUX contrôles existent, seul `isMobile` décide lequel rend
-              (jamais les deux à la fois — pas un doublon caché en CSS). */}
-          {!isMobile && (
-            <Button
-              variant="outline"
-              title="Saisie express : nom + téléphone + canal"
-              onClick={() => setShowExpressModal(true)}
-            ><Zap aria-hidden="true" size={14} /> Express</Button>
-          )}
-          {/* VX145(b) — Doublons/Importer/Exporter sont des fréquences basses
-              face aux 2 contrôles ci-dessus ; démotés dans un menu « ⋯ »
-              (pattern DropdownMenu déjà importé dans ListView.jsx). */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" title="Plus d'actions" aria-label="Plus d'actions">
@@ -696,11 +681,9 @@ export default function LeadsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {isMobile && (
-                <DropdownMenuItem onSelect={() => setShowExpressModal(true)}>
-                  <Zap aria-hidden="true" /> Express
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem onSelect={() => setShowExpressModal(true)}>
+                <Zap aria-hidden="true" /> Express
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setShowDoublons(true)}>
                 <GitMerge aria-hidden="true" /> Doublons
                 {doublonsCount > 0 && (
@@ -715,19 +698,19 @@ export default function LeadsPage() {
               <DropdownMenuItem onSelect={exportFiltered}>
                 <Download /> Exporter Excel
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={saveCurrentView}>
+                ⭐ Enregistrer cette vue
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {/* VX145(c) — le déclencheur vit dans la rangée d'en-tête déjà
-              existante ; SavedViewsBar (chips) ne rend une rangée dédiée que
-              s'il y a au moins une vue enregistrée. */}
-          <SaveViewButton onSave={saveCurrentView} />
+          <Button onClick={openNew}>+ Nouveau lead</Button>
           <div className="lp-header-sep" role="separator" aria-orientation="vertical" />
           <ViewSwitcher view={view} setView={setView} />
         </div>
       </div>
 
-      {/* LB24 — Bandeau KPI = filtres (blueprint D5), entre l'en-tête et
-          FilterBar : les tuiles lisent/écrivent le MÊME état `filters` que
+      {/* LB24 — Bandeau KPI = filtres (blueprint D5), sous la ligne de
+          contrôle : les tuiles lisent/écrivent le MÊME état `filters` que
           le reste de la page (invariant D6-I7, un seul état de filtres). */}
       <LeadsKpiStrip
         // Critique Fable LB #3 : le pool KPI doit subir le MÊME filtre additif
@@ -738,8 +721,6 @@ export default function LeadsPage() {
         setFilters={setFilters}
         myUsername={currentUser?.username}
       />
-
-      <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
 
       <SavedViewsBar
         savedViews={savedViews}

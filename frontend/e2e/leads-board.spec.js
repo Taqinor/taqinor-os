@@ -18,7 +18,10 @@
 //      cartes dans une colonne (c'est CE cas qui débordait sans le fix).
 //   2. La scrollbar horizontale du board (`.kb-board`) vit DANS le viewport, et
 //      le board défile en X sans jamais faire défiler la page.
-//   3. Une `.kb-col-body` défile verticalement (20+ cartes).
+//   3. LB41 (retour fondateur, patron Odoo) : le BOARD est l'unique scrolleur
+//      vertical — toutes les étapes défilent ENSEMBLE (20+ cartes), le corps
+//      de colonne ne scrolle PLUS, et l'en-tête d'étape reste épinglé en haut
+//      pendant le défilement (position:sticky résolue contre .kb-board).
 //   4. En liste, le `thead` reste épinglé en haut du scrolleur après défilement.
 import { test, expect } from '@playwright/test'
 import { gotoLeads, setLeadsView, createLead, uniq } from './helpers'
@@ -90,17 +93,38 @@ test('LB33: le board kanban tient dans l’écran et défile en interne (jamais 
   )
   expect(pageOverflowX, 'aucun débordement horizontal au niveau page').toBeLessThanOrEqual(1)
 
-  // ── Invariant 3 : une colonne défile verticalement (20+ cartes). ────────────
-  const colMetrics = await newBody.evaluate((el) => ({
+  // ── Invariant 3 (LB41) : le BOARD défile verticalement comme UN SEUL bloc
+  // (toutes les étapes ensemble — patron Odoo), le corps de colonne ne
+  // scrolle plus, et l'en-tête d'étape reste épinglé pendant le défilement.
+  const boardMetrics = await board.evaluate((el) => ({
     scrollHeight: el.scrollHeight, clientHeight: el.clientHeight,
   }))
   expect(
-    colMetrics.scrollHeight,
-    'la colonne « Nouveau » déborde son corps (20+ cartes → corps scrollable)',
-  ).toBeGreaterThan(colMetrics.clientHeight + PX)
-  await newBody.evaluate((el) => { el.scrollTop = el.scrollHeight })
-  const colTop = await newBody.evaluate((el) => el.scrollTop)
-  expect(colTop, 'le corps de colonne a bien défilé verticalement').toBeGreaterThan(0)
+    boardMetrics.scrollHeight,
+    'le board déborde verticalement (20+ cartes → scroll unique du board)',
+  ).toBeGreaterThan(boardMetrics.clientHeight + PX)
+  const colScrolls = await newBody.evaluate(
+    (el) => el.scrollHeight - el.clientHeight,
+  )
+  expect(
+    colScrolls,
+    'le corps de colonne ne possède PLUS de scroll interne (LB41)',
+  ).toBeLessThanOrEqual(PX)
+  // L'en-tête de la colonne « Nouveau » avant/après un défilement du board :
+  // sticky prouvé s'il n'a pas suivi le contenu.
+  const newHeader = page.locator('.kb-col', { hasText: names[0] })
+    .locator('.kb-col-header').first()
+  const headYBefore = (await newHeader.boundingBox()).y
+  await board.evaluate((el) => { el.scrollTop = el.scrollHeight })
+  const boardTop = await board.evaluate((el) => el.scrollTop)
+  expect(boardTop, 'le board a bien défilé verticalement').toBeGreaterThan(0)
+  const headBoxAfter = await newHeader.boundingBox()
+  expect(headBoxAfter, 'l’en-tête d’étape a une boundingBox après défilement').toBeTruthy()
+  expect(
+    Math.abs(headBoxAfter.y - headYBefore),
+    'l’en-tête d’étape reste épinglé en haut du board pendant le scroll (sticky)',
+  ).toBeLessThanOrEqual(PX)
+  await board.evaluate((el) => { el.scrollTop = 0 })
 
   // ── Invariant 4 : en liste, le thead reste épinglé en haut du scrolleur. ────
   await setLeadsView(page, 'liste')

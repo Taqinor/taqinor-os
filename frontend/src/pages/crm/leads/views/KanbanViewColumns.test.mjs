@@ -28,13 +28,20 @@ test('LB9 : chaque colonne est une région nommée (axe) — libellé + compteur
   assert.match(block, /<section[\s\S]*?ref=\{setNodeRef\}/)
 })
 
-test('LB9 : `.kb-col-body` est atteignable au clavier (tabindex=0 + aria-label)', () => {
+test('LB41 : le BOARD (scrolleur unique) est atteignable au clavier — plus le corps de colonne', () => {
+  // LB41 (retour fondateur) : le corps ne scrolle plus, le tabindex vit sur
+  // .kb-board — un tabindex résiduel sur .kb-col-body serait un stop de
+  // tabulation mort (a11y régressive).
+  const boardIdx = KANBAN.indexOf('className="kb-board"')
+  assert.ok(boardIdx > 0, '.kb-board introuvable')
+  const boardLocal = KANBAN.slice(boardIdx, boardIdx + 150)
+  assert.match(boardLocal, /tabIndex=\{0\}/)
+  assert.match(boardLocal, /aria-label="Board du pipeline"/)
   const block = stageColumnBody()
   const idx = block.indexOf('className="kb-col-body"')
   assert.ok(idx > 0, '.kb-col-body introuvable')
   const local = block.slice(idx, idx + 150)
-  assert.match(local, /tabIndex=\{0\}/)
-  assert.match(local, /aria-label=\{`Cartes de l'étape \$\{col\.label\}`\}/)
+  assert.doesNotMatch(local, /tabIndex/)
 })
 
 test('LB9 : colonne à 0 lead = zone de dépôt en pointillés, plus « Aucun lead »', () => {
