@@ -176,14 +176,22 @@ async function assertNotObscured(page, locator, label) {
     [box.x + box.width - inset, box.y + box.height - inset],
   ]
   for (const [x, y] of points) {
-    const hitsTarget = await page.evaluate(
+    // Diagnostic embarqué : en cas d'échec, le message NOMME l'élément qui
+    // recouvre le point (tag + classes + chaîne d'ancêtres) — un rouge CI
+    // devient auto-explicatif au lieu d'exiger une reproduction locale.
+    const hit = await page.evaluate(
       ([px, py, node]) => {
         const top = document.elementFromPoint(px, py)
-        return !!top && (top === node || node.contains(top) || top.contains(node))
+        if (top && (top === node || node.contains(top) || top.contains(node))) return { ok: true }
+        const chain = []
+        for (let n = top; n && n !== document.body && chain.length < 5; n = n.parentElement) {
+          chain.push(`${n.tagName.toLowerCase()}${n.className ? `.${String(n.className).split(' ').slice(0, 3).join('.')}` : ''}`)
+        }
+        return { ok: false, covering: chain.join(' < ') || 'null' }
       },
       [x, y, handle],
     )
-    expect(hitsTarget, `${label}: point (${Math.round(x)},${Math.round(y)}) is painted by the target, not fixed chrome on top of it`).toBeTruthy()
+    expect(hit.ok, `${label}: point (${Math.round(x)},${Math.round(y)}) is painted by the target, not fixed chrome on top of it (couvert par : ${hit.covering ?? '—'})`).toBeTruthy()
   }
   // Belt-and-braces: the element's box must not be covered by the sticky
   // bottom tab-bar or sit underneath the sticky header.
