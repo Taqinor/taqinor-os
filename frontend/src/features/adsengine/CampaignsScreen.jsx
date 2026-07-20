@@ -12,6 +12,8 @@ import { formatDateTime } from '../../lib/format'
 import DateRangeBar from './DateRangeBar'
 import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
 import SyncStatusBanner from './SyncStatusBanner'
+// FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
+import UpdateBanner from './UpdateBanner'
 
 // PUB40 — dépense totale visible (somme ``depense_mad``/``spend_mad`` des
 // campagnes listées) — pure, testable isolément.
@@ -201,6 +203,9 @@ export default function CampaignsScreen() {
       </div>
 
       {msg && <p data-testid="ae-camp-msg" style={{ color: '#475569', margin: '0 0 0.75rem' }}>{msg}</p>}
+
+      {/* FIXPUB4 — bandeau « nouvelle version disponible » (SW existant). */}
+      <UpdateBanner />
 
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
       <SyncStatusBanner />

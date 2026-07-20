@@ -13,6 +13,8 @@ import BreakdownsPanel from './BreakdownsPanel'
 import DateRangeBar from './DateRangeBar'
 import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
 import SyncStatusBanner from './SyncStatusBanner'
+// FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
+import UpdateBanner from './UpdateBanner'
 import { COCKPIT_VIEWS, applyCockpitView, loadSavedCockpitView, saveCockpitView } from './cockpitViews'
 
 // PUB40 — dépense totale visible (somme ``depense_mad`` des lignes) — pure,
@@ -248,6 +250,9 @@ export default function AdsCockpitScreen() {
       <div className="page-header">
         <h2>Cockpit par ad</h2>
       </div>
+
+      {/* FIXPUB4 — bandeau « nouvelle version disponible » (SW existant). */}
+      <UpdateBanner />
 
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
       <SyncStatusBanner />
