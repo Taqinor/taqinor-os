@@ -224,6 +224,44 @@ def signed_deals(since=None, client=None):
     return deals
 
 
+def all_leads(client=None):
+    """FIXPUB6 — TOUS les leads Odoo normalisés pour l'attribution PAR ANNONCE.
+
+    Là où ``signed_deals`` ne renvoie que les deals SIGNÉS (le numérateur des
+    signatures), ``all_leads`` renvoie CHAQUE ``crm.lead`` Odoo — le dénominateur
+    d'un coût-par-lead. Style LECTURE SEULE identique (via ``odoo_client``,
+    key-gated) : sans configuration Odoo → ``[]`` (no-op propre, jamais un appel
+    réseau ni un 500).
+
+    Renvoie une liste de dicts ::
+
+        {'phone_norm': str,   # clé QW10 (matchable à MetaLeadMirror.phone_key)
+         'date': str|None,    # create_date (repli date_closed)
+         'source_name': str,  # nom du lead (encode souvent campagne/formulaire)
+         'lead_id': int|None, # id crm.lead
+         'won': bool}         # lead gagné (signé) ?
+
+    La normalisation du téléphone réutilise la MÊME clé QW10
+    (``crm.selectors.normalize_phone_key``) que ``signed_deals`` — jamais
+    réinventée."""
+    from apps.crm.selectors import normalize_phone_key
+
+    client = _resolve_client(client)
+    if client is None:
+        return []
+    out = []
+    for lead in client.read_leads():
+        phone_raw = lead.get('phone') or lead.get('mobile') or ''
+        out.append({
+            'phone_norm': normalize_phone_key(phone_raw),
+            'date': lead.get('create_date') or lead.get('date_closed') or None,
+            'source_name': lead.get('name') or '',
+            'lead_id': lead.get('id'),
+            'won': is_won_lead(lead),
+        })
+    return out
+
+
 def signed_count(since=None, client=None):
     """Nombre de deals signés Odoo (``len(signed_deals)``). 0 sans config."""
     return len(signed_deals(since=since, client=client))

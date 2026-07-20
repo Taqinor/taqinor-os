@@ -1262,7 +1262,6 @@ def fetch_meta_lead_data(leadgen_id, access_token):
 @require_http_methods(['GET', 'POST'])
 def meta_lead_ads_webhook(request):
     verify_token = getattr(settings, 'META_LEAD_ADS_VERIFY_TOKEN', '') or ''
-    access_token = getattr(settings, 'META_LEAD_ADS_ACCESS_TOKEN', '') or ''
 
     if request.method == 'GET':
         # Poignée de main de souscription Meta (Graph API webhooks).
@@ -1277,10 +1276,18 @@ def meta_lead_ads_webhook(request):
         return JsonResponse({'detail': 'Vérification refusée.'}, status=403)
 
     # POST — notification de nouveau lead.
+    # FIXPUB1 — token d'accès : env (META_LEAD_ADS_ACCESS_TOKEN) prioritaire,
+    # sinon le token de la MetaConnection activée de la société (repli
+    # permanent). On journalise la SOURCE choisie, jamais le token lui-même.
+    company = _meta_lead_ads_company()
+    from apps.adsengine.selectors import resolve_lead_ads_access_token
+    access_token, token_source = resolve_lead_ads_access_token(company)
     if not access_token:
-        # Sans jeton : no-op silencieux (défaut OFF), jamais d'exception.
-        logger.info('meta_lead_ads_webhook: aucun access token configuré — no-op.')
+        # Aucune source (ni env ni connexion) : no-op silencieux, jamais d'exception.
+        logger.info(
+            'meta_lead_ads_webhook: aucun access token (env ni connexion) — no-op.')
         return JsonResponse({'detail': 'Non configuré — ignoré.'}, status=200)
+    logger.info('meta_lead_ads_webhook: token Lead Ads via %s.', token_source)
 
     # PUB26 — vérification HMAC (`X-Hub-Signature-256`) : n'importe qui pouvait
     # jusqu'ici poster de faux leads (META_LEAD_ADS_APP_SECRET était listé dans
@@ -1306,7 +1313,6 @@ def meta_lead_ads_webhook(request):
     except (ValueError, UnicodeDecodeError):
         return JsonResponse({'detail': 'JSON invalide.'}, status=400)
 
-    company = _meta_lead_ads_company()
     if company is None:
         logger.error('meta_lead_ads_webhook: aucune Company résolue.')
         return JsonResponse({'detail': 'Aucune société résolue.'}, status=202)

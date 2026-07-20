@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDown, ArrowUp, ArrowUpDown, Video, ImageOff, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import { formatMAD, formatNumber, formatPercent, formatRatio, sortCockpitRows } from './adsengine'
+import { formatMAD, formatMoney, formatNumber, formatPercent, formatRatio, sortCockpitRows } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import AdCreativePanel from './AdCreativePanel'
 import ManualActionMenu from './ManualActionMenu'
@@ -13,6 +13,8 @@ import BreakdownsPanel from './BreakdownsPanel'
 import DateRangeBar from './DateRangeBar'
 import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
 import SyncStatusBanner from './SyncStatusBanner'
+// FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
+import UpdateBanner from './UpdateBanner'
 import { COCKPIT_VIEWS, applyCockpitView, loadSavedCockpitView, saveCockpitView } from './cockpitViews'
 
 // PUB40 — dépense totale visible (somme ``depense_mad`` des lignes) — pure,
@@ -40,7 +42,11 @@ const COLUMNS = [
   { key: 'depense_mad', label: 'Dépense', sortable: true },
   { key: 'conversations', label: 'Conversations', sortable: true },
   { key: 'nb_leads', label: 'Leads', sortable: true },
+  // FIXPUB9 — compte RÉEL Odoo/CRM, à côté du compte Meta (nb_leads).
+  { key: 'leads_odoo', label: 'Leads (Odoo)', sortable: true },
   { key: 'cpl_mad', label: 'CPL', sortable: true },
+  // FIXPUB9 — CPL calculé sur les leads Odoo, RÉELLEMENT en MAD (déal Odoo).
+  { key: 'cpl_odoo', label: 'CPL (Odoo)', sortable: true },
   { key: 'signatures', label: 'Signatures', sortable: true },
   { key: 'cost_per_signature_mad', label: 'Coût / signature', sortable: true },
   { key: 'frequency', label: 'Fréquence', sortable: true },
@@ -164,14 +170,24 @@ export default function AdsCockpitScreen() {
   // Meilleures vidéos) + mémoire du dernier onglet/tri (localStorage).
   const [{ tab: activeView, sort }, setViewState] = useState(initialCockpitView)
   const [openAdId, setOpenAdId] = useState(null)
+  // FIXPUB8 — le panneau de détail apparaît SOUS le tableau (invisible sans
+  // scroll manuel) : on l'amène en vue au clic, jamais au montage initial.
+  const detailRef = useRef(null)
 
   // PUB40 — sélecteur de période + comparaison (partagé avec Dashboard).
+  // FIXPUB2 — défaut « Tout » (aucune borne) : contrairement au Dashboard
+  // (indicateur du mois en cours), le cockpit liste des ads précises — un
+  // fondateur qui cherche une ad d'il y a 2 mois ne doit pas la croire
+  // disparue faute d'avoir pensé à élargir la période.
   const [range, setRange] = useState(
-    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+    () => ({ preset: 'tout', ...presetRange('tout'), compare: false }))
   const [previousTotal, setPreviousTotal] = useState(null)
   // PUB41 — état-ERREUR distinct de l'état-vide : une panne de synchro ne
   // doit JAMAIS ressembler à « aucune ad » (le silence que ce ticket tue).
   const [loadError, setLoadError] = useState(false)
+  // FIXPUB9 — devise du compte Meta (les montants Meta ne sont jamais
+  // forcés en MAD) ; 'MAD' en repli tant qu'elle n'est pas connue.
+  const [currency, setCurrency] = useState('MAD')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -183,6 +199,12 @@ export default function AdsCockpitScreen() {
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
+    const connGet = adsengineApi.connection?.get
+    if (connGet) {
+      connGet()
+        .then(r => setCurrency(r?.data?.currency || 'MAD'))
+        .catch(() => {})
+    }
 
     // Comparaison : un second appel sur la période PRÉCÉDENTE (PUB40 — un
     // cockpit ligne-par-ligne n'a pas de bloc `previous` serveur comme le
@@ -204,6 +226,14 @@ export default function AdsCockpitScreen() {
   // PUB43 — mémorise le dernier onglet/tri choisi (localStorage) à chaque
   // changement — dégradation silencieuse si indisponible (cockpitViews.js).
   useEffect(() => { saveCockpitView({ tab: activeView, sort }) }, [activeView, sort])
+
+  // FIXPUB8 — fait défiler jusqu'au panneau de détail dès qu'une ligne
+  // s'ouvre (jamais au montage : `openAdId` démarre à `null`).
+  useEffect(() => {
+    if (openAdId != null) {
+      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [openAdId])
 
   // « Toutes » reste pilotée par le tri MANUEL (colonnes cliquables) ; un
   // onglet prédéfini FIGE son propre filtre+tri (PUB43 — jamais retrié).
@@ -245,6 +275,9 @@ export default function AdsCockpitScreen() {
         <h2>Cockpit par ad</h2>
       </div>
 
+      {/* FIXPUB4 — bandeau « nouvelle version disponible » (SW existant). */}
+      <UpdateBanner />
+
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
       <SyncStatusBanner />
 
@@ -253,7 +286,7 @@ export default function AdsCockpitScreen() {
       {compareDelta && (
         <p className="card" data-testid="ae-cockpit-compare-summary"
           style={{ padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
-          Dépense totale période : {formatMAD(currentTotal)} ({formatDeltaPct(compareDelta.pct)} vs période précédente)
+          Dépense totale période : {formatMoney(currentTotal, currency)} ({formatDeltaPct(compareDelta.pct)} vs période précédente)
         </p>
       )}
 
@@ -326,12 +359,14 @@ export default function AdsCockpitScreen() {
                         {row.learning_badge?.label || 'Inconnu'}
                       </span>
                     </td>
-                    <td>{formatMAD(row.depense_mad)}</td>
+                    <td>{formatMoney(row.depense_mad, currency)}</td>
                     <td>{formatNumber(row.conversations)}</td>
                     <td>{formatNumber(row.nb_leads)}</td>
-                    <td>{row.cpl_mad == null ? '—' : formatMAD(row.cpl_mad)}</td>
+                    <td>{formatNumber(row.leads_odoo)}</td>
+                    <td>{row.cpl_mad == null ? '—' : formatMoney(row.cpl_mad, currency)}</td>
+                    <td>{row.cpl_odoo == null ? '—' : formatMAD(row.cpl_odoo)}</td>
                     <td>{formatNumber(row.signatures)}</td>
-                    <td>{row.cost_per_signature_mad == null ? '—' : formatMAD(row.cost_per_signature_mad)}</td>
+                    <td>{row.cost_per_signature_mad == null ? '—' : formatMoney(row.cost_per_signature_mad, currency)}</td>
                     <td>{row.frequency == null ? '—' : formatRatio(row.frequency)}</td>
                     <td>
                       <span className="badge" data-testid="ae-cockpit-fatigue-badge"
@@ -365,7 +400,7 @@ export default function AdsCockpitScreen() {
         )}
 
       {openRow && (
-        <section className="card ae-cockpit-detail" data-testid="ae-cockpit-detail"
+        <section ref={detailRef} className="card ae-cockpit-detail" data-testid="ae-cockpit-detail"
           style={{ padding: '1rem', marginTop: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0 }}>{openRow.nom || openRow.meta_id}</h3>

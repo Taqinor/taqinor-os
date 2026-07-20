@@ -242,3 +242,43 @@ class MetaLeadAdsSignatureTests(TestCase):
         resp = self._post(_notification_payload(leadgen_id='6004'))
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
+
+
+@override_settings(META_LEAD_ADS_ACCESS_TOKEN='')
+class MetaLeadAdsConnectionFallbackTests(TestCase):
+    """FIXPUB1 — sans ``META_LEAD_ADS_ACCESS_TOKEN`` (env), le webhook utilise le
+    token de la ``MetaConnection`` activée de la société ; l'env, quand présent,
+    gagne toujours. Corrige le compte historique qui n'a QU'une connexion
+    tokenisée (pas d'env) et dont la capture ne partait jamais."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor Meta Conn', slug='taqinor-meta-conn')
+        from apps.adsengine.models import MetaConnection
+        MetaConnection.objects.create(
+            company=self.company, enabled=True,
+            credentials={'access_token': 'CONN-TOKEN'}, ad_account_id='act_7')
+        self.url = reverse('meta-lead-ads-webhook')
+
+    def _post(self, payload):
+        return self.client.post(
+            self.url, data=json.dumps(payload),
+            content_type='application/json')
+
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_uses_connection_token_when_env_absent(self, fetch_mock):
+        """Sans env : le fetch Graph API part avec le token de la connexion."""
+        fetch_mock.return_value = _lead_data(leadgen_id='7001')
+        resp = self._post(_notification_payload(leadgen_id='7001'))
+        self.assertEqual(resp.status_code, 200)
+        fetch_mock.assert_called_once_with('7001', 'CONN-TOKEN')
+        self.assertEqual(Lead.objects.filter(company=self.company).count(), 1)
+
+    @override_settings(META_LEAD_ADS_ACCESS_TOKEN='ENV-TOKEN')
+    @mock.patch('apps.crm.webhooks.fetch_meta_lead_data')
+    def test_env_token_wins_over_connection(self, fetch_mock):
+        """Env présent : il l'emporte sur le token de la connexion."""
+        fetch_mock.return_value = _lead_data(leadgen_id='7002')
+        resp = self._post(_notification_payload(leadgen_id='7002'))
+        self.assertEqual(resp.status_code, 200)
+        fetch_mock.assert_called_once_with('7002', 'ENV-TOKEN')

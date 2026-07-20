@@ -99,6 +99,45 @@ def resolve_meta_ad_names(company, *, ad_id='', adgroup_id='', access_token=''):
     return result
 
 
+# ── FIXPUB1 — Token Lead Ads : repli permanent sur la MetaConnection ─────────
+#
+# La capture Lead Ads (webhook `apps.crm.webhooks` + pull-sync
+# `apps.adsengine.tasks`) était câblée sur le SEUL token d'environnement
+# `META_LEAD_ADS_ACCESS_TOKEN`. Sur un compte dont la dépense est historique et
+# qui n'a QU'une `MetaConnection` tokenisée (pas d'env), la capture ne partait
+# jamais. Repli permanent : env prioritaire (quand présent, il gagne toujours),
+# sinon le token sauvegardé de la connexion activée de la société. On journalise
+# la SOURCE choisie, JAMAIS la valeur du token.
+
+def lead_ads_access_token(company):
+    """FIXPUB1 — Token d'accès sauvegardé sur la ``MetaConnection`` ACTIVÉE de la
+    société (chaîne vide sans connexion/token). Ne renvoie jamais ``None`` et
+    n'expose jamais le token ailleurs qu'en valeur de retour."""
+    from .models import MetaConnection
+
+    conn = MetaConnection.objects.filter(company=company, enabled=True).first()
+    if conn is None:
+        return ''
+    return (conn.credentials or {}).get('access_token') or ''
+
+
+def resolve_lead_ads_access_token(company):
+    """FIXPUB1 — Résout le token Lead Ads d'une société :
+    ``META_LEAD_ADS_ACCESS_TOKEN`` (env) prioritaire ; à défaut, le token de la
+    ``MetaConnection`` activée. Renvoie ``(token, source)`` avec ``source`` ∈
+    ``{'env', 'connection', None}`` — ``None`` seulement quand aucune source ne
+    fournit de token. Ne journalise/expose JAMAIS la valeur du token."""
+    from django.conf import settings
+
+    env_token = (getattr(settings, 'META_LEAD_ADS_ACCESS_TOKEN', '') or '').strip()
+    if env_token:
+        return env_token, 'env'
+    token = lead_ads_access_token(company) if company is not None else ''
+    if token:
+        return token, 'connection'
+    return '', None
+
+
 # ── PUB68 — SLA première réponse : résolution d'ad pour le temps de réponse ──
 
 def leads_response_time_by_ad_rows(company):

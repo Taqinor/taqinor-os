@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   hierarchy: vi.fn(),
   syncNow: vi.fn(),
+  fullBackfill: vi.fn(),
   ranking: vi.fn(),
   connGet: vi.fn(),
   breakdownsList: vi.fn(),
@@ -20,7 +21,8 @@ vi.mock('./adsengineApi', () => ({
   default: {
     campaigns: {
       list: mocks.list, hierarchy: mocks.hierarchy,
-      syncNow: mocks.syncNow, creativeRanking: mocks.ranking,
+      syncNow: mocks.syncNow, fullBackfill: mocks.fullBackfill,
+      creativeRanking: mocks.ranking,
     },
     connection: { get: mocks.connGet },
     breakdowns: { list: mocks.breakdownsList },
@@ -59,6 +61,7 @@ beforeEach(() => {
     ],
   } })
   mocks.syncNow.mockResolvedValue({ data: {} })
+  mocks.fullBackfill.mockResolvedValue({ data: {} })
   mocks.connGet.mockResolvedValue({ data: { currency: 'MAD' } })
   mocks.ranking.mockResolvedValue({ data: [
     { id: 'a', nom: 'Reel toiture', reponses_whatsapp: 4, cout_mad: 400 },   // 100/rép
@@ -97,6 +100,18 @@ describe('CampaignsScreen (ENG24)', () => {
     await waitFor(() => expect(mocks.syncNow).toHaveBeenCalled())
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
     expect(await screen.findByTestId('ae-camp-msg')).toHaveTextContent('Synchronisation lancée')
+  })
+
+  // ── FIXPUB3 — Récupérer tout l'historique ────────────────────────────────
+  it('le bouton « Récupérer tout l\'historique » appelle fullBackfill et affiche le message', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(1))
+    const btn = screen.getByTestId('ae-camp-backfill')
+    fireEvent.click(btn)
+    expect(btn).toBeDisabled() // état occupé pendant l'appel
+    await waitFor(() => expect(mocks.fullBackfill).toHaveBeenCalled())
+    expect(await screen.findByTestId('ae-camp-msg'))
+      .toHaveTextContent("Récupération de tout l'historique lancée…")
   })
 
   it('affiche le classement des créatifs par valeur (meilleur en tête)', async () => {
@@ -252,11 +267,27 @@ describe('CampaignsScreen (ENG24)', () => {
       renderScreen()
       await waitFor(() => expect(mocks.list).toHaveBeenCalled())
       expect(screen.queryByTestId('ae-camp-compare-summary')).toBeNull()
+      // FIXPUB2 — défaut « Tout » (sans bornes) : la case comparer reste
+      // désactivée tant qu'une période BORNÉE n'est pas choisie.
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-7j'))
+      await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
       mocks.list.mockClear()
       fireEvent.click(screen.getByTestId('ae-daterange-compare'))
       await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
       expect(await screen.findByTestId('ae-camp-compare-summary'))
         .toHaveTextContent('vs période précédente')
+    })
+  })
+
+  // ── FIXPUB2 — défaut « Tout » (aucune borne) ────────────────────────────
+  describe('FIXPUB2 — fenêtre par défaut', () => {
+    it('démarre sur « Tout » (aucune borne envoyée à l’API)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange-preset-tout')).toHaveAttribute('aria-pressed', 'true')
+      const params = mocks.list.mock.calls[0][0]
+      expect(params.debut).toBeUndefined()
+      expect(params.fin).toBeUndefined()
     })
   })
 

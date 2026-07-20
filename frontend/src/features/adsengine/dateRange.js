@@ -21,6 +21,11 @@ export const DATE_RANGE_PRESETS = [
   { key: 'hier', label: 'Hier' },
   { key: '7j', label: '7 derniers jours' },
   { key: '30j', label: '30 derniers jours' },
+  // FIXPUB2 — « Tout » : aucune borne (le backend renvoie tout l'historique
+  // disponible). Devient le défaut de Cockpit/Campagnes/Journal (jamais de
+  // Dashboard, qui garde 30j) — un fondateur qui ouvre la console ne doit
+  // plus jamais se demander « pourquoi je ne vois pas cette ad d'il y a 2 mois ».
+  { key: 'tout', label: 'Tout' },
   { key: 'personnalise', label: 'Personnalisé' },
 ]
 
@@ -54,6 +59,12 @@ export function presetRange(presetKey, today = new Date()) {
       return { debut: toISODate(addDays(t, -6)), fin: toISODate(t) }
     case '30j':
       return { debut: toISODate(addDays(t, -29)), fin: toISODate(t) }
+    // FIXPUB2 — « Tout » résout des bornes VIDES (jamais `null`, contrairement
+    // à `personnalise` : `DateRangeBar.selectPreset` déréférence directement
+    // `resolved.debut`/`resolved.fin`) — le repli `debut/fin || undefined`
+    // déjà présent dans chaque écran envoie alors une requête SANS bornes.
+    case 'tout':
+      return { debut: '', fin: '' }
     default:
       return null
   }

@@ -79,6 +79,34 @@ class MediaResolveTests(TestCase):
         self.assertTrue(resp.data['cached'])
 
     @patch('apps.adsengine.meta_client.MetaClient')
+    def test_picture_served_when_source_empty(self, mock_cls):
+        # FIXPUB7 — Meta refuse la source mp4 (Page non assignée au System User)
+        # mais renvoie la miniature : la réponse la porte en repli (200, pas 404).
+        class RefusedVideo:
+            def get_video_source(self, vid):
+                return {'source': '', 'picture': f'https://cdn.fb/{vid}.jpg'}
+        mock_cls.from_connection.return_value = RefusedVideo()
+        resp = auth(self.viewer).get(
+            '/api/django/adsengine/media/vpic/?kind=video')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['url'], '')
+        self.assertEqual(resp.data['picture'], 'https://cdn.fb/vpic.jpg')
+
+    @patch('apps.adsengine.meta_client.MetaClient')
+    def test_video_response_carries_picture_field(self, mock_cls):
+        # La réponse porte TOUJOURS le champ ``picture`` (additif) à côté de l'URL.
+        class VideoWithBoth:
+            def get_video_source(self, vid):
+                return {'source': f'https://cdn.fb/{vid}.mp4',
+                        'picture': f'https://cdn.fb/{vid}.jpg'}
+        mock_cls.from_connection.return_value = VideoWithBoth()
+        resp = auth(self.viewer).get(
+            '/api/django/adsengine/media/vboth/?kind=video')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['url'], 'https://cdn.fb/vboth.mp4')
+        self.assertEqual(resp.data['picture'], 'https://cdn.fb/vboth.jpg')
+
+    @patch('apps.adsengine.meta_client.MetaClient')
     def test_missing_media_is_404(self, mock_cls):
         class Empty:
             def get_video_source(self, vid):

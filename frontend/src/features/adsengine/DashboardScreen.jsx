@@ -14,6 +14,8 @@ import {
 import DateRangeBar from './DateRangeBar'
 import { presetRange, computeDelta, formatDeltaPct } from './dateRange'
 import SyncStatusBanner from './SyncStatusBanner'
+// FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
+import UpdateBanner from './UpdateBanner'
 import { normalizeSyncStatus, syncStatusFor, formatAge } from './syncStatus'
 
 /* ============================================================================
@@ -323,6 +325,9 @@ export default function DashboardScreen() {
           <CommandPalette />
         </div>
       </div>
+
+      {/* FIXPUB4 — bandeau « nouvelle version disponible » (SW existant). */}
+      <UpdateBanner />
 
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
       <SyncStatusBanner />

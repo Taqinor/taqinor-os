@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 /* PUB44 — fiche « histoire complète » d'une ad (/publicite/ad/:id) : créatif,
@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   fullStory: vi.fn(),
   mediaResolve: vi.fn(),
   syncStatus: vi.fn(),
+  connGet: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -18,6 +19,7 @@ vi.mock('./adsengineApi', () => ({
     media: { resolve: mocks.mediaResolve },
     previews: { get: vi.fn() },
     syncStatus: { get: mocks.syncStatus },
+    connection: { get: mocks.connGet },
     // PUB55 — AdChatter (embarqué) charge son fil au montage.
     chatter: {
       timeline: vi.fn(() => Promise.resolve({ data: [] })),
@@ -67,6 +69,7 @@ beforeEach(() => {
   mocks.fullStory.mockResolvedValue({ data: STORY })
   mocks.mediaResolve.mockResolvedValue({ data: { url: 'https://cdn.example/img.jpg' } })
   mocks.syncStatus.mockResolvedValue({ data: { types: [], stale: false, worst: null } })
+  mocks.connGet.mockResolvedValue({ data: { currency: 'MAD' } })
 })
 
 describe('AdDetailScreen (PUB44)', () => {
@@ -93,6 +96,33 @@ describe('AdDetailScreen (PUB44)', () => {
     expect(metrics).toHaveTextContent('900 MAD') // dépense
     expect(metrics).toHaveTextContent('5') // leads
     expect(screen.getByTestId('ae-ad-detail-fatigue')).toHaveTextContent('Fatigue confirmée')
+  })
+
+  // ── FIXPUB9 — devise du compte Meta + colonnes Odoo ──────────────────────
+  it('FIXPUB9 — étiquette les montants Meta dans la devise du compte (ex. USD)', async () => {
+    mocks.connGet.mockResolvedValue({ data: { currency: 'USD' } })
+    renderScreen()
+    const metrics = await screen.findByTestId('ae-ad-detail-metrics')
+    await waitFor(() => expect(metrics).toHaveTextContent('900 USD')) // dépense
+    expect(metrics).toHaveTextContent('180 USD') // CPL Meta
+  })
+
+  it('FIXPUB9 — Leads (Odoo) / CPL (Odoo) : tirets si absents (jamais fabriqués)', async () => {
+    renderScreen()
+    const metrics = await screen.findByTestId('ae-ad-detail-metrics')
+    // STORY de base n'a ni leads_odoo ni cpl_odoo.
+    expect(metrics).toHaveTextContent('Leads (Odoo)')
+    expect(metrics).toHaveTextContent('CPL (Odoo)')
+    expect(within(metrics).getAllByText('—').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('FIXPUB9 — Leads (Odoo) / CPL (Odoo) affichés quand présents (CPL Odoo reste en MAD)', async () => {
+    mocks.fullStory.mockResolvedValue({ data: {
+      ...STORY, metriques: { ...STORY.metriques, leads_odoo: 3, cpl_odoo: '300.00' },
+    } })
+    renderScreen()
+    const metrics = await screen.findByTestId('ae-ad-detail-metrics')
+    expect(within(metrics).getByText('300 MAD')).toBeInTheDocument()
   })
 
   it('liste les actions passées', async () => {

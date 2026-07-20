@@ -2679,6 +2679,25 @@ class AdCampaignMirrorViewSet(AdsengineViewSet):
             'campaigns': AdCampaignMirror.objects.filter(
                 company=company).count()})
 
+    @action(detail=False, methods=['post'], url_path='backfill-complet',
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def backfill_complet(self, request):
+        """FIXPUB3 — Lance le rattrapage COMPLET « tout l'historique » (insights
+        niveau ad + ventilations + créatifs live + leads lead-form) pour la
+        société de l'utilisateur, en tâche de fond. Réponse 202 immédiate ; le
+        travail (best-effort, NO-OP propre sans connexion Meta active) tourne en
+        async. Écriture → ``adsengine_manage``."""
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        from .tasks import backfill_complet as backfill_task
+        backfill_task.delay(company.id)
+        return Response({
+            'queued': True,
+            'detail': ('Rattrapage complet lancé : insights, ventilations, '
+                       'créatifs et leads seront resynchronisés en arrière-plan.'),
+        }, status=202)
+
     @action(detail=False, methods=['get'], url_path='creative-ranking',
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def creative_ranking(self, request):
@@ -3008,7 +3027,14 @@ class MediaResolveView(APIView):
         cache_key = f'adsengine-media:{company.pk}:{kind}:{ref}'
         cached = cache.get(cache_key)
         if cached is not None:
-            return Response({'url': cached, 'cached': True})
+            # FIXPUB7 — rétro-compat : une entrée de cache ancienne est une URL
+            # brute (str) ; la nouvelle est un dict ``{url, picture}``.
+            if isinstance(cached, dict):
+                payload = dict(cached)
+            else:
+                payload = {'url': cached, 'picture': ''}
+            payload['cached'] = True
+            return Response(payload)
 
         conn = MetaConnection.objects.filter(
             company=company, enabled=True).first()
@@ -3019,20 +3045,25 @@ class MediaResolveView(APIView):
         from .meta_client import MetaClient, MetaError
 
         client = MetaClient.from_connection(conn)
+        picture = ''
         try:
             if kind == 'video':
                 data = client.get_video_source(ref)
                 url = (data or {}).get('source') or ''
+                # FIXPUB7 — Meta peut REFUSER la source mp4 (Page non assignée au
+                # System User) : la ``picture`` (miniature) reste servie pour que
+                # le front bascule sur l'image au lieu d'une vidéo cassée.
+                picture = (data or {}).get('picture') or ''
             else:
                 data = client.get_ad_image(ref)
                 url = (data or {}).get('permalink_url') or ''
         except MetaError:
             return Response({'detail': 'Média introuvable.'}, status=404)
-        if not url:
+        if not url and not picture:
             return Response({'detail': 'Média introuvable.'}, status=404)
-        # Cache la seule URL (Redis, ≤30 min) — JAMAIS d'écriture en base.
-        cache.set(cache_key, url, self.CACHE_TTL)
-        return Response({'url': url, 'cached': False})
+        # Cache l'URL + la miniature (Redis, ≤30 min) — JAMAIS d'écriture en base.
+        cache.set(cache_key, {'url': url, 'picture': picture}, self.CACHE_TTL)
+        return Response({'url': url, 'picture': picture, 'cached': False})
 
 
 # ── ADSDEEP13 — Proxy previews (aperçus rendus par Meta) ──────────────────────

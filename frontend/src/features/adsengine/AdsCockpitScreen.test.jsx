@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   breakdownsList: vi.fn(),
   reportsScatter: vi.fn(),
   syncStatus: vi.fn(),
+  connGet: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -23,6 +24,7 @@ vi.mock('./adsengineApi', () => ({
     // PUB8 — courbe de rétention (réutilise reporting/creatifs/nuage/).
     reports: { scatter: mocks.reportsScatter },
     syncStatus: { get: mocks.syncStatus },
+    connection: { get: mocks.connGet },
   },
 }))
 
@@ -65,6 +67,7 @@ beforeEach(() => {
   mocks.breakdownsList.mockResolvedValue({ data: [] })
   mocks.reportsScatter.mockResolvedValue({ data: { points: [] } })
   mocks.syncStatus.mockResolvedValue({ data: { types: [], stale: false, worst: null } })
+  mocks.connGet.mockResolvedValue({ data: { currency: 'MAD' } })
 })
 
 describe('AdsCockpitScreen (ADSDEEP22)', () => {
@@ -143,6 +146,18 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
     expect(screen.queryByTestId('ae-cockpit-detail')).toBeNull()
   })
 
+  // ── FIXPUB8 — panneau visible au clic (scroll jusqu'au panneau) ─────────
+  it('FIXPUB8 — ouvrir le détail fait défiler jusqu’au panneau (jamais au montage)', async () => {
+    const scrollIntoView = vi.fn()
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView
+    renderScreen()
+    await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+    expect(scrollIntoView).not.toHaveBeenCalled() // jamais au montage
+    fireEvent.click(screen.getAllByTestId('ae-cockpit-open')[0])
+    await screen.findByTestId('ae-cockpit-detail')
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' }))
+  })
+
   it('PUB8 — le détail d’une ad vidéo montre sa courbe de rétention', async () => {
     mocks.reportsScatter.mockResolvedValue({ data: { points: [
       { ad_meta_id: 'ad-1', name: 'Reel toiture', retention: { p25: 0.8, p50: 0.5, p75: 0.25, p100: 0.1 } },
@@ -194,6 +209,30 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
     expect(links[0]).toHaveAttribute('href', expect.stringMatching(/^\/publicite\/ad\/ad-\d$/))
   })
 
+  // ── FIXPUB9 — devise du compte Meta + colonnes Odoo ──────────────────────
+  describe('FIXPUB9 — devise + colonnes Odoo', () => {
+    it('étiquette les montants Meta dans la devise du compte (ex. USD), CPL (Odoo) reste en MAD', async () => {
+      mocks.connGet.mockResolvedValue({ data: { currency: 'USD' } })
+      mocks.adsCockpit.mockResolvedValue({ data: [
+        { ...ROWS[0], leads_odoo: 4, cpl_odoo: '225.00' },
+      ] })
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      const row = screen.getByTestId('ae-cockpit-row')
+      expect(row).toHaveTextContent('900 USD') // dépense (Meta)
+      expect(row).toHaveTextContent('180 USD') // CPL (Meta)
+      expect(row).toHaveTextContent('225 MAD') // CPL (Odoo) — reste en MAD
+      expect(row).toHaveTextContent('4') // Leads (Odoo)
+    })
+
+    it('Leads (Odoo) / CPL (Odoo) absents -> tirets, jamais fabriqués', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      const row = screen.getAllByTestId('ae-cockpit-row')[0]
+      expect(row).toHaveTextContent('—')
+    })
+  })
+
   // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
   describe('PUB40 — sélecteur de période', () => {
     it('affiche la barre de période et recharge le cockpit au changement', async () => {
@@ -211,12 +250,28 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
       renderScreen()
       await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
       expect(screen.queryByTestId('ae-cockpit-compare-summary')).toBeNull()
+      // FIXPUB2 — défaut « Tout » (sans bornes) : la case comparer reste
+      // désactivée tant qu'une période BORNÉE n'est pas choisie.
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-7j'))
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalledTimes(2))
       mocks.adsCockpit.mockClear()
       fireEvent.click(screen.getByTestId('ae-daterange-compare'))
       // Comparaison active -> 2 appels (période courante + précédente).
       await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalledTimes(2))
       expect(await screen.findByTestId('ae-cockpit-compare-summary'))
         .toHaveTextContent('vs période précédente')
+    })
+  })
+
+  // ── FIXPUB2 — défaut « Tout » (aucune borne) ────────────────────────────
+  describe('FIXPUB2 — fenêtre par défaut', () => {
+    it('démarre sur « Tout » (aucune borne envoyée à l’API)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange-preset-tout')).toHaveAttribute('aria-pressed', 'true')
+      const params = mocks.adsCockpit.mock.calls[0][0]
+      expect(params.debut).toBeUndefined()
+      expect(params.fin).toBeUndefined()
     })
   })
 
