@@ -2,12 +2,13 @@
 leads webhook et pull CONVERGENT (même leadgen_id → un seul lead CRM, un seul
 miroir).
 """
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from authentication.models import Company
 
 from apps.adsengine import sync
 from apps.adsengine.models import MetaConnection, MetaLeadMirror
+from apps.adsengine.selectors import resolve_lead_ads_access_token
 from apps.adsengine.tasks import pull_ad_leads_for_company
 from apps.crm.models import Lead
 
@@ -85,3 +86,54 @@ class PullLeadsTests(TestCase):
             pass
         self.assertEqual(
             pull_ad_leads_for_company(self.company, self.conn, Old()), 0)
+
+    def test_pull_works_with_only_connection_token(self):
+        """FIXPUB1 — sans env, le pull fonctionne avec le SEUL token de la
+        MetaConnection (le client est bâti depuis la connexion) et le token
+        résolu pour la résolution des noms est bien celui de la connexion."""
+        with override_settings(META_LEAD_ADS_ACCESS_TOKEN=''):
+            token, source = resolve_lead_ads_access_token(self.company)
+            n = pull_ad_leads_for_company(
+                self.company, self.conn, PullFakeClient(), name_token=token)
+        self.assertEqual((token, source), ('tok', 'connection'))
+        self.assertEqual(n, 1)
+        self.assertTrue(Lead.objects.filter(
+            company=self.company, external_id='lg-100').exists())
+
+
+class LeadAdsTokenResolutionTests(TestCase):
+    """FIXPUB1 — repli du token Lead Ads : env prioritaire, sinon la
+    MetaConnection activée ; jamais le token d'une connexion désactivée."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Tok Co', slug='tok')
+
+    def test_connection_token_when_no_env(self):
+        MetaConnection.objects.create(
+            company=self.company, enabled=True,
+            credentials={'access_token': 'CONN'}, ad_account_id='act_9')
+        with override_settings(META_LEAD_ADS_ACCESS_TOKEN=''):
+            self.assertEqual(
+                resolve_lead_ads_access_token(self.company),
+                ('CONN', 'connection'))
+
+    def test_env_token_wins_over_connection(self):
+        MetaConnection.objects.create(
+            company=self.company, enabled=True,
+            credentials={'access_token': 'CONN'}, ad_account_id='act_9')
+        with override_settings(META_LEAD_ADS_ACCESS_TOKEN='ENV'):
+            self.assertEqual(
+                resolve_lead_ads_access_token(self.company), ('ENV', 'env'))
+
+    def test_no_token_anywhere(self):
+        with override_settings(META_LEAD_ADS_ACCESS_TOKEN=''):
+            self.assertEqual(
+                resolve_lead_ads_access_token(self.company), ('', None))
+
+    def test_disabled_connection_token_is_ignored(self):
+        MetaConnection.objects.create(
+            company=self.company, enabled=False,
+            credentials={'access_token': 'CONN'}, ad_account_id='act_9')
+        with override_settings(META_LEAD_ADS_ACCESS_TOKEN=''):
+            self.assertEqual(
+                resolve_lead_ads_access_token(self.company), ('', None))
