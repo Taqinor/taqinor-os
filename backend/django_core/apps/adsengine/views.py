@@ -2679,6 +2679,25 @@ class AdCampaignMirrorViewSet(AdsengineViewSet):
             'campaigns': AdCampaignMirror.objects.filter(
                 company=company).count()})
 
+    @action(detail=False, methods=['post'], url_path='backfill-complet',
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
+    def backfill_complet(self, request):
+        """FIXPUB3 — Lance le rattrapage COMPLET « tout l'historique » (insights
+        niveau ad + ventilations + créatifs live + leads lead-form) pour la
+        société de l'utilisateur, en tâche de fond. Réponse 202 immédiate ; le
+        travail (best-effort, NO-OP propre sans connexion Meta active) tourne en
+        async. Écriture → ``adsengine_manage``."""
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response({'detail': 'Aucune société.'}, status=400)
+        from .tasks import backfill_complet as backfill_task
+        backfill_task.delay(company.id)
+        return Response({
+            'queued': True,
+            'detail': ('Rattrapage complet lancé : insights, ventilations, '
+                       'créatifs et leads seront resynchronisés en arrière-plan.'),
+        }, status=202)
+
     @action(detail=False, methods=['get'], url_path='creative-ranking',
             permission_classes=[HasPermissionOrLegacy('adsengine_view')])
     def creative_ranking(self, request):
