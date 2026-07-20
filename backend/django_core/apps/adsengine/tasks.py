@@ -574,20 +574,29 @@ BREAKDOWN_SPECS = {
 BREAKDOWN_WINDOW_DAYS = 28
 
 
-def sync_breakdowns_for_campaign(company, client, campaign_mirror):
-    """ADSDEEP8 — Synchronise les 4 dimensions de breakdown d'UNE campagne.
+def sync_breakdowns_for_campaign_detailed(company, client, campaign_mirror):
+    """DATAPUB4 — Synchronise les 4 dimensions de breakdown d'UNE campagne et
+    renvoie le DÉTAIL PAR DIMENSION : ``{dimension: {'rows': int, 'error':
+    str|None}}``.
 
     Pour chaque dimension (âge×genre, placement, région, horaire) tire l'insight
     ventilé sur une fenêtre 28 j glissants avec les combos LÉGAUX uniquement
-    (``BREAKDOWN_SPECS``) et upserte une ligne ``InsightBreakdown`` par clé.
-    Idempotent (upsert par clé). Best-effort par dimension : une dimension en
-    échec n'empêche pas les autres. Renvoie le nombre de lignes upsertées."""
+    (``BREAKDOWN_SPECS`` — stratégie PAR DIMENSION : hourly ne demande jamais
+    reach/frequency/unique_*, illégaux sous breakdown horaire, dossier §2) et
+    upserte une ligne ``InsightBreakdown`` par clé. Idempotent (upsert par clé).
+
+    Best-effort par dimension : une dimension en échec n'empêche pas les autres,
+    MAIS l'échec n'est PLUS avalé en silence — il est LOGUÉ et remonté dans
+    ``error``. C'est la cause racine observée en prod (seule ``age_gender`` se
+    peuplait : les 3 autres combos échouaient/étaient vides et le ``continue``
+    muet le cachait). Le fondateur peut désormais voir, par dimension, si c'est un
+    rejet API ou simplement l'absence de diffusion sur cet axe."""
     from .models import InsightBreakdown
     from .platforms.base import normalize_insight_row
 
     today = datetime.date.today()
     since = today - datetime.timedelta(days=BREAKDOWN_WINDOW_DAYS - 1)
-    written = 0
+    detail = {}
     for dimension, spec in BREAKDOWN_SPECS.items():
         try:
             rows = client.get_insights(
@@ -598,8 +607,14 @@ def sync_breakdowns_for_campaign(company, client, campaign_mirror):
                     'time_range': {
                         'since': since.isoformat(), 'until': today.isoformat()},
                 })
-        except Exception:  # noqa: BLE001 — une dimension en échec n'arrête pas
+        except Exception as exc:  # noqa: BLE001 — isolé par dimension, JAMAIS muet
+            logger.warning(
+                'adsengine breakdown %s KO (campagne %s) : %s',
+                dimension, campaign_mirror.meta_id, exc)
+            detail[dimension] = {
+                'rows': 0, 'error': f'{type(exc).__name__}: {exc}'[:200]}
             continue
+        written = 0
         for row in rows or []:
             key = spec['key_fn'](row)
             if not key:
@@ -612,7 +627,17 @@ def sync_breakdowns_for_campaign(company, client, campaign_mirror):
                 clicks=norm['clicks'], results=norm['results'],
                 conversations=norm['conversations'])
             written += 1
-    return written
+        detail[dimension] = {'rows': written, 'error': None}
+    return detail
+
+
+def sync_breakdowns_for_campaign(company, client, campaign_mirror):
+    """ADSDEEP8 — Synchronise les 4 dimensions de breakdown d'UNE campagne.
+    Délègue à ``sync_breakdowns_for_campaign_detailed`` (DATAPUB4) et renvoie le
+    NOMBRE TOTAL de lignes upsertées (contrat historique, int)."""
+    detail = sync_breakdowns_for_campaign_detailed(
+        company, client, campaign_mirror)
+    return sum(d['rows'] for d in detail.values())
 
 
 def sync_breakdowns_for_company(company, client):

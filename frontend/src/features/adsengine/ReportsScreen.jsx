@@ -66,6 +66,11 @@ function periodParams(days) {
   return { debut: iso(debut), fin: iso(fin) }
 }
 
+// DATAPUB4 — « — » honnête quand une métrique n'est pas mesurée (jamais un 0
+// fabriqué) ; sinon la valeur formatée.
+const dashNum = (v) => (v === null || v === undefined) ? '—' : formatNumber(v)
+const dashMad = (v) => (v === null || v === undefined) ? '—' : formatMAD(v)
+
 // DATAPUB3 — graphe SVG fait-main (aucune lib de charts, idiome du module) :
 // barres = leads Odoo (clair = total, foncé = attribués), courbe = dépense.
 function LeadsTimeseriesChart({ points }) {
@@ -159,6 +164,18 @@ export default function ReportsScreen() {
       .finally(() => setLeadsLoading(false))
   }, [leadsGran])
 
+  // DATAPUB4 — audience (démographie), chargée à l'ouverture de l'onglet.
+  const [audienceData, setAudienceData] = useState(null)
+  const [audienceLoading, setAudienceLoading] = useState(false)
+
+  const loadAudience = useCallback(() => {
+    setAudienceLoading(true)
+    adsengineApi.reports.audience()
+      .then(r => setAudienceData(r.data))
+      .catch(() => setAudienceData(null))
+      .finally(() => setAudienceLoading(false))
+  }, [])
+
   const load = useCallback(() => {
     setLoading(true)
     adsengineApi.reports.variants()
@@ -196,6 +213,9 @@ export default function ReportsScreen() {
   // changement de granularité.
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'onglet
   useEffect(() => { if (tab === 'leads') loadLeads() }, [tab, loadLeads])
+  // DATAPUB4 — charge l'audience la première fois que l'onglet est ouvert.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'onglet
+  useEffect(() => { if (tab === 'audience' && audienceData === null) loadAudience() }, [tab, audienceData, loadAudience])
 
   // Export CSV : SERVI PAR LE BACKEND (PUB12). On télécharge le blob authentifié
   // du ReportExportView (source de vérité unique, table de réconciliation
@@ -271,6 +291,10 @@ export default function ReportsScreen() {
           data-testid="ae-reports-tab-leads"
           className={`btn ${tab === 'leads' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setTab('leads')}>Leads dans le temps</button>
+        <button type="button" role="tab" aria-selected={tab === 'audience'}
+          data-testid="ae-reports-tab-audience"
+          className={`btn ${tab === 'audience' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setTab('audience')}>Audience</button>
         <button type="button" role="tab" aria-selected={tab === 'audit'}
           data-testid="ae-reports-tab-audit"
           className={`btn ${tab === 'audit' ? 'btn-primary' : 'btn-secondary'}`}
@@ -607,6 +631,93 @@ export default function ReportsScreen() {
                 </tbody>
               </table>
             </>
+          )}
+        </div>
+      )}
+
+      {tab === 'audience' && (
+        <div style={{ display: 'grid', gap: '1.25rem' }} data-testid="ae-audience">
+          {audienceLoading && <p className="page-loading">Chargement…</p>}
+          {!audienceLoading && audienceData && (
+            <>
+              {/* Couverture par dimension : rend VISIBLE quelles ventilations ont
+                  des données (âge×genre peuplé, les autres à 0 → on sait pourquoi
+                  l'audience se limite à âge/genre). */}
+              {audienceData.coverage && (
+                <div data-testid="ae-audience-coverage"
+                  style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', fontSize: '0.8rem' }}>
+                  {audienceData.coverage.map(c => (
+                    <span key={c.dimension} data-testid={`ae-audience-coverage-${c.dimension}`}
+                      style={{ background: c.rows > 0 ? '#dcfce7' : '#f1f5f9',
+                        color: c.rows > 0 ? '#166534' : '#64748b',
+                        borderRadius: 999, padding: '0.15rem 0.6rem' }}>
+                      {c.label} : {formatNumber(c.rows)} lignes
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {!audienceData.configured && (
+                <p data-testid="ae-audience-empty" style={{ color: '#64748b' }}>
+                  Aucune ventilation démographique disponible pour l&apos;instant.
+                </p>
+              )}
+
+              {audienceData.configured && (
+                <>
+                  <section data-testid="ae-audience-gender">
+                    <h3 style={{ margin: '0 0 0.6rem' }}>Par genre</h3>
+                    <table className="data-table" data-testid="ae-audience-gender-table">
+                      <thead>
+                        <tr><th>Genre</th><th>Portée</th><th>Impressions</th><th>Clics</th>
+                          <th>Résultats (leads)</th><th>Conversations</th><th>Dépense</th></tr>
+                      </thead>
+                      <tbody>
+                        {audienceData.by_gender.map(g => (
+                          <tr key={g.key} data-testid="ae-audience-gender-row">
+                            <td data-label="Genre">{g.label}</td>
+                            <td data-label="Portée">{dashNum(g.reach)}</td>
+                            <td data-label="Impressions">{dashNum(g.impressions)}</td>
+                            <td data-label="Clics">{dashNum(g.clicks)}</td>
+                            <td data-label="Résultats (leads)">{dashNum(g.results)}</td>
+                            <td data-label="Conversations">{dashNum(g.conversations)}</td>
+                            <td data-label="Dépense">{dashMad(g.spend)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </section>
+
+                  <section data-testid="ae-audience-age">
+                    <h3 style={{ margin: '0 0 0.6rem' }}>Par âge</h3>
+                    <table className="data-table" data-testid="ae-audience-age-table">
+                      <thead>
+                        <tr><th>Âge</th><th>Portée</th><th>Impressions</th><th>Clics</th>
+                          <th>Résultats (leads)</th><th>Conversations</th><th>Dépense</th></tr>
+                      </thead>
+                      <tbody>
+                        {audienceData.by_age.map(a => (
+                          <tr key={a.age} data-testid="ae-audience-age-row">
+                            <td data-label="Âge">{a.age}</td>
+                            <td data-label="Portée">{dashNum(a.reach)}</td>
+                            <td data-label="Impressions">{dashNum(a.impressions)}</td>
+                            <td data-label="Clics">{dashNum(a.clicks)}</td>
+                            <td data-label="Résultats (leads)">{dashNum(a.results)}</td>
+                            <td data-label="Conversations">{dashNum(a.conversations)}</td>
+                            <td data-label="Dépense">{dashMad(a.spend)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </section>
+                </>
+              )}
+            </>
+          )}
+          {!audienceLoading && !audienceData && (
+            <p data-testid="ae-audience-error" style={{ color: '#64748b' }}>
+              Audience indisponible.
+            </p>
           )}
         </div>
       )}

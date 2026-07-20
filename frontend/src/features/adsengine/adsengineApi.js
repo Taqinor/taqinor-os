@@ -223,6 +223,10 @@ const adsengineApi = {
     // `params` : { granularite: 'jour'|'semaine', ad?, debut?, fin? }.
     leadsTimeseries: (params) =>
       api.get('/adsengine/reporting/leads-timeseries/', { params }),
+    // DATAPUB4 — audience (démographie) : par genre/âge + couverture par
+    // dimension. `params` : { ad? }.
+    audience: (params) =>
+      api.get('/adsengine/reporting/audience/', { params }),
     // PUB12/PUB47 — export CSV SERVEUR (ReportExportView) : source de vérité
     // unique, inclut la table de réconciliation. Blob authentifié (jamais un
     // CSV fabriqué côté client, qui divergerait du serveur). `params` :

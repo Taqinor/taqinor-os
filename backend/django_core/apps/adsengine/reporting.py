@@ -1200,3 +1200,131 @@ def leads_timeseries(company, *, granularity='day', ad_meta_id=None,
     if leads_res.get('odoo_error') is not None:
         out['odoo_error'] = leads_res['odoo_error']
     return out
+
+
+# ── DATAPUB4 — Audience (démographie) depuis les ventilations age_gender ──────
+_GENDER_FR = {'f': 'Femmes', 'm': 'Hommes'}
+_AUDIENCE_METRICS = ('impressions', 'clicks', 'results', 'conversations')
+_BREAKDOWN_DIM_LABELS = {
+    'age_gender': 'Âge × genre', 'platform': 'Placement',
+    'region': 'Région', 'hourly': 'Horaire',
+}
+
+
+def _split_age_gender(key):
+    """Clé de ventilation ``'25-34/f'`` → ``('25-34', 'f')`` ; ``'65+'`` (sans
+    séparateur) → ``('65+', '')`` ; ``'/f'`` → ``('', 'f')``."""
+    age, _, gender = key.partition('/')
+    return age, gender
+
+
+def _gender_label(letter):
+    return _GENDER_FR.get(letter, 'Inconnu')
+
+
+def _new_segment():
+    seg = {m: None for m in _AUDIENCE_METRICS}
+    seg['spend'] = None
+    return seg
+
+
+def _accumulate_segment(seg, row):
+    """Somme null-safe : une métrique JAMAIS renseignée sur aucune ligne du
+    segment reste None (« — » honnête côté UI, jamais un 0 fabriqué)."""
+    spend = row.get('spend')
+    if spend is not None:
+        seg['spend'] = (seg['spend'] or Decimal('0')) + spend
+    for metric in _AUDIENCE_METRICS:
+        value = row.get(metric)
+        if value is not None:
+            seg[metric] = (seg[metric] or 0) + value
+
+
+def _segment_out(seg, extra):
+    out = dict(extra)
+    out['spend'] = _q2(seg['spend'])
+    for metric in _AUDIENCE_METRICS:
+        out[metric] = seg[metric]
+    # reach n'est PAS matérialisé sous breakdown (dossier §2) → None honnête.
+    out['reach'] = None
+    return out
+
+
+def _breakdown_coverage(company):
+    """DATAPUB4 — Couverture PAR dimension de ventilation : lignes en base + date
+    la plus récente. Rend VISIBLE pourquoi seule ``age_gender`` avait des données
+    (les autres à 0 lignes), la contrepartie UI du diagnostic de la synchro."""
+    from django.db.models import Count, Max
+
+    from .models import InsightBreakdown
+
+    rows = (InsightBreakdown.objects.filter(company=company)
+            .values('dimension')
+            .annotate(rows=Count('id'), last_date=Max('date')))
+    by_dim = {r['dimension']: r for r in rows}
+    coverage = []
+    for dim in ('age_gender', 'platform', 'region', 'hourly'):
+        entry = by_dim.get(dim)
+        last = entry['last_date'] if entry else None
+        coverage.append({
+            'dimension': dim,
+            'label': _BREAKDOWN_DIM_LABELS[dim],
+            'rows': entry['rows'] if entry else 0,
+            'last_date': last.isoformat() if last else None,
+        })
+    return coverage
+
+
+def audience_breakdown(company, *, ad_meta_id=None):
+    """DATAPUB4 — Audience (démographie) : impressions/clics/résultats(=leads)/
+    dépense agrégés PAR GENRE et PAR ÂGE depuis les ventilations ``age_gender``
+    (ADSDEEP8). Libellés FR (Femmes/Hommes/Inconnu). ``reach`` n'est PAS stocké
+    sous breakdown → ``None`` (« — » côté UI, jamais un 0 fabriqué). ``results``
+    porte les leads pour une campagne lead-gen.
+
+    ``ad_meta_id`` (optionnel) draille sur une annonce ; les ventilations étant
+    stockées au niveau CAMPAGNE (ADSDEEP8), le drill par ad reste vide tant
+    qu'aucune ventilation ad-level n'existe (honnête, jamais un chiffre inventé).
+
+    Renvoie ``{'configured', 'by_gender', 'by_age', 'coverage'}`` où
+    ``configured`` = au moins une ligne ``age_gender`` existe."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from .models import AdMirror, InsightBreakdown
+
+    qs = InsightBreakdown.objects.filter(
+        company=company, dimension='age_gender')
+    if ad_meta_id:
+        ad = (AdMirror.objects.filter(company=company, meta_id=ad_meta_id)
+              .only('id').first())
+        if ad is None:
+            return {'configured': False, 'by_gender': [], 'by_age': [],
+                    'coverage': _breakdown_coverage(company)}
+        ct = ContentType.objects.get_for_model(AdMirror)
+        qs = qs.filter(content_type=ct, object_id=ad.pk)
+
+    by_gender = {}
+    by_age = {}
+    has_rows = False
+    for row in qs.values('key', 'spend', 'impressions', 'clicks', 'results',
+                         'conversations'):
+        has_rows = True
+        age, gender = _split_age_gender(row['key'])
+        gseg = by_gender.setdefault(gender, _new_segment())
+        _accumulate_segment(gseg, row)
+        aseg = by_age.setdefault(age, _new_segment())
+        _accumulate_segment(aseg, row)
+
+    gender_rows = [
+        _segment_out(by_gender[g], {'key': g, 'label': _gender_label(g)})
+        for g in sorted(by_gender, key=lambda g: (g not in _GENDER_FR, g))]
+    age_rows = [
+        _segment_out(by_age[a], {'age': a or '(inconnu)'})
+        for a in sorted(by_age)]
+
+    return {
+        'configured': has_rows,
+        'by_gender': gender_rows,
+        'by_age': age_rows,
+        'coverage': _breakdown_coverage(company),
+    }

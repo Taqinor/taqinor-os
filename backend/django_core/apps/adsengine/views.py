@@ -1733,6 +1733,24 @@ class LeadsTimeseriesView(APIView):
             date_start=debut, date_end=fin))
 
 
+class AudienceView(APIView):
+    """DATAPUB4 — Audience (démographie) : reach(—)/impressions/clics/résultats/
+    dépense agrégés par GENRE et par ÂGE (ventilations age_gender) + couverture
+    par dimension (âge×genre/placement/région/horaire). ``?ad=<meta_id>`` draille
+    sur une annonce. Company-scopé, gaté ``adsengine_view``.
+    ``GET /api/django/adsengine/reporting/audience/``."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company, err = _adseng_reporting_company(request)
+        if err is not None:
+            return err
+        from .reporting import audience_breakdown
+        ad = request.query_params.get('ad') or None
+        return Response(audience_breakdown(company, ad_meta_id=ad))
+
+
 class VariantFunnelView(APIView):
     """PUB36 — Entonnoir de décrochage par étape, PAR VARIANTE (ad) — à quelle
     étape STAGES.py chaque annonce perd ses leads (COLD/perdu à côté)."""
