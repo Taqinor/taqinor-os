@@ -146,6 +146,18 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
     expect(screen.queryByTestId('ae-cockpit-detail')).toBeNull()
   })
 
+  // ── FIXPUB8 — panneau visible au clic (scroll jusqu'au panneau) ─────────
+  it('FIXPUB8 — ouvrir le détail fait défiler jusqu’au panneau (jamais au montage)', async () => {
+    const scrollIntoView = vi.fn()
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView
+    renderScreen()
+    await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+    expect(scrollIntoView).not.toHaveBeenCalled() // jamais au montage
+    fireEvent.click(screen.getAllByTestId('ae-cockpit-open')[0])
+    await screen.findByTestId('ae-cockpit-detail')
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' }))
+  })
+
   it('PUB8 — le détail d’une ad vidéo montre sa courbe de rétention', async () => {
     mocks.reportsScatter.mockResolvedValue({ data: { points: [
       { ad_meta_id: 'ad-1', name: 'Reel toiture', retention: { p25: 0.8, p50: 0.5, p75: 0.25, p100: 0.1 } },

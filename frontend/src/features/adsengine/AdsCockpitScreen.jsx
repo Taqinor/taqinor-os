@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDown, ArrowUp, ArrowUpDown, Video, ImageOff, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
@@ -170,6 +170,9 @@ export default function AdsCockpitScreen() {
   // Meilleures vidéos) + mémoire du dernier onglet/tri (localStorage).
   const [{ tab: activeView, sort }, setViewState] = useState(initialCockpitView)
   const [openAdId, setOpenAdId] = useState(null)
+  // FIXPUB8 — le panneau de détail apparaît SOUS le tableau (invisible sans
+  // scroll manuel) : on l'amène en vue au clic, jamais au montage initial.
+  const detailRef = useRef(null)
 
   // PUB40 — sélecteur de période + comparaison (partagé avec Dashboard).
   // FIXPUB2 — défaut « Tout » (aucune borne) : contrairement au Dashboard
@@ -223,6 +226,14 @@ export default function AdsCockpitScreen() {
   // PUB43 — mémorise le dernier onglet/tri choisi (localStorage) à chaque
   // changement — dégradation silencieuse si indisponible (cockpitViews.js).
   useEffect(() => { saveCockpitView({ tab: activeView, sort }) }, [activeView, sort])
+
+  // FIXPUB8 — fait défiler jusqu'au panneau de détail dès qu'une ligne
+  // s'ouvre (jamais au montage : `openAdId` démarre à `null`).
+  useEffect(() => {
+    if (openAdId != null) {
+      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [openAdId])
 
   // « Toutes » reste pilotée par le tri MANUEL (colonnes cliquables) ; un
   // onglet prédéfini FIGE son propre filtre+tri (PUB43 — jamais retrié).
@@ -389,7 +400,7 @@ export default function AdsCockpitScreen() {
         )}
 
       {openRow && (
-        <section className="card ae-cockpit-detail" data-testid="ae-cockpit-detail"
+        <section ref={detailRef} className="card ae-cockpit-detail" data-testid="ae-cockpit-detail"
           style={{ padding: '1rem', marginTop: '1rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0 }}>{openRow.nom || openRow.meta_id}</h3>
