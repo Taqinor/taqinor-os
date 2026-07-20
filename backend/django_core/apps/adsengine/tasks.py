@@ -795,7 +795,7 @@ def sync_instagram_for_company(company, conn, client):
     return len(mirrors)
 
 
-def pull_ad_leads_for_company(company, conn, client):
+def pull_ad_leads_for_company(company, conn, client, *, name_token=''):
     """ADSDEEP18 — Pull-sync des leads lead-form d'une société.
 
     Pour chaque ad miroir, tire ``GET /<ad_id>/leads`` (fenêtre Meta 90 j),
@@ -803,7 +803,13 @@ def pull_ad_leads_for_company(company, conn, client):
     webhook (``crm.services.create_lead_from_meta_lead_ads`` — idempotent par
     ``leadgen_id``, jamais un doublon) et émet ``meta_lead_captured`` pour que le
     MÊME récepteur upserte le MetaLeadMirror : webhook et pull CONVERGENT sur le
-    même miroir. Best-effort par ad. Renvoie le nombre de leads traités."""
+    même miroir. Best-effort par ad. Renvoie le nombre de leads traités.
+
+    FIXPUB1 — ``name_token`` (optionnel) : token passé au service pour le repli
+    PARESSEUX de résolution des NOMS de campagne/ad set via le Graph API (env
+    prioritaire, sinon token de la MetaConnection — cf.
+    ``selectors.resolve_lead_ads_access_token``). Vide (défaut) : résolution par
+    les seuls miroirs locaux, jamais d'appel réseau."""
     from core.events import meta_lead_captured
 
     from .models import AdMirror
@@ -835,7 +841,8 @@ def pull_ad_leads_for_company(company, conn, client):
                 lead = create_lead_from_meta_lead_ads(
                     company=company, leadgen_id=leadgen_id,
                     field_data=field_data, ad_id=ad.meta_id,
-                    adgroup_id=targeting.get('adset_id', ''), form_id=form_id)
+                    adgroup_id=targeting.get('adset_id', ''), form_id=form_id,
+                    access_token=name_token)
             except Exception:  # noqa: BLE001 — un lead en échec n'arrête pas
                 logger.warning(
                     'adsengine.pull_ad_leads: création lead échouée (%s)',
@@ -864,6 +871,7 @@ def pull_meta_leads():
 
     from .meta_client import MetaAuthError, MetaClient
     from .models import MetaConnection
+    from .selectors import resolve_lead_ads_access_token
 
     total = 0
     for company in active_companies():
@@ -873,7 +881,14 @@ def pull_meta_leads():
             continue
         try:
             client = MetaClient.from_connection(conn)
-            total += pull_ad_leads_for_company(company, conn, client)
+            # FIXPUB1 — token de résolution des noms : env prioritaire, sinon le
+            # token de la MetaConnection ; on journalise la SOURCE, jamais la valeur.
+            name_token, token_source = resolve_lead_ads_access_token(company)
+            logger.info(
+                'adsengine.pull_meta_leads: société %s — résolution des noms '
+                'via token %s', company.pk, token_source)
+            total += pull_ad_leads_for_company(
+                company, conn, client, name_token=name_token)
         except MetaAuthError as exc:
             _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
             continue
