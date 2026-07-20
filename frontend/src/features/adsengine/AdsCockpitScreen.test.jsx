@@ -413,4 +413,42 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
       expect(within(rows[0]).getByText('Explainer')).toBeInTheDocument()
     })
   })
+
+  // ── DATAPUB5 — Sélecteur de colonnes (parité Ads Manager) ────────────────
+  describe('DATAPUB5 — sélecteur de colonnes', () => {
+    it('ajoute une colonne masquée par défaut (Impressions) et la persiste', async () => {
+      mocks.adsCockpit.mockResolvedValue({ data: [
+        { ...ROWS[0], impressions: 12000, reach: 8000, ctr: 0.021, cpm_mad: '75.00' },
+      ] })
+      const { unmount } = renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      // Masquée par défaut (pas d'en-tête triable).
+      expect(screen.queryByTestId('ae-cockpit-sort-impressions')).toBeNull()
+      // Ouvre le sélecteur et coche « Impressions ».
+      fireEvent.click(screen.getByTestId('ae-cockpit-columns-toggle'))
+      fireEvent.click(within(screen.getByTestId('ae-cockpit-column-impressions')).getByRole('checkbox'))
+      // La colonne apparaît (en-tête + valeur groupée).
+      expect(screen.getByTestId('ae-cockpit-sort-impressions')).toBeInTheDocument()
+      expect(screen.getByTestId('ae-cockpit-row')).toHaveTextContent('12 000')
+      // Persistée.
+      await waitFor(() => expect(
+        JSON.parse(window.localStorage.getItem('ae-cockpit-columns'))).toContain('impressions'))
+      unmount()
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalledTimes(2))
+      expect(screen.getByTestId('ae-cockpit-sort-impressions')).toBeInTheDocument()
+    })
+
+    it('CTR/CPC/CPM manquants -> « — », jamais fabriqués', async () => {
+      mocks.adsCockpit.mockResolvedValue({ data: [
+        { ...ROWS[2], impressions: null, ctr: null, cpc_mad: null, cpm_mad: null },
+      ] })
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('ae-cockpit-columns-toggle'))
+      fireEvent.click(within(screen.getByTestId('ae-cockpit-column-ctr')).getByRole('checkbox'))
+      // La cellule CTR d'une valeur nulle est « — » (formatPercent(null)).
+      expect(screen.getByTestId('ae-cockpit-row')).toHaveTextContent('—')
+    })
+  })
 })
