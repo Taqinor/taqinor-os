@@ -7,9 +7,9 @@ import {
 /* PUB40 — sélecteur de période + comparaison : logique pure. */
 
 describe('DATE_RANGE_PRESETS', () => {
-  it('expose les 4 presets attendus (hier/7j/30j/personnalisé)', () => {
+  it('expose les 5 presets attendus (hier/7j/30j/tout/personnalisé)', () => {
     expect(DATE_RANGE_PRESETS.map(p => p.key)).toEqual(
-      ['hier', '7j', '30j', 'personnalise'])
+      ['hier', '7j', '30j', 'tout', 'personnalise'])
   })
 })
 
@@ -37,6 +37,10 @@ describe('presetRange', () => {
     const r = presetRange('30j', today)
     expect(r).toEqual({ debut: '2026-06-20', fin: '2026-07-19' })
     expect(rangeLengthDays(r)).toBe(30)
+  })
+
+  it('« tout » = bornes VIDES, jamais null (Cockpit/Campagnes/Journal en défaut)', () => {
+    expect(presetRange('tout', today)).toEqual({ debut: '', fin: '' })
   })
 
   it('« personnalise » ne résout rien (null — l’écran garde la saisie)', () => {

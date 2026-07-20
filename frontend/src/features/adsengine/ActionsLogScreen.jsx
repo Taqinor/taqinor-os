@@ -8,6 +8,8 @@ import {
 import DateRangeBar from './DateRangeBar'
 import { presetRange, previousRange, computeDelta, formatDeltaPct } from './dateRange'
 import SyncStatusBanner from './SyncStatusBanner'
+// FIXPUB4 — bandeau « version périmée » (réutilise le SW existant).
+import UpdateBanner from './UpdateBanner'
 
 // PUB44 — l'ad ciblée par une EngineAction, quand résoluble : 3 conventions
 // de clé cohabitent dans `payload` selon le `kind` (les mêmes que côté
@@ -55,9 +57,11 @@ export default function ActionsLogScreen() {
   const [cancelBusy, setCancelBusy] = useState(null)
 
   // PUB40 — sélecteur de période + comparaison (partagé avec les 3 autres
-  // écrans-données). Défaut « 30 derniers jours ».
+  // écrans-données). FIXPUB2 — défaut « Tout » (aucune borne) : le journal
+  // d'actions est un backstop de confiance, il ne doit jamais masquer une
+  // action passée faute d'avoir pensé à élargir la période.
   const [range, setRange] = useState(
-    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+    () => ({ preset: 'tout', ...presetRange('tout'), compare: false }))
   const [previousCount, setPreviousCount] = useState(null)
   // PUB41 — état-ERREUR distinct de l'état-vide (jamais un silence).
   const [loadError, setLoadError] = useState(false)
@@ -113,6 +117,9 @@ export default function ActionsLogScreen() {
       <div className="page-header">
         <h2>Journal d&apos;actions</h2>
       </div>
+
+      {/* FIXPUB4 — bandeau « nouvelle version disponible » (SW existant). */}
+      <UpdateBanner />
 
       {/* PUB41 — bandeau global « Meta ne répond plus… » (fraîcheur/panne). */}
       <SyncStatusBanner />

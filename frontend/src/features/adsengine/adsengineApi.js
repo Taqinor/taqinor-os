@@ -76,6 +76,10 @@ const adsengineApi = {
   campaigns: {
     ...resource('campaigns'),
     syncNow: () => api.post('/adsengine/campaigns/sync-now/'),
+    // FIXPUB3 — sync-now ne couvre que la fenêtre habituelle ; ce bouton
+    // récupère TOUT l'historique disponible côté Meta (route posée par la
+    // lane backend parallèle — voir KNOWN_GAPS dans le garde de contrat).
+    fullBackfill: () => api.post('/adsengine/campaigns/backfill-complet/'),
     creativeRanking: (params) =>
       api.get('/adsengine/campaigns/creative-ranking/', { params }),
     // ADSDEEP60 — hiérarchie Campagne → Ad sets → Ads (drill-down navigable).
