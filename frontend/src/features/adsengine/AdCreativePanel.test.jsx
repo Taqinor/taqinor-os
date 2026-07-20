@@ -48,6 +48,25 @@ describe('AdCreativePanel (ADSDEEP14)', () => {
     expect(video).toHaveAttribute('src', 'https://cdn.fb/v99.mp4')
   })
 
+  // ── FIXPUB7/9 — pas de source vidéo mais une vignette (picture) ──────────
+  it('pas de source jouable mais une vignette -> affiche l’image + le bandeau d’accès Page (jamais de chargement infini)', async () => {
+    mocks.resolve.mockResolvedValue({ data: { url: '', picture: 'https://cdn.fb/v99-thumb.jpg', cached: false } })
+    render(<AdCreativePanel adMetaId="ad1" creative={CREATIVE} />)
+    await waitFor(() => expect(mocks.resolve).toHaveBeenCalledWith('v99', 'video'))
+    expect(screen.queryByTestId('ae-creative-video-loading')).toBeNull()
+    expect(screen.queryByTestId('ae-creative-video-el')).toBeNull()
+    expect(await screen.findByTestId('ae-creative-video-picture'))
+      .toHaveAttribute('src', 'https://cdn.fb/v99-thumb.jpg')
+    expect(screen.getByTestId('ae-creative-video-banner')).toHaveTextContent('System User')
+  })
+
+  it('ni source ni vignette -> reste sur l’état de chargement (comportement inchangé)', async () => {
+    mocks.resolve.mockResolvedValue({ data: { url: '', cached: false } })
+    render(<AdCreativePanel adMetaId="ad1" creative={CREATIVE} />)
+    await waitFor(() => expect(mocks.resolve).toHaveBeenCalledWith('v99', 'video'))
+    expect(screen.getByTestId('ae-creative-video-loading')).toBeInTheDocument()
+  })
+
   it('expose le permalien Instagram', () => {
     render(<AdCreativePanel adMetaId="ad1" creative={CREATIVE} />)
     expect(screen.getByTestId('ae-creative-ig-link'))

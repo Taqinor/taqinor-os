@@ -23,6 +23,11 @@ ON_DEMAND_ALLOWLIST = {
     # demande depuis l'endpoint de génération IA (``.delay()`` dans une action
     # de viewset, key-gated GEN_ENV_KEY ; jamais périodique).
     'adsengine.generate_grounded_variants',
+    # FIXPUB3 — rattrapage COMPLET « tout l'historique » (insights + breakdowns
+    # + créatifs + leads) : déclenché à la demande depuis l'endpoint
+    # ``campaigns/backfill-complet/`` (``.delay()`` dans une action de viewset ;
+    # jamais périodique — les synchros récurrentes sont, elles, planifiées).
+    'adsengine.backfill_complet',
     # NTADM10 — création d'un environnement sandbox : orchestrée à la demande
     # depuis l'endpoint ``adminops/sandbox/creer/`` (jamais périodique ; la
     # purge NTADM11 et le rappel NTADM35 sont, eux, planifiés dans le beat).

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { normalizeAdFullStory } from './adFullStory'
-import { formatMAD, formatNumber, formatRatio } from './adsengine'
+import { formatMAD, formatMoney, formatNumber, formatRatio } from './adsengine'
 import AdCreativePanel from './AdCreativePanel'
 import SyncStatusBanner from './SyncStatusBanner'
 // PUB55 — fil de chatter (notes manuelles + événements auto) de CETTE ad.
@@ -41,6 +41,9 @@ export default function AdDetailScreen() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [notFound, setNotFound] = useState(false)
+  // FIXPUB9 — devise du compte Meta (les montants Meta ne sont jamais
+  // forcés en MAD) ; 'MAD' en repli tant qu'elle n'est pas connue.
+  const [currency, setCurrency] = useState('MAD')
 
   const load = useCallback(() => {
     if (!metaId) return
@@ -56,6 +59,12 @@ export default function AdDetailScreen() {
         else setLoadError(true)
       })
       .finally(() => setLoading(false))
+    const connGet = adsengineApi.connection?.get
+    if (connGet) {
+      connGet()
+        .then(r => setCurrency(r?.data?.currency || 'MAD'))
+        .catch(() => {})
+    }
   }, [metaId])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / changement d'id
@@ -121,16 +130,22 @@ export default function AdDetailScreen() {
               <div style={{ display: 'grid', gap: '0.75rem',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>Dépense</div>
-                  <div style={{ fontWeight: 700 }}>{formatMAD(metriques.depense_mad)}</div></div>
+                  <div style={{ fontWeight: 700 }}>{formatMoney(metriques.depense_mad, currency)}</div></div>
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>Leads</div>
                   <div style={{ fontWeight: 700 }}>{formatNumber(metriques.nb_leads)}</div></div>
+                {/* FIXPUB9 — compte RÉEL Odoo/CRM (distinct du compte Meta ci-dessus). */}
+                <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>Leads (Odoo)</div>
+                  <div style={{ fontWeight: 700 }}>{formatNumber(metriques.leads_odoo)}</div></div>
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>CPL</div>
-                  <div style={{ fontWeight: 700 }}>{metriques.cpl_mad == null ? '—' : formatMAD(metriques.cpl_mad)}</div></div>
+                  <div style={{ fontWeight: 700 }}>{metriques.cpl_mad == null ? '—' : formatMoney(metriques.cpl_mad, currency)}</div></div>
+                {/* FIXPUB9 — CPL calculé sur les leads Odoo, RÉELLEMENT en MAD (déal Odoo). */}
+                <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>CPL (Odoo)</div>
+                  <div style={{ fontWeight: 700 }}>{metriques.cpl_odoo == null ? '—' : formatMAD(metriques.cpl_odoo)}</div></div>
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>Signatures</div>
                   <div style={{ fontWeight: 700 }}>{formatNumber(metriques.signatures)}</div></div>
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>Coût / signature</div>
                   <div style={{ fontWeight: 700 }}>
-                    {metriques.cost_per_signature_mad == null ? '—' : formatMAD(metriques.cost_per_signature_mad)}
+                    {metriques.cost_per_signature_mad == null ? '—' : formatMoney(metriques.cost_per_signature_mad, currency)}
                   </div></div>
                 <div><div style={{ color: '#64748b', fontSize: '0.8rem' }}>Fréquence</div>
                   <div style={{ fontWeight: 700 }}>{metriques.frequency == null ? '—' : formatRatio(metriques.frequency)}</div></div>
@@ -248,7 +263,7 @@ export default function AdDetailScreen() {
                     <td>{b.dimension_display || b.dimension}</td>
                     <td>{b.key}</td>
                     <td>{b.date}</td>
-                    <td>{formatMAD(b.spend)}</td>
+                    <td>{formatMoney(b.spend, currency)}</td>
                   </tr>
                 ))}
               </tbody>
