@@ -86,13 +86,15 @@ export default function LeadsKpiStrip({ leads, filters, setFilters, myUsername }
         <span className="lp-kpi-value">{chaudsCount}</span>
         <span className="lp-kpi-label">Chauds</span>
       </button>
-      {/* Affichage seul — jamais un `<button>`, jamais un filtre (blueprint D5). */}
+      {/* Affichage seul — jamais un `<button>`, jamais un filtre (blueprint D5).
+          LB46 (fondateur) : le prévisionnel quitte le libellé visible — il
+          vit dans l'infobulle ; la chip n'affiche que le total Pipeline. */}
       <div
         className="lp-kpi-tile lp-kpi-tile-display"
         title={`Prévisionnel pondéré : ${formatMAD(pondere)} (probabilité de conversion par étape)`}
       >
         <span className="lp-kpi-value">{formatMAD(brut)}</span>
-        <span className="lp-kpi-label">Pipeline · Prév. {formatMAD(pondere)}</span>
+        <span className="lp-kpi-label">Pipeline</span>
       </div>
     </div>
   )

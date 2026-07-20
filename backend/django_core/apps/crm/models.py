@@ -2387,7 +2387,7 @@ class LeadPlaybookProgress(models.Model):
 
 # ── LB48 — Vues enregistrées par compte (filtres + disposition de page) ───────
 
-class SavedView(models.Model):
+class SavedView(TenantModel):
     """LB48 — vue enregistrée PERSONNELLE (un utilisateur, une page).
 
     Mémorise un jeu de filtres + une disposition de vue (ex. Kanban vs liste)
@@ -2398,9 +2398,8 @@ class SavedView(models.Model):
     ``SavedViewViewSet``). ``rank`` ordonne les vues d'un utilisateur pour une
     page (0 = première/défaut) ; l'action ``reorder`` les réassigne en bloc.
     """
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
-        related_name='crm_vues_enregistrees')
+    # SCA4 — `company` + timestamps hérités de core.models.TenantModel
+    # (accesseur inverse par défaut : company.crm_savedview_set).
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: vue personnelle, sans objet sans son propriétaire
         related_name='crm_vues_enregistrees')
@@ -2414,7 +2413,6 @@ class SavedView(models.Model):
     payload = models.JSONField(
         default=dict, blank=True,
         help_text="Contenu de la vue : {filters, view}.")
-    date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = 'Vue enregistrée'

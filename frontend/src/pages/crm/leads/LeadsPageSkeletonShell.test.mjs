@@ -57,7 +57,7 @@ test('LB27 : trois paliers exclusifs — spinner (300-500ms) XOR FadeSwap(squele
 
 test('LB27 : le header/FilterBar/KPI restent HORS de la zone de vue (visibles immédiatement, jamais dans le squelette)', () => {
   const kpiIdx = SRC.indexOf('<LeadsKpiStrip')
-  const filterBarIdx = SRC.indexOf('<FilterBar filters={filters} setFilters={setFilters} leads={leads} />')
+  const filterBarIdx = SRC.indexOf('<FilterBar')
   const viewAreaIdx = SRC.indexOf('<div className="lp-view-area"')
   assert.ok(kpiIdx > 0 && filterBarIdx > 0 && viewAreaIdx > 0)
   assert.ok(kpiIdx < viewAreaIdx && filterBarIdx < viewAreaIdx)

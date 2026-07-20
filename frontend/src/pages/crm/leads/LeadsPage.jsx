@@ -1,5 +1,5 @@
 import {
-  useEffect, useMemo, useState, useCallback, useDeferredValue, lazy, Suspense,
+  useEffect, useMemo, useRef, useState, useCallback, useDeferredValue, lazy, Suspense,
 } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
@@ -18,7 +18,7 @@ import {
 } from '../../../features/crm/bulk'
 import {
   Button, IconButton, Spinner, FloatingActionButton,
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
   FadeSwap, SkeletonCard, SkeletonTableRow,
 } from '../../../ui'
 // LB27 — squelette EN FORME dans le shell (blueprint I9), même hook que
@@ -26,7 +26,14 @@ import {
 // spinner discret jusqu'à 500ms, puis un squelette au-delà.
 import { useDelayedLoading } from '../../../hooks/useDelayedLoading'
 import { errorMessageFrom, toastWithUndo, toastError } from '../../../lib/toast'
-import { useSavedViews } from '../../../hooks/useSavedViews'
+// LB49 — vues DE COMPTE (serveur, crm.SavedView) : useSavedViews
+// (localStorage) reste aux autres écrans, la page leads passe au variant
+// serveur — rang 1 = défaut de connexion, réordonnable.
+import { useAccountViews } from '../../../hooks/useAccountViews'
+// LB47 — le menu ⋯ porte le changement de vue sur mobile (une seule ligne
+// de chrome) : même liste VIEWS que le sélecteur desktop, jamais une 2e.
+import ViewSwitcher, { VIEWS } from './ViewSwitcher'
+import { useIsMobile } from '../../../ui/ResponsiveDialog'
 // VX236 — `?equipe=<id>` (lien depuis MesEquipesCard) filtre la liste sur les
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../../hooks/useEquipeMembreIds'
@@ -37,7 +44,6 @@ import SavedViewsBar from '../../../components/SavedViewsBar'
 import FilterBar from './FilterBar'
 import LeadsKpiStrip from './LeadsKpiStrip'
 import BulkActionBar from './BulkActionBar'
-import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
 import SigneDialog from './SigneDialog'
 import LeadExpressModal from './LeadExpressModal'
@@ -63,15 +69,13 @@ const ForecastView = lazy(() => import('./views/ForecastView'))  // XSAL15
 
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
-const SAVED_VIEWS_KEY = 'taqinor.leads.savedViews'
 
-// loadSavedViews inlined removed — now using useSavedViews hook (FG11).
-
-// Filtres persistés en localStorage : on fusionne avec EMPTY_FILTERS pour
-// tolérer un schéma plus ancien (clés manquantes/en trop ignorées).
+// LB49 — filtres persistés en SESSIONSTORAGE (plus localStorage) : l'état
+// survit aux allers-retours vers d'autres modules DANS la session ; une
+// NOUVELLE connexion repart propre → la vue rang 1 du compte s'applique.
 function loadFilters() {
   try {
-    const raw = localStorage.getItem(FILTERS_KEY)
+    const raw = sessionStorage.getItem(FILTERS_KEY)
     if (!raw) return EMPTY_FILTERS
     const parsed = JSON.parse(raw)
     return { ...EMPTY_FILTERS, ...(parsed && typeof parsed === 'object' ? parsed : {}) }
@@ -122,6 +126,10 @@ export default function LeadsPage() {
   // rôle ci-dessous (normal=ON, manager=OFF, comportement historique inchangé).
   const currentUser = useSelector(s => s.auth.user)
   const roleTier = useSelector(s => s.auth.role)
+  // LB47 — le gabarit décide du cockpit : desktop = tout en UNE ligne large ;
+  // mobile = [titre|🔍|Filtres|⋯] et le reste (KPI, chips, vues, sélecteur)
+  // déménage dans le panneau Filtres et le menu ⋯. Hook CANONIQUE.
+  const isMobile = useIsMobile()
   // Employés assignables (avatar + nom) pour les sélecteurs de responsable des
   // cartes kanban et de la liste. Ouvert à la Commerciale (endpoint dédié).
   const [users, setUsers] = useState([])
@@ -135,18 +143,32 @@ export default function LeadsPage() {
   // collée (`?view=liste`) gagne toujours sur la vue persistée localement —
   // `readViewFromParams` renvoie `null` si `?view=` est absente/invalide, on
   // retombe alors sur le comportement historique (localStorage puis kanban).
+  // LB49 — sources d'initialisation mémorisées UNE fois : le défaut de
+  // connexion (vue rang 1 du compte) ne s'applique que si NI l'URL NI la
+  // session n'ont déjà décidé.
+  const [initSource] = useState(() => {
+    let sessionView = false; let sessionFilters = false
+    try {
+      sessionView = sessionStorage.getItem(VIEW_KEY) != null
+      sessionFilters = sessionStorage.getItem(FILTERS_KEY) != null
+    } catch { /* stockage indisponible */ }
+    return {
+      url: !!readViewFromParams(searchParams) || hasUrlFilterState(searchParams),
+      session: sessionView || sessionFilters,
+    }
+  })
   const [view, setView] = useState(() => {
     const fromUrl = readViewFromParams(searchParams)
     if (fromUrl) return fromUrl
     try {
-      const saved = localStorage.getItem(VIEW_KEY)
+      const saved = sessionStorage.getItem(VIEW_KEY)
       return VALID_VIEWS.includes(saved) ? saved : 'kanban'
     } catch {
       return 'kanban'
     }
   })
   useEffect(() => {
-    try { localStorage.setItem(VIEW_KEY, view) } catch { /* stockage indisponible */ }
+    try { sessionStorage.setItem(VIEW_KEY, view) } catch { /* stockage indisponible */ }
   }, [view])
 
   // Filtres partagés par les quatre vues — persistés en localStorage (comme la
@@ -164,12 +186,12 @@ export default function LeadsPage() {
     // au tout premier chargement (aucun filtre encore persisté) — un choix
     // déjà fait par l'utilisateur (y compris désactivé) n'est JAMAIS écrasé.
     let hasPersisted = false
-    try { hasPersisted = localStorage.getItem(FILTERS_KEY) != null } catch { /* no-op */ }
+    try { hasPersisted = sessionStorage.getItem(FILTERS_KEY) != null } catch { /* no-op */ }
     return (!hasPersisted && roleTier === 'normal') ? { ...loaded, mesLeads: true } : loaded
   })
   useEffect(() => {
     try {
-      localStorage.setItem(FILTERS_KEY, JSON.stringify(filters))
+      sessionStorage.setItem(FILTERS_KEY, JSON.stringify(filters))
     } catch { /* stockage indisponible */ }
   }, [filters])
   // LB22 — URL partageable (blueprint D5, invariant I7 : une seule écriture
@@ -212,17 +234,44 @@ export default function LeadsPage() {
     return leads.filter((l) => equipeMembreIds.has(l.owner))
   }, [leads, equipeId, equipeMembreIds])
 
-  // Vues enregistrées nommées (FG11 — useSavedViews hook).
-  const { savedViews, saveView, deleteView: deleteSavedView } = useSavedViews(SAVED_VIEWS_KEY)
-  const saveCurrentView = () => {
+  // LB49 — vues enregistrées DE COMPTE (crm.SavedView) : listées par rang,
+  // la n°1 est le défaut appliqué à toute nouvelle connexion, réordonnables
+  // depuis les chips (▲▼). L'adaptateur conserve la forme {name, state}
+  // attendue par SavedViewsBar/applySavedView/buildShareUrl.
+  const {
+    views: accountViews, loaded: viewsLoaded, saveView, deleteView, moveView,
+  } = useAccountViews('crm.leads')
+  const savedViews = useMemo(
+    () => accountViews.map((v) => ({ id: v.id, name: v.name, state: v.payload })),
+    [accountViews],
+  )
+  const saveCurrentView = async () => {
     const name = window.prompt('Nom de la vue enregistrée :')
-    saveView(name, { filters, view })
+    if (!name || !name.trim()) return
+    const ok = await saveView(name, { filters, view })
+    if (!ok) toastError('Enregistrement impossible — ce nom existe peut-être déjà.')
   }
-  const applySavedView = (v) => {
+  const deleteSavedView = (name) => {
+    const v = savedViews.find((x) => x.name === name)
+    if (v) deleteView(v.id)
+  }
+  const moveSavedView = (v, dir) => moveView(v.id, dir)
+  const applySavedView = useCallback((v) => {
     setFilters({ ...EMPTY_FILTERS, ...(v.state?.filters || v.filters || {}) })
     const savedView = v.state?.view ?? v.view
     if (VALID_VIEWS.includes(savedView)) setView(savedView)
-  }
+  }, [])
+  // LB49 — défaut de connexion : la vue RANG 1 s'applique une seule fois,
+  // uniquement quand ni l'URL ni la session n'ont déjà décidé (nouvelle
+  // connexion nue) — jamais un écrasement d'un état choisi.
+  const defaultViewApplied = useRef(false)
+  useEffect(() => {
+    if (defaultViewApplied.current || !viewsLoaded) return
+    defaultViewApplied.current = true
+    if (initSource.url || initSource.session) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réaction à l'ARRIVÉE des vues serveur (une seule fois, gardée par ref) : le défaut de connexion ne peut s'appliquer qu'après la réponse
+    if (savedViews.length > 0) applySavedView(savedViews[0])
+  }, [viewsLoaded, savedViews, initSource, applySavedView])
   // LB26 — « Copier le lien » d'une vue enregistrée (blueprint D5) : sérialise
   // via urlFilters.js (même module que l'URL live) sur une base VIERGE (pas
   // de `?lead=` résiduel dans un lien partagé) — le partage Reda→Meriem
@@ -662,12 +711,52 @@ export default function LeadsPage() {
           (FilterBar) au centre, et à droite ⋯ (Express/Doublons/Importer/
           Exporter/Enregistrer la vue — tout ce qui est basse fréquence),
           + Nouveau, et le sélecteur de vues. Plus jamais 3 rangées de chrome. */}
+      {/* LB46 (fondateur) — TOUT le cockpit en UNE ligne large : titre →
+          recherche+facettes+Filtres → KPI en chips compactes → chips de vues
+          enregistrées → ⋯ / Nouveau / sélecteur. Sous ~1450px la ligne se
+          replie en 2 lignes MINCES ; au téléphone (LB47) il ne reste que
+          [titre|🔍|Filtres|⋯] — KPI et chips vivent dans le panneau Filtres,
+          les vues et le changement de vue dans ⋯, la création dans le FAB. */}
       <div className="page-header lp-header lp-controlbar">
         <h2 className="lp-cb-title">
           Pipeline
           <span className="count-badge">{filtered.length}</span>
         </h2>
-        <FilterBar filters={filters} setFilters={setFilters} leads={leads} />
+        <FilterBar
+          filters={filters}
+          setFilters={setFilters}
+          leads={leads}
+          mobile={isMobile}
+          panelTop={isMobile ? (
+            <LeadsKpiStrip
+              leads={kpiPool}
+              filters={filters}
+              setFilters={setFilters}
+              myUsername={currentUser?.username}
+            />
+          ) : null}
+        />
+        {/* LB24→LB46 — bandeau KPI = filtres (blueprint D5), compacté en chips
+            DANS la ligne (critique Fable LB #3 : pool kpiPool, jamais leads
+            brut). Sur mobile il rend DANS le panneau Filtres (panelTop). */}
+        {!isMobile && (
+          <LeadsKpiStrip
+            leads={kpiPool}
+            filters={filters}
+            setFilters={setFilters}
+            myUsername={currentUser?.username}
+          />
+        )}
+        {!isMobile && (
+          <SavedViewsBar
+            inline
+            savedViews={savedViews}
+            onApply={applySavedView}
+            onDelete={deleteSavedView}
+            onMove={moveSavedView}
+            buildShareUrl={buildShareUrl}
+          />
+        )}
         <div className="page-header-actions lp-header-actions">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -701,33 +790,45 @@ export default function LeadsPage() {
               <DropdownMenuItem onSelect={saveCurrentView}>
                 ⭐ Enregistrer cette vue
               </DropdownMenuItem>
+              {/* LB47 — au téléphone, ⋯ porte AUSSI le changement de vue
+                  (items depuis la MÊME liste VIEWS que le sélecteur desktop)
+                  et l'application des vues enregistrées du compte. */}
+              {isMobile && (
+                <>
+                  <DropdownMenuSeparator />
+                  {VIEWS.map((vw) => {
+                    // Classe lint maison #23b : le rename de déstructuration
+                    // (`icon: Icon`) n'est pas crédité par no-unused-vars.
+                    const Icon = vw.icon
+                    return (
+                      <DropdownMenuItem
+                        key={vw.value}
+                        onSelect={() => setView(vw.value)}
+                        aria-current={view === vw.value ? 'true' : undefined}
+                      >
+                        <Icon aria-hidden="true" /> {vw.label}{view === vw.value ? ' ✓' : ''}
+                      </DropdownMenuItem>
+                    )
+                  })}
+                  {savedViews.length > 0 && <DropdownMenuSeparator />}
+                  {savedViews.map((v) => (
+                    <DropdownMenuItem key={v.name} onSelect={() => applySavedView(v)}>
+                      ⭐ {v.name}
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button onClick={openNew}>+ Nouveau lead</Button>
-          <div className="lp-header-sep" role="separator" aria-orientation="vertical" />
-          <ViewSwitcher view={view} setView={setView} />
+          {/* LB47 — au téléphone la création vit dans le FAB (déjà à portée
+              de pouce) : le bouton d'en-tête ne rend qu'au desktop. */}
+          {!isMobile && <Button onClick={openNew}>+ Nouveau lead</Button>}
+          {!isMobile && (
+            <div className="lp-header-sep" role="separator" aria-orientation="vertical" />
+          )}
+          {!isMobile && <ViewSwitcher view={view} setView={setView} />}
         </div>
       </div>
-
-      {/* LB24 — Bandeau KPI = filtres (blueprint D5), sous la ligne de
-          contrôle : les tuiles lisent/écrivent le MÊME état `filters` que
-          le reste de la page (invariant D6-I7, un seul état de filtres). */}
-      <LeadsKpiStrip
-        // Critique Fable LB #3 : le pool KPI doit subir le MÊME filtre additif
-        // `?equipe=` que `filtered` — sinon les tuiles annoncent des nombres
-        // que le clic ne rend pas (« chiffre menteur », interdit par D5).
-        leads={kpiPool}
-        filters={filters}
-        setFilters={setFilters}
-        myUsername={currentUser?.username}
-      />
-
-      <SavedViewsBar
-        savedViews={savedViews}
-        onApply={applySavedView}
-        onDelete={deleteSavedView}
-        buildShareUrl={buildShareUrl}
-      />
 
       {/* LB25 — barre bulk FLOTTANTE (blueprint D5) : l'ancienne barre inline
           poussait le layout à chaque sélection (le board sautait de
@@ -888,8 +989,13 @@ export default function LeadsPage() {
       {/* VX42 — FAB mobile : le pouce vit dans le tiers bas de l'écran ; le
           bouton « + Nouveau lead » du header n'y est pas toujours atteignable
           sans faire défiler. Même action que le bouton desktop (openNew). */}
+      {/* LB47 — le FAB devient LE bouton de création au téléphone (l'en-tête
+          n'en rend plus) : il porte le nom accessible « + Nouveau lead »
+          attendu par gotoLeads/MB6 (aria-label passé en prop, spread après
+          le aria-label={label} interne → il gagne). */}
       <FloatingActionButton
         label="Nouveau lead"
+        aria-label="+ Nouveau lead"
         icon={<Plus className="size-5" aria-hidden="true" />}
         onClick={openNew} />
     </div>

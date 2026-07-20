@@ -20,7 +20,11 @@ import { toastSuccess, toastError } from '../lib/toast'
 // quand fournie (page leads uniquement, sérialisée via urlFilters.js), chaque
 // puce gagne une action « Copier le lien ». Absente (ClientList, DevisList…)
 // → comportement STRICTEMENT inchangé, ce composant reste partagé sans forker.
-export default function SavedViewsBar({ savedViews, onApply, onDelete, buildShareUrl }) {
+// LB46/LB49 — props ADDITIVES optionnelles : `inline` (chips DANS la ligne de
+// contrôle, plus jamais une rangée dédiée — cockpit une ligne) et
+// `onMove(v, dir)` (▲▼ de rang, vues de compte : la n°1 est marquée ★ =
+// défaut de connexion). Absentes (ClientList…) → rendu STRICTEMENT inchangé.
+export default function SavedViewsBar({ savedViews, onApply, onDelete, buildShareUrl, inline, onMove }) {
   if (!savedViews || savedViews.length === 0) return null
 
   const copyLink = async (v) => {
@@ -34,9 +38,12 @@ export default function SavedViewsBar({ savedViews, onApply, onDelete, buildShar
   }
 
   return (
-    <div className="lp-saved-views">
-      {savedViews.map((v) => (
+    <div className={inline ? 'lp-saved-views lp-saved-views-inline' : 'lp-saved-views'}>
+      {savedViews.map((v, i) => (
         <span key={v.name} className="lp-saved-view-chip">
+          {onMove && i === 0 && (
+            <span className="lp-saved-view-star" title="Vue par défaut à chaque connexion" aria-label="Vue par défaut">★</span>
+          )}
           <button type="button" className="lp-saved-view-apply"
                   onClick={() => onApply(v)} title="Appliquer cette vue">
             {v.name}
@@ -48,6 +55,18 @@ export default function SavedViewsBar({ savedViews, onApply, onDelete, buildShar
                     title="Copier le lien">
               <Link2 aria-hidden="true" size={12} />
             </button>
+          )}
+          {onMove && (
+            <>
+              <button type="button" className="lp-saved-view-move"
+                      onClick={() => onMove(v, -1)} disabled={i === 0}
+                      aria-label={`Monter la vue ${v.name} (le rang 1 est le défaut de connexion)`}
+                      title="Monter">▲</button>
+              <button type="button" className="lp-saved-view-move"
+                      onClick={() => onMove(v, 1)} disabled={i === savedViews.length - 1}
+                      aria-label={`Descendre la vue ${v.name}`}
+                      title="Descendre">▼</button>
+            </>
           )}
           <button type="button" className="lp-saved-view-del"
                   onClick={() => onDelete(v.name)}

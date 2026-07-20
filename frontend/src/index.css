@@ -8074,12 +8074,12 @@ textarea.form-control {
 }
 
 @media (max-width: 768px) {
-  /* La barre de recherche prend sa propre ligne pleine largeur sous le
-     titre/actions (ordre visuel seulement — le DOM reste : titre, barre,
-     actions). */
+  /* LB47 — la barre n'est plus une ligne pleine largeur : [🔍|Filtres]
+     compacts DANS l'unique ligne de chrome ; seule la recherche DÉPLIÉE
+     (.fb-search-expanded) décroche en ligne transitoire pleine largeur. */
   .lp-controlbar .fb-bar {
-    order: 3;
-    flex: 1 1 100%;
+    order: 0;
+    flex: 0 0 auto;
     min-width: 0;
   }
   .lp-controlbar .lp-header-actions {
@@ -8122,4 +8122,82 @@ textarea.form-control {
   .lp-page[data-view="prevision"] .lp-view-area {
     padding: 0.25rem;
   }
+}
+
+/* ═══ LB46/LB47 — cockpit UNE ligne (fondateur 2026-07-20 05h) ═══════════
+   « je ne vois même pas un lead complet — trop de choses en haut » : les
+   tuiles KPI deviennent des CHIPS compactes DANS la ligne de contrôle, les
+   chips de vues enregistrées aussi ; plus aucune rangée dédiée. */
+.lp-controlbar .lp-kpi-strip {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0;
+}
+.lp-controlbar .lp-kpi-tile {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.lp-controlbar .lp-kpi-value {
+  font-size: 0.92rem;
+}
+.lp-saved-views-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.lp-saved-view-star {
+  color: var(--warning, #f5a623);
+  margin-right: 0.15rem;
+}
+.lp-saved-view-move {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 0.15rem;
+  font-size: 0.65rem;
+  color: var(--muted-foreground, #64748b);
+}
+.lp-saved-view-move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+@media (hover: hover) {
+  .lp-saved-view-move:not(:disabled):hover { color: var(--foreground, #0b1f3a); }
+}
+
+/* LB47 — mobile : recherche dépliée = ligne transitoire pleine largeur ;
+   facettes + chips fréquentes + bandeau KPI vivent EN TÊTE du panneau
+   Filtres (pile verticale, chips en rangée fluide). */
+@media (max-width: 768px) {
+  .fb-search-expanded {
+    flex: 1 1 100%;
+    order: 9;
+    min-width: 0;
+  }
+}
+.fb-panel-facets,
+.fb-panel-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.fb-panel .lp-kpi-strip {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  padding: 0;
+}
+.fb-panel .lp-kpi-tile {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  min-width: 0;
 }

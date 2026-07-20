@@ -34,7 +34,12 @@ const RELANCE_LABELS = {
 // bouton « Filtres ▾ » (Popover) portant TOUTES les dimensions — plus
 // jamais 9 selects étalés sur plusieurs rangées.
 // `leads` = liste NON filtrée, pour dériver les options disponibles.
-export default function FilterBar({ filters, setFilters, leads }) {
+// LB47 (fondateur, 2026-07-20) : `mobile` — la barre se réduit à
+// [🔍 dépliable][Filtres ▾] (UNE ligne de chrome au téléphone) ; facettes,
+// chips Mes leads/Rappels ET `panelTop` (le bandeau KPI passé par LeadsPage)
+// déménagent EN TÊTE du panneau « Filtres ». VX223/224 (« chips toujours
+// visibles ») SUPPLANTÉS par cette instruction fondateur explicite.
+export default function FilterBar({ filters, setFilters, leads, mobile = false, panelTop = null }) {
   // LB23 — recherche débouncée (blueprint D5/I7) : l'input reste un état
   // LOCAL (frappe instantanée, jamais bloquée) qui ne pousse `setFilters`
   // qu'après 250ms de pause — combiné à LB6 (viewProps mémoïsé), une frappe
@@ -94,6 +99,9 @@ export default function FilterBar({ filters, setFilters, leads }) {
   const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
 
   const [open, setOpen] = useState(false)
+  // Mobile : la recherche est une icône qui déplie l'input pleine largeur
+  // (patron Odoo SearchBarToggler) — jamais une ligne permanente.
+  const [searchOpen, setSearchOpen] = useState(false)
   // Nombre de filtres actifs (hors recherche libre) — pastille sur le bouton.
   const activeCount = Object.keys(EMPTY_FILTERS)
     .filter((k) => k !== 'q' && filters[k] !== EMPTY_FILTERS[k]).length
@@ -114,17 +122,69 @@ export default function FilterBar({ filters, setFilters, leads }) {
   if (filters.perdus !== EMPTY_FILTERS.perdus) facets.push({ key: 'perdus', dim: 'Perdus', label: filters.perdus === 'sans' ? 'Sans' : 'Seuls' })
   if ((filters.archived ?? 'actifs') !== EMPTY_FILTERS.archived) facets.push({ key: 'archived', dim: 'Archivés', label: filters.archived === 'tous' ? 'Inclus' : 'Seuls' })
 
+  const facetChips = facets.map((f) => (
+    <span key={f.key} className="fb-facet">
+      <span className="fb-facet-dim">{f.dim}</span>
+      <span className="fb-facet-val">{f.label}</span>
+      <button
+        type="button"
+        className="fb-facet-x"
+        aria-label={`Retirer le filtre ${f.dim} : ${f.label}`}
+        onClick={() => setKey(f.key)(EMPTY_FILTERS[f.key])}
+      ><X aria-hidden="true" /></button>
+    </span>
+  ))
+
+  const chipsFrequentes = (
+    <>
+      {/* VX224 — chip « Mes leads ». */}
+      <Button
+        type="button"
+        variant={mesLeadsActif ? 'default' : 'outline'}
+        size="sm"
+        className="fb-chip-mes-leads"
+        aria-pressed={mesLeadsActif}
+        onClick={toggleMesLeads}
+      >
+        Mes leads
+      </Button>
+      {/* VX223 — chip « Rappels demandés ». */}
+      <Button
+        type="button"
+        variant={rappelsActifs ? 'default' : 'outline'}
+        size="sm"
+        className="fb-chip-rappels"
+        aria-pressed={rappelsActifs}
+        onClick={toggleRappels}
+      >
+        ☎ Rappels demandés
+      </Button>
+    </>
+  )
+
   return (
     <div className="fb-bar">
-      <div className="fb-search">
-        <Input
-          type="search"
-          leading={<Search />}
-          placeholder="Rechercher nom, téléphone, email…"
-          value={searchLocal}
-          onChange={(e) => setSearchLocal(e.target.value)}
-        />
-      </div>
+      {mobile && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label="Rechercher"
+          aria-expanded={searchOpen}
+          onClick={() => setSearchOpen((v) => !v)}
+        ><Search /></Button>
+      )}
+      {(!mobile || searchOpen) && (
+        <div className={mobile ? 'fb-search fb-search-expanded' : 'fb-search'}>
+          <Input
+            type="search"
+            leading={<Search />}
+            placeholder="Rechercher nom, téléphone, email…"
+            value={searchLocal}
+            onChange={(e) => setSearchLocal(e.target.value)}
+          />
+        </div>
+      )}
 
       {/* LB43 — l'unique panneau de dimensions (Odoo SearchBarMenu) : le même
           Popover partout (desktop ET mobile) — plus de gabarit qui étale les
@@ -142,6 +202,13 @@ export default function FilterBar({ filters, setFilters, leads }) {
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="fb-panel w-80">
+          {panelTop}
+          {mobile && facets.length > 0 && (
+            <div className="fb-panel-facets">{facetChips}</div>
+          )}
+          {mobile && (
+            <div className="fb-panel-chips">{chipsFrequentes}</div>
+          )}
       <Select value={toSel(filters.stage)} onValueChange={(v) => setKey('stage')(fromSel(v))}>
         <SelectTrigger className="fb-select" aria-label="Filtrer par étape">
           <SelectValue />
@@ -285,42 +352,9 @@ export default function FilterBar({ filters, setFilters, leads }) {
         </PopoverContent>
       </Popover>
 
-      {facets.map((f) => (
-        <span key={f.key} className="fb-facet">
-          <span className="fb-facet-dim">{f.dim}</span>
-          <span className="fb-facet-val">{f.label}</span>
-          <button
-            type="button"
-            className="fb-facet-x"
-            aria-label={`Retirer le filtre ${f.dim} : ${f.label}`}
-            onClick={() => setKey(f.key)(EMPTY_FILTERS[f.key])}
-          ><X aria-hidden="true" /></button>
-        </span>
-      ))}
+      {!mobile && facetChips}
 
-      {/* VX224 — chip « Mes leads », toujours visible. */}
-      <Button
-        type="button"
-        variant={mesLeadsActif ? 'default' : 'outline'}
-        size="sm"
-        className="fb-chip-mes-leads"
-        aria-pressed={mesLeadsActif}
-        onClick={toggleMesLeads}
-      >
-        Mes leads
-      </Button>
-
-      {/* VX223 — chip « Rappels demandés », toujours visible. */}
-      <Button
-        type="button"
-        variant={rappelsActifs ? 'default' : 'outline'}
-        size="sm"
-        className="fb-chip-rappels"
-        aria-pressed={rappelsActifs}
-        onClick={toggleRappels}
-      >
-        ☎ Rappels demandés
-      </Button>
+      {!mobile && chipsFrequentes}
 
     </div>
   )

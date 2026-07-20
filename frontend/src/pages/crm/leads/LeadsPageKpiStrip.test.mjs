@@ -16,15 +16,17 @@ test('LB24 : LeadsPage importe LeadsKpiStrip', () => {
   assert.match(PAGE_SRC, /import LeadsKpiStrip from '\.\/LeadsKpiStrip'/)
 })
 
-test('LB24→LB43 : FilterBar vit DANS la ligne de contrôle, LeadsKpiStrip juste dessous, câblé sur filters/setFilters/leads', () => {
+test('LB24→LB46 : FilterBar ET LeadsKpiStrip vivent DANS la ligne de contrôle (desktop) ; sur mobile le bandeau part en panelTop du panneau Filtres', () => {
   const kpiIdx = PAGE_SRC.indexOf('<LeadsKpiStrip')
-  const filterBarIdx = PAGE_SRC.indexOf('<FilterBar filters={filters} setFilters={setFilters} leads={leads} />')
+  const filterBarIdx = PAGE_SRC.indexOf('<FilterBar')
   const controlbarIdx = PAGE_SRC.indexOf('lp-controlbar')
   assert.ok(kpiIdx > 0 && filterBarIdx > 0 && controlbarIdx > 0)
-  // LB43 (retour fondateur) : la barre recherche/filtres est un ENFANT de la
-  // ligne de contrôle unique (façon Odoo) — elle précède donc le bandeau KPI.
+  // LB46 (fondateur) : cockpit UNE ligne — FilterBar puis le bandeau KPI,
+  // tous ENFANTS de lp-controlbar ; le rendu mobile passe par panelTop.
   assert.ok(controlbarIdx < filterBarIdx && filterBarIdx < kpiIdx,
     'ordre attendu : lp-controlbar → FilterBar → LeadsKpiStrip')
+  assert.match(PAGE_SRC, /panelTop=\{isMobile \? \(/)
+  assert.match(PAGE_SRC, /\{!isMobile && \(\s*<LeadsKpiStrip/)
   const block = PAGE_SRC.slice(kpiIdx, kpiIdx + 700)
   // Critique Fable LB #6→#3 : le bandeau reçoit le pool APRÈS le filtre
   // additif ?equipe= (kpiPool), jamais `leads` brut — sinon les tuiles

@@ -1082,5 +1082,5 @@ class SavedViewSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SavedView
-        fields = ['id', 'page', 'name', 'rank', 'payload', 'date_creation', 'user']
-        read_only_fields = ['date_creation']
+        fields = ['id', 'page', 'name', 'rank', 'payload', 'created_at', 'user']
+        read_only_fields = ['created_at']

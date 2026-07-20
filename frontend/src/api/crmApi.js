@@ -161,6 +161,18 @@ const crmApi = {
     api.get('/crm/website-lead-payloads/', { params }),
   replayWebsiteLeadPayload: (id) =>
     api.post(`/crm/website-lead-payloads/${id}/replay/`),
+
+  // LB48/LB49 — vues enregistrées DE COMPTE (plus jamais localStorage) : la
+  // liste vit sur le serveur (par user+company), la n°1 (rank 0) est la vue
+  // par défaut appliquée à toute nouvelle connexion.
+  listSavedViews: (page) =>
+    api.get('/crm/vues-enregistrees/', { params: { page } }),
+  createSavedView: (data) =>
+    api.post('/crm/vues-enregistrees/', data),
+  deleteSavedView: (id) =>
+    api.delete(`/crm/vues-enregistrees/${id}/`),
+  reorderSavedViews: (page, ids) =>
+    api.post('/crm/vues-enregistrees/reorder/', { page, ids }),
 }
 
 export default crmApi

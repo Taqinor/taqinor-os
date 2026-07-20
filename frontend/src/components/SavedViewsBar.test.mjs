@@ -66,10 +66,10 @@ test('LeadsPage : en-tête garde + Nouveau lead / Express / ViewSwitcher comme c
 // Prop ADDITIVE optionnelle `buildShareUrl` : ClientList (autre consommateur
 // du composant partagé) ne la passe pas → comportement STRICTEMENT inchangé.
 
-test('LB26 : buildShareUrl est une prop OPTIONNELLE (signature additive)', () => {
+test('LB26→LB46 : buildShareUrl/inline/onMove sont des props OPTIONNELLES (signature additive — ClientList inchangé)', () => {
   assert.match(
     SRC,
-    /export default function SavedViewsBar\(\{ savedViews, onApply, onDelete, buildShareUrl \}\)/,
+    /export default function SavedViewsBar\(\{ savedViews, onApply, onDelete, buildShareUrl, inline, onMove \}\)/,
   )
 })
 
