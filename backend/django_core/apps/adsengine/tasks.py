@@ -795,7 +795,29 @@ def sync_instagram_for_company(company, conn, client):
     return len(mirrors)
 
 
-def pull_ad_leads_for_company(company, conn, client):
+def _lead_ads_access_token(conn):
+    """FIXPUB1 — Résout le token d'accès Lead Ads à transmettre à la résolution
+    des noms d'annonces (repli paresseux Graph API dans
+    ``crm.services.create_lead_from_meta_lead_ads``).
+
+    Ordre de priorité : le réglage/env ``META_LEAD_ADS_ACCESS_TOKEN`` GAGNE quand
+    il est posé ; à défaut, on retombe sur le token sauvegardé de la MetaConnection
+    active de la MÊME société (``(conn.credentials or {}).get('access_token')``).
+    Renvoie ``(token, source)`` où ``source`` vaut ``'env'`` / ``'connexion'`` /
+    ``None`` — JAMAIS le token n'est journalisé, SEULEMENT sa source."""
+    from django.conf import settings
+
+    env_token = (getattr(settings, 'META_LEAD_ADS_ACCESS_TOKEN', '') or '').strip()
+    if env_token:
+        return env_token, 'env'
+    conn_token = ((getattr(conn, 'credentials', None) or {}).get(
+        'access_token') or '').strip()
+    if conn_token:
+        return conn_token, 'connexion'
+    return '', None
+
+
+def pull_ad_leads_for_company(company, conn, client, access_token=''):
     """ADSDEEP18 — Pull-sync des leads lead-form d'une société.
 
     Pour chaque ad miroir, tire ``GET /<ad_id>/leads`` (fenêtre Meta 90 j),
@@ -803,7 +825,11 @@ def pull_ad_leads_for_company(company, conn, client):
     webhook (``crm.services.create_lead_from_meta_lead_ads`` — idempotent par
     ``leadgen_id``, jamais un doublon) et émet ``meta_lead_captured`` pour que le
     MÊME récepteur upserte le MetaLeadMirror : webhook et pull CONVERGENT sur le
-    même miroir. Best-effort par ad. Renvoie le nombre de leads traités."""
+    même miroir. Best-effort par ad. Renvoie le nombre de leads traités.
+
+    FIXPUB1 — ``access_token`` (résolu par ``_lead_ads_access_token`` : env, sinon
+    token de la connexion) est passé au service pour permettre le repli paresseux
+    de résolution des noms d'annonce quand les miroirs ne suffisent pas."""
     from core.events import meta_lead_captured
 
     from .models import AdMirror
@@ -835,7 +861,8 @@ def pull_ad_leads_for_company(company, conn, client):
                 lead = create_lead_from_meta_lead_ads(
                     company=company, leadgen_id=leadgen_id,
                     field_data=field_data, ad_id=ad.meta_id,
-                    adgroup_id=targeting.get('adset_id', ''), form_id=form_id)
+                    adgroup_id=targeting.get('adset_id', ''), form_id=form_id,
+                    access_token=access_token)
             except Exception:  # noqa: BLE001 — un lead en échec n'arrête pas
                 logger.warning(
                     'adsengine.pull_ad_leads: création lead échouée (%s)',
@@ -873,7 +900,14 @@ def pull_meta_leads():
             continue
         try:
             client = MetaClient.from_connection(conn)
-            total += pull_ad_leads_for_company(company, conn, client)
+            access_token, token_source = _lead_ads_access_token(conn)
+            # FIXPUB1 — on journalise la SOURCE du token (env / connexion), JAMAIS
+            # sa valeur.
+            logger.info(
+                'adsengine.pull_meta_leads: société %s — token Lead Ads : %s',
+                company.pk, token_source or 'aucun')
+            total += pull_ad_leads_for_company(
+                company, conn, client, access_token=access_token)
         except MetaAuthError as exc:
             _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
             continue
