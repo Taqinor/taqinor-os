@@ -3008,7 +3008,14 @@ class MediaResolveView(APIView):
         cache_key = f'adsengine-media:{company.pk}:{kind}:{ref}'
         cached = cache.get(cache_key)
         if cached is not None:
-            return Response({'url': cached, 'cached': True})
+            # FIXPUB7 — rétro-compat : une entrée de cache ancienne est une URL
+            # brute (str) ; la nouvelle est un dict ``{url, picture}``.
+            if isinstance(cached, dict):
+                payload = dict(cached)
+            else:
+                payload = {'url': cached, 'picture': ''}
+            payload['cached'] = True
+            return Response(payload)
 
         conn = MetaConnection.objects.filter(
             company=company, enabled=True).first()
@@ -3019,20 +3026,25 @@ class MediaResolveView(APIView):
         from .meta_client import MetaClient, MetaError
 
         client = MetaClient.from_connection(conn)
+        picture = ''
         try:
             if kind == 'video':
                 data = client.get_video_source(ref)
                 url = (data or {}).get('source') or ''
+                # FIXPUB7 — Meta peut REFUSER la source mp4 (Page non assignée au
+                # System User) : la ``picture`` (miniature) reste servie pour que
+                # le front bascule sur l'image au lieu d'une vidéo cassée.
+                picture = (data or {}).get('picture') or ''
             else:
                 data = client.get_ad_image(ref)
                 url = (data or {}).get('permalink_url') or ''
         except MetaError:
             return Response({'detail': 'Média introuvable.'}, status=404)
-        if not url:
+        if not url and not picture:
             return Response({'detail': 'Média introuvable.'}, status=404)
-        # Cache la seule URL (Redis, ≤30 min) — JAMAIS d'écriture en base.
-        cache.set(cache_key, url, self.CACHE_TTL)
-        return Response({'url': url, 'cached': False})
+        # Cache l'URL + la miniature (Redis, ≤30 min) — JAMAIS d'écriture en base.
+        cache.set(cache_key, {'url': url, 'picture': picture}, self.CACHE_TTL)
+        return Response({'url': url, 'picture': picture, 'cached': False})
 
 
 # ── ADSDEEP13 — Proxy previews (aperçus rendus par Meta) ──────────────────────
