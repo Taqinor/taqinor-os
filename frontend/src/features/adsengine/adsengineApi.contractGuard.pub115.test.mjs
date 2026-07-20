@@ -187,10 +187,9 @@ function resolvable(path) {
 //   - PUB1 (lane backend/adsengine-wiring) : signaux/ + signaux/cohorte/.
 //   - PUB2 (lane backend/adsengine-wiring) : file-voi/, <id>/tests/,
 //     tests/<id>/leads/ sur noeuds-hypothese/.
-//   - FIXPUB3 (lane backend, batch FIXPUB) : campaigns/backfill-complet/.
-const KNOWN_GAPS = new Map([
-  ['/adsengine/campaigns/backfill-complet/', 'FIXPUB3 (lane backend, batch FIXPUB)'],
-])
+// (FIXPUB3 campaigns/backfill-complet/ a atterri : route posée par la lane
+//  backend, entrée retirée — cf. le garde auto-nettoyant plus bas.)
+const KNOWN_GAPS = new Map([])
 
 for (const path of frontCalls) {
   const gate = KNOWN_GAPS.get(path)
