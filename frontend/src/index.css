@@ -4749,6 +4749,11 @@ textarea.form-control {
      scrollbar horizontale reste au bas du viewport (le board reste borné par
      la chaîne .lp-page → .lp-view-area, invariant LB33 #2 inchangé). */
   overflow: auto;
+  /* En-têtes sticky ⇒ scroll-padding OBLIGATOIRE : tout scrollIntoView
+     (clavier, focus, tests) pose sa cible SOUS la bande d'en-tête épinglée —
+     sans ça, le haut d'une carte amenée en vue disparaît derrière l'en-tête
+     (attrapé par MB6 en CI : carte fraîchement créée masquée). */
+  scroll-padding-top: 4.5rem;
   background: var(--muted, #f1f5f9);
   border-radius: var(--radius-lg, 12px);
 }
@@ -5215,6 +5220,10 @@ textarea.form-control {
     scroll-snap-align: center;
     min-height: 0;
     overflow-y: auto;
+    /* La colonne est ICI le scrolleur : même règle que .kb-board — un
+       scrollIntoView n'enterre jamais le haut d'une carte sous l'en-tête
+       sticky (cause du rouge MB6 mobile-safari en CI). */
+    scroll-padding-top: 4.5rem;
   }
 
   /* Cible tactile confortable pour le bouton ⚡ */
