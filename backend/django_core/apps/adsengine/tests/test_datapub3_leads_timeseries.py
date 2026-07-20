@@ -75,8 +75,14 @@ class LeadsTimeseriesTests(TestCase):
         self.assertEqual(res['granularity'], 'day')
         pts = {p['period']: p for p in res['points']}
         self.assertEqual(pts['2026-07-16']['leads_total'], 2)
-        self.assertEqual(pts['2026-07-16']['leads_attributed'], 1)
+        # Le sous-total « attribué » couvre TOUS les paliers (comme le bilan) :
+        # lead1 par téléphone EXACT → ad1, et lead2 (non plaçable) par le palier
+        # ESTIMATION date — ad1 est la SEULE annonce dépensant le 16, donc le
+        # lead du jour lui est rattaché. Les deux comptent → 2 attribués.
+        self.assertEqual(pts['2026-07-16']['leads_attributed'], 2)
         self.assertEqual(pts['2026-07-16']['spend'], '500.00')
+        # Le 17, aucune annonce ne dépense → le palier date ne s'applique pas :
+        # lead3 reste NON attribué (démontre l'overlay attribué vs non attribué).
         self.assertEqual(pts['2026-07-17']['leads_total'], 1)
         self.assertEqual(pts['2026-07-17']['leads_attributed'], 0)
         # pas de dépense campagne le 17 → 0.00 (jamais masqué).
@@ -90,7 +96,9 @@ class LeadsTimeseriesTests(TestCase):
         self.assertEqual(res['granularity'], 'week')
         self.assertEqual(len(res['points']), 1)
         self.assertEqual(res['points'][0]['leads_total'], 3)
-        self.assertEqual(res['points'][0]['leads_attributed'], 1)
+        # lead1 (exact) + lead2 (estimation date le 16) attribués ; lead3 (le 17,
+        # aucune dépense) non attribué → 2 attribués sur la semaine.
+        self.assertEqual(res['points'][0]['leads_attributed'], 2)
         self.assertEqual(res['points'][0]['spend'], '500.00')
 
     def test_per_ad_drill_uses_ad_spend_and_direct_leads(self):
@@ -98,9 +106,12 @@ class LeadsTimeseriesTests(TestCase):
                    return_value=self.leads):
             res = leads_timeseries(self.company, ad_meta_id='ad1')
         pts = {p['period']: p for p in res['points']}
-        # seul le lead attribué directement à ad1 (le 16) est compté.
-        self.assertEqual(pts['2026-07-16']['leads_total'], 1)
-        self.assertEqual(pts['2026-07-16']['leads_attributed'], 1)
+        # Les leads rattachés à ad1 le 16 : lead1 (téléphone exact) ET lead2
+        # (estimation date — ad1 est la seule annonce dépensant ce jour), tous
+        # deux portés par ad1 → 2 dans le drill. lead3 (le 17, non attribué)
+        # n'a pas d'annonce → exclu du drill.
+        self.assertEqual(pts['2026-07-16']['leads_total'], 2)
+        self.assertEqual(pts['2026-07-16']['leads_attributed'], 2)
         # dépense = niveau AD (300), pas la dépense société (500).
         self.assertEqual(pts['2026-07-16']['spend'], '300.00')
         self.assertNotIn('2026-07-17', pts)
