@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDown, ArrowUp, ArrowUpDown, Video, ImageOff, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import { formatMAD, formatNumber, formatPercent, formatRatio, sortCockpitRows } from './adsengine'
+import { formatMAD, formatMoney, formatNumber, formatPercent, formatRatio, sortCockpitRows } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import AdCreativePanel from './AdCreativePanel'
 import ManualActionMenu from './ManualActionMenu'
@@ -42,7 +42,11 @@ const COLUMNS = [
   { key: 'depense_mad', label: 'Dépense', sortable: true },
   { key: 'conversations', label: 'Conversations', sortable: true },
   { key: 'nb_leads', label: 'Leads', sortable: true },
+  // FIXPUB9 — compte RÉEL Odoo/CRM, à côté du compte Meta (nb_leads).
+  { key: 'leads_odoo', label: 'Leads (Odoo)', sortable: true },
   { key: 'cpl_mad', label: 'CPL', sortable: true },
+  // FIXPUB9 — CPL calculé sur les leads Odoo, RÉELLEMENT en MAD (déal Odoo).
+  { key: 'cpl_odoo', label: 'CPL (Odoo)', sortable: true },
   { key: 'signatures', label: 'Signatures', sortable: true },
   { key: 'cost_per_signature_mad', label: 'Coût / signature', sortable: true },
   { key: 'frequency', label: 'Fréquence', sortable: true },
@@ -178,6 +182,9 @@ export default function AdsCockpitScreen() {
   // PUB41 — état-ERREUR distinct de l'état-vide : une panne de synchro ne
   // doit JAMAIS ressembler à « aucune ad » (le silence que ce ticket tue).
   const [loadError, setLoadError] = useState(false)
+  // FIXPUB9 — devise du compte Meta (les montants Meta ne sont jamais
+  // forcés en MAD) ; 'MAD' en repli tant qu'elle n'est pas connue.
+  const [currency, setCurrency] = useState('MAD')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -189,6 +196,12 @@ export default function AdsCockpitScreen() {
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
+    const connGet = adsengineApi.connection?.get
+    if (connGet) {
+      connGet()
+        .then(r => setCurrency(r?.data?.currency || 'MAD'))
+        .catch(() => {})
+    }
 
     // Comparaison : un second appel sur la période PRÉCÉDENTE (PUB40 — un
     // cockpit ligne-par-ligne n'a pas de bloc `previous` serveur comme le
@@ -262,7 +275,7 @@ export default function AdsCockpitScreen() {
       {compareDelta && (
         <p className="card" data-testid="ae-cockpit-compare-summary"
           style={{ padding: '0.6rem 0.9rem', marginBottom: '1rem', fontSize: '0.85rem' }}>
-          Dépense totale période : {formatMAD(currentTotal)} ({formatDeltaPct(compareDelta.pct)} vs période précédente)
+          Dépense totale période : {formatMoney(currentTotal, currency)} ({formatDeltaPct(compareDelta.pct)} vs période précédente)
         </p>
       )}
 
@@ -335,12 +348,14 @@ export default function AdsCockpitScreen() {
                         {row.learning_badge?.label || 'Inconnu'}
                       </span>
                     </td>
-                    <td>{formatMAD(row.depense_mad)}</td>
+                    <td>{formatMoney(row.depense_mad, currency)}</td>
                     <td>{formatNumber(row.conversations)}</td>
                     <td>{formatNumber(row.nb_leads)}</td>
-                    <td>{row.cpl_mad == null ? '—' : formatMAD(row.cpl_mad)}</td>
+                    <td>{formatNumber(row.leads_odoo)}</td>
+                    <td>{row.cpl_mad == null ? '—' : formatMoney(row.cpl_mad, currency)}</td>
+                    <td>{row.cpl_odoo == null ? '—' : formatMAD(row.cpl_odoo)}</td>
                     <td>{formatNumber(row.signatures)}</td>
-                    <td>{row.cost_per_signature_mad == null ? '—' : formatMAD(row.cost_per_signature_mad)}</td>
+                    <td>{row.cost_per_signature_mad == null ? '—' : formatMoney(row.cost_per_signature_mad, currency)}</td>
                     <td>{row.frequency == null ? '—' : formatRatio(row.frequency)}</td>
                     <td>
                       <span className="badge" data-testid="ae-cockpit-fatigue-badge"

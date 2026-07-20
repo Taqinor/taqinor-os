@@ -17,6 +17,10 @@ const PREVIEW_FORMAT = 'MOBILE_FEED_STANDARD'
 export default function AdCreativePanel({ adMetaId, creative }) {
   const c = creative || {}
   const [videoUrl, setVideoUrl] = useState('')
+  // FIXPUB7/9 — Meta refuse parfois la vidéo (accès Page manquant côté
+  // System User) mais renvoie quand même sa vignette (`picture`) : on
+  // l'affiche plutôt que de laisser « Chargement… » tourner à l'infini.
+  const [videoPicture, setVideoPicture] = useState('')
   const [imageUrl, setImageUrl] = useState('')
   const [previewHtml, setPreviewHtml] = useState('')
   const [showPreview, setShowPreview] = useState(false)
@@ -27,8 +31,12 @@ export default function AdCreativePanel({ adMetaId, creative }) {
     let alive = true
     if (c.video_id) {
       adsengineApi.media.resolve(c.video_id, 'video')
-        .then((r) => { if (alive) setVideoUrl(r.data?.url || '') })
-        .catch(() => { if (alive) setVideoUrl('') })
+        .then((r) => {
+          if (!alive) return
+          setVideoUrl(r.data?.url || '')
+          setVideoPicture(r.data?.picture || '')
+        })
+        .catch(() => { if (alive) { setVideoUrl(''); setVideoPicture('') } })
     }
     if (c.image_hash) {
       adsengineApi.media.resolve(c.image_hash, 'image')
@@ -64,7 +72,18 @@ export default function AdCreativePanel({ adMetaId, creative }) {
         <div data-testid="ae-creative-video">
           {videoUrl
             ? <video data-testid="ae-creative-video-el" src={videoUrl} controls />
-            : <p data-testid="ae-creative-video-loading">Chargement de la vidéo…</p>}
+            : videoPicture
+              ? (
+                <div data-testid="ae-creative-video-unplayable">
+                  <img data-testid="ae-creative-video-picture" src={videoPicture}
+                    alt={c.title || 'Vignette vidéo'} />
+                  <p role="alert" data-testid="ae-creative-video-banner">
+                    Vidéo non lisible — accorder l’accès Page au System User
+                    (Business Manager → Actifs → Pages)
+                  </p>
+                </div>
+              )
+              : <p data-testid="ae-creative-video-loading">Chargement de la vidéo…</p>}
         </div>
       )}
 

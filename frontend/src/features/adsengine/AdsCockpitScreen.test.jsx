@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   breakdownsList: vi.fn(),
   reportsScatter: vi.fn(),
   syncStatus: vi.fn(),
+  connGet: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -23,6 +24,7 @@ vi.mock('./adsengineApi', () => ({
     // PUB8 — courbe de rétention (réutilise reporting/creatifs/nuage/).
     reports: { scatter: mocks.reportsScatter },
     syncStatus: { get: mocks.syncStatus },
+    connection: { get: mocks.connGet },
   },
 }))
 
@@ -65,6 +67,7 @@ beforeEach(() => {
   mocks.breakdownsList.mockResolvedValue({ data: [] })
   mocks.reportsScatter.mockResolvedValue({ data: { points: [] } })
   mocks.syncStatus.mockResolvedValue({ data: { types: [], stale: false, worst: null } })
+  mocks.connGet.mockResolvedValue({ data: { currency: 'MAD' } })
 })
 
 describe('AdsCockpitScreen (ADSDEEP22)', () => {
@@ -192,6 +195,30 @@ describe('AdsCockpitScreen (ADSDEEP22)', () => {
     const links = screen.getAllByTestId('ae-cockpit-full-story')
     expect(links.length).toBeGreaterThan(0)
     expect(links[0]).toHaveAttribute('href', expect.stringMatching(/^\/publicite\/ad\/ad-\d$/))
+  })
+
+  // ── FIXPUB9 — devise du compte Meta + colonnes Odoo ──────────────────────
+  describe('FIXPUB9 — devise + colonnes Odoo', () => {
+    it('étiquette les montants Meta dans la devise du compte (ex. USD), CPL (Odoo) reste en MAD', async () => {
+      mocks.connGet.mockResolvedValue({ data: { currency: 'USD' } })
+      mocks.adsCockpit.mockResolvedValue({ data: [
+        { ...ROWS[0], leads_odoo: 4, cpl_odoo: '225.00' },
+      ] })
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      const row = screen.getByTestId('ae-cockpit-row')
+      expect(row).toHaveTextContent('900 USD') // dépense (Meta)
+      expect(row).toHaveTextContent('180 USD') // CPL (Meta)
+      expect(row).toHaveTextContent('225 MAD') // CPL (Odoo) — reste en MAD
+      expect(row).toHaveTextContent('4') // Leads (Odoo)
+    })
+
+    it('Leads (Odoo) / CPL (Odoo) absents -> tirets, jamais fabriqués', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.adsCockpit).toHaveBeenCalled())
+      const row = screen.getAllByTestId('ae-cockpit-row')[0]
+      expect(row).toHaveTextContent('—')
+    })
   })
 
   // ── PUB40 — Sélecteur de période + comparaison ─────────────────────────
