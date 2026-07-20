@@ -4743,7 +4743,17 @@ textarea.form-control {
   flex: 1 1 auto;
   min-height: 0;
   padding: 0.75rem;
-  overflow-x: auto;
+  /* LB41 (retour fondateur) — UN SEUL scrolleur pour tout le board, les DEUX
+     axes (patron Odoo o_kanban_renderer) : toutes les étapes défilent
+     ENSEMBLE verticalement — plus jamais un ascenseur par colonne. La
+     scrollbar horizontale reste au bas du viewport (le board reste borné par
+     la chaîne .lp-page → .lp-view-area, invariant LB33 #2 inchangé). */
+  overflow: auto;
+  /* En-têtes sticky ⇒ scroll-padding OBLIGATOIRE : tout scrollIntoView
+     (clavier, focus, tests) pose sa cible SOUS la bande d'en-tête épinglée —
+     sans ça, le haut d'une carte amenée en vue disparaît derrière l'en-tête
+     (attrapé par MB6 en CI : carte fraîchement créée masquée). */
+  scroll-padding-top: 4.5rem;
   background: var(--muted, #f1f5f9);
   border-radius: var(--radius-lg, 12px);
 }
@@ -4754,7 +4764,15 @@ textarea.form-control {
   flex: 0 0 272px;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  /* LB41 — plus de min-height:0 : la colonne grandit avec son CONTENU et
+     s'étire à la plus haute (align-items:stretch — PAS de height explicite,
+     il désactiverait le stretch) → zones de dépôt pleine hauteur ; c'est le
+     BOARD qui scrolle (patron Odoo : aucun overflow entre l'en-tête sticky
+     et le scrolleur). min-height:100% fait remplir la hauteur visible quand
+     TOUTES les colonnes sont courtes. `isolation` confine le palier z de
+     l'en-tête sticky à la colonne (garde MB3). */
+  min-height: 100%;
+  isolation: isolate;
   background: var(--card, #ebeef3);
   border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius, 10px);
@@ -4783,6 +4801,14 @@ textarea.form-control {
 
 .kb-col-header {
   padding: 0.6rem 0.7rem 0.4rem;
+  /* LB41 — en-tête d'étape ÉPINGLÉ pendant le scroll vertical du board
+     (Odoo) : sticky dans le scrolleur .kb-board, fond opaque pour couvrir
+     les cartes qui glissent dessous (palier local via isolation sur .kb-col). */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--card, #ebeef3);
+  border-radius: var(--radius, 10px) var(--radius, 10px) 0 0;
 }
 
 .kb-col-title-row {
@@ -4829,9 +4855,10 @@ textarea.form-control {
    pouvait que grandir) : avec `.kb-board` réellement borné ci-dessus,
    `min-height:0` laisse enfin `overflow-y:auto` prendre effet par colonne. */
 .kb-col-body {
+  /* LB41 — le corps ne scrolle PLUS (le board est l'unique scrolleur) ;
+     flex:1 le fait remplir la colonne étirée → colonne courte = zone de
+     dépôt pleine hauteur quand même. */
   flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -5174,15 +5201,29 @@ textarea.form-control {
 /* ---------- Mobile ---------- */
 
 @media (max-width: 768px) {
+  /* LB42 — kanban mobile Odoo (kanban_controller.scss, vérifié 17.0) : UNE
+     étape quasi plein écran à la fois, 90% de large pour laisser DÉPASSER un
+     bord de la colonne suivante (seule affordance de navigation), balayage
+     horizontal aimanté par scroll-snap natif ; la COLONNE redevient le
+     scrolleur vertical (axes imbriqués : board = X aimanté, colonne = Y) —
+     l'en-tête sticky se re-résout tout seul contre la colonne. */
   .kb-board {
     gap: 0.6rem;
     padding: 0.5rem;
     -webkit-overflow-scrolling: touch;
+    overflow: scroll hidden;
+    scroll-snap-type: x mandatory;
   }
 
   .kb-col {
-    flex: 0 0 85vw;
-    max-width: 320px;
+    flex: 0 0 90%;
+    scroll-snap-align: center;
+    min-height: 0;
+    overflow-y: auto;
+    /* La colonne est ICI le scrolleur : même règle que .kb-board — un
+       scrollIntoView n'enterre jamais le haut d'une carte sous l'en-tête
+       sticky (cause du rouge MB6 mobile-safari en CI). */
+    scroll-padding-top: 4.5rem;
   }
 
   /* Cible tactile confortable pour le bouton ⚡ */
@@ -7098,9 +7139,10 @@ textarea.form-control {
   overflow: hidden auto;
 }
 /* Vues « planche » : la zone de vue NE scrolle PAS elle-même — chaque vue
-   possède son propre scrolleur interne (`.kb-board` horizontal + chaque
-   `.kb-col-body` vertical pour kanban/prévision ; `.lv-wrap` deux axes pour
-   la liste). Piloté par `data-view` (LeadsPage.jsx), zéro logique dupliquée. */
+   possède son propre scrolleur interne (LB41 : `.kb-board` est le scrolleur
+   UNIQUE des deux axes pour kanban/prévision — toutes les étapes défilent
+   ensemble, patron Odoo ; `.lv-wrap` deux axes pour la liste). Piloté par
+   `data-view` (LeadsPage.jsx), zéro logique dupliquée. */
 .lp-page[data-view="kanban"] .lp-view-area,
 .lp-page[data-view="prevision"] .lp-view-area,
 .lp-page[data-view="liste"] .lp-view-area {
@@ -7299,13 +7341,13 @@ textarea.form-control {
    `.kb-col-body` atteignable au clavier, zone de dépôt en pointillés sur
    colonne vide. Append-only, même bloc `.kb-*`. ══════════════════════════ */
 
-/* Anneau de focus sur `.kb-col-body` (tabindex=0, recon-05 a11y #6) — un
-   `outline` classique déborderait sur le scrolleur voisin ; `outline-offset`
-   négatif le ramène À L'INTÉRIEUR du cadre de la colonne. */
-.kb-col-body:focus-visible {
+/* LB41 — l'anneau de focus suit le tabindex : il vit désormais sur le board
+   (scrolleur unique desktop) ET reste sur la colonne (scrolleur mobile).
+   `outline-offset` négatif le ramène À L'INTÉRIEUR du cadre. */
+.kb-board:focus-visible,
+.kb-col:focus-visible {
   outline: 2px solid var(--ring, #f5a623);
   outline-offset: -2px;
-  border-radius: var(--radius-sm, 8px);
 }
 
 /* Zone de dépôt d'une colonne vide : surbrillance accentuée pendant le survol
@@ -7945,4 +7987,139 @@ textarea.form-control {
   color: var(--muted-foreground);
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm, 8px);
+}
+
+/* ═══ LB43 — ligne de contrôle UNIQUE façon Odoo (retour fondateur) ═══════
+   Une seule rangée : titre+compteur → recherche+facettes+« Filtres ▾ »
+   (FilterBar, au centre, extensible) → ⋯ / + Nouveau / sélecteur de vues.
+   Sous 768px la recherche décroche en 2e ligne (Odoo : flex-wrap) — le
+   chrome au-dessus du board passe de ~3 rangées à 2 lignes minces. */
+.lp-controlbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+}
+.lp-controlbar .lp-cb-title {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.lp-controlbar .fb-bar {
+  flex: 1 1 320px;
+  min-width: 240px;
+  margin-top: 0;
+}
+.lp-controlbar .lp-header-actions {
+  margin-left: auto;
+}
+
+/* Facettes Odoo (web.SearchBar.Facets) : une chip « Dimension : valeur ✕ »
+   par filtre actif, dans la barre — l'état des filtres se LIT d'un coup
+   d'œil et se retire d'un clic, sans ouvrir le panneau. */
+.fb-facet {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 220px;
+  padding: 0.15rem 0.25rem 0.15rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--module-accent-azur, #2563eb) 35%, transparent);
+  background: color-mix(in srgb, var(--module-accent-azur, #2563eb) 10%, var(--card, #fff));
+  border-radius: 999px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.fb-facet-dim {
+  color: var(--muted-foreground, #64748b);
+  white-space: nowrap;
+}
+.fb-facet-val {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fb-facet-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  padding: 0.15rem;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--muted-foreground, #64748b);
+}
+.fb-facet-x svg { width: 12px; height: 12px; }
+@media (hover: hover) {
+  .fb-facet-x:hover {
+    background: color-mix(in srgb, var(--module-accent-azur, #2563eb) 18%, transparent);
+    color: var(--foreground, #0b1f3a);
+  }
+}
+
+/* Le panneau « Filtres » (Odoo SearchBarMenu) : toutes les dimensions en
+   pile verticale, borné à l'écran et scrollable — un seul gabarit
+   desktop/mobile. */
+.fb-panel {
+  display: grid;
+  gap: 0.5rem;
+  max-width: calc(100vw - 1.5rem);
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+}
+.fb-panel .fb-select {
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  /* La barre de recherche prend sa propre ligne pleine largeur sous le
+     titre/actions (ordre visuel seulement — le DOM reste : titre, barre,
+     actions). */
+  .lp-controlbar .fb-bar {
+    order: 3;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .lp-controlbar .lp-header-actions {
+    margin-left: auto;
+  }
+  /* LB42 — densité Odoo mobile : le chrome au-dessus du board rend l'écran
+     au board (la plainte « la partie qui reste est toute petite »). Titre
+     ramené à une taille de barre d'outils, séparateur inutile masqué,
+     tuiles KPI resserrées, gouttières réduites. */
+  .lp-controlbar {
+    gap: 0.4rem 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .lp-controlbar .lp-cb-title {
+    font-size: 1.15rem;
+    margin-right: auto;
+  }
+  .lp-controlbar .lp-header-sep {
+    display: none;
+  }
+  /* Gotcha flex-wrap : le bloc d'actions casse la ligne sur sa largeur de
+     CONTENU (~430px) avant même de pouvoir rétrécir — `display:contents`
+     fait participer chaque bouton individuellement au packing : ligne 1 =
+     titre + ⋯ + Nouveau, la recherche (order:3) en ligne 2, le sélecteur de
+     vues (order:4) en dernier. */
+  .lp-controlbar .lp-header-actions {
+    display: contents;
+  }
+  .lp-controlbar .lp-header-actions .vs-group {
+    order: 4;
+  }
+  .lp-kpi-tile {
+    min-width: 88px;
+    padding: 4px 10px;
+  }
+  .lp-kpi-value {
+    font-size: 0.95rem;
+  }
+  .lp-page[data-view="kanban"] .lp-view-area,
+  .lp-page[data-view="prevision"] .lp-view-area {
+    padding: 0.25rem;
+  }
 }

@@ -35,9 +35,9 @@ test('LB32 : les 6 noms accessibles pinnés sont conservés verbatim', () => {
   }
 })
 
-test('LB32 : useIsMobile importé depuis le hook CANONIQUE dans les 3 fichiers, jamais une copie locale', () => {
+test('LB32 : useIsMobile importé depuis le hook CANONIQUE, jamais une copie locale (FilterBar n\'en a PLUS besoin — LB43, un seul Popover pour tous les gabarits)', () => {
+  assert.doesNotMatch(FB, /useIsMobile/)
   for (const [name, src, depth] of [
-    ['FilterBar.jsx', FB, '../../../ui/ResponsiveDialog'],
     ['ListView.jsx', LV, '../../../../ui/ResponsiveDialog'],
     ['ChartsView.jsx', CV, '../../../../ui/ResponsiveDialog'],
   ]) {

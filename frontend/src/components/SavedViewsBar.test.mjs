@@ -32,9 +32,10 @@ test('SaveViewButton : déclencheur exporté séparément, pas de rangée dédi�
   assert.match(SRC, /⭐ Enregistrer cette vue/)
 })
 
-test('LeadsPage : consomme SavedViewsBar + SaveViewButton (plus de balisage inline dupliqué)', () => {
-  assert.match(LEADS_SRC, /import SavedViewsBar, \{ SaveViewButton \} from '\.\.\/\.\.\/\.\.\/components\/SavedViewsBar'/)
-  assert.match(LEADS_SRC, /<SaveViewButton onSave=\{saveCurrentView\} \/>/)
+test('LeadsPage : consomme SavedViewsBar ; « Enregistrer cette vue » vit dans le menu ⋯ (LB43, ligne de contrôle unique)', () => {
+  assert.match(LEADS_SRC, /import SavedViewsBar from '\.\.\/\.\.\/\.\.\/components\/SavedViewsBar'/)
+  assert.match(LEADS_SRC, /<DropdownMenuItem onSelect=\{saveCurrentView\}>/)
+  assert.match(LEADS_SRC, /⭐ Enregistrer cette vue/)
   assert.match(LEADS_SRC, /<SavedViewsBar[\s\S]*?onApply=\{applySavedView\}[\s\S]*?onDelete=\{deleteSavedView\}[\s\S]*?\/>/)
   assert.doesNotMatch(LEADS_SRC, /lp-saved-view-chip/)
 })

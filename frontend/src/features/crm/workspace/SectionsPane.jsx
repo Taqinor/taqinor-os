@@ -106,22 +106,39 @@ export default function SectionsPane({
   }, [])
 
   // Scroll-spy throttlé rAF (corrige le smell recon 01 §6.11 : itération non
-  // throttlée à chaque tick de scroll).
+  // throttlée à chaque tick de scroll). Ligne de référence = le BAS de la
+  // nav sticky (.lw-secnav) : elle colle en haut de la zone visible dans LES
+  // DEUX gabarits (desktop : .lw-center scrolle ; <768px : .lw-body--edit
+  // scrolle et .lw-center glisse avec le contenu — comparer au top de
+  // .lw-center donnait alors un offset CONSTANT, le spy était mort).
   const onScroll = useCallback(() => {
     if (rafRef.current) return
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null
       const box = scrollRef.current
       if (!box) return
-      const top = box.getBoundingClientRect().top
+      const nav = box.querySelector('.lw-secnav')
+      const ref = (nav ? nav.getBoundingClientRect().bottom : box.getBoundingClientRect().top)
       // 'contact' est toujours la 1re section (fallback stable — pas de dép registry).
       let current = 'contact'
       for (const el of box.querySelectorAll('[data-nav-id]')) {
-        if (el.getBoundingClientRect().top - top <= 90) current = el.dataset.navId
+        if (el.getBoundingClientRect().top - ref <= 90) current = el.dataset.navId
       }
       setActive(current)
     })
   }, [])
+
+  // <768px, le scrolleur est .lw-body--edit (un ANCÊTRE — l'événement scroll
+  // ne bulle pas, le onScroll React de .lw-center ne tire jamais) : écouteur
+  // natif en phase CAPTURE sur cet ancêtre — il reçoit aussi les scrolls de
+  // .lw-center, donc UN écouteur couvre les deux gabarits sans ré-attache au
+  // resize. Le onScroll React reste en place (idempotent, rAF dédupliqué).
+  useEffect(() => {
+    const body = scrollRef.current?.closest('.lw-body')
+    if (!body) return undefined
+    body.addEventListener('scroll', onScroll, true)
+    return () => body.removeEventListener('scroll', onScroll, true)
+  }, [onScroll])
 
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }, [])
 

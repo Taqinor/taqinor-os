@@ -15,8 +15,8 @@ test('VX45 : Zap et GitMerge importés depuis lucide-react', () => {
   assert.match(SRC, /import \{ Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge \} from 'lucide-react'/)
 })
 
-test('VX45 : le bouton Express rend Zap au lieu de ⚡', () => {
-  assert.match(SRC, /<Zap aria-hidden="true" size=\{14\} \/> Express/)
+test('VX45 : l\'item Express rend Zap au lieu de ⚡ (LB43 : Express vit dans le menu ⋯)', () => {
+  assert.match(SRC, /<Zap aria-hidden="true" \/> Express/)
 })
 
 test('VX45 : l\'item de menu Doublons rend GitMerge au lieu de 🔀', () => {

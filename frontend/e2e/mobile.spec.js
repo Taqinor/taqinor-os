@@ -130,7 +130,15 @@ function assertNoHorizontalOverflow(page, path) {
 // a `position: fixed` regression re-introduced over an in-flow element), and
 // is backed up by the same Y-coordinate bounds as a belt-and-braces check.
 async function assertNotObscured(page, locator, label) {
-  await locator.scrollIntoViewIfNeeded()
+  // CENTRE la cible dans son scrolleur (scrollIntoView natif) : le
+  // scrollIntoViewIfNeeded protocolaire colle la cible au BORD du scrollport
+  // en ignorant scroll-padding — où un en-tête sticky LÉGITIME (thead épinglé
+  // de la liste, en-tête d'étape LB41) recouvre son haut par construction
+  // (rouge MB6 mobile-safari : carte fraîche sous l'en-tête « Nouveau »).
+  // Centrée, la cible n'est jamais sous le chrome haut/bas — et une VRAIE
+  // régression de chrome fixe la recouvre au centre aussi : le garde reste
+  // entier pour ce qu'il a été écrit (tab-bar basse, header fixe).
+  await locator.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'nearest' }))
   await expect(locator, `${label} is visible`).toBeVisible()
   let box = await locator.boundingBox()
   // MB6 robustesse — un pied de page COLLANT (position:sticky bottom:0, ex.
@@ -168,14 +176,51 @@ async function assertNotObscured(page, locator, label) {
     [box.x + box.width - inset, box.y + box.height - inset],
   ]
   for (const [x, y] of points) {
-    const hitsTarget = await page.evaluate(
+    // Diagnostic embarqué : en cas d'échec, le message NOMME l'élément qui
+    // recouvre le point (tag + classes + chaîne d'ancêtres) — un rouge CI
+    // devient auto-explicatif au lieu d'exiger une reproduction locale.
+    const hit = await page.evaluate(
       ([px, py, node]) => {
         const top = document.elementFromPoint(px, py)
-        return !!top && (top === node || node.contains(top) || top.contains(node))
+        if (top && (top === node || node.contains(top) || top.contains(node))) return { ok: true }
+        // Tolérance PRINCIPIELLE (rouge CI LB41, élément couvrant identifié :
+        // button.kb-col-collapse-btn < header.kb-col-header sticky) : un
+        // élément `position:sticky` DANS LE MÊME scrolleur que la cible est
+        // de l'UI légitime (thead épinglé de la liste, en-tête d'étape du
+        // board) — le haut d'un contenu défilé passe DESSOUS par
+        // construction, comme dans tout kanban/tableau (Odoo compris). Le
+        // garde continue d'attraper ce pour quoi il existe : `position:
+        // fixed` (tab-bar basse, header d'app, overlays) échoue toujours.
+        if (top) {
+          let sticky = null
+          for (let n = top; n && n !== document.body; n = n.parentElement) {
+            const pos = getComputedStyle(n).position
+            if (pos === 'fixed') { sticky = null; break }
+            if (pos === 'sticky') { sticky = n; break }
+          }
+          if (sticky) {
+            const scrollerOf = (el) => {
+              for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+                const s = getComputedStyle(n)
+                if (/(auto|scroll)/.test(s.overflowY + s.overflowX)) return n
+              }
+              return document.scrollingElement
+            }
+            // MÊME scrolleur, et jamais celui de la PAGE : un sticky de
+            // chrome d'app (scrolleur document/layout) reste un échec.
+            const sc = scrollerOf(sticky)
+            if (sc !== document.scrollingElement && sc === scrollerOf(node)) return { ok: true }
+          }
+        }
+        const chain = []
+        for (let n = top; n && n !== document.body && chain.length < 5; n = n.parentElement) {
+          chain.push(`${n.tagName.toLowerCase()}${n.className ? `.${String(n.className).split(' ').slice(0, 3).join('.')}` : ''}`)
+        }
+        return { ok: false, covering: chain.join(' < ') || 'null' }
       },
       [x, y, handle],
     )
-    expect(hitsTarget, `${label}: point (${Math.round(x)},${Math.round(y)}) is painted by the target, not fixed chrome on top of it`).toBeTruthy()
+    expect(hit.ok, `${label}: point (${Math.round(x)},${Math.round(y)}) is painted by the target, not fixed chrome on top of it (couvert par : ${hit.covering ?? '—'})`).toBeTruthy()
   }
   // Belt-and-braces: the element's box must not be covered by the sticky
   // bottom tab-bar or sit underneath the sticky header.
