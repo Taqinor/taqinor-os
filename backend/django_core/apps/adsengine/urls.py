@@ -20,6 +20,7 @@ from .views import (
     AdChatterView,
     BacklogDropAssetView, BacklogListView, BacklogLotApproveView,
     ImportChantierPhotoView,
+    AttributionBilanView, LeadsTimeseriesView, AudienceView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
     CommentCountsView, CommentDeleteView, CommentFaqView, CommentHideView,
     CommentListView,
@@ -181,6 +182,15 @@ urlpatterns = [
          name='adsengine-reporting-entonnoir-variantes'),
     path('reporting/cohortes/', CohortReportView.as_view(),
          name='adsengine-reporting-cohortes'),
+    # DATAPUB2 — bilan d'attribution des leads Odoo (aucun lead ignoré).
+    path('reporting/attribution-bilan/', AttributionBilanView.as_view(),
+         name='adsengine-reporting-attribution-bilan'),
+    # DATAPUB3 — leads Odoo dans le temps (jour/semaine + attribué + dépense).
+    path('reporting/leads-timeseries/', LeadsTimeseriesView.as_view(),
+         name='adsengine-reporting-leads-timeseries'),
+    # DATAPUB4 — audience (démographie) : genre/âge + couverture par dimension.
+    path('reporting/audience/', AudienceView.as_view(),
+         name='adsengine-reporting-audience'),
     path('reporting/export/', ReportExportView.as_view(),
          name='adsengine-reporting-export'),
     # ADSDEEP47 — leaderboard créatif (hook/angle/format, spend-weighted) +

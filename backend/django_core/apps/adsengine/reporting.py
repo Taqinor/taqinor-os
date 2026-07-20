@@ -1031,3 +1031,300 @@ def script_beat_retention(asset):
             'fact_key': fact_key,
         })
     return {'beat_count': n, 'mapping': mapping}
+
+
+# ── DATAPUB2 — Bilan d'attribution des leads Odoo (jamais de lead ignoré) ─────
+# Ordre + libellés FR stables des paliers d'attribution (voir odoo_leads.py).
+_ATTRIBUTION_TIERS_FR = (
+    ('telephone', 'Téléphone (exact)'),
+    ('formulaire', 'Formulaire — annonce'),
+    ('formulaire_campagne', 'Formulaire — campagne'),
+    ('nom', 'Nom du lead (estimation)'),
+    ('date', 'Fenêtre date (estimation)'),
+)
+
+
+def attribution_bilan(company, *, date_start=None):
+    """DATAPUB2 — Bilan d'attribution : le fondateur DOIT voir TOUS ses leads
+    Odoo et où chacun en est. Réutilise ``odoo_leads.odoo_leads_by_ad`` (la MÊME
+    attribution que le cockpit — jamais un second calcul) et le met en forme :
+
+        {
+          'configured': bool,
+          'total': int,          # tous les leads Odoo lus
+          'attributed': int, 'unattributed': int,
+          'tiers': [ {key, label, count}, ... ],   # ordre FR stable
+          'unattributed_by_source': [ {source_name, count}, ... desc ],
+          'note': str,
+          'odoo_error': str,     # seulement si la lecture Odoo échoue
+        }
+
+    ``date_start`` (optionnel) borne la lecture (comme le cockpit). Sans config
+    Odoo → ``configured=False`` + compteurs à zéro (no-op propre)."""
+    from .odoo_leads import odoo_leads_by_ad
+
+    res = odoo_leads_by_ad(company, since=date_start)
+    counts = res.get('tiers', {})
+    bilan = {
+        'configured': res.get('configured', False),
+        'total': res.get('total', 0),
+        'attributed': res.get('attributed', 0),
+        'unattributed': res.get('unattributed', 0),
+        'tiers': [
+            {'key': key, 'label': label, 'count': counts.get(key, 0)}
+            for key, label in _ATTRIBUTION_TIERS_FR
+        ],
+        'unattributed_by_source': res.get('unattributed_by_source', []),
+        'note': res.get('note', ''),
+    }
+    if res.get('odoo_error') is not None:
+        bilan['odoo_error'] = res['odoo_error']
+    return bilan
+
+
+# ── DATAPUB3 — Leads Odoo dans le temps (avec attribué + dépense en overlay) ──
+def _spend_by_day(company, *, ad_meta_id=None, date_start=None, date_end=None):
+    """``{date_iso: Decimal}`` de dépense PAR JOUR. Par défaut la dépense SOCIÉTÉ
+    (``InsightSnapshot`` niveau CAMPAGNE — pas de double-comptage, même primitif
+    que ``_company_spend_window``) ; avec ``ad_meta_id``, la dépense de CETTE
+    annonce (niveau ad). Bornée si date_start/date_end fournis."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Sum
+
+    from .models import AdCampaignMirror, AdMirror, InsightSnapshot
+
+    if ad_meta_id:
+        ad = (AdMirror.objects
+              .filter(company=company, meta_id=ad_meta_id)
+              .only('id').first())
+        if ad is None:
+            return {}
+        ct = ContentType.objects.get_for_model(AdMirror)
+        qs = InsightSnapshot.objects.filter(
+            company=company, content_type=ct, object_id=ad.pk)
+    else:
+        ct = ContentType.objects.get_for_model(AdCampaignMirror)
+        qs = InsightSnapshot.objects.filter(company=company, content_type=ct)
+    if date_start is not None:
+        qs = qs.filter(date__gte=date_start)
+    if date_end is not None:
+        qs = qs.filter(date__lte=date_end)
+    rows = qs.values('date').annotate(spend=Sum('spend'))
+    return {r['date'].isoformat(): (r['spend'] or Decimal('0'))
+            for r in rows if r['date'] is not None}
+
+
+def _iso_week_key(date_iso):
+    """'YYYY-MM-DD' → clé de semaine ISO 'YYYY-Www' (lundi). Une chaîne non-date
+    (ex. 'inconnu') est renvoyée telle quelle."""
+    try:
+        d = datetime.date.fromisoformat(date_iso)
+    except (ValueError, TypeError):
+        return date_iso
+    year, week, _ = d.isocalendar()
+    return f'{year}-W{week:02d}'
+
+
+def leads_timeseries(company, *, granularity='day', ad_meta_id=None,
+                     date_start=None, date_end=None):
+    """DATAPUB3 — Série temporelle des leads Odoo (par JOUR ou SEMAINE) avec
+    l'overlay ATTRIBUÉ et la DÉPENSE. Le nombre de leads vient de
+    ``odoo_leads.leads_by_day`` (TOUS les leads Odoo par leur date Odoo — pas
+    seulement les attribués) ; la dépense de ``_spend_by_day``. ``ad_meta_id``
+    (optionnel) restreint au drill d'UNE annonce (leads directs + dépense ad).
+    Renvoie ::
+
+        {'configured': bool, 'granularity': 'day'|'week',
+         'points': [ {period, leads_total, leads_attributed, spend} ],
+         'odoo_error': str}   # seulement si la lecture Odoo échoue
+
+    Une période avec de la DÉPENSE mais aucun lead (ou l'inverse) reste montrée —
+    jamais masquée."""
+    from .odoo_leads import leads_by_day
+
+    gran = 'week' if granularity == 'week' else 'day'
+    leads_res = leads_by_day(company, ad_meta_id=ad_meta_id)
+    spend_by_day = _spend_by_day(
+        company, ad_meta_id=ad_meta_id,
+        date_start=date_start, date_end=date_end)
+
+    # Union JOUR de (leads, dépense).
+    per_day = {}
+
+    def _slot(day_iso):
+        return per_day.setdefault(
+            day_iso, {'leads_total': 0, 'leads_attributed': 0,
+                      'spend': Decimal('0')})
+
+    for row in leads_res['days']:
+        slot = _slot(row['date'])
+        slot['leads_total'] += row['total']
+        slot['leads_attributed'] += row['attributed']
+    for day_iso, spend in spend_by_day.items():
+        _slot(day_iso)['spend'] += spend
+
+    def _in_bounds(day_iso):
+        if day_iso == 'inconnu':
+            # Un lead sans date n'entre dans aucune période bornée.
+            return date_start is None and date_end is None
+        try:
+            d = datetime.date.fromisoformat(day_iso)
+        except (ValueError, TypeError):
+            return True
+        if date_start is not None and d < date_start:
+            return False
+        if date_end is not None and d > date_end:
+            return False
+        return True
+
+    # Rollup JOUR → période (jour ou semaine ISO).
+    buckets = {}
+    for day_iso, vals in per_day.items():
+        if not _in_bounds(day_iso):
+            continue
+        key = _iso_week_key(day_iso) if gran == 'week' else day_iso
+        bucket = buckets.setdefault(
+            key, {'leads_total': 0, 'leads_attributed': 0,
+                  'spend': Decimal('0')})
+        bucket['leads_total'] += vals['leads_total']
+        bucket['leads_attributed'] += vals['leads_attributed']
+        bucket['spend'] += vals['spend']
+
+    points = [
+        {'period': key, 'leads_total': bucket['leads_total'],
+         'leads_attributed': bucket['leads_attributed'],
+         'spend': _q2(bucket['spend'])}
+        for key, bucket in sorted(buckets.items())]
+    out = {'configured': leads_res['configured'], 'granularity': gran,
+           'points': points}
+    if leads_res.get('odoo_error') is not None:
+        out['odoo_error'] = leads_res['odoo_error']
+    return out
+
+
+# ── DATAPUB4 — Audience (démographie) depuis les ventilations age_gender ──────
+_GENDER_FR = {'f': 'Femmes', 'm': 'Hommes'}
+_AUDIENCE_METRICS = ('impressions', 'clicks', 'results', 'conversations')
+_BREAKDOWN_DIM_LABELS = {
+    'age_gender': 'Âge × genre', 'platform': 'Placement',
+    'region': 'Région', 'hourly': 'Horaire',
+}
+
+
+def _split_age_gender(key):
+    """Clé de ventilation ``'25-34/f'`` → ``('25-34', 'f')`` ; ``'65+'`` (sans
+    séparateur) → ``('65+', '')`` ; ``'/f'`` → ``('', 'f')``."""
+    age, _, gender = key.partition('/')
+    return age, gender
+
+
+def _gender_label(letter):
+    return _GENDER_FR.get(letter, 'Inconnu')
+
+
+def _new_segment():
+    seg = {m: None for m in _AUDIENCE_METRICS}
+    seg['spend'] = None
+    return seg
+
+
+def _accumulate_segment(seg, row):
+    """Somme null-safe : une métrique JAMAIS renseignée sur aucune ligne du
+    segment reste None (« — » honnête côté UI, jamais un 0 fabriqué)."""
+    spend = row.get('spend')
+    if spend is not None:
+        seg['spend'] = (seg['spend'] or Decimal('0')) + spend
+    for metric in _AUDIENCE_METRICS:
+        value = row.get(metric)
+        if value is not None:
+            seg[metric] = (seg[metric] or 0) + value
+
+
+def _segment_out(seg, extra):
+    out = dict(extra)
+    out['spend'] = _q2(seg['spend'])
+    for metric in _AUDIENCE_METRICS:
+        out[metric] = seg[metric]
+    # reach n'est PAS matérialisé sous breakdown (dossier §2) → None honnête.
+    out['reach'] = None
+    return out
+
+
+def _breakdown_coverage(company):
+    """DATAPUB4 — Couverture PAR dimension de ventilation : lignes en base + date
+    la plus récente. Rend VISIBLE pourquoi seule ``age_gender`` avait des données
+    (les autres à 0 lignes), la contrepartie UI du diagnostic de la synchro."""
+    from django.db.models import Count, Max
+
+    from .models import InsightBreakdown
+
+    rows = (InsightBreakdown.objects.filter(company=company)
+            .values('dimension')
+            .annotate(rows=Count('id'), last_date=Max('date')))
+    by_dim = {r['dimension']: r for r in rows}
+    coverage = []
+    for dim in ('age_gender', 'platform', 'region', 'hourly'):
+        entry = by_dim.get(dim)
+        last = entry['last_date'] if entry else None
+        coverage.append({
+            'dimension': dim,
+            'label': _BREAKDOWN_DIM_LABELS[dim],
+            'rows': entry['rows'] if entry else 0,
+            'last_date': last.isoformat() if last else None,
+        })
+    return coverage
+
+
+def audience_breakdown(company, *, ad_meta_id=None):
+    """DATAPUB4 — Audience (démographie) : impressions/clics/résultats(=leads)/
+    dépense agrégés PAR GENRE et PAR ÂGE depuis les ventilations ``age_gender``
+    (ADSDEEP8). Libellés FR (Femmes/Hommes/Inconnu). ``reach`` n'est PAS stocké
+    sous breakdown → ``None`` (« — » côté UI, jamais un 0 fabriqué). ``results``
+    porte les leads pour une campagne lead-gen.
+
+    ``ad_meta_id`` (optionnel) draille sur une annonce ; les ventilations étant
+    stockées au niveau CAMPAGNE (ADSDEEP8), le drill par ad reste vide tant
+    qu'aucune ventilation ad-level n'existe (honnête, jamais un chiffre inventé).
+
+    Renvoie ``{'configured', 'by_gender', 'by_age', 'coverage'}`` où
+    ``configured`` = au moins une ligne ``age_gender`` existe."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from .models import AdMirror, InsightBreakdown
+
+    qs = InsightBreakdown.objects.filter(
+        company=company, dimension='age_gender')
+    if ad_meta_id:
+        ad = (AdMirror.objects.filter(company=company, meta_id=ad_meta_id)
+              .only('id').first())
+        if ad is None:
+            return {'configured': False, 'by_gender': [], 'by_age': [],
+                    'coverage': _breakdown_coverage(company)}
+        ct = ContentType.objects.get_for_model(AdMirror)
+        qs = qs.filter(content_type=ct, object_id=ad.pk)
+
+    by_gender = {}
+    by_age = {}
+    has_rows = False
+    for row in qs.values('key', 'spend', 'impressions', 'clicks', 'results',
+                         'conversations'):
+        has_rows = True
+        age, gender = _split_age_gender(row['key'])
+        gseg = by_gender.setdefault(gender, _new_segment())
+        _accumulate_segment(gseg, row)
+        aseg = by_age.setdefault(age, _new_segment())
+        _accumulate_segment(aseg, row)
+
+    gender_rows = [
+        _segment_out(by_gender[g], {'key': g, 'label': _gender_label(g)})
+        for g in sorted(by_gender, key=lambda g: (g not in _GENDER_FR, g))]
+    age_rows = [
+        _segment_out(by_age[a], {'age': a or '(inconnu)'})
+        for a in sorted(by_age)]
+
+    return {
+        'configured': has_rows,
+        'by_gender': gender_rows,
+        'by_age': age_rows,
+        'coverage': _breakdown_coverage(company),
+    }

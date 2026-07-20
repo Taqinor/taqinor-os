@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowDown, ArrowUp, ArrowUpDown, Video, ImageOff, FileText } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import { formatMAD, formatMoney, formatNumber, formatPercent, formatRatio, sortCockpitRows } from './adsengine'
+import { formatMoney, formatNumber, formatPercent, formatRatio, sortCockpitRows } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
 import AdCreativePanel from './AdCreativePanel'
 import ManualActionMenu from './ManualActionMenu'
@@ -36,21 +36,66 @@ function totalSpend(rows) {
    Toutes les valeurs viennent de ``metrics.adsCockpit`` — rien n'est inventé.
    ========================================================================== */
 
-const COLUMNS = [
-  { key: 'nom', label: 'Ad', sortable: true },
-  { key: 'statut_display', label: 'Statut / apprentissage', sortable: true },
-  { key: 'depense_mad', label: 'Dépense', sortable: true },
-  { key: 'conversations', label: 'Conversations', sortable: true },
-  { key: 'nb_leads', label: 'Leads', sortable: true },
+// DATAPUB5 — parité colonnes Ads Manager : source UNIQUE (en-tête + cellule) de
+// TOUTES les métriques détenues. `render(row, currency)` produit la cellule ; le
+// sélecteur de colonnes (persisté localStorage) choisit lesquelles afficher.
+// Toutes sont triables (sortCockpitRows est null-safe et coerce les nombres).
+const ALL_COLUMNS = [
+  { key: 'nom', label: 'Ad', render: (r) => r.nom || '—' },
+  { key: 'statut_display', label: 'Statut / apprentissage', render: (r) => (
+    <>{r.statut_display || '—'}{' '}
+      <span className="badge" data-testid="ae-cockpit-learning-badge">
+        {r.learning_badge?.label || 'Inconnu'}</span></>
+  ) },
+  { key: 'depense_mad', label: 'Dépense', render: (r, c) => formatMoney(r.depense_mad, c) },
+  { key: 'impressions', label: 'Impressions', render: (r) => formatNumber(r.impressions) },
+  { key: 'reach', label: 'Couverture', render: (r) => formatNumber(r.reach) },
+  { key: 'clics', label: 'Clics', render: (r) => formatNumber(r.clics) },
+  { key: 'clics_lien', label: 'Clics sur lien', render: (r) => formatNumber(r.clics_lien) },
+  { key: 'ctr', label: 'CTR', render: (r) => formatPercent(r.ctr, 2) },
+  { key: 'cpc_mad', label: 'CPC', render: (r, c) => r.cpc_mad == null ? '—' : formatMoney(r.cpc_mad, c) },
+  { key: 'cpm_mad', label: 'CPM', render: (r, c) => r.cpm_mad == null ? '—' : formatMoney(r.cpm_mad, c) },
+  { key: 'conversations', label: 'Conversations', render: (r) => formatNumber(r.conversations) },
+  { key: 'resultats', label: 'Résultats', render: (r) => formatNumber(r.resultats) },
+  { key: 'nb_leads', label: 'Leads', render: (r) => formatNumber(r.nb_leads) },
   // FIXPUB9 — compte RÉEL Odoo/CRM, à côté du compte Meta (nb_leads).
-  { key: 'leads_odoo', label: 'Leads (Odoo)', sortable: true },
-  { key: 'cpl_mad', label: 'CPL', sortable: true },
-  // FIXPUB9 — CPL calculé sur les leads Odoo, RÉELLEMENT en MAD (déal Odoo).
-  { key: 'cpl_odoo', label: 'CPL (Odoo)', sortable: true },
-  { key: 'signatures', label: 'Signatures', sortable: true },
-  { key: 'cost_per_signature_mad', label: 'Coût / signature', sortable: true },
-  { key: 'frequency', label: 'Fréquence', sortable: true },
+  { key: 'leads_odoo', label: 'Leads (Odoo)', render: (r) => formatNumber(r.leads_odoo) },
+  { key: 'cpl_mad', label: 'CPL', render: (r, c) => r.cpl_mad == null ? '—' : formatMoney(r.cpl_mad, c) },
+  // DATAPUB6 — CPL sur les leads Odoo : le numérateur est la DÉPENSE, dans la
+  // devise du COMPTE publicitaire (souvent USD), pas des MAD. On l'étiquette
+  // avec la devise du compte (comme le coût/signature) — jamais forcé en MAD
+  // (la doctrine ERP-MAD ne vaut que pour des montants réellement en MAD).
+  { key: 'cpl_odoo', label: 'CPL (Odoo)', render: (r, c) => r.cpl_odoo == null ? '—' : formatMoney(r.cpl_odoo, c) },
+  { key: 'signatures', label: 'Signatures', render: (r) => formatNumber(r.signatures) },
+  { key: 'cost_per_signature_mad', label: 'Coût / signature', render: (r, c) => r.cost_per_signature_mad == null ? '—' : formatMoney(r.cost_per_signature_mad, c) },
+  { key: 'frequency', label: 'Fréquence', render: (r) => r.frequency == null ? '—' : formatRatio(r.frequency) },
+  { key: 'hook_rate', label: 'Hook rate', render: (r) => formatPercent(r.hook_rate, 1) },
+  { key: 'hold_rate', label: 'Hold rate', render: (r) => formatPercent(r.hold_rate, 1) },
 ]
+
+// Colonnes visibles par défaut = le jeu historique (comportement inchangé tant
+// que le fondateur n'ajoute pas de colonne). Les autres sont opt-in via le
+// sélecteur (parité complète Ads Manager à la demande).
+const DEFAULT_COLUMN_KEYS = [
+  'nom', 'statut_display', 'depense_mad', 'conversations', 'nb_leads',
+  'leads_odoo', 'cpl_mad', 'cpl_odoo', 'signatures',
+  'cost_per_signature_mad', 'frequency',
+]
+
+const COLUMN_STORAGE_KEY = 'ae-cockpit-columns'
+
+function loadSavedColumns() {
+  try {
+    const raw = window.localStorage.getItem(COLUMN_STORAGE_KEY)
+    if (!raw) return null
+    const arr = JSON.parse(raw)
+    if (Array.isArray(arr)) {
+      const valid = arr.filter(k => ALL_COLUMNS.some(c => c.key === k))
+      if (valid.length) return valid
+    }
+  } catch { /* localStorage indispo/quota — repli sur le défaut */ }
+  return null
+}
 
 // Miniature créatif RÉSOLUE à l'affichage (URL fraîche, jamais persistée —
 // ADSDEEP12). Une ad vidéo montre une icône (pas de lecture inline dans une
@@ -188,6 +233,10 @@ export default function AdsCockpitScreen() {
   // FIXPUB9 — devise du compte Meta (les montants Meta ne sont jamais
   // forcés en MAD) ; 'MAD' en repli tant qu'elle n'est pas connue.
   const [currency, setCurrency] = useState('MAD')
+  // DATAPUB5 — colonnes visibles (sélecteur persisté localStorage) + panneau.
+  const [visibleKeys, setVisibleKeys] = useState(
+    () => loadSavedColumns() || DEFAULT_COLUMN_KEYS)
+  const [showColumnMenu, setShowColumnMenu] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -226,6 +275,21 @@ export default function AdsCockpitScreen() {
   // PUB43 — mémorise le dernier onglet/tri choisi (localStorage) à chaque
   // changement — dégradation silencieuse si indisponible (cockpitViews.js).
   useEffect(() => { saveCockpitView({ tab: activeView, sort }) }, [activeView, sort])
+
+  // DATAPUB5 — persiste le choix de colonnes (dégradation silencieuse).
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(visibleKeys))
+    } catch { /* localStorage indispo/quota — ignoré */ }
+  }, [visibleKeys])
+
+  // Colonnes affichées, dans l'ordre canonique d'ALL_COLUMNS (l'ordre stocké
+  // n'influe pas — on ajoute/retire seulement des clés).
+  const visibleColumns = useMemo(
+    () => ALL_COLUMNS.filter(c => visibleKeys.includes(c.key)), [visibleKeys])
+
+  const toggleColumn = (key) => setVisibleKeys(keys =>
+    keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key])
 
   // FIXPUB8 — fait défiler jusqu'au panneau de détail dès qu'une ligne
   // s'ouvre (jamais au montage : `openAdId` démarre à `null`).
@@ -303,6 +367,34 @@ export default function AdsCockpitScreen() {
         ))}
       </div>
 
+      {/* DATAPUB5 — sélecteur de colonnes (parité Ads Manager) : toutes les
+          métriques détenues, choix persisté (localStorage). */}
+      <div className="ae-cockpit-columns" style={{ position: 'relative', marginBottom: '1rem' }}>
+        <button type="button" className="btn btn-light"
+          data-testid="ae-cockpit-columns-toggle" aria-expanded={showColumnMenu}
+          onClick={() => setShowColumnMenu(v => !v)}>
+          Colonnes ({visibleColumns.length})
+        </button>
+        {showColumnMenu && (
+          <div data-testid="ae-cockpit-columns-menu" role="group"
+            aria-label="Colonnes affichées"
+            style={{ position: 'absolute', zIndex: 10, background: '#fff',
+              border: '1px solid #e2e8f0', borderRadius: 8, padding: '0.6rem',
+              marginTop: '0.3rem', display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))',
+              gap: '0.25rem 1rem', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
+            {ALL_COLUMNS.map(col => (
+              <label key={col.key} data-testid={`ae-cockpit-column-${col.key}`}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem' }}>
+                <input type="checkbox" checked={visibleKeys.includes(col.key)}
+                  onChange={() => toggleColumn(col.key)} />
+                {col.label}
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ADSDEEP66 — fenêtres de données visibles à l'écran : leads (90 j,
           MetaLeadMirror ADSDEEP19) + insights (37 mois, dépense/fréquence). */}
       <DataWindowNotice kind="leads" />
@@ -323,7 +415,7 @@ export default function AdsCockpitScreen() {
             <thead>
               <tr>
                 <th aria-label="Miniature créatif" />
-                {COLUMNS.map(col => (
+                {visibleColumns.map(col => (
                   <th key={col.key} aria-sort={(activeView === 'toutes' && sort.key === col.key)
                     ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
                     {/* PUB43 — tri par colonne désactivé quand une vue prédéfinie
@@ -352,22 +444,9 @@ export default function AdsCockpitScreen() {
                 return (
                   <tr key={row.id} data-testid="ae-cockpit-row">
                     <td><AdThumbnail mediaRef={row.thumbnail_ref} kind={row.thumbnail_kind} /></td>
-                    <td>{row.nom || '—'}</td>
-                    <td>
-                      {row.statut_display || '—'}{' '}
-                      <span className="badge" data-testid="ae-cockpit-learning-badge">
-                        {row.learning_badge?.label || 'Inconnu'}
-                      </span>
-                    </td>
-                    <td>{formatMoney(row.depense_mad, currency)}</td>
-                    <td>{formatNumber(row.conversations)}</td>
-                    <td>{formatNumber(row.nb_leads)}</td>
-                    <td>{formatNumber(row.leads_odoo)}</td>
-                    <td>{row.cpl_mad == null ? '—' : formatMoney(row.cpl_mad, currency)}</td>
-                    <td>{row.cpl_odoo == null ? '—' : formatMAD(row.cpl_odoo)}</td>
-                    <td>{formatNumber(row.signatures)}</td>
-                    <td>{row.cost_per_signature_mad == null ? '—' : formatMoney(row.cost_per_signature_mad, currency)}</td>
-                    <td>{row.frequency == null ? '—' : formatRatio(row.frequency)}</td>
+                    {visibleColumns.map(col => (
+                      <td key={col.key}>{col.render(row, currency)}</td>
+                    ))}
                     <td>
                       <span className="badge" data-testid="ae-cockpit-fatigue-badge"
                         style={{ background: tone.bg, color: tone.color }}>
@@ -392,7 +471,7 @@ export default function AdsCockpitScreen() {
                 )
               })}
               {sortedRows.length === 0 && !loadError && (
-                <tr><td colSpan={COLUMNS.length + 4} style={{ textAlign: 'center', color: '#64748b' }}>
+                <tr><td colSpan={visibleColumns.length + 4} style={{ textAlign: 'center', color: '#64748b' }}>
                   Aucune ad synchronisée</td></tr>
               )}
             </tbody>

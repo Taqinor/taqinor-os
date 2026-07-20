@@ -773,11 +773,43 @@ def _ad_window_aggregates(company, ad_pks, start_date=None, end_date=None):
         qs = qs.filter(date__gte=start_date)
     if end_date is not None:
         qs = qs.filter(date__lte=end_date)
+    # DATAPUB5 — reach/link_clicks additifs pour la parité colonnes du cockpit.
+    # ``reach`` est SOMMÉ (portée journalière) : c'est le seul agrégat calculable
+    # depuis les instantanés quotidiens — une approximation de la portée
+    # dédupliquée de période (Meta ne la reconstruit pas côté quotidien).
     rows = (qs.values('object_id')
             .annotate(spend=Sum('spend'), results=Sum('results'),
                       clicks=Sum('clicks'), impressions=Sum('impressions'),
+                      reach=Sum('reach'), link_clicks=Sum('link_clicks'),
                       frequency=Avg('frequency'), samples=Count('id')))
     return {r['object_id']: r for r in rows}
+
+
+def _ad_video_by_window(company, ad_pks, start_date=None, end_date=None):
+    """DATAPUB5 — ``{ad_pk: {'hook_rate': float|None, 'hold_rate': float|None}}``
+    dérivé des ``video_metrics`` agrégés sur la fenêtre (``sum_video_metrics`` +
+    les formules ``hook_rate``/``hold_rate`` DÉJÀ construites — jamais recalculées
+    ici). Une requête ; ``None`` honnête pour une ad sans lecture vidéo."""
+    from .models import AdMirror
+
+    if not ad_pks:
+        return {}
+    ct = ContentType.objects.get_for_model(AdMirror)
+    qs = InsightSnapshot.objects.filter(
+        company=company, content_type=ct, object_id__in=ad_pks)
+    if start_date is not None:
+        qs = qs.filter(date__gte=start_date)
+    if end_date is not None:
+        qs = qs.filter(date__lte=end_date)
+    by_ad = {}
+    for snap in qs.only('object_id', 'video_metrics', 'impressions'):
+        by_ad.setdefault(snap.object_id, []).append(snap)
+    out = {}
+    for pk, snaps in by_ad.items():
+        totals, impressions = sum_video_metrics(snaps)
+        out[pk] = {'hook_rate': hook_rate(totals, impressions),
+                   'hold_rate': hold_rate(totals)}
+    return out
 
 
 def _ad_fatigue_badge(recent, baseline):
@@ -846,6 +878,9 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
 
     totals = _ad_window_aggregates(
         company, ad_pks, start_date=start_date, end_date=as_of)
+    # DATAPUB5 — hook/hold rate par ad sur la même fenêtre (parité colonnes).
+    video_by_ad = _ad_video_by_window(
+        company, ad_pks, start_date=start_date, end_date=as_of)
     recent_start = as_of - datetime.timedelta(days=COCKPIT_RECENT_DAYS - 1)
     baseline_end = recent_start - datetime.timedelta(days=1)
     baseline_start = baseline_end - datetime.timedelta(days=COCKPIT_RECENT_DAYS - 1)
@@ -895,6 +930,23 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
         leads = real_leads_by_ad.get(ad.meta_id, 0)
         cpl = (spend / leads) if leads else None
 
+        # DATAPUB5 — parité colonnes Ads Manager : champs bruts + métriques
+        # DÉRIVÉES (CTR/CPC/CPM), None honnête quand un dénominateur manque
+        # (jamais un 0/ratio fabriqué). ``reach`` = somme journalière (cf.
+        # _ad_window_aggregates).
+        impressions = total.get('impressions')
+        reach = total.get('reach')
+        clicks = total.get('clicks')
+        link_clicks = total.get('link_clicks')
+        results = total.get('results')
+        ctr = (float(clicks) / impressions
+               if (impressions and clicks is not None) else None)
+        cpc = (str((spend / clicks).quantize(Decimal('0.01')))
+               if clicks else None)
+        cpm = (str((spend * 1000 / impressions).quantize(Decimal('0.01')))
+               if impressions else None)
+        video = video_by_ad.get(ad.pk, {})
+
         conv_row = conv_by_ad.get(ad.meta_id, {})
         odoo_row = odoo_by_ad.get(ad.meta_id)
         signatures = odoo_row['signatures'] if odoo_row else 0
@@ -938,6 +990,17 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
             'conversations': conv_row.get('conversations', 0),
             'nb_leads': leads,
             'cpl_mad': (str(cpl) if cpl is not None else None),
+            # DATAPUB5 — colonnes brutes + dérivées (parité Ads Manager).
+            'impressions': impressions,
+            'reach': reach,
+            'clics': clicks,
+            'clics_lien': link_clicks,
+            'resultats': results,
+            'ctr': ctr,
+            'cpc_mad': cpc,
+            'cpm_mad': cpm,
+            'hook_rate': video.get('hook_rate'),
+            'hold_rate': video.get('hold_rate'),
             'signatures': signatures,
             'cost_per_signature_mad': cost_per_signature,
             # FIXPUB6 — leads Odoo par annonce + coût-par-lead (additif).
