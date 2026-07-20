@@ -559,8 +559,12 @@ class MetaClient:
     # Sous-champs du nœud ``creative`` demandés pour miroiter le créatif diffusé
     # (dossier creative-retrieval §1). ``body`` n'est PAS peuplé pour les vidéos
     # → on lit aussi ``object_story_spec``/``asset_feed_spec``.
+    # FIXPUB5 (2026-07-20) — ``description`` retiré : champ mort sur le nœud
+    # creative (Graph v25 → « (#100) Tried accessing nonexisting field ») ; il
+    # faisait échouer 16/16 fetches EN SILENCE (le sync avale les exceptions
+    # par ad). La description vit déjà dans object_story_spec/asset_feed_spec.
     CREATIVE_SUBFIELDS = (
-        'id', 'body', 'title', 'description', 'call_to_action_type',
+        'id', 'body', 'title', 'call_to_action_type',
         'image_hash', 'video_id', 'thumbnail_url', 'image_url',
         'instagram_permalink_url', 'effective_object_story_id',
         'object_story_spec', 'asset_feed_spec')
