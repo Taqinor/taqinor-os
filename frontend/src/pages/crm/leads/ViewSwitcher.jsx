@@ -14,7 +14,10 @@
 import { LayoutGrid, List, Calendar, BarChart3, Map, CalendarClock } from 'lucide-react'
 import { Segmented } from '../../../ui'
 
-const VIEWS = [
+// LB47 — exportée : le menu ⋯ mobile de LeadsPage rend ces MÊMES vues en
+// items (jamais une 2e liste déclarée ailleurs).
+// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (même motif que STAGE_PROBABILITY, KanbanView.jsx)
+export const VIEWS = [
   { value: 'kanban', label: 'Vue kanban', icon: LayoutGrid },
   { value: 'liste', label: 'Vue liste', icon: List },
   { value: 'calendrier', label: 'Vue calendrier', icon: Calendar },

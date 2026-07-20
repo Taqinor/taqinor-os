@@ -8074,12 +8074,12 @@ textarea.form-control {
 }
 
 @media (max-width: 768px) {
-  /* La barre de recherche prend sa propre ligne pleine largeur sous le
-     titre/actions (ordre visuel seulement — le DOM reste : titre, barre,
-     actions). */
+  /* LB47 — la barre n'est plus une ligne pleine largeur : [🔍|Filtres]
+     compacts DANS l'unique ligne de chrome ; seule la recherche DÉPLIÉE
+     (.fb-search-expanded) décroche en ligne transitoire pleine largeur. */
   .lp-controlbar .fb-bar {
-    order: 3;
-    flex: 1 1 100%;
+    order: 0;
+    flex: 0 0 auto;
     min-width: 0;
   }
   .lp-controlbar .lp-header-actions {
@@ -8121,5 +8121,220 @@ textarea.form-control {
   .lp-page[data-view="kanban"] .lp-view-area,
   .lp-page[data-view="prevision"] .lp-view-area {
     padding: 0.25rem;
+  }
+}
+
+/* ═══ LB46/LB47 — cockpit UNE ligne (fondateur 2026-07-20 05h) ═══════════
+   « je ne vois même pas un lead complet — trop de choses en haut » : les
+   tuiles KPI deviennent des CHIPS compactes DANS la ligne de contrôle, les
+   chips de vues enregistrées aussi ; plus aucune rangée dédiée. */
+.lp-controlbar .lp-kpi-strip {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0;
+}
+.lp-controlbar .lp-kpi-tile {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.lp-controlbar .lp-kpi-value {
+  font-size: 0.92rem;
+}
+.lp-saved-views-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.lp-saved-view-star {
+  color: var(--warning, #f5a623);
+  margin-right: 0.15rem;
+}
+.lp-saved-view-move {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 0.15rem;
+  font-size: 0.65rem;
+  color: var(--muted-foreground, #64748b);
+}
+.lp-saved-view-move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+@media (hover: hover) {
+  .lp-saved-view-move:not(:disabled):hover { color: var(--foreground, #0b1f3a); }
+}
+
+/* LB47 — mobile : recherche dépliée = ligne transitoire pleine largeur ;
+   facettes + chips fréquentes + bandeau KPI vivent EN TÊTE du panneau
+   Filtres (pile verticale, chips en rangée fluide). */
+@media (max-width: 768px) {
+  .fb-search-expanded {
+    flex: 1 1 100%;
+    order: 9;
+    min-width: 0;
+  }
+}
+.fb-panel-facets,
+.fb-panel-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.fb-panel .lp-kpi-strip {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  padding: 0;
+}
+.fb-panel .lp-kpi-tile {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  min-width: 0;
+}
+
+/* LB46 — la ligne de contrôle doit rester MINCE : le titre h2 hérite de
+   --text-h1 (~2rem, .page-header h2) — ramené à une taille de barre d'outils
+   dans le cockpit une-ligne (mesuré : 80px → ~56px de rangée). */
+.lp-controlbar .lp-cb-title {
+  font-size: 1.35rem;
+}
+
+/* LB46 — la barre recherche/filtres est CONTENT-SIZED dans le cockpit une
+   ligne : `flex:1 1 320px` la faisait GRANDIR (recherche pleine largeur →
+   chips rejetées sur une 2e ligne interne → rangée gonflée à 80px, mesuré).
+   La recherche garde une base fixe confortable et le tout rétrécit
+   gracieusement avant de se replier. */
+@media (min-width: 769px) {
+  .lp-controlbar .fb-bar {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .lp-controlbar .fb-search {
+    flex: 0 1 280px;
+    min-width: 180px;
+  }
+}
+
+/* ═══ LB50-LB53 — cockpit final (blueprint leads-cockpit-blueprint.md) :
+   ~52px de chrome au repos. Rangée contrôle 44px ; rangée facettes 32px
+   CONDITIONNELLE (hors DOM à vide) ; PipelineTotal masqué < 1600px. ═══ */
+.lvp-trigger {
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--foreground, #0b1f3a);
+}
+.lvp-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lvp-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground, #64748b);
+}
+.lvp-menu {
+  min-width: 260px;
+}
+.lvp-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.lvp-row .lvp-apply {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.lvp-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding-right: 0.35rem;
+}
+.lp-quick-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.lp-pipeline-total {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted-foreground, #64748b);
+  white-space: nowrap;
+}
+@media (max-width: 1600px) {
+  .lp-controlbar > .lp-pipeline-total { display: none; }
+}
+.lp-facet-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  margin-top: -0.5rem;
+}
+.lp-controlbar {
+  min-height: 44px;
+}
+.lp-controlbar .lvp-trigger .count-badge {
+  font-size: 0.72rem;
+}
+/* Le panneau Filtres mobile empile chips rapides + total proprement. */
+.fb-panel .lp-quick-chips { flex-wrap: wrap; }
+.fb-panel .lp-pipeline-total { display: block; }
+
+/* LB53 — trims mesurés : 128px → ≤100px desktop (marge héritée de
+   .page-header) ; mobile : le trigger du picker se compacte pour que la
+   ligne [picker|🔍|Filtres|⋯] ne se replie jamais (86px mesurés → 1 ligne). */
+.lp-controlbar {
+  margin-bottom: 0.4rem;
+}
+.lp-page[data-view="kanban"] .lp-view-area,
+.lp-page[data-view="prevision"] .lp-view-area,
+.lp-page[data-view="liste"] .lp-view-area {
+  padding-top: 0.25rem;
+}
+@media (max-width: 768px) {
+  .lvp-trigger {
+    font-size: 1rem;
+    padding: 0.25rem 0.3rem;
+  }
+  .lvp-name {
+    max-width: 96px;
+  }
+}
+
+/* LB53 — dernier trim (102 → ~90px) : le board porte déjà son propre padding
+   interne (0.75rem) — la zone de vue n'a pas besoin d'en rajouter au-dessus. */
+.lp-page[data-view="kanban"] .lp-view-area,
+.lp-page[data-view="prevision"] .lp-view-area,
+.lp-page[data-view="liste"] .lp-view-area {
+  padding-top: 0;
+}
+.lp-controlbar {
+  margin-bottom: 0.3rem;
+}
+
+/* LB53 — la paire [recherche|Filtres] ne se sépare JAMAIS au desktop (le
+   wrap interne posait « Filtres » sous l'input → rangée doublée, vu à la
+   revue visuelle). */
+@media (min-width: 769px) {
+  .lp-controlbar .fb-bar {
+    flex-wrap: nowrap;
   }
 }

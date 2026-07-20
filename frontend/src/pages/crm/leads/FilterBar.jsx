@@ -9,6 +9,9 @@ import {
   tagList,
 } from '../../../features/crm/stages'
 import useCanaux from '../../../features/crm/useCanaux'
+// LB52 — facettes construites par le helper PUR partagé avec la rangée
+// desktop conditionnelle de LeadsPage (jamais deux logiques).
+import { buildLeadFacets } from './leadFacets'
 import {
   Input, Button, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -21,12 +24,6 @@ const ALL = '__all'
 const toSel = (v) => (v ? v : ALL)
 const fromSel = (v) => (v === ALL ? '' : v)
 
-const RELANCE_LABELS = {
-  aujourdhui: "Aujourd'hui",
-  retard: 'En retard',
-  semaine: 'Cette semaine',
-}
-
 // Barre de recherche/filtres partagée par les quatre vues — LB43 (retour
 // fondateur) : anatomie Odoo 17 vérifiée à la source (SearchBar +
 // SearchBarMenu). UNE ligne : recherche → « facettes » des filtres actifs
@@ -34,7 +31,12 @@ const RELANCE_LABELS = {
 // bouton « Filtres ▾ » (Popover) portant TOUTES les dimensions — plus
 // jamais 9 selects étalés sur plusieurs rangées.
 // `leads` = liste NON filtrée, pour dériver les options disponibles.
-export default function FilterBar({ filters, setFilters, leads }) {
+// LB47 (fondateur, 2026-07-20) : `mobile` — la barre se réduit à
+// [🔍 dépliable][Filtres ▾] (UNE ligne de chrome au téléphone) ; facettes,
+// chips Mes leads/Rappels ET `panelTop` (le bandeau KPI passé par LeadsPage)
+// déménagent EN TÊTE du panneau « Filtres ». VX223/224 (« chips toujours
+// visibles ») SUPPLANTÉS par cette instruction fondateur explicite.
+export default function FilterBar({ filters, setFilters, leads, mobile = false, panelTop = null }) {
   // LB23 — recherche débouncée (blueprint D5/I7) : l'input reste un état
   // LOCAL (frappe instantanée, jamais bloquée) qui ne pousse `setFilters`
   // qu'après 250ms de pause — combiné à LB6 (viewProps mémoïsé), une frappe
@@ -80,51 +82,54 @@ export default function FilterBar({ filters, setFilters, leads }) {
   const setPerdus = (value) => setFilters({ ...filters, perdus: value })
   const setArchived = (value) => setFilters({ ...filters, archived: value })
 
-  // VX223 — chip « Rappels demandés » : le signal le plus chaud
-  // (`contact_preference==='phone_ok'`, badge passif sur LeadCard), toujours
-  // visible — jamais replié derrière « Filtres ».
-  const rappelsActifs = filters.contact_preference === 'phone_ok'
-  const toggleRappels = () => setKey('contact_preference')(rappelsActifs ? '' : 'phone_ok')
-
-  // VX224 — chip « Mes leads » : défaut ON pour le rôle `normal` (posé une
-  // seule fois par LeadsPage.jsx à l'ouverture initiale, jamais ici).
-  const mesLeadsActif = !!filters.mesLeads
-  const toggleMesLeads = () => setKey('mesLeads')(!mesLeadsActif)
-
   const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
 
   const [open, setOpen] = useState(false)
+  // Mobile : la recherche est une icône qui déplie l'input pleine largeur
+  // (patron Odoo SearchBarToggler) — jamais une ligne permanente.
+  const [searchOpen, setSearchOpen] = useState(false)
   // Nombre de filtres actifs (hors recherche libre) — pastille sur le bouton.
   const activeCount = Object.keys(EMPTY_FILTERS)
     .filter((k) => k !== 'q' && filters[k] !== EMPTY_FILTERS[k]).length
 
-  // LB43 — facettes Odoo : une chip « Dimension : valeur ✕ » par filtre actif,
-  // dans la barre même (web.SearchBar.Facets). Exclues : `q` (déjà dans
-  // l'input) et les dimensions portées par une chip dédiée toujours visible
-  // (mesLeads ; contact_preference quand c'est le mode « ☎ Rappels »).
-  const facets = []
-  if (filters.stage) facets.push({ key: 'stage', dim: 'Étape', label: STAGE_LABELS[filters.stage] ?? filters.stage })
-  if (filters.type_installation) facets.push({ key: 'type_installation', dim: 'Marché', label: TYPE_INSTALLATION_LABELS[filters.type_installation] ?? filters.type_installation })
-  if (filters.canal) facets.push({ key: 'canal', dim: 'Canal', label: canalOptions.find((o) => o.value === filters.canal)?.label ?? filters.canal })
-  if (filters.contact_preference === 'whatsapp_only') facets.push({ key: 'contact_preference', dim: 'Contact', label: 'WhatsApp uniquement' })
-  if (filters.owner) facets.push({ key: 'owner', dim: 'Responsable', label: filters.owner })
-  if (filters.priorite) facets.push({ key: 'priorite', dim: 'Priorité', label: PRIORITE_LABELS[filters.priorite] ?? filters.priorite })
-  if (filters.tag) facets.push({ key: 'tag', dim: 'Tag', label: filters.tag })
-  if (filters.relance) facets.push({ key: 'relance', dim: 'Relance', label: RELANCE_LABELS[filters.relance] ?? filters.relance })
-  if (filters.perdus !== EMPTY_FILTERS.perdus) facets.push({ key: 'perdus', dim: 'Perdus', label: filters.perdus === 'sans' ? 'Sans' : 'Seuls' })
-  if ((filters.archived ?? 'actifs') !== EMPTY_FILTERS.archived) facets.push({ key: 'archived', dim: 'Archivés', label: filters.archived === 'tous' ? 'Inclus' : 'Seuls' })
+  const facets = buildLeadFacets(filters, canalOptions)
+
+  const facetChips = facets.map((f) => (
+    <span key={f.key} className="fb-facet">
+      <span className="fb-facet-dim">{f.dim}</span>
+      <span className="fb-facet-val">{f.label}</span>
+      <button
+        type="button"
+        className="fb-facet-x"
+        aria-label={`Retirer le filtre ${f.dim} : ${f.label}`}
+        onClick={() => setKey(f.key)(EMPTY_FILTERS[f.key])}
+      ><X aria-hidden="true" /></button>
+    </span>
+  ))
 
   return (
     <div className="fb-bar">
-      <div className="fb-search">
-        <Input
-          type="search"
-          leading={<Search />}
-          placeholder="Rechercher nom, téléphone, email…"
-          value={searchLocal}
-          onChange={(e) => setSearchLocal(e.target.value)}
-        />
-      </div>
+      {mobile && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label="Rechercher"
+          aria-expanded={searchOpen}
+          onClick={() => setSearchOpen((v) => !v)}
+        ><Search /></Button>
+      )}
+      {(!mobile || searchOpen) && (
+        <div className={mobile ? 'fb-search fb-search-expanded' : 'fb-search'}>
+          <Input
+            type="search"
+            leading={<Search />}
+            placeholder="Rechercher nom, téléphone, email…"
+            value={searchLocal}
+            onChange={(e) => setSearchLocal(e.target.value)}
+          />
+        </div>
+      )}
 
       {/* LB43 — l'unique panneau de dimensions (Odoo SearchBarMenu) : le même
           Popover partout (desktop ET mobile) — plus de gabarit qui étale les
@@ -142,6 +147,11 @@ export default function FilterBar({ filters, setFilters, leads }) {
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="fb-panel w-80">
+          {panelTop}
+          {mobile && facets.length > 0 && (
+            <div className="fb-panel-facets">{facetChips}</div>
+          )}
+
       <Select value={toSel(filters.stage)} onValueChange={(v) => setKey('stage')(fromSel(v))}>
         <SelectTrigger className="fb-select" aria-label="Filtrer par étape">
           <SelectValue />
@@ -285,42 +295,7 @@ export default function FilterBar({ filters, setFilters, leads }) {
         </PopoverContent>
       </Popover>
 
-      {facets.map((f) => (
-        <span key={f.key} className="fb-facet">
-          <span className="fb-facet-dim">{f.dim}</span>
-          <span className="fb-facet-val">{f.label}</span>
-          <button
-            type="button"
-            className="fb-facet-x"
-            aria-label={`Retirer le filtre ${f.dim} : ${f.label}`}
-            onClick={() => setKey(f.key)(EMPTY_FILTERS[f.key])}
-          ><X aria-hidden="true" /></button>
-        </span>
-      ))}
 
-      {/* VX224 — chip « Mes leads », toujours visible. */}
-      <Button
-        type="button"
-        variant={mesLeadsActif ? 'default' : 'outline'}
-        size="sm"
-        className="fb-chip-mes-leads"
-        aria-pressed={mesLeadsActif}
-        onClick={toggleMesLeads}
-      >
-        Mes leads
-      </Button>
-
-      {/* VX223 — chip « Rappels demandés », toujours visible. */}
-      <Button
-        type="button"
-        variant={rappelsActifs ? 'default' : 'outline'}
-        size="sm"
-        className="fb-chip-rappels"
-        aria-pressed={rappelsActifs}
-        onClick={toggleRappels}
-      >
-        ☎ Rappels demandés
-      </Button>
 
     </div>
   )

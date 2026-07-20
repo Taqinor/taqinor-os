@@ -157,7 +157,10 @@ test('VX71: lead form validation error state has no serious/critical a11y violat
 // Échoue UNIQUEMENT sur serious/critical (même seuil anti-flake que VX71).
 test('LB34: la page leads redessinée (KPI + kanban + barre flottante + menu ••• + liste) — 0 violation a11y sérieuse', async ({ page }) => {
   await gotoLeads(page) // vue kanban par défaut
-  await expect(page.locator('.lp-kpi-strip')).toBeVisible()
+  // LB51 (blueprint cockpit) : les tuiles KPI sont devenues des chips-filtres
+  // comptées dans la ligne de contrôle ; le picker de vues porte le titre.
+  await expect(page.locator('.lp-quick-chips')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Vues — vue active/ })).toBeVisible()
   await expect(page.locator('.kb-board')).toBeVisible()
   // Cockpit + board redessinés (KPI, ViewSwitcher, colonnes/chevrons/zones de scroll).
   await assertNoSeriousA11yViolations(page, { include: '.lp-page' })
