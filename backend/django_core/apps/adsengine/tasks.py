@@ -615,6 +615,20 @@ def sync_breakdowns_for_campaign(company, client, campaign_mirror):
     return written
 
 
+def sync_breakdowns_for_company(company, client):
+    """ADSDEEP8 — CŒUR par société : synchronise les breakdowns de CHAQUE
+    campagne miroir d'une société. Renvoie le nombre de campagnes traitées.
+    Extrait au niveau module (FIXPUB3) pour être réutilisé par le rattrapage
+    complet sans dupliquer la boucle."""
+    from .models import AdCampaignMirror
+
+    processed = 0
+    for camp in AdCampaignMirror.objects.filter(company=company):
+        sync_breakdowns_for_campaign(company, client, camp)
+        processed += 1
+    return processed
+
+
 @shared_task(name='adsengine.sync_breakdowns_weekly')
 def sync_breakdowns_weekly():
     """ADSDEEP8 — Beat HEBDO : synchronise les breakdowns de chaque campagne
@@ -623,7 +637,7 @@ def sync_breakdowns_weekly():
     from authentication.selectors import active_companies
 
     from .meta_client import MetaAuthError, MetaClient
-    from .models import AdCampaignMirror, MetaConnection
+    from .models import MetaConnection
 
     processed = 0
     for company in active_companies():
@@ -633,9 +647,7 @@ def sync_breakdowns_weekly():
             continue
         try:
             client = MetaClient.from_connection(conn)
-            for camp in AdCampaignMirror.objects.filter(company=company):
-                sync_breakdowns_for_campaign(company, client, camp)
-                processed += 1
+            processed += sync_breakdowns_for_company(company, client)
         except MetaAuthError as exc:
             _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
             continue
@@ -795,7 +807,32 @@ def sync_instagram_for_company(company, conn, client):
     return len(mirrors)
 
 
-def pull_ad_leads_for_company(company, conn, client, *, name_token=''):
+def _lead_ads_access_token(conn):
+    """FIXPUB1 — Résout le token d'accès Lead Ads à transmettre à la résolution
+    des noms d'annonces (repli paresseux Graph API dans
+    ``crm.services.create_lead_from_meta_lead_ads``).
+
+    Ordre de priorité : le réglage/env ``META_LEAD_ADS_ACCESS_TOKEN`` GAGNE quand
+    il est posé ; à défaut, on retombe sur le token sauvegardé de la MetaConnection
+    active de la MÊME société (``(conn.credentials or {}).get('access_token')``).
+    Renvoie ``(token, source)`` où ``source`` vaut ``'env'`` / ``'connexion'`` /
+    ``None`` — JAMAIS le token n'est journalisé, SEULEMENT sa source. Variante par
+    connexion de ``selectors.resolve_lead_ads_access_token`` (résolution par
+    société)."""
+    from django.conf import settings
+
+    env_token = (getattr(settings, 'META_LEAD_ADS_ACCESS_TOKEN', '') or '').strip()
+    if env_token:
+        return env_token, 'env'
+    conn_token = ((getattr(conn, 'credentials', None) or {}).get(
+        'access_token') or '').strip()
+    if conn_token:
+        return conn_token, 'connexion'
+    return '', None
+
+
+def pull_ad_leads_for_company(company, conn, client, *, name_token='',
+                              access_token=''):
     """ADSDEEP18 — Pull-sync des leads lead-form d'une société.
 
     Pour chaque ad miroir, tire ``GET /<ad_id>/leads`` (fenêtre Meta 90 j),
@@ -805,11 +842,12 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token=''):
     MÊME récepteur upserte le MetaLeadMirror : webhook et pull CONVERGENT sur le
     même miroir. Best-effort par ad. Renvoie le nombre de leads traités.
 
-    FIXPUB1 — ``name_token`` (optionnel) : token passé au service pour le repli
-    PARESSEUX de résolution des NOMS de campagne/ad set via le Graph API (env
-    prioritaire, sinon token de la MetaConnection — cf.
-    ``selectors.resolve_lead_ads_access_token``). Vide (défaut) : résolution par
-    les seuls miroirs locaux, jamais d'appel réseau."""
+    FIXPUB1 — ``name_token`` / ``access_token`` (alias, ``name_token`` prioritaire)
+    : token passé au service pour le repli PARESSEUX de résolution des NOMS de
+    campagne/ad set via le Graph API (env prioritaire, sinon token de la
+    MetaConnection — cf. ``selectors.resolve_lead_ads_access_token`` par société ou
+    ``_lead_ads_access_token`` par connexion). Vide (défaut) : résolution par les
+    seuls miroirs locaux, jamais d'appel réseau."""
     from core.events import meta_lead_captured
 
     from .models import AdMirror
@@ -818,6 +856,9 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token=''):
     if not callable(get_leads):
         return 0
     processed = 0
+    # FIXPUB1 — ``name_token`` et ``access_token`` sont des alias ; on retient le
+    # premier non vide pour le repli paresseux de résolution des noms.
+    token = name_token or access_token
     # Cache adset/campaign par ad (une seule résolution par ad).
     for ad in AdMirror.objects.filter(company=company):
         try:
@@ -842,7 +883,7 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token=''):
                     company=company, leadgen_id=leadgen_id,
                     field_data=field_data, ad_id=ad.meta_id,
                     adgroup_id=targeting.get('adset_id', ''), form_id=form_id,
-                    access_token=name_token)
+                    access_token=token)
             except Exception:  # noqa: BLE001 — un lead en échec n'arrête pas
                 logger.warning(
                     'adsengine.pull_ad_leads: création lead échouée (%s)',
@@ -899,6 +940,77 @@ def pull_meta_leads():
             continue
     logger.info('adsengine.pull_meta_leads: %s lead(s) traité(s)', total)
     return {'leads_processed': total}
+
+
+@shared_task(name='adsengine.backfill_complet')
+def backfill_complet(company_id):
+    """FIXPUB3 — Rattrapage COMPLET « tout l'historique » pour UNE société, à la
+    demande (endpoint ``campaigns/backfill-complet/`` — jamais un beat).
+
+    Enchaîne, best-effort par étape (une étape en échec n'arrête pas les autres) :
+      1. historique des insights niveau ad (cœur ADSDEEP3) ;
+      2. breakdowns démo/placement/horaire de chaque campagne (cœur ADSDEEP8) ;
+      3. miroir du créatif LIVE de chaque ad (ADSDEEP11) ;
+      4. pull-sync des leads lead-form (ADSDEEP18, token FIXPUB1).
+
+    NO-OP propre sans MetaConnection active + tokenisée (``ran=False``). Renvoie un
+    récapitulatif ``{ran, insights, breakdowns, creatives, leads}``."""
+    from authentication.models import Company
+
+    from .management.commands.insights_backfill import (
+        backfill_insights_for_connection)
+    from .meta_client import MetaAuthError, MetaClient
+    from .models import MetaConnection
+
+    summary = {'company_id': company_id, 'ran': False,
+               'insights': 0, 'breakdowns': 0, 'creatives': 0, 'leads': 0}
+    company = Company.objects.filter(pk=company_id).first()
+    if company is None:
+        return summary
+    conn = MetaConnection.objects.filter(company=company, enabled=True).first()
+    if conn is None or not conn.is_live:
+        return summary  # NO-OP propre : rien sans connexion active + token
+
+    try:
+        client = MetaClient.from_connection(conn)
+    except MetaAuthError as exc:
+        _handle_meta_auth_error(conn, exc)  # PUB20 — jamais silencieux
+        return summary
+    summary['ran'] = True
+
+    # 1) Historique des insights niveau ad (réutilise le cœur ADSDEEP3).
+    try:
+        summary['insights'] = backfill_insights_for_connection(conn)
+    except Exception:  # noqa: BLE001 — une étape en échec n'arrête pas les autres
+        logger.warning('adsengine.backfill_complet: insights KO (société %s)',
+                       company.pk, exc_info=True)
+
+    # 2) Breakdowns de chaque campagne miroir (réutilise le cœur ADSDEEP8).
+    try:
+        summary['breakdowns'] = sync_breakdowns_for_company(company, client)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('adsengine.backfill_complet: breakdowns KO (société %s)',
+                       company.pk, exc_info=True)
+
+    # 3) Miroir du créatif LIVE de chaque ad (ADSDEEP11).
+    try:
+        summary['creatives'] = sync_ad_creatives(company, client)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('adsengine.backfill_complet: créatifs KO (société %s)',
+                       company.pk, exc_info=True)
+
+    # 4) Pull-sync des leads lead-form (ADSDEEP18) — token résolu FIXPUB1.
+    try:
+        access_token, _src = _lead_ads_access_token(conn)
+        summary['leads'] = pull_ad_leads_for_company(
+            company, conn, client, access_token=access_token)
+    except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('adsengine.backfill_complet: leads KO (société %s)',
+                       company.pk, exc_info=True)
+
+    logger.info('adsengine.backfill_complet: société %s — %s',
+                company.pk, summary)
+    return summary
 
 
 @shared_task(name='adsengine.sync_insights_daily')

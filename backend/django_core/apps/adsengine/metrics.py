@@ -877,6 +877,16 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
         odoo_by_ad = {row['ad_id']: row for row in odoo_result.get('ads', [])}
     except Exception:  # noqa: BLE001 — le cockpit ne casse jamais sur Odoo
         pass
+    # FIXPUB6 — leads Odoo attribués PAR AD (coût-par-lead), additif au coût-par-
+    # signature ci-dessus. Best-effort : le cockpit ne casse jamais sur Odoo.
+    odoo_leads_by_ad_map = {}
+    try:
+        from .odoo_leads import odoo_leads_by_ad
+        leads_result = odoo_leads_by_ad(company, since=start_date)
+        odoo_leads_by_ad_map = {
+            row['ad_id']: row for row in leads_result.get('ads', [])}
+    except Exception:  # noqa: BLE001 — le cockpit ne casse jamais sur Odoo
+        pass
 
     rows = []
     for ad in ads:
@@ -889,6 +899,10 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
         odoo_row = odoo_by_ad.get(ad.meta_id)
         signatures = odoo_row['signatures'] if odoo_row else 0
         cost_per_signature = odoo_row['cost_per_signature'] if odoo_row else None
+        # FIXPUB6 — leads Odoo attribués à CETTE ad + coût-par-lead Odoo.
+        leads_odoo_row = odoo_leads_by_ad_map.get(ad.meta_id)
+        leads_odoo = leads_odoo_row['leads_odoo'] if leads_odoo_row else 0
+        cpl_odoo = leads_odoo_row['cpl_odoo'] if leads_odoo_row else None
 
         adset = ad.adset
         learning_status = getattr(adset, 'learning_status', '') or ''
@@ -926,6 +940,9 @@ def ads_cockpit_rows(company, *, as_of=None, start_date=None):
             'cpl_mad': (str(cpl) if cpl is not None else None),
             'signatures': signatures,
             'cost_per_signature_mad': cost_per_signature,
+            # FIXPUB6 — leads Odoo par annonce + coût-par-lead (additif).
+            'leads_odoo': leads_odoo,
+            'cpl_odoo': cpl_odoo,
             'odoo_configured': odoo_configured,
             'frequency': (str(total['frequency'])
                           if total.get('frequency') is not None else None),
