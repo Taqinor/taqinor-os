@@ -252,11 +252,27 @@ describe('CampaignsScreen (ENG24)', () => {
       renderScreen()
       await waitFor(() => expect(mocks.list).toHaveBeenCalled())
       expect(screen.queryByTestId('ae-camp-compare-summary')).toBeNull()
+      // FIXPUB2 — défaut « Tout » (sans bornes) : la case comparer reste
+      // désactivée tant qu'une période BORNÉE n'est pas choisie.
+      fireEvent.click(screen.getByTestId('ae-daterange-preset-7j'))
+      await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
       mocks.list.mockClear()
       fireEvent.click(screen.getByTestId('ae-daterange-compare'))
       await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
       expect(await screen.findByTestId('ae-camp-compare-summary'))
         .toHaveTextContent('vs période précédente')
+    })
+  })
+
+  // ── FIXPUB2 — défaut « Tout » (aucune borne) ────────────────────────────
+  describe('FIXPUB2 — fenêtre par défaut', () => {
+    it('démarre sur « Tout » (aucune borne envoyée à l’API)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+      expect(screen.getByTestId('ae-daterange-preset-tout')).toHaveAttribute('aria-pressed', 'true')
+      const params = mocks.list.mock.calls[0][0]
+      expect(params.debut).toBeUndefined()
+      expect(params.fin).toBeUndefined()
     })
   })
 

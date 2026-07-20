@@ -65,4 +65,18 @@ describe('DateRangeBar', () => {
     render(<DateRangeBar onChange={() => {}} />)
     expect(screen.getByTestId('ae-daterange-preset-30j')).toHaveAttribute('aria-pressed', 'true')
   })
+
+  // ── FIXPUB2 — preset « Tout » (aucune borne) ────────────────────────────
+  it('« Tout » résout des bornes VIDES (jamais une erreur, jamais null déréférencé)', () => {
+    const onChange = vi.fn()
+    render(<DateRangeBar value={{ preset: '30j', debut: '', fin: '' }} onChange={onChange} />)
+    fireEvent.click(screen.getByTestId('ae-daterange-preset-tout'))
+    expect(onChange).toHaveBeenCalledWith({ preset: 'tout', debut: '', fin: '', compare: false })
+  })
+
+  it('« Tout » sélectionné -> pas de résumé de période, comparaison désactivée', () => {
+    render(<DateRangeBar value={{ preset: 'tout', debut: '', fin: '' }} onChange={() => {}} />)
+    expect(screen.queryByTestId('ae-daterange-summary')).toBeNull()
+    expect(screen.getByTestId('ae-daterange-compare')).toBeDisabled()
+  })
 })

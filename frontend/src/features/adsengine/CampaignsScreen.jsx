@@ -80,8 +80,10 @@ export default function CampaignsScreen() {
     setOpenBreakdownId(cur => (cur === id ? null : id))
 
   // PUB40 — sélecteur de période + comparaison (partagé avec Dashboard/Cockpit).
+  // FIXPUB2 — défaut « Tout » (aucune borne) : une campagne synchronisée il y
+  // a plus de 30 jours ne doit jamais sembler absente à l'ouverture de l'écran.
   const [range, setRange] = useState(
-    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+    () => ({ preset: 'tout', ...presetRange('tout'), compare: false }))
   const [previousTotal, setPreviousTotal] = useState(null)
   // PUB41 — état-ERREUR distinct de l'état-vide (jamais un silence).
   const [loadError, setLoadError] = useState(false)

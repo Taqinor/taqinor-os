@@ -55,9 +55,11 @@ export default function ActionsLogScreen() {
   const [cancelBusy, setCancelBusy] = useState(null)
 
   // PUB40 — sélecteur de période + comparaison (partagé avec les 3 autres
-  // écrans-données). Défaut « 30 derniers jours ».
+  // écrans-données). FIXPUB2 — défaut « Tout » (aucune borne) : le journal
+  // d'actions est un backstop de confiance, il ne doit jamais masquer une
+  // action passée faute d'avoir pensé à élargir la période.
   const [range, setRange] = useState(
-    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+    () => ({ preset: 'tout', ...presetRange('tout'), compare: false }))
   const [previousCount, setPreviousCount] = useState(null)
   // PUB41 — état-ERREUR distinct de l'état-vide (jamais un silence).
   const [loadError, setLoadError] = useState(false)

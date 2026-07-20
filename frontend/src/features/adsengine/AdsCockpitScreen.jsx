@@ -166,8 +166,12 @@ export default function AdsCockpitScreen() {
   const [openAdId, setOpenAdId] = useState(null)
 
   // PUB40 — sélecteur de période + comparaison (partagé avec Dashboard).
+  // FIXPUB2 — défaut « Tout » (aucune borne) : contrairement au Dashboard
+  // (indicateur du mois en cours), le cockpit liste des ads précises — un
+  // fondateur qui cherche une ad d'il y a 2 mois ne doit pas la croire
+  // disparue faute d'avoir pensé à élargir la période.
   const [range, setRange] = useState(
-    () => ({ preset: '30j', ...presetRange('30j'), compare: false }))
+    () => ({ preset: 'tout', ...presetRange('tout'), compare: false }))
   const [previousTotal, setPreviousTotal] = useState(null)
   // PUB41 — état-ERREUR distinct de l'état-vide : une panne de synchro ne
   // doit JAMAIS ressembler à « aucune ad » (le silence que ce ticket tue).
