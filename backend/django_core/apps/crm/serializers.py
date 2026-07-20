@@ -4,7 +4,7 @@ from .models import (
     EtapePlanActivite, ForecastEntry, ForecastSnapshot, Lead, LeadActivity,
     LeadPlaybookProgress, MessageTemplate, ObjectifCommercial, Parrainage,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
-    PlaybookTache, PointContact, RevueCompte, SiteProfile,
+    PlaybookTache, PointContact, RevueCompte, SavedView, SiteProfile,
     WebsiteLeadPayload,
 )
 from .devis_auto import champs_manquants, message_manquants
@@ -1060,3 +1060,27 @@ class LeadPlaybookProgressSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = ['fait_par', 'fait_le', 'created_at']
+
+
+# ── LB48 — Vues enregistrées par compte ────────────────────────────────────
+
+class SavedViewSerializer(serializers.ModelSerializer):
+    """LB48 — vue enregistrée personnelle (filtres + disposition d'une page).
+
+    ``company`` n'est PAS exposé : toujours posé côté serveur
+    (``SavedViewViewSet.perform_create`` — jamais lu du corps de requête),
+    comme ``MessageTemplateSerializer``. ``user`` est un ``HiddenField``
+    (jamais lisible/écrivable par le client — ``write_only`` implicite) posé
+    depuis l'utilisateur courant : nécessaire pour que le validateur
+    d'unicité auto-généré par DRF sur la contrainte ``(user, page, name)``
+    s'active (DRF n'ajoute le ``UniqueTogetherValidator`` que si TOUS les
+    champs de la contrainte sont représentés dans le serializer — sans ce
+    champ cachée, un doublon lèverait une ``IntegrityError`` (500) au lieu
+    d'un 400 propre).
+    """
+    user = serializers.HiddenField(default=serializers.CurrentUserDefault())
+
+    class Meta:
+        model = SavedView
+        fields = ['id', 'page', 'name', 'rank', 'payload', 'date_creation', 'user']
+        read_only_fields = ['date_creation']

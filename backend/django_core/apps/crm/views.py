@@ -12,7 +12,8 @@ from .models import (
     ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
-    PlaybookTache, PointContact, RevueCompte, SiteProfile, WebsiteLeadPayload,
+    PlaybookTache, PointContact, RevueCompte, SavedView, SiteProfile,
+    WebsiteLeadPayload,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -25,7 +26,7 @@ from .serializers import (
     ForecastEntrySerializer, ForecastSnapshotSerializer,
     PlanCompteSerializer, RevueCompteSerializer,
     PlaybookSerializer, PlaybookEtapeSerializer, PlaybookTacheSerializer,
-    LeadPlaybookProgressSerializer,
+    LeadPlaybookProgressSerializer, SavedViewSerializer,
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity
@@ -2378,3 +2379,75 @@ def lead_playbook_view(request, lead_id):
     progress.fait_le = _tz.now() if fait else None
     progress.save(update_fields=['fait', 'fait_par', 'fait_le'])
     return Response(LeadPlaybookProgressSerializer(progress).data)
+
+
+# ── LB48 — Vues enregistrées par compte ────────────────────────────────────
+
+class SavedViewViewSet(CompanyScopedModelViewSet):
+    """LB48 — vues enregistrées PERSONNELLES (filtres + disposition) pour une
+    page donnée (ex. ``crm.leads``).
+
+    Double scoping systématique : société (``TenantMixin``, hérité de
+    ``CompanyScopedModelViewSet``) ET utilisateur — chaque utilisateur ne
+    voit/modifie QUE ses propres vues, jamais celles d'un collègue même dans
+    la même société (``get_queryset`` filtre en plus sur
+    ``request.user``, donc un id d'une autre personne rend 404, pas 403).
+    ``company``/``user`` sont toujours posés côté serveur dans
+    ``perform_create`` — jamais lus du corps de requête.
+
+    Routes :
+      GET/POST         /crm/vues-enregistrees/?page=crm.leads
+      GET/PATCH/DELETE  /crm/vues-enregistrees/{id}/
+      POST              /crm/vues-enregistrees/reorder/
+                         {"page": "crm.leads", "ids": [3, 1, 2]}
+    """
+    queryset = SavedView.objects.all()
+    serializer_class = SavedViewSerializer
+
+    def get_permissions(self):
+        return [IsAnyRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset().filter(user=self.request.user)
+        page = self.request.query_params.get('page')
+        if page:
+            qs = qs.filter(page=page)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            user=self.request.user,
+        )
+
+    @action(detail=False, methods=['post'])
+    def reorder(self, request):
+        """Réordonne en bloc les vues de l'utilisateur pour une page :
+        ``{"page": "crm.leads", "ids": [3, 1, 2]}`` → ``rank`` = index dans la
+        liste fournie. Les ids qui n'appartiennent pas à l'utilisateur actif
+        pour cette page (autre page, autre utilisateur, id inconnu) sont
+        silencieusement ignorés — jamais d'erreur pour un id étranger."""
+        from django.db import transaction
+        page = request.data.get('page')
+        ids = request.data.get('ids') or []
+        if not page or not isinstance(ids, list):
+            return Response(
+                {'detail': "Paramètres 'page' et 'ids' (liste) requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        owned_by_id = {
+            v.id: v for v in SavedView.objects.filter(
+                company=request.user.company, user=request.user,
+                page=page, id__in=ids)
+        }
+        with transaction.atomic():
+            for index, view_id in enumerate(ids):
+                view = owned_by_id.get(view_id)
+                if view is None:
+                    continue
+                if view.rank != index:
+                    view.rank = index
+                    view.save(update_fields=['rank'])
+        result = SavedView.objects.filter(
+            company=request.user.company, user=request.user, page=page,
+        ).order_by('rank', 'id')
+        return Response(SavedViewSerializer(result, many=True).data)

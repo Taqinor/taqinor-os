@@ -2383,3 +2383,49 @@ class LeadPlaybookProgress(models.Model):
 
     def __str__(self):
         return f'{self.lead_id} — {self.tache_id} ({"fait" if self.fait else "à faire"})'
+
+
+# ── LB48 — Vues enregistrées par compte (filtres + disposition de page) ───────
+
+class SavedView(models.Model):
+    """LB48 — vue enregistrée PERSONNELLE (un utilisateur, une page).
+
+    Mémorise un jeu de filtres + une disposition de vue (ex. Kanban vs liste)
+    pour une page donnée (``page`` = clé applicative libre, ex. ``crm.leads``),
+    propre à l'utilisateur qui l'a créée — jamais partagée entre utilisateurs
+    (contrairement à un futur « vues d'équipe »). Société ET utilisateur sont
+    TOUJOURS posés côté serveur (jamais lus du corps de requête, cf.
+    ``SavedViewViewSet``). ``rank`` ordonne les vues d'un utilisateur pour une
+    page (0 = première/défaut) ; l'action ``reorder`` les réassigne en bloc.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='crm_vues_enregistrees')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: vue personnelle, sans objet sans son propriétaire
+        related_name='crm_vues_enregistrees')
+    page = models.CharField(
+        max_length=64,
+        help_text="Clé applicative de la page (ex. 'crm.leads').")
+    name = models.CharField(max_length=80, verbose_name='Nom')
+    rank = models.PositiveIntegerField(
+        default=0, verbose_name='Rang',
+        help_text='0 = première/vue par défaut.')
+    payload = models.JSONField(
+        default=dict, blank=True,
+        help_text="Contenu de la vue : {filters, view}.")
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Vue enregistrée'
+        verbose_name_plural = 'Vues enregistrées'
+        ordering = ['rank', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'page', 'name'],
+                name='crm_sv_uniq_user_page_name',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.page} — {self.name} ({self.user_id})'
