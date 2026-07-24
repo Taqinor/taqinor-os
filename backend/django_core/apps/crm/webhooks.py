@@ -1252,8 +1252,12 @@ def fetch_meta_lead_data(leadgen_id, access_token):
     """
     import urllib.request
 
-    url = (f'https://graph.facebook.com/v19.0/{leadgen_id}'
-           f'?access_token={access_token}')
+    # ADSENG2 — version depuis la SOURCE UNIQUE partagée (apps.adsengine.
+    # api_version), jamais codée en dur : la v19.0 qui restait ici était morte
+    # depuis 02/2025. Constante plain (aucun modèle adsengine importé).
+    from apps.adsengine.api_version import GRAPH_BASE_URL
+
+    url = f'{GRAPH_BASE_URL}/{leadgen_id}?access_token={access_token}'
     with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
         return json.loads(resp.read().decode('utf-8'))
 

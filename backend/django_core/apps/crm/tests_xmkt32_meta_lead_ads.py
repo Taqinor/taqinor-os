@@ -282,3 +282,40 @@ class MetaLeadAdsConnectionFallbackTests(TestCase):
         resp = self._post(_notification_payload(leadgen_id='7002'))
         self.assertEqual(resp.status_code, 200)
         fetch_mock.assert_called_once_with('7002', 'ENV-TOKEN')
+
+
+class FetchMetaLeadDataVersionTests(TestCase):
+    """Garde anti-dérive : le fetch Graph du webhook suit la SOURCE UNIQUE de
+    version (apps.adsengine.api_version), jamais une version codée en dur —
+    la v19.0 restée ici était morte depuis 02/2025 (même dérive que l'émetteur
+    CAPI ventes avant ADSENG2)."""
+
+    def test_fetch_builds_url_from_shared_graph_base(self):
+        from unittest.mock import patch
+
+        from apps.adsengine.api_version import GRAPH_BASE_URL
+        from apps.crm.webhooks import fetch_meta_lead_data
+
+        seen = {}
+
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return b'{"field_data": []}'
+
+        def fake_urlopen(url, timeout=None):
+            seen['url'] = url
+            return _Resp()
+
+        with patch('urllib.request.urlopen', fake_urlopen):
+            data = fetch_meta_lead_data('42', 'tok')
+        self.assertEqual(data, {'field_data': []})
+        self.assertTrue(
+            seen['url'].startswith(f'{GRAPH_BASE_URL}/42'),
+            msg=f"URL Graph inattendue : {seen['url']}")
+        self.assertNotIn('v19.0', seen['url'])
