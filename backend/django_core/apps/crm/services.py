@@ -1412,6 +1412,129 @@ def resolve_or_create_lead_from_whatsapp(company, telephone, nom='',
 
 _META_LEAD_ADS_SYSTEM = 'meta_lead_ads'
 
+# Marqueur d'idempotence de la note « réponses du formulaire » (une seule note
+# par lead, quel que soit le nombre de retries webhook / passes du pull).
+_META_FORM_NOTE_MARKER = '[Formulaire Meta]'
+
+
+def _norm_form_text(value):
+    """Minuscule, sans accents, underscores → espaces — les clés/valeurs des
+    Instant Forms Meta arrivent en snake_case accentué (ex.
+    ``quelle_est_votre_facture_moyenne_d'électricité_par_mois_?`` /
+    ``entre_1000_dh_à_2000_dh``) ; ce normalisateur rend le matching tolérant
+    aux variantes de wording entre formulaires."""
+    import unicodedata
+
+    text = unicodedata.normalize('NFKD', str(value or ''))
+    text = ''.join(c for c in text if not unicodedata.combining(c))
+    return text.replace('_', ' ').lower().strip()
+
+
+def _parse_meta_form_extras(field_data):
+    """Réponses NON-contact du formulaire Meta → champs CRM structurés.
+
+    Renvoie un dict : ``qa`` (paires question/réponse verbatim, pour la note
+    chatter — rien n'est perdu), et selon les questions reconnues :
+    ``facture_estimee`` (MAD/mois — milieu de tranche, ou borne pour une
+    tranche ouverte « plus de X »), ``facture_declaree`` (réponse verbatim),
+    ``type_installation`` (choix canonique du modèle), ``priorite`` (dérivée
+    du délai déclaré : « le plus tôt possible » → haute, « je me renseigne » →
+    basse, sinon normale)."""
+    contact_keys = {'full_name', 'nom', 'name', 'first_name', 'email',
+                    'phone_number', 'telephone', 'city', 'ville'}
+    extras = {'qa': []}
+    for entry in (field_data or []):
+        raw_name = str(entry.get('name', '')).strip()
+        if raw_name.lower() in contact_keys:
+            continue
+        values = entry.get('values') or []
+        raw_value = str((values[0] if values else '') or '')
+        if not raw_value:
+            continue
+        extras['qa'].append((raw_name, raw_value))
+        q = _norm_form_text(raw_name)
+        v = _norm_form_text(raw_value)
+        if 'facture' in q:
+            nums = [int(n) for n in _re.findall(r'\d{3,6}', v)]
+            if len(nums) >= 2:
+                extras['facture_estimee'] = (nums[0] + nums[1]) // 2
+            elif nums:
+                # Tranche ouverte (« plus de 4000 dh ») : borne déclarée,
+                # jamais un montant inventé au-delà.
+                extras['facture_estimee'] = nums[0]
+            extras['facture_declaree'] = raw_value
+        elif 'quand' in q or 'commencer' in q or 'delai' in q:
+            if 'plus tot possible' in v or 'ce mois' in v or 'immediat' in v:
+                extras['priorite'] = Lead.Priorite.HAUTE
+            elif 'renseigne' in v:
+                extras['priorite'] = Lead.Priorite.BASSE
+            else:
+                extras['priorite'] = Lead.Priorite.NORMALE
+        elif 'install' in q:
+            if any(k in v for k in ('villa', 'maison', 'appartement',
+                                    'domicile', 'residen')):
+                extras['type_installation'] = Lead.TypeInstallation.RESIDENTIEL
+            elif any(k in v for k in ('entreprise', 'societe', 'commerce',
+                                      'bureau', 'magasin', 'hotel', 'local')):
+                extras['type_installation'] = Lead.TypeInstallation.COMMERCIAL
+            elif 'usine' in v or 'industri' in v:
+                extras['type_installation'] = Lead.TypeInstallation.INDUSTRIEL
+            elif any(k in v for k in ('ferme', 'agricole', 'pompage', 'puits')):
+                extras['type_installation'] = Lead.TypeInstallation.AGRICOLE
+    return extras
+
+
+def _apply_meta_form_extras(lead, extras):
+    """Pose les champs structurés du formulaire SANS jamais écraser une valeur
+    déjà présente (une saisie humaine gagne toujours sur l'auto-remplissage).
+    ``priorite`` : posée seulement en « upgrade » (NORMALE par défaut → HAUTE
+    déclarée) — jamais de downgrade automatique. Renvoie la liste des champs
+    modifiés (vide si rien à faire)."""
+    from decimal import Decimal
+
+    changed = []
+    if extras.get('facture_estimee') is not None and lead.facture_hiver is None:
+        lead.facture_hiver = Decimal(int(extras['facture_estimee']))
+        changed.append('facture_hiver')
+    if extras.get('type_installation') and not lead.type_installation:
+        lead.type_installation = extras['type_installation']
+        changed.append('type_installation')
+    if (extras.get('priorite') == Lead.Priorite.HAUTE
+            and lead.priorite == Lead.Priorite.NORMALE):
+        lead.priorite = Lead.Priorite.HAUTE
+        changed.append('priorite')
+    if lead.telephone and not lead.whatsapp:
+        # Un lead Meta arrive par mobile : le même numéro sert de lien wa.me
+        # pour la première prise de contact de Meryem.
+        lead.whatsapp = lead.telephone
+        changed.append('whatsapp')
+    return changed
+
+
+def _ensure_meta_form_note(lead, extras, form_id=''):
+    """Une note chatter avec TOUTES les réponses verbatim du formulaire —
+    rien n'est perdu, même les questions non reconnues. Idempotente par
+    marqueur (retries webhook / re-passes du pull ne dupliquent jamais)."""
+    if not extras.get('qa'):
+        return
+    if LeadActivity.objects.filter(
+            lead=lead, body__startswith=_META_FORM_NOTE_MARKER).exists():
+        return
+    suffix = f' (formulaire {form_id})' if form_id else ''
+    lines = [f'{_META_FORM_NOTE_MARKER} Réponses du prospect{suffix} :']
+    for question, answer in extras['qa']:
+        lines.append('• %s → %s' % (question.replace('_', ' '),
+                                    answer.replace('_', ' ')))
+    if extras.get('facture_estimee') is not None:
+        lines.append(
+            '(facture hiver pré-remplie à %s MAD depuis la tranche déclarée '
+            '« %s » — à préciser au premier appel)'
+            % (int(extras['facture_estimee']),
+               extras.get('facture_declaree', '').replace('_', ' ')))
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE, body='\n'.join(lines))
+
 
 def create_lead_from_meta_lead_ads(
         *, company, leadgen_id, field_data,
@@ -1447,13 +1570,6 @@ def create_lead_from_meta_lead_ads(
     séquences) n'est pas encore construit — aucune inscription automatique
     tant qu'il n'existe pas ; ce service reste le point d'accroche futur.
     """
-    # ── Couche 1 : idempotence sur le leadgen_id (retries webhook Meta) ──────
-    existing = Lead.objects.filter(
-        company=company, external_system=_META_LEAD_ADS_SYSTEM,
-        external_id=str(leadgen_id)).first()
-    if existing is not None:
-        return existing
-
     fields = {}
     for entry in (field_data or []):
         name = str(entry.get('name', '')).strip().lower()
@@ -1469,6 +1585,27 @@ def create_lead_from_meta_lead_ads(
             fields['telephone'] = str(value)[:20]
         elif name in ('city', 'ville'):
             fields['ville'] = str(value)[:120]
+    # Réponses métier du formulaire (facture, type d'installation, délai…) —
+    # structurées vers les VRAIS champs CRM, verbatim conservé en note.
+    extras = _parse_meta_form_extras(field_data)
+
+    # ── Couche 1 : idempotence sur le leadgen_id (retries webhook Meta) ──────
+    # Un lead déjà capturé n'est PAS renvoyé tel quel : il est ENRICHI
+    # (backfill) depuis les réponses du formulaire — champs vides uniquement,
+    # jamais un écrasement de saisie humaine. C'est ce chemin qui remplit les
+    # leads importés avant que le mapping complet n'existe.
+    existing = Lead.objects.filter(
+        company=company, external_system=_META_LEAD_ADS_SYSTEM,
+        external_id=str(leadgen_id)).first()
+    if existing is not None:
+        changed = _apply_meta_form_extras(existing, extras)
+        if fields.get('ville') and not existing.ville:
+            existing.ville = fields['ville']
+            changed.append('ville')
+        if changed:
+            existing.save(update_fields=changed)
+        _ensure_meta_form_note(existing, extras, form_id=str(form_id or ''))
+        return existing
 
     nom = (fields.get('nom') or '').strip() or 'Lead Meta Ads'
     telephone = fields.get('telephone') or ''
@@ -1528,17 +1665,26 @@ def create_lead_from_meta_lead_ads(
         if not lead.external_system:
             lead.external_system = _META_LEAD_ADS_SYSTEM
             lead.external_id = str(leadgen_id)
+        # Réponses métier du formulaire : complètent le lead absorbé sans
+        # jamais écraser une valeur existante.
+        _apply_meta_form_extras(lead, extras)
         lead.save()
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE,
             body=(f'Nouvelle touche Meta Lead Ads (leadgen_id={leadgen_id}) '
                   f'absorbée dans ce lead existant.'))
+        _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
     else:
         extra = {}
         default = default_responsable_for(company)
         if default is not None:
             extra['owner'] = default
+        # À la CRÉATION, le délai déclaré pose la priorité pleinement (haute,
+        # normale ou basse) ; en enrichissement (leads existants), seule la
+        # montée NORMALE→HAUTE est automatique (_apply_meta_form_extras).
+        if extras.get('priorite'):
+            extra['priorite'] = extras['priorite']
         lead = Lead.objects.create(
             company=company,
             nom=nom,
@@ -1558,11 +1704,17 @@ def create_lead_from_meta_lead_ads(
             external_id=str(leadgen_id),
             **extra,
         )
+        # Réponses métier du formulaire → champs structurés (facture hiver,
+        # type d'installation, priorité selon le délai déclaré, wa.me).
+        changed = _apply_meta_form_extras(lead, extras)
+        if changed:
+            lead.save(update_fields=changed)
         activity.log_creation(lead, None)
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE,
             body='Lead créé depuis Meta Lead Ads (formulaire Facebook/Instagram).')
+        _ensure_meta_form_note(lead, extras, form_id=str(form_id or ''))
         try:
             notify_new_lead(lead)
         except Exception:  # noqa: BLE001 — best-effort
@@ -1570,6 +1722,40 @@ def create_lead_from_meta_lead_ads(
 
     recompute_lead_score(lead)
     return lead
+
+
+def import_external_notes_for_contact(company, *, phone=None, email=None,
+                                      notes):
+    """Importe des notes EXTERNES (ex. chatter Odoo) dans le chatter du lead
+    correspondant — point d'entrée cross-app sanctionné (services.py), appelé
+    par la commande ``adsengine.odoo_import_notes``.
+
+    ``notes`` : liste de paires ``(marker, body)`` — ``marker`` est le préfixe
+    d'idempotence du corps (ex. ``[Odoo note 123]``) : une note déjà importée
+    (même marqueur sur ce lead) n'est JAMAIS dupliquée, la commande est
+    re-exécutable à volonté.
+
+    Matching : téléphone puis email, via les mêmes colonnes normalisées que le
+    reste du CRM (``find_duplicates_by_contact``) ; prend le lead le plus
+    récent. Renvoie ``(matched: bool, created: int)`` — aucun lead n'est créé
+    ici (les leads sans correspondance attendent la migration complète)."""
+    dupes = find_duplicates_by_contact(
+        company, phone=phone or None, email=email or None)
+    if not dupes:
+        return False, 0
+    lead = sorted(dupes, key=lambda d: d.date_creation, reverse=True)[0]
+    created = 0
+    for marker, body in notes:
+        if not (body or '').strip():
+            continue
+        if LeadActivity.objects.filter(
+                lead=lead, body__startswith=marker).exists():
+            continue
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body=body)
+        created += 1
+    return True, created
 
 
 def create_minimal_lead_from_ctwa(*, company, phone, ad_id='') -> Lead:
