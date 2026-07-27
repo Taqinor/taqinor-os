@@ -16,15 +16,20 @@ MODÈLE DÉFINITIF (croquis + correctifs client 27/07) :
   - GÊNE (définitif) : petit ouvrage SUR LA MÊME LIGNE que la chambre, entre
     la chambre et le mur est — chambre → 1,19 → GÊNE (4,78) → 1,52 → mur est ;
     chaîne transversale 13,95 + 4,18 + 1,19 + 4,78 + 1,52 = 25,62 ✓ EXACT ;
-    profondeur ≈3,2 ? (orange, à confirmer) ; bord SUD à 13,5 du MUR SUD
-    (cote bleue ; mur de référence à confirmer — nord ?) ; muret h≈0,5 tout
-    autour, nature inconnue (probable sortie clim) ; AUCUNE diagonale mesurée
-    par le client ; le « 1,19 » = écart chambre↔gêne, PAS un objet ;
-    bloquée au calepinage, dégagement 0,50 maintenu quel que soit le jeu.
-Calepinage : paramètres PLANCHES 1,20/0,35/0,30 (gêne 0,50) sur 51,1 m ;
-conservateur 1,50/0,50/0,50 calculé pour information. Bandeau : ≥ 288 →
-CONFIRMÉ ; sinon TENDU + chiffre vrai + nota redistribution. Jamais de
-« max » promotionnel.
+    RÉPONSE CLIENT 27/07 (2e série) : ≈0,5 h × 4,78 × ≈1,0 prof (« clim
+    probable, pas sûr ») → profondeur 1,0 (orange) ; bord SUD à 13,5 du MUR
+    SUD (mur de référence à confirmer — nord ?) ; dégagement 0,50 maintenu.
+  - RÉPONSES CLIENT 27/07 (2e série, Q/R sur images annotées) : AUCUNE souche
+    vue sur le toit (les 4 « S » provisoires SUPPRIMÉES) ; AUCUNE clim sur le
+    toit aujourd'hui — elle viendra APRÈS (à coordonner à l'exécution, ce
+    n'est PAS une réserve AO — l'ancienne réserve DRV ouest est SUPPRIMÉE) ;
+    allées « 0,60 mini, optimisées » (consigne client).
+Calepinage : RANGÉES EXPLICITES optimisées — allées 0,60 mini, le surplus de
+largeur concentré en UNE allée large (2,95) sur la colonne cage/local, si bien
+que cage + local + marche ne coupent qu'UNE bande et la gêne qu'une bande.
+Conservateur 1,50/0,50/0,50 et uniforme 0,60 calculés pour information.
+Bandeau : ≥ 288 → CONFIRMÉ ; sinon TENDU + chiffre vrai + nota redistribution.
+Jamais de « max » promotionnel.
 Sorties : VUE_TOITURE_BAT_C_ECOLE.pdf / .png
 """
 import os
@@ -56,10 +61,11 @@ CAGE_D = L_TOT - 19.36 - GAP - 4.50 - 10.50    # = 8,82 (client : ≈8,5 arrondi
 CAGE = (Y_INT - CAGE_D, Y_INT, 14.09, 18.20)   # y 22,92 → 31,74
 CH = (CAGE[0] - GAP - 4.50, CAGE[0] - GAP, 13.95, 18.13)     # y 10,50 → 15,00
 # gêne : sur la ligne de la chambre — chambre → 1,19 → GÊNE 4,78 → 1,52 → mur ;
-# bord SUD à 13,5 du MUR SUD (mur de réf. à confirmer) ; prof ≈3,2 ? (orange)
-GENE_Y0, GENE_D = 13.50, 3.20
+# bord SUD à 13,5 du MUR SUD (mur de réf. à confirmer) ; client 27/07 :
+# ≈0,5 h × 4,78 × ≈1,0 prof, « clim probable, pas sûr » (orange)
+GENE_Y0, GENE_D = 13.50, 1.00
 GX0 = 13.95 + 4.18 + 1.19                       # 19,32 (chaîne fermée)
-GENE = (GENE_Y0, GENE_Y0 + GENE_D, GX0, GX0 + 4.78)   # (13,5 ; 16,7 ; 19,32 ; 24,10)
+GENE = (GENE_Y0, GENE_Y0 + GENE_D, GX0, GX0 + 4.78)   # (13,5 ; 14,5 ; 19,32 ; 24,10)
 VERT, VERT_F = "#15803d", "#bbf7d0"
 TENDU_C = "#c2410c"
 
@@ -74,30 +80,62 @@ assert abs((CH[3] - CH[2]) - 4.18) < 1e-9
 assert abs((GENE[2] - CH[3]) - 1.19) < 1e-9      # écart chambre↔gêne
 assert abs((W_MES - GENE[3]) - 1.52) < 1e-9      # gêne→mur est
 assert abs((GENE[3] - GENE[2]) - 4.78) < 1e-9    # largeur déduite
-assert abs((GENE[1] - GENE[0]) - 3.20) < 1e-9    # profondeur ≈3,2 ?
+assert abs((GENE[1] - GENE[0]) - 1.00) < 1e-9    # profondeur ≈1,0 (client 27/07)
 
 # obstacles : (le long y0, y1, transversal x0, x1)
 NIVEAU = (Y_INT, Y_INT, 0.0, W_MES)             # coupure de niveau
 JOG = (Y_INT - JOG_D, Y_INT, JOG_X0, JOG_X1)    # marche du décroché
-DRV = (20.5, 30.5, 0.0, 3.5)                    # réserve DRV ouest (plan)
-SOUCHES = [(10.0, 11.0, 6.0, 7.0), (6.0, 7.0, 12.0, 13.0),
-           (9.0, 10.0, 18.0, 19.0), (4.0, 5.0, 22.0, 23.0)]
-OBS_BASE = [NIVEAU, JOG, CAGE, CH, GENE, DRV] + SOUCHES
+# client 27/07 : AUCUNE souche vue ; AUCUNE clim sur le toit aujourd'hui
+# (elle viendra APRÈS → coordination d'exécution, pas une réserve AO)
+OBS_BASE = [NIVEAU, JOG, CAGE, CH, GENE]
 
 # ------------------------------------------------------------------ comptages
-# conservateur : allées 1,50 / rives 0,50 / dégagement 0,50 (information)
-n_cons, ph_cons = C.best_phase(L_TOT, W_MES, OBS_BASE, 1.50, 0.50, 0.50,
-                               end_rive=0.50)
-# planches : 1,20 / 0,35 / 0,30 — SAUF gêne : 0,50 maintenu (gêne gonflée +0,20)
+# RANGÉES EXPLICITES OPTIMISÉES (consigne client 27/07 : « 0,60 mini,
+# optimisé ») : le surplus de largeur est CONCENTRÉ en une allée large (2,95)
+# sur la colonne cage/local, si bien que marche + cage + local ne coupent
+# qu'UNE bande (la 3e) et la gêne qu'une bande (la 4e).
+# Largeur : 0,35 + 4,70 + 0,60 + 4,70 + 2,95 + 4,70 + 0,60 + 4,70 + 2,32 = 25,62 ✓
+ROWS = [(0.35, 5.05), (5.65, 10.35), (13.30, 18.00), (18.60, 23.30)]
+assert all(abs((x1 - x0) - TBL_W) < 1e-9 for (x0, x1) in ROWS)
+assert ROWS[-1][1] <= W_MES - 0.35 + 1e-9        # rive est ≥ 0,35 (ici 2,32)
+# vérifs de dégagement : cage/local/marche ne touchent QUE la bande 3,
+# la gêne (dégagt 0,50) QUE la bande 4
+assert ROWS[1][1] + 0.30 <= JOG_X0 + 1e-9        # bande 2 libre du décroché
+assert CAGE[3] + 0.30 <= ROWS[3][0] + 1e-9       # bande 4 libre de la cage
+assert CH[3] + 0.30 <= ROWS[3][0] + 1e-9         # bande 4 libre du local
+assert GENE[2] - 0.50 >= ROWS[2][1] - 1e-9       # bande 3 libre de la gêne
+
+# gêne : dégagement 0,50 maintenu (gonflée +0,20 au-delà du dégagt 0,30)
 GENE_PL = (GENE[0] - 0.20, GENE[1] + 0.20, GENE[2] - 0.20, GENE[3] + 0.20)
 OBS_PL = [GENE_PL if o is GENE else o for o in OBS_BASE]
-n_pl, ph_pl = C.best_phase(L_TOT, W_MES, OBS_PL, 1.20, 0.35, 0.30,
-                           end_rive=0.35)
 
-# retenu (consigne client) : paramètres PLANCHES ; chiffre honnête affiché
-n_show, ph_u = n_pl, ph_pl
-ALLEE, RIVE, CLEAR, END_RIVE, OBS_U = 1.20, 0.35, 0.30, 0.35, OBS_PL
-PARAMS_TXT = "planches 1,20 / 0,35 / 0,30 (gêne 0,50)"
+# information : uniforme conservateur 1,50/0,50/0,50 et uniforme 0,60
+n_cons, ph_cons = C.best_phase(L_TOT, W_MES, OBS_BASE, 1.50, 0.50, 0.50,
+                               end_rive=0.50)
+n_unif, ph_unif = C.best_phase(L_TOT, W_MES, OBS_PL, 0.60, 0.35, 0.30,
+                               end_rive=0.35)
+
+ALLEE, RIVE, CLEAR, END_RIVE, OBS_U = 0.60, 0.35, 0.30, 0.35, OBS_PL
+PARAMS_TXT = "allées 0,60 optimisées / rives 0,35 / dégagt 0,30 (gêne 0,50)"
+
+def count_rows(rows, obs, clear_, end_rive):
+    """Compte indépendant du dessin (garde-fou compte affiché = dessiné)."""
+    total = 0
+    for (x0, x1) in rows:
+        blocked = [(max(0.0, o[0] - clear_), min(L_TOT, o[1] + clear_))
+                   for o in obs
+                   if not (o[3] + clear_ <= x0 or o[2] - clear_ >= x1)]
+        blocked = C.merge([b for b in blocked if b[1] > b[0]])
+        cur, stop = end_rive, L_TOT - end_rive
+        for a, b in blocked:
+            if a > cur:
+                total += 2 * int((min(a, stop) - cur) // TBL_L)
+            cur = max(cur, b)
+        if cur < stop:
+            total += 2 * int((stop - cur) // TBL_L)
+    return total
+
+n_show = count_rows(ROWS, OBS_PL, CLEAR, END_RIVE)
 
 
 def fr(v, dec=2):
@@ -106,20 +144,17 @@ def fr(v, dec=2):
 # ------------------------------------------------------------------ feuille
 fig, ax = D.new_sheet(
     "VUE DE TOITURE — BÂTIMENT C (ÉCOLE SUPTECH, MOHAMMEDIA) — 26,2 × 51,1 m (plan)",
-    "Relevé terrain 27/07/2026 — croquis = TOIT COMPLET 51,1 m (bord bas = mur sud) — "
-    "bleu = mesuré · orange = à confirmer · gris = déduit — cage 4,11×≈8,82 (prof. déduite, "
-    "client ≈8,5) + local 4,18×4,50 à 7,92 (relevé) — gêne 4,78×≈3,2? à 13,5 du mur sud — "
-    f"tables E-O PORTRAIT 1,134×4,70 (pose 15°), retenu {fr(ALLEE)}/{fr(RIVE)}/{fr(CLEAR)} "
-    "(gêne 0,50)",
+    "Relevé terrain 27/07/2026 — croquis = TOIT COMPLET 51,1 m — bleu = mesuré · orange = à "
+    "confirmer · gris = déduit — cage 4,11×≈8,82 (client ≈8,5) · local 4,18×4,50 à 7,92 · "
+    "gêne 4,78×≈1,0 — souches/clim : NÉANT (client 27/07) — tables E-O portrait 1,134×4,70 "
+    "(15°), allées 0,60 optimisées",
     (-5.5, 45.5), (-3.7, 57.6))
 
 # ------------------------------------------------------------------ calepinage
-def draw_tables(phase, obs, allee, rive, clear_, end_rive):
-    """Réplique EXACTE de calepinage.count_band + dessin (asserts plus bas)."""
+def draw_tables(rows, obs, clear_, end_rive):
+    """Pose les tables rangée par rangée (positions EXPLICITES) + dessin."""
     total, placed = 0, []
-    for (x0, x1) in C.rows_for(W_MES, allee, rive, phase):
-        if x1 > W_MES - rive + 1e-6:
-            continue
+    for (x0, x1) in rows:
         blocked = [(max(0.0, o[0] - clear_), min(L_TOT, o[1] + clear_))
                    for o in obs
                    if not (o[3] + clear_ <= x0 or o[2] - clear_ >= x1)]
@@ -146,13 +181,12 @@ def draw_tables(phase, obs, allee, rive, clear_, end_rive):
                         color=VERT, lw=0.5, zorder=6)
     return total, placed
 
-n_drawn, placed = draw_tables(ph_u, OBS_U, ALLEE, RIVE, CLEAR, END_RIVE)
+n_drawn, placed = draw_tables(ROWS, OBS_U, CLEAR, END_RIVE)
 
 # ---- contrôles géométriques (cahier des charges) --------------------------
 EPS = 1e-6
 assert n_drawn == n_show, (n_drawn, n_show)          # compte affiché = dessiné
-rows_used = [r for r in C.rows_for(W_MES, ALLEE, RIVE, ph_u)
-             if r[1] <= W_MES - RIVE + EPS]
+rows_used = list(ROWS)
 assert len(rows_used) == 4, rows_used                # 4 rangées exactement
 for (tx, ty) in placed:
     tx1, ty1 = tx + TBL_W, ty + TBL_L
@@ -257,27 +291,10 @@ ax.annotate("provision plan 10,7 × 9,8 « à confirmer » (pointillé)\n"
             bbox=dict(fc="white", ec="none", alpha=0.88, pad=1.0))
 
 # ------------------------------------------------------------------ réserves
-# DRV façade ouest (~3,5 × 10) — position à confirmer
-r = Rectangle((0, 20.5), 3.5, 10.0, facecolor="#cbd5e1", edgecolor=D.ORANGE,
-              lw=1.2, hatch="///", zorder=8)
-r.set_linestyle("--")
-ax.add_patch(r)
-# zorder 21.5 : au-dessus des LIGNES de cote (21) qui s'interrompent derrière,
-# sous les TEXTES de cote (22) qui restent entiers
-ax.text(1.75, 25.5, "RÉSERVE DRV (plan)\n~3,5 × 10\nposition à confirmer",
-        fontsize=5.4, ha="center", va="center", rotation=90, color="#1f2937",
-        zorder=21.5, fontweight="bold",
-        bbox=dict(fc="white", ec="none", alpha=0.85, pad=1.0))
-# 4 souches ~1×1 — positions à confirmer
-for (y0, y1, x0, x1) in SOUCHES:
-    r = Rectangle((x0, y0), 1.0, 1.0, facecolor="#e2e8f0", edgecolor=D.ORANGE,
-                  lw=1.0, hatch="///", zorder=8)
-    r.set_linestyle("--")
-    ax.add_patch(r)
-    ax.text(x0 + 0.5, y0 + 0.5, "S", fontsize=5.2, ha="center", va="center",
-            color=D.ORANGE, fontweight="bold", zorder=9)
+# NÉANT (client 27/07) : aucune souche vue, aucune clim sur le toit
+# aujourd'hui — la clim FUTURE se coordonnera à l'exécution (nota bas de plan).
 
-# --------------------- GÊNE — petit ouvrage 4,78 × ≈3,2 ?, muret h≈0,5 (vu site)
+# --------------------- GÊNE — ouvrage 4,78 × ≈1,0 (client), muret h≈0,5 (vu site)
 ax.add_patch(Rectangle((GENE[2], GENE[0]), GENE[3] - GENE[2], GENE_D,
                        facecolor="#dbeafe", edgecolor=D.BLEU, lw=1.4,
                        zorder=12))
@@ -285,12 +302,12 @@ ax.add_patch(Rectangle((GENE[2] + 0.18, GENE[0] + 0.18),
                        GENE[3] - GENE[2] - 0.36, GENE_D - 0.36,
                        facecolor="white", edgecolor="none", zorder=13))
 GXM = (GENE[2] + GENE[3]) / 2
-ax.text(GXM, 15.75, "GÊNE", fontsize=5.6, ha="center", va="center",
-        fontweight="bold", color="#111", zorder=15)
-ax.text(GXM, 15.05, "muret h≈0,5", fontsize=4.8, ha="center", va="center",
-        color="#334155", zorder=15)
-ax.text(GXM, 14.35, "nature ? (clim ?)", fontsize=4.8, ha="center",
-        va="center", color=D.ORANGE, fontweight="bold", zorder=15)
+ax.text(GXM, 15.65, "GÊNE — muret h≈0,5", fontsize=5.4, ha="center",
+        va="center", fontweight="bold", color="#111", zorder=15,
+        bbox=dict(fc="white", ec="none", alpha=0.88, pad=0.8))
+ax.text(GXM, 15.00, "clim ? (client — pas sûr)", fontsize=4.8, ha="center",
+        va="center", color=D.ORANGE, fontweight="bold", zorder=15,
+        bbox=dict(fc="white", ec="none", alpha=0.88, pad=0.8))
 
 # ------------------------------------------------------------------ cotes
 def dimb(p1, p2, off, text, color=D.BLEU, fs=6.4, boxed=True):
@@ -366,15 +383,17 @@ ax.text(XG + 0.55, 5.5, "mur de réf. : SUD — à confirmer (nord ?)",
         fontsize=4.8, ha="center", va="center", rotation=90, color=D.ORANGE,
         fontweight="bold", zorder=22,
         bbox=dict(fc="white", ec="none", alpha=0.88, pad=0.8))
-# profondeur de la gêne ≈3,2 ? (orange, côté est)
-dimb((GENE[3], GENE[1]), (GENE[3], GENE[0]), 0.42, "≈3,2 ?", color=D.ORANGE,
-     fs=4.8)
+# profondeur de la gêne ≈1,0 (client 27/07 — orange, côté est)
+dimb((GENE[3], GENE[1]), (GENE[3], GENE[0]), 0.42, "≈1,0 (client)",
+     color=D.ORANGE, fs=4.8)
 
 # paramètres de calepinage cotés une fois (terrasse haute)
 dimb((rows_used[0][0], 45.6), (rows_used[0][1], 45.6), 0, "4,70", color=D.GRIS,
      fs=5.2)
 dimb((rows_used[0][1], 47.9), (rows_used[1][0], 47.9), 0, fr(ALLEE),
      color=D.GRIS, fs=5.2)
+dimb((rows_used[1][1], 47.9), (rows_used[2][0], 47.9), 0,
+     "2,95 (allée large — colonne cage)", color=D.GRIS, fs=5.2)
 
 # nord
 ax.add_patch(FancyArrowPatch((-3.8, 51.8), (-3.8, 53.4), arrowstyle="-|>",
@@ -413,16 +432,19 @@ ax.text(13.1, -1.35,
         "calepinage sur 51,1 m. Aucune table à cheval sur la ligne interne.",
         fontsize=6.0, ha="center", color="#475569", zorder=30)
 ax.text(13.1, -2.05,
-        "GÊNE : ouvrage 4,78 × ≈3,2 ? (muret h≈0,5), nature à préciser "
-        "(probable sortie clim) — bord sud à 13,5 du MUR SUD (réf. à "
-        "confirmer — nord ?) — bloquée, dégagt 0,50.",
+        "GÊNE : 4,78 × ≈1,0 (client — muret h≈0,5, clim ? pas sûr) — "
+        "dégagt 0,50 · SOUCHES : aucune vue (client 27/07).",
         fontsize=6.0, ha="center", color=TENDU_C, zorder=30)
+ax.text(13.1, -2.75,
+        "CLIM : aucune aujourd'hui — viendra plus tard (client 27/07) → "
+        "à coordonner avec le champ PV à l'exécution.",
+        fontsize=6.0, ha="center", color="#475569", zorder=30)
 if n_show < 288:
-    ax.text(13.1, -2.75,
+    ax.text(13.1, -3.45,
             "NOTA : déport possible vers la résidence à l'exécution (inverse "
             "de la redistribution résidence).",
             fontsize=6.0, ha="center", color=TENDU_C, zorder=30)
-    ax.text(13.1, -3.45,
+    ax.text(13.1, -4.15,
             "Arbitrage possible par redistribution inter-bâtiments (ratios par "
             "installation restent dans [0,75 ; 1]) — voir note de synthèse.",
             fontsize=6.0, ha="center", color=TENDU_C, zorder=30)
@@ -445,8 +467,7 @@ y = titre(50.6, "LÉGENDE")
 leg = [
     ("table", "table E-O portrait 1,134×4,70 — 2 modules 625 Wc, pose 15°"),
     ("bloc", "volume relevé (cage 4,11×≈8,82 déduit · local 4,18×4,50)"),
-    ("gene", "gêne 4,78×≈3,2? — muret h≈0,5 (nature ? · dégagt 0,50)"),
-    ("res", f"réserve / obstacle bloqué (S = souche · dégagt {fr(CLEAR)})"),
+    ("gene", "gêne 4,78×≈1,0 (client) — muret h≈0,5, clim ? · dégagt 0,50"),
     ("prov", "provision plan (pointillé — la cage ≈8,82 tient dedans)"),
     ("dimB", "cote MESURÉE / confirmée site (bleu)"),
     ("dimO", "cote / position À CONFIRMER"),
@@ -495,7 +516,7 @@ y = lignes(y, [
     "→ cage→local = 7,92 RELEVÉ (réponse client 27/07, remplace 2,32) ;",
     "   le tronçon déduit reste la PROFONDEUR DE LA CAGE (client ≈8,5)",
     "largeur : 25,62 mesuré vs 26,2 plan → Δ 0,58 à confirmer",
-    "cluster SE : le petit rectangle = LA GÊNE (4,78 × ≈3,2 ?) ·",
+    "cluster SE : le petit rectangle = LA GÊNE (4,78 × ≈1,0 client) ·",
     "1,19 = écart chambre↔gêne · 13,5 = gêne → mur sud (position)",
 ])
 
@@ -503,9 +524,11 @@ y = titre(y, "CALEPINAGE — PORTRAIT 15°")
 cal = [
     "4 rangées de tables E-O PORTRAIT 1,134 × 4,70",
     "(2 × 2,382 × cos15° + faîtage) le long des 51,1 m",
-    f"retenu : allées {fr(ALLEE)} · rives {fr(RIVE)} · dégagt {fr(CLEAR)}"
-    " (gêne : 0,50)",
-    f"conservateur 1,50/0,50/0,50 : {n_cons} mod. (information)",
+    "retenu : allées 0,60 OPTIMISÉES (client 27/07) — surplus",
+    "concentré en UNE allée large 2,95 sur la colonne cage/local",
+    f"→ cage+local+marche ne coupent qu'1 bande ; gêne : 1 bande",
+    f"rives {fr(RIVE)} · dégagt {fr(CLEAR)} (gêne : 0,50)",
+    f"info : uniforme 0,60 = {n_unif} · conservateur 1,50/0,50 = {n_cons}",
     "coupure de niveau à la ligne interne (aucun chevauchement)",
     f"TOTAL toit complet 51,1 m : {n_show} mod. = {fr(n_show * 0.625)} kWc",
     f"ENGAGEMENT : 288 modules (18×16) = 180,0 kWc → {VERDICT}",
@@ -523,9 +546,10 @@ y = lignes(y, [
     "PROFONDEUR CAGE ≈8,82 : DÉDUITE de la fermeture 51,1 avec",
     "le segment 7,92 relevé (réponse client 27/07 ; il annonce ≈8,5",
     "arrondi) — à confirmer à l'exécution",
-    "gêne : prof. ≈3,2 ? · muret h≈0,5 · nature ? (probable",
-    "sortie clim) · mur de réf. du 13,5 : SUD retenu (nord ?)",
-    "Δ largeur 0,58 · positions : DRV ouest ~3,5×10 · 4 souches ~1×1",
+    "gêne : ≈1,0 prof (client) · muret h≈0,5 · clim ? (pas sûr)",
+    "— dégagt 0,50 maintenu · mur de réf. du 13,5 : SUD (nord ?)",
+    "Δ largeur 0,58 · CLIM FUTURE : aucune aujourd'hui, viendra",
+    "après → implantation à coordonner avec le champ PV (exécution)",
 ])
 
 D.scale_bar(ax, PX, max(y - 1.5, 3.6), total=10, step=2)
@@ -544,7 +568,7 @@ fig.savefig(os.path.join(BASE, "VUE_TOITURE_BAT_C_ECOLE.png"), dpi=170,
             bbox_inches="tight")
 
 print(f"conservateur 1,50/0,50/0,50 : {n_cons} modules ({n_cons*0.625:.2f} kWc), phase={ph_cons:.2f}")
-print(f"planches 1,20/0,35/0,30     : {n_pl} modules ({n_pl*0.625:.2f} kWc), phase={ph_pl:.2f}")
+print(f"uniforme 0,60/0,35/0,30     : {n_unif} modules ({n_unif*0.625:.2f} kWc), phase={ph_unif:.2f}")
 print(f"retenu : {PARAMS_TXT} — TOTAL toit complet 51,1 m : {n_show} "
       f"(dessiné = {n_drawn})")
 print(f"engagement 288 → {VERDICT} (marge {n_show - 288:+d})")
