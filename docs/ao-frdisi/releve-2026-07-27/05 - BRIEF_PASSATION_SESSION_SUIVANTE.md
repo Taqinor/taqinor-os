@@ -100,12 +100,21 @@
   C 314 = 562 ≥ 560. Onduleurs : question Reda tranchée — 6 × 50 kW CONFORMES (CPS p.33
   ratio 0,75-1 vérifié à la source ; 60/80 kW non conformes ; CPS = 2 bâtiments, pas 3 ;
   déport DC 24 modules arc→L = aucun onduleur au-dessus de 60 kWc).
-- **Coût de revient INTERNE v3 - FINAL 27-07.xlsx créé** (06 - INTERNE) : aligné bordereau
-  révisé (560 mod / 6 ond / 276 kWh / câbles 10 km / liaison 150 ml), TVA achats 10 %
-  PANNEAUX / 20 % reste (règle Reda 27/07). BÉNÉFICE NET HT = 1 781 877 DH (41,0 % du CA) ;
-  TVA nette à reverser ≈ 403 975 ; contrôle trésorerie = bénéfice ✓. NOTA : bordereau vend à
-  20 % uniforme ; une ventilation vente 10 % panneaux baisserait le TTC de 171 360 sans
-  changer le bénéfice HT — à valider comptable.
+- **PRIX FINAL RÉVISÉ 27/07 SOIR (cible Reda : bénéfice net HT = 1,5 MDH)** :
+  **4 166 600,00 DH HT / 4 999 920,00 DH TTC** (« quatre millions neuf cent
+  quatre-vingt-dix-neuf mille neuf cent vingt dirhams » — sous la barre des 5 M).
+  Coûts = feuille Reda « Coût de revient 560 » (27/07 09h42) = 2 666 600 DH HT (panneaux 880,
+  structure 495, +garantie ond. 30 000, câble solaire DOUBLÉ 16 000 ml, +câble 16 mm² 5 500,
+  MO 140 000, aléas 65 000). PU bordereau finals : modules 2 950 · onduleurs 78 000 ·
+  batteries 2 600 partout (Reda avait mis B à 2 600 — uniformisé) · études 262 000 ·
+  EMS 200 000 · liaison 1 500 (baissée par Reda) · afficheurs 39 500. CASCADE APPLIQUÉE ET
+  VÉRIFIÉE : bordereau (PU + arrêté en lettres), lettre de soumission (chiffres + lettres),
+  simulation (C7 = 3 449 000 ; ROI TTC 4 999 920 → 7,83 ans ; simple 5,40 ans), Word
+  checklist Accordia. **Coût de revient INTERNE v3** refait avec les coûts Reda + TVA achats
+  10 % panneaux / 20 % reste : bénéfice net HT = 1 500 000 exactement (36,0 %), TVA nette à
+  reverser 349 280, contrôle trésorerie = bénéfice ✓. NOTA : vente facturée 20 % uniforme ;
+  ventiler les panneaux à 10 % baisserait le TTC de 165 200 sans changer le bénéfice HT — à
+  valider comptable. ⚠️ Les montants 4 349 400 / 5 219 280 sont PÉRIMÉS partout.
 
 ## 6. COMMENT CONTINUER EXACTEMENT CETTE SESSION
 - Ce fichier + la note de synthèse = l'état complet. Les scripts sur la branche
