@@ -32,10 +32,30 @@ CE QUI CHANGE (calepinage seulement) :
      Les 3 éléments NON COTÉS gardent ce dégagement standard, et la sensibilité au
      traitement « nature inconnue » (0,50 réel) est CHIFFRÉE sur la planche.
 
-AUCUN obstacle relevé n'a été supprimé. Les éléments non cotés sont conservés ET
-identifiés (comptes AVEC et SANS donnés en note, pour arbitrage client).
+MISE À JOUR 27/07 AU SOIR — 3e SÉRIE DE QUESTIONS/RÉPONSES CLIENT
+  (3) la « STRUCTURE DE RIVE » N1/N2 du segment 3 est HORS ZONE PV → elle est
+      RETIRÉE du calepinage. C'était le plus gros des 3 points d'incertitude du
+      v2 : la sensibilité chiffrée sur la planche du v2 annonçait 126 sans elle,
+      c'est EXACTEMENT ce que le script retrouve. Sa géométrie reste DÉFINIE dans
+      le fichier (constantes N1/N2) — uniquement pour que l'échelle de
+      décomposition chiffre ce que la décision rapporte, et pour qu'un retour
+      arrière soit un one-liner si le client se ravisait. Aucune table ne s'appuie
+      dessus, et la planche PORTE LA DÉCISION EN CLAIR.
+  (4) TABLES MIXTES AUTORISÉES PARTOUT (portrait 1,134 × 4,70 « kit école » ET
+      paysage 2,382 × 2,25) : le kit de chaque segment n'est plus une hypothèse,
+      c'est un choix validé. Une recherche EXHAUSTIVE kit-par-kit et rangée-par-
+      rangée (pas 5 cm, kits mélangés dans un même segment) confirme que le
+      découpage retenu est le MAXIMUM atteignable segment par segment :
+      S1 portrait 48 (le mixte ne fait pas mieux), S2 paysage 34 (portrait n'y
+      donne que 24 : la cage d'escalier de 5,93 tue toute rangée large),
+      S3 paysage 44 (portrait 42).
+  Le caisson X (non coté) RESTE, au dégagement standard — et il ne coûte plus
+  AUCUN module, quel que soit son traitement (vérifié : 0,35 / 0,53 / absent).
 
-Sorties : VUE_TOITURE_BAT_B_ARC_V2.pdf / .png
+AUCUN obstacle MESURÉ n'a été supprimé. Le seul retrait est une DÉCISION CLIENT
+explicite sur un élément NON COTÉ, et elle est écrite sur la planche.
+
+Sorties : VUE_TOITURE_BAT_B_ARC_V2.pdf / .png (mêmes noms — mise à jour en place)
 """
 import math
 import os
@@ -167,16 +187,33 @@ S2_OBS = [BLOC, K1, K2, K3, K4, K5, K6, K7]
 A3 = (OFF3 + 3.30, OFF3 + 4.57, W - 4.19, W - 3.61)   # 1,27 x 0,58
 B3 = (OFF3 + 2.50, OFF3 + 3.55, 3.70, 5.33)           # 1,05 x 1,63 ?
 X3 = (OFF3 + 4.62, OFF3 + 5.32, 4.20, 5.30)           # caisson NON coté (croquis)
+# --- structure de rive du croquis 3 : HORS ZONE PV (décision client 27/07) ------
+# Géométrie CONSERVÉE dans le fichier : elle ne sert plus qu'à (a) chiffrer dans
+# l'échelle de décomposition ce que la décision rapporte exactement, et (b) rendre
+# un retour arrière trivial (remettre N1/N2 dans S3_NAMED) si le client se ravisait.
 N1 = (OFF3 + 4.92, OFF3 + 8.15, W - 1.70, W)          # structure bord ext — palier 1 (non coté)
 N2 = (OFF3 + 8.15, OFF3 + 10.72, W - 3.15, W)         # palier 2 (0,78 au-dessus de D)
+RIVE_HORS_PV = [N1, N2]
 C3g = (OFF3 + 9.05, OFF3 + 10.59, 3.681, 4.701)       # C 1,54 x 1,02 (1,64 ?)
 D3 = (OFF3 + 9.60, OFF3 + 10.44, W - 4.70, W - 3.93)  # D 0,84 x 0,77 ; 3,83 du bord ext
 E3 = (OFF3 + 10.72, OFF3 + 12.52, W - 4.84, W - 3.74)  # E 1,80 x 1,10 ; = F - 6,54
 G3 = (OFF3 + 10.90, OFF3 + 12.43, 3.77, 4.67)         # G 1,53 x 0,9 ; 1,39 sous E
 F3 = (OFF3 + 19.05, OFF3 + 20.27, W - 4.69, W - 3.85)  # F 1,22 x 0,84 ; 3,33 du bord est
 H3 = (OFF3 + 18.99, OFF3 + 20.34, 3.83, 4.69)         # H 1,35 x 0,86 ; 3,26 du bord est
-S3_OBS = [A3, B3, X3, N1, N2, C3g, D3, E3, G3, F3, H3]
+# obstacles NOMMÉS (le nom sert aux garde-fous et aux sensibilités)
+S1_NAMED = [(C1, "C1"), (C2, "C2"), (C3, "C3")]
+S2_NAMED = [(BLOC, "cage"), (K1, "K1"), (K2, "K2"), (K3, "K3"), (K4, "K4"),
+            (K5, "K5"), (K6, "K6"), (K7, "K7")]
+# RETENUS pour le calepinage : la structure de rive N1/N2 n'y est PLUS (client 27/07)
+S3_NAMED = [(A3, "A"), (B3, "B"), (X3, "X"), (C3g, "C"), (D3, "D"), (E3, "E"),
+            (G3, "G"), (F3, "F"), (H3, "H")]
+# état du v2 du 27/07 AU SOIR (structure de rive incluse) — sert UNIQUEMENT à
+# l'échelle de décomposition ; aucune table n'en est dessinée
+S3_NAMED_V2 = S3_NAMED[:3] + [(N1, "N1"), (N2, "N2")] + S3_NAMED[3:]
+S3_OBS = [o for (o, _n) in S3_NAMED]
 OBS = S1_OBS + S2_OBS + S3_OBS
+assert all(o not in S3_OBS for o in RIVE_HORS_PV), "structure de rive encore retenue !"
+assert len(S3_NAMED_V2) == len(S3_NAMED) + 2
 
 # ---------------------------------------------------------------- calepinage v2
 # dégagement standard, en ABSCISSE DÉVELOPPÉE (bord ext) : 0,35 en abscisse
@@ -204,23 +241,37 @@ def ob(o, name):
 # rangées à positions EXPLICITES, propres à chaque segment (allées ≥ 0,60,
 # surplus concentré au-dessus d'une file de caissons). Positions choisies pour
 # MAXIMISER la marge : chaque bande est calée au milieu de sa fenêtre libre.
-SEG_DEF = [
-    ("S1", 0.0, S1_LEN, PORTRAIT,
-     [(0.55, 5.25), (5.85, 10.55)],
-     [ob(C1, "C1"), ob(C2, "C2"), ob(C3, "C3")]),
-    ("S2", OFF2, S2_LEN, PAYSAGE,
-     [(0.80, 3.05), (5.20, 7.45), (8.30, 10.55)],
-     [ob(BLOC, "cage"), ob(K1, "K1"), ob(K2, "K2"), ob(K3, "K3"),
-      ob(K4, "K4"), ob(K5, "K5"), ob(K6, "K6"), ob(K7, "K7")]),
-    ("S3", OFF3, S3_LEN, PAYSAGE,
-     [(1.00, 3.25), (5.10, 7.35), (8.30, 10.55)],
-     [ob(A3, "A"), ob(B3, "B"), ob(X3, "X"), ob(N1, "N1"),
-      ob(N2, "N2"), ob(C3g, "C"), ob(D3, "D"), ob(E3, "E"),
-      ob(G3, "G"), ob(F3, "F"), ob(H3, "H")]),
-]
-UNKNOWN_NAMES = {"X", "N1", "N2"}      # éléments NON COTÉS (comptes AVEC / SANS)
-# jeu de rangées S3 recalé pour la variante « structure de rive = nature inconnue »
-S3_ROWS_NC = [(0.95, 3.20), (4.85, 7.10), (8.30, 10.55)]
+S1_ROWS = [(0.55, 5.25), (5.85, 10.55)]
+S2_ROWS = [(0.80, 3.05), (5.20, 7.45), (8.30, 10.55)]
+# S3 RECALÉ sur la fenêtre libérée par la décision client (structure de rive hors
+# zone PV). Recherche EXHAUSTIVE au pas de 1 cm sur les 3 bandes : 44 modules est
+# le MAXIMUM atteignable, 766 788 jeux de rangées l'atteignent, et parmi eux les
+# bandes 2 et 3 ci-dessous sont les SEULES qui maximisent la robustesse au relevé.
+# La bande 1 flotte sans rien coûter dans [0,35 ; 1,08] : elle est posée à 0,70
+# pour équilibrer rive intérieure (0,70) et écart au caisson C (0,38).
+# L'allée large de 2,50 tombe EXACTEMENT sur la file de caissons B/C/G/H/X :
+# le surplus de largeur est concentré là où il ne coûte aucun module.
+S3_ROWS = [(0.70, 2.95), (5.45, 7.70), (8.30, 10.55)]
+# rangées du v2 du 27/07 au soir (elles contournaient la structure de rive) —
+# uniquement pour l'échelle de décomposition
+S3_ROWS_V2 = [(1.00, 3.25), (5.10, 7.35), (8.30, 10.55)]
+
+
+def seg_def(s3_named, s3_rows):
+    """Jeu de segments (plan de pose). Paramétré par le jeu d'obstacles S3 retenu
+    et ses rangées, pour que l'état v2 et l'état retenu soient calculés par le
+    MÊME moteur — donc strictement comparables."""
+    return [
+        ("S1", 0.0, S1_LEN, PORTRAIT, S1_ROWS, [ob(o, n) for (o, n) in S1_NAMED]),
+        ("S2", OFF2, S2_LEN, PAYSAGE, S2_ROWS, [ob(o, n) for (o, n) in S2_NAMED]),
+        ("S3", OFF3, S3_LEN, PAYSAGE, s3_rows, [ob(o, n) for (o, n) in s3_named]),
+    ]
+
+
+SEG_DEF = seg_def(S3_NAMED, S3_ROWS)          # RETENU (dessiné)
+V2_DEF = seg_def(S3_NAMED_V2, S3_ROWS_V2)     # état v2 (calculé, jamais dessiné)
+V2_BY_NAME = {d[0]: d for d in V2_DEF}
+UNKNOWN_NAMES = {"X"}   # seul élément NON COTÉ encore retenu (comptes AVEC / SANS)
 COURT = 0.10          # stress : S2 et S3 plus courts de 10 cm que le « ≈ » annoncé
 
 
@@ -325,10 +376,30 @@ assert all(abs((b - a) - 2.25) < 1e-9 for (a, b) in S1_ROWS_PAYSAGE)
 assert all(S1_ROWS_PAYSAGE[i + 1][0] - S1_ROWS_PAYSAGE[i][1] >= ALLEE_MIN - 1e-9
            for i in range(len(S1_ROWS_PAYSAGE) - 1))
 
-TABLES, SEG_N, SEG_TXT = [], [], []
-N_CONS, N_SANS_NC, N_NC, N_COURT = 0, 0, 0, 0
+# CONTRE-ÉPREUVE DES KITS (décision client nº4 : tables mixtes autorisées PARTOUT).
+# Pour chaque segment, le MEILLEUR jeu de rangées de l'AUTRE kit — issu d'une
+# recherche exhaustive (pas 5 cm, kits mélangés autorisés dans un même segment).
+# Le script recalcule ces variantes : aucun chiffre de comparaison n'est écrit à la
+# main sur la planche.
+ALT_KIT = {
+    "S1": (PAYSAGE, S1_ROWS_PAYSAGE),
+    "S2": (PORTRAIT, [(0.55, 5.25), (5.85, 10.55)]),
+    "S3": (PORTRAIT, [(0.35, 5.05), (5.85, 10.55)]),
+}
+for _nm, (_kit, _rws) in ALT_KIT.items():
+    assert _rws[0][0] >= RIVE_MIN - 1e-9 and _rws[-1][1] <= W - RIVE_MIN + 1e-9
+    assert all(abs((b - a) - _kit[1]) < 1e-9 for (a, b) in _rws)
+    assert all(_rws[i + 1][0] - _rws[i][1] >= ALLEE_MIN - 1e-9
+               for i in range(len(_rws) - 1))
+
+TABLES, SEG_N, SEG_TXT, ALT_N = [], [], [], []
+N_CONS, N_SANS_X, N_X_NC, N_COURT = 0, 0, 0, 0
 MARGE_L, MARGE_B = 9.9, 9.9              # marges mini : longueur de tronçon / bande
-LAD = dict(A=0, B=0, C=0, D=0, E=0)      # échelle 112 -> 120, marche par marche
+MARGES = {}                              # les mêmes, SEGMENT PAR SEGMENT
+# échelle de décomposition, marche par marche. A..F = états HISTORIQUES, calculés
+# sur les obstacles du 27/07 (structure de rive INCLUSE) — F doit retomber sur le
+# v2 publié, 120. G = la décision client d'aujourd'hui. H = le recalage de S3.
+LAD = dict(A=0, B=0, C=0, D=0, E=0, F=0, G=0)
 for (nm, off, slen, (mod_l, tbl_w), rows, obs) in SEG_DEF:
     loc = localize(off, obs)
     # ---- contrôles de largeur (rives / allées) -----------------------------
@@ -343,36 +414,52 @@ for (nm, off, slen, (mod_l, tbl_w), rows, obs) in SEG_DEF:
     n_show = count_seg(slen, loc, rows, mod_l)
     assert 2 * len(tabs) == n_show, (nm, 2 * len(tabs), n_show)
     SEG_N.append(n_show)
+    # contre-épreuve : le MÊME segment posé avec l'AUTRE kit, à ses meilleures rangées
+    (alt_kit, alt_rows) = ALT_KIT[nm]
+    n_alt = count_seg(slen, loc, alt_rows, alt_kit[0])
+    ALT_N.append(n_alt)
+    assert n_alt <= n_show, (nm, "l'autre kit ferait mieux !", n_alt, n_show)
     SEG_TXT.append((nm, "portrait" if mod_l < 2.0 else "paysage", len(rows),
-                    tbl_w, n_show))
+                    tbl_w, n_show, n_alt))
     TABLES += [(a + off, b + off, y0, y1, p, mod_l, tbl_w, nm)
                for (a, b, y0, y1, p) in tabs]
     # ---- marges de robustesse (longueur de tronçon / calage de bande) ------
+    ml_seg, mb_seg = 9.9, 9.9
     for (y0, y1) in rows:
         p = pas(mod_l, y0)
         for a, b in free_runs(slen, loc, y0, y1):
             k = int((b - a) / p + 1e-9)
             if k:
-                MARGE_L = min(MARGE_L, (b - a) - k * p)
+                ml_seg = min(ml_seg, (b - a) - k * p)
         for (o, c, _n) in loc:                      # obstacles ÉVITÉS par la bande
             if o[3] + c <= y0 or o[2] - c >= y1:
-                MARGE_B = min(MARGE_B, min(abs(y0 - (o[3] + c)),
-                                           abs((o[2] - c) - y1)))
+                mb_seg = min(mb_seg, min(abs(y0 - (o[3] + c)),
+                                         abs((o[2] - c) - y1)))
+    MARGES[nm] = (ml_seg, mb_seg)
+    MARGE_L, MARGE_B = min(MARGE_L, ml_seg), min(MARGE_B, mb_seg)
     # ---- références d'information + sensibilités ---------------------------
     N_CONS += uniform_count(slen, loc, 2.382, 2.25, 1.20, 0.50, 0.50, 0.50)
-    N_SANS_NC += count_seg(slen, [x for x in loc if x[2] not in UNKNOWN_NAMES],
-                           rows, mod_l)
-    N_NC += count_seg(slen, with_clear(loc, {"N1", "N2"}, CLEAR_NC),
-                      S3_ROWS_NC if nm == "S3" else rows, mod_l)
+    # le caisson X est le SEUL élément non coté encore retenu : compte sans lui,
+    # et compte avec lui traité en « nature inconnue » (0,50 m RÉELS)
+    N_SANS_X += count_seg(slen, [x for x in loc if x[2] not in UNKNOWN_NAMES],
+                          rows, mod_l)
+    N_X_NC += count_seg(slen, with_clear(loc, UNKNOWN_NAMES, CLEAR_NC), rows, mod_l)
     N_COURT += count_seg(slen - (0.0 if nm == "S1" else COURT), loc, rows, mod_l)
-    # ---- échelle de décomposition (chaque marche isolée) -------------------
-    p_rows = S1_ROWS_PAYSAGE if nm == "S1" else rows
-    LAD["A"] += uniform_count(slen, loc, 2.382, 2.25, 1.20, 0.35, 0.30, 0.50,
+    # ---- échelle de décomposition ------------------------------------------
+    # marches A..F : MÊME segment, mais obstacles et rangées de l'état v2
+    (_n2, _o2, _s2, _k2, rows_v2, obs_v2) = V2_BY_NAME[nm]
+    loc_v2 = localize(off, obs_v2)
+    p_rows = S1_ROWS_PAYSAGE if nm == "S1" else rows_v2
+    LAD["A"] += uniform_count(slen, loc_v2, 2.382, 2.25, 1.20, 0.35, 0.30, 0.50,
                               arc=False)              # ancien tel quel
-    LAD["B"] += uniform_count(slen, loc, 2.382, 2.25, 1.20, 0.35, 0.30, 0.50)
-    LAD["C"] += uniform_count(slen, loc, 2.382, 2.25, 1.20, 0.35, None, 0.50)
-    LAD["D"] += uniform_count(slen, loc, 2.382, 2.25, 0.60, 0.35, None, 0.35)
-    LAD["E"] += count_seg(slen, loc, p_rows, 2.382)   # rangées explicites, paysage
+    LAD["B"] += uniform_count(slen, loc_v2, 2.382, 2.25, 1.20, 0.35, 0.30, 0.50)
+    LAD["C"] += uniform_count(slen, loc_v2, 2.382, 2.25, 1.20, 0.35, None, 0.50)
+    LAD["D"] += uniform_count(slen, loc_v2, 2.382, 2.25, 0.60, 0.35, None, 0.35)
+    LAD["E"] += count_seg(slen, loc_v2, p_rows, 2.382)  # rangées explicites, paysage
+    LAD["F"] += count_seg(slen, loc_v2, rows_v2, mod_l)  # = v2 publié (120)
+    # marche G : DÉCISION CLIENT (structure de rive hors zone PV), rangées v2
+    # INCHANGÉES — isole ce que la décision rapporte, sans le recalage
+    LAD["G"] += count_seg(slen, loc, rows_v2, mod_l)
 
 NMOD = sum(SEG_N)
 assert NMOD == 2 * len(TABLES)
@@ -384,10 +471,43 @@ N_OLD = LAD["A"]
 RECOUV = [100.0 * (pas(m, y0) - m)
           for (_n, _o, _l, (m, _t), rows, _ob) in SEG_DEF for (y0, _y1) in rows]
 RECOUV_MIN, RECOUV_MAX = min(RECOUV), max(RECOUV)
-# garde-fou : la marche A DOIT reproduire exactement l'ancienne vue (112 modules),
-# sans quoi la comparaison « ancien -> nouveau » affichée serait fausse
+
+
+def marges_of(slen, loc, rows, mod_l):
+    """(marge de tronçon, marge de bande) d'un plan de pose — même définition que
+    dans la boucle principale, pour comparer AVANT/APRÈS le recalage de S3."""
+    ml, mb = 9.9, 9.9
+    for (y0, y1) in rows:
+        p = pas(mod_l, y0)
+        for a, b in free_runs(slen, loc, y0, y1):
+            k = int((b - a) / p + 1e-9)
+            if k:
+                ml = min(ml, (b - a) - k * p)
+        for (o, c, _n) in loc:
+            if o[3] + c <= y0 or o[2] - c >= y1:
+                mb = min(mb, min(abs(y0 - (o[3] + c)), abs((o[2] - c) - y1)))
+    return ml, mb
+
+
+# S3 AVANT le recalage (rangées du v2, obstacles déjà allégés de la structure) :
+# c'est ce que le recalage achète, en marge et non en modules
+S3_LOC = localize(OFF3, [ob(o, n) for (o, n) in S3_NAMED])
+ML_S3_V2, MB_S3_V2 = marges_of(S3_LEN, S3_LOC, S3_ROWS_V2, PAYSAGE[0])
+ML_S3, MB_S3 = MARGES["S3"]
+LAD["H"] = NMOD                          # recalage de S3 sur la fenêtre libérée
+N_V2 = LAD["F"]                          # le compte publié hier soir (structure incluse)
+GAIN_DECISION = LAD["G"] - LAD["F"]      # ce que la décision client rapporte, seule
+# garde-fous d'honnêteté de l'échelle : la marche A DOIT reproduire exactement
+# l'ancienne vue (112) et la marche F le v2 publié hier soir (120), sans quoi la
+# comparaison affichée « ancien -> v2 -> aujourd'hui » serait fausse
 assert N_OLD == 112, ("marche A != ancienne vue", N_OLD)
-assert LAD["E"] <= NMOD, ("le tout-paysage ne peut pas battre le retenu", LAD)
+assert N_V2 == 120, ("marche F != v2 publié le 27/07 au soir", N_V2)
+assert LAD["E"] <= LAD["F"], ("le tout-paysage ne peut pas battre le v2", LAD)
+assert LAD["G"] >= LAD["F"], ("retirer un obstacle ne peut pas faire perdre", LAD)
+assert LAD["H"] >= LAD["G"], ("le recalage ne peut pas faire perdre", LAD)
+# la structure de rive ne doit plus contraindre AUCUNE table retenue
+assert not any(n in ("N1", "N2") for (_o, _c, n)
+               in [x for d in SEG_DEF for x in d[5]]), "N1/N2 encore dans SEG_DEF"
 # le calepinage ne doit JAMAIS tenir au millimètre : chaque tronçon garde ≥ 2 cm et
 # chaque bande reste à ≥ 4 cm du dégagement de l'obstacle qu'elle esquive
 assert MARGE_L >= 0.02, ("tronçon au ras", MARGE_L)
@@ -458,7 +578,8 @@ fig, ax = D.new_sheet(
     "Arc en VRAIE géométrie (R_ext ≈ 274 m) — 3 SEGMENTS de toiture séparés par des MURETS HACHURÉS AU RAS "
     "(joints, ép. 0,45, h = 0) : S1 20,55 + joint + S2 ≈ 23,0 + joint + S3 ≈ 23,6 = 68,05 m — développé CONFIRMÉ MURET-À-MURET par le client le 27/07\n"
     "cotes en mètres · bleu = mesuré/confirmé · orange = à confirmer · gris = déduit — calepinage v2 : allées 0,60 OPTIMISÉES, rangées à positions "
-    "EXPLICITES par segment, tables posées en tronçons droits SANS recouvrement au rayon intérieur",
+    "EXPLICITES par segment, tables posées en tronçons droits SANS recouvrement au rayon intérieur\n"
+    "INTÈGRE LES DÉCISIONS CLIENT DU 27/07 AU SOIR : structure de rive du segment 3 HORS ZONE PV (retirée, écrite sur le dessin) · tables MIXTES autorisées partout",
     (-40.2, 40.2), (-42.0, 10.1))
 ax.set_position([0.015, 0.015, 0.97, 0.90])
 ax.set_anchor("N")
@@ -613,17 +734,26 @@ caisson(ax, E3, "E")
 caisson(ax, G3, "G")
 caisson(ax, F3, "F")
 caisson(ax, H3, "H")
-# structure bord ext (2 paliers, non cotée -> gris/orange, dégagement porté à 0,50)
-for NN in (N1, N2):
-    p = Polygon(rigid(*NN), closed=True, facecolor="#e2e8f0",
-                edgecolor=D.ORANGE, lw=1.1, hatch="....", zorder=13)
-    p.set_linestyle("--")
-    ax.add_patch(p)
-tx, ty = P(OFF3 + 7.8, W - 0.85)
-ax.text(tx, ty, "structure bord ext. (croquis 3)\nNON COTÉE ≈ 5,8 m — à confirmer",
-        fontsize=5.2, ha="center", va="center", color="#7c2d12",
-        rotation=-math.degrees(phi(OFF3 + 7.8)), zorder=27,
-        bbox=dict(fc="white", ec="none", alpha=0.8, pad=0.4))
+# structure de rive : PLUS DESSINÉE comme obstacle — HORS ZONE PV (client 27/07).
+# On garde un REPÈRE de son emprise (trait pointillé dans la bande de rive, qui ne
+# porte aucune table) + la décision écrite en clair : le lecteur voit où le croquis
+# la montrait ET pourquoi elle ne contraint plus rien.
+NS0, NS1 = N1[0], N2[1]
+NY = W - 0.17                                   # dans la rive 0,35 : aucune table
+xs, ys = zip(*arcpts(NS0, NS1, NY, 40))
+ax.plot(xs, ys, color=D.GRIS, lw=0.9, ls=(0, (2, 2)), zorder=13)
+for se in (NS0, NS1):
+    a, b = P(se, W - 0.34), P(se, W)
+    ax.plot([a[0], b[0]], [a[1], b[1]], color=D.GRIS, lw=0.9, zorder=13)
+SM = (NS0 + NS1) / 2
+la, lb = P(SM, W + 0.06), P(SM, W + 0.62)          # renvoi vers le repère
+ax.plot([la[0], lb[0]], [la[1], lb[1]], color="#7c2d12", lw=0.6, ls=":", zorder=27)
+tx, ty = P(SM, W + 1.06)
+ax.text(tx, ty, "STRUCTURE DE RIVE du croquis 3 — HORS ZONE PV (décision client 27/07)\n"
+        "→ RETIRÉE du calepinage : elle ne contraint plus aucune table",
+        fontsize=5.8, ha="center", va="center", color="#7c2d12", fontweight="bold",
+        rotation=-math.degrees(phi(SM)), zorder=28,
+        bbox=dict(fc="white", ec="#7c2d12", lw=0.5, alpha=0.92, pad=0.5))
 
 # cotes tangentielles S3
 tdim(ax, OFF3, A3[0], 7.62, text="3,3")
@@ -640,7 +770,9 @@ rdim(ax, B3[0] + 0.52, 0, B3[2], text="3,42 ?", color=D.ORANGE)
 rdim(ax, C3g[0] + 0.45, 0, C3g[2], text="3,681")
 rdim(ax, D3[0] + 0.62, C3g[3], D3[2], text="1,5")
 rdim(ax, D3[0] + 0.42, D3[3], W, text="3,83")
-rdim(ax, D3[1] - 0.18, D3[3], N2[2], text="0,78", fs=5.6)
+# (la cote 0,78 « caisson D -> structure de rive » du croquis 3 n'est plus tracée :
+#  son extrémité haute est HORS ZONE PV depuis la décision client du 27/07 — le
+#  relevé la conserve, elle ne pilote plus aucune rangée. Voir note en bas.)
 rdim(ax, E3[1] - 0.45, E3[3], W, text="3,74")
 rdim(ax, E3[1] - 0.62, G3[3], E3[2], text="1,39")
 rdim(ax, G3[1] - 0.45, 0, G3[2], text="3,67")
@@ -659,7 +791,7 @@ def fr(v, dec=2):
 ax.text(0, 9.35, "CALEPINAGE v2 — tables Est-Ouest de 2 modules 625 Wc dos à dos, RANGÉES À POSITIONS EXPLICITES, "
         "un plan de pose PAR SEGMENT (les rangées s'arrêtent aux joints)",
         fontsize=7.2, ha="center", color="#333333")
-ax.text(0, 8.70, "S1 : 2 rangées PORTRAIT 1,134 × 4,70 (kit du bât. C) · S2 et S3 : 3 rangées PAYSAGE 2,382 × 2,25 (kit du bât. A) — "
+ax.text(0, 8.70, "TABLES MIXTES (validées client 27/07) — S1 : 2 rangées PORTRAIT 1,134 × 4,70 (kit du bât. C) · S2 et S3 : 3 rangées PAYSAGE 2,382 × 2,25 (kit du bât. A) — "
         f"allées ≥ 0,60 optimisées · rives 0,35 · dégagement 0,35 (= 0,336 m réels ≥ 0,30 exigé) — {NMOD} modules "
         f"(S1 {SEG_N[0]} + S2 {SEG_N[1]} + S3 {SEG_N[2]}) = {fr(KWC, 1)} kWc",
         fontsize=7.2, ha="center", color="#333333")
@@ -671,10 +803,12 @@ else:
     ax.text(0, 7.90, f"ENGAGEMENT OFFRE : 120 modules (75,0 kWc) — TENDU : {NMOD} modules posables sur le relevé "
             f"(manque {ENGAGEMENT - NMOD}) — voir redistribution vers l'aile L",
             fontsize=8.2, ha="center", color=TENDU_C, fontweight="bold")
-ax.text(0, 7.15, f"MARGE = {NMOD - ENGAGEMENT} module : le compte tombe EXACTEMENT sur l'engagement — toute confirmation défavorable d'un élément orange le fait redescendre",
-        fontsize=7.4, ha="center", color=TENDU_C, fontweight="bold")
-ax.text(0, 6.60, f"SENSIBILITÉS CALCULÉES : sans la structure de rive non cotée {N_SANS_NC} ({N_SANS_NC - NMOD:+d}) · si elle est traitée en « nature inconnue » {N_NC} ({N_NC - NMOD:+d}) · "
-        f"si S2 et S3 font 10 cm de moins que le « ≈ » {N_COURT} ({N_COURT - NMOD:+d}) · conservateur {N_CONS} · redistribution B → 144 hors d'atteinte",
+PLANCHER = min(N_SANS_X, N_X_NC, N_COURT)
+ax.text(0, 7.15, f"MARGE VRAIE = {NMOD - ENGAGEMENT:+d} modules ({fr((NMOD - ENGAGEMENT) * KWC_MOD, 1)} kWc), apportés par la DÉCISION CLIENT du 27/07 (structure de rive S3 hors zone PV, {GAIN_DECISION:+d}) — "
+        f"et elle RÉSISTE : plancher des sensibilités {PLANCHER} ({PLANCHER - ENGAGEMENT:+d})",
+        fontsize=7.4, ha="center", color="#15803d", fontweight="bold")
+ax.text(0, 6.60, f"SENSIBILITÉS (décision acquise) : caisson X en « nature inconnue » {N_X_NC} ({N_X_NC - NMOD:+d}) · X absent {N_SANS_X} ({N_SANS_X - NMOD:+d}) · S2/S3 10 cm plus courts {N_COURT} ({N_COURT - NMOD:+d}) · "
+        f"conservateur {N_CONS} — décision INVERSÉE : {N_V2}, pile l'engagement",
         fontsize=7, ha="center", color="#555555")
 ax.text(0, 6.05, "DÉVELOPPÉ RELEVÉ 68,05 m — CONFIRMÉ MURET-À-MURET par le client le 27/07 : le « ≈ 90 » du dossier §2.2 est un ordre de grandeur périmé, il n'y a PAS de longueur cachée",
         fontsize=7.6, ha="center", color=D.BLEU, fontweight="bold")
@@ -693,16 +827,25 @@ NOTES = [
     (f"• {LAD['C']} → {LAD['D']} ({LAD['D'] - LAD['C']:+d}) allées ramenées à 0,60 MINIMUM (consigne client) et rives d'extrémité 0,35 au lieu de 0,50 (les murets sont AU RAS, h = 0)", False),
     (f"• {LAD['D']} → {LAD['E']} ({LAD['E'] - LAD['D']:+d}) RANGÉES À POSITIONS EXPLICITES, un plan de pose PAR SEGMENT : le surplus de largeur n'est plus étalé en allées égales, il est "
      f"CONCENTRÉ là où il ne coûte rien — S2 : allée large {fr(S2_ALLEE)} posée au-dessus de la file de caissons K3/K4/K7, ce qui libère toute la rangée basse (9 tables pleines) ; "
-     "S3 : rangées calées pour esquiver la structure de rive et les caissons A/D/E/F", False),
-    (f"• {LAD['E']} → {NMOD} ({NMOD - LAD['E']:+d}) SEGMENT 1 en tables PORTRAIT 1,134 × 4,70 — le kit DÉJÀ retenu pour le bâtiment C (école), donc aucun approvisionnement nouveau : "
-     "sur 10,90 de large, 2 rangées portrait couvrent 9,40 de modules là où 3 rangées paysage n'en couvrent que 6,75. S1 passe de 42 à 48", False),
-    ("OBSTACLES — RIEN DE SUPPRIMÉ : les 22 obstacles relevés sont TOUS conservés, y compris ceux dont la position est reconstruite (C2, C3, K3, K7, A, B — en orange)", True),
-    ("• 3 ÉLÉMENTS NON COTÉS portent tout le risque : le caisson X (0,70 × 1,10 supposé) et la structure de rive N1/N2 (paliers de 1,70 et 3,15 supposés, ≈ 5,8 m de long). "
-     "Ils sont CONSERVÉS, au dégagement standard 0,35", False),
-    (f"3 QUESTIONS AU CLIENT, chiffrées : (1) la structure de rive du croquis 3 — c'est quoi, jusqu'où va-t-elle ? « rien dans la zone PV » = {N_SANS_NC}, "
-     f"« on ne sait pas ce que c'est » = {N_NC}, hypothèse retenue = {NMOD}. (2) le caisson X n'a AUCUNE cote : ses 0,70 × 1,10 sont supposés. "
-     f"(3) S2 « ≈ 23,0 » et S3 « ≈ 23,6 » : 10 cm de moins et le compte tombe à {N_COURT}", True),
-    ("AUTRES POINTS À CONFIRMER (orange) : positions C2/C3 · K3 · 1,6/2,4 · rattachements 4,75/5,5/0,78 (S1) · lectures S3 2,5/3,2 · 5,5/5,53 · 3,42 · A · B · mur est", False),
+     "S3 : rangées calées pour esquiver les caissons A/D/E/F", False),
+    (f"• {LAD['E']} → {LAD['F']} ({LAD['F'] - LAD['E']:+d}) SEGMENT 1 en tables PORTRAIT 1,134 × 4,70 — le kit DÉJÀ retenu pour le bâtiment C (école), donc aucun approvisionnement nouveau : "
+     f"sur 10,90 de large, 2 rangées portrait couvrent 9,40 de modules là où 3 rangées paysage n'en couvrent que 6,75. S1 passe de 42 à 48. ═══ {LAD['F']} = LA PLANCHE DU 27/07 AU SOIR ═══", False),
+    (f"• {LAD['F']} → {LAD['G']} ({GAIN_DECISION:+d}) DÉCISION CLIENT DU 27/07 (3e série Q/R) : la STRUCTURE DE RIVE du segment 3 est HORS ZONE PV. Elle occupait le bord extérieur sur "
+     "≈ 5,8 m et écrasait la rangée haute de S3 ; retirée, la rangée haute redevient pleine. C'est la sensibilité que la planche d'hier annonçait — le script la retrouve au module près", False),
+    (f"• {LAD['G']} → {NMOD} ({NMOD - LAD['G']:+d}) RECALAGE DES RANGÉES DE S3 sur la fenêtre libérée : AUCUN module de plus — {SEG_N[2]} est le MAXIMUM du segment, prouvé par recherche "
+     f"exhaustive au pas de 1 cm. Le recalage n'achète pas du compte, il achète de la MARGE : dans S3, la bande la plus juste passe de {MB_S3_V2*100:.0f} cm à {MB_S3*100:.0f} cm du "
+     f"dégagement qu'elle esquive, et le tronçon le plus juste de {ML_S3_V2*100:.0f} cm à {ML_S3*100:.0f} cm. L'allée large de S3 ({fr(S3_ROWS[1][0] - S3_ROWS[0][1])}) tombe sur la file de caissons B/C/G/H/X", False),
+    (f"TABLES MIXTES (décision client nº4 du 27/07) : le kit de chaque segment est le MEILLEUR des deux, chiffré par le script — S1 PORTRAIT {SEG_N[0]} (en paysage : {ALT_N[0]}), "
+     f"S2 PAYSAGE {SEG_N[1]} (en portrait : {ALT_N[1]} — la cage d'escalier de 5,93 tue toute rangée large), S3 PAYSAGE {SEG_N[2]} (en portrait : {ALT_N[2]}). "
+     "Une recherche exhaustive autorisant les DEUX kits mélangés dans un même segment ne fait pas mieux : ce découpage est le maximum segment par segment", True),
+    ("OBSTACLES — AUCUN OBSTACLE MESURÉ SUPPRIMÉ : les 20 obstacles relevés retenus sont TOUS conservés, y compris ceux dont la position est reconstruite (C2, C3, K3, K7, A, B — en orange). "
+     "Le SEUL retrait est la structure de rive NON COTÉE, sur décision explicite du client (« hors zone PV »), et il est écrit sur le dessin", True),
+    (f"• 1 SEUL ÉLÉMENT NON COTÉ subsiste, le caisson X (0,70 × 1,10 supposés), et il ne coûte PLUS RIEN : au dégagement standard {NMOD}, traité en « nature inconnue » 0,50 m réels {N_X_NC}, "
+     f"purement et simplement absent {N_SANS_X} — les trois donnent le MÊME compte. Le risque « non coté » du bâtiment B est éteint", False),
+    (f"2 QUESTIONS AU CLIENT, chiffrées : (1) S2 « ≈ 23,0 » et S3 « ≈ 23,6 » — 10 cm de moins et le compte tombe à {N_COURT} (toujours ≥ 120). (2) le mur d'extrémité EST du croquis 3, "
+     f"non confirmé. Si la structure de rive devait finalement se trouver DANS la zone PV, le calepinage revient au v2 d'hier : {N_V2}", True),
+    ("AUTRES POINTS À CONFIRMER (orange) : positions C2/C3 · K3 · 1,6/2,4 · rattachements 4,75/5,5/0,78 (S1) · lectures S3 2,5/3,2 · 5,5/5,53 · 3,42 · A · B · mur est. "
+     "La cote 0,78 « caisson D → structure de rive » du croquis 3 n'est plus tracée : son extrémité est hors zone PV, elle ne pilote plus aucune rangée", False),
     ("POSE PV : rails en TRONÇONS DROITS, une table par tronçon — reprise angulaire ≈ 0,24°/table en portrait (S1) et ≈ 0,50° en paysage (S2/S3), par éclisses ; "
      "rangées PAR SEGMENT, jamais à cheval sur un joint", False),
     (f"RÉSERVE DRV : NON vue au relevé — à fixer en étude d'exécution (dégagement ≥ 1 m) ; toute réserve confirmée se retranche du compte. Le calepinage n'est PAS calé au "
@@ -759,23 +902,29 @@ r = Rectangle((LX, LY - 5 * DY - 0.21), 1.0, 0.42, facecolor="#dbeafe",
               edgecolor=D.BLEU, hatch="//////", lw=0.9, zorder=30)
 ax.add_patch(r)
 leg_text(5, "muret AU RAS (h = 0, ép. 0,45) — joint, confirmé")
-r = Rectangle((LX, LY - 6 * DY - 0.21), 1.0, 0.42, facecolor="#e2e8f0",
-              edgecolor=D.ORANGE, hatch="....", lw=0.8, zorder=30)
+r = Rectangle((LX, LY - 6 * DY - 0.21), 1.0, 0.42, facecolor="#e8ecf1",
+              edgecolor=D.GRIS, hatch="////", lw=0.8, zorder=30)
 r.set_linestyle("--")
 ax.add_patch(r)
-leg_text(6, "élément NON COTÉ — dimensions déduites du croquis")
-ax.add_patch(FancyArrowPatch((LX, LY - 7 * DY), (LX + 1.0, LY - 7 * DY),
-             arrowstyle="<|-|>", mutation_scale=6, lw=0.8, color=D.BLEU, zorder=30))
-leg_text(7, "cote mesurée / confirmée (croquis Reda 27/07)")
+leg_text(6, "caisson NON COTÉ — dimensions déduites du croquis (X)")
+ax.plot([LX, LX + 1.0], [LY - 7 * DY, LY - 7 * DY], color=D.GRIS, lw=0.9,
+        ls=(0, (2, 2)), zorder=30)
+for _e in (LX, LX + 1.0):
+    ax.plot([_e, _e], [LY - 7 * DY - 0.17, LY - 7 * DY + 0.17], color=D.GRIS,
+            lw=0.9, zorder=30)
+leg_text(7, "emprise HORS ZONE PV (structure de rive) — décision client, non calepinée")
 ax.add_patch(FancyArrowPatch((LX, LY - 8 * DY), (LX + 1.0, LY - 8 * DY),
+             arrowstyle="<|-|>", mutation_scale=6, lw=0.8, color=D.BLEU, zorder=30))
+leg_text(8, "cote mesurée / confirmée (croquis Reda 27/07)")
+ax.add_patch(FancyArrowPatch((LX, LY - 9 * DY), (LX + 1.0, LY - 9 * DY),
              arrowstyle="<|-|>", mutation_scale=6, lw=0.8, color=D.ORANGE, zorder=30))
-leg_text(8, "cote / élément à confirmer")
+leg_text(9, "cote / élément à confirmer")
 
 D.scale_bar(ax, LX, -23.4)
 D.cartouche(fig, [
     ("ACCORDIA TECH — Consultation FRDISI PV + stockage, Mohammedia", True),
-    (f"Bât. B — AILE EN ARC — CALEPINAGE v2 OPTIMISÉ — {NMOD} modules ({fr(KWC, 1)} kWc) — engagement 120 : {VERDICT}", True),
-    ("Relevé : R. Kasri 27/07/2026 (TOUT relevé) — restitution TAQINOR", False),
+    (f"Bât. B — AILE EN ARC — CALEPINAGE v2 OPTIMISÉ — {NMOD} modules ({fr(KWC, 1)} kWc) — engagement 120 : {VERDICT} (marge {NMOD - ENGAGEMENT:+d})", True),
+    ("Relevé : R. Kasri 27/07/2026 (TOUT relevé) — structure de rive S3 hors zone PV (client 27/07) — restitution TAQINOR", False),
     ("Échelle ≈ 1:200 (A3) — cotes en mètres — NE REMPLACE PAS 05E/06G", False),
 ])
 
@@ -804,18 +953,31 @@ print(f"  {LAD['B']:4d}  ({LAD['B']-LAD['A']:+d}) DURCISSEMENT correction d'arc 
 print(f"  {LAD['C']:4d}  ({LAD['C']-LAD['B']:+d}) DURCISSEMENT degagement 0,30 -> 0,35 en abscisse (= 0,336 m REELS)")
 print(f"  {LAD['D']:4d}  ({LAD['D']-LAD['C']:+d}) allees 0,60 mini + rives d'extremite 0,35")
 print(f"  {LAD['E']:4d}  ({LAD['E']-LAD['D']:+d}) rangees a positions EXPLICITES par segment (tout paysage)")
-print(f"  {NMOD:4d}  ({NMOD-LAD['E']:+d}) segment 1 en tables PORTRAIT (kit du bat. C)")
-print(f"sensibilites : sans la structure de rive non cotee {N_SANS_NC} ({N_SANS_NC-NMOD:+d}) · "
-      f"structure traitee 'nature inconnue' 0,50 reel {N_NC} ({N_NC-NMOD:+d}) · "
-      f"S2/S3 plus courts de {COURT*100:.0f} cm {N_COURT} ({N_COURT-NMOD:+d}) · conservateur {N_CONS}")
+print(f"  {LAD['F']:4d}  ({LAD['F']-LAD['E']:+d}) segment 1 en tables PORTRAIT (kit du bat. C)  <-- PLANCHE DU 27/07 AU SOIR")
+print(f"  {LAD['G']:4d}  ({GAIN_DECISION:+d}) DECISION CLIENT 27/07 : structure de rive S3 HORS ZONE PV (retiree)")
+print(f"  {NMOD:4d}  ({NMOD-LAD['G']:+d}) recalage des rangees de S3 sur la fenetre liberee "
+      f"(0 module de plus : 44 est le maximum du segment ; le recalage achete de la MARGE)")
+print(f"sensibilites : caisson X en 'nature inconnue' 0,50 reel {N_X_NC} ({N_X_NC-NMOD:+d}) · "
+      f"si X n'existait pas {N_SANS_X} ({N_SANS_X-NMOD:+d}) · "
+      f"S2/S3 plus courts de {COURT*100:.0f} cm {N_COURT} ({N_COURT-NMOD:+d}) · "
+      f"si la structure de rive revenait EN zone PV {N_V2} ({N_V2-NMOD:+d}) · conservateur {N_CONS}")
+print(f"plancher des sensibilites = {min(N_X_NC, N_SANS_X, N_COURT)} "
+      f"(>= engagement {ENGAGEMENT} : {'OUI' if min(N_X_NC, N_SANS_X, N_COURT) >= ENGAGEMENT else 'NON'})")
 print(f"marges : troncon le plus juste {MARGE_L*100:.1f} cm · bande la plus juste {MARGE_B*100:.1f} cm "
       f"· recouvrement qu'aurait eu l'ancien modele {RECOUV_MIN:.1f} a {RECOUV_MAX:.1f} cm")
-for (nm, kind, nrows, tw, n) in SEG_TXT:
-    print(f"  {nm} : {nrows} rangees {kind} (emprise {fr(tw)}) -> {n} modules")
+print(f"  gain du recalage de S3 (a compte EGAL) : bande {MB_S3_V2*100:.1f} -> {MB_S3*100:.1f} cm · "
+      f"troncon {ML_S3_V2*100:.1f} -> {ML_S3*100:.1f} cm")
+for _n in ("S1", "S2", "S3"):
+    print(f"  marges {_n} : troncon {MARGES[_n][0]*100:5.1f} cm · bande {MARGES[_n][1]*100:5.1f} cm")
+for (nm, kind, nrows, tw, n, n_alt) in SEG_TXT:
+    print(f"  {nm} : {nrows} rangees {kind} (emprise {fr(tw)}) -> {n} modules "
+          f"(l'autre kit n'en donnerait que {n_alt})")
 print(f"arc: R_ext={R_EXT}  developpe={LEN:.2f}  ouverture={math.degrees(TH):.1f} deg  "
       f"fleche={R_EXT * (1 - math.cos(TH / 2)):.2f}  corde={2 * R_EXT * math.sin(TH / 2):.2f}")
 print(f"controles OK : dessine=compte, aucun recouvrement de tables ({len(POLYS)} polygones), "
       f"rives 0,35, allees >= 0,60, degagement 0,35 (0,336 m reels), aucun rail a cheval sur un joint")
+print(f"obstacles : {len(OBS)} retenus et dessines · structure de rive N1/N2 RETIREE "
+      f"(hors zone PV, decision client 27/07 — ecrite sur la planche) · aucun obstacle MESURE supprime")
 
 fig.savefig("VUE_TOITURE_BAT_B_ARC_V2.pdf", bbox_inches="tight")
 fig.savefig("VUE_TOITURE_BAT_B_ARC_V2.png", dpi=170, bbox_inches="tight")

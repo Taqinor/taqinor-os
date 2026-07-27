@@ -138,6 +138,18 @@
   LV) retirée du FINAL. Config : 3 piles de 6 packs (96,48 kWh, 307,2 V), coffret
   BOS-B-PDU-2-A double départ PCS (A→2 ond., B→1, C→OND-C1/C2, C3 en PV direct).
 
+- **3e SÉRIE Q/R TRANCHÉE + PLANCHES FINALES (27/07 tard le soir)** : Reda a tranché —
+  grand rectangle aile 2 = NÉANT ; angle SE de l'aile = ANGLE DROIT (pas de pan coupé) ;
+  structure de rive S3 de l'arc = HORS ZONE PV ; **TABLES MIXTES autorisées partout**
+  (portrait 1,134×4,70 + paysage 2,382×2,25). Résultats finals, chacun PROUVÉ OPTIMAL et
+  contre-compté indépendamment : **A = 178 (CONFIRMÉ +26)** · **B = 126 (CONFIRMÉ +6,
+  plancher de sensibilités 124)** · **C = 314 (CONFIRMÉ +26)**. **SITE = 618 posables vs
+  560 engagés ; résidence 304 vs 272.** Plus AUCUNE emprise devinée sur A ; seul non-coté
+  restant sur B = caisson X (impact 0). Cascade « à confirmer » restante : cotes orange
+  habituelles + re-mesure ferme S2/S3 (−2 si 10 cm de moins). Bordereau : ligne câbles DC
+  Bât. B déplacée des communes vers la section B (item 16, renumérotation 1-30, totaux
+  inchangés — remarque Reda). PR #471 ouverte vers main (CI verte, merge au clic de Reda).
+
 ## 6. COMMENT CONTINUER EXACTEMENT CETTE SESSION
 - Ce fichier + la note de synthèse = l'état complet. Les scripts sur la branche
   `claude/brief-session-cloud-protocol-7573w9` permettent de régénérer/modifier chaque

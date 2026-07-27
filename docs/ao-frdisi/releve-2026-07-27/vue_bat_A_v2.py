@@ -2,32 +2,37 @@
 """VUE DE TOITURE — Bât. A (aile en L), Résidence universitaire UIB, Mohammedia — V2.
 
 V2 = même relevé, même géométrie, mêmes obstacles MESURÉS que vue_bat_A.py ;
-seul le CALEPINAGE est refait selon les consignes client du 27/07 :
+seul le CALEPINAGE change, et il intègre les DÉCISIONS CLIENT du 27/07 (3e série Q/R) :
 
-  1) CORRECTION D'ORIENTATION (la vraie raison du gain). Une table « E-O » porte
-     2 modules dos à dos, l'un face EST l'autre face OUEST : son FAÎTAGE est
-     forcément NORD-SUD, donc une rangée court NORD-SUD. Dans la v1, l'aile 2
-     était juste (faîtage N-S) mais la BARRE était calepinée avec des rangées
-     Est-Ouest, donc un faîtage E-O = des modules face NORD et face SUD —
-     impossible à construire. V2 remet tout le bâtiment en rangées N-S.
-  2) Le L est UNE SEULE surface : une rangée qui reste à l'ouest de l'aile
-     (x ≤ 10,85) descend d'un seul tenant de la barre dans l'aile — plus de
-     rive perdue à la jonction.
-  3) Tables E-O PORTRAIT 1,134 × 4,70 (2 × 2,382 × cos15° + faîtage), soit la
-     table CANONIQUE de la planche Bât. C — un seul type de table sur le projet.
-  4) Allées « 0,60 minimum, OPTIMISÉES » (consigne client) : rangées à positions
-     EXPLICITES, le surplus de largeur concentré là où il ne coûte rien
-     (2,45 devant la cage d'escalier, 3,15 sur la colonne B7/A1).
-     Rives 0,35 · dégagement obstacles 0,30 · 0,50 pour un obstacle de NATURE
-     INCONNUE (le grand rectangle non coté de la jonction).
-  5) Aucun obstacle MESURÉ n'est supprimé. Les 2 emprises qui ne viennent PAS du
-     relevé sont conservées dans le compte retenu et chiffrées à part :
-       · GRECT — « grand rectangle non coté » de la jonction : vu sur le croquis
-         C mais JAMAIS coté ; sa taille (1,30 × 2,21) et sa position sont
-         DEVINÉES → +8 modules s'il est écarté ou plus petit ;
-       · PAN — pan coupé SE : il vient du PLAN, jamais relevé → +4 modules si
-         l'angle est droit.
-  Compte DESSINÉ = COMPTÉ (asserts) ; aucun « maximum » théorique affiché.
+  DÉCISION CLIENT 27/07 (1) — le « GRAND RECTANGLE NON COTÉ » de l'aile 2
+     (jonction) N'EXISTE PAS : NÉANT. Il est RETIRÉ du plan et du calepinage.
+     Il était deviné (jamais coté) et coûtait 8 modules.
+  DÉCISION CLIENT 27/07 (2) — il n'y a PAS de « pan coupé » à l'angle SUD-EST de
+     l'aile 2 : c'est un ANGLE DROIT. L'enveloppe est restaurée en COIN PLEIN
+     (le pan venait du plan, jamais relevé ; il coûtait 4 modules).
+  DÉCISION CLIENT 27/07 (3) — TABLES MIXTES AUTORISÉES PARTOUT : le client a
+     validé les DEUX kits, table PORTRAIT 1,134 × 4,70 (kit école) ET table
+     PAYSAGE 2,382 × 2,25. Le calepinage choisit le kit RANGÉE PAR RANGÉE :
+     paysage (2,25 de large) dans les bandes étroites et sur la bande ouest
+     libre, portrait (4,70) partout où la largeur disponible le permet.
+
+  Inchangé :
+  a) ORIENTATION. Une table « E-O » porte 2 modules dos à dos, l'un face EST
+     l'autre face OUEST : son FAÎTAGE est forcément NORD-SUD, donc une rangée
+     court NORD-SUD. La v1 calepinait la barre en rangées E-O (faîtage E-O =
+     modules face NORD) — inconstructible. V2 est en rangées N-S partout.
+  b) Le L est UNE SEULE surface : une rangée qui reste à l'ouest de l'aile
+     (x ≤ 10,85) descend d'un seul tenant de la barre dans l'aile.
+  c) Allées « 0,60 minimum, OPTIMISÉES » (consigne client) : rangées à positions
+     EXPLICITES. Rives 0,35 · dégagement obstacles 0,30 · 0,50 pour un obstacle
+     de NATURE INCONNUE (cotes douteuses du relevé).
+  d) Aucun obstacle MESURÉ n'est supprimé : les 28 obstacles relevés sont TOUS
+     là, avec leur dégagement. Après les décisions (1) et (2), il ne reste PLUS
+     AUCUNE emprise devinée dans le compte : le chiffre ne repose que sur du
+     MESURÉ.
+  Compte DESSINÉ = COMPTÉ (asserts) ET PROUVÉ OPTIMAL : le jeu de rangées retenu
+  est rejoué à chaque exécution contre une recherche exhaustive (programmation
+  dynamique au pas de 1 cm sur les 2 kits) — aucun « maximum » théorique affiché.
 
 Sorties : VUE_TOITURE_BAT_A_L_V2.pdf / .png
 """
@@ -49,7 +54,11 @@ B_LEN, A_LEN = 23.58, 23.50
 BAR = B_LEN + A_LEN                      # 47,08
 W_B, W_BE, W_A = 10.76, 10.77, 10.92     # largeurs relevées B-ouest / raccord B/A / A
 LEG_W, LEG_S = 11.2, 29.74               # aile 2 : bande sous la barre (40,5 - 10,76)
-CUT_W, CUT_H = 2.18, 4.04                # pan coupé SE (forme du plan — non coté relevé)
+# DÉCISION CLIENT 27/07 (2) : l'angle SUD-EST de l'aile 2 est un ANGLE DROIT.
+# Le « pan coupé » 2,18 × 4,04 de la v1 venait du PLAN (jamais relevé) : SUPPRIMÉ,
+# l'enveloppe reprend son coin plein. Les lectures 2,18 / 4,04 du croquis C se
+# rapportaient au chanfrein de jonction et au « grand rectangle » — tous deux
+# déclarés NÉANT par le client, donc ces 2 cotes orange sont retirées de la planche.
 NX0, NX1, NDY = 31.28, 32.82, 0.74       # décroché sud accès toiture — largeur 1,54
 
 # ---------------- caissons barre (x0, x1, y0, y1, label, pos_label, incertain)
@@ -92,8 +101,10 @@ CAIS_LEG = [
     (9.63, 10.26, 6.40, 7.20, "0,8×0,63", "below", True),
     (9.70, 10.40, 7.35, 7.75, "0,4×0,7 ?", "above", True),
 ]
-GRECT = (0.40, 1.70, 4.95, 7.16)         # grand rectangle NON COTÉ (jonction) — DEVINÉ
-PAN = (LEG_S - CUT_H, LEG_S, LEG_W - CUT_W, LEG_W)   # pan coupé SE — vient du PLAN
+# DÉCISION CLIENT 27/07 (1) : le « grand rectangle non coté » de la jonction N'EXISTE
+# PAS. Son ancienne emprise DEVINÉE (s 0,40→1,70 · x 4,95→7,16) n'est gardée que comme
+# point d'ancrage de la mention « NÉANT » sur la planche — elle n'est plus un obstacle.
+GRECT_NEANT = (0.40, 1.70, 4.95, 7.16)
 
 # ---------------- contrôles de fermeture (v1 — CONSERVÉS et durcis en asserts)
 xb = chain(0, 3.39, 1.31, 6.47, 1.33, 6.55, 1.30, 3.23)
@@ -109,7 +120,14 @@ tE = chain(0, 3.38, 1.35, 6.67, 1.35, 6.73, 0.63, 4.31, 5.50)
 assert closure("Aile 2 — chaîne est S→N", tE[-1], LEG_S, tol=0.25)[0]
 
 # ================================================================ CALEPINAGE V2
-TBL_W, TBL_L = 4.70, 1.134     # table E-O PORTRAIT : 4,70 d'emprise E-O, pas 1,134 N-S
+# DÉCISION CLIENT 27/07 (3) : TABLES MIXTES AUTORISÉES PARTOUT — les 2 kits sont
+# validés. Une table = 2 modules 625 Wc dos à dos (face EST | face OUEST), 15°,
+# faîtage NORD-SUD ; les rangées courent NORD-SUD.
+#   "P" PORTRAIT : emprise E-O 4,70 (= 2 × 2,382 × cos15° + faîtage), pas N-S 1,134
+#   "L" PAYSAGE  : emprise E-O 2,25 (= 2 × 1,134 × cos15° + faîtage), pas N-S 2,382
+TYPES = {"P": (4.70, 1.134, "PORTRAIT", "1,134 × 4,70"),
+         "L": (2.25, 2.382, "PAYSAGE", "2,382 × 2,25")}
+MOD_TABLE = 2                  # 2 modules par table (dos à dos)
 RIVE, ALLEE = 0.35, 0.60
 CLEAR, CLEAR_INC = 0.30, 0.50  # dégagement standard / nature inconnue
 ENG = 152                      # engagement bordereau Bât. A (95,0 kWc)
@@ -128,12 +146,13 @@ OBS.append((EDIC[0], EDIC[1], EDIC[2], EDIC[3], CLEAR, "EDIC", "R"))
 for (s0, s1, x0, x1, lab, pos, unc) in CAIS_LEG:
     OBS.append((x0, x1, -s1, -s0, CLEAR_INC if unc else CLEAR,
                 "caisson aile", "R?" if unc else "R"))
-OBS.append((GRECT[2], GRECT[3], -GRECT[1], -GRECT[0], CLEAR_INC, "GRECT", "X"))
-OBS.append((PAN[2], PAN[3], -PAN[1], -PAN[0], RIVE, "PAN", "P"))
-
-PROVISOIRES = ("GRECT", "PAN")           # jamais mesurés au relevé
+# DÉCISIONS CLIENT 27/07 (1) et (2) : le grand rectangle non coté (GRECT) et le pan
+# coupé SE (PAN) N'EXISTENT PAS → ils ne sont plus des obstacles. Il ne reste donc
+# AUCUNE emprise devinée dans le compte : 28 obstacles, tous RELEVÉS.
+assert len(OBS) == 28, "28 obstacles relevés, aucune emprise devinée"
 assert sum(1 for o in OBS if o[6] in ("R", "R?")) == 28, "28 obstacles relevés"
-assert [o[5] for o in OBS if o[6] in ("X", "P")] == ["GRECT", "PAN"]
+assert [o[5] for o in OBS if o[6] not in ("R", "R?")] == [], \
+    "plus aucune emprise devinée (décisions client 27/07)"
 
 # --- enveloppe : le L est une seule surface
 X_W, X_E = RIVE, BAR - RIVE               # 0,35 → 46,73
@@ -142,15 +161,15 @@ Y_N = W_B - RIVE                          # 10,41 (largeur B, conservatrice vs A
 Y_S_BAR, Y_S_LEG = RIVE, -LEG_S + RIVE    # 0,35 / -29,39
 
 
-def band(x0):
-    """Étendue N-S utile d'une rangée [x0, x0+TBL_W] (le L est continu à l'ouest)."""
-    return (Y_S_LEG if x0 + TBL_W <= X_LEG_E + 1e-9 else Y_S_BAR), Y_N
+def band(x0, w):
+    """Étendue N-S utile d'une rangée [x0, x0+w] (le L est continu à l'ouest)."""
+    return (Y_S_LEG if x0 + w <= X_LEG_E + 1e-9 else Y_S_BAR), Y_N
 
 
-def free_segments(x0, obs):
-    """Segments N-S libres de la rangée [x0, x0+TBL_W], dégagements appliqués."""
-    x1 = x0 + TBL_W
-    ymin, ymax = band(x0)
+def free_segments(x0, w, obs):
+    """Segments N-S libres de la rangée [x0, x0+w], dégagements appliqués."""
+    x1 = x0 + w
+    ymin, ymax = band(x0, w)
     blocked = []
     for (ox0, ox1, oy0, oy1, c, lab, src) in obs:
         if ox1 + c <= x0 + 1e-9 or ox0 - c >= x1 - 1e-9:
@@ -167,46 +186,94 @@ def free_segments(x0, obs):
     return [(a, b) for a, b in segs if b > a]
 
 
+def count_row(x0, t, obs):
+    """Modules d'UNE rangée du kit t posée en x0 (indépendant du dessin)."""
+    w, pas = TYPES[t][0], TYPES[t][1]
+    return sum(MOD_TABLE * int((b - a + 1e-9) // pas)
+               for (a, b) in free_segments(x0, w, obs))
+
+
 def count_rows(rows, obs):
     """Comptage INDÉPENDANT du dessin (garde-fou compte affiché = dessiné)."""
-    return sum(2 * int((b - a + 1e-9) // TBL_L)
-               for x0 in rows for (a, b) in free_segments(x0, obs))
+    return sum(count_row(x0, t, obs) for (x0, t) in rows)
+
+
+def optimum(obs, allee=ALLEE, kits=None, step=0.01):
+    """OPTIMUM EXACT sur grille de 1 cm : programmation dynamique sur l'axe E-O.
+    best[i] = max de modules posables à l'est de x_i ; on choisit en chaque point
+    de ne rien poser, ou de poser une rangée d'un des kits autorisés puis de
+    reprendre après l'allée. Retourne (total, [(x0, kit, modules), ...])."""
+    kits = TYPES if kits is None else kits
+    xs, x = [], X_W
+    while x <= X_E + 1e-9:
+        xs.append(round(x, 4))
+        x += step
+    n = len(xs)
+
+    def idx(v):
+        return max(0, min(n, int(round((v - X_W) / step))))
+
+    best = [0] * (n + 1)
+    pick = [None] * (n + 1)
+    for i in range(n - 1, -1, -1):
+        b, ch = best[i + 1], None
+        for t in kits:
+            w = TYPES[t][0]
+            if xs[i] + w > X_E + 1e-9:
+                continue
+            c = count_row(xs[i], t, obs)
+            if c == 0:
+                continue
+            v = c + best[idx(xs[i] + w + allee)]
+            if v > b:
+                b, ch = v, (t, c)
+        best[i], pick[i] = b, ch
+    rows, i = [], 0
+    while i < n:
+        if pick[i] is not None:
+            t, c = pick[i]
+            j = idx(xs[i] + TYPES[t][0] + allee)
+            if best[i] == c + best[j]:
+                rows.append((xs[i], t, c))
+                i = j
+                continue
+        i += 1
+    return best[0], rows
 
 
 # --- RANGÉES EXPLICITES OPTIMISÉES (consigne « 0,60 mini, optimisées ») :
-#     positions retenues après optimisation exhaustive au pas de 1 cm sous les
-#     contraintes rives 0,35 / allées ≥ 0,60 / dégagements ci-dessus.
-#     Le surplus de largeur est concentré en 2 allées larges : 2,45 devant la
-#     cage d'escalier et 3,15 sur la colonne des caissons B7 / A1.
-ROWS = [0.35, 5.65, 12.80, 20.65, 25.95, 31.25, 36.55, 41.85]
-assert ROWS == sorted(ROWS)
-assert ROWS[0] >= RIVE - 1e-9, "rive ouest"
-assert ROWS[-1] + TBL_W <= X_E + 1e-9, "rive est"
-for a, b in zip(ROWS, ROWS[1:]):
-    assert b - (a + TBL_W) >= ALLEE - 1e-9, ("allée < 0,60", a, b)
-for r in ROWS:                       # une rangée est dans l'aile OU s'arrête à la barre
-    assert r + TBL_W <= X_LEG_E + 1e-9 or r >= X_LEG_E - 1e-9, ("rive est aile", r)
+#     (x0, kit) — positions retenues après recherche EXHAUSTIVE au pas de 1 cm sur
+#     les 2 kits, sous les contraintes rives 0,35 / allées ≥ 0,60 / dégagements.
+#     Bande ouest libre (2,25 × 39,80 d'un seul tenant, barre + aile) → PAYSAGE ;
+#     cœur pollué de caissons → PORTRAIT là où la largeur paie, PAYSAGE entre 2
+#     colonnes de caissons trop rapprochées pour 4,70.
+ROWS = [(0.45, "L"), (3.30, "P"), (8.60, "L"), (12.93, "L"), (15.78, "L"),
+        (18.63, "L"), (21.48, "L"), (24.33, "P"), (29.63, "L"), (33.27, "P"),
+        (38.57, "L"), (41.42, "L"), (44.48, "L")]
+assert [r[0] for r in ROWS] == sorted(r[0] for r in ROWS)
+assert all(t in TYPES for (_, t) in ROWS)
+assert ROWS[0][0] >= RIVE - 1e-9, "rive ouest"
+assert ROWS[-1][0] + TYPES[ROWS[-1][1]][0] <= X_E + 1e-9, "rive est"
+for (a, ta), (b, _) in zip(ROWS, ROWS[1:]):
+    assert b - (a + TYPES[ta][0]) >= ALLEE - 1e-9, ("allée < 0,60", a, b)
 
 N = count_rows(ROWS, OBS)
 KWC = N * 0.625
-# comptes AVEC / SANS les 2 emprises jamais mesurées (rangées INCHANGÉES)
-OBS_NO_G = [o for o in OBS if o[5] != "GRECT"]
-OBS_NO_GP = [o for o in OBS_NO_G if o[5] != "PAN"]
-N_NO_G = count_rows(ROWS, OBS_NO_G)
-N_NO_GP = count_rows(ROWS, OBS_NO_GP)
 
-# --- références pour information (NON dessinées, jamais présentées comme un « max »)
-#     v1 : tables paysage 2,382×2,25, allées 1,20, bandes séparées, barre en rangées E-O
-obs_bar_v1 = [c[:4] for c in CAIS_BAR] + [CAGE, DECN, NOTCH, EDIC]
-obs_leg_v1 = [c[:4] for c in CAIS_LEG] + [GRECT, PAN]
-assert len(C.rows_for(W_B, 1.20, 0.35, 0.0)) == 3, "v1 : 3 rangées sur la barre"
-assert len(C.rows_for(LEG_W, 1.20, 0.35, 0.0)) == 3, "v1 : 3 rangées sur l'aile"
-n_v1 = (C.best_phase(BAR, W_B, obs_bar_v1, 1.20, 0.35, 0.30, end_rive=0.50)[0]
-        + C.best_phase(LEG_S, LEG_W, obs_leg_v1, 1.20, 0.35, 0.30, end_rive=0.50)[0])
-n_cons = (C.best_phase(BAR, W_B, obs_bar_v1, 1.50, 0.50, 0.50, end_rive=0.50)[0]
-          + C.best_phase(LEG_S, LEG_W, obs_leg_v1, 1.50, 0.50, 0.50, end_rive=0.50)[0])
+# --- PREUVE D'OPTIMALITÉ : le jeu de rangées retenu vaut l'optimum exact.
+N_OPT, ROWS_OPT = optimum(OBS)
+assert N == N_OPT, ("le calepinage retenu n'est pas optimal", N, N_OPT)
+
+# --- SENSIBILITÉS (même moteur, même relevé — pour information, non dessinées)
+N_P_ONLY = optimum(OBS, kits={"P": TYPES["P"]})[0]      # 100 % portrait
+N_L_ONLY = optimum(OBS, kits={"L": TYPES["L"]})[0]      # 100 % paysage
+OBS_50 = [o[:4] + (0.50,) + o[5:] for o in OBS]         # tout en nature inconnue
+N_C50 = optimum(OBS_50)[0]
+N_A100 = optimum(OBS, allee=1.00)[0]                    # allées de maintenance
+N_A120 = optimum(OBS, allee=1.20)[0]
 
 VERDICT = "CONFIRMÉ" if N >= ENG else "TENDU"
+MARGE = N - ENG
 VERT, VERT_F, TENDU_C = "#15803d", "#bbf7d0", "#c2410c"
 
 
@@ -218,22 +285,26 @@ def fr(v, dec=2):
 fig, ax = D.new_sheet(
     "VUE DE TOITURE — BÂTIMENT A (AILE EN L) — RÉSIDENCE UNIVERSITAIRE UIB, MOHAMMEDIA — V2",
     "Contour, locaux et obstacles : RELEVÉ CONTRADICTOIRE du 27/07/2026 (croquis A/B/C) — "
-    "calepinage V2 : tables E-O PORTRAIT 1,134×4,70 (2 modules 625 Wc, 15°), FAÎTAGE NORD-SUD "
-    "(modules face E et face O), rangées N-S continues sur tout le L, positions EXPLICITES — "
+    "INTÈGRE LES DÉCISIONS CLIENT DU 27/07 : grand rectangle de la jonction = NÉANT · "
+    "angle sud-est de l'aile = ANGLE DROIT · TABLES MIXTES autorisées partout\n"
+    "calepinage V2 : tables E-O MIXTES portrait 1,134×4,70 et paysage 2,382×2,25 (2 modules "
+    "625 Wc, 15°), FAÎTAGE NORD-SUD (modules face E et face O), rangées N-S continues sur "
+    "tout le L, positions EXPLICITES\n"
     "allées 0,60 mini OPTIMISÉES, rives 0,35, dégagement 0,30 (0,50 nature inconnue) — "
     "BLEU = mesuré · ORANGE = à confirmer · GRIS = plan/déduit",
     (-7.5, 64.0), (-34.8, 16.2))
 
-# ---------------- contour (avec décroché sud 1,54 + ressaut de largeur B/A)
+# ---------------- contour (décroché sud 1,54 + ressaut de largeur B/A ;
+#                  angle SUD-EST DROIT — décision client 27/07, plus de pan coupé)
 outline = [(0, W_B), (B_LEN, W_BE), (B_LEN, W_A), (BAR, W_A), (BAR, 0),
            (NX1, 0), (NX1, NDY), (NX0, NDY), (NX0, 0), (LEG_W, 0),
-           (LEG_W, -LEG_S + CUT_H), (LEG_W - CUT_W, -LEG_S), (0, -LEG_S)]
+           (LEG_W, -LEG_S), (0, -LEG_S)]
 ax.add_patch(Polygon(outline, closed=True, fill=False, lw=2.4, edgecolor=D.NOIR,
                      zorder=12))
 acro = [(0.28, W_B - 0.28), (B_LEN, W_BE - 0.28), (B_LEN, W_A - 0.28),
         (BAR - 0.28, W_A - 0.28), (BAR - 0.28, 0.28), (NX1 + 0.28, 0.28),
         (NX1 + 0.28, NDY + 0.28), (NX0 - 0.28, NDY + 0.28), (NX0 - 0.28, 0.28),
-        (LEG_W - 0.28, 0.28), (LEG_W - 0.28, -25.63), (8.85, -LEG_S + 0.28),
+        (LEG_W - 0.28, 0.28), (LEG_W - 0.28, -LEG_S + 0.28),
         (0.28, -LEG_S + 0.28)]
 ax.add_patch(Polygon(acro, closed=True, fill=False, lw=0.6, edgecolor="#666666",
                      zorder=11))
@@ -242,17 +313,18 @@ ax.add_patch(Polygon(acro, closed=True, fill=False, lw=0.6, edgecolor="#666666",
 # ---------------- calepinage : pose des tables (positions EXPLICITES)
 def draw_tables(rows, obs):
     total, placed = 0, []
-    for x0 in rows:
-        for (a, b) in free_segments(x0, obs):
-            n = int((b - a + 1e-9) // TBL_L)
-            total += 2 * n
+    for (x0, t) in rows:
+        w, pas = TYPES[t][0], TYPES[t][1]
+        for (a, b) in free_segments(x0, w, obs):
+            n = int((b - a + 1e-9) // pas)
+            total += MOD_TABLE * n
             for i in range(n):
-                yy = a + i * TBL_L
-                placed.append((x0, yy))
-                ax.add_patch(Rectangle((x0, yy), TBL_W, TBL_L, facecolor=VERT_F,
+                yy = a + i * pas
+                placed.append((x0, yy, t))
+                ax.add_patch(Rectangle((x0, yy), w, pas, facecolor=VERT_F,
                                        edgecolor=VERT, lw=0.35, zorder=6))
             if n:      # faîtage continu N-S du segment (séparation module E / module O)
-                ax.plot([x0 + TBL_W / 2] * 2, [a, a + n * TBL_L], color=VERT,
+                ax.plot([x0 + w / 2] * 2, [a, a + n * pas], color=VERT,
                         lw=0.5, zorder=7)
     return total, placed
 
@@ -262,10 +334,11 @@ n_drawn, placed = draw_tables(ROWS, OBS)
 # ---------------- contrôles géométriques (durcis vs v1)
 EPS = 1e-6
 assert n_drawn == N, (n_drawn, N)                    # DESSINÉ = COMPTÉ
-assert len(placed) * 2 == N
-for (tx, ty) in placed:
-    tx1, ty1 = tx + TBL_W, ty + TBL_L
-    ymin, ymax = band(tx)
+assert len(placed) * MOD_TABLE == N
+for (tx, ty, tt) in placed:
+    w, pas = TYPES[tt][0], TYPES[tt][1]
+    tx1, ty1 = tx + w, ty + pas
+    ymin, ymax = band(tx, w)
     # rives : dans l'emprise utile, y compris la rive est de l'aile
     assert X_W - EPS <= tx and tx1 <= X_E + EPS, ("rive E-O", tx, ty)
     assert ymin - EPS <= ty and ty1 <= ymax + EPS, ("rive N-S", tx, ty)
@@ -277,21 +350,22 @@ for (tx, ty) in placed:
         assert (ty >= oy1 + c - EPS or ty1 <= oy0 - c + EPS
                 or tx >= ox1 + c - EPS or tx1 <= ox0 - c + EPS), \
             ("dégagement", tx, ty, lab)
-# non-chevauchement strict entre tables
+# non-chevauchement strict entre tables (kits mixtes : emprises différentes)
 for i in range(len(placed)):
-    xi, yi = placed[i]
+    xi, yi, ti = placed[i]
+    wi, pi = TYPES[ti][0], TYPES[ti][1]
     for j in range(i + 1, len(placed)):
-        xj, yj = placed[j]
-        assert (xi + TBL_W <= xj + EPS or xj + TBL_W <= xi + EPS
-                or yi + TBL_L <= yj + EPS or yj + TBL_L <= yi + EPS), \
+        xj, yj, tj = placed[j]
+        wj, pj = TYPES[tj][0], TYPES[tj][1]
+        assert (xi + wi <= xj + EPS or xj + wj <= xi + EPS
+                or yi + pi <= yj + EPS or yj + pj <= yi + EPS), \
             ("chevauchement", placed[i], placed[j])
-# les 2 emprises jamais mesurées ne peuvent que faire GAGNER des modules
-assert N_NO_G >= N and N_NO_GP >= N_NO_G
 
 # repère O / E sur la première rangée (bas de l'aile, zone dégagée)
-ax.text(ROWS[0] + 1.17, -28.6, "O", fontsize=6.5, color=VERT, ha="center",
+_w0 = TYPES[ROWS[0][1]][0]
+ax.text(ROWS[0][0] + _w0 * 0.25, -28.6, "O", fontsize=6.5, color=VERT, ha="center",
         va="center", fontweight="bold", zorder=9)
-ax.text(ROWS[0] + 3.53, -28.6, "E", fontsize=6.5, color=VERT, ha="center",
+ax.text(ROWS[0][0] + _w0 * 0.75, -28.6, "E", fontsize=6.5, color=VERT, ha="center",
         va="center", fontweight="bold", zorder=9)
 
 
@@ -331,17 +405,12 @@ ax.text(34.30, 5.42, "0,94×0,47?", fontsize=5.6, ha="center", va="top",
 for s0, s1, x0, x1, lab, pos, unc in CAIS_LEG:
     D.caisson(ax, x0, -s1, x1 - x0, s1 - s0, label=lab, uncertain=unc,
               label_pos=pos, fs=5.2)
-gr = Rectangle((GRECT[2], -GRECT[1]), GRECT[3] - GRECT[2], GRECT[1] - GRECT[0],
-               facecolor="none", edgecolor=D.ORANGE, lw=1.4, zorder=15)
-gr.set_linestyle("--")
-ax.add_patch(gr)
-ax.annotate("(1) grand rectangle NON COTÉ\n(emprise devinée — dégagt 0,50)\n"
-            "→ +8 modules s'il est écarté",
-            xy=(GRECT[3], -(GRECT[0] + GRECT[1]) / 2), xytext=(13.4, -1.9),
-            fontsize=5.6, ha="left", va="center", color=D.ORANGE,
-            fontweight="bold", zorder=27,
-            arrowprops=dict(arrowstyle="->", lw=0.7, color=D.ORANGE),
-            bbox=dict(fc="white", ec=D.ORANGE, lw=0.6, alpha=0.95, pad=1.4))
+# DÉCISION CLIENT 27/07 (1) : le grand rectangle non coté N'EST PAS DESSINÉ (néant).
+# Repère in situ à l'emplacement où il était supposé, l'emprise est calepinée.
+ax.text((GRECT_NEANT[2] + GRECT_NEANT[3]) / 2, -(GRECT_NEANT[0] + GRECT_NEANT[1]) / 2,
+        "(1) grand rectangle : NÉANT — décision client 27/07",
+        fontsize=5.0, ha="center", va="center", color=D.ORANGE, fontweight="bold",
+        zorder=27, bbox=dict(fc="white", ec=D.ORANGE, lw=0.6, alpha=0.96, pad=1.2))
 
 # ---------------- séparation zones + étiquettes
 ax.plot([B_LEN, B_LEN], [0, W_BE], color="#7c3aed", lw=0.9, ls="--", zorder=13)
@@ -477,53 +546,54 @@ for s_row in (25.685, 17.73):
 dimb((0, -9.85), (3.78, -9.85), 0.0, "3,78", fs=5.4)
 dimb((0.55, 0), (0.55, -4.82), 0.0, "4,82 ?", color=D.ORANGE, fs=5.6)
 dimb((5.05, -2.7), (6.98, -2.7), 0.0, "1,93 ?", color=D.ORANGE, fs=5.6)
-dimb((GRECT[3], -2.55), (LEG_W, -2.55), 0.0, "4,04 ?", color=D.ORANGE, fs=5.6)
-D.dim(ax, (LEG_W, -2.18), (LEG_W, 0), off=-0.55, text="2,18 ?", color=D.ORANGE, fs=5.6)
-ax.annotate("(2) pan coupé SE : vient du PLAN, jamais relevé\n"
-            "→ +4 modules si l'angle est droit",
-            xy=(LEG_W - CUT_W / 2, -LEG_S + CUT_H / 2), xytext=(12.9, -33.2),
-            fontsize=5.6, ha="left", va="center", color="#475569",
+# cotes orange « 4,04 (est) » et « 2,18 (chanfrein jonction ?) » RETIRÉES : elles ne
+# rattachaient que le grand rectangle et le pan coupé, déclarés NÉANT le 27/07.
+ax.annotate("(2) ANGLE SUD-EST = ANGLE DROIT — décision client 27/07\n"
+            "(pas de pan coupé : le coin plein est restauré et calepiné)",
+            xy=(LEG_W - 0.15, -LEG_S + 0.15), xytext=(12.4, -32.6),
+            fontsize=5.8, ha="left", va="center", color="#111111",
             fontweight="bold", zorder=27,
-            arrowprops=dict(arrowstyle="->", lw=0.7, color=D.GRIS),
-            bbox=dict(fc="white", ec=D.GRIS, lw=0.6, alpha=0.95, pad=1.4))
+            arrowprops=dict(arrowstyle="->", lw=0.8, color="#111111"),
+            bbox=dict(fc="white", ec="#111111", lw=0.7, alpha=0.96, pad=1.4))
 D.dim(ax, (0, -LEG_S), (LEG_W, -LEG_S), off=-2.0, text="11,2 (plan)", color=D.GRIS)
 
-# --- paramètres de calepinage cotés une fois (zone A, hors obstacles)
-dimb((ROWS[5], 11.55), (ROWS[5] + TBL_W, 11.55), 0.0, "4,70 (table portrait)",
-     color=D.GRIS, fs=5.4)
-dimb((ROWS[5] + TBL_W, 11.55), (ROWS[6], 11.55), 0.0, "0,60 (allée)",
-     color=D.GRIS, fs=5.0)
-dimb((ROWS[1] + TBL_W, 2.05), (ROWS[2], 2.05), 0.0, "2,45 (allée large — cage)",
+# --- paramètres de calepinage cotés une fois (zone A, hors obstacles) : les 2 kits
+dimb((24.33, 11.55), (29.03, 11.55), 0.0, "4,70 (portrait)", color=D.GRIS, fs=5.2)
+dimb((29.63, 11.55), (31.88, 11.55), 0.0, "2,25 (paysage)", color=D.GRIS, fs=5.2)
+dimb((29.03, 12.15), (29.63, 12.15), 0.0, "0,60 (allée)", color=D.GRIS, fs=5.0)
+dimb((10.85, 2.05), (12.93, 2.05), 0.0, "2,08 (allée large — cage)",
      color=D.GRIS, fs=5.2)
-dimb((ROWS[2] + TBL_W, 2.05), (ROWS[3], 2.05), 0.0, "3,15 (allée large)",
-     color=D.GRIS, fs=5.2)
+dimb((31.88, 2.05), (33.27, 2.05), 0.0, "1,39 (allée large)", color=D.GRIS, fs=5.2)
 
 # ================================================================ BANDEAU ENGAGEMENT
-BX = 28.0
+BX = 30.0
 if N >= ENG:
     ax.text(BX, -4.30,
             f"ENGAGEMENT BORDEREAU BÂT. A = {ENG} modules : {VERDICT} — "
-            f"{N} modules posables sur le relevé",
+            f"{N} posables (marge +{MARGE})",
             fontsize=9.6, fontweight="bold", ha="center", color=VERT, zorder=30)
 else:
     ax.text(BX, -4.30,
             f"ENGAGEMENT BORDEREAU BÂT. A = {ENG} modules : {VERDICT} — "
-            f"{N} posables sur le relevé (manque {ENG - N})",
+            f"{N} posables (manque {ENG - N})",
             fontsize=9.6, fontweight="bold", ha="center", color=TENDU_C, zorder=30)
 ax.text(BX, -5.35,
-        f"V2 (allées 0,60 optimisées / rives 0,35 / dégagt 0,30 · 0,50) : {N} mod. = "
-        f"{fr(KWC, 1)} kWc — v1 : {n_v1} — conservateur 1,50/0,50/0,50 : {n_cons}",
+        f"décisions client 27/07 (rectangle NÉANT · angle SE DROIT · tables mixtes) — "
+        f"{N} mod. = {fr(KWC, 1)} kWc — OPTIMUM PROUVÉ",
         fontsize=6.8, ha="center", color="#374151", zorder=30)
+_sens = [("dégagt 0,50 partout", N_C50), ("allées 1,00 (maintenance)", N_A100),
+         ("allées 1,20", N_A120)]
+_ko = [s for s, v in _sens if v < ENG]
 ax.text(BX, -6.25,
-        f"emprises JAMAIS MESURÉES conservées dans ce compte : sans (1) → {N_NO_G}"
-        f" ({'CONFIRMÉ' if N_NO_G >= ENG else 'TENDU'}) · sans (1) et (2) → {N_NO_GP}"
-        f" ({'CONFIRMÉ' if N_NO_GP >= ENG else 'TENDU'})",
+        "robustesse : " + " · ".join(f"{s} → {v}" for s, v in _sens)
+        + (f" — engagement {ENG} tenu partout" if not _ko
+           else f" — {ENG} tenu sauf {' et '.join(_ko)}"),
         fontsize=6.8, ha="center", color=D.ORANGE, fontweight="bold", zorder=30)
 
 # ---------------- mini-repérage croquis
 kx, ky, s = 49.8, -20.6, 0.085
-mini = [(0, 10.76), (47.08, 10.76), (47.08, 0), (11.2, 0), (11.2, -25.7),
-        (9.0, -29.74), (0, -29.74)]
+mini = [(0, 10.76), (47.08, 10.76), (47.08, 0), (11.2, 0), (11.2, -29.74),
+        (0, -29.74)]
 ax.add_patch(Polygon([(kx + p[0] * s, ky + p[1] * s) for p in mini], closed=True,
              fill=False, lw=1.0, edgecolor="#555555", zorder=30))
 for cx, cy, t in ((35.3, 5.4, "A"), (11.8, 5.4, "B"), (5.6, -14.9, "C")):
@@ -539,12 +609,20 @@ D.legende(ax, 49.5, -8.6, [
     ("dim", "cote mesurée (croquis Reda 27/07)"),
     ("dimU", "cote / rattachement à confirmer"),
 ], fs=6.0)
-ax.add_patch(Rectangle((49.5, -13.1), 4.70 * 0.42, 1.134 * 0.42, facecolor=VERT_F,
+ax.add_patch(Rectangle((49.5, -12.9), 4.70 * 0.42, 1.134 * 0.42, facecolor=VERT_F,
              edgecolor=VERT, lw=0.6, zorder=30))
-ax.plot([49.5 + 4.70 * 0.21] * 2, [-13.1, -13.1 + 1.134 * 0.42], color=VERT,
+ax.plot([49.5 + 4.70 * 0.21] * 2, [-12.9, -12.9 + 1.134 * 0.42], color=VERT,
         lw=0.6, zorder=31)
-ax.text(51.6, -12.85, "table E-O PORTRAIT 1,134 × 4,70\n2 modules 625 Wc, 15° — faîtage\n"
-        "N-S (module face OUEST | face EST)", fontsize=6.0, va="center", zorder=30)
+ax.text(51.6, -12.68, "table PORTRAIT 1,134 × 4,70 (kit école)\n"
+        "2 modules 625 Wc, 15° — faîtage N-S\n(module face OUEST | face EST)",
+        fontsize=6.0, va="center", zorder=30)
+ax.add_patch(Rectangle((49.5, -15.55), 2.25 * 0.42, 2.382 * 0.42, facecolor=VERT_F,
+             edgecolor=VERT, lw=0.6, zorder=30))
+ax.plot([49.5 + 2.25 * 0.21] * 2, [-15.55, -15.55 + 2.382 * 0.42], color=VERT,
+        lw=0.6, zorder=31)
+ax.text(50.7, -15.05, "table PAYSAGE 2,382 × 2,25\n2 modules 625 Wc, 15° — même faîtage\n"
+        "N-S — les 2 kits VALIDÉS par le client 27/07", fontsize=6.0, va="center",
+        zorder=30)
 
 # nord + échelle
 ax.add_patch(FancyArrowPatch((45.5, -11.0), (45.5, -9.0), arrowstyle="-|>",
@@ -553,7 +631,7 @@ ax.text(45.5, -8.7, "N", fontsize=10, ha="center", fontweight="bold", zorder=30)
 D.scale_bar(ax, 49.5, -17.4)
 
 # ---------------- contrôles de fermeture
-ax.text(13.2, -8.1,
+ax.text(13.2, -7.5,
         "CONTRÔLES DE FERMETURE (inchangés — relevé 27/07)\n"
         "· zone B, chaîne basse : 3,39+1,31+6,47+1,33+6,55+1,30+3,23 = 23,58 — résidu 0,00\n"
         "· zone B, chaîne nord : 12,23 (→cage) + 2,47 + 2,77 + 6,11 = 23,58 — résidu 0,00\n"
@@ -563,69 +641,84 @@ ax.text(13.2, -8.1,
         "· aile 2 TRANSVERSAL : 3,78+1,15+1,40+1,15+3,72 = 11,20 = largeur 11,2 EXACT ✓\n"
         "· largeurs relevées : 10,76 (B ouest) / 10,77 (raccord B/A) / 10,92 (A)\n"
         "· CALEPINAGE : dessiné = compté (assert) · non-chevauchement · rives 0,35 ·\n"
-        "  dégagement de chaque obstacle vérifié table par table (asserts)",
+        "  allées ≥ 0,60 · dégagement de chaque obstacle vérifié table par table\n"
+        "  · OPTIMALITÉ re-prouvée à chaque exécution (recherche exhaustive, pas 1 cm)",
         fontsize=6.0, va="top", color="#334155", zorder=30,
         bbox=dict(boxstyle="round,pad=0.45", fc="#f8fafc", ec="#94a3b8", lw=0.7))
+
+# ---------------- DÉCISIONS CLIENT DU 27/07 (3e série Q/R) — gravées sur la planche
+ax.text(13.2, -14.4,
+        "DÉCISIONS CLIENT DU 27/07 (3e série Q/R) — INTÉGRÉES À CE CALEPINAGE\n"
+        "· (1) le GRAND RECTANGLE NON COTÉ de l'aile 2 (jonction) N'EXISTE PAS : NÉANT —\n"
+        "  retiré du plan et du calepinage, l'emprise est libérée et calepinée (+8 modules).\n"
+        "· (2) PAS de pan coupé à l'angle SUD-EST de l'aile 2 : c'est un ANGLE DROIT —\n"
+        "  enveloppe restaurée en coin plein, le coin est calepiné (+4 modules).\n"
+        "· (3) TABLES MIXTES AUTORISÉES PARTOUT : les 2 kits sont validés (portrait\n"
+        "  1,134×4,70 ET paysage 2,382×2,25) — le kit est choisi rangée par rangée.\n"
+        "→ après (1) et (2), PLUS AUCUNE emprise devinée : les 28 obstacles sont MESURÉS.",
+        fontsize=6.0, va="top", color="#134e4a", zorder=30, fontweight="bold",
+        bbox=dict(boxstyle="round,pad=0.45", fc="#ecfdf5", ec="#15803d", lw=0.9))
 # à confirmer
-ax.text(13.2, -16.9,
+ax.text(13.2, -19.6,
         "À CONFIRMER À LA PROCHAINE VISITE (impact calepinage chiffré)\n"
-        "· (1) GRAND RECTANGLE de la jonction (aile 2, nord) : VU sur le croquis C mais JAMAIS COTÉ —\n"
-        "  emprise 1,30×2,21 et position DEVINÉES, dégagement 0,50 (nature inconnue) → +8 modules\n"
-        "  s'il n'existe pas / est plus petit. Nature ? dimensions ? distance au mur ouest ?\n"
-        "· (2) PAN COUPÉ SE de l'aile (2,18 × 4,04) : vient du PLAN, jamais relevé → +4 modules si\n"
-        "  l'angle est droit. L'angle sud-est de l'aile est-il coupé, oui ou non ?\n"
+        "· les 2 points (1) et (2) des versions précédentes sont TRANCHÉS par le client le 27/07\n"
+        "  (rectangle NÉANT · angle SE DROIT) : les lectures orange « 2,18 » (chanfrein jonction)\n"
+        "  et « 4,04 » (est) qui les rattachaient sont RETIRÉES — plus rien à confirmer là-dessus.\n"
         "· 23,50 ou 23,6 (longueur zone A) · 2,55 ? (0,98↔0,87) · 1,53 = entraxe 0,84↔0,94×0,47\n"
         "· zone B : verticales 1,11×1,30 → 6,08+1,30+3,83 = 11,21 vs 10,76 (Δ +0,45, à re-mesurer)\n"
         "  · caisson 0,8×0,63 ? (lu « 0,18 ») · décroché nord : prof. 1,15 ? (0 module d'impact)\n"
         "· zone A SW : 2,39 & 1,2 — rattachements supposés · édicule ≈0,92×0,74 · accès : prof. ≈0,7 ?\n"
-        "· aile 2 : 6,84 (relu 6,87 ?) · 7,37 (ou 4,37 ?) · 4,82 · 1,93 · 2,18 · 4,04 (est)",
+        "· aile 2 : 6,84 (relu 6,87 ?) · 7,37 (ou 4,37 ?) · 4,82 · 1,93 — cotes de chaîne, pas d'emprise",
         fontsize=6.0, va="top", color="#7c2d12", zorder=30,
         bbox=dict(boxstyle="round,pad=0.45", fc="#fff7ed", ec="#d97706", lw=0.7))
 # NOTA
-nota = (f"NOTA EXÉCUTION — calepinage V2 : {N} modules posables ({fr(KWC, 1)} kWc)\n"
-        f"contre {n_v1} en v1, à géométrie et obstacles RELEVÉS identiques. Le gain\n"
-        "vient de la CORRECTION D'ORIENTATION (rangées et faîtages N-S : la v1\n"
-        "posait la barre en rangées E-O, donc des modules face NORD), de la\n"
-        "CONTINUITÉ du L (rangées d'un seul tenant barre → aile) et des allées\n"
-        f"0,60 optimisées. Câblage : {N // 16} chaînes × 16 = {(N // 16) * 16} modules.\n"
-        f"Si les 2 emprises jamais mesurées (1)(2) sont levées : {N_NO_GP} = "
-        f"{N_NO_GP // 16} × 16\n"
-        f"→ A {N_NO_GP // 16 * 16} + B 112 = {N_NO_GP // 16 * 16 + 112} = engagement "
-        "résidence 272. Marché à prix\nunitaires — NE REMPLACE PAS les planches "
-        "05E/05G.")
-ax.text(13.2, -26.6, nota, fontsize=6.2, va="top", fontweight="bold",
+nota = (f"NOTA EXÉCUTION — calepinage V2 : {N} modules posables ({fr(KWC, 1)} kWc),\n"
+        f"soit l'engagement bordereau {ENG} {VERDICT} avec une marge de +{MARGE}\n"
+        "modules. Le compte intègre les 3 décisions client du 27/07 et ne repose\n"
+        "PLUS QUE SUR DU MESURÉ : aucune emprise devinée n'y subsiste. Il est\n"
+        "PROUVÉ OPTIMAL (recherche exhaustive au pas de 1 cm sur les 2 kits).\n"
+        f"Câblage : {N // 16} chaînes × 16 = {(N // 16) * 16} modules "
+        f"({N - (N // 16) * 16} en réserve d'appoint).\n"
+        f"Engagement résidence 272 = A {ENG} + B 120 : le Bât. A seul apporte "
+        f"+{MARGE}.\nMarché à prix unitaires — NE REMPLACE PAS les planches 05E/05G.")
+ax.text(13.2, -25.4, nota, fontsize=6.2, va="top", fontweight="bold",
         color="#111111", zorder=30,
         bbox=dict(boxstyle="round,pad=0.5", fc="#fefce8", ec="#111111", lw=1.0))
 
 # ---------------- panneau droit : détail des rangées
 PX = 49.5
-ax.text(PX, 14.6, "CALEPINAGE V2 — RANGÉES EXPLICITES", fontsize=7.6,
+ax.text(PX, 14.6, "CALEPINAGE V2 — RANGÉES EXPLICITES (kits mixtes)", fontsize=7.6,
         fontweight="bold", va="top", zorder=30)
-lines = ["rangée  emprise E-O     portée      mod."]
-for i, r in enumerate(ROWS, 1):
-    ymin, ymax = band(r)
+n_p = sum(1 for (_, t) in ROWS if t == "P")
+n_l = sum(1 for (_, t) in ROWS if t == "L")
+lines = ["rg  kit       emprise E-O   portée     mod."]
+for i, (r, t) in enumerate(ROWS, 1):
+    w = TYPES[t][0]
+    ymin, _ = band(r, w)
     port = "L complet" if ymin < 0 else "barre"
-    c = count_rows([r], OBS)
-    lines.append(f"  {i}    {fr(r):>5s} → {fr(r + TBL_W):>5s}  {port:9s}  {c:3d}")
+    c = count_row(r, t, OBS)
+    lines.append(f"{i:2d}  {TYPES[t][2]:8s}  {fr(r):>5s}→{fr(r + w):>5s}  "
+                 f"{port:9s} {c:3d}")
 lines += ["", f"TOTAL DESSINÉ = COMPTÉ : {N} mod. = {fr(KWC, 1)} kWc",
+          "OPTIMUM PROUVÉ (exhaustif, pas 1 cm)",
           f"engagement bordereau {ENG} → {VERDICT} (manque {ENG - N})"
-          if N < ENG else f"engagement bordereau {ENG} → {VERDICT}",
-          "", "allées : 0,60 · 2,45 (cage) · 3,15 (B7/A1) ·",
-          "0,60 · 0,60 · 0,60 · 0,60 — rives 0,35 (est 0,53)",
-          "", "emprises JAMAIS MESURÉES (conservées ici) :",
-          f"  sans (1) grand rectangle non coté → {N_NO_G}",
-          f"  sans (1) et (2) pan coupé (plan)    → {N_NO_GP}",
-          "", "pour information (non dessiné) :",
-          f"  ancien calepinage v1 (allées 1,20) → {n_v1}",
-          f"  conservateur 1,50 / 0,50 / 0,50     → {n_cons}"]
+          if N < ENG else f"engagement bordereau {ENG} → {VERDICT} (+{MARGE})",
+          "", f"kits : {n_p} rangées PORTRAIT · {n_l} PAYSAGE",
+          "rives 0,35 · allées 0,60 mini, dont 2,08 (cage)",
+          "et 1,39 — dégagt 0,30 (0,50 si cote douteuse)",
+          "", "sensibilités (même relevé, même moteur) :",
+          f"  100 % portrait / 100 % paysage → {N_P_ONLY} / {N_L_ONLY}",
+          f"  dégagement 0,50 partout          → {N_C50}",
+          f"  allées 1,00 (maintenance)        → {N_A100}",
+          f"  allées 1,20                      → {N_A120}"]
 for i, t in enumerate(lines):
-    ax.text(PX, 13.4 - i * 0.82, t, fontsize=6.0, va="top", color="#1f2937",
+    ax.text(PX, 13.4 - i * 0.72, t, fontsize=6.0, va="top", color="#1f2937",
             zorder=30, family="DejaVu Sans Mono")
 
 D.cartouche(fig, [
     ("ACCORDIA TECH — Consultation FRDISI PV + stockage, Mohammedia", True),
-    (f"Bât. A (aile en L) — VUE DE TOITURE V2 : relevé 27/07/2026 — "
-     f"{N} modules posables ({fr(KWC, 1)} kWc)", True),
+    (f"Bât. A (aile en L) — VUE DE TOITURE V2 : relevé + décisions client 27/07/2026 — "
+     f"{N} modules posables ({fr(KWC, 1)} kWc) — engagement {ENG} {VERDICT} +{MARGE}", True),
     ("Relevé : R. Kasri — restitution TAQINOR — document de travail", False),
     ("A3 — cotes en m — échelle : barre graphique — NE REMPLACE PAS les planches 05E/05G",
      False),
@@ -634,14 +727,18 @@ fig.savefig(os.path.join(BASE, "VUE_TOITURE_BAT_A_L_V2.pdf"), bbox_inches="tight
 fig.savefig(os.path.join(BASE, "VUE_TOITURE_BAT_A_L_V2.png"), dpi=170,
             bbox_inches="tight")
 
-print(f"[CALEPINAGE V2] {len(ROWS)} rangées N-S, table portrait {TBL_L}×{TBL_W}")
-for i, r in enumerate(ROWS, 1):
-    ymin, _ = band(r)
-    print(f"   rangée {i} : x {r:5.2f} → {r + TBL_W:5.2f} "
-          f"({'L complet' if ymin < 0 else 'barre'}) = {count_rows([r], OBS):3d} mod.")
+print("[DÉCISIONS CLIENT 27/07] (1) grand rectangle non coté : NÉANT (retiré) · "
+      "(2) angle SE : ANGLE DROIT (coin plein restauré) · (3) tables MIXTES autorisées")
+print(f"[CALEPINAGE V2] {len(ROWS)} rangées N-S — kits mixtes "
+      f"portrait 1,134×4,70 / paysage 2,382×2,25")
+for i, (r, t) in enumerate(ROWS, 1):
+    w = TYPES[t][0]
+    ymin, _ = band(r, w)
+    print(f"   rangée {i:2d} : x {r:5.2f} → {r + w:5.2f}  {TYPES[t][2]:8s} "
+          f"({'L complet' if ymin < 0 else 'barre'}) = {count_row(r, t, OBS):3d} mod.")
 print(f"[V2] TOTAL dessiné = compté : {N} modules ({KWC:.1f} kWc) — "
-      f"engagement {ENG} → {VERDICT}")
-print(f"[V2] sans le grand rectangle non coté : {N_NO_G} · "
-      f"sans lui ni le pan coupé : {N_NO_GP}")
-print(f"[REF] ancien calepinage v1 : {n_v1} · conservateur 1,50/0,50/0,50 : {n_cons}")
+      f"engagement {ENG} → {VERDICT} (marge +{MARGE})")
+print(f"[V2] OPTIMALITÉ PROUVÉE : optimum exhaustif (pas 1 cm) = {N_OPT} = {N} ✓")
+print(f"[SENS] 100 % portrait {N_P_ONLY} · 100 % paysage {N_L_ONLY} · "
+      f"dégagt 0,50 partout {N_C50} · allées 1,00 {N_A100} · allées 1,20 {N_A120}")
 print("[OK] VUE_TOITURE_BAT_A_L_V2.pdf / .png écrits")
