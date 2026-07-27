@@ -116,6 +116,28 @@
   ventiler les panneaux à 10 % baisserait le TTC de 165 200 sans changer le bénéfice HT — à
   valider comptable. ⚠️ Les montants 4 349 400 / 5 219 280 sont PÉRIMÉS partout.
 
+- **CALEPINAGES v2 (27/07 soir, 3 agents Opus + audit adversarial)** : **A 148** posables
+  (vue_bat_A_v2.py — v1 CORRIGÉE : la barre était calepinée rangées E-O = modules face
+  nord, inconstructible ; engagement 152 → TENDU −4 ; +8 si le « grand rectangle non
+  coté » tombe, +4 si le pan coupé SE tombe → 160 ; variante tables mixtes = 172) ;
+  **B 120 = engagement EXACT CONFIRMÉ** (vue_bat_B_v2.py — vraie géométrie d'arc, l'ancien
+  112 se recouvrait de 2-9 cm au rayon intérieur ; S1 en portrait ; marge 0 — sensibilités :
+  126/+6 sans structure de rive non cotée, 118/−2 si « nature inconnue » ; « B 144 » de
+  l'ancienne parade : mathématiquement exclu) ; **C 314 CONFIRMÉ par recomptage exhaustif
+  indépendant** (optimum prouvé ; allées passées à 1,90 m de MAINTENANCE — même compte
+  pour toute allée 0,60-1,94, argument AO ; asserts allées≥0,60 + non-chevauchement
+  ajoutés ; provision plan marquée PÉRIMÉE). **SITE : 148+120+314 = 582 ≥ 560.**
+  Résidence seule 268 vs 272 (−4, levables par les 2 questions A). Anciennes planches
+  A/B v1 RETIRÉES de updated/ (remplacées par _V2).
+- **BATTERIE : bascule BOS-G → BOS-B Pro-A3 (HV) APPLIQUÉE PARTOUT** (devis Solarex
+  S26/001708 : 6 packs 16 kWh + coffret HV + racks = 185 200 HT/banc, 1 929 DH/kWh
+  matériel — Reda NÉGOCIE, prix de vente maintenu 4 999 920 TTC, coût 1 500/kWh reste
+  la cible en jaune). Mémoire (12 remplacements), Note de calcul (bilans recalculés :
+  289,4 kWh installés, couverture nocturne 100 % marge ≈5 kWh), bordereau (3 lignes),
+  annexe : fiche officielle Deye BOS-B Pro-A3 téléchargée et intégrée, fiche BOS-G (48 V
+  LV) retirée du FINAL. Config : 3 piles de 6 packs (96,48 kWh, 307,2 V), coffret
+  BOS-B-PDU-2-A double départ PCS (A→2 ond., B→1, C→OND-C1/C2, C3 en PV direct).
+
 ## 6. COMMENT CONTINUER EXACTEMENT CETTE SESSION
 - Ce fichier + la note de synthèse = l'état complet. Les scripts sur la branche
   `claude/brief-session-cloud-protocol-7573w9` permettent de régénérer/modifier chaque

@@ -90,14 +90,17 @@ JOG = (Y_INT - JOG_D, Y_INT, JOG_X0, JOG_X1)    # marche du décroché
 OBS_BASE = [NIVEAU, JOG, CAGE, CH, GENE]
 
 # ------------------------------------------------------------------ comptages
-# RANGÉES EXPLICITES OPTIMISÉES (consigne client 27/07 : « 0,60 mini,
-# optimisé ») : le surplus de largeur est CONCENTRÉ en une allée large (2,95)
-# sur la colonne cage/local, si bien que marche + cage + local ne coupent
-# qu'UNE bande (la 3e) et la gêne qu'une bande (la 4e).
-# Largeur : 0,35 + 4,70 + 0,60 + 4,70 + 2,95 + 4,70 + 0,60 + 4,70 + 2,32 = 25,62 ✓
-ROWS = [(0.35, 5.05), (5.65, 10.35), (13.30, 18.00), (18.60, 23.30)]
+# RANGÉES EXPLICITES (consigne client : « 0,60 mini, optimisé » ; AUDIT
+# adversarial 27/07 soir : l'optimum exhaustif donne 314 pour TOUTE allée de
+# 0,60 à 1,94 m → on OFFRE des allées de MAINTENANCE 1,90 m, même compte).
+# marche + cage + local ne coupent qu'UNE bande (la 3e), la gêne une (la 4e).
+# Largeur : 0,35 + 4,70 + 1,90 + 4,70 + 1,90 + 4,70 + 1,90 + 4,70 + 0,77 = 25,62 ✓
+ROWS = [(0.35, 5.05), (6.95, 11.65), (13.55, 18.25), (20.15, 24.85)]
 assert all(abs((x1 - x0) - TBL_W) < 1e-9 for (x0, x1) in ROWS)
-assert ROWS[-1][1] <= W_MES - 0.35 + 1e-9        # rive est ≥ 0,35 (ici 2,32)
+assert ROWS[-1][1] <= W_MES - 0.35 + 1e-9        # rive est ≥ 0,35 (ici 0,77)
+# allées ≥ 0,60 partout (garde-fou ajouté après audit adversarial)
+for _i in range(len(ROWS) - 1):
+    assert ROWS[_i + 1][0] - ROWS[_i][1] >= 0.60 - 1e-9, ("allée", _i)
 # vérifs de dégagement : cage/local/marche ne touchent QUE la bande 3,
 # la gêne (dégagt 0,50) QUE la bande 4
 assert ROWS[1][1] + 0.30 <= JOG_X0 + 1e-9        # bande 2 libre du décroché
@@ -115,8 +118,8 @@ n_cons, ph_cons = C.best_phase(L_TOT, W_MES, OBS_BASE, 1.50, 0.50, 0.50,
 n_unif, ph_unif = C.best_phase(L_TOT, W_MES, OBS_PL, 0.60, 0.35, 0.30,
                                end_rive=0.35)
 
-ALLEE, RIVE, CLEAR, END_RIVE, OBS_U = 0.60, 0.35, 0.30, 0.35, OBS_PL
-PARAMS_TXT = "allées 0,60 optimisées / rives 0,35 / dégagt 0,30 (gêne 0,50)"
+ALLEE, RIVE, CLEAR, END_RIVE, OBS_U = 1.90, 0.35, 0.30, 0.35, OBS_PL
+PARAMS_TXT = "allées de maintenance 1,90 / rives 0,35 / dégagt 0,30 (gêne 0,50)"
 
 def count_rows(rows, obs, clear_, end_rive):
     """Compte indépendant du dessin (garde-fou compte affiché = dessiné)."""
@@ -147,7 +150,7 @@ fig, ax = D.new_sheet(
     "Relevé terrain 27/07/2026 — croquis = TOIT COMPLET 51,1 m — bleu = mesuré · orange = à "
     "confirmer · gris = déduit — cage 4,11×≈8,82 (client ≈8,5) · local 4,18×4,50 à 7,92 · "
     "gêne 4,78×≈1,0 — souches/clim : NÉANT (client 27/07) — tables E-O portrait 1,134×4,70 "
-    "(15°), allées 0,60 optimisées",
+    "(15°), allées de maintenance 1,90 (même compte que 0,60 — prouvé)",
     (-5.5, 45.5), (-3.7, 57.6))
 
 # ------------------------------------------------------------------ calepinage
@@ -188,6 +191,13 @@ EPS = 1e-6
 assert n_drawn == n_show, (n_drawn, n_show)          # compte affiché = dessiné
 rows_used = list(ROWS)
 assert len(rows_used) == 4, rows_used                # 4 rangées exactement
+# non-chevauchement TABLE/TABLE (garde-fou ajouté après audit adversarial)
+for _a in range(len(placed)):
+    for _b in range(_a + 1, len(placed)):
+        (xa, ya), (xb, yb) = placed[_a], placed[_b]
+        assert (xa + TBL_W <= xb + EPS or xb + TBL_W <= xa + EPS
+                or ya + TBL_L <= yb + EPS or yb + TBL_L <= ya + EPS), \
+            ("chevauchement", placed[_a], placed[_b])
 for (tx, ty) in placed:
     tx1, ty1 = tx + TBL_W, ty + TBL_L
     # jamais à cheval sur la ligne de niveau
@@ -283,8 +293,8 @@ PRX = (CAGE[2] + CAGE[3]) / 2 - 10.7 / 2
 pr = Rectangle((PRX, Y_INT - 9.8), 10.7, 9.8, fill=False, edgecolor=D.GRIS,
                ls=":", lw=1.4, zorder=9)
 ax.add_patch(pr)
-ax.annotate("provision plan 10,7 × 9,8 « à confirmer » (pointillé)\n"
-            "→ la cage (≈8,82) tient DANS la provision au sud",
+ax.annotate("provision plan 10,7 × 9,8 (pointillé) : PÉRIMÉE —\n"
+            "remplacée par la CAGE RELEVÉE (≈8,82), qui tient dedans",
             xy=(PRX + 0.4, Y_INT - 9.8), xytext=(1.2, 19.3), fontsize=5.2,
             ha="left", va="center", color="#475569", zorder=26,
             arrowprops=dict(arrowstyle="->", lw=0.6, color=D.GRIS),
@@ -392,8 +402,8 @@ dimb((rows_used[0][0], 45.6), (rows_used[0][1], 45.6), 0, "4,70", color=D.GRIS,
      fs=5.2)
 dimb((rows_used[0][1], 47.9), (rows_used[1][0], 47.9), 0, fr(ALLEE),
      color=D.GRIS, fs=5.2)
-dimb((rows_used[1][1], 47.9), (rows_used[2][0], 47.9), 0,
-     "2,95 (allée large — colonne cage)", color=D.GRIS, fs=5.2)
+dimb((rows_used[1][1], 47.9), (rows_used[2][0], 47.9), 0, fr(ALLEE),
+     color=D.GRIS, fs=5.2)
 
 # nord
 ax.add_patch(FancyArrowPatch((-3.8, 51.8), (-3.8, 53.4), arrowstyle="-|>",
@@ -468,7 +478,7 @@ leg = [
     ("table", "table E-O portrait 1,134×4,70 — 2 modules 625 Wc, pose 15°"),
     ("bloc", "volume relevé (cage 4,11×≈8,82 déduit · local 4,18×4,50)"),
     ("gene", "gêne 4,78×≈1,0 (client) — muret h≈0,5, clim ? · dégagt 0,50"),
-    ("prov", "provision plan (pointillé — la cage ≈8,82 tient dedans)"),
+    ("prov", "provision plan PÉRIMÉE (remplacée par la cage relevée)"),
     ("dimB", "cote MESURÉE / confirmée site (bleu)"),
     ("dimO", "cote / position À CONFIRMER"),
     ("dimG", "plan / déduit des fermetures"),
@@ -524,11 +534,14 @@ y = titre(y, "CALEPINAGE — PORTRAIT 15°")
 cal = [
     "4 rangées de tables E-O PORTRAIT 1,134 × 4,70",
     "(2 × 2,382 × cos15° + faîtage) le long des 51,1 m",
-    "retenu : allées 0,60 OPTIMISÉES (client 27/07) — surplus",
-    "concentré en UNE allée large 2,95 sur la colonne cage/local",
+    "retenu : allées de MAINTENANCE 1,90 m (exigence client : 0,60",
+    "mini) — l'optimum exhaustif donne 314 pour TOUTE allée de",
+    "0,60 à 1,94 m : la largeur 1,90 ne coûte AUCUN module",
     f"→ cage+local+marche ne coupent qu'1 bande ; gêne : 1 bande",
     f"rives {fr(RIVE)} · dégagt {fr(CLEAR)} (gêne : 0,50)",
     f"info : uniforme 0,60 = {n_unif} · conservateur 1,50/0,50 = {n_cons}",
+    "rive est 0,77 + allées : une 5e rangée exigerait 26,60 m",
+    "de largeur (5×4,70 + 4×0,60 + 2×0,35) > 25,62 disponibles",
     "coupure de niveau à la ligne interne (aucun chevauchement)",
     f"TOTAL toit complet 51,1 m : {n_show} mod. = {fr(n_show * 0.625)} kWc",
     f"ENGAGEMENT : 288 modules (18×16) = 180,0 kWc → {VERDICT}",
