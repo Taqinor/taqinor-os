@@ -6,11 +6,13 @@ MODÈLE DÉFINITIF (croquis + correctifs client 27/07) :
     → UN SEUL calepinage sur 51,1 m, plus de zone « au plan » ni scénarios ;
   - ligne interne À DÉCROCHÉ : 13,18 (bord → décroché) + marche 0,91 → la cage
     commence à 14,09 ;
-  - CAGE D'ESCALIER 4,11 × ≈14,42 : profondeur JAMAIS COTÉE au croquis,
-    DÉDUITE de la fermeture 51,1 − (19,36 + 2,32 + 4,50 + 10,50) = 14,42
-    (ORANGE — à confirmer sur site, question posée au client) ;
-  - chaîne verticale : 19,36 + ≈14,42* + 2,32 + 4,50 + 10,50 = 51,10 ✓ ;
-  - LOCAL (petite chambre) 4,18 × 4,50, 2,32 SOUS la cage (y 10,50 → 15,00) ;
+  - RÉPONSE CLIENT 27/07 (soir) : le segment cage→local vaut 7,92 (RELEVÉ,
+    remplace le 2,32 lu sur croquis) ; la profondeur de cage reste déduite :
+    51,1 − (19,36 + 7,92 + 4,50 + 10,50) = 8,82 — le client annonce « ≈8,5 »
+    (arrondi de sa somme 42,5 ; la somme exacte fait 42,28) → ORANGE, à
+    confirmer à l'exécution ;
+  - chaîne verticale : 19,36 + ≈8,82* + 7,92 + 4,50 + 10,50 = 51,10 ✓ ;
+  - LOCAL (petite chambre) 4,18 × 4,50, 7,92 SOUS la cage (y 10,50 → 15,00) ;
   - GÊNE (définitif) : petit ouvrage SUR LA MÊME LIGNE que la chambre, entre
     la chambre et le mur est — chambre → 1,19 → GÊNE (4,78) → 1,52 → mur est ;
     chaîne transversale 13,95 + 4,18 + 1,19 + 4,78 + 1,52 = 25,62 ✓ EXACT ;
@@ -47,10 +49,12 @@ W_MES = 25.62                     # largeur MESURÉE (haut du toit)
 Y_INT = L_TOT - 19.36             # 31,74 — ligne interne (changement de niveau)
 JOG_X0, JOG_X1, JOG_D = 13.18, 14.09, 0.45   # décroché : marche 0,91
 
-# cage : profondeur DÉDUITE de la fermeture verticale (jamais cotée au croquis)
-CAGE_D = L_TOT - 19.36 - 2.32 - 4.50 - 10.50   # = 14,42 — À CONFIRMER
-CAGE = (Y_INT - CAGE_D, Y_INT, 14.09, 18.20)   # y 17,32 → 31,74
-CH = (CAGE[0] - 2.32 - 4.50, CAGE[0] - 2.32, 13.95, 18.13)   # y 10,50 → 15,00
+# cage : profondeur DÉDUITE de la fermeture verticale ; segment cage→local
+# RELEVÉ 7,92 (réponse client 27/07 — remplace le 2,32 du croquis)
+GAP = 7.92                                     # cage→local, RELEVÉ (bleu)
+CAGE_D = L_TOT - 19.36 - GAP - 4.50 - 10.50    # = 8,82 (client : ≈8,5 arrondi)
+CAGE = (Y_INT - CAGE_D, Y_INT, 14.09, 18.20)   # y 22,92 → 31,74
+CH = (CAGE[0] - GAP - 4.50, CAGE[0] - GAP, 13.95, 18.13)     # y 10,50 → 15,00
 # gêne : sur la ligne de la chambre — chambre → 1,19 → GÊNE 4,78 → 1,52 → mur ;
 # bord SUD à 13,5 du MUR SUD (mur de réf. à confirmer) ; prof ≈3,2 ? (orange)
 GENE_Y0, GENE_D = 13.50, 3.20
@@ -62,8 +66,8 @@ TENDU_C = "#c2410c"
 # fermetures numériques (garde-fous)
 assert abs((13.18 + 0.91 + 4.11 + 7.42) - W_MES) < 1e-9
 assert abs((13.95 + 4.18 + 1.19 + 4.78 + 1.52) - W_MES) < 1e-9
-assert abs((19.36 + CAGE_D + 2.32 + 4.50 + 10.50) - L_TOT) < 1e-9
-assert abs(CAGE_D - 14.42) < 1e-9
+assert abs((19.36 + CAGE_D + GAP + 4.50 + 10.50) - L_TOT) < 1e-9
+assert abs(CAGE_D - 8.82) < 1e-9
 assert abs(CH[0] - 10.50) < 1e-9
 assert abs((CAGE[3] - CAGE[2]) - 4.11) < 1e-9
 assert abs((CH[3] - CH[2]) - 4.18) < 1e-9
@@ -103,8 +107,8 @@ def fr(v, dec=2):
 fig, ax = D.new_sheet(
     "VUE DE TOITURE — BÂTIMENT C (ÉCOLE SUPTECH, MOHAMMEDIA) — 26,2 × 51,1 m (plan)",
     "Relevé terrain 27/07/2026 — croquis = TOIT COMPLET 51,1 m (bord bas = mur sud) — "
-    "bleu = mesuré · orange = à confirmer · gris = déduit — cage 4,11×≈14,42 (prof. DÉDUITE) "
-    "+ local 4,18×4,50 — gêne 4,78×≈3,2? (muret h≈0,5, nature ?) à 13,5 du mur sud — "
+    "bleu = mesuré · orange = à confirmer · gris = déduit — cage 4,11×≈8,82 (prof. déduite, "
+    "client ≈8,5) + local 4,18×4,50 à 7,92 (relevé) — gêne 4,78×≈3,2? à 13,5 du mur sud — "
     f"tables E-O PORTRAIT 1,134×4,70 (pose 15°), retenu {fr(ALLEE)}/{fr(RIVE)}/{fr(CLEAR)} "
     "(gêne 0,50)",
     (-5.5, 45.5), (-3.7, 57.6))
@@ -217,13 +221,14 @@ ax.text(CAGE[2] + 1.35, (CAGE[0] + CAGE[1]) / 2, "CAGE D'ESCALIER",
         fontsize=6.2, ha="center", va="center", fontweight="bold",
         color="#111", rotation=90, zorder=15)
 ax.text(CAGE[2] + 2.55, (CAGE[0] + CAGE[1]) / 2,
-        "4,11 × ≈14,42 (prof. déduite)", fontsize=5.0, ha="center",
+        "4,11 × ≈8,82 (prof. déduite)", fontsize=5.0, ha="center",
         va="center", color=D.ORANGE, rotation=90, fontweight="bold",
         zorder=15)
-# note détaillée en marge ouest, le long de la cote ≈14,42 (orange)
+# note détaillée en marge ouest, le long de la cote ≈8,82 (orange)
 ax.text(-4.35, 25.5,
-        "profondeur cage JAMAIS COTÉE au croquis — DÉDUITE de la fermeture "
-        "51,1 = ≈14,42 — À CONFIRMER sur site (question posée au client)",
+        "profondeur cage DÉDUITE de la fermeture 51,1 avec le segment "
+        "cage→local RELEVÉ 7,92 (réponse client 27/07) → ≈8,82 — le client "
+        "annonce ≈8,5 (arrondi) — à confirmer à l'exécution",
         fontsize=4.8, ha="center", va="center", color=D.ORANGE, rotation=90,
         fontweight="bold", zorder=26)
 
@@ -245,7 +250,7 @@ pr = Rectangle((PRX, Y_INT - 9.8), 10.7, 9.8, fill=False, edgecolor=D.GRIS,
                ls=":", lw=1.4, zorder=9)
 ax.add_patch(pr)
 ax.annotate("provision plan 10,7 × 9,8 « à confirmer » (pointillé)\n"
-            "→ déduit : la cage (≈14,42) DÉPASSE la provision au sud",
+            "→ la cage (≈8,82) tient DANS la provision au sud",
             xy=(PRX + 0.4, Y_INT - 9.8), xytext=(1.2, 19.3), fontsize=5.2,
             ha="left", va="center", color="#475569", zorder=26,
             arrowprops=dict(arrowstyle="->", lw=0.6, color=D.GRIS),
@@ -318,15 +323,15 @@ ax.annotate("Δ 0,58 (plan − mesuré)\nà confirmer", xy=(25.91, 52.30),
             xytext=(28.2, 53.6), fontsize=5.4, color=D.ORANGE,
             arrowprops=dict(arrowstyle="->", lw=0.7, color=D.ORANGE), zorder=25)
 
-# chaîne verticale ouest : 19,36 + ≈14,42* + 2,32 + 4,50 + 10,50 = 51,10 ✓
+# chaîne verticale ouest : 19,36 + ≈8,82* + 7,92 + 4,50 + 10,50 = 51,10 ✓
 D.dim(ax, (0, L_TOT), (0, Y_INT), off=-1.3, text="19,36")
-D.dim(ax, (0, Y_INT), (0, CAGE[0]), off=-1.3, text="≈14,42 (déduit)",
+D.dim(ax, (0, Y_INT), (0, CAGE[0]), off=-1.3, text="≈8,82 (déduit)",
       color=D.ORANGE)
-D.dim(ax, (0, CAGE[0]), (0, CH[1]), off=-1.3, text="2,32")
+D.dim(ax, (0, CAGE[0]), (0, CH[1]), off=-1.3, text="7,92 (relevé)")
 D.dim(ax, (0, CH[1]), (0, CH[0]), off=-1.3, text="4,50")
 D.dim(ax, (0, CH[0]), (0, 0), off=-1.3, text="10,50")
 D.dim(ax, (0, L_TOT), (0, 0), off=-2.9,
-      text="51,10 = 19,36 + ≈14,42 (cage, DÉDUIT — à confirmer) + 2,32 + 4,50 + 10,50 ✓",
+      text="51,10 = 19,36 + ≈8,82 (cage, DÉDUIT — client ≈8,5) + 7,92 (relevé) + 4,50 + 10,50 ✓",
       color=D.GRIS)
 # projections des niveaux des volumes vers le bord ouest
 for (yy, xx) in ((CAGE[0], CAGE[2]), (CH[1], CH[2]), (CH[0], CH[2])):
@@ -397,8 +402,9 @@ ax.text(13.1, 55.45,
         f"marge vs 288 : {n_show - 288:+d}",
         fontsize=6.0, ha="center", color="#374151", zorder=30)
 ax.text(13.1, 54.65,
-        "cage : profondeur ≈14,42 DÉDUITE de la fermeture 51,1 (jamais cotée "
-        "au croquis) — à confirmer sur site (question posée au client)",
+        "cage : segment cage→local RELEVÉ 7,92 (réponse client 27/07) → "
+        "profondeur ≈8,82 déduite de la fermeture 51,1 (client : ≈8,5 arrondi) "
+        "— à confirmer à l'exécution",
         fontsize=6.0, ha="center", color=D.ORANGE, zorder=30)
 
 # nota bas de plan
@@ -438,10 +444,10 @@ def lignes(y, rows, fs=5.9):
 y = titre(50.6, "LÉGENDE")
 leg = [
     ("table", "table E-O portrait 1,134×4,70 — 2 modules 625 Wc, pose 15°"),
-    ("bloc", "volume relevé (cage 4,11×≈14,42 déduit · local 4,18×4,50)"),
+    ("bloc", "volume relevé (cage 4,11×≈8,82 déduit · local 4,18×4,50)"),
     ("gene", "gêne 4,78×≈3,2? — muret h≈0,5 (nature ? · dégagt 0,50)"),
     ("res", f"réserve / obstacle bloqué (S = souche · dégagt {fr(CLEAR)})"),
-    ("prov", "provision plan (pointillé — dépassée au sud par la cage)"),
+    ("prov", "provision plan (pointillé — la cage ≈8,82 tient dedans)"),
     ("dimB", "cote MESURÉE / confirmée site (bleu)"),
     ("dimO", "cote / position À CONFIRMER"),
     ("dimG", "plan / déduit des fermetures"),
@@ -485,8 +491,9 @@ y = titre(y, "FERMETURES DU CROQUIS (corrigées)")
 y = lignes(y, [
     "13,18 + 0,91 (marche) + 4,11 (déduit) + 7,42 = 25,62 ✓ exact",
     "13,95 + 4,18 (déduit) + 1,19 + 4,78 (déduit) + 1,52 = 25,62 ✓",
-    "19,36 + ≈14,42 (cage, DÉDUIT) + 2,32 + 4,50 + 10,50 = 51,10 ✓",
-    "→ le tronçon jamais coté du croquis = la PROFONDEUR DE LA CAGE",
+    "19,36 + ≈8,82 (cage, DÉDUIT) + 7,92 (relevé) + 4,50 + 10,50 = 51,10 ✓",
+    "→ cage→local = 7,92 RELEVÉ (réponse client 27/07, remplace 2,32) ;",
+    "   le tronçon déduit reste la PROFONDEUR DE LA CAGE (client ≈8,5)",
     "largeur : 25,62 mesuré vs 26,2 plan → Δ 0,58 à confirmer",
     "cluster SE : le petit rectangle = LA GÊNE (4,78 × ≈3,2 ?) ·",
     "1,19 = écart chambre↔gêne · 13,5 = gêne → mur sud (position)",
@@ -508,13 +515,14 @@ if n_show < 288:
     cal += [f"manque {288 - n_show} modules → déport possible vers la",
             "résidence · redistribution inter-bâtiments (ratios [0,75;1])"]
 else:
-    cal += [f"marge : +{n_show - 288} modules (cage prof. déduite ≈14,42)"]
+    cal += [f"marge : +{n_show - 288} modules (cage prof. déduite ≈8,82)"]
 y = lignes(y, cal)
 
 y = titre(y, "À CONFIRMER (orange)", color=D.ORANGE)
 y = lignes(y, [
-    "PROFONDEUR CAGE ≈14,42 : DÉDUITE de la fermeture 51,1",
-    "(jamais cotée au croquis) — question posée au client",
+    "PROFONDEUR CAGE ≈8,82 : DÉDUITE de la fermeture 51,1 avec",
+    "le segment 7,92 relevé (réponse client 27/07 ; il annonce ≈8,5",
+    "arrondi) — à confirmer à l'exécution",
     "gêne : prof. ≈3,2 ? · muret h≈0,5 · nature ? (probable",
     "sortie clim) · mur de réf. du 13,5 : SUD retenu (nord ?)",
     "Δ largeur 0,58 · positions : DRV ouest ~3,5×10 · 4 souches ~1×1",

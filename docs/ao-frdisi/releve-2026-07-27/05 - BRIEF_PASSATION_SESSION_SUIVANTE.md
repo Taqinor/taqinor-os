@@ -70,6 +70,26 @@
 5. Après attribution : étude d'exécution avec la redistribution A128/B144 + allées 1,20
    sur Bât. A + dégagements F400/DRV ≥ 1 m.
 
+## 5 bis. ADDENDUM — SESSION LOCALE DU 27/07 (soir) : les 2 questions ouvertes sont TRANCHÉES
+- **Arc (Bât. B) : chaînes MURET-À-MURET** (réponse Reda) → le développé relevé ≈68 m est
+  CONFIRMÉ ; la vue B (112 posables) reste valable telle quelle. Le scénario « ≈90 m /
+  +30-50 modules » est écarté.
+- **École (Bât. C) : segment cage→local RELEVÉ 7,92** (réponse Reda « 19,36+7,92+4,5+10,5 »,
+  remplace le 2,32 lu sur croquis) → profondeur de cage DÉDUITE 51,1 − 42,28 = **8,82**
+  (Reda annonce « ≈8,5 » en arrondissant sa somme à 42,5 ; la fermeture exacte fait foi,
+  cote ORANGE à confirmer à l'exécution). **Vue C RÉGÉNÉRÉE : 274 posables** (vs 264) —
+  engagement 288 → TENDU, manque 14 (vs 24). **SITE : 522 vs 560** (vs 512 avant).
+  La note de synthèse PDF n'a PAS été régénérée (son « 264 » est périmé).
+- **Dossier tender FINAL assemblé dans OneDrive** : « ENVOI ACCORDIA - FINAL 27-07 »
+  (bordereau RÉVISÉ 27-07 recalculé et vérifié 4 349 400 HT / 5 219 280 TTC ; Word
+  « 00 - A REMPLIR PAR ACCORDIA » ajouté, LISEZ-MOI txt retiré ; Simulation corrigée
+  C7 = 3 576 600 + toutes traces 5 413 680 → 5 219 280, recalculée sans erreur ; Lettre
+  de soumission corrigée en chiffres ET en lettres + CLAUSE DE RÉSERVE QUANTITÉS AJOUTÉE,
+  alignée sur celle du bordereau). Sous-dossier « updated » copié dans le dossier AO.
+- **Calepinages obsolètes 608 : RIEN À SUPPRIMER** — les « …(dossier).pdf » du brief ont
+  déjà disparu ; les « CALEPINAGE FINAL - Ecole/Residence.pdf » de « 07 - POUR DEMAIN »
+  sont les planches d'engagement ACTUELLES 05G/06G (288 + 272 = 560) et sont CONSERVÉES.
+
 ## 6. COMMENT CONTINUER EXACTEMENT CETTE SESSION
 - Ce fichier + la note de synthèse = l'état complet. Les scripts sur la branche
   `claude/brief-session-cloud-protocol-7573w9` permettent de régénérer/modifier chaque
