@@ -64,7 +64,9 @@ def best_phase(length, width, obstacles, allee, rive, clear,
     return best, bph
 
 def fill_band(ax, ox, oy, length, width, obstacles, horizontal=True, draw=True,
-              allee=None, rive=None, clear=None, phase=0.0):
+              allee=None, rive=None, clear=None, phase=0.0, end_rive=0.0):
+    """end_rive : rive d'extrémité aux 2 bouts de la bande (0.0 = ancien comportement).
+    Avec end_rive identique, fill_band et count_band donnent le MÊME total."""
     allee = ALLEE if allee is None else allee
     rive = RIVE if rive is None else rive
     clear = CLEAR if clear is None else clear
@@ -75,13 +77,15 @@ def fill_band(ax, ox, oy, length, width, obstacles, horizontal=True, draw=True,
         blocked = [(max(0.0, o[0] - clear), min(length, o[1] + clear))
                    for o in obstacles if not (o[3] + clear <= y0 or o[2] - clear >= y1)]
         blocked = merge([b for b in blocked if b[1] > b[0]])
-        segs, cur = [], 0.0
+        stop = length - end_rive
+        segs, cur = [], end_rive
         for a, b in blocked:
             if a > cur:
-                segs.append((cur, a))
+                segs.append((cur, min(a, stop)))
             cur = max(cur, b)
-        if cur < length:
-            segs.append((cur, length))
+        if cur < stop:
+            segs.append((cur, stop))
+        segs = [(a, b) for a, b in segs if b > a]
         for a, b in segs:
             n = int((b - a) // MOD_L)
             total += 2 * n

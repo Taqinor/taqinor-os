@@ -1,0 +1,33 @@
+DOSSIER TENDER ACCORDIA — ASSEMBLAGE FINAL (27/07/2026, prix revises)
+MONTANT DE L'OFFRE : 4 349 400,00 DH HT — 5 219 280,00 DH TTC
+(cinq millions deux cent dix-neuf mille deux cent quatre-vingts dirhams TTC)
+
+CE PAQUET CONTIENT LES 2 PIECES MISES A JOUR :
+  00 - A REMPLIR PAR ACCORDIA (Word) : la checklist + le montant officiel
+  04 - Bordereau des prix REVISE (Excel) : prix batteries 2 800 DH/kWh et
+       cables DC 10 km x 15 000 DH/km repartis (60/45/45) — TOTAUX VERIFIES.
+       IL REMPLACE l'ancien bordereau (04) du dossier.
+
+LES AUTRES PIECES SONT INCHANGEES — les prendre telles quelles dans OneDrive,
+dossier « ENVOI ACCORDIA - Offre complete » :
+  01 - Lettre de soumission  (VERIFIER : si un montant y figure, le corriger
+       en 5 219 280,00 DH TTC / lettres ci-dessus)
+  02 - Memoire technique     (references §10 a joindre si disponibles)
+  03 - Note de calcul preliminaire
+  05 - Simulation (Excel)    -> 2 CORRECTIONS A FAIRE :
+       - feuille Rentabilite, cellule C7 (CAPEX hors stockage) : 3 576 600
+       - toute mention du TOTAL TTC (ROI / libelles) : 5 413 680 -> 5 219 280
+  06 - Schemas (unifilaires 01B-04B, synoptique, plans ouvrages 05E/06E,
+       implantations 05G/06G)  — IMPRESSION A3 de preference
+ASSEMBLAGE : copier le dossier OneDrive existant + remplacer le bordereau par
+celui-ci + ajouter le Word + faire les 2 corrections simulation. 2 exemplaires.
+CLAUSE DE RESERVE QUANTITES (a reporter dans la lettre de soumission — deja
+inscrite en pied du bordereau revise) :
+« Les quantites du present bordereau correspondent au maximum que nos etudes
+preliminaires permettent d'implanter sur les toitures. L'etude d'execution
+definitive, etablie apres releve contradictoire complet des toitures, pourra
+conduire a installer un nombre de modules inferieur ; le marche etant a prix
+unitaires, le decompte final portera exclusivement sur les quantites
+reellement installees et receptionnees. »
+
+CONTACT TECHNIQUE : Reda (TAQINOR).
