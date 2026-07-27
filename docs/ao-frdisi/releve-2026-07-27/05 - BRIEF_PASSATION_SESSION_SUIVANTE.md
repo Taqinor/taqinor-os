@@ -89,6 +89,23 @@
 - **Calepinages obsolètes 608 : RIEN À SUPPRIMER** — les « …(dossier).pdf » du brief ont
   déjà disparu ; les « CALEPINAGE FINAL - Ecole/Residence.pdf » de « 07 - POUR DEMAIN »
   sont les planches d'engagement ACTUELLES 05G/06G (288 + 272 = 560) et sont CONSERVÉES.
+- **2e SÉRIE Q/R (27/07 soir, sur images annotées — méthode validée par Reda : entourer en
+  rouge sur SES documents ce qu'on ne comprend pas, lettres A-K, puis questions)** :
+  AUCUNE souche sur le toit école (les 4 « S » étaient inventées) ; AUCUNE clim sur le toit
+  aujourd'hui — elle VIENDRA plus tard (coordination exécution, l'ancienne réserve DRV ouest
+  supprimée) ; gêne réelle ≈0,5 h × 4,78 × ≈1,0 prof (« clim probable, pas sûr ») ; allées
+  « 0,60 mini, optimisées ». **VUE C RE-RÉGÉNÉRÉE : 314 posables — ENGAGEMENT 288 CONFIRMÉ
+  (+26)** (conservateur ET uniforme donnent aussi 314 — chiffre robuste). Rangées explicites
+  dans vue_bat_C.py (allée large 2,95 sur la colonne cage). SITE potentiel : A 136 + B 112 +
+  C 314 = 562 ≥ 560. Onduleurs : question Reda tranchée — 6 × 50 kW CONFORMES (CPS p.33
+  ratio 0,75-1 vérifié à la source ; 60/80 kW non conformes ; CPS = 2 bâtiments, pas 3 ;
+  déport DC 24 modules arc→L = aucun onduleur au-dessus de 60 kWc).
+- **Coût de revient INTERNE v3 - FINAL 27-07.xlsx créé** (06 - INTERNE) : aligné bordereau
+  révisé (560 mod / 6 ond / 276 kWh / câbles 10 km / liaison 150 ml), TVA achats 10 %
+  PANNEAUX / 20 % reste (règle Reda 27/07). BÉNÉFICE NET HT = 1 781 877 DH (41,0 % du CA) ;
+  TVA nette à reverser ≈ 403 975 ; contrôle trésorerie = bénéfice ✓. NOTA : bordereau vend à
+  20 % uniforme ; une ventilation vente 10 % panneaux baisserait le TTC de 171 360 sans
+  changer le bénéfice HT — à valider comptable.
 
 ## 6. COMMENT CONTINUER EXACTEMENT CETTE SESSION
 - Ce fichier + la note de synthèse = l'état complet. Les scripts sur la branche
