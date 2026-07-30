@@ -119,6 +119,19 @@ class WIR96MarketingWiringTests(TestCase):
         self.assertEqual(r.data['relances'][0]['canal'], 'email')
         self.assertEqual(r.data['relances'][0]['jours_sans_reponse'], 5)
 
+    def test_suivi_partage_ouvert_a_tout_role(self):
+        """`get_permissions` PRIME sur le `permission_classes` de l'@action :
+        sans l'ajout explicite, cette lecture retombait sur IsAdminRole."""
+        normal = User.objects.create_user(
+            username='wir96_normal', password='x', role_legacy='normal',
+            company=self.company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(normal)}')
+        r = api.get(
+            f'/api/django/ventes/devis/{self.devis.id}/suivi-partage/')
+        self.assertEqual(r.status_code, 200)
+
     def test_suivi_partage_vide_sans_ouverture_ni_relance(self):
         r = self.api.get(
             f'/api/django/ventes/devis/{self.devis.id}/suivi-partage/')

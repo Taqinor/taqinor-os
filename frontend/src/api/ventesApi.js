@@ -82,6 +82,10 @@ const ventesApi = {
   // WR1 — FG44 : refus explicite (motif/date/chatter), fait avancer le funnel
   // (devis_refused) — chemin canonique, à la place d'un PATCH statut direct.
   refuserDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/refuser/`, payload),
+  // WIR99/DC12 — pré-remplissage du générateur pour un devis SANS lead, depuis
+  // le `crm.SiteProfile` du client (profil énergie/toiture/pompage réutilisable).
+  getPrefillSite: (clientId) =>
+    api.get('/ventes/devis/prefill-site/', { params: { client: clientId } }),
   // WIR96 — suivi marketing d'un devis : ouverture du lien de partage
   // (« vu le … ») + relances de devis abandonné consignées.
   getSuiviPartageDevis: (id) => api.get(`/ventes/devis/${id}/suivi-partage/`),

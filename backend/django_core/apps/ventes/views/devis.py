@@ -115,7 +115,13 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
         return DevisSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'variante_config', 'superior_contact_status']:  # noqa: E501
+        if self.action in READ_ACTIONS + [
+            'historique', 'variante_config', 'superior_contact_status',
+            # WIR96/WIR99 — deux LECTURES pures ouvertes à tout rôle (le
+            # `permission_classes` de l'@action ne suffit PAS : get_permissions
+            # PRIME et son repli est IsAdminRole).
+            'suivi_partage', 'prefill_site',
+        ]:
             # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
             # est re-vérifiée dans l'action (Directeur / Commercial responsable).
             return [IsAnyRole()]
@@ -1243,6 +1249,39 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
         devis = self.get_object()
         return Response(
             DevisActivitySerializer(devis.activites.all(), many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='prefill-site',
+            permission_classes=[IsAnyRole])
+    def prefill_site(self, request):
+        """WIR99 — pré-remplissage du générateur pour un devis SANS LEAD.
+
+        ``crm.SiteProfile`` (DC12) est la source unique par client du profil
+        énergie / toiture / pompage : son docstring promettait ce
+        pré-remplissage, qui n'existait nulle part (aucun appelant de
+        ``crm.selectors.site_profile_for_client``). Ce point d'entrée le
+        branche : ``GET /ventes/devis/prefill-site/?client=<id>``.
+
+        Lecture PURE via ``apps.crm.selectors`` (jamais un import des modèles
+        crm), bornée à ``request.user.company`` — un profil d'une autre société
+        n'est jamais renvoyé. Renvoie ``{'client': <id>, 'profil': {...}|null}``
+        (``profil`` à ``null`` quand le client n'a pas encore de SiteProfile).
+        """
+        from apps.crm.selectors import site_profile_for_client
+
+        client_id = request.query_params.get('client')
+        if not client_id:
+            return Response(
+                {'detail': 'Paramètre `client` requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            client_id = int(client_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Paramètre `client` invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        profil = site_profile_for_client(client_id, request.user.company)
+        return Response({'client': client_id, 'profil': profil})
 
     @action(detail=True, methods=['get'], url_path='suivi-partage',
             permission_classes=[IsAnyRole])

@@ -27,6 +27,7 @@ const BASE_PAGE_TITLES = [
   // CRM
   ['/crm/leads', 'Leads'],
   ['/crm/parrainage', 'Parrainage'],
+  ['/crm/profils-site', 'Profils site'],
   ['/crm', 'Clients'],
   ['/activites', 'Mes activités'],
   ['/calendrier', 'Calendrier'],
@@ -107,6 +108,7 @@ const TITLE_KEYS = {
   '/stock': 'title.stock',
   '/crm/leads': 'title.crm.leads',
   '/crm/parrainage': 'title.crm.parrainage',
+  '/crm/profils-site': 'title.crm.profils_site',
   '/crm': 'title.crm',
   '/activites': 'title.activites',
   '/calendrier': 'title.calendrier',
