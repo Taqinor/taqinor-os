@@ -327,6 +327,63 @@ const stockApi = {
     api.patch(`/stock/fiches-techniques/${id}/`, data),
   deleteFicheTechnique: (id) =>
     api.delete(`/stock/fiches-techniques/${id}/`),
+
+  // ── WIR108 — fiche fournisseur : acomptes, avoirs, contacts, catégories ──
+
+  // XPUR5 — catégories fournisseur (référentiel léger, comme Marque). CRUD.
+  getCategoriesFournisseur: (params) =>
+    api.get('/stock/categories-fournisseur/', { params }),
+  createCategorieFournisseur: (data) =>
+    api.post('/stock/categories-fournisseur/', data),
+  updateCategorieFournisseur: (id, data) =>
+    api.patch(`/stock/categories-fournisseur/${id}/`, data),
+  deleteCategorieFournisseur: (id) =>
+    api.delete(`/stock/categories-fournisseur/${id}/`),
+
+  // XPUR5 — contacts secondaires du fournisseur (N par fournisseur), déjà
+  // filtrés serveur par ?fournisseur=. `Fournisseur.contact_personne` reste
+  // le contact principal (champ libre, inchangé).
+  getContactsFournisseurDe: (fournisseurId) =>
+    api.get('/stock/contacts-fournisseur/', { params: { fournisseur: fournisseurId } }),
+  createContactFournisseur: (data) =>
+    api.post('/stock/contacts-fournisseur/', data),
+  updateContactFournisseur: (id, data) =>
+    api.patch(`/stock/contacts-fournisseur/${id}/`, data),
+  deleteContactFournisseur: (id) =>
+    api.delete(`/stock/contacts-fournisseur/${id}/`),
+
+  // XPUR8 — acomptes/avances fournisseur sur BCF. L'endpoint filtre
+  // uniquement par ?bon_commande= (pas de FK directe vers le fournisseur) :
+  // on récupère d'abord les BCF du fournisseur (déjà câblé,
+  // getBonsCommandeFournisseurDe) puis on agrège leurs acomptes.
+  getAcomptesFournisseur: (params) =>
+    api.get('/stock/acomptes-fournisseur/', { params }),
+  getAcomptesFournisseurDe: async (fournisseurId) => {
+    const bcfRes = await stockApi.getBonsCommandeFournisseurDe(fournisseurId)
+    const bcfs = Array.isArray(bcfRes.data?.results)
+      ? bcfRes.data.results : (bcfRes.data ?? [])
+    const parBcf = await Promise.all(
+      bcfs.map((b) => api.get('/stock/acomptes-fournisseur/', { params: { bon_commande: b.id } })))
+    return parBcf.flatMap((r) => (Array.isArray(r.data?.results) ? r.data.results : (r.data ?? [])))
+  },
+  createAcompteFournisseur: (data) =>
+    api.post('/stock/acomptes-fournisseur/', data),
+  updateAcompteFournisseur: (id, data) =>
+    api.patch(`/stock/acomptes-fournisseur/${id}/`, data),
+  deleteAcompteFournisseur: (id) =>
+    api.delete(`/stock/acomptes-fournisseur/${id}/`),
+
+  // XPUR9 — avoirs fournisseur (notes de crédit AP), filtrés serveur par
+  // ?fournisseur=. `imputer` réduit le solde dû d'une facture du même
+  // fournisseur ; `valider` fait passer brouillon → validé.
+  getAvoirsFournisseurDe: (fournisseurId) =>
+    api.get('/stock/avoirs-fournisseur/', { params: { fournisseur: fournisseurId } }),
+  createAvoirFournisseur: (data) =>
+    api.post('/stock/avoirs-fournisseur/', data),
+  validerAvoirFournisseur: (id) =>
+    api.post(`/stock/avoirs-fournisseur/${id}/valider/`),
+  imputerAvoirFournisseur: (id, data) =>
+    api.post(`/stock/avoirs-fournisseur/${id}/imputer/`, data),
 }
 
 export default stockApi
