@@ -1244,6 +1244,32 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
         return Response(
             DevisActivitySerializer(devis.activites.all(), many=True).data)
 
+    @action(detail=True, methods=['get'], url_path='suivi-partage',
+            permission_classes=[IsAnyRole])
+    def suivi_partage(self, request, pk=None):
+        """WIR96 — suivi marketing du devis : ouverture du lien de partage
+        (« vu le … ») + relances de devis abandonné consignées.
+
+        Lecture PURE via ``apps.marketing.selectors`` (jamais un import des
+        modèles marketing). Bornée à la société du devis, elle-même déjà
+        scopée par ``get_object()``. Renvoie ``{'ouverture': {...}|null,
+        'relances': [...]}``."""
+        from apps.marketing.selectors import (
+            ouverture_partage_pour_token, relances_devis_abandonne)
+        from ..models import ShareLink
+
+        devis = self.get_object()
+        ouverture = None
+        link = (ShareLink.objects
+                .filter(devis=devis, company=devis.company)
+                .order_by('-id').first())
+        if link is not None:
+            ouverture = ouverture_partage_pour_token(devis.company, link.token)
+        return Response({
+            'ouverture': ouverture,
+            'relances': relances_devis_abandonne(devis.company, devis.pk),
+        })
+
     @action(detail=True, methods=['post'], url_path='whatsapp-preview',
             permission_classes=[IsResponsableOrAdmin])
     def whatsapp_preview(self, request, pk=None):

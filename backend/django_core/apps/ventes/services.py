@@ -3158,6 +3158,39 @@ def _nudge_suppressed(devis, today, engagement_days=3):
     return False
 
 
+def _journaliser_relance_marketing(devis, *, jours, canal, niveau):
+    """WIR96 — miroir marketing d'une relance de devis abandonné.
+
+    ``marketing.RelanceDevisAbandonne`` + son service
+    ``enregistrer_relance_devis_abandonne`` existaient sans AUCUN appelant :
+    aucune relance n'était jamais journalisée côté marketing (le calendrier
+    marketing lisait une table toujours vide). On les alimente ici, au moment
+    exact où la relance part réellement (après création du ``DevisNudgeLog``,
+    qui reste la source de vérité anti-doublon côté ventes).
+
+    Écriture via la frontière ``apps.marketing.services`` uniquement (jamais un
+    import des modèles marketing) ; ``devis_id`` reste une référence OPAQUE
+    côté marketing. Best-effort : une erreur ne doit jamais faire échouer la
+    relance elle-même."""
+    if not getattr(devis, 'company_id', None):
+        return
+    try:
+        from apps.marketing.services import (
+            enregistrer_relance_devis_abandonne)
+        enregistrer_relance_devis_abandonne(
+            devis.company,
+            devis_id=devis.pk,
+            devis_reference=devis.reference or '',
+            jours_sans_reponse=jours or 0,
+            canal=str(canal or ''),
+            note=f'Relance automatique niveau {niveau + 1} (QJ4).',
+        )
+    except Exception as exc:  # noqa: BLE001 — miroir best-effort
+        logger.warning(
+            'WIR96: journalisation marketing de la relance échouée '
+            'pour devis %s : %s', getattr(devis, 'reference', '?'), exc)
+
+
 def send_devis_followup_nudges():
     """QJ4 — Déclenche les relances cadencées pour les devis « envoyés ».
 
@@ -3320,6 +3353,8 @@ def send_devis_followup_nudges():
                 logger.info(
                     'QJ4: nudge N%d déclenché pour devis %s (j+%d, canal=%s)',
                     idx, devis.reference, jours, canal)
+                _journaliser_relance_marketing(
+                    devis, jours=jours, canal=canal, niveau=idx)
             except Exception as exc:
                 # IntegrityError → already fired concurrently — safe to ignore.
                 logger.warning(

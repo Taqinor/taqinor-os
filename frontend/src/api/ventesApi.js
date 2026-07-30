@@ -82,6 +82,9 @@ const ventesApi = {
   // WR1 — FG44 : refus explicite (motif/date/chatter), fait avancer le funnel
   // (devis_refused) — chemin canonique, à la place d'un PATCH statut direct.
   refuserDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/refuser/`, payload),
+  // WIR96 — suivi marketing d'un devis : ouverture du lien de partage
+  // (« vu le … ») + relances de devis abandonné consignées.
+  getSuiviPartageDevis: (id) => api.get(`/ventes/devis/${id}/suivi-partage/`),
   historiqueDevis: (id) => api.get(`/ventes/devis/${id}/historique/`),
   noterDevis: (id, body) => api.post(`/ventes/devis/${id}/noter/`, { body }),
   // NTCPQ8 — approbation de remise par paliers (matrice NTCPQ7).
