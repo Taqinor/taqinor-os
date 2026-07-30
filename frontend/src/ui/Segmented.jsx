@@ -54,6 +54,12 @@ export function Segmented({ options = [], value, onChange, size = 'md', classNam
             type="button"
             role="radio"
             aria-checked={active}
+            // LB40 — infobulle native optionnelle : une option ICÔNE-SEULE
+            // (label `.sr-only`, cf. ViewSwitcher) n'expose plus rien au
+            // survol souris. Purement additif — les 57 autres consommateurs,
+            // qui ne passent pas `title`, sont inchangés (undefined = pas
+            // d'attribut).
+            title={opt.title}
             tabIndex={i === activeIndex ? 0 : -1}
             onClick={() => onChange?.(opt.value)}
             className={cn(

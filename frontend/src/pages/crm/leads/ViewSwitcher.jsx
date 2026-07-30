@@ -34,9 +34,15 @@ export default function ViewSwitcher({ view, setView }) {
       aria-label="Changer de vue"
       value={view}
       onChange={setView}
+      // LB40 — `title` par radio : depuis LB32 les 6 libellés sont `.sr-only`
+      // (présentation icône-seule), donc le nom accessible existait toujours
+      // pour le clavier/lecteur d'écran mais RIEN ne s'affichait au survol
+      // souris — six icônes muettes. Même chaîne que le nom accessible
+      // (jamais un second libellé qui pourrait diverger).
       options={VIEWS.map(({ value, label, icon }) => ({
         value,
         icon,
+        title: label,
         label: <span className="sr-only">{label}</span>,
       }))}
     />

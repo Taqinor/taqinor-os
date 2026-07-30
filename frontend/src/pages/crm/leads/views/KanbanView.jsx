@@ -447,7 +447,15 @@ export default function KanbanView({
           </StageColumn>
         ))}
       </div>
-      <DragOverlay dropAnimation={prefersReducedMotion ? DROP_ANIMATION_REDUCED : DROP_ANIMATION}>
+      {/* LB40 — `zIndex` explicite : dnd-kit pose 999 par défaut sur son
+          calque de glisser, DESSOUS la barre bulk flottante (`--z-sticky`,
+          1100) — la carte glissée passait sous la barre pendant une
+          sélection. Prop native dnd-kit (jamais un z-index en dur sur notre
+          `.kb-drag-overlay` : le calque parent est celui qui empile). */}
+      <DragOverlay
+        zIndex={1200}
+        dropAnimation={prefersReducedMotion ? DROP_ANIMATION_REDUCED : DROP_ANIMATION}
+      >
         {activeLead ? (
           <div className={prefersReducedMotion ? 'kb-drag-overlay kb-drag-overlay--flat' : 'kb-drag-overlay'}>
             <LeadCard lead={activeLead} />
