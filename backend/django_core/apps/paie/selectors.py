@@ -85,6 +85,66 @@ def divergences_rib_periode(periode):
     return divergences
 
 
+def divergences_cnss_periode(periode):
+    """Divergences n° CNSS paie ↔ RH pour une période (WIR89, lecture seule).
+
+    Symétrique de :func:`divergences_rib_periode` (ARC25) : pour chaque
+    ``ProfilPaie`` de la société AFFILIÉ CNSS et rattaché à un dossier RH,
+    compare le ``ProfilPaie.numero_cnss`` (source du bordereau de déclaration,
+    PAIE31) au ``cnss`` de référence de la fiche RH (``rh.DossierEmploye.cnss``,
+    lu via ``apps.rh.selectors.cnss_par_employe`` — jamais un import de
+    ``rh.models``).
+
+    CONTRÔLE croisé (jamais une fusion) : aucune écriture, aucune unification —
+    ce sélecteur ne fait que SIGNALER un écart pour qu'un humain tranche, comme
+    son pendant RIB.
+
+    Même sémantique des côtés manquants que ``divergences_rib_periode`` : un
+    écart n'est retenu QUE si les DEUX numéros sont non vides ET diffèrent
+    après retrait des espaces. Un numéro absent d'un côté N'est PAS une
+    divergence — on ne compare pas à du vide.
+
+    Toujours scopé société (``periode.company``). Renvoie une liste de dicts
+    triée par ``employe_id`` :
+
+    ``{'profil_id', 'employe_id', 'cnss_paie', 'cnss_rh'}`` (numéros bruts, tels
+    que saisis). Liste vide si la période/société manque ou si tout concorde.
+    """
+    company = getattr(periode, 'company', None)
+    if company is None:
+        return []
+
+    profils = list(
+        ProfilPaie.objects
+        .filter(company=company, affilie_cnss=True, employe__isnull=False)
+        .only('id', 'employe_id', 'numero_cnss')
+    )
+    if not profils:
+        return []
+
+    from apps.rh import selectors as rh_selectors
+
+    employe_ids = {p.employe_id for p in profils}
+    cnss_rh = rh_selectors.cnss_par_employe(company, employe_ids)
+
+    divergences = []
+    for profil in profils:
+        cnss_paie = profil.numero_cnss or ''
+        cnss_reference = cnss_rh.get(profil.employe_id, '') or ''
+        # Un côté vide n'est pas une divergence (voir docstring).
+        if not cnss_paie.strip() or not cnss_reference.strip():
+            continue
+        if _rib_normalise(cnss_paie) != _rib_normalise(cnss_reference):
+            divergences.append({
+                'profil_id': profil.id,
+                'employe_id': profil.employe_id,
+                'cnss_paie': cnss_paie,
+                'cnss_rh': cnss_reference,
+            })
+    divergences.sort(key=lambda d: d['employe_id'])
+    return divergences
+
+
 def mes_bulletins_valides(user):
     """Bulletins de paie GÉNÉRÉS et VALIDÉS de ``user`` (YHIRE12, cross-app).
 
