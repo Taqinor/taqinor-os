@@ -27,12 +27,21 @@ def _meme_societe(serializer, value, label):
 
 
 class PraticienSerializer(serializers.ModelSerializer):
+    # WIR92 — libellé RH résolu paresseusement (None si `employe_id` vide ou
+    # dossier introuvable — jamais de régression pour un praticien non lié).
+    libelle_rh = serializers.SerializerMethodField()
+
     class Meta:
         model = Praticien
         fields = [
             'id', 'user', 'nom', 'specialite', 'numero_ordre',
             'couleur_agenda', 'actif', 'duree_consultation_defaut_min',
+            'employe_id', 'libelle_rh',
         ]
+
+    def get_libelle_rh(self, obj):
+        from .selectors import libelle_rh_praticien
+        return libelle_rh_praticien(obj.company, obj.employe_id)
 
 
 class SalleSerializer(serializers.ModelSerializer):
