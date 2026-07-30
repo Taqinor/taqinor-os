@@ -1968,7 +1968,19 @@ def verifier_credit_hold(client, *, override=False, user=None,
     ``apps.crm.selectors.credit_hold_check``) : lève ``CreditHoldError`` SAUF
     si ``override=True`` (responsable/admin explicite) — l'override est
     journalisé (chatter du devis si fourni + audit) mais laisse passer
-    l'action. Ne renvoie rien ; lève ou passe silencieusement."""
+    l'action. Ne renvoie rien ; lève ou passe silencieusement.
+
+    WIR93 — COEXISTENCE AVEC ``apps.credit`` (décision consignée en tête de
+    ``apps/credit/services.py``). Ce moteur (FG41/XFAC28) reste le SEUL branché
+    en production ; ``apps.credit.services.verifier_hold_credit`` (NTCRD6)
+    n'a aucun appelant tant que NTCRD7/NTCRD8 ne sont pas livrés. Les deux
+    consomment la MÊME assiette de factures, à un écart près, volontaire et
+    unique : ce chemin ne compte que les factures ``emise``/``en_retard``,
+    quand ``apps.credit`` inclut aussi les ``brouillon``. Cet écart est
+    verrouillé par ``apps/credit/tests/test_wir93_encours_non_divergence.py``
+    (via ``apps.credit.services.ecart_encours_moteurs``) : élargir ou
+    rétrécir l'assiette d'un seul côté rend ce test rouge. Ne JAMAIS
+    dupliquer ici un troisième calcul d'encours."""
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.get(company=client.company)
     if not getattr(profile, 'credit_hold_actif', False):

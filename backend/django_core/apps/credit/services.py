@@ -1,4 +1,36 @@
-"""apps.credit.services — écritures/orchestration métier crédit."""
+"""apps.credit.services — écritures/orchestration métier crédit.
+
+WIR93 — DÉCISION CONSIGNÉE : COEXISTENCE DOCUMENTÉE ET VERROUILLÉE
+------------------------------------------------------------------
+Deux moteurs de limite/hold crédit existent dans le dépôt :
+
+  A. ``apps.credit`` — ``LimiteCredit`` / ``ReglageCredit`` +
+     ``verifier_hold_credit`` (NTCRD6), encours via
+     ``apps.credit.selectors.encours_client`` → point d'entrée cross-app
+     ``apps.ventes.selectors.encours_ouvert_par_tiers`` (NTCRD4).
+  B. ``crm.Client.plafond_credit`` / ``CompanyProfile.credit_hold_actif`` —
+     ``apps.ventes.services.verifier_credit_hold`` (FG41/XFAC28), encours
+     calculé en ligne par ``apps.crm.selectors.client_credit_warning``.
+
+État réel au moment de la décision : le moteur A n'a AUCUN appelant de
+production (les hooks NTCRD7/NTCRD8 sont ``[BLOCKED: hors périmètre]``) ; seul
+le moteur B est branché (acceptation de devis + génération de tranches). Il n'y
+a donc PAS de double-décision en production aujourd'hui.
+
+Décision retenue (option « coexistence documentée + testée non-divergente » de
+WIR93 ; la bascule vers une source unique reste ouverte au fondateur) :
+
+  1. ``apps.ventes.selectors.encours_ouvert_par_tiers`` est le calcul d'encours
+     de RÉFÉRENCE (le seul point d'entrée cross-app sanctionné vers les
+     factures). Le moteur A le consomme déjà.
+  2. Le moteur B assume une assiette VOLONTAIREMENT PLUS ÉTROITE : uniquement
+     les factures ``emise`` / ``en_retard``. C'est le seul écart autorisé.
+  3. ``ecart_encours_moteurs()`` (ci-dessous) matérialise ce contrat et est
+     verrouillé par ``apps/credit/tests/test_wir93_encours_non_divergence.py`` :
+     hors factures ``brouillon``, les deux moteurs DOIVENT renvoyer le même
+     encours au centime. Toute dérive future (nouveau statut, changement
+     d'assiette d'un seul côté) rend ce test rouge.
+"""
 from decimal import Decimal
 
 
@@ -17,6 +49,42 @@ def role_peut_bypass_hold(user, company):
         return False
     role = getattr(user, 'role', None)
     return bool(role and role.nom in roles)
+
+
+def ecart_encours_moteurs(client):
+    """WIR93 — compare les deux calculs d'encours et matérialise le SEUL écart
+    autorisé entre les deux moteurs de crédit (voir la décision en tête de
+    module). Lecture pure, aucune écriture, borné au client fourni.
+
+    Renvoie ::
+
+        {
+          'encours_credit': Decimal,   # moteur A (apps.credit / NTCRD4)
+          'encours_ventes': Decimal,   # moteur B (FG41/XFAC28)
+          'ecart': Decimal,            # A − B
+          'ecart_attendu': Decimal,    # reste dû des factures « brouillon »
+          'divergent': bool,           # True si l'écart n'est PAS expliqué
+        }
+
+    ``divergent=True`` signifie qu'un des deux moteurs a changé d'assiette sans
+    l'autre — c'est exactement ce que le test de non-divergence interdit.
+    """
+    from apps.crm.selectors import client_credit_warning
+    from apps.ventes.selectors import reste_du_factures_brouillon
+    from .selectors import encours_client
+
+    encours_credit = Decimal(encours_client(client) or 0)
+    encours_ventes = Decimal(
+        client_credit_warning(client).get('encours') or 0)
+    ecart = encours_credit - encours_ventes
+    ecart_attendu = Decimal(reste_du_factures_brouillon(client.company, client.pk) or 0)
+    return {
+        'encours_credit': encours_credit,
+        'encours_ventes': encours_ventes,
+        'ecart': ecart,
+        'ecart_attendu': ecart_attendu,
+        'divergent': ecart != ecart_attendu,
+    }
 
 
 def verifier_hold_credit(client, montant_transaction=None, user=None):
