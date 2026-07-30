@@ -7,6 +7,7 @@ import { initState } from './draftCore'
 import ContextRail from './ContextRail'
 import { configureStore } from '@reduxjs/toolkit'
 import { Provider } from 'react-redux'
+import recordsApi from '../../../api/recordsApi'
 
 expect.extend(axeMatchers)
 
@@ -137,6 +138,44 @@ describe('LW19 — ContextRail : onglets + badges', () => {
     await user.click(screen.getByRole('tab', { name: /Activités/ }))
     await user.click(screen.getByText('📋 Appliquer un plan'))
     expect(onAction).toHaveBeenCalledWith('plan')
+  })
+
+  // LW44 — `ui/Checkbox` est un bouton Radix (role="checkbox"), jamais un
+  // `<input type="checkbox">` : l'ancien sélecteur `input[type="checkbox"]`
+  // ne matchait RIEN, le focus WhatsApp était un no-op silencieux.
+  it('lw:open-whatsapp-composer ouvre l’onglet Devis et focus le PREMIER Checkbox réel', async () => {
+    renderWithStore(<ContextRail {...baseProps()} />)
+    window.dispatchEvent(new CustomEvent('lw:open-whatsapp-composer'))
+    await waitFor(() => expect(screen.getByRole('tab', { name: /devis/i })).toHaveAttribute('data-state', 'active'))
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /Sélectionner DEV-2026-001 pour WhatsApp/ })).toHaveFocus()
+    })
+  })
+})
+
+// LW43 — garde d'identité sur les compteurs d'onglets (Activités/Pièces) :
+// une réponse LENTE pour le lead A ne doit plus jamais peindre le compteur
+// affiché sur le lead B après une navigation rapide (course reproduite en
+// gardant la promesse de A EN VOL pendant le rerender vers B).
+describe('LW43 — ContextRail : garde d’identité sur les compteurs Activités/Pièces', () => {
+  it('réponse Activités du lead A résolue APRÈS navigation vers B → jamais peinte sur B', async () => {
+    let resolveA
+    recordsApi.getActivities.mockImplementationOnce(() => new Promise((res) => { resolveA = res }))
+    const wrap = (state) => (
+      <Provider store={makeStore()}>
+        <ContextRail {...baseProps({ state })} />
+      </Provider>
+    )
+    const { rerender } = render(wrap(leadState({ id: 7 })))
+    rerender(wrap(leadState({ id: 8 })))
+    // Le rendu du lead B a déjà déclenché SON propre getActivities (2e appel,
+    // retour par défaut du mock : 1 activité ouverte sur 2).
+    await waitFor(() => expect(recordsApi.getActivities).toHaveBeenCalledTimes(2))
+    // La réponse tardive de A arrive maintenant, avec un compte DIFFÉRENT (3
+    // ouvertes) — si la garde manquait, elle peindrait « Activités (3) » sur B.
+    resolveA({ data: [{ id: 1, done: false }, { id: 2, done: false }, { id: 3, done: false }] })
+    await waitFor(() => expect(screen.getByRole('tab', { name: /Activités \(1\)/ })).toBeInTheDocument())
+    expect(screen.queryByRole('tab', { name: /Activités \(3\)/ })).toBeNull()
   })
 })
 
