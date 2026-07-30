@@ -3,6 +3,8 @@ import { Wallet } from 'lucide-react'
 import contratsApi from '../../api/contratsApi'
 import {
   Card, Badge, Button, Tabs, TabsList, TabsTrigger, TabsContent, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Label, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { formatMAD, formatDate } from '../../lib/format'
 import SimpleTable from './SimpleTable'
@@ -17,9 +19,33 @@ import {
    paiement + lignes (CONTRAT30), indexations de prix (CONTRAT32) et pièces de
    conformité (CONTRAT34). Montants client-facing via formatMAD — jamais de prix
    d'achat ni de marge. Quelques actions serveur (libérer, pointer paiement).
+
+   WIR76 — les `create*` de contratsApi (createRetenue/createCaution/
+   createEcheancier) n'avaient aucun appelant : seules des actions ponctuelles
+   (libérer/pointer/marquer fournie) existaient. Ajoute un formulaire de
+   création par onglet Retenues/Cautions/Échéanciers.
    ========================================================================== */
 
 const listData = (res) => (Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
+const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
+
+const TYPES_CAUTION = [
+  { value: 'soumission', label: 'Caution de soumission' },
+  { value: 'bonne_execution', label: 'Caution de bonne exécution' },
+  { value: 'restitution_acompte', label: "Restitution d'acompte" },
+  { value: 'retenue_garantie', label: 'Garantie de retenue' },
+  { value: 'societe_mere', label: 'Garantie société mère' },
+  { value: 'autre', label: 'Autre' },
+]
+
+const PERIODICITES_ECHEANCIER = [
+  { value: 'unique', label: 'Paiement unique' },
+  { value: 'mensuelle', label: 'Mensuelle' },
+  { value: 'trimestrielle', label: 'Trimestrielle' },
+  { value: 'semestrielle', label: 'Semestrielle' },
+  { value: 'annuelle', label: 'Annuelle' },
+  { value: 'personnalisee', label: 'Personnalisée' },
+]
 
 export default function FinancesPage() {
   const [retenues, setRetenues] = useState([])
@@ -28,8 +54,12 @@ export default function FinancesPage() {
   const [lignes, setLignes] = useState([])
   const [indexations, setIndexations] = useState([])
   const [pieces, setPieces] = useState([])
+  const [contrats, setContrats] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  // WIR76 — dialogue de création : 'retenue' | 'caution' | 'echeancier' | null.
+  const [dialog, setDialog] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -41,6 +71,7 @@ export default function FinancesPage() {
       contratsApi.getLignesEcheance().then((r) => setLignes(listData(r))),
       contratsApi.getIndexations().then((r) => setIndexations(listData(r))),
       contratsApi.getPiecesConformite().then((r) => setPieces(listData(r))),
+      contratsApi.getContrats().then((r) => setContrats(listData(r))),
     ])
       .catch(() => setError('Impossible de charger les finances de contrat.'))
       .finally(() => setLoading(false))
@@ -100,6 +131,9 @@ export default function FinancesPage() {
         </TabsList>
 
         <TabsContent value="retenues">
+          <div className="mb-2 flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => setDialog('retenue')}>Nouvelle retenue</Button>
+          </div>
           <SimpleTable
             emptyText={loading ? 'Chargement…' : 'Aucune retenue de garantie.'}
             rows={retenues}
@@ -118,6 +152,9 @@ export default function FinancesPage() {
         </TabsContent>
 
         <TabsContent value="cautions">
+          <div className="mb-2 flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => setDialog('caution')}>Nouvelle caution</Button>
+          </div>
           <SimpleTable
             emptyText={loading ? 'Chargement…' : 'Aucune caution.'}
             rows={cautions}
@@ -133,6 +170,9 @@ export default function FinancesPage() {
         </TabsContent>
 
         <TabsContent value="echeanciers">
+          <div className="mb-2 flex justify-end">
+            <Button size="sm" variant="outline" onClick={() => setDialog('echeancier')}>Nouvel échéancier</Button>
+          </div>
           <SimpleTable
             emptyText={loading ? 'Chargement…' : 'Aucun échéancier.'}
             rows={echeanciers}
@@ -196,6 +236,250 @@ export default function FinancesPage() {
           />
         </TabsContent>
       </Tabs>
+
+      {dialog === 'retenue' && (
+        <RetenueDialog
+          contrats={contrats}
+          onClose={() => setDialog(null)}
+          onDone={() => { setDialog(null); load() }}
+        />
+      )}
+      {dialog === 'caution' && (
+        <CautionDialog
+          contrats={contrats}
+          onClose={() => setDialog(null)}
+          onDone={() => { setDialog(null); load() }}
+        />
+      )}
+      {dialog === 'echeancier' && (
+        <EcheancierDialog
+          contrats={contrats}
+          onClose={() => setDialog(null)}
+          onDone={() => { setDialog(null); load() }}
+        />
+      )}
     </div>
+  )
+}
+
+function ContratSelect({ id, value, onChange, contrats }) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger id={id} aria-label="Contrat"><SelectValue placeholder="Choisir un contrat…" /></SelectTrigger>
+      <SelectContent>
+        {contrats.map((c) => (
+          <SelectItem key={c.id} value={String(c.id)}>
+            {c.reference || `Contrat #${c.id}`}{c.objet ? ` — ${c.objet}` : ''}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+// WIR76 — CONTRAT28 : base de calcul + taux, montant_retenu CALCULÉ côté serveur.
+function RetenueDialog({ contrats, onClose, onDone }) {
+  const [contrat, setContrat] = useState('')
+  const [montantBase, setMontantBase] = useState('')
+  const [taux, setTaux] = useState('')
+  const [dateLiberationPrevue, setDateLiberationPrevue] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!contrat) { setErr('Le contrat est requis.'); return }
+    setSaving(true)
+    setErr(null)
+    try {
+      const data = { contrat, montant_base: montantBase || 0, taux: taux || 0 }
+      if (dateLiberationPrevue) data.date_liberation_prevue = dateLiberationPrevue
+      if (note.trim()) data.note = note.trim()
+      await contratsApi.createRetenue(data)
+      toast.success('Retenue de garantie créée.')
+      onDone()
+    } catch (e2) {
+      setErr(errMsg(e2, 'Création impossible.'))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Nouvelle retenue de garantie</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ret-contrat">Contrat</Label>
+            <ContratSelect id="ret-contrat" value={contrat} onChange={setContrat} contrats={contrats} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ret-base">Montant de base</Label>
+              <Input id="ret-base" type="number" step="any" value={montantBase} onChange={(e) => setMontantBase(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ret-taux">Taux de retenue (%)</Label>
+              <Input id="ret-taux" type="number" step="any" value={taux} onChange={(e) => setTaux(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ret-liberation">Libération prévue</Label>
+            <Input id="ret-liberation" type="date" value={dateLiberationPrevue} onChange={(e) => setDateLiberationPrevue(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ret-note">Note</Label>
+            <Textarea id="ret-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optionnel" />
+          </div>
+          {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR76 — CONTRAT29 : registre des cautions/garanties (statut local, ne pilote
+// jamais Contrat.statut).
+function CautionDialog({ contrats, onClose, onDone }) {
+  const [contrat, setContrat] = useState('')
+  const [typeCaution, setTypeCaution] = useState('bonne_execution')
+  const [garant, setGarant] = useState('')
+  const [reference, setReference] = useState('')
+  const [montant, setMontant] = useState('')
+  const [dateEmission, setDateEmission] = useState('')
+  const [dateExpiration, setDateExpiration] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!contrat) { setErr('Le contrat est requis.'); return }
+    setSaving(true)
+    setErr(null)
+    try {
+      const data = { contrat, type_caution: typeCaution, montant: montant || 0 }
+      if (garant.trim()) data.garant = garant.trim()
+      if (reference.trim()) data.reference = reference.trim()
+      if (dateEmission) data.date_emission = dateEmission
+      if (dateExpiration) data.date_expiration = dateExpiration
+      await contratsApi.createCaution(data)
+      toast.success('Caution créée.')
+      onDone()
+    } catch (e2) {
+      setErr(errMsg(e2, 'Création impossible.'))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Nouvelle caution</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="caut-contrat">Contrat</Label>
+            <ContratSelect id="caut-contrat" value={contrat} onChange={setContrat} contrats={contrats} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="caut-type">Type</Label>
+            <Select value={typeCaution} onValueChange={setTypeCaution}>
+              <SelectTrigger id="caut-type" aria-label="Type de caution"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TYPES_CAUTION.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="caut-garant">Garant</Label>
+              <Input id="caut-garant" value={garant} onChange={(e) => setGarant(e.target.value)} placeholder="Banque / assureur" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="caut-ref">Référence</Label>
+              <Input id="caut-ref" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Optionnel" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="caut-montant">Montant</Label>
+            <Input id="caut-montant" type="number" step="any" value={montant} onChange={(e) => setMontant(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="caut-emission">Émission</Label>
+              <Input id="caut-emission" type="date" value={dateEmission} onChange={(e) => setDateEmission(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="caut-expiration">Expiration</Label>
+              <Input id="caut-expiration" type="date" value={dateExpiration} onChange={(e) => setDateExpiration(e.target.value)} />
+            </div>
+          </div>
+          {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR76 — CONTRAT30 : en-tête d'échéancier (les lignes se créent séparément).
+function EcheancierDialog({ contrats, onClose, onDone }) {
+  const [contrat, setContrat] = useState('')
+  const [libelle, setLibelle] = useState('')
+  const [periodicite, setPeriodicite] = useState('mensuelle')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!contrat) { setErr('Le contrat est requis.'); return }
+    setSaving(true)
+    setErr(null)
+    try {
+      const data = { contrat, periodicite }
+      if (libelle.trim()) data.libelle = libelle.trim()
+      await contratsApi.createEcheancier(data)
+      toast.success('Échéancier créé.')
+      onDone()
+    } catch (e2) {
+      setErr(errMsg(e2, 'Création impossible.'))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Nouvel échéancier</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ech-contrat">Contrat</Label>
+            <ContratSelect id="ech-contrat" value={contrat} onChange={setContrat} contrats={contrats} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ech-libelle">Libellé</Label>
+            <Input id="ech-libelle" value={libelle} onChange={(e) => setLibelle(e.target.value)} placeholder="Optionnel" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ech-periodicite">Périodicité</Label>
+            <Select value={periodicite} onValueChange={setPeriodicite}>
+              <SelectTrigger id="ech-periodicite" aria-label="Périodicité"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PERIODICITES_ECHEANCIER.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
