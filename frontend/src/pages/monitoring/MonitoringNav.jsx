@@ -14,6 +14,7 @@ const MONITORING_LINKS = [
   { to: '/production/nettoyages', label: 'Nettoyages' },
   { to: '/production/rapports', label: 'Rapports O&M' },
   { to: '/production/portail-client', label: 'Portail client' },
+  { to: '/production/abonnements', label: 'Abonnements' },
 ]
 
 export default function MonitoringNav() {
