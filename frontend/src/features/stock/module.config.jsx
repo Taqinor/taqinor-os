@@ -2,7 +2,10 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt, Undo2, ScanLine } from 'lucide-react'
+import {
+  Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
+  Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus,
+} from 'lucide-react'
 
 /* ============================================================================
    ARC48 — Migration des routes legacy Stock vers le registre de modules.
@@ -44,6 +47,11 @@ const ReceptionsFournisseur = lazy(() => import('../../pages/stock/ReceptionsFou
 const FacturesFournisseur = lazy(() => import('../../pages/stock/FacturesFournisseur'))
 const RetoursFournisseur = lazy(() => import('../../pages/stock/RetoursFournisseur'))
 const OcrStockImport = lazy(() => import('../../pages/stock/OcrStockImport'))
+// WIR109 — inventaire/stock avancé (XSTK6/13/14/15), jusqu'ici backend-only.
+const LotsEntrepot = lazy(() => import('../../pages/stock/LotsEntrepot'))
+const InventairesAnnuels = lazy(() => import('../../pages/stock/InventairesAnnuels'))
+const RevalorisationsStock = lazy(() => import('../../pages/stock/RevalorisationsStock'))
+const ConditionnementsProduit = lazy(() => import('../../pages/stock/ConditionnementsProduit'))
 
 const config = {
   key: 'stock',
@@ -62,6 +70,11 @@ const config = {
       { to: '/stock/factures-fournisseur', label: 'Factures fournisseur', k: 'nav.factures_fournisseur', icon: navIcon(Receipt), roles: ['responsable','admin'] },
       { to: '/stock/retours-fournisseur', label: 'Retours fournisseur', k: 'nav.retours_fournisseur', icon: navIcon(Undo2), roles: ['responsable','admin'] },
       { to: '/stock/ocr-import',     label: 'Import OCR',       k: 'nav.import_ocr', icon: navIcon(ScanLine),   roles: ['responsable','admin'] },
+      // WIR109 — lots FEFO, inventaire annuel, revalorisations, conditionnements.
+      { to: '/stock/lots-entrepot',  label: 'Lots (FEFO)',      k: 'nav.lots_entrepot', icon: navIcon(Layers), roles: ['responsable','admin'] },
+      { to: '/stock/inventaires-annuels', label: 'Inventaires annuels', k: 'nav.inventaires_annuels', icon: navIcon(Lock), roles: ['admin'] },
+      { to: '/stock/revalorisations', label: 'Revalorisations', k: 'nav.revalorisations', icon: navIcon(TrendingUp), roles: ['admin'] },
+      { to: '/stock/conditionnements', label: 'Conditionnements', k: 'nav.conditionnements', icon: navIcon(PackagePlus), roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -76,6 +89,11 @@ const config = {
     { path: '/stock/factures-fournisseur', component: FacturesFournisseur },
     { path: '/stock/retours-fournisseur', component: RetoursFournisseur },
     { path: '/stock/ocr-import', component: OcrStockImport },
+    // WIR109 — lots FEFO, inventaire annuel, revalorisations, conditionnements.
+    { path: '/stock/lots-entrepot', component: LotsEntrepot },
+    { path: '/stock/inventaires-annuels', component: InventairesAnnuels },
+    { path: '/stock/revalorisations', component: RevalorisationsStock },
+    { path: '/stock/conditionnements', component: ConditionnementsProduit },
   ],
 }
 

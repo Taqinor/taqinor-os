@@ -384,6 +384,44 @@ const stockApi = {
     api.post(`/stock/avoirs-fournisseur/${id}/valider/`),
   imputerAvoirFournisseur: (id, data) =>
     api.post(`/stock/avoirs-fournisseur/${id}/imputer/`, data),
+
+  // ── WIR109 — inventaire/stock avancé : lots FEFO, inventaire annuel,
+  // revalorisations, conditionnements ──────────────────────────────────────
+
+  // XSTK6 — lots en entrepôt (LECTURE SEULE, alimenté à la réception).
+  // `sortir` décrémente un lot (garde périmé, contournable avec motif tracé).
+  getLotsEntrepot: (params) => api.get('/stock/lots-entrepot/', { params }),
+  getLotFefo: (produitId, quantite) =>
+    api.get('/stock/lots-entrepot/fefo/', { params: { produit: produitId, quantite } }),
+  sortirLotEntrepot: (id, data) =>
+    api.post(`/stock/lots-entrepot/${id}/sortir/`, data),
+
+  // XSTK13 — inventaire annuel légal FIGÉ (CGNC, LECTURE SEULE ; `figer`
+  // crée le snapshot immuable de l'exercice, jamais réécrit ensuite).
+  getInventairesAnnuels: (params) => api.get('/stock/inventaires-annuels/', { params }),
+  figerInventaireAnnuel: (data) =>
+    api.post('/stock/inventaires-annuels/figer/', data),
+  exportInventaireAnnuelXlsx: (id) =>
+    api.get(`/stock/inventaires-annuels/${id}/export-xlsx/`, { responseType: 'blob' }),
+
+  // XSTK14 — revalorisation manuelle du stock (document tracé, admin-only).
+  // `valider` verrouille le document (devient la nouvelle couche de coût moyen).
+  getRevalorisationsStock: (params) => api.get('/stock/revalorisations-stock/', { params }),
+  createRevalorisationStock: (data) =>
+    api.post('/stock/revalorisations-stock/', data),
+  deleteRevalorisationStock: (id) =>
+    api.delete(`/stock/revalorisations-stock/${id}/`),
+  validerRevalorisationStock: (id) =>
+    api.post(`/stock/revalorisations-stock/${id}/valider/`),
+
+  // XSTK15 — conditionnements d'achat d'un produit (Touret/Carton…), CRUD.
+  getConditionnementsProduit: (params) => api.get('/stock/conditionnements/', { params }),
+  createConditionnementProduit: (data) =>
+    api.post('/stock/conditionnements/', data),
+  updateConditionnementProduit: (id, data) =>
+    api.patch(`/stock/conditionnements/${id}/`, data),
+  deleteConditionnementProduit: (id) =>
+    api.delete(`/stock/conditionnements/${id}/`),
 }
 
 export default stockApi
