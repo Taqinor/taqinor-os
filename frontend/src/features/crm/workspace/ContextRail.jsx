@@ -58,8 +58,11 @@ export default function ContextRail({
     }
     const openWa = () => {
       changeTab('devis')
+      // LW44 — `ui/Checkbox` est un bouton Radix (`role="checkbox"`), jamais
+      // un `<input type="checkbox">` : l'ancien sélecteur ne matchait RIEN,
+      // le focus était un no-op silencieux.
       requestAnimationFrame(() => {
-        document.querySelector('.lw-context-devis input[type="checkbox"]')?.focus()
+        document.querySelector('.lw-context-devis [role="checkbox"]')?.focus()
       })
     }
     window.addEventListener('lw:open-note-composer', openNote)

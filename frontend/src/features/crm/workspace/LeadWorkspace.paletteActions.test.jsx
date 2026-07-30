@@ -85,10 +85,31 @@ describe('LW26 — actions contextuelles ⌘K + Récents', () => {
     window.removeEventListener('taqinor:lead-workspace-actions', onEvt)
   })
 
-  it('pousse le lead dans les Récents à l’ouverture', () => {
+  it('pousse le lead dans les Récents à l’ouverture, AVEC le vrai nom (jamais vide)', () => {
     renderEdit()
     const recent = readRecentEntities()
-    expect(recent[0]).toMatchObject({ type: 'lead', id: 1 })
+    // LW44 — avant le fix, le libellé était TOUJOURS vide à la 1re ouverture
+    // (`nomTitreRef` pas encore resynchronisé quand ce push lisait sa valeur).
+    expect(recent[0]).toMatchObject({ type: 'lead', id: 1, label: 'Lead — Ali Ben' })
+  })
+
+  it('navigation vers un autre lead → les Récents portent le nom du NOUVEAU lead, jamais le précédent', () => {
+    const store = configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: 42 } }) => s } })
+    const wrap = (lead) => (
+      <Provider store={store}>
+        <MemoryRouter>
+          <LeadWorkspace lead={lead} onClose={vi.fn()} onSaved={vi.fn()} />
+        </MemoryRouter>
+      </Provider>
+    )
+    const { rerender } = render(wrap(LEAD_A))
+    expect(readRecentEntities()[0]).toMatchObject({ id: 1, label: 'Lead — Ali Ben' })
+    const LEAD_B = { id: 2, nom: 'Zohra', prenom: 'Idrissi', stage: 'NEW', is_archived: false }
+    rerender(wrap(LEAD_B))
+    // LW44 — avant le fix, ce push lisait encore le nom du lead PRÉCÉDENT
+    // (A), le réducteur n'ayant pas encore rejoué LOAD_LEAD au moment où
+    // l'ancien effet lisait sa ref.
+    expect(readRecentEntities()[0]).toMatchObject({ type: 'lead', id: 2, label: 'Lead — Zohra Idrissi' })
   })
 
   it('l’action « Devis automatique » ouvre le panneau devis en mode auto', () => {

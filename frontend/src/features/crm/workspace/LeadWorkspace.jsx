@@ -184,7 +184,7 @@ export default function LeadWorkspace({
     // APRÈS action (note postée, pièce jointe, appel loggé, « voir plus » —
     // TimelineTab/ContextRail) restent inchangés, appelés explicitement
     // ailleurs via `refreshHistorique`. `state.server` volontairement HORS
-    // deps (lu à l'exécution, comme `nomTitreRef` plus bas) : seul le premier
+    // deps (lu à l'exécution) : seul le premier
     // rendu de CE lead doit décider, jamais un ré-arbitrage à chaque PATCH.
     if (!state.server?.chatter_recent?.length) refreshHistorique()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- décision prise une fois par lead, pas à chaque state.server
@@ -350,14 +350,23 @@ export default function LeadWorkspace({
     }
   }, [paletteActions])
 
-  // `pushRecentEntity` à l'OUVERTURE uniquement (jamais à chaque frappe du
-  // nom) : `nomTitreRef` lu à l'exécution de l'effet, hors deps — patron déjà
-  // établi par `stateRef`/`leadRef` dans useLeadDraft.js.
-  const nomTitreRef = useRef('')
+  // LW44 — `pushRecentEntity` à l'OUVERTURE uniquement (jamais à chaque
+  // frappe du nom), avec le VRAI nom du lead OUVERT. L'ancien code dépendait
+  // de `[mode, leadId]` (le PROP, synchro immédiate au changement de fiche)
+  // mais lisait `nomTitreRef.current`, resynchronisé par un effet séparé plus
+  // bas dans CE fichier — les deux effets s'exécutant dans le MÊME commit
+  // (celui-ci déclaré en premier), ce push lisait TOUJOURS l'ancienne valeur :
+  // libellé vide à la 1re ouverture, nom du lead PRÉCÉDENT en J/K. Fix :
+  // dépendre de `state.leadId` (posé par le réducteur seulement APRÈS
+  // `LOAD_LEAD`, un commit APRÈS le simple changement du prop `leadId`) et
+  // lire le nom directement sur `state`, garanti à jour pour CE lead à ce
+  // moment-là — plus besoin de ref du tout.
   useEffect(() => {
-    if (mode !== 'edit' || !leadId) return
-    pushRecentEntity({ type: 'lead', id: leadId, label: nomTitreRef.current })
-  }, [mode, leadId])
+    if (mode !== 'edit' || state.leadId == null) return
+    const nom = `${getField(state, 'nom') || ''} ${getField(state, 'prenom') || ''}`.trim()
+    pushRecentEntity({ type: 'lead', id: state.leadId, label: nom ? `Lead — ${nom}` : 'Lead' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au VRAI changement de lead (state.leadId après LOAD_LEAD), jamais à chaque frappe du nom
+  }, [mode, state.leadId])
 
   // ── LW23 : registre de raccourcis propre (a/d/n/1-4) ──────────────────────
   // `a` archiver (leaveGuard déjà structurel dans doArchive), `d` focus le
@@ -439,9 +448,6 @@ export default function LeadWorkspace({
   const whatsappWs = (getField(state, 'whatsapp') || '').trim()
   const callPhone = telephoneWs || whatsappWs
   const waPhone = normalizeMaPhone(whatsappWs || telephoneWs)
-  // LW26 — tenu à jour à CHAQUE rendu (jamais une dépendance d'effet, cf.
-  // pushRecentEntity ci-dessus : seul l'effet « ouverture » le LIT).
-  useEffect(() => { nomTitreRef.current = nomTitre })
 
   // ── Rendu du contenu (partagé dialog / sheet / page) ──────────────────────
   const renderBody = (TitleComp) => (

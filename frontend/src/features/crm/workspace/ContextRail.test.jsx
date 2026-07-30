@@ -139,6 +139,18 @@ describe('LW19 — ContextRail : onglets + badges', () => {
     await user.click(screen.getByText('📋 Appliquer un plan'))
     expect(onAction).toHaveBeenCalledWith('plan')
   })
+
+  // LW44 — `ui/Checkbox` est un bouton Radix (role="checkbox"), jamais un
+  // `<input type="checkbox">` : l'ancien sélecteur `input[type="checkbox"]`
+  // ne matchait RIEN, le focus WhatsApp était un no-op silencieux.
+  it('lw:open-whatsapp-composer ouvre l’onglet Devis et focus le PREMIER Checkbox réel', async () => {
+    renderWithStore(<ContextRail {...baseProps()} />)
+    window.dispatchEvent(new CustomEvent('lw:open-whatsapp-composer'))
+    await waitFor(() => expect(screen.getByRole('tab', { name: /devis/i })).toHaveAttribute('data-state', 'active'))
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /Sélectionner DEV-2026-001 pour WhatsApp/ })).toHaveFocus()
+    })
+  })
 })
 
 // LW43 — garde d'identité sur les compteurs d'onglets (Activités/Pièces) :
