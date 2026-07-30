@@ -88,14 +88,19 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const [clientMatch, setClientMatch] = useState([])
   const [dupOpen, setDupOpen] = useState(false)
   useEffect(() => {
-    if (!leadId) return
+    if (!leadId) return undefined
+    // LW43 — garde d'identité (patron `cancelled` LeadDetailPage.jsx) : une
+    // réponse lente pour le lead A arrivant après la navigation vers B ne
+    // peint plus les bannières doublons/client_match du lead B.
+    let cancelled = false
     // GET paresseux, silencieux sur 404/vide (jamais de bruit).
     crmApi.getLeadDuplicates(leadId)
-      .then((r) => setDups(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setDups([]))
+      .then((r) => { if (!cancelled) setDups(Array.isArray(r.data) ? r.data : []) })
+      .catch(() => { if (!cancelled) setDups([]) })
     crmApi.getLeadClientMatch(leadId)
-      .then((r) => setClientMatch(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setClientMatch([]))
+      .then((r) => { if (!cancelled) setClientMatch(Array.isArray(r.data) ? r.data : []) })
+      .catch(() => { if (!cancelled) setClientMatch([]) })
+    return () => { cancelled = true }
   }, [leadId])
   // VX239 — doublons EN DIRECT (téléphone/email tapés), fusionnés aux probables.
   const liveDups = useDuplicateCheck(

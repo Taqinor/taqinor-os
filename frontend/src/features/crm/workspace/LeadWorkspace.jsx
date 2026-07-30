@@ -158,9 +158,21 @@ export default function LeadWorkspace({
     crmApi.getMotifsPerte().then((r) => setMotifOptions((r.data.results ?? r.data).filter((m) => !m.archived))).catch(() => {})
   }, [])
 
+  // LW43 — garde d'identité : `leadId` capturé À L'ENVOI (`requestedId`),
+  // comparé au VRAI courant (`leadIdRef`, tenu à jour à chaque rendu — jamais
+  // le seul `leadId` fermé dans ce callback, qui resterait figé sur l'ancien
+  // lead pour CETTE requête déjà en vol) — une réponse lente du lead A ne
+  // peint plus jamais sur le lead B après un J/K rapide (même patron
+  // `cancelled` que LeadDetailPage.jsx, décliné en ref pour un callback
+  // réutilisable hors effet).
+  const leadIdRef = useRef(leadId)
+  useEffect(() => { leadIdRef.current = leadId })
   const refreshHistorique = useCallback(() => {
     if (!leadId) return
-    api.get(`/crm/leads/${leadId}/historique/`).then((r) => setHistorique(r.data)).catch(() => {})
+    const requestedId = leadId
+    api.get(`/crm/leads/${requestedId}/historique/`)
+      .then((r) => { if (leadIdRef.current === requestedId) setHistorique(r.data) })
+      .catch(() => {})
   }, [leadId])
 
   useEffect(() => {
