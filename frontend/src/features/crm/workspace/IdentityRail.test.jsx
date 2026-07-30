@@ -126,6 +126,16 @@ describe('LW14 — IdentityRail identité + actions', () => {
     expect(screen.getByText(/Facture saisie/)).toBeInTheDocument()
     expect(screen.getByText(/Prêt à deviser/)).toBeInTheDocument()
   })
+
+  // LW45 — état « manquant » discret RÉTABLI (l'ancien en-tête stylait aussi
+  // ces chips en négatif ; le refactor LW14 les avait réduits à une absence
+  // silencieuse, seule l'infobulle du CTA « Devis automatique » restait).
+  it('rend les chips QX28 en état « manquant » discret quand les données sont absentes', () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(screen.getByText(/Toit non épinglé/)).toBeInTheDocument()
+    expect(screen.getByText(/Facture manquante/)).toBeInTheDocument()
+    expect(screen.getByText(/Devis non prêt/)).toBeInTheDocument()
+  })
 })
 
 describe('LW15 — triade responsable · prochaine action · relance', () => {

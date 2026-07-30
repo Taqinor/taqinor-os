@@ -543,10 +543,12 @@ export default function LeadWorkspace({
       ) : (
         // LW25 — squelette EN FORME de la vraie grille (rail identité :
         // avatar + 3 lignes ; centre : 2 cartes ; rail contexte : texte),
-        // crossfade via FadeSwap. Les champs déjà connus de la ligne
-        // (nom/stage/ville) restent visibles pendant ce temps : ils sont
-        // dans le bandeau (`nomTitre` ci-dessus) et l'IdentityRail — HORS de
-        // cette zone body, jamais masqués par le squelette.
+        // crossfade via FadeSwap. LW45 — commentaire corrigé : seul le
+        // bandeau (`nomTitre`, header ci-dessus) est VRAIMENT hors de cette
+        // zone body et reste visible pendant le chargement. L'IdentityRail
+        // est lui DANS le FadeSwap (children ci-dessous) — masqué comme le
+        // reste du corps tant que `showSkeleton` est vrai, remplacé par son
+        // propre squelette (avatar + 3 lignes) le temps du GET détail.
         <FadeSwap
           loading={showSkeleton}
           className="lw-skeleton-swap"

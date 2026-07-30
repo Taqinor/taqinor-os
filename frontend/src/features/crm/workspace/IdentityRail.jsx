@@ -326,39 +326,49 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         </div>
       </div>
 
-      {/* Chips de préparation QX28 (ui/Badge — tokens uniquement, dark-safe) */}
-      {(roofReady || factureReady || devisReady || showAdBadge) && (
-        <div className="lw-rail-chips">
-          {roofReady && (
-            <Badge tone="success" title="Un repère GPS de toiture a été capturé (site ou 3D)">
-              📍 Toit épinglé
-            </Badge>
-          )}
-          {factureReady && (
-            <Badge tone="info" title="Une facture d'électricité a été saisie">
-              🧾 Facture saisie
-            </Badge>
-          )}
-          {devisReady && (
-            <Badge tone="success" title="Toutes les données nécessaires sont réunies pour générer un devis">
-              ⚡ Prêt à deviser
-            </Badge>
-          )}
-          {/* PUB53 — traçabilité retour : ce lead vient d'une ad Meta →
-              lien direct vers sa fiche « histoire complète » (PUB44). */}
-          {showAdBadge && (
-            <a
-              href={`/publicite/ad/${encodeURIComponent(metaAdId)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={badgeVariants({ tone: 'primary' })}
-              title="Ouvrir la fiche de l'annonce Meta à l'origine de ce lead"
-            >
-              📣 Vient de la pub
-            </a>
-          )}
-        </div>
-      )}
+      {/* Chips de préparation QX28 (ui/Badge — tokens uniquement, dark-safe).
+          LW45 — état « manquant » discret RÉTABLI : l'ancien en-tête (avant
+          le shell LW10) stylait aussi ces chips en négatif quand la donnée
+          manquait ; le refactor les avait réduits à une simple absence — plus
+          aucun signal hors-survol du CTA « Devis automatique ». Toujours
+          rendus désormais (tone="neutral", même famille discrète que les
+          Badge neutres ailleurs dans l'app), jamais un doublon visuel du
+          patron kanban `LeadCard.jsx` (QX28 y est volontairement l'INVERSE —
+          micro-icônes denses, jamais de chip « manquant » — un choix
+          délibéré pour cette carte-là, pas une régression à répliquer ici). */}
+      <div className="lw-rail-chips">
+        <Badge
+          tone={roofReady ? 'success' : 'neutral'}
+          title={roofReady ? 'Un repère GPS de toiture a été capturé (site ou 3D)' : 'Aucun repère GPS de toiture pour le moment'}
+        >
+          📍 {roofReady ? 'Toit épinglé' : 'Toit non épinglé'}
+        </Badge>
+        <Badge
+          tone={factureReady ? 'info' : 'neutral'}
+          title={factureReady ? "Une facture d'électricité a été saisie" : "Aucune facture d'électricité saisie"}
+        >
+          🧾 {factureReady ? 'Facture saisie' : 'Facture manquante'}
+        </Badge>
+        <Badge
+          tone={devisReady ? 'success' : 'neutral'}
+          title={devisReady ? 'Toutes les données nécessaires sont réunies pour générer un devis' : devisNotReadyMsg}
+        >
+          ⚡ {devisReady ? 'Prêt à deviser' : 'Devis non prêt'}
+        </Badge>
+        {/* PUB53 — traçabilité retour : ce lead vient d'une ad Meta →
+            lien direct vers sa fiche « histoire complète » (PUB44). */}
+        {showAdBadge && (
+          <a
+            href={`/publicite/ad/${encodeURIComponent(metaAdId)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={badgeVariants({ tone: 'primary' })}
+            title="Ouvrir la fiche de l'annonce Meta à l'origine de ce lead"
+          >
+            📣 Vient de la pub
+          </a>
+        )}
+      </div>
 
       {/* Pile d'actions — WhatsApp et « Devis auto » sont les 2 CTA premiers. */}
       <div className="lw-rail-actions">

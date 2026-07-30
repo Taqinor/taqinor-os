@@ -36,9 +36,22 @@ export function clearPrefetched(id) {
   cache.delete(id)
 }
 
-/** resetPrefetchCache — vide tout le cache (tests uniquement). */
+/** resetPrefetchCache — vide tout le cache (tests, et LOGOUT_EVENT ci-dessous). */
 export function resetPrefetchCache() {
   cache.clear()
+}
+
+// LW45 — vide le cache sur déconnexion : sans ça, sur un poste PARTAGÉ
+// (accueil/atelier), les données pré-chargées de l'utilisateur A restaient
+// jusqu'à 60s (le TTL) après sa déconnexion — un utilisateur B qui se
+// connecte dans cette fenêtre et ouvre le MÊME lead en J/K pouvait hériter du
+// premier rendu (LOAD_LEAD → withPrefetched) des données de A. Écoute un
+// événement window générique plutôt qu'un import Redux/React (le module reste
+// PUR) ; dispatché au moment du logout (local ou propagé cross-onglet, cf.
+// VX162 `session-bridge.js`).
+export const LOGOUT_EVENT = 'taqinor:auth-logout'
+if (typeof window !== 'undefined') {
+  window.addEventListener(LOGOUT_EVENT, resetPrefetchCache)
 }
 
 // requestIdleCallback avec repli setTimeout(delay) — Safari/Firefox n'ont pas
