@@ -61,6 +61,7 @@ const BASE_PAGE_TITLES = [
 
   // Analyse
   ['/reporting/balance-agee', 'Balance âgée'],
+  ['/reporting/quote-to-cash', 'Quote-to-Cash'],
   ['/reporting/archive/client', 'Archive client'],
   ['/reporting/archive/chantier', 'Archive chantier'],
   ['/reporting/dashboards/partage', 'Partage de dashboards'],
@@ -128,6 +129,7 @@ const TITLE_KEYS = {
   '/ia/ocr': 'title.ia.ocr',
   '/ia/agent': 'title.ia.agent',
   '/reporting/balance-agee': 'title.reporting.balance_agee',
+  '/reporting/quote-to-cash': 'title.reporting.quote_to_cash',
   '/reporting/archive/client': 'title.reporting.archive_client',
   '/reporting/archive/chantier': 'title.reporting.archive_chantier',
   '/reporting/dashboards/partage': 'title.reporting.dashboards_partage',

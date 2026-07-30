@@ -175,6 +175,14 @@ const ventesApi = {
   getEmailsFacture: (id) => api.get(`/ventes/factures/${id}/emails/`),
   getEmailConfig: () => api.get('/ventes/email-config/'),
   getBalanceAgee: () => api.get('/ventes/balance-agee/'),
+  // WIR84 — agrégateurs Quote-to-Cash de ventes (FG45 / FG47 / ZFAC10),
+  // complets côté serveur mais sans aucun consommateur jusqu'ici. Ils sont
+  // désormais lus par l'écran `/reporting/quote-to-cash` (QuoteToCashPage) —
+  // aucun agrégateur mort ne reste dans `apps/ventes`.
+  getDashboardQuoteToCash: (params) => api.get('/ventes/dashboard/', { params }),
+  getCashFlowForecast: (params) => api.get('/ventes/insights/cash-flow/', { params }),
+  getAnalyseFacturation: (params) =>
+    api.get('/ventes/etats/analyse-facturation/', { params }),
   getClientReleve: (clientId) => api.get(`/ventes/clients/${clientId}/releve/`),
   getClientRelevePdf: (clientId) => api.get(`/ventes/clients/${clientId}/releve-pdf/`, { responseType: 'blob' }),
   getLettreRelancePdf: (factureId) => api.get(`/ventes/factures/${factureId}/lettre-relance-pdf/`, { responseType: 'blob' }),
