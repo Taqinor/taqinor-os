@@ -151,7 +151,6 @@ export default function LeadWorkspace({
   const [tagOptions, setTagOptions] = useState([])
   const [motifOptions, setMotifOptions] = useState([])
   const [historique, setHistorique] = useState([])
-  const [dups, setDups] = useState([])
 
   useEffect(() => {
     crmApi.getAssignableUsers().then((r) => setUsers(r.data.results ?? r.data)).catch(() => {})
@@ -166,8 +165,17 @@ export default function LeadWorkspace({
 
   useEffect(() => {
     if (mode !== 'edit' || !leadId) return
-    refreshHistorique()
-    crmApi.getLeadDuplicates(leadId).then((r) => setDups(r.data)).catch(() => {})
+    // LW41 — le GET détail embarque déjà `chatter_recent` (LW30) : ne
+    // déclencher le fetch initial d'historique QUE s'il est absent/vide à
+    // l'ouverture (sinon l'ouverture d'un lead coûtait PLUS cher qu'avant :
+    // le GET détail PUIS toujours /historique/ en plus). Les rafraîchissements
+    // APRÈS action (note postée, pièce jointe, appel loggé, « voir plus » —
+    // TimelineTab/ContextRail) restent inchangés, appelés explicitement
+    // ailleurs via `refreshHistorique`. `state.server` volontairement HORS
+    // deps (lu à l'exécution, comme `nomTitreRef` plus bas) : seul le premier
+    // rendu de CE lead doit décider, jamais un ré-arbitrage à chaque PATCH.
+    if (!state.server?.chatter_recent?.length) refreshHistorique()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- décision prise une fois par lead, pas à chaque state.server
   }, [mode, leadId, refreshHistorique])
 
   // ── Satellites (dialogues) ────────────────────────────────────────────────
@@ -509,7 +517,7 @@ export default function LeadWorkspace({
             formId={CREATE_FORM_ID}
             onSubmit={handleCreateSubmit}
             refData={{
-              users, tagOptions, motifOptions, dups,
+              users, tagOptions, motifOptions,
               leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
             }}
           />
@@ -553,7 +561,7 @@ export default function LeadWorkspace({
               formId={CREATE_FORM_ID}
               onSubmit={handleCreateSubmit}
               refData={{
-                users, tagOptions, motifOptions, dups,
+                users, tagOptions, motifOptions,
                 leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
               }}
             />
