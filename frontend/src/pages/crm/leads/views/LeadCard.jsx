@@ -144,7 +144,10 @@ const isEnRetard = (iso) => {
 // QX31 — Speed-to-lead : minutes écoulées depuis `date_creation` (timestamp
 // ISO), ou null si absente/invalide. Composant présentation pure (pas de
 // setInterval) : le libellé se recalcule à chaque rendu naturel de la carte
-// (le kanban re-rend déjà périodiquement via son polling/refetch existant).
+// (filtre, recherche, mise à jour du store après une action) — le board n'a
+// AUCUN rafraîchissement périodique, le libellé peut donc rester figé tant
+// que rien ne re-rend la carte. C'est assumé : une précision à la minute ne
+// vaut pas un timer par carte.
 const minutesDepuis = (iso) => {
   if (!iso) return null
   const d = new Date(iso)
