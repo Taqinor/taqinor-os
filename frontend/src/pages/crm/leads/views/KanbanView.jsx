@@ -132,6 +132,10 @@ export const STAGE_PROBABILITY = {
 const DraggableCard = memo(function DraggableCard({
   lead, busy, onOpen, onAutoQuote, users, onReassign,
   selected, onToggleSelect, onPlanifierRelance, onInlineSave, onMarkPerdu,
+  // LB38 — booléen « une sélection est en cours quelque part sur le board »
+  // (jamais le `Set` entier) : révèle la case de TOUTES les cartes pendant
+  // qu'on constitue une sélection (blueprint D3). Primitive → memo intact.
+  selectionActive,
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -152,6 +156,7 @@ const DraggableCard = memo(function DraggableCard({
         <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
                   users={users} onReassign={onReassign}
                   selected={selected} onToggleSelect={onToggleSelect}
+                  selectionActive={selectionActive}
                   onPlanifierRelance={onPlanifierRelance} onMarkPerdu={onMarkPerdu} />
       </div>
       <StageMover lead={lead} onInlineSave={onInlineSave} />
@@ -432,6 +437,7 @@ export default function KanbanView({
                 users={users}
                 onReassign={onReassign}
                 selected={selected.has(lead.id)}
+                selectionActive={selected.size > 0}
                 onToggleSelect={onToggleSelect}
                 onPlanifierRelance={onPlanifierRelance}
                 onInlineSave={onInlineSave}
