@@ -7,10 +7,11 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import SavedView
-from .serializers import SavedViewSerializer
+from .models import FavoriUtilisateur, SavedView
+from .serializers import FavoriUtilisateurSerializer, SavedViewSerializer
 
 
 def _is_valid_configuration(configuration):
@@ -219,3 +220,70 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             created.append(SavedViewSerializer(view).data)
 
         return Response({'created': created, 'erreurs': erreurs})
+
+
+class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
+    """NTUX12 — CRUD des favoris épinglés + réordonnancement.
+
+    STRICTEMENT PERSONNEL : `get_queryset` restreint à `owner=request.user`
+    PAR-DESSUS le scoping société de `TenantMixin`. Un favori d'un collègue est
+    donc invisible (404 en détail), même pour un Directeur — c'est une
+    préférence d'affichage, pas une donnée de gouvernance.
+    """
+
+    queryset = FavoriUtilisateur.objects.select_related('content_type').all()
+    serializer_class = FavoriUtilisateurSerializer
+
+    def get_permissions(self):
+        # Une garde déclarée par l'@action PRIME (sinon le `permission_classes=`
+        # du décorateur serait silencieusement jeté — cf. core.permissions).
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
+        return [IsAnyRole()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(owner=self.request.user)
+
+    def perform_create(self, serializer):
+        # `company` ET `owner` posés côté serveur — jamais lus du corps. Un
+        # favori sans `ordre` explicite s'ajoute EN FIN de liste (le
+        # glisser-déposer de NTUX21 le remontera ensuite).
+        extra = {'company': self.request.user.company, 'owner': self.request.user}
+        if serializer.validated_data.get('ordre') is None:
+            extra['ordre'] = self._prochain_ordre()
+        serializer.save(**extra)
+
+    def perform_update(self, serializer):
+        serializer.save(company=self.request.user.company, owner=self.request.user)
+
+    def _prochain_ordre(self):
+        dernier = (FavoriUtilisateur.objects
+                   .filter(company=self.request.user.company, owner=self.request.user)
+                   .order_by('-ordre').values_list('ordre', flat=True).first())
+        return 0 if dernier is None else dernier + 1
+
+    @action(detail=True, methods=['post'], url_path='reordonner',
+            permission_classes=[IsAnyRole])
+    def reordonner(self, request, pk=None):
+        """NTUX21 — déplace CE favori à la position `ordre` (0 = en tête) et
+        renumérote la liste de l'utilisateur de façon contiguë.
+
+        Renvoie la liste complète déjà ordonnée : l'écran n'a pas à recharger."""
+        favori = self.get_object()
+        try:
+            cible = int(request.data.get('ordre'))
+        except (TypeError, ValueError):
+            raise ValidationError({'ordre': 'Un entier est requis.'})
+        if cible < 0:
+            raise ValidationError({'ordre': 'La position ne peut pas être négative.'})
+
+        autres = list(self.get_queryset().exclude(pk=favori.pk))
+        cible = min(cible, len(autres))
+        autres.insert(cible, favori)
+        for position, element in enumerate(autres):
+            if element.ordre != position:
+                element.ordre = position
+                element.save(update_fields=['ordre', 'updated_at'])
+        return Response(
+            FavoriUtilisateurSerializer(self.get_queryset(), many=True).data)
