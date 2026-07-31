@@ -63,7 +63,7 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
     serializer_class = ProjetMigrationSerializer
     permission_classes = [IsDirecteurOuAdmin]
 
-    @action(detail=True, methods=['get'], url_path='rapport')
+    @action(detail=True, methods=['get'], url_path='rapport', permission_classes=[IsDirecteurOuAdmin])
     def rapport(self, request, pk=None):
         """NTMIG19 — PV de migration en PDF (synthèse par lot).
 
@@ -99,7 +99,7 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
                 'réconciliation qui en sont la preuve. Non supprimable.')})
         super().perform_destroy(instance)
 
-    @action(detail=True, methods=['post'], url_path='terminer')
+    @action(detail=True, methods=['post'], url_path='terminer', permission_classes=[IsDirecteurOuAdmin])
     def terminer(self, request, pk=None):
         """NTMIG5 — clôture gardée.
 
@@ -155,7 +155,7 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
                 'traçabilité et ses rapports. Non supprimable.')})
         super().perform_destroy(instance)
 
-    @action(detail=True, methods=['post'], url_path='analyser')
+    @action(detail=True, methods=['post'], url_path='analyser', permission_classes=[IsDirecteurOuAdmin])
     def analyser(self, request, pk=None):
         """Analyse DRY-RUN du fichier source : rien n'est écrit en cible.
 
@@ -173,7 +173,7 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'detail': str(exc)})
         return Response(apercu)
 
-    @action(detail=True, methods=['post'], url_path='charger')
+    @action(detail=True, methods=['post'], url_path='charger', permission_classes=[IsDirecteurOuAdmin])
     def charger(self, request, pk=None):
         """NTMIG15 — chargement délégué à ``dataimport``.
 
@@ -197,7 +197,7 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         return Response({
             'lot': LotMigrationSerializer(lot).data, 'resultat': result})
 
-    @action(detail=True, methods=['post'], url_path='charger-odoo')
+    @action(detail=True, methods=['post'], url_path='charger-odoo', permission_classes=[IsDirecteurOuAdmin])
     def charger_odoo(self, request, pk=None):
         """NTMIG9 — chargement via le connecteur Odoo JSON-2 (gated).
 
@@ -216,14 +216,14 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'detail': str(exc)})
         return Response(LotMigrationSerializer(lot).data)
 
-    @action(detail=True, methods=['post'], url_path='reconcilier')
+    @action(detail=True, methods=['post'], url_path='reconcilier', permission_classes=[IsDirecteurOuAdmin])
     def reconcilier(self, request, pk=None):
         """Produit le rapport de réconciliation du lot (source vs cible)."""
         lot = self.get_object()
         rapport = services.reconcilier_lot(lot)
         return Response(RapportReconciliationSerializer(rapport).data)
 
-    @action(detail=True, methods=['post'], url_path='deroger')
+    @action(detail=True, methods=['post'], url_path='deroger', permission_classes=[IsDirecteurOuAdmin])
     def deroger(self, request, pk=None):
         """NTMIG5 — dérogation motivée : autorise la clôture d'un lot non
         conforme, en laissant une trace attribuée (qui/quand/pourquoi)."""
@@ -235,7 +235,7 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'detail': str(exc)})
         return Response(LotMigrationSerializer(lot).data)
 
-    @action(detail=True, methods=['post'], url_path='terminer')
+    @action(detail=True, methods=['post'], url_path='terminer', permission_classes=[IsDirecteurOuAdmin])
     def terminer(self, request, pk=None):
         """NTMIG5 — passe CE lot en ``reconcilie``, ou 400 + écarts."""
         lot = self.get_object()
