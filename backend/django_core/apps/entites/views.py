@@ -8,6 +8,16 @@ from .models import Entite
 from .permissions import IsAdministrateur
 from .serializers import EntiteSerializer
 
+# Jetons acceptés comme booléen "vrai" dans un corps de requête (form-data ou
+# JSON) : parse STRICTE — seul un jeton explicite active le mode, jamais une
+# troncature implicite d'une chaîne quelconque (une valeur absente, `'0'`,
+# `'false'`, etc. restent "faux").
+_JETONS_VRAI = ('1', 'true', 'True', 'oui', 'Oui', True)
+
+
+def _est_vrai(valeur):
+    return valeur in _JETONS_VRAI
+
 
 class EntiteViewSet(CompanyScopedModelViewSet):
     """NTADM1 — CRUD `Entite` (Administrateur only) + arbre (`?tree=1`) +
@@ -122,16 +132,27 @@ class EntiteViewSet(CompanyScopedModelViewSet):
 
         Colonnes CSV : code, nom, code_parent (optionnel). Résolution des
         parents par code en 2 passes.
+
+        GARDE-FOU ÉCRASEMENT — `commit=0`/absent reste l'APERÇU : il ne
+        touche jamais la base et signale (`conflits`) ce qu'un commit
+        écraserait sur des fiches existantes. `commit=1` écrit en mode
+        REMPLISSAGE SEUL par défaut (un champ déjà rempli n'est jamais
+        remplacé) ; `ecraser=1` est l'opt-in explicite qui autorise aussi les
+        remplacements. `company` vient TOUJOURS de `request.user.company` —
+        jamais du corps de la requête (isolation multi-tenant).
         """
         fichier = request.FILES.get('fichier')
         if fichier is None:
             return Response({'detail': 'Fichier requis.'}, status=400)
         file_bytes = fichier.read()
         filename = fichier.name
-        commit = request.data.get('commit') in ('1', 'true', 'True', True)
+        commit = _est_vrai(request.data.get('commit'))
+        ecraser = _est_vrai(request.data.get('ecraser'))
         try:
             if commit:
-                result = import_service.commit(file_bytes, filename, request.user.company)
+                result = import_service.commit(
+                    file_bytes, filename, request.user.company,
+                    user=request.user, ecraser=ecraser)
             else:
                 result = import_service.dry_run(file_bytes, filename, request.user.company)
         except ValueError as exc:

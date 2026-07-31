@@ -1699,6 +1699,21 @@ def importer_taches(projet, lignes, *, confirm=False):
     TRANSACTION ATOMIQUE (tout ou rien) — une erreur de validation est
     rapportée SANS écrire une seule ligne, même en confirm.
 
+    CRÉATION SEULE — AUCUN ÉCRASEMENT POSSIBLE : chaque ligne ne fait
+    QU'UN ``Tache.objects.create(...)`` inconditionnel, jamais de
+    ``get_or_create``/``update_or_create`` ni de rapprochement par
+    ``code_wbs`` sur une tâche déjà existante (``code_wbs`` ne porte
+    d'ailleurs aucune contrainte d'unicité en base). Réimporter le même
+    fichier sur le même projet ne modifie donc JAMAIS une tâche existante —
+    au pire il en CRÉE des doublons (même ``code_wbs``, ``pk`` différent).
+    Si un futur mode de MISE À JOUR (écriture sur une tâche déjà existante)
+    est ajouté ici, il DOIT obligatoirement passer par le garde-fou
+    plateforme ``apps.dataimport.services.appliquer_maj_import`` (import
+    LOCAL à la fonction) — remplissage-seul par défaut, aperçu via
+    ``diff_import``, journal via ``enregistrer_job`` — jamais un diff, une
+    règle fill-only ou un journal maison (voir
+    ``apps/dataimport/services.py``, section « Primitive PARTAGÉE »).
+
     Renvoie ``{'erreurs': [...], 'nb_lignes': N, 'nb_creees': N, 'nb_deps': N}``.
     """
     from .models import DependanceTache

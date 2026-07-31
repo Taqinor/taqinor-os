@@ -263,21 +263,35 @@ def score_credit_client(request, client_id):
     return Response(score_credit(client))
 
 
+def _bool_strict(valeur):
+    """Drapeau optionnel du formulaire (toujours reçu en texte) : seul un
+    true/1/oui explicite active l'option — jamais une valeur ambiguë ou
+    absente (garde-fou écrasement : le défaut sûr doit rester sûr)."""
+    return str(valeur or '').strip().lower() in ('1', 'true', 'oui')
+
+
 @api_view(['POST'])
 @permission_classes([IsDirecteurOrAdmin])
 def importer_limites(request):
     """NTCRD39 — import CSV/XLSX en masse de limites de crédit (Directeur/
     Admin). Corps multipart : champ ``fichier``. Validation ligne à ligne,
-    rapport d'erreurs renvoyé."""
+    rapport d'erreurs renvoyé.
+
+    ``apercu=true`` : aperçu SANS RIEN ÉCRIRE (quelle fiche serait touchée,
+    quel champ serait remplacé). ``ecraser=true`` : opt-in explicite pour
+    remplacer un champ déjà rempli (défaut = remplissage seul). La société
+    reste TOUJOURS celle du serveur (jamais lue du corps de la requête)."""
     fichier = request.FILES.get('fichier')
     if fichier is None:
         return Response(
             {'detail': 'Fichier manquant (champ "fichier").'},
             status=status.HTTP_400_BAD_REQUEST)
+    apercu = _bool_strict(request.data.get('apercu'))
+    ecraser = _bool_strict(request.data.get('ecraser'))
     from .services import importer_limites_csv
     rapport = importer_limites_csv(
         request.user.company, fichier.read(), fichier.name,
-        user=request.user)
+        user=request.user, apercu=apercu, ecraser=ecraser)
     return Response(rapport)
 
 

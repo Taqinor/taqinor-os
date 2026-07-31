@@ -5048,16 +5048,73 @@ def _parse_palier_cell(value):
     return out
 
 
-def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes):
+def _date_cellule_tarif(valeur):
+    """XPUR14 — normalise une cellule date d'un xlsx tarif (datetime openpyxl,
+    date, ou texte) en ``date``.
+
+    Renvoie ``None`` pour une cellule VIDE **ou** illisible : dans les deux cas
+    le champ est simplement écarté de la ligne, jamais écrit — une colonne
+    présente mais vide ne doit pas effacer une date de validité déjà saisie."""
+    import datetime
+    if valeur in (None, ''):
+        return None
+    if isinstance(valeur, datetime.datetime):
+        return valeur.date()
+    if isinstance(valeur, datetime.date):
+        return valeur
+    texte = str(valeur).strip()
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+        try:
+            return datetime.datetime.strptime(texte, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
+                                 apercu=False, ecraser=False, user=None,
+                                 filename=''):
     """XPUR14 — import/mise à jour du tarif d'un fournisseur depuis un xlsx
     (même format que l'export). CRÉATION + MISE À JOUR par SKU — jamais de
     suppression silencieuse (un produit absent du fichier garde son tarif
-    existant). Renvoie ``{created, updated, errors: [{row, message}]}``.
-    INTERNE."""
+    existant). INTERNE.
+
+    GARDE-FOU « ÉCRASEMENT ». Ce fichier écrit sur la SEULE donnée réelle et
+    non reconstructible du parc : des prix d'ACHAT fournisseur saisis à la main
+    (cf. les ``on_delete=PROTECT`` de ``PrixFournisseur``). Il porte donc les
+    trois mêmes protections que l'import générique — dont les primitives sont
+    RÉUTILISÉES telles quelles (``apps.dataimport.services``), jamais recopiées :
+
+    1. ``apercu=True`` — rejoue EXACTEMENT le même rapprochement sans rien
+       écrire et renvoie champ par champ ce que le fichier remplacerait
+       (``conflits`` : valeur actuelle → valeur du fichier), paliers compris.
+    2. ``ecraser=False`` (DÉFAUT) — REMPLISSAGE SEUL : un tarif (ou un palier)
+       déjà saisi n'est jamais remplacé ; la valeur entrante repart dans
+       ``refuses``, rien n'est avalé en silence. ``ecraser=True`` est l'opt-in
+       explicite de l'appelant : la mise à jour de masse légitime d'un tarif
+       fournisseur reste parfaitement possible, elle devient juste VOULUE.
+    3. Journal réversible — la valeur PRÉCÉDENTE de chaque champ écrit est
+       conservée (``ImportJobRow.modifications`` + une ligne ``AuditLog`` via
+       la primitive plateforme ``apps.audit.recorder``).
+
+    Une cellule VIDE n'écrase ni ne vide jamais rien (ancien comportement :
+    ``date_debut``/``ref_produit_fournisseur`` absents du fichier ÉCRASAIENT la
+    valeur existante avec ``None``/``''``).
+
+    Renvoie ``{created, updated, errors: [{row, message}], apercu, ecraser,
+    conflits, ecrasements_total, ecrasements_appliques, refuses, job_id}``.
+    Le prix d'achat reste INTERNE : ce rapport n'est jamais client-facing.
+    """
     import io
     from openpyxl import load_workbook
+    from apps.dataimport.services import (
+        appliquer_maj_import, diff_import, enregistrer_job)
     from .models import PrixFournisseur, PalierPrixFournisseur, Produit
 
+    CENT = Decimal('0.01')
+    # Un tarif/palier à 0 n'est PAS un prix négocié : c'est le défaut modèle
+    # (« prix à renseigner »). Le remplir est un remplissage, pas un écrasement.
+    PRIX_VIDE = (0,)
     wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
     ws = wb.active
     rows_iter = ws.iter_rows(values_only=True)
@@ -5080,12 +5137,18 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes):
     created = 0
     updated = 0
     errors = []
+    conflits = []
+    lignes_job = []
+    ecrasements_total = 0
     if idx_sku is None or idx_prix is None:
         errors.append({
             'row': 1,
             'message': "Colonnes requises manquantes ('sku', 'prix_achat').",
         })
-        return {'created': 0, 'updated': 0, 'errors': errors}
+        return {'created': 0, 'updated': 0, 'errors': errors,
+                'apercu': bool(apercu), 'ecraser': bool(ecraser),
+                'conflits': [], 'ecrasements_total': 0,
+                'ecrasements_appliques': 0, 'refuses': [], 'job_id': None}
 
     for row_num, row in enumerate(rows_iter, start=2):
         sku = str(row[idx_sku] or '').strip() if idx_sku < len(row) else ''
@@ -5093,46 +5156,132 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes):
             continue
         produit = Produit.objects.filter(company=company, sku=sku).first()
         if produit is None:
-            errors.append({
-                'row': row_num,
-                'message': f'SKU introuvable : {sku}.',
-            })
+            message = f'SKU introuvable : {sku}.'
+            errors.append({'row': row_num, 'message': message})
+            lignes_job.append({'ligne': row_num, 'statut': 'erreur',
+                               'motif': message, 'donnees': {'sku': sku}})
             continue
         prix_raw = row[idx_prix] if idx_prix < len(row) else None
         prix = _dec(prix_raw)
         if prix is None:
-            errors.append({
-                'row': row_num,
-                'message': f'Prix invalide pour {sku} : {prix_raw!r}.',
-            })
+            message = f'Prix invalide pour {sku} : {prix_raw!r}.'
+            errors.append({'row': row_num, 'message': message})
+            lignes_job.append({'ligne': row_num, 'statut': 'erreur',
+                               'motif': message, 'donnees': {'sku': sku}})
             continue
 
-        defaults = {'company': company, 'prix_achat': prix}
+        # Champs FOURNIS par la ligne, valeurs vides ÉCARTÉES : ce qui n'est pas
+        # dans le fichier ne peut ni être écrit ni effacer l'existant.
+        champs = {'prix_achat': prix.quantize(CENT)}
         if idx_ref is not None and idx_ref < len(row):
-            defaults['ref_produit_fournisseur'] = str(row[idx_ref] or '')
+            ref = str(row[idx_ref] or '').strip()
+            if ref:
+                champs['ref_produit_fournisseur'] = ref
         if idx_debut is not None and idx_debut < len(row):
-            defaults['date_debut'] = row[idx_debut] or None
+            debut = _date_cellule_tarif(row[idx_debut])
+            if debut is not None:
+                champs['date_debut'] = debut
         if idx_fin is not None and idx_fin < len(row):
-            defaults['date_fin'] = row[idx_fin] or None
+            fin = _date_cellule_tarif(row[idx_fin])
+            if fin is not None:
+                champs['date_fin'] = fin
 
-        pf, was_created = PrixFournisseur.objects.get_or_create(
-            produit=produit, fournisseur=fournisseur, defaults=defaults)
-        if not was_created:
-            for key, val in defaults.items():
-                setattr(pf, key, val)
-            pf.save(update_fields=list(defaults.keys()))
-            updated += 1
-        else:
-            created += 1
-
+        paliers = []
         if idx_paliers is not None and idx_paliers < len(row):
-            paliers = _parse_palier_cell(row[idx_paliers])
-            for qte_min, palier_prix in paliers:
-                PalierPrixFournisseur.objects.update_or_create(
-                    prix_fournisseur=pf, qte_min=qte_min,
-                    defaults={'prix': palier_prix})
+            paliers = [(qte, montant.quantize(CENT))
+                       for qte, montant in _parse_palier_cell(row[idx_paliers])]
 
-    return {'created': created, 'updated': updated, 'errors': errors}
+        pf = PrixFournisseur.objects.filter(
+            produit=produit, fournisseur=fournisseur).first()
+
+        # ---- Aperçu : on rejoue le rapprochement, on n'écrit RIEN. ----------
+        if apercu:
+            if pf is None:
+                created += 1
+                conflits.append({
+                    'ligne': row_num, 'action': 'creation', 'sku': sku,
+                    'cible': 'achats.prixfournisseur', 'cible_id': None,
+                    'ecrasements': [], 'remplissages': sorted(champs)})
+                continue
+            updated += 1
+            ecrasements, remplissages = diff_import(
+                pf, champs, valeurs_vides=PRIX_VIDE)
+            remplis = [r['champ'] for r in remplissages]
+            for qte_min, palier_prix in paliers:
+                palier = PalierPrixFournisseur.objects.filter(
+                    prix_fournisseur=pf, qte_min=qte_min).first()
+                if palier is None:
+                    remplis.append(f'palier {qte_min}')
+                    continue
+                ecr_p, rmp_p = diff_import(
+                    palier, {'prix': palier_prix}, valeurs_vides=PRIX_VIDE)
+                ecrasements += [dict(e, champ=f'palier {qte_min}')
+                                for e in ecr_p]
+                remplis += [f'palier {qte_min}' for _ in rmp_p]
+            ecrasements_total += len(ecrasements)
+            if ecrasements or remplis:
+                conflits.append({
+                    'ligne': row_num, 'action': 'mise_a_jour', 'sku': sku,
+                    'cible': 'achats.prixfournisseur', 'cible_id': pf.pk,
+                    'ecrasements': ecrasements, 'remplissages': remplis})
+            continue
+
+        # ---- Écriture : remplissage seul par défaut, tout est journalisé. ---
+        if pf is None:
+            pf = PrixFournisseur.objects.create(
+                company=company, produit=produit, fournisseur=fournisseur,
+                **champs)
+            created += 1
+            modifications, refuses_ligne = [], []
+        else:
+            _, modifications, refuses_ligne = appliquer_maj_import(
+                pf, champs, company, user=user, filename=filename,
+                skip_keys=('company', 'produit', 'fournisseur'),
+                ecraser=ecraser, valeurs_vides=PRIX_VIDE)
+            updated += 1
+
+        for qte_min, palier_prix in paliers:
+            palier = PalierPrixFournisseur.objects.filter(
+                prix_fournisseur=pf, qte_min=qte_min).first()
+            if palier is None:
+                PalierPrixFournisseur.objects.create(
+                    prix_fournisseur=pf, qte_min=qte_min, prix=palier_prix)
+                continue
+            _, mods_p, refus_p = appliquer_maj_import(
+                palier, {'prix': palier_prix}, company, user=user,
+                filename=filename, skip_keys=('prix_fournisseur', 'qte_min'),
+                ecraser=ecraser, valeurs_vides=PRIX_VIDE)
+            modifications += [dict(m, champ=f'palier {qte_min}')
+                              for m in mods_p]
+            refuses_ligne += [dict(r, champ=f'palier {qte_min}')
+                              for r in refus_p]
+
+        ecrasements_total += sum(1 for m in modifications if m['ecrasement'])
+        ecrasements_total += len(refuses_ligne)
+        lignes_job.append({
+            'ligne': row_num, 'statut': 'ok', 'motif': None, 'donnees': {},
+            'cible': 'achats.prixfournisseur', 'cible_id': pf.pk,
+            'modifications': modifications, 'refuses': refuses_ligne})
+
+    refuses = [r for ligne in lignes_job for r in (ligne.get('refuses') or [])]
+    # Ce qui serait/a été RÉELLEMENT remplacé compte tenu du garde-fou : 0 en
+    # remplissage seul (défaut), sinon tous les écrasements repérés.
+    appliques = (ecrasements_total if ecraser else 0) if apercu else sum(
+        1 for ligne in lignes_job for m in (ligne.get('modifications') or [])
+        if m['ecrasement'])
+    job_id = None
+    if not apercu:
+        job = enregistrer_job(
+            company, 'prix_fournisseur', filename or 'tarif-fournisseur.xlsx',
+            user=user, mode='maj', ecraser=ecraser, total_lignes=len(lignes_job),
+            created=created, updated=updated, lignes=lignes_job)
+        job_id = job.pk
+
+    return {'created': created, 'updated': updated, 'errors': errors,
+            'apercu': bool(apercu), 'ecraser': bool(ecraser),
+            'conflits': conflits, 'ecrasements_total': ecrasements_total,
+            'ecrasements_appliques': appliques, 'refuses': refuses,
+            'job_id': job_id}
 
 
 # ── XPUR18 — Révision de BCF tracée + ré-approbation ────────────────────────

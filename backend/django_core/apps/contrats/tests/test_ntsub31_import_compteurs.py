@@ -44,7 +44,13 @@ class ImportCompteursServiceTests(TestCase):
             "1,interventions,2026-01-01,2026-01-31,8\n"  # doublon → update
             "2,appels_api,2026-01-01,2026-01-31,10\n"
         )
-        rapport = services.importer_compteurs_usage_csv(self.co, csv_content)
+        # `ecraser=True` : opt-in explicite — la 2e ligne cible une fiche que
+        # la 1re ligne vient de créer DANS LE MÊME FICHIER, donc déjà remplie.
+        # Le remplissage-seul par défaut (qui la REFUSERAIT) est couvert par
+        # `test_ntsub31_import_ecrasement.py` ; la mise à jour de masse
+        # légitime reste, elle, strictement inchangée avec l'opt-in.
+        rapport = services.importer_compteurs_usage_csv(
+            self.co, csv_content, ecraser=True)
         # 2 clés distinctes insérées, 1 mise à jour.
         self.assertEqual(rapport['inserees'], 2)
         self.assertEqual(rapport['mises_a_jour'], 1)
