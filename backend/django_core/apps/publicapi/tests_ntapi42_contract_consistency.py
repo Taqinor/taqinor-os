@@ -27,6 +27,8 @@ from .public_urls import router as public_router
 from .public_urls import urlpatterns as public_urlpatterns
 
 _PK_GROUP_RE = re.compile(r'\(\?P<pk>[^)]*\)')
+# `<type:nom>` -> `{nom}` générique (ex. `<str:entite>` -> `{entite}`, NTAPI30).
+_TYPED_CONVERTER_RE = re.compile(r'<(?:\w+:)?(\w+)>')
 # Endpoints utilitaires publics SANS scope métier — hors du contrat
 # ressources/écritures/bulk documenté en OpenAPI (voir docstring module).
 _UTILITY_PATHS = {'sandbox/reset/', 'changelog/'}
@@ -52,13 +54,16 @@ def _router_mounted_paths():
 
 def _explicit_mounted_paths():
     """Chemins `/api/public/...` des `path()` explicites de `public_urls.py`
-    (hors `include(router.urls)`, hors endpoints utilitaires)."""
+    (hors `include(router.urls)`, hors endpoints utilitaires). `<int:pk>`
+    suit la convention `<id>`/`{id}` de docs.py/openapi.py ; tout autre
+    convertisseur nommé (ex. `<str:entite>`, NTAPI30) garde son nom."""
     paths = set()
     for entry in public_urlpatterns:
         raw = str(getattr(entry, 'pattern', ''))
         if not raw or raw in _UTILITY_PATHS:
             continue
-        raw = raw.replace('<int:pk>', '{id}')
+        raw = raw.replace('<int:pk>', '<id>')
+        raw = _TYPED_CONVERTER_RE.sub(r'{\1}', raw)
         paths.add('/api/public/' + raw)
     return paths
 

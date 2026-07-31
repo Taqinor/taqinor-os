@@ -14,6 +14,8 @@ chemin déclaré ici existe réellement dans ``public_urls.py`` (et
 inversement) — une divergence future serait un bug détecté par ce test, pas
 une note de doc oubliée.
 """
+import re
+
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -21,6 +23,10 @@ from rest_framework.views import APIView
 from .docs import public_api_reference
 
 OPENAPI_VERSION = '3.1.0'
+
+# Repère générique un placeholder de chemin `<nom>` (ex. `<id>`, `<entite>`) —
+# utilisé par `_bulk_operation` pour ne jamais dépendre d'un nom fixe.
+_PATH_PLACEHOLDER_RE = re.compile(r'<(\w+)>')
 
 # Enveloppe d'erreur NTAPI3 (Stripe-like) — dédiée à /api/public/, distincte
 # du contrat interne YAPIC3.
@@ -170,26 +176,42 @@ def _write_operation(write_endpoint):
 
 
 def _bulk_operation(entry):
-    """NTAPI14/15/16/43 — opération générique pour un endpoint `endpoints_bulk`
-    (export/import/jobs). Contrairement à `_write_operation` (toujours 201/200
-    fixe selon la méthode), le statut de succès varie ici (202 pour une
-    création de job, 200 pour un GET/relancer) — porté explicitement par
-    l'entrée plutôt que déduit."""
-    path_params = []
-    if '<id>' in entry['chemin']:
-        path_params.append({
-            'name': 'id', 'in': 'path', 'required': True,
-            'schema': {'type': 'integer'},
-        })
+    """NTAPI14/15/16/43/30 — opération générique pour un endpoint
+    `endpoints_bulk` (export/import/jobs/pull CSV). Contrairement à
+    `_write_operation` (toujours 201/200 fixe selon la méthode), le statut de
+    succès varie ici (202 pour une création de job, 200 pour un GET/relancer/
+    pull) — porté explicitement par l'entrée plutôt que déduit. Tout
+    placeholder `<nom>` du chemin (pas seulement `<id>`) devient un paramètre
+    de chemin déclaré.
+    """
+    path_params = [
+        {
+            'name': name, 'in': 'path', 'required': True,
+            'schema': {'type': 'integer' if name == 'id' else 'string'},
+        }
+        for name in _PATH_PLACEHOLDER_RE.findall(entry['chemin'])
+    ]
+    # NTAPI30 — le pull CSV Google Sheets s'authentifie par TOKEN en query
+    # string (pas d'en-tête possible côté tableur), jamais par ApiKeyAuth.
+    query_token = bool(entry.get('query_token_auth'))
+    security = [] if query_token else [{'ApiKeyAuth': []}]
+    query_params = [{
+        'name': 'token', 'in': 'query', 'required': True,
+        'schema': {'type': 'string'},
+        'description': (
+            "Clé API en clair (scope lecture seule) — aucun en-tête "
+            "possible côté tableur (=IMPORTDATA())."),
+    }] if query_token else []
+    content_type = 'text/csv' if entry.get('response_csv') else 'application/json'
     operation = {
         'summary': entry['description'],
-        'security': [{'ApiKeyAuth': []}],
-        'parameters': path_params,
+        'security': security,
+        'parameters': path_params + query_params,
         'responses': {
             entry['success_status']: {
                 'description': entry['description'],
                 'headers': _RATE_LIMIT_HEADERS,
-                'content': {'application/json': {'schema': {'type': 'object'}}},
+                'content': {content_type: {'schema': {'type': 'string' if content_type == 'text/csv' else 'object'}}},
             },
             **_common_error_responses(),
         },
@@ -221,7 +243,7 @@ def build_openapi_schema():
             write_endpoint)
 
     for bulk_endpoint in ref.get('endpoints_bulk', {}).get('liste', []):
-        openapi_path = bulk_endpoint['chemin'].replace('<id>', '{id}')
+        openapi_path = _PATH_PLACEHOLDER_RE.sub(r'{\1}', bulk_endpoint['chemin'])
         method = bulk_endpoint['methode'].lower()
         paths.setdefault(openapi_path, {})[method] = _bulk_operation(
             bulk_endpoint)

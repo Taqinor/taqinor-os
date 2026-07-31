@@ -1,25 +1,36 @@
-"""NTAPI14/15/16/43 — endpoints bulk (export/import/jobs) de l'API publique.
+"""NTAPI14/15/16/43/30 — endpoints bulk (export/import/jobs/pull CSV) de
+l'API publique.
 
 Distinct de `public_views.py` (lecture synchrone paginée) et
-`public_write_views.py` (écriture unitaire synchrone) : toute requête ICI
-CRÉE un `BulkJob` (`bulk.py`) traité HORS requête (Celery) et renvoie 202
-immédiatement — jamais de time-out HTTP même sur un très gros volume (NTAPI14
-« exporter 50 000 leads produit un fichier complet sans time-out HTTP »).
+`public_write_views.py` (écriture unitaire synchrone) : les endpoints
+export/import/jobs/relancer CRÉENT un `BulkJob` (`bulk.py`) traité HORS
+requête (Celery) et renvoient 202 immédiatement — jamais de time-out HTTP
+même sur un très gros volume (NTAPI14 « exporter 50 000 leads produit un
+fichier complet sans time-out HTTP »). `PublicCsvPullExportView` (NTAPI30)
+est l'exception SYNCHRONE de ce module : un GET simple répondant en CSV
+immédiat, pour `=IMPORTDATA()` Google Sheets/Excel Web.
 
-Le scope requis dépend de l'ENTITÉ demandée (`entite` dans le corps), jamais
-d'un scope bulk séparé — voir `constants.EXPORT_SCOPE_BY_ENTITY`/
-`IMPORT_SCOPE_BY_ENTITY`.
+Le scope requis dépend de l'ENTITÉ demandée, jamais d'un scope bulk séparé —
+voir `constants.EXPORT_SCOPE_BY_ENTITY`/`IMPORT_SCOPE_BY_ENTITY`.
 """
+import csv
+import io
+
+from django.http import HttpResponse
+
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import (
+    NotAuthenticated, PermissionDenied, ValidationError,
+)
 from rest_framework.permissions import AllowAny, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .auth import ApiKeyAuthentication, ApiKeyRateThrottle
+from .auth import ApiKeyAuthentication, ApiKeyRateThrottle, QueryTokenAuthentication
 from .bulk import (
     BulkJobError, create_export_job, create_import_job, relancer_job,
+    _export_registry, _serialize_row,
 )
 from .constants import EXPORT_SCOPE_BY_ENTITY, IMPORT_SCOPE_BY_ENTITY
 from .models import ApiKey, BulkJob
@@ -145,3 +156,62 @@ class PublicJobViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
         except BulkJobError as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(BulkJobSerializer(job).data)
+
+
+class PublicCsvPullExportView(PublicApiResponseMixin, APIView):
+    """GET /api/public/exports/<entite>.csv?token=<clé> (NTAPI30) — export
+    live SYNCHRONE en CSV, exploitable par ``=IMPORTDATA()`` de Google
+    Sheets/Excel Web (rafraîchi côté tableur à chaque recalcul — le tableur
+    ne fait qu'un GET brut, aucun en-tête custom possible, d'où le token en
+    QUERY STRING plutôt que l'en-tête ``Authorization`` habituel).
+
+    Distinct de ``PublicExportCreateView`` (NTAPI14, asynchrone/BulkJob,
+    gros volumes) : ici la réponse est le CSV lui-même, immédiate, pour un
+    usage tableur interactif. Scope READ-ONLY STRICT (même mapping que
+    NTAPI14, ``EXPORT_SCOPE_BY_ENTITY``) — un token qui fuite (log, historique
+    navigateur, feuille partagée) ne peut jamais rien écrire. Réutilise les
+    MÊMES querysets/serializers publics que la lecture synchrone (jamais de
+    prix d'achat ni de coût exposé).
+    """
+    authentication_classes = [QueryTokenAuthentication]
+    permission_classes = [AllowAny]
+    throttle_classes = [ApiKeyRateThrottle]
+
+    def get(self, request, entite):
+        api_key = request.auth
+        if not isinstance(api_key, ApiKey):
+            # Aucun jeton fourni du tout (distinct d'un jeton INVALIDE, déjà
+            # rejeté par `QueryTokenAuthentication.authenticate` en 401) —
+            # `NotAuthenticated` (401), jamais `PermissionDenied` (403) :
+            # « pas de justificatif » reste distinct de « droits insuffisants ».
+            raise NotAuthenticated("Jeton requis (paramètre ?token=<clé>).")
+        required_scope = EXPORT_SCOPE_BY_ENTITY.get(entite)
+        if not required_scope:
+            raise ValidationError({'entite': "Entité inconnue ou non exportable."})
+        if not api_key.has_scope(required_scope):
+            raise PermissionDenied(
+                f"Ce jeton n'a pas le droit nécessaire ({required_scope}).")
+
+        viewset_cls = _export_registry()[entite]
+        serializer_class = viewset_cls.serializer_class
+        queryset = viewset_cls.queryset.filter(company_id=api_key.company_id)
+
+        buf = io.StringIO()
+        writer = None
+        for instance in queryset.iterator():
+            row = _serialize_row(serializer_class, instance)
+            if writer is None:
+                writer = csv.DictWriter(buf, fieldnames=list(row.keys()))
+                writer.writeheader()
+            writer.writerow(row)
+        if writer is None:
+            # Aucune ligne : CSV STABLE quand même (en-têtes seuls, jamais un
+            # corps vide qui casserait IMPORTDATA — « toujours une forme
+            # tabulaire valide », même critère que le pull rempli).
+            fieldnames = list(serializer_class().fields.keys())
+            writer = csv.DictWriter(buf, fieldnames=fieldnames)
+            writer.writeheader()
+
+        resp = HttpResponse(buf.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = f'inline; filename="{entite}.csv"'
+        return resp

@@ -118,6 +118,7 @@ Error|ProposeCuratedActionView|unable to guess serializer. This is graceful fall
 Error|ProvisionsPeriodeViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicActivityCreateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicChangelogView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PublicCsvPullExportView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicExportCreateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicImportCreateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicLeadCreateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base

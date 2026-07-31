@@ -15,6 +15,7 @@ from .public_write_views import (
 )
 from .bulk_views import (
     PublicExportCreateView, PublicImportCreateView, PublicJobViewSet,
+    PublicCsvPullExportView,
 )
 from .public_sandbox_views import SandboxResetView
 from .public_changelog_views import PublicChangelogView
@@ -42,6 +43,10 @@ urlpatterns = [
          name='public-exports-create'),
     path('imports/', PublicImportCreateView.as_view(),
          name='public-imports-create'),
+    # NTAPI30 — pull CSV live synchrone (token en query string, lecture seule)
+    # pour `=IMPORTDATA()` Google Sheets/Excel Web.
+    path('exports/<str:entite>.csv', PublicCsvPullExportView.as_view(),
+         name='public-exports-csv-pull'),
     # NTAPI27 — reset du bac à sable (clé `test` seule).
     path('sandbox/reset/', SandboxResetView.as_view(),
          name='public-sandbox-reset'),

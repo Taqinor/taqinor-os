@@ -247,6 +247,22 @@ def public_api_reference():
                     'success_status': '200',
                     'request_body': False,
                 },
+                {
+                    'chemin': '/api/public/exports/<entite>.csv',
+                    'methode': 'GET',
+                    'description': (
+                        "NTAPI30 — pull CSV live SYNCHRONE (leads/devis/"
+                        "factures/chantiers/produits), exploitable par "
+                        "=IMPORTDATA() de Google Sheets/Excel Web. "
+                        "Authentification par ?token=<clé> (query string — "
+                        "aucun en-tête possible côté tableur), scope "
+                        "lecture seule strict."
+                    ),
+                    'success_status': '200',
+                    'request_body': False,
+                    'query_token_auth': True,
+                    'response_csv': True,
+                },
             ],
         },
         'webhooks': {
