@@ -6,6 +6,7 @@ requête). Les versions d'article sont des instantanés numérotés côté serve
 (``services.snapshot_article`` — max(version)+1, JAMAIS count()+1).
 """
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema
 from rest_framework import filters, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
@@ -672,6 +673,12 @@ class KbParcoursViewSet(_KbBaseViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    # YAPIC6 — annotation de SCHÉMA uniquement. L'action renvoie DÉJÀ une liste
+    # (`KbParcoursArticleSerializer(..., many=True)`) ; sans `responses`
+    # drf-spectacular la documentait comme un objet unique et lui attribuait
+    # l'operationId du `retrieve` de `KbParcoursArticleViewSet`
+    # (`…/kb/parcours-articles/{id}/`) — collision. Zéro effet à l'exécution.
+    @extend_schema(responses=KbParcoursArticleSerializer(many=True))
     @action(detail=True, methods=['get'], url_path='articles')
     def articles(self, request, pk=None):
         """XKB22 — Articles ordonnés de ce parcours."""

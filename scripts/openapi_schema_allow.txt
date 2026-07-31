@@ -393,7 +393,6 @@ Error|webhook_sms_stop|unable to guess serializer. This is graceful fallback han
 Error|win_loss_by_source|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Warning|<global>|encountered multiple names for the same choice set (ConfidentialiteDefautEnum). This may be unwanted even though the gen
 Warning|<global>|encountered multiple names for the same choice set (ConversationKindEnum). This may be unwanted even though the generate
-Warning|<global>|encountered multiple names for the same choice set (EtatGeneralC#Enum). This may be unwanted even though the generated s
 Warning|<global>|encountered multiple names for the same choice set (FormatExportEnum). This may be unwanted even though the generated sc
 Warning|<global>|encountered multiple names for the same choice set (HabilitationTypeEnum). This may be unwanted even though the generate
 Warning|<global>|encountered multiple names for the same choice set (LanguePrefereeEnum). This may be unwanted even though the generated
@@ -408,19 +407,15 @@ Warning|<global>|encountered multiple names for the same choice set (StatutLegac
 Warning|<global>|encountered multiple names for the same choice set (TypeContratDefautEnum). This may be unwanted even though the generat
 Warning|<global>|encountered multiple names for the same choice set (TypePhaseEnum). This may be unwanted even though the generated schem
 Warning|<global>|encountered multiple names for the same choice set (TypePoliceEnum). This may be unwanted even though the generated sche
-Warning|<global>|encountered multiple names for the same choice set (TypeTiersBdaEnum). This may be unwanted even though the generated sc
-Warning|<global>|encountered multiple names for the same choice set (UniteA#cEnum). This may be unwanted even though the generated schema
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "canal". The same name has been used for m
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "categorie". The same name has been used f
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "etape". The same name has been used for m
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "etat_general". The same name has been use
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "gravite". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "kind". The same name has been used for mu
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "langue". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "mode". The same name has been used for mu
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "niveau". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "orientation". The same name has been used
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "periodicite". The same name has been used
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "phase". The same name has been used for m
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "priorite". The same name has been used fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "raccordement". The same name has been use
@@ -433,22 +428,20 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_contrat". The same name has been use
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_facture". The same name has been use
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_installation". The same name has bee
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_tiers". The same name has been used
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "unite". The same name has been used for m
-Warning|<global>|operationId "api_django_adsengine_simulations_retrieve" has collisions [('/api/django/adsengine/simulations/', 'get'), (
-Warning|<global>|operationId "api_django_core_saved_queries_run_create" has collisions [('/api/django/core/saved-queries/{id}/run/', 'pos
-Warning|<global>|operationId "api_django_crm_objectifs_attainment_retrieve" has collisions [('/api/django/crm/objectifs/{id}/attainment/'
-Warning|<global>|operationId "api_django_identity_scim_v#_Groups_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/
-Warning|<global>|operationId "api_django_identity_scim_v#_Users_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/U
-Warning|<global>|operationId "api_django_kb_parcours_articles_retrieve" has collisions [('/api/django/kb/parcours-articles/{id}/', 'get')
-Warning|<global>|operationId "api_django_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/django/sav/contrats-mainte
-Warning|<global>|operationId "api_v#_adsengine_simulations_retrieve" has collisions [('/api/v#/adsengine/simulations/', 'get'), ('/api/v#
-Warning|<global>|operationId "api_v#_core_saved_queries_run_create" has collisions [('/api/v#/core/saved-queries/{id}/run/', 'post'), ('/
-Warning|<global>|operationId "api_v#_crm_objectifs_attainment_retrieve" has collisions [('/api/v#/crm/objectifs/{id}/attainment/', 'get')
-Warning|<global>|operationId "api_v#_identity_scim_v#_Groups_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Groups',
-Warning|<global>|operationId "api_v#_identity_scim_v#_Users_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Users', '
-Warning|<global>|operationId "api_v#_kb_parcours_articles_retrieve" has collisions [('/api/v#/kb/parcours-articles/{id}/', 'get'), ('/api
-Warning|<global>|operationId "api_v#_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/v#/sav/contrats-maintenance/{i
+Warning|<global>|operationId "django_adsengine_simulations_retrieve" has collisions [('/api/django/adsengine/simulations/', 'get'), ('/ap
+Warning|<global>|operationId "django_core_saved_queries_run_create" has collisions [('/api/django/core/saved-queries/{id}/run/', 'post'),
+Warning|<global>|operationId "django_crm_objectifs_attainment_retrieve" has collisions [('/api/django/crm/objectifs/{id}/attainment/', 'g
+Warning|<global>|operationId "django_identity_scim_v#_Groups_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/Grou
+Warning|<global>|operationId "django_identity_scim_v#_Users_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/Users
+Warning|<global>|operationId "django_kb_parcours_articles_list" has collisions [('/api/django/kb/parcours-articles/', 'get'), ('/api/djan
+Warning|<global>|operationId "django_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/django/sav/contrats-maintenanc
+Warning|<global>|operationId "v#_adsengine_simulations_retrieve" has collisions [('/api/v#/adsengine/simulations/', 'get'), ('/api/v#/ads
+Warning|<global>|operationId "v#_core_saved_queries_run_create" has collisions [('/api/v#/core/saved-queries/{id}/run/', 'post'), ('/api/
+Warning|<global>|operationId "v#_crm_objectifs_attainment_retrieve" has collisions [('/api/v#/crm/objectifs/{id}/attainment/', 'get'), ('
+Warning|<global>|operationId "v#_identity_scim_v#_Groups_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Groups', 'ge
+Warning|<global>|operationId "v#_identity_scim_v#_Users_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Users', 'get'
+Warning|<global>|operationId "v#_kb_parcours_articles_list" has collisions [('/api/v#/kb/parcours-articles/', 'get'), ('/api/v#/kb/parcou
+Warning|<global>|operationId "v#_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/v#/sav/contrats-maintenance/{id}/r
 Warning|AbonnementAddOnLigneViewSet > AbonnementAddOnLigneSerializer|unable to resolve type hint for function "get_montant_periode". Consider using a type hint or @extend_schema_field. Defa
 Warning|AccidentTravailViewSet > AccidentTravailSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
 Warning|AccuseCharteViewSet > AccuseCharteSerializer|unable to resolve type hint for function "get_conducteur_nom". Consider using a type hint or @extend_schema_field. Defau
@@ -701,10 +694,6 @@ Warning|FactureViewSet > FactureSerializer|unable to resolve type hint for funct
 Warning|FactureViewSet > FactureSerializer|unable to resolve type hint for function "get_tva_par_taux". Consider using a type hint or @extend_schema_field. Default
 Warning|FeedbackProduitViewSet > FeedbackProduitSerializer|unable to resolve type hint for function "get_auteur_nom". Consider using a type hint or @extend_schema_field. Defaultin
 Warning|FeuilleTempsViewSet > FeuilleTempsSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
-Warning|FicheTechniqueViewSet > FicheTechniqueSerializer|Encountered # components with identical names "FicheTechnique" and different identities <class 'apps.ventes.serializers.
-Warning|FicheTechniqueViewSet > FicheTechniqueSerializer|Encountered # components with identical names "FicheTechniqueRequest" and different identities <class 'apps.ventes.seria
-Warning|FicheTechniqueViewSet > FicheTechniqueSerializer|Encountered # components with identical names "PatchedFicheTechniqueRequest" and different identities <class 'apps.vente
-Warning|FicheTechniqueViewSet|Encountered # components with identical names "PaginatedFicheTechniqueList" and different identities <class 'apps.ventes
 Warning|FollowerViewSet > FollowerSerializer|unable to resolve type hint for function "get_target_model". Consider using a type hint or @extend_schema_field. Default
 Warning|FollowerViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|FollowupLevelViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi

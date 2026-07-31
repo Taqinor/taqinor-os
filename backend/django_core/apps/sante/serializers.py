@@ -3,6 +3,7 @@
 ``company`` n'est JAMAIS exposée en écriture : elle est posée côté serveur par
 ``core.viewsets.CompanyScopedModelViewSet`` (``TenantMixin.perform_create``).
 """
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -39,6 +40,11 @@ class PraticienSerializer(serializers.ModelSerializer):
             'employe_id', 'libelle_rh',
         ]
 
+    # YAPIC6 — annotation de SCHÉMA uniquement : `libelle_rh_praticien` renvoie
+    # `"Nom Prénom — Poste"` ou `None`. Sans cet indice drf-spectacular
+    # retombait sur `string` en émettant un avertissement, et le champ était
+    # documenté non-nullable. Aucun effet sur la valeur renvoyée à l'exécution.
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_libelle_rh(self, obj):
         from .selectors import libelle_rh_praticien
         return libelle_rh_praticien(obj.company, obj.employe_id)
