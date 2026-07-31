@@ -863,6 +863,14 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     QX9 — persiste désormais la vraie preuve de signature (image manuscrite,
     consentement e-signature explicite, horodatage client, « au nom de ») que
     le front envoie et qui était auparavant jetée.
+
+    WIR138 — CE N'EST PAS UN SOCLE E-SIGNATURE CONCURRENT. ``DevisSignature``
+    est la PREUVE d'une acceptation faite EN LIGNE sur notre proposition (loi
+    53-05) ; ``core.esign``, le socle canonique désigné, gère les DEMANDES
+    envoyées à un prestataire externe (Yousign/DocuSign), aujourd'hui parquées
+    faute de compte provisionné. Les deux ne fusionnent pas : ce chemin ne
+    migrera jamais vers ``core.esign``. Voir ``core/esign.py`` et
+    ``docs/esign-socle.md``.
     """
     try:
         from django.utils import timezone

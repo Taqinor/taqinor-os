@@ -135,9 +135,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ged/services.py:323` | update_or_create | ValidationOcrDocument.objects | document |
 | `backend/django_core/apps/ged/services.py:671` | get_or_create | DocumentTagAssignment.objects | document, tag |
 | `backend/django_core/apps/ged/services.py:844` | get_or_create | Cabinet.objects | company, nom |
-| `backend/django_core/apps/ged/services.py:3663` | get_or_create | DocumentLien.objects | company, content_type, document, object_id |
-| `backend/django_core/apps/ged/services.py:4270` | get_or_create | DocumentTag.objects | company, slug |
-| `backend/django_core/apps/ged/services.py:5502` | get_or_create | Folder.objects | cabinet, company, nom, parent |
+| `backend/django_core/apps/ged/services.py:3672` | get_or_create | DocumentLien.objects | company, content_type, document, object_id |
+| `backend/django_core/apps/ged/services.py:4279` | get_or_create | DocumentTag.objects | company, slug |
+| `backend/django_core/apps/ged/services.py:5511` | get_or_create | Folder.objects | cabinet, company, nom, parent |
 | `backend/django_core/apps/ged/views.py:1860` | get_or_create | DocumentLien.objects | content_type, document, object_id |
 | `backend/django_core/apps/gestion_projet/services.py:520` | update_or_create | ClotureProjet.objects | projet |
 | `backend/django_core/apps/gestion_projet/services.py:937` | update_or_create | Indisponibilite.objects | company, motif, ressource |
@@ -272,8 +272,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/stock/services.py:5090` | get_or_create | PrixFournisseur.objects | fournisseur, produit |
 | `backend/django_core/apps/stock/services.py:5103` | update_or_create | PalierPrixFournisseur.objects | prix_fournisseur, qte_min |
 | `backend/django_core/apps/stock/views/marque.py:57` | get_or_create | Marque.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:2520` | get_or_create | Produit.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:3889` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/services.py:2528` | get_or_create | Produit.objects | company, nom |
+| `backend/django_core/apps/ventes/services.py:3897` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/views/liste_prix.py:72` | update_or_create | LignePrixListe.objects | liste, produit_id |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:81` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
 | `backend/django_core/apps/voip/services.py:26` | get_or_create | VoipParametres.objects | company |

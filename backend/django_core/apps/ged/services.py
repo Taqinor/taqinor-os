@@ -2569,6 +2569,15 @@ def demander_signature(document, *, signataire_nom, signataire_email,
                        company, created_by=None):
     """GED30 — Demande une signature électronique sur un document (STUB no-op).
 
+    WIR138 — POINT DE BASCULE VERS LE SOCLE CANONIQUE. ``core.esign`` est le
+    socle désigné des demandes de signature adossées à un prestataire externe ;
+    il est PARQUÉ tant qu'aucun compte Yousign/DocuSign n'est provisionné (voir
+    ``core/esign.py`` et ``docs/esign-socle.md``). Ce chemin GED est le SEUL des
+    trois qui devra alors router son envoi externe via
+    ``core.esign.creer_demande()``/``envoyer()`` — ne JAMAIS réimplémenter un
+    connecteur ici (le stub optionnel ``esign_provider`` ci-dessous n'est qu'un
+    point d'extension local en attendant).
+
     Crée une `DemandeSignatureDocument` `en_attente` rattachée au document. La
     `company` est TOUJOURS fournie par l'appelant (résolue côté serveur depuis
     `request.user.company`) — jamais lue d'un corps de requête ; elle doit
