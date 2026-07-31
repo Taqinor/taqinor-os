@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 from apps.onboarding.models import OnboardingChecklistItem
 from apps.onboarding.services import marquer_item_complete
+from apps.roles.models import Role
 
 User = get_user_model()
 
@@ -13,10 +14,20 @@ User = get_user_model()
 class OnboardingProgressEndpointTest(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='Co', slug='co-pe')
+        # La checklist est filtrée par RÔLE (``roles_cibles`` du catalogue,
+        # comparé au ``roles.Role.nom`` de l'utilisateur — cf.
+        # test_models.test_role_targeting_differs_between_users). Sans Role
+        # assigné, ``role_legacy`` vaut 'normal' et NE matche aucun
+        # ``roles_cibles`` : l'utilisateur ne verrait que « import_clients »
+        # (seul item à cible vide). On assigne donc « Administrateur », le seul
+        # nom présent dans les 5 items ciblés, pour que les tests portent bien
+        # sur les 6 items du catalogue.
+        self.role_admin = Role.objects.create(
+            company=self.company, nom='Administrateur')
         self.u1 = User.objects.create_user(
-            'u1', password='x', company=self.company)
+            'u1', password='x', company=self.company, role=self.role_admin)
         self.u2 = User.objects.create_user(
-            'u2', password='x', company=self.company)
+            'u2', password='x', company=self.company, role=self.role_admin)
 
     def _client(self, user):
         c = APIClient()
