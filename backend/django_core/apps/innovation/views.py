@@ -117,6 +117,9 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         # NTIDE28 — tag auto-appliqué si l'auteur matche le segment d'une
         # campagne active portant un ``tag_auto`` (no-op silencieux sinon).
         services.maybe_apply_campagne_tag(idee, self.request.user)
+        # NTIDE51 — webhook sortant gated (NO-OP si INNOVATION_WEBHOOK_URL
+        # est vide, comportement par défaut).
+        services.post_webhook_idee_creation(idee)
 
     # ── NTIDE10 — autocomplétion du contexte ────────────────────────────────
     @action(detail=False, methods=['get'], url_path='contextes',

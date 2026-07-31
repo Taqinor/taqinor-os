@@ -365,6 +365,45 @@ def fermer_feedback_via_annonce(feedback, *, annonce_id=None, annonce_data=None,
     return feedback
 
 
+# ── Webhook idée-création (NTIDE51, gated) ──────────────────────────────────
+
+
+def post_webhook_idee_creation(idee):
+    """NTIDE51 — POST un webhook sortant à chaque création d'idée, SI
+    ``INNOVATION_WEBHOOK_URL`` est configurée (variable d'environnement,
+    gated/optionnelle) : NO-OP silencieux si vide (comportement par
+    défaut). Payload : titre/description/auteur/contexte + horodatage ISO.
+
+    DÉFENSIF : une erreur réseau/timeout/HTTP n'interrompt JAMAIS la
+    création de l'idée (même convention que les notifications best-effort
+    de ce module) — jamais d'exception remontée à l'appelant."""
+    import logging
+    import os
+
+    url = os.environ.get('INNOVATION_WEBHOOK_URL', '') or ''
+    if not url:
+        return False
+
+    from django.utils import timezone
+
+    payload = {
+        'titre': idee.titre,
+        'description': idee.description,
+        'auteur': getattr(idee.auteur, 'username', None),
+        'context': idee.contexte,
+        'timestamp': timezone.now().isoformat(),
+    }
+    try:
+        import requests
+        requests.post(url, json=payload, timeout=5)
+        return True
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        logging.getLogger(__name__).warning(
+            "innovation: échec de l'envoi du webhook idée-création",
+            exc_info=True)
+        return False
+
+
 # ── Feedback « étoilé » (NTIDE45) ────────────────────────────────────────────
 
 
