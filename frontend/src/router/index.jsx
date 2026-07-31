@@ -251,7 +251,8 @@ function WithLayout({ children }) {
 // NTPRT8/20/27 — équivalent de `WithLayout` pour les PORTAILS EXTERNES : même
 // error-boundary + Suspense keyées par chemin, mais AUCUNE surface interne
 // (pas de Layout ERP, pas de palette de commandes, pas de quick-create).
-function WithPortal({ shell: Shell, children }) {
+function WithPortal(props) {
+  const { shell: Shell, children } = props
   const { pathname } = useLocation()
   return (
     <RouteErrorBoundary key={pathname}>

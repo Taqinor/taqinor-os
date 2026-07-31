@@ -12,7 +12,8 @@ import PortalLayout from '../PortalLayout'
      - Ma performance       → NTPRT26
    ========================================================================== */
 
-export const NAV_FOURNISSEUR = [
+// Non exporté : utilisé uniquement dans ce fichier (fast-refresh).
+const NAV_FOURNISSEUR = [
   { to: '/portail/fournisseur', label: 'Tableau de bord', end: true },
 ]
 

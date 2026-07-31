@@ -15,7 +15,8 @@ import PortalLayout from '../PortalLayout'
      - Équipe            → NTPRT17 (dépend de NTPRT6, invitations)
    ========================================================================== */
 
-export const NAV_CLIENT = [
+// Non exporté : utilisé uniquement dans ce fichier (fast-refresh).
+const NAV_CLIENT = [
   { to: '/portail/client', label: 'Tableau de bord', end: true },
   { to: '/portail/client/devis', label: 'Devis' },
   { to: '/portail/client/factures', label: 'Commandes & Factures' },

@@ -41,7 +41,9 @@ export default function PortailClientAccueil() {
         Bienvenue dans votre espace client.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
-        {SECTIONS.map(({ to, icone: Icone, titre, texte }) => (
+        {SECTIONS.map((section) => {
+          const { to, icone: Icone, titre, texte } = section
+          return (
           <Card key={to} className="p-4">
             <Link to={to} className="flex items-start gap-3">
               <Icone className="mt-0.5 size-5 text-muted-foreground"
@@ -54,7 +56,8 @@ export default function PortailClientAccueil() {
               </span>
             </Link>
           </Card>
-        ))}
+          )
+        })}
       </div>
     </>
   )

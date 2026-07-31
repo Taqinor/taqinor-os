@@ -44,13 +44,16 @@ export default function DocumentScanCapture({
   const [previewUrl, setPreviewUrl] = useState(null)
   const [insets, setInsets] = useState(ZERO_INSETS)
   const [autoDetected, setAutoDetected] = useState(false)
+  // `imgRef` ne peut pas être LU pendant le rendu (react-hooks) : on double
+  // l'information par un état, seul lisible au rendu.
+  const [imgReady, setImgReady] = useState(false)
   const imgRef = useRef(null) // Image DOM chargée (dimensions naturelles), pour le recadrage final.
   const geoRef = useRef(null)
 
   const resetToCamera = useCallback(() => {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl(null); setInsets(ZERO_INSETS); setAutoDetected(false)
-    imgRef.current = null; geoRef.current = null
+    imgRef.current = null; geoRef.current = null; setImgReady(false)
     setPhase('camera')
   }, [previewUrl])
 
@@ -62,7 +65,7 @@ export default function DocumentScanCapture({
     setPhase('detecting')
     try {
       const { img, width, height } = await loadImageFile(file)
-      imgRef.current = img
+      imgRef.current = img; setImgReady(true)
       setPreviewUrl(URL.createObjectURL(file))
 
       const canvas = document.createElement('canvas')
@@ -137,7 +140,7 @@ export default function DocumentScanCapture({
   // phase === 'review'. Repli défensif : si l'image n'a même pas pu être
   // chargée (échec canvas/Image, rarissime), on ne montre jamais un écran de
   // révision cassé — juste une invite à reprendre la photo.
-  if (!previewUrl || !imgRef.current) {
+  if (!previewUrl || !imgReady) {
     return (
       <div className={`flex flex-col gap-3 ${className}`}>
         <p className="text-sm text-muted-foreground">

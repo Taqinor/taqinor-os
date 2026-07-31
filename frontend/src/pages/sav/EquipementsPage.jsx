@@ -1,3 +1,7 @@
+/* eslint-disable react-refresh/only-export-components --
+   `resolveScanTarget` est un helper PUR importé par EquipementsPage.test.jsx :
+   l'exporter est volontaire (même précédent que ProductionPage/buildProductionChartData).
+   La règle ne concerne que le confort de fast-refresh, jamais la correction. */
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'

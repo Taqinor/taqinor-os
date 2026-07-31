@@ -11,7 +11,8 @@ import PortalLayout from '../PortalLayout'
      - Ressources marketing                  → NTPRT31
    ========================================================================== */
 
-export const NAV_PARTENAIRE = [
+// Non exporté : utilisé uniquement dans ce fichier (fast-refresh).
+const NAV_PARTENAIRE = [
   { to: '/portail/partenaire', label: 'Tableau de bord', end: true },
 ]
 

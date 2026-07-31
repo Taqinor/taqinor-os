@@ -49,7 +49,10 @@ export default function PortailClientFactures() {
   }
 
   useEffect(() => {
-    charger()
+    // Différé d'un microtask : `charger` pose l'état de chargement de façon
+    // synchrone, ce qui déclenche un rendu en cascade
+    // (react-hooks/set-state-in-effect). Comportement inchangé.
+    Promise.resolve().then(charger)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage
   }, [])
 
