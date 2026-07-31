@@ -169,6 +169,39 @@ def _write_operation(write_endpoint):
     }
 
 
+def _bulk_operation(entry):
+    """NTAPI14/15/16/43 — opération générique pour un endpoint `endpoints_bulk`
+    (export/import/jobs). Contrairement à `_write_operation` (toujours 201/200
+    fixe selon la méthode), le statut de succès varie ici (202 pour une
+    création de job, 200 pour un GET/relancer) — porté explicitement par
+    l'entrée plutôt que déduit."""
+    path_params = []
+    if '<id>' in entry['chemin']:
+        path_params.append({
+            'name': 'id', 'in': 'path', 'required': True,
+            'schema': {'type': 'integer'},
+        })
+    operation = {
+        'summary': entry['description'],
+        'security': [{'ApiKeyAuth': []}],
+        'parameters': path_params,
+        'responses': {
+            entry['success_status']: {
+                'description': entry['description'],
+                'headers': _RATE_LIMIT_HEADERS,
+                'content': {'application/json': {'schema': {'type': 'object'}}},
+            },
+            **_common_error_responses(),
+        },
+    }
+    if entry.get('request_body'):
+        operation['requestBody'] = {
+            'required': True,
+            'content': {'application/json': {'schema': {'type': 'object'}}},
+        }
+    return operation
+
+
 def build_openapi_schema():
     """Construit le document OpenAPI 3.1 complet — 100 % dérivé de
     `docs.public_api_reference()` (source de vérité unique, FG105)."""
@@ -186,6 +219,12 @@ def build_openapi_schema():
         method = write_endpoint['methode'].lower()
         paths.setdefault(openapi_path, {})[method] = _write_operation(
             write_endpoint)
+
+    for bulk_endpoint in ref.get('endpoints_bulk', {}).get('liste', []):
+        openapi_path = bulk_endpoint['chemin'].replace('<id>', '{id}')
+        method = bulk_endpoint['methode'].lower()
+        paths.setdefault(openapi_path, {})[method] = _bulk_operation(
+            bulk_endpoint)
 
     return {
         'openapi': OPENAPI_VERSION,

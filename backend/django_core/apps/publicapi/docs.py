@@ -186,6 +186,29 @@ def public_api_reference():
                 },
             ],
         },
+        'endpoints_bulk': {
+            'description': (
+                "NTAPI14 (et bientôt NTAPI15/16/43) — jobs BULK traités HORS "
+                "requête : la réponse est 202 immédiate (jamais de time-out "
+                "HTTP même sur un très gros volume). Le scope requis dépend "
+                "de l'entité demandée (même scope que la lecture synchrone "
+                "de cette ressource)."
+            ),
+            'liste': [
+                {
+                    'chemin': '/api/public/exports/',
+                    'methode': 'POST',
+                    'description': (
+                        "Lance un export bulk asynchrone (leads/devis/"
+                        "factures/chantiers/produits, CSV ou JSONL). Corps : "
+                        "entite, format, filtres (mêmes filtres que la "
+                        "ressource lue en synchrone)."
+                    ),
+                    'success_status': '202',
+                    'request_body': True,
+                },
+            ],
+        },
         'webhooks': {
             'description': (
                 "Notifications HTTP POST signées (HMAC-SHA256) vers une URL "

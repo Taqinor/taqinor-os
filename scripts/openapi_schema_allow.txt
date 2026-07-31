@@ -118,6 +118,8 @@ Error|ProposeCuratedActionView|unable to guess serializer. This is graceful fall
 Error|ProvisionsPeriodeViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicActivityCreateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicChangelogView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PublicExportCreateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PublicImportCreateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicLeadCreateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicLeadUpdateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicOpenApiSchemaView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -879,6 +881,8 @@ Warning|ProjetViewSet > ProjetSerializer|Encountered # components with identical
 Warning|ProjetViewSet > ProjetSerializer|Encountered # components with identical names "ProjetRequest" and different identities <class 'apps.installations.serial
 Warning|ProjetViewSet|Encountered # components with identical names "PaginatedProjetList" and different identities <class 'apps.installations.
 Warning|PromessePaiementViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|PublicJobViewSet > BulkJobSerializer|unable to resolve type hint for function "get_erreurs_url". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|PublicJobViewSet > BulkJobSerializer|unable to resolve type hint for function "get_resultat_url". Consider using a type hint or @extend_schema_field. Default
 Warning|PublicProduitViewSet > PublicProduitSerializer|unable to resolve type hint for function "get_quantite_disponible". Consider using a type hint or @extend_schema_field.
 Warning|QuizFormationViewSet > QuizFormationSerializer|unable to resolve type hint for function "get_competence_libelle". Consider using a type hint or @extend_schema_field. D
 Warning|QuotaStockageViewSet > QuotaStockageSerializer|unable to resolve type hint for function "get_depasse". Consider using a type hint or @extend_schema_field. Defaulting t
