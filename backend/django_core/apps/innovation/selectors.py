@@ -334,9 +334,11 @@ def segments_disponibles(company):
 def feedback_by_theme(company):
     """NTIDE38 — agrégation admin du feedback produit (NTIDE36), PAR THÈME :
     total, nombre NON-LU (``statut == envoye``, jamais encore ouvert par
-    l'admin) et jusqu'à 3 citations (titres) les plus récentes. Un thème
-    sans aucun feedback n'apparaît pas (liste courte, adaptée à un
-    affichage direct)."""
+    l'admin), jusqu'à 3 citations (titres) les plus récentes, et
+    ``par_sentiment`` (NTIDE42 — répartition « +1/Neutre/-1 », clés absentes
+    si aucun feedback de ce sentiment ; ``non_renseigne`` regroupe les
+    feedbacks sans sentiment saisi, omis s'il vaut 0). Un thème sans aucun
+    feedback n'apparaît pas (liste courte, adaptée à un affichage direct)."""
     from .models import FeedbackProduit
 
     resultat = []
@@ -349,8 +351,17 @@ def feedback_by_theme(company):
         exemples = list(
             qs.order_by('-created_at', '-id')
             .values_list('titre', flat=True)[:3])
+        par_sentiment = {}
+        for s_value, _ in FeedbackProduit.Sentiment.choices:
+            n = qs.filter(sentiment=s_value).count()
+            if n:
+                par_sentiment[s_value] = n
+        non_renseigne = qs.filter(sentiment='').count()
+        if non_renseigne:
+            par_sentiment['non_renseigne'] = non_renseigne
         resultat.append({
             'theme': value, 'theme_display': label, 'total': total,
             'non_lus': non_lus, 'exemples': exemples,
+            'par_sentiment': par_sentiment,
         })
     return resultat

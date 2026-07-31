@@ -159,6 +159,9 @@ class FeedbackProduitSerializer(serializers.ModelSerializer):
         source='get_theme_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # NTIDE42 — sentiment optionnel, écrit à la création par l'auteur.
+    sentiment_display = serializers.CharField(
+        source='get_sentiment_display', read_only=True, default='')
     auteur_nom = serializers.SerializerMethodField()
     annonce_titre = serializers.CharField(
         source='annonce.titre', read_only=True, default=None)
@@ -169,6 +172,7 @@ class FeedbackProduitSerializer(serializers.ModelSerializer):
         model = FeedbackProduit
         fields = [
             'id', 'titre', 'description', 'theme', 'theme_display',
+            'sentiment', 'sentiment_display',
             'statut', 'statut_display', 'auteur', 'auteur_nom', 'annonce',
             'annonce_titre', 'message_fermeture', 'date_creation',
         ]

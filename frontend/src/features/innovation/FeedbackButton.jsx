@@ -24,11 +24,21 @@ const THEMES = [
   { value: 'autre', label: 'Autre' },
 ]
 
+// NTIDE42 — sentiment optionnel (« +1 / Neutre / -1 »), jamais imposé (une
+// valeur vide reste un choix valide, cf. ``FeedbackProduit.sentiment``).
+const SENTIMENTS = [
+  { value: '', label: 'Non renseigné' },
+  { value: 'positif', label: "+1 (je l'adore)" },
+  { value: 'neutre', label: "Neutre (c'est ok)" },
+  { value: 'negatif', label: "-1 (ça m'énerve)" },
+]
+
 export default function FeedbackButton() {
   const [open, setOpen] = useState(false)
   const [titre, setTitre] = useState('')
   const [description, setDescription] = useState('')
   const [theme, setTheme] = useState('autre')
+  const [sentiment, setSentiment] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (e) => {
@@ -38,10 +48,10 @@ export default function FeedbackButton() {
     setSubmitting(true)
     try {
       await innovationApi.feedback.create({
-        titre: t, description: description.trim(), theme,
+        titre: t, description: description.trim(), theme, sentiment,
       })
       toast.success('Merci pour votre retour !')
-      setTitre(''); setDescription(''); setTheme('autre')
+      setTitre(''); setDescription(''); setTheme('autre'); setSentiment('')
       setOpen(false)
     } catch {
       toast.error('Impossible d\'envoyer ce retour — réessayez.')
@@ -103,6 +113,17 @@ export default function FeedbackButton() {
                 onChange={(e) => setTheme(e.target.value)}
               >
                 {THEMES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="fb-sentiment" className="text-sm font-medium">Ressenti (optionnel)</label>
+              <select
+                id="fb-sentiment"
+                className="h-[var(--control-h)] w-full rounded-md border border-input bg-card px-2 text-sm text-foreground"
+                value={sentiment}
+                onChange={(e) => setSentiment(e.target.value)}
+              >
+                {SENTIMENTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </div>
             <div className="flex items-center justify-end gap-2 pt-1">

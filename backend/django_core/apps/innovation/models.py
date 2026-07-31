@@ -317,6 +317,15 @@ class FeedbackProduit(TenantModel):
         LU = 'lu', 'Lu'
         ADRESSE = 'adresse', 'Adressé'
 
+    # NTIDE42 — sentiment optionnel (« +1 / Neutre / -1 »), dénormalisé sur la
+    # ligne (jamais un modèle séparé) : agrégé par ``selectors.feedback_by_
+    # theme`` (résumé par sentiment, NTIDE38). Vide = non renseigné (le champ
+    # reste optionnel, jamais imposé au formulaire NTIDE37).
+    class Sentiment(models.TextChoices):
+        POSITIF = 'positif', "+1 (je l'adore)"
+        NEUTRE = 'neutre', "Neutre (c'est ok)"
+        NEGATIF = 'negatif', "-1 (ça m'énerve)"
+
     company = models.ForeignKey(
         'authentication.Company',
         # on_delete: feedback scopé société — disparaît avec elle (nettoyage tenant standard).
@@ -335,6 +344,9 @@ class FeedbackProduit(TenantModel):
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.ENVOYE,
         verbose_name='Statut')
+    sentiment = models.CharField(
+        max_length=10, choices=Sentiment.choices, blank=True, default='',
+        verbose_name='Sentiment')
     # NTIDE39 — lien vers l'annonce produit qui a fermé ce feedback. Le
     # feedback lui-même n'est jamais supprimé (dossier produit, même
     # convention que ``Idee`` qui ne se supprime jamais) : seule la
