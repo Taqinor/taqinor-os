@@ -186,6 +186,85 @@ def public_api_reference():
                 },
             ],
         },
+        'endpoints_bulk': {
+            'description': (
+                "NTAPI14/15/16/43 — jobs BULK (export/import) traités HORS "
+                "requête : la réponse est 202 immédiate (jamais de time-out "
+                "HTTP même sur un très gros volume), suivie via `jobs/`. Le "
+                "scope requis dépend de l'entité demandée (même scope que la "
+                "lecture/écriture synchrone de cette ressource)."
+            ),
+            'liste': [
+                {
+                    'chemin': '/api/public/exports/',
+                    'methode': 'POST',
+                    'description': (
+                        "Lance un export bulk asynchrone (leads/devis/"
+                        "factures/chantiers/produits, CSV ou JSONL). Corps : "
+                        "entite, format, filtres (mêmes filtres que la "
+                        "ressource lue en synchrone)."
+                    ),
+                    'success_status': '202',
+                    'request_body': True,
+                },
+                {
+                    'chemin': '/api/public/imports/',
+                    'methode': 'POST',
+                    'description': (
+                        "Lance un import bulk asynchrone (leads/activités) "
+                        "depuis un fichier CSV/JSONL (multipart, champ "
+                        "`file`). Corps : entite, mode (create/upsert), "
+                        "dedup_key (email/telephone) si upsert."
+                    ),
+                    'success_status': '202',
+                    'request_body': True,
+                },
+                {
+                    'chemin': '/api/public/jobs/',
+                    'methode': 'GET',
+                    'description': "Liste paginée des jobs bulk de la société.",
+                    'success_status': '200',
+                    'request_body': False,
+                },
+                {
+                    'chemin': '/api/public/jobs/<id>/',
+                    'methode': 'GET',
+                    'description': (
+                        "Suivi d'un job bulk : statut, progression %, "
+                        "compteurs, liens résultat/erreurs (présignés, "
+                        "courte durée)."
+                    ),
+                    'success_status': '200',
+                    'request_body': False,
+                },
+                {
+                    'chemin': '/api/public/jobs/<id>/relancer/',
+                    'methode': 'POST',
+                    'description': (
+                        "Reprend un job en échec depuis son curseur "
+                        "persistant — jamais de doublon, jamais de saut."
+                    ),
+                    'success_status': '200',
+                    'request_body': False,
+                },
+                {
+                    'chemin': '/api/public/exports/<entite>.csv',
+                    'methode': 'GET',
+                    'description': (
+                        "NTAPI30 — pull CSV live SYNCHRONE (leads/devis/"
+                        "factures/chantiers/produits), exploitable par "
+                        "=IMPORTDATA() de Google Sheets/Excel Web. "
+                        "Authentification par ?token=<clé> (query string — "
+                        "aucun en-tête possible côté tableur), scope "
+                        "lecture seule strict."
+                    ),
+                    'success_status': '200',
+                    'request_body': False,
+                    'query_token_auth': True,
+                    'response_csv': True,
+                },
+            ],
+        },
         'webhooks': {
             'description': (
                 "Notifications HTTP POST signées (HMAC-SHA256) vers une URL "

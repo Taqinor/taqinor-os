@@ -3217,6 +3217,21 @@ def find_lead_by_phone(company, telephone):
     return candidates[0] if candidates else None
 
 
+def find_lead_by_email(company, email):
+    """NTAPI15 — Lead de `company` dont l'email correspond (insensible à la
+    casse). Point d'entrée cross-app sanctionné pour `apps.publicapi` (dédup
+    upsert de l'import bulk) — jamais d'import direct de `Lead` ailleurs.
+    Renvoie le lead le plus RÉCEMMENT créé en cas de doublon, ou None."""
+    email = (email or '').strip()
+    if not email:
+        return None
+    return (
+        Lead.objects.filter(company=company, email__iexact=email)
+        .order_by('-date_creation')
+        .first()
+    )
+
+
 def log_whatsapp_message_on_lead(lead, *, texte, expediteur, nom_profil=''):
     """Ajoute un message WhatsApp entrant au chatter d'un lead (XKB33).
 

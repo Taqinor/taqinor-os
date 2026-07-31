@@ -12,6 +12,8 @@ from apps.ventes.models import Devis, LigneDevis, Facture, LigneFacture
 from apps.installations.models import Installation
 from apps.stock.models import Produit
 
+from .models import BulkJob
+
 
 class PublicLeadSerializer(serializers.ModelSerializer):
     class Meta:
@@ -103,6 +105,41 @@ class PublicProduitSerializer(serializers.ModelSerializer):
     def get_quantite_disponible(self, obj):
         from apps.stock.services import available_quantity
         return available_quantity(obj)
+
+
+class BulkJobSerializer(serializers.ModelSerializer):
+    """NTAPI16 — suivi d'un `BulkJob` : statut/progression/compteurs/liens.
+
+    `resultat_url`/`erreurs_url` sont des liens présignés COURTE durée (15 min,
+    comme les notifications « export prêt » existantes) — jamais l'URL MinIO
+    interne brute, jamais permanents. `resultat_url` n'apparaît qu'une fois
+    `termine` ; `erreurs_url` dès qu'au moins une ligne a échoué (même job
+    encore `en_cours`, pour un import partiel)."""
+    progression_pct = serializers.IntegerField(read_only=True)
+    resultat_url = serializers.SerializerMethodField()
+    erreurs_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BulkJob
+        fields = [
+            'id', 'type', 'entite', 'statut', 'progression_pct',
+            'total', 'traites', 'succes', 'erreurs',
+            'resultat_url', 'erreurs_url', 'message_erreur',
+            'created_at', 'updated_at', 'termine_le',
+        ]
+        read_only_fields = fields
+
+    def get_resultat_url(self, obj):
+        if obj.statut != BulkJob.STATUT_TERMINE or not obj.resultat_file_key:
+            return None
+        from apps.records.storage import presign_export_result
+        return presign_export_result(obj.resultat_file_key, expires=900)
+
+    def get_erreurs_url(self, obj):
+        if not obj.erreurs_file_key:
+            return None
+        from apps.records.storage import presign_export_result
+        return presign_export_result(obj.erreurs_file_key, expires=900)
 
 
 class PublicChantierSerializer(serializers.ModelSerializer):

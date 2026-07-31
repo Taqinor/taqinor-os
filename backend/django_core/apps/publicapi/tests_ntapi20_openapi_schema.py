@@ -55,12 +55,13 @@ class Ntapi20OpenApiSchemaTests(TestCase):
             self.assertIn(method, schema['paths'][path])
 
     def test_no_undocumented_paths_beyond_mounted_surface(self):
-        # 5 ressources × 2 (list+detail) + 3 écritures = 13 opérations, sur
-        # au plus 5*2 + 3 = 13 chemins distincts (les 3 écritures utilisent
-        # 3 chemins différents) — jamais un chemin fantôme ajouté par erreur.
+        # 5 ressources × 2 (list+detail) + 3 écritures + 6 bulk (NTAPI14/15/
+        # 16/43/30 : exports, imports, jobs list/detail, jobs/<id>/relancer,
+        # exports/<entite>.csv) = 19 opérations, sur autant de chemins
+        # distincts — jamais un chemin fantôme ajouté par erreur.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 13)
+        self.assertEqual(nb_operations, 19)
 
     def test_never_exposes_purchase_price_or_margin_fields(self):
         import json

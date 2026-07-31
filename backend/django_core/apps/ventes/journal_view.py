@@ -16,6 +16,7 @@ from .exports import (
     export_journal_ventes, period_bounds,
     export_comptable_xlsx, export_comptable_csv,
     export_grand_livre_xlsx, export_grand_livre_csv,
+    export_quickbooks_iif,
     export_async_row_threshold, count_export_rows,
 )
 
@@ -90,7 +91,10 @@ def export_comptable(request):
         ligne + ICE client + totaux ;
       • ``grand-livre`` — grand-livre codé par compte CGNC (3421 clients / 7111
         ventes / 4455 TVA collectée), écritures débit/crédit équilibrées prêtes
-        pour import direct chez le fiduciaire (mise en page type PCG/Sage).
+        pour import direct chez le fiduciaire (mise en page type PCG/Sage) ;
+      • ``quickbooks`` (NTAPI37) — MÊMES écritures que ``grand-livre``,
+        sérialisées en .iif (QuickBooks Desktop, import « General Journal ») —
+        toujours synchrone, ``fmt`` ignoré pour ce layout.
 
     `fmt` par défaut = xlsx (sinon csv). (NB : on n'utilise pas ``format``,
     réservé par DRF pour la négociation de contenu.)"""
@@ -103,6 +107,9 @@ def export_comptable(request):
         return Response({'detail': 'Période invalide.'}, status=400)
     fmt = (request.query_params.get('fmt') or 'xlsx').lower()
     layout = (request.query_params.get('layout') or 'ligne').lower()
+    if layout in ('quickbooks', 'quickbooks-iif', 'qb', 'iif'):
+        # NTAPI37 — toujours synchrone (fichier texte léger, pas de xlsx).
+        return export_quickbooks_iif(user.company, debut, fin)
     if layout in ('grand-livre', 'grand_livre', 'gl', 'compte'):
         if fmt == 'csv':
             return export_grand_livre_csv(user.company, debut, fin)

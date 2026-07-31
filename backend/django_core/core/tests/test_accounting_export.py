@@ -68,3 +68,61 @@ class FormatTests(SimpleTestCase):
         self.assertIn('411000', acc.export_entries(_ENTRIES, 'cegid'))
         with self.assertRaises(ValueError):
             acc.export_entries(_ENTRIES, 'xxx')
+
+
+class QuickBooksIifTests(SimpleTestCase):
+    """NTAPI37 — pont comptable QuickBooks (IIF General Journal)."""
+
+    def test_norm_date_us(self):
+        self.assertEqual(acc._norm_date_us('2026-06-30'), '06/30/2026')
+        self.assertEqual(acc._norm_date_us(''), '')
+
+    def test_signed_amount_debit_positive_credit_negative(self):
+        self.assertEqual(
+            acc._signed_amount({'debit': 1200, 'credit': 0}), '1200.00')
+        self.assertEqual(
+            acc._signed_amount({'debit': 0, 'credit': 1200}), '-1200.00')
+        self.assertEqual(acc._signed_amount({}), '0.00')
+
+    def test_header_and_footer_markers(self):
+        out = acc.to_quickbooks_iif(_ENTRIES)
+        lines = out.strip('\n').split('\n')
+        self.assertEqual(lines[0].split('\t')[0], '!TRNS')
+        self.assertEqual(lines[1].split('\t')[0], '!SPL')
+        self.assertEqual(lines[2], '!ENDTRNS')
+        self.assertTrue(out.strip().endswith('ENDTRNS'))
+
+    def test_single_transaction_trns_then_spl(self):
+        # _ENTRIES = 2 lignes de la MÊME pièce F-001 -> 1 transaction.
+        out = acc.to_quickbooks_iif(_ENTRIES)
+        data_lines = [ln for ln in out.strip('\n').split('\n')[3:] if ln]
+        self.assertEqual(data_lines[0].split('\t')[0], 'TRNS')
+        self.assertEqual(data_lines[1].split('\t')[0], 'SPL')
+        self.assertEqual(data_lines[2], 'ENDTRNS')
+        self.assertEqual(len(data_lines), 3)
+
+    def test_amounts_net_to_zero_per_transaction(self):
+        out = acc.to_quickbooks_iif(_ENTRIES)
+        rows = [ln.split('\t') for ln in out.strip('\n').split('\n')[3:]
+                if ln and ln != 'ENDTRNS']
+        total = sum(float(r[6]) for r in rows)  # colonne AMOUNT
+        self.assertEqual(round(total, 2), 0.0)
+
+    def test_multiple_pieces_become_multiple_transactions(self):
+        entries = _ENTRIES + [
+            {'journal': 'VT', 'date': '2026-06-30', 'compte': '411000',
+             'piece': 'F-002', 'libelle': 'Facture F-002', 'debit': 500.0,
+             'credit': 0.0},
+            {'journal': 'VT', 'date': '2026-06-30', 'compte': '707000',
+             'piece': 'F-002', 'libelle': 'Vente HT', 'debit': 0.0,
+             'credit': 500.0},
+        ]
+        out = acc.to_quickbooks_iif(entries)
+        self.assertEqual(out.count('TRNS\t1\t'), 1)
+        self.assertEqual(out.count('TRNS\t2\t'), 1)
+        self.assertEqual(out.count('ENDTRNS'), 3)  # 1 en-tête + 2 clôtures
+
+    def test_quickbooks_iif_dispatch_via_export_entries(self):
+        out = acc.export_entries(_ENTRIES, 'quickbooks_iif')
+        self.assertIn('!TRNS', out)
+        self.assertIn('411000', out)

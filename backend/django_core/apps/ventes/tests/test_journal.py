@@ -297,3 +297,99 @@ class TestGrandLivreExport(TestCase):
         tot_credit = sum(r[10] for r in rows[1:]
                          if r[0] not in (None, '', 'TOTAL') and r[10])
         self.assertEqual(round(tot_debit, 2), round(tot_credit, 2))
+
+
+class TestQuickBooksIifExport(TestCase):
+    """NTAPI37 — pont comptable QuickBooks (.iif, à côté de FG49/FG377) :
+    MÊMES écritures que le grand-livre (FG49), sérialisées en IIF General
+    Journal. Réutilise le fixture de TestGrandLivreExport (2 lignes, TVA
+    10 %/20 %)."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='qb-co', defaults={'nom': 'QB Co'})[0]
+        self.user = User.objects.create_user(
+            username='qb_u', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        client_obj = Client.objects.create(
+            company=self.company, nom='QBClient', ice='001122334')
+        p = Produit.objects.create(
+            company=self.company, nom='Panneau', sku='QB-1',
+            prix_vente=Decimal('1000'), quantite_stock=5)
+        self.fac = Facture.objects.create(
+            company=self.company, reference='FAC-QB-1', client=client_obj,
+            statut='emise', taux_tva=Decimal('20'))
+        LigneFacture.objects.create(
+            facture=self.fac, produit=p, designation='Panneaux',
+            quantite=Decimal('10'), prix_unitaire=Decimal('1000'),
+            remise=Decimal('0'), taux_tva=Decimal('10'))
+        LigneFacture.objects.create(
+            facture=self.fac, produit=p, designation='Pose',
+            quantite=Decimal('1'), prix_unitaire=Decimal('2000'),
+            remise=Decimal('0'), taux_tva=Decimal('20'))
+
+    def _params(self):
+        from datetime import timedelta
+        d = date.today()
+        return (d.strftime('%Y-%m-01'),
+                (d + timedelta(days=1)).strftime('%Y-%m-%d'))
+
+    def test_endpoint_returns_iif_file(self):
+        start, end = self._params()
+        resp = self.api.get(
+            f'/api/django/ventes/export-comptable/?start={start}&end={end}'
+            f'&layout=quickbooks')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('application/octet-stream', resp['Content-Type'])
+        self.assertIn('.iif', resp['Content-Disposition'])
+        text = resp.content.decode('utf-8')
+        self.assertTrue(text.startswith('!TRNS\t'))
+        self.assertIn('!SPL\t', text)
+        self.assertIn('!ENDTRNS', text)
+        self.assertIn('GENERAL JOURNAL', text)
+
+    def test_account_codes_match_grand_livre(self):
+        # Mêmes codes CGNC configurables que FG49 (3421/7111/4455 par défaut).
+        from apps.ventes.exports import account_codes_for
+        codes = account_codes_for(self.company)
+        start, end = self._params()
+        resp = self.api.get(
+            f'/api/django/ventes/export-comptable/?start={start}&end={end}'
+            f'&layout=quickbooks')
+        text = resp.content.decode('utf-8')
+        self.assertIn(codes['clients'], text)
+        self.assertIn(codes['ventes'], text)
+        self.assertIn(codes['tva_collectee'], text)
+
+    def test_transaction_balanced(self):
+        from datetime import date as _date
+        from apps.ventes.exports import (
+            _grand_livre_rows_as_entries, period_bounds)
+        debut, fin = period_bounds(
+            {'month': _date.today().strftime('%Y-%m')})
+        entries, _totals = _grand_livre_rows_as_entries(
+            self.company, debut, fin)
+        tot_debit = sum(float(e.get('debit') or 0) for e in entries)
+        tot_credit = sum(float(e.get('credit') or 0) for e in entries)
+        self.assertEqual(round(tot_debit, 2), round(tot_credit, 2))
+        self.assertGreater(tot_debit, 0)
+
+    def test_avoir_reverses_signs_stays_balanced(self):
+        from apps.ventes.models import Avoir, LigneAvoir
+        avoir = Avoir.objects.create(
+            company=self.company, reference='AVO-QB-1', facture=self.fac,
+            client=self.fac.client, statut='emise', taux_tva=Decimal('20'))
+        LigneAvoir.objects.create(
+            avoir=avoir, designation='Retour', quantite=Decimal('1'),
+            prix_unitaire=Decimal('2000'), remise=Decimal('0'),
+            taux_tva=Decimal('20'))
+        start, end = self._params()
+        resp = self.api.get(
+            f'/api/django/ventes/export-comptable/?start={start}&end={end}'
+            f'&layout=quickbooks')
+        self.assertEqual(resp.status_code, 200)
+        text = resp.content.decode('utf-8')
+        self.assertIn('AVO-QB-1', text)

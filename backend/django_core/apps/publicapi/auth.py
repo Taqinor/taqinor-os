@@ -81,6 +81,35 @@ class ApiKeyAuthentication(authentication.BaseAuthentication):
         return self.keyword
 
 
+class QueryTokenAuthentication(authentication.BaseAuthentication):
+    """NTAPI30 — lit ``?token=<clé>`` (paramètre de requête, PAS un en-tête).
+
+    Réservée aux endpoints où le CLIENT ne peut poser aucun en-tête custom —
+    typiquement ``=IMPORTDATA()`` de Google Sheets/Excel Web, qui ne fait
+    qu'un GET brut sur une URL collée dans une cellule. Mêmes garde-fous que
+    ``ApiKeyAuthentication`` (clé inconnue/désactivée/expirée → 401) ; la
+    RESTRICTION lecture-seule (scope ``read:*`` uniquement) est imposée par
+    la vue elle-même (vérification explicite du scope requis, jamais ici) —
+    un token exposé dans une URL (log serveur, historique navigateur, cellule
+    partagée) ne doit JAMAIS pouvoir déclencher une écriture."""
+
+    def authenticate(self, request):
+        raw_key = request.query_params.get('token')
+        if not raw_key:
+            return None  # laisse les autres classes / l'anonyme jouer
+        try:
+            api_key = ApiKey.objects.select_related('company').get(
+                key_hash=hash_key(raw_key))
+        except ApiKey.DoesNotExist:
+            raise exceptions.AuthenticationFailed('Jeton invalide.')
+        if not api_key.enabled:
+            raise exceptions.AuthenticationFailed('Jeton désactivé.')
+        if api_key.est_expiree:
+            raise exceptions.AuthenticationFailed('Jeton expiré.')
+        ApiKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now())
+        return (ApiKeyUser(api_key), api_key)
+
+
 class HasApiScope(permissions.BasePermission):
     """Exige que la clé porte le scope déclaré sur la vue (`required_scope`)."""
 
@@ -130,4 +159,24 @@ class ApiKeyAuthenticationScheme(OpenApiAuthenticationExtension):
             'in': 'header',
             'name': 'Authorization',
             'description': f'En-tête `Authorization: {AUTH_KEYWORD} <clé>`.',
+        }
+
+
+class QueryTokenAuthenticationScheme(OpenApiAuthenticationExtension):
+    """NTAPI30 — décrit `QueryTokenAuthentication` (même raison que
+    `ApiKeyAuthenticationScheme` ci-dessus) : sans extension, drf-spectacular
+    émet « could not resolve authenticator » sur `PublicCsvPullExportView`."""
+
+    target_class = 'apps.publicapi.auth.QueryTokenAuthentication'
+    name = 'publicApiQueryToken'
+
+    def get_security_definition(self, auto_schema):
+        return {
+            'type': 'apiKey',
+            'in': 'query',
+            'name': 'token',
+            'description': (
+                'Clé API en clair (scope lecture seule) — paramètre '
+                '`?token=<clé>`, jamais un en-tête (endpoints pull sans '
+                'en-tête custom possible, ex. `=IMPORTDATA()`).'),
         }

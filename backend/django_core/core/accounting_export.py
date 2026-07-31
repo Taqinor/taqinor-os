@@ -1,4 +1,4 @@
-"""FG377 — Pont comptable Sage / CEGID (one-way), fondation.
+"""FG377/NTAPI37 — Pont comptable Sage / CEGID / QuickBooks (one-way), fondation.
 
 Exporte des écritures de journal (ventes/achats) au format importable par Sage
 ou CEGID — SANS que ``core`` n'importe l'app ``ventes``/``compta`` qui produit
@@ -24,6 +24,11 @@ Deux formats one-way sont produits :
 * ``to_sage_pnm`` — format PNM/texte délimité par tabulations, large compat
   Sage Ligne 100 (import « écritures »).
 * ``to_cegid_csv`` — CSV point-virgule, compat import CEGID Loop/Quadra.
+* ``to_quickbooks_iif`` (NTAPI37) — format IIF QuickBooks Desktop (import
+  « General Journal », blocs TRNS/SPL/ENDTRNS tabulés) : les écritures
+  PARTAGEANT la même ``piece`` (référence pièce) forment UNE transaction
+  équilibrée (1re ligne = TRNS, les suivantes = SPL), montant signé (débit
+  positif, crédit négatif — convention IIF), date au format US MM/JJ/AAAA.
 
 Aucune écriture sur la base, aucun appel réseau : transformation pure et
 déterministe (testable hors DB).
@@ -58,6 +63,27 @@ def _norm_date(value) -> str:
         y, m, d = parts
         return f'{d}/{m}/{y}'
     return s
+
+
+def _norm_date_us(value) -> str:
+    """NTAPI37 — Date AAAA-MM-JJ → MM/JJ/AAAA (convention QuickBooks US),
+    tolérant (comme ``_norm_date``)."""
+    s = str(value or '')
+    parts = s.split('-')
+    if len(parts) == 3 and len(parts[0]) == 4:
+        y, m, d = parts
+        return f'{m}/{d}/{y}'
+    return s
+
+
+def _signed_amount(entry) -> str:
+    """NTAPI37 — convention IIF : débit POSITIF, crédit NÉGATIF."""
+    try:
+        debit = float(entry.get('debit') or 0)
+        credit = float(entry.get('credit') or 0)
+    except (TypeError, ValueError):
+        debit = credit = 0.0
+    return f'{debit - credit:.2f}'
 
 
 def validate_entries(entries) -> list[str]:
@@ -121,9 +147,63 @@ def to_cegid_csv(entries) -> str:
     return out.getvalue()
 
 
+def to_quickbooks_iif(entries) -> str:
+    """NTAPI37 — sérialise ``entries`` au format QuickBooks IIF (import
+    General Journal), tabulé (``\\t``), fin de ligne ``\\n``.
+
+    Les écritures sont regroupées PAR ``piece`` (dans l'ordre d'apparition,
+    jamais retriées — un groupe = UNE pièce comptable) : la 1re ligne du
+    groupe devient ``TRNS`` (l'écriture d'ouverture), les suivantes ``SPL``
+    (contre-parties), le groupe se referme par ``ENDTRNS``. Un ``TRNSID``
+    entier auto-incrémenté identifie chaque transaction (QuickBooks l'exige,
+    même s'il n'est pas réutilisé au ré-import). Le document produit reste
+    ÉQUILIBRÉ transaction par transaction dès lors que les ``entries``
+    d'entrée le sont déjà (même contrat que ``validate_entries``).
+    """
+    out = io.StringIO()
+    writer = csv.writer(out, delimiter='\t', lineterminator='\n')
+    writer.writerow(['!TRNS', 'TRNSID', 'TRNSTYPE', 'DATE', 'ACCNT', 'NAME',
+                     'AMOUNT', 'DOCNUM', 'MEMO'])
+    writer.writerow(['!SPL', 'SPLID', 'TRNSTYPE', 'DATE', 'ACCNT', 'NAME',
+                     'AMOUNT', 'DOCNUM', 'MEMO'])
+    writer.writerow(['!ENDTRNS'])
+
+    groups: dict = {}
+    order: list = []
+    for e in entries:
+        piece = e.get('piece') or ''
+        if piece not in groups:
+            groups[piece] = []
+            order.append(piece)
+        groups[piece].append(e)
+
+    trns_id = 0
+    for piece in order:
+        lines = groups[piece]
+        if not lines:
+            continue
+        trns_id += 1
+        first, rest = lines[0], lines[1:]
+        writer.writerow([
+            'TRNS', trns_id, 'GENERAL JOURNAL', _norm_date_us(first.get('date')),
+            first.get('compte', ''), first.get('libelle', ''),
+            _signed_amount(first), piece, first.get('libelle', ''),
+        ])
+        for i, e in enumerate(rest, start=1):
+            writer.writerow([
+                'SPL', f'{trns_id}-{i}', 'GENERAL JOURNAL',
+                _norm_date_us(e.get('date')), e.get('compte', ''),
+                e.get('libelle', ''), _signed_amount(e), piece,
+                e.get('libelle', ''),
+            ])
+        writer.writerow(['ENDTRNS'])
+    return out.getvalue()
+
+
 FORMATS = {
     'sage': to_sage_pnm,
     'cegid': to_cegid_csv,
+    'quickbooks_iif': to_quickbooks_iif,
 }
 
 
