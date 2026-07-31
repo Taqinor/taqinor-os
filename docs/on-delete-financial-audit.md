@@ -695,9 +695,9 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/parametres/models_units.py:38` | UniteMesure.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/portail/models.py:53` | ComptePortailClient.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/portail/models.py:108` | AcceptationDevisPortail.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/portail/models.py:119` | AcceptationDevisPortail.devis | ventes.Devis | SET_NULL |
+| `backend/django_core/apps/portail/models.py:119` | AcceptationDevisPortail.devis | ventes.Devis | PROTECT |
 | `backend/django_core/apps/portail/models.py:173` | PaiementFacturePortail.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/portail/models.py:181` | PaiementFacturePortail.facture | facturation.Facture | SET_NULL |
+| `backend/django_core/apps/portail/models.py:181` | PaiementFacturePortail.facture | facturation.Facture | PROTECT |
 | `backend/django_core/apps/portail/models.py:238` | DocumentClientPortail.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/portail/models.py:360` | JalonChantierPortail.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/portail/models.py:413` | DemandeTicketPortail.company | authentication.Company | CASCADE |
