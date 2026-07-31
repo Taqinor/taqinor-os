@@ -32,6 +32,7 @@ const BASE_PAGE_TITLES = [
   // CRM
   ['/crm/leads', 'Leads'],
   ['/crm/parrainage', 'Parrainage'],
+  ['/crm/profils-site', 'Profils site'],
   ['/crm', 'Clients'],
   ['/activites', 'Mes activités'],
   ['/calendrier', 'Calendrier'],
@@ -45,6 +46,7 @@ const BASE_PAGE_TITLES = [
   ['/ventes/paiements', 'Encaissements'],
   ['/ventes/relances', 'Relances / Impayés'],
   ['/ventes/listes-prix', 'Listes de prix'],
+  ['/ventes/dossiers-reglementaires', 'Dossiers réglementaires'],
 
   // Chantiers
   ['/chantiers/approvisionnement', 'Approvisionnement avancé'],
@@ -67,6 +69,7 @@ const BASE_PAGE_TITLES = [
 
   // Analyse
   ['/reporting/balance-agee', 'Balance âgée'],
+  ['/reporting/quote-to-cash', 'Quote-to-Cash'],
   ['/reporting/archive/client', 'Archive client'],
   ['/reporting/archive/chantier', 'Archive chantier'],
   ['/reporting/dashboards/partage', 'Partage de dashboards'],
@@ -112,6 +115,7 @@ const TITLE_KEYS = {
   '/stock': 'title.stock',
   '/crm/leads': 'title.crm.leads',
   '/crm/parrainage': 'title.crm.parrainage',
+  '/crm/profils-site': 'title.crm.profils_site',
   '/crm': 'title.crm',
   '/activites': 'title.activites',
   '/calendrier': 'title.calendrier',
@@ -123,6 +127,7 @@ const TITLE_KEYS = {
   '/ventes/paiements': 'title.ventes.paiements',
   '/ventes/relances': 'title.ventes.relances',
   '/ventes/listes-prix': 'title.ventes.listes_prix',
+  '/ventes/dossiers-reglementaires': 'title.ventes.dossiers_reglementaires',
   '/chantiers': 'title.chantiers',
   '/ma-journee': 'title.ma_journee',
   '/interventions': 'title.interventions',
@@ -134,6 +139,7 @@ const TITLE_KEYS = {
   '/ia/ocr': 'title.ia.ocr',
   '/ia/agent': 'title.ia.agent',
   '/reporting/balance-agee': 'title.reporting.balance_agee',
+  '/reporting/quote-to-cash': 'title.reporting.quote_to_cash',
   '/reporting/archive/client': 'title.reporting.archive_client',
   '/reporting/archive/chantier': 'title.reporting.archive_chantier',
   '/reporting/dashboards/partage': 'title.reporting.dashboards_partage',

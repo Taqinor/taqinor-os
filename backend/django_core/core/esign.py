@@ -1,5 +1,41 @@
 """FG372 — E-signature (Yousign/DocuSign…), fondation branchable.
 
+WIR138 — DÉCISION TRACÉE : SOCLE CANONIQUE DÉSIGNÉ, EXPLICITEMENT PARQUÉ
+==============================================================================
+Trois chemins « e-signature » coexistaient sans propriétaire désigné. La
+décision, consignée aussi dans ``docs/esign-socle.md``, est :
+
+1. **``core.esign`` EST le socle canonique** des DEMANDES de signature
+   électronique adossées à un prestataire externe (Yousign/DocuSign…). Toute
+   app qui devra un jour envoyer un document en signature chez un prestataire
+   passera par ``creer_demande()`` / ``envoyer()`` — jamais par un connecteur
+   local réinventé.
+
+2. **Il reste PARQUÉ (dormant) tant qu'aucun prestataire n'est provisionné.**
+   L'envoi réel exige un compte + une clé d'API que SEUL le fondateur peut
+   fournir (``IntegrationConfig.secret_ref``). Le brancher aujourd'hui
+   n'ajouterait qu'une table d'``EsignRequest`` en brouillon perpétuel : zéro
+   valeur, une surface d'API de plus à garder. Aucun endpoint n'est donc
+   exposé, et c'est VOLONTAIRE (verrouillé par
+   ``core/tests/test_wir138_esign_socle.py``).
+
+3. **Les deux autres chemins ne sont PAS des socles concurrents** — ils
+   traitent d'autres objets, et restent tels quels :
+   * ``ventes.DevisSignature`` = PREUVE d'acceptation en ligne (loi 53-05 :
+     consentement, IP, user-agent, hash du devis). Ce n'est pas une demande
+     envoyée à un prestataire ; elle ne migrera JAMAIS vers ``core.esign``.
+   * ``ged.DemandeSignatureDocument`` = circuit de signature INTERNE d'un
+     document GED (rôles signataires, ordre). C'est ce chemin — et lui seul —
+     qui devra déléguer son envoi externe à ``core.esign`` le jour où un
+     prestataire sera activé (son point d'extension ``esign_provider`` est
+     déjà un stub gardé par ``settings.ESIGN_ENABLED``).
+
+ACTIVATION (étape fondateur, hors périmètre agent) : créer un
+``IntegrationConfig`` e-sign actif (provider + ``secret_ref``), puis router
+``ged.services.demander_signature`` vers ``core.esign.creer_demande/envoyer``
+et exposer l'endpoint de suivi. Tant que ce n'est pas fait, ne PAS ajouter de
+quatrième chemin.
+
 Permet d'envoyer un document (Devis, contrat…) en signature électronique et de
 suivre son statut, SANS que ``core`` n'importe l'app qui produit le document
 (contrat import-linter ``core-foundation-is-a-base-layer``). La cible est

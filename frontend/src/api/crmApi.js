@@ -173,6 +173,14 @@ const crmApi = {
     api.delete(`/crm/vues-enregistrees/${id}/`),
   reorderSavedViews: (page, ids) =>
     api.post('/crm/vues-enregistrees/reorder/', { page, ids }),
+
+  // WIR99/DC12 — Profil site/énergie RÉUTILISABLE par client (SiteProfile) :
+  // source unique du profil énergie / toiture / pompage, qui pré-remplit le
+  // générateur pour les devis SANS lead. `company` est posée côté serveur.
+  getSiteProfiles: (params) => api.get('/crm/site-profiles/', { params }),
+  createSiteProfile: (data) => api.post('/crm/site-profiles/', data),
+  updateSiteProfile: (id, data) =>
+    api.patch(`/crm/site-profiles/${id}/`, data),
 }
 
 export default crmApi

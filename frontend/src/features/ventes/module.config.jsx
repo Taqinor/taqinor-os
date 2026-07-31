@@ -50,6 +50,9 @@ const RelancesPage = lazy(() => import('../../pages/ventes/RelancesPage'))
 const PaiementsPage = lazy(() => import('../../pages/ventes/PaiementsPage'))
 // XSAL1-2 — administration des listes de prix clients (écriture Responsable/Admin, gardée serveur).
 const ListesPrixPage = lazy(() => import('../../pages/ventes/ListesPrixPage'))
+// WIR104 — écran unique du cluster réglementaire / mise en service
+// (FG245, FG268-287), jusqu'ici complet côté serveur et sans consommateur.
+const DossiersReglementairesPage = lazy(() => import('../../pages/ventes/DossiersReglementairesPage'))
 
 const config = {
   key: 'ventes',
@@ -70,6 +73,8 @@ const config = {
       // WIR23 — lecture ouverte à tout rôle (écriture Responsable/Admin
       // gardée serveur, cf. apps/ventes/views/liste_prix.py).
       { to: '/ventes/listes-prix',   label: 'Listes de prix',   k: 'nav.listes_prix', icon: navIcon(Tags),  roles: ['normal','responsable','admin'] },
+      // WIR104 — dossiers réglementaires & mise en service (lecture).
+      { to: '/ventes/dossiers-reglementaires', label: 'Dossiers réglementaires', k: 'nav.dossiers_reglementaires', icon: navIcon(FileText), roles: ['normal','responsable','admin'] },
     ],
   },
   routes: [
@@ -83,6 +88,8 @@ const config = {
     { path: '/ventes/relances', component: RelancesPage },
     { path: '/ventes/paiements', component: PaiementsPage },
     { path: '/ventes/listes-prix', component: ListesPrixPage },
+    // WIR104 — écran consommateur du cluster réglementaire (FG245, FG268-287).
+    { path: '/ventes/dossiers-reglementaires', component: DossiersReglementairesPage },
   ],
 }
 

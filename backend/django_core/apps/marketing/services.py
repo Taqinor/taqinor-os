@@ -25,6 +25,7 @@ from apps.compta.services import (  # noqa: F401
     decider_gagnant_ab,
     demander_ou_envoyer_campagne,
     dupliquer_campagne,
+    enregistrer_ouverture_partage,
     enregistrer_relance_devis_abandonne,
     envelopper_liens_campagne,
     envoyer_campagne,

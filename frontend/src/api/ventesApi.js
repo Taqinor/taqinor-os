@@ -82,6 +82,43 @@ const ventesApi = {
   // WR1 — FG44 : refus explicite (motif/date/chatter), fait avancer le funnel
   // (devis_refused) — chemin canonique, à la place d'un PATCH statut direct.
   refuserDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/refuser/`, payload),
+  // ── WIR104 — Cluster réglementaire / mise en service (FG245, FG268-287) ──
+  // Décision consignée en tête de `apps/ventes/models_regulatory.py` : ces
+  // données RESTENT dans `ventes` (dossier réglementaire de l'affaire), face à
+  // `installations` (exécution physique). Elles étaient toutes complètes côté
+  // serveur et sans aucun consommateur : cette lecture générique alimente
+  // l'écran `/ventes/dossiers-reglementaires`. `resource` vient TOUJOURS d'une
+  // liste blanche côté écran, jamais d'une saisie utilisateur.
+  getReglementaire: (resource, params) =>
+    api.get(`/ventes/${resource}/`, { params }),
+  getCalendrierReglementaire: (params) =>
+    api.get('/ventes/calendrier-reglementaire/', { params }),
+
+  // ── WIR103 — Palier avancé facturation : note de débit + proforma ──
+  // Les deux étaient complets et testés côté serveur mais n'avaient AUCUN
+  // wrapper client (zéro UI). Le reste du palier (pénalités, encaissement
+  // groupé, promesses, mandats, remises d'encaissement) reste en attente.
+  // ZFAC4 — note de débit : créée DEPUIS une facture émise, puis lisible et
+  // téléchargeable en PDF. Sans `lignes`, le serveur recopie la facture.
+  creerNoteDebit: (factureId, data) =>
+    api.post(`/ventes/factures/${factureId}/creer-note-debit/`, data || {}),
+  getNotesDebit: (params) => api.get('/ventes/notes-debit/', { params }),
+  telechargerNoteDebitPdf: (id) =>
+    api.get(`/ventes/notes-debit/${id}/telecharger-pdf/`,
+      { responseType: 'blob' }),
+  // XFAC10 — proforma d'un devis : document sans impact comptable (jamais une
+  // facture). Le POST renvoie directement le PDF.
+  getProformaPdf: (devisId) =>
+    api.post(`/ventes/devis/${devisId}/proforma-pdf/`, {},
+      { responseType: 'blob' }),
+
+  // WIR99/DC12 — pré-remplissage du générateur pour un devis SANS lead, depuis
+  // le `crm.SiteProfile` du client (profil énergie/toiture/pompage réutilisable).
+  getPrefillSite: (clientId) =>
+    api.get('/ventes/devis/prefill-site/', { params: { client: clientId } }),
+  // WIR96 — suivi marketing d'un devis : ouverture du lien de partage
+  // (« vu le … ») + relances de devis abandonné consignées.
+  getSuiviPartageDevis: (id) => api.get(`/ventes/devis/${id}/suivi-partage/`),
   historiqueDevis: (id) => api.get(`/ventes/devis/${id}/historique/`),
   noterDevis: (id, body) => api.post(`/ventes/devis/${id}/noter/`, { body }),
   // NTCPQ8 — approbation de remise par paliers (matrice NTCPQ7).
@@ -175,6 +212,14 @@ const ventesApi = {
   getEmailsFacture: (id) => api.get(`/ventes/factures/${id}/emails/`),
   getEmailConfig: () => api.get('/ventes/email-config/'),
   getBalanceAgee: () => api.get('/ventes/balance-agee/'),
+  // WIR84 — agrégateurs Quote-to-Cash de ventes (FG45 / FG47 / ZFAC10),
+  // complets côté serveur mais sans aucun consommateur jusqu'ici. Ils sont
+  // désormais lus par l'écran `/reporting/quote-to-cash` (QuoteToCashPage) —
+  // aucun agrégateur mort ne reste dans `apps/ventes`.
+  getDashboardQuoteToCash: (params) => api.get('/ventes/dashboard/', { params }),
+  getCashFlowForecast: (params) => api.get('/ventes/insights/cash-flow/', { params }),
+  getAnalyseFacturation: (params) =>
+    api.get('/ventes/etats/analyse-facturation/', { params }),
   getClientReleve: (clientId) => api.get(`/ventes/clients/${clientId}/releve/`),
   getClientRelevePdf: (clientId) => api.get(`/ventes/clients/${clientId}/releve-pdf/`, { responseType: 'blob' }),
   getLettreRelancePdf: (factureId) => api.get(`/ventes/factures/${factureId}/lettre-relance-pdf/`, { responseType: 'blob' }),

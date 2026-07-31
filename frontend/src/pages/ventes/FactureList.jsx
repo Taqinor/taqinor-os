@@ -33,6 +33,8 @@ import {
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
 import PaiementDialog from './PaiementDialog'
+// WIR103/ZFAC4 — modale « Note de débit » (création + téléchargement PDF).
+import NoteDebitDialog from './NoteDebitDialog'
 import { errorMessageFrom } from '../../lib/toast'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
@@ -186,6 +188,7 @@ function FactureRow({ f, ctx }) {
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    openNoteDebit,
     highlightFactureId,
   } = ctx
   const overdue = isOverdue(f)
@@ -459,6 +462,13 @@ function FactureRow({ f, ctx }) {
                     <Code2 /> Aperçu UBL
                   </DropdownMenuItem>
                 )}
+                {/* WIR103/ZFAC4 — note de débit (pendant de l'avoir) :
+                    création + PDF, jusqu'ici serveur-only sans aucune UI. */}
+                {['emise', 'payee', 'en_retard'].includes(f.statut) && (
+                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openNoteDebit(f) }}>
+                    <ReceiptText /> Note de débit
+                  </DropdownMenuItem>
+                )}
                 {/* N105/WR2b — export DGI : masqué tant que l'interrupteur société est OFF. */}
                 {dgiActif && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem
@@ -538,6 +548,12 @@ export default function FactureList() {
   // VX21 — chargement différé anti-scintillement (parité DevisList) : spinner
   // discret puis squelette, en-tête de page toujours visible.
   const { showSpinner, showSkeleton } = useDelayedLoading(loading)
+
+  // ── WIR103/ZFAC4 — Note de débit (pendant de l'avoir) : modale de
+  // création + téléchargement PDF. Le backend était complet et testé mais
+  // n'avait aucun écran ; c'est ici qu'il en gagne un.
+  const [noteDebitTarget, setNoteDebitTarget] = useState(null)
+  const openNoteDebit = (f) => setNoteDebitTarget(f)
 
   // ── Avoir (note de crédit) : modale total OU partiel ──
   const [avoirTarget, setAvoirTarget] = useState(null) // facture ciblée
@@ -1142,6 +1158,7 @@ export default function FactureList() {
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    openNoteDebit,
     highlightFactureId,
   }
 
@@ -1361,6 +1378,13 @@ export default function FactureList() {
         facture={payTarget}
         onOpenChange={(o) => { if (!o) setPayTarget(null) }}
         onSaved={() => dispatch(fetchFactures())}
+      />
+
+      {/* ── WIR103/ZFAC4 — Modale « Note de débit » (création + PDF) ── */}
+      <NoteDebitDialog
+        facture={noteDebitTarget}
+        open={!!noteDebitTarget}
+        onOpenChange={(o) => { if (!o) setNoteDebitTarget(null) }}
       />
 
       {/* ── Modale d'avoir (total ou partiel par ligne) ── */}

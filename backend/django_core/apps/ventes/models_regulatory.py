@@ -1,5 +1,29 @@
 """FG268-FG271 — Dossier réglementaire de raccordement (côté ventes).
 
+WIR104 — DÉCISION DE LOCALITÉ CONSIGNÉE : le cluster réglementaire /
+mise-en-service (FG245/FG254/FG268-287) RESTE dans ``apps.ventes``.
+------------------------------------------------------------------------------
+La question posée était : ces ~13 modèles (dossiers de raccordement,
+checklists, subventions, régularisation 82-21, recette IEC 62446, courbes I-V,
+packs as-built, attestations) relèvent-ils d'``installations`` ?
+
+Réponse : NON — les deux domaines sont distincts et déjà peuplés séparément.
+``installations`` porte l'EXÉCUTION PHYSIQUE (``CommissioningRecord``,
+``CommissioningIVReading``, ``HandoverPack``, ``ChantierChecklistItem`` : ce
+que le technicien constate sur site) ; ``ventes`` porte le DOSSIER
+RÉGLEMENTAIRE de l'affaire (ce qui est déposé chez ONEE/ANRE/le distributeur et
+remis au client). Les reloger fusionnerait deux cycles de vie différents et
+imposerait une migration destructive croisée entre deux apps domaine, pour un
+gain nul : les liens éventuels vers le chantier passent déjà par des FK CHAÎNE,
+et aucun import cross-domaine n'existe.
+
+Conséquences appliquées par WIR104 :
+  * ces viewsets sont désormais dotés d'un ÉCRAN (`/ventes/dossiers-reglementaires`,
+    `DossiersReglementairesPage`) : plus aucun n'est sans consommateur ;
+  * le DOUBLON « fiche technique » est retiré — ``/ventes/fiches-techniques/``
+    (jamais appelé) a été supprimé ; ``/stock/fiches-techniques/`` est la seule
+    surface exposée (voir le docstring de ``ventes.FicheTechnique``).
+
 Couche ADDITIVE, propre à ``ventes``, pour suivre la constitution & le dépôt du
 dossier réglementaire d'une affaire (loi 82-21 / ONEE / distributeur / ANRE).
 Elle complète — sans la dupliquer ni la fusionner — la couche chantier

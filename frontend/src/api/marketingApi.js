@@ -149,6 +149,20 @@ const marketingApi = {
   // ── WIR161 — Journal d'appels commercial / click-to-call log (FG208) ──
   // `company`/`auteur` posés côté serveur (jamais lus du corps de requête).
   appels: resource('appels'),
+
+  // ── WIR96 — Suivi d'ouverture des liens de partage + relances de devis
+  // abandonné (FG203/FG205). Les deux ressources étaient routées mais sans
+  // aucun wrapper côté client. L'ÉCRITURE est faite par `apps/ventes` au
+  // moment réel de l'ouverture / de la relance ; ces wrappers sont en
+  // LECTURE (listes marketing transverses). La fiche devis, elle, lit le
+  // suivi d'UN devis via `ventesApi.getSuiviPartageDevis`. ──
+  ouverturesPartage: {
+    list: (params) => api.get('/marketing/ouvertures-partage/', { params }),
+  },
+  relancesDevisAbandonnes: {
+    list: (params) =>
+      api.get('/marketing/relances-devis-abandonnes/', { params }),
+  },
 }
 
 export default marketingApi

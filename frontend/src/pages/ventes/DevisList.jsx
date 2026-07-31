@@ -55,6 +55,8 @@ import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import DealSignedCelebration from '../../ui/DealSignedCelebration'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
+// WIR96 — panneau « Suivi du partage » (ouvertures du lien + relances).
+import DevisSuiviPartagePanel from './DevisSuiviPartagePanel'
 import { StateBlock } from '../../components/StateBlock'
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
 
@@ -348,6 +350,7 @@ function DevisRow({ d, ctx }) {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
@@ -356,6 +359,7 @@ function DevisRow({ d, ctx }) {
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
+    handleProformaPdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   } = ctx
   // Expiration calculée à la volée (T7) : un devis en attente dont la
@@ -894,6 +898,15 @@ function DevisRow({ d, ctx }) {
               <DropdownMenuItem onSelect={() => toggleHistorique(d.id)}>
                 {histoOpenId === d.id ? "Masquer l'historique" : "Historique des modifications"}
               </DropdownMenuItem>
+              {/* WIR103/XFAC10 — proforma PDF (aucun impact comptable). */}
+              <DropdownMenuItem onSelect={() => handleProformaPdf(d)}>
+                Proforma (PDF)
+              </DropdownMenuItem>
+              {/* WIR96 — suivi du partage : « vu le … » (OuverturePartage)
+                  + relances consignées (RelanceDevisAbandonne). */}
+              <DropdownMenuItem onSelect={() => toggleSuiviPartage(d.id)}>
+                {suiviOpenId === d.id ? 'Masquer le suivi du partage' : 'Suivi du partage'}
+              </DropdownMenuItem>
               {/* QX27 — actions historiquement dans « Autres actions » :
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
               {d.is_active && d.statut !== 'brouillon' && (
@@ -1038,6 +1051,23 @@ function DevisRow({ d, ctx }) {
         </td>
       </tr>
     )}
+    {/* WIR96 — Panneau « Suivi du partage » : ouverture du lien de
+        proposition + relances consignées côté marketing. */}
+    {suiviOpenId === d.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-2">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">
+              Suivi du partage — {d.reference}
+            </p>
+            <DevisSuiviPartagePanel
+              data={suiviCache[d.id]}
+              loading={suiviLoadingId === d.id}
+            />
+          </div>
+        </td>
+      </tr>
+    )}
     {/* QG11 — Panneau « Voir le design 3D » : rendu LECTURE
         SEULE du plan de toiture stocké (roof_layout). */}
     {roofOpenId === d.id && (
@@ -1146,6 +1176,24 @@ export default function DevisList() {
         .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
         .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
         .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
+    }
+  }
+
+  // WIR96 — Panneau « Suivi du partage » : ouverture du lien de proposition
+  // (marketing.OuverturePartage, « vu le … ») + relances consignées
+  // (marketing.RelanceDevisAbandonne). Même patron repliable que l'historique.
+  const [suiviOpenId, setSuiviOpenId] = useState(null)
+  const [suiviCache, setSuiviCache] = useState({})   // id → {ouverture, relances}
+  const [suiviLoadingId, setSuiviLoadingId] = useState(null)
+  const toggleSuiviPartage = (id) => {
+    if (suiviOpenId === id) { setSuiviOpenId(null); return }
+    setSuiviOpenId(id)
+    if (suiviCache[id] === undefined) {
+      setSuiviLoadingId(id)
+      ventesApi.getSuiviPartageDevis(id)
+        .then(res => setSuiviCache(c => ({ ...c, [id]: res.data || null })))
+        .catch(() => setSuiviCache(c => ({ ...c, [id]: null })))
+        .finally(() => setSuiviLoadingId(l => (l === id ? null : l)))
     }
   }
 
@@ -1815,6 +1863,18 @@ export default function DevisList() {
     setSelectedIds([])
   }
 
+  // WIR103/XFAC10 — Proforma PDF : document sans aucun impact comptable
+  // (jamais une facture, jamais une écriture). Le backend était complet et
+  // testé mais n'avait AUCUN appelant côté client. Le POST renvoie le PDF.
+  const handleProformaPdf = async (d) => {
+    try {
+      const res = await ventesApi.getProformaPdf(d.id)
+      openPdfBlob(res.data, `Proforma_${d.reference}.pdf`)
+    } catch {
+      toast.error('Proforma indisponible.')
+    }
+  }
+
   const handleTelechargerPdf = async (d) => {
     setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
     try {
@@ -1975,6 +2035,7 @@ export default function DevisList() {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
@@ -1983,6 +2044,7 @@ export default function DevisList() {
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
+    handleProformaPdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   }
 
