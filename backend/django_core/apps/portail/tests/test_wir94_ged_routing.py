@@ -7,6 +7,18 @@ lie ``document_ged`` ; sans fichier, aucun dépôt ; un échec GED reste
 BEST-EFFORT (le document portail est quand même enregistré) ; un second
 ``save()`` sans nouveau fichier ne redépose rien (idempotence).
 
+POINT D'ENTRÉE : l'orchestration a quitté ``DocumentClientPortail.save()``
+pour le couple de récepteurs ``pre_save``/``post_save`` de
+``apps/portail/receivers.py`` (câblé par ``PortailConfig.ready``) — un modèle
+n'orchestre pas d'écriture cross-app, et l'import ``portail.models ->
+ged.services`` cassait le contrat CI ``portail-models-decoupled``. Les quatre
+tests de comportement ci-dessous sont donc CONSERVÉS TELS QUELS : ils passent
+par ``objects.create()``/``save()``, exactement comme le code appelant réel
+(ViewSet portail, admin, scripts), et prouvent que le déplacement n'a rien
+changé au comportement observable. ``ReceiversWiringTests`` y ajoute le garde-
+fou d'architecture : le modèle ne doit plus orchestrer, et les récepteurs
+doivent être réellement branchés.
+
 Run :
     python manage.py test apps.portail.tests.test_wir94_ged_routing -v2
 """
@@ -14,6 +26,8 @@ import itertools
 from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import models as django_models
+from django.db.models.signals import post_save, pre_save
 from django.test import TestCase
 
 from authentication.models import Company
@@ -104,3 +118,32 @@ class DocumentClientPortailGedRoutingTests(TestCase):
         doc.traite = True
         doc.save(update_fields=['traite'])
         self.assertEqual(depose.call_count, 1)
+
+
+class ReceiversWiringTests(TestCase):
+    """Garde-fou d'architecture : l'orchestration GED vit dans receivers.py.
+
+    Le contrat CI ``portail-models-decoupled`` (``.importlinter``) interdit à
+    ``apps.portail.models`` d'atteindre ``apps.{ventes,sav,stock,...}.models`` ;
+    appeler ``ged.services`` DEPUIS le modèle y traînait tout le graphe
+    ``ged → notifications → ventes/sav/stock``. Ces deux tests empêchent la
+    régression : le modèle ne réintroduit pas de ``save()`` orchestrateur, et
+    les récepteurs qui portent le comportement sont bien branchés.
+    """
+
+    def test_le_modele_norchestre_plus_le_depot(self):
+        # Aucun override de save() sur le modèle : il hérite de Model.save.
+        self.assertIs(DocumentClientPortail.save, django_models.Model.save)
+
+    def test_les_recepteurs_wir94_sont_branches(self):
+        for signal, uid in (
+            (pre_save, 'portail_document_capture_upload_pour_ged'),
+            (post_save, 'portail_document_depot_ged'),
+        ):
+            # `signal.receivers` = [(lookup_key, receiver[, is_async]), ...]
+            # selon la version de Django : on ne lit que lookup_key[0], qui
+            # vaut le `dispatch_uid` quand il est fourni.
+            uids = [entry[0][0] for entry in signal.receivers]
+            self.assertIn(
+                uid, uids,
+                f'récepteur {uid} non branché (PortailConfig.ready ?)')

@@ -17,3 +17,10 @@ class PortailConfig(AppConfig):
         ),
         'categorie': 'Commercial',
     }
+
+    def ready(self):
+        # WIR94 — câble le dépôt GED canonique de l'upload portail. Cette
+        # orchestration cross-app vit dans `receivers.py` (jamais dans
+        # `models.py` : un modèle n'orchestre pas d'écriture cross-app, et
+        # l'import y cassait le contrat CI `portail-models-decoupled`).
+        from . import receivers  # noqa: F401
