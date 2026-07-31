@@ -9,10 +9,11 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8225, operations: 15138, components: 4093}
+counts: {paths: 8235, operations: 15148, components: 4097}
 securitySchemes:
 - cookieJWT
 - publicApiKey
+- publicApiQueryToken
 operations:
 - get /api/django/accessreview/campaigns/ -> django_accessreview_campaigns_list
 - post /api/django/accessreview/campaigns/ -> django_accessreview_campaigns_create
@@ -7118,10 +7119,12 @@ operations:
 - get /api/django/stock/fournisseurs/{id}/ -> django_stock_fournisseurs_retrieve
 - patch /api/django/stock/fournisseurs/{id}/ -> django_stock_fournisseurs_partial_update
 - put /api/django/stock/fournisseurs/{id}/ -> django_stock_fournisseurs_update
+- delete /api/django/stock/fournisseurs/{id}/force-delete/ -> django_stock_fournisseurs_force_delete_destroy
 - get /api/django/stock/fournisseurs/{id}/performance/ -> django_stock_fournisseurs_performance_retrieve
 - get /api/django/stock/fournisseurs/{id}/portail-tokens/ -> django_stock_fournisseurs_portail_tokens_retrieve
 - post /api/django/stock/fournisseurs/{id}/portail-tokens/ -> django_stock_fournisseurs_portail_tokens_create
 - post /api/django/stock/fournisseurs/{id}/portail-tokens/{token_id}/revoquer/ -> django_stock_fournisseurs_portail_tokens_revoquer_create
+- patch /api/django/stock/fournisseurs/{id}/unarchive/ -> django_stock_fournisseurs_unarchive_partial_update
 - get /api/django/stock/fournisseurs/{id}/vue-360/ -> django_stock_fournisseurs_vue_360_retrieve
 - get /api/django/stock/inventaire-sessions/ -> django_stock_inventaire_sessions_list
 - post /api/django/stock/inventaire-sessions/ -> django_stock_inventaire_sessions_create
@@ -7598,8 +7601,14 @@ operations:
 - get /api/public/chantiers/{id}/ -> public_chantiers_retrieve
 - get /api/public/devis/ -> public_devis_list
 - get /api/public/devis/{id}/ -> public_devis_retrieve
+- post /api/public/exports/ -> public_exports_create
+- get /api/public/exports/{entite}.csv -> public_exports_.csv_retrieve
 - get /api/public/factures/ -> public_factures_list
 - get /api/public/factures/{id}/ -> public_factures_retrieve
+- post /api/public/imports/ -> public_imports_create
+- get /api/public/jobs/ -> public_jobs_list
+- get /api/public/jobs/{id}/ -> public_jobs_retrieve
+- post /api/public/jobs/{id}/relancer/ -> public_jobs_relancer_create
 - post /api/public/leads-write/ -> public_leads_write_create
 - patch /api/public/leads-write/{id}/ -> public_leads_write_partial_update
 - post /api/public/leads-write/{id}/activites/ -> public_leads_write_activites_create
@@ -14680,10 +14689,12 @@ operations:
 - get /api/v1/stock/fournisseurs/{id}/ -> v1_stock_fournisseurs_retrieve
 - patch /api/v1/stock/fournisseurs/{id}/ -> v1_stock_fournisseurs_partial_update
 - put /api/v1/stock/fournisseurs/{id}/ -> v1_stock_fournisseurs_update
+- delete /api/v1/stock/fournisseurs/{id}/force-delete/ -> v1_stock_fournisseurs_force_delete_destroy
 - get /api/v1/stock/fournisseurs/{id}/performance/ -> v1_stock_fournisseurs_performance_retrieve
 - get /api/v1/stock/fournisseurs/{id}/portail-tokens/ -> v1_stock_fournisseurs_portail_tokens_retrieve
 - post /api/v1/stock/fournisseurs/{id}/portail-tokens/ -> v1_stock_fournisseurs_portail_tokens_create
 - post /api/v1/stock/fournisseurs/{id}/portail-tokens/{token_id}/revoquer/ -> v1_stock_fournisseurs_portail_tokens_revoquer_create
+- patch /api/v1/stock/fournisseurs/{id}/unarchive/ -> v1_stock_fournisseurs_unarchive_partial_update
 - get /api/v1/stock/fournisseurs/{id}/vue-360/ -> v1_stock_fournisseurs_vue_360_retrieve
 - get /api/v1/stock/inventaire-sessions/ -> v1_stock_inventaire_sessions_list
 - post /api/v1/stock/inventaire-sessions/ -> v1_stock_inventaire_sessions_create
@@ -15448,6 +15459,9 @@ components:
 - BudgetProjetRequest
 - BudgetRequest
 - BudgetStatutEnum
+- BulkJob
+- BulkJobStatutEnum
+- BulkJobTypeEnum
 - BulletinPaie
 - BulletinPaieRequest
 - Cabinet
@@ -16829,6 +16843,7 @@ components:
 - PaginatedBudgetFlotteList
 - PaginatedBudgetList
 - PaginatedBudgetProjetList
+- PaginatedBulkJobList
 - PaginatedBulletinPaieList
 - PaginatedCabinetList
 - PaginatedCaisseList
