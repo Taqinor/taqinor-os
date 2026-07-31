@@ -494,3 +494,66 @@ class RapportDefinition(TenantModel):
 
     def __str__(self):
         return f'{self.titre} ({self.dataset})'
+
+
+class RapportAbonnement(TenantModel):
+    """NTEXT12 — abonnement d'envoi PLANIFIÉ d'une ``RapportDefinition``.
+
+    « Lundi 8 h → le rapport pipeline à deux destinataires » : ``cron`` porte la
+    planification, ``destinataires`` la liste (utilisateurs internes ET/OU
+    adresses libres), ``format`` le rendu attaché.
+
+    ``destinataires`` (JSON) accepte deux formes, jamais du texte libre exécuté :
+      * ``{'users': [<id>, …], 'emails': ['a@b.com', …]}`` — la forme canonique ;
+      * une liste plate d'adresses (tolérée, équivalente à ``{'emails': [...]}``).
+    Les ``users`` sont résolus DANS la société de l'abonnement (jamais
+    cross-tenant) ; une adresse d'un utilisateur d'un autre tenant n'est jamais
+    atteinte.
+
+    JOURNAL : comme ``core.ScheduledExport``, l'exécution est tracée SUR la
+    ligne (``derniere_execution_le`` / ``dernier_statut`` / ``dernier_detail``)
+    — pas de table de journal séparée. Sans canal email configuré, le run est
+    un NO-OP propre journalisé ``non_configure`` (aucun envoi réseau).
+    """
+
+    class Format(models.TextChoices):
+        CSV = 'csv', 'CSV'
+        XLSX = 'xlsx', 'XLSX'
+
+    class Statut(models.TextChoices):
+        OK = 'ok', 'Envoyé'
+        NON_CONFIGURE = 'non_configure', 'Canal email non configuré'
+        SANS_DESTINATAIRE = 'sans_destinataire', 'Aucun destinataire'
+        ERREUR = 'erreur', 'Erreur'
+
+    rapport_def = models.ForeignKey(
+        'reporting.RapportDefinition',
+        on_delete=models.CASCADE,  # on_delete: un abonnement n'existe QUE pour son rapport (composition) ; supprimer le rapport supprime ses abonnements
+        related_name='abonnements', verbose_name='Rapport')
+    cron = models.CharField(
+        'Planification (cron)', max_length=120, blank=True, default='',
+        help_text="Expression cron 5 champs (ex. « 0 8 * * 1 » = lundi 8 h). "
+                  "Vide = jamais planifié.")
+    destinataires = models.JSONField(default=dict, blank=True)
+    format = models.CharField(
+        max_length=10, choices=Format.choices, default=Format.CSV)
+    actif = models.BooleanField('Actif', default=True)
+
+    derniere_execution_le = models.DateTimeField(
+        'Dernière exécution', null=True, blank=True)
+    dernier_statut = models.CharField(
+        'Dernier statut', max_length=20, choices=Statut.choices,
+        blank=True, default='')
+    dernier_detail = models.JSONField('Dernier détail', default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Abonnement à un rapport"
+        verbose_name_plural = 'Abonnements à un rapport'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='rpt_abonnement_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.rapport_def_id} @ {self.cron or "—"}'

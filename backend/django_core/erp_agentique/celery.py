@@ -160,6 +160,14 @@ app.conf.beat_schedule = {
         'task': 'reporting.email_saved_reports',
         'schedule': crontab(hour=6, minute=0, day_of_week=1),
     },
+    # NTEXT12 — abonnements aux rapports (report-builder). Tourne à CHAQUE
+    # heure pile : le `cron` de chaque abonnement décide s'il est dû (grain =
+    # l'heure ; voir apps/reporting/rapport_abonnements.py). No-op complet tant
+    # qu'aucun abonnement actif n'est dû.
+    'reporting-envoyer-rapports-planifies': {
+        'task': 'reporting.envoyer_rapports_planifies',
+        'schedule': crontab(minute=0),
+    },
     # GED25 — purge auto de la corbeille échue (DRY-RUN par défaut, opt-in réel
     # via GED_PURGE_AUTO_APPLY). Tourne à 02:30 (heure creuse, Africa/Casablanca).
     'ged-purge-corbeille-echue': {
