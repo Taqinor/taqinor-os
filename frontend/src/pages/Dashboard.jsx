@@ -20,7 +20,13 @@ const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntiti
 // WIR144 — tuiles KPI crédit fédérées (kpi_providers) sur le cockpit direction.
 const CreditKpiCards = lazy(() => import('../features/credit/CreditKpiCards'))
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
+// NTMOB6 — sélecteur de démarrage par rôle : Dashboard est le SEUL point
+// d'atterrissage générique post-login, donc le seul endroit qui doit décider
+// d'un redémarrage automatique vers un accueil mobile par rôle.
+import api from '../api/axios'
+import { useIsMobile } from '../ui/ResponsiveDialog'
+import { defaultMobileHomeRoute } from '../features/offlinesync/mobile/mobileHome'
 import {
   Package, Users, FileCheck, FileText, AlertTriangle,
   TrendingUp, Activity, ReceiptText, Clock, Wrench, CalendarClock, Phone,
@@ -131,6 +137,27 @@ export function cockpitProfile({ roleNom, roleTier } = {}) {
   if (/sav|technicien|support|après-vente|apres-vente|maintenance|terrain/.test(n)) return 'sav'
   if (/commercial|vente|sales/.test(n)) return 'commercial'
   return 'directeur'
+}
+
+// NTMOB6 — sélecteur de démarrage par rôle : décide QUOI FAIRE sur ce rendu,
+// fonction PURE (même patron que `cockpitProfile`) pour rester testable sans
+// monter le composant. Ne fait ni navigation ni appel réseau — le composant
+// exécute juste le verdict :
+//   * `{ type: 'navigate', to }` — route déjà mémorisée côté serveur, on y
+//     renvoie directement (connexions mobiles suivantes) ;
+//   * `{ type: 'decide', suggested }` — premier atterrissage mobile (valeur
+//     encore NULL/undefined) : le composant persiste `suggested` et navigue
+//     s'il n'est pas vide ;
+//   * `null` — desktop, profil pas encore chargé, ou opt-out explicite
+//     (`mobileHomeRoute === ''`) : comportement inchangé.
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (cf. cockpitProfile)
+export function mobileHomeAction({
+  isMobile, hasFullProfile, mobileHomeRoute, roleNom, roleTier,
+}) {
+  if (!isMobile || !hasFullProfile) return null
+  if (mobileHomeRoute) return { type: 'navigate', to: mobileHomeRoute }
+  if (mobileHomeRoute === '') return null
+  return { type: 'decide', suggested: defaultMobileHomeRoute(roleNom, roleTier) }
 }
 
 // YYYY-MM-DD du jour (local), pour comparer aux dates ISO des enregistrements.
@@ -442,6 +469,33 @@ export function Component() {
   const roleNom = useSelector((s) => s.auth.role_nom)
   const roleTier = useSelector((s) => s.auth.role)
   const profile = cockpitProfile({ roleNom, roleTier })
+
+  // NTMOB6 — sélecteur de démarrage par rôle. `mobile_home_route` (NULL tant
+  // que rien n'est décidé, '' = opt-out explicite via Mes préférences, sinon
+  // une route mémorisée) vit sur le compte serveur (/auth/me). `hasFullProfile`
+  // distingue le profil COMPLET (/auth/me, où la clé `mobile_home_route`
+  // existe toujours, même à null) du stub posé par Login.jsx juste après
+  // l'authentification (`{ username }` seul, avant que `fetchMe()` n'ait
+  // résolu) — sinon on déciderait avec un rôle pas encore chargé et on
+  // figerait la mauvaise route. La décision elle-même est une fonction PURE
+  // (`mobileHomeAction`, même patron que `cockpitProfile`) : le composant se
+  // contente d'exécuter son verdict.
+  const isMobile = useIsMobile()
+  const hasFullProfile = !!user
+    && Object.prototype.hasOwnProperty.call(user, 'mobile_home_route')
+  const mobileHomeRoute = user?.mobile_home_route
+  const mobileHome = mobileHomeAction({
+    isMobile, hasFullProfile, mobileHomeRoute, roleNom, roleTier,
+  })
+  useEffect(() => {
+    if (mobileHome?.type !== 'decide') return
+    // On mémorise côté serveur pour les prochaines connexions ET on navigue
+    // immédiatement (sans attendre l'aller-retour réseau) — sinon le tout
+    // premier login resterait sur ce Dashboard une frame de trop.
+    api.post('/auth/mobile-home-route/', { route: mobileHome.suggested }).catch(() => {})
+    if (mobileHome.suggested) navigate(mobileHome.suggested, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileHome?.type, mobileHome?.suggested])
 
   // VX41 — comparaison togglable « période précédente » sur le CA mensuel
   // (off par défaut : comportement écran inchangé tant qu'on ne l'active pas).
@@ -769,6 +823,14 @@ export function Component() {
     typeof firstError === 'string'
       ? firstError
       : firstError?.detail || firstError?.message || 'Veuillez réessayer.'
+
+  // NTMOB6 — connexion mobile SUIVANTE : la route est déjà mémorisée côté
+  // serveur (`/auth/me`), on y renvoie directement. '' (opt-out explicite,
+  // « revenir au dashboard classique » dans Mes préférences) reste ici,
+  // comportement desktop inchangé.
+  if (mobileHome?.type === 'navigate') {
+    return <Navigate to={mobileHome.to} replace />
+  }
 
   return (
     <div className="ui-root min-h-full p-4 sm:p-6">

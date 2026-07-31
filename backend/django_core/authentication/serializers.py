@@ -238,6 +238,10 @@ class UserSerializer(serializers.ModelSerializer):
             'poste', 'poste_ref', 'poste_ref_intitule',
             'avatar_key', 'avatar_url',
             'supervisor', 'supervisor_nom',
+            # NTMOB6 — lecture seule ici : l'écriture passe UNIQUEMENT par
+            # MobileHomeRouteView (whitelist stricte), jamais par ce PATCH
+            # générique (admin gérant un AUTRE compte via UserViewSet).
+            'mobile_home_route',
             'societes_operables', 'active_company_id',
             'is_active', 'is_superuser', 'is_protected',
             # Rotation forcée des identifiants (N96). ``must_change_password`` est
@@ -267,6 +271,9 @@ class UserSerializer(serializers.ModelSerializer):
             # avatar_key se pilote par l'endpoint d'upload dédié, jamais par
             # un PATCH direct du corps ; avatar_url est calculé (présigné).
             'avatar_key', 'avatar_url',
+            # NTMOB6 — se pilote UNIQUEMENT par MobileHomeRouteView (whitelist
+            # stricte de routes), jamais par ce PATCH générique.
+            'mobile_home_route',
             # is_protected ne se pilote PAS via l'API (pas de privilège qui
             # se donne tout seul) : seulement par le seed et la commande de
             # récupération serveur.

@@ -9,6 +9,7 @@
 // Ouvert depuis le menu utilisateur du Header (Dialog, pas une route — reste
 // dans le périmètre `pages/preferences/` + `Header.jsx` de cette tâche).
 import { useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui/Dialog'
@@ -21,10 +22,57 @@ import { Switch } from '../../ui/Switch'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useDensity } from '../../design/theme-context'
 import { moduleConfigs } from '../../router/moduleRoutes'
+import api from '../../api/axios'
+import { fetchMe } from '../../features/auth/store/authSlice'
 import {
   getLandingModule, setLandingModule,
   getReducedMotionPref, setReducedMotionPref,
 } from './prefs'
+
+// NTMOB6 — sélecteur de démarrage par rôle : « revenir au dashboard classique
+// via le menu ». `mobile_home_route` vit CÔTÉ SERVEUR (/auth/me), pas en
+// localStorage comme les autres réglages de ce panneau — c'est le même champ
+// que Dashboard.jsx lit pour décider du redémarrage automatique sur mobile.
+// NULL/undefined (pas encore décidé) et toute route mémorisée comptent comme
+// « automatique » ; seule la chaîne vide explicite est un opt-out.
+function MobileHomeToggle() {
+  const dispatch = useDispatch()
+  const mobileHomeRoute = useSelector((s) => s.auth.user?.mobile_home_route)
+  const [busy, setBusy] = useState(false)
+  const automatic = mobileHomeRoute !== ''
+
+  const onToggle = async (checked) => {
+    setBusy(true)
+    try {
+      // checked → automatique (repasse à « pas encore décidé », recalculé au
+      // prochain atterrissage mobile) ; décoché → opt-out explicite ('').
+      await api.post('/auth/mobile-home-route/', { route: checked ? null : '' })
+      await dispatch(fetchMe())
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <label htmlFor="pref-mobile-home" className="text-sm font-semibold text-foreground">
+          Accueil mobile automatique par rôle
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Sur téléphone, atterrir directement sur l'accueil adapté à votre rôle
+          (Ma journée, Mes leads…) plutôt que sur le tableau de bord classique.
+        </p>
+      </div>
+      <Switch
+        id="pref-mobile-home"
+        checked={automatic}
+        disabled={busy}
+        onCheckedChange={onToggle}
+        aria-label="Accueil mobile automatique par rôle" />
+    </div>
+  )
+}
 
 const DENSITY_OPTIONS = [
   { value: 'comfortable', label: 'Confort' },
@@ -113,6 +161,8 @@ export default function PreferencesPanel({ open, onOpenChange }) {
               onCheckedChange={handleReducedMotionChange}
             />
           </div>
+
+          <MobileHomeToggle />
         </div>
       </DialogContent>
     </Dialog>
