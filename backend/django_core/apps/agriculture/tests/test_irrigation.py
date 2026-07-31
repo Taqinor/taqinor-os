@@ -132,5 +132,19 @@ class CampagneCoutIrrigationEndpointTests(TestCase):
             '/cout-irrigation/')
         resp = api.get(url)
         self.assertEqual(resp.status_code, 200, resp.data)
+        # Échelle FIXE à 2 décimales (cf. `_dec2` dans views.py) : le contrat
+        # ne dépend PAS de l'échelle rendue par la base. Les tests sélecteurs
+        # (test_cout_irrigation.py) ne peuvent pas voir cette dérive, car
+        # `Decimal('25') == Decimal('25.00')` est vrai — pas `str()`.
         self.assertEqual(resp.data['cout_irrigation_mad'], '80.00')
-        self.assertEqual(resp.data['volume_irrigation_solaire_m3'], '25')
+        self.assertEqual(resp.data['volume_irrigation_solaire_m3'], '25.00')
+
+    def test_campagne_sans_releve_rend_zero_a_deux_decimales(self):
+        """Fenêtre sans relevé : '0.00', jamais '0' (contrat stable)."""
+        api = auth(self.admin)
+        resp = api.get(
+            f'/api/django/agriculture/campagnes/{self.campagne.id}'
+            '/cout-irrigation/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['cout_irrigation_mad'], '0.00')
+        self.assertEqual(resp.data['volume_irrigation_solaire_m3'], '0.00')
