@@ -88,6 +88,16 @@ class Idee(TenantModel):
     # (``?include_archived=1``, réservé au même palier).
     archived = models.BooleanField(
         default=False, verbose_name='Masquée (modération)')
+    # NTIDE48 — « boîte à idées publique » (gated, OFF par défaut,
+    # ``InnovationSettings.idees_clients_actif``) : référence OPAQUE (comme
+    # ``linked_id``) vers un client — jamais un ``ForeignKey`` cross-app vers
+    # ``crm.Client``. NULL = idée interne (comportement historique, immense
+    # majorité des lignes). Une idée avec ``client_id`` renseigné est
+    # masquée des équipes (``get_queryset``) — seul le palier admin
+    # (``IdeasSeeAll``) la voit.
+    client_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID client (opaque, boîte à idées publique)')
 
     class Meta:
         verbose_name = 'Idée'
@@ -191,6 +201,14 @@ class InnovationSettings(TenantModel):
     feedback_digest_frequence = models.CharField(
         max_length=10, choices=Frequence.choices, default=Frequence.QUOTIDIEN,
         verbose_name='Fréquence du digest feedback produit')
+    # NTIDE48 — toggle « boîte à idées publique » (gated, OFF par défaut,
+    # comme ``campagnes_activees``/``feedback_digest_actif`` ci-dessus).
+    # Quand ON, une idée client (``Idee.client_id`` renseigné) est stockée
+    # dans la MÊME table ``Idee``, scopée société, mais masquée des équipes
+    # (``get_queryset``) — seul le palier admin (``IdeasSeeAll``) la voit.
+    idees_clients_actif = models.BooleanField(
+        default=False,
+        verbose_name="Permettre aux clients d'envoyer des idées")
 
     class Meta:
         verbose_name = 'Paramètres innovation'

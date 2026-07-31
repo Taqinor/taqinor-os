@@ -83,7 +83,10 @@ def idees_similaires(company, texte, limit=3):
     ``icontains`` titre+description (même patron que ``apps.kb.selectors``),
     top N par votes (plus de votes = plus consolidée), plus récente d'abord
     en cas d'égalité. Exclut les brouillons d'autrui (invisibles/hors sujet
-    pour la dédup) et les idées masquées (modération, NTIDE19)."""
+    pour la dédup), les idées masquées (modération, NTIDE19) et les idées
+    client (boîte à idées publique, NTIDE48 — « masquées des équipes sauf
+    admin » : cette route reste ouverte à tout utilisateur interne connecté,
+    IdeasVote, donc jamais un idée client dans ses suggestions)."""
     from django.db.models import Q
 
     from .models import Idee
@@ -91,7 +94,8 @@ def idees_similaires(company, texte, limit=3):
     texte = (texte or '').strip()
     if not texte:
         return []
-    qs = (Idee.objects.filter(company=company, draft=False, archived=False)
+    qs = (Idee.objects.filter(
+            company=company, draft=False, archived=False, client_id__isnull=True)
           .filter(Q(titre__icontains=texte) | Q(description__icontains=texte))
           .order_by('-votes_count', '-created_at')[:limit])
     return list(qs.values('id', 'titre', 'contexte', 'votes_count', 'statut'))

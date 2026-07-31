@@ -81,6 +81,12 @@ class IdeeViewSet(CompanyScopedModelViewSet):
             and getattr(self.request.user, 'is_responsable', False))
         if not include_archived:
             qs = qs.exclude(archived=True)
+        # NTIDE48 — une idée client (boîte à idées publique, ``client_id``
+        # renseigné) est masquée des équipes : seul le palier admin
+        # (``IdeasSeeAll``) la voit, sans param supplémentaire (contrairement
+        # à ``include_archived`` — « masqués des équipes SAUF admin »).
+        if not IdeasSeeAll().has_permission(self.request, self):
+            qs = qs.filter(client_id__isnull=True)
         statut = params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
@@ -548,6 +554,7 @@ class InnovationSettingsView(APIView):
             'seuil_votes_notification': 'Seuil de votes pour notifier l\'auteur',
             'feedback_digest_actif': 'Digest feedback produit activé',
             'feedback_digest_frequence': 'Fréquence du digest feedback produit',
+            'idees_clients_actif': "Permettre aux clients d'envoyer des idées",
         }
         anciennes = {f: getattr(instance, f) for f in champs_label}
         serializer.save()

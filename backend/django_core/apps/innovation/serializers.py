@@ -31,7 +31,7 @@ class IdeeSerializer(serializers.ModelSerializer):
             'id', 'titre', 'description', 'contexte', 'statut',
             'statut_display', 'auteur', 'auteur_nom', 'votes_count',
             'linked_type', 'linked_type_display', 'linked_id',
-            'date_creation', 'draft', 'archived',
+            'date_creation', 'draft', 'archived', 'client_id',
         ]
         # ``statut`` ne se modifie pas par PATCH direct : le cycle de vie
         # passe par les actions de transition (examiner/retenir/réaliser/
@@ -44,9 +44,12 @@ class IdeeSerializer(serializers.ModelSerializer):
         # uniquement par l'action ``publier``.
         # ``archived`` (NTIDE19) : jamais PATCH-able non plus, muté
         # uniquement par l'action ``masquer`` (palier Directeur/Responsable).
+        # ``client_id`` (NTIDE48) : jamais PATCH-able — réservé à un futur
+        # flux public client (aucun endpoint ne l'écrit aujourd'hui, gated
+        # OFF par défaut), affiché en lecture seule au palier admin.
         read_only_fields = [
             'auteur', 'votes_count', 'statut', 'date_creation', 'draft',
-            'archived']
+            'archived', 'client_id']
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', None)
@@ -89,6 +92,8 @@ class InnovationSettingsSerializer(serializers.ModelSerializer):
             'message_relance', 'seuil_votes_notification',
             # NTIDE40 — digest feedback produit (désactivé par défaut).
             'feedback_digest_actif', 'feedback_digest_frequence',
+            # NTIDE48 — « boîte à idées publique » (désactivée par défaut).
+            'idees_clients_actif',
         ]
 
 
