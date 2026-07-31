@@ -32,6 +32,10 @@ DEFAULT_PREFS = {
     'in_app': True,
     'whatsapp': False,
     'email': False,
+    # NTMOB8 — défaut True = comportement historique du push (N92) préservé :
+    # avant cette préférence par catégorie, le push partait pour tout
+    # événement dès qu'un abonnement existait sur l'appareil.
+    'push': True,
 }
 
 # QW8 — Le founder a choisi « email gratuit maintenant » pour l'obligation de
@@ -74,6 +78,7 @@ def resolve_prefs(user, event_type):
         'in_app': pref.in_app,
         'whatsapp': pref.whatsapp,
         'email': pref.email,
+        'push': pref.push,
     }
 
 
@@ -512,13 +517,17 @@ def notify(user, event_type, title, body='', link=None, company=None,
             user, company, event_type, channel='whatsapp', ok=wa_ok,
             instance=created)
 
-    # Web push (N92) : best-effort, opt-in par APPAREIL (pas un toggle
-    # d'événement). NO-OP total sans clés VAPID ni abonnement — donc aucun
-    # changement de comportement tant que rien n'est configuré.
-    try:
-        _dispatch_webpush(user, str(title), str(body or ''), link=link)
-    except Exception as exc:  # pragma: no cover - défensif
-        logger.warning('Dispatch web push notification échoué : %s', exc)
+    # Web push (N92) : best-effort, opt-in par APPAREIL (pas seulement un
+    # toggle d'événement). NO-OP total sans clés VAPID ni abonnement — donc
+    # aucun changement de comportement tant que rien n'est configuré.
+    # NTMOB8 — en plus de l'opt-in device, la CATÉGORIE d'événement doit
+    # rester activée pour cet utilisateur (défaut True = comportement
+    # historique inchangé pour qui n'a jamais touché ce réglage).
+    if prefs.get('push'):
+        try:
+            _dispatch_webpush(user, str(title), str(body or ''), link=link)
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('Dispatch web push notification échoué : %s', exc)
 
     return created
 
@@ -576,13 +585,14 @@ def merged_preferences(user):
             out.append({
                 'event_type': value, 'event_label': label,
                 'in_app': p.in_app, 'whatsapp': p.whatsapp, 'email': p.email,
+                'push': p.push,
             })
         else:
             d = default_prefs_for(value)
             out.append({
                 'event_type': value, 'event_label': label,
                 'in_app': d['in_app'], 'whatsapp': d['whatsapp'],
-                'email': d['email'],
+                'email': d['email'], 'push': d['push'],
             })
     return out
 
@@ -592,6 +602,8 @@ CHANNELS = [
     {'key': Channel.IN_APP, 'label': 'In-app'},
     {'key': Channel.WHATSAPP, 'label': 'WhatsApp'},
     {'key': Channel.EMAIL, 'label': 'Email'},
+    # NTMOB8 — préférence PUSH par catégorie (au-delà de l'opt-in device N92).
+    {'key': 'push', 'label': 'Push sur cet appareil'},
 ]
 
 

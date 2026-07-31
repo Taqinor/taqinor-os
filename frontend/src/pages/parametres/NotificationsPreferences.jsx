@@ -8,13 +8,18 @@ import {
 
 // N75 — Préférences de notifications par événement et par canal.
 // Chaque ligne = un événement métier ; chaque colonne = un canal (in-app,
-// WhatsApp, email). In-app est toujours disponible ; WhatsApp/email ne
+// WhatsApp, email, push). In-app est toujours disponible ; WhatsApp/email ne
 // diffusent que si le canal correspondant est réellement configuré côté serveur
 // (sinon no-op silencieux). Les préférences sont propres à l'utilisateur.
+// NTMOB8 — la colonne « Push » étend N92 (opt-in device global, ci-dessous
+// PushToggle) d'un opt-in PAR CATÉGORIE d'événement sur cet appareil : décocher
+// une ligne (ex. tous les évènements SAV) arrête le push pour cette catégorie
+// sans affecter les autres, sans dupliquer l'opt-in device.
 const CHANNELS = [
   { key: 'in_app', label: 'In-app' },
   { key: 'whatsapp', label: 'WhatsApp' },
   { key: 'email', label: 'Email' },
+  { key: 'push', label: 'Push sur cet appareil' },
 ]
 
 // N92 — Opt-in Web Push par appareil. Additif : si le navigateur ne supporte

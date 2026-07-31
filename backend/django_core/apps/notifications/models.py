@@ -307,6 +307,13 @@ class NotificationPreference(models.Model):
     in_app = models.BooleanField(default=True)
     whatsapp = models.BooleanField(default=False)
     email = models.BooleanField(default=False)
+    # NTMOB8 — opt-in PUSH par catégorie d'événement, sur CET appareil (au-delà
+    # de l'opt-in device global N92/PushSubscription qu'il ne duplique pas :
+    # le push n'est envoyé que si l'appareil a un abonnement ET que cette
+    # catégorie reste activée). Défaut True = comportement historique
+    # inchangé (le push partait déjà pour tout événement dès qu'un abonnement
+    # existait, sans distinction de catégorie).
+    push = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = 'Préférence de notification'
