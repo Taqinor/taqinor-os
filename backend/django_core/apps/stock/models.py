@@ -73,6 +73,20 @@ class Fournisseur(models.Model):
         BLOQUE_PAIEMENTS = 'bloque_paiements', 'Bloqué (paiements)'
         BLOQUE_TOTAL = 'bloque_total', 'Bloqué (total)'
 
+    # NTPRT25 — statut de VALIDATION d'une candidature d'auto-inscription
+    # (portail fournisseur). DÉLIBÉRÉMENT un champ SÉPARÉ de ``statut``
+    # ci-dessus : ``statut`` porte une sémantique de BLOCAGE COMMERCIAL (XPUR4,
+    # enforcée à la création d'un BCF/paiement) ; y ajouter une valeur
+    # « en attente » ferait passer un candidat non validé à travers ces gardes
+    # (il ne serait ni « bloqué commandes » ni « bloqué total »). Défaut
+    # ``VALIDE`` ⇒ TOUS les fournisseurs existants sont inchangés et restent
+    # visibles partout ; seule une candidature créée par le portail naît
+    # ``EN_ATTENTE``.
+    class StatutValidation(models.TextChoices):
+        VALIDE = 'valide', 'Validé'
+        EN_ATTENTE = 'en_attente_validation', 'En attente de validation'
+        REJETE = 'rejete', 'Rejeté'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -120,6 +134,14 @@ class Fournisseur(models.Model):
         help_text='Statut fournisseur : actif, bloqué commandes, bloqué '
                   'paiements ou bloqué total.')
     motif_blocage = models.TextField(blank=True, null=True)
+    # NTPRT25 — cf. ``StatutValidation`` ci-dessus. Additif, défaut ``valide``.
+    statut_validation = models.CharField(
+        max_length=24, choices=StatutValidation.choices,
+        default=StatutValidation.VALIDE,
+        help_text="Validation d'une candidature d'auto-inscription au portail "
+                  "fournisseur. « En attente » = invisible des listes de "
+                  "sourcing automatique tant qu'un admin interne n'a pas "
+                  "tranché.")
 
     # ── XPUR5 — fiche fournisseur enrichie ──────────────────────────────────
     categorie = models.ForeignKey(

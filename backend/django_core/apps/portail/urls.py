@@ -27,6 +27,7 @@ from .views_client import (
     MesFacturesPortailViewSet,
 )
 from .views_externes import (
+    candidature_fournisseur,
     tableau_de_bord_fournisseur,
     tableau_de_bord_partenaire,
 )
@@ -61,5 +62,10 @@ urlpatterns = [
          name='portail-fournisseur-tableau-de-bord'),
     path('partenaire/tableau-de-bord/', tableau_de_bord_partenaire,
          name='portail-partenaire-tableau-de-bord'),
+    # NTPRT25 — auto-inscription fournisseur : PUBLIC (AllowAny) et
+    # rate-limité. Volontairement déclaré AVANT le routeur pour qu'aucun
+    # ViewSet ne puisse l'ombrer.
+    path('fournisseurs/candidature/', candidature_fournisseur,
+         name='portail-candidature-fournisseur'),
     path('', include(router.urls)),
 ]

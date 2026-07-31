@@ -154,8 +154,14 @@ def search_fournisseurs(company, q, *, limit=12):
     q = (q or '').strip()
     if not q or company is None:
         return []
+    # NTPRT25 — une candidature d'auto-inscription NON VALIDÉE n'apparaît
+    # dans AUCUNE liste de sourcing automatique (autocomplete, sélection
+    # fournisseur) tant qu'un admin interne n'a pas tranché. Les fournisseurs
+    # historiques sont ``valide`` par défaut : comportement inchangé.
     return list(
-        Fournisseur.objects.filter(company=company, nom__icontains=q)
+        Fournisseur.objects
+        .filter(company=company, nom__icontains=q,
+                statut_validation=Fournisseur.StatutValidation.VALIDE)
         .order_by('nom')[:limit])
 
 
@@ -181,8 +187,11 @@ def sous_traitants_qs(company, *, metier=None, actif=None):
     société, filtrable par ``metier`` et ``actif`` (lus sur le profil satellite).
     Trié par nom. Lecture seule."""
     from .models import Fournisseur
+    # NTPRT25 — jamais un candidat non validé dans la sélection automatique
+    # d'un sous-traitant (défaut ``valide`` ⇒ historique inchangé).
     qs = (Fournisseur.objects
-          .filter(company=company, type=Fournisseur.Type.SERVICE)
+          .filter(company=company, type=Fournisseur.Type.SERVICE,
+                  statut_validation=Fournisseur.StatutValidation.VALIDE)
           .select_related('profil_sous_traitant')
           .order_by('nom'))
     if metier:
