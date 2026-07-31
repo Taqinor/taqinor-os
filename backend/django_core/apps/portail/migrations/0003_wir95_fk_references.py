@@ -1,37 +1,88 @@
-# WIR95 — Remplace les références opaques ``*_id`` du module portail par de
-# vraies FK string-référencées (même patron que
-# ``pos.CommandeRetrait.devis = ForeignKey('ventes.Devis', on_delete=SET_NULL)``).
-#
-# 8 champs convertis (5 modèles) :
-#   AcceptationDevisPortail.devis_id      -> devis    (FK ventes.Devis)
-#   PaiementFacturePortail.facture_id     -> facture  (FK facturation.Facture)
-#   DocumentClientPortail.client_id       -> client   (FK crm.Client)
-#   DocumentClientPortail.lead_id         -> lead     (FK crm.Lead)
-#   JalonChantierPortail.chantier_id      -> chantier (FK installations.Installation)
-#   DemandeTicketPortail.client_id        -> client   (FK crm.Client)
-#   DemandeTicketPortail.chantier_id      -> chantier (FK installations.Installation)
-#   DemandeTicketPortail.ticket_id        -> ticket   (FK sav.Ticket)
-#
-# Toutes SET_NULL + db_constraint=False : la contrainte d'intégrité référentielle
-# vit dans l'ORM Django (le collector de suppression met la FK à NULL pour
-# CHAQUE ligne qui la référence, que la contrainte FK existe ou non côté base),
-# jamais au niveau base — ``portail`` reste un consommateur des 5 apps domaine,
-# jamais couplé à leur schéma physique (elles restent mutuellement décorrélées,
-# cf. contrat import-linter ``core-domain-models-decoupled``). db_constraint=False
-# évite aussi qu'un id déjà orphelin (données de test/existantes) ne bloque la
-# migration de données ci-dessous.
-#
-# Technique standard (4 passes, sans SQL brut) pour chaque champ : on ajoute un
-# champ FK temporaire (nom distinct — un ``ForeignKey`` nommé comme l'ancien
-# champ entier créerait un conflit d'attribut Python avec son propre attname
-# ``<nom>_id``), on copie les valeurs entières existantes en masse (aucune
-# validation FK au niveau base ici, cf. db_constraint=False ci-dessus), on
-# retire l'ancien champ entier, puis on renomme le champ temporaire vers son
-# nom final — la colonne physique finale s'appelle de nouveau ``<champ>_id``
-# (attname standard d'un ForeignKey nommé ``<champ>``), donc tout code qui lisait
-# ``obj.devis_id``/``obj.client_id``/etc. continue de fonctionner À L'IDENTIQUE
-# (attname Django), y compris les ``.filter(...)``/``.create(...)``/
-# ``.update(update_fields=[...])`` existants.
+"""WIR95 — Remplace les références opaques ``*_id`` du module portail par de
+vraies FK string-référencées (même patron que
+``pos.CommandeRetrait.devis = ForeignKey('ventes.Devis', on_delete=SET_NULL)``).
+
+8 champs convertis (5 modèles) :
+  AcceptationDevisPortail.devis_id      -> devis    (FK ventes.Devis)
+  PaiementFacturePortail.facture_id     -> facture  (FK facturation.Facture)
+  DocumentClientPortail.client_id       -> client   (FK crm.Client)
+  DocumentClientPortail.lead_id         -> lead     (FK crm.Lead)
+  JalonChantierPortail.chantier_id      -> chantier (FK installations.Installation)
+  DemandeTicketPortail.client_id        -> client   (FK crm.Client)
+  DemandeTicketPortail.chantier_id      -> chantier (FK installations.Installation)
+  DemandeTicketPortail.ticket_id        -> ticket   (FK sav.Ticket)
+
+Toutes SET_NULL + db_constraint=False : la contrainte d'intégrité référentielle
+vit dans l'ORM Django (le collector de suppression met la FK à NULL pour CHAQUE
+ligne qui la référence, que la contrainte FK existe ou non côté base), jamais au
+niveau base — ``portail`` reste un consommateur des 5 apps domaine, jamais
+couplé à leur schéma physique (elles restent mutuellement décorrélées, cf.
+contrat import-linter ``core-domain-models-decoupled``). db_constraint=False
+évite aussi qu'un id déjà orphelin (données de test/existantes) ne bloque la
+migration de données ci-dessous.
+
+Technique standard (sans SQL brut) pour chaque champ : on ajoute un champ FK
+temporaire (nom distinct — un ``ForeignKey`` nommé comme l'ancien champ entier
+créerait un conflit d'attribut Python avec son propre attname ``<nom>_id``), on
+copie les valeurs entières existantes en masse, on retire l'ancien champ
+entier, puis on renomme le champ temporaire vers son nom final — la colonne
+physique finale s'appelle de nouveau ``<champ>_id`` (attname standard d'un
+ForeignKey nommé ``<champ>``), donc tout code qui lisait ``obj.devis_id`` /
+``obj.client_id`` / etc. continue de fonctionner À L'IDENTIQUE (attname
+Django), y compris les ``.filter(...)`` / ``.create(...)`` /
+``.update(update_fields=[...])`` existants.
+
+────────────────────────────────────────────────────────────────────────────
+REVUE HUMAINE DE SÛRETÉ — verdict et justification, en clair
+────────────────────────────────────────────────────────────────────────────
+Cette migration déclenche ``scripts/check_safe_migrations.py`` (8 RemoveField,
+8 RenameField, un RunPython ``.update()`` non batché). Chaque signalement a été
+audité opération par opération ; voici la décision.
+
+1. SENS AVANT (``migrate``) — SANS PERTE, ordre vérifié. Les 8 colonnes
+   ``*_tmp_id`` sont créées (passe 2), la donnée y est COPIÉE (passe 3) AVANT
+   que le moindre ``RemoveField`` ne s'exécute (passe 4), puis le renommage
+   (passe 5) ramène chaque colonne physique à son nom d'origine ``<champ>_id``.
+   Aucun ``RemoveField`` ne supprime une colonne dont la donnée n'a pas déjà
+   été recopiée, et aucune passe ne lit une colonne qu'une passe antérieure
+   aurait retirée. L'état final est identique aux modèles : le
+   ``MigrationAutodetector`` exécuté sur l'état migré ne détecte AUCUN écart
+   pour l'app ``portail``.
+
+2. SENS ARRIÈRE (rollback) — DÉFAUT RÉEL TROUVÉ EN REVUE, CORRIGÉ ICI. La
+   première version posait un reverse ``pass`` en affirmant que « la donnée vit
+   déjà dans la même colonne physique tout du long » : c'était FAUX. Au
+   rollback, Django renomme ``<champ>_id`` en ``<champ>_tmp_id`` (la donnée
+   suit la colonne), PUIS recrée les anciennes colonnes entières ``<champ>_id``
+   VIDES, PUIS — reverse de la passe 2 — supprime les colonnes ``*_tmp_id`` qui
+   portaient TOUTE la donnée. Avec un reverse ``pass``, un simple
+   ``migrate portail 0002`` détruisait donc silencieusement les 8 références
+   sur toutes les lignes (et, sur les 5 colonnes historiquement NOT NULL,
+   échouait à mi-parcours car un ``ADD COLUMN ... NOT NULL`` sans défaut est
+   refusé sur une table peuplée). Deux correctifs appliqués :
+     a. passe 1 — les 5 anciens entiers NOT NULL passent ``null=True``, ce qui
+        rend leur recréation possible au rollback sur une table peuplée ;
+     b. ``_copier_ids_depuis_fk`` RECOPIE réellement ``*_tmp_id -> *_id``.
+   Séquence de rollback effective désormais : renommage inverse (la donnée suit
+   la colonne) -> recréation des entiers, vides et nullables -> RECOPIE ->
+   suppression des ``*_tmp_id`` devenues redondantes -> retour à NOT NULL. Sans
+   perte. Le retour à NOT NULL échoue BRUYAMMENT (et la transaction annule
+   tout) si une ligne créée entre-temps porte une référence NULL — comportement
+   voulu : on refuse de deviner une valeur, jamais de corruption silencieuse.
+
+3. ``.update()`` non batché : les 5 tables ``compta_*portail`` sont des tables
+   de portail self-service à faible volume (module créé par ODX12, étendu par
+   WIR94 — aucun historique de masse) ; un UPDATE global y coûte quelques
+   millisecondes. Risque de verrou long assumé et négligeable.
+
+4. Changement de sémantique assumé (voulu par WIR95, pas un effet de bord) :
+   5 des 8 champs étaient NOT NULL et deviennent nullables — ``SET_NULL``
+   l'exige. La base ne garantit donc plus leur présence ; c'est la contrepartie
+   explicite du passage d'un id opaque à une vraie FK décorrélée.
+
+À ce titre — et pour cette raison seulement — le chemin de ce fichier figure
+dans ``scripts/safe_migrations_allow.txt``.
+"""
 
 import django.db.models.deletion
 from django.db import migrations, models
@@ -39,6 +90,13 @@ from django.db.models import F
 
 
 def _copier_ids_vers_fk_tmp(apps, schema_editor):
+    """Passe 3 (avant) — copie les entiers bruts vers les FK temporaires.
+
+    S'exécute AVANT tout ``RemoveField`` : à ce stade les deux jeux de colonnes
+    (``<champ>_id`` entier et ``<champ>_tmp_id`` FK) coexistent. Aucune
+    validation FK côté base n'est déclenchée (``db_constraint=False``), donc un
+    id déjà orphelin est recopié tel quel au lieu de bloquer la migration.
+    """
     AcceptationDevisPortail = apps.get_model('portail', 'AcceptationDevisPortail')
     PaiementFacturePortail = apps.get_model('portail', 'PaiementFacturePortail')
     DocumentClientPortail = apps.get_model('portail', 'DocumentClientPortail')
@@ -56,15 +114,33 @@ def _copier_ids_vers_fk_tmp(apps, schema_editor):
 
 
 def _copier_ids_depuis_fk(apps, schema_editor):
-    """Reverse — reconstitue les entiers bruts depuis les FK (pour un rollback
-    propre ; les FK ``*_tmp`` n'existent plus à ce stade du reverse, donc on
-    lit directement les attnames finaux ``devis_id``/``client_id``/etc., qui
-    à ce point de la remontée sont encore les colonnes FK — cf. l'ordre inverse
-    des opérations Django lors d'un ``migrate`` arrière)."""
-    # Reverse géré par les opérations elles-mêmes (RenameField/AddField/
-    # RemoveField sont toutes réversibles) ; cette passe n'a rien à copier de
-    # plus car la donnée vit déjà dans la même colonne physique tout du long.
-    pass
+    """Reverse de la passe 3 — RESTITUE les entiers bruts depuis les FK.
+
+    Indispensable : à ce point du rollback Django a déjà (a) renommé
+    ``<champ>_id`` en ``<champ>_tmp_id`` — la donnée a suivi la colonne — et
+    (b) recréé les anciennes colonnes entières ``<champ>_id``, VIDES. La
+    suppression des champs ``*_tmp`` qui suit détruirait donc TOUTE la donnée
+    si l'on ne la recopiait pas ici (c'était le bug de la première version de
+    cette migration, cf. point 2 de la revue en tête de fichier).
+
+    ``apps`` est l'état AVEC la passe 3 appliquée
+    (``RunPython.database_backwards`` passe ``from_state.apps``), donc les deux
+    jeux de champs y coexistent bien et les deux colonnes existent en base.
+    """
+    AcceptationDevisPortail = apps.get_model('portail', 'AcceptationDevisPortail')
+    PaiementFacturePortail = apps.get_model('portail', 'PaiementFacturePortail')
+    DocumentClientPortail = apps.get_model('portail', 'DocumentClientPortail')
+    JalonChantierPortail = apps.get_model('portail', 'JalonChantierPortail')
+    DemandeTicketPortail = apps.get_model('portail', 'DemandeTicketPortail')
+
+    AcceptationDevisPortail.objects.update(devis_id=F('devis_tmp_id'))
+    PaiementFacturePortail.objects.update(facture_id=F('facture_tmp_id'))
+    DocumentClientPortail.objects.update(
+        client_id=F('client_tmp_id'), lead_id=F('lead_tmp_id'))
+    JalonChantierPortail.objects.update(chantier_id=F('chantier_tmp_id'))
+    DemandeTicketPortail.objects.update(
+        client_id=F('client_tmp_id'), chantier_id=F('chantier_tmp_id'),
+        ticket_id=F('ticket_tmp_id'))
 
 
 class Migration(migrations.Migration):
@@ -79,7 +155,46 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # ── Passe 1 — champs FK temporaires (noms distincts, aucun conflit) ──
+        # ── Passe 1 — les 5 anciens entiers NOT NULL deviennent nullables ────
+        #    Aller : simple ``DROP NOT NULL`` (métadonnée, aucune donnée
+        #    touchée). Sa RAISON D'ÊTRE est le RETOUR : sans elle, le reverse
+        #    du ``RemoveField`` correspondant émettrait un
+        #    ``ADD COLUMN ... NOT NULL`` sans défaut, refusé sur une table
+        #    peuplée — le rollback serait impossible. Les 3 autres champs
+        #    (lead_id, DemandeTicketPortail.chantier_id, ticket_id) sont déjà
+        #    nullables depuis 0001 et n'ont donc pas besoin de cette passe.
+        migrations.AlterField(
+            model_name='acceptationdevisportail',
+            name='devis_id',
+            field=models.PositiveIntegerField(
+                null=True, verbose_name='Id du devis'),
+        ),
+        migrations.AlterField(
+            model_name='paiementfactureportail',
+            name='facture_id',
+            field=models.PositiveIntegerField(
+                null=True, verbose_name='Id de la facture'),
+        ),
+        migrations.AlterField(
+            model_name='documentclientportail',
+            name='client_id',
+            field=models.PositiveIntegerField(
+                null=True, verbose_name='Id du client'),
+        ),
+        migrations.AlterField(
+            model_name='jalonchantierportail',
+            name='chantier_id',
+            field=models.PositiveIntegerField(
+                null=True, verbose_name='Id du chantier'),
+        ),
+        migrations.AlterField(
+            model_name='demandeticketportail',
+            name='client_id',
+            field=models.PositiveIntegerField(
+                null=True, verbose_name='Id du client'),
+        ),
+
+        # ── Passe 2 — champs FK temporaires (noms distincts, aucun conflit) ──
         migrations.AddField(
             model_name='acceptationdevisportail',
             name='devis_tmp',
@@ -146,12 +261,14 @@ class Migration(migrations.Migration):
                 related_name='demandes_portail_tmp', to='sav.ticket'),
         ),
 
-        # ── Passe 2 — copie en masse des ids existants (aucune validation FK
-        #    au niveau base, db_constraint=False ci-dessus) ──────────────────
+        # ── Passe 3 — copie en masse des ids existants (aucune validation FK
+        #    au niveau base, db_constraint=False ci-dessus). Le reverse
+        #    RECOPIE en sens inverse : sans lui, le rollback perdrait tout. ──
         migrations.RunPython(
             _copier_ids_vers_fk_tmp, _copier_ids_depuis_fk),
 
-        # ── Passe 3 — retrait des anciens champs entiers bruts ───────────────
+        # ── Passe 4 — retrait des anciens champs entiers bruts (leur donnée
+        #    est déjà dans les colonnes ``*_tmp_id`` depuis la passe 3) ───────
         migrations.RemoveField(
             model_name='acceptationdevisportail', name='devis_id'),
         migrations.RemoveField(
@@ -169,7 +286,7 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name='demandeticketportail', name='ticket_id'),
 
-        # ── Passe 4 — renommage vers le nom final (colonne redevient
+        # ── Passe 5 — renommage vers le nom final (colonne redevient
         #    ``<champ>_id``, attname standard d'un ForeignKey ``<champ>``) ───
         migrations.RenameField(
             model_name='acceptationdevisportail',
@@ -196,7 +313,7 @@ class Migration(migrations.Migration):
             model_name='demandeticketportail',
             old_name='ticket_tmp', new_name='ticket'),
 
-        # ── Passe 5 — related_name final (posé plus haut sur les champs
+        # ── Passe 6 — related_name final (posé plus haut sur les champs
         #    temporaires pour éviter toute collision passagère ; on les
         #    ré-aligne maintenant sur les noms définitifs du modèle) ──────────
         migrations.AlterField(
