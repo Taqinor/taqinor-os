@@ -275,7 +275,10 @@ importe ``apps.audit``.
     ``apps/ged/apps.py`` ``ready()`` (``apps/ged/receivers.py``) et route le
     fichier via ``ged.services.router_document_module`` si un
     ``RoutageDocumentaire`` existe pour la ``source`` — sinon no-op silencieux
-    (comportement actuel inchangé). Arguments du signal :
+    (comportement actuel inchangé). WIR165 — premier ÉMETTEUR RÉEL :
+    ``apps/ventes/utils/pdf.py`` ``generate_facture_pdf`` (``source=
+    'ventes_facture'``), best-effort, juste après le stockage du PDF de
+    facture. Arguments du signal :
 
     * ``source`` — code de module (ex. ``paie_bulletin``, ``rh_document``,
       ``sav_piece_jointe``, ``ventes_facture``) — doit correspondre à la
