@@ -240,6 +240,15 @@ class Installation(models.Model):
     # Les définitions viennent de apps.customfields (module='installation').
     custom_data = models.JSONField(null=True, blank=True)
 
+    # ── NTMOB16 — signature client sur le BON DE LIVRAISON chantier ──────────
+    # Même patron que FG69 (Intervention.signature_client) : Data-URL PNG
+    # (SignaturePad.jsx, trait tracé à l'écran), stockée en base (< 20 Ko
+    # typique). Complémentaire — ne remplace JAMAIS l'e-signature légale loi
+    # 53-05 des contrats (apps.contrats), une couche entièrement distincte.
+    signature_client = models.TextField(blank=True, null=True)
+    signataire_nom = models.CharField(max_length=120, blank=True, null=True)
+    signe_le = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         verbose_name = 'Chantier'
         verbose_name_plural = 'Chantiers'

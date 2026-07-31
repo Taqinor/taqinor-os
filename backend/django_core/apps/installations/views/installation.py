@@ -259,6 +259,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'annuler', 'reactiver', 'commander_besoin', 'cocher_checklist',
             # NTMOB11 — métadonnées (géoloc/horodatage) d'une photo de checklist.
             'checklist_photo',
+            # NTMOB16 — signature client sur le bon de livraison chantier.
+            'signer_client',
             # CH2 — avancement d'étape (gates appliqués côté service).
             'avancer_etape',
             # FG75 — ajout / suppression de relevés.
@@ -706,6 +708,35 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         return Response(
             PhotoChecklistMetaSerializer(meta).data,
             status=status.HTTP_201_CREATED)
+
+    # ── NTMOB16 — signature client sur le bon de livraison chantier ─────────
+    # Même patron que FG69 (Intervention.signer_client) : Data-URL PNG tracée
+    # à l'écran (SignaturePad.jsx), complémentaire — ne remplace JAMAIS
+    # l'e-signature légale loi 53-05 des contrats.
+    @action(detail=True, methods=['post'], url_path='signer-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def signer_client(self, request, pk=None):
+        """NTMOB16 — enregistre la signature client du bon de livraison.
+        Corps : {"signature_client": <data-URL PNG>, "signataire_nom": <str>}.
+        Pose `signe_le` côté serveur."""
+        inst = self.get_object()
+        sig = (request.data.get('signature_client') or '').strip()
+        nom = (request.data.get('signataire_nom') or '').strip()
+        if not sig:
+            return Response({'signature_client': 'Signature vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        inst.signature_client = sig
+        if nom:
+            inst.signataire_nom = nom
+        inst.signe_le = timezone.now()
+        fields = ['signature_client', 'signataire_nom', 'signe_le']
+        inst.save(update_fields=fields)
+        activity.log_note(
+            inst, request.user,
+            f"Signature client enregistrée sur le bon de livraison "
+            f"({nom or 'anonyme'}).")
+        return Response(
+            InstallationSerializer(inst, context={'request': request}).data)
 
     @action(detail=True, methods=['get'], url_path='besoin-materiel',
             permission_classes=[IsAnyRole])
