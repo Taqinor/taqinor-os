@@ -748,10 +748,27 @@ class PeriodeScolaireViewSet(CompanyScopedModelViewSet):
 class BulletinViewSet(CompanyScopedModelViewSet):
     """NTEDU17 — bulletin d'un élève sur une période. Ne porte QUE
     l'appréciation générale : moyennes/rang/mention/présences sont recalculés
-    au rendu (``services.donnees_bulletin``), jamais dénormalisés ici."""
+    au rendu (``services.donnees_bulletin``), jamais dénormalisés ici.
+
+    NTEDU33 — ``publie``/``date_publication`` (visibilité portail parents)
+    basculent UNIQUEMENT via l'action ``publier`` ci-dessous, jamais un PATCH
+    direct (le serializer les déclare ``read_only``)."""
 
     queryset = Bulletin.objects.select_related('eleve', 'periode').all()
     serializer_class = BulletinSerializer
+
+    @action(detail=True, methods=['post'], url_path='publier')
+    def publier(self, request, pk=None):
+        """NTEDU33 — publie le bulletin : dès cet instant (et seulement à
+        partir de cet instant), il devient visible sur le portail parents
+        (``public_views.portail_bulletins``)."""
+        from django.utils import timezone
+
+        bulletin = self.get_object()
+        bulletin.publie = True
+        bulletin.date_publication = timezone.now()
+        bulletin.save(update_fields=['publie', 'date_publication'])
+        return Response(BulletinSerializer(bulletin).data)
 
 
 class CircuitTransportViewSet(CompanyScopedModelViewSet):
