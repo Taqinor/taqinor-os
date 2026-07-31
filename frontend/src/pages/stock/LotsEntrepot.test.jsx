@@ -85,7 +85,9 @@ describe('LotsEntrepot (WIR109)', () => {
     await userEvent.click(within(grid).getByRole('button', { name: /Sortir/ }))
 
     const dialog = await screen.findByRole('dialog')
-    await userEvent.type(within(dialog).getByLabelText('Quantité'), '2')
+    // Champ `required` : le libellé accessible porte l'astérisque
+    // (« Quantité* ») — préfixe plutôt que chaîne exacte.
+    await userEvent.type(within(dialog).getByLabelText(/^Quantité/), '2')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Sortir' }))
 
     await waitFor(() => {

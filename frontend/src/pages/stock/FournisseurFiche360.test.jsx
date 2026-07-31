@@ -265,7 +265,9 @@ describe('WIR108 — acomptes, avoirs, contacts', () => {
     expect(within(panel).getByText('Aucun contact secondaire.')).toBeInTheDocument()
 
     await userEvent.click(within(panel).getByRole('button', { name: /Nouveau contact/ }))
-    await userEvent.type(await screen.findByLabelText('Nom'), 'Jean Dupont')
+    // Champ `required` : le libellé accessible porte l'astérisque
+    // (« Nom* ») — préfixe plutôt que chaîne exacte.
+    await userEvent.type(await screen.findByLabelText(/^Nom/), 'Jean Dupont')
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
 
     await waitFor(() => {

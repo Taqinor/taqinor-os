@@ -70,7 +70,10 @@ describe('ConditionnementsProduit (WIR109)', () => {
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByRole('combobox'))
     await userEvent.click(await screen.findByRole('option', { name: 'Câble 6mm²' }))
-    await userEvent.type(within(dialog).getByLabelText('Nom'), 'Touret 100 m')
+    // Le champ est `required` : le libellé accessible inclut l'astérisque
+    // (aria-hidden n'exclut PAS le texte de son nœud, cf. Label.jsx) — on
+    // matche donc « Nom » en préfixe plutôt qu'en chaîne exacte.
+    await userEvent.type(within(dialog).getByLabelText(/^Nom/), 'Touret 100 m')
     await userEvent.type(within(dialog).getByLabelText(/Facteur/), '100')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
 

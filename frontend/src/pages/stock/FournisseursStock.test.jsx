@@ -109,7 +109,11 @@ describe('FournisseursStock — statut de blocage (WIR26) + fiche 360 (WIR27)', 
     await userEvent.click(within(row).getByRole('button', { name: 'Modifier' }))
     const dialog = await screen.findByRole('dialog')
 
-    await userEvent.click(within(dialog).getByRole('combobox'))
+    // WIR108 a ajouté un 2e combobox (Catégorie) AVANT Statut dans le
+    // formulaire — deux comboboxes désormais, comme dans le test « assigne
+    // une catégorie » ci-dessous : Catégorie = combos[0], Statut = combos[1].
+    const combos = within(dialog).getAllByRole('combobox')
+    await userEvent.click(combos[1])
     await userEvent.click(await screen.findByRole('option', { name: 'Actif' }))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
 
