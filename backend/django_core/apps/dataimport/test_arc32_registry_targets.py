@@ -1,9 +1,10 @@
 """ARC32 — ``dataimport.services.TARGETS`` lit le registre plateforme.
 
 Couvre : (1) non-régression stricte — le ``set`` résolu par la vue paresseuse
-``_LazyTargets`` est EXACTEMENT identique aux 8 clés ``FIELD_MAPS`` historiques
-(chaque cible étant désormais déclarée par son app propriétaire dans son
-``platform.py``) ; (2) l'API existante (``in``, itération, ``len``, ``sorted``)
+``_LazyTargets`` est EXACTEMENT identique à la référence figée
+``HISTORICAL_TARGETS`` (les 8 clés ``FIELD_MAPS`` d'avant ARC32 + les cibles
+ajoutées DÉLIBÉRÉMENT depuis, chacune nommée), chaque cible étant déclarée par
+son app propriétaire dans son ``platform.py`` ; (2) l'API existante (``in``, itération, ``len``, ``sorted``)
 se comporte à l'identique (DROP-IN replacement) ; (3) chaque cible historique
 est bien déclarée dans un manifeste plateforme (``import_specs``) ET conserve
 son mapping d'en-têtes dans ``FIELD_MAPS`` ; (4) une nouvelle cible déclarée
@@ -18,11 +19,20 @@ from django.test import SimpleTestCase
 
 from apps.dataimport.services import FIELD_MAPS, TARGETS, _LazyTargets
 
-# Les 8 clés FIELD_MAPS historiques (set littéral d'avant ARC32) — la référence
-# de non-régression. Toute divergence ici = régression réelle du registre.
+# Les 8 clés FIELD_MAPS historiques (set littéral d'avant ARC32) + toute cible
+# ajoutée DÉLIBÉRÉMENT depuis, chacune nommée par sa tâche — la référence de
+# non-régression. Toute divergence ici = régression réelle du registre (une
+# cible qui DISPARAÎT, ou une cible ajoutée sans être déclarée ici).
+#
+#   NTEDU36 — 'eleves_education' : import CSV des élèves, déclaré par son app
+#   propriétaire dans ``apps/education/platform.py`` (``import_specs``) et
+#   résolu par ``_LazyTargets`` SANS toucher ``apps/dataimport/services.py``
+#   — c'est exactement le comportement que TestNewManifestTargetAppears...
+#   prouve avec un manifeste fictif, ici confirmé sur une vraie app.
 HISTORICAL_TARGETS = {
     'leads', 'clients', 'products', 'fournisseurs', 'equipements',
     'vehicules', 'contrats', 'dossiers_rh',
+    'eleves_education',
 }
 
 # Cible → app propriétaire attendue (déclarante dans son platform.py).
@@ -33,6 +43,7 @@ TARGET_OWNER_MODULE = {
     'vehicules': 'flotte',
     'contrats': 'contrats',
     'dossiers_rh': 'rh',
+    'eleves_education': 'education',
 }
 
 
@@ -47,7 +58,7 @@ class TestTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(TARGETS), 8)
+        self.assertEqual(len(TARGETS), len(HISTORICAL_TARGETS))
 
     def test_contains_works_for_each_historical_target(self):
         for cible in HISTORICAL_TARGETS:

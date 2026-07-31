@@ -13,6 +13,8 @@ import threading
 
 from django.test import TransactionTestCase
 
+from core.test_utils import WideTeardownTimeoutMixin
+
 from apps.ventes.tests.test_quote_engine import (
     make_company, make_user, make_client, make_devis,
 )
@@ -23,7 +25,7 @@ from apps.ventes.tests.test_quote_engine import (
 # (thread-local) HORS de la transaction atomique du test → il ne voit pas les
 # données non commitées et peut interbloquer/échouer. TransactionTestCase
 # commite les données, donc le thread les voit. Prérequis pour `--parallel`.
-class TestPremiumEngineSecurity(TransactionTestCase):
+class TestPremiumEngineSecurity(WideTeardownTimeoutMixin, TransactionTestCase):
     def setUp(self):
         self.company = make_company()
         self.user = make_user(self.company)
