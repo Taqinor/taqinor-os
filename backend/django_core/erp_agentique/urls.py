@@ -144,6 +144,9 @@ _APP_URLS = [
     path('einvoice/', include('apps.einvoice.urls')),
     # Groupe NTMAR — Calendrier fiscal marocain, attestations, UBO, veille.
     path('fiscal/', include('apps.fiscal.urls')),
+    # Groupe NTAI — copilotes IA (brouillons proposés, jamais d'écriture
+    # implicite ; 503 douce sans clé LLM/STT configurée).
+    path('ai/', include('apps.ai_governance.urls')),
 ]
 
 urlpatterns = [

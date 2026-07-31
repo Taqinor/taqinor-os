@@ -85,6 +85,11 @@ EXEMPT_PREFIXES = frozenset({
 # d'entrée ici.
 PREFIX_TO_MODULE = {
     'gestion-projet': 'gestion_projet',
+    # Groupe NTAI — les copilotes IA sont montés sous `api/django/ai/` mais
+    # appartiennent au module `ai_governance` : sans cette entrée, désactiver
+    # le module ne couperait PAS ses endpoints (le manifeste annoncerait un
+    # gating qui n'existe pas).
+    'ai': 'ai_governance',
 }
 
 # Racine commune de toutes les routes de l'API Django.
