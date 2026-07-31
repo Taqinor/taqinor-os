@@ -46,13 +46,15 @@ import AbonnementsPage from './AbonnementsPage'
 describe('AbonnementsPage (WIR123 — abonnements de supervision)', () => {
   it('liste les abonnements avec le nom du client', async () => {
     renderPage(<AbonnementsPage />)
-    expect(await screen.findByText('Amrani Solar')).toBeInTheDocument()
+    // DataTable rend un tableau bureau ET des cartes mobiles (2 occurrences) :
+    // même patron que ParcellesPage.test.jsx (NTAGR4).
+    await waitFor(() => expect(screen.getAllByText('Amrani Solar').length).toBeGreaterThan(0))
   })
 
   it('crée un abonnement depuis le formulaire', async () => {
     const user = userEvent.setup()
     renderPage(<AbonnementsPage />)
-    await screen.findByText('Amrani Solar')
+    await waitFor(() => expect(screen.getAllByText('Amrani Solar').length).toBeGreaterThan(0))
 
     await user.click(screen.getByRole('button', { name: /Nouvel abonnement/ }))
     await user.click(screen.getByRole('combobox', { name: 'Client' }))
@@ -68,16 +70,19 @@ describe('AbonnementsPage (WIR123 — abonnements de supervision)', () => {
   it('facture la période due depuis la ligne', async () => {
     const user = userEvent.setup()
     renderPage(<AbonnementsPage />)
-    await screen.findByText('Amrani Solar')
-    await user.click(screen.getByRole('button', { name: 'Facturer la période due' }))
+    await waitFor(() => expect(screen.getAllByText('Amrani Solar').length).toBeGreaterThan(0))
+    // DataTable rend bureau + mobile (2 boutons identiques pour la même
+    // ligne) : les deux appellent la même action, on prend le premier.
+    await user.click(screen.getAllByRole('button', { name: 'Facturer la période due' })[0])
     await waitFor(() => expect(monitoringApi.facturerAbonnement).toHaveBeenCalledWith(1))
   })
 
   it('résilie un abonnement avec un motif', async () => {
     const user = userEvent.setup()
     renderPage(<AbonnementsPage />)
-    await screen.findByText('Amrani Solar')
-    await user.click(screen.getByRole('button', { name: 'Résilier' }))
+    await waitFor(() => expect(screen.getAllByText('Amrani Solar').length).toBeGreaterThan(0))
+    // Idem : bureau + mobile rendent chacun le bouton « Résilier » de ligne.
+    await user.click(screen.getAllByRole('button', { name: 'Résilier' })[0])
     const dialog = await screen.findByRole('dialog')
     await user.type(within(dialog).getByLabelText('Motif de résiliation'), 'Client parti')
     await user.click(within(dialog).getByRole('button', { name: 'Résilier' }))

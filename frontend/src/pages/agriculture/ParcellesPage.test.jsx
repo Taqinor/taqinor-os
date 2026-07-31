@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -179,9 +179,13 @@ describe('ParcellesPage — création exploitation/parcelle (WIR141)', () => {
     await waitFor(() => expect(screen.getAllByText('Parcelle Nord').length).toBeGreaterThan(0))
 
     await user.click(screen.getByRole('button', { name: /Nouvelle parcelle/ }))
-    await user.selectOptions(screen.getByLabelText('Exploitation'), '1')
-    await user.type(screen.getByLabelText('Nom'), 'Parcelle Ouest')
-    await user.click(screen.getByRole('button', { name: 'Créer la parcelle' }))
+    // « Exploitation » nomme À LA FOIS le filtre de la page (toujours affiché)
+    // ET le champ du dialogue : on scope au dialogue ouvert pour lever
+    // l'ambiguïté (patron `within(getByRole('dialog'))` établi ailleurs).
+    const dialog = await screen.findByRole('dialog')
+    await user.selectOptions(within(dialog).getByLabelText('Exploitation'), '1')
+    await user.type(within(dialog).getByLabelText('Nom'), 'Parcelle Ouest')
+    await user.click(within(dialog).getByRole('button', { name: 'Créer la parcelle' }))
 
     await waitFor(() => expect(parcellesCreate).toHaveBeenCalledWith(
       expect.objectContaining({ exploitation: '1', nom: 'Parcelle Ouest' }),
@@ -204,7 +208,18 @@ describe('ParcellesPage — irrigation (WIR141)', () => {
     withProviders(<ParcellesPage />)
     await waitFor(() => expect(screen.getAllByText('Parcelle Nord').length).toBeGreaterThan(0))
 
-    await user.click(screen.getAllByRole('button', { name: 'Irrigation' })[0])
+    // Parcelle Nord (jachère) a 3 actions de ligne (Modifier, Démarrer une
+    // campagne, Irrigation) : RowActions (DataTable.jsx) ne rend les 2
+    // premières qu'en bouton rapide, le reste vit dans le menu « Plus
+    // d'actions sur la ligne » — « Irrigation » n'y est donc PAS un bouton
+    // direct pour cette ligne (contrairement à Parcelle Sud, qui n'a que 2
+    // actions et où « Irrigation » reste rapide).
+    // getAllByText('Parcelle Nord') matcherait AUSSI le marqueur carte
+    // (MapView, rendu au-dessus du tableau) : on cible le gridcell du
+    // tableau bureau explicitement, seul candidat avec un ancêtre `<tr>`.
+    const row = screen.getByRole('gridcell', { name: 'Parcelle Nord' }).closest('tr')
+    await user.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Irrigation' }))
     expect(await screen.findByText('Irrigation — Parcelle Nord')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /Nouveau point/ }))
@@ -223,7 +238,11 @@ describe('ParcellesPage — irrigation (WIR141)', () => {
     withProviders(<ParcellesPage />)
     await waitFor(() => expect(screen.getAllByText('Parcelle Nord').length).toBeGreaterThan(0))
 
-    await user.click(screen.getAllByRole('button', { name: 'Irrigation' })[0])
+    // Idem : avec la campagne rattachée, Parcelle Nord a même 4 actions
+    // (+ Registre phytosanitaire) — « Irrigation » vit dans le menu.
+    const row = screen.getByRole('gridcell', { name: 'Parcelle Nord' }).closest('tr')
+    await user.click(within(row).getByRole('button', { name: "Plus d'actions sur la ligne" }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Irrigation' }))
     expect(await screen.findByText(/80.00 MAD/)).toBeInTheDocument()
     expect(screen.getByText(/25 m³/)).toBeInTheDocument()
   })

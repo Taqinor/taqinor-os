@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -59,6 +59,12 @@ vi.mock('../../api/installationsApi', () => ({
 
 import monitoringApi from '../../api/monitoringApi'
 import Co2Page from './Co2Page'
+
+// L'historique d'appels des mocks module-level survit d'un test à l'autre
+// (aucun reset automatique) : sans ce clear, le test drill-down héritait des
+// appels getCo2Fleet() du test agrégat précédent et « not.toHaveBeenCalled() »
+// échouait alors qu'aucun appel n'avait eu lieu DANS ce test.
+beforeEach(() => { vi.clearAllMocks() })
 
 describe('Co2Page (WR7 — suivi CO₂)', () => {
   it('rend les KPI du parc et le tableau CO₂ par système', async () => {

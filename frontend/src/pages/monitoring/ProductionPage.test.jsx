@@ -124,9 +124,10 @@ describe('ProductionPage (WIR122 — suppression de relevé + historique mensuel
     await userEvent.selectOptions(select, '11')
 
     await waitFor(() => expect(monitoringApi.getReadings).toHaveBeenCalledWith({ installation: '11' }))
-    await screen.findByText('120.5 kWh')
+    // DataTable rend bureau + mobile (2 occurrences de la même valeur).
+    await waitFor(() => expect(screen.getAllByText('120.5 kWh').length).toBeGreaterThan(0))
 
-    await userEvent.click(screen.getByLabelText('Supprimer'))
+    await userEvent.click(screen.getAllByLabelText('Supprimer')[0])
 
     await waitFor(() => expect(monitoringApi.deleteReading).toHaveBeenCalledWith(9))
   })
@@ -140,6 +141,7 @@ describe('ProductionPage (WIR122 — suppression de relevé + historique mensuel
 
     await waitFor(() => expect(monitoringApi.getHistory).toHaveBeenCalledWith(5, { months: 12 }))
     expect(await screen.findByText('Historique mensuel (attendu vs réel)')).toBeInTheDocument()
-    expect(screen.getByText('2026-06')).toBeInTheDocument()
+    // DataTable rend bureau + mobile (2 occurrences de la même valeur).
+    expect(screen.getAllByText('2026-06').length).toBeGreaterThan(0)
   })
 })
