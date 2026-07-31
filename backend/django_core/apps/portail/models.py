@@ -27,15 +27,19 @@ posé côté serveur (jamais lu du corps de requête).
 ATTENTION surface AUTH : les mécanismes d'authentification portail (tokens/
 comptes clients) sont conservés À L'IDENTIQUE — aucun élargissement d'accès.
 
-WIR94 — ``DocumentClientPortail`` route désormais son upload vers la GED
-canonique : le fichier téléversé est en plus déposé comme ``ged.Document``
-(``ged.services.deposit_document``, import cross-app paresseux — jamais un
-import de ``apps.ged.models``) et référencé par ``document_ged``. Le
-``FileField`` historique (``fichier``) est CONSERVÉ pour compatibilité
-ascendante (les enregistrements existants gardent leur fichier local) ; toute
-future consommation (NTPRT13 « Mes documents ») peut désormais parcourir le
-document via l'arbre GED (ACL/versions/cycle de vie) au lieu d'un fichier
-isolé.
+WIR94 — ``DocumentClientPortail`` route son upload vers la GED canonique : le
+fichier téléversé est en plus déposé comme ``ged.Document`` et référencé par
+``document_ged``. Le ``FileField`` historique (``fichier``) est CONSERVÉ pour
+compatibilité ascendante (les enregistrements existants gardent leur fichier
+local) ; toute future consommation (NTPRT13 « Mes documents ») peut désormais
+parcourir le document via l'arbre GED (ACL/versions/cycle de vie) au lieu d'un
+fichier isolé. L'ORCHESTRATION de ce dépôt ne vit PAS ici : un modèle
+n'orchestre pas d'écriture cross-app — l'appel ``ged.services.deposit_document``
+est un couple de récepteurs ``pre_save``/``post_save`` dans
+``apps/portail/receivers.py`` (câblé par ``PortailConfig.ready``, même patron
+que ``apps/crm/tiers_bridge.py``). Ce module ne garde donc que le champ
+``document_ged`` — aucun import de ``apps.ged`` (contrat CI
+``portail-models-decoupled``).
 """
 from django.db import models
 
@@ -228,7 +232,8 @@ class DocumentClientPortail(models.Model):
     WIR94 — en plus du ``FileField`` historique (conservé pour compat
     ascendante), l'upload est déposé comme ``ged.Document`` réel (référentiel
     documentaire central, ACL/versions/cycle de vie) et référencé par
-    ``document_ged`` — voir ``save()`` ci-dessous.
+    ``document_ged`` — le dépôt lui-même est orchestré par les récepteurs de
+    ``apps/portail/receivers.py``, jamais par ce modèle.
     """
     class TypeDoc(models.TextChoices):
         FACTURE_ONEE = 'facture_onee', 'Facture ONEE'
@@ -269,7 +274,7 @@ class DocumentClientPortail(models.Model):
     fichier = models.FileField(
         upload_to='compta/portail_docs/', null=True, blank=True,
         verbose_name='Fichier')
-    # WIR94 — dépôt GED canonique du même fichier (voir save()). Pas de
+    # WIR94 — dépôt GED canonique du même fichier (voir receivers.py). Pas de
     # cascade métier sur suppression du document GED — la ligne portail garde
     # simplement trace du dépôt (SET_NULL).
     document_ged = models.ForeignKey(
@@ -293,57 +298,6 @@ class DocumentClientPortail(models.Model):
 
     def __str__(self):
         return f'{self.get_type_document_display()} — client #{self.client_id}'
-
-    def save(self, *args, **kwargs):
-        """WIR94 — route l'upload portail vers la GED canonique.
-
-        Si un fichier vient d'être assigné (et qu'aucun document GED n'est
-        encore lié), on lit ses octets AVANT l'écriture du ``FileField`` (le
-        fichier téléversé est encore un objet en mémoire à ce stade — aucun
-        appel de stockage supplémentaire), puis on les dépose dans la GED via
-        ``ged.services.deposit_document`` (frontière cross-app — import
-        paresseux, jamais un import de ``apps.ged.models``/``views``). Le
-        dépôt est BEST-EFFORT et IDEMPOTENT (source_type/source_id) : un
-        échec GED ne casse jamais l'enregistrement du document portail, et un
-        second ``save()`` sans nouveau fichier ne redépose rien.
-        """
-        contenu = None
-        mime = ''
-        if self.fichier and not self.document_ged_id:
-            raw = getattr(self.fichier, 'file', None)
-            if raw is not None:
-                try:
-                    raw.seek(0)
-                    contenu = raw.read()
-                    raw.seek(0)
-                    mime = getattr(raw, 'content_type', '') or ''
-                except Exception:
-                    contenu = None
-        super().save(*args, **kwargs)
-        if contenu:
-            try:
-                from apps.ged import services as ged_services
-                nom = self.libelle or self.get_type_document_display()
-                document, _created = ged_services.deposit_document(
-                    company=self.company,
-                    nom=nom,
-                    source_type='portail.documentclientportail',
-                    source_id=self.pk,
-                    contenu_bytes=contenu,
-                    mime=mime,
-                    description=(
-                        'Document déposé par le client via le portail '
-                        f'(WIR94) — {nom}.'),
-                    cabinet_nom='Portail client',
-                    folder_nom='Documents clients',
-                    created_by=None,
-                )
-            except Exception:  # pragma: no cover - défensif (dépôt best-effort)
-                pass
-            else:
-                type(self).objects.filter(pk=self.pk).update(
-                    document_ged_id=document.pk)
-                self.document_ged_id = document.pk
 
 
 # ── FG232 — Suivi d'avancement du chantier côté client (timeline) ──────────
