@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link2, FileDown } from 'lucide-react'
+import { Link2, FileDown, Plus, Pencil } from 'lucide-react'
 import {
-  Card, Button, Spinner, EmptyState, Badge, DataTable, Tabs, TabsList,
-  TabsTrigger, TabsContent, toast,
+  Card, Button, IconButton, Spinner, EmptyState, Badge, DataTable, Tabs,
+  TabsList, TabsTrigger, TabsContent, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  DialogFooter, Form, FormField, Input,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import { filenameFromResponse } from '../../../utils/downloadBlob'
@@ -13,6 +16,117 @@ import {
 } from '../constants'
 import ProjetPicker from '../components/ProjetPicker'
 import RiskHeatmap from '../components/RiskHeatmap'
+
+// WIR87 — le carnet lit/écrit désormais le référentiel sous-traitant UNIFIÉ
+// DC34 (`installations/sous-traitants/` = stock.Fournisseur type=service +
+// SousTraitantProfile), jamais `gestion_projet.SousTraitant` (régression DC34
+// constatée par ARC22). Miroir de `stock.SousTraitantProfile.Metier`.
+const METIERS_SOUS_TRAITANT = [
+  { value: 'terrassement', label: 'Terrassement' },
+  { value: 'genie_civil', label: 'Génie civil' },
+  { value: 'electricite', label: 'Électricité' },
+  { value: 'levage', label: 'Levage' },
+  { value: 'transport', label: 'Transport' },
+  { value: 'autre', label: 'Autre' },
+]
+
+// ── Dialog création/édition — carnet de sous-traitants (master DC34) ───────
+function SousTraitantForm({ sousTraitant, onClose, onSaved }) {
+  const isNew = !sousTraitant?.id
+  const [fields, setFields] = useState({
+    raison_sociale: sousTraitant?.raison_sociale ?? '',
+    metier: sousTraitant?.metier ?? 'autre',
+    contact_nom: sousTraitant?.contact_nom ?? '',
+    telephone: sousTraitant?.telephone ?? '',
+    email: sousTraitant?.email ?? '',
+    actif: sousTraitant?.actif ?? true,
+  })
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    if (!fields.raison_sociale.trim()) { setError('La raison sociale est requise.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      const payload = {
+        raison_sociale: fields.raison_sociale.trim(),
+        metier: fields.metier,
+        contact_nom: fields.contact_nom.trim() || null,
+        telephone: fields.telephone.trim() || null,
+        email: fields.email.trim() || null,
+        actif: fields.actif,
+      }
+      if (isNew) await gestionProjetApi.createSousTraitantMaster(payload)
+      else await gestionProjetApi.updateSousTraitantMaster(sousTraitant.id, payload)
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      setError(errMessage(err, "L'enregistrement a échoué."))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{isNew ? 'Nouveau sous-traitant' : `Sous-traitant — ${sousTraitant.raison_sociale}`}</DialogTitle>
+          <DialogDescription>
+            Référentiel unifié (DC34) — le même que la fiche fournisseur stock. Donnée interne.
+          </DialogDescription>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Raison sociale" required htmlFor="st-nom" fullWidth>
+            <Input id="st-nom" value={fields.raison_sociale}
+                   onChange={(e) => setField('raison_sociale', e.target.value)} />
+          </FormField>
+          <FormField label="Métier" htmlFor="st-metier">
+            <Select value={fields.metier} onValueChange={(v) => setField('metier', v)}>
+              <SelectTrigger id="st-metier"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {METIERS_SOUS_TRAITANT.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Contact" htmlFor="st-contact">
+            <Input id="st-contact" value={fields.contact_nom}
+                   onChange={(e) => setField('contact_nom', e.target.value)} />
+          </FormField>
+          <FormField label="Téléphone" htmlFor="st-tel">
+            <Input id="st-tel" value={fields.telephone}
+                   onChange={(e) => setField('telephone', e.target.value)} />
+          </FormField>
+          <FormField label="Email" htmlFor="st-email">
+            <Input id="st-email" type="email" value={fields.email}
+                   onChange={(e) => setField('email', e.target.value)} />
+          </FormField>
+          <FormField label="Statut" htmlFor="st-actif">
+            <Select value={fields.actif ? '1' : '0'} onValueChange={(v) => setField('actif', v === '1')}>
+              <SelectTrigger id="st-actif"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Actif</SelectItem>
+                <SelectItem value="0">Inactif</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+          {error && (
+            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 /* UX42 — Risques, actions & CR : registre des risques, plan d'actions,
    comptes-rendus, documents/commentaires, modèles de projet, sous-traitants &
@@ -32,8 +146,20 @@ export default function RisquesPage() {
   const [matrice, setMatrice] = useState(null)
   const [csatBusy, setCsatBusy] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
+  // WIR87 — édition du carnet (master DC34) : null = fermé, {} = création,
+  // objet = édition.
+  const [stEditing, setStEditing] = useState(null)
 
   const asList = (r) => (Array.isArray(r.data) ? r.data : r.data?.results ?? [])
+
+  // WIR87 — le carnet lit le référentiel UNIFIÉ DC34 (`installations/
+  // sous-traitants/`), plus jamais `gestion_projet.SousTraitant` (régression
+  // DC34, ARC22) : société-scopé, indépendant du projet, rechargé seul après
+  // création/édition (pas besoin de recharger tout le reste de la page).
+  const reloadSousTraitants = useCallback(async () => {
+    const st = await gestionProjetApi.getSousTraitantsMaster()
+    setState((s) => ({ ...s, sousTraitants: asList(st) }))
+  }, [])
 
   const load = useCallback(async (pid) => {
     setLoading(true)
@@ -48,7 +174,7 @@ export default function RisquesPage() {
         pid ? gestionProjetApi.getDocuments(params) : Promise.resolve({ data: [] }),
         pid ? gestionProjetApi.getCommentaires(params) : Promise.resolve({ data: [] }),
         gestionProjetApi.getModeles(),
-        gestionProjetApi.getSousTraitants(),
+        gestionProjetApi.getSousTraitantsMaster(),
         pid ? gestionProjetApi.getLotsSousTraitance(params) : Promise.resolve({ data: [] }),
         pid ? gestionProjetApi.getMatriceRisques(pid).catch(() => ({ data: null })) : Promise.resolve({ data: null }),
       ])
@@ -267,20 +393,37 @@ export default function RisquesPage() {
 
           <TabsContent value="sous-traitance">
             <Card className="p-4 sm:p-5">
-              <h3 className="mb-2 font-display text-base font-semibold">Carnet de sous-traitants</h3>
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="font-display text-base font-semibold">Carnet de sous-traitants</h3>
+                <Button size="sm" onClick={() => setStEditing({})}>
+                  <Plus className="size-4" /> Nouveau sous-traitant
+                </Button>
+              </div>
+              {/* WIR87 — référentiel unifié DC34 (stock.Fournisseur type=service +
+                  SousTraitantProfile) : plus jamais `gestion_projet.SousTraitant`
+                  (régression DC34 constatée par ARC22). Le champ `metier` (enum
+                  fermé côté master) remplace le `specialite` texte libre local. */}
               <DataTable
                 data={state.sousTraitants}
                 getRowId={(s) => s.id}
+                onRowClick={(s) => setStEditing(s)}
                 columns={[
-                  { id: 'nom', header: 'Sous-traitant', accessor: (s) => s.nom, cell: (v) => <span className="font-medium">{v}</span> },
-                  { id: 'specialite', header: 'Spécialité', accessor: (s) => s.specialite || '—' },
-                  { id: 'contact', header: 'Contact', accessor: (s) => s.contact || '—' },
+                  { id: 'raison_sociale', header: 'Sous-traitant', accessor: (s) => s.raison_sociale, cell: (v) => <span className="font-medium">{v}</span> },
+                  { id: 'metier', header: 'Métier', accessor: (s) => s.metier_display || s.metier || '—' },
+                  { id: 'contact', header: 'Contact', accessor: (s) => s.contact_nom || '—' },
                   { id: 'tel', header: 'Téléphone', searchable: false, accessor: (s) => s.telephone || '—' },
                   { id: 'actif', header: 'Actif', searchable: false, accessor: (s) => s.actif, cell: (v) => <Badge tone={v ? 'success' : 'neutral'}>{v ? 'Actif' : 'Inactif'}</Badge> },
+                  { id: 'actions', header: '', searchable: false, sortable: false,
+                    cell: (_v, s) => (
+                      <IconButton size="sm" variant="ghost" label="Modifier"
+                                  onClick={(e) => { e.stopPropagation(); setStEditing(s) }}>
+                        <Pencil className="size-4" aria-hidden="true" />
+                      </IconButton>
+                    ) },
                 ]}
                 exportName="sous-traitants"
                 emptyTitle="Aucun sous-traitant"
-                emptyDescription="Ajoutez des sous-traitants à votre carnet d'adresses."
+                emptyDescription="Ajoutez des sous-traitants avec « Nouveau sous-traitant »."
               />
               <h3 className="mb-2 mt-5 font-display text-base font-semibold">Lots de sous-traitance</h3>
               <DataTable
@@ -299,6 +442,12 @@ export default function RisquesPage() {
             </Card>
           </TabsContent>
         </Tabs>
+      )}
+
+      {stEditing && (
+        <SousTraitantForm sousTraitant={stEditing.id ? stEditing : null}
+                          onClose={() => setStEditing(null)}
+                          onSaved={reloadSousTraitants} />
       )}
     </div>
   )

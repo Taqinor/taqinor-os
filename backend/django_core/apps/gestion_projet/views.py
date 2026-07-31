@@ -2827,6 +2827,16 @@ class SousTraitantViewSet(_GestionProjetBaseViewSet):
     ``company`` est posée côté serveur (TenantMixin). Filtres optionnels :
     ``?actif=1``, ``?specialite=<txt>``. Recherche par nom / spécialité /
     contact. Données INTERNES — jamais exposées au client.
+
+    WIR87 — FERME la « régression PROJ38/ARC22 » : create/update ne touchent
+    plus SEULEMENT ce carnet local, ils passent par ``services.
+    creer_sous_traitant_via_master``/``modifier_sous_traitant_via_master``
+    qui posent/gèlent TOUJOURS le lien vers le master DC34
+    (``stock.Fournisseur`` type=service + ``SousTraitantProfile``). Plus de
+    création hors master via cet endpoint. L'UI canonique
+    (``RisquesPage.jsx``) n'appelle même plus cette route : elle écrit
+    directement sur ``installations/sous-traitants/`` (le master) — cet
+    endpoint reste ouvert pour compat/API existante.
     """
     queryset = SousTraitant.objects.all()
     serializer_class = SousTraitantSerializer
@@ -2835,7 +2845,19 @@ class SousTraitantViewSet(_GestionProjetBaseViewSet):
     ordering_fields = ['nom', 'specialite', 'actif', 'id']
 
     def perform_create(self, serializer):
-        serializer.save(company=self.request.user.company)
+        from .services import creer_sous_traitant_via_master
+        vd = serializer.validated_data
+        serializer.instance = creer_sous_traitant_via_master(
+            company=self.request.user.company, user=self.request.user,
+            nom=vd.get('nom', ''), specialite=vd.get('specialite', ''),
+            contact=vd.get('contact', ''), telephone=vd.get('telephone', ''),
+            email=vd.get('email', ''), actif=vd.get('actif', True))
+
+    def perform_update(self, serializer):
+        from .services import modifier_sous_traitant_via_master
+        vd = serializer.validated_data
+        serializer.instance = modifier_sous_traitant_via_master(
+            serializer.instance, **vd)
 
     def get_queryset(self):
         qs = super().get_queryset()
