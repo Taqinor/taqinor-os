@@ -1,29 +1,40 @@
-"""NTAPI14 — endpoint bulk export de l'API publique.
+"""NTAPI14/15/16/43 — endpoints bulk (export/import/jobs) de l'API publique.
 
 Distinct de `public_views.py` (lecture synchrone paginée) et
-`public_write_views.py` (écriture unitaire synchrone) : la requête ICI CRÉE
-un `BulkJob` (`bulk.py`) traité HORS requête (Celery) et renvoie 202
+`public_write_views.py` (écriture unitaire synchrone) : toute requête ICI
+CRÉE un `BulkJob` (`bulk.py`) traité HORS requête (Celery) et renvoie 202
 immédiatement — jamais de time-out HTTP même sur un très gros volume (NTAPI14
 « exporter 50 000 leads produit un fichier complet sans time-out HTTP »).
 
 Le scope requis dépend de l'ENTITÉ demandée (`entite` dans le corps), jamais
-d'un scope bulk séparé — voir `constants.EXPORT_SCOPE_BY_ENTITY`.
-
-NTAPI15 (import), NTAPI16 (suivi de job) et NTAPI43 (reprise) s'AJOUTENT à ce
-module dans une tâche suivante — sans rien réécrire ici.
+d'un scope bulk séparé — voir `constants.EXPORT_SCOPE_BY_ENTITY`/
+`IMPORT_SCOPE_BY_ENTITY`.
 """
-from rest_framework import status
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, BasePermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .auth import ApiKeyAuthentication, ApiKeyRateThrottle
-from .bulk import BulkJobError, create_export_job
-from .constants import EXPORT_SCOPE_BY_ENTITY
-from .models import ApiKey
+from .bulk import (
+    BulkJobError, create_export_job, create_import_job, relancer_job,
+)
+from .constants import EXPORT_SCOPE_BY_ENTITY, IMPORT_SCOPE_BY_ENTITY
+from .models import ApiKey, BulkJob
 from .public_response import PublicApiResponseMixin
 from .public_serializers import BulkJobSerializer
+
+
+class HasAnyApiKey(BasePermission):
+    """Exige une clé API valide, SANS scope métier précis — pour les
+    endpoints « méta » (suivi de job) dont l'accès est déjà borné à la
+    société de la clé (`get_queryset`) : aucun scope supplémentaire n'a de
+    sens (un job appartient à la société, pas à UN scope)."""
+
+    def has_permission(self, request, view):
+        return isinstance(getattr(request, 'auth', None), ApiKey)
 
 
 class _BulkPostAPIView(PublicApiResponseMixin, APIView):
@@ -70,3 +81,67 @@ class PublicExportCreateView(_BulkPostAPIView):
             raise ValidationError({'detail': str(exc)})
         return Response(
             BulkJobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
+
+
+class PublicImportCreateView(_BulkPostAPIView):
+    """POST /api/public/imports/ (NTAPI15) — lance un import bulk asynchrone
+    (leads/activités). Multipart : champ fichier ``file`` (CSV/JSONL, détecté
+    par l'extension) + champs ``entite``/``mode``/``dedup_key``.
+
+    Mode ``upsert`` : ``dedup_key`` (``email``/``telephone``) — un rejeu du
+    même fichier NE duplique jamais (recherche l'existant avant de créer)."""
+
+    def post(self, request):
+        api_key = self._api_key(request)
+        entite = (request.data.get('entite') or '').strip()
+        self._check_scope(api_key, IMPORT_SCOPE_BY_ENTITY.get(entite))
+        upload = request.FILES.get('file')
+        file_bytes = upload.read() if upload is not None else None
+        try:
+            job = create_import_job(
+                company=api_key.company, api_key=api_key, entite=entite,
+                mode=request.data.get('mode', 'create'),
+                dedup_key=request.data.get('dedup_key'),
+                file_bytes=file_bytes,
+                filename=getattr(upload, 'name', ''))
+        except BulkJobError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(
+            BulkJobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
+
+
+class PublicJobViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
+    """GET /api/public/jobs/ + /jobs/<id>/ (NTAPI16) — suivi d'un BulkJob.
+    POST /api/public/jobs/<id>/relancer/ (NTAPI43) — reprise sur curseur.
+
+    Un job n'est JAMAIS visible hors de la société de la clé
+    (``get_queryset``) — cross-tenant impossible quelle que soit la clé
+    utilisée, aucun scope métier supplémentaire requis (``HasAnyApiKey``)."""
+    authentication_classes = [ApiKeyAuthentication]
+    permission_classes = [HasAnyApiKey]
+    throttle_classes = [ApiKeyRateThrottle]
+    serializer_class = BulkJobSerializer
+    queryset = BulkJob.objects.all()
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            company_id=self.request.auth.company_id)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        # NTAPI16 — poll-friendly : `Retry-After` conseillé tant que `en_cours`
+        # (uniquement pertinent sur le détail — un `retrieve` renvoie un dict
+        # plat avec `statut`, jamais une page de liste).
+        data = getattr(response, 'data', None)
+        if isinstance(data, dict) and data.get('statut') == BulkJob.STATUT_EN_COURS:
+            response['Retry-After'] = '3'
+        return response
+
+    @action(detail=True, methods=['post'], url_path='relancer')
+    def relancer(self, request, pk=None):
+        job = self.get_object()  # scope société déjà appliqué par get_queryset
+        try:
+            job = relancer_job(job)
+        except BulkJobError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(BulkJobSerializer(job).data)

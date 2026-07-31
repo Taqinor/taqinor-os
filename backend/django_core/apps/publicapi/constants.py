@@ -32,16 +32,20 @@ SCOPE_CHOICES = [
 ]
 ALL_SCOPES = [code for code, _ in SCOPE_CHOICES]
 
-# NTAPI14 — le scope requis pour exporter une ENTITÉ est le MÊME que celui de
-# la lecture synchrone de cette ressource (jamais un scope bulk séparé qui
-# dupliquerait le contrôle d'accès). Une entité absente de ce mapping est
-# simplement non exportable en bulk. NTAPI15 ajoutera IMPORT_SCOPE_BY_ENTITY.
+# NTAPI14/15 — le scope requis pour exporter/importer une ENTITÉ est le MÊME
+# que celui de la lecture/écriture synchrone de cette ressource (jamais un
+# scope bulk séparé qui dupliquerait le contrôle d'accès). Une entité absente
+# de ces mappings est simplement non exportable/importable en bulk.
 EXPORT_SCOPE_BY_ENTITY = {
     'leads': SCOPE_READ_LEADS,
     'devis': SCOPE_READ_DEVIS,
     'factures': SCOPE_READ_FACTURES,
     'chantiers': SCOPE_READ_CHANTIERS,
     'produits': SCOPE_READ_STOCK,
+}
+IMPORT_SCOPE_BY_ENTITY = {
+    'leads': SCOPE_WRITE_LEADS,
+    'activites': SCOPE_WRITE_ACTIVITIES,
 }
 
 
