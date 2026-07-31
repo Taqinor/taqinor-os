@@ -45,9 +45,11 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../ui'
 import { MoreHorizontal } from 'lucide-react'
-import { useSavedViews } from '../../hooks/useSavedViews'
+import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
+import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 
-const SL_SAVED_VIEWS_KEY = 'taqinor.stock.produits.savedViews'
+// WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
+const SL_ECRAN = 'stock.produits'
 
 const fmtNum2 = (n) => formatNumber(n, { decimals: 2 })
 
@@ -597,14 +599,21 @@ export default function StockList() {
   const [emplacementsList, setEmplacementsList]   = useState([])
   const [activeCat, setActiveCat]     = useState('')   // '' = tout le catalogue
   const [showArchived, setShowArchived]   = useState(false)
-  // Vues enregistrées (FG11).
-  const { savedViews: stockSavedViews, saveView: saveStockView, deleteView: deleteStockView } = useSavedViews(SL_SAVED_VIEWS_KEY)
+  // WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11 :
+  // vues EQUIPE désormais visibles par l'équipe, cf. ViewsManagerPopover).
+  const { createView: createStockView } = useServerSavedViews(SL_ECRAN)
   const saveCurrentStockView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
-    saveStockView(name, { search, activeCat, filterMarque, filterEmplacement, filterLow, filterNoPrice, filterNoSku })
+    const trimmed = (name || '').trim()
+    if (!trimmed) return
+    createStockView({
+      nom: trimmed,
+      configuration: { search, activeCat, filterMarque, filterEmplacement, filterLow, filterNoPrice, filterNoSku },
+      visibilite: 'PERSONNELLE',
+    }).catch(() => toastError('Enregistrement de la vue impossible.'))
   }
-  const applyStockView = (v) => {
-    const s = v.state || {}
+  const applyStockView = (configuration) => {
+    const s = configuration || {}
     if (s.search !== undefined) setSearch(s.search)
     if (s.activeCat !== undefined) setActiveCat(s.activeCat)
     if (s.filterMarque !== undefined) setFilterMarque(s.filterMarque)
@@ -1151,23 +1160,11 @@ export default function StockList() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <div className="lp-saved-views mt-1">
+          <div className="mt-1 flex items-center gap-1.5">
             <button type="button" className="lp-saved-view-apply text-xs" onClick={saveCurrentStockView}>
               ⭐ Enregistrer cette vue
             </button>
-            {stockSavedViews.map((v) => (
-              <span key={v.name} className="lp-saved-view-chip">
-                <button type="button" className="lp-saved-view-apply"
-                        onClick={() => applyStockView(v)} title="Appliquer cette vue">
-                  {v.name}
-                </button>
-                <button type="button" className="lp-saved-view-del"
-                        onClick={() => deleteStockView(v.name)}
-                        aria-label={`Supprimer la vue ${v.name}`}>
-                  ✕
-                </button>
-              </span>
-            ))}
+            <ViewsManagerPopover ecran={SL_ECRAN} onApply={applyStockView} />
           </div>
 
           {/* VX33 — mini-jauge « santé catalogue », au-dessus du rail de

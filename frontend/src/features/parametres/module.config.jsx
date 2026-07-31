@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { MapPin, ListChecks } from 'lucide-react'
+import { MapPin, ListChecks, LayoutList } from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Paramètres vers le registre (phase 2,
@@ -86,6 +86,12 @@ const config = {
     items: [
       { to: '/parametres/territoires', label: 'Territoires', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/parametres/playbooks', label: 'Playbooks', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      {
+        to: '/parametres/vues',
+        label: 'Vues sauvegardées',
+        icon: <LayoutList size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
     ],
   },
   routes: [
