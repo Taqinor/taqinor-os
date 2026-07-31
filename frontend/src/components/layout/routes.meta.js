@@ -52,6 +52,7 @@ const BASE_PAGE_TITLES = [
   ['/ma-journee', 'Ma journée'],
   ['/interventions', 'Interventions'],
   ['/planification/astreintes', 'Astreintes & indisponibilités'],
+  ['/planification/suivi-gps', 'Suivi GPS terrain'],
   ['/parc', 'Parc installé'],
   ['/production', 'Production'],
 

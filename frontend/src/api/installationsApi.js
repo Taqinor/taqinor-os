@@ -565,6 +565,27 @@ const installationsApi = {
     ? api.patch(`/installations/equipes/${id}/`, data)
     : api.post('/installations/equipes/', data),
   deleteEquipeTerrain: (id) => api.delete(`/installations/equipes/${id}/`),
+
+  // WIR113 — suivi GPS terrain (XFSM23), web-first. Consentement explicite
+  // AVANT toute position : `positions-techniciens/ping/` refuse (403) sans
+  // consentement actif. Les positions et les alertes de géofence sont en
+  // LECTURE SEULE côté API (jamais de PATCH), leurs seules mutations passent
+  // par les actions dédiées `revoquer` / `acquitter`.
+  getGpsConsentements: (params) =>
+    api.get('/installations/gps-consentements/', { params }),
+  createGpsConsentement: (data) =>
+    api.post('/installations/gps-consentements/', data),
+  revoquerGpsConsentement: (id, reason) =>
+    api.post(`/installations/gps-consentements/${id}/revoquer/`,
+      reason ? { reason } : {}),
+  getPositionsTechniciens: (params) =>
+    api.get('/installations/positions-techniciens/', { params }),
+  getCarteLivePositions: () =>
+    api.get('/installations/positions-techniciens/carte-live/'),
+  getGeofenceAlertes: (params) =>
+    api.get('/installations/geofence-alertes/', { params }),
+  acquitterGeofenceAlerte: (id) =>
+    api.post(`/installations/geofence-alertes/${id}/acquitter/`, {}),
 }
 
 export default installationsApi

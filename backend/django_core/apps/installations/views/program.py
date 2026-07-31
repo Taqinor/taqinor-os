@@ -36,6 +36,38 @@ from ..serializers import (
 
 READ_ACTIONS = ['list', 'retrieve']
 
+# ── WIR86 — surface GELÉE / DÉPRÉCIÉE ────────────────────────────────────────
+# Décision WIR86 (2026-07-18, tracée dans `docs/module-map.md`) : le système
+# Projet canonique de TAQINOR OS est `apps/gestion_projet` (39 modèles, câblé
+# et actif côté frontend via `frontend/src/api/gestionProjetApi.js`). La
+# famille Programme/Projet d'`installations` (FG291-301) reste EN SERVICE pour
+# les données existantes mais est GELÉE : aucune nouvelle fonctionnalité,
+# aucun écran frontend, aucun nouveau consommateur.
+#
+# Chaque réponse porte donc l'entête de dépréciation RFC 8594 (`Deprecation`)
+# et un lien `successor-version` vers l'API canonique — c'est le signal
+# machine du plan de retrait en 3 phases décrit dans `docs/module-map.md`.
+# Rien n'est supprimé ici : la décision reste entièrement réversible (retirer
+# le mixin suffit).
+PROGRAMME_SUCCESSOR_URL = '/api/django/gestion-projet/projets/'
+
+
+class DeprecatedProgrammeSurfaceMixin:
+    """WIR86 — marque la famille `programmes*` d'`installations` comme
+    dépréciée au profit d'`apps/gestion_projet`.
+
+    Purement additif : ajoute deux entêtes de réponse (RFC 8594) sans toucher
+    au corps, au statut HTTP, aux permissions ni au scope société. Les clients
+    existants continuent de fonctionner à l'identique.
+    """
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response['Deprecation'] = 'true'
+        response['Link'] = (
+            f'<{PROGRAMME_SUCCESSOR_URL}>; rel="successor-version"')
+        return response
+
 
 def _check_tenant(serializer, company, field):
     """Tenant safety : l'objet lié (chantier/devis/ticket) doit appartenir à la
@@ -52,7 +84,7 @@ def _check_projet_tenant(serializer, company):
     _check_tenant(serializer, company, 'projet')
 
 
-class ProjetViewSet(CompanyScopedModelViewSet):
+class ProjetViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG291 — programme/projet multi-chantiers (ferme à 4 forages, toiture par
     tranches). Lecture tout rôle, écriture responsable/admin. Référence et
     société posées côté serveur. Filtrable par `statut` et `client`."""
@@ -155,7 +187,7 @@ class ProjetViewSet(CompanyScopedModelViewSet):
         return Response(projet_pnl(projet))
 
 
-class ProjetChantierViewSet(CompanyScopedModelViewSet):
+class ProjetChantierViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG291 — rattachements chantier↔programme. Filtrable par `projet`."""
     queryset = ProjetChantier.objects.select_related(
         'projet', 'installation').all()
@@ -186,7 +218,7 @@ class ProjetChantierViewSet(CompanyScopedModelViewSet):
         serializer.save(company=company)
 
 
-class ProjetDevisViewSet(CompanyScopedModelViewSet):
+class ProjetDevisViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG291 — rattachements devis↔programme (string-FK, statut intact)."""
     queryset = ProjetDevis.objects.select_related('projet', 'devis').all()
     serializer_class = ProjetDevisSerializer
@@ -216,7 +248,7 @@ class ProjetDevisViewSet(CompanyScopedModelViewSet):
         serializer.save(company=company)
 
 
-class ProjetTicketViewSet(CompanyScopedModelViewSet):
+class ProjetTicketViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG291 — rattachements ticket SAV↔programme (string-FK, statut intact)."""
     queryset = ProjetTicket.objects.select_related('projet', 'ticket').all()
     serializer_class = ProjetTicketSerializer
@@ -269,7 +301,7 @@ def _check_tache_links_same_projet(serializer, instance=None):
                 {field: 'Doit appartenir au même programme.'})
 
 
-class ProjetTacheViewSet(CompanyScopedModelViewSet):
+class ProjetTacheViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG292 — tâches & sous-tâches de programme avec dépendances. Lecture tout
     rôle, écriture responsable/admin. Société posée côté serveur. Le programme,
     le parent, le prédécesseur et l'assigné sont validés tenant. Les cycles
@@ -340,7 +372,7 @@ class ProjetTacheViewSet(CompanyScopedModelViewSet):
 
 # ── FG294 — Budget projet vs réel (engagé / dépensé) ──────────────────────────
 
-class BudgetProjetViewSet(CompanyScopedModelViewSet):
+class BudgetProjetViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG294 — budget d'un programme + synthèse vs réel.
 
     CRUD du budget (enveloppes par catégorie, tarif main-d'œuvre, seuil
@@ -382,7 +414,7 @@ class BudgetProjetViewSet(CompanyScopedModelViewSet):
         return Response(budget_projet_synthese(budget))
 
 
-class BudgetEngagementViewSet(CompanyScopedModelViewSet):
+class BudgetEngagementViewSet(DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG294 — rattachement d'un coût fournisseur (BCF ou facture fournisseur)
     à un budget de programme. INTERNE (responsable/admin). La société est posée
     côté serveur ; le budget et l'objet stock rattaché sont validés tenant. Les
