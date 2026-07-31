@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   CalendarCheck, CalendarDays, ClipboardCheck, GraduationCap, School,
-  ShieldAlert, Users, Utensils, Wallet,
+  ShieldAlert, Upload, Users, Utensils, Wallet,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -31,6 +31,7 @@ const NotesPage = lazy(() => import('../../pages/education/NotesPage'))
 const EmploiDuTempsPage = lazy(() => import('../../pages/education/EmploiDuTempsPage'))
 const CantinePage = lazy(() => import('../../pages/education/CantinePage'))
 const DisciplinePage = lazy(() => import('../../pages/education/DisciplinePage'))
+const ImportPage = lazy(() => import('../../pages/education/ImportPage'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -50,6 +51,7 @@ const config = {
       { to: '/education/emploi-du-temps', label: 'Emploi du temps', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/cantine', label: 'Cantine', icon: <Utensils size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/discipline', label: 'Discipline', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/education/import', label: 'Import CSV élèves', icon: <Upload size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   titles: [
@@ -62,6 +64,7 @@ const config = {
     ['/education/emploi-du-temps', 'Emploi du temps'],
     ['/education/cantine', 'Cantine'],
     ['/education/discipline', 'Discipline'],
+    ['/education/import', 'Import CSV élèves'],
   ],
   sectionLabels: { education: 'Éducation' },
   routes: [
@@ -74,6 +77,7 @@ const config = {
     { path: '/education/emploi-du-temps', component: EmploiDuTempsPage, roles: ROLES },
     { path: '/education/cantine', component: CantinePage, roles: ROLES },
     { path: '/education/discipline', component: DisciplinePage, roles: ROLES },
+    { path: '/education/import', component: ImportPage, roles: ['responsable', 'admin'] },
   ],
 }
 
