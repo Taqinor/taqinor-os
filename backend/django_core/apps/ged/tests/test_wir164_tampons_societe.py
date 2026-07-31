@@ -96,6 +96,61 @@ class IsolationTests(Wir164Base):
         self.assertEqual(resp.data['count'], 0, resp.data)
 
 
+class IsolationMultiSocieteTests(Wir164Base):
+    """RÉGRESSION (SCA4) — `TamponSocieteViewSet` est basé sur
+    `core.viewsets.CompanyScopedModelViewSet` : la société A ne LIT ni
+    n'ÉCRIT jamais un tampon de la société B, et ne peut pas s'attribuer un
+    tampon à la société B en passant `company` dans le corps."""
+
+    def setUp(self):
+        super().setUp()
+        self.admin_b = make_user(self.co_b, 'wir164-admin-b', 'admin')
+        self.tampon_a = TamponSociete.objects.create(
+            company=self.co_a, libelle='Archivé RH')
+        self.tampon_b = TamponSociete.objects.create(
+            company=self.co_b, libelle='Réservé B')
+
+    def test_viewset_herite_du_socle_scope_societe(self):
+        from core.viewsets import CompanyScopedModelViewSet
+
+        from apps.ged.views import TamponSocieteViewSet
+        self.assertTrue(
+            issubclass(TamponSocieteViewSet, CompanyScopedModelViewSet),
+            'TamponSocieteViewSet doit hériter de CompanyScopedModelViewSet.')
+
+    def test_list_ne_renvoie_que_les_tampons_de_sa_societe(self):
+        resp = auth(self.admin_a).get(BASE)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        ids = {ligne['id'] for ligne in resp.data['results']}
+        self.assertEqual(ids, {self.tampon_a.id}, resp.data)
+
+    def test_retrieve_tampon_autre_societe_404(self):
+        resp = auth(self.admin_a).get(f'{BASE}{self.tampon_b.id}/')
+        self.assertEqual(resp.status_code, 404, resp.data)
+
+    def test_update_et_delete_tampon_autre_societe_404(self):
+        resp = auth(self.admin_a).patch(
+            f'{BASE}{self.tampon_b.id}/', {'libelle': 'Piraté'}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.data)
+        resp = auth(self.admin_a).delete(f'{BASE}{self.tampon_b.id}/')
+        self.assertEqual(resp.status_code, 404, resp.data)
+        self.tampon_b.refresh_from_db()
+        self.assertEqual(self.tampon_b.company_id, self.co_b.id)
+        self.assertEqual(self.tampon_b.libelle, 'Réservé B')
+
+    def test_company_du_corps_ne_peut_pas_attribuer_le_tampon_a_la_societe_b(self):
+        resp = auth(self.admin_a).post(
+            BASE, {'libelle': 'Injecté', 'company': self.co_b.id},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        tampon = TamponSociete.objects.get(id=resp.data['id'])
+        self.assertEqual(tampon.company_id, self.co_a.id)
+        # …et la société B ne voit RIEN de neuf apparaître chez elle.
+        resp = auth(self.admin_b).get(BASE)
+        ids = {ligne['id'] for ligne in resp.data['results']}
+        self.assertEqual(ids, {self.tampon_b.id}, resp.data)
+
+
 class TamponBoutEnBoutTests(Wir164Base):
     """DONE — un tampon société propre se crée (API) ET s'appose (API)."""
 

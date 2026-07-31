@@ -152,6 +152,68 @@ class FiltersTests(Wir163Base):
         self.assertEqual(resp.data['count'], 0, resp.data)
 
 
+class IsolationMultiSocieteTests(Wir163Base):
+    """RÉGRESSION (SCA4) — `AclGedViewSet` est basé sur
+    `core.viewsets.CompanyScopedModelViewSet` : un utilisateur de la société A
+    ne LIT ni n'ÉCRIT jamais une entrée ACL de la société B, et ne peut pas
+    s'attribuer une entrée à la société B en passant `company` dans le corps.
+
+    Une entrée ACL gouverne QUI voit quel document : une fuite ici laisserait
+    une société lire — ou pire, réécrire — les droits d'accès d'une autre.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.admin_b = make_user(self.co_b, 'wir163-admin-b', 'admin')
+        self.acl_a = AclGed.objects.create(
+            company=self.co_a, document=self.doc_a,
+            utilisateur=self.normal_a, niveau='lecture')
+        self.acl_b = AclGed.objects.create(
+            company=self.co_b, document=self.doc_b,
+            utilisateur=self.admin_b, niveau='gestion')
+
+    def test_viewset_herite_du_socle_scope_societe(self):
+        from core.viewsets import CompanyScopedModelViewSet
+
+        from apps.ged.views import AclGedViewSet
+        self.assertTrue(
+            issubclass(AclGedViewSet, CompanyScopedModelViewSet),
+            'AclGedViewSet doit hériter de CompanyScopedModelViewSet (SCA4).')
+
+    def test_list_ne_renvoie_que_les_entrees_de_sa_societe(self):
+        resp = auth(self.admin_a).get(BASE)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        ids = {ligne['id'] for ligne in resp.data['results']}
+        self.assertEqual(ids, {self.acl_a.id}, resp.data)
+
+    def test_retrieve_entree_autre_societe_404(self):
+        resp = auth(self.admin_a).get(f'{BASE}{self.acl_b.id}/')
+        self.assertEqual(resp.status_code, 404, resp.data)
+
+    def test_update_et_delete_entree_autre_societe_404(self):
+        resp = auth(self.admin_a).patch(
+            f'{BASE}{self.acl_b.id}/', {'niveau': 'lecture'}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.data)
+        resp = auth(self.admin_a).delete(f'{BASE}{self.acl_b.id}/')
+        self.assertEqual(resp.status_code, 404, resp.data)
+        self.acl_b.refresh_from_db()
+        self.assertEqual(self.acl_b.company_id, self.co_b.id)
+        self.assertEqual(self.acl_b.niveau, 'gestion')
+
+    def test_company_du_corps_ne_peut_pas_attribuer_l_entree_a_la_societe_b(self):
+        resp = auth(self.admin_a).post(BASE, {
+            'folder': self.folder_a.id, 'utilisateur': self.normal_a.id,
+            'niveau': 'gestion', 'company': self.co_b.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        entry = AclGed.objects.get(id=resp.data['id'])
+        self.assertEqual(entry.company_id, self.co_a.id)
+        # …et la société B ne voit RIEN de neuf apparaître chez elle.
+        resp = auth(self.admin_b).get(BASE)
+        ids = {ligne['id'] for ligne in resp.data['results']}
+        self.assertEqual(ids, {self.acl_b.id}, resp.data)
+
+
 class EffetImmediatSurVisibiliteTests(Wir163Base):
     """DONE — poser une entrée AclGed depuis l'API a un effet immédiat sur
     `documents_visible_to_user` pour un AUTRE utilisateur de test."""
