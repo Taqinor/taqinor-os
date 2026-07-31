@@ -45,15 +45,18 @@ describe('MigrationProjetsList (NTMIG16)', () => {
     })
     withProviders(<MigrationProjetsList />)
 
-    expect(await screen.findByText('Reprise Odoo')).toBeTruthy()
+    // DataTable rend À LA FOIS la table desktop et le repli carte mobile (les
+    // deux existent dans le DOM en jsdom, aucune media query n'est appliquée) :
+    // on cible le premier match, même patron que RetoursProduitPage.test.jsx.
+    expect((await screen.findAllByText('Reprise Odoo'))[0]).toBeTruthy()
     expect(screen.getAllByText('Odoo').length).toBeGreaterThan(0)
-    expect(screen.getByText('1 / 3 lots')).toBeTruthy()
+    expect(screen.getAllByText('1 / 3 lots')[0]).toBeTruthy()
   })
 
   it('affiche un état vide quand aucun projet', async () => {
     migrationApi.listProjets.mockResolvedValue({ data: { results: [] } })
     withProviders(<MigrationProjetsList />)
-    expect(await screen.findByText(/Aucun projet de migration/i)).toBeTruthy()
+    expect((await screen.findAllByText(/Aucun projet de migration/i))[0]).toBeTruthy()
   })
 
   it('crée un projet avec la source choisie et ouvre son assistant', async () => {

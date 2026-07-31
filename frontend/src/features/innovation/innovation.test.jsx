@@ -33,6 +33,8 @@ const innovationApiMock = vi.hoisted(() => ({
   publier: vi.fn(),
   masquer: vi.fn(),
   vote: vi.fn(),
+  // NTIDE53 — frise des changements de statut, tirée au montage d'IdeeDetail.
+  timelineIdee: vi.fn(() => Promise.resolve({ data: { results: [] } })),
   retirerVote: vi.fn(),
   votesRecents: vi.fn(),
   mesVotes: vi.fn(),
