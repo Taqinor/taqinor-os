@@ -49,3 +49,40 @@ class DescriptionProduitView(APIView):
         except AiCopiloteUnavailable as exc:
             return _unavailable_response(exc)
         return Response(resultat)
+
+
+class RedigerView(APIView):
+    """NTAI11 — ``POST /api/django/ai/rediger/``.
+
+    Body ``{"content_type": "crm.lead", "object_id": 12, "canal":
+    "email|whatsapp|sms", "intention": "..."}``. Aplatit le fil (chatter +
+    activités) de la fiche et renvoie un brouillon FR ÉDITABLE.
+
+    N'ENVOIE JAMAIS : la réponse porte ``envoye: false`` ; l'envoi reste une
+    action utilisateur explicite via les endpoints d'envoi existants. La
+    relance CRM et la réponse SAV réutilisent CET endpoint.
+    """
+
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+
+    def post(self, request):
+        from .services import rediger_brouillon
+
+        content_type = request.data.get('content_type')
+        object_id = request.data.get('object_id')
+        if not content_type or object_id in (None, ''):
+            return Response(
+                {'detail': 'content_type et object_id sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = rediger_brouillon(
+                company=request.user.company,
+                content_type=content_type,
+                object_id=object_id,
+                canal=request.data.get('canal') or 'email',
+                intention=request.data.get('intention') or '')
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)

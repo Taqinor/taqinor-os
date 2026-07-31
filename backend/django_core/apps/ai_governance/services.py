@@ -177,3 +177,132 @@ def generer_description_produit(*, company, produit_id, max_tokens=400) -> dict:
         'applique': False,
         'source': res.provider,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI11 — Rédaction assistée de réponse / relance (câblage draft_reply)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Câble le ``draft_reply`` EXISTANT de la fondation (``core.ai.services``) sur
+# n'importe quelle fiche du chatter générique : la relance CRM et la réponse
+# SAV réutilisent CE endpoint au lieu d'en recopier un chacune.
+#
+# GARANTIE D'ENVOI : ce service ne fait QUE générer du texte. Aucun mail, SMS
+# ou message WhatsApp n'est émis ici — l'envoi reste un geste explicite de
+# l'utilisateur via les endpoints d'envoi existants (testé : boîte d'envoi
+# vide après un appel).
+
+#: Canaux acceptés — miroir de ``core.ai.services.REPLY_CHANNELS``.
+REDACTION_CANAUX = ('email', 'whatsapp', 'sms')
+
+#: Longueur max de la consigne libre (``intention``) reprise dans le prompt :
+#: borne le coût et la surface d'injection d'un champ saisi par l'utilisateur.
+REDACTION_INTENTION_MAX = 300
+
+#: Nombre d'entrées de fil reprises (les plus récentes).
+REDACTION_FIL_LIMITE = 40
+
+#: Consigne de ton/longueur par canal (futur « défaut code » de NTAI5, clés
+#: ``ai.rediger.<canal>``).
+REDACTION_CONSIGNE_CANAL = {
+    'email': 'Ton professionnel, 120 à 180 mots, avec une formule de politesse.',
+    'whatsapp': 'Ton direct et cordial, 40 mots maximum, sans en-tête ni signature.',
+    'sms': 'Ton neutre, 160 caractères maximum, une seule phrase utile.',
+}
+
+
+def _activity_texte(act) -> str:
+    """Texte lisible d'une entrée de chatter/activité (jamais vide → '')."""
+    if act.body:
+        return str(act.body).strip()
+    if act.note:
+        return str(act.note).strip()
+    if act.kind == 'modification' and (act.field_label or act.field):
+        libelle = act.field_label or act.field
+        return f'{libelle} : {act.old_value or "—"} → {act.new_value or "—"}'
+    return str(act.summary or '').strip()
+
+
+def aplatir_fil(*, company, content_type, object_id,
+                limit=REDACTION_FIL_LIMITE) -> list[dict]:
+    """Met à plat le chatter + les activités d'une cible, du plus ANCIEN au
+    plus récent, au format attendu par ``core.ai.services.format_thread``.
+
+    Scopé société : seules les entrées de ``company`` sont lues.
+    """
+    from apps.records.models import Activity
+
+    qs = (Activity.objects
+          .filter(content_type=content_type, object_id=object_id,
+                  company=company)
+          .select_related('created_by')
+          .order_by('-created_at', '-id')[:limit])
+    entrees = []
+    for act in reversed(list(qs)):
+        texte = _activity_texte(act)
+        if not texte:
+            continue
+        auteur = getattr(act.created_by, 'username', '') or ''
+        entrees.append({
+            'auteur': auteur,
+            'date': act.created_at.strftime('%Y-%m-%d %H:%M') if act.created_at else '',
+            'texte': texte,
+            'canal': 'note' if act.kind == 'note' else '',
+        })
+    return entrees
+
+
+def rediger_brouillon(*, company, content_type, object_id, canal='email',
+                      intention='', max_tokens=400) -> dict:
+    """NTAI11 — Propose un brouillon FR de réponse/relance sur une fiche.
+
+    ``content_type`` est un libellé ``'app.model'`` validé contre les cibles
+    autorisées du chatter générique (``records.serializers.resolve_target`` —
+    vérifie AUSSI l'appartenance à la société). ``canal`` règle le ton/format.
+
+    N'ENVOIE JAMAIS : renvoie un brouillon éditable (``envoye: False``).
+    """
+    from apps.records.serializers import resolve_target
+    from core.ai.services import draft_reply
+
+    canal = str(canal or 'email').strip().lower()
+    if canal not in REDACTION_CANAUX:
+        raise AiCopiloteUnavailable(
+            f'Canal inconnu — attendu : {", ".join(REDACTION_CANAUX)}.')
+
+    try:
+        ct, cible = resolve_target(content_type, object_id, company)
+    except ValueError as exc:
+        raise AiCopiloteUnavailable(str(exc))
+
+    if not is_capability_configured('llm'):
+        raise AiCopiloteUnavailable(
+            "Aucun fournisseur LLM n'est configuré (clé absente) — "
+            'rédaction manuelle requise.', configured=False)
+
+    fil = aplatir_fil(company=company, content_type=ct, object_id=cible.pk)
+    contexte = f'{ct.app_label}.{ct.model} « {str(cible)[:120]} »'
+    consigne = REDACTION_CONSIGNE_CANAL.get(canal, '')
+    intention = str(intention or '').strip()[:REDACTION_INTENTION_MAX]
+    instruction = ' '.join(p for p in (intention, consigne) if p)
+
+    res = draft_reply(fil, channel=canal, context=contexte,
+                      instruction=instruction, max_tokens=max_tokens)
+    if not res.configured:
+        raise AiCopiloteUnavailable(
+            "Aucun fournisseur LLM n'est configuré (clé absente) — "
+            'rédaction manuelle requise.', configured=False)
+    if not res.available:
+        raise AiCopiloteUnavailable(
+            "Le fournisseur n'a pas produit de brouillon exploitable.")
+
+    return {
+        'content_type': f'{ct.app_label}.{ct.model}',
+        'object_id': cible.pk,
+        'canal': canal,
+        'brouillon': res.draft,
+        'entrees_fil': len(fil),
+        # Contrat explicite : RIEN n'a été envoyé ni enregistré.
+        'envoye': False,
+        'source': res.source,
+    }
