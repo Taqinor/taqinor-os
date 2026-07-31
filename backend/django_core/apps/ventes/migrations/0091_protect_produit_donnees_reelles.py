@@ -8,7 +8,10 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('stock', '0081_protect_produit_donnees_reelles'),
-        ('ventes', '0089_alter_rooflayout_devis'),
+        # Renumérotée 0090 -> 0091 à l'intégration : deux lanes du même batch
+        # avaient toutes deux créé un 0090 sur `ventes` (feuilles concurrentes).
+        # On chaîne donc sur l'autre 0090 au lieu de 0089.
+        ('ventes', '0090_ydata2_protect_dossier_devis'),
     ]
 
     operations = [
