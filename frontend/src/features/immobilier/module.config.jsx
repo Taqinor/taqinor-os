@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Building2 } from 'lucide-react'
+import { Building2, Users } from 'lucide-react'
 
 /* ============================================================================
    IMMOBILIER (Groupe NTPRO) — configuration du module « Immobilier »
@@ -18,6 +18,9 @@ import { Building2 } from 'lucide-react'
 const PatrimoineTree = lazy(() => import('../../pages/immobilier/PatrimoineTree'))
 const RentabiliteActif = lazy(() => import('../../pages/immobilier/RentabiliteActif'))
 const ChargesPage = lazy(() => import('../../pages/immobilier/ChargesPage'))
+// WIR147 — écran Locataires (CRUD + résolution client ventes), jusqu'ici sans
+// route alors que `LocataireViewSet` existe côté backend.
+const LocatairesPage = lazy(() => import('../../pages/immobilier/LocatairesPage'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -45,11 +48,18 @@ const config = {
         icon: <Building2 size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        to: '/immobilier/locataires',
+        label: 'Locataires',
+        icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   titles: [
     ['/immobilier/rentabilite', 'Rentabilité'],
     ['/immobilier/charges', 'Charges'],
+    ['/immobilier/locataires', 'Locataires'],
     ['/immobilier', 'Immobilier'],
   ],
   sectionLabels: { immobilier: 'Immobilier' },
@@ -57,6 +67,7 @@ const config = {
     { path: '/immobilier', component: PatrimoineTree, roles: ROLES },
     { path: '/immobilier/rentabilite', component: RentabiliteActif, roles: ROLES },
     { path: '/immobilier/charges', component: ChargesPage, roles: ROLES },
+    { path: '/immobilier/locataires', component: LocatairesPage, roles: ROLES },
   ],
 }
 
