@@ -120,9 +120,15 @@ class TestFileFieldGuard(SimpleTestCase):
         self.assertEqual(found, ["apps/compta/models.py:fichier"])
 
     def test_frozen_list_shape(self):
-        """La liste gelée committée couvre bien les 7 fichiers / 17 champs de
-        l'inventaire ARC26 (grep du 2026-07-10)."""
-        self.assertEqual(len(GRANDFATHERED_FILEFIELDS), 7)
+        """La liste gelée committée couvre bien les 8 fichiers / 17 champs de
+        l'inventaire ARC26 (grep du 2026-07-10).
+
+        ODX15 a déplacé ``NoteFrais`` (et donc son ``justificatif``) de
+        ``apps/compta/models.py`` vers ``apps/frais/models.py`` : le nombre de
+        FICHIERS passe de 7 à 8, mais le TOTAL de champs reste 17 — c'est lui
+        le vrai garde-fou « aucun nouveau FileField » (une pièce jointe
+        inédite passerait par records.Attachment ou ged.Document)."""
+        self.assertEqual(len(GRANDFATHERED_FILEFIELDS), 8)
         total = sum(sum(v.values()) for v in GRANDFATHERED_FILEFIELDS.values())
         self.assertEqual(total, 17)
 
