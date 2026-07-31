@@ -18,6 +18,9 @@ import { Building2 } from 'lucide-react'
 const PatrimoineTree = lazy(() => import('../../pages/immobilier/PatrimoineTree'))
 const RentabiliteActif = lazy(() => import('../../pages/immobilier/RentabiliteActif'))
 const ChargesPage = lazy(() => import('../../pages/immobilier/ChargesPage'))
+// WIR148 — écran de gestion des Baux (signature/révision/dépôt/échéancier/
+// quittancement/impayés) : le cycle de vie complet était backend-only.
+const BauxPage = lazy(() => import('../../pages/immobilier/BauxPage'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -45,11 +48,18 @@ const config = {
         icon: <Building2 size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        to: '/immobilier/baux',
+        label: 'Baux',
+        icon: <Building2 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   titles: [
     ['/immobilier/rentabilite', 'Rentabilité'],
     ['/immobilier/charges', 'Charges'],
+    ['/immobilier/baux', 'Baux'],
     ['/immobilier', 'Immobilier'],
   ],
   sectionLabels: { immobilier: 'Immobilier' },
@@ -57,6 +67,7 @@ const config = {
     { path: '/immobilier', component: PatrimoineTree, roles: ROLES },
     { path: '/immobilier/rentabilite', component: RentabiliteActif, roles: ROLES },
     { path: '/immobilier/charges', component: ChargesPage, roles: ROLES },
+    { path: '/immobilier/baux', component: BauxPage, roles: ROLES },
   ],
 }
 

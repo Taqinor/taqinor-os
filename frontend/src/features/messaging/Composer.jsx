@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Send, Paperclip, X } from 'lucide-react'
+import { Send, Paperclip, X, BarChart3, Clock, Plus } from 'lucide-react'
 import {
-  Button, FileUpload,
+  Button, FileUpload, Label, Checkbox, Input,
+  Popover, PopoverTrigger, PopoverContent,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
+import { cn } from '../../lib/cn'
 import messagesApi from '../../api/messagesApi'
 import iaApi from '../../api/iaApi'
 import { buildAgentMessage } from '../ia/store/iaSlice'
-import { toastError } from '../../lib/toast'
+import { toastError, toastSuccess } from '../../lib/toast'
 import {
   sendMessage, editMessage, deleteMessage, selectActiveId,
 } from './store/messagingSlice'
@@ -25,7 +28,44 @@ import { activeSlashCommand, filterSlashCommands, resolveSlashSubmit, buildAideT
    (membres de la société), bouton joindre (image/fichier via FileUpload),
    envoi. Édition en ligne + suppression de SES propres messages avec
    confirmation AlertDialog. `editing` (message) bascule en mode édition ;
-   `pendingDelete` arme le dialogue de confirmation (piloté par le parent). */
+   `pendingDelete` arme le dialogue de confirmation (piloté par le parent).
+
+   WIR155 — trois actions rapides additionnelles, toutes self-contained (pas
+   de nouveau prop remonté au parent ChatPage, qui reste hors périmètre) :
+     - autocomplétion `:raccourci` (réponses enregistrées XKB28), même forme
+       que @mention/slash (token détecté au curseur, popup, clavier ↑↓⏎Échap) ;
+     - création de sondage (XKB30) via un Dialog, envoyé par
+       `messagesApi.poll.create` puis fusionné dans le store en dispatchant
+       manuellement `sendMessage.fulfilled` (même reducer que l'envoi normal —
+       aucun nouveau thunk, `messagingSlice.js` reste hors périmètre) ;
+     - « Programmer l'envoi » (XKB27) via un Popover (date/heure + liste
+       d'attente des messages programmés de LA conversation active, annulables). */
+
+// Détecte un token :raccourci en cours de frappe (même forme que activeMention
+// dans ./mentions.js, mais déclenché par « : » et sans limite de caractères
+// spéciaux — les raccourcis sont de simples mots).
+function activeCannedToken(text, caret) {
+  if (text == null) return null
+  const upto = text.slice(0, caret)
+  const m = /(^|\s):([\w-]*)$/.exec(upto)
+  if (!m) return null
+  return { query: m[2], start: caret - m[2].length - 1 }
+}
+
+// Remplace le token :query (à partir de `start`) par le corps du snippet.
+function insertCanned(text, start, queryLen, body) {
+  const before = text.slice(0, start)
+  const after = text.slice(start + 1 + queryLen)
+  const inserted = `${body} `
+  return { text: before + inserted + after, caret: before.length + inserted.length }
+}
+
+function filterCanned(list, query, limit = 8) {
+  const q = (query || '').toLowerCase()
+  return (list || [])
+    .filter((c) => c.shortcut.toLowerCase().startsWith(q))
+    .slice(0, limit)
+}
 
 const MAX_ROWS_PX = 160
 
@@ -56,6 +96,25 @@ export default function Composer({
   // Un seul des deux popups est ouvert à la fois (mention/slash exclusifs).
   const mentionA11y = useActiveDescendant(mention?.index ?? -1)
   const slashA11y = useActiveDescendant(slash?.index ?? -1)
+
+  // ── WIR155 / XKB28 — autocomplétion :raccourci (réponses enregistrées) ──
+  const [canned, setCanned] = useState(null) // { items, index, start, queryLen }
+  const [cannedList, setCannedList] = useState(null) // cache session (null = pas encore chargé)
+  const cannedA11y = useActiveDescendant(canned?.index ?? -1)
+
+  // ── WIR155 / XKB30 — création de sondage ──
+  const [pollOpen, setPollOpen] = useState(false)
+  const [pollQuestion, setPollQuestion] = useState('')
+  const [pollOptions, setPollOptions] = useState(['', ''])
+  const [pollMultiple, setPollMultiple] = useState(false)
+  const [pollAnonymous, setPollAnonymous] = useState(false)
+  const [pollSaving, setPollSaving] = useState(false)
+
+  // ── WIR155 / XKB27 — « Programmer l'envoi » + liste d'attente ──
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [scheduleAt, setScheduleAt] = useState('')
+  const [scheduling, setScheduling] = useState(false)
+  const [scheduledQueue, setScheduledQueue] = useState([])
 
   // Bascule en mode édition : préremplit le texte.
   useEffect(() => {
@@ -111,11 +170,40 @@ export default function Composer({
     setSlash({ items, index: 0 })
   }
 
+  // WIR155 / XKB28 — le catalogue de réponses enregistrées (personnelles +
+  // société) n'est chargé qu'à la première frappe d'un « : » (jamais au
+  // montage), mis en cache pour la session du composer. Best-effort : une
+  // erreur réseau laisse `cannedList` à un tableau vide (popup silencieusement
+  // vide plutôt qu'une exception).
+  const ensureCannedResponses = async () => {
+    if (cannedList) return cannedList
+    try {
+      const res = await messagesApi.canned.list()
+      const list = res.data?.results ?? res.data ?? []
+      setCannedList(list)
+      return list
+    } catch {
+      const empty = []
+      setCannedList(empty)
+      return empty
+    }
+  }
+
+  const updateCanned = async (value, caret) => {
+    const tok = activeCannedToken(value, caret)
+    if (!tok) { setCanned(null); return }
+    const list = await ensureCannedResponses()
+    const items = filterCanned(list, tok.query)
+    if (!items.length) { setCanned(null); return }
+    setCanned({ items, index: 0, start: tok.start, queryLen: tok.query.length })
+  }
+
   const onChange = (e) => {
     const value = e.target.value
     setText(value)
     updateMention(value, e.target.selectionStart)
     updateSlash(value)
+    updateCanned(value, e.target.selectionStart)
   }
 
   const pickSlash = (c) => {
@@ -137,7 +225,36 @@ export default function Composer({
     })
   }
 
+  const pickCanned = (c) => {
+    if (!canned) return
+    const { text: next, caret } = insertCanned(text, canned.start, canned.queryLen, c.body)
+    setText(next)
+    setCanned(null)
+    requestAnimationFrame(() => {
+      const el = taRef.current
+      if (el) { el.focus(); el.setSelectionRange(caret, caret) }
+    })
+  }
+
   const onKeyDown = (e) => {
+    if (canned) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setCanned((s) => ({ ...s, index: (s.index + 1) % s.items.length }))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setCanned((s) => ({ ...s, index: (s.index - 1 + s.items.length) % s.items.length }))
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        pickCanned(canned.items[canned.index])
+        return
+      }
+      if (e.key === 'Escape') { setCanned(null); return }
+    }
     if (slash) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -212,7 +329,7 @@ export default function Composer({
   }
 
   const reset = () => {
-    setText(''); setAttachments([]); setMention(null); setSlash(null)
+    setText(''); setAttachments([]); setMention(null); setSlash(null); setCanned(null)
   }
 
   // XKB31 — envoie un message SYSTÈME simple (texte, aucune pièce jointe) dans
@@ -330,6 +447,93 @@ export default function Composer({
     }
   }
 
+  // ── WIR155 / XKB30 — création de sondage ──
+  const resetPoll = () => {
+    setPollQuestion(''); setPollOptions(['', '']); setPollMultiple(false); setPollAnonymous(false)
+  }
+
+  const updatePollOption = (i, value) => {
+    setPollOptions((opts) => opts.map((o, idx) => (idx === i ? value : o)))
+  }
+  const addPollOption = () => {
+    setPollOptions((opts) => (opts.length < 10 ? [...opts, ''] : opts))
+  }
+  const removePollOption = (i) => {
+    setPollOptions((opts) => (opts.length > 2 ? opts.filter((_, idx) => idx !== i) : opts))
+  }
+
+  const submitPoll = async () => {
+    const cleanedOptions = pollOptions.map((o) => o.trim()).filter(Boolean)
+    if (!activeId || !pollQuestion.trim() || cleanedOptions.length < 2) return
+    setPollSaving(true)
+    try {
+      const res = await messagesApi.poll.create({
+        conversation: activeId,
+        question: pollQuestion.trim(),
+        options: cleanedOptions,
+        allow_multiple: pollMultiple,
+        is_anonymous: pollAnonymous,
+      })
+      // Pas de thunk dédié pour les sondages (le store `messagingSlice.js`
+      // reste hors périmètre WIR155) : on réutilise le reducer de
+      // `sendMessage.fulfilled` en le dispatchant manuellement — même fusion
+      // messages/aperçu-conversation qu'un envoi normal, sans appel réseau
+      // supplémentaire (RTK : `.fulfilled` est une simple action creator).
+      dispatch(sendMessage.fulfilled(res.data, `poll-${res.data?.id ?? Date.now()}`, {}))
+      setPollOpen(false)
+      resetPoll()
+    } catch (err) {
+      toastError(err.response?.data?.detail || 'Sondage impossible à créer')
+    } finally {
+      setPollSaving(false)
+    }
+  }
+
+  // ── WIR155 / XKB27 — « Programmer l'envoi » + liste d'attente ──
+  const loadScheduledQueue = async () => {
+    try {
+      const res = await messagesApi.scheduled.list()
+      const rows = res.data?.results ?? res.data ?? []
+      setScheduledQueue(
+        rows.filter((s) => s.conversation === activeId && s.status === 'pending'))
+    } catch {
+      setScheduledQueue([])
+    }
+  }
+  useEffect(() => {
+    if (scheduleOpen) loadScheduledQueue()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rechargé à l'ouverture du popover uniquement
+  }, [scheduleOpen, activeId])
+
+  const submitSchedule = async () => {
+    const body = text.trim()
+    if (!activeId || !body || !scheduleAt) return
+    setScheduling(true)
+    try {
+      const iso = new Date(scheduleAt).toISOString()
+      await messagesApi.scheduled.create({
+        conversation: activeId, body, scheduled_at: iso,
+      })
+      toastSuccess('Message programmé.')
+      reset()
+      setScheduleAt('')
+      await loadScheduledQueue()
+    } catch (err) {
+      toastError(err.response?.data?.detail || 'Programmation impossible')
+    } finally {
+      setScheduling(false)
+    }
+  }
+
+  const cancelScheduled = async (id) => {
+    try {
+      await messagesApi.scheduled.cancel(id)
+      setScheduledQueue((q) => q.filter((s) => s.id !== id))
+    } catch (err) {
+      toastError(err.response?.data?.detail || 'Annulation impossible')
+    }
+  }
+
   return (
     <div className="border-t border-border p-2">
       {/* XKB31 — carte de confirmation/résultat d'une commande /, au-dessus du
@@ -389,6 +593,16 @@ export default function Composer({
           <Paperclip size={18} aria-hidden="true" />
         </FileUpload>
 
+        {/* WIR155 — création de sondage (désactivée en mode édition). */}
+        <Button
+          type="button" variant="ghost" size="icon"
+          onClick={() => setPollOpen(true)}
+          disabled={!activeId || !!editing}
+          aria-label="Créer un sondage" title="Créer un sondage"
+        >
+          <BarChart3 size={18} aria-hidden="true" />
+        </Button>
+
         <div className="relative flex-1">
           <textarea
             ref={taRef}
@@ -398,13 +612,13 @@ export default function Composer({
             onKeyDown={onKeyDown}
             rows={1}
             disabled={!!slashProposal}
-            placeholder="Écrire un message…  (@ pour mentionner, / pour une commande)"
+            placeholder="Écrire un message…  (@ mentionner, / commande, : réponse enregistrée)"
             aria-label="Message"
-            role={mention || slash ? 'combobox' : undefined}
-            aria-expanded={mention || slash ? true : undefined}
-            aria-autocomplete={mention || slash ? 'list' : undefined}
-            aria-controls={mention ? mentionA11y.listId : slash ? slashA11y.listId : undefined}
-            aria-activedescendant={mention ? mentionA11y.activeId : slash ? slashA11y.activeId : undefined}
+            role={mention || slash || canned ? 'combobox' : undefined}
+            aria-expanded={mention || slash || canned ? true : undefined}
+            aria-autocomplete={mention || slash || canned ? 'list' : undefined}
+            aria-controls={mention ? mentionA11y.listId : slash ? slashA11y.listId : canned ? cannedA11y.listId : undefined}
+            aria-activedescendant={mention ? mentionA11y.activeId : slash ? slashA11y.activeId : canned ? cannedA11y.activeId : undefined}
           />
           {mention && (
             <MentionAutocomplete
@@ -426,7 +640,84 @@ export default function Composer({
               getOptionId={slashA11y.getOptionId}
             />
           )}
+          {/* WIR155 / XKB28 — popup :raccourci, même forme que @mention/slash. */}
+          {canned && (
+            <ul
+              role="listbox" aria-label="Réponses enregistrées" id={cannedA11y.listId}
+              className="absolute bottom-full left-0 z-10 mb-1 max-h-56 w-72 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md"
+            >
+              {canned.items.map((c, i) => (
+                <li key={c.id} id={cannedA11y.getOptionId(i)} role="option" aria-selected={i === canned.index}>
+                  <button
+                    type="button"
+                    className={cn(
+                      'flex w-full flex-col items-start gap-0.5 rounded px-2 py-1.5 text-left text-sm',
+                      i === canned.index ? 'bg-muted' : 'hover:bg-muted',
+                    )}
+                    onMouseDown={(e) => { e.preventDefault(); pickCanned(c) }}
+                  >
+                    <span className="font-medium text-foreground">:{c.shortcut}</span>
+                    <span className="w-full truncate text-xs text-muted-foreground">{c.body}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
+
+        {/* WIR155 / XKB27 — « Programmer l'envoi » + liste d'attente de la
+            conversation active. */}
+        <Popover open={scheduleOpen} onOpenChange={setScheduleOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button" variant="ghost" size="icon"
+              disabled={!activeId || !!editing}
+              aria-label="Programmer l'envoi" title="Programmer l'envoi"
+            >
+              <Clock size={18} aria-hidden="true" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72">
+            <div className="grid gap-2">
+              <Label htmlFor="chat-schedule-at">Envoyer le message actuel le</Label>
+              <input
+                id="chat-schedule-at"
+                type="datetime-local"
+                value={scheduleAt}
+                onChange={(e) => setScheduleAt(e.target.value)}
+                className="rounded-md border border-input bg-card px-2 py-1.5 text-sm"
+              />
+              <Button
+                onClick={submitSchedule} loading={scheduling}
+                disabled={!scheduleAt || !text.trim()}
+              >
+                Programmer
+              </Button>
+              {scheduledQueue.length > 0 && (
+                <div className="mt-1 border-t border-border pt-2">
+                  <p className="mb-1 text-xs font-medium text-muted-foreground">
+                    En attente ({scheduledQueue.length})
+                  </p>
+                  <ul className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+                    {scheduledQueue.map((s) => (
+                      <li key={s.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate">{s.body}</span>
+                        <button
+                          type="button"
+                          onClick={() => cancelScheduled(s.id)}
+                          aria-label={`Annuler le message programmé ${s.id}`}
+                          className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        >
+                          <X size={12} aria-hidden="true" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
 
         <Button onClick={submit} loading={sending}
                 disabled={(!text.trim() && attachments.length === 0) || !!slashProposal}
@@ -434,6 +725,81 @@ export default function Composer({
           <Send size={16} aria-hidden="true" />
         </Button>
       </div>
+
+      {/* WIR155 / XKB30 — création de sondage. */}
+      <Dialog open={pollOpen} onOpenChange={(v) => { setPollOpen(v); if (!v) resetPoll() }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Créer un sondage</DialogTitle>
+            <DialogDescription>
+              Posez une question à choix unique ou multiple dans cette conversation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="chat-poll-question">Question</Label>
+              <Input
+                id="chat-poll-question"
+                value={pollQuestion}
+                onChange={(e) => setPollQuestion(e.target.value)}
+                placeholder="ex. Quel jour pour la réunion d’équipe ?"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Options</Label>
+              {pollOptions.map((o, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <Input
+                    value={o}
+                    onChange={(e) => updatePollOption(i, e.target.value)}
+                    placeholder={`Option ${i + 1}`}
+                    aria-label={`Option ${i + 1}`}
+                  />
+                  {pollOptions.length > 2 && (
+                    <button
+                      type="button"
+                      onClick={() => removePollOption(i)}
+                      aria-label={`Retirer l’option ${i + 1}`}
+                      className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <X size={14} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {pollOptions.length < 10 && (
+                <button
+                  type="button"
+                  onClick={addPollOption}
+                  className="flex w-fit items-center gap-1 text-xs font-medium text-primary hover:underline"
+                >
+                  <Plus size={14} aria-hidden="true" /> Ajouter une option
+                </button>
+              )}
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={pollMultiple} onCheckedChange={(v) => setPollMultiple(!!v)} />
+              Choix multiple
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={pollAnonymous} onCheckedChange={(v) => setPollAnonymous(!!v)} />
+              Vote anonyme (masque les votants)
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setPollOpen(false); resetPoll() }}>
+              Annuler
+            </Button>
+            <Button
+              onClick={submitPoll} loading={pollSaving}
+              disabled={!pollQuestion.trim()
+                || pollOptions.map((o) => o.trim()).filter(Boolean).length < 2}
+            >
+              Créer le sondage
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirmation de suppression d'un message (piloté par le parent). */}
       <AlertDialog open={!!pendingDelete} onOpenChange={(v) => { if (!v) onDeleteResolved?.() }}>

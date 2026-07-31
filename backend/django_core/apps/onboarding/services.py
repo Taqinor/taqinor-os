@@ -9,6 +9,18 @@ from django.utils import timezone
 
 # Catalogue par défaut des items « Premiers pas » (globaux, company=None).
 # (key, libellé, ordre, rôles cibles [vide = tous], lien, event_key).
+#
+# WIR59 — sur les 6 items, seuls premier_devis/premier_paiement avaient un
+# event_key : configurer_societe/import_clients/inviter_coequipier/
+# premier_chantier ne se complétaient JAMAIS (seul « Ignorer » les masquait).
+# premier_chantier gagne ici un event_key réel ('chantier', câblé sur
+# core.events.intervention_completed dans receivers.py — un jalon observable
+# du cycle de vie chantier, même patron que devis/paiement). Les 3 autres
+# n'ont AUCUN événement core.events approprié sans importer une app métier
+# depuis onboarding (violerait la frontière cross-app) : ils restent
+# complétables via l'action manuelle explicite « Marquer comme fait »
+# (marquer_fait_manuel ci-dessous, alternative EXPLICITEMENT prévue par le
+# founder quand aucun jalon de bus n'existe).
 DEFAULT_ITEMS = [
     ('configurer_societe', 'Configurer votre société', 10,
      ['Administrateur', 'Directeur'], '/parametres', ''),
@@ -24,7 +36,7 @@ DEFAULT_ITEMS = [
      ['Administrateur', 'Directeur'], '/admin/users', ''),
     ('premier_chantier', 'Suivre votre 1er chantier', 60,
      ['Technicien', 'Technicien responsable', 'Administrateur'],
-     '/chantiers', ''),
+     '/chantiers', 'chantier'),
 ]
 
 
@@ -102,6 +114,23 @@ def ignorer_tout(company, user):
     for it in checklist_pour_utilisateur(company, user):
         if not it['fait']:
             ignorer_item(company, user, it['id'])
+
+
+def marquer_fait_manuel(company, user, item_id):
+    """WIR59 — coche manuellement un item PAR SON ID, SANS événement de bus
+    correspondant (alternative explicite quand aucun ``core.events`` adapté
+    n'existe pour ce jalon — ex. configurer_societe/import_clients/
+    inviter_coequipier). Idempotent, ne dé-coche jamais. Renvoie le
+    ``OnboardingProgress`` ou None (item inconnu/inactif ou company/user
+    manquant)."""
+    if company is None or user is None or not getattr(user, 'pk', None):
+        return None
+    from .models import OnboardingChecklistItem
+    item = OnboardingChecklistItem.objects.filter(
+        pk=item_id, actif=True).first()
+    if item is None:
+        return None
+    return marquer_item_complete(company, user, item.key)
 
 
 def completer_par_evenement(event_key, company, user):

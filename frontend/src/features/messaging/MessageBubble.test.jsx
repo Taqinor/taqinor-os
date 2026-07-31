@@ -4,16 +4,43 @@ import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import MessageBubble from './MessageBubble'
+import messagingReducer from './store/messagingSlice'
+import messagesApi from '../../api/messagesApi'
 
-// VoiceMessage tire le binaire via messagesApi : on le neutralise.
+// VoiceMessage tire le binaire via messagesApi : on le neutralise. WIR155 —
+// mock complet des nouveaux endpoints (fils/rappels/favoris/sondages) pour
+// les tests ci-dessous.
 vi.mock('../../api/messagesApi', () => ({
-  default: { getAttachment: vi.fn(() => Promise.resolve({ data: new Blob() })) },
+  default: {
+    getAttachment: vi.fn(() => Promise.resolve({ data: new Blob() })),
+    threads: {
+      list: vi.fn(() => Promise.resolve({ data: [] })),
+      reply: vi.fn(() => Promise.resolve({ data: { id: 42, body: 'réponse', conversation: 1 } })),
+    },
+    remindMe: vi.fn(() => Promise.resolve({ data: {} })),
+    toggleBookmark: vi.fn(() => Promise.resolve({ data: { status: 'added' } })),
+    poll: {
+      results: vi.fn(() => Promise.resolve({
+        data: {
+          poll_id: 1, question: 'Réunion mardi ?', allow_multiple: false,
+          is_anonymous: false, closed_at: null, my_vote_option_ids: [],
+          options: [{ id: 1, label: 'Oui', vote_count: 2 }, { id: 2, label: 'Non', vote_count: 1 }],
+        },
+      })),
+      vote: vi.fn(() => Promise.resolve({ data: {} })),
+    },
+  },
 }))
 
-// Store minimal portant l'utilisateur courant (pour le repli `state.auth.user`).
+// Store minimal portant l'utilisateur courant (pour le repli `state.auth.user`)
+// + le reducer messaging réel (nécessaire à ThreadPanel qui dispatche
+// `sendMessage.fulfilled`).
 function makeStore(userId = 99) {
   return configureStore({
-    reducer: { auth: (s = { user: { id: userId } }) => s },
+    reducer: {
+      auth: (s = { user: { id: userId } }) => s,
+      messaging: messagingReducer,
+    },
   })
 }
 
@@ -117,5 +144,39 @@ describe('MessageBubble (S15/S17/S18)', () => {
     await userEvent.click(screen.getByLabelText('Actions du message'))
     await userEvent.click(await screen.findByText('Épingler'))
     expect(onTogglePin).toHaveBeenCalled()
+  })
+
+  // ── WIR155 ──────────────────────────────────────────────────────────────
+  it('rend les options/vote/résultats d’un sondage (kind=poll)', async () => {
+    renderBubble({
+      message: { id: 5, body: 'Réunion mardi ?', kind: 'poll', created_at: 'x', sender: { id: 2 } },
+      own: false,
+    })
+    expect(await screen.findByText('Réunion mardi ?')).toBeInTheDocument()
+    expect(screen.getByText('Oui')).toBeInTheDocument()
+    await userEvent.click(screen.getByText('Oui'))
+    expect(messagesApi.poll.vote).toHaveBeenCalledWith(5, [1])
+  })
+
+  it('« Répondre en fil » ouvre le panneau et poste une réponse', async () => {
+    renderBubble({
+      message: { id: 1, body: 'Racine', created_at: 'x', sender: { id: 2 } },
+    })
+    await userEvent.click(screen.getByText('Répondre en fil'))
+    const input = await screen.findByLabelText('Répondre en fil')
+    await userEvent.type(input, 'ma réponse')
+    await userEvent.click(screen.getByLabelText('Envoyer la réponse'))
+    expect(messagesApi.threads.reply).toHaveBeenCalledWith(1, { body: 'ma réponse' })
+  })
+
+  it('« Me rappeler » et « favori » appellent le backend depuis le menu', async () => {
+    renderBubble({ message: { id: 1, body: 'x', created_at: 'x', sender: { id: 2 } } })
+    await userEvent.click(screen.getByLabelText('Actions du message'))
+    await userEvent.click(await screen.findByText('Me rappeler dans 1 h'))
+    expect(messagesApi.remindMe).toHaveBeenCalledWith(1, expect.any(String))
+
+    await userEvent.click(screen.getByLabelText('Actions du message'))
+    await userEvent.click(await screen.findByText('Ajouter aux favoris'))
+    expect(messagesApi.toggleBookmark).toHaveBeenCalledWith(1)
   })
 })

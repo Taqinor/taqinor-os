@@ -1,17 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import messagingReducer, { setActiveConversation } from './store/messagingSlice'
 
-// Mock du client API pour ne déclencher aucun réseau.
+// Mock du client API pour ne déclencher aucun réseau. WIR155 — ajoute les
+// nouveaux endpoints (réponses enregistrées, sondages, messages programmés).
 vi.mock('../../api/messagesApi', () => ({
   default: {
     sendMessage: vi.fn(() => Promise.resolve({ data: { id: 99, conversation: 1, body: 'envoyé' } })),
     editMessage: vi.fn(() => Promise.resolve({ data: { id: 5, body: 'corrigé' } })),
     deleteMessage: vi.fn(() => Promise.resolve({ data: {} })),
     uploadAttachment: vi.fn(() => Promise.resolve({ data: { id: 1, name: 'f.png' } })),
+    canned: {
+      list: vi.fn(() => Promise.resolve({
+        data: [{ id: 1, shortcut: 'merci', body: 'Merci beaucoup !', scope: 'personal' }],
+      })),
+    },
+    poll: {
+      create: vi.fn(() => Promise.resolve({
+        data: { id: 77, conversation: 1, kind: 'poll', body: 'Sondage ?' },
+      })),
+    },
+    scheduled: {
+      list: vi.fn(() => Promise.resolve({ data: [] })),
+      create: vi.fn(() => Promise.resolve({ data: { id: 3, status: 'pending' } })),
+      cancel: vi.fn(() => Promise.resolve({ data: {} })),
+    },
   },
 }))
 
@@ -73,5 +89,40 @@ describe('Composer (S16)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Supprimer' }))
     await waitFor(() => expect(messagesApi.deleteMessage).toHaveBeenCalledWith(7))
     expect(onDeleteResolved).toHaveBeenCalled()
+  })
+
+  // ── WIR155 ──────────────────────────────────────────────────────────────
+  it('taper : affiche l’autocomplétion des réponses enregistrées et insère au choix', async () => {
+    renderComposer()
+    const input = screen.getByLabelText('Message')
+    await userEvent.type(input, 'cc :merci')
+    expect(await screen.findByRole('listbox', { name: 'Réponses enregistrées' })).toBeInTheDocument()
+    await userEvent.click(screen.getByText(':merci'))
+    expect(input).toHaveValue('cc Merci beaucoup ! ')
+  })
+
+  it('crée un sondage via le Dialog', async () => {
+    renderComposer()
+    await userEvent.click(screen.getByLabelText('Créer un sondage'))
+    await userEvent.type(screen.getByLabelText('Question'), 'Réunion mardi ?')
+    await userEvent.type(screen.getByLabelText('Option 1'), 'Oui')
+    await userEvent.type(screen.getByLabelText('Option 2'), 'Non')
+    await userEvent.click(screen.getByText('Créer le sondage'))
+    await waitFor(() => expect(messagesApi.poll.create).toHaveBeenCalledWith({
+      conversation: 1, question: 'Réunion mardi ?', options: ['Oui', 'Non'],
+      allow_multiple: false, is_anonymous: false,
+    }))
+  })
+
+  it('programme l’envoi via le Popover', async () => {
+    renderComposer()
+    await userEvent.type(screen.getByLabelText('Message'), 'plus tard')
+    await userEvent.click(screen.getByLabelText('Programmer l\'envoi'))
+    const future = new Date(Date.now() + 3600_000)
+    const local = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, '0')}-${String(future.getDate()).padStart(2, '0')}T${String(future.getHours()).padStart(2, '0')}:${String(future.getMinutes()).padStart(2, '0')}`
+    fireEvent.change(document.getElementById('chat-schedule-at'), { target: { value: local } })
+    await userEvent.click(screen.getByText('Programmer'))
+    await waitFor(() => expect(messagesApi.scheduled.create).toHaveBeenCalledWith(
+      expect.objectContaining({ conversation: 1, body: 'plus tard' })))
   })
 })
