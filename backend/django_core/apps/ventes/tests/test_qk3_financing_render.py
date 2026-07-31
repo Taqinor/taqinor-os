@@ -9,6 +9,7 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qk3_financing_render -v 2
 """
+import itertools
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -22,10 +23,22 @@ from apps.ventes.quote_engine.builder import compute_financing_block
 User = get_user_model()
 
 
-def make_company():
+# Compteur de tenants : une société NEUVE à chaque appel sans slug.
+_company_seq = itertools.count(1)
+
+
+def make_company(slug=None, nom=None):
+    """Une société neuve par appel — passer ``slug`` pour la nommer.
+
+    Sans compteur, ce helper faisait un ``get_or_create`` sur un slug
+    FIXE ('test-qk3-co') : deux appels rendaient la MÊME société, et un
+    test cross-tenant écrivant ``other = make_company()`` ne testait rien.
+    """
     from authentication.models import Company
+    n = next(_company_seq)
     c, _ = Company.objects.get_or_create(
-        slug='test-qk3-co', defaults={'nom': 'Test QK3 Co'})
+        slug=slug or f'test-qk3-co-{n}',
+        defaults={'nom': nom or f'Test QK3 Co {n}'})
     return c
 
 

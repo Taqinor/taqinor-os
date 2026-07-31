@@ -22,6 +22,7 @@ Couvre :
 Run :
     python manage.py test apps.ventes.tests.test_wir165_document_produit_facture -v2
 """
+import itertools
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -36,10 +37,22 @@ from apps.ventes.models import Facture, LigneFacture
 User = get_user_model()
 
 
-def make_company():
+# Compteur de tenants : une société NEUVE à chaque appel sans slug.
+_company_seq = itertools.count(1)
+
+
+def make_company(slug=None, nom=None):
+    """Une société neuve par appel — passer ``slug`` pour la nommer.
+
+    Sans compteur, ce helper faisait un ``get_or_create`` sur un slug
+    FIXE ('wir165-co') : deux appels rendaient la MÊME société, et un
+    test cross-tenant écrivant ``other = make_company()`` ne testait rien.
+    """
     from authentication.models import Company
+    n = next(_company_seq)
     company, _ = Company.objects.get_or_create(
-        slug='wir165-co', defaults={'nom': 'WIR165 Co'})
+        slug=slug or f'wir165-co-{n}',
+        defaults={'nom': nom or f'WIR165 Co {n}'})
     return company
 
 

@@ -494,6 +494,35 @@ def instancier_modele(modele, projet):
     return creees
 
 
+@transaction.atomic
+def dupliquer_modele_projet(modele):
+    """NTUX13 — Duplique un ``ModeleProjet`` (en-tête + toutes ses
+    ``ModeleTache``) en un modèle indépendant de la MÊME société.
+
+    ``nom`` reçoit le suffixe « (copie) » : la contrainte d'unicité
+    ``(company, nom)`` interdirait sinon un simple recopiage à l'identique.
+    ``actif`` et ``type_installation`` sont recopiés tels quels (pas de règle
+    métier particulière contrairement au devis/client, ce modèle n'a ni
+    statut ni identifiant unique à effacer). Renvoie le nouveau modèle."""
+    from .models import ModeleProjet, ModeleTache
+
+    copie = ModeleProjet.objects.create(
+        company=modele.company,
+        nom=f'{modele.nom} (copie)',
+        type_installation=modele.type_installation,
+        description=modele.description,
+        actif=modele.actif,
+    )
+    for mt in modele.taches.order_by('ordre', 'id'):
+        ModeleTache.objects.create(
+            company=modele.company, modele=copie,
+            type_phase=mt.type_phase, code_wbs=mt.code_wbs,
+            libelle=mt.libelle, ordre=mt.ordre,
+            charge_estimee=mt.charge_estimee,
+        )
+    return copie
+
+
 # ── Sous-traitance & clôture + REX (PROJ38) ──────────────────────────────────
 class ClotureError(Exception):
     """Erreur métier à la clôture d'un projet."""
@@ -1698,6 +1727,21 @@ def importer_taches(projet, lignes, *, confirm=False):
     le rapport d'ERREURS, N'ÉCRIT RIEN. ``confirm=True`` : écrit dans une
     TRANSACTION ATOMIQUE (tout ou rien) — une erreur de validation est
     rapportée SANS écrire une seule ligne, même en confirm.
+
+    CRÉATION SEULE — AUCUN ÉCRASEMENT POSSIBLE : chaque ligne ne fait
+    QU'UN ``Tache.objects.create(...)`` inconditionnel, jamais de
+    ``get_or_create``/``update_or_create`` ni de rapprochement par
+    ``code_wbs`` sur une tâche déjà existante (``code_wbs`` ne porte
+    d'ailleurs aucune contrainte d'unicité en base). Réimporter le même
+    fichier sur le même projet ne modifie donc JAMAIS une tâche existante —
+    au pire il en CRÉE des doublons (même ``code_wbs``, ``pk`` différent).
+    Si un futur mode de MISE À JOUR (écriture sur une tâche déjà existante)
+    est ajouté ici, il DOIT obligatoirement passer par le garde-fou
+    plateforme ``apps.dataimport.services.appliquer_maj_import`` (import
+    LOCAL à la fonction) — remplissage-seul par défaut, aperçu via
+    ``diff_import``, journal via ``enregistrer_job`` — jamais un diff, une
+    règle fill-only ou un journal maison (voir
+    ``apps/dataimport/services.py``, section « Primitive PARTAGÉE »).
 
     Renvoie ``{'erreurs': [...], 'nb_lignes': N, 'nb_creees': N, 'nb_deps': N}``.
     """

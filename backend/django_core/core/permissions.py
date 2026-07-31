@@ -227,6 +227,58 @@ class ScopedPermission(BasePermission):
         return _user_has_or_legacy(user, code)
 
 
+def declared_action_permissions(view):
+    """Permissions DÉCLARÉES sur l'``@action`` en cours de service, ou ``None``.
+
+    Brique unique du repo pour écrire un ``get_permissions()`` par action SANS
+    jeter en silence la garde qu'une ``@action`` déclare elle-même. Le patron
+    correct est::
+
+        def get_permissions(self):
+            declared = declared_action_permissions(self)
+            if declared is not None:
+                return declared          # la garde de l'@action PRIME
+            if self.action in READ_ACTIONS:
+                return [IsAnyRole()]
+            return [IsResponsableOrAdmin()]
+
+    Sans cette première ligne, une surcharge qui branche uniquement sur
+    ``self.action`` (``if self.action in {...}: … else: …``) rend le kwarg
+    ``permission_classes=`` du décorateur COMPLÈTEMENT inopérant : l'endpoint
+    est gardé par le tiering de la classe, pas par ce que son décorateur
+    annonce. Selon le sens de l'écart c'est soit une sur-restriction (bénigne
+    mais trompeuse), soit un endpoint SOUS-protégé (trou RBAC réel — cf. le bug
+    ``contrats``/``campagne-revision`` documenté sous
+    ``WriteScopedPermissionMixin``, et le cas ``ventes``/``paiement`` où trois
+    ``@action`` d'écriture déclarées ``IsResponsableOrAdmin`` retombaient sur
+    ``IsAnyRole``).
+
+    Deux sources, dans cet ordre :
+
+    1. ``action.kwargs['permission_classes']`` — la déclaration EXPLICITE du
+       décorateur DRF (``@action`` pose ``func.kwargs``). Source d'autorité :
+       elle reste juste même quand la valeur déclarée est ÉGALE au défaut de la
+       classe.
+    2. Repli — un ``permission_classes`` posé sur l'INSTANCE de vue et
+       différent du défaut de classe (DRF applique les ``initkwargs`` de
+       ``as_view()`` avant ``get_permissions()``), ce qui couvre aussi un
+       ``as_view(permission_classes=…)`` écrit à la main dans un ``urls.py``.
+
+    Renvoie une liste d'INSTANCES de permission (comme ``get_permissions()``),
+    ou ``None`` quand l'action ne déclare rien — l'appelant applique alors son
+    propre tiering.
+    """
+    action = getattr(view, 'action', None)
+    handler = getattr(view, action, None) if action else None
+    kwargs = getattr(handler, 'kwargs', None)
+    if isinstance(kwargs, dict) and kwargs.get('permission_classes'):
+        return [permission() for permission in kwargs['permission_classes']]
+    instance_classes = getattr(view, 'permission_classes', None)
+    if instance_classes and instance_classes != type(view).permission_classes:
+        return [permission() for permission in instance_classes]
+    return None
+
+
 class WriteScopedPermissionMixin:
     """Mixin de viewset : gate lecture/écriture par méthode HTTP (YRBAC5).
 
@@ -260,7 +312,8 @@ class WriteScopedPermissionMixin:
     ``campagne-revision``, alors que l'action est censée être STRICTEMENT
     réservée aux Administrateurs — un contournement RBAC réel, pas juste un
     test caduc. On respecte maintenant un override d'instance (différent du
-    défaut de la classe) en retombant sur le comportement standard DRF.
+    défaut de la classe) en retombant sur le comportement standard DRF —
+    logique factorisée dans ``declared_action_permissions`` ci-dessus.
     """
 
     read_permission = None
@@ -268,9 +321,10 @@ class WriteScopedPermissionMixin:
     permission_classes = [ScopedPermission]
 
     def get_permissions(self):
-        # Un override d'instance posé par DRF pour CETTE action (ex.
-        # `@action(permission_classes=[IsAdminRole])`) diffère du défaut de
-        # classe : on le respecte au lieu de l'écraser par ScopedPermission.
-        if self.permission_classes != type(self).permission_classes:
-            return [permission() for permission in self.permission_classes]
+        # Une garde déclarée par CETTE @action (ex.
+        # `@action(permission_classes=[IsAdminRole])`) PRIME : on la respecte
+        # au lieu de l'écraser par ScopedPermission.
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
         return [ScopedPermission()]

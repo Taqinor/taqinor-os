@@ -30,11 +30,17 @@ class Ntapi20OpenApiSchemaTests(TestCase):
 
     def test_covers_every_read_only_resource_list_and_detail(self):
         schema = build_openapi_schema()
-        # Les 5 ressources en lecture (leads/devis/factures/chantiers/produits),
-        # dérivées de `public_urls.py` lui-même — jamais une liste dupliquée à
-        # la main qui pourrait diverger silencieusement.
+        # Les ressources montées sur le routeur lecture seule, dérivées de
+        # `public_urls.py` lui-même — jamais une liste dupliquée à la main qui
+        # pourrait diverger silencieusement. NTAPI16 ajoute `public-job` (suivi
+        # des jobs bulk, ReadOnlyModelViewSet) aux 5 ressources métier : on
+        # fige l'ENSEMBLE exact (plus fort qu'un simple compte), donc un
+        # 7ᵉ enregistrement resterait un choix délibéré, pas un accident.
         registered_basenames = {r[2] for r in public_router.registry}
-        self.assertEqual(len(registered_basenames), 5)
+        self.assertEqual(registered_basenames, {
+            'public-lead', 'public-devis', 'public-facture',
+            'public-chantier', 'public-produit', 'public-job',
+        })
         for prefix, _viewset, _basename in public_router.registry:
             list_path = f'/api/public/{prefix}/'
             detail_path = f'/api/public/{prefix}/{{id}}/'
@@ -55,12 +61,13 @@ class Ntapi20OpenApiSchemaTests(TestCase):
             self.assertIn(method, schema['paths'][path])
 
     def test_no_undocumented_paths_beyond_mounted_surface(self):
-        # 5 ressources × 2 (list+detail) + 3 écritures = 13 opérations, sur
-        # au plus 5*2 + 3 = 13 chemins distincts (les 3 écritures utilisent
-        # 3 chemins différents) — jamais un chemin fantôme ajouté par erreur.
+        # 5 ressources × 2 (list+detail) + 3 écritures + 6 bulk (NTAPI14/15/
+        # 16/43/30 : exports, imports, jobs list/detail, jobs/<id>/relancer,
+        # exports/<entite>.csv) = 19 opérations, sur autant de chemins
+        # distincts — jamais un chemin fantôme ajouté par erreur.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 13)
+        self.assertEqual(nb_operations, 19)
 
     def test_never_exposes_purchase_price_or_margin_fields(self):
         import json

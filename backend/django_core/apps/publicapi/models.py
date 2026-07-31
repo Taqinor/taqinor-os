@@ -521,3 +521,134 @@ class SandboxTenant(models.Model):
 # Re-export additionnel (NTAPI23/26/27) — gardé séparé du premier `__all__`
 # ci-dessus pour ne pas réordonner les symboles déjà exportés.
 __all__ += ['SandboxTenant', 'API_KEY_PREFIX_BY_ENV']
+
+
+class BulkJob(TenantModel):
+    """NTAPI13 — job asynchrone bulk (export/import) de l'API publique.
+
+    Émis par ``POST /api/public/exports/`` ou ``/imports/`` (clé API),
+    traité HORS requête (Celery — ``tasks.process_bulk_export_job`` /
+    ``process_bulk_import_job``), suivi via ``GET /api/public/jobs/<id>/``
+    (NTAPI16). Toujours scopé société ; ``api_key`` trace la clé émettrice
+    mais est nullable (une clé révoquée après coup ne doit pas effacer
+    l'historique du job — ``on_delete=SET_NULL``).
+
+    ``cursor`` (NTAPI43) mémorise le dernier offset TRAITÉ (ligne source pour
+    un import, index de queryset pour un export) : une reprise
+    (``POST jobs/<id>/relancer/``) repart de là, jamais de zéro — idempotent,
+    aucun doublon ni saut.
+    """
+
+    TYPE_EXPORT = 'export'
+    TYPE_IMPORT = 'import'
+    TYPE_CHOICES = [
+        (TYPE_EXPORT, 'Export'),
+        (TYPE_IMPORT, 'Import'),
+    ]
+
+    STATUT_EN_FILE = 'en_file'
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_TERMINE = 'termine'
+    STATUT_ECHEC = 'echec'
+    STATUT_CHOICES = [
+        (STATUT_EN_FILE, 'En file'),
+        (STATUT_EN_COURS, 'En cours'),
+        (STATUT_TERMINE, 'Terminé'),
+        (STATUT_ECHEC, 'Échec'),
+    ]
+
+    # ARC1/SCA4 — company + created_at/updated_at viennent de core.TenantModel :
+    # la paire multi-société n'est jamais re-écrite à la main (garde check_platform).
+    api_key = models.ForeignKey(
+        ApiKey,
+        on_delete=models.SET_NULL,  # on_delete: une clé révoquée ne doit pas effacer l'historique du job
+        null=True, blank=True,
+        related_name='bulk_jobs',
+    )
+    type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    # 'leads'/'devis'/'factures'/'chantiers'/'produits' (export) ou
+    # 'leads'/'activites' (import) — jamais une liste hardcodée ailleurs,
+    # validée par `bulk.py` contre son registre d'entités.
+    entite = models.CharField(max_length=30)
+    statut = models.CharField(
+        max_length=10, choices=STATUT_CHOICES, default=STATUT_EN_FILE)
+    # Paramètres de la demande (filtres, format csv/jsonl, mode create/upsert,
+    # clé de dédup…) — rejoués tels quels par une reprise (NTAPI43).
+    params = models.JSONField(default=dict, blank=True)
+    resultat_file_key = models.CharField(max_length=512, blank=True, default='')
+    erreurs_file_key = models.CharField(max_length=512, blank=True, default='')
+    total = models.PositiveIntegerField(null=True, blank=True)
+    traites = models.PositiveIntegerField(default=0)
+    succes = models.PositiveIntegerField(default=0)
+    erreurs = models.PositiveIntegerField(default=0)
+    cursor = models.PositiveIntegerField(default=0)
+    message_erreur = models.TextField(blank=True, default='')
+    termine_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Job bulk (API publique)'
+        verbose_name_plural = 'Jobs bulk (API publique)'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='publicapi_bulkjob_co_st_idx'),
+        ]
+
+    def __str__(self):
+        return f'BulkJob({self.type}:{self.entite}) #{self.pk} — {self.statut}'
+
+    @property
+    def progression_pct(self):
+        """Pourcentage 0-100. Sans total connu (ex. import pas encore
+        entièrement lu), 100 seulement une fois `termine`, sinon 0."""
+        if not self.total:
+            return 100 if self.statut == self.STATUT_TERMINE else 0
+        return max(0, min(100, round(100 * self.traites / self.total)))
+
+    def marquer_progression(self, *, traites=None, succes=None, erreurs=None,
+                            cursor=None, total=None):
+        """Avance la progression (compteurs + curseur de reprise NTAPI43) et
+        bascule `en_file` → `en_cours` au premier appel."""
+        fields = ['updated_at']
+        if traites is not None:
+            self.traites = traites
+            fields.append('traites')
+        if succes is not None:
+            self.succes = succes
+            fields.append('succes')
+        if erreurs is not None:
+            self.erreurs = erreurs
+            fields.append('erreurs')
+        if cursor is not None:
+            self.cursor = cursor
+            fields.append('cursor')
+        if total is not None:
+            self.total = total
+            fields.append('total')
+        if self.statut == self.STATUT_EN_FILE:
+            self.statut = self.STATUT_EN_COURS
+            fields.append('statut')
+        self.save(update_fields=fields)
+
+    def marquer_termine(self, *, resultat_file_key='', erreurs_file_key=''):
+        from django.utils import timezone
+        self.statut = self.STATUT_TERMINE
+        if resultat_file_key:
+            self.resultat_file_key = resultat_file_key
+        if erreurs_file_key:
+            self.erreurs_file_key = erreurs_file_key
+        self.termine_le = timezone.now()
+        self.save(update_fields=[
+            'statut', 'resultat_file_key', 'erreurs_file_key',
+            'termine_le', 'updated_at'])
+
+    def marquer_echec(self, message=''):
+        from django.utils import timezone
+        self.statut = self.STATUT_ECHEC
+        self.message_erreur = (message or '')[:5000]
+        self.termine_le = timezone.now()
+        self.save(update_fields=[
+            'statut', 'message_erreur', 'termine_le', 'updated_at'])
+
+
+__all__ += ['BulkJob']

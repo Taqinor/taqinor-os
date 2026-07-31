@@ -6,6 +6,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 
 from authentication.models import Company
+from core.test_utils import WideTeardownTimeoutMixin
 
 from .models import Lead, LeadActivity, WebsiteLeadPayload
 
@@ -558,7 +559,8 @@ class QW9ReplayFreshnessTests(TestCase):
 
 
 @override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
-class QW10IndexedDedupAndConcurrencyTests(TransactionTestCase):
+class QW10IndexedDedupAndConcurrencyTests(
+        WideTeardownTimeoutMixin, TransactionTestCase):
     """QW10 — dédup indexée + garde concurrente via idempotencyKey.
 
     TransactionTestCase (not TestCase): the concurrency test spawns real

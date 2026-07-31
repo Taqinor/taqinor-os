@@ -34,8 +34,11 @@ DJANGO_CORE = ROOT / "backend" / "django_core"
 # lives here, in the one script file the task does declare. A NEW site not
 # in this set fails CI.
 BASELINE_ALLOWLIST = {
-    "backend/django_core/apps/ventes/services.py:302",
-    "backend/django_core/apps/ventes/services.py:305",
+    # NTUX13 (2026-07-31) re-based: dupliquer_devis() inserted earlier in the
+    # file shifted these two pre-existing (non-monetary surface_m2/kwc)
+    # round() calls from :302/:305 to :359/:362 — same call sites, not new.
+    "backend/django_core/apps/ventes/services.py:359",
+    "backend/django_core/apps/ventes/services.py:362",
     "backend/django_core/apps/ventes/quote_engine/builder.py:568",
     "backend/django_core/apps/ventes/quote_engine/builder.py:570",
     "backend/django_core/apps/ventes/quote_engine/builder.py:597",

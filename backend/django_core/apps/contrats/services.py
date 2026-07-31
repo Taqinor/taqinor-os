@@ -4476,31 +4476,83 @@ def ingerer_compteur_usage(company, *, type_cible, cible_id, code_compteur,
     return compteur, cree
 
 
-def importer_compteurs_usage_csv(company, contenu_csv):
+def importer_compteurs_usage_csv(company, contenu_csv, *, apercu=False,
+                                 ecraser=False, user=None, filename=''):
     """Import CSV en masse de compteurs d'usage — NTSUB31.
 
     ``contenu_csv`` : texte CSV avec en-tête. Colonnes reconnues :
     ``cible_id`` (requis), ``code_compteur`` (requis), ``periode_debut``,
     ``periode_fin`` (dates ISO ``YYYY-MM-DD``, requises), ``quantite``
-    (requis), ``type_cible`` (optionnel, défaut ``contrat``). Chaque ligne
-    valide est ingérée via ``ingerer_compteur_usage`` (IDEMPOTENT par
-    ``(cible, code, période)`` — un doublon MET À JOUR sans dupliquer). Les
-    lignes invalides sont RAPPORTÉES sans interrompre l'import.
+    (requis), ``type_cible`` (optionnel, défaut ``contrat``). Les lignes
+    invalides sont RAPPORTÉES sans interrompre l'import.
 
-    Renvoie ``{'inserees', 'mises_a_jour', 'erreurs': [{'ligne', 'erreur'}]}``.
+    GARDE-FOU « ÉCRASEMENT » (audit) — un relevé importé sur une période déjà
+    ingérée (même sextuplet ``company``/``type_cible``/``cible_id``/
+    ``code_compteur``/``periode_debut``/``periode_fin``) VISE une fiche
+    ``CompteurUsage`` EXISTANTE, potentiellement saisie à la main
+    (``source='manuel'``). Avant ce garde-fou, un fichier périmé rejoué en
+    masse écrasait cette valeur réelle sans aperçu ni trace de l'ancienne
+    valeur (``update_or_create`` inconditionnel). Trois protections,
+    réutilisant TELLES QUELLES les primitives plateforme
+    (``apps.dataimport.services`` — jamais un diff, une règle
+    remplissage-seul ou un journal maison) :
+
+    1. ``apercu=True`` — rejoue le MÊME rapprochement SANS RIEN ÉCRIRE et
+       renvoie, ligne par ligne, ce que le fichier REMPLACERAIT
+       (``conflits`` : champ, valeur actuelle, nouvelle valeur — via
+       ``diff_import``).
+    2. ``ecraser=False`` (DÉFAUT) — REMPLISSAGE SEUL : une ``quantite`` déjà
+       saisie n'est jamais remplacée ; la valeur entrante repart dans
+       ``refuses`` au lieu d'être avalée en silence. ``ecraser=True`` est
+       l'opt-in explicite qui restaure la mise à jour de masse historique —
+       elle reste parfaitement possible, juste VOULUE. (``source`` n'est
+       stampée ``'api'`` qu'à la CRÉATION d'une fiche ; jamais réécrite sur
+       une fiche déjà existante, remplissage seul ou non — ce n'est pas une
+       donnée du fichier, seulement une étiquette de provenance interne.)
+    3. Journal réversible — la valeur PRÉCÉDENTE de chaque champ écrit est
+       conservée (``ImportJob``/``ImportJobRow`` via ``enregistrer_job`` +
+       une ligne ``AuditLog`` via ``apps.audit.recorder``, posée par
+       ``appliquer_maj_import``).
+
+    Une cellule ``quantite`` vide reste une ERREUR de ligne (comportement
+    historique inchangé) : elle ne peut donc jamais écraser ou vider un champ
+    par omission. Une fiche qui n'existe pas ENCORE est toujours créée sans
+    passer par le garde-fou (rien à y écraser).
+
+    Renvoie (BACKWARD-COMPATIBLE) ``{'inserees', 'mises_a_jour', 'erreurs':
+    [{'ligne', 'erreur'}]}`` + (NOUVEAU) ``'apercu', 'ecraser',
+    'conflits': [{'ligne', 'cible_id', 'ecrasements', 'remplissages'}],
+    'ecrasements'`` (compte total appliqué), ``'refuses': [{'ligne',
+    'cible_id', 'refuses'}], 'job_id'``. NUANCE : ``mises_a_jour`` ne compte
+    désormais que les lignes où une ÉCRITURE a réellement eu lieu (une ligne
+    identique à l'existant, ou entièrement bloquée par le garde-fou en mode
+    remplissage seul, n'y figure plus — elle n'a rien changé).
     """
     import csv
     import datetime
     import io
     from decimal import InvalidOperation
 
-    from .models import AbonnementAddOnLigne
+    from apps.dataimport.services import (
+        appliquer_maj_import, diff_import, enregistrer_job)
 
-    rapport = {'inserees': 0, 'mises_a_jour': 0, 'erreurs': []}
+    from .models import AbonnementAddOnLigne, CompteurUsage
+
+    PRECISION = Decimal('0.0001')  # aligné sur CompteurUsage.quantite (4 déc.)
+    CIBLE_LABEL = 'contrats.compteurusage'
+
+    rapport = {
+        'inserees': 0, 'mises_a_jour': 0, 'erreurs': [],
+        'apercu': bool(apercu), 'ecraser': bool(ecraser),
+        'conflits': [], 'ecrasements': 0, 'refuses': [], 'job_id': None,
+    }
     valides = {c for c, _ in AbonnementAddOnLigne.TypeCible.choices}
+    lignes_job = []
+    total_lignes = 0
 
     reader = csv.DictReader(io.StringIO(contenu_csv))
     for i, row in enumerate(reader, start=2):  # ligne 1 = en-tête
+        total_lignes += 1
         try:
             type_cible = (row.get('type_cible') or 'contrat').strip()
             if type_cible not in valides:
@@ -4515,19 +4567,87 @@ def importer_compteurs_usage_csv(company, contenu_csv):
                 (row.get('periode_fin') or '').strip())
             if periode_fin < periode_debut:
                 raise ValueError('periode_fin antérieure à periode_debut')
-            quantite = Decimal(str(row.get('quantite', '')).strip())
+            # Quantifiée à la précision du champ AVANT diff : sinon un
+            # « 5 » texte comparé à un « 5.0000 » venu de la base ferait
+            # passer une valeur identique pour un écrasement.
+            quantite = Decimal(
+                str(row.get('quantite', '')).strip()).quantize(PRECISION)
         except (ValueError, InvalidOperation, TypeError) as exc:
             rapport['erreurs'].append({'ligne': i, 'erreur': str(exc)})
+            if not apercu:
+                lignes_job.append({
+                    'ligne': i, 'statut': 'erreur', 'motif': str(exc),
+                    'donnees': dict(row), 'cible': CIBLE_LABEL,
+                    'cible_id': None, 'modifications': [], 'refuses': []})
             continue
 
-        _, cree = ingerer_compteur_usage(
-            company, type_cible=type_cible, cible_id=cible_id,
+        existing = CompteurUsage.objects.filter(
+            company=company, type_cible=type_cible, cible_id=cible_id,
             code_compteur=code_compteur, periode_debut=periode_debut,
-            periode_fin=periode_fin, quantite=quantite, source='api')
-        if cree:
+            periode_fin=periode_fin).first()
+        # Seule ``quantite`` est la donnée RÉELLE importée depuis le fichier :
+        # ``source`` est une étiquette de provenance posée par l'IMPORT
+        # lui-même (jamais une colonne du CSV) — elle est stampée « api » à
+        # la CRÉATION seulement, jamais rediffée/réécrite sur une fiche déjà
+        # existante (sinon toute mise à jour ferait apparaître un second
+        # « écrasement » de pure comptabilité interne, sans rapport avec la
+        # donnée réelle que le garde-fou protège).
+        champs = {'quantite': quantite}
+
+        # ---- Fiche inexistante : toujours créée, rien à écraser. ----------
+        if existing is None:
             rapport['inserees'] += 1
-        else:
+            if apercu:
+                continue
+            compteur = CompteurUsage.objects.create(
+                company=company, type_cible=type_cible, cible_id=cible_id,
+                code_compteur=code_compteur, periode_debut=periode_debut,
+                periode_fin=periode_fin, quantite=quantite,
+                source=CompteurUsage.Source.API)
+            lignes_job.append({
+                'ligne': i, 'statut': 'ok', 'motif': None,
+                'donnees': dict(row), 'cible': CIBLE_LABEL,
+                'cible_id': compteur.pk, 'modifications': [], 'refuses': []})
+            continue
+
+        # ---- Aperçu : on rejoue le rapprochement, on n'écrit RIEN. --------
+        if apercu:
+            ecrasements, remplissages = diff_import(existing, champs)
+            if ecrasements or remplissages:
+                rapport['mises_a_jour'] += 1
+            if ecrasements:
+                rapport['ecrasements'] += len(ecrasements)
+                rapport['conflits'].append({
+                    'ligne': i, 'cible_id': existing.pk,
+                    'ecrasements': ecrasements,
+                    'remplissages': [r['champ'] for r in remplissages]})
+            continue
+
+        # ---- Écriture : remplissage seul par défaut, tout est journalisé. -
+        changed, modifications, refuses = appliquer_maj_import(
+            existing, champs, company, user=user, filename=filename,
+            skip_keys=(), ecraser=ecraser)
+        if changed:
             rapport['mises_a_jour'] += 1
+        if refuses:
+            rapport['refuses'].append({
+                'ligne': i, 'cible_id': existing.pk, 'refuses': refuses})
+        rapport['ecrasements'] += sum(
+            1 for m in modifications if m['ecrasement'])
+        if modifications or refuses:
+            lignes_job.append({
+                'ligne': i, 'statut': 'ok', 'motif': None,
+                'donnees': dict(row), 'cible': CIBLE_LABEL,
+                'cible_id': existing.pk, 'modifications': modifications,
+                'refuses': refuses})
+
+    if not apercu:
+        job = enregistrer_job(
+            company, 'compteurs_contrat', filename, user=user, mode='maj',
+            ecraser=ecraser, total_lignes=total_lignes,
+            created=rapport['inserees'], updated=rapport['mises_a_jour'],
+            lignes=lignes_job)
+        rapport['job_id'] = job.pk
 
     return rapport
 

@@ -1008,6 +1008,33 @@ def attacher_tiers_au_lead(lead: Lead, client: Client) -> None:
         pass
 
 
+def dupliquer_client(client: Client, *, user) -> Client:
+    """NTUX13 — Duplique une fiche ``Client`` en une fiche indépendante.
+
+    ``nom`` reçoit le suffixe « (copie) » et les identifiants UNIQUES
+    (``email``, ``ice``) sont VIDÉS — jamais recopiés tels quels — pour
+    forcer une saisie explicite plutôt que de créer silencieusement un
+    doublon sur une contrainte d'unicité (company, email) ou de propager un
+    ICE qui identifie légalement une AUTRE entreprise. Les autres champs
+    (téléphone, adresse, type, CIN/IF/RC) sont recopiés tels quels — ce sont
+    des coordonnées, pas des identifiants d'unicité."""
+    copie = Client.objects.create(
+        company=client.company,
+        nom=f'{client.nom} (copie)',
+        prenom=client.prenom,
+        email=None,
+        telephone=client.telephone,
+        adresse=client.adresse,
+        type_client=client.type_client,
+        cin=client.cin,
+        ice=None,
+        if_fiscal=client.if_fiscal,
+        rc=client.rc,
+        created_by=user,
+    )
+    return copie
+
+
 def resolve_client_for_lead(lead: Lead) -> Client:
     from django.db import IntegrityError, transaction
 
@@ -3215,6 +3242,21 @@ def find_lead_by_phone(company, telephone):
         or normalize_phone(lead.whatsapp) == key
     ]
     return candidates[0] if candidates else None
+
+
+def find_lead_by_email(company, email):
+    """NTAPI15 — Lead de `company` dont l'email correspond (insensible à la
+    casse). Point d'entrée cross-app sanctionné pour `apps.publicapi` (dédup
+    upsert de l'import bulk) — jamais d'import direct de `Lead` ailleurs.
+    Renvoie le lead le plus RÉCEMMENT créé en cas de doublon, ou None."""
+    email = (email or '').strip()
+    if not email:
+        return None
+    return (
+        Lead.objects.filter(company=company, email__iexact=email)
+        .order_by('-date_creation')
+        .first()
+    )
 
 
 def log_whatsapp_message_on_lead(lead, *, texte, expediteur, nom_profil=''):

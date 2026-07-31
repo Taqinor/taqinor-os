@@ -498,3 +498,82 @@ def generer_certificat_scolarite(eleve, annee_scolaire, *, user=None):
         annee_scolaire_libelle=annee_scolaire.libelle,
         numero=numero, date_generation=today, company_nom=company_nom)
     return certificat, pdf_bytes
+
+
+# =============================================================================
+# NTEDU36 — import CSV élèves (migration Excel/ancien système).
+# =============================================================================
+
+def creer_eleve_import(company, fields):
+    """NTEDU36 — écriture DÉLÉGUÉE pour la cible ``apps.dataimport`` déclarée
+    ``eleves_education`` (voir ``apps/education/platform.py``) — jamais un
+    moteur d'import maison, réutilise EXCLUSIVEMENT
+    ``apps.dataimport.services`` (mapping colonnes→champs + rapport d'erreurs
+    téléchargeable déjà existants, même motif XFLT22 que
+    ``creer_dossier_employe_import``/``creer_vehicule_import``).
+
+    Résout/crée la ``Famille`` par nom (une même fratrie sur plusieurs
+    lignes du fichier partage la même famille, jamais dupliquée) et résout
+    la ``Classe`` par nom SI fournie — une classe INCONNUE est une ERREUR de
+    LIGNE (n'empêche jamais les autres lignes valides du fichier, cf.
+    ``dataimport.services._commit_raw``/``commit`` : le rapport d'erreurs
+    reste téléchargeable). ``numero_dossier`` posé côté serveur via
+    ``core.numbering`` (jamais ``count()+1``, même util que
+    ``attribuer_numero_dossier``) ; statut ``prospect`` par défaut (une
+    inscription reste un acte SÉPARÉ, jamais déduite d'un import).
+
+    Renvoie ``(statut, message)`` — ``statut`` ∈ {'cree', 'erreur'} (nom +
+    prénom seuls ne permettent aucun rapprochement fiable de doublon, à la
+    différence de leads/clients — donc pas de mode ``maj``/``upsert`` ici,
+    chaque ligne valide crée un nouvel élève)."""
+    from .models import Classe, Eleve, Famille
+
+    nom = (fields.get('nom') or '').strip()
+    prenom = (fields.get('prenom') or '').strip()
+    if not nom or not prenom:
+        return 'erreur', 'nom et prénom requis'
+
+    classe = None
+    classe_nom = (fields.get('classe_nom') or '').strip()
+    if classe_nom:
+        classe = Classe.objects.filter(
+            company=company, nom__iexact=classe_nom).first()
+        if classe is None:
+            return 'erreur', f'classe inconnue : {classe_nom}'
+
+    famille_nom = (fields.get('famille_nom') or '').strip() or f'{nom} (import)'
+    famille, _ = Famille.objects.get_or_create(
+        company=company, nom=famille_nom,
+        defaults={
+            'parent1_telephone': (fields.get('parent1_telephone') or '').strip(),
+            'parent1_email': (fields.get('parent1_email') or '').strip(),
+        })
+
+    date_naissance = None
+    raw_date = fields.get('date_naissance')
+    if raw_date:
+        import datetime
+        if isinstance(raw_date, datetime.datetime):
+            date_naissance = raw_date.date()
+        elif isinstance(raw_date, datetime.date):
+            date_naissance = raw_date
+        elif isinstance(raw_date, str):
+            for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+                try:
+                    date_naissance = datetime.datetime.strptime(
+                        raw_date.strip(), fmt).date()
+                    break
+                except ValueError:
+                    pass
+
+    sexe = (fields.get('sexe') or '').strip().upper()[:1]
+    if sexe not in (Eleve.Sexe.M, Eleve.Sexe.F):
+        sexe = ''
+
+    eleve = Eleve.objects.create(
+        company=company, famille=famille, nom=nom, prenom=prenom,
+        date_naissance=date_naissance, sexe=sexe,
+        cin=(fields.get('cin') or '').strip(), classe=classe,
+    )
+    attribuer_numero_dossier(eleve)
+    return 'cree', ''

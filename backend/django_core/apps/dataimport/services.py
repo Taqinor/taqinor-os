@@ -111,6 +111,20 @@ FIELD_MAPS = {
         'tel': 'telephone', 'cin': 'cin', 'poste': 'poste',
         'date_embauche': 'date_embauche', 'type_contrat': 'type_contrat',
     },
+    # NTEDU36 — Élèves (migration scolaire depuis Excel/ancien système).
+    # Écriture DÉLÉGUÉE à ``apps.education.services.creer_eleve_import``
+    # (jamais les modèles ``Eleve``/``Famille`` directement, motif XFLT22).
+    'eleves_education': {
+        'nom': 'nom', 'prenom': 'prenom', 'prénom': 'prenom',
+        'date_naissance': 'date_naissance', 'naissance': 'date_naissance',
+        'sexe': 'sexe', 'cin': 'cin',
+        'classe': 'classe_nom', 'classe_nom': 'classe_nom',
+        'famille': 'famille_nom', 'famille_nom': 'famille_nom',
+        'nom_famille': 'famille_nom',
+        'telephone': 'parent1_telephone', 'tel': 'parent1_telephone',
+        'telephone_parent': 'parent1_telephone',
+        'email': 'parent1_email', 'email_parent': 'parent1_email',
+    },
 }
 
 
@@ -344,7 +358,25 @@ def _identique(ancienne, nouvelle):
     return _txt(ancienne).strip() == _txt(nouvelle).strip()
 
 
-def _diff_fields(instance, fields, skip_keys=()):
+def _est_vide(valeur, valeurs_vides=()):
+    """Vrai si la valeur STOCKÉE compte comme « non renseignée ».
+
+    ``None``/``''`` toujours ; plus les sentinelles de vide propres à la cible
+    (``valeurs_vides``). Un ``DecimalField(default=0)`` par exemple — un tarif
+    fournisseur à 0 n'est PAS un prix négocié, c'est un « prix à renseigner » :
+    le remplir doit rester un remplissage, jamais un écrasement à autoriser."""
+    if valeur is None or valeur == '':
+        return True
+    for vide in valeurs_vides:
+        try:
+            if valeur == vide:
+                return True
+        except (TypeError, ValueError):  # pragma: no cover - types exotiques
+            continue
+    return False
+
+
+def _diff_fields(instance, fields, skip_keys=(), valeurs_vides=()):
     """Diff LECTURE SEULE entre une fiche existante et une ligne importée.
 
     Renvoie ``(ecrasements, remplissages)`` :
@@ -370,7 +402,7 @@ def _diff_fields(instance, fields, skip_keys=()):
         ancienne = getattr(instance, key, None)
         if _identique(ancienne, value):
             continue
-        if ancienne in (None, ''):
+        if _est_vide(ancienne, valeurs_vides):
             remplissages.append({'champ': key, 'nouvelle': _txt(value)})
         else:
             ecrasements.append({'champ': key, 'ancienne': _txt(ancienne),
@@ -378,7 +410,8 @@ def _diff_fields(instance, fields, skip_keys=()):
     return ecrasements, remplissages
 
 
-def _apply_updates(instance, fields, skip_keys=(), ecraser=False):
+def _apply_updates(instance, fields, skip_keys=(), ecraser=False,
+                   valeurs_vides=()):
     """Met à jour une fiche existante à partir d'une ligne importée.
 
     Ne considère QUE les champs fournis non vides (une valeur absente n'efface
@@ -396,7 +429,8 @@ def _apply_updates(instance, fields, skip_keys=(), ecraser=False):
       la trace qui rend l'import réversible ;
     * ``refuses`` — écrasements bloqués par le garde-fou (mode remplissage seul).
     """
-    ecrasements, remplissages = _diff_fields(instance, fields, skip_keys)
+    ecrasements, remplissages = _diff_fields(
+        instance, fields, skip_keys, valeurs_vides)
     changed, modifications, refuses = [], [], []
 
     for item in remplissages:
@@ -448,6 +482,99 @@ def _journaliser_maj(instance, company, user, modifications, filename):
                       'new': m['nouvelle']} for m in modifications])
     except Exception:  # noqa: BLE001 — best-effort, ne jamais casser l'import
         logger.debug('audit import échoué', exc_info=True)
+
+
+# --- Primitive PARTAGÉE : le même garde-fou pour les importeurs MÉTIER --------
+# Cinq importeurs spécialisés vivent hors de cette app (prix fournisseur,
+# limites de crédit, entités, compteurs de contrat, tâches de projet) mais font
+# exactement la même chose de dangereux : écrire sur des fiches EXISTANTES.
+# Ils réutilisent DONC ces trois fonctions publiques — jamais une copie locale
+# du diff, du remplissage-seul ou du journal (un second journal maison est la
+# dette #1 mesurée du dépôt). L'app propriétaire garde son rapprochement
+# métier ; seul le garde-fou est mutualisé.
+
+def diff_import(instance, fields, skip_keys=(), valeurs_vides=()):
+    """Aperçu LECTURE SEULE d'une ligne importée sur une fiche existante.
+
+    Renvoie ``(ecrasements, remplissages)`` — voir ``_diff_fields``. C'est la
+    fonction qu'un dry-run métier appelle pour répondre, AVANT toute écriture,
+    à « quelles valeurs déjà saisies ce fichier remplacerait-il, et par quoi ? ».
+
+    ``valeurs_vides`` : sentinelles de « non renseigné » propres à la cible
+    (ex. ``(0,)`` pour un montant dont le défaut modèle est 0) — voir
+    ``_est_vide``. À passer À L'IDENTIQUE à ``appliquer_maj_import``, sinon
+    l'aperçu et l'écriture divergent.
+    """
+    return _diff_fields(instance, fields, skip_keys, valeurs_vides)
+
+
+def appliquer_maj_import(instance, fields, company, user=None, filename='',
+                         skip_keys=(), ecraser=False, valeurs_vides=()):
+    """Écrit une ligne importée sur une fiche existante, avec le garde-fou.
+
+    ``ecraser=False`` (défaut) = REMPLISSAGE SEUL : un champ déjà rempli n'est
+    pas remplacé, la valeur entrante repart dans ``refuses``. ``ecraser=True``
+    applique aussi les remplacements. Dans les deux cas, chaque champ écrit
+    laisse sa valeur PRÉCÉDENTE (retour ``modifications``) et une ligne d'audit
+    via la primitive plateforme ``apps.audit.recorder``.
+
+    Renvoie ``(changed, modifications, refuses)`` — voir ``_apply_updates``.
+    """
+    changed, modifications, refuses = _apply_updates(
+        instance, fields, skip_keys=skip_keys, ecraser=ecraser,
+        valeurs_vides=valeurs_vides)
+    _journaliser_maj(instance, company, user, modifications, filename)
+    return changed, modifications, refuses
+
+
+def enregistrer_job(company, target, filename, user=None, mode='maj',
+                    ecraser=False, statut=None, total_lignes=0, created=0,
+                    updated=0, lignes=None):
+    """Journalise un lot d'import dans ``ImportJob``/``ImportJobRow``.
+
+    Le MÊME journal que celui de ``commit()`` (qui passe désormais par ici),
+    ouvert aux importeurs métier des autres apps : un import de prix d'achat ou
+    de limites de crédit apparaît dans le même historique, avec la valeur
+    précédente de chaque champ écrit — donc réversible.
+
+    ``lignes`` : liste de dicts ``{ligne, statut, motif, donnees, cible,
+    cible_id, modifications, refuses}``. Les compteurs d'écrasements, de refus
+    et d'erreurs en sont DÉDUITS (jamais recomptés à la main par l'appelant).
+    """
+    from .models import ImportJob, ImportJobRow
+    lignes = list(lignes or [])
+    error_count = sum(1 for ligne in lignes
+                      if ligne.get('statut') == ImportJobRow.Statut.ERREUR)
+    ecrasement_count = sum(
+        1 for ligne in lignes for m in (ligne.get('modifications') or [])
+        if m.get('ecrasement'))
+    refus_count = sum(len(ligne.get('refuses') or []) for ligne in lignes)
+    if statut is None:
+        statut = (ImportJob.Statut.PARTIEL if error_count
+                  else ImportJob.Statut.OK)
+
+    job = ImportJob.objects.create(
+        company=company, target=target, fichier_nom=filename, mode=mode,
+        statut=statut, total_lignes=total_lignes,
+        created_count=created, updated_count=updated,
+        error_count=error_count, ecraser=bool(ecraser),
+        ecrasement_count=ecrasement_count, refus_count=refus_count,
+        created_by=user if getattr(user, 'pk', None) else None)
+
+    job_rows = [
+        ImportJobRow(
+            job=job, ligne=ligne['ligne'],
+            statut=ligne.get('statut') or ImportJobRow.Statut.OK,
+            motif=ligne.get('motif'),
+            donnees=ligne.get('donnees') or {},
+            cible_type=ligne.get('cible') or '',
+            cible_id=ligne.get('cible_id'),
+            modifications=ligne.get('modifications') or [],
+            refuses=ligne.get('refuses') or [])
+        for ligne in lignes]
+    if job_rows:
+        ImportJobRow.objects.bulk_create(job_rows)
+    return job
 
 
 def _check_mode(target, mode):
@@ -913,6 +1040,22 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 else:
                     skipped.append({'ligne': i, 'raison': message or 'erreur'})
 
+        # NTEDU36 — Élèves (import scolaire) : écriture DÉLÉGUÉE à
+        # ``apps.education.services.creer_eleve_import`` (jamais les modèles
+        # education directement, motif XFLT22). Une ligne en erreur (ex.
+        # classe inconnue) est SKIPPÉE avec son motif — jamais bloquante pour
+        # les autres lignes valides du fichier (rapport d'erreurs
+        # téléchargeable réutilisé tel quel, XPLT2).
+        elif target == 'eleves_education':
+            from apps.education.services import creer_eleve_import
+            for i, row in enumerate(rows, 1):
+                f = _row_to_fields(row, mapped)
+                statut, message = creer_eleve_import(company, f)
+                if statut == 'cree':
+                    created += 1
+                else:
+                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
+
     return {'ok': True, 'target': target, 'mode': mode, 'ecraser': bool(ecraser),
             'created': created, 'updated': updated, 'skipped': skipped,
             'total': len(rows), 'headers': headers, 'rows': rows,
@@ -973,32 +1116,28 @@ def commit(file_bytes, filename, target, company, user, mode='creer',
     else:
         statut = ImportJob.Statut.OK
 
-    job = ImportJob.objects.create(
-        company=company, target=target, fichier_nom=filename, mode=mode,
-        statut=statut, total_lignes=result['total'],
-        created_count=0 if rolled_back else result['created'],
-        updated_count=0 if rolled_back else result['updated'],
-        error_count=error_count,
-        ecraser=bool(ecraser),
-        ecrasement_count=0 if rolled_back else len(ecrasements),
-        refus_count=0 if rolled_back else len(refuses),
-        created_by=user if getattr(user, 'pk', None) else None)
-
-    job_rows = []
+    lignes = []
     for i, row in enumerate(rows, 1):
         raison = skipped_by_line.get(i)
         detail = {} if rolled_back else maj_par_ligne.get(i, {})
-        job_rows.append(ImportJobRow(
-            job=job, ligne=i,
-            statut=ImportJobRow.Statut.ERREUR if raison else ImportJobRow.Statut.OK,
-            motif=raison,
-            donnees={h: row.get(h) for h in headers} if raison else {},
-            cible_type=detail.get('cible') or '',
-            cible_id=detail.get('cible_id'),
-            modifications=detail.get('modifications') or [],
-            refuses=detail.get('refuses') or []))
-    if job_rows:
-        ImportJobRow.objects.bulk_create(job_rows)
+        lignes.append({
+            'ligne': i,
+            'statut': (ImportJobRow.Statut.ERREUR if raison
+                       else ImportJobRow.Statut.OK),
+            'motif': raison,
+            'donnees': {h: row.get(h) for h in headers} if raison else {},
+            'cible': detail.get('cible') or '',
+            'cible_id': detail.get('cible_id'),
+            'modifications': detail.get('modifications') or [],
+            'refuses': detail.get('refuses') or [],
+        })
+    # Même journal que les importeurs métier des autres apps (primitive
+    # partagée ``enregistrer_job``) : un seul historique, un seul format.
+    job = enregistrer_job(
+        company, target, filename, user=user, mode=mode, ecraser=ecraser,
+        statut=statut, total_lignes=result['total'],
+        created=0 if rolled_back else result['created'],
+        updated=0 if rolled_back else result['updated'], lignes=lignes)
 
     result['job_id'] = job.pk
     result['statut'] = statut

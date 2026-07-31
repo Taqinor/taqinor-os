@@ -75,3 +75,21 @@ def deliver_webhook(self, webhook_id, event, payload):
                         'Could not schedule NTAPI8 long-tail retry for '
                         'delivery %s', record.pk)
     return outcome
+
+
+# NTAPI14/15 — jobs bulk export/import : traitement HORS requête. Chaque
+# tâche est un mince wrapper autour d'un appelable synchrone testable
+# (`bulk.run_export_job`/`run_import_job`), qui porte toute la logique et sa
+# propre gestion d'erreur (un job qui échoue est marqué `echec`, jamais une
+# exception qui remonte au broker sans laisser de trace côté client).
+
+@shared_task(name='publicapi.process_bulk_export_job')
+def process_bulk_export_job(job_id):
+    from . import bulk
+    bulk.run_export_job(job_id)
+
+
+@shared_task(name='publicapi.process_bulk_import_job')
+def process_bulk_import_job(job_id):
+    from . import bulk
+    bulk.run_import_job(job_id)

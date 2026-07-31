@@ -13,6 +13,7 @@ Couvre :
   * S9 — notifications (in-app) aux membres non en sourdine, mention plus forte.
 """
 import io
+import itertools
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -31,9 +32,27 @@ from apps.chat import services
 
 User = get_user_model()
 
+# Compteur de tenants : garantit qu'un ``make_company()`` sans argument rend
+# une société DIFFÉRENTE à chaque appel (voir la docstring du helper).
+_company_seq = itertools.count(1)
 
-def make_company(slug='chat-co', nom='Chat Co'):
-    company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': nom})
+
+def make_company(slug=None, nom=None):
+    """Une société NEUVE à chaque appel.
+
+    Historiquement ce helper avait un slug par DÉFAUT fixe (``'chat-co'``) et
+    faisait un ``get_or_create`` dessus : deux appels dans le même test
+    renvoyaient donc la MÊME ligne, et un test qui écrivait
+    ``other_company = make_company()`` croyait fabriquer un second tenant sans
+    en fabriquer aucun — l'assertion « pas de fuite cross-tenant » ne prouvait
+    rien (bug réel, corrigé ligne ~1350). Le compteur rend cette erreur
+    impossible : le défaut est unique par appel, et un slug explicite reste
+    accepté quand un test veut nommer sa société.
+    """
+    n = next(_company_seq)
+    company, _ = Company.objects.get_or_create(
+        slug=slug or f'chat-co-{n}',
+        defaults={'nom': nom or f'Chat Co {n}'})
     return company
 
 
@@ -1343,10 +1362,12 @@ class XKB32RetentionExportTests(TestCase):
         newer = RetentionSweepRun.objects.create(
             company=self.company, messages_purged=3)
 
-        # `make_company()` fait un get_or_create sur un slug FIXE : l'appeler
-        # sans argument renvoie la MÊME société que `setUp`, donc le run
-        # « d'une autre société » atterrissait en fait dans celle-ci et la
-        # scoping n'était jamais réellement testée. Slug explicite.
+        # Bug historique : `make_company()` faisait un get_or_create sur un
+        # slug FIXE, donc l'appeler sans argument rendait la MÊME société que
+        # `setUp` — le run « d'une autre société » atterrissait en fait dans
+        # celle-ci et le scoping n'était jamais réellement testé. Le helper
+        # porte désormais un compteur (défaut unique par appel) ; le slug reste
+        # explicite ici pour que l'intention « autre tenant » se lise.
         other_company = make_company(slug='chat-co-autre', nom='Autre Co')
         RetentionSweepRun.objects.create(
             company=other_company, messages_purged=99)

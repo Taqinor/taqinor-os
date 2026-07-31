@@ -718,6 +718,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/publicapi/models.py:392` | ServiceAccount.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/publicapi/models.py:496` | SandboxTenant.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/publicapi/models.py:502` | SandboxTenant.sandbox_company | authentication.Company | CASCADE |
+| `backend/django_core/apps/publicapi/models.py:560` | BulkJob.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/qhse/models.py:52` | NonConformite.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/qhse/models.py:195` | ActionCorrectivePreventive.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/qhse/models.py:279` | Derogation.company | authentication.Company | CASCADE |

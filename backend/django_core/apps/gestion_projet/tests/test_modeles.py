@@ -91,6 +91,18 @@ class ModeleServiceTests(TestCase):
         with self.assertRaises(services.ModeleProjetError):
             services.instancier_modele(self.modele, projet)
 
+    # ── NTUX13 — duplication d'un modèle de projet ──────────────────────────
+    def test_dupliquer_copie_entete_et_taches(self):
+        copie = services.dupliquer_modele_projet(self.modele)
+        self.assertNotEqual(copie.pk, self.modele.pk)
+        self.assertEqual(copie.nom, 'Résidentiel standard (copie)')
+        self.assertEqual(copie.type_installation, self.modele.type_installation)
+        self.assertEqual(copie.taches.count(), 2)
+        pose = copie.taches.get(libelle='Pose panneaux')
+        self.assertEqual(pose.charge_estimee, Decimal('3'))
+        # La source garde ses propres tâches, jamais réattachées à la copie.
+        self.assertEqual(self.modele.taches.count(), 2)
+
 
 class ModeleApiTests(TestCase):
     BASE = '/api/django/gestion-projet/modeles/'
@@ -139,3 +151,13 @@ class ModeleApiTests(TestCase):
         api = auth(normal)
         resp = api.get(self.BASE)
         self.assertEqual(resp.status_code, 403)
+
+    # ── NTUX13 — endpoint de duplication ────────────────────────────────────
+    def test_dupliquer_endpoint(self):
+        api = auth(self.user_a)
+        resp = api.post(f'{self.BASE}{self.modele.id}/dupliquer/')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['nom'], 'M (copie)')
+        copie = ModeleProjet.objects.get(id=resp.data['id'])
+        self.assertEqual(copie.company_id, self.co_a.id)
+        self.assertEqual(copie.taches.count(), 1)

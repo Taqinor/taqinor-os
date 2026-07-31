@@ -47,6 +47,10 @@ class NTCRD39ImportLimitesTests(TestCase):
             LimiteCredit.objects.get(client=self.c1).mode_hold, 'blocage')
 
     def test_idempotent_upsert(self):
+        """Un second import sur le même client rapproche la fiche EXISTANTE
+        (jamais de doublon) — mais NE L'ÉCRASE PAS par défaut (garde-fou
+        remplissage seul, voir ``test_import_ecrasement.py`` pour le détail du
+        garde-fou et l'opt-in ``ecraser=True``)."""
         csv = b'client,montant_limite\nc1@ntcrd39.com,50000\n'
         importer_limites_csv(self.company, csv, 'l.csv', user=self.user)
         csv2 = b'client,montant_limite\nc1@ntcrd39.com,70000\n'
@@ -55,4 +59,4 @@ class NTCRD39ImportLimitesTests(TestCase):
             LimiteCredit.objects.filter(client=self.c1).count(), 1)
         self.assertEqual(
             LimiteCredit.objects.get(client=self.c1).montant_limite,
-            Decimal('70000'))
+            Decimal('50000'))
