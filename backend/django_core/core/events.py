@@ -685,6 +685,17 @@ entite_deactivated = django.dispatch.Signal()
 # utilisateur explicite), ``ancien_statut`` (str|None).
 appointment_effectue = django.dispatch.Signal()
 
+# NTSAN23 — Émis quand un ``sante.CycleSterilisation`` est enregistré (ou
+# basculé) NON CONFORME. Événement INTER-app véritable : l'émetteur est
+# ``sante``, l'abonné est ``qhse`` (``apps/qhse/receivers.py``, câblé dans son
+# ``apps.py ready()``), qui ouvre une ``NonConformite`` liée au cycle. C'est
+# précisément ce qui permet à ``sante`` de ne JAMAIS importer ``qhse.models``
+# (et réciproquement — le lien est une FK à chaîne côté QHSE). Émis sur une
+# VRAIE transition seulement : un ``save()`` qui laisse le cycle non conforme
+# ne réémet pas. Arguments : ``cycle`` (instance ``CycleSterilisation``),
+# ``company``, ``user`` (peut être None).
+cycle_sterilisation_non_conforme = django.dispatch.Signal()
+
 
 # ===========================================================================
 # NTPLT9/10 — Outbox transactionnel FIABLE (façade au-dessus des signaux M6).

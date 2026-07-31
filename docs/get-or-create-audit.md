@@ -225,13 +225,13 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/qhse/management/commands/seed_itp_solaire.py:205` | get_or_create | PlanInspectionModele.objects | code, company |
 | `backend/django_core/apps/qhse/management/commands/seed_itp_solaire.py:221` | get_or_create | PointControleModele.objects | company, ordre, plan |
 | `backend/django_core/apps/qhse/services.py:51` | get_or_create | PlanInspectionChantier.objects | chantier_id, company, modele |
-| `backend/django_core/apps/qhse/services.py:1080` | get_or_create | ControleReception.objects | company, plan, reception_id |
-| `backend/django_core/apps/qhse/services.py:1457` | get_or_create | AnalyseNcr.objects | company, non_conformite |
-| `backend/django_core/apps/qhse/services.py:1846` | get_or_create | RisqueOpportuniteCapa.objects | capa, company, risque_opportunite |
-| `backend/django_core/apps/qhse/services.py:1912` | get_or_create | AccuseLecture.objects | company, diffusion, user |
-| `backend/django_core/apps/qhse/services.py:1928` | get_or_create | AccuseLecture.objects | company, diffusion, user |
-| `backend/django_core/apps/qhse/services.py:2440` | update_or_create | LigneBilanCarbone.objects | bilan, company, libelle |
-| `backend/django_core/apps/qhse/services.py:2579` | get_or_create | DemandeChangementCapa.objects | capa, company, demande_changement |
+| `backend/django_core/apps/qhse/services.py:1118` | get_or_create | ControleReception.objects | company, plan, reception_id |
+| `backend/django_core/apps/qhse/services.py:1495` | get_or_create | AnalyseNcr.objects | company, non_conformite |
+| `backend/django_core/apps/qhse/services.py:1884` | get_or_create | RisqueOpportuniteCapa.objects | capa, company, risque_opportunite |
+| `backend/django_core/apps/qhse/services.py:1950` | get_or_create | AccuseLecture.objects | company, diffusion, user |
+| `backend/django_core/apps/qhse/services.py:1966` | get_or_create | AccuseLecture.objects | company, diffusion, user |
+| `backend/django_core/apps/qhse/services.py:2478` | update_or_create | LigneBilanCarbone.objects | bilan, company, libelle |
+| `backend/django_core/apps/qhse/services.py:2617` | get_or_create | DemandeChangementCapa.objects | capa, company, demande_changement |
 | `backend/django_core/apps/records/services.py:104` | get_or_create | Follower.objects | company, content_type, object_id, sous_type, user |
 | `backend/django_core/apps/records/views.py:986` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
 | `backend/django_core/apps/rh/services.py:114` | get_or_create | SoldeConge.objects.select_for_update() | annee, company, employe |

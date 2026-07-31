@@ -3,11 +3,12 @@ from rest_framework.routers import DefaultRouter
 
 from .viewsets import (
     ActeMedicalViewSet, ActeRealiseViewSet, AdmissionViewSet,
-    ConventionViewSet, DisponibilitesView, FactureSanteViewSet,
-    GrilleTarifaireViewSet, HoraireOuverturePraticienViewSet,
-    IndisponibilitePraticienViewSet, MotifConsultationViewSet,
-    PaiementSanteViewSet, PatientViewSet, PraticienSiteViewSet,
-    PraticienViewSet, PriseEnChargeViewSet, RendezVousViewSet, SalleViewSet)
+    ConventionViewSet, CycleSterilisationViewSet, DisponibilitesView,
+    FactureSanteViewSet, GrilleTarifaireViewSet,
+    HoraireOuverturePraticienViewSet, IndisponibilitePraticienViewSet,
+    InstrumentSteriliseViewSet, MotifConsultationViewSet, PaiementSanteViewSet,
+    PatientViewSet, PraticienSiteViewSet, PraticienViewSet,
+    PriseEnChargeViewSet, RendezVousViewSet, SalleViewSet)
 
 router = DefaultRouter()
 router.register(r'praticiens', PraticienViewSet, basename='sante-praticien')
@@ -40,6 +41,13 @@ router.register(
     r'factures-sante', FactureSanteViewSet, basename='sante-facture-sante')
 router.register(
     r'paiements-sante', PaiementSanteViewSet, basename='sante-paiement-sante')
+# NTSAN23 — stérilisation et traçabilité des instruments.
+router.register(
+    r'cycles-sterilisation', CycleSterilisationViewSet,
+    basename='sante-cycle-sterilisation')
+router.register(
+    r'instruments-sterilises', InstrumentSteriliseViewSet,
+    basename='sante-instrument-sterilise')
 
 urlpatterns = [
     # NTSAN29 — endpoint interne de disponibilités (avant le router : ne

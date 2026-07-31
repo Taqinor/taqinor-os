@@ -18,14 +18,16 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
-    MotifConsultation, PaiementSante, Patient, Praticien, PraticienSite,
-    PriseEnCharge, RendezVous, Salle)
+    ActeMedical, ActeRealise, Admission, Convention, CycleSterilisation,
+    FactureSante, GrilleTarifaire, HoraireOuverturePraticien,
+    IndisponibilitePraticien, InstrumentSterilise, MotifConsultation,
+    PaiementSante, Patient, Praticien, PraticienSite, PriseEnCharge,
+    RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
-    ConventionSerializer, FactureSanteSerializer, GrilleTarifaireSerializer,
-    HoraireOuverturePraticienSerializer, IndisponibilitePraticienSerializer,
+    ConventionSerializer, CycleSterilisationSerializer, FactureSanteSerializer,
+    GrilleTarifaireSerializer, HoraireOuverturePraticienSerializer,
+    IndisponibilitePraticienSerializer, InstrumentSteriliseSerializer,
     MotifConsultationSerializer, PaiementSanteSerializer, PatientSerializer,
     PraticienSerializer, PraticienSiteSerializer, PriseEnChargeSerializer,
     RendezVousSerializer, SalleSerializer)
@@ -460,3 +462,40 @@ class PaiementSanteViewSet(CompanyScopedModelViewSet):
             encaisse_par=self.request.user,
         )
         serializer.instance = instance
+
+
+class CycleSterilisationViewSet(CompanyScopedModelViewSet):
+    """NTSAN23 — cycles d'autoclave. Un cycle enregistré (ou basculé) NON
+    CONFORME émet ``core.events.cycle_sterilisation_non_conforme`` : ``qhse``
+    y est abonné et ouvre la ``NonConformite`` liée — ``sante`` n'importe
+    JAMAIS ``qhse.models``. L'``operateur`` est posé côté serveur."""
+
+    queryset = CycleSterilisation.objects.select_related('operateur').all()
+    serializer_class = CycleSterilisationSerializer
+
+    def perform_create(self, serializer):
+        from .services import appliquer_statut_cycle_sterilisation
+
+        serializer.save(
+            company=self.request.user.company, operateur=self.request.user)
+        appliquer_statut_cycle_sterilisation(
+            serializer.instance, user=self.request.user)
+
+    def perform_update(self, serializer):
+        from .services import appliquer_statut_cycle_sterilisation
+
+        # Statut AVANT écriture : l'instance du serializer porte encore les
+        # valeurs relues en base tant que ``save()`` n'a pas eu lieu.
+        ancien_statut = serializer.instance.statut
+        super().perform_update(serializer)
+        appliquer_statut_cycle_sterilisation(
+            serializer.instance, ancien_statut=ancien_statut,
+            user=self.request.user)
+
+
+class InstrumentSteriliseViewSet(CompanyScopedModelViewSet):
+    """NTSAN23 — instruments/kits passés dans un cycle (traçabilité de
+    rappel). NTSAN24 les rattachera aux actes réalisés."""
+
+    queryset = InstrumentSterilise.objects.select_related('cycle').all()
+    serializer_class = InstrumentSteriliseSerializer

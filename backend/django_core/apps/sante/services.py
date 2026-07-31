@@ -509,3 +509,34 @@ def imprimer_feuille_soins(facture_sante_id, *, company=None):
     facture = qs.get(pk=facture_sante_id)
     contexte = contexte_feuille_soins(facture)
     return facture, render_feuille_soins_pdf(contexte)
+
+
+# =============================================================================
+# NTSAN23 — Stérilisation : émission de l'événement « cycle non conforme ».
+#
+# ``sante`` n'importe JAMAIS ``qhse.models`` : il émet sur le bus
+# ``core.events`` et c'est ``qhse`` qui s'abonne (``apps/qhse/receivers.py``)
+# pour ouvrir la NonConformite liée.
+# =============================================================================
+
+def appliquer_statut_cycle_sterilisation(cycle, *, ancien_statut=None,
+                                         user=None):
+    """NTSAN23 — émet ``cycle_sterilisation_non_conforme`` sur une VRAIE
+    transition vers « non conforme ».
+
+    Renvoie ``True`` si l'événement a été émis. Un ``save()`` qui laisse le
+    cycle déjà non conforme ne réémet pas (sinon chaque édition rouvrirait une
+    NCR) ; un cycle CRÉÉ directement non conforme émet bien (``ancien_statut``
+    vaut alors ``None``)."""
+    from core.events import cycle_sterilisation_non_conforme
+
+    from .models import CycleSterilisation
+
+    if cycle.statut != CycleSterilisation.Statut.NON_CONFORME:
+        return False
+    if ancien_statut == CycleSterilisation.Statut.NON_CONFORME:
+        return False
+    cycle_sterilisation_non_conforme.send(
+        sender='sante.CycleSterilisation', cycle=cycle,
+        company=cycle.company, user=user)
+    return True
