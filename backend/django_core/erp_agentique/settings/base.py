@@ -265,6 +265,11 @@ INSTALLED_APPS = [
     # Groupe NTMAR — Calendrier fiscal marocain, attestations tenant, registre
     # UBO et veille réglementaire actionnable.
     'apps.fiscal',
+    # Groupe NTAI — couche AI-first posée AU-DESSUS de la fondation `core.ai`
+    # (fournisseurs OCR/STT/LLM key-gated, NO-OP-safe) : copilotes contextuels
+    # qui PROPOSENT des brouillons (jamais d'écriture métier implicite) et
+    # surveillance des modèles. Sans clé, chaque surface dégrade proprement.
+    'apps.ai_governance',
 ]
 
 MIDDLEWARE = [
@@ -559,6 +564,11 @@ REST_FRAMEWORK = {
         'automation_webhook': '60/minute',
         # XSAL8 — scan de carte de visite (OCR), par utilisateur authentifié.
         'crm_ocr_scan': '20/hour',
+        # Groupe NTAI — copilotes IA génératifs (brouillons), par utilisateur
+        # authentifié : borne le coût LLM d'un clic répété.
+        'ai_copilote': '60/hour',
+        # Groupe NTAI — transcription d'un mémo vocal (STT, plus coûteux).
+        'ai_transcription': '20/hour',
         # QX41 — scopes des throttles publics jusqu'ici codés inline, désormais
         # source de vérité UNIQUE ici (les classes lisent settings en priorité,
         # repli sur leur défaut). ``public_sharelink`` : liens publics
