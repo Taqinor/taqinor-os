@@ -150,3 +150,37 @@ def poll_mail_intake_task():
         'ged.poll_mail_intake: %d relevé(s), %d importé(s)',
         total['fetched'], total['imported'])
     return total
+
+
+@shared_task(name='ged.migrer_pieces_jointes')
+def migrer_pieces_jointes_task():
+    """WIR73 — planifie `migrate_attachments_to_ged` (GED7) en récurrent.
+
+    La commande est idempotente et conçue pour être relancée (clé
+    d'idempotence : company + file_key — jamais de doublon) mais RIEN ne
+    l'exécutait automatiquement jusqu'ici : une pièce jointe créée après le
+    dernier import MANUEL n'apparaissait jamais en GED. Hebdomadaire, une
+    société à la fois (jamais destructif — importe seulement, ne modifie ni
+    ne supprime jamais `records.Attachment`)."""
+    from authentication.selectors import active_companies
+
+    from apps.ged.management.commands.migrate_attachments_to_ged import (
+        import_attachments,
+    )
+
+    total = {'documents': 0, 'liens': 0, 'skipped': 0}
+    for company in active_companies():  # SCA19 — exclut les tenants suspendus
+        try:
+            res = import_attachments(company=company, dry_run=False)
+            for key in total:
+                total[key] += res[key]
+        except Exception:  # pragma: no cover - défensif, une société KO
+            # n'interrompt jamais les suivantes.
+            logger.warning(
+                'ged.migrer_pieces_jointes: échec société %s', company.pk,
+                exc_info=True)
+    logger.info(
+        'ged.migrer_pieces_jointes: %d document(s), %d lien(s), '
+        '%d ignoré(s)',
+        total['documents'], total['liens'], total['skipped'])
+    return total
