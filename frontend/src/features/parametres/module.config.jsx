@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { MapPin, ListChecks } from 'lucide-react'
+import { MapPin, ListChecks, Sparkles } from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Paramètres vers le registre (phase 2,
@@ -76,6 +76,10 @@ const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
 // `stock_modifier`/legacy responsable ; lecture ouverte à tout rôle).
 const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsParametresPage'))
+// WIR153 — Paramètres → IA : panneau de diagnostic (provider/modèle LLM actif
+// + tables autorisées de l'agent SQL, GET /sql-agent/schema — jusqu'ici sans
+// appelant côté frontend). Admin-only (écran de configuration sensible).
+const IaDiagnostic = lazy(() => import('./IaDiagnostic'))
 
 const config = {
   key: 'parametres',
@@ -86,6 +90,7 @@ const config = {
     items: [
       { to: '/parametres/territoires', label: 'Territoires', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/parametres/playbooks', label: 'Playbooks', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      { to: '/parametres/ia', label: 'IA (diagnostic)', icon: <Sparkles size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
     ],
   },
   routes: [
@@ -99,6 +104,7 @@ const config = {
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/ia', component: IaDiagnostic, roles: ['admin'] },
     {
       path: '/journal',
       component: Journal,

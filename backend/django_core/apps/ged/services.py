@@ -78,23 +78,19 @@ def ocr_enabled():
 def ocr_extract_text(file_bytes, *, mime=''):
     """GED33 — Extrait le texte d'un fichier image/PDF par OCR (no-op sans clé).
 
-    NO-OP PAR DÉFAUT : renvoie '' tant que `ocr_enabled()` est faux — le
-    squelette d'appel provider est isolé ici pour un futur branchement (Zhipu OCR
-    via le service FastAPI IA) sans toucher au reste du module. Ne lève jamais
-    (robustesse : l'OCR ne doit pas casser un dépôt documentaire)."""
+    NO-OP PAR DÉFAUT : renvoie '' tant que `ocr_enabled()` est faux. WIR153 —
+    AUCUN module fournisseur n'existe encore dans ce dépôt (contrairement à
+    ce que disait cette docstring auparavant : elle référençait un import
+    mort ``ocr_provider``, jamais câblé, avalé silencieusement par un
+    ``except ImportError``). Le flag activé sans provider réel reste donc un
+    NO-OP DÉTERMINISTE — chaîne vide, jamais de crash. Une fois un provider
+    branché (appel HTTP vers le service OCR ``backend/fastapi_ia``, Zhipu OCR,
+    même motif que ``apps.crm.intake_photo``), il doit exposer
+    ``extract_text(file_bytes, mime=mime) -> str``."""
     if not file_bytes or not ocr_enabled():
         return ''
-    provider = None
-    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
-        from . import ocr_provider as provider  # noqa: F401
-    except ImportError:
-        provider = None
-    if provider is None:  # pragma: no cover
-        return ''
-    try:  # pragma: no cover
-        return provider.extract_text(file_bytes, mime=mime) or ''
-    except Exception:  # pragma: no cover - jamais bloquer un dépôt.
-        return ''
+    # Aucun provider câblé — dégradation propre (chaîne vide), jamais un crash.
+    return ''
 
 
 def ocr_index_document(document, *, file_bytes=None, mime=''):

@@ -2,9 +2,14 @@
 Outils d'ACTION de l'agent conversationnel — N86.
 
 L'agent SQL est en LECTURE SEULE (requetes SELECT uniquement). Ce module ajoute
-des outils d'ECRITURE surs et additifs : ouvrir un ticket SAV, brouillonner un
-bon de commande fournisseur pour les manques d'un chantier, et planifier une
-visite de maintenance (intervention).
+des outils d'ECRITURE surs et additifs, PILOTES PAR LE CATALOGUE Django
+(AG1/AG2 — voir ``fetch_catalogue``/``run_catalogue_action`` plus bas) : chaque
+action executable par l'agent vient du catalogue ``apps.agent.registry``, plus
+un outil generique par entree plutot que des fonctions codees en dur par
+domaine. WIR153 — les trois outils historiques codes en dur (ouverture de
+ticket SAV, brouillon de bon de commande, planification de visite) ont ete
+retires : le catalogue Django les remplace et ils n'etaient plus jamais
+invoques.
 
 REGLES DE SECURITE (CLAUDE.md) :
 - AUCUNE ecriture SQL directe (regle #1). Chaque action appelle l'API REST
@@ -63,9 +68,6 @@ _WRITE_ROLES = ("admin", "responsable")
 _TICKET_PERMS = ("sav_gerer",)
 _BC_PERMS = ("installation_gerer", "chantier_gerer")
 _VISITE_PERMS = ("installation_gerer", "chantier_gerer")
-
-# Type d'intervention utilise pour une visite de maintenance planifiee.
-_VISITE_TYPE = "controle"
 
 _TIMEOUT = httpx.Timeout(20.0, connect=5.0)
 
@@ -183,15 +185,6 @@ def _django_call(
     return _normalize_error(resp, data)
 
 
-def _django_post(ctx: ActionContext, path: str, payload: dict) -> dict[str, Any]:
-    """POST authentifie vers l'API Django interne (compat actions legacy).
-
-    Conserve pour les trois actions historiques (ticket SAV, BC, visite) et
-    leurs tests ; delegue au relais generique `_django_call`.
-    """
-    return _django_call(ctx, path, method="POST", payload=payload)
-
-
 def _normalize_error(resp, data) -> dict[str, Any]:
     """Construit un message d'erreur lisible et masque les internes."""
     ok = 200 <= resp.status_code < 300
@@ -215,113 +208,6 @@ def _normalize_error(resp, data) -> dict[str, Any]:
         detail = detail or "Vous n'avez pas les droits pour cette action."
     return {"ok": False, "status": resp.status_code,
             "error": detail or "La demande a ete refusee."}
-
-
-# ── Implementations des actions ───────────────────────────────────────────────
-
-
-def open_sav_ticket(
-    ctx: ActionContext,
-    client_id: int,
-    description: str,
-    installation_id: int | None = None,
-    priorite: str = "normale",
-    type_ticket: str = "correctif",
-) -> str:
-    """Ouvre un ticket SAV. Renvoie un message francais (confirmation ou refus)."""
-    if not ctx.can_write(_TICKET_PERMS):
-        return ("Action refusee : vous n'avez pas la permission d'ouvrir un "
-                "ticket SAV.")
-    if not client_id:
-        return "Impossible : un client (client_id) est requis pour le ticket."
-    description = (description or "").strip()
-    if not description:
-        return "Impossible : une description du probleme est requise."
-    if priorite not in ("basse", "normale", "haute", "urgente"):
-        priorite = "normale"
-    if type_ticket not in ("correctif", "preventif"):
-        type_ticket = "correctif"
-
-    payload: dict[str, Any] = {
-        "client": int(client_id),
-        "description": description,
-        "priorite": priorite,
-        "type": type_ticket,
-    }
-    if installation_id:
-        payload["installation"] = int(installation_id)
-
-    res = _django_post(ctx, "/api/django/sav/tickets/", payload)
-    if not res["ok"]:
-        return f"Le ticket SAV n'a pas pu etre cree. {res['error']}"
-    ref = (res.get("data") or {}).get("reference") or "(reference en attente)"
-    return (f"Ticket SAV cree avec succes : {ref} "
-            f"(priorite {priorite}, type {type_ticket}).")
-
-
-def draft_bon_commande_for_chantier(
-    ctx: ActionContext,
-    installation_id: int,
-    fournisseur_id: int | None = None,
-) -> str:
-    """Brouillonne un bon de commande fournisseur pour les manques d'un
-    chantier (endpoint commander-besoin)."""
-    if not ctx.can_write(_BC_PERMS):
-        return ("Action refusee : vous n'avez pas la permission de creer un "
-                "bon de commande.")
-    if not installation_id:
-        return "Impossible : un chantier (installation_id) est requis."
-
-    payload: dict[str, Any] = {}
-    if fournisseur_id:
-        payload["fournisseur"] = int(fournisseur_id)
-
-    res = _django_post(
-        ctx,
-        f"/api/django/installations/chantiers/{int(installation_id)}/commander-besoin/",
-        payload,
-    )
-    if not res["ok"]:
-        return f"Le bon de commande n'a pas pu etre cree. {res['error']}"
-    data = res.get("data") or {}
-    numero = data.get("numero") or data.get("reference") or "(brouillon)"
-    nb = data.get("nb_lignes")
-    extra = f" ({nb} ligne(s) de manque)" if nb is not None else ""
-    return (f"Bon de commande fournisseur brouillon cree : {numero}{extra}. "
-            "Il reste a confirmer manuellement.")
-
-
-def schedule_maintenance_visit(
-    ctx: ActionContext,
-    installation_id: int,
-    date_prevue: str,
-    technicien_id: int | None = None,
-) -> str:
-    """Planifie une visite de maintenance (intervention de type controle) sur
-    un chantier a une date donnee (AAAA-MM-JJ)."""
-    if not ctx.can_write(_VISITE_PERMS):
-        return ("Action refusee : vous n'avez pas la permission de planifier "
-                "une visite.")
-    if not installation_id:
-        return "Impossible : un chantier (installation_id) est requis."
-    date_prevue = (date_prevue or "").strip()
-    if not date_prevue:
-        return ("Impossible : une date prevue (format AAAA-MM-JJ) est "
-                "requise.")
-
-    payload: dict[str, Any] = {
-        "installation": int(installation_id),
-        "type_intervention": _VISITE_TYPE,
-        "date_prevue": date_prevue,
-    }
-    if technicien_id:
-        payload["technicien"] = int(technicien_id)
-
-    res = _django_post(ctx, "/api/django/installations/interventions/", payload)
-    if not res["ok"]:
-        return f"La visite n'a pas pu etre planifiee. {res['error']}"
-    return (f"Visite de maintenance planifiee le {date_prevue} sur le "
-            f"chantier {installation_id}.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
