@@ -30,11 +30,17 @@ class Ntapi20OpenApiSchemaTests(TestCase):
 
     def test_covers_every_read_only_resource_list_and_detail(self):
         schema = build_openapi_schema()
-        # Les 5 ressources en lecture (leads/devis/factures/chantiers/produits),
-        # dérivées de `public_urls.py` lui-même — jamais une liste dupliquée à
-        # la main qui pourrait diverger silencieusement.
+        # Les ressources montées sur le routeur lecture seule, dérivées de
+        # `public_urls.py` lui-même — jamais une liste dupliquée à la main qui
+        # pourrait diverger silencieusement. NTAPI16 ajoute `public-job` (suivi
+        # des jobs bulk, ReadOnlyModelViewSet) aux 5 ressources métier : on
+        # fige l'ENSEMBLE exact (plus fort qu'un simple compte), donc un
+        # 7ᵉ enregistrement resterait un choix délibéré, pas un accident.
         registered_basenames = {r[2] for r in public_router.registry}
-        self.assertEqual(len(registered_basenames), 5)
+        self.assertEqual(registered_basenames, {
+            'public-lead', 'public-devis', 'public-facture',
+            'public-chantier', 'public-produit', 'public-job',
+        })
         for prefix, _viewset, _basename in public_router.registry:
             list_path = f'/api/public/{prefix}/'
             detail_path = f'/api/public/{prefix}/{{id}}/'

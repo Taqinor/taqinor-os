@@ -48,6 +48,37 @@ class HasAnyApiKey(BasePermission):
         return isinstance(getattr(request, 'auth', None), ApiKey)
 
 
+class HasJobOperationScope(BasePermission):
+    """Exige le scope de l'OPÉRATION que le job rejouerait (NTAPI43).
+
+    Relancer un job n'est pas une lecture : c'est un nouveau déclenchement de
+    l'export ou de l'IMPORT d'origine. Gardé seulement par ``HasAnyApiKey``
+    (aucun scope), n'importe quelle clé de la société — y compris une clé
+    STRICTEMENT lecture seule, ou le token pull NTAPI30 qui traîne dans une
+    cellule Google Sheets — pouvait relancer un job d'import et provoquer des
+    ÉCRITURES qu'elle n'a pas le droit de demander à
+    ``POST /api/public/imports/``. On exige donc ici exactement le scope que la
+    création de ce job exigeait (``IMPORT_SCOPE_BY_ENTITY`` /
+    ``EXPORT_SCOPE_BY_ENTITY``) : la reprise ne peut jamais dépasser les droits
+    de la clé qui la demande.
+    """
+
+    message = "Ce jeton n'a pas le droit nécessaire pour relancer ce job."
+
+    def has_object_permission(self, request, view, obj):
+        api_key = getattr(request, 'auth', None)
+        if not isinstance(api_key, ApiKey):
+            return False
+        mapping = (
+            EXPORT_SCOPE_BY_ENTITY if obj.type == BulkJob.TYPE_EXPORT
+            else IMPORT_SCOPE_BY_ENTITY)
+        scope = mapping.get(obj.entite)
+        if not scope:
+            # Entité inconnue/plus exportable : jamais relançable (fail-closed).
+            return False
+        return api_key.has_scope(scope)
+
+
 class _BulkPostAPIView(PublicApiResponseMixin, APIView):
     """Base commune export/import : auth par clé, throttle par clé, AUCUN
     `required_scope` fixe (dépend de l'entité demandée — vérifié dans
@@ -148,9 +179,13 @@ class PublicJobViewSet(PublicApiResponseMixin, viewsets.ReadOnlyModelViewSet):
             response['Retry-After'] = '3'
         return response
 
-    @action(detail=True, methods=['post'], url_path='relancer')
+    @action(detail=True, methods=['post'], url_path='relancer',
+            permission_classes=[HasAnyApiKey, HasJobOperationScope])
     def relancer(self, request, pk=None):
-        job = self.get_object()  # scope société déjà appliqué par get_queryset
+        # `get_object()` applique le scope société (get_queryset) PUIS
+        # `check_object_permissions` → `HasJobOperationScope` (le scope de
+        # l'opération rejouée ne peut être vérifié qu'une fois le job connu).
+        job = self.get_object()
         try:
             job = relancer_job(job)
         except BulkJobError as exc:

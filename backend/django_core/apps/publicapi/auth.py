@@ -109,6 +109,21 @@ class QueryTokenAuthentication(authentication.BaseAuthentication):
         ApiKey.objects.filter(pk=api_key.pk).update(last_used_at=timezone.now())
         return (ApiKeyUser(api_key), api_key)
 
+    def authenticate_header(self, request):
+        """Challenge `WWW-Authenticate` — SANS lui, « pas de jeton » devient 403.
+
+        DRF ne rend un 401 (`NotAuthenticated`/`AuthenticationFailed`) que si le
+        PREMIER authenticator de la vue expose un en-tête d'authentification
+        (`APIView.handle_exception`) ; sinon il rétrograde en 403. Cette classe
+        n'en déclarait aucun : jeton absent, invalide, désactivé ou expiré
+        répondait 403 « droits insuffisants » au lieu de 401 « justificatif
+        manquant/refusé » — le client (Google Sheets) ne pouvait plus distinguer
+        « clé à renouveler » de « scope manquant », et l'API publique
+        contredisait son propre contrat NTAPI30. Le paramètre attendu est
+        annoncé pour que la réponse reste auto-descriptive.
+        """
+        return 'Query realm="api-public", param="token"'
+
 
 class HasApiScope(permissions.BasePermission):
     """Exige que la clé porte le scope déclaré sur la vue (`required_scope`)."""

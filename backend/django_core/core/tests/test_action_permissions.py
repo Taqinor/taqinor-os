@@ -71,7 +71,16 @@ UNGUARDED_ACTION_BASELINE = {
     # + rôle Directeur/FP&A), company-scopés ; dette coarse figée (fine-grain
     # ultérieur, YRBAC3).
     "fpa": 16,
-    "gestion_projet": 70,
+    # NTUX13 — ``ModeleProjetViewSet.dupliquer`` (70 → 71) : duplication d'un
+    # modèle de projet, gardée EXACTEMENT comme sa sœur ``instancier`` du même
+    # viewset — ``_GestionProjetBaseViewSet`` (WriteScopedPermissionMixin,
+    # ``write_permission='projet_gerer'``) exige ``projet_gerer`` sur toute
+    # méthode non sûre, POST compris, et le queryset est company-scopé
+    # (TenantMixin). Le scanner ne crédite que les gardes PAR action → +1 en
+    # dette COARSE apparente, pas un trou de garde (fine-grain ultérieur,
+    # YRBAC3). Les deux autres ``dupliquer`` du même lot (crm/ventes) sont, eux,
+    # fine-gardés ``permission_classes=[IsResponsableOrAdmin]``.
+    "gestion_projet": 71,
     "installations": 4,
     "kb": 34,
     "litiges": 7,

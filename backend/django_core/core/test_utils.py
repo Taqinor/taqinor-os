@@ -26,7 +26,12 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 from django.test.utils import CaptureQueriesContext
-from django.db import connection
+from django.db import connection, connections
+
+# Plafond accordé au TRUNCATE de purge des fixtures (cf.
+# ``WideTeardownTimeoutMixin``). Généreux (10× le coût mesuré) mais FINI : une
+# purge réellement bloquée doit finir par échouer, jamais figer la suite.
+FIXTURE_TEARDOWN_TIMEOUT_MS = 300_000
 
 
 class AssertQueryBudgetMixin:
@@ -46,3 +51,61 @@ class AssertQueryBudgetMixin:
                 f'Budget de requêtes dépassé : {actual} requêtes exécutées, '
                 f'plafond {n}.\nRequêtes capturées :\n{queries_preview}')
             self.fail(msg or base_msg)
+
+
+class WideTeardownTimeoutMixin:
+    """Mixin de ``TransactionTestCase`` : la purge de fin de test échappe au
+    ``statement_timeout`` de PRODUCTION.
+
+    ``TransactionTestCase._fixture_teardown()`` lance un ``flush`` = UN SEUL
+    ``TRUNCATE`` couvrant tout le schéma (et ``available_apps`` n'y change
+    rien : Django passe alors ``allow_cascade=True``, et le ``CASCADE`` depuis
+    ``authentication_company`` ratisse de toute façon les ~900 tables du
+    dépôt). Son coût suit le SCHÉMA, pas les données — mesuré 16 à 31 s par
+    test sur un runner CI. Or NTPLT18 pose un ``statement_timeout`` de 30 s sur
+    CHAQUE connexion (``settings.DATABASES['default']['OPTIONS']``) : les
+    purges qui franchissent 30 s sont annulées (« canceling statement due to
+    statement timeout »), les tables restent PLEINES, et le test suivant de la
+    classe explose en doublon de clé (société/utilisateur déjà créé) — une
+    cascade d'ERROR sans le moindre rapport avec le code testé, qui empire à
+    chaque table ajoutée au dépôt.
+
+    Ce garde-fou existe pour empêcher une requête ORM folle d'épingler un
+    worker gunicorn ; la purge de fixtures du runner de tests n'en est pas une
+    (même raisonnement que l'exemption déjà documentée des dumps
+    ``pg_dump``/``pg_restore``, hors OPTIONS car lancés en subprocess). On
+    l'élargit donc UNIQUEMENT le temps de ce TRUNCATE, puis on rétablit la
+    valeur d'origine : aucun autre statement du test n'est exempté, et le
+    réglage de production n'est pas touché.
+
+    Usage — le mixin passe AVANT la classe de base :
+
+        class MesTests(WideTeardownTimeoutMixin, TransactionTestCase):
+            ...
+    """
+
+    def _fixture_teardown(self):  # noqa: N802 — nom imposé par Django
+        previous = {}
+        for alias in self._databases_names(include_mirrors=False):
+            conn = connections[alias]
+            if conn.vendor != 'postgresql':
+                continue
+            try:
+                with conn.cursor() as cur:
+                    cur.execute('SHOW statement_timeout')
+                    previous[alias] = cur.fetchone()[0]
+                    cur.execute(
+                        f'SET statement_timeout = {FIXTURE_TEARDOWN_TIMEOUT_MS}')
+            except Exception:  # pragma: no cover - jamais casser un teardown
+                previous.pop(alias, None)
+        try:
+            super()._fixture_teardown()
+        finally:
+            for alias, value in previous.items():
+                try:
+                    with connections[alias].cursor() as cur:
+                        # psycopg2 interpole côté client : `SET` n'accepte pas
+                        # de paramètre lié, mais la valeur reste échappée.
+                        cur.execute('SET statement_timeout = %s', [value])
+                except Exception:  # pragma: no cover - connexion déjà fermée
+                    pass

@@ -32,6 +32,13 @@ ON_DEMAND_ALLOWLIST = {
     # depuis l'endpoint ``adminops/sandbox/creer/`` (jamais périodique ; la
     # purge NTADM11 et le rappel NTADM35 sont, eux, planifiés dans le beat).
     'adminops.cloner_sandbox',
+    # NTAPI14/15/43 — traitement d'un job bulk de l'API publique : déclenché à
+    # la demande par ``POST /api/public/exports/`` / ``/imports/`` /
+    # ``jobs/<id>/relancer/`` (``.delay()`` dans ``bulk._dispatch_export`` /
+    # ``_dispatch_import``, avec repli INLINE si le broker est injoignable ;
+    # jamais périodique — un job bulk n'existe que sur demande d'un client).
+    'publicapi.process_bulk_export_job',
+    'publicapi.process_bulk_import_job',
 }
 
 

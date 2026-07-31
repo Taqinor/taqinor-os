@@ -28,6 +28,7 @@ from django.test import TransactionTestCase
 
 from authentication.models import Company
 from core import rls
+from core.test_utils import WideTeardownTimeoutMixin
 
 User = get_user_model()
 
@@ -49,7 +50,7 @@ _CANDIDATE_TABLES = [
 ]
 
 
-class RlsSealTests(TransactionTestCase):
+class RlsSealTests(WideTeardownTimeoutMixin, TransactionTestCase):
     """Suite d'étanchéité RLS — opt-in (sautée flag OFF)."""
 
     reset_sequences = True
