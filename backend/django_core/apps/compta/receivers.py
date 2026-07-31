@@ -24,6 +24,7 @@ from core.events import (
     facture_emise,
     facture_fournisseur_creee,
     facture_payee,
+    mouvement_stock_enregistre,
     paiement_enregistre,
     paiement_fournisseur_enregistre,
     paiement_rejete,
@@ -54,10 +55,11 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     # qu'aucun événement dédié « paiement enregistré » n'existe sur le bus.
     transferer_tva_encaissement,
     # XACC6 — écriture de stock automatique (inventaire permanent, toggle OFF
-    # par défaut). Même point d'ancrage : appel de service explicite depuis
-    # ``stock`` tant qu'aucun événement dédié « mouvement de stock » n'existe
-    # sur ``core.events`` (l'ajouter modifierait ``apps.stock``, hors
-    # périmètre additif ici).
+    # par défaut). WIR85 l'a enfin BRANCHÉE : ``core.events`` porte désormais
+    # ``mouvement_stock_enregistre``, émis par ``stock.services.
+    # record_stock_movement``, auquel s'abonne ``_ecriture_pour_mouvement_stock``
+    # ci-dessous. Avant WIR85 cette fonction n'avait AUCUN appelant de
+    # production.
     poster_mouvement_stock,
 )
 
@@ -127,6 +129,89 @@ def _ecriture_pour_facture_fournisseur_creee(sender, instance, company,
 def _ecriture_pour_paiement_fournisseur_enregistre(sender, instance, company,
                                                    **kwargs):
     ecriture_pour_paiement_fournisseur(instance)
+
+
+# ── WIR85 / XACC6 — écriture d'inventaire permanent sur mouvement de stock ──
+
+# Correspondance type de mouvement (5 valeurs côté stock) → sens comptable
+# (2 valeurs côté ``poster_mouvement_stock``). Un TRANSFERT est un déplacement
+# INTERNE : la valeur du stock ne bouge pas, donc AUCUNE écriture (l'omettre
+# est la bonne réponse, pas un oubli). Un AJUSTEMENT est signé par la variation
+# réelle de quantité.
+_SENS_PAR_TYPE_MOUVEMENT = {
+    'entree': 'entree',
+    'sortie': 'sortie',
+    'rebut': 'sortie',      # sortie définitive de stock (mise au rebut)
+}
+
+
+def _sens_comptable(mouvement):
+    """Sens comptable d'un ``MouvementStock``, ou ``None`` s'il n'en a pas."""
+    type_mvt = getattr(mouvement, 'type_mouvement', '') or ''
+    sens = _SENS_PAR_TYPE_MOUVEMENT.get(type_mvt)
+    if sens is not None:
+        return sens
+    if type_mvt == 'ajustement':
+        avant = getattr(mouvement, 'quantite_avant', None)
+        apres = getattr(mouvement, 'quantite_apres', None)
+        if avant is None or apres is None or apres == avant:
+            return None
+        return 'entree' if apres > avant else 'sortie'
+    # 'transfert' (et tout type futur inconnu) : pas d'écriture.
+    return None
+
+
+@receiver(mouvement_stock_enregistre,
+          dispatch_uid="compta_ecriture_pour_mouvement_stock")
+def _ecriture_pour_mouvement_stock(sender, instance, company, **kwargs):
+    """WIR85 — un vrai ``MouvementStock`` produit EXACTEMENT UNE écriture
+    équilibrée quand les toggles sont ON.
+
+    Double garde-fou, tous deux OFF par défaut :
+      * ``auto_ecritures_actif(company)`` — le toggle WIR24
+        (``COMPTA_AUTO_ECRITURES`` global ou
+        ``CompanyProfile.comptabilite_auto_ecritures`` par société), commun à
+        toutes les écritures automatiques ;
+      * ``PlanComptable.inventaire_permanent``, re-vérifié à l'intérieur de
+        ``poster_mouvement_stock`` (inventaire permanent vs intermittent).
+    Sans opt-in explicite sur LES DEUX, rien n'est écrit — comportement
+    strictement inchangé.
+
+    Idempotent : ``poster_mouvement_stock`` déduplique sur
+    ``source_type='mouvement_stock'`` + ``source_id`` (ici la PK du mouvement,
+    elle-même sous contrainte d'unicité par société), donc un ré-envoi du
+    signal ne double jamais l'écriture.
+
+    Best-effort : la comptabilité est le MIROIR du stock, jamais son gardien —
+    une erreur ici ne doit pas faire échouer le mouvement de stock.
+    """
+    if company is None or getattr(instance, 'pk', None) is None:
+        return
+    if not auto_ecritures_actif(company):
+        return
+    sens = _sens_comptable(instance)
+    if sens is None:
+        return
+    quantite = abs(getattr(instance, 'quantite', 0) or 0)
+    if quantite <= 0:
+        return
+    try:
+        poster_mouvement_stock(
+            company,
+            # ``source_id`` est un PositiveIntegerField sous contrainte
+            # d'unicité (company, source_type, source_id) : la clé de
+            # déduplication EST l'identifiant du mouvement.
+            mouvement_ref=instance.pk,
+            produit_id=instance.produit_id,
+            sens=sens,
+            quantite=quantite,
+            user=getattr(instance, 'created_by', None),
+        )
+    except Exception:  # noqa: BLE001 — miroir best-effort, jamais bloquant
+        import logging
+        logging.getLogger('compta').warning(
+            'WIR85: écriture d\'inventaire permanent impossible pour le '
+            'mouvement %s', instance.pk, exc_info=True)
 
 
 # ── YLEDG4 — extourne automatique quand un document comptabilisé est annulé ─
