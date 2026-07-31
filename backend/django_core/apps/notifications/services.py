@@ -231,12 +231,22 @@ def _vapid_private_for_push(private_key):
         return private_key
 
 
-def _dispatch_webpush(user, title, body, link=None):
+def _dispatch_webpush(user, title, body, link=None, approval_action=None):
     """Best-effort : envoie un Web Push à TOUS les appareils de l'utilisateur.
 
     NO-OP silencieux si les clés VAPID sont absentes OU si l'utilisateur n'a
     aucun abonnement. Erreurs avalées+journalisées ; un abonnement expiré
-    (HTTP 404/410) est SUPPRIMÉ. Renvoie le nombre d'envois réussis."""
+    (HTTP 404/410) est SUPPRIMÉ. Renvoie le nombre d'envois réussis.
+
+    `approval_action` (NTMOB7) : dict optionnel ``{'source': ..., 'id': ...}``
+    quand cette notification correspond à un item d'approbation existant
+    (source de ``reporting.approbations`` — ``automation``/``contrats``/
+    ``ged``/``installations``/``workflow`` — ou ``'notes_frais'``, hors
+    agrégateur mais couvert par la même décision côté serveur). Si fourni, le
+    payload porte des actions natives « Approuver »/« Refuser » PLUS un jeton
+    signé COURT-VÉCU par action (24 h, ``approval_tokens`` — jamais un jeton
+    générique réutilisable pour une autre décision) : le service worker peut
+    poster la décision directement depuis la notification, sans ouvrir l'app."""
     if not _is_webpush_configured():
         return 0
     try:
@@ -257,10 +267,30 @@ def _dispatch_webpush(user, title, body, link=None):
         logger.warning('pywebpush indisponible, push ignoré : %s', exc)
         return 0
 
-    payload = json.dumps({
+    payload_dict = {
         'title': str(title), 'body': str(body or ''),
         'link': str(link or ''),
-    })
+    }
+    source = (approval_action or {}).get('source')
+    obj_id = (approval_action or {}).get('id')
+    if source and obj_id is not None:
+        try:
+            from .approval_tokens import make_approval_token
+            payload_dict['actions'] = [
+                {'action': 'approve', 'title': 'Approuver'},
+                {'action': 'reject', 'title': 'Refuser'},
+            ]
+            payload_dict['approval'] = {
+                'approveToken': make_approval_token(
+                    user.pk, source, obj_id, 'approuver'),
+                'rejectToken': make_approval_token(
+                    user.pk, source, obj_id, 'refuser'),
+            }
+        except Exception as exc:  # pragma: no cover - défensif
+            # Jamais bloquant : sans jeton, la notification part quand même,
+            # simplement sans actions natives (repli ouverture d'app inchangé).
+            logger.warning('Jeton d\'approbation push échoué : %s', exc)
+    payload = json.dumps(payload_dict)
     # Sujet VAPID (contact du serveur applicatif). Apple Web Push REJETTE un
     # sujet non routable — ex. l'ancien défaut `mailto:admin@erp.local` — avec
     # `403 BadJwtToken` et abandonne SILENCIEUSEMENT chaque push iOS (FCM/Chrome
@@ -422,13 +452,18 @@ def _in_quiet_hours_non_critique(event_type, company, respect_quiet_hours):
 
 
 def notify(user, event_type, title, body='', link=None, company=None,
-           skip_email=False, reason='', respect_quiet_hours=True):
+           skip_email=False, reason='', respect_quiet_hours=True,
+           approval_action=None):
     """Émet une notification pour `user` en respectant ses préférences.
 
     - Crée la ligne in-app si le canal in-app est activé (défaut : oui) —
       TOUJOURS immédiate, jamais différée par les heures calmes.
     - Diffuse vers email/WhatsApp/push si le canal est activé ET configuré
       (best-effort, jamais d'exception remontée).
+
+    `approval_action` (NTMOB7) : dict optionnel ``{'source', 'id'}`` transmis
+    tel quel à ``_dispatch_webpush`` — voir sa docstring. Ne change RIEN au
+    canal in-app/email/WhatsApp ; n'affecte que le contenu du push.
 
     `event_type` doit appartenir à `EventType`. La société est déduite de
     l'utilisateur (jamais du corps de requête) sauf override explicite côté
@@ -525,7 +560,9 @@ def notify(user, event_type, title, body='', link=None, company=None,
     # historique inchangé pour qui n'a jamais touché ce réglage).
     if prefs.get('push'):
         try:
-            _dispatch_webpush(user, str(title), str(body or ''), link=link)
+            _dispatch_webpush(
+                user, str(title), str(body or ''), link=link,
+                approval_action=approval_action)
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Dispatch web push notification échoué : %s', exc)
 
