@@ -67,9 +67,20 @@ vi.mock('../../api/crmApi', async (importOriginal) => {
   }
 })
 
+// WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11).
+vi.mock('../../api/uxviewsApi', () => ({
+  default: {
+    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+    createSavedView: vi.fn(() => Promise.resolve({ data: { id: 1, ecran: 'ventes.devis' } })),
+    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
+    deleteSavedView: vi.fn(() => Promise.resolve({})),
+  },
+}))
+
 import DevisList from './DevisList'
 import ventesApi from '../../api/ventesApi'
 import crmApi from '../../api/crmApi'
+import uxviewsApi from '../../api/uxviewsApi'
 import { toast } from '../../ui'
 // ARC49 — DevisList rend désormais son tableau via le moteur `ui/datatable`, qui
 // lit la densité via useDensity() et EXIGE donc un <ThemeProvider> dans l'arbre
@@ -141,6 +152,29 @@ describe('DevisList — rendu des données (J141)', () => {
     // ligne du tableau (le libellé apparaît aussi dans les cartes de résumé).
     const row = cell.closest('tr')
     expect(within(row).getByText('Envoyé')).toBeVisible()
+  })
+})
+
+describe('DevisList — WIR21 : vues sauvegardées côté serveur', () => {
+  const oneDevis = [{
+    id: 1, reference: 'DEV-2026-07-0001', client_nom: 'ACME', statut: 'envoye',
+    date_creation: '2026-07-01', total_ttc: 12000, nb_options: 1, version: 1,
+  }]
+
+  it('affiche le bouton « Vues » (ViewsManagerPopover) au lieu des chips localStorage', async () => {
+    renderList({ loading: false, devis: oneDevis })
+    expect(await screen.findByTestId('uxviews-open-btn')).toBeInTheDocument()
+    await waitFor(() => expect(uxviewsApi.listSavedViews).toHaveBeenCalledWith('ventes.devis'))
+  })
+
+  it('« Enregistrer cette vue » crée une SavedView serveur (ecran ventes.devis)', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Mes devis envoyés')
+    renderList({ loading: false, devis: oneDevis })
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer cette vue/ }))
+    await waitFor(() => expect(uxviewsApi.createSavedView).toHaveBeenCalledWith(expect.objectContaining({
+      ecran: 'ventes.devis', nom: 'Mes devis envoyés', visibilite: 'PERSONNELLE',
+    })))
+    promptSpy.mockRestore()
   })
 })
 

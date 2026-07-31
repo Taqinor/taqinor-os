@@ -94,6 +94,19 @@ const marketingApi = {
       api.get(`/marketing/evenements-marketing/${id}/borne/`, { params: { q } }),
   },
   billetsEvenement: resource('billets-evenement'),
+  // WIR162 — ZMKT14/16/17 : ces 3 ressources étaient routées côté backend
+  // (ViewSets + serializers complets) mais aucun wrapper n'existait côté
+  // front, contrairement à `billetsEvenement` (déjà enveloppée, mais elle
+  // aussi jamais appelée) — un événement ne se créait qu'avec nom/dates.
+  typesEvenement: {
+    ...resource('types-evenement'),
+    // ZMKT14 — crée un événement à partir d'un modèle réutilisable (recopie
+    // `config_defaut`) ; seuls `nom`/`date_debut` restent à saisir.
+    creerEvenement: (id, data) =>
+      api.post(`/marketing/types-evenement/${id}/creer-evenement/`, data),
+  },
+  questionsEvenement: resource('questions-evenement'),
+  communicationsEvenement: resource('communications-evenement'),
   inscriptionsEvenement: {
     ...resource('inscriptions-evenement'),
     pointer: (id) => api.post(`/marketing/inscriptions-evenement/${id}/pointer/`),
@@ -149,6 +162,20 @@ const marketingApi = {
   // ── WIR161 — Journal d'appels commercial / click-to-call log (FG208) ──
   // `company`/`auteur` posés côté serveur (jamais lus du corps de requête).
   appels: resource('appels'),
+
+  // ── WIR96 — Suivi d'ouverture des liens de partage + relances de devis
+  // abandonné (FG203/FG205). Les deux ressources étaient routées mais sans
+  // aucun wrapper côté client. L'ÉCRITURE est faite par `apps/ventes` au
+  // moment réel de l'ouverture / de la relance ; ces wrappers sont en
+  // LECTURE (listes marketing transverses). La fiche devis, elle, lit le
+  // suivi d'UN devis via `ventesApi.getSuiviPartageDevis`. ──
+  ouverturesPartage: {
+    list: (params) => api.get('/marketing/ouvertures-partage/', { params }),
+  },
+  relancesDevisAbandonnes: {
+    list: (params) =>
+      api.get('/marketing/relances-devis-abandonnes/', { params }),
+  },
 }
 
 export default marketingApi

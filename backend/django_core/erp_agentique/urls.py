@@ -60,6 +60,11 @@ _APP_URLS = [
     # ODX12 — Portail self-service client. Nouveau préfixe ; les anciennes
     # routes /compta/… restent servies à l'identique (mêmes ViewSets/vues).
     path('portail/', include('apps.portail.urls')),
+    # ODX15 — Notes de frais & indemnités (Expenses). Nouveau préfixe ; les
+    # anciennes routes /compta/notes-frais|rapports-notes-frais|plafonds-notes-
+    # frais|baremes-indemnite|indemnites-chantier/… restent servies à
+    # l'identique (mêmes ViewSets).
+    path('frais/', include('apps.frais.urls')),
     # ODX18 — Facturation (Invoicing, séparé de Sales). Nouveau préfixe ; les
     # anciennes routes /ventes/factures|paiements|avoirs|relances|balance-agee|
     # niveaux-relance/… restent servies à l'identique (mêmes ViewSets/vues).
@@ -96,6 +101,11 @@ _APP_URLS = [
     path('pos/', include('apps.pos.urls')),
     # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
     path('identity/', include('apps.identity.urls')),
+    # NTSEC19/20 — Gouvernance des accès (revue d'accès + SoD). WIR136 :
+    # déplacé ici depuis un montage autonome `api/django/accessreview/` pour
+    # hériter des DEUX préfixes comme toutes les autres apps (`api/django/` et
+    # `api/v1/`) ; les chemins existants restent identiques.
+    path('accessreview/', include('apps.accessreview.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
     # NTCRM1 — Moteur de territoires (règles d'affectation round-robin).
@@ -193,10 +203,12 @@ urlpatterns = [
     # NTEDU31/32/34 — Portail parents (établissement scolaire), sans login.
     path('api/django/public/education/',
          include('apps.education.public_urls')),
-    # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
-    path('api/django/identity/', include('apps.identity.urls')),
-    # NTSEC19/20 — Gouvernance des accès (revue d'accès + SoD).
-    path('api/django/accessreview/', include('apps.accessreview.urls')),
+    # WIR136 — `apps.identity.urls` et `apps.accessreview.urls` étaient montés
+    # ICI en autonome : identity en DOUBLE (il est déjà dans `_APP_URLS`, donc
+    # déjà servi sous `api/django/identity/`) et accessreview en SIMPLE (donc
+    # absent de `api/v1/`). Les deux sont désormais dans `_APP_URLS` : montage
+    # unique par préfixe, chemins `api/django/…` inchangés, et accessreview
+    # gagne son `api/v1/accessreview/` comme toutes les autres apps.
     # YAPIC7 — namespace de version explicite (URLPathVersioning,
     # DEFAULT_VERSION='v1', ALLOWED_VERSIONS=('v1',) dans REST_FRAMEWORK).
     # Mêmes vues que 'api/django/' ci-dessus (même liste _APP_URLS), sous

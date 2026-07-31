@@ -105,19 +105,25 @@ describe("LW16-wire — onAction('set-field'/'change-stage')", () => {
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(1, { stage: 'CONTACTED' }))
   })
 
-  it('un recul de funnel refusé (400) surface UN SEUL toast d’erreur, jamais une exception non attrapée', async () => {
+  // LW42 — CONTRAT MIS À JOUR. Avant : un toast FIXE « Retour d'étape non
+  // autorisé » pour TOUT 400 (donc un message faux pour un lead perdu
+  // verrouillé), et SILENCE total hors-400 (un clic hors-ligne ne disait rien).
+  // Les deux étaient les bugs décrits par LW42 ; ces tests actent le nouveau
+  // comportement, ils ne l'assouplissent pas.
+  it('un recul de funnel refusé (400) surface le VRAI message serveur, une seule fois', async () => {
     crmApi.updateLead.mockRejectedValueOnce({ response: { status: 400, data: { detail: 'stage backward' } } })
     renderEdit()
     fireEvent.click(screen.getByText('change-stage-contacted'))
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Retour d'étape non autorisé"))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('stage backward'))
     expect(toast.error).toHaveBeenCalledTimes(1)
   })
 
-  it('une autre erreur (réseau/500) reste silencieuse (best-effort, pas de toast)', async () => {
+  it('une autre erreur (réseau/500) n’est plus muette : toast générique distinct', async () => {
     crmApi.updateLead.mockRejectedValueOnce({ response: { status: 500 } })
     renderEdit()
     fireEvent.click(screen.getByText('change-stage-contacted'))
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalled())
-    expect(toast.error).not.toHaveBeenCalled()
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Échec du changement d'étape — réessayez."))
+    expect(toast.error).toHaveBeenCalledTimes(1)
   })
 })

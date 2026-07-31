@@ -14,7 +14,7 @@ import { Input } from '../ui/Input'
 import { Label } from '../ui/Label'
 import api from '../api/axios'
 import { setCredentials, logout } from '../features/auth/store/authSlice'
-import { SESSION_EXPIRED_EVENT, subscribeToSessionLogout } from './session-bridge'
+import { SESSION_EXPIRED_EVENT, subscribeToSessionLogout, emitAuthLogout } from './session-bridge'
 import { isAnyFormDirty, confirmLeaveIfDirty } from '../ui/useDirtyGuard'
 
 export function SessionProvider({ children }) {
@@ -44,6 +44,9 @@ export function SessionProvider({ children }) {
   // redirige vers /login — sans attendre le premier 401 de cet onglet.
   useEffect(() => subscribeToSessionLogout(() => {
     dispatch(logout())
+    // LW45 — cet onglet aussi termine sa session ici : purge ses caches
+    // best-effort (ex. leadPrefetch.js) avant de rediriger.
+    emitAuthLogout()
     if (window.location?.pathname !== '/login') {
       window.location.href = '/login'
     }

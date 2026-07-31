@@ -836,7 +836,7 @@ class LotEntrepot(models.Model):
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='lots_entrepot')
     produit = models.ForeignKey(
-        Produit, on_delete=models.CASCADE, related_name='lots_entrepot')
+        Produit, on_delete=models.PROTECT, related_name='lots_entrepot')  # on_delete: PROTECT — registre de lots conservé pour l'historique/traçabilité (« jamais supprimé ») ; un CASCADE contredisait la docstring du modèle
     numero_lot = models.CharField(max_length=100)
     date_peremption = models.DateField(null=True, blank=True)
     # Référence par nom de classe (chaîne) : `EmplacementStock` est défini
@@ -987,7 +987,7 @@ class StockEmplacement(models.Model):
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='stocks_emplacement')
     produit = models.ForeignKey(
-        Produit, on_delete=models.CASCADE, related_name='stocks_emplacement')
+        Produit, on_delete=models.PROTECT, related_name='stocks_emplacement')  # on_delete: PROTECT — quantité réelle en stock par emplacement ; aligné sur MouvementStock/LigneInventaire/TransfertStock/RevalorisationStock déjà PROTECT
     emplacement = models.ForeignKey(
         EmplacementStock, on_delete=models.CASCADE, related_name='stocks')
     quantite = models.IntegerField(default=0)
@@ -1641,7 +1641,7 @@ class FicheTechnique(models.Model):
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='fiches_techniques')
     produit = models.OneToOneField(
-        Produit, on_delete=models.CASCADE, related_name='fiche_technique')
+        Produit, on_delete=models.PROTECT, related_name='fiche_technique')  # on_delete: PROTECT — fiche technique constructeur (paramètres saisis + PDF) = catalogue RÉEL non reconstructible
 
     # ── Paramètres électriques normalisés (Wc / V / A) — tous optionnels ──
     pmax_wc = models.DecimalField(

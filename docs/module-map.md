@@ -52,13 +52,42 @@ the ODX task performing the move, using the state-only recipe (frozen `db_table`
 | ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail, DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail (FG228-233) | `apps/portail` (new) | Portal | ODX12 (AUTH-sensitive — auth mechanism moved as-is, no access widening) |
 | Partenaire, SoumissionLeadPartenaire, CommissionPartenaire, TerritoireCommercial (FG234-237) | `apps/crm` | CRM (resellers/territories) | ODX13 |
 | CodePromotion, ModeleDevis, SessionGuidedSelling, DemandeApprobationConfig, ECatalogue, DocumentProposition, SimulationPublique, SimulationFinancement, OffreFinancement, LigneIncitation, EcheancierPaiement, TranchePaiement (FG209-221) | `apps/ventes` | Sales (quotation templates, pricelists, online quotes) | ODX14 |
-| NoteFrais, BaremeIndemnite, IndemniteChantier (FG135/136) | `apps/frais` (new) | Expenses | ODX15 — **verified duplicate**: `rh.NoteDeFrais` (self-service employee entry) also exists; founder must decide whether `apps/frais` absorbs/reconciles both or documents the boundary (rh = entry, frais = validation+posting) before the move (DECISION gate) |
+| NoteFrais, RapportNoteFrais, PlafondNoteFrais, BaremeIndemnite, IndemniteChantier (FG135/136 + ZACC6/XACC27/XACC28) | `apps/frais` (new) | Expenses | ODX15 — **DONE**; duplicate decision = *document the boundary* (see below) |
 | AbonnementMonitoring (FG244) | `apps/monitoring` or `apps/ventes` | Subscriptions | ODX16 — DECISION pending (see recurring-revenue cluster row above) |
 
 The GL posting itself (écritures, period lock FG115) stays in `apps/compta` regardless
 of which satellite app owns the front-end object — satellites call
 `apps/compta/services.py`, never write GL rows directly (services.py boundary,
 CLAUDE.md).
+
+### ODX15 — expense-note duplicate: the boundary is DOCUMENTED, not merged
+
+Two expense models exist and **both stay**. Merging them would mean a destructive
+data migration and an irreversible product decision, so ODX15 took the revertible
+option and froze the boundary instead. No third surface was created.
+
+| | `rh.NoteDeFrais` (FG199) | `frais.NoteFrais` (FG135) |
+| --- | --- | --- |
+| Purpose | employee **self-service declaration** from the RH portal | **validation + accounting posting** by a responsable |
+| Employee FK | `rh.DossierEmploye` (HR record) | `AUTH_USER_MODEL` (ERP account) |
+| Lifecycle | `soumise → approuvee → remboursee / refusee`, status flips only | `brouillon → soumise → validee → remboursee / rejetee` |
+| Accounting | **none** — no journal entry, no treasury account, no period lock | posts 6143/4432 on validation, 4432/treasury on reimbursement, honours the FG115 period lock |
+| Reference | none | `NDF-YYYYMM-NNNN` via `apps/ventes/utils/references.py` |
+| Route | `/api/django/rh/notes-frais/` | `/api/django/frais/notes-frais/` (+ legacy `/api/django/compta/notes-frais/`) |
+| Table | `rh_notedefrais` | `compta_notefrais` (frozen by the state-only move) |
+
+The two have **no FK and no import between them** — they were already independent and
+remain so. If the founder later wants one funnel, the natural follow-up is a one-way
+promotion (`rh.NoteDeFrais` *approuvee* → create a `frais.NoteFrais` through
+`apps/frais/services.py`), which is additive; that is deliberately NOT built here.
+
+`apps/frais` owns the entry and the reference data (notes, reports, policy caps,
+mileage scales, site allowances); `apps/compta` keeps the posting. `apps/frais`
+references accounts/entries/treasury by **string FK only** (`'compta.CompteComptable'`…)
+and calls `apps/compta/services.py` for every journal entry — enforced by the
+`frais-models-decoupled` import-linter contract. `apps/frais/services.py` and
+`selectors.py` are the app's façade so callers (e.g. `apps/paie`, XPAI25) never touch
+`apps/compta.models`.
 
 ## New Invoicing / Purchase split (ODX17-20)
 
@@ -120,7 +149,7 @@ untouched by any of these moves.
 3. ODX12 (portail models+views, AUTH-sensitive, `@after: ODX2`)
 4. ODX13 (crm partners/territories, `@after: ODX2`)
 5. ODX14 (ventes sales-config, `@after: ODX2`)
-6. ODX15 (frais — gated on the founder duplicate decision, `@after: ODX2`)
+6. ODX15 (frais — DONE; duplicate decision = document the boundary, see above)
 7. ODX16 (AbonnementMonitoring relocation — gated on founder decision, `@after: ODX1`)
 8. ODX17 (facturation models) → ODX18 (facturation views/urls/recouvrement/frontend)
 9. ODX19 (achats models) → ODX20 (achats views/urls/stock-flow/frontend)
@@ -132,3 +161,84 @@ re-export shims left in the source app's `models.py` for existing callers, and o
 kept serving identically alongside the new ones. Zero raw SQL, in keeping with rule #1
 (and by extension the same discipline applied to this repo's own Postgres, not just any
 future Odoo integration).
+
+## Decisions taken (duplicate-model reconciliations)
+
+### WIR86 — Programme/Projet multi-chantiers: `gestion_projet` is canonical (2026-07-18)
+
+**The duplicate.** Two near-identical Projet families existed side by side, with zero
+references between them:
+
+| | `apps/installations` (FG291-301) | `apps/gestion_projet` |
+|---|---|---|
+| Models | 7 (`Projet`, `ProjetTache`, `ProjetChantier`, `ProjetDevis`, `ProjetTicket`, `BudgetProjet`, `BudgetEngagement`) in `models_program.py` | 39 (`Projet`, `PhaseProjet`, `Tache`, `DependanceTache`, `Jalon`, baselines, ressources, timesheets, risques, situations, portail client…) |
+| Endpoints | 7 (`/installations/programmes/`, `programme-taches/`, `programme-chantiers/`, `programme-devis/`, `programme-tickets/`, `programme-budgets/`, `programme-engagements/`) | 39 (`/gestion-projet/projets/`, `projet-chantiers/`, `budgets/`, `lignes-budget/`, …) |
+| Frontend | **none** (0 references) | `frontend/src/api/gestionProjetApi.js` + `frontend/src/features/gestion_projet/*` — live, incl. the devis → projet creation flow |
+| Cross-app FKs in | 1 (`installations.DemandeAchat.programme`) | 0 |
+
+**Decision: consolidate on `apps/gestion_projet`.** It is the richer family (39 vs 7
+models), it is the only one wired to a UI, and it is the one a user can already reach.
+Building a second, distinct frontend for the `installations` family (the alternative
+WIR86 offered) would have duplicated a live surface — rejected.
+
+**Retirement plan — engaged, phase 1 landed, nothing destroyed.** No data is deleted and
+no table is dropped by this decision; it is reversible by removing one mixin.
+
+1. **Phase 1 (done, WIR86).** The 7 `installations` program endpoints are **frozen and
+   deprecated**: `DeprecatedProgrammeSurfaceMixin`
+   (`apps/installations/views/program.py`) stamps every response with the RFC 8594
+   `Deprecation: true` header and `Link: </api/django/gestion-projet/projets/>;
+   rel="successor-version"`. Behaviour, permissions and company scoping are byte-for-byte
+   unchanged (`apps/installations/tests_wir86_programme_deprecie.py`). **Standing rule
+   from here on: no new feature, no new field, no frontend screen on the `installations`
+   program family — new project work goes to `apps/gestion_projet`.**
+2. **Phase 2 (later, needs real production data).** Reconcile any rows that actually
+   exist: copy each `installations.Projet` into a `gestion_projet.Projet`, and repoint
+   `installations.DemandeAchat.programme` — the single cross-model FK — at the loose
+   `projet_id` style `gestion_projet` uses (that app deliberately references chantiers
+   and clients by plain id, so no cross-app model import is needed).
+3. **Phase 3 (only after phase 2 is verified in production).** Drop the 7 tables with a
+   normal revertable Django migration, remove the routes, and delete
+   `models_program.py` + its tests. Not before — a table drop is the only irreversible
+   step in the sequence, so it stays a separate, explicit task.
+
+**Which fields survive the merge.** `gestion_projet.Projet` lacks a few things
+`installations.Projet` carried (`site_adresse`/`site_ville`, a real `client` FK, and the
+flat `BudgetProjet` envelope `budget_materiel`/`budget_main_oeuvre`/
+`budget_sous_traitance`/`budget_divers` + `tarif_jour_mo` + `seuil_alerte_pct`). Phase 2
+must add the missing ones to `gestion_projet` (or map the envelope onto
+`LigneBudgetProjet` rows) before anything is dropped — a merge that silently loses the
+budget envelope would be a data loss, not a consolidation.
+
+### WIR113 — Suivi GPS terrain (XFSM23): WEB-FIRST, and NTMOB9 reconciled (2026-07-18)
+
+**The question.** Three backend families shipped with zero frontend references —
+`gps-consentements/`, `positions-techniciens/`, `geofence-alertes/`
+(`apps/installations/models_gps_tracking.py`, `views/gps_tracking.py`). Were they
+waiting on a separate mobile app, or should the web app own them?
+
+**Decision: WEB-FIRST.** There is no separate mobile codebase in this repo, and none is
+planned in any open queue. Field work already happens through this responsive React
+frontend: "Ma journée" is the technician's daily screen, and the F6 check-in already
+calls the browser's `geolocation` API from it. Even NTMOB9 — the task that appeared to
+imply a mobile app — specifies `watchPosition`, i.e. a **browser** API. So "mobile" here
+means the responsive web app, and the missing piece was simply the supervisor screen.
+
+**Built:** `frontend/src/pages/installations/SuiviGpsPage.jsx` at
+`/planification/suivi-gps` (`responsable`/`admin` only, matching the backend's
+`IsResponsableOrAdmin`): consent tab (record / read / revoke), live map tab (Leaflet
+`MapView`, last known position per technician, red marker = outside the site perimeter),
+geofence-alert tab (list + acknowledge). API wrappers appended to
+`frontend/src/api/installationsApi.js`; tests in `SuiviGpsPage.test.jsx`.
+
+**Privacy invariant the screen enforces.** Consent is explicit and revocable: the create
+dialog requires an affirmative confirmation checkbox, every consent row can be revoked,
+and the backend already refuses (403) any position `ping` without an active consent.
+There is no silent tracking path, and this screen is the only place consent is granted.
+
+**NTMOB9 reconciled.** NTMOB9 proposed a new `installations.PointageGeofence` model for
+geofenced check-in/out. That data already exists: consent in `GpsConsentRecord`, the
+position in `PositionTechnicien`, the perimeter crossing in `GeofenceAlert`. NTMOB9 is
+annotated with the WIR80 guard (`docs/new_tasks_plan.md`) and must be built as at most a
+small `entree|sortie` addition to the existing models plus the `watchPosition` wiring in
+"Ma journée" — never as a second table.

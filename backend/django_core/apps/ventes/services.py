@@ -863,6 +863,14 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     QX9 — persiste désormais la vraie preuve de signature (image manuscrite,
     consentement e-signature explicite, horodatage client, « au nom de ») que
     le front envoie et qui était auparavant jetée.
+
+    WIR138 — CE N'EST PAS UN SOCLE E-SIGNATURE CONCURRENT. ``DevisSignature``
+    est la PREUVE d'une acceptation faite EN LIGNE sur notre proposition (loi
+    53-05) ; ``core.esign``, le socle canonique désigné, gère les DEMANDES
+    envoyées à un prestataire externe (Yousign/DocuSign), aujourd'hui parquées
+    faute de compte provisionné. Les deux ne fusionnent pas : ce chemin ne
+    migrera jamais vers ``core.esign``. Voir ``core/esign.py`` et
+    ``docs/esign-socle.md``.
     """
     try:
         from django.utils import timezone
@@ -1968,7 +1976,19 @@ def verifier_credit_hold(client, *, override=False, user=None,
     ``apps.crm.selectors.credit_hold_check``) : lève ``CreditHoldError`` SAUF
     si ``override=True`` (responsable/admin explicite) — l'override est
     journalisé (chatter du devis si fourni + audit) mais laisse passer
-    l'action. Ne renvoie rien ; lève ou passe silencieusement."""
+    l'action. Ne renvoie rien ; lève ou passe silencieusement.
+
+    WIR93 — COEXISTENCE AVEC ``apps.credit`` (décision consignée en tête de
+    ``apps/credit/services.py``). Ce moteur (FG41/XFAC28) reste le SEUL branché
+    en production ; ``apps.credit.services.verifier_hold_credit`` (NTCRD6)
+    n'a aucun appelant tant que NTCRD7/NTCRD8 ne sont pas livrés. Les deux
+    consomment la MÊME assiette de factures, à un écart près, volontaire et
+    unique : ce chemin ne compte que les factures ``emise``/``en_retard``,
+    quand ``apps.credit`` inclut aussi les ``brouillon``. Cet écart est
+    verrouillé par ``apps/credit/tests/test_wir93_encours_non_divergence.py``
+    (via ``apps.credit.services.ecart_encours_moteurs``) : élargir ou
+    rétrécir l'assiette d'un seul côté rend ce test rouge. Ne JAMAIS
+    dupliquer ici un troisième calcul d'encours."""
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.get(company=client.company)
     if not getattr(profile, 'credit_hold_actif', False):
@@ -3146,6 +3166,39 @@ def _nudge_suppressed(devis, today, engagement_days=3):
     return False
 
 
+def _journaliser_relance_marketing(devis, *, jours, canal, niveau):
+    """WIR96 — miroir marketing d'une relance de devis abandonné.
+
+    ``marketing.RelanceDevisAbandonne`` + son service
+    ``enregistrer_relance_devis_abandonne`` existaient sans AUCUN appelant :
+    aucune relance n'était jamais journalisée côté marketing (le calendrier
+    marketing lisait une table toujours vide). On les alimente ici, au moment
+    exact où la relance part réellement (après création du ``DevisNudgeLog``,
+    qui reste la source de vérité anti-doublon côté ventes).
+
+    Écriture via la frontière ``apps.marketing.services`` uniquement (jamais un
+    import des modèles marketing) ; ``devis_id`` reste une référence OPAQUE
+    côté marketing. Best-effort : une erreur ne doit jamais faire échouer la
+    relance elle-même."""
+    if not getattr(devis, 'company_id', None):
+        return
+    try:
+        from apps.marketing.services import (
+            enregistrer_relance_devis_abandonne)
+        enregistrer_relance_devis_abandonne(
+            devis.company,
+            devis_id=devis.pk,
+            devis_reference=devis.reference or '',
+            jours_sans_reponse=jours or 0,
+            canal=str(canal or ''),
+            note=f'Relance automatique niveau {niveau + 1} (QJ4).',
+        )
+    except Exception as exc:  # noqa: BLE001 — miroir best-effort
+        logger.warning(
+            'WIR96: journalisation marketing de la relance échouée '
+            'pour devis %s : %s', getattr(devis, 'reference', '?'), exc)
+
+
 def send_devis_followup_nudges():
     """QJ4 — Déclenche les relances cadencées pour les devis « envoyés ».
 
@@ -3308,6 +3361,8 @@ def send_devis_followup_nudges():
                 logger.info(
                     'QJ4: nudge N%d déclenché pour devis %s (j+%d, canal=%s)',
                     idx, devis.reference, jours, canal)
+                _journaliser_relance_marketing(
+                    devis, jours=jours, canal=canal, niveau=idx)
             except Exception as exc:
                 # IntegrityError → already fired concurrently — safe to ignore.
                 logger.warning(

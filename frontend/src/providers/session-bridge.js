@@ -14,6 +14,21 @@ export function emitSessionExpired() {
   window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
 }
 
+// LW45 — événement LOCAL (même onglet) de déconnexion, consommé par les
+// caches "best effort" qui doivent se vider au logout sans dépendre de Redux
+// (ex. `leadPrefetch.js`, module pur qui écoute directement `window`). Émis
+// à CHAQUE déconnexion effective de CET onglet : le logout initié ici
+// (`logoutUser` thunk) et le logout propagé depuis un AUTRE onglet
+// (`subscribeToSessionLogout`, ci-dessous) — les deux terminent la session de
+// cet onglet et doivent donc tous deux purger ses caches locaux.
+export const AUTH_LOGOUT_EVENT = 'taqinor:auth-logout'
+
+/** Signale que CET onglet vient de se déconnecter (local ou propagé). */
+export function emitAuthLogout() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT))
+}
+
 // VX162 — canal de diffusion CROSS-ONGLETS pour le logout. Avant : seul
 // l'onglet où l'utilisateur clique « Déconnexion » se déconnecte ; sur un
 // poste partagé (accueil/atelier), un onglet B continue de MUTER des données

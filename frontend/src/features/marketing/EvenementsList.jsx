@@ -32,8 +32,18 @@ export default function EvenementsList() {
   const closeForm = () => { setShowForm(false); setEditing(null); setErr('') }
 
   const save = async (payload) => {
-    if (editing) await marketingApi.evenements.update(editing.id, payload)
-    else await marketingApi.evenements.create(payload)
+    if (editing) {
+      await marketingApi.evenements.update(editing.id, payload)
+    } else if (payload.type_modele) {
+      // WIR162 — un modèle est choisi (EvenementForm.jsx) : route vers
+      // l'action dédiée (recopie la config du modèle, garde la trace de la
+      // source) plutôt que le POST générique.
+      await marketingApi.typesEvenement.creerEvenement(payload.type_modele, {
+        nom: payload.nom, date_debut: payload.date_debut,
+      })
+    } else {
+      await marketingApi.evenements.create(payload)
+    }
     closeForm()
     load()
   }

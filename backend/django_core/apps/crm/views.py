@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -1928,6 +1929,10 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
         s = ObjectifAttainmentSerializer(payload)
         return Response(s.data)
 
+    # YAPIC6 — sans cette annotation le schéma documente un OBJET unique alors
+    # que l'action renvoie une LISTE (drf-spectacular déduit le détail depuis
+    # le serializer). Annotation de schéma uniquement : aucun effet runtime.
+    @extend_schema(responses=ObjectifAttainmentSerializer(many=True))
     @action(detail=False, methods=['get'], url_path='attainment',
             permission_classes=[IsAnyRole])
     def attainment_list(self, request):

@@ -1,6 +1,8 @@
 """Vues Agriculture (scopées société, accès Administrateur/Responsable en
 écriture, tout rôle authentifié en lecture — même patron que ``apps.flotte``/
 ``apps.qhse``)."""
+from decimal import ROUND_HALF_UP, Decimal
+
 from django.http import HttpResponse
 from rest_framework import filters
 from rest_framework.decorators import action
@@ -24,6 +26,19 @@ from .serializers import (
 )
 
 READ_ACTIONS = {'list', 'retrieve'}
+
+# WIR141 — échelle FIXE des montants/volumes rendus par les endpoints de
+# lecture agrégée (2 décimales = `decimal_places` des champs sources). Sans
+# elle, `str(Decimal)` rend l'échelle telle que la base la renvoie : un total
+# non vide sort en '25.00' mais une fenêtre SANS relevé, qui part de
+# `Decimal('0')`, sortirait en '0' — le contrat JSON dériverait avec les
+# données.
+_CENT = Decimal('0.01')
+
+
+def _dec2(value):
+    """Sérialise un ``Decimal`` agrégé en chaîne à 2 décimales fixes."""
+    return str(Decimal(value).quantize(_CENT, rounding=ROUND_HALF_UP))
 
 
 class _AgricultureBaseViewSet(CompanyScopedModelViewSet):
@@ -83,6 +98,31 @@ class CampagneCulturaleViewSet(_AgricultureBaseViewSet):
         if statut:
             qs = qs.filter(statut=statut)
         return qs
+
+    @action(detail=True, methods=['get'], url_path='cout-irrigation',
+            permission_classes=[IsAnyRole])
+    def cout_irrigation(self, request, pk=None):
+        """WIR141 — Expose les sélecteurs NTAGR14 (jusqu'ici sans appelant
+        REST) : coût d'irrigation PAYANTE + volume irrigué en pompage
+        solaire de la fenêtre de la campagne.
+
+        Les deux valeurs sont sérialisées à 2 décimales FIXES (l'échelle des
+        champs ``RelevePointIrrigation.cout_energie_mad``/``volume_m3``,
+        ``decimal_places=2``). Un simple ``str(Decimal)`` ne convient PAS : le
+        total hérite de l'échelle rendue par la base (``'25.00'``) alors qu'une
+        fenêtre SANS relevé part de ``Decimal('0')`` et rendrait ``'0'`` — le
+        contrat JSON dériverait selon les données. Les tests sélecteurs ne
+        peuvent pas voir ce défaut : ``Decimal('25') == Decimal('25.00')``."""
+        from .selectors import (
+            cout_irrigation_campagne, volume_irrigation_solaire_campagne,
+        )
+
+        campagne = self.get_object()
+        return Response({
+            'cout_irrigation_mad': _dec2(cout_irrigation_campagne(campagne)),
+            'volume_irrigation_solaire_m3': _dec2(
+                volume_irrigation_solaire_campagne(campagne)),
+        })
 
     @action(detail=True, methods=['get'], url_path='registre-phyto-pdf',
             permission_classes=[IsResponsableOrAdmin])

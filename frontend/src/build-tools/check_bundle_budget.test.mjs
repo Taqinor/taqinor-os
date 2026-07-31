@@ -130,12 +130,12 @@ test('a non-heavy chunk in modulepreload is never flagged', () => {
 test('chunk count metric is reported and a runaway chunk count fails', () => {
   const dir = makeDistDir()
   try {
-    // 541 minuscule chunks > le plafond MAX_CHUNK_COUNT (540).
-    for (let i = 0; i < 541; i += 1) {
+    // 571 minuscules chunks > le plafond MAX_CHUNK_COUNT (570).
+    for (let i = 0; i < 571; i += 1) {
       writeJsOfGzipSizeKb(path.join(dir, 'assets', `icon-${i}.js`), 0.1)
     }
     const result = checkBundleBudget(dir)
-    assert.equal(result.chunkCount, 541)
+    assert.equal(result.chunkCount, 571)
     assert.ok(result.violations.some((v) => v.includes('NOMBRE DE CHUNKS')))
   } finally {
     rmSync(dir, { recursive: true, force: true })

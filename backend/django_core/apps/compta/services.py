@@ -2392,25 +2392,23 @@ def extraire_releve_bancaire(file_bytes, *, mime=''):
     """XACC30 — Extrait les lignes d'un relevé bancaire (PDF/scan) par OCR.
 
     NO-OP tant que ``ocr_releve_bancaire_active()`` est faux : lève
-    ``RuntimeError`` (la vue traduit en 503, message FR clair). Une fois
-    activé, délègue à un module fournisseur isolé (``releve_ocr_provider``,
-    non câblé dans ce dépôt) qui appelle le service OCR ``backend/fastapi_ia``
-    et renvoie ``{'solde_initial', 'solde_final', 'lignes': [{'date',
-    'libelle', 'montant'}, ...]}``. Toute erreur provider est avalée (dict
-    vide) — jamais de crash de l'écran d'import.
+    ``RuntimeError`` (la vue traduit en 503, message FR clair). WIR153 — AUCUN
+    module fournisseur n'existe encore dans ce dépôt (contrairement à ce que
+    disait cette docstring auparavant : elle référençait un import mort
+    ``releve_ocr_provider`` qui n'a jamais été câblé, avalé silencieusement
+    par un ``except ImportError``). Le flag activé sans provider réel reste
+    donc un NO-OP DÉTERMINISTE — dict vide, jamais de crash de l'écran
+    d'import. Format attendu une fois un provider branché :
+    ``{'solde_initial', 'solde_final', 'lignes': [{'date', 'libelle',
+    'montant'}, ...]}`` (appel HTTP vers le service OCR ``backend/fastapi_ia``,
+    même motif que ``apps.crm.intake_photo``).
     """
     if not ocr_releve_bancaire_active():
         raise RuntimeError('OCR indisponible (configuration manquante).')
     if not file_bytes:
         return {}
-    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
-        from . import releve_ocr_provider as provider  # noqa: F401
-    except ImportError:  # pragma: no cover
-        return {}
-    try:  # pragma: no cover
-        return provider.extraire_releve(file_bytes, mime=mime) or {}
-    except Exception:  # pragma: no cover - jamais casser l'écran d'import.
-        return {}
+    # Aucun provider câblé — dégradation propre (dict vide), jamais un crash.
+    return {}
 
 
 def controler_solde_releve_ocr(champs_bruts):
@@ -4482,24 +4480,23 @@ def extraire_justificatif_note_frais(file_bytes, *, mime=''):
     """XACC27 — Extrait montant/date/fournisseur d'un justificatif (photo).
 
     NO-OP tant que ``ocr_notes_frais_active()`` est faux : lève
-    ``RuntimeError`` (la vue traduit en 503, message FR clair). Une fois
-    activé, délègue à un module fournisseur isolé (``notes_frais_ocr_provider``,
-    non câblé dans ce dépôt) qui appelle le service OCR ``backend/fastapi_ia``.
-    Toute erreur provider est avalée (dict vide) — jamais de crash de l'écran
-    de saisie.
+    ``RuntimeError`` (la vue traduit en 503, message FR clair). WIR153 —
+    AUCUN module fournisseur n'existe encore dans ce dépôt (contrairement à
+    ce que disait cette docstring auparavant : elle référençait un import
+    mort ``notes_frais_ocr_provider``, jamais câblé, avalé silencieusement
+    par un ``except ImportError``). Le flag activé sans provider réel reste
+    donc un NO-OP DÉTERMINISTE — dict vide, jamais de crash de l'écran de
+    saisie. Une fois un provider branché (appel HTTP vers le service OCR
+    ``backend/fastapi_ia``, même motif que ``apps.crm.intake_photo``), il doit
+    renvoyer les clés ``montant``/``date``/``fournisseur`` attendues par
+    ``mapper_justificatif_vers_note_frais``.
     """
     if not ocr_notes_frais_active():
         raise RuntimeError('OCR indisponible (configuration manquante).')
     if not file_bytes:
         return {}
-    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
-        from . import notes_frais_ocr_provider as provider  # noqa: F401
-    except ImportError:  # pragma: no cover
-        return {}
-    try:  # pragma: no cover
-        return provider.extraire_justificatif(file_bytes, mime=mime) or {}
-    except Exception:  # pragma: no cover - jamais casser l'écran de saisie.
-        return {}
+    # Aucun provider câblé — dégradation propre (dict vide), jamais un crash.
+    return {}
 
 
 def mapper_justificatif_vers_note_frais(champs_bruts):

@@ -15,6 +15,16 @@ const H = vi.hoisted(() => ({
   })),
   exportCsv: vi.fn(() => Promise.resolve({ data: 'csv,content' })),
   toggleFavori: vi.fn(() => Promise.resolve({ data: { favori: true } })),
+  // WIR163 — gestion des droits AclGed (accorder/révoquer).
+  getAcls: vi.fn(() => Promise.resolve({
+    data: [{ id: 7, utilisateur_nom: 'sami', role_nom: null, niveau: 'lecture' }],
+  })),
+  createAcl: vi.fn(() => Promise.resolve({ data: { id: 8 } })),
+  deleteAcl: vi.fn(() => Promise.resolve({ data: null })),
+  getUsers: vi.fn(() => Promise.resolve({
+    data: [{ id: 5, username: 'sami' }, { id: 6, username: 'reda' }],
+  })),
+  getRoles: vi.fn(() => Promise.resolve({ data: [{ id: 1, nom: 'RH' }] })),
 }))
 vi.mock('../../api/gedApi', () => ({
   default: {
@@ -22,7 +32,14 @@ vi.mock('../../api/gedApi', () => ({
     getPermissionsEffectives: H.getPermissionsEffectives,
     exportPermissionsEffectivesCsv: H.exportCsv,
     toggleFavoriDocument: H.toggleFavori,
+    getAcls: H.getAcls,
+    createAcl: H.createAcl,
+    deleteAcl: H.deleteAcl,
+    getUsers: H.getUsers,
   },
+}))
+vi.mock('../../api/rolesApi', () => ({
+  default: { getRoles: H.getRoles },
 }))
 
 import GedDocumentInsights from './GedDocumentInsights'
@@ -56,5 +73,30 @@ describe('WIR70 GedDocumentInsights', () => {
     expect(screen.getByText('heritage_dossier')).toBeInTheDocument()
     fireEvent.click(screen.getByText('CSV'))
     await waitFor(() => expect(H.exportCsv).toHaveBeenCalledWith(42))
+  })
+
+  it('liste les droits directs et retire une entrée (WIR163)', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await user.click(screen.getByRole('tab', { name: /Accès/ }))
+    expect(await screen.findByText('sami')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Retirer ce droit/ }))
+    await waitFor(() => expect(H.deleteAcl).toHaveBeenCalledWith(7))
+    await waitFor(() => expect(H.getAcls).toHaveBeenCalledTimes(2))
+  })
+
+  it('accorde un nouveau droit depuis le formulaire de gestion (WIR163)', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await user.click(screen.getByRole('tab', { name: /Accès/ }))
+    await screen.findByText('sami')
+    await user.click(screen.getByRole('combobox', { name: /Choisir un utilisateur/ }))
+    await user.click(await screen.findByText('reda'))
+    // Nom exact : le regex /Ajouter/ matchait AUSSI le bouton favori
+    // (aria-label « Ajouter aux favoris » quand `doc.favori` est faux).
+    await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+    await waitFor(() => expect(H.createAcl).toHaveBeenCalledWith({
+      document: 42, utilisateur: 6, niveau: 'lecture', herite: true,
+    }))
   })
 })

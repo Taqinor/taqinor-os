@@ -8338,3 +8338,34 @@ textarea.form-control {
     flex-wrap: nowrap;
   }
 }
+
+/* LB40 — la barre bulk flottante ne couvre plus la scrollbar du board.
+   `.lp-bulk-float` (LB25) est fixed bas-CENTRE : pendant une sélection elle
+   se posait pile sur le milieu de la scrollbar horizontale de `.kb-board`
+   (lane de 10px collée au bas du board, elle-même au bas du viewport) — la
+   poignée devenait inattrapable exactement là où on la vise. On remonte donc
+   la barre d'une hauteur de scrollbar + un interstice, via un token partagé
+   avec la lane elle-meme pour que les deux ne puissent plus deriver.
+   Bloc APPEND-ONLY (surcharge par ordre de cascade, specificite identique) :
+   la regle LB25 d'origine reste lisible telle qu'ecrite. */
+:root {
+  /* Meme valeur que `.kb-board::-webkit-scrollbar { height }` (bloc LB2). */
+  --kb-scrollbar-h: 10px;
+  --lp-bulk-float-gap: 6px;
+}
+.lp-bulk-float {
+  bottom: calc(
+    max(20px, env(safe-area-inset-bottom))
+    + var(--kb-scrollbar-h) + var(--lp-bulk-float-gap)
+  );
+}
+@media (max-width: 768px) {
+  /* Meme reserve que le FAB (VX42 : 52px de tabbar + safe-area), a laquelle
+     s'ajoute desormais la lane de scrollbar. */
+  .lp-bulk-float {
+    bottom: calc(
+      52px + env(safe-area-inset-bottom) + 12px
+      + var(--kb-scrollbar-h) + var(--lp-bulk-float-gap)
+    );
+  }
+}

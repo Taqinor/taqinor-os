@@ -144,7 +144,10 @@ const isEnRetard = (iso) => {
 // QX31 — Speed-to-lead : minutes écoulées depuis `date_creation` (timestamp
 // ISO), ou null si absente/invalide. Composant présentation pure (pas de
 // setInterval) : le libellé se recalcule à chaque rendu naturel de la carte
-// (le kanban re-rend déjà périodiquement via son polling/refetch existant).
+// (filtre, recherche, mise à jour du store après une action) — le board n'a
+// AUCUN rafraîchissement périodique, le libellé peut donc rester figé tant
+// que rien ne re-rend la carte. C'est assumé : une précision à la minute ne
+// vaut pas un timer par carte.
 const minutesDepuis = (iso) => {
   if (!iso) return null
   const d = new Date(iso)
@@ -188,9 +191,14 @@ function LeadCard({
   // callback stable — n'affecte pas la sonde mémo LB6.
   onArchive,
   // LB13 — quand une sélection est active ailleurs sur le board, la checkbox
-  // reste visible sur TOUTES les cartes (primitive stable — défaut false, non
-  // câblé par le kanban aujourd'hui : la CSS révèle déjà la checkbox au survol/
-  // focus/sélection de la carte elle-même).
+  // reste visible sur TOUTES les cartes (comportement D3 : on ne cherche pas
+  // la case au survol pendant qu'on constitue une sélection).
+  // LB38 — la prop est enfin CÂBLÉE (KanbanView passe `selected.size > 0`) :
+  // déclarée depuis LB13, elle valait toujours `false`, donc la règle
+  // `.kb-card-selection-active .kb-card-check` d'index.css était morte et les
+  // cartes non survolées cachaient encore leur case au desktop. Primitive
+  // booléenne (jamais le `Set` entier) : memo(DraggableCard)/memo(LeadCard)
+  // ne comparent qu'un booléen, la sonde LB6 reste verte.
   selectionActive = false,
 }) {
   const perdu = isPerdu(lead)

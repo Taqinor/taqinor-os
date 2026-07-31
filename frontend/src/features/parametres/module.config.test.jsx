@@ -12,6 +12,11 @@ import { describe, it, expect } from 'vitest'
 describe.each([
   ['WIR13', '/parametres/territoires', 'Territoires'],
   ['WIR14', '/parametres/playbooks', 'Playbooks'],
+  // WIR21 — /parametres/vues (NTUX23) existait en route sans lien de menu ;
+  // le rapport de gouvernance des vues sauvegardées n'a de données qu'une
+  // fois les 4 écrans (devis/tickets/produits/factures) basculés au système
+  // serveur (`uxviews.SavedView`), fait dans le même lot.
+  ['WIR21', '/parametres/vues', 'Vues sauvegardées'],
 ])('parametres — module.config (%s %s)', (_task, path, label) => {
   it(`déclare ${path} en route ET en entrée de menu, gatées responsable/admin`, async () => {
     const { default: config } = await import('./module.config.jsx')
@@ -25,6 +30,25 @@ describe.each([
     expect(navItem).toBeTruthy()
     expect(navItem.label).toBe(label)
     expect(navItem.roles).toEqual(['responsable', 'admin'])
+    expect(navItem.icon).toBeTruthy()
+  })
+})
+
+/* WIR153 — Paramètres → IA : panneau de diagnostic (`IaDiagnostic.jsx`),
+   admin-only (contrairement à Territoires/Playbooks ci-dessus, réservés
+   responsable/admin). Même vérification route + nav collectées ensemble. */
+describe('parametres — module.config (WIR153 /parametres/ia)', () => {
+  it('déclare /parametres/ia en route ET en entrée de menu, gatées admin uniquement', async () => {
+    const { default: config } = await import('./module.config.jsx')
+
+    const route = config.routes.find((r) => r.path === '/parametres/ia')
+    expect(route).toBeTruthy()
+    expect(route.roles).toEqual(['admin'])
+
+    const navItem = config.nav.items.find((i) => i.to === '/parametres/ia')
+    expect(navItem).toBeTruthy()
+    expect(navItem.label).toBe('IA (diagnostic)')
+    expect(navItem.roles).toEqual(['admin'])
     expect(navItem.icon).toBeTruthy()
   })
 })

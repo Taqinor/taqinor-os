@@ -286,6 +286,35 @@ def generate_facture_pdf(facture_id):
     facture.save(update_fields=['fichier_pdf'])
 
     logger.info('PDF facture généré : %s', key)
+
+    # WIR165 — premier émetteur RÉEL de core.events.document_produit (ZGED6).
+    # Best-effort : sans RoutageDocumentaire configuré pour 'ventes_facture',
+    # le receveur ged (apps/ged/receivers.py) est un no-op strict — le
+    # comportement de génération de PDF ci-dessus est INCHANGÉ tant qu'un
+    # admin n'a rien réglé. `ventes` n'importe jamais `apps.ged` (frontière
+    # cross-app) : l'événement est le seul canal. Idempotent par
+    # source+reference (router_document_module) — régénérer le même PDF ne
+    # duplique jamais le document GED.
+    try:
+        from django.core.files.base import ContentFile
+
+        from core.events import document_produit
+
+        document_produit.send(
+            sender=None, source='ventes_facture', company=facture.company,
+            file=ContentFile(pdf_bytes, name=f'{facture.reference}.pdf'),
+            filename=f'{facture.reference}.pdf', reference=facture.reference,
+            contexte={
+                'annee': facture.date_emission.year if facture.date_emission else '',
+                'reference': facture.reference,
+                'client': getattr(facture.client, 'nom', '') or '',
+            },
+            uploaded_by=facture.created_by)
+    except Exception:  # pragma: no cover - défensif (émission best-effort)
+        logger.exception(
+            'document_produit (ventes_facture) — échec émission pour %s',
+            facture.reference)
+
     return key
 
 

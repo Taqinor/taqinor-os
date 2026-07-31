@@ -151,7 +151,6 @@ export default function LeadWorkspace({
   const [tagOptions, setTagOptions] = useState([])
   const [motifOptions, setMotifOptions] = useState([])
   const [historique, setHistorique] = useState([])
-  const [dups, setDups] = useState([])
 
   useEffect(() => {
     crmApi.getAssignableUsers().then((r) => setUsers(r.data.results ?? r.data)).catch(() => {})
@@ -159,15 +158,36 @@ export default function LeadWorkspace({
     crmApi.getMotifsPerte().then((r) => setMotifOptions((r.data.results ?? r.data).filter((m) => !m.archived))).catch(() => {})
   }, [])
 
+  // LW43 — garde d'identité : `leadId` capturé À L'ENVOI (`requestedId`),
+  // comparé au VRAI courant (`leadIdRef`, tenu à jour à chaque rendu — jamais
+  // le seul `leadId` fermé dans ce callback, qui resterait figé sur l'ancien
+  // lead pour CETTE requête déjà en vol) — une réponse lente du lead A ne
+  // peint plus jamais sur le lead B après un J/K rapide (même patron
+  // `cancelled` que LeadDetailPage.jsx, décliné en ref pour un callback
+  // réutilisable hors effet).
+  const leadIdRef = useRef(leadId)
+  useEffect(() => { leadIdRef.current = leadId })
   const refreshHistorique = useCallback(() => {
     if (!leadId) return
-    api.get(`/crm/leads/${leadId}/historique/`).then((r) => setHistorique(r.data)).catch(() => {})
+    const requestedId = leadId
+    api.get(`/crm/leads/${requestedId}/historique/`)
+      .then((r) => { if (leadIdRef.current === requestedId) setHistorique(r.data) })
+      .catch(() => {})
   }, [leadId])
 
   useEffect(() => {
     if (mode !== 'edit' || !leadId) return
-    refreshHistorique()
-    crmApi.getLeadDuplicates(leadId).then((r) => setDups(r.data)).catch(() => {})
+    // LW41 — le GET détail embarque déjà `chatter_recent` (LW30) : ne
+    // déclencher le fetch initial d'historique QUE s'il est absent/vide à
+    // l'ouverture (sinon l'ouverture d'un lead coûtait PLUS cher qu'avant :
+    // le GET détail PUIS toujours /historique/ en plus). Les rafraîchissements
+    // APRÈS action (note postée, pièce jointe, appel loggé, « voir plus » —
+    // TimelineTab/ContextRail) restent inchangés, appelés explicitement
+    // ailleurs via `refreshHistorique`. `state.server` volontairement HORS
+    // deps (lu à l'exécution) : seul le premier
+    // rendu de CE lead doit décider, jamais un ré-arbitrage à chaque PATCH.
+    if (!state.server?.chatter_recent?.length) refreshHistorique()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- décision prise une fois par lead, pas à chaque state.server
   }, [mode, leadId, refreshHistorique])
 
   // ── Satellites (dialogues) ────────────────────────────────────────────────
@@ -330,14 +350,23 @@ export default function LeadWorkspace({
     }
   }, [paletteActions])
 
-  // `pushRecentEntity` à l'OUVERTURE uniquement (jamais à chaque frappe du
-  // nom) : `nomTitreRef` lu à l'exécution de l'effet, hors deps — patron déjà
-  // établi par `stateRef`/`leadRef` dans useLeadDraft.js.
-  const nomTitreRef = useRef('')
+  // LW44 — `pushRecentEntity` à l'OUVERTURE uniquement (jamais à chaque
+  // frappe du nom), avec le VRAI nom du lead OUVERT. L'ancien code dépendait
+  // de `[mode, leadId]` (le PROP, synchro immédiate au changement de fiche)
+  // mais lisait `nomTitreRef.current`, resynchronisé par un effet séparé plus
+  // bas dans CE fichier — les deux effets s'exécutant dans le MÊME commit
+  // (celui-ci déclaré en premier), ce push lisait TOUJOURS l'ancienne valeur :
+  // libellé vide à la 1re ouverture, nom du lead PRÉCÉDENT en J/K. Fix :
+  // dépendre de `state.leadId` (posé par le réducteur seulement APRÈS
+  // `LOAD_LEAD`, un commit APRÈS le simple changement du prop `leadId`) et
+  // lire le nom directement sur `state`, garanti à jour pour CE lead à ce
+  // moment-là — plus besoin de ref du tout.
   useEffect(() => {
-    if (mode !== 'edit' || !leadId) return
-    pushRecentEntity({ type: 'lead', id: leadId, label: nomTitreRef.current })
-  }, [mode, leadId])
+    if (mode !== 'edit' || state.leadId == null) return
+    const nom = `${getField(state, 'nom') || ''} ${getField(state, 'prenom') || ''}`.trim()
+    pushRecentEntity({ type: 'lead', id: state.leadId, label: nom ? `Lead — ${nom}` : 'Lead' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au VRAI changement de lead (state.leadId après LOAD_LEAD), jamais à chaque frappe du nom
+  }, [mode, state.leadId])
 
   // ── LW23 : registre de raccourcis propre (a/d/n/1-4) ──────────────────────
   // `a` archiver (leaveGuard déjà structurel dans doArchive), `d` focus le
@@ -419,9 +448,6 @@ export default function LeadWorkspace({
   const whatsappWs = (getField(state, 'whatsapp') || '').trim()
   const callPhone = telephoneWs || whatsappWs
   const waPhone = normalizeMaPhone(whatsappWs || telephoneWs)
-  // LW26 — tenu à jour à CHAQUE rendu (jamais une dépendance d'effet, cf.
-  // pushRecentEntity ci-dessus : seul l'effet « ouverture » le LIT).
-  useEffect(() => { nomTitreRef.current = nomTitre })
 
   // ── Rendu du contenu (partagé dialog / sheet / page) ──────────────────────
   const renderBody = (TitleComp) => (
@@ -509,7 +535,7 @@ export default function LeadWorkspace({
             formId={CREATE_FORM_ID}
             onSubmit={handleCreateSubmit}
             refData={{
-              users, tagOptions, motifOptions, dups,
+              users, tagOptions, motifOptions,
               leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
             }}
           />
@@ -517,10 +543,12 @@ export default function LeadWorkspace({
       ) : (
         // LW25 — squelette EN FORME de la vraie grille (rail identité :
         // avatar + 3 lignes ; centre : 2 cartes ; rail contexte : texte),
-        // crossfade via FadeSwap. Les champs déjà connus de la ligne
-        // (nom/stage/ville) restent visibles pendant ce temps : ils sont
-        // dans le bandeau (`nomTitre` ci-dessus) et l'IdentityRail — HORS de
-        // cette zone body, jamais masqués par le squelette.
+        // crossfade via FadeSwap. LW45 — commentaire corrigé : seul le
+        // bandeau (`nomTitre`, header ci-dessus) est VRAIMENT hors de cette
+        // zone body et reste visible pendant le chargement. L'IdentityRail
+        // est lui DANS le FadeSwap (children ci-dessous) — masqué comme le
+        // reste du corps tant que `showSkeleton` est vrai, remplacé par son
+        // propre squelette (avatar + 3 lignes) le temps du GET détail.
         <FadeSwap
           loading={showSkeleton}
           className="lw-skeleton-swap"
@@ -553,7 +581,7 @@ export default function LeadWorkspace({
               formId={CREATE_FORM_ID}
               onSubmit={handleCreateSubmit}
               refData={{
-                users, tagOptions, motifOptions, dups,
+                users, tagOptions, motifOptions,
                 leadId: lead?.id ?? null, onOpenDuplicate, suggested: draft.suggested,
               }}
             />

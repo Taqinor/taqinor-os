@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -10,12 +10,15 @@ beforeAll(() => {
   }
 })
 
-function renderPage(ui) {
-  return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
+function renderPage(ui, { route = '/' } = {}) {
+  return render(<MemoryRouter initialEntries={[route]}><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
 }
 
 /* WR7 — Le suivi CO₂ rend les totaux parc + le tableau par système depuis
-   GET /monitoring/configs/co2-fleet/. */
+   GET /monitoring/configs/co2-fleet/.
+   WIR122 — avec `?installation=<id>` (drill-down depuis FleetPage.jsx), la
+   page bascule sur le détail d'UN système (`getConfigForInstallation` puis
+   `getCo2`), jusqu'ici sans aucun appelant. */
 
 vi.mock('../../api/monitoringApi', () => ({
   default: {
@@ -31,11 +34,37 @@ vi.mock('../../api/monitoringApi', () => ({
         ],
       },
     })),
+    getConfigForInstallation: vi.fn(() => Promise.resolve({
+      data: [{ id: 5, installation: 11, provider: 'noop', enabled: true }],
+    })),
+    getCo2: vi.fn(() => Promise.resolve({
+      data: {
+        installation: 11,
+        production_kwh: '13200.00',
+        co2_kg: '10692.00',
+        co2_tonnes: '10.692',
+        co2_kg_par_kwh: '0.81',
+      },
+    })),
+  },
+}))
+
+vi.mock('../../api/installationsApi', () => ({
+  default: {
+    getInstallation: vi.fn(() => Promise.resolve({
+      data: { id: 11, reference: 'INST-2026-001', client_nom: 'Amrani' },
+    })),
   },
 }))
 
 import monitoringApi from '../../api/monitoringApi'
 import Co2Page from './Co2Page'
+
+// L'historique d'appels des mocks module-level survit d'un test à l'autre
+// (aucun reset automatique) : sans ce clear, le test drill-down héritait des
+// appels getCo2Fleet() du test agrégat précédent et « not.toHaveBeenCalled() »
+// échouait alors qu'aucun appel n'avait eu lieu DANS ce test.
+beforeEach(() => { vi.clearAllMocks() })
 
 describe('Co2Page (WR7 — suivi CO₂)', () => {
   it('rend les KPI du parc et le tableau CO₂ par système', async () => {
@@ -47,5 +76,15 @@ describe('Co2Page (WR7 — suivi CO₂)', () => {
     expect(screen.getAllByText('INST-2026-001').length).toBeGreaterThan(0)
     expect(screen.getAllByText('INST-2026-002').length).toBeGreaterThan(0)
     expect(monitoringApi.getCo2Fleet).toHaveBeenCalled()
+  })
+
+  it('WIR122 — ?installation=<id> bascule sur le détail CO₂ d\'un système', async () => {
+    renderPage(<Co2Page />, { route: '/production/co2?installation=11' })
+
+    expect(await screen.findByText('CO₂ évité (système)')).toBeInTheDocument()
+    expect(monitoringApi.getConfigForInstallation).toHaveBeenCalledWith('11')
+    expect(monitoringApi.getCo2).toHaveBeenCalledWith(5)
+    expect(monitoringApi.getCo2Fleet).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: /INST-2026-001/ })).toBeInTheDocument()
   })
 })

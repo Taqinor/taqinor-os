@@ -364,6 +364,127 @@ const comptaApi = {
     reschedule: (payload) =>
       api.post('/compta/calendrier-marketing/reschedule/', payload),
   },
+
+  /* ══ WIR107 — Sous-ensembles comptables avancés (NTFIN + XACC8) ══════════
+     Ces routes existaient côté REST (apps/compta/urls.py) sans aucun client
+     ici : elles étaient donc INATTEIGNABLES depuis l'ERP. Deux écrans réels
+     les pilotent désormais (« Clôture » et « Écritures récurrentes ») ; les
+     autres familles (consolidation, IFRS 15, analytique) sont exposées ici en
+     API-only jusqu'à demande d'écran, pour ne pas dupliquer un client ad hoc
+     dans chaque page future. */
+
+  // ── NTFIN26-34 — Cockpit de clôture (checklist, accruals, variations) ──
+  modelesCloture: {
+    ...resource('modeles-cloture'),
+    seed: () => api.post('/compta/modeles-cloture/seed/'),
+  },
+  tachesClotureModele: resource('taches-cloture-modele'),
+  instancesCloture: {
+    ...resource('instances-cloture'),
+    instancier: (data) => api.post('/compta/instances-cloture/instancier/', data),
+  },
+  tachesCloture: {
+    ...resource('taches-cloture'),
+    cocher: (id, data) => api.post(`/compta/taches-cloture/${id}/cocher/`, data),
+    genererOd: (id, data) =>
+      api.post(`/compta/taches-cloture/${id}/generer-od/`, data),
+  },
+  accrualsCloture: {
+    ...resource('accruals-cloture'),
+    poster: (id) => api.post(`/compta/accruals-cloture/${id}/poster/`),
+  },
+  justificationsVariation: resource('justifications-variation'),
+
+  // ── XACC8 / WIR107 — Modèles d'écriture & écritures récurrentes ──
+  modelesEcriture: {
+    ...resource('modeles-ecriture'),
+    generer: (id, data) => api.post(`/compta/modeles-ecriture/${id}/generer/`, data),
+  },
+  lignesModeleEcriture: resource('lignes-modele-ecriture'),
+  abonnementsEcriture: {
+    ...resource('abonnements-ecriture'),
+    genererDues: (data) =>
+      api.post('/compta/abonnements-ecriture/generer-dues/', data || {}),
+  },
+
+  // ── NTFIN1-12 / 50-56 — Consolidation groupe (API-only pour l'instant) ──
+  cyclesConsolidation: {
+    ...resource('cycles-consolidation'),
+    ouvrir: (id) => api.post(`/compta/cycles-consolidation/${id}/ouvrir/`),
+    verrouiller: (id) => api.post(`/compta/cycles-consolidation/${id}/verrouiller/`),
+    collecter: (id, data) => api.post(`/compta/cycles-consolidation/${id}/collecter/`, data || {}),
+    controlesCollecte: (id) => api.get(`/compta/cycles-consolidation/${id}/controles-collecte/`),
+    intercos: (id) => api.get(`/compta/cycles-consolidation/${id}/intercos/`),
+    apparier: (id, data) => api.post(`/compta/cycles-consolidation/${id}/apparier/`, data || {}),
+    eliminations: (id) => api.get(`/compta/cycles-consolidation/${id}/eliminations/`),
+    genererReciproques: (id) =>
+      api.post(`/compta/cycles-consolidation/${id}/generer-reciproques/`),
+    interetsMinoritaires: (id, data) =>
+      api.post(`/compta/cycles-consolidation/${id}/interets-minoritaires/`, data || {}),
+    etatsConsolides: (id, params) =>
+      api.get(`/compta/cycles-consolidation/${id}/etats-consolides/`, { params }),
+    moniteur: (id) => api.get(`/compta/cycles-consolidation/${id}/moniteur/`),
+    tableauFlux: (id, params) =>
+      api.get(`/compta/cycles-consolidation/${id}/tableau-flux/`, { params }),
+    variationCapitaux: (id) =>
+      api.get(`/compta/cycles-consolidation/${id}/variation-capitaux/`),
+    annexes: (id) => api.get(`/compta/cycles-consolidation/${id}/annexes/`),
+    comparatif: (id) => api.get(`/compta/cycles-consolidation/${id}/comparatif/`),
+    etapesAudit: (id) => api.get(`/compta/cycles-consolidation/${id}/etapes-audit/`),
+    simuler: (id, data) => api.post(`/compta/cycles-consolidation/${id}/simuler/`, data || {}),
+    exportLiasse: (id, params) =>
+      api.get(`/compta/cycles-consolidation/${id}/export-liasse/`,
+        { params: { export: 'xlsx', ...(params || {}) }, responseType: 'blob' }),
+  },
+  liassesRemontee: resource('liasses-remontee'),
+  mappingsConsolidation: resource('mappings-consolidation'),
+  operationsInterco: resource('operations-interco'),
+  margesInternesStock: {
+    ...resource('marges-internes-stock'),
+    eliminer: (id) => api.post(`/compta/marges-internes-stock/${id}/eliminer/`),
+  },
+  eliminationsTitres: {
+    ...resource('eliminations-titres'),
+    eliminer: (id) => api.post(`/compta/eliminations-titres/${id}/eliminer/`),
+  },
+
+  // ── NTFIN — Multi-référentiel, analytique & clés de répartition (API-only) ──
+  referentielsComptables: {
+    ...resource('referentiels-comptables'),
+    seed: () => api.post('/compta/referentiels-comptables/seed/'),
+  },
+  ajustementsGaap: {
+    ...resource('ajustements-gaap'),
+    poster: (data) => api.post('/compta/ajustements-gaap/poster/', data),
+  },
+  axesAnalytiques: resource('axes-analytiques'),
+  imputationsAxes: resource('imputations-axes'),
+  clesRepartition: {
+    ...resource('cles-repartition'),
+    valider: (id) => api.get(`/compta/cles-repartition/${id}/valider/`),
+  },
+  lignesCleRepartition: resource('lignes-cle-repartition'),
+  allocations: {
+    ...resource('allocations'),
+    executer: (data) => api.post('/compta/allocations/executer/', data),
+    reverser: (id) => api.post(`/compta/allocations/${id}/reverser/`),
+  },
+  allocationsRecurrentes: resource('allocations-recurrentes'),
+
+  // ── NTFIN47-48 — Reconnaissance du revenu IFRS 15 (API-only) ──
+  contratsRevenu: {
+    ...resource('contrats-revenu'),
+    allouer: (id) => api.post(`/compta/contrats-revenu/${id}/allouer/`),
+  },
+  obligationsPerformance: {
+    ...resource('obligations-performance'),
+    genererEcheancier: (id, data) =>
+      api.post(`/compta/obligations-performance/${id}/generer-echeancier/`, data || {}),
+  },
+  echeancesReconnaissance: {
+    ...resource('echeances-reconnaissance'),
+    reconnaitre: (id) => api.post(`/compta/echeances-reconnaissance/${id}/reconnaitre/`),
+  },
 }
 
 export default comptaApi

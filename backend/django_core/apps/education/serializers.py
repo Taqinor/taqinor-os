@@ -43,8 +43,14 @@ class FamilleSerializer(serializers.ModelSerializer):
             'id', 'nom', 'parent1_nom', 'parent1_telephone',
             'parent1_whatsapp', 'parent1_email', 'parent2_nom',
             'parent2_telephone', 'parent2_whatsapp', 'parent2_email',
-            'adresse']
-        read_only_fields = ['id']
+            'adresse', 'client']
+        # WIR91 — `client` (crm.Client lié) est TOUJOURS résolu côté serveur
+        # (`services.resoudre_client_pour_famille`), jamais accepté du corps
+        # de requête — même politique que `sante.PatientSerializer` avant
+        # elle (le patient, lui, accepte `client` en écriture ; ici on ferme
+        # la porte dès le départ, plus strict, aucun appelant existant n'en
+        # a besoin).
+        read_only_fields = ['id', 'client']
 
 
 class EleveSerializer(serializers.ModelSerializer):

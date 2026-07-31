@@ -204,16 +204,10 @@ function SortableTh({ col, label, sort, onSort, className, help }) {
 // lignes de la table, pas seulement celle concernée. `checked` est un
 // booléen dédié (pas le `Set` `selected` entier) pour que memo() compare une
 // primitive, pas une référence qui change de forme à chaque sélection.
-// LB6 — la popover « ✗ Perdu » reçoit désormais des PRIMITIVES + callbacks
-// stables uniquement (blueprint I4, bug #4) : `perduOpen` (booléen, calculé
-// par le parent) au lieu de `perduTarget` (l'objet lead entier — changeait de
-// référence à chaque frappe pour TOUTES les lignes) ; `perduMotif`/`perduBusy`
-// sont désormais CONDITIONNÉS par la ligne appelante (le parent passe une
-// valeur constante '' / false aux lignes non ciblées, la valeur live SEULEMENT
-// à la ligne ouverte) — taper un motif ne re-rend plus que la ligne ciblée.
-// `confirmPerdu(lead, motif)` prend ses arguments en paramètres (au lieu de
-// lire `perduTarget`/`perduMotif` en closure) : sa référence reste STABLE
-// quel que soit ce que l'utilisateur tape.
+// LB6/LB21 — la ligne ne porte plus AUCUNE plomberie « ✗ Perdu » : tout l'état
+// (lead ciblé, motif saisi, envoi en cours) vit dans le `PerduPopover` partagé,
+// et la ligne ne reçoit que le callback stable `onMarkPerdu`. Taper un motif ne
+// re-rend donc plus une seule ligne de la table (blueprint I4, bug #4).
 const ListRow = memo(function ListRow({
   lead, checked, onToggleSelect, onOpenLead, armCallNudgeFor, onInlineSave,
   users, onReassign, onAutoQuote, canDelete, busy, onRestore, onArchive,
@@ -796,11 +790,9 @@ export default function ListView({
   // mode Par étape (groupedRows[i].leads.map) : AUCUNE duplication du JSX
   // de ligne, `tr.lv-row` reste le même sélecteur dans les deux modes.
   const renderRow = (lead) => {
-    // LB6 — SEULE la ligne ciblée reçoit la valeur LIVE de
-    // perduMotif/perduBusy ; toutes les autres reçoivent une constante
-    // ('' / false) qui ne change JAMAIS entre deux rendus — memo(ListRow)
-    // bail out pour elles, seule la ligne ouverte re-rend à chaque frappe
-    // (bug #4).
+    // LB6/LB21 — toutes les props de la ligne sont des primitives ou des
+    // callbacks stables : memo(ListRow) bail out pour les lignes que rien ne
+    // concerne (aucun état « ✗ Perdu » ne transite plus par ici, bug #4).
     return (
       <ListRow
         key={lead.id}

@@ -1,10 +1,13 @@
-"""API onboarding (NTDMO13) — checklist « Premiers pas » de l'utilisateur.
+"""API onboarding (NTDMO13/WIR59) — checklist « Premiers pas » de l'utilisateur.
 
 Endpoints (company + user scopés côté serveur, jamais lus du corps) :
 
 * ``GET  /api/django/onboarding/progress/`` — checklist résolue + résumé ;
 * ``POST /api/django/onboarding/progress/{item_id}/ignorer/`` — masque un item ;
-* ``POST /api/django/onboarding/progress/ignorer-tout/`` — masque tout le reste.
+* ``POST /api/django/onboarding/progress/ignorer-tout/`` — masque tout le reste ;
+* ``POST /api/django/onboarding/progress/{item_id}/marquer-fait/`` — WIR59,
+  coche manuellement un item SANS ``event_key`` (aucun déclencheur
+  automatique adapté sans importer une app métier — alternative explicite).
 """
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -39,6 +42,16 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
             permission_classes=[IsAuthenticated])
     def ignorer_tout(self, request):
         services.ignorer_tout(self._company(request), request.user)
+        return Response(
+            resume_pour_utilisateur(self._company(request), request.user),
+            status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='marquer-fait',
+            permission_classes=[IsAuthenticated])
+    def marquer_fait(self, request, pk=None):
+        """WIR59 — coche manuellement un item (alternative à l'auto-
+        complétion par événement quand aucun jalon de bus n'existe)."""
+        services.marquer_fait_manuel(self._company(request), request.user, pk)
         return Response(
             resume_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)

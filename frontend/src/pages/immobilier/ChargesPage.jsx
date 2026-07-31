@@ -18,6 +18,11 @@ import immobilierApi from '../../api/immobilierApi'
    n'est encore émis côté ventes) qu'on affiche pour confirmation explicite
    AVANT que « Confirmer l'émission » n'appelle `emettre` — jamais les deux
    étapes fusionnées silencieusement.
+
+   WIR149 — saisie d'une `DepenseCharges` réelle (date, montant, justificatif
+   GED optionnel) rattachée à un poste budgété déjà chargé : à la création on
+   recharge le tableau (`charger()`), le poste concerné reflète immédiatement
+   son nouveau cumul réel vs budgété.
    ========================================================================== */
 
 function rowsFrom(data) {
@@ -39,6 +44,15 @@ export default function ChargesPage() {
   const [apercuErreur, setApercuErreur] = useState(null)
   const [emisIds, setEmisIds] = useState(() => new Set())
   const [emissionLoading, setEmissionLoading] = useState(false)
+
+  // WIR149 — formulaire de saisie d'une dépense réelle rattachée à un des
+  // postes budgétés déjà chargés dans `lignes`.
+  const [depBudgetId, setDepBudgetId] = useState('')
+  const [depDate, setDepDate] = useState('')
+  const [depMontant, setDepMontant] = useState('')
+  const [depGed, setDepGed] = useState('')
+  const [depSaving, setDepSaving] = useState(false)
+  const [depErreur, setDepErreur] = useState(null)
 
   useEffect(() => {
     immobilierApi.batiments.list().then((res) => setBatiments(rowsFrom(res.data)))
@@ -80,6 +94,34 @@ export default function ChargesPage() {
       if (latestRef.current === cle) setLoading(false)
     }
   }, [batimentId, exercice])
+
+  // WIR149 — enregistre une `DepenseCharges` réelle sur le poste choisi puis
+  // recharge le tableau : le cumul réel/écart affiché reflète immédiatement
+  // la nouvelle dépense (pas de rafraîchissement optimiste séparé du calcul
+  // serveur `consommation`, qui reste la seule source de vérité du cumul).
+  const ajouterDepense = useCallback(async (e) => {
+    e.preventDefault()
+    if (!depBudgetId || !depDate || !depMontant) return
+    setDepSaving(true)
+    setDepErreur(null)
+    try {
+      const payload = {
+        budget_charges: Number(depBudgetId),
+        date: depDate,
+        montant_reel: depMontant,
+      }
+      if (depGed) payload.ged_document_id = Number(depGed)
+      await immobilierApi.depensesCharges.create(payload)
+      setDepDate('')
+      setDepMontant('')
+      setDepGed('')
+      await charger()
+    } catch {
+      setDepErreur("Enregistrement de la dépense impossible.")
+    } finally {
+      setDepSaving(false)
+    }
+  }, [depBudgetId, depDate, depMontant, depGed, charger])
 
   const lancerRegularisation = useCallback(async () => {
     if (!batimentId || !exercice) return
@@ -213,6 +255,61 @@ export default function ChargesPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+          <form
+            data-testid="form-depense-charges"
+            onSubmit={ajouterDepense}
+            style={{
+              display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap',
+              marginBottom: 24,
+            }}
+          >
+            <select
+              aria-label="Poste"
+              value={depBudgetId}
+              onChange={(e) => setDepBudgetId(e.target.value)}
+              required
+            >
+              <option value="">— Poste —</option>
+              {lignes.map((l) => (
+                <option key={l.id} value={l.id}>{l.poste_display}</option>
+              ))}
+            </select>
+            <label>
+              Date{' '}
+              <input
+                type="date"
+                aria-label="Date de la dépense"
+                value={depDate}
+                onChange={(e) => setDepDate(e.target.value)}
+                required
+              />
+            </label>
+            <label>
+              Montant{' '}
+              <input
+                type="number"
+                step="any"
+                aria-label="Montant réel"
+                value={depMontant}
+                onChange={(e) => setDepMontant(e.target.value)}
+                style={{ width: 110 }}
+                required
+              />
+            </label>
+            <label>
+              Justificatif GED (optionnel){' '}
+              <input
+                type="number"
+                aria-label="ID document GED (justificatif, optionnel)"
+                value={depGed}
+                onChange={(e) => setDepGed(e.target.value)}
+                style={{ width: 100 }}
+              />
+            </label>
+            <button type="submit" disabled={depSaving}>Ajouter la dépense</button>
+          </form>
+          {depErreur && <p role="alert">{depErreur}</p>}
 
           <button type="button" onClick={lancerRegularisation} disabled={apercuLoading}>
             Lancer la régularisation

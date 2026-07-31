@@ -34,6 +34,50 @@ def attribuer_numero_dossier(eleve):
 
 
 # =============================================================================
+# WIR91 — rattachement Famille ↔ crm.Client (jamais un doublon de
+# coordonnées).
+# =============================================================================
+
+def resoudre_client_pour_famille(famille):
+    """WIR91 — résout/rattache un ``crm.Client`` pour cette famille, SANS
+    jamais importer ``apps.crm.models`` (import fonction-local +
+    ``selectors.py``/``services.py`` de la cible — même patron que
+    ``apps.sante.services.resoudre_client_pour_patient``, lui-même calqué
+    sur ``apps.crm.services.resolve_client_for_lead``).
+
+    ``Famille`` (téléphones/emails ×2 parents/adresse) est un doublon
+    INDÉPENDANT de ``crm.Client`` tant que ce lien n'est pas posé. Règle :
+    réutilise le lien existant si déjà posé ; sinon cherche un client de la
+    MÊME société par email (``parent1_email``, le seul email structuré
+    disponible sur ``Famille``) ; sinon en crée un nouveau. Renvoie
+    l'instance ``crm.Client`` (jamais ``None`` : une famille a toujours un
+    dossier client correspondant une fois résolue).
+    """
+    if famille.client_id:
+        return famille.client
+
+    from apps.crm.selectors import find_client_by_email
+    from django.apps import apps as django_apps
+
+    Client = django_apps.get_model('crm', 'Client')
+
+    client = None
+    if famille.parent1_email:
+        client = find_client_by_email(famille.parent1_email, company=famille.company)
+    if client is None:
+        client = Client.objects.create(
+            company=famille.company,
+            nom=famille.nom,
+            telephone=famille.parent1_telephone or None,
+            email=famille.parent1_email or None,
+            adresse=famille.adresse or None,
+        )
+    famille.client = client
+    famille.save(update_fields=['client'])
+    return client
+
+
+# =============================================================================
 # NTEDU3 — workflow d'inscription (validation/affectation/liste d'attente).
 # =============================================================================
 

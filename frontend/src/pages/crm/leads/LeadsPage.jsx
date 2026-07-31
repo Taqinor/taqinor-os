@@ -644,14 +644,23 @@ export default function LeadsPage() {
       // VX95 — ce chemin n'est atteint QUE par le drop kanban (drag-and-drop
       // en avant, jamais un recul — gardé par KanbanView avant l'appel, ni
       // SIGNED — gardé ci-dessus par SigneDialog). « Annuler » restaure
-      // l'étape antérieure EXACTE en contournant volontairement le
-      // recul-guard : c'est l'undo de sa propre action, pas un recul manuel.
+      // l'étape antérieure EXACTE : c'est l'undo de sa propre action, pas un
+      // recul manuel.
+      // LB39 — jusqu'ici ce PATCH arrière se prenait un 400 SYSTÉMATIQUE de la
+      // garde funnel du serializer : chaque « Annuler » finissait en
+      // « Annulation impossible » (l'undo VX95 était mort en production, le
+      // test unitaire mockait le dispatch et ne l'a jamais vu). Le marqueur
+      // `undo` n'AUTORISE rien à lui seul — le serveur revérifie dans le
+      // chatter que c'est bien le mouvement inverse exact du dernier
+      // changement d'étape de ce lead, dans une fenêtre courte.
       toastWithUndo({
         message: 'Étape modifiée.',
         onUndo: async () => {
           dispatch(leadStagePatched({ id: lead.id, stage: prev }))
           try {
-            await dispatch(updateLead({ id: lead.id, data: { stage: prev } })).unwrap()
+            await dispatch(updateLead({
+              id: lead.id, data: { stage: prev, undo: true },
+            })).unwrap()
           } catch {
             dispatch(leadStagePatched({ id: lead.id, stage: newStage }))
             toastError("Annulation impossible — vérifiez votre connexion.")

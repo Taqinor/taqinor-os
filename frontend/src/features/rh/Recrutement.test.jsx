@@ -10,7 +10,11 @@ import Recrutement from './Recrutement.jsx'
    Le module ne doit jamais planter au chargement, même quand tout est vide.
    WIR34 — « Nouveau candidat » et « Nouveau modèle » câblent respectivement
    `rhApi.createCandidature` et `rhApi.createModeleEvaluation` (jusqu'ici
-   définis sans appelant). */
+   définis sans appelant).
+   WIR131 — l'action de ligne « Feedback 360° » (onglet Évaluations) câble
+   `rhApi.createRetourFeedback360` (invitation d'un répondant) et
+   `rhApi.getSyntheseFeedback360` (synthèse agrégée), tous deux définis dans
+   rhApi.js sans aucun appelant jusqu'ici. */
 
 vi.mock('../../api/rhApi', () => {
   const empty = () => Promise.resolve({ data: [] })
@@ -29,6 +33,15 @@ vi.mock('../../api/rhApi', () => {
       getSanctions: vi.fn(empty),
       createCandidature: vi.fn(),
       createModeleEvaluation: vi.fn(),
+      // WIR131 — feedback 360°.
+      getRetoursFeedback360: vi.fn(empty),
+      getSyntheseFeedback360: vi.fn(() => Promise.resolve({
+        data: { nb_invites: 0, nb_soumis: 0, anonymise: true, moyennes_par_critere: {} },
+      })),
+      getEmployes: vi.fn(() => Promise.resolve({
+        data: [{ id: 12, nom: 'Alaoui', prenom: 'Sara' }],
+      })),
+      createRetourFeedback360: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
     },
   }
 })
@@ -102,5 +115,28 @@ describe('Recrutement — ATS (XRH17-23)', () => {
     await waitFor(() => expect(rhApi.createModeleEvaluation).toHaveBeenCalledWith(
       expect.objectContaining({ nom: 'Entretien annuel', questions: [] }),
     ))
+  })
+
+  it('invite un répondant au feedback 360° via rhApi.createRetourFeedback360 (WIR131)', async () => {
+    rhApi.getEvaluationsEmploye.mockResolvedValueOnce({
+      data: [{ id: 9, employe_nom: 'Bennani Youssef', statut: 'validee', statut_display: 'Validée' }],
+    })
+    renderRecrutement()
+    await screen.findByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Évaluations' }))
+    // DataTable rend la table desktop ET le repli carte mobile (CSS seul,
+    // les deux existent dans le DOM en jsdom) : getAllBy*, premier match.
+    await screen.findAllByText('Bennani Youssef')
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Feedback 360°' })[0])
+    expect(await screen.findByText(/Feedback 360° — Bennani Youssef/)).toBeInTheDocument()
+    await waitFor(() => expect(rhApi.getSyntheseFeedback360).toHaveBeenCalledWith({ evaluation: 9 }))
+
+    fireEvent.change(screen.getByLabelText('Répondant'), { target: { value: '12' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Inviter' }))
+
+    await waitFor(() => expect(rhApi.createRetourFeedback360).toHaveBeenCalledWith({
+      evaluation: 9, repondant: 12, relation: 'pair',
+    }))
   })
 })

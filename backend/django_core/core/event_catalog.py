@@ -87,9 +87,16 @@ CATALOG = {
     'contrat_resilie': _e(
         'Un contrat est résilié.',
         ['contrat_id', 'company', 'date_effet']),
+    # ZGED6 — le payload décrit le FICHIER produit (pas un objet « document »
+    # déjà en base) : c'est ce que ``ged.receivers`` route vers le dossier GED
+    # configuré pour la ``source``. WIR165 en a posé le premier émetteur réel
+    # (``ventes.utils.pdf`` → source='ventes_facture'), d'où l'alignement de
+    # ces clés sur les kwargs réellement envoyés.
     'document_produit': _e(
-        'Un document métier a été produit.',
-        ['document', 'company', 'user']),
+        "Une app émettrice a produit un fichier à centraliser en GED "
+        "(routé par ``source`` via RoutageDocumentaire).",
+        ['source', 'company', 'file', 'filename', 'reference', 'contexte',
+         'uploaded_by']),
     'intervention_completed': _e(
         'Une intervention est marquée terminée.',
         ['intervention', 'company', 'user']),
@@ -165,6 +172,15 @@ CATALOG = {
     'appointment_effectue': _e(
         "Un rendez-vous CRM (Appointment) bascule vers « effectué ».",
         ['appointment', 'company', 'user', 'ancien_statut']),
+    # WIR85 / XACC6 — émis par ``stock.services.record_stock_movement`` (le
+    # SEUL point de création d'un ``MouvementStock``), synchroniquement et en
+    # best-effort juste après l'écriture du mouvement. Abonné : compta
+    # (inventaire permanent), doublement gated (COMPTA_AUTO_ECRITURES +
+    # PlanComptable.inventaire_permanent, OFF par défaut).
+    'mouvement_stock_enregistre': _e(
+        "Un mouvement de stock (stock.MouvementStock) vient d'être "
+        "enregistré — entrée, sortie ou ajustement.",
+        ['instance', 'company']),
 }
 
 

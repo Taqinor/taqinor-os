@@ -11,11 +11,35 @@ Frontière cross-app (CLAUDE.md) : ``portail`` ne lit ventes/crm/sav QUE via
 leurs ``selectors.py``/``services.py`` ou par référence opaque (id/texte) —
 jamais d'import de leurs ``models``. Le compte portail se lie au client par une
 STRING-FK ``'crm.Client'`` (référence textuelle, aucun import). Devis/factures/
-chantiers/tickets sont désignés par id opaque. Tout est multi-société : chaque
-modèle porte un FK ``company`` posé côté serveur (jamais lu du corps de requête).
+chantiers/tickets/leads sont désormais désignés par de VRAIES ``ForeignKey``
+STRING-référencées (``'ventes.Devis'``, ``'facturation.Facture'``,
+``'crm.Client'``, ``'crm.Lead'``, ``'installations.Installation'``,
+``'sav.Ticket'``) — WIR95 : même patron que ``pos.CommandeRetrait.devis``,
+jamais un import direct des modèles cibles. ``db_constraint=False`` partout : la
+contrainte FK n'est jamais posée au niveau base (ces cinq apps restent des
+domaines mutuellement DÉCOUPLÉS ; un id déjà orphelin ne bloque donc rien) et
+l'intégrité vit dans le collector Django/ORM, qui l'applique que la contrainte
+base existe ou non. Politique : ``SET_NULL`` pour les références informatives,
+``PROTECT`` pour ``devis``/``facture`` (preuve légale / argent réel — voir ces
+deux champs). Tout est multi-société : chaque modèle porte un FK ``company``
+posé côté serveur (jamais lu du corps de requête).
 
 ATTENTION surface AUTH : les mécanismes d'authentification portail (tokens/
 comptes clients) sont conservés À L'IDENTIQUE — aucun élargissement d'accès.
+
+WIR94 — ``DocumentClientPortail`` route son upload vers la GED canonique : le
+fichier téléversé est en plus déposé comme ``ged.Document`` et référencé par
+``document_ged``. Le ``FileField`` historique (``fichier``) est CONSERVÉ pour
+compatibilité ascendante (les enregistrements existants gardent leur fichier
+local) ; toute future consommation (NTPRT13 « Mes documents ») peut désormais
+parcourir le document via l'arbre GED (ACL/versions/cycle de vie) au lieu d'un
+fichier isolé. L'ORCHESTRATION de ce dépôt ne vit PAS ici : un modèle
+n'orchestre pas d'écriture cross-app — l'appel ``ged.services.deposit_document``
+est un couple de récepteurs ``pre_save``/``post_save`` dans
+``apps/portail/receivers.py`` (câblé par ``PortailConfig.ready``, même patron
+que ``apps/crm/tiers_bridge.py``). Ce module ne garde donc que le champ
+``document_ged`` — aucun import de ``apps.ged`` (contrat CI
+``portail-models-decoupled``).
 """
 from django.db import models
 
@@ -91,7 +115,20 @@ class AcceptationDevisPortail(models.Model):
         related_name='acceptations_devis_portail',
         verbose_name='Société',
     )
-    devis_id = models.PositiveIntegerField(verbose_name='Id du devis')
+    # WIR95 — string-FK (jamais un import de ``apps.ventes.models``) ; attname
+    # ``devis_id`` inchangé (patron ``pos.CommandeRetrait.devis``).
+    # on_delete: PROTECT — cette ligne EST la preuve d'acceptation électronique
+    # (signataire, IP, horodatage — loi 53-05) : détachée du devis elle ne
+    # dirait plus QUEL devis a été signé. Supprimer le devis est REFUSÉ.
+    devis = models.ForeignKey(
+        'ventes.Devis',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='acceptations_portail',
+        verbose_name='Devis',
+    )
     option_choisie = models.CharField(
         max_length=120, blank=True, default='',
         verbose_name='Option choisie')
@@ -125,8 +162,8 @@ class PaiementFacturePortail(models.Model):
     ``initie`` à ``paye`` (manuel pour le virement, automatique via webhook CMI
     quand l'intégration est branchée). Tant que la passerelle CMI est OFF
     (``CMI_ENABLED``, défaut), aucun appel réseau payant n'est émis : l'intention
-    reste ``initie`` avec une référence locale. La facture est désignée par son
-    id (cross-app — jamais d'import du modèle ``ventes``).
+    reste ``initie`` avec une référence locale. La facture est référencée par
+    une string-FK WIR95 (jamais un import de ``apps.facturation.models``).
     """
     class Methode(models.TextChoices):
         CARTE = 'carte', 'Carte (CMI)'
@@ -143,7 +180,17 @@ class PaiementFacturePortail(models.Model):
         related_name='paiements_facture_portail',
         verbose_name='Société',
     )
-    facture_id = models.PositiveIntegerField(verbose_name='Id de la facture')
+    # on_delete: PROTECT — ce paiement porte un montant MAD réel (et parfois un
+    # statut ``paye``) : supprimer la facture référencée est REFUSÉ.
+    facture = models.ForeignKey(
+        'facturation.Facture',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='paiements_portail',
+        verbose_name='Facture',
+    )
     montant = models.DecimalField(
         max_digits=14, decimal_places=2, default=0,
         verbose_name='Montant (MAD)')
@@ -177,9 +224,16 @@ class DocumentClientPortail(models.Model):
     """Document téléversé par le client depuis le portail (FG231).
 
     Le client dépose ses factures ONEE (ou autre justificatif) pour affiner
-    l'étude solaire — l'app y lit la consommation. Scopé société ; lié au client
-    par id (cross-app, jamais d'import crm) et, optionnellement, au lead. Le
+    l'étude solaire — l'app y lit la consommation. Scopé société ; lié au
+    client (et optionnellement au lead) par de VRAIES ``ForeignKey``
+    string-référencées (WIR95 — jamais un import de ``apps.crm.models``). Le
     fichier va dans le stockage objet (MinIO/S3) ; aucun prix/marge ici.
+
+    WIR94 — en plus du ``FileField`` historique (conservé pour compat
+    ascendante), l'upload est déposé comme ``ged.Document`` réel (référentiel
+    documentaire central, ACL/versions/cycle de vie) et référencé par
+    ``document_ged`` — le dépôt lui-même est orchestré par les récepteurs de
+    ``apps/portail/receivers.py``, jamais par ce modèle.
     """
     class TypeDoc(models.TextChoices):
         FACTURE_ONEE = 'facture_onee', 'Facture ONEE'
@@ -192,9 +246,26 @@ class DocumentClientPortail(models.Model):
         related_name='documents_client_portail',
         verbose_name='Société',
     )
-    client_id = models.PositiveIntegerField(verbose_name='Id du client')
-    lead_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name='Id du lead')
+    # WIR95 — string-FK (jamais un import de ``apps.crm.models``) ; SET_NULL +
+    # db_constraint=False (voir docstring du module).
+    client = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='documents_portail',
+        verbose_name='Client',
+    )
+    lead = models.ForeignKey(
+        'crm.Lead',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='documents_portail',
+        verbose_name='Lead',
+    )
     type_document = models.CharField(
         max_length=14, choices=TypeDoc.choices, default=TypeDoc.FACTURE_ONEE,
         verbose_name='Type de document')
@@ -203,6 +274,17 @@ class DocumentClientPortail(models.Model):
     fichier = models.FileField(
         upload_to='compta/portail_docs/', null=True, blank=True,
         verbose_name='Fichier')
+    # WIR94 — dépôt GED canonique du même fichier (voir receivers.py). Pas de
+    # cascade métier sur suppression du document GED — la ligne portail garde
+    # simplement trace du dépôt (SET_NULL).
+    document_ged = models.ForeignKey(
+        'ged.Document',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+        verbose_name='Document GED',
+    )
     traite = models.BooleanField(
         default=False, verbose_name='Traité (intégré à l\'étude)')
     date_depot = models.DateTimeField(
@@ -235,7 +317,17 @@ class JalonChantierPortail(models.Model):
         related_name='jalons_chantier_portail',
         verbose_name='Société',
     )
-    chantier_id = models.PositiveIntegerField(verbose_name='Id du chantier')
+    # WIR95 — string-FK (jamais un import de ``apps.installations.models``) ;
+    # SET_NULL + db_constraint=False (voir docstring du module).
+    chantier = models.ForeignKey(
+        'installations.Installation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='jalons_portail',
+        verbose_name='Chantier',
+    )
     libelle = models.CharField(max_length=120, verbose_name='Jalon')
     ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
     atteint = models.BooleanField(default=False, verbose_name='Atteint')
@@ -278,17 +370,41 @@ class DemandeTicketPortail(models.Model):
         related_name='demandes_ticket_portail',
         verbose_name='Société',
     )
-    client_id = models.PositiveIntegerField(verbose_name='Id du client')
-    chantier_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name='Id du chantier')
+    # WIR95 — string-FKs (jamais un import de ``apps.crm``/``installations``/
+    # ``sav.models``) ; SET_NULL + db_constraint=False (voir docstring module).
+    client = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='demandes_ticket_portail',
+        verbose_name='Client',
+    )
+    chantier = models.ForeignKey(
+        'installations.Installation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='demandes_ticket_portail',
+        verbose_name='Chantier',
+    )
     sujet = models.CharField(max_length=200, verbose_name='Sujet')
     description = models.TextField(
         blank=True, default='', verbose_name='Description')
     statut = models.CharField(
         max_length=16, choices=Statut.choices, default=Statut.SOUMISE,
         verbose_name='Statut')
-    ticket_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name='Id du ticket SAV créé')
+    ticket = models.ForeignKey(
+        'sav.Ticket',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='demandes_portail',
+        verbose_name='Ticket SAV créé',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
 

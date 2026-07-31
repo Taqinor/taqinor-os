@@ -8,6 +8,8 @@ suivantes de la lane et sont tous basés sur
 import logging
 import os
 
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -2855,6 +2857,18 @@ class SimulationListView(APIView):
 
     permission_classes = [HasPermissionOrLegacy('adsengine_view')]
 
+    # YAPIC6 — sans cette annotation le schéma documente un OBJET unique alors
+    # que la vue renvoie une LISTE. Annotation de schéma uniquement : aucun
+    # effet runtime (la réponse est inchangée).
+    @extend_schema(responses=inline_serializer(
+        name='SimulationScenario',
+        fields={
+            'id': drf_serializers.CharField(),
+            'nom': drf_serializers.CharField(),
+            'cree_le': drf_serializers.CharField(allow_blank=True),
+        },
+        many=True,
+    ))
     def get(self, request):
         company, err = _adseng_company_gate(request, 'adsengine_view')
         if err is not None:

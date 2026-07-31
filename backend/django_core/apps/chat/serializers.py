@@ -9,7 +9,7 @@ from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
     MessageReaction, MessageMention, UserChatStatus,
     ScheduledMessage, MessageReminder, MessageBookmark, CannedResponse,
-    RetentionPolicy,
+    RetentionPolicy, RetentionSweepRun,
 )
 
 
@@ -236,3 +236,14 @@ class RetentionPolicySerializer(serializers.ModelSerializer):
             'updated_by', 'updated_at',
         ]
         read_only_fields = ['id', 'updated_by', 'updated_at']
+
+
+class RetentionSweepRunSerializer(serializers.ModelSerializer):
+    """WIR157 — historique des exécutions du sweep de rétention (admin,
+    écran Paramètres > Rétention (Discuter)). Lecture seule : une ligne naît
+    TOUJOURS de `services.sweep_retention` (jamais d'un POST libre)."""
+
+    class Meta:
+        model = RetentionSweepRun
+        fields = ['id', 'ran_at', 'messages_purged', 'detail']
+        read_only_fields = fields

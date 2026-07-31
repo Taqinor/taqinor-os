@@ -35,7 +35,14 @@ UNGUARDED_ACTION_BASELINE = {
     # accessreview/chat. À fine-grainer plus tard (YRBAC3).
     "assurances": 12,
     "automation": 1,
-    "chat": 16,
+    # WIR157 ajoute 1 @action (`RetentionPolicyViewSet.historique` — journal
+    # des purges de rétention, traçabilité CNDP) : gardée au niveau CLASSE par
+    # `permission_classes = [IsAuthenticated, IsAdminRole]` (admin only, comme
+    # `create`/`partial_update` du même viewset) et company-scopée
+    # (`RetentionSweepRun.objects.filter(company=_company(request))`). Le
+    # scanner statique ne crédite que les gardes PAR action → 16 → 17 en dette
+    # apparente, pas un vrai trou de garde.
+    "chat": 17,
     # compta 128->212, flotte 38->39, paie 55->70, rh 84->103, +stock/ventes:
     # re-stamped to CURRENT debt after the batch-4 feature drain (the 37
     # XMKT/ZMKT marketing tasks added coarse-guarded @actions to compta's mega-

@@ -90,6 +90,7 @@ from .models import (
     EngagementComptable,
     ModeleCloture, TacheClotureModele, InstanceCloture, TacheCloture,
     AccrualCloture, JustificationVariation, ModeleEcriture,
+    LigneModeleEcriture, AbonnementEcriture,
     RapprochementCompte, LigneJustificationCompte,
     ComposantImmobilisation, DepreciationImmobilisation,
     MutationImmobilisation, ImmobilisationEnCours, LigneImmobilisationEnCours,
@@ -180,6 +181,8 @@ from .serializers import (
     LigneImmobilisationEnCoursSerializer,
     ContratRevenuSerializer, ObligationPerformanceSerializer,
     EcheancierReconnaissanceSerializer, EtapeAuditConsolidationSerializer,
+    ModeleEcritureSerializer, LigneModeleEcritureSerializer,
+    AbonnementEcritureSerializer,
 )
 
 
@@ -9372,3 +9375,137 @@ class EcheancierReconnaissanceViewSet(_ComptaBaseViewSet):
         except DjangoValidationError as exc:
             return _err400(exc)
         return Response(self.get_serializer(echeance).data)
+
+
+# ── XACC8 / WIR107 — Modèles d'écriture & écritures récurrentes ────────────
+
+def _montants_par_ligne(brut):
+    """Normalise le dict ``{ligne_id: montant}`` reçu en JSON.
+
+    JSON n'a pas de clef entière : ``{"12": "1500"}`` arrive avec une clef
+    STRING que ``services.generer_ecriture_depuis_modele`` (qui indexe par
+    ``lig_modele.id``, un int) ne retrouverait jamais — le montant saisi serait
+    silencieusement remplacé par le montant par défaut. On reclé en int ici.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    if not brut:
+        return None
+    if not isinstance(brut, dict):
+        raise DjangoValidationError(
+            "``montants`` doit être un objet {id_ligne: montant}.")
+    montants = {}
+    for clef, valeur in brut.items():
+        try:
+            montants[int(clef)] = Decimal(str(valeur))
+        except (TypeError, ValueError, InvalidOperation):
+            raise DjangoValidationError(
+                f"Montant invalide pour la ligne {clef}.")
+    return montants
+
+
+class ModeleEcritureViewSet(_ComptaBaseViewSet):
+    """Modèles d'écriture réutilisables (XACC8) + génération à la demande.
+
+    WIR107 — le modèle existait en base et n'était piloté que par la commande
+    ``generer_ecritures_recurrentes`` / la tâche de clôture NTFIN32 ; il est
+    désormais exposé en REST pour l'écran « Écritures récurrentes ».
+    """
+    queryset = ModeleEcriture.objects.select_related('journal').prefetch_related(
+        'lignes__compte').all()
+    serializer_class = ModeleEcritureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('true', 'false'):
+            qs = qs.filter(actif=(actif == 'true'))
+        cloture = self.request.query_params.get('cloture')
+        if cloture in ('true', 'false'):
+            qs = qs.filter(cloture=(cloture == 'true'))
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'generer':
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=['post'],
+            permission_classes=[HasPermissionOrLegacy('compta_saisir')])
+    def generer(self, request, pk=None):
+        """WIR107 — matérialise UNE écriture (brouillon) depuis le modèle."""
+        modele = self.get_object()
+        try:
+            date_ecriture = _parse_date(request.data.get('date_ecriture'))
+            montants = _montants_par_ligne(request.data.get('montants'))
+            ecriture = services.generer_ecriture_depuis_modele(
+                modele, date_ecriture=date_ecriture, montants=montants,
+                libelle=request.data.get('libelle') or None,
+                user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(
+            {'ecriture_id': ecriture.id, 'reference': ecriture.reference,
+             'statut': ecriture.statut},
+            status=status.HTTP_201_CREATED)
+
+
+class LigneModeleEcritureViewSet(_ComptaBaseViewSet):
+    """Lignes pré-codées d'un modèle d'écriture (XACC8) — filtre ``?modele=``."""
+    queryset = LigneModeleEcriture.objects.select_related(
+        'modele', 'compte').all()
+    serializer_class = LigneModeleEcritureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        modele = self.request.query_params.get('modele')
+        if modele:
+            qs = qs.filter(modele_id=modele)
+        return qs
+
+
+class AbonnementEcritureViewSet(_ComptaBaseViewSet):
+    """Écritures récurrentes (XACC8) + génération des échéances dues.
+
+    WIR107 — ``generer-dues`` rejoue exactement le service utilisé par la
+    commande planifiée (idempotent par période : une écriture par
+    ``(abonnement, mois)``), pour que l'écran puisse déclencher la génération
+    sans attendre le batch.
+    """
+    queryset = AbonnementEcriture.objects.select_related(
+        'modele', 'modele__journal').all()
+    serializer_class = AbonnementEcritureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['prochaine_echeance', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        modele = self.request.query_params.get('modele')
+        if modele:
+            qs = qs.filter(modele_id=modele)
+        actif = self.request.query_params.get('actif')
+        if actif in ('true', 'false'):
+            qs = qs.filter(actif=(actif == 'true'))
+        return qs
+
+    def get_permissions(self):
+        if self.action == 'generer_dues':
+            return [HasPermissionOrLegacy('compta_saisir')()]
+        return super().get_permissions()
+
+    @action(detail=False, methods=['post'], url_path='generer-dues',
+            permission_classes=[HasPermissionOrLegacy('compta_saisir')])
+    def generer_dues(self, request):
+        """WIR107 — génère les écritures dues de tous les abonnements actifs."""
+        try:
+            jusqua = (_parse_date(request.data.get('jusqua'))
+                      if request.data.get('jusqua') else None)
+            resultat = services.generer_ecritures_recurrentes(
+                request.user.company, jusqua=jusqua, user=request.user)
+        except (DjangoValidationError, ValueError, TypeError) as exc:
+            return _err400(exc)
+        return Response(resultat)

@@ -197,11 +197,29 @@ const gestionProjetApi = {
   getModeleTaches: (params) => api.get(`${P}/modele-taches/`, { params }),
   createModeleTache: (data) => api.post(`${P}/modele-taches/`, data),
   deleteModeleTache: (id) => api.delete(`${P}/modele-taches/${id}/`),
+  // WIR87 — carnet local `gestion_projet.SousTraitant` : docstring backend
+  // le qualifie de « régression DC34 » (ARC22). Ces 4 fonctions restent pour
+  // compat (le backend les route désormais via le master, voir
+  // `creer_sous_traitant_via_master`), mais l'UI (RisquesPage) ne les appelle
+  // plus — elle lit/écrit directement le référentiel unifié ci-dessous.
   getSousTraitants: (params) => api.get(`${P}/sous-traitants/`, { params }),
   createSousTraitant: (data) => api.post(`${P}/sous-traitants/`, data),
   updateSousTraitant: (id, data) =>
     api.patch(`${P}/sous-traitants/${id}/`, data),
   deleteSousTraitant: (id) => api.delete(`${P}/sous-traitants/${id}/`),
+  // WIR87 — bascule du carnet de sous-traitants sur le master DC34 :
+  // `installations/sous-traitants/` (stock.Fournisseur type=service +
+  // SousTraitantProfile, orchestré par `apps/installations/views/
+  // soustraitant.py`), jamais le carnet local ci-dessus. Préfixe volontaire
+  // `/installations` (PAS `${P}`) : c'est le référentiel UNIFIÉ, pas un
+  // endpoint gestion_projet. Champs : raison_sociale, metier, contact_nom,
+  // telephone, email, ice, rib, actif, note.
+  getSousTraitantsMaster: (params) =>
+    api.get('/installations/sous-traitants/', { params }),
+  createSousTraitantMaster: (data) =>
+    api.post('/installations/sous-traitants/', data),
+  updateSousTraitantMaster: (id, data) =>
+    api.patch(`/installations/sous-traitants/${id}/`, data),
   getLotsSousTraitance: (params) =>
     api.get(`${P}/lots-sous-traitance/`, { params }),
   createLotSousTraitance: (data) =>

@@ -147,6 +147,15 @@ class Famille(TenantModel):
     parent2_email = models.EmailField(
         blank=True, default='', verbose_name='Parent 2 — email')
     adresse = models.TextField(blank=True, default='', verbose_name='Adresse')
+    # WIR91 — jamais d'import direct de crm.models : FK par chaîne, résolue/
+    # rattachée via `services.resoudre_client_pour_famille` (même patron que
+    # `apps.sante.models.Patient.client` / `apps.sante.services.
+    # resoudre_client_pour_patient`, lui-même calqué sur `apps.crm.services.
+    # resolve_client_for_lead`) — une famille ne duplique JAMAIS les
+    # coordonnées d'un `crm.Client` déjà existant.
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='familles_education', verbose_name='Client CRM lié')
 
     class Meta:
         verbose_name = 'Famille'

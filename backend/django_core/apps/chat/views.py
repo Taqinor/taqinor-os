@@ -26,7 +26,7 @@ from . import services
 from .models import (
     Conversation, ConversationMember, Message, MessageAttachment,
     MessageReaction, UserChatStatus, ScheduledMessage, CannedResponse,
-    RetentionPolicy,
+    RetentionPolicy, RetentionSweepRun,
 )
 from .permissions import IsConversationMember, is_member
 from .selectors import member_conversation_ids, search_messages
@@ -34,6 +34,7 @@ from .serializers import (
     ConversationSerializer, MessageSerializer, UserChatStatusSerializer,
     ScheduledMessageSerializer, MessageBookmarkSerializer,
     CannedResponseSerializer, RetentionPolicySerializer,
+    RetentionSweepRunSerializer,
 )
 
 
@@ -826,6 +827,19 @@ class RetentionPolicyViewSet(viewsets.ModelViewSet):
             (int(months) if months not in (None, '') else None),
             request.user)
         return Response(self.get_serializer(updated).data)
+
+    # ── WIR157 — historique des purges (traçabilité CNDP) ──────────────
+    @action(detail=False, methods=['get'], url_path='historique')
+    def historique(self, request):
+        """Journal des exécutions du sweep de rétention pour la société —
+        admin uniquement (déjà appliqué par `permission_classes` du
+        viewset). Plus récent d'abord."""
+        company = _company(request)
+        if company is None:
+            return Response([])
+        rows = RetentionSweepRun.objects.filter(
+            company=company).order_by('-ran_at', '-id')[:50]
+        return Response(RetentionSweepRunSerializer(rows, many=True).data)
 
 
 # ── ZCTR12 — webhook e-mail entrant (canal-comme-liste-de-diffusion) ───

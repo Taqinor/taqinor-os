@@ -1733,6 +1733,18 @@ class RoofLayout(models.Model):
 class FicheTechnique(models.Model):
     """FG254 / DC35 — fiche technique normalisée d'un module ou onduleur.
 
+    WIR104 — SURFACE API RETIRÉE (doublon tranché). Ce modèle doublait
+    ``stock.FicheTechnique``, exposé sur ``/stock/fiches-techniques/`` : seule
+    la version STOCK est consommée par le frontend (``stockApi``), la route
+    ``/ventes/fiches-techniques/`` n'avait aucun appelant. La route, le
+    ViewSet et le serializer de ventes ont donc été supprimés ; il n'existe
+    plus qu'UNE seule surface « fiche technique ». Le modèle et sa table sont
+    CONSERVÉS (aucune migration destructive, retrait trivialement revertable) :
+    si des données existent, elles doivent être fusionnées dans
+    ``stock.FicheTechnique`` — qui devra alors accueillir les deux champs que
+    ventes portait en plus (``type_fiche`` et ``coef_temp_voc``) — avant toute
+    suppression de table.
+
     Bibliothèque de fiches techniques (datasheets) rattachées à un produit du
     catalogue (``stock.Produit`` via FK chaîne, jamais d'import du modèle stock
     — couche découplée M1). Cette fiche NE RE-STOCKE PAS les attributs déjà
@@ -1762,7 +1774,7 @@ class FicheTechnique(models.Model):
     # Un produit du catalogue porte au plus UNE fiche normalisée par société.
     produit = models.ForeignKey(
         'stock.Produit',
-        on_delete=models.CASCADE,  # on_delete: fiche sans objet si produit supprimé
+        on_delete=models.PROTECT,  # on_delete: PROTECT — la fiche porte des paramètres constructeur saisis à la main + le PDF datasheet (catalogue RÉEL, non reconstructible) ; refuser la suppression du produit
         related_name='fiches_techniques',
         verbose_name='Produit',
     )
@@ -2073,7 +2085,7 @@ class LignePrixListe(models.Model):
         ListePrix, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='lignes')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,  # on_delete: ligne sans objet si produit supprimé
+        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — prix unitaire convenu dans une liste de prix (donnée réelle) ; refuser la suppression du produit plutôt que d'effacer la ligne tarifaire
         related_name='lignes_liste_prix')
     prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
 
@@ -2106,7 +2118,7 @@ class RegleListePrix(models.Model):
         ListePrix, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='regles')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,  # on_delete: règle sans objet si produit supprimé
+        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — règle de prix réelle ; SET_NULL serait DANGEREUX ici (produit=NULL = portée « tout le catalogue » : une règle produit deviendrait une remise globale silencieuse)
         null=True, blank=True,
         related_name='regles_liste_prix')
     categorie_nom = models.CharField(max_length=150, blank=True, default='')

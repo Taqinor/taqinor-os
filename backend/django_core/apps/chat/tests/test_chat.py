@@ -1324,6 +1324,40 @@ class XKB32RetentionExportTests(TestCase):
         }, format='json')
         self.assertEqual(r2.status_code, 201, r2.data)
 
+    def test_retention_historique_admin_only_scoped_and_ordered(self):
+        """WIR157 — GET /retention-policies/historique/ : admin-only, scopée
+        société (jamais un run d'une autre société), plus récent d'abord."""
+        from django.utils import timezone
+        from datetime import timedelta
+
+        from apps.chat.models import RetentionSweepRun
+
+        non_admin_api = auth(self.alice)
+        r = non_admin_api.get('/api/django/chat/retention-policies/historique/')
+        self.assertEqual(r.status_code, 403)
+
+        older = RetentionSweepRun.objects.create(
+            company=self.company, messages_purged=0)
+        RetentionSweepRun.objects.filter(pk=older.pk).update(
+            ran_at=timezone.now() - timedelta(days=2))
+        newer = RetentionSweepRun.objects.create(
+            company=self.company, messages_purged=3)
+
+        # `make_company()` fait un get_or_create sur un slug FIXE : l'appeler
+        # sans argument renvoie la MÊME société que `setUp`, donc le run
+        # « d'une autre société » atterrissait en fait dans celle-ci et la
+        # scoping n'était jamais réellement testée. Slug explicite.
+        other_company = make_company(slug='chat-co-autre', nom='Autre Co')
+        RetentionSweepRun.objects.create(
+            company=other_company, messages_purged=99)
+
+        admin_api = auth(self.admin)
+        r2 = admin_api.get('/api/django/chat/retention-policies/historique/')
+        self.assertEqual(r2.status_code, 200)
+        ids = [row['id'] for row in r2.data]
+        self.assertEqual(ids, [newer.pk, older.pk])
+        self.assertEqual(r2.data[0]['messages_purged'], 3)
+
 
 class ZCTR12ChannelEmailAliasTests(TestCase):
     """ZCTR12 — canal comme liste de diffusion e-mail (sans clé mail = no-op

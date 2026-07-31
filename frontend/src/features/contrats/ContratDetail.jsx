@@ -5,7 +5,7 @@ import contratsApi from '../../api/contratsApi'
 import {
   Button, Card, EmptyState, Skeleton, Badge, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-  Label, Input, Textarea,
+  Label, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { RecordShell } from '../../ui/module'
 import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
@@ -13,6 +13,14 @@ import { StatutContrat, StatutResiliation, CONTRAT_STATUS } from './status'
 import StateMachine from './StateMachine'
 import SimpleTable from './SimpleTable'
 import { openPdfInGesture } from '../../utils/pdfBlob'
+import CustomFieldsInput from '../../components/CustomFieldsInput'
+
+const TYPES_CIBLE_LIEN = [
+  { value: 'devis', label: 'Devis' },
+  { value: 'lead', label: 'Lead' },
+  { value: 'installation', label: 'Installation' },
+  { value: 'maintenance', label: 'Maintenance' },
+]
 
 /* ============================================================================
    UX34 (détail) — Fiche cycle de vie d'un contrat + actions du cycle de vie.
@@ -51,8 +59,14 @@ export default function ContratDetail() {
 
   const [note, setNote] = useState('')
   const [notePending, setNotePending] = useState(false)
-  const [dialog, setDialog] = useState(null) // 'signer' | 'renouveler' | 'avenant' | 'resilier'
+  // WIR75 — 'signer' | 'renouveler' | 'avenant' | 'resilier' | 'version' | 'lien' | 'devis-renouvellement'
+  const [dialog, setDialog] = useState(null)
   const [busy, setBusy] = useState(false)
+
+  // WIR75 — champs personnalisés (module `contrat`, pilote ARC14).
+  const [customData, setCustomData] = useState({})
+  const [customSaving, setCustomSaving] = useState(false)
+  const [hasCustomFields, setHasCustomFields] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -80,6 +94,24 @@ export default function ContratDetail() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when id changes
   }, [id])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronise l'éditeur avec le contrat chargé/rechargé
+    setCustomData(contrat?.custom_data || {})
+  }, [contrat])
+
+  const enregistrerCustomData = async () => {
+    setCustomSaving(true)
+    try {
+      await contratsApi.updateContrat(id, { custom_data: customData })
+      toast.success('Champs personnalisés enregistrés.')
+      load()
+    } catch (e) {
+      toast.error(errMsg(e, 'Enregistrement impossible.'))
+    } finally {
+      setCustomSaving(false)
+    }
+  }
 
   // VX48 — onglet pré-ouvert SYNCHRONE avant l'await (Safari iOS bloque
   // silencieusement un window.open() post-await).
@@ -189,15 +221,20 @@ export default function ContratDetail() {
   )
 
   const liensTab = (
-    <SimpleTable
-      emptyText="Aucun lien vers un devis / lead / installation."
-      rows={liens}
-      columns={[
-        { header: 'Type', cell: (l) => l.type_cible_display || l.type_cible },
-        { header: 'Cible', cell: (l) => <span className="font-medium">{l.libelle || `#${l.cible_id}`}</span> },
-        { header: 'Source', cell: (l) => <Badge tone={l.source === 'live' ? 'success' : 'neutral'}>{l.source || 'stored'}</Badge> },
-      ]}
-    />
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Button size="sm" variant="outline" onClick={() => setDialog('lien')}>Créer un lien</Button>
+      </div>
+      <SimpleTable
+        emptyText="Aucun lien vers un devis / lead / installation."
+        rows={liens}
+        columns={[
+          { header: 'Type', cell: (l) => l.type_cible_display || l.type_cible },
+          { header: 'Cible', cell: (l) => <span className="font-medium">{l.libelle || `#${l.cible_id}`}</span> },
+          { header: 'Source', cell: (l) => <Badge tone={l.source === 'live' ? 'success' : 'neutral'}>{l.source || 'stored'}</Badge> },
+        ]}
+      />
+    </div>
   )
 
   // CONTRAT16-17 — signatures électroniques in-app.
@@ -261,16 +298,21 @@ export default function ContratDetail() {
   )
 
   const versionsTab = (
-    <SimpleTable
-      emptyText="Aucune version figée."
-      rows={versions}
-      columns={[
-        { header: 'Version', cell: (v) => <span className="font-mono">v{v.version}</span> },
-        { header: 'Motif', cell: (v) => v.motif || '—' },
-        { header: 'Auteur', cell: (v) => v.cree_par_username || '—' },
-        { header: 'Créée le', cell: (v) => formatDateTime(v.cree_le), align: 'right' },
-      ]}
-    />
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Button size="sm" variant="outline" onClick={() => setDialog('version')}>Figer une version</Button>
+      </div>
+      <SimpleTable
+        emptyText="Aucune version figée."
+        rows={versions}
+        columns={[
+          { header: 'Version', cell: (v) => <span className="font-mono">v{v.version}</span> },
+          { header: 'Motif', cell: (v) => v.motif || '—' },
+          { header: 'Auteur', cell: (v) => v.cree_par_username || '—' },
+          { header: 'Créée le', cell: (v) => formatDateTime(v.cree_le), align: 'right' },
+        ]}
+      />
+    </div>
   )
 
   const avenantsTab = (
@@ -331,6 +373,24 @@ export default function ContratDetail() {
     </Card>
   )
 
+  // WIR75 — champs personnalisés (module `contrat`, pilote ARC14). N'affiche
+  // le bouton d'enregistrement que si des définitions existent réellement.
+  const customFieldsCard = (
+    <Card className="p-4">
+      <CustomFieldsInput
+        module="contrat" value={customData} onChange={setCustomData}
+        onDefsLoaded={(defs) => setHasCustomFields(defs.length > 0)}
+      />
+      {hasCustomFields && (
+        <div className="mt-3 flex justify-end">
+          <Button size="sm" loading={customSaving} onClick={enregistrerCustomData}>
+            Enregistrer les champs personnalisés
+          </Button>
+        </div>
+      )}
+    </Card>
+  )
+
   const activity = (
     <Card className="p-4">
       <h3 className="mb-3 font-display text-base font-semibold">Historique</h3>
@@ -380,6 +440,9 @@ export default function ContratDetail() {
         </Button>
       ))}
       <Button size="sm" variant="outline" onClick={() => setDialog('renouveler')}>Renouveler</Button>
+      <Button size="sm" variant="outline" onClick={() => setDialog('devis-renouvellement')}>
+        Devis de renouvellement
+      </Button>
       {/* VX246(b) — impression navigateur (print.css). Distincte du « PDF interne »
           WeasyPrint ci-dessous, qu'elle ne remplace pas. */}
       <Button size="sm" variant="outline" onClick={() => window.print()}>
@@ -411,6 +474,7 @@ export default function ContratDetail() {
                 <StateMachine statut={contrat.statut} />
               </Card>
               {infosTab}
+              {customFieldsCard}
             </div>
           ) },
           { value: 'parties', label: 'Parties', count: parties.length, content: partiesTab },
@@ -434,6 +498,15 @@ export default function ContratDetail() {
       )}
       {dialog === 'resilier' && (
         <ResilierDialog id={id} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load() }} />
+      )}
+      {dialog === 'version' && (
+        <VersionDialog id={id} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load() }} />
+      )}
+      {dialog === 'lien' && (
+        <LienDialog id={id} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load() }} />
+      )}
+      {dialog === 'devis-renouvellement' && (
+        <DevisRenouvellementDialog id={id} onClose={() => setDialog(null)} onDone={() => { setDialog(null); load() }} />
       )}
     </>
   )
@@ -665,6 +738,153 @@ function ResilierDialog({ id, onClose, onDone }) {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
             <Button type="submit" variant="destructive" disabled={saving}>{saving ? 'Résiliation…' : 'Résilier'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR75 — CONTRAT18 : fige un instantané immuable du rendu courant.
+function VersionDialog({ id, onClose, onDone }) {
+  const [motif, setMotif] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setErr(null)
+    try {
+      await contratsApi.creerVersion(id, motif.trim() ? { motif: motif.trim() } : {})
+      toast.success('Version figée.')
+      onDone()
+    } catch (e2) {
+      setErr(errMsg(e2, 'Impossible de figer une version.'))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Figer une version</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <p className="text-sm text-muted-foreground">
+            Fige un instantané immuable du rendu courant du contrat (contenu calculé côté serveur).
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ver-motif">Motif</Label>
+            <Textarea id="ver-motif" rows={2} value={motif} onChange={(e) => setMotif(e.target.value)} placeholder="Optionnel" />
+          </div>
+          {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Figer la version'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR75 — lien lâche vers un document métier d'une autre app (devis/lead/
+// installation/maintenance), sans FK dur (cf. ContratLien).
+function LienDialog({ id, onClose, onDone }) {
+  const [typeCible, setTypeCible] = useState('devis')
+  const [cibleId, setCibleId] = useState('')
+  const [libelle, setLibelle] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!cibleId) { setErr("L'identifiant de la cible est requis."); return }
+    setSaving(true)
+    setErr(null)
+    try {
+      await contratsApi.createContratLien({
+        contrat: id, type_cible: typeCible, cible_id: Number(cibleId),
+        libelle: libelle.trim(),
+      })
+      toast.success('Lien créé.')
+      onDone()
+    } catch (e2) {
+      setErr(errMsg(e2, 'Création du lien refusée.'))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Créer un lien</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lien-type">Type de cible</Label>
+            <Select value={typeCible} onValueChange={setTypeCible}>
+              <SelectTrigger id="lien-type" aria-label="Type de cible"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TYPES_CIBLE_LIEN.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lien-cible">Identifiant de la cible</Label>
+            <Input id="lien-cible" type="number" value={cibleId} onChange={(e) => setCibleId(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lien-libelle">Libellé</Label>
+            <Input id="lien-libelle" value={libelle} onChange={(e) => setLibelle(e.target.value)} placeholder="Optionnel" />
+          </div>
+          {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Création…' : 'Créer le lien'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR75 (CONTRAT23/XCTR12) — génère un devis de renouvellement AVANT
+// échéance, lié au contrat via ContratLien. Ne change JAMAIS le statut du
+// contrat ; refuse (400) si un devis de renouvellement OUVERT existe déjà.
+function DevisRenouvellementDialog({ id, onClose, onDone }) {
+  const [valeurIndice, setValeurIndice] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setErr(null)
+    try {
+      const data = valeurIndice !== '' ? { valeur_indice: Number(valeurIndice) } : {}
+      const r = await contratsApi.genererDevisRenouvellement(id, data)
+      toast.success(`Devis ${r.data?.devis_reference ?? ''} généré.`.trim())
+      onDone()
+    } catch (e2) {
+      setErr(errMsg(e2, 'Génération du devis refusée.'))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Générer un devis de renouvellement</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <p className="text-sm text-muted-foreground">
+            Crée un devis lié au contrat, sans changer son statut. Une valeur d'indice révise le
+            montant proposé via l'indexation active du contrat.
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="dr-indice">Valeur d'indice</Label>
+            <Input id="dr-indice" type="number" step="any" value={valeurIndice} onChange={(e) => setValeurIndice(e.target.value)} placeholder="Optionnel" />
+          </div>
+          {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Génération…' : 'Générer le devis'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

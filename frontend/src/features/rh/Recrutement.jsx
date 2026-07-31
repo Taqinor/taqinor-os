@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  UserPlus, Ban, ScanText, Star, BarChart3, FileSignature, CalendarClock,
+  UserPlus, Ban, ScanText, Star, BarChart3, FileSignature, CalendarClock, Users,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
@@ -23,6 +23,13 @@ import {
    vivier (talent pool), statistiques recrutement (XRH22), gabarits d'email
    (XRH19) & modèles d'évaluation (ZRH7). Toutes les transitions passent par les
    @actions serveur ; la société est toujours posée côté serveur.
+
+   WIR131 — l'action « Feedback 360° » (par ligne d'évaluation) invite des
+   répondants (`createRetourFeedback360`) et affiche la synthèse agrégée
+   (`getSyntheseFeedback360`) — les deux wrappers étaient définis dans
+   rhApi.js sans aucun appelant. L'invitation reste gérée par le RH/manager
+   ici ; le répondant remplit/soumet ensuite SON PROPRE retour depuis le
+   portail self-service (`mes-feedback360`, hors scope de cette tâche).
    ========================================================================== */
 
 const VUES = [
@@ -60,6 +67,8 @@ export default function Recrutement() {
   // WIR34 — nouveau candidat + nouveau modèle d'évaluation (ZRH7).
   const [candidatOpen, setCandidatOpen] = useState(false)
   const [modeleOpen, setModeleOpen] = useState(false)
+  // WIR131 — invitations feedback 360° d'une évaluation.
+  const [feedbackFor, setFeedbackFor] = useState(null)
 
   const recharger = () => {
     let vivant = true
@@ -276,9 +285,13 @@ export default function Recrutement() {
     }
     return actions
   }
-  const evalActions = (e) => (e.statut === 'brouillon'
-    ? [{ id: 'valider', label: 'Valider', icon: UserPlus, onClick: () => validerEval(e) }]
-    : [])
+  const evalActions = (e) => [
+    ...(e.statut === 'brouillon'
+      ? [{ id: 'valider', label: 'Valider', icon: UserPlus, onClick: () => validerEval(e) }]
+      : []),
+    // WIR131 — ouvre les invitations feedback 360° pour CETTE évaluation.
+    { id: 'feedback360', label: 'Feedback 360°', icon: Users, onClick: () => setFeedbackFor(e) },
+  ]
   const sanctionActions = (s) => (s.statut !== 'annulee'
     ? [{ id: 'annuler', label: 'Annuler', icon: Ban, destructive: true, onClick: () => annulerSanction(s) }]
     : [])
@@ -381,6 +394,12 @@ export default function Recrutement() {
         <ModeleEvaluationDialog
           onClose={() => setModeleOpen(false)}
           onSaved={() => { setModeleOpen(false); recharger() }}
+        />
+      )}
+      {feedbackFor && (
+        <FeedbackDialog
+          evaluation={feedbackFor}
+          onClose={() => setFeedbackFor(null)}
         />
       )}
     </div>
@@ -762,6 +781,150 @@ function ModeleEvaluationDialog({ onClose, onSaved }) {
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR131 (ZRH9) — Feedback 360° d'une évaluation : invitations + synthèse ── */
+const RELATIONS_FEEDBACK360 = [
+  { value: 'pair', label: 'Pair' },
+  { value: 'subordonne', label: 'Subordonné' },
+  { value: 'manager_transversal', label: 'Manager transversal' },
+]
+
+function FeedbackDialog({ evaluation, onClose }) {
+  const [retours, setRetours] = useState([])
+  const [synthese, setSynthese] = useState(null)
+  const [employes, setEmployes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [repondant, setRepondant] = useState('')
+  const [relation, setRelation] = useState('pair')
+  const [inviting, setInviting] = useState(false)
+  const [serverError, setServerError] = useState(null)
+  const [reloadTick, setReloadTick] = useState(0)
+
+  useEffect(() => {
+    let vivant = true
+    // Différé d'un microtask : pas de setState synchrone dans le corps d'un
+    // effet (react-hooks/set-state-in-effect).
+    Promise.resolve().then(() => { if (vivant) setLoading(true) })
+    Promise.allSettled([
+      rhApi.getRetoursFeedback360({ evaluation: evaluation.id }),
+      rhApi.getSyntheseFeedback360({ evaluation: evaluation.id }),
+      rhApi.getEmployes(),
+    ]).then(([r, s, emp]) => {
+      if (!vivant) return
+      if (r.status === 'fulfilled') setRetours(unwrap(r.value.data))
+      if (s.status === 'fulfilled') setSynthese(s.value.data)
+      if (emp.status === 'fulfilled') setEmployes(unwrap(emp.value.data))
+      setLoading(false)
+    })
+    return () => { vivant = false }
+  }, [evaluation.id, reloadTick])
+
+  const inviter = async (e) => {
+    e.preventDefault()
+    if (!repondant) return
+    setInviting(true)
+    setServerError(null)
+    try {
+      await rhApi.createRetourFeedback360({
+        evaluation: evaluation.id,
+        repondant: Number(repondant),
+        relation,
+      })
+      toast.success('Répondant invité.')
+      setRepondant('')
+      setReloadTick((t) => t + 1)
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.repondant || 'Invitation impossible.')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const moyennes = Object.entries(synthese?.moyennes_par_critere || {})
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Feedback 360° — {evaluation.employe_nom || `Évaluation #${evaluation.id}`}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          {synthese && (
+            <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
+              <p className="font-medium">
+                {synthese.nb_soumis ?? 0}/{synthese.nb_invites ?? 0} retour(s) soumis
+              </p>
+              {synthese.anonymise ? (
+                <p className="text-xs text-muted-foreground">
+                  Synthèse anonymisée sous le seuil de répondants — moyenne agrégée uniquement.
+                </p>
+              ) : moyennes.length > 0 ? (
+                <ul className="mt-1 flex flex-col gap-0.5 text-xs text-muted-foreground">
+                  {moyennes.map(([critere, note]) => (
+                    <li key={critere}>{critere} : {note}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          )}
+
+          <form onSubmit={inviter} className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[10rem] flex-1 flex flex-col gap-1.5">
+              <Label htmlFor="fb-repondant">Répondant</Label>
+              <select
+                id="fb-repondant"
+                value={repondant}
+                onChange={(e) => setRepondant(e.target.value)}
+                className="h-9 w-full rounded-md border border-border bg-card px-3 text-sm"
+              >
+                <option value="">— Choisir —</option>
+                {employes.map((emp) => (
+                  <option key={emp.id} value={emp.id}>{emp.nom} {emp.prenom}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="fb-relation">Relation</Label>
+              <select
+                id="fb-relation"
+                value={relation}
+                onChange={(e) => setRelation(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                {RELATIONS_FEEDBACK360.map((r) => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+            <Button type="submit" size="sm" disabled={!repondant || inviting}>
+              {inviting ? 'Invitation…' : 'Inviter'}
+            </Button>
+          </form>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+
+          {!loading && (
+            retours.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun répondant invité pour l’instant.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {retours.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm">
+                    <span>{r.repondant_nom || `Répondant #${r.repondant}`}</span>
+                    <Badge tone={r.soumis ? 'success' : 'neutral'}>{r.soumis ? 'Soumis' : 'En attente'}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

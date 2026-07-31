@@ -4,7 +4,8 @@ import { useSelector } from 'react-redux'
 import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   BarChart3, FileWarning, PackageCheck, Receipt, Wallet,
-  Undo2, ShieldCheck, Tags,
+  Undo2, ShieldCheck, Tags, CreditCard, FileMinus2, Users, Plus,
+  Pencil, Trash2,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
@@ -12,6 +13,9 @@ import { telHref } from '../../lib/contactLinks'
 import {
   Spinner, Tabs, TabsList, TabsTrigger, TabsContent,
   Card, CardHeader, CardTitle, CardContent, Stat, RelationCounters,
+  Button, IconButton, Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, Form, FormField, Input, Textarea,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Badge,
 } from '../../ui'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
@@ -210,6 +214,509 @@ function OngletRetours({ fournisseurId }) {
   )
 }
 
+// ── Onglet Acomptes (XPUR8) ───────────────────────────────────────────────
+// Un acompte est rattaché à un BCF du fournisseur (pas de FK directe vers le
+// fournisseur côté serveur) : le formulaire propose les BCF du fournisseur
+// (déjà chargés pour l'onglet BCF). Imputation automatique à la facturation
+// (`consommer_acomptes_bcf`, serveur) — pas d'action manuelle ici.
+function AcompteForm({ bcfs, onClose, onSaved }) {
+  const [fields, setFields] = useState({
+    bon_commande: bcfs[0]?.id ? String(bcfs[0].id) : '',
+    montant: '', date_versement: '', mode: 'virement', note: '',
+  })
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    if (!fields.bon_commande) { setError('Un bon de commande est requis.'); return }
+    const montant = Number(fields.montant)
+    if (!montant || montant <= 0) { setError('Le montant doit être positif.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await stockApi.createAcompteFournisseur({
+        bon_commande: Number(fields.bon_commande),
+        montant,
+        date_versement: fields.date_versement || null,
+        mode: fields.mode,
+        note: fields.note.trim() || null,
+      })
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      setError(frErr(err, "L'enregistrement a échoué."))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouvel acompte fournisseur</DialogTitle>
+          <DialogDescription>Avance versée sur un bon de commande. Donnée interne.</DialogDescription>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Bon de commande" required htmlFor="acpt-bcf" fullWidth>
+            <Select value={fields.bon_commande} onValueChange={(v) => setField('bon_commande', v)}>
+              <SelectTrigger id="acpt-bcf"><SelectValue placeholder="Choisir un BCF…" /></SelectTrigger>
+              <SelectContent>
+                {bcfs.map((b) => (
+                  <SelectItem key={b.id} value={String(b.id)}>
+                    {b.reference ?? `BCF #${b.id}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Montant (MAD)" required htmlFor="acpt-montant">
+            <Input id="acpt-montant" type="number" step="any" value={fields.montant}
+                   onChange={(e) => setField('montant', e.target.value)} />
+          </FormField>
+          <FormField label="Date de versement" htmlFor="acpt-date">
+            <Input id="acpt-date" type="date" value={fields.date_versement}
+                   onChange={(e) => setField('date_versement', e.target.value)} />
+          </FormField>
+          <FormField label="Mode de paiement" htmlFor="acpt-mode">
+            <Select value={fields.mode} onValueChange={(v) => setField('mode', v)}>
+              <SelectTrigger id="acpt-mode"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="virement">Virement</SelectItem>
+                <SelectItem value="cheque">Chèque</SelectItem>
+                <SelectItem value="especes">Espèces</SelectItem>
+                <SelectItem value="carte">Carte</SelectItem>
+                <SelectItem value="effet">Effet / traite</SelectItem>
+                <SelectItem value="autre">Autre</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Note" htmlFor="acpt-note" fullWidth>
+            <Textarea id="acpt-note" rows={2} value={fields.note}
+                      onChange={(e) => setField('note', e.target.value)} />
+          </FormField>
+          {error && (
+            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function OngletAcomptes({ fournisseurId, canWrite }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+  const [bcfs, setBcfs] = useState([])
+  const [showForm, setShowForm] = useState(false)
+
+  const reload = () => {
+    stockApi.getAcomptesFournisseurDe(fournisseurId)
+      .then((data) => setItems(data ?? []))
+      .catch((e) => setError(frErr(e, 'Acomptes indisponibles.')))
+  }
+
+  useEffect(() => {
+    let active = true
+    reload()
+    stockApi.getBonsCommandeFournisseurDe(fournisseurId)
+      .then((r) => { if (active) setBcfs(r.data?.results ?? r.data ?? []) })
+      .catch(() => {})
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fournisseurId])
+
+  if (error) return <Indisponible message={error} />
+  if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+
+  return (
+    <div className="flex flex-col gap-3">
+      {canWrite && (
+        <div className="flex justify-end">
+          <Button size="sm" disabled={bcfs.length === 0} onClick={() => setShowForm(true)}>
+            <Plus className="size-4" /> Nouvel acompte
+          </Button>
+        </div>
+      )}
+      {items.length === 0 ? (
+        <Indisponible message="Aucun acompte." />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {items.map((a) => (
+            <li key={a.id} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
+              <span>{a.bon_commande_reference ?? `BCF #${a.bon_commande}`} · {fmtDate(a.date_versement)}</span>
+              <span className="flex items-center gap-2 text-muted-foreground tabular-nums">
+                {fmtMad(a.montant)}
+                {Number(a.montant_consomme) > 0 && (
+                  <Badge tone="success">Consommé {fmtMad(a.montant_consomme)}</Badge>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {showForm && (
+        <AcompteForm bcfs={bcfs}
+                     onClose={() => setShowForm(false)} onSaved={reload} />
+      )}
+    </div>
+  )
+}
+
+// ── Onglet Avoirs (XPUR9 — notes de crédit AP) ─────────────────────────────
+function AvoirForm({ fournisseurId, onClose, onSaved }) {
+  const [fields, setFields] = useState({
+    montant_ht: '', montant_tva: '', montant_ttc: '', note: '',
+  })
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    const ttc = Number(fields.montant_ttc)
+    if (!ttc || ttc <= 0) { setError('Le montant TTC doit être positif.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await stockApi.createAvoirFournisseur({
+        fournisseur: Number(fournisseurId),
+        montant_ht: Number(fields.montant_ht) || 0,
+        montant_tva: Number(fields.montant_tva) || 0,
+        montant_ttc: ttc,
+        note: fields.note.trim() || null,
+      })
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      setError(frErr(err, "L'enregistrement a échoué."))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouvel avoir fournisseur</DialogTitle>
+          <DialogDescription>Note de crédit AP. Donnée interne, jamais client-facing.</DialogDescription>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Montant HT (MAD)" htmlFor="avf-ht">
+            <Input id="avf-ht" type="number" step="any" value={fields.montant_ht}
+                   onChange={(e) => setField('montant_ht', e.target.value)} />
+          </FormField>
+          <FormField label="TVA (MAD)" htmlFor="avf-tva">
+            <Input id="avf-tva" type="number" step="any" value={fields.montant_tva}
+                   onChange={(e) => setField('montant_tva', e.target.value)} />
+          </FormField>
+          <FormField label="Montant TTC (MAD)" required htmlFor="avf-ttc">
+            <Input id="avf-ttc" type="number" step="any" value={fields.montant_ttc}
+                   onChange={(e) => setField('montant_ttc', e.target.value)} />
+          </FormField>
+          <FormField label="Note" htmlFor="avf-note" fullWidth>
+            <Textarea id="avf-note" rows={2} value={fields.note}
+                      onChange={(e) => setField('note', e.target.value)} />
+          </FormField>
+          {error && (
+            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Petit formulaire d'imputation — réduit le solde dû d'UNE facture du même
+// fournisseur (`AvoirFournisseur.imputer`, serveur).
+function ImputerAvoirForm({ avoir, factures, onClose, onSaved }) {
+  const [factureId, setFactureId] = useState(factures[0]?.id ? String(factures[0].id) : '')
+  const [montant, setMontant] = useState('')
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    if (!factureId) { setError('Une facture est requise.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await stockApi.imputerAvoirFournisseur(avoir.id, {
+        facture: Number(factureId),
+        ...(montant ? { montant: Number(montant) } : {}),
+      })
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      setError(frErr(err, "L'imputation a échoué."))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Imputer l&apos;avoir {avoir.reference}</DialogTitle>
+          <DialogDescription>
+            Réduit le solde dû de la facture choisie (disponible : {fmtMad(avoir.montant_disponible)}).
+          </DialogDescription>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Facture" required htmlFor="imp-facture" fullWidth>
+            <Select value={factureId} onValueChange={setFactureId}>
+              <SelectTrigger id="imp-facture"><SelectValue placeholder="Choisir une facture…" /></SelectTrigger>
+              <SelectContent>
+                {factures.map((f) => (
+                  <SelectItem key={f.id} value={String(f.id)}>
+                    {f.reference ?? `Facture #${f.id}`} — dû {fmtMad(f.solde_du)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+          <FormField label="Montant (vide = maximum possible)" htmlFor="imp-montant">
+            <Input id="imp-montant" type="number" step="any" value={montant}
+                   onChange={(e) => setMontant(e.target.value)} />
+          </FormField>
+          {error && (
+            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>{saving ? 'Imputation…' : 'Imputer'}</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const AVOIR_STATUT_LABELS = { brouillon: 'Brouillon', valide: 'Validé', impute: 'Imputé' }
+const AVOIR_STATUT_TONE = { brouillon: 'muted', valide: 'warning', impute: 'success' }
+
+function OngletAvoirs({ fournisseurId, canWrite }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+  const [factures, setFactures] = useState([])
+  const [showForm, setShowForm] = useState(false)
+  const [imputing, setImputing] = useState(null)
+
+  const reload = () => {
+    stockApi.getAvoirsFournisseurDe(fournisseurId)
+      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+      .catch((e) => setError(frErr(e, 'Avoirs indisponibles.')))
+  }
+
+  useEffect(() => {
+    let active = true
+    reload()
+    stockApi.getFacturesFournisseurDe(fournisseurId)
+      .then((r) => { if (active) setFactures(r.data?.results ?? r.data ?? []) })
+      .catch(() => {})
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fournisseurId])
+
+  const valider = async (avoir) => {
+    try { await stockApi.validerAvoirFournisseur(avoir.id); reload() } catch { /* affiché via reload */ }
+  }
+
+  if (error) return <Indisponible message={error} />
+  if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+
+  return (
+    <div className="flex flex-col gap-3">
+      {canWrite && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={() => setShowForm(true)}>
+            <Plus className="size-4" /> Nouvel avoir
+          </Button>
+        </div>
+      )}
+      {items.length === 0 ? (
+        <Indisponible message="Aucun avoir." />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {items.map((a) => (
+            <li key={a.id} className="flex items-center justify-between gap-2 rounded-md border border-border p-2 text-sm">
+              <span className="flex items-center gap-2">
+                {a.reference}
+                <Badge tone={AVOIR_STATUT_TONE[a.statut] ?? 'muted'}>
+                  {AVOIR_STATUT_LABELS[a.statut] ?? a.statut}
+                </Badge>
+              </span>
+              <span className="flex items-center gap-2 text-muted-foreground tabular-nums">
+                {fmtMad(a.montant_ttc)} (disponible {fmtMad(a.montant_disponible)})
+                {canWrite && a.statut === 'brouillon' && (
+                  <Button size="sm" variant="outline" onClick={() => valider(a)}>Valider</Button>
+                )}
+                {canWrite && a.statut !== 'brouillon' && Number(a.montant_disponible) > 0 && (
+                  <Button size="sm" variant="outline" onClick={() => setImputing(a)}>Imputer</Button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {showForm && (
+        <AvoirForm fournisseurId={fournisseurId}
+                   onClose={() => setShowForm(false)} onSaved={reload} />
+      )}
+      {imputing && (
+        <ImputerAvoirForm avoir={imputing} factures={factures}
+                          onClose={() => setImputing(null)} onSaved={reload} />
+      )}
+    </div>
+  )
+}
+
+// ── Onglet Contacts (XPUR5 — N contacts par fournisseur) ────────────────────
+function ContactForm({ fournisseurId, contact, onClose, onSaved }) {
+  const isNew = !contact?.id
+  const [fields, setFields] = useState({
+    nom: contact?.nom ?? '', fonction: contact?.fonction ?? '',
+    email: contact?.email ?? '', telephone: contact?.telephone ?? '',
+  })
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const setField = (k, v) => setFields((f) => ({ ...f, [k]: v }))
+
+  const submit = async (ev) => {
+    ev.preventDefault()
+    if (!fields.nom.trim()) { setError('Le nom est requis.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      const payload = {
+        fournisseur: Number(fournisseurId),
+        nom: fields.nom.trim(),
+        fonction: fields.fonction.trim(),
+        email: fields.email.trim() || null,
+        telephone: fields.telephone.trim() || null,
+      }
+      if (isNew) await stockApi.createContactFournisseur(payload)
+      else await stockApi.updateContactFournisseur(contact.id, payload)
+      onSaved?.()
+      onClose()
+    } catch (err) {
+      setError(frErr(err, "L'enregistrement a échoué."))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{isNew ? 'Nouveau contact' : `Contact — ${contact.nom}`}</DialogTitle>
+          <DialogDescription>
+            Contact secondaire du fournisseur (le contact principal reste sur la fiche).
+          </DialogDescription>
+        </DialogHeader>
+        <Form onSubmit={submit} className="gap-4">
+          <FormField label="Nom" required htmlFor="ctf-nom" fullWidth>
+            <Input id="ctf-nom" value={fields.nom} onChange={(e) => setField('nom', e.target.value)} />
+          </FormField>
+          <FormField label="Fonction" htmlFor="ctf-fonction">
+            <Input id="ctf-fonction" value={fields.fonction} onChange={(e) => setField('fonction', e.target.value)} />
+          </FormField>
+          <FormField label="Email" htmlFor="ctf-email">
+            <Input id="ctf-email" type="email" value={fields.email} onChange={(e) => setField('email', e.target.value)} />
+          </FormField>
+          <FormField label="Téléphone" htmlFor="ctf-tel">
+            <Input id="ctf-tel" value={fields.telephone} onChange={(e) => setField('telephone', e.target.value)} />
+          </FormField>
+          {error && (
+            <div role="alert" className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <DialogFooter className="sm:col-span-2">
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" loading={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          </DialogFooter>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function OngletContacts({ fournisseurId, canWrite }) {
+  const [items, setItems] = useState(null)
+  const [error, setError] = useState(null)
+  const [editing, setEditing] = useState(null)
+
+  const reload = () => {
+    stockApi.getContactsFournisseurDe(fournisseurId)
+      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+      .catch((e) => setError(frErr(e, 'Contacts indisponibles.')))
+  }
+
+  useEffect(() => { reload() }, [fournisseurId])
+
+  const supprimer = async (c) => {
+    if (!window.confirm(`Supprimer le contact « ${c.nom} » ?`)) return
+    try { await stockApi.deleteContactFournisseur(c.id); reload() } catch { /* affiché via reload */ }
+  }
+
+  if (error) return <Indisponible message={error} />
+  if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+
+  return (
+    <div className="flex flex-col gap-3">
+      {canWrite && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={() => setEditing({})}>
+            <Plus className="size-4" /> Nouveau contact
+          </Button>
+        </div>
+      )}
+      {items.length === 0 ? (
+        <Indisponible message="Aucun contact secondaire." />
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {items.map((c) => (
+            <li key={c.id} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
+              <span>
+                {c.nom}{c.fonction ? ` · ${c.fonction}` : ''}
+                {c.email ? ` · ${c.email}` : ''}{c.telephone ? ` · ${c.telephone}` : ''}
+              </span>
+              {canWrite && (
+                <span className="flex items-center gap-1">
+                  <IconButton size="sm" variant="ghost" label="Modifier" onClick={() => setEditing(c)}>
+                    <Pencil className="size-4" aria-hidden="true" />
+                  </IconButton>
+                  <IconButton size="sm" variant="ghost" label="Supprimer"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => supprimer(c)}>
+                    <Trash2 className="size-4" aria-hidden="true" />
+                  </IconButton>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {editing && (
+        <ContactForm fournisseurId={fournisseurId} contact={editing.id ? editing : null}
+                     onClose={() => setEditing(null)} onSaved={reload} />
+      )}
+    </div>
+  )
+}
+
 // ── Onglet Documents de conformité (XPUR1) ──────────────────────────────────
 function statutExpiration(dateExpiration) {
   if (!dateExpiration) return { label: 'Sans expiration', tone: 'muted' }
@@ -313,6 +820,11 @@ export default function FournisseurFiche360({
   const canViewViaPerm = useHasPermission('stock_voir')
   const canViewViaRole = useIsAdminOrResponsable()
   const canView = hasFinePermissions ? canViewViaPerm : canViewViaRole
+  // WIR108 — acomptes/avoirs/contacts : même garde en écriture que le reste
+  // de l'écran fournisseur (`FournisseursStock.jsx`).
+  const canWriteViaPerm = useHasPermission('stock_modifier')
+  const canWriteViaRole = useIsAdminOrResponsable()
+  const canWrite = hasFinePermissions ? canWriteViaPerm : canWriteViaRole
   // VX108 — tap-to-call : la fiche n'affichait aucun téléphone.
   const tel = telHref(fournisseurTelephone)
 
@@ -335,7 +847,10 @@ export default function FournisseurFiche360({
     { value: 'performance', label: 'Performance', icon: BarChart3, Comp: OngletPerformance },
     { value: 'bcf', label: 'Bons de commande', icon: PackageCheck, Comp: OngletBcf },
     { value: 'factures', label: 'Factures / solde', icon: Receipt, Comp: OngletFactures },
-    { value: 'retours', label: 'Retours / avoirs', icon: Undo2, Comp: OngletRetours },
+    { value: 'retours', label: 'Retours', icon: Undo2, Comp: OngletRetours },
+    { value: 'acomptes', label: 'Acomptes', icon: CreditCard, Comp: OngletAcomptes },
+    { value: 'avoirs', label: 'Avoirs', icon: FileMinus2, Comp: OngletAvoirs },
+    { value: 'contacts', label: 'Contacts', icon: Users, Comp: OngletContacts },
     { value: 'documents', label: 'Conformité', icon: ShieldCheck, Comp: OngletDocuments },
     { value: 'prix', label: 'Accords de prix', icon: Tags, Comp: OngletAccordsPrix },
   ]), [])
@@ -414,7 +929,7 @@ export default function FournisseurFiche360({
         </TabsList>
         {tabs.map((t) => (
           <TabsContent key={t.value} value={t.value} data-testid={`f360-tab-${t.value}`}>
-            <t.Comp fournisseurId={fournisseurId} />
+            <t.Comp fournisseurId={fournisseurId} canWrite={canWrite} />
           </TabsContent>
         ))}
       </Tabs>
