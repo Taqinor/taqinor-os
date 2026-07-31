@@ -1063,8 +1063,30 @@ class ProduitViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         nb = produit.mouvements.count()
-        produit.mouvements.all().delete()
-        produit.delete()
+        try:
+            # Atomique : sans cette transaction, un PROTECT levé par
+            # `produit.delete()` laisserait les mouvements DÉJÀ supprimés.
+            with transaction.atomic():
+                produit.mouvements.all().delete()
+                produit.delete()
+        except ProtectedError as exc:
+            # Données réelles rattachées (prix fournisseur/contractuel, ligne
+            # de liste de prix, fiche technique, lot, série…) : on refuse.
+            bloquants = sorted({
+                obj._meta.verbose_name for obj in exc.protected_objects
+            })
+            return Response(
+                {
+                    'detail': (
+                        'Suppression définitive refusée : ce produit porte '
+                        'encore des données réelles rattachées '
+                        f'({", ".join(bloquants)}). Supprimez-les d\'abord '
+                        'ou laissez le produit archivé.'
+                    ),
+                    'bloquants': bloquants,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         return Response(
             {
                 'detail': (

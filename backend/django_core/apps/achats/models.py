@@ -44,7 +44,7 @@ class PrixFournisseur(models.Model):
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='prix_fournisseurs')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — porte un prix d'achat fournisseur NÉGOCIÉ (donnée réelle, non reconstructible) ; on refuse la suppression du produit plutôt que d'effacer silencieusement l'historique de prix
         related_name='prix_fournisseurs')
     fournisseur = models.ForeignKey(
         'stock.Fournisseur', on_delete=models.CASCADE,
