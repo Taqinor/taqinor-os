@@ -32,6 +32,15 @@ const portailApi = {
     detail: (id) => api.get(`/portail/mes-factures/${id}/`),
     payer: (id) => api.post(`/portail/mes-factures/${id}/payer/`, {}),
   },
+  // NTPRT20/NTPRT27 — portails FOURNISSEUR et PARTENAIRE. Même principe que
+  // ci-dessus : aucun identifiant d'entité n'est envoyé, le serveur borne au
+  // rattachement du compte connecté.
+  fournisseur: {
+    tableauDeBord: () => api.get('/portail/fournisseur/tableau-de-bord/'),
+  },
+  partenaire: {
+    tableauDeBord: () => api.get('/portail/partenaire/tableau-de-bord/'),
+  },
 }
 
 export default portailApi

@@ -26,7 +26,8 @@ import { buildModuleRoutes } from './moduleRoutes'
 import { isModuleDisabled } from './moduleGating'
 // NTPRT8/20/27 — portée d'un compte PORTAIL externe (source unique, pure).
 import {
-  PORTEE_CLIENT, peutEntrerDansPortail, portalHomePath,
+  PORTEE_CLIENT, PORTEE_FOURNISSEUR,
+  peutEntrerDansPortail, portalHomePath,
 } from '../features/portail/portalScope'
 
 // ── Pages lazy ────────────────────────────────────────────────────────────────
@@ -73,6 +74,9 @@ const PortalClientLayout = lazy(() => import('../features/portail/client/PortalC
 const PortailClientAccueil = lazy(() => import('../features/portail/client/PortailClientAccueil'))
 const PortailClientDevis = lazy(() => import('../features/portail/client/PortailClientDevis'))
 const PortailClientFactures = lazy(() => import('../features/portail/client/PortailClientFactures'))
+// NTPRT20 — shell + tableau de bord du PORTAIL FOURNISSEUR.
+const PortalFournisseurLayout = lazy(() => import('../features/portail/fournisseur/PortalFournisseurLayout'))
+const PortailFournisseurAccueil = lazy(() => import('../features/portail/fournisseur/PortailFournisseurAccueil'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -312,6 +316,13 @@ const router = createBrowserRouter([
     path: '/portail/client/factures',
     loader: portalLoader(PORTEE_CLIENT),
     element: <WithPortal shell={PortalClientLayout}><PortailClientFactures /></WithPortal>,
+  },
+  // NTPRT20 — PORTAIL FOURNISSEUR : garde SYMÉTRIQUE (portée exacte
+  // `portail_fournisseur`), shell dédié, jamais la coquille ERP.
+  {
+    path: '/portail/fournisseur',
+    loader: portalLoader(PORTEE_FOURNISSEUR),
+    element: <WithPortal shell={PortalFournisseurLayout}><PortailFournisseurAccueil /></WithPortal>,
   },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },

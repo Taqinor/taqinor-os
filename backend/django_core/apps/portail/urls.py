@@ -26,6 +26,7 @@ from .views_client import (
     MesDevisPortailViewSet,
     MesFacturesPortailViewSet,
 )
+from .views_externes import tableau_de_bord_fournisseur
 
 router = DefaultRouter()
 router.register(r'comptes-portail', ComptePortailClientViewSet,
@@ -51,5 +52,9 @@ router.register(r'mes-factures', MesFacturesPortailViewSet,
                 basename='portail-mes-factures')
 
 urlpatterns = [
+    # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et
+    # PARTENAIRE (gardes de portée EXACTE, symétriques du portail client).
+    path('fournisseur/tableau-de-bord/', tableau_de_bord_fournisseur,
+         name='portail-fournisseur-tableau-de-bord'),
     path('', include(router.urls)),
 ]
