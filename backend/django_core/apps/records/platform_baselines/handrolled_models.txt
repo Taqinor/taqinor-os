@@ -3,6 +3,9 @@
 # Inventaire du 2026-07-10. Un modèle converti à core.TenantModel DISPARAÎT ici
 # SCA4 — baseline GELÉE des modèles déclarant une FK company à la main (pré-socle).
 # un nouveau modèle ici pour contourner le garde : héritez de TenantModel.
+# ODX15 (2026-07-31) : les 5 modeles de notes de frais ont suivi le move
+# state-only compta -> apps/frais — RENOMMAGE seul (compta.X -> frais.X),
+# la liste garde EXACTEMENT le meme nombre d'entrees.
 achats.BonCommandeFournisseur
 achats.FactureFournisseur
 achats.PaiementFournisseur
@@ -36,7 +39,6 @@ chat.ScheduledMessage
 chat.UserChatStatus
 compta.AbonnementEcriture
 compta.AvancementRevenu
-compta.BaremeIndemnite
 compta.BordereauRemise
 compta.Budget
 compta.BudgetLigne
@@ -74,7 +76,6 @@ compta.EtatPersonnalise
 compta.ExerciceComptable
 compta.FamilleTvaNonDeductible
 compta.Immobilisation
-compta.IndemniteChantier
 compta.ItemOuvertDevise
 compta.Journal
 compta.LigneEcriture
@@ -91,7 +92,6 @@ compta.ModeleDevis
 compta.ModeleEcriture
 compta.ModeleRapprochement
 compta.MouvementCaisse
-compta.NoteFrais
 compta.ObligationFiscale
 compta.OffreFinancement
 compta.PaymentRun
@@ -99,14 +99,12 @@ compta.PaymentRunLine
 compta.PeriodeComptable
 compta.PieceJustificative
 compta.PisteAuditComptable
-compta.PlafondNoteFrais
 compta.PlanAmortissement
 compta.PlanAmortissementFiscal
 compta.PlanComptable
 compta.PointageReleve
 compta.Provision
 compta.ProvisionCreance
-compta.RapportNoteFrais
 compta.Rapprochement
 compta.RapprochementBancaire
 compta.ReevaluationCloture
@@ -232,6 +230,11 @@ flotte.TrajetTelematique
 flotte.Vehicule
 flotte.VisiteTechnique
 flotte.ZoneGeographique
+frais.BaremeIndemnite
+frais.IndemniteChantier
+frais.NoteFrais
+frais.PlafondNoteFrais
+frais.RapportNoteFrais
 ged.AclGed
 ged.AnnotationDocument
 ged.ArchivageLegal

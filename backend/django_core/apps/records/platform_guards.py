@@ -112,7 +112,11 @@ def activity_error_line(qualified: str) -> str:
 # apparaît. Chemins POSIX relatifs à ``backend/django_core``.
 GRANDFATHERED_FILEFIELDS = {
     "apps/ao/models.py": {"fichier": 1},
-    "apps/compta/models.py": {"justificatif": 1, "fichier": 2},
+    # ODX15 — ``justificatif`` (NoteFrais) a suivi le move state-only vers
+    # apps/frais ; le TOTAL grand-fatheré est INCHANGÉ (aucun nouveau
+    # FileField), l'entrée a seulement changé de fichier.
+    "apps/compta/models.py": {"fichier": 2},
+    "apps/frais/models.py": {"justificatif": 1},
     "apps/flotte/models.py": {
         "devis_fichier": 1, "attestation": 1, "carte_grise_fichier": 1,
         "autorisation_fichier": 1, "constat_fichier": 1, "pv_fichier": 1,
