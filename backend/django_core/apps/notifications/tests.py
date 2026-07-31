@@ -111,6 +111,7 @@ class NotifyServiceTests(TestCase):
         self.assertIn('event_type', first)
         self.assertIn('event_label', first)
         self.assertTrue(first['in_app'])  # défaut
+        self.assertTrue(first['push'])  # NTMOB8 — défaut True (historique)
 
 
 class NotificationApiTests(TestCase):
@@ -198,6 +199,17 @@ class NotificationApiTests(TestCase):
             user=self.alice, event_type=EventType.FACTURE_OVERDUE)
         self.assertTrue(pref.email)
         self.assertEqual(pref.company, self.company)
+
+    def test_preferences_upsert_push_field(self):
+        # NTMOB8 — le canal « push » est upsertable comme in_app/whatsapp/email.
+        res = self.client.patch(
+            f'/api/django/notifications/preferences/{EventType.SAV_TICKET_OPENED}/',
+            {'push': False}, format='json')
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.data['push'])
+        pref = NotificationPreference.objects.get(
+            user=self.alice, event_type=EventType.SAV_TICKET_OPENED)
+        self.assertFalse(pref.push)
 
     def test_preferences_upsert_rejects_unknown_event(self):
         res = self.client.patch(
@@ -372,6 +384,41 @@ class WebPushTests(TestCase):
             '/api/django/notifications/push/vapid-public-key/')
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data['public_key'], '')
+
+    @override_settings(
+        VAPID_PUBLIC_KEY='pub', VAPID_PRIVATE_KEY='priv',
+        VAPID_ADMIN_EMAIL='admin@x.com')
+    def test_push_preference_off_skips_dispatch(self):
+        # NTMOB8 — désactiver la catégorie « push » pour un évènement empêche
+        # le dispatch web push, sans toucher aux autres canaux/catégories
+        # (extension de N92, qui ne gère que l'opt-in device global).
+        from .models import PushSubscription
+        PushSubscription.objects.create(
+            company=self.company, user=self.user,
+            endpoint='https://push.example/off', p256dh='p', auth='a')
+        NotificationPreference.objects.create(
+            company=self.company, user=self.user,
+            event_type=EventType.SAV_TICKET_OPENED, push=False)
+        with mock.patch(
+                'apps.notifications.services._dispatch_webpush') as disp:
+            n = notify(self.user, EventType.SAV_TICKET_OPENED, 'Ticket SAV')
+        disp.assert_not_called()
+        self.assertIsNotNone(n)  # l'in-app reste créée normalement
+
+    @override_settings(
+        VAPID_PUBLIC_KEY='pub', VAPID_PRIVATE_KEY='priv',
+        VAPID_ADMIN_EMAIL='admin@x.com')
+    def test_push_preference_default_true_still_dispatches(self):
+        # Sans ligne de préférence stockée, comportement historique préservé :
+        # le push reste tenté (défaut push=True).
+        from .models import PushSubscription
+        PushSubscription.objects.create(
+            company=self.company, user=self.user,
+            endpoint='https://push.example/on', p256dh='p', auth='a')
+        with mock.patch(
+                'apps.notifications.services._dispatch_webpush') as disp:
+            notify(self.user, EventType.LEAD_ASSIGNED, 'Nouveau lead')
+        disp.assert_called_once()
 
     @override_settings(VAPID_PUBLIC_KEY='', VAPID_PRIVATE_KEY='')
     def test_notify_no_vapid_keys_does_not_error(self):

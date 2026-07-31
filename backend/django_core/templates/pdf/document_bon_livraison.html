@@ -34,6 +34,7 @@
     .signature-label { font-size: 11px; font-weight: bold; color: #555; margin-bottom: 6px; }
     .signature-mention { font-size: 10px; color: #888; margin-bottom: 36px; }
     .signature-line { border-top: 1px solid #cbd5e1; padding-top: 6px; font-size: 10px; color: #555; }
+    .signature-trace { max-height: 70px; max-width: 100%; margin-bottom: 4px; }
     .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.7; }
   </style>
 </head>
@@ -97,8 +98,12 @@
   <div class="signature-section">
     <div class="signature-block">
       <div class="signature-label">Réception client</div>
+      {% if signature_client %}
+      <img class="signature-trace" src="{{ signature_client }}" alt="Signature client" />
+      {% else %}
       <div class="signature-mention">Reçu en bon état — signature</div>
-      <div class="signature-line">{{ client.nom }} {{ client.prenom }}</div>
+      {% endif %}
+      <div class="signature-line">{{ signataire_nom or (client.nom ~ ' ' ~ client.prenom) }}</div>
     </div>
   </div>
 

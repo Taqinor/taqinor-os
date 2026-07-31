@@ -3,12 +3,16 @@
 // thème (design/ThemeToggle, réutilisé tel quel), densité par défaut
 // (design/theme-context useDensity, réutilisé tel quel — s'applique aux
 // DataTable), module d'atterrissage au login (nouveau, ce fichier), réduction
-// de mouvement (nouveau, prefs.js). AUCUN nouvel endpoint backend — persistance
-// localStorage uniquement (motif COLLAPSE_KEY, Layout.jsx:16).
+// de mouvement, qualité photo NTMOB12 (nouveaux, prefs.js) — persistance
+// localStorage uniquement (motif COLLAPSE_KEY, Layout.jsx:16), propre à CET
+// APPAREIL. Exception : NTMOB6 « Accueil mobile automatique par rôle » vit
+// côté serveur (mobile_home_route, /auth/me) — seul réglage de ce panneau à
+// appeler un endpoint backend, documenté sur MobileHomeToggle ci-dessous.
 //
 // Ouvert depuis le menu utilisateur du Header (Dialog, pas une route — reste
 // dans le périmètre `pages/preferences/` + `Header.jsx` de cette tâche).
 import { useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui/Dialog'
@@ -21,20 +25,77 @@ import { Switch } from '../../ui/Switch'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useDensity } from '../../design/theme-context'
 import { moduleConfigs } from '../../router/moduleRoutes'
+import api from '../../api/axios'
+import { fetchMe } from '../../features/auth/store/authSlice'
 import {
   getLandingModule, setLandingModule,
   getReducedMotionPref, setReducedMotionPref,
+  getPhotoQualityPref, setPhotoQualityPref,
 } from './prefs'
+
+// NTMOB6 — sélecteur de démarrage par rôle : « revenir au dashboard classique
+// via le menu ». `mobile_home_route` vit CÔTÉ SERVEUR (/auth/me), pas en
+// localStorage comme les autres réglages de ce panneau — c'est le même champ
+// que Dashboard.jsx lit pour décider du redémarrage automatique sur mobile.
+// NULL/undefined (pas encore décidé) et toute route mémorisée comptent comme
+// « automatique » ; seule la chaîne vide explicite est un opt-out.
+function MobileHomeToggle() {
+  const dispatch = useDispatch()
+  const mobileHomeRoute = useSelector((s) => s.auth.user?.mobile_home_route)
+  const [busy, setBusy] = useState(false)
+  const automatic = mobileHomeRoute !== ''
+
+  const onToggle = async (checked) => {
+    setBusy(true)
+    try {
+      // checked → automatique (repasse à « pas encore décidé », recalculé au
+      // prochain atterrissage mobile) ; décoché → opt-out explicite ('').
+      await api.post('/auth/mobile-home-route/', { route: checked ? null : '' })
+      await dispatch(fetchMe())
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <label htmlFor="pref-mobile-home" className="text-sm font-semibold text-foreground">
+          Accueil mobile automatique par rôle
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Sur téléphone, atterrir directement sur l'accueil adapté à votre rôle
+          (Ma journée, Mes leads…) plutôt que sur le tableau de bord classique.
+        </p>
+      </div>
+      <Switch
+        id="pref-mobile-home"
+        checked={automatic}
+        disabled={busy}
+        onCheckedChange={onToggle}
+        aria-label="Accueil mobile automatique par rôle" />
+    </div>
+  )
+}
 
 const DENSITY_OPTIONS = [
   { value: 'comfortable', label: 'Confort' },
   { value: 'compact', label: 'Compact' },
 ]
 
+// NTMOB12 — « Standard compressé » (défaut) recompresse chaque photo avant
+// envoi (bord long 1600px, JPEG q0.75) sur les écrans de capture terrain ;
+// « Original » envoie le fichier tel quel (plus de données, aucune perte).
+const PHOTO_QUALITY_OPTIONS = [
+  { value: 'compressed', label: 'Standard compressé' },
+  { value: 'original', label: 'Original' },
+]
+
 export default function PreferencesPanel({ open, onOpenChange }) {
   const { density, setDensity } = useDensity()
   const [landing, setLanding] = useState(getLandingModule)
   const [reducedMotion, setReducedMotion] = useState(getReducedMotionPref)
+  const [photoQuality, setPhotoQuality] = useState(getPhotoQualityPref)
 
   const handleLandingChange = (e) => {
     const value = e.target.value
@@ -45,6 +106,11 @@ export default function PreferencesPanel({ open, onOpenChange }) {
   const handleReducedMotionChange = (checked) => {
     setReducedMotion(checked)
     setReducedMotionPref(checked)
+  }
+
+  const handlePhotoQualityChange = (value) => {
+    setPhotoQuality(value)
+    setPhotoQualityPref(value)
   }
 
   // Modules « coquille » avec cockpit (nav.items[0].to) — mêmes candidats que
@@ -113,6 +179,24 @@ export default function PreferencesPanel({ open, onOpenChange }) {
               onCheckedChange={handleReducedMotionChange}
             />
           </div>
+
+          <div>
+            <div className="mb-1.5 text-sm font-semibold text-foreground">
+              Qualité photo
+            </div>
+            <Segmented
+              value={photoQuality}
+              onChange={handlePhotoQualityChange}
+              options={PHOTO_QUALITY_OPTIONS}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Sur le terrain (checklist, numérisation, SAV), « Standard compressé »
+              réduit la consommation data sans perte visible ; « Original » envoie
+              la photo telle quelle.
+            </p>
+          </div>
+
+          <MobileHomeToggle />
         </div>
       </DialogContent>
     </Dialog>

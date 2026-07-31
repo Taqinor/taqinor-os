@@ -56,7 +56,7 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationPreference
         # company + user posés côté serveur — jamais lus du corps.
-        fields = ['id', 'event_type', 'event_label', 'in_app', 'whatsapp', 'email']
+        fields = ['id', 'event_type', 'event_label', 'in_app', 'whatsapp', 'email', 'push']
         read_only_fields = ['id', 'event_label']
 
     def validate_event_type(self, value):

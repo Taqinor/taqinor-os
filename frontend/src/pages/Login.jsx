@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { Eye, EyeOff, AlertCircle } from 'lucide-react'
-import { setCredentials } from '../features/auth/store/authSlice'
+import { setCredentials, fetchMe } from '../features/auth/store/authSlice'
 import api from '../api/axios'
 import identityApi from '../api/identityApi'
 // NTPRT19 — marque white-label du portail, résolue par le DOMAINE appelant.
@@ -174,6 +174,13 @@ export default function Login() {
         role_nom: res.data.role_nom || null,
         permissions: res.data.permissions || [],
       }))
+      // NTMOB6 — le stub `{ username }` ci-dessus ne porte ni rôle fin ni
+      // `mobile_home_route` (seul `/auth/me` les porte) ; le loader de session
+      // du routeur ne relance PAS `fetchMe()` puisque `isAuthenticated` est
+      // déjà vrai. Sans cet appel, le sélecteur de démarrage par rôle
+      // resterait aveugle sur toute la session tant qu'aucun rechargement de
+      // page n'intervient. Fire-and-forget : ne bloque jamais la navigation.
+      dispatch(fetchMe())
       // VX65 : un lien profond `?next=` interne est prioritaire ; sinon VX46
       // route vers le module d'atterrissage préféré (repli /dashboard inchangé).
       const next = safeNextPath(searchParams.get('next'))

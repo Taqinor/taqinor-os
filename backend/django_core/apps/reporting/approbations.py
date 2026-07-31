@@ -32,6 +32,7 @@ import datetime
 
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
@@ -447,3 +448,89 @@ def decider_en_masse(request):
             'detail': body.get('detail'),
         })
     return Response({'resultats': resultats})
+
+
+# ── NTMOB7 — approbation en un geste depuis une notification push ──────────
+# Un item peut avoir une source de ``_SOURCE_LOADERS`` (mêmes 5 sources que
+# l'agrégateur ci-dessus) OU ``'notes_frais'`` — la note de frais (FG135,
+# ``apps.frais``/``apps.compta``) n'est PAS une source de l'agrégateur de
+# LECTURE (elle a son propre écran de validation comptable) mais est bien un
+# des quatre types de notification-approbation demandés par NTMOB7, donc
+# décidable ici. La remise devis excessive (garde synchrone
+# ``_guard_discount_approval``) reste HORS PÉRIMÈTRE : elle ne produit aucun
+# objet « en attente », donc rien à décider après coup depuis une notification
+# (cf. docstring de tête du fichier).
+def _decider_note_frais(company, user, obj_id, decision, motif):
+    """Décision (valider/rejeter) d'une ``frais.NoteFrais`` — même garde de
+    permission que ``NoteFraisViewSet.valider``/``rejeter``
+    (``compta_valider``), reconstruite ici SANS objet ``request`` DRF (jeton
+    de notification push, jamais une session de navigateur)."""
+    if company is None:
+        return 403, {'detail': 'Accès refusé.'}
+    if decision not in ('approuver', 'refuser'):
+        return 400, {'detail': 'Décision invalide.'}
+    autorise = user.is_superuser or (
+        user.has_erp_permission('compta_valider') if user.role_id
+        else user.is_responsable)
+    if not autorise:
+        return 403, {'detail': 'Réservé à la validation comptable.'}
+
+    from apps.frais import selectors as frais_selectors
+    from apps.frais import services as frais_services
+    note = frais_selectors.note_frais_par_id(company, obj_id)
+    if note is None:
+        return 404, {'detail': 'Introuvable.'}
+    try:
+        if decision == 'approuver':
+            frais_services.valider_note_frais(note, user=user)
+        else:
+            frais_services.rejeter_note_frais(
+                note, motif_rejet=motif, user=user)
+    except Exception as exc:  # garde générique : jamais de 500 opaque
+        return 400, {'detail': str(exc)}
+    return 200, {'detail': 'Décision enregistrée.'}
+
+
+def _decide_for_push(company, user, source, obj_id, decision):
+    """Variante de ``_decider_approbation_core`` pour la décision via jeton de
+    notification push : (a) couvre ``'notes_frais'`` en plus des 5 sources de
+    l'agrégateur, (b) fournit un motif AUTOMATIQUE pour un refus — la
+    notification EST l'action (NTMOB7), il n'existe aucune UI pour taper un
+    motif à ce moment, contrairement à l'écran d'approbations qui l'exige."""
+    motif = '' if decision == 'approuver' else 'Refusé depuis une notification push.'
+    if source == 'notes_frais':
+        return _decider_note_frais(company, user, obj_id, decision, motif)
+    return _decider_approbation_core(company, user, source, obj_id, decision, motif)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def decider_approbation_via_push(request):
+    """NTMOB7 — ``POST reporting/approbations-en-attente/decider-push/``.
+
+    Corps : ``{token}`` — UNIQUEMENT le jeton signé embarqué dans l'action de
+    la notification (``apps.notifications.approval_tokens``), jamais un
+    ``source``/``id``/``decision`` lus du corps : tout est scellé dans le
+    jeton au moment de l'émission. ``AllowAny`` DÉLIBÉRÉ : un push peut être
+    tapé sur un appareil dont la session (cookie JWT) a expiré entre-temps —
+    la preuve d'identité + de décision est le jeton lui-même (signé,
+    court-vécu 24 h, une décision fixe par jeton), pas la session HTTP.
+    Un jeton invalide/expiré/altéré ⇒ 401 sans aucune fuite d'information."""
+    from apps.notifications.approval_tokens import read_approval_token
+    data = read_approval_token(request.data.get('token'))
+    if data is None:
+        return Response({'detail': 'Jeton invalide ou expiré.'}, status=401)
+
+    from authentication.models import CustomUser
+    user = (
+        CustomUser.objects
+        .filter(pk=data['u'], is_active=True)
+        .select_related('company', 'role')
+        .first()
+    )
+    if user is None:
+        return Response({'detail': 'Compte introuvable.'}, status=401)
+
+    status_code, body = _decide_for_push(
+        _co(user), user, data['s'], data['i'], data['d'])
+    return Response(body, status=status_code)

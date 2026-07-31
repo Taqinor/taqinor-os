@@ -141,7 +141,7 @@ class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
         if pref.company_id != request.user.company_id:
             pref.company = request.user.company
         data = request.data
-        for field in ('in_app', 'whatsapp', 'email'):
+        for field in ('in_app', 'whatsapp', 'email', 'push'):
             if field in data:
                 pref.__dict__[field] = bool(data[field])
         pref.save()
