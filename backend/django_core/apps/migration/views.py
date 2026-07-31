@@ -141,6 +141,24 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         return Response({
             'lot': LotMigrationSerializer(lot).data, 'resultat': result})
 
+    @action(detail=True, methods=['post'], url_path='charger-odoo')
+    def charger_odoo(self, request, pk=None):
+        """NTMIG9 — chargement via le connecteur Odoo JSON-2 (gated).
+
+        Sans connecteur configuré : 400 explicite proposant l'import fichier.
+        Le connecteur, quand il existe, est appelé en LECTURE SEULE ; aucune
+        écriture n'est jamais faite côté Odoo (règle #1).
+        """
+        lot = self.get_object()
+        try:
+            services.charger_depuis_odoo_api(lot, params=request.data)
+        except services.ConnecteurNonConfigure as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(LotMigrationSerializer(lot).data)
+
     @action(detail=True, methods=['post'], url_path='reconcilier')
     def reconcilier(self, request, pk=None):
         """Produit le rapport de réconciliation du lot (source vs cible)."""

@@ -117,6 +117,71 @@ def charger_lot(lot, file_bytes, filename, *, mode='upsert',
     return result
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG9 — chargement via le connecteur Odoo JSON-2 (gated ; jamais de SQL)
+# ─────────────────────────────────────────────────────────────────────────
+#: Module du connecteur Odoo JSON-2 (FG378, propriété du groupe NTAPI). Il
+#: n'existe pas encore : la constante est le SEUL point de couplage, et son
+#: absence rend simplement le chemin API indisponible.
+CONNECTEUR_ODOO_MODULE = 'apps.publicapi.connectors.odoo'
+
+
+class ConnecteurNonConfigure(ValueError):
+    """Le connecteur Odoo JSON-2 (FG378) n'est pas présent/configuré.
+
+    Le chargement par API est alors un no-op propre : l'import fichier reste
+    la voie disponible et l'endpoint le dit explicitement (NTMIG9).
+    """
+
+
+def _odoo_connector_client(company):
+    """Import PARESSEUX du client connecteur Odoo JSON-2 (FG378, NTAPI).
+
+    Renvoie ``None`` tant que le connecteur n'est pas présent ou configuré
+    pour cette société. RÈGLE #1 : quand il existe, il est utilisé en LECTURE
+    SEULE via l'API JSON-2 — jamais une écriture, et JAMAIS du SQL vers la
+    base Odoo, sous aucun prétexte.
+    """
+    import importlib
+
+    try:
+        module = importlib.import_module(CONNECTEUR_ODOO_MODULE)
+    except ImportError:
+        return None
+    fabrique = getattr(module, 'client_pour_societe', None)
+    if fabrique is None:
+        return None
+    try:
+        return fabrique(company)
+    except Exception:
+        # Une société sans clé/URL configurée n'est pas une erreur : c'est le
+        # cas nominal « pas encore branché ».
+        return None
+
+
+def charger_depuis_odoo_api(lot, params=None):
+    """Récupère les enregistrements via l'API JSON-2 d'Odoo, puis les passe au
+    MÊME pipeline dry-run/commit que l'import fichier.
+
+    Sans connecteur configuré : ``ConnecteurNonConfigure`` (no-op propre → 400
+    explicite proposant l'import fichier). Le connecteur n'est appelé QUE pour
+    EXPORTER (lecture) ; rien n'est jamais écrit côté Odoo, ni par API ni —
+    à plus forte raison — par SQL (règle #1).
+    """
+    _refuser_si_fige(lot)
+    client = _odoo_connector_client(lot.company)
+    if client is None:
+        raise ConnecteurNonConfigure(
+            'Connecteur Odoo non configuré — utilisez l\'import fichier.')
+    exporter = getattr(client, 'exporter_entite', None)
+    if exporter is None:
+        raise ConnecteurNonConfigure(
+            'Connecteur Odoo présent mais incomplet (pas d\'export lecture '
+            'seule) — utilisez l\'import fichier.')
+    file_bytes, filename = exporter(lot.entite, params or {})
+    return charger_lot(lot, file_bytes, filename, mode='upsert')
+
+
 def reconcilier_lot(lot):
     """Produit un :class:`RapportReconciliation` — comptages source vs cible.
 
