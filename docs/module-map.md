@@ -180,3 +180,36 @@ flat `BudgetProjet` envelope `budget_materiel`/`budget_main_oeuvre`/
 must add the missing ones to `gestion_projet` (or map the envelope onto
 `LigneBudgetProjet` rows) before anything is dropped — a merge that silently loses the
 budget envelope would be a data loss, not a consolidation.
+
+### WIR113 — Suivi GPS terrain (XFSM23): WEB-FIRST, and NTMOB9 reconciled (2026-07-18)
+
+**The question.** Three backend families shipped with zero frontend references —
+`gps-consentements/`, `positions-techniciens/`, `geofence-alertes/`
+(`apps/installations/models_gps_tracking.py`, `views/gps_tracking.py`). Were they
+waiting on a separate mobile app, or should the web app own them?
+
+**Decision: WEB-FIRST.** There is no separate mobile codebase in this repo, and none is
+planned in any open queue. Field work already happens through this responsive React
+frontend: "Ma journée" is the technician's daily screen, and the F6 check-in already
+calls the browser's `geolocation` API from it. Even NTMOB9 — the task that appeared to
+imply a mobile app — specifies `watchPosition`, i.e. a **browser** API. So "mobile" here
+means the responsive web app, and the missing piece was simply the supervisor screen.
+
+**Built:** `frontend/src/pages/installations/SuiviGpsPage.jsx` at
+`/planification/suivi-gps` (`responsable`/`admin` only, matching the backend's
+`IsResponsableOrAdmin`): consent tab (record / read / revoke), live map tab (Leaflet
+`MapView`, last known position per technician, red marker = outside the site perimeter),
+geofence-alert tab (list + acknowledge). API wrappers appended to
+`frontend/src/api/installationsApi.js`; tests in `SuiviGpsPage.test.jsx`.
+
+**Privacy invariant the screen enforces.** Consent is explicit and revocable: the create
+dialog requires an affirmative confirmation checkbox, every consent row can be revoked,
+and the backend already refuses (403) any position `ping` without an active consent.
+There is no silent tracking path, and this screen is the only place consent is granted.
+
+**NTMOB9 reconciled.** NTMOB9 proposed a new `installations.PointageGeofence` model for
+geofenced check-in/out. That data already exists: consent in `GpsConsentRecord`, the
+position in `PositionTechnicien`, the perimeter crossing in `GeofenceAlert`. NTMOB9 is
+annotated with the WIR80 guard (`docs/new_tasks_plan.md`) and must be built as at most a
+small `entree|sortie` addition to the existing models plus the `watchPosition` wiring in
+"Ma journée" — never as a second table.

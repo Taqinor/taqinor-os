@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { CalendarClock, HardHat, ClipboardList, Wrench, Boxes, BarChart3 } from 'lucide-react'
+import { CalendarClock, HardHat, ClipboardList, Wrench, Boxes, BarChart3, MapPin } from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Chantiers / Installations / Production
@@ -32,6 +32,8 @@ const DemandesAchatList = lazy(() => import('../../pages/installations/DemandesA
 const ApprovisionnementPage = lazy(() => import('../../pages/installations/ApprovisionnementPage'))
 // WIR114 — astreintes / indisponibilités / récurrences (FG302, ZFSM3).
 const AstreintesPage = lazy(() => import('../../pages/installations/AstreintesPage'))
+// WIR113 — suivi GPS terrain web-first (XFSM23) : consentements + carte live.
+const SuiviGpsPage = lazy(() => import('../../pages/installations/SuiviGpsPage'))
 const InterventionsPage = lazy(() => import('../../pages/interventions/InterventionsPage'))
 const PlanificationPage = lazy(() => import('../../pages/installations/PlanificationPage'))
 const MaJourneePage = lazy(() => import('../../pages/interventions/MaJourneePage'))
@@ -61,6 +63,7 @@ const config = {
       { to: '/interventions',        label: 'Interventions',    k: 'nav.interventions', icon: navIcon(Wrench), roles: ['normal','responsable','admin'] },
       { to: '/planification',        label: 'Planification',    k: 'nav.planification', icon: navIcon(CalendarClock),    roles: ['normal','responsable','admin'] },
       { to: '/planification/astreintes', label: 'Astreintes',   icon: navIcon(CalendarClock), roles: ['responsable','admin'] },
+      { to: '/planification/suivi-gps', label: 'Suivi GPS',     icon: navIcon(MapPin), roles: ['responsable','admin'] },
       { to: '/parc',                 label: 'Parc installé',    k: 'nav.parc',       icon: navIcon(Boxes),  roles: ['normal','responsable','admin'] },
       { to: '/atelier',              label: 'Atelier',          k: 'nav.atelier',    icon: navIcon(Wrench),    roles: ['normal','responsable','admin'] },
       { to: '/production',           label: 'Production',       k: 'nav.production', icon: navIcon(BarChart3),   roles: ['normal','responsable','admin'] },
@@ -74,6 +77,7 @@ const config = {
     { path: '/interventions', component: InterventionsPage },
     { path: '/planification', component: PlanificationPage },
     { path: '/planification/astreintes', component: AstreintesPage, roles: ['responsable', 'admin'] },
+    { path: '/planification/suivi-gps', component: SuiviGpsPage, roles: ['responsable', 'admin'] },
     { path: '/ma-journee', component: MaJourneePage },
     { path: '/parc', component: ParcInstallePage },
     { path: '/atelier', component: AteliersPage },
