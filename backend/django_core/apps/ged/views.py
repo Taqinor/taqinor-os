@@ -25,6 +25,9 @@ from apps.records.storage import fetch_attachment, store_attachment
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+# SCA4 — base transverse UNIQUE des viewsets scopés société : tout NOUVEAU
+# ModelViewSet inscriptible part d'ici (scoping + forçage de `company` garantis).
+from core.viewsets import CompanyScopedModelViewSet
 # `records` est une app de fondation : son registre de cibles autorisées
 # (ALLOWED_TARGETS) et son validateur `resolve_target` sont réutilisés tels quels
 # pour la liaison polymorphe GED6 — on n'invente pas un schéma de FK générique.
@@ -3143,7 +3146,7 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return response
 
 
-class TamponSocieteViewSet(TenantMixin, viewsets.ModelViewSet):
+class TamponSocieteViewSet(CompanyScopedModelViewSet):
     """WIR164 — Tampons PROPRES à la société (XGED16), en plus des 3 tampons
     système (`TAMPONS_SYSTEME`, jamais gérés ici — constante applicative,
     partagée par toutes les sociétés). Avant ce ViewSet, `tampons_disponibles()`
@@ -3227,7 +3230,7 @@ class RegleApprobationGedViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
-class AclGedViewSet(TenantMixin, viewsets.ModelViewSet):
+class AclGedViewSet(CompanyScopedModelViewSet):
     """WIR163 — API de gestion des droits d'accès GED19 (`AclGed`).
 
     CRUD des entrées ACL par dossier/document (héritage + override, résolu en
