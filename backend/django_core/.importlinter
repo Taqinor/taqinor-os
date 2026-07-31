@@ -204,6 +204,25 @@ forbidden_modules =
     apps.installations.models
     apps.compta.models
 
+[importlinter:contract:frais-models-decoupled]
+name = Frais models never import a business-core domain's models (string FKs only — ODX15)
+type = forbidden
+source_modules =
+    apps.frais.models
+forbidden_modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+    apps.installations.models
+    apps.compta.models
+# ODX15 — `apps.frais.models` ne connaît les comptes/écritures/trésorerie que
+# par FK-STRING ('compta.CompteComptable'…). Comme pour ao/portail/facturation,
+# AUCUN contrat sur `apps.frais.views|serializers|services|selectors` n'est
+# ajouté ici : ce sont des shims de ré-export TRANSITOIRES qui importent
+# volontairement `apps.compta.*` tant que les corps n'y sont pas relogés — et
+# le POSTING COMPTABLE, lui, est censé rester dans compta pour toujours.
+
 [importlinter:contract:adsengine-models-decoupled]
 name = AdsEngine models never import a business-core domain's models (string FKs only — ENG20)
 type = forbidden

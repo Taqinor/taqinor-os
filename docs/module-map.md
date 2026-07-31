@@ -52,13 +52,42 @@ the ODX task performing the move, using the state-only recipe (frozen `db_table`
 | ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail, DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail (FG228-233) | `apps/portail` (new) | Portal | ODX12 (AUTH-sensitive — auth mechanism moved as-is, no access widening) |
 | Partenaire, SoumissionLeadPartenaire, CommissionPartenaire, TerritoireCommercial (FG234-237) | `apps/crm` | CRM (resellers/territories) | ODX13 |
 | CodePromotion, ModeleDevis, SessionGuidedSelling, DemandeApprobationConfig, ECatalogue, DocumentProposition, SimulationPublique, SimulationFinancement, OffreFinancement, LigneIncitation, EcheancierPaiement, TranchePaiement (FG209-221) | `apps/ventes` | Sales (quotation templates, pricelists, online quotes) | ODX14 |
-| NoteFrais, BaremeIndemnite, IndemniteChantier (FG135/136) | `apps/frais` (new) | Expenses | ODX15 — **verified duplicate**: `rh.NoteDeFrais` (self-service employee entry) also exists; founder must decide whether `apps/frais` absorbs/reconciles both or documents the boundary (rh = entry, frais = validation+posting) before the move (DECISION gate) |
+| NoteFrais, RapportNoteFrais, PlafondNoteFrais, BaremeIndemnite, IndemniteChantier (FG135/136 + ZACC6/XACC27/XACC28) | `apps/frais` (new) | Expenses | ODX15 — **DONE**; duplicate decision = *document the boundary* (see below) |
 | AbonnementMonitoring (FG244) | `apps/monitoring` or `apps/ventes` | Subscriptions | ODX16 — DECISION pending (see recurring-revenue cluster row above) |
 
 The GL posting itself (écritures, period lock FG115) stays in `apps/compta` regardless
 of which satellite app owns the front-end object — satellites call
 `apps/compta/services.py`, never write GL rows directly (services.py boundary,
 CLAUDE.md).
+
+### ODX15 — expense-note duplicate: the boundary is DOCUMENTED, not merged
+
+Two expense models exist and **both stay**. Merging them would mean a destructive
+data migration and an irreversible product decision, so ODX15 took the revertible
+option and froze the boundary instead. No third surface was created.
+
+| | `rh.NoteDeFrais` (FG199) | `frais.NoteFrais` (FG135) |
+| --- | --- | --- |
+| Purpose | employee **self-service declaration** from the RH portal | **validation + accounting posting** by a responsable |
+| Employee FK | `rh.DossierEmploye` (HR record) | `AUTH_USER_MODEL` (ERP account) |
+| Lifecycle | `soumise → approuvee → remboursee / refusee`, status flips only | `brouillon → soumise → validee → remboursee / rejetee` |
+| Accounting | **none** — no journal entry, no treasury account, no period lock | posts 6143/4432 on validation, 4432/treasury on reimbursement, honours the FG115 period lock |
+| Reference | none | `NDF-YYYYMM-NNNN` via `apps/ventes/utils/references.py` |
+| Route | `/api/django/rh/notes-frais/` | `/api/django/frais/notes-frais/` (+ legacy `/api/django/compta/notes-frais/`) |
+| Table | `rh_notedefrais` | `compta_notefrais` (frozen by the state-only move) |
+
+The two have **no FK and no import between them** — they were already independent and
+remain so. If the founder later wants one funnel, the natural follow-up is a one-way
+promotion (`rh.NoteDeFrais` *approuvee* → create a `frais.NoteFrais` through
+`apps/frais/services.py`), which is additive; that is deliberately NOT built here.
+
+`apps/frais` owns the entry and the reference data (notes, reports, policy caps,
+mileage scales, site allowances); `apps/compta` keeps the posting. `apps/frais`
+references accounts/entries/treasury by **string FK only** (`'compta.CompteComptable'`…)
+and calls `apps/compta/services.py` for every journal entry — enforced by the
+`frais-models-decoupled` import-linter contract. `apps/frais/services.py` and
+`selectors.py` are the app's façade so callers (e.g. `apps/paie`, XPAI25) never touch
+`apps/compta.models`.
 
 ## New Invoicing / Purchase split (ODX17-20)
 
@@ -120,7 +149,7 @@ untouched by any of these moves.
 3. ODX12 (portail models+views, AUTH-sensitive, `@after: ODX2`)
 4. ODX13 (crm partners/territories, `@after: ODX2`)
 5. ODX14 (ventes sales-config, `@after: ODX2`)
-6. ODX15 (frais — gated on the founder duplicate decision, `@after: ODX2`)
+6. ODX15 (frais — DONE; duplicate decision = document the boundary, see above)
 7. ODX16 (AbonnementMonitoring relocation — gated on founder decision, `@after: ODX1`)
 8. ODX17 (facturation models) → ODX18 (facturation views/urls/recouvrement/frontend)
 9. ODX19 (achats models) → ODX20 (achats views/urls/stock-flow/frontend)

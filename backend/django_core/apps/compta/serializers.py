@@ -72,6 +72,7 @@ from .models import (
     LigneImmobilisationEnCours,
     ContratRevenu, ObligationPerformance, EcheancierReconnaissance,
     EtapeAuditConsolidation,
+    ModeleEcriture, LigneModeleEcriture, AbonnementEcriture,
 )
 
 
@@ -3006,12 +3007,17 @@ class InstanceClotureSerializer(serializers.ModelSerializer):
     taches = TacheClotureSerializer(many=True, read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # WIR107 — libellé de la période, pour que l'écran de clôture nomme
+    # l'instance autrement que par un ID brut (additif, lecture seule).
+    periode_libelle = serializers.CharField(
+        source='periode.libelle', read_only=True)
 
     class Meta:
         model = InstanceCloture
         fields = [
-            'id', 'periode', 'modele', 'statut', 'statut_display',
-            'date_cible', 'taches', 'created_at', 'updated_at',
+            'id', 'periode', 'periode_libelle', 'modele', 'statut',
+            'statut_display', 'date_cible', 'taches', 'created_at',
+            'updated_at',
         ]
         read_only_fields = ['statut', 'created_at', 'updated_at']
 
@@ -3248,3 +3254,77 @@ class ConventionFiscaleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Le taux conventionnel doit être compris entre 0 et 100 %.")
         return value
+
+
+# ── XACC8 / WIR107 — Modèles d'écriture & écritures récurrentes ────────────
+
+class LigneModeleEcritureSerializer(serializers.ModelSerializer):
+    """WIR107 — ligne pré-codée d'un modèle d'écriture (XACC8)."""
+    compte_numero = serializers.CharField(
+        source='compte.numero', read_only=True)
+    compte_libelle = serializers.CharField(
+        source='compte.libelle', read_only=True)
+    sens_display = serializers.CharField(
+        source='get_sens_display', read_only=True)
+
+    class Meta:
+        model = LigneModeleEcriture
+        fields = [
+            'id', 'modele', 'compte', 'compte_numero', 'compte_libelle',
+            'libelle', 'sens', 'sens_display', 'montant_defaut', 'ordre',
+        ]
+
+    def validate_modele(self, value):
+        return _meme_societe(self, value, "Modèle d'écriture")
+
+    def validate_compte(self, value):
+        return _meme_societe(self, value, 'Compte')
+
+
+class ModeleEcritureSerializer(serializers.ModelSerializer):
+    """WIR107 — modèle d'écriture réutilisable (XACC8), lignes imbriquées."""
+    lignes = LigneModeleEcritureSerializer(many=True, read_only=True)
+    journal_libelle = serializers.CharField(
+        source='journal.libelle', read_only=True)
+
+    class Meta:
+        model = ModeleEcriture
+        fields = [
+            'id', 'libelle', 'journal', 'journal_libelle', 'extourne_auto',
+            'cloture', 'categorie_cloture', 'actif', 'lignes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_journal(self, value):
+        return _meme_societe(self, value, 'Journal')
+
+
+class AbonnementEcritureSerializer(serializers.ModelSerializer):
+    """WIR107 — écriture récurrente adossée à un modèle (XACC8)."""
+    modele_libelle = serializers.CharField(
+        source='modele.libelle', read_only=True)
+    frequence_display = serializers.CharField(
+        source='get_frequence_display', read_only=True)
+
+    class Meta:
+        model = AbonnementEcriture
+        fields = [
+            'id', 'modele', 'modele_libelle', 'libelle', 'frequence',
+            'frequence_display', 'prochaine_echeance', 'date_fin', 'actif',
+            'derniere_generation', 'date_creation',
+        ]
+        read_only_fields = ['derniere_generation', 'date_creation']
+
+    def validate_modele(self, value):
+        return _meme_societe(self, value, "Modèle d'écriture")
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        prochaine = attrs.get(
+            'prochaine_echeance',
+            getattr(self.instance, 'prochaine_echeance', None))
+        fin = attrs.get('date_fin', getattr(self.instance, 'date_fin', None))
+        if prochaine and fin and fin < prochaine:
+            raise serializers.ValidationError(
+                {'date_fin': "La date de fin précède la prochaine échéance."})
+        return attrs

@@ -60,6 +60,11 @@ _APP_URLS = [
     # ODX12 — Portail self-service client. Nouveau préfixe ; les anciennes
     # routes /compta/… restent servies à l'identique (mêmes ViewSets/vues).
     path('portail/', include('apps.portail.urls')),
+    # ODX15 — Notes de frais & indemnités (Expenses). Nouveau préfixe ; les
+    # anciennes routes /compta/notes-frais|rapports-notes-frais|plafonds-notes-
+    # frais|baremes-indemnite|indemnites-chantier/… restent servies à
+    # l'identique (mêmes ViewSets).
+    path('frais/', include('apps.frais.urls')),
     # ODX18 — Facturation (Invoicing, séparé de Sales). Nouveau préfixe ; les
     # anciennes routes /ventes/factures|paiements|avoirs|relances|balance-agee|
     # niveaux-relance/… restent servies à l'identique (mêmes ViewSets/vues).

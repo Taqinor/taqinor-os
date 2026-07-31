@@ -5,6 +5,7 @@ import { createElement, lazy } from 'react'
 import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
+  ListChecks, Repeat,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -28,6 +29,10 @@ const RapprochementsPage = lazy(() => import('./pages/RapprochementsPage.jsx'))
 const NotesDeFraisPage = lazy(() => import('./pages/NotesDeFraisPage.jsx'))
 const EffetsPage = lazy(() => import('./pages/EffetsPage.jsx'))
 const EngagementsPage = lazy(() => import('./pages/EngagementsPage.jsx'))
+// WIR107 — cockpit de clôture (NTFIN26-34) et écritures récurrentes (XACC8).
+const CloturePage = lazy(() => import('./pages/CloturePage.jsx'))
+const EcrituresRecurrentesPage = lazy(
+  () => import('./pages/EcrituresRecurrentesPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -46,6 +51,7 @@ const config = {
       { to: '/comptabilite', label: 'Cockpit', icon: icon(LayoutDashboard), roles: ROLES },
       { to: '/comptabilite/plan', label: 'Plan comptable', icon: icon(BookOpen), roles: ROLES },
       { to: '/comptabilite/ecritures', label: 'Écritures', icon: icon(PencilLine), roles: ROLES },
+      { to: '/comptabilite/ecritures-recurrentes', label: 'Écritures récurrentes', icon: icon(Repeat), roles: ROLES },
       { to: '/comptabilite/etats', label: 'États CGNC', icon: icon(FileBarChart2), roles: ROLES },
       { to: '/comptabilite/tresorerie', label: 'Trésorerie', icon: icon(Landmark), roles: ROLES },
       { to: '/comptabilite/fiscalite', label: 'Fiscalité', icon: icon(ReceiptText), roles: ROLES },
@@ -54,10 +60,15 @@ const config = {
       { to: '/comptabilite/notes-de-frais', label: 'Notes de frais', icon: icon(Receipt), roles: ROLES },
       { to: '/comptabilite/effets', label: 'Effets & règlements', icon: icon(HandCoins), roles: ROLES },
       { to: '/comptabilite/engagements', label: 'Engagements', icon: icon(ShieldCheck), roles: ROLES },
+      { to: '/comptabilite/cloture', label: 'Clôture', icon: icon(ListChecks), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
   titles: [
+    // WIR107 — « ecritures-recurrentes » AVANT « ecritures » : la résolution
+    // se fait par préfixe, l'entrée la plus spécifique doit passer d'abord.
+    ['/comptabilite/ecritures-recurrentes', 'Écritures récurrentes — Comptabilité'],
+    ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
     ['/comptabilite/notes-de-frais', 'Notes de frais — Comptabilité'],
@@ -83,6 +94,8 @@ const config = {
     { path: '/comptabilite/notes-de-frais', component: NotesDeFraisPage, roles: ROLES },
     { path: '/comptabilite/effets', component: EffetsPage, roles: ROLES },
     { path: '/comptabilite/engagements', component: EngagementsPage, roles: ROLES },
+    { path: '/comptabilite/cloture', component: CloturePage, roles: ROLES },
+    { path: '/comptabilite/ecritures-recurrentes', component: EcrituresRecurrentesPage, roles: ROLES },
   ],
 }
 

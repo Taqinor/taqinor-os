@@ -127,6 +127,12 @@ INSTALLED_APPS = [
     # préservant les tables physiques (SeparateDatabaseAndState). Chargé AVANT
     # compta : le shim de ré-export de compta.models importe apps.portail.models.
     'apps.portail',
+    # ODX15 — Notes de frais & indemnités (FG135/136 + ZACC6/XACC27/XACC28).
+    # Sorti de compta en préservant les tables physiques
+    # (SeparateDatabaseAndState, db_table 'compta_*' figé). Chargé AVANT compta :
+    # le shim de ré-export de compta.models importe apps.frais.models. Le
+    # POSTING COMPTABLE reste, lui, dans apps.compta.services.
+    'apps.frais',
     # FG107-FG121 — Comptabilité générale (plan CGNC, journaux, écritures en
     # partie double, états de synthèse). Auto-écritures OFF par défaut.
     'apps.compta',
