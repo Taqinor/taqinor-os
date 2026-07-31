@@ -695,6 +695,17 @@ appointment_effectue = django.dispatch.Signal()
 # ne réémet pas. Arguments : ``cycle`` (instance ``CycleSterilisation``),
 # ``company``, ``user`` (peut être None).
 cycle_sterilisation_non_conforme = django.dispatch.Signal()
+# NTUX7 — Émis par TOUTE app qui soft-supprime (archive/annule) un
+# enregistrement, pour alimenter la corbeille transverse 30 jours SANS créer un
+# modèle « éléments supprimés » par app. Abonné dans ce repo : ``trash``
+# (``apps/trash/receivers.py`` → ``ElementSupprime``). L'émetteur ne connaît pas
+# la corbeille, et ``apps.trash`` n'importe aucune app métier (la cible est
+# pointée par ``contenttypes``). Arguments : ``instance`` (l'objet
+# soft-supprimé), ``company``, ``user`` (peut être None), ``type_libelle``
+# (libellé de type lisible, ex. « Devis » — à défaut le nom du ContentType),
+# ``libelle`` (snapshot d'affichage — à défaut ``str(instance)``), ``donnees``
+# (dict best-effort, AFFICHAGE SEUL, jamais réinjecté à la restauration).
+record_soft_deleted = django.dispatch.Signal()
 
 
 # ===========================================================================

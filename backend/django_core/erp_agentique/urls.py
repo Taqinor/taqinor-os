@@ -138,6 +138,8 @@ _APP_URLS = [
     path('education/', include('apps.education.urls')),
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
     path('uxviews/', include('apps.uxviews.urls')),
+    # NTUX7 — Corbeille transverse 30 jours (écran /parametres/corbeille).
+    path('trash/', include('apps.trash.urls')),
     # Groupe NTMAR — Facturation électronique DGI (gated, EINVOICE_ENABLED).
     path('einvoice/', include('apps.einvoice.urls')),
     # Groupe NTMAR — Calendrier fiscal marocain, attestations, UBO, veille.
