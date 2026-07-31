@@ -19,7 +19,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from apps.roles.permissions import (
-    IsPortalFournisseurUser, portal_scope_id,
+    IsPortalFournisseurUser, IsPortalPartenaireUser, portal_scope_id,
 )
 
 
@@ -29,4 +29,13 @@ def tableau_de_bord_fournisseur(request):
     """NTPRT20 — cartes résumé du fournisseur connecté."""
     from apps.stock.selectors import resume_portail_fournisseur
     return Response(resume_portail_fournisseur(
+        request.user.company, portal_scope_id(request.user)))
+
+
+@api_view(['GET'])
+@permission_classes([IsPortalPartenaireUser])
+def tableau_de_bord_partenaire(request):
+    """NTPRT27 — cartes résumé du partenaire connecté."""
+    from apps.crm.selectors import resume_portail_partenaire
+    return Response(resume_portail_partenaire(
         request.user.company, portal_scope_id(request.user)))

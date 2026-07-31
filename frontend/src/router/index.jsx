@@ -26,7 +26,7 @@ import { buildModuleRoutes } from './moduleRoutes'
 import { isModuleDisabled } from './moduleGating'
 // NTPRT8/20/27 — portée d'un compte PORTAIL externe (source unique, pure).
 import {
-  PORTEE_CLIENT, PORTEE_FOURNISSEUR,
+  PORTEE_CLIENT, PORTEE_FOURNISSEUR, PORTEE_PARTENAIRE,
   peutEntrerDansPortail, portalHomePath,
 } from '../features/portail/portalScope'
 
@@ -77,6 +77,9 @@ const PortailClientFactures = lazy(() => import('../features/portail/client/Port
 // NTPRT20 — shell + tableau de bord du PORTAIL FOURNISSEUR.
 const PortalFournisseurLayout = lazy(() => import('../features/portail/fournisseur/PortalFournisseurLayout'))
 const PortailFournisseurAccueil = lazy(() => import('../features/portail/fournisseur/PortailFournisseurAccueil'))
+// NTPRT27 — shell + tableau de bord du PORTAIL PARTENAIRE.
+const PortalPartenaireLayout = lazy(() => import('../features/portail/partenaire/PortalPartenaireLayout'))
+const PortailPartenaireAccueil = lazy(() => import('../features/portail/partenaire/PortailPartenaireAccueil'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -323,6 +326,13 @@ const router = createBrowserRouter([
     path: '/portail/fournisseur',
     loader: portalLoader(PORTEE_FOURNISSEUR),
     element: <WithPortal shell={PortalFournisseurLayout}><PortailFournisseurAccueil /></WithPortal>,
+  },
+  // NTPRT27 — PORTAIL PARTENAIRE : garde symétrique (portée exacte
+  // `portail_partenaire`), structure identique aux deux shells ci-dessus.
+  {
+    path: '/portail/partenaire',
+    loader: portalLoader(PORTEE_PARTENAIRE),
+    element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireAccueil /></WithPortal>,
   },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },

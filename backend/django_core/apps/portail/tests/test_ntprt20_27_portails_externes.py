@@ -10,11 +10,12 @@ Run :
         apps.portail.tests.test_ntprt20_27_portails_externes -v2
 """
 import itertools
+from decimal import Decimal
 
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from apps.crm.models import Partenaire
+from apps.crm.models import CommissionPartenaire, Partenaire
 from apps.roles.models import (
     PORTAIL_CLIENT_PERMISSIONS,
     PORTAIL_FOURNISSEUR_PERMISSIONS,
@@ -138,3 +139,69 @@ class TableauDeBordFournisseurTests(TestCase):
         # les chiffres du fournisseur homonyme d'un autre tenant.
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data['fournisseur_nom'], '')
+
+
+class TableauDeBordPartenaireTests(TestCase):
+    def setUp(self):
+        self.company = make_company('ntprt27-co', 'NTPRT27 Société')
+        self.p_a = make_partenaire(self.company, 'Alpha')
+        self.p_b = make_partenaire(self.company, 'Beta')
+        CommissionPartenaire.objects.create(
+            company=self.company, partenaire=self.p_a,
+            base_ht=Decimal('1000'), taux=Decimal('10'),
+            montant=Decimal('100'),
+            statut=CommissionPartenaire.Statut.DUE)
+        CommissionPartenaire.objects.create(
+            company=self.company, partenaire=self.p_b,
+            base_ht=Decimal('5000'), taux=Decimal('10'),
+            montant=Decimal('500'),
+            statut=CommissionPartenaire.Statut.DUE)
+        self.user_a = make_portal_user(
+            self.company, 'ntprt27-p-a',
+            CustomUser.PORTEE_PORTAIL_PARTENAIRE, self.p_a.id)
+        self.api = APIClient()
+
+    def test_le_partenaire_ne_voit_que_SES_commissions(self):
+        self.api.force_authenticate(user=self.user_a)
+        res = self.api.get(URL_PARTENAIRE)
+
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data['partenaire_nom'], self.p_a.nom)
+        # 100 (le sien) et surtout PAS 600 (la somme des deux partenaires).
+        self.assertEqual(Decimal(res.data['commissions_dues']),
+                         Decimal('100'))
+
+    def test_un_compte_fournisseur_est_refuse(self):
+        f = make_portal_user(
+            self.company, 'ntprt27-f',
+            CustomUser.PORTEE_PORTAIL_FOURNISSEUR, 1)
+        self.api.force_authenticate(user=f)
+        self.assertEqual(self.api.get(URL_PARTENAIRE).status_code, 403)
+
+    def test_un_compte_client_est_refuse(self):
+        c = make_portal_user(
+            self.company, 'ntprt27-c', CustomUser.PORTEE_PORTAIL_CLIENT, 1)
+        self.api.force_authenticate(user=c)
+        self.assertEqual(self.api.get(URL_PARTENAIRE).status_code, 403)
+
+    def test_anonyme_refuse(self):
+        res = APIClient().get(URL_PARTENAIRE)
+        self.assertIn(res.status_code, (401, 403))
+
+    def test_compte_sans_rattachement_refuse(self):
+        orphelin = make_portal_user(
+            self.company, 'ntprt27-orphelin',
+            CustomUser.PORTEE_PORTAIL_PARTENAIRE, None)
+        self.api.force_authenticate(user=orphelin)
+        self.assertEqual(self.api.get(URL_PARTENAIRE).status_code, 403)
+
+    def test_partenaire_d_une_autre_societe_voit_un_resume_vide(self):
+        autre = make_company('ntprt27-co-b', 'NTPRT27 Société B')
+        etranger = make_portal_user(
+            autre, 'ntprt27-p-etranger',
+            CustomUser.PORTEE_PORTAIL_PARTENAIRE, self.p_a.id)
+        self.api.force_authenticate(user=etranger)
+        res = self.api.get(URL_PARTENAIRE)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['partenaire_nom'], '')
+        self.assertEqual(Decimal(res.data['commissions_dues']), Decimal('0'))
