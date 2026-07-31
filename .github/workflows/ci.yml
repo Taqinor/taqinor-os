@@ -452,6 +452,8 @@ jobs:
         run: python scripts/check_build_order.py
       - name: Test the BUILD_ORDER.yml checker itself (SCA5)
         run: python -m unittest scripts.tests.test_check_build_order -v
+      - name: Test the testdb-cache safety guard itself (WOW8 — a wrong DELTA verdict false-greens a stale schema)
+        run: python -m unittest scripts.tests.test_ci_testdb_manifest_diff -v
 
   web-build-test:
     needs: changes
