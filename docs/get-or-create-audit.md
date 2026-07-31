@@ -114,10 +114,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/views.py:1507` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/dataimport/services.py:224` | update_or_create | ImportMapping.objects | company, entity, nom |
 | `backend/django_core/apps/dataimport/services.py:261` | get_or_create | ExternalRef.objects | company, external_id, external_system |
-| `backend/django_core/apps/education/models.py:755` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/education/models.py:764` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/education/services_planning.py:81` | get_or_create | Seance.objects | classe, company, date, heure_debut, matiere |
-| `backend/django_core/apps/education/viewsets.py:429` | update_or_create | Presence.objects | company, eleve, seance |
-| `backend/django_core/apps/education/viewsets.py:502` | update_or_create | Note.objects | company, eleve, evaluation |
+| `backend/django_core/apps/education/viewsets.py:441` | update_or_create | Presence.objects | company, eleve, seance |
+| `backend/django_core/apps/education/viewsets.py:514` | update_or_create | Note.objects | company, eleve, evaluation |
 | `backend/django_core/apps/einvoice/services.py:168` | get_or_create | TransmissionDGI.objects | company, einvoice |
 | `backend/django_core/apps/entites/import_service.py:86` | update_or_create | Entite.objects | code, company |
 | `backend/django_core/apps/esg/management/commands/seed_catalogue_esg.py:22` | get_or_create | CatalogueIndicateurESG.objects | code, company |
@@ -247,7 +247,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/rh/views.py:1782` | get_or_create | ReglageRH.objects | company |
 | `backend/django_core/apps/rh/views.py:3949` | update_or_create | NoteEntretien.objects | entretien, evaluateur |
 | `backend/django_core/apps/roles/management/commands/init_roles.py:53` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/sante/models.py:708` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/sante/models.py:719` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/models.py:138` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/services.py:1080` | get_or_create | TicketFollower.objects | company, ticket, user |
 | `backend/django_core/apps/sav/views.py:1229` | get_or_create | TicketFollower.objects | company, ticket, user |
