@@ -172,6 +172,10 @@ CATALOG = {
     'appointment_effectue': _e(
         "Un rendez-vous CRM (Appointment) bascule vers « effectué ».",
         ['appointment', 'company', 'user', 'ancien_statut']),
+    'cycle_sterilisation_non_conforme': _e(
+        'Un cycle de stérilisation (NTSAN23) est déclaré non conforme — '
+        'QHSE ouvre une non-conformité liée.',
+        ['cycle', 'company', 'user']),
     # WIR85 / XACC6 — émis par ``stock.services.record_stock_movement`` (le
     # SEUL point de création d'un ``MouvementStock``), synchroniquement et en
     # best-effort juste après l'écriture du mouvement. Abonné : compta

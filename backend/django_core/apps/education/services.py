@@ -8,6 +8,8 @@ en a besoin, jamais un import module-level (évite les cycles + respecte la
 frontière cross-app : lecture via ``selectors.py``, écriture via
 ``services.py`` de l'app CIBLE).
 """
+from decimal import Decimal
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -577,3 +579,197 @@ def creer_eleve_import(company, fields):
     )
     attribuer_numero_dossier(eleve)
     return 'cree', ''
+
+
+# =============================================================================
+# NTEDU17 — Données du bulletin scolaire (moyennes / rang / mention /
+# présences). Le RENDU vit dans ``bulletin_pdf.py`` ; ce calcul reste ici pour
+# rester testable sans WeasyPrint.
+# =============================================================================
+
+# Seuils de mention (barème /20), ordre DÉCROISSANT : le premier atteint gagne.
+MENTIONS_BULLETIN = (
+    (Decimal('16'), 'Très bien'),
+    (Decimal('14'), 'Bien'),
+    (Decimal('12'), 'Assez bien'),
+    (Decimal('10'), 'Passable'),
+)
+BAREME_BULLETIN = Decimal('20')
+
+
+def mention_bulletin(moyenne):
+    """Mention correspondant à une moyenne /20 (``''`` si pas de moyenne)."""
+    if moyenne is None:
+        return ''
+    for seuil, libelle in MENTIONS_BULLETIN:
+        if moyenne >= seuil:
+            return libelle
+    return 'Insuffisant'
+
+
+def _moyennes_par_eleve_et_matiere(classe, periode):
+    """``{(eleve_id, matiere_classe_id): (moyenne /20, appréciation)}`` pour
+    TOUTE la classe, en UNE requête (le rang exige les moyennes de tous les
+    élèves — jamais une requête par élève)."""
+    from .models import Note
+
+    lignes = Note.objects.filter(
+        company=classe.company,
+        evaluation__matiere_classe__classe=classe,
+        evaluation__date__gte=periode.date_debut,
+        evaluation__date__lte=periode.date_fin,
+        valeur__isnull=False,
+    ).order_by('evaluation__date').values(
+        'eleve_id', 'appreciation', 'valeur',
+        'evaluation__bareme', 'evaluation__coefficient_evaluation',
+        'evaluation__matiere_classe_id')
+
+    cumul = {}
+    for ligne in lignes:
+        bareme = ligne['evaluation__bareme'] or BAREME_BULLETIN
+        if bareme <= 0:
+            continue
+        coef = ligne['evaluation__coefficient_evaluation'] or Decimal('1')
+        # Note RAMENÉE sur /20 : une interro notée sur 10 ne pèse pas double.
+        note_20 = (ligne['valeur'] / bareme) * BAREME_BULLETIN
+        cle = (ligne['eleve_id'], ligne['evaluation__matiere_classe_id'])
+        somme, poids, appreciation = cumul.get(
+            cle, (Decimal('0'), Decimal('0'), ''))
+        cumul[cle] = (
+            somme + note_20 * coef, poids + coef,
+            ligne['appreciation'] or appreciation)
+
+    return {
+        cle: ((somme / poids) if poids else None, appreciation)
+        for cle, (somme, poids, appreciation) in cumul.items()
+    }
+
+
+def _moyenne_generale(moyennes_matieres, coefficients):
+    """Moyenne générale pondérée par le coefficient de chaque matière."""
+    somme = Decimal('0')
+    poids = Decimal('0')
+    for matiere_classe_id, moyenne in moyennes_matieres.items():
+        if moyenne is None:
+            continue
+        coef = coefficients.get(matiere_classe_id) or Decimal('1')
+        somme += moyenne * coef
+        poids += coef
+    return (somme / poids) if poids else None
+
+
+def donnees_bulletin(eleve, periode):
+    """NTEDU17 — contexte complet du bulletin d'un élève sur une période.
+
+    Rien n'est dénormalisé : moyennes (pondérées par le coefficient de la
+    matière ET celui de l'évaluation, notes ramenées sur /20), rang dans la
+    classe, mention et présences de la période sont RECALCULÉS à chaque rendu.
+    Les notes ``valeur=None`` (élève absent à l'évaluation) sont exclues —
+    jamais comptées comme un 0 qui fausserait la moyenne."""
+    from django.db.models import Count
+
+    from .models import Bulletin, MatiereClasse, Presence
+
+    classe = eleve.classe
+    matieres_classe = []
+    coefficients = {}
+    if classe is not None:
+        matieres_classe = list(
+            MatiereClasse.objects.filter(company=eleve.company, classe=classe)
+            .select_related('matiere').order_by('matiere__nom'))
+        coefficients = {mc.id: mc.coefficient for mc in matieres_classe}
+
+    par_eleve_matiere = (
+        _moyennes_par_eleve_et_matiere(classe, periode)
+        if classe is not None else {})
+
+    mes_moyennes = {}
+    matieres = []
+    for mc in matieres_classe:
+        moyenne, appreciation = par_eleve_matiere.get(
+            (eleve.id, mc.id), (None, ''))
+        mes_moyennes[mc.id] = moyenne
+        matieres.append({
+            'matiere': mc.matiere.nom,
+            'coefficient': mc.coefficient,
+            'moyenne': moyenne,
+            'appreciation': appreciation,
+        })
+
+    moyenne_generale = _moyenne_generale(mes_moyennes, coefficients)
+
+    # Rang (OPTIONNEL) : sur les élèves de la classe qui ont au moins une
+    # moyenne. Sans moyenne pour l'élève lui-même, pas de rang du tout.
+    rang = None
+    effectif_classe = None
+    if moyenne_generale is not None:
+        moyennes_classe = {}
+        for (eleve_id, mc_id), (moyenne, _) in par_eleve_matiere.items():
+            moyennes_classe.setdefault(eleve_id, {})[mc_id] = moyenne
+        generales = []
+        for moyennes in moyennes_classe.values():
+            generale = _moyenne_generale(moyennes, coefficients)
+            if generale is not None:
+                generales.append(generale)
+        effectif_classe = len(generales)
+        rang = sum(1 for g in generales if g > moyenne_generale) + 1
+
+    compteurs = {'present': 0, 'absent': 0, 'retard': 0, 'excuse': 0}
+    for ligne in (Presence.objects
+                  .filter(company=eleve.company, eleve=eleve,
+                          seance__date__gte=periode.date_debut,
+                          seance__date__lte=periode.date_fin)
+                  .values('statut').annotate(n=Count('id'))):
+        compteurs[ligne['statut']] = ligne['n']
+
+    bulletin = Bulletin.objects.filter(
+        company=eleve.company, eleve=eleve, periode=periode).first()
+
+    enseignant = getattr(classe, 'enseignant_principal', None)
+    enseignant_nom = (
+        f'{enseignant.prenom} {enseignant.nom}' if enseignant else '')
+
+    return {
+        'eleve': f'{eleve.prenom} {eleve.nom}',
+        'numero_dossier': eleve.numero_dossier,
+        'classe': str(classe) if classe is not None else '',
+        'enseignant_principal': enseignant_nom,
+        'periode': periode.libelle,
+        'annee_scolaire': periode.annee_scolaire.libelle,
+        'bareme': BAREME_BULLETIN,
+        'matieres': matieres,
+        'moyenne_generale': moyenne_generale,
+        'mention': mention_bulletin(moyenne_generale),
+        'rang': rang,
+        'effectif_classe': effectif_classe,
+        'presences': compteurs,
+        'appreciation_generale': (
+            bulletin.appreciation_generale if bulletin is not None else ''),
+    }
+
+
+# =============================================================================
+# NTEDU23 — Transport scolaire : avertissement « véhicule indisponible ».
+# =============================================================================
+
+def avertissement_vehicule_circuit(circuit):
+    """NTEDU23 — message d'AVERTISSEMENT si le circuit n'a pas de véhicule
+    disponible (``''`` quand tout va bien).
+
+    SOFT WARNING, jamais un blocage : l'établissement compose ses circuits
+    avant d'immobiliser un bus, donc l'affectation d'un élève doit toujours
+    s'enregistrer. La disponibilité est lue via le SÉLECTEUR de l'app cible
+    (``apps.flotte.selectors.vehicule_operationnel``) — import FONCTION-LOCAL,
+    jamais ``flotte.models``."""
+    from apps.flotte.selectors import vehicule_operationnel
+
+    if circuit is None:
+        return ''
+    if not circuit.vehicule_id:
+        return (f"Aucun véhicule n'est affecté au circuit « {circuit.nom} » : "
+                f"l'affectation est enregistrée malgré tout.")
+    if not vehicule_operationnel(circuit.company, circuit.vehicule_id):
+        return (f"Le véhicule du circuit « {circuit.nom} » n'est pas en "
+                f"service (maintenance, réforme ou cession) : l'affectation "
+                f"est enregistrée malgré tout.")
+    return ''

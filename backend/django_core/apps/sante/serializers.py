@@ -7,10 +7,11 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
-    ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
-    MotifConsultation, PaiementSante, Patient, Praticien, PraticienSite,
-    PriseEnCharge, RendezVous, Salle)
+    ActeMedical, ActeRealise, Admission, Convention, CycleSterilisation,
+    FactureSante, GrilleTarifaire, HoraireOuverturePraticien,
+    IndisponibilitePraticien, InstrumentSterilise, MotifConsultation,
+    PaiementSante, Patient, Praticien, PraticienSite, PriseEnCharge,
+    RendezVous, Salle)
 
 
 def _meme_societe(serializer, value, label):
@@ -301,3 +302,29 @@ class ActeMedicalSerializer(serializers.ModelSerializer):
             'cotation_lettre_cle', 'actif',
         ]
         read_only_fields = ['actif']
+
+
+# =============================================================================
+# NTSAN23 — Stérilisation et traçabilité des instruments.
+# =============================================================================
+
+class CycleSterilisationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CycleSterilisation
+        fields = [
+            'id', 'numero_cycle', 'date_cycle', 'autoclave_ref', 'statut',
+            'operateur',
+        ]
+        # ``operateur`` est posé côté serveur (utilisateur authentifié) —
+        # jamais lu du corps de requête.
+        read_only_fields = ['id', 'operateur']
+
+
+class InstrumentSteriliseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InstrumentSterilise
+        fields = ['id', 'cycle', 'instrument_ref', 'kit_ref']
+        read_only_fields = ['id']
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle de stérilisation')

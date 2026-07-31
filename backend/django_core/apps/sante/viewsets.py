@@ -7,6 +7,7 @@ rôles ``secretaire_medicale``/``praticien``/``caissier_sante``) est posé par
 NTSAN17 — en attendant, le défaut « authentifié suffit » de
 ``CompanyScopedModelViewSet`` s'applique.
 """
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -17,14 +18,16 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
-    MotifConsultation, PaiementSante, Patient, Praticien, PraticienSite,
-    PriseEnCharge, RendezVous, Salle)
+    ActeMedical, ActeRealise, Admission, Convention, CycleSterilisation,
+    FactureSante, GrilleTarifaire, HoraireOuverturePraticien,
+    IndisponibilitePraticien, InstrumentSterilise, MotifConsultation,
+    PaiementSante, Patient, Praticien, PraticienSite, PriseEnCharge,
+    RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
-    ConventionSerializer, FactureSanteSerializer, GrilleTarifaireSerializer,
-    HoraireOuverturePraticienSerializer, IndisponibilitePraticienSerializer,
+    ConventionSerializer, CycleSterilisationSerializer, FactureSanteSerializer,
+    GrilleTarifaireSerializer, HoraireOuverturePraticienSerializer,
+    IndisponibilitePraticienSerializer, InstrumentSteriliseSerializer,
     MotifConsultationSerializer, PaiementSanteSerializer, PatientSerializer,
     PraticienSerializer, PraticienSiteSerializer, PriseEnChargeSerializer,
     RendezVousSerializer, SalleSerializer)
@@ -360,6 +363,29 @@ class FactureSanteViewSet(CompanyScopedModelViewSet):
             FactureSanteSerializer(facture).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], url_path='feuille-soins')
+    def feuille_soins(self, request, pk=None):
+        """NTSAN14 — feuille de soins (FSE-like) IMPRIMABLE de cette facture :
+        un item par acte réalisé avec son code, montants et convention.
+
+        Imprimé uniquement — aucune télétransmission CNOPS/CNSS. Rendu par le
+        renderer dédié ``sante/feuille_soins_pdf.py`` (moteur PDF partagé
+        ``core.pdf``), JAMAIS ``apps/ventes/quote_engine/`` (règle #4)."""
+        from .services import imprimer_feuille_soins
+
+        facture = self.get_object()
+        try:
+            facture, pdf_bytes = imprimer_feuille_soins(
+                facture.pk, company=request.user.company)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="feuille_soins_{facture.pk}.pdf"')
+        return resp
+
     @action(detail=False, methods=['get'], url_path='statistiques')
     def statistiques(self, request):
         """NTSAN28 — actes les plus facturés (volume + CA) et répartition du
@@ -436,3 +462,40 @@ class PaiementSanteViewSet(CompanyScopedModelViewSet):
             encaisse_par=self.request.user,
         )
         serializer.instance = instance
+
+
+class CycleSterilisationViewSet(CompanyScopedModelViewSet):
+    """NTSAN23 — cycles d'autoclave. Un cycle enregistré (ou basculé) NON
+    CONFORME émet ``core.events.cycle_sterilisation_non_conforme`` : ``qhse``
+    y est abonné et ouvre la ``NonConformite`` liée — ``sante`` n'importe
+    JAMAIS ``qhse.models``. L'``operateur`` est posé côté serveur."""
+
+    queryset = CycleSterilisation.objects.select_related('operateur').all()
+    serializer_class = CycleSterilisationSerializer
+
+    def perform_create(self, serializer):
+        from .services import appliquer_statut_cycle_sterilisation
+
+        serializer.save(
+            company=self.request.user.company, operateur=self.request.user)
+        appliquer_statut_cycle_sterilisation(
+            serializer.instance, user=self.request.user)
+
+    def perform_update(self, serializer):
+        from .services import appliquer_statut_cycle_sterilisation
+
+        # Statut AVANT écriture : l'instance du serializer porte encore les
+        # valeurs relues en base tant que ``save()`` n'a pas eu lieu.
+        ancien_statut = serializer.instance.statut
+        super().perform_update(serializer)
+        appliquer_statut_cycle_sterilisation(
+            serializer.instance, ancien_statut=ancien_statut,
+            user=self.request.user)
+
+
+class InstrumentSteriliseViewSet(CompanyScopedModelViewSet):
+    """NTSAN23 — instruments/kits passés dans un cycle (traçabilité de
+    rappel). NTSAN24 les rattachera aux actes réalisés."""
+
+    queryset = InstrumentSterilise.objects.select_related('cycle').all()
+    serializer_class = InstrumentSteriliseSerializer

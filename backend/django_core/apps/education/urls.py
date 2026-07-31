@@ -2,12 +2,14 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .viewsets import (
-    AnneeScolaireViewSet, ClasseViewSet, CreneauEmploiDuTempsViewSet,
-    EcheancierScolariteViewSet, EleveViewSet, EvaluationViewSet,
-    FamilleViewSet, GrilleTarifaireViewSet, IncidentDisciplineViewSet,
-    InscriptionCantineViewSet, InscriptionViewSet, MatiereClasseViewSet,
-    MatiereViewSet, MenuCantineViewSet, NiveauViewSet, NoteViewSet,
-    ParametresEducationViewSet, PresenceViewSet, RemiseViewSet, SeanceViewSet)
+    AffectationTransportViewSet, AnneeScolaireViewSet, ArretTransportViewSet,
+    BulletinViewSet, CircuitTransportViewSet, ClasseViewSet,
+    CreneauEmploiDuTempsViewSet, EcheancierScolariteViewSet, EleveViewSet,
+    EvaluationViewSet, FamilleViewSet, GrilleTarifaireViewSet,
+    IncidentDisciplineViewSet, InscriptionCantineViewSet, InscriptionViewSet,
+    MatiereClasseViewSet, MatiereViewSet, MenuCantineViewSet, NiveauViewSet,
+    NoteViewSet, ParametresEducationViewSet, PeriodeScolaireViewSet,
+    PresenceViewSet, RemiseViewSet, SeanceViewSet)
 
 router = DefaultRouter()
 router.register(
@@ -45,6 +47,19 @@ router.register(
     basename='education-inscription-cantine')
 router.register(
     r'incidents', IncidentDisciplineViewSet, basename='education-incident')
+router.register(
+    r'periodes', PeriodeScolaireViewSet, basename='education-periode')
+router.register(r'bulletins', BulletinViewSet, basename='education-bulletin')
+# NTEDU23 — transport scolaire, tout sous /api/django/education/transport/.
+router.register(
+    r'transport/circuits', CircuitTransportViewSet,
+    basename='education-transport-circuit')
+router.register(
+    r'transport/arrets', ArretTransportViewSet,
+    basename='education-transport-arret')
+router.register(
+    r'transport/affectations', AffectationTransportViewSet,
+    basename='education-transport-affectation')
 
 urlpatterns = [
     path('', include(router.urls)),

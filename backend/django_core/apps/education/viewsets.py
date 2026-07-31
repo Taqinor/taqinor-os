@@ -15,19 +15,23 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
-    Evaluation, Famille, GrilleTarifaire, IncidentDiscipline, Inscription,
-    InscriptionCantine, Matiere, MatiereClasse, MenuCantine, Niveau, Note,
-    ParametresEducation, Presence, Remise, Seance)
+    AffectationTransport, AnneeScolaire, ArretTransport, Bulletin,
+    CircuitTransport, Classe, CreneauEmploiDuTemps, EcheancierScolarite,
+    Eleve, Evaluation, Famille, GrilleTarifaire, IncidentDiscipline,
+    Inscription, InscriptionCantine, Matiere, MatiereClasse, MenuCantine,
+    Niveau, Note, ParametresEducation, PeriodeScolaire, Presence, Remise,
+    Seance)
 from .serializers import (
-    AnneeScolaireSerializer, ClasseSerializer, CreneauEmploiDuTempsSerializer,
+    AffectationTransportSerializer, AnneeScolaireSerializer,
+    ArretTransportSerializer, BulletinSerializer, CircuitTransportSerializer,
+    ClasseSerializer, CreneauEmploiDuTempsSerializer,
     EcheancierScolariteSerializer, EleveSerializer, EvaluationSerializer,
     FamilleSerializer, GrilleTarifaireSerializer,
     IncidentDisciplineSerializer, InscriptionCantineSerializer,
     InscriptionSerializer, MatiereClasseSerializer, MatiereSerializer,
     MenuCantineSerializer, NiveauSerializer, NoteSerializer,
-    ParametresEducationSerializer, PresenceSerializer, RemiseSerializer,
-    SeanceSerializer)
+    ParametresEducationSerializer, PeriodeScolaireSerializer,
+    PresenceSerializer, RemiseSerializer, SeanceSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -186,6 +190,41 @@ class EleveViewSet(CompanyScopedModelViewSet):
         resp['Content-Disposition'] = (
             f'attachment; filename="certificat_scolarite_'
             f'{certificat.numero}.pdf"')
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='bulletin')
+    def bulletin(self, request, pk=None):
+        """NTEDU17 — bulletin scolaire PDF de l'élève pour une période
+        (``?periode=<id>``, obligatoire).
+
+        RÈGLE #4 : rendu par le renderer DÉDIÉ ``education/bulletin_pdf.py``
+        (moteur PDF partagé ``core.pdf``) — un bulletin n'est pas un devis
+        client, ce chemin ne touche JAMAIS ``apps/ventes/quote_engine/``."""
+        eleve = self.get_object()
+        # ``pk=<non numérique>`` lèverait un ValueError (donc un 500) : on
+        # convertit d'abord et on refuse proprement en 400.
+        try:
+            periode_id = int(request.query_params.get('periode') or 0)
+        except (TypeError, ValueError):
+            periode_id = 0
+        periode = PeriodeScolaire.objects.filter(
+            company=request.user.company, pk=periode_id).first()
+        if periode is None:
+            raise ValidationError({'periode': 'Période introuvable.'})
+
+        from .bulletin_pdf import render_bulletin_pdf
+        from .services import donnees_bulletin
+
+        contexte = donnees_bulletin(eleve, periode)
+        try:
+            pdf_bytes = render_bulletin_pdf(contexte)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="bulletin_{eleve.id}_{periode.id}.pdf"')
         return resp
 
 
@@ -695,3 +734,68 @@ class IncidentDisciplineViewSet(CompanyScopedModelViewSet):
         incident.statut = IncidentDiscipline.Statut.CLOS
         incident.save(update_fields=['statut'])
         return Response(IncidentDisciplineSerializer(incident).data)
+
+
+class PeriodeScolaireViewSet(CompanyScopedModelViewSet):
+    """NTEDU17 — périodes de notation (trimestre/semestre) d'une année
+    scolaire ; l'id d'une période est ce que le bulletin attend en
+    ``?periode=``."""
+
+    queryset = PeriodeScolaire.objects.select_related('annee_scolaire').all()
+    serializer_class = PeriodeScolaireSerializer
+
+
+class BulletinViewSet(CompanyScopedModelViewSet):
+    """NTEDU17 — bulletin d'un élève sur une période. Ne porte QUE
+    l'appréciation générale : moyennes/rang/mention/présences sont recalculés
+    au rendu (``services.donnees_bulletin``), jamais dénormalisés ici."""
+
+    queryset = Bulletin.objects.select_related('eleve', 'periode').all()
+    serializer_class = BulletinSerializer
+
+
+class CircuitTransportViewSet(CompanyScopedModelViewSet):
+    """NTEDU23 — circuits de ramassage. ``vehicule`` est une FK à chaîne vers
+    ``flotte.Vehicule`` : aucune écriture flotte n'est faite ici."""
+
+    queryset = CircuitTransport.objects.select_related('vehicule').all()
+    serializer_class = CircuitTransportSerializer
+
+
+class ArretTransportViewSet(CompanyScopedModelViewSet):
+    """NTEDU23 — arrêts ordonnés d'un circuit."""
+
+    queryset = ArretTransport.objects.select_related('circuit').all()
+    serializer_class = ArretTransportSerializer
+
+
+class AffectationTransportViewSet(CompanyScopedModelViewSet):
+    """NTEDU23 — affectation élève → circuit/arrêt.
+
+    SOFT WARNING : affecter un élève à un circuit sans véhicule disponible
+    (vérifié via ``flotte/selectors.py``) renvoie un champ ``avertissement``
+    dans la réponse mais N'EMPÊCHE JAMAIS l'enregistrement — jamais un 400."""
+
+    queryset = AffectationTransport.objects.select_related(
+        'eleve', 'circuit', 'arret').all()
+    serializer_class = AffectationTransportSerializer
+
+    def _avec_avertissement(self, response):
+        from .services import avertissement_vehicule_circuit
+
+        affectation = AffectationTransport.objects.select_related(
+            'circuit').filter(
+                company=self.request.user.company,
+                pk=(response.data or {}).get('id')).first()
+        if affectation is not None:
+            response.data['avertissement'] = avertissement_vehicule_circuit(
+                affectation.circuit)
+        return response
+
+    def create(self, request, *args, **kwargs):
+        return self._avec_avertissement(
+            super().create(request, *args, **kwargs))
+
+    def update(self, request, *args, **kwargs):
+        return self._avec_avertissement(
+            super().update(request, *args, **kwargs))
