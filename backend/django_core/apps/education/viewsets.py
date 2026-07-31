@@ -201,9 +201,14 @@ class EleveViewSet(CompanyScopedModelViewSet):
         (moteur PDF partagé ``core.pdf``) — un bulletin n'est pas un devis
         client, ce chemin ne touche JAMAIS ``apps/ventes/quote_engine/``."""
         eleve = self.get_object()
+        # ``pk=<non numérique>`` lèverait un ValueError (donc un 500) : on
+        # convertit d'abord et on refuse proprement en 400.
+        try:
+            periode_id = int(request.query_params.get('periode') or 0)
+        except (TypeError, ValueError):
+            periode_id = 0
         periode = PeriodeScolaire.objects.filter(
-            company=request.user.company,
-            pk=request.query_params.get('periode')).first()
+            company=request.user.company, pk=periode_id).first()
         if periode is None:
             raise ValidationError({'periode': 'Période introuvable.'})
 

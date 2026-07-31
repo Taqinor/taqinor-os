@@ -239,6 +239,12 @@ class NTEDU17EndpointTests(BulletinFixtureMixin, TestCase):
             f'/api/django/education/eleves/{self.eleve.id}/bulletin/')
         self.assertEqual(resp.status_code, 400)
 
+    def test_periode_non_numerique_refusee_sans_500(self):
+        resp = self.client.get(
+            f'/api/django/education/eleves/{self.eleve.id}/bulletin/'
+            '?periode=abc')
+        self.assertEqual(resp.status_code, 400)
+
     def test_periode_d_une_autre_societe_refusee(self):
         autre, _ = Company.objects.get_or_create(
             slug='ecole-bulletin-autre',
