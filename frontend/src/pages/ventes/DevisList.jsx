@@ -357,6 +357,7 @@ function DevisRow({ d, ctx }) {
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
+    handleProformaPdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   } = ctx
   // Expiration calculée à la volée (T7) : un devis en attente dont la
@@ -894,6 +895,10 @@ function DevisRow({ d, ctx }) {
                   section repliable ; distinct de la chaîne de versions. */}
               <DropdownMenuItem onSelect={() => toggleHistorique(d.id)}>
                 {histoOpenId === d.id ? "Masquer l'historique" : "Historique des modifications"}
+              </DropdownMenuItem>
+              {/* WIR103/XFAC10 — proforma PDF (aucun impact comptable). */}
+              <DropdownMenuItem onSelect={() => handleProformaPdf(d)}>
+                Proforma (PDF)
               </DropdownMenuItem>
               {/* WIR96 — suivi du partage : « vu le … » (OuverturePartage)
                   + relances consignées (RelanceDevisAbandonne). */}
@@ -1851,6 +1856,18 @@ export default function DevisList() {
     setSelectedIds([])
   }
 
+  // WIR103/XFAC10 — Proforma PDF : document sans aucun impact comptable
+  // (jamais une facture, jamais une écriture). Le backend était complet et
+  // testé mais n'avait AUCUN appelant côté client. Le POST renvoie le PDF.
+  const handleProformaPdf = async (d) => {
+    try {
+      const res = await ventesApi.getProformaPdf(d.id)
+      openPdfBlob(res.data, `Proforma_${d.reference}.pdf`)
+    } catch {
+      toast.error('Proforma indisponible.')
+    }
+  }
+
   const handleTelechargerPdf = async (d) => {
     setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
     try {
@@ -2020,6 +2037,7 @@ export default function DevisList() {
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
+    handleProformaPdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   }
 

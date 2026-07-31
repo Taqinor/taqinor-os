@@ -82,6 +82,24 @@ const ventesApi = {
   // WR1 — FG44 : refus explicite (motif/date/chatter), fait avancer le funnel
   // (devis_refused) — chemin canonique, à la place d'un PATCH statut direct.
   refuserDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/refuser/`, payload),
+  // ── WIR103 — Palier avancé facturation : note de débit + proforma ──
+  // Les deux étaient complets et testés côté serveur mais n'avaient AUCUN
+  // wrapper client (zéro UI). Le reste du palier (pénalités, encaissement
+  // groupé, promesses, mandats, remises d'encaissement) reste en attente.
+  // ZFAC4 — note de débit : créée DEPUIS une facture émise, puis lisible et
+  // téléchargeable en PDF. Sans `lignes`, le serveur recopie la facture.
+  creerNoteDebit: (factureId, data) =>
+    api.post(`/ventes/factures/${factureId}/creer-note-debit/`, data || {}),
+  getNotesDebit: (params) => api.get('/ventes/notes-debit/', { params }),
+  telechargerNoteDebitPdf: (id) =>
+    api.get(`/ventes/notes-debit/${id}/telecharger-pdf/`,
+      { responseType: 'blob' }),
+  // XFAC10 — proforma d'un devis : document sans impact comptable (jamais une
+  // facture). Le POST renvoie directement le PDF.
+  getProformaPdf: (devisId) =>
+    api.post(`/ventes/devis/${devisId}/proforma-pdf/`, {},
+      { responseType: 'blob' }),
+
   // WIR99/DC12 — pré-remplissage du générateur pour un devis SANS lead, depuis
   // le `crm.SiteProfile` du client (profil énergie/toiture/pompage réutilisable).
   getPrefillSite: (clientId) =>
