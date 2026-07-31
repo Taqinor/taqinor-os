@@ -27,29 +27,29 @@ export default function ChatRetentionSection() {
   const [history, setHistory] = useState(null) // null = chargement, [] = vide
   const [loading, setLoading] = useState(true)
 
-  const load = async () => {
-    setLoading(true)
-    try {
-      const [pRes, hRes] = await Promise.all([
-        messagesApi.retention.list(),
-        messagesApi.retention.historique().catch(() => ({ data: [] })),
-      ])
-      const rows = pRes.data?.results ?? pRes.data ?? []
-      const byKind = {}
-      for (const row of rows) byKind[row.conversation_kind] = row
-      setPolicies(byKind)
-      setDrafts({
-        dm: byKind.dm?.retention_months ?? '',
-        channel: byKind.channel?.retention_months ?? '',
+  // Chargement au montage : `loading` démarre déjà à `true` (état initial
+  // ci-dessus), donc aucun setState synchrone n'est nécessaire avant le
+  // premier `.then` (react-hooks/set-state-in-effect — même motif que
+  // PatrimoineTree.jsx/RentabiliteActif.jsx, pages/immobilier).
+  useEffect(() => {
+    Promise.all([
+      messagesApi.retention.list(),
+      messagesApi.retention.historique().catch(() => ({ data: [] })),
+    ])
+      .then(([pRes, hRes]) => {
+        const rows = pRes.data?.results ?? pRes.data ?? []
+        const byKind = {}
+        for (const row of rows) byKind[row.conversation_kind] = row
+        setPolicies(byKind)
+        setDrafts({
+          dm: byKind.dm?.retention_months ?? '',
+          channel: byKind.channel?.retention_months ?? '',
+        })
+        setHistory(hRes.data?.results ?? hRes.data ?? [])
       })
-      setHistory(hRes.data?.results ?? hRes.data ?? [])
-    } catch {
-      setHistory([])
-    } finally {
-      setLoading(false)
-    }
-  }
-  useEffect(() => { load() }, [])
+      .catch(() => setHistory([]))
+      .finally(() => setLoading(false))
+  }, [])
 
   const save = async (kind) => {
     setSaving(kind)

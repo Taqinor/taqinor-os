@@ -54,7 +54,6 @@ function MdeCalculator() {
       .catch(() => { setResult(null); setError('Calcul indisponible.') })
   }, [p, volume, cible])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- calcul au montage
   useEffect(() => { compute() }, [compute])
 
   return (

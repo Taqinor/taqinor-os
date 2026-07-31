@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ventesApi from '../../api/ventesApi'
 import PageHeader from '../../components/layout/PageHeader'
 import { Card, CardContent, EmptyState, Segmented, Skeleton } from '../../ui'
@@ -60,21 +60,46 @@ export default function DossiersReglementairesPage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  // Ignore une réponse devenue obsolète (ressource changée entre-temps) —
+  // même rôle que le drapeau `active` d'un effet, partagé entre le montage
+  // et `changerRessource`.
+  const latestRef = useRef(ressource)
 
-  useEffect(() => {
-    let active = true
+  // Changement de ressource : déclenché par le handler du Segmented (jamais
+  // un effet keyé sur `ressource`) — le reset loading/erreur est synchrone
+  // mais part d'un gestionnaire d'événement, jamais d'un effet
+  // (react-hooks/set-state-in-effect ; même motif que RentabiliteActif.jsx
+  // `selectionner`/`charger`, pages/immobilier).
+  const changerRessource = (v) => {
+    setRessource(v)
+    latestRef.current = v
     setLoading(true)
     setError(false)
-    ventesApi.getReglementaire(ressource)
+    ventesApi.getReglementaire(v)
       .then((r) => {
-        if (!active) return
+        if (latestRef.current !== v) return
         const data = r.data
         setRows(Array.isArray(data) ? data : (data?.results || []))
       })
-      .catch(() => { if (active) { setRows([]); setError(true) } })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
-  }, [ressource])
+      .catch(() => { if (latestRef.current === v) { setRows([]); setError(true) } })
+      .finally(() => { if (latestRef.current === v) setLoading(false) })
+  }
+
+  // Chargement de la ressource par défaut au montage : `loading`/`error`
+  // démarrent déjà à leurs valeurs de chargement (true/false, comme
+  // PatrimoineTree.jsx) — aucun reset synchrone n'est donc nécessaire ici ;
+  // les changements ultérieurs passent par `changerRessource` ci-dessus.
+  useEffect(() => {
+    const v = RESSOURCES[0].value
+    ventesApi.getReglementaire(v)
+      .then((r) => {
+        if (latestRef.current !== v) return
+        const data = r.data
+        setRows(Array.isArray(data) ? data : (data?.results || []))
+      })
+      .catch(() => { if (latestRef.current === v) { setRows([]); setError(true) } })
+      .finally(() => { if (latestRef.current === v) setLoading(false) })
+  }, [])
 
   // Colonnes dérivées des données réelles (jamais d'un schéma deviné).
   const colonnes = useMemo(() => {
@@ -96,7 +121,7 @@ export default function DossiersReglementairesPage() {
       <Segmented
         options={RESSOURCES.map((r) => ({ value: r.value, label: r.label }))}
         value={ressource}
-        onChange={setRessource}
+        onChange={changerRessource}
         aria-label="Ressource réglementaire"
       />
 

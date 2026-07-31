@@ -23,24 +23,41 @@ import {
 
 export default function NoteDebitDialog({ facture, open, onOpenChange }) {
   const [notes, setNotes] = useState([])
-  const [loading, setLoading] = useState(false)
+  // Facture dont `notes` reflète déjà le chargement — `loading` est DÉRIVÉ de
+  // la comparaison avec la facture courante (jamais un `setLoading(true)`
+  // synchrone dans l'effet, react-hooks/set-state-in-effect).
+  const [loadedFactureId, setLoadedFactureId] = useState(null)
   const [motif, setMotif] = useState('')
   const [creating, setCreating] = useState(false)
 
+  // À chaque OUVERTURE (flanc montant de `open`), le chargement doit repartir
+  // de zéro — y compris pour la même facture qu'une précédente ouverture.
+  // Ajustement PENDANT LE RENDU (pas dans un effet), la valeur de repli
+  // (`null`) étant déjà connue — même motif que SiteProfilePage.jsx /
+  // « Adjusting some state when a prop changes »
+  // (react.dev/learn/you-might-not-need-an-effect).
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setLoadedFactureId(null)
+  }
+
+  const factureId = facture?.id ?? null
+  const loading = Boolean(open && factureId) && loadedFactureId !== factureId
+
   useEffect(() => {
-    if (!open || !facture?.id) return
+    if (!open || !factureId) return
     let active = true
-    setLoading(true)
-    ventesApi.getNotesDebit({ facture: facture.id })
+    ventesApi.getNotesDebit({ facture: factureId })
       .then((r) => {
         if (!active) return
         const data = r.data
         setNotes(Array.isArray(data) ? data : (data?.results || []))
       })
       .catch(() => { if (active) setNotes([]) })
-      .finally(() => { if (active) setLoading(false) })
+      .finally(() => { if (active) setLoadedFactureId(factureId) })
     return () => { active = false }
-  }, [open, facture?.id])
+  }, [open, factureId])
 
   const creer = async () => {
     if (!facture?.id) return

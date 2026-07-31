@@ -51,28 +51,43 @@ export default function BauxPage() {
 
   const [impayees, setImpayees] = useState([])
 
+  // Fetch brut (sans reset synchrone loading/erreur) : partagé entre le
+  // montage (effet ci-dessous — `loading` démarre déjà à `true`, donc aucun
+  // setState synchrone n'est nécessaire avant le premier `await`,
+  // react-hooks/set-state-in-effect) et `chargerListes` (rechargement après
+  // mutation, appelé depuis les handlers d'événement signerBail/relancer).
+  const fetchListes = useCallback(async () => {
+    const [rLocaux, rLocataires, rBaux, rImpayees] = await Promise.all([
+      immobilierApi.locaux.list(),
+      immobilierApi.locataires.list(),
+      immobilierApi.baux.list(),
+      immobilierApi.echeancesLoyer.impayees(),
+    ])
+    setLocaux(rowsFrom(rLocaux.data))
+    setLocataires(rowsFrom(rLocataires.data))
+    setBaux(rowsFrom(rBaux.data))
+    setImpayees(rowsFrom(rImpayees.data))
+  }, [])
+
   const chargerListes = useCallback(async () => {
     setLoading(true)
     setErreur(null)
     try {
-      const [rLocaux, rLocataires, rBaux, rImpayees] = await Promise.all([
-        immobilierApi.locaux.list(),
-        immobilierApi.locataires.list(),
-        immobilierApi.baux.list(),
-        immobilierApi.echeancesLoyer.impayees(),
-      ])
-      setLocaux(rowsFrom(rLocaux.data))
-      setLocataires(rowsFrom(rLocataires.data))
-      setBaux(rowsFrom(rBaux.data))
-      setImpayees(rowsFrom(rImpayees.data))
+      await fetchListes()
     } catch {
       setErreur('Chargement des baux impossible.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [fetchListes])
 
-  useEffect(() => { chargerListes() }, [chargerListes])
+  useEffect(() => {
+    let annule = false
+    fetchListes()
+      .catch(() => { if (!annule) setErreur('Chargement des baux impossible.') })
+      .finally(() => { if (!annule) setLoading(false) })
+    return () => { annule = true }
+  }, [fetchListes])
 
   const selected = baux.find((b) => b.id === selectedId) || null
 

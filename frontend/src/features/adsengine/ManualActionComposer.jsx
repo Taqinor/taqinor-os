@@ -35,7 +35,6 @@ export default function ManualActionComposer({ descriptor, target, onProposed })
       .catch(() => setTemplates([]))
   }, [descriptor.kind])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { loadTemplates() }, [loadTemplates])
 
   const setField = (name, value) => setValues(v => ({ ...v, [name]: value }))

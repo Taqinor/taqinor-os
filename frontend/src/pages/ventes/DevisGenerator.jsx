@@ -1033,7 +1033,11 @@ export default function DevisGenerator({
   // (aucun re-snap sur un prix modifié à la main).
   const [tarifBadges, setTarifBadges] = useState({})
 
-  const refreshTarif = async (key, produitId, quantite) => {
+  // Identité stable (useCallback, dépend seulement de `clientId`) : référencée
+  // par onProduitChange/onQuantiteChange ci-dessous (exhaustive-deps /
+  // preserve-manual-memoization) sans faire recréer ces callbacks à chaque
+  // rendu.
+  const refreshTarif = useCallback(async (key, produitId, quantite) => {
     if (!produitId) {
       setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
       return
@@ -1056,7 +1060,7 @@ export default function DevisGenerator({
       // jamais de blocage de la saisie.
       setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
     }
-  }
+  }, [clientId])
 
   const onProduitChange = useCallback((key, produitId) => {
     const p = produits.find(p => String(p.id) === String(produitId))
@@ -1075,8 +1079,7 @@ export default function DevisGenerator({
       const l = lines.find(x => x._key === key)
       refreshTarif(key, produitId, l?.quantite)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [produits, lines])
+  }, [produits, lines, refreshTarif])
 
   // Ré-interroge le tarif applicable quand la quantité change sur une ligne
   // déjà liée à un produit (paliers XSAL2), ou quand le client change (liste
@@ -1085,8 +1088,7 @@ export default function DevisGenerator({
     setLine(key, 'quantite', quantite)
     const l = lines.find(x => x._key === key)
     if (l?.produit) refreshTarif(key, l.produit, quantite)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines, setLine])
+  }, [lines, setLine, refreshTarif])
 
   useEffect(() => {
     lines.forEach(l => { if (l.produit) refreshTarif(l._key, l.produit, l.quantite) })
