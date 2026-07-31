@@ -12,7 +12,10 @@ import EmployeDetail from './EmployeDetail.jsx'
    pour un actif (et le certificat de travail pour un sorti) ; l'onglet Activité
    (chatter XRH6) est présent. Smoke : le dossier ne plante jamais au montage.
    WIR33 — le bouton « Modifier » ouvre le dialogue d'édition câblé sur
-   `rhApi.updateEmploye` (jusqu'ici défini sans appelant). */
+   `rhApi.updateEmploye` (jusqu'ici défini sans appelant).
+   WIR131 — l'onglet Badges attribue un badge du catalogue société via
+   `rhApi.attribuerBadge` (jusqu'ici défini sans appelant), scopé à ce dossier
+   (`beneficiaire`). */
 
 vi.mock('react-router-dom', async (orig) => ({
   ...(await orig()),
@@ -37,6 +40,12 @@ vi.mock('../../api/rhApi', () => {
       getCertificatTravail: vi.fn(),
       confirmerEssai: vi.fn(),
       marquerDeclare: vi.fn(),
+      // WIR131 — badges (ZRH14).
+      getAttributionsBadge: vi.fn(empty),
+      getBadgesReconnaissance: vi.fn(() => Promise.resolve({
+        data: [{ id: 3, nom: 'Esprit d’équipe', icone: '🤝', actif: true }],
+      })),
+      attribuerBadge: vi.fn(() => Promise.resolve({ data: {} })),
     },
   }
 })
@@ -96,5 +105,29 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
     await waitFor(() => expect(rhApi.updateEmploye).toHaveBeenCalledWith(
       7, expect.objectContaining({ poste: 'Chef de chantier' }),
     ))
+  })
+
+  it('attribue un badge du catalogue via rhApi.attribuerBadge (WIR131)', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    rhApi.getEmploye.mockResolvedValueOnce({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    renderDetail()
+    await waitFor(() => expect(rhApi.getAttributionsBadge).toHaveBeenCalledWith({ beneficiaire: '7' }))
+
+    // Onglet Radix : activation au focus → userEvent (fireEvent.click ne
+    // bascule pas l'onglet sous jsdom).
+    await userEvent.click(screen.getByRole('tab', { name: /Badges/ }))
+    // Le bouton reste désactivé tant que le catalogue société (chargé à part)
+    // n'est pas arrivé — attendre qu'il soit cliquable avant de cliquer.
+    await waitFor(() => expect(screen.getByRole('button', { name: /Attribuer un badge/ })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: /Attribuer un badge/ }))
+
+    expect(screen.getByText(/Attribuer un badge — Bennani Youssef/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Attribuer le badge' }))
+
+    await waitFor(() => expect(rhApi.attribuerBadge).toHaveBeenCalledWith({
+      badge: 3, beneficiaire: 7, message: '',
+    }))
   })
 })
