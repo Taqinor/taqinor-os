@@ -15,6 +15,7 @@ describe('migration — module.config (NTMIG16)', () => {
 
     const paths = config.routes.map((r) => r.path)
     expect(paths).toContain('/migration')
+    expect(paths).toContain('/migration/projet/:id')
     config.routes.forEach((r) => {
       expect(r.roles).toEqual(['admin'])
       expect(r.component).toBeTruthy()

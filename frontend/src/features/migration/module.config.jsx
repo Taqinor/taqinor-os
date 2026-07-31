@@ -14,6 +14,7 @@ import { Database } from 'lucide-react'
    ========================================================================== */
 
 const MigrationProjetsList = lazy(() => import('./MigrationProjetsList'))
+const MigrationWizard = lazy(() => import('./MigrationWizard'))
 
 const config = {
   key: 'migration',
@@ -31,11 +32,19 @@ const config = {
     ],
   },
   titles: [
+    // Le plus spécifique d'abord : /migration/projet ne doit pas hériter du
+    // titre de la liste.
+    ['/migration/projet', 'Assistant de migration'],
     ['/migration', 'Migration ERP'],
   ],
   sectionLabels: { migration: 'Migration' },
   routes: [
     { path: '/migration', component: MigrationProjetsList, roles: ['admin'] },
+    {
+      path: '/migration/projet/:id',
+      component: MigrationWizard,
+      roles: ['admin'],
+    },
   ],
 }
 
