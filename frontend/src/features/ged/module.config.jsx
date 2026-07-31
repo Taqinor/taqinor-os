@@ -3,7 +3,9 @@
    de composants : le fast-refresh ne s'y applique pas (meme contrat que
    router/moduleRoutes.jsx). */
 import { lazy } from 'react'
-import { FileSignature, ShieldCheck, Tags, ScanLine, Trash2 } from 'lucide-react'
+import {
+  FileSignature, ShieldCheck, Tags, ScanLine, Trash2, ClipboardList,
+} from 'lucide-react'
 
 /* ============================================================================
    UX45-UX47 - Config du module GED avancee (approbation, retention, tags).
@@ -29,6 +31,9 @@ const RetentionPage = lazy(() => import('./advanced/RetentionPage.jsx'))
 const TagsPage = lazy(() => import('./advanced/TagsPage.jsx'))
 const NumeriserPage = lazy(() => import('./NumeriserPage.jsx'))
 const CorbeillePage = lazy(() => import('./advanced/CorbeillePage.jsx'))
+// WIR164 — checklist de pièces (XGED8), validation OCR (XGED13), tampons
+// société (XGED16) : groupe (a) monté côté backend sans écran jusqu'ici.
+const ChecklistPage = lazy(() => import('./advanced/ChecklistPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -40,6 +45,7 @@ export default {
     accent: 'lune', // VX8 — documentaire = accent lune (dérivé)
     items: [
       { to: '/ged/numeriser', label: 'Numériser', icon: <ScanLine size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/checklist', label: 'Checklist & tampons', icon: <ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/approbation', label: 'Approbation & signature', icon: <FileSignature size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/retention', label: 'Rétention & archivage', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/tags', label: 'Tags & liens', icon: <Tags size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -48,6 +54,7 @@ export default {
   },
   titles: [
     ['/ged/numeriser', 'Numériser'],
+    ['/ged/checklist', 'Checklist & tampons'],
     ['/ged/approbation', 'Approbation & signature'],
     ['/ged/retention', 'Rétention & archivage'],
     ['/ged/tags', 'Tags & liens'],
@@ -56,6 +63,7 @@ export default {
   sectionLabels: {},
   routes: [
     { path: '/ged/numeriser', component: NumeriserPage, roles: ROLES },
+    { path: '/ged/checklist', component: ChecklistPage, roles: ROLES },
     { path: '/ged/approbation', component: ApprobationPage, roles: ROLES },
     { path: '/ged/retention', component: RetentionPage, roles: ROLES },
     { path: '/ged/tags', component: TagsPage, roles: ROLES },

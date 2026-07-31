@@ -9,8 +9,8 @@ from .models import (
     ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     RegleAclMetadonnee, RegleApprobationGed, RegleDossier, RoleSignataire,
-    RoutageDocumentaire, QuotaStockage, SignataireDemande, TypeChampSignature,
-    ValidationOcrDocument, VueGedEnregistree,
+    RoutageDocumentaire, QuotaStockage, SignataireDemande, TamponSociete,
+    TypeChampSignature, ValidationOcrDocument, VueGedEnregistree,
 )
 from . import services
 
@@ -1125,6 +1125,16 @@ class AclGedSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Le dossier/document ciblé doit appartenir à votre société.")
         return attrs
+
+
+class TamponSocieteSerializer(serializers.ModelSerializer):
+    """WIR164 — Tampon prédéfini PROPRE à la société (XGED16, en plus des 3
+    tampons système `TAMPONS_SYSTEME`, jamais modifiables). `company` posée
+    côté serveur — jamais lue du corps de requête."""
+    class Meta:
+        model = TamponSociete
+        fields = ['id', 'libelle', 'created_at']
+        read_only_fields = ['created_at']
 
 
 class RegleAclMetadonneeSerializer(serializers.ModelSerializer):

@@ -66,6 +66,39 @@ const gedApi = {
   getTags: (params) => api.get('/ged/tags/', { params }),
 
   // ══════════════════════════════════════════════════════════════════════
+  // WIR164 — Checklist de pièces (XGED8), validation OCR (XGED13) & tampons
+  // société (XGED16) : groupe (a) monté côté backend, écran de gestion.
+  // ══════════════════════════════════════════════════════════════════════
+  // XGED8 — Modèles de pièces requises (par cabinet ou par dossier précis).
+  getExigences: (params) => api.get('/ged/exigences-dossier/', { params }),
+  createExigence: (data) => api.post('/ged/exigences-dossier/', data),
+  deleteExigence: (id) => api.delete(`/ged/exigences-dossier/${id}/`),
+  // XGED8 — Demandes de pièces nommées (placeholder + relances).
+  // `params` : { folder, statut }.
+  getDemandesDocument: (params) => api.get('/ged/demandes-document/', { params }),
+  createDemandeDocument: (data) => api.post('/ged/demandes-document/', data),
+  relancerDemandeDocument: (id) =>
+    api.post(`/ged/demandes-document/${id}/relancer/`),
+  // XGED8 — État requis/présent/manquant combiné d'un dossier.
+  getChecklist: (folderId) =>
+    api.get('/ged/demandes-document/checklist/', { params: { folder: folderId } }),
+  // XGED13 — File de validation d'extraction OCR (lecture + décision).
+  getValidationsOcr: (params) => api.get('/ged/validations-ocr/', { params }),
+  validerOcr: (id, data) =>
+    api.post(`/ged/validations-ocr/${id}/valider/`, data ?? {}),
+  // XGED16/WIR164 — Tampons PROPRES à la société (en plus des 3 tampons
+  // système, toujours renvoyés par `getStampsDisponibles`).
+  getTamponsSociete: (params) => api.get('/ged/tampons-societe/', { params }),
+  createTamponSociete: (data) => api.post('/ged/tampons-societe/', data),
+  deleteTamponSociete: (id) => api.delete(`/ged/tampons-societe/${id}/`),
+  // Catalogue combiné (3 tampons système + tampons société) — labels bruts.
+  getStampsDisponibles: () => api.get('/ged/annotations/tampons/'),
+  // Appose un tampon (ou une note) sur une VERSION de document (couche
+  // séparée, l'original n'est jamais modifié). `data` : { version,
+  // type_annotation:'tampon'|'note', page?, x?, y?, contenu }.
+  createAnnotation: (data) => api.post('/ged/annotations/', data),
+
+  // ══════════════════════════════════════════════════════════════════════
   // UX45 — Approbation & signature électronique.
   // ══════════════════════════════════════════════════════════════════════
   // GED18 — Demandes d'approbation / revue (lecture seule en CRUD ; création

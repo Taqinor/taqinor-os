@@ -42,8 +42,8 @@ from .models import (
     PartageGed, PlanificationDocument, PolitiqueRetention,
     QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
     RegleApprobationGed, RegleDossier, RoleSignataire, RoutageDocumentaire,
-    SignataireDemande, TypeChampSignature, ValidationOcrDocument,
-    VueGedEnregistree,
+    SignataireDemande, TamponSociete, TypeChampSignature,
+    ValidationOcrDocument, VueGedEnregistree,
 )
 from .serializers import (
     AclGedSerializer,
@@ -61,8 +61,8 @@ from .serializers import (
     RegleAclMetadonneeSerializer, RegleApprobationGedSerializer,
     RegleDossierSerializer, RoleSignataireSerializer,
     RoutageDocumentaireSerializer, SignataireDemandeSerializer,
-    TypeChampSignatureSerializer, ValidationOcrDocumentSerializer,
-    VueGedEnregistreeSerializer,
+    TamponSocieteSerializer, TypeChampSignatureSerializer,
+    ValidationOcrDocumentSerializer, VueGedEnregistreeSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -3141,6 +3141,34 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         response['Content-Disposition'] = (
             f'attachment; filename="{version.filename or "annote"}-annote.pdf"')
         return response
+
+
+class TamponSocieteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """WIR164 — Tampons PROPRES à la société (XGED16), en plus des 3 tampons
+    système (`TAMPONS_SYSTEME`, jamais gérés ici — constante applicative,
+    partagée par toutes les sociétés). Avant ce ViewSet, `tampons_disponibles()`
+    ne retombait QUE sur les 3 tampons système : aucun chemin d'écriture
+    n'existait pour qu'une société ajoute les siens. Lecture : tout rôle
+    authentifié. Écriture (créer/supprimer) : responsable/admin. `company`
+    posée côté serveur — jamais lue du corps de requête. Un tampon créé ici
+    apparaît IMMÉDIATEMENT dans `GET annotations/tampons/`
+    (`services.tampons_disponibles`) et peut être apposé via le chemin
+    existant `POST annotations/` (`type_annotation='tampon'`)."""
+    queryset = TamponSociete.objects.all()
+    serializer_class = TamponSocieteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
 
 
 class RegleDossierViewSet(TenantMixin, viewsets.ModelViewSet):
