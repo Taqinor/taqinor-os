@@ -7,6 +7,7 @@ rôles ``secretaire_medicale``/``praticien``/``caissier_sante``) est posé par
 NTSAN17 — en attendant, le défaut « authentifié suffit » de
 ``CompanyScopedModelViewSet`` s'applique.
 """
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -359,6 +360,29 @@ class FactureSanteViewSet(CompanyScopedModelViewSet):
         return Response(
             FactureSanteSerializer(facture).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='feuille-soins')
+    def feuille_soins(self, request, pk=None):
+        """NTSAN14 — feuille de soins (FSE-like) IMPRIMABLE de cette facture :
+        un item par acte réalisé avec son code, montants et convention.
+
+        Imprimé uniquement — aucune télétransmission CNOPS/CNSS. Rendu par le
+        renderer dédié ``sante/feuille_soins_pdf.py`` (moteur PDF partagé
+        ``core.pdf``), JAMAIS ``apps/ventes/quote_engine/`` (règle #4)."""
+        from .services import imprimer_feuille_soins
+
+        facture = self.get_object()
+        try:
+            facture, pdf_bytes = imprimer_feuille_soins(
+                facture.pk, company=request.user.company)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="feuille_soins_{facture.pk}.pdf"')
+        return resp
 
     @action(detail=False, methods=['get'], url_path='statistiques')
     def statistiques(self, request):
