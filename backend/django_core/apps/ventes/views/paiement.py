@@ -33,6 +33,7 @@ from authentication.permissions import (  # noqa: F401
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from core.permissions import declared_action_permissions
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 
@@ -76,6 +77,18 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         return _company_qs(super().get_queryset(), self.request.user)
 
     def get_permissions(self):
+        # La garde déclarée par l'@action elle-même PRIME sur le tiering
+        # ci-dessous. Sans cette ligne, l'ancien `if/else` sur `self.action`
+        # jetait EN SILENCE le `permission_classes=` du décorateur : les trois
+        # @action d'écriture déclarées `IsResponsableOrAdmin`
+        # (`paiement-avec-retenue`, `attestation-recue`, `envoyer-recu`)
+        # retombaient sur le `return [IsAnyRole()]` final — n'importe quel rôle
+        # authentifié pouvait solder une facture via une retenue à la source,
+        # cocher la réception d'une attestation RAS ou envoyer une quittance au
+        # client. Trou RBAC réel, refermé ici (durcissement).
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
         if self.action in ('enregistrer_avance', 'ventiler', 'rejeter'):
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
