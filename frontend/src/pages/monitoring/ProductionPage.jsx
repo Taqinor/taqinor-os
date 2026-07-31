@@ -292,7 +292,7 @@ export default function ProductionPage() {
           />
         </div>
         <div className="min-w-[18rem]">
-          <Select value={String(selectedId)} onValueChange={setSelectedId}>
+          <Select value={String(selectedId)} onValueChange={setSelectedId} aria-label="Choisir un système installé">
             <SelectTrigger aria-label="Choisir un système installé"><SelectValue placeholder="Choisir un système installé…" /></SelectTrigger>
             <SelectContent>
               {filteredSystems.map((s) => (
