@@ -33,8 +33,15 @@ test('Co2Page : CO₂ évité et production utilisent l’icône métier unifié
   assert.match(CO2_PAGE_SRC, /icon: METRIC_ICONS\.co2/)
   assert.match(CO2_PAGE_SRC, /icon: METRIC_ICONS\.production/)
   assert.match(CO2_PAGE_SRC, /tone: 'impact'/)
-  // Plus d'import ad hoc Leaf/Sprout/Zak — tout passe par metricIcons.js.
-  assert.doesNotMatch(CO2_PAGE_SRC, /from 'lucide-react'/)
+  // Plus d'icône MÉTRIQUE ad hoc (Leaf/Sprout/Zap…) : elles passent toutes par
+  // metricIcons.js. WIR122 a ajouté un drill-down avec un bouton « retour » :
+  // `ArrowLeft` est de la CHROME de navigation, pas une icône métier — la garde
+  // vise les icônes de métrique, pas tout import lucide.
+  // NB : on assert sur la forme d'IMPORT, jamais sur une sous-chaîne brute —
+  // le docstring du fichier CITE « Leaf/Sprout/Zap » et ferait échouer la garde.
+  assert.doesNotMatch(
+    CO2_PAGE_SRC,
+    /import\s*\{[^}]*\b(Leaf|Sprout|Zap|Gauge|Sun|Activity)\b[^}]*\}\s*from 'lucide-react'/)
 })
 
 test('FleetPage : kWc et production utilisent l’icône métier unifiée (même symbole que Co2Page)', () => {
