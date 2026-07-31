@@ -94,6 +94,11 @@ class InnovationSettingsSerializer(serializers.ModelSerializer):
             'feedback_digest_actif', 'feedback_digest_frequence',
             # NTIDE48 — « boîte à idées publique » (désactivée par défaut).
             'idees_clients_actif',
+            # NTIDE52 — gabarits e-mail du cycle de vie d'une idée (vide =
+            # gabarit par défaut, cf. ``models.EMAIL_IDEE_DEFAULTS``).
+            'email_recue_sujet', 'email_recue_corps',
+            'email_retenue_sujet', 'email_retenue_corps',
+            'email_realisee_sujet', 'email_realisee_corps',
         ]
 
 

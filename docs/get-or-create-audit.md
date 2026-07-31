@@ -46,7 +46,6 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/views.py:2296` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/views.py:2303` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py:203` | update_or_create | CtwaReferral.objects | company, wa_message_id |
-| `backend/django_core/apps/ai_governance/drift.py:118` | update_or_create | DriftSnapshot.objects | company, date, modele |
 | `backend/django_core/apps/assurances/services.py:340` | update_or_create | IndemnisationSinistre.objects | declaration |
 | `backend/django_core/apps/automation/views.py:400` | get_or_create | IncomingWebhookTrigger.objects | rule |
 | `backend/django_core/apps/chat/services.py:152` | get_or_create | MessageMention.objects | mentioned_user, message |
@@ -114,11 +113,11 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/views.py:1520` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/dataimport/services.py:282` | update_or_create | ImportMapping.objects | company, entity, nom |
 | `backend/django_core/apps/dataimport/services.py:328` | get_or_create | ExternalRef.objects | company, external_id, external_system |
-| `backend/django_core/apps/education/models.py:772` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/education/services.py:547` | get_or_create | Famille.objects | company, nom |
+| `backend/django_core/apps/education/models.py:764` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/education/services.py:545` | get_or_create | Famille.objects | company, nom |
 | `backend/django_core/apps/education/services_planning.py:81` | get_or_create | Seance.objects | classe, company, date, heure_debut, matiere |
-| `backend/django_core/apps/education/viewsets.py:480` | update_or_create | Presence.objects | company, eleve, seance |
-| `backend/django_core/apps/education/viewsets.py:553` | update_or_create | Note.objects | company, eleve, evaluation |
+| `backend/django_core/apps/education/viewsets.py:441` | update_or_create | Presence.objects | company, eleve, seance |
+| `backend/django_core/apps/education/viewsets.py:514` | update_or_create | Note.objects | company, eleve, evaluation |
 | `backend/django_core/apps/einvoice/services.py:168` | get_or_create | TransmissionDGI.objects | company, einvoice |
 | `backend/django_core/apps/esg/management/commands/seed_catalogue_esg.py:22` | get_or_create | CatalogueIndicateurESG.objects | code, company |
 | `backend/django_core/apps/esg/services.py:192` | get_or_create | FacteurEmissionVersionCounter.objects.select_for_update() | categorie, company, unite |
@@ -147,10 +146,11 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/hospitality/services.py:443` | get_or_create | TicketPension.objects | company, date, reservation, type_repas |
 | `backend/django_core/apps/hospitality/views.py:65` | get_or_create | ParametresTaxeSejour.objects | company |
 | `backend/django_core/apps/immobilier/services.py:479` | update_or_create | RegularisationCharges.objects | bail_id, company, exercice |
-| `backend/django_core/apps/innovation/services.py:139` | get_or_create | InnovationSettings.objects | company |
-| `backend/django_core/apps/innovation/services.py:180` | get_or_create | Tag.objects | company, nom |
-| `backend/django_core/apps/innovation/services.py:186` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
-| `backend/django_core/apps/innovation/views.py:543` | get_or_create | InnovationSettings.objects | company |
+| `backend/django_core/apps/innovation/services.py:150` | get_or_create | InnovationSettings.objects | company |
+| `backend/django_core/apps/innovation/services.py:177` | get_or_create | InnovationSettings.objects | company |
+| `backend/django_core/apps/innovation/services.py:235` | get_or_create | Tag.objects | company, nom |
+| `backend/django_core/apps/innovation/services.py:241` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
+| `backend/django_core/apps/innovation/views.py:563` | get_or_create | InnovationSettings.objects | company |
 | `backend/django_core/apps/installations/field_capture.py:79` | get_or_create | MaterielConsommation.objects | intervention |
 | `backend/django_core/apps/installations/field_capture.py:334` | get_or_create | SafetyChecklistSlot.objects | cle, company |
 | `backend/django_core/apps/installations/field_capture.py:344` | get_or_create | SafetySignoff.objects | intervention |
@@ -226,13 +226,13 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/qhse/management/commands/seed_itp_solaire.py:205` | get_or_create | PlanInspectionModele.objects | code, company |
 | `backend/django_core/apps/qhse/management/commands/seed_itp_solaire.py:221` | get_or_create | PointControleModele.objects | company, ordre, plan |
 | `backend/django_core/apps/qhse/services.py:51` | get_or_create | PlanInspectionChantier.objects | chantier_id, company, modele |
-| `backend/django_core/apps/qhse/services.py:1118` | get_or_create | ControleReception.objects | company, plan, reception_id |
-| `backend/django_core/apps/qhse/services.py:1495` | get_or_create | AnalyseNcr.objects | company, non_conformite |
-| `backend/django_core/apps/qhse/services.py:1884` | get_or_create | RisqueOpportuniteCapa.objects | capa, company, risque_opportunite |
-| `backend/django_core/apps/qhse/services.py:1950` | get_or_create | AccuseLecture.objects | company, diffusion, user |
-| `backend/django_core/apps/qhse/services.py:1966` | get_or_create | AccuseLecture.objects | company, diffusion, user |
-| `backend/django_core/apps/qhse/services.py:2478` | update_or_create | LigneBilanCarbone.objects | bilan, company, libelle |
-| `backend/django_core/apps/qhse/services.py:2617` | get_or_create | DemandeChangementCapa.objects | capa, company, demande_changement |
+| `backend/django_core/apps/qhse/services.py:1080` | get_or_create | ControleReception.objects | company, plan, reception_id |
+| `backend/django_core/apps/qhse/services.py:1457` | get_or_create | AnalyseNcr.objects | company, non_conformite |
+| `backend/django_core/apps/qhse/services.py:1846` | get_or_create | RisqueOpportuniteCapa.objects | capa, company, risque_opportunite |
+| `backend/django_core/apps/qhse/services.py:1912` | get_or_create | AccuseLecture.objects | company, diffusion, user |
+| `backend/django_core/apps/qhse/services.py:1928` | get_or_create | AccuseLecture.objects | company, diffusion, user |
+| `backend/django_core/apps/qhse/services.py:2440` | update_or_create | LigneBilanCarbone.objects | bilan, company, libelle |
+| `backend/django_core/apps/qhse/services.py:2579` | get_or_create | DemandeChangementCapa.objects | capa, company, demande_changement |
 | `backend/django_core/apps/records/services.py:104` | get_or_create | Follower.objects | company, content_type, object_id, sous_type, user |
 | `backend/django_core/apps/records/views.py:986` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
 | `backend/django_core/apps/rh/services.py:114` | get_or_create | SoldeConge.objects.select_for_update() | annee, company, employe |
@@ -247,7 +247,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/rh/views.py:1782` | get_or_create | ReglageRH.objects | company |
 | `backend/django_core/apps/rh/views.py:3949` | update_or_create | NoteEntretien.objects | entretien, evaluateur |
 | `backend/django_core/apps/roles/management/commands/init_roles.py:53` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/sante/models.py:728` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/sante/models.py:719` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/models.py:138` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/services.py:1080` | get_or_create | TicketFollower.objects | company, ticket, user |
 | `backend/django_core/apps/sav/views.py:1229` | get_or_create | TicketFollower.objects | company, ticket, user |
@@ -270,7 +270,6 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/stock/services.py:3677` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services.py:3703` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/views/marque.py:57` | get_or_create | Marque.objects | company, nom |
-| `backend/django_core/apps/uxviews/models.py:166` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/ventes/services.py:2585` | get_or_create | Produit.objects | company, nom |
 | `backend/django_core/apps/ventes/services.py:3954` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/views/liste_prix.py:72` | update_or_create | LignePrixListe.objects | liste, produit_id |

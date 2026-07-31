@@ -223,6 +223,14 @@ class EventType(models.TextChoices):
     # l'ADMINISTRATION (jamais les familles directement — contrôle humain).
     EDUCATION_REINSCRIPTION_RELANCE = (
         'education_reinscription_relance', 'Relance réinscription à traiter')
+    # NTIDE52 — gabarits e-mail personnalisables des 3 étapes clés du cycle de
+    # vie d'une idée (apps.innovation.Idee) : réception (bienvenue, à la
+    # création NON brouillon), retenue et réalisée (à la transition de
+    # statut) — notifie l'AUTEUR (in-app + email, sujet/corps personnalisables
+    # via InnovationSettings, préférences respectées par notify()).
+    IDEA_RECEIVED = 'idea_received', 'Idée reçue (bienvenue)'
+    IDEA_RETAINED = 'idea_retenue', 'Idée retenue'
+    IDEA_REALIZED = 'idea_realisee', 'Idée réalisée'
 
 
 class Channel(models.TextChoices):

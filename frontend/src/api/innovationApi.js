@@ -37,6 +37,15 @@ const innovationApi = {
   // ── Chatter (historique, NTIDE5) ──
   historique: (id) => api.get(`/innovation/idees/${id}/historique/`),
 
+  // ── Timeline des changements de statut d'UNE idée (NTIDE53, minigraph détail) ──
+  timelineIdee: (id) => api.get(`/innovation/idees/${id}/timeline/`),
+
+  // ── Autocomplétion auteur (NTIDE54, formulaires admin de création en masse) ──
+  auteurs: (q) => api.get('/innovation/idees/auteurs/', { params: { q } }),
+
+  // ── Géolocalisation des idées liées à un chantier (NTIDE55, carte admin) ──
+  geolocalisation: () => api.get('/innovation/idees/geolocalisation/'),
+
   // ── Lier à un devis/ticket/chantier (NTIDE14, opaque string-FK) ──
   lier: (id, linkedType, linkedId) =>
     api.post(`/innovation/idees/${id}/lier/`,

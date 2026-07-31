@@ -271,6 +271,47 @@ def timeline(company, statut=None, contexte=None):
             for row in qs if row['jour'] is not None]
 
 
+def timeline_idee(idee):
+    """NTIDE53 — timeline des changements de STATUT d'UNE idée (minigraph
+    affiché sur son détail), depuis le chatter générique (``records.
+    Activity``, filtré ``field == 'statut'``, ARC8 — même journal que
+    ``transitionner``/``reouvrir``). Un point par transition, dans l'ordre
+    chronologique, en plus du point de départ implicite (création, toujours
+    ``ouvert``) : ``{statut, statut_display, date, jours_depuis_creation}``.
+
+    ``jours_depuis_creation`` est un entier (jours pleins écoulés depuis
+    ``idee.created_at``, jamais négatif pour un point réel) — exactement la
+    forme attendue par l'exemple du critère d'acceptation (« créée→examinée
+    J+2→retenue J+5→réalisée J+60 »)."""
+    from apps.records.services import chatter_qs
+
+    from .models import Idee as IdeeModel
+
+    points = [{
+        'statut': IdeeModel.Statut.OUVERT.value,
+        'statut_display': IdeeModel.Statut.OUVERT.label,
+        'date': idee.created_at.isoformat(),
+        'jours_depuis_creation': 0,
+    }]
+    qs = (chatter_qs(idee, company=idee.company)
+          .filter(field='statut')
+          .order_by('created_at', 'id'))
+    for activite in qs:
+        statut = activite.new_value or ''
+        try:
+            statut_display = IdeeModel.Statut(statut).label
+        except ValueError:
+            statut_display = statut
+        points.append({
+            'statut': statut,
+            'statut_display': statut_display,
+            'date': activite.created_at.isoformat(),
+            'jours_depuis_creation':
+                (activite.created_at.date() - idee.created_at.date()).days,
+        })
+    return points
+
+
 def tableau_bord_campagnes(company):
     """NTIDE34 — agrégat admin « Nos campagnes innovation » : cartes
     actives/fermées/brouillons, top 5 campagnes par nb d'idées reçues
@@ -398,6 +439,58 @@ def kpi_innovation(company):
             'valeur': top.votes_count,
         })
     return tuiles
+
+
+def auteurs_autocomplete(company, q='', limit=10):
+    """NTIDE54 — autocomplétion utilisateurs de ``company`` pour les
+    formulaires admin de création d'idée en masse (import/gestion, cf.
+    ``manage.py import_ideas``, NTIDE24) : filtre optionnel ``?q=`` sur le
+    ``username`` (``icontains``), triés par nom, limité à ``limit``. Jamais
+    un utilisateur d'une autre société (scopé, comme tout le reste du
+    module)."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    qs = User.objects.filter(company=company)
+    q = (q or '').strip()
+    if q:
+        qs = qs.filter(username__icontains=q)
+    qs = qs.order_by('username')[:limit]
+    return list(qs.values('id', 'username'))
+
+
+def idees_geolocalisees(company):
+    """NTIDE55 — idées liées à un CHANTIER (``linked_type == 'chantier'``,
+    NTIDE14) avec un GPS exploitable, pour affichage sur carte (admin seul).
+
+    Le GPS est lu via ``apps.installations.selectors.installation_gps_map``
+    — JAMAIS un import direct d'``Installation`` (règle de frontière
+    cross-app : ``linked_id`` reste par ailleurs une référence opaque, comme
+    partout ailleurs dans ce module). Une idée liée à un chantier SANS GPS
+    est simplement absente (jamais une coordonnée fabriquée) ; brouillons/
+    masquées exclues (même règle que le tableau de bord, NTIDE6)."""
+    from apps.installations.selectors import installation_gps_map
+
+    from .models import Idee
+
+    qs = (Idee.objects.filter(
+        company=company, linked_type=Idee.LinkedType.CHANTIER,
+        draft=False, archived=False)
+        .exclude(linked_id__isnull=True))
+    gps_map = installation_gps_map(list(qs.values_list('linked_id', flat=True)))
+
+    resultat = []
+    for idee in qs:
+        coords = gps_map.get(idee.linked_id)
+        if not coords or coords[0] is None or coords[1] is None:
+            continue
+        resultat.append({
+            'id': idee.id, 'titre': idee.titre, 'statut': idee.statut,
+            'statut_display': idee.get_statut_display(),
+            'linked_id': idee.linked_id,
+            'gps_lat': coords[0], 'gps_lng': coords[1],
+        })
+    return resultat
 
 
 def feedback_by_theme(company):

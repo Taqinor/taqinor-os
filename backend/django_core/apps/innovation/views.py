@@ -120,6 +120,12 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         # NTIDE51 — webhook sortant gated (NO-OP si INNOVATION_WEBHOOK_URL
         # est vide, comportement par défaut).
         services.post_webhook_idee_creation(idee)
+        # NTIDE52 — gabarit e-mail personnalisable « idée reçue » (bienvenue),
+        # jamais pour un brouillon (NTIDE18 — pas encore vraiment « reçue » du
+        # point de vue de l'équipe tant qu'elle reste interne à l'auteur).
+        if not draft:
+            from apps.notifications.models import EventType
+            services.notifier_email_idee(idee, 'recue', EventType.IDEA_RECEIVED)
 
     # ── NTIDE10 — autocomplétion du contexte ────────────────────────────────
     @action(detail=False, methods=['get'], url_path='contextes',
@@ -148,6 +154,26 @@ class IdeeViewSet(CompanyScopedModelViewSet):
     def tableau_bord(self, request):
         """KPI par statut, top votes, plus récentes, heat-chart contexte."""
         return Response(selectors.tableau_bord_idees(request.user.company))
+
+    # ── NTIDE54 — autocomplétion auteur (formulaires admin, création en masse) ─
+    @action(detail=False, methods=['get'], url_path='auteurs',
+            permission_classes=[IdeasSeeAll])
+    def auteurs(self, request):
+        """Utilisateurs de la société (``?q=`` filtre sur le username) —
+        réservé au palier admin/responsable, surface d'administration comme
+        le tableau de bord."""
+        q = request.query_params.get('q', '')
+        data = selectors.auteurs_autocomplete(request.user.company, q)
+        return Response({'results': data})
+
+    # ── NTIDE55 — géolocalisation des idées liées à un chantier (carte admin) ─
+    @action(detail=False, methods=['get'], url_path='geolocalisation',
+            permission_classes=[IdeasSeeAll])
+    def geolocalisation(self, request):
+        """Idées liées à un chantier AVEC un GPS exploitable, pour affichage
+        sur carte (« Affichage admin seul », NTIDE55)."""
+        data = selectors.idees_geolocalisees(request.user.company)
+        return Response({'results': data})
 
     # ── NTIDE5 — machine à états + chatter ──────────────────────────────────
     def _transition(self, request, target):
@@ -300,6 +326,16 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         from apps.records.services import chatter_qs
         qs = chatter_qs(idee, company=idee.company)
         return Response(ChatterActivitySerializer(qs, many=True).data)
+
+    # ── NTIDE53 — timeline des changements de statut (minigraph détail) ──────
+    @action(detail=True, methods=['get'], url_path='timeline',
+            permission_classes=[IdeasVote])
+    def timeline(self, request, pk=None):
+        """Un point par transition de statut, avec le nombre de jours écoulés
+        depuis la création (``selectors.timeline_idee``) — même palier que le
+        détail/l'historique (tout utilisateur connecté ayant accès à l'idée)."""
+        idee = self.get_object()
+        return Response({'results': selectors.timeline_idee(idee)})
 
     # ── NTIDE12 — export .xlsx (paramètres → campagnes innovation) ──────────
     @action(detail=False, methods=['get'], url_path='export-xlsx',
@@ -564,6 +600,13 @@ class InnovationSettingsView(APIView):
             'feedback_digest_actif': 'Digest feedback produit activé',
             'feedback_digest_frequence': 'Fréquence du digest feedback produit',
             'idees_clients_actif': "Permettre aux clients d'envoyer des idées",
+            # NTIDE52 — gabarits e-mail du cycle de vie d'une idée.
+            'email_recue_sujet': 'Sujet e-mail — idée reçue',
+            'email_recue_corps': 'Corps e-mail — idée reçue',
+            'email_retenue_sujet': 'Sujet e-mail — idée retenue',
+            'email_retenue_corps': 'Corps e-mail — idée retenue',
+            'email_realisee_sujet': 'Sujet e-mail — idée réalisée',
+            'email_realisee_corps': 'Corps e-mail — idée réalisée',
         }
         anciennes = {f: getattr(instance, f) for f in champs_label}
         serializer.save()

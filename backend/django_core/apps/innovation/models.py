@@ -23,6 +23,32 @@ from core.models import TenantModel
 # (cf. ``CampagneInnovation.cible_departement``/``segment``).
 ROLES_CIBLABLES = ['Technicien', 'Commercial', 'Directeur']
 
+# NTIDE52 — gabarits e-mail par défaut des 3 étapes clés du cycle de vie
+# d'UNE idée (réception/bienvenue, retenue, réalisée). Utilisés tant que la
+# société n'a pas personnalisé la ligne correspondante sur
+# ``InnovationSettings`` (mêmes conventions de repli tolérant que
+# ``apps.parametres.models_email.EmailTemplate`` : un champ vide retombe sur
+# ce défaut, jamais un ``KeyError``). Seul le jeton ``{titre}`` est substitué
+# (titre de l'idée) — substitution tolérante par simple remplacement, jamais
+# ``str.format`` (un gabarit personnalisé pourrait contenir d'autres accolades
+# littérales sans lever d'exception).
+EMAIL_IDEE_DEFAULTS = {
+    'recue': {
+        'sujet': 'Votre idée « {titre} » a bien été reçue',
+        'corps': 'Merci pour votre proposition ! Elle sera examinée '
+                 'prochainement par notre équipe.',
+    },
+    'retenue': {
+        'sujet': 'Votre idée « {titre} » a été retenue',
+        'corps': 'Bonne nouvelle : votre idée a été retenue et sera '
+                 'réalisée prochainement.',
+    },
+    'realisee': {
+        'sujet': 'Votre idée « {titre} » a été réalisée',
+        'corps': 'Votre idée est maintenant réalisée. Merci pour votre contribution !',
+    },
+}
+
 
 class Idee(TenantModel):
     """Une idée proposée par un collaborateur (NTIDE1).
@@ -209,6 +235,27 @@ class InnovationSettings(TenantModel):
     idees_clients_actif = models.BooleanField(
         default=False,
         verbose_name="Permettre aux clients d'envoyer des idées")
+
+    # NTIDE52 — gabarits e-mail personnalisables (Paramètres → Avancé) pour
+    # les 3 étapes clés du cycle de vie d'une idée. Vide = gabarit par défaut
+    # (``EMAIL_IDEE_DEFAULTS``) — même convention tolérante que
+    # ``feedback_digest_*`` ci-dessus : rien ne change tant que l'admin ne
+    # personnalise pas explicitement.
+    email_recue_sujet = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Sujet e-mail — idée reçue')
+    email_recue_corps = models.TextField(
+        blank=True, default='', verbose_name='Corps e-mail — idée reçue')
+    email_retenue_sujet = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Sujet e-mail — idée retenue')
+    email_retenue_corps = models.TextField(
+        blank=True, default='', verbose_name='Corps e-mail — idée retenue')
+    email_realisee_sujet = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Sujet e-mail — idée réalisée')
+    email_realisee_corps = models.TextField(
+        blank=True, default='', verbose_name='Corps e-mail — idée réalisée')
 
     class Meta:
         verbose_name = 'Paramètres innovation'
