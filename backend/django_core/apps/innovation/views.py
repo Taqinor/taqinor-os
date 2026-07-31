@@ -23,8 +23,8 @@ from .models import (
     InnovationSettings, VoteIdee,
 )
 from .permissions import (
-    FeedbackModerate, IdeasChangeStatus, IdeasModerate, IdeasSeeAll,
-    IdeasVote,
+    FeedbackModerate, IdeasAggregateRead, IdeasChangeStatus, IdeasModerate,
+    IdeasSeeAll, IdeasVote,
 )
 from .serializers import (
     AnnonceProduitSerializer, CampagneInnovationDetailSerializer,
@@ -137,8 +137,11 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         return Response({'results': data})
 
     # ── NTIDE6 — tableau de bord admin ──────────────────────────────────────
+    # NTIDE49 — ``IdeasAggregateRead`` (pas ``IdeasSeeAll`` seul) : le rôle
+    # « Viewer » lit aussi cet agrégat, en plus du palier Directeur/Admin/
+    # Responsable habituel.
     @action(detail=False, methods=['get'], url_path='tableau-bord',
-            permission_classes=[IdeasSeeAll])
+            permission_classes=[IdeasAggregateRead])
     def tableau_bord(self, request):
         """KPI par statut, top votes, plus récentes, heat-chart contexte."""
         return Response(selectors.tableau_bord_idees(request.user.company))
@@ -456,7 +459,10 @@ class CampagneInnovationViewSet(CompanyScopedModelViewSet):
         return Response({'campagne': None, 'fermee': False})
 
     # ── NTIDE34 — dashboard admin « Nos campagnes innovation » ──────────────
-    @action(detail=False, methods=['get'], url_path='tableau-bord')
+    # NTIDE49 — ``IdeasAggregateRead`` (au lieu du défaut classe ``IdeasSeeAll``) :
+    # le rôle « Viewer » lit aussi cet agrégat.
+    @action(detail=False, methods=['get'], url_path='tableau-bord',
+            permission_classes=[IdeasAggregateRead])
     def tableau_bord(self, request):
         return Response(selectors.tableau_bord_campagnes(request.user.company))
 
@@ -714,9 +720,10 @@ class AnnonceProduitViewSet(CompanyScopedModelViewSet):
 class FeedbackResumeView(APIView):
     """NTIDE38 — agrégation admin du feedback produit par thème (counts +
     citations d'exemple). Même palier que le tableau de bord d'idées
-    (``IdeasSeeAll``) : surface d'administration, jamais ouverte à tous."""
+    (``IdeasAggregateRead``, NTIDE49 — Directeur/Admin/Responsable OU rôle
+    « Viewer ») : surface d'administration, jamais ouverte à tous."""
 
-    permission_classes = [IdeasSeeAll]
+    permission_classes = [IdeasAggregateRead]
 
     def get(self, request):
         return Response({
