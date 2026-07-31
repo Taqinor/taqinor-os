@@ -152,3 +152,31 @@ class RapportPeriodeView(APIView):
         except AiCopiloteUnavailable as exc:
             return _unavailable_response(exc)
         return Response(resultat)
+
+
+class AssistantConfigView(APIView):
+    """NTAI35 — ``POST /api/django/ai/assistant-config/``.
+
+    Body ``{"question": "où régler la TVA ?"}``. Renvoie une réponse FR et des
+    LIENS PROFONDS vers les écrans Paramètres concernés.
+
+    GUIDAGE SEUL : aucune modification de paramètre (``modifie: false``, aucun
+    verbe d'écriture exposé). Les écrans que le rôle de l'appelant ne peut pas
+    atteindre ne lui sont jamais proposés. Sans clé LLM, la réponse dégrade
+    sur la FAQ statique de l'index — l'utilisateur obtient toujours son lien.
+    """
+
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+
+    def post(self, request):
+        from .services import assistant_config
+
+        try:
+            resultat = assistant_config(
+                question=request.data.get('question') or '',
+                role=getattr(request.user, 'role_legacy', None))
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)

@@ -674,3 +674,89 @@ def rapport_periode(*, company, module, periode, max_tokens=400) -> dict:
         'envoye': False,
         'source': res.provider,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI35 — Assistant de configuration (« Setup Copilot »)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# GUIDAGE SEUL : cet assistant ne modifie AUCUN paramètre. Il répond à une
+# question de paramétrage et renvoie des liens profonds vers les écrans
+# Paramètres RÉELLEMENT montés (voir ``config_index`` — un test vérifie que
+# chaque lien existe dans le routeur de la SPA).
+#
+# Sans clé LLM, la réponse dégrade sur la FAQ statique de l'index (le résumé de
+# l'écran le plus pertinent) : l'utilisateur obtient toujours son lien.
+
+#: Prompt système par défaut (futur « défaut code » de NTAI5, clé
+#: ``ai.assistant_config``).
+ASSISTANT_CONFIG_SYSTEM = (
+    "Tu es l'assistant de paramétrage d'un ERP. Réponds en français, en 2 à 3 "
+    "phrases, en t'appuyant EXCLUSIVEMENT sur les écrans fournis ci-dessous. "
+    "N'invente aucun écran, aucun chemin, aucune option. Si les écrans ne "
+    "répondent pas à la question, dis-le simplement. Ne propose jamais de "
+    "modifier un réglage à la place de l'utilisateur."
+)
+
+
+def assistant_config(*, question, role=None, max_tokens=300) -> dict:
+    """NTAI35 — Répond à une question de paramétrage + liens profonds.
+
+    Renvoie ``{question, reponse, ecrans: [{titre, lien, resume}], source}``
+    où ``source`` vaut ``'llm'`` (réponse rédigée) ou ``'faq'`` (repli
+    statique, sans clé). N'ÉCRIT JAMAIS.
+    """
+    from .config_index import rechercher_ecrans
+
+    question = str(question or '').strip()
+    if not question:
+        raise AiCopiloteUnavailable('Question requise.')
+
+    ecrans = rechercher_ecrans(question, role=role)
+    charge = [
+        {'titre': e['titre'], 'lien': e['lien'], 'resume': e['resume']}
+        for e in ecrans
+    ]
+    if not charge:
+        return {
+            'question': question,
+            'reponse': ("Aucun écran de paramétrage ne correspond à cette "
+                        'question. Reformulez avec le réglage cherché (TVA, '
+                        'notifications, alertes, export…).'),
+            'ecrans': [],
+            'source': 'faq',
+            # Contrat explicite : guidage seul, aucune modification.
+            'modifie': False,
+        }
+
+    if not is_capability_configured('llm'):
+        # Repli FAQ statique : le résumé de l'écran le plus pertinent.
+        return {
+            'question': question,
+            'reponse': charge[0]['resume'],
+            'ecrans': charge,
+            'source': 'faq',
+            'modifie': False,
+        }
+
+    contexte = '\n'.join(
+        f"- {e['titre']} ({e['lien']}) : {e['resume']}" for e in charge)
+    res = get_provider('llm').complete(
+        prompt=f'Question : {question}\n\nÉcrans disponibles :\n{contexte}',
+        system=ASSISTANT_CONFIG_SYSTEM, max_tokens=max_tokens)
+    if res.ok and (res.data or {}).get('text'):
+        return {
+            'question': question,
+            'reponse': str(res.data['text']).strip(),
+            'ecrans': charge,
+            'source': 'llm',
+            'modifie': False,
+        }
+    # Le fournisseur a échoué : on rend quand même la FAQ, jamais une erreur.
+    return {
+        'question': question,
+        'reponse': charge[0]['resume'],
+        'ecrans': charge,
+        'source': 'faq',
+        'modifie': False,
+    }
