@@ -129,6 +129,8 @@ _APP_URLS = [
     path('credit/', include('apps.credit.urls')),
     # Groupe NTFPA — FP&A (budgets, prévisions glissantes, scénarios).
     path('fpa/', include('apps.fpa.urls')),
+    # Groupe NTMIG — Migration ERP sortante (Odoo/Sage/Excel) + réconciliation.
+    path('migration/', include('apps.migration.urls')),
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
     path('assurances/', include('apps.assurances.urls')),
     # Groupe NTADM — Administration enterprise.

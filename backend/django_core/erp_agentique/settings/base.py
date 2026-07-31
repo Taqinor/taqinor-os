@@ -237,6 +237,11 @@ INSTALLED_APPS = [
     # prévisions glissantes, scénarios what-if, variance analysis. DISTINCT
     # du budget micro par chantier (gestion_projet.BudgetProjet, PROJ21/22).
     'apps.fpa',
+    # Groupe NTMIG — Kits de migration ERP sortants (Odoo/Sage/Excel) : projets
+    # + lots par entité + rapport de réconciliation obligatoire. Le chargement
+    # est DÉLÉGUÉ à apps.dataimport (jamais un 2e importateur) ; aucune
+    # écriture SQL vers Odoo (règle #1).
+    'apps.migration',
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise (RC pro,
     # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
     # véhicule (flotte) et des cautions bancaires marché (compta).
