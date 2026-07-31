@@ -5,7 +5,7 @@
 // autre mois PATCHe `date_cloture_prevue` via l'endpoint existant. Colonne
 // « Non daté » pour les leads sans date. L'équivalent de la forecast view
 // d'Odoo — réutilise @dnd-kit déjà installé (aucune nouvelle dépendance).
-import { useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { CalendarClock } from 'lucide-react'
 import {
   DndContext,
@@ -25,6 +25,7 @@ import {
   buildKanbanAnnouncements,
   kanbanScreenReaderInstructions,
 } from '../../../../features/kanban/kanbanA11y'
+import { usePanScroll } from '../../../../features/kanban/usePanScroll'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { toast } from '../../../../ui/confirm'
 import { EmptyState } from '../../../../ui'
@@ -167,7 +168,13 @@ function MonthMover({ lead, monthOptions, onCommitDate, busy }) {
 // la ligne : le sélecteur de mois (MonthMover) vit HORS du conteneur
 // `{...listeners}`, même isolation que StageMover/KanbanView — sinon un clic
 // clavier/souris sur le select démarrerait un drag au lieu d'ouvrir la liste.
-function DraggableCard({
+// LB35 — memo() (blueprint I4, parité KanbanView/LB6) : sans lui, CHAQUE
+// rendu de ForecastView ré-exécutait `useDraggable` et recréait la
+// sous-arborescence de TOUTES les cartes (une frappe dans la recherche
+// re-déroulait le board entier) — `LeadCard` est déjà `memo()` mais ne
+// protège que son PROPRE re-rendu, jamais le travail de DraggableCard en
+// amont. Motif EXISTANT réappliqué, jamais une seconde implémentation.
+const DraggableCard = memo(function DraggableCard({
   lead, busy, onOpen, onAutoQuote, users, onReassign, onPlanifierRelance, onMarkPerdu,
   monthOptions, onCommitDate,
 }) {
@@ -181,7 +188,11 @@ function DraggableCard({
       ref={setNodeRef}
       className={isDragging ? 'kb-drag-wrap kb-drag-source' : 'kb-drag-wrap'}
     >
-      <div {...listeners} {...attributes}>
+      {/* LB35 — `data-lead-id` sur le MÊME nœud que `{...listeners}
+          {...attributes}` (celui qui porte réellement `tabIndex`/`role` via
+          dnd-kit) : c'est lui que `handleDragEnd` refocalise après un
+          déplacement réussi, exactement comme LB12 côté KanbanView. */}
+      <div data-lead-id={lead.id} {...listeners} {...attributes}>
         <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
                   users={users} onReassign={onReassign}
                   onPlanifierRelance={onPlanifierRelance} onMarkPerdu={onMarkPerdu} />
@@ -189,7 +200,7 @@ function DraggableCard({
       <MonthMover lead={lead} monthOptions={monthOptions} onCommitDate={onCommitDate} busy={busy} />
     </div>
   )
-}
+})
 
 function MonthColumn({ col, children }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.key })
@@ -250,6 +261,11 @@ export default function ForecastView({
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   )
+  // LB35 — drag-to-pan sur l'espace vide du board (motif LB11 réutilisé TEL
+  // QUEL, `features/kanban/usePanScroll.js`) : callback-ref à poser sur
+  // `.kb-board`, le hook attache lui-même ses écouteurs natifs par nœud
+  // (donc survit au démontage/remontage du board sur un état vide).
+  const boardRef = usePanScroll()
   const columns = useMemo(() => groupByMonth(leads), [leads])
   // LB28 — options du <select> mois (MonthMover), calculées UNE fois pour
   // toutes les cartes (jamais une seconde table de mois par carte) ; exclut
@@ -310,7 +326,22 @@ export default function ForecastView({
     // « Non daté » n'est jamais une cible valide (poser une carte là
     // reviendrait à effacer la date — geste non supporté par le glisser).
     if (over.id === UNDATED_KEY) return
-    commitDate(lead, over.id).catch(() => { /* fire-and-forget, cf. commitDate */ })
+    commitDate(lead, over.id)
+      // LB35 — restauration du focus après un drop RÉUSSI (motif LB12,
+      // souris ET clavier — le KeyboardSensor passe par ce même handler) :
+      // la carte se RE-PARENTE dans sa nouvelle colonne (React démonte/
+      // remonte l'instance), sans quoi le focus retombe sur `<body>`.
+      // Différence assumée avec KanbanView : `onInlineSave` n'est PAS
+      // optimiste (le store ne bouge qu'à `updateLead.fulfilled`), donc on
+      // attend la résolution AVANT le `requestAnimationFrame` qui laisse le
+      // re-rendu se poser. Un drop refusé/sur-place/annulé sort plus haut et
+      // ne re-parente rien : le focus reste sur la carte d'origine.
+      .then(() => {
+        requestAnimationFrame(() => {
+          document.querySelector(`[data-lead-id="${lead.id}"]`)?.focus()
+        })
+      })
+      .catch(() => { /* fire-and-forget, cf. commitDate */ })
   }
 
   const handleDragCancel = () => setActiveLead(null)
@@ -344,7 +375,7 @@ export default function ForecastView({
     >
       {/* LB41 — même contrat que le kanban : le board est le scrolleur unique
           des deux axes, focalisable pour le défilement clavier. */}
-      <div className="kb-board fv-board" tabIndex={0} aria-label="Board de prévision">
+      <div className="kb-board fv-board" ref={boardRef} tabIndex={0} aria-label="Board de prévision">
         {columns.map((col) => (
           <MonthColumn key={col.key} col={col}>
             {col.leads.map((lead) => (

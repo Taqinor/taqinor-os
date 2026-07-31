@@ -214,6 +214,16 @@ class LeadSerializer(serializers.ModelSerializer):
     # LW30 — 50 dernières LeadActivity embarquées sur le RETRIEVE seulement
     # (jamais list() — payload) : voir get_fields() plus bas.
     chatter_recent = serializers.SerializerMethodField()
+    # LB39 — marqueur d'ANNULATION du dernier changement d'étape. Champ HORS
+    # MODÈLE, write-only, jamais persisté (retiré dans validate()) : à lui
+    # seul il n'autorise RIEN — il déclenche seulement la vérification
+    # serveur `_undo_of_last_stage_change` (le chatter doit porter le
+    # mouvement inverse exact, daté de moins de UNDO_WINDOW_SECONDS). La
+    # garde funnel reste intégralement en place pour tout autre recul.
+    undo = serializers.BooleanField(write_only=True, required=False)
+    # Fenêtre d'annulation, alignée sur la durée d'affichage du toast
+    # « Annuler » côté client (VX95) avec une marge confortable.
+    UNDO_WINDOW_SECONDS = 300
 
     @staticmethod
     def _canonical_phone(value):
@@ -363,7 +373,47 @@ class LeadSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Canal inconnu.')
         return value
 
+    def _undo_of_last_stage_change(self, current, target):
+        """LB39 — le PATCH demandé est-il l'ANNULATION du dernier changement
+        d'étape de CE lead, dans la fenêtre courte ?
+
+        Vérification côté SERVEUR uniquement : le marqueur ``undo`` du client
+        n'est jamais cru sur parole. La dernière entrée de chatter
+        ``LeadActivity`` field='stage' doit avoir enregistré EXACTEMENT le
+        mouvement inverse (``old_value`` = l'étape demandée, ``new_value`` =
+        l'étape actuelle) et dater de moins de ``UNDO_WINDOW_SECONDS``. Toute
+        autre marche arrière reste refusée par la garde funnel — on n'ouvre
+        donc jamais un recul manuel, seulement le retour en arrière de sa
+        PROPRE action, tant que le toast « Annuler » est à l'écran.
+        """
+        from django.utils import timezone
+        from . import stages as stage_mod
+
+        last = (LeadActivity.objects
+                .filter(lead=self.instance,
+                        kind=LeadActivity.Kind.MODIFICATION,
+                        field='stage')
+                .order_by('-created_at', '-id')
+                .first())
+        if last is None or last.created_at is None:
+            return False
+        age = (timezone.now() - last.created_at).total_seconds()
+        if age < 0 or age > self.UNDO_WINDOW_SECONDS:
+            return False
+        # Le chatter stocke le LIBELLÉ FR (activity._display) ; d'anciennes
+        # écritures peuvent porter la clé brute — les deux sont acceptées, la
+        # comparaison reste exacte dans les deux cas.
+        labels = stage_mod.STAGE_LABELS
+
+        def _is(stored, key):
+            return stored is not None and stored in (labels.get(key), key)
+
+        return _is(last.old_value, target) and _is(last.new_value, current)
+
     def validate(self, attrs):
+        # LB39 — marqueur d'annulation : jamais persisté (champ hors modèle),
+        # retiré ici pour ne jamais atteindre ``.save()``.
+        undo = bool(attrs.pop('undo', False))
         # Garde funnel côté serveur (aligné sur la règle bulk _bulk_stage_allowed):
         # en MISE À JOUR, un lead perdu ne change pas d'étape, et on ne recule
         # jamais dans l'entonnoir (Froid = parking, jamais une régression).
@@ -376,8 +426,13 @@ class LeadSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(
                         {'stage': 'Lead perdu — étape non modifiable.'})
                 if not _bulk_stage_allowed(current, target):
-                    raise serializers.ValidationError(
-                        {'stage': "On ne recule pas une étape."})
+                    # LB39 — SEULE exception : l'annulation, validée serveur,
+                    # du dernier changement d'étape de ce lead (le toast
+                    # « Annuler » de VX95 PATCHait en arrière et se prenait un
+                    # 400 systématique — l'undo était mort en production).
+                    if not (undo and self._undo_of_last_stage_change(current, target)):
+                        raise serializers.ValidationError(
+                            {'stage': "On ne recule pas une étape."})
         # Champs personnalisés (T11) : valider/nettoyer contre les définitions
         # du module « lead ». À la création on valide toujours (champs
         # obligatoires) ; en mise à jour, uniquement si custom_data est fourni

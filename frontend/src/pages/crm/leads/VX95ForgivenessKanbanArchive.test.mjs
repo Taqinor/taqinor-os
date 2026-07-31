@@ -45,11 +45,20 @@ test('LeadsPage.runBulk : archive/unarchive en masse déclenchent toastWithUndo 
 test('LeadsPage.changeStage : le drop kanban en avant réussi affiche toastWithUndo restaurant l’étape antérieure EXACTE', () => {
   const start = LEADS_PAGE.indexOf('const changeStage =')
   assert.ok(start > 0)
-  const block = LEADS_PAGE.slice(start, start + 1600)
+  const block = LEADS_PAGE.slice(start, start + 3000)
   assert.match(block, /toastWithUndo\(/)
   // Restaure `prev` (l'étape AVANT le drop), pas une valeur recalculée.
   assert.match(block, /leadStagePatched\(\{ id: lead\.id, stage: prev \}\)/)
-  assert.match(block, /updateLead\(\{ id: lead\.id, data: \{ stage: prev \} \}\)/)
+  // LB39 — le PATCH arrière porte désormais le marqueur d'annulation : sans
+  // lui, la garde funnel du serializer 400ait TOUT recul et chaque
+  // « Annuler » finissait en « Annulation impossible » (undo mort en prod).
+  // Le serveur revérifie le marqueur (mouvement inverse exact + fenêtre
+  // courte) — il n'autorise rien à lui seul.
+  assert.match(block, /updateLead\(\{\s*id: lead\.id, data: \{ stage: prev, undo: true \},\s*\}\)/)
+  // Le chemin AVANT (le drop lui-même) ne porte JAMAIS le marqueur.
+  const forward = block.slice(0, block.indexOf('toastWithUndo('))
+  assert.match(forward, /data: \{ stage: newStage \}/)
+  assert.doesNotMatch(forward, /undo: true/)
 })
 
 test('LeadsPage.changeStage : le recul-guard manuel (KanbanView) reste en amont — cette fonction ne le duplique pas', () => {
