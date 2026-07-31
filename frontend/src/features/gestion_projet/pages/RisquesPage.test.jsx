@@ -91,8 +91,10 @@ describe('RisquesPage — carnet de sous-traitants sur le master DC34 (WIR87)', 
     withProviders(<RisquesPage />)
     await user.click(await screen.findByRole('tab', { name: 'Sous-traitance' }))
 
-    expect(await screen.findByText('Terrass’Pro')).toBeInTheDocument()
-    expect(screen.getByText('Terrassement')).toBeInTheDocument()
+    // DataTable rend la table desktop ET le repli carte mobile (CSS seul,
+    // les deux existent dans le DOM en jsdom) : getAllByText, premier match.
+    expect((await screen.findAllByText('Terrass’Pro'))[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Terrassement')[0]).toBeInTheDocument()
     expect(gestionProjetApi.getSousTraitantsMaster).toHaveBeenCalled()
     expect(gestionProjetApi.getSousTraitants).toBeUndefined()
   })
@@ -104,7 +106,9 @@ describe('RisquesPage — carnet de sous-traitants sur le master DC34 (WIR87)', 
     await user.click(await screen.findByRole('button', { name: /Nouveau sous-traitant/ }))
 
     const dialog = await screen.findByRole('dialog')
-    await user.type(within(dialog).getByLabelText('Raison sociale'), 'Élec’Sud')
+    // Label « Raison sociale » requis : le champ affiche un « * » additionnel
+    // (Label required, cf. ui/Label.jsx) → correspondance en préfixe.
+    await user.type(within(dialog).getByLabelText(/^Raison sociale/), 'Élec’Sud')
     await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
 
     await waitFor(() => {
@@ -125,9 +129,9 @@ describe('RisquesPage — carnet de sous-traitants sur le master DC34 (WIR87)', 
     const user = userEvent.setup()
     withProviders(<RisquesPage />)
     await user.click(await screen.findByRole('tab', { name: 'Sous-traitance' }))
-    await screen.findByText('Terrass’Pro')
+    await screen.findAllByText('Terrass’Pro')
 
-    await user.click(screen.getByRole('button', { name: 'Modifier' }))
+    await user.click(screen.getAllByRole('button', { name: 'Modifier' })[0])
     const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
 
