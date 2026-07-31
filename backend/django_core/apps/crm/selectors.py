@@ -2291,3 +2291,60 @@ def new_leads_by_mode_meta(company, *, date_start, date_end):
             .values('type_installation')
             .annotate(n=Count('id')))
     return {(r['type_installation'] or ''): r['n'] for r in rows}
+
+
+# ── NTPRT27 — Résumé self-service du PORTAIL PARTENAIRE ─────────────────────
+
+def resume_portail_partenaire(company, partenaire_id):
+    """NTPRT27 — Cartes résumé du tableau de bord partenaire.
+
+    Point d'entrée cross-app UNIQUE de ``apps.portail`` (jamais un import de
+    ``apps.crm.models`` depuis portail). Lecture SEULE, bornée au triplet
+    (société, partenaire) : un ``partenaire_id`` absent renvoie des compteurs
+    à zéro, JAMAIS ceux de la société entière.
+    """
+    from decimal import Decimal
+
+    vide = {
+        'partenaire_nom': '',
+        'statut_onboarding': '',
+        'soumissions_par_statut': {},
+        'commissions_dues': '0',
+        'commissions_payees': '0',
+    }
+    if company is None or not partenaire_id:
+        return vide
+
+    from .models import (
+        CommissionPartenaire, Partenaire, SoumissionLeadPartenaire,
+    )
+
+    partenaire = (Partenaire.objects
+                  .filter(company=company, pk=partenaire_id).first())
+    if partenaire is None:
+        return vide
+
+    soumissions = {}
+    for statut, _ in SoumissionLeadPartenaire.Statut.choices:
+        soumissions[statut] = SoumissionLeadPartenaire.objects.filter(
+            company=company, partenaire=partenaire, statut=statut).count()
+
+    def _somme(statut):
+        total = sum(
+            (c.montant or Decimal('0') for c in CommissionPartenaire.objects
+             .filter(company=company, partenaire=partenaire, statut=statut)),
+            Decimal('0'))
+        return str(total)
+
+    # NB — « territoire assigné » (NTPRT27) n'est PAS servi ici :
+    # ``TerritoireCommercial`` (FG236) porte un ``owner_user_id``, pas de
+    # rattachement à un ``Partenaire``. Inventer ce lien serait un changement
+    # de schéma que personne n'a demandé ; la carte reste absente tant que la
+    # relation n'existe pas, plutôt que remplie d'un chiffre faux.
+    return {
+        'partenaire_nom': partenaire.nom,
+        'statut_onboarding': partenaire.statut_onboarding or '',
+        'soumissions_par_statut': soumissions,
+        'commissions_dues': _somme(CommissionPartenaire.Statut.DUE),
+        'commissions_payees': _somme(CommissionPartenaire.Statut.PAYEE),
+    }

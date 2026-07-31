@@ -19,9 +19,14 @@ test("index.jsx importe NotFound en lazy depuis '../ui/NotFound'", () => {
   assert.match(routerSrc, /const NotFound = lazy\(\(\)\s*=>\s*import\('\.\.\/ui\/NotFound'\)\)/)
 })
 
+// NTPRT8 — le catch-all porte désormais `notFoundLoader`, qui ne fait QU'UNE
+// chose : renvoyer un compte PORTAIL externe connecté vers son shell (un
+// visiteur anonyme voit toujours le 404, cf. index.ntprt8Portail.test.mjs).
+// L'invariant VX78 est inchangé : l'élément rendu reste NotFound dans
+// WithLayout, jamais une redirection silencieuse vers /dashboard.
 test('le catch-all "*" rend NotFound (dans WithLayout), plus de redirection silencieuse', () => {
-  assert.match(routerSrc, /\{\s*path:\s*'\*',\s*element:\s*<WithLayout><NotFound \/><\/WithLayout>\s*\}/)
-  assert.doesNotMatch(routerSrc, /path:\s*'\*',\s*element:\s*<Navigate to="\/dashboard"/)
+  assert.match(routerSrc, /\{\s*path:\s*'\*',(?:\s*loader:\s*\w+,)?\s*element:\s*<WithLayout><NotFound \/><\/WithLayout>\s*\}/)
+  assert.doesNotMatch(routerSrc, /path:\s*'\*',[^\n]*element:\s*<Navigate to="\/dashboard"/)
 })
 
 test('ui/NotFound.jsx affiche bien le message « Page introuvable » attendu par le contrat e2e', () => {

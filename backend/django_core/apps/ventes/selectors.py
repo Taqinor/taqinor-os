@@ -1446,3 +1446,98 @@ def faits_temoignage_devis(company, devis_id):
         'ville': (etude.get('ville') or '').strip() or None,
         'reference': devis.reference,
     }
+
+
+# ── NTPRT10/NTPRT11 — Lectures self-service du PORTAIL CLIENT ───────────────
+#
+# Point d'entrée cross-app UNIQUE de ``apps.portail`` sur les documents
+# ``ventes`` (jamais un import de ``apps.ventes.models`` depuis portail).
+# Lecture SEULE et volontairement PAUVRE : uniquement ce qu'un client peut voir
+# de SON dossier. Aucun champ de coût/marge n'y figure (``prix_achat``,
+# ``marge``… ne sortent JAMAIS vers un écran client — registre
+# ``core.permissions.SENSITIVE_FIELDS``), ni aucune donnée interne
+# (propriétaire, notes, portée de visibilité).
+#
+# Les fonctions exigent ``company`` ET ``client_id`` : un ``client_id`` absent
+# renvoie VIDE, jamais tous les documents de la société.
+
+def devis_du_client_portail(company, client_id, *, limit=200):
+    """NTPRT10 — Devis visibles par le client ``client_id`` sur son portail.
+
+    Les BROUILLONS internes sont EXCLUS : un devis non envoyé n'a jamais été
+    montré au client, l'exposer serait une fuite de travail en cours.
+    """
+    from .models import Devis
+
+    if company is None or not client_id:
+        return []
+    qs = (Devis.objects
+          .filter(company=company, client_id=client_id)
+          .exclude(statut=Devis.Statut.BROUILLON)
+          .order_by('-date_creation')[:limit])
+    return [{
+        'id': d.id,
+        'reference': d.reference,
+        'statut': d.statut,
+        'statut_display': d.get_statut_display(),
+        'date_creation': d.date_creation,
+        'date_validite': d.date_validite,
+        'total_ttc': str(d.total_ttc),
+        'accepte': d.statut == Devis.Statut.ACCEPTE,
+    } for d in qs]
+
+
+def devis_du_client_portail_obj(company, client_id, devis_id):
+    """NTPRT10 — UN devis du client (objet ORM), ou ``None``.
+
+    Le triplet (société, client, id) est exigé : un devis d'un autre client —
+    ou d'une autre société — est INTROUVABLE, jamais « trouvé puis refusé ».
+    """
+    from .models import Devis
+
+    if company is None or not client_id or not devis_id:
+        return None
+    return (Devis.objects
+            .filter(company=company, client_id=client_id, pk=devis_id)
+            .exclude(statut=Devis.Statut.BROUILLON)
+            .first())
+
+
+def factures_du_client_portail(company, client_id, *, limit=200):
+    """NTPRT11 — Factures visibles par le client ``client_id`` sur son portail.
+
+    Mêmes règles : brouillons internes exclus, aucun champ de coût.
+    ``montant_du`` est le reste à payer déjà calculé par le modèle (source
+    unique — jamais un recalcul local qui divergerait de l'écran interne).
+    """
+    from .models import Facture
+
+    if company is None or not client_id:
+        return []
+    qs = (Facture.objects
+          .filter(company=company, client_id=client_id)
+          .exclude(statut=Facture.Statut.BROUILLON)
+          .order_by('-date_emission', '-id')[:limit])
+    return [{
+        'id': f.id,
+        'reference': f.reference,
+        'statut': f.statut,
+        'statut_display': f.get_statut_display(),
+        'date_emission': f.date_emission,
+        'date_echeance': f.date_echeance,
+        'montant_ttc': str(f.total_ttc),
+        'montant_du': str(f.montant_du),
+        'payee': f.statut == Facture.Statut.PAYEE,
+    } for f in qs]
+
+
+def facture_du_client_portail(company, client_id, facture_id):
+    """NTPRT11 — UNE facture du client (objet ORM), ou ``None``. Voir ci-dessus."""
+    from .models import Facture
+
+    if company is None or not client_id or not facture_id:
+        return None
+    return (Facture.objects
+            .filter(company=company, client_id=client_id, pk=facture_id)
+            .exclude(statut=Facture.Statut.BROUILLON)
+            .first())

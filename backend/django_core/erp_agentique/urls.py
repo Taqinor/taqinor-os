@@ -210,6 +210,9 @@ urlpatterns = [
     # NTEDU31/32/34 — Portail parents (établissement scolaire), sans login.
     path('api/django/public/education/',
          include('apps.education.public_urls')),
+    # NTPRT19 — Branding white-label de la page de login portail (sans login).
+    path('api/django/public/portail/',
+         include('apps.portail.public_urls')),
     # WIR136 — `apps.identity.urls` et `apps.accessreview.urls` étaient montés
     # ICI en autonome : identity en DOUBLE (il est déjà dans `_APP_URLS`, donc
     # déjà servi sous `api/django/identity/`) et accessreview en SIMPLE (donc
