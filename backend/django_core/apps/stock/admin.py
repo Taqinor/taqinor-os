@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponseRedirect
@@ -68,6 +69,23 @@ SUPPRESSION_FOURNISSEUR_INTERDITE = (
 )
 
 
+# Categorie n'a PAS de garde de suppression, à la différence de Produit
+# ci-dessous et de Company/Client (authentication/admin.py, apps/crm/admin.py)
+# — décision DÉLIBÉRÉE, pas un oubli.
+#
+# Categorie est un référentiel de CLASSIFICATION, légitimement réorganisé
+# (fusionner deux catégories proches, en retirer une devenue inutile…) : sa
+# suppression SET_NULL `Produit.categorie` sur ses produits — les LIGNES
+# survivent avec toute leur donnée réelle intacte (prix d'achat, courbe de
+# pompe, fiche marque/description/garantie), seule l'étiquette de rangement
+# disparaît, et elle se corrige en deux clics depuis la fiche produit. Rien
+# de comparable à la perte SILENCIEUSE et IRRÉVERSIBLE que gardent
+# CompanyAdmin/ProduitAdmin (là, c'est la ligne elle-même qui disparaît). Un
+# garde ici bloquerait un rangement légitime sans protéger de donnée réelle — « un
+# garde-fou que personne ne veut est pire que pas de garde-fou du tout ».
+# Verrouillé par `apps/stock/test_admin_produit_delete_guard.py::
+# test_garde_cible_une_categorie_reste_supprimable` (une catégorie reste
+# supprimable après l'ajout du garde Produit).
 @admin.register(Categorie)
 class CategorieAdmin(admin.ModelAdmin):
     list_display = ('nom', 'description')
@@ -120,8 +138,71 @@ class FournisseurAdmin(admin.ModelAdmin):
         raise PermissionDenied(SUPPRESSION_FOURNISSEUR_INTERDITE)
 
 
+# Message UNIQUE (français) opposé à VIDER (jamais à MODIFIER) `prix_achat`
+# ou `courbe_pompe` depuis l'administration Django — le garde de suppression
+# ci-dessus protège la LIGNE ; celui-ci protège deux CHAMPS précis dessus.
+#
+# Pourquoi ce garde existe : ces deux champs sont de la VRAIE donnée fournisseur
+# saisie à la main (prix d'achat négocié, courbe de performance constructeur
+# OSP), jamais reconstructible depuis l'ERP — et un superutilisateur ouvrant la
+# fiche produit dans /admin/ pouvait la vider d'un simple « Enregistrer », sans
+# le moindre avertissement (le garde de suppression ci-dessus ne couvre QUE la
+# ligne, pas ses champs). Ciblé — pas un champ passé en lecture seule : changer
+# `prix_achat` de 900 à 850 (le fournisseur a baissé son prix), ou corriger un
+# point de la courbe, reste un `Enregistrer` normal ; seule la transition
+# « valeur réelle → vide » est refusée.
+#
+# `stock.Produit` est dans `apps.audit.signals.TRACKED_MODELS` : TOUTE
+# sauvegarde depuis /admin/ (y compris une tentative de vidage refusée par ce
+# formulaire, une fois corrigée) pose déjà, automatiquement, une ligne
+# `AuditLog` avec le diff structuré `changes` (ancien → nouveau) — visible
+# dans `/admin/audit/auditlog/` (apps/audit/admin.py, lecture seule). Réutilisé
+# ici plutôt que ré-écrit : c'est l'entonnoir d'audit du dépôt (ARC16), pas un
+# mécanisme maison.
+CHAMP_CATALOGUE_VIDE_INTERDIT = (
+    "Vider ce champ depuis l'administration Django est INTERDIT : il porte "
+    "une donnée catalogue RÉELLE saisie à la main (prix d'achat fournisseur "
+    "négocié, ou courbe de performance constructeur d'une pompe OSP), non "
+    "reconstructible depuis l'ERP. Remplacez-la par la NOUVELLE valeur au "
+    "lieu de la vider — si elle doit réellement redevenir vide, c'est une "
+    "décision fondateur, pas un simple clic « Enregistrer ». Chaque "
+    "modification de ce champ (même acceptée) reste de toute façon "
+    "journalisée avec l'ancienne et la nouvelle valeur : voir /admin/audit/"
+    "auditlog/."
+)
+
+
+class ProduitAdminForm(forms.ModelForm):
+    """Verrou de champ (voir CHAMP_CATALOGUE_VIDE_INTERDIT) : refuse la
+    transition « prix_achat/courbe_pompe déjà renseigné → vidé » — jamais une
+    autre modification de ces champs, ni la création (un produit fraîchement
+    saisi, notamment une pompe OSP « prix à renseigner », part légitimement
+    sans prix). `self.instance` porte encore les valeurs AVANT édition à ce
+    stade (`clean()` s'exécute avant `_post_clean`/`construct_instance`), donc
+    aucune requête DB supplémentaire n'est nécessaire pour comparer."""
+
+    class Meta:
+        model = Produit
+        fields = '__all__'
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.instance.pk:
+            ancien_prix = self.instance.prix_achat
+            if ('prix_achat' in cleaned and ancien_prix
+                    and cleaned.get('prix_achat') == 0):
+                self.add_error('prix_achat', CHAMP_CATALOGUE_VIDE_INTERDIT)
+
+            ancienne_courbe = self.instance.courbe_pompe
+            if ('courbe_pompe' in cleaned and ancienne_courbe
+                    and not cleaned.get('courbe_pompe')):
+                self.add_error('courbe_pompe', CHAMP_CATALOGUE_VIDE_INTERDIT)
+        return cleaned
+
+
 @admin.register(Produit)
 class ProduitAdmin(admin.ModelAdmin):
+    form = ProduitAdminForm
     list_display = ('nom', 'sku', 'prix_vente', 'quantite_stock', 'categorie', 'fournisseur')
     list_filter = ('categorie', 'fournisseur')
     search_fields = ('nom', 'sku')
