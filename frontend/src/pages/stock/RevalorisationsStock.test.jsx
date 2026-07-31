@@ -68,7 +68,9 @@ describe('RevalorisationsStock (WIR109)', () => {
     await userEvent.click(within(dialog).getByRole('combobox'))
     await userEvent.click(await screen.findByRole('option', { name: 'Panneau 550W' }))
     await userEvent.type(within(dialog).getByLabelText(/Nouveau coût/), '900')
-    await userEvent.type(within(dialog).getByLabelText('Motif'), 'Baisse mondiale du prix')
+    // Champ `required` : le libellé accessible porte l'astérisque
+    // (« Motif* ») — préfixe plutôt que chaîne exacte.
+    await userEvent.type(within(dialog).getByLabelText(/^Motif/), 'Baisse mondiale du prix')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Créer' }))
 
     await waitFor(() => {

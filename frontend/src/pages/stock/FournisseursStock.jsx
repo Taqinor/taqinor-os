@@ -412,10 +412,14 @@ export default function FournisseursStock() {
       .catch(() => setError('Chargement des fournisseurs impossible.'))
       .finally(() => setLoading(false))
   }
+  // WIR108 — appel défensif : certains consommateurs pré-existants de cet
+  // écran (ex. wr4Procurement.test.jsx) mockent `stockApi` sans ce nouvel
+  // endpoint. Dégrade proprement (catégories vides) plutôt que de planter
+  // tout l'écran sur `undefined(...) is not a function`.
   const reloadCategories = () => {
-    stockApi.getCategoriesFournisseur({ ordering: 'nom' })
-      .then((r) => setCategories(r.data?.results ?? r.data ?? []))
-      .catch(() => {})
+    stockApi.getCategoriesFournisseur?.({ ordering: 'nom' })
+      ?.then((r) => setCategories(r.data?.results ?? r.data ?? []))
+      ?.catch(() => {})
   }
 
   useEffect(() => { reload(); reloadCategories() }, [])
