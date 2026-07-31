@@ -2,10 +2,11 @@
 from rest_framework import serializers
 
 from .models import (
-    AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
-    Evaluation, Famille, GrilleTarifaire, IncidentDiscipline, Inscription,
-    InscriptionCantine, LigneEcheance, Matiere, MatiereClasse, MenuCantine,
-    Niveau, Note, ParametresEducation, Presence, Remise, Seance)
+    AnneeScolaire, Bulletin, Classe, CreneauEmploiDuTemps,
+    EcheancierScolarite, Eleve, Evaluation, Famille, GrilleTarifaire,
+    IncidentDiscipline, Inscription, InscriptionCantine, LigneEcheance,
+    Matiere, MatiereClasse, MenuCantine, Niveau, Note, ParametresEducation,
+    PeriodeScolaire, Presence, Remise, Seance)
 
 
 class AnneeScolaireSerializer(serializers.ModelSerializer):
@@ -230,3 +231,23 @@ class IncidentDisciplineSerializer(serializers.ModelSerializer):
             'id', 'eleve', 'date', 'type', 'gravite', 'description',
             'signale_par', 'statut']
         read_only_fields = ['id', 'signale_par', 'statut']
+
+
+# =============================================================================
+# NTEDU17 — Périodes scolaires et bulletins.
+# =============================================================================
+
+class PeriodeScolaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PeriodeScolaire
+        fields = [
+            'id', 'annee_scolaire', 'libelle', 'ordre', 'date_debut',
+            'date_fin']
+        read_only_fields = ['id']
+
+
+class BulletinSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Bulletin
+        fields = ['id', 'eleve', 'periode', 'appreciation_generale']
+        read_only_fields = ['id']

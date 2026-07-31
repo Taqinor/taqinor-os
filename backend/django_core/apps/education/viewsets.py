@@ -15,18 +15,20 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
-    Evaluation, Famille, GrilleTarifaire, IncidentDiscipline, Inscription,
-    InscriptionCantine, Matiere, MatiereClasse, MenuCantine, Niveau, Note,
-    ParametresEducation, Presence, Remise, Seance)
+    AnneeScolaire, Bulletin, Classe, CreneauEmploiDuTemps,
+    EcheancierScolarite, Eleve, Evaluation, Famille, GrilleTarifaire,
+    IncidentDiscipline, Inscription, InscriptionCantine, Matiere,
+    MatiereClasse, MenuCantine, Niveau, Note, ParametresEducation,
+    PeriodeScolaire, Presence, Remise, Seance)
 from .serializers import (
-    AnneeScolaireSerializer, ClasseSerializer, CreneauEmploiDuTempsSerializer,
-    EcheancierScolariteSerializer, EleveSerializer, EvaluationSerializer,
-    FamilleSerializer, GrilleTarifaireSerializer,
-    IncidentDisciplineSerializer, InscriptionCantineSerializer,
-    InscriptionSerializer, MatiereClasseSerializer, MatiereSerializer,
-    MenuCantineSerializer, NiveauSerializer, NoteSerializer,
-    ParametresEducationSerializer, PresenceSerializer, RemiseSerializer,
+    AnneeScolaireSerializer, BulletinSerializer, ClasseSerializer,
+    CreneauEmploiDuTempsSerializer, EcheancierScolariteSerializer,
+    EleveSerializer, EvaluationSerializer, FamilleSerializer,
+    GrilleTarifaireSerializer, IncidentDisciplineSerializer,
+    InscriptionCantineSerializer, InscriptionSerializer,
+    MatiereClasseSerializer, MatiereSerializer, MenuCantineSerializer,
+    NiveauSerializer, NoteSerializer, ParametresEducationSerializer,
+    PeriodeScolaireSerializer, PresenceSerializer, RemiseSerializer,
     SeanceSerializer)
 
 
@@ -186,6 +188,36 @@ class EleveViewSet(CompanyScopedModelViewSet):
         resp['Content-Disposition'] = (
             f'attachment; filename="certificat_scolarite_'
             f'{certificat.numero}.pdf"')
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='bulletin')
+    def bulletin(self, request, pk=None):
+        """NTEDU17 — bulletin scolaire PDF de l'élève pour une période
+        (``?periode=<id>``, obligatoire).
+
+        RÈGLE #4 : rendu par le renderer DÉDIÉ ``education/bulletin_pdf.py``
+        (moteur PDF partagé ``core.pdf``) — un bulletin n'est pas un devis
+        client, ce chemin ne touche JAMAIS ``apps/ventes/quote_engine/``."""
+        eleve = self.get_object()
+        periode = PeriodeScolaire.objects.filter(
+            company=request.user.company,
+            pk=request.query_params.get('periode')).first()
+        if periode is None:
+            raise ValidationError({'periode': 'Période introuvable.'})
+
+        from .bulletin_pdf import render_bulletin_pdf
+        from .services import donnees_bulletin
+
+        contexte = donnees_bulletin(eleve, periode)
+        try:
+            pdf_bytes = render_bulletin_pdf(contexte)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="bulletin_{eleve.id}_{periode.id}.pdf"')
         return resp
 
 
@@ -695,3 +727,21 @@ class IncidentDisciplineViewSet(CompanyScopedModelViewSet):
         incident.statut = IncidentDiscipline.Statut.CLOS
         incident.save(update_fields=['statut'])
         return Response(IncidentDisciplineSerializer(incident).data)
+
+
+class PeriodeScolaireViewSet(CompanyScopedModelViewSet):
+    """NTEDU17 — périodes de notation (trimestre/semestre) d'une année
+    scolaire ; l'id d'une période est ce que le bulletin attend en
+    ``?periode=``."""
+
+    queryset = PeriodeScolaire.objects.select_related('annee_scolaire').all()
+    serializer_class = PeriodeScolaireSerializer
+
+
+class BulletinViewSet(CompanyScopedModelViewSet):
+    """NTEDU17 — bulletin d'un élève sur une période. Ne porte QUE
+    l'appréciation générale : moyennes/rang/mention/présences sont recalculés
+    au rendu (``services.donnees_bulletin``), jamais dénormalisés ici."""
+
+    queryset = Bulletin.objects.select_related('eleve', 'periode').all()
+    serializer_class = BulletinSerializer

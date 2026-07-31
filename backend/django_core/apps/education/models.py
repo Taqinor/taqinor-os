@@ -958,3 +958,71 @@ class CompteParent(TenantModel):
 
     def __str__(self):
         return f'Portail parent — {self.email}'
+
+
+# =============================================================================
+# NTEDU17 — Période scolaire + bulletin.
+# =============================================================================
+
+class PeriodeScolaire(TenantModel):
+    """NTEDU17 — période de notation d'une année scolaire (trimestre,
+    semestre…). C'est l'entité désignée par ``?periode=<id>`` sur le bulletin :
+    ses bornes ``date_debut``/``date_fin`` délimitent À LA FOIS les évaluations
+    prises en compte dans les moyennes ET les présences comptées sur la
+    période — jamais deux définitions divergentes."""
+
+    annee_scolaire = models.ForeignKey(
+        AnneeScolaire, on_delete=models.CASCADE, related_name='periodes',  # on_delete: composition (parent-enfant)
+        verbose_name='Année scolaire')
+    libelle = models.CharField(max_length=50, verbose_name='Libellé')
+    ordre = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Ordre dans l\'année')
+    date_debut = models.DateField(verbose_name='Date de début')
+    date_fin = models.DateField(verbose_name='Date de fin')
+
+    class Meta:
+        verbose_name = 'Période scolaire'
+        verbose_name_plural = 'Périodes scolaires'
+        ordering = ['annee_scolaire', 'ordre']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'annee_scolaire', 'ordre'],
+                name='education_periode_unique_par_annee_ordre'),
+        ]
+
+    def __str__(self):
+        return f"{self.libelle} ({self.annee_scolaire.libelle})"
+
+
+class Bulletin(TenantModel):
+    """NTEDU17 — bulletin d'un élève pour une période. Le modèle ne stocke QUE
+    ce qui n'est pas dérivable des notes : l'``appreciation_generale`` de
+    l'enseignant principal. Moyennes, rang, mention et présences sont
+    RECALCULÉS au rendu (``services.donnees_bulletin``) — jamais dénormalisés,
+    donc jamais faux après une correction de note.
+
+    Le PDF est rendu par ``education/bulletin_pdf.py`` (moteur partagé
+    ``core.pdf.render_pdf``) : un bulletin N'EST PAS un devis client, il ne
+    passe donc JAMAIS par ``apps/ventes/quote_engine/`` (règle #4)."""
+
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE, related_name='bulletins',  # on_delete: composition (parent-enfant)
+        verbose_name='Élève')
+    periode = models.ForeignKey(
+        PeriodeScolaire, on_delete=models.CASCADE, related_name='bulletins',  # on_delete: composition (parent-enfant)
+        verbose_name='Période')
+    appreciation_generale = models.TextField(
+        blank=True, default='', verbose_name='Appréciation générale')
+
+    class Meta:
+        verbose_name = 'Bulletin'
+        verbose_name_plural = 'Bulletins'
+        ordering = ['-periode__ordre', 'eleve']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'eleve', 'periode'],
+                name='education_bulletin_unique_par_eleve_periode'),
+        ]
+
+    def __str__(self):
+        return f"Bulletin {self.eleve} — {self.periode}"

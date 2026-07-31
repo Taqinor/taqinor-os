@@ -2,12 +2,13 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .viewsets import (
-    AnneeScolaireViewSet, ClasseViewSet, CreneauEmploiDuTempsViewSet,
-    EcheancierScolariteViewSet, EleveViewSet, EvaluationViewSet,
-    FamilleViewSet, GrilleTarifaireViewSet, IncidentDisciplineViewSet,
-    InscriptionCantineViewSet, InscriptionViewSet, MatiereClasseViewSet,
-    MatiereViewSet, MenuCantineViewSet, NiveauViewSet, NoteViewSet,
-    ParametresEducationViewSet, PresenceViewSet, RemiseViewSet, SeanceViewSet)
+    AnneeScolaireViewSet, BulletinViewSet, ClasseViewSet,
+    CreneauEmploiDuTempsViewSet, EcheancierScolariteViewSet, EleveViewSet,
+    EvaluationViewSet, FamilleViewSet, GrilleTarifaireViewSet,
+    IncidentDisciplineViewSet, InscriptionCantineViewSet, InscriptionViewSet,
+    MatiereClasseViewSet, MatiereViewSet, MenuCantineViewSet, NiveauViewSet,
+    NoteViewSet, ParametresEducationViewSet, PeriodeScolaireViewSet,
+    PresenceViewSet, RemiseViewSet, SeanceViewSet)
 
 router = DefaultRouter()
 router.register(
@@ -45,6 +46,9 @@ router.register(
     basename='education-inscription-cantine')
 router.register(
     r'incidents', IncidentDisciplineViewSet, basename='education-incident')
+router.register(
+    r'periodes', PeriodeScolaireViewSet, basename='education-periode')
+router.register(r'bulletins', BulletinViewSet, basename='education-bulletin')
 
 urlpatterns = [
     path('', include(router.urls)),
