@@ -6,7 +6,8 @@ from .models import (
     TypeIntervention, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, ShotListSlot, InterventionPreparation,
     PreparationMaterielLigne, PreparationOutilLigne,
-    ComponentSerial, PhotoAnnotation, MaterielConsommation, ConsommationLigne,
+    ComponentSerial, PhotoAnnotation, PhotoChecklistMeta,
+    MaterielConsommation, ConsommationLigne,
     VoiceMemo, Reserve, ToolReturn, SafetyChecklistSlot, SafetySignoff,
     ReverificationMesure,
     SafetyCheckItem,
@@ -179,16 +180,32 @@ class FicheInterventionReleveSerializer(serializers.ModelSerializer):
 
 class ChantierChecklistItemSerializer(serializers.ModelSerializer):
     fait_par_nom = serializers.SerializerMethodField()
+    # NTMOB11 — nombre de photos déjà capturées pour cette étape (pellicule
+    # côté client), sans requête séparée. `source='photos.count'` : DRF
+    # appelle automatiquement la méthode du related manager.
+    photos_count = serializers.IntegerField(source='photos.count', read_only=True)
 
     class Meta:
         model = ChantierChecklistItem
         fields = ['id', 'cle', 'libelle', 'ordre', 'capture_serie',
                   # FG76 — photo obligatoire.
                   'photo_obligatoire',
-                  'fait', 'fait_par_nom', 'fait_le']
+                  'fait', 'fait_par_nom', 'fait_le', 'photos_count']
 
     def get_fait_par_nom(self, obj):
         return getattr(obj.fait_par, 'username', None)
+
+
+class PhotoChecklistMetaSerializer(serializers.ModelSerializer):
+    """NTMOB11 — métadonnées d'une photo liée à une étape de checklist
+    (horodatage serveur + géoloc best-effort)."""
+    class Meta:
+        model = PhotoChecklistMeta
+        fields = [
+            'id', 'attachment', 'checklist_item',
+            'latitude', 'longitude', 'precision_m', 'horodatage_capture',
+        ]
+        read_only_fields = ['id', 'horodatage_capture']
 
 
 class TypeInterventionSerializer(serializers.ModelSerializer):

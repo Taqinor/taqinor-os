@@ -199,6 +199,52 @@ class PhotoAnnotation(models.Model):
         return f'Annotation · pièce {self.attachment_id}'
 
 
+class PhotoChecklistMeta(models.Model):
+    """NTMOB11 — horodatage SERVEUR + géolocalisation d'une photo prise pour
+    une ÉTAPE DE CHECKLIST chantier précise (capture multi-photos terrain,
+    même hors-ligne). ADJACENTE à `PhotoAnnotation` ci-dessus : même patron
+    (liée à ``records.Attachment`` en OneToOne, company-scopée, additive) —
+    l'attachement lui-même reste dans la galerie générique du chantier
+    (``apps.records``, cible ``installations.installation``), cette table
+    n'ajoute QUE le contexte checklist + géoloc.
+
+    ``checklist_item`` est NULLABLE et ``SET_NULL`` : une photo prise hors
+    contexte de checklist (générique) n'a simplement pas de lien ; supprimer
+    l'étape ne supprime jamais la photo déjà prise.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='photo_checklist_metas')
+    attachment = models.OneToOneField(
+        'records.Attachment', on_delete=models.CASCADE,
+        related_name='checklist_meta')
+    checklist_item = models.ForeignKey(
+        'installations.ChantierChecklistItem', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='photos')
+    # Géolocalisation BEST-EFFORT (navigator.geolocation.getCurrentPosition,
+    # côté client — JAMAIS bloquante si l'utilisateur refuse) : nullable, une
+    # photo sans position reste pleinement utilisable.
+    latitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True)
+    precision_m = models.FloatField(null=True, blank=True)
+    # Horodatage SERVEUR au moment de l'UPLOAD (jamais l'horloge de
+    # l'appareil client, falsifiable/décalée) — posé une seule fois.
+    horodatage_capture = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Métadonnées photo checklist'
+        verbose_name_plural = 'Métadonnées photos checklist'
+        ordering = ['-horodatage_capture']
+        indexes = [
+            models.Index(fields=['checklist_item']),
+        ]
+
+    def __str__(self):
+        return f'Photo checklist · pièce {self.attachment_id}'
+
+
 # ── F11/F12 — Réconciliation du matériel consommé ────────────────────────────
 class MaterielConsommation(models.Model):
     """F11 — réconciliation du matériel consommé d'une intervention (une par

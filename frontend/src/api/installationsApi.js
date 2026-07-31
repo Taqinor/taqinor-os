@@ -19,6 +19,10 @@ const installationsApi = {
   getChecklist: (id) => api.get(`/installations/chantiers/${id}/checklist/`),
   cocherChecklist: (id, payload) =>
     api.post(`/installations/chantiers/${id}/cocher-checklist/`, payload),
+  // NTMOB11 — métadonnées (étape + géoloc/horodatage) d'une photo de
+  // checklist déjà uploadée via recordsApi.uploadAttachment.
+  ajouterChecklistPhotoMeta: (id, payload) =>
+    api.post(`/installations/chantiers/${id}/checklist-photo/`, payload),
   // N4 — étapes modèle de checklist (Paramètres → Chantiers).
   getChecklistEtapes: (templateId) =>
     api.get('/installations/checklist-etapes/',

@@ -25,6 +25,7 @@ from ..serializers import (  # noqa: F401
     ComponentSerialSerializer, MaterielConsommationSerializer,
     ConsommationLigneSerializer, VoiceMemoSerializer, ReserveSerializer,
     ToolReturnSerializer, SafetyChecklistSlotSerializer, SafetySignoffSerializer,
+    PhotoChecklistMetaSerializer,
 )
 from ..services import (  # noqa: F401
     create_installation_from_devis, seed_checklist_etapes,
@@ -256,6 +257,8 @@ class InstallationViewSet(CompanyScopedModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'creer_depuis_devis', 'noter', 'mise_en_service',
             'annuler', 'reactiver', 'commander_besoin', 'cocher_checklist',
+            # NTMOB11 — métadonnées (géoloc/horodatage) d'une photo de checklist.
+            'checklist_photo',
             # CH2 — avancement d'étape (gates appliqués côté service).
             'avancer_etape',
             # FG75 — ajout / suppression de relevés.
@@ -638,6 +641,71 @@ class InstallationViewSet(CompanyScopedModelViewSet):
             'completion': round(100 * done / len(items)) if items else None,
             'equipements_crees': created_equip,
         })
+
+    @action(detail=True, methods=['post'], url_path='checklist-photo',
+            permission_classes=[IsResponsableOrAdmin])
+    def checklist_photo(self, request, pk=None):
+        """NTMOB11 — métadonnées (étape de checklist + géoloc best-effort)
+        d'une photo DÉJÀ UPLOADÉE via l'endpoint générique
+        (``records.Attachment``, cible ``installations.installation`` — la
+        même galerie du chantier que ``ChantierPhotos.jsx``). Deux temps
+        volontaires : la pièce jointe elle-même passe par le flux d'upload
+        EXISTANT (compression, hors-ligne via l'outbox terrain), ce endpoint
+        n'ajoute QUE le contexte checklist + horodatage SERVEUR + géoloc.
+
+        Corps : ``{"attachment": <id>, "cle": <str étape, optionnel>,
+        "latitude": <float, optionnel>, "longitude": <float, optionnel>,
+        "precision_m": <float, optionnel>}``.
+        """
+        inst = self.get_object()
+        attachment_id = request.data.get('attachment')
+        if not attachment_id:
+            return Response({'detail': 'attachment requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        from apps.records.models import Attachment
+        from apps.records.serializers import resolve_target
+        try:
+            ct, _obj = resolve_target(
+                'installations.installation', inst.id, inst.company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # Garde de sécurité : la pièce jointe DOIT appartenir à CE chantier
+        # (jamais un attachment_id d'un autre enregistrement/société lié ici).
+        attachment = Attachment.objects.filter(
+            id=attachment_id, company=inst.company,
+            content_type=ct, object_id=inst.id).first()
+        if attachment is None:
+            return Response({'detail': 'Pièce jointe introuvable pour ce chantier.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        cle = request.data.get('cle')
+        item = inst.checklist.filter(cle=cle).first() if cle else None
+
+        def _num(key):
+            v = request.data.get(key)
+            if v in (None, ''):
+                return None
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        from ..models import PhotoChecklistMeta
+        meta, _created = PhotoChecklistMeta.objects.update_or_create(
+            attachment=attachment,
+            defaults={
+                'company': inst.company,
+                'checklist_item': item,
+                'latitude': _num('latitude'),
+                'longitude': _num('longitude'),
+                'precision_m': _num('precision_m'),
+            },
+        )
+        return Response(
+            PhotoChecklistMetaSerializer(meta).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='besoin-materiel',
             permission_classes=[IsAnyRole])
