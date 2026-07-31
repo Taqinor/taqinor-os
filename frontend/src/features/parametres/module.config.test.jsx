@@ -33,3 +33,22 @@ describe.each([
     expect(navItem.icon).toBeTruthy()
   })
 })
+
+/* WIR153 — Paramètres → IA : panneau de diagnostic (`IaDiagnostic.jsx`),
+   admin-only (contrairement à Territoires/Playbooks ci-dessus, réservés
+   responsable/admin). Même vérification route + nav collectées ensemble. */
+describe('parametres — module.config (WIR153 /parametres/ia)', () => {
+  it('déclare /parametres/ia en route ET en entrée de menu, gatées admin uniquement', async () => {
+    const { default: config } = await import('./module.config.jsx')
+
+    const route = config.routes.find((r) => r.path === '/parametres/ia')
+    expect(route).toBeTruthy()
+    expect(route.roles).toEqual(['admin'])
+
+    const navItem = config.nav.items.find((i) => i.to === '/parametres/ia')
+    expect(navItem).toBeTruthy()
+    expect(navItem.label).toBe('IA (diagnostic)')
+    expect(navItem.roles).toEqual(['admin'])
+    expect(navItem.icon).toBeTruthy()
+  })
+})

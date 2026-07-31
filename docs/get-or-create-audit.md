@@ -56,9 +56,9 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/chat/services.py:469` | get_or_create | ThreadFollow.objects | root_message, user |
 | `backend/django_core/apps/chat/services.py:512` | get_or_create | ThreadFollow.objects | root_message, user |
 | `backend/django_core/apps/chat/services.py:868` | get_or_create | RetentionPolicy.objects | company, conversation_kind |
-| `backend/django_core/apps/chat/views.py:73` | get_or_create | ConversationMember.objects | conversation, user |
-| `backend/django_core/apps/chat/views.py:82` | get_or_create | ConversationMember.objects | conversation, user |
-| `backend/django_core/apps/chat/views.py:170` | get_or_create | ConversationMember.objects | conversation, user |
+| `backend/django_core/apps/chat/views.py:74` | get_or_create | ConversationMember.objects | conversation, user |
+| `backend/django_core/apps/chat/views.py:83` | get_or_create | ConversationMember.objects | conversation, user |
+| `backend/django_core/apps/chat/views.py:171` | get_or_create | ConversationMember.objects | conversation, user |
 | `backend/django_core/apps/compta/receivers.py:285` | get_or_create | EnqueteNPS.objects | chantier_id, company |
 | `backend/django_core/apps/compta/services.py:229` | get_or_create | PlanComptable.objects | code, company |
 | `backend/django_core/apps/compta/services.py:234` | get_or_create | CompteComptable.objects | company, numero |
@@ -175,7 +175,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/installations/views/intervention.py:105` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/intervention.py:950` | get_or_create | PhotoAnnotation.objects | attachment |
 | `backend/django_core/apps/installations/views/intervention.py:1495` | get_or_create | ToolReturn.objects | intervention, outil_id |
-| `backend/django_core/apps/installations/views/program.py:120` | get_or_create | link_model.objects | projet |
+| `backend/django_core/apps/installations/views/program.py:152` | get_or_create | link_model.objects | projet |
 | `backend/django_core/apps/installations/views/rfq.py:204` | get_or_create | RFQConsultation.objects | fournisseur, rfq |
 | `backend/django_core/apps/installations/views/safety.py:103` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/installations/views/shotlist.py:102` | get_or_create | TypeIntervention.objects | cle, company |
@@ -199,10 +199,10 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/paie/services.py:299` | get_or_create | Rubrique.objects | code, company |
 | `backend/django_core/apps/paie/services.py:372` | get_or_create | TypeEntreePonctuelle.objects | code, company |
 | `backend/django_core/apps/paie/services.py:2749` | get_or_create | EcheanceDeclarative.objects | company, periode, type_echeance |
-| `backend/django_core/apps/paie/services.py:4940` | get_or_create | CumulAnnuel.objects.select_for_update() | annee, company, profil |
-| `backend/django_core/apps/paie/services.py:5627` | get_or_create | StructurePaie.objects | code, company |
-| `backend/django_core/apps/paie/services.py:5637` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
-| `backend/django_core/apps/paie/services.py:5663` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
+| `backend/django_core/apps/paie/services.py:4994` | get_or_create | CumulAnnuel.objects.select_for_update() | annee, company, profil |
+| `backend/django_core/apps/paie/services.py:5681` | get_or_create | StructurePaie.objects | code, company |
+| `backend/django_core/apps/paie/services.py:5691` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
+| `backend/django_core/apps/paie/services.py:5717` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
 | `backend/django_core/apps/parametres/models_company.py:657` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_company.py:662` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
