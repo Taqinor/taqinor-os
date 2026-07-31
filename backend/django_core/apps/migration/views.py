@@ -55,6 +55,24 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
     serializer_class = ProjetMigrationSerializer
     permission_classes = [IsDirecteurOuAdmin]
 
+    @action(detail=True, methods=['get'], url_path='rapport')
+    def rapport(self, request, pk=None):
+        """NTMIG19 — PV de migration en PDF (synthèse par lot).
+
+        ``get_object()`` applique le queryset scopé société : un projet d'une
+        autre société renvoie 404, jamais son PV.
+        """
+        from django.http import HttpResponse
+
+        from .pdf_rapport import render_rapport_migration_pdf
+
+        projet = self.get_object()
+        pdf = render_rapport_migration_pdf(projet)
+        resp = HttpResponse(pdf, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="pv-migration-{projet.pk}.pdf"')
+        return resp
+
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company,

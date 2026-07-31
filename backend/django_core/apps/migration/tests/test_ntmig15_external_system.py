@@ -7,7 +7,7 @@ de cibler précisément ce que CE projet a créé.
 
 Couvre aussi la garantie de non-destruction : le chargement est en
 REMPLISSAGE SEUL, donc une colonne vide (ou absente) du fichier source ne
-remplace jamais une valeur déjà saisie côté TAQINOR.
+remplace jamais une valeur déjà saisie dans l'ERP.
 """
 from django.test import TestCase
 

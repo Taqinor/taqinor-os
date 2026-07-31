@@ -92,7 +92,7 @@ def charger_lot(lot, file_bytes, filename, *, mode='upsert',
       Une cellule vide ou absente ne remplace pas une valeur déjà saisie, et
       une valeur déjà saisie n'est pas remplacée par la source (le moteur la
       remonte dans ``refuses``). Une migration ne doit jamais effacer ce qu'un
-      humain a corrigé à la main côté TAQINOR ; c'est volontairement NON
+      humain a corrigé à la main dans l'ERP ; c'est volontairement NON
       paramétrable depuis l'API.
     """
     from apps.dataimport import services as dataimport_services
