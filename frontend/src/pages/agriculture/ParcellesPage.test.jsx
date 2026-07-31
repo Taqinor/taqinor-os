@@ -17,7 +17,10 @@ beforeAll(() => {
   }
 })
 
-const { campagnesCreate, campagnesList, registrePhytoPdf } = vi.hoisted(() => ({
+const {
+  campagnesCreate, campagnesList, registrePhytoPdf, exploitationsCreate,
+  parcellesCreate, pointsIrrigationCreate, relevesIrrigationCreate,
+} = vi.hoisted(() => ({
   campagnesCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   // WIR52 — vide par défaut : aucun test existant (avant WIR52) n'attend une
   // campagne rattachée, donc aucune action « Registre phytosanitaire » ne
@@ -26,10 +29,18 @@ const { campagnesCreate, campagnesList, registrePhytoPdf } = vi.hoisted(() => ({
   registrePhytoPdf: vi.fn(() => Promise.resolve({
     data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
   })),
+  exploitationsCreate: vi.fn(() => Promise.resolve({ data: { id: 9, nom: 'Domaine Est' } })),
+  parcellesCreate: vi.fn(() => Promise.resolve({ data: { id: 3 } })),
+  pointsIrrigationCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  relevesIrrigationCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
 }))
 
 vi.mock('../../api/agricultureApi', () => ({
   default: {
+    exploitations: {
+      list: () => Promise.resolve({ data: [{ id: 1, nom: 'Domaine' }] }),
+      create: (...args) => exploitationsCreate(...args),
+    },
     parcelles: {
       list: () => Promise.resolve({
         data: [
@@ -45,11 +56,24 @@ vi.mock('../../api/agricultureApi', () => ({
           },
         ],
       }),
+      create: (...args) => parcellesCreate(...args),
+      update: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
     },
     campagnes: {
       create: (...args) => campagnesCreate(...args),
       list: (...args) => campagnesList(...args),
       registrePhytoPdf: (...args) => registrePhytoPdf(...args),
+      coutIrrigation: vi.fn(() => Promise.resolve({
+        data: { cout_irrigation_mad: '80.00', volume_irrigation_solaire_m3: '25' },
+      })),
+    },
+    pointsIrrigation: {
+      list: () => Promise.resolve({ data: [] }),
+      create: (...args) => pointsIrrigationCreate(...args),
+    },
+    relevesIrrigation: {
+      list: () => Promise.resolve({ data: [] }),
+      create: (...args) => relevesIrrigationCreate(...args),
     },
   },
 }))
@@ -129,5 +153,78 @@ describe('ParcellesPage — registre phytosanitaire PDF (WIR52)', () => {
     withProviders(<ParcellesPage />)
     await waitFor(() => expect(screen.getAllByText('Parcelle Sud').length).toBeGreaterThan(0))
     expect(screen.queryByRole('button', { name: 'Registre phytosanitaire (PDF)' })).not.toBeInTheDocument()
+  })
+})
+
+// WIR141 — Exploitation/Parcelle n'avaient aucune UI de création ; le duo
+// PointIrrigation/RelevePointIrrigation (NTAGR13/14) n'avait aucun écran.
+describe('ParcellesPage — création exploitation/parcelle (WIR141)', () => {
+  it('crée une exploitation depuis le bouton dédié', async () => {
+    const user = userEvent.setup()
+    withProviders(<ParcellesPage />)
+    await waitFor(() => expect(screen.getAllByText('Parcelle Nord').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /Nouvelle exploitation/ }))
+    await user.type(screen.getByLabelText('Nom'), 'Domaine Est')
+    await user.click(screen.getByRole('button', { name: 'Créer l’exploitation' }))
+
+    await waitFor(() => expect(exploitationsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ nom: 'Domaine Est' }),
+    ))
+  })
+
+  it('crée une parcelle rattachée à une exploitation', async () => {
+    const user = userEvent.setup()
+    withProviders(<ParcellesPage />)
+    await waitFor(() => expect(screen.getAllByText('Parcelle Nord').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /Nouvelle parcelle/ }))
+    await user.selectOptions(screen.getByLabelText('Exploitation'), '1')
+    await user.type(screen.getByLabelText('Nom'), 'Parcelle Ouest')
+    await user.click(screen.getByRole('button', { name: 'Créer la parcelle' }))
+
+    await waitFor(() => expect(parcellesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ exploitation: '1', nom: 'Parcelle Ouest' }),
+    ))
+  })
+
+  it('modifie une parcelle existante depuis l’action de ligne', async () => {
+    const user = userEvent.setup()
+    withProviders(<ParcellesPage />)
+    await waitFor(() => expect(screen.getAllByText('Parcelle Nord').length).toBeGreaterThan(0))
+
+    await user.click(screen.getAllByRole('button', { name: 'Modifier' })[0])
+    expect(await screen.findByText('Modifier — Parcelle Nord')).toBeInTheDocument()
+  })
+})
+
+describe('ParcellesPage — irrigation (WIR141)', () => {
+  it('ouvre le dialogue Irrigation et crée un point d’irrigation', async () => {
+    const user = userEvent.setup()
+    withProviders(<ParcellesPage />)
+    await waitFor(() => expect(screen.getAllByText('Parcelle Nord').length).toBeGreaterThan(0))
+
+    await user.click(screen.getAllByRole('button', { name: 'Irrigation' })[0])
+    expect(await screen.findByText('Irrigation — Parcelle Nord')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Nouveau point/ }))
+    await user.click(screen.getByRole('button', { name: 'Créer le point' }))
+
+    await waitFor(() => expect(pointsIrrigationCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ parcelle: 1, type_source: 'puits' }),
+    ))
+  })
+
+  it('affiche le coût d’irrigation de la campagne en cours de la parcelle', async () => {
+    campagnesList.mockResolvedValueOnce({
+      data: [{ id: 77, parcelle: 1, culture: 'Blé', statut: 'en_cours' }],
+    })
+    const user = userEvent.setup()
+    withProviders(<ParcellesPage />)
+    await waitFor(() => expect(screen.getAllByText('Parcelle Nord').length).toBeGreaterThan(0))
+
+    await user.click(screen.getAllByRole('button', { name: 'Irrigation' })[0])
+    expect(await screen.findByText(/80.00 MAD/)).toBeInTheDocument()
+    expect(screen.getByText(/25 m³/)).toBeInTheDocument()
   })
 })

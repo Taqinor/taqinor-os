@@ -19,6 +19,9 @@ const agricultureApi = {
     // NTAGR7 — registre phytosanitaire ONSSA imprimable (PDF interne).
     registrePhytoPdf: (id) =>
       api.get(`/agriculture/campagnes/${id}/registre-phyto-pdf/`, { responseType: 'blob' }),
+    // WIR141 — coût d'irrigation payante + volume irrigué en pompage solaire
+    // de la fenêtre de la campagne (selectors NTAGR14, jusqu'ici sans appelant).
+    coutIrrigation: (id) => api.get(`/agriculture/campagnes/${id}/cout-irrigation/`),
   },
   etapesCampagne: crud('etapes-campagne'),
   intrants: crud('intrants-agricoles'),
@@ -27,6 +30,9 @@ const agricultureApi = {
   // NTAGR11 — matériel agricole (pattern flotte, heures moteur cumulées).
   materiels: crud('materiels-agricoles'),
   utilisationsMateriel: crud('utilisations-materiel'),
+  // WIR141 — points d'irrigation d'une parcelle + relevés (volume/coût énergie).
+  pointsIrrigation: crud('points-irrigation'),
+  relevesIrrigation: crud('releves-irrigation'),
 }
 
 export default agricultureApi
