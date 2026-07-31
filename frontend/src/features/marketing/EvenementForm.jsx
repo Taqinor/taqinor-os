@@ -50,7 +50,6 @@ export default function EvenementForm({ initial, onSave, onCancel, editing }) {
 
   useEffect(() => {
     if (editing) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
     marketingApi.typesEvenement.list()
       .then(r => setModeles(marketingApi.unwrapList(r)))
       .catch(() => setModeles([]))

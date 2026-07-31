@@ -116,7 +116,10 @@ export default function ApprovalsScreen() {
     [{ fn: load, intervalMs: APPROVALS_POLL_MS }])
 
   // Retire une (ou plusieurs) action(s) appliquée(s) de la boîte + du batch.
-  const removeApplied = (ids) => {
+  // Identité stable (useCallback) : référencée par le raccourci clavier A/R
+  // ci-dessous (exhaustive-deps) sans faire changer ses dépendances à chaque
+  // rendu.
+  const removeApplied = useCallback((ids) => {
     const set = new Set(ids)
     setActions(list => list.filter(a => !set.has(a.id)))
     setSelected(sel => {
@@ -124,9 +127,9 @@ export default function ApprovalsScreen() {
       ids.forEach(id => next.delete(id))
       return next
     })
-  }
+  }, [])
 
-  const approve = async (id) => {
+  const approve = useCallback(async (id) => {
     setBusy(true); setErr('')
     try {
       await adsengineApi.actions.approve(id)
@@ -136,12 +139,12 @@ export default function ApprovalsScreen() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [removeApplied])
 
-  const openReject = (id) => {
+  const openReject = useCallback((id) => {
     setRejectingId(id)
     setRejectReason(REJECTION_REASONS[0].value)
-  }
+  }, [])
 
   // PUB51 — focus visuel pour les raccourcis clavier (jamais de souris requise).
   const [focusedIndex, setFocusedIndex] = useState(0)

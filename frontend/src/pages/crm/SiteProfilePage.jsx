@@ -74,8 +74,25 @@ export default function SiteProfilePage() {
   const [clientId, setClientId] = useState('')
   const [profileId, setProfileId] = useState(null)
   const [form, setForm] = useState(EMPTY)
-  const [loading, setLoading] = useState(false)
+  // Client dont le profil est déjà reflété par `profileId`/`form` — `loading`
+  // est DÉRIVÉ de la comparaison avec `clientId` (jamais un `setLoading(true)`
+  // synchrone dans l'effet ci-dessous, react-hooks/set-state-in-effect).
+  const [loadedClientId, setLoadedClientId] = useState(null)
   const [saving, setSaving] = useState(false)
+
+  // Réinitialisation du profil quand `clientId` redevient vide : ajustement
+  // PENDANT LE RENDU (pas dans un effet), la valeur de repli (EMPTY) étant
+  // déjà connue — « Adjusting some state when a prop changes »
+  // (react.dev/learn/you-might-not-need-an-effect).
+  const [prevClientId, setPrevClientId] = useState(clientId)
+  if (clientId !== prevClientId) {
+    setPrevClientId(clientId)
+    if (!clientId) {
+      setProfileId(null)
+      setForm(EMPTY)
+    }
+  }
+  const loading = Boolean(clientId) && loadedClientId !== clientId
 
   useEffect(() => {
     let active = true
@@ -89,11 +106,11 @@ export default function SiteProfilePage() {
     return () => { active = false }
   }, [])
 
-  // Charge (ou réinitialise) le profil du client sélectionné.
+  // Charge le profil du client sélectionné (le cas « aucun client » est traité
+  // pendant le rendu ci-dessus, jamais ici).
   useEffect(() => {
-    if (!clientId) { setProfileId(null); setForm(EMPTY); return }
+    if (!clientId) return
     let active = true
-    setLoading(true)
     crmApi.getSiteProfiles({ client: clientId })
       .then((r) => {
         if (!active) return
@@ -104,7 +121,7 @@ export default function SiteProfilePage() {
         setForm(toForm(p))
       })
       .catch(() => { if (active) { setProfileId(null); setForm(EMPTY) } })
-      .finally(() => { if (active) setLoading(false) })
+      .finally(() => { if (active) setLoadedClientId(clientId) })
     return () => { active = false }
   }, [clientId])
 

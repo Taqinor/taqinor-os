@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Inbox, Link2, Plus } from 'lucide-react'
 import innovationApi from '../../api/innovationApi'
 import {
@@ -77,13 +77,16 @@ export default function RetoursProduitPage() {
       .finally(() => setSavingAnnonce(false))
   }
 
-  const openLier = (feedback) => {
+  // Identité stable (useCallback) : référencée par la colonne `actions` du
+  // useMemo ci-dessous (exhaustive-deps / preserve-manual-memoization) sans
+  // faire recalculer `columns` à chaque rendu.
+  const openLier = useCallback((feedback) => {
     setLierTarget(feedback)
     setMode('existante')
     setAnnonceId('')
     setNouvelleAnnonce({ titre: '', description: '', lien: '' })
     setMessage('')
-  }
+  }, [])
 
   const confirmerLiaison = () => {
     if (!lierTarget) return
@@ -135,8 +138,7 @@ export default function RetoursProduitPage() {
         </IconButton>
       ) : (r.annonce_titre ? <span className="text-xs text-muted-foreground">{r.annonce_titre}</span> : null)),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- openLier recréé à chaque rendu
-  ], [busyId])
+  ], [busyId, openLier])
 
   return (
     <div className="page">

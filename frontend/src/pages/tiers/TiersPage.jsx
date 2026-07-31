@@ -222,6 +222,9 @@ export default function TiersPage() {
   const [error, setError] = useState(null)
   const [dialog, setDialog] = useState(null) // { record? } | null
 
+  // Rechargement après création/modification (handler `onSaved` ci-dessous) —
+  // `loading`/`error` sont reposés synchronement, mais depuis un gestionnaire
+  // d'événement, jamais depuis un effet.
   const load = () => {
     setLoading(true)
     setError(null)
@@ -234,7 +237,20 @@ export default function TiersPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  // Chargement au montage : `loading`/`error` démarrent déjà à leurs valeurs
+  // de chargement (true/null), donc aucun reset synchrone n'est nécessaire
+  // ici (react-hooks/set-state-in-effect — même motif que
+  // PatrimoineTree.jsx, pages/immobilier). Les rechargements ultérieurs
+  // passent par `load` ci-dessus, jamais par cet effet.
+  useEffect(() => {
+    tiersApi.tiers.list()
+      .then((r) => {
+        const data = r?.data
+        setRows(Array.isArray(data) ? data : (data?.results ?? []))
+      })
+      .catch(() => setError('Chargement impossible.'))
+      .finally(() => setLoading(false))
+  }, [])
 
   const columns = useMemo(() => [
     {
