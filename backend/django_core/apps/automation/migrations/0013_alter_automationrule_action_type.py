@@ -8,7 +8,9 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('automation', '0011_yopsb11_automationrunarchive'),
+        # Renumérotée 0012 -> 0013 à l'intégration : une lane soeur (NTEXT4)
+        # avait déjà pris 0012 sur cette app.
+        ('automation', '0012_ntext4_automationstep'),
     ]
 
     operations = [

@@ -12,7 +12,9 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('notifications', '0043_ntedu40_education_reinscription_relance_event'),
+        # Renumérotée 0044 -> 0045 à l'intégration : une lane soeur (NTIDE52)
+        # avait déjà pris 0044 sur cette app.
+        ('notifications', '0044_ntide52_idea_email_events'),
     ]
 
     operations = [
