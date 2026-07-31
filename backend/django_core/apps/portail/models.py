@@ -15,13 +15,13 @@ chantiers/tickets/leads sont désormais désignés par de VRAIES ``ForeignKey``
 STRING-référencées (``'ventes.Devis'``, ``'facturation.Facture'``,
 ``'crm.Client'``, ``'crm.Lead'``, ``'installations.Installation'``,
 ``'sav.Ticket'``) — WIR95 : même patron que ``pos.CommandeRetrait.devis``,
-jamais un import direct des modèles cibles. ``on_delete=SET_NULL`` +
-``db_constraint=False`` (le CONTRAINTE FK n'est jamais posée au niveau base —
-ces cinq apps restent des domaines mutuellement DÉCOUPLÉS, la contrainte
-d'intégrité vit au niveau du framework Django/ORM : toute suppression via l'ORM
-met la référence à NULL au lieu de laisser un id orphelin silencieux ; un id
-existant qui ne correspond déjà à rien n'est plus un problème bloquant côté
-migration). Tout est multi-société : chaque modèle porte un FK ``company``
+jamais un import direct des modèles cibles. ``db_constraint=False`` partout : la
+contrainte FK n'est jamais posée au niveau base (ces cinq apps restent des
+domaines mutuellement DÉCOUPLÉS ; un id déjà orphelin ne bloque donc rien) et
+l'intégrité vit dans le collector Django/ORM, qui l'applique que la contrainte
+base existe ou non. Politique : ``SET_NULL`` pour les références informatives,
+``PROTECT`` pour ``devis``/``facture`` (preuve légale / argent réel — voir ces
+deux champs). Tout est multi-société : chaque modèle porte un FK ``company``
 posé côté serveur (jamais lu du corps de requête).
 
 ATTENTION surface AUTH : les mécanismes d'authentification portail (tokens/
@@ -111,14 +111,14 @@ class AcceptationDevisPortail(models.Model):
         related_name='acceptations_devis_portail',
         verbose_name='Société',
     )
-    # WIR95 — string-FK (jamais un import de ``apps.ventes.models``) ; SET_NULL
-    # + db_constraint=False : un devis supprimé ne laisse plus d'id orphelin
-    # silencieux, sans coupler les deux domaines au niveau base. L'attname
-    # ``devis_id`` reste utilisable partout où le code lisait l'ancien champ
-    # (même patron que ``pos.CommandeRetrait.devis``).
+    # WIR95 — string-FK (jamais un import de ``apps.ventes.models``) ; attname
+    # ``devis_id`` inchangé (patron ``pos.CommandeRetrait.devis``).
+    # on_delete: PROTECT — cette ligne EST la preuve d'acceptation électronique
+    # (signataire, IP, horodatage — loi 53-05) : détachée du devis elle ne
+    # dirait plus QUEL devis a été signé. Supprimer le devis est REFUSÉ.
     devis = models.ForeignKey(
         'ventes.Devis',
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         db_constraint=False,
@@ -158,8 +158,8 @@ class PaiementFacturePortail(models.Model):
     ``initie`` à ``paye`` (manuel pour le virement, automatique via webhook CMI
     quand l'intégration est branchée). Tant que la passerelle CMI est OFF
     (``CMI_ENABLED``, défaut), aucun appel réseau payant n'est émis : l'intention
-    reste ``initie`` avec une référence locale. La facture est désignée par son
-    id (cross-app — jamais d'import du modèle ``ventes``).
+    reste ``initie`` avec une référence locale. La facture est référencée par
+    une string-FK WIR95 (jamais un import de ``apps.facturation.models``).
     """
     class Methode(models.TextChoices):
         CARTE = 'carte', 'Carte (CMI)'
@@ -176,11 +176,11 @@ class PaiementFacturePortail(models.Model):
         related_name='paiements_facture_portail',
         verbose_name='Société',
     )
-    # WIR95 — string-FK (jamais un import de ``apps.facturation.models``) ;
-    # SET_NULL + db_constraint=False (voir docstring du module).
+    # on_delete: PROTECT — ce paiement porte un montant MAD réel (et parfois un
+    # statut ``paye``) : supprimer la facture référencée est REFUSÉ.
     facture = models.ForeignKey(
         'facturation.Facture',
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         db_constraint=False,
