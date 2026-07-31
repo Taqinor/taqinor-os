@@ -722,6 +722,14 @@ app.conf.beat_schedule = {
         'task': 'immobilier.generer_echeances_loyer',
         'schedule': crontab(hour=2, minute=38),
     },
+    # NTAI29 — surveillance MENSUELLE de la dérive (PSI) des features d'entrée
+    # des scorers, par société. Pur/offline (stats stdlib, aucun appel LLM) et
+    # no-op propre tant qu'aucun fournisseur de distribution n'est déclaré.
+    # 1er du mois, heure creuse.
+    'ai-governance-surveiller-drift-mensuel': {
+        'task': 'ai_governance.surveiller_drift_mensuel',
+        'schedule': crontab(hour=4, minute=25, day_of_month=1),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
