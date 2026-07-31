@@ -484,6 +484,50 @@ def export_grand_livre_csv(company, debut, fin):
     return resp
 
 
+# ── NTAPI37 — Pont comptable QuickBooks (IIF, one-way, à côté de FG49/FG377) ─
+# Réutilise EXACTEMENT les mêmes écritures que le grand-livre codé par compte
+# (FG49, `_grand_livre_rows` — mêmes codes CGNC configurables par société via
+# `account_codes_for`, même équilibrage débit/crédit) : seul le FORMAT change,
+# via le formateur PUR de fondation `core.accounting_export.to_quickbooks_iif`
+# (jamais de logique métier dupliquée). AR uniquement (clients/ventes/TVA) —
+# aucun prix d'achat, comme le reste des exports comptables de ce fichier.
+
+def _grand_livre_rows_as_entries(company, debut, fin):
+    """Reprojette les lignes `_grand_livre_rows` (affichage) dans le contrat
+    dict générique `core.accounting_export` (journal/date/compte/libelle/
+    debit/credit/piece) — jamais un second calcul des montants."""
+    rows, totals = _grand_livre_rows(company, debut, fin)
+    entries = [
+        {
+            'journal': 'VTE',
+            'compte': compte,
+            'date': date_s,
+            'piece': piece,
+            'libelle': libelle,
+            'debit': debit,
+            'credit': credit,
+        }
+        for (compte, _intitule, date_s, _journal, piece, libelle, _tiers,
+             _ice, _taux, debit, credit) in rows
+    ]
+    return entries, totals
+
+
+def export_quickbooks_iif(company, debut, fin):
+    """Fichier .iif (QuickBooks Desktop, import « General Journal ») pour
+    [debut, fin[. Codes de compte configurables par société (`account_codes_for`,
+    identique à FG49) ; écritures équilibrées transaction par transaction."""
+    from core.accounting_export import export_entries
+
+    entries, _totals = _grand_livre_rows_as_entries(company, debut, fin)
+    content = export_entries(entries, fmt='quickbooks_iif')
+    resp = HttpResponse(content, content_type='application/octet-stream')
+    resp['Content-Disposition'] = (
+        f'attachment; filename="quickbooks-{debut.isoformat()}'
+        f'_{fin.isoformat()}.iif"')
+    return resp
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SCA41 — exports xlsx asynchrones au-delà d'un seuil (pilote de NTPLT29/30).
 #
