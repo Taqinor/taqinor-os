@@ -259,6 +259,50 @@ def _create_sav_ticket(rule, instance, company, context, user):
         return Status.FAILED, f'Ticket SAV non créé : {exc}'
 
 
+def _create_custom_record(rule, instance, company, context, user):
+    """NTEXT26 — matérialise un ``CustomRecord`` (objet personnalisé) depuis
+    une automatisation.
+
+    ``action_config = {'object_code': 'suivi-qualite', 'data': {...}}`` — les
+    valeurs TEXTE de ``data`` supportent la substitution ``{var}`` depuis
+    ``context`` (même mécanisme que les corps de message, XPRJ23). La
+    validation réutilise EXACTEMENT le chemin de l'API
+    (``customfields.serializers.validate_custom_data`` — même règles
+    obligatoire/type/``requis_si`` que la création manuelle), jamais de
+    contournement. ``customfields`` est une app foundation (cf. CLAUDE.md),
+    l'import direct de ses modèles/serializers est autorisé."""
+    cfg = rule.action_config or {}
+    object_code = (cfg.get('object_code') or '').strip()
+    if not object_code:
+        return Status.NOOP, 'Aucun objet personnalisé configuré : action ignorée.'
+    from apps.customfields.models import CustomObjectDef, CustomRecord
+    objet = CustomObjectDef.objects.filter(
+        company=company, code=object_code, actif=True).first()
+    if objet is None:
+        return Status.NOOP, (
+            f'Objet personnalisé « {object_code} » introuvable : '
+            f'création ignorée.')
+    raw_data = cfg.get('data') or {}
+    if not isinstance(raw_data, dict):
+        raw_data = {}
+    resolved = {
+        key: (_substitute_variables(val, context)
+              if isinstance(val, str) else val)
+        for key, val in raw_data.items()
+    }
+    try:
+        from apps.customfields.serializers import validate_custom_data
+        clean = validate_custom_data(objet.field_module, company, resolved)
+    except Exception as exc:
+        return Status.FAILED, f'Enregistrement non créé : {exc}'
+    try:
+        CustomRecord.objects.create(
+            company=company, objet=objet, data=clean, created_by=user)
+        return Status.SUCCESS, f'Enregistrement « {objet.libelle} » créé.'
+    except Exception as exc:
+        return Status.FAILED, f'Enregistrement non créé : {exc}'
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 def _model_name(instance):
@@ -295,4 +339,5 @@ _HANDLERS = {
     ActionType.ASSIGN_RECORD: _assign_record,
     ActionType.SET_FIELD: _set_field,
     ActionType.CREATE_SAV_TICKET: _create_sav_ticket,
+    ActionType.CREATE_CUSTOM_RECORD: _create_custom_record,
 }

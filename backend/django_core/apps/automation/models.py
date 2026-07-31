@@ -117,6 +117,11 @@ class ActionType(models.TextChoices):
     ASSIGN_RECORD = 'assign_record', 'Assigner un enregistrement'
     SET_FIELD = 'set_field', 'Mettre à jour un champ'
     CREATE_SAV_TICKET = 'create_sav_ticket', 'Créer un ticket SAV'
+    # NTEXT26 — matérialise un CustomRecord (objet personnalisé) depuis une
+    # automatisation, via le même chemin de validation que l'API
+    # (``customfields.serializers.validate_custom_data``).
+    CREATE_CUSTOM_RECORD = (
+        'create_custom_record', 'Créer un enregistrement personnalisé')
 
 
 class CanalMessage(models.TextChoices):
