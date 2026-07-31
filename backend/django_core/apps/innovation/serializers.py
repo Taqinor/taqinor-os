@@ -162,6 +162,10 @@ class FeedbackProduitSerializer(serializers.ModelSerializer):
     # NTIDE42 — sentiment optionnel, écrit à la création par l'auteur.
     sentiment_display = serializers.CharField(
         source='get_sentiment_display', read_only=True, default='')
+    # NTIDE43 — contexte opaque, écrit à la création (pré-rempli côté client
+    # quand le bouton feedback est ouvert depuis une page détail).
+    context_type_display = serializers.CharField(
+        source='get_context_type_display', read_only=True, default='')
     auteur_nom = serializers.SerializerMethodField()
     annonce_titre = serializers.CharField(
         source='annonce.titre', read_only=True, default=None)
@@ -173,6 +177,7 @@ class FeedbackProduitSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'titre', 'description', 'theme', 'theme_display',
             'sentiment', 'sentiment_display',
+            'context_type', 'context_type_display', 'context_id',
             'statut', 'statut_display', 'auteur', 'auteur_nom', 'annonce',
             'annonce_titre', 'message_fermeture', 'date_creation',
         ]

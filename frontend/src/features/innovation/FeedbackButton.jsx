@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { MessageCircle, Send } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   Button, Input, Textarea, toast,
 } from '../../ui'
 import innovationApi from '../../api/innovationApi'
+import { linkedFromLocation } from './linkedContext'
 
 /* ============================================================================
    NTIDE37 — « Envoyer un retour » : petit bouton discret, FIXE en bas à
@@ -33,13 +35,26 @@ const SENTIMENTS = [
   { value: 'negatif', label: "-1 (ça m'énerve)" },
 ]
 
+// NTIDE43 — même table de labels que ``Idee.LinkedType`` (apps/innovation,
+// backend), pour l'affichage « Feedback : Devis #123 ».
+const CONTEXT_LABELS = { devis: 'Devis', ticket: 'Ticket SAV', chantier: 'Chantier' }
+
 export default function FeedbackButton() {
+  const location = useLocation()
   const [open, setOpen] = useState(false)
   const [titre, setTitre] = useState('')
   const [description, setDescription] = useState('')
   const [theme, setTheme] = useState('autre')
   const [sentiment, setSentiment] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // NTIDE43 — contexte pré-détecté (devis/ticket/chantier) depuis l'écran
+  // détail ouvert (même détection que le lien d'idée NTIDE11) : stocké
+  // opaque (``context_type``/``context_id``), affiché en lecture seule
+  // (« Feedback : Devis #123 »), jamais éditable.
+  const contexte = useMemo(
+    () => linkedFromLocation(location.pathname, location.search),
+    [location.pathname, location.search])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -49,6 +64,8 @@ export default function FeedbackButton() {
     try {
       await innovationApi.feedback.create({
         titre: t, description: description.trim(), theme, sentiment,
+        context_type: contexte?.type || '',
+        context_id: contexte?.id || null,
       })
       toast.success('Merci pour votre retour !')
       setTitre(''); setDescription(''); setTheme('autre'); setSentiment('')
@@ -83,6 +100,11 @@ export default function FeedbackButton() {
             <DialogTitle>Envoyer un retour</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+            {contexte && (
+              <p className="text-xs text-muted-foreground">
+                Feedback : {CONTEXT_LABELS[contexte.type] || contexte.type} #{contexte.id}
+              </p>
+            )}
             <div className="flex flex-col gap-1.5">
               <label htmlFor="fb-titre" className="text-sm font-medium">Titre</label>
               <Input

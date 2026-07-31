@@ -347,6 +347,17 @@ class FeedbackProduit(TenantModel):
     sentiment = models.CharField(
         max_length=10, choices=Sentiment.choices, blank=True, default='',
         verbose_name='Sentiment')
+    # NTIDE43 — contexte opaque (même patron que ``Idee.linked_type``/
+    # ``linked_id``, réutilise EXACTEMENT les mêmes choix devis/ticket/
+    # chantier — même app, aucun souci de frontière cross-app) : pré-rempli
+    # côté client quand le bouton feedback (NTIDE37) est ouvert depuis une
+    # page détail (ex. « Feedback : Devis #123 »). Jamais résolu en objet
+    # métier côté serveur — juste affiché tel quel.
+    context_type = models.CharField(
+        max_length=10, choices=Idee.LinkedType.choices, blank=True,
+        default='', verbose_name='Type de contexte (devis/ticket/chantier)')
+    context_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de contexte (opaque)')
     # NTIDE39 — lien vers l'annonce produit qui a fermé ce feedback. Le
     # feedback lui-même n'est jamais supprimé (dossier produit, même
     # convention que ``Idee`` qui ne se supprime jamais) : seule la
