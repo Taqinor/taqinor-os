@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8134, operations: 14967, components: 4076}
+counts: {paths: 8141, operations: 14982, components: 4076}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -7531,6 +7531,21 @@ operations:
 - get /api/public/produits/{id}/ -> api_public_produits_retrieve
 - post /api/public/sandbox/reset/ -> api_public_sandbox_reset_create
 - get /api/public/v1/openapi.json -> api_public_v1_openapi.json_retrieve
+- get /api/v1/accessreview/campaigns/ -> api_v1_accessreview_campaigns_list
+- post /api/v1/accessreview/campaigns/ -> api_v1_accessreview_campaigns_create
+- delete /api/v1/accessreview/campaigns/{id}/ -> api_v1_accessreview_campaigns_destroy
+- get /api/v1/accessreview/campaigns/{id}/ -> api_v1_accessreview_campaigns_retrieve
+- patch /api/v1/accessreview/campaigns/{id}/ -> api_v1_accessreview_campaigns_partial_update
+- put /api/v1/accessreview/campaigns/{id}/ -> api_v1_accessreview_campaigns_update
+- post /api/v1/accessreview/campaigns/{id}/attester/ -> api_v1_accessreview_campaigns_attester_create
+- get /api/v1/accessreview/sod-rules/ -> api_v1_accessreview_sod_rules_list
+- post /api/v1/accessreview/sod-rules/ -> api_v1_accessreview_sod_rules_create
+- post /api/v1/accessreview/sod-rules/seed_standard/ -> api_v1_accessreview_sod_rules_seed_standard_create
+- get /api/v1/accessreview/sod-rules/violations/ -> api_v1_accessreview_sod_rules_violations_retrieve
+- delete /api/v1/accessreview/sod-rules/{id}/ -> api_v1_accessreview_sod_rules_destroy
+- get /api/v1/accessreview/sod-rules/{id}/ -> api_v1_accessreview_sod_rules_retrieve
+- patch /api/v1/accessreview/sod-rules/{id}/ -> api_v1_accessreview_sod_rules_partial_update
+- put /api/v1/accessreview/sod-rules/{id}/ -> api_v1_accessreview_sod_rules_update
 - get /api/v1/achats/bons-commande-fournisseur/ -> api_v1_achats_bons_commande_fournisseur_list
 - post /api/v1/achats/bons-commande-fournisseur/ -> api_v1_achats_bons_commande_fournisseur_create
 - get /api/v1/achats/bons-commande-fournisseur/achats-hors-contrat/ -> api_v1_achats_bons_commande_fournisseur_achats_hors_contrat_retrieve
