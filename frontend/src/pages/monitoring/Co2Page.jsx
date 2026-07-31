@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowLeft } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
-import { DataTable, EmptyState } from '../../ui'
+import installationsApi from '../../api/installationsApi'
+import { DataTable, EmptyState, Spinner } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { formatNumber, timeAgo } from '../../lib/format'
@@ -15,7 +18,11 @@ import MonitoringNav from './MonitoringNav'
    VX30 — badge de fraîcheur + auto-poll léger 5 min (mêmes garde-fous que
    FleetPage.jsx : `useVisibilityAwarePolling` VX56 n'existe pas encore, ce
    hook local reprend la garde minimale de useApprobationsCount — jamais un
-   `setInterval` nu qui cogne l'API en onglet caché). */
+   `setInterval` nu qui cogne l'API en onglet caché).
+   WIR122 — drill-down par système : FleetPage.jsx ouvre `?installation=<id>`,
+   résolu ici en config de supervision (`getConfigForInstallation`) puis en
+   détail CO₂ (`getCo2`, jusque-là sans aucun appelant). Sans le paramètre, le
+   comportement d'origine (agrégat flotte) est inchangé. */
 
 // Cf. FleetPage.jsx — même patron, dupliqué ici volontairement (pas de nouveau
 // fichier hors du périmètre Files de la tâche VX30).
@@ -42,6 +49,14 @@ function useVisibilityAwarePoll(callback, intervalMs) {
 }
 
 export default function Co2Page() {
+  const [searchParams] = useSearchParams()
+  const installationId = searchParams.get('installation')
+  return installationId
+    ? <Co2SystemDetail installationId={installationId} />
+    : <Co2Fleet />
+}
+
+function Co2Fleet() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -201,6 +216,98 @@ export default function Co2Page() {
             />
           </div>
         )
+      )}
+    </div>
+  )
+}
+
+// WIR122 — détail CO₂ d'UN système (drill-down depuis FleetPage.jsx). Résout
+// d'abord la config de supervision de l'installation (comme ProductionPage.jsx
+// le fait déjà), puis appelle `getCo2(configId)` — jusqu'ici sans appelant.
+function Co2SystemDetail({ installationId }) {
+  const [label, setLabel] = useState('')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      await Promise.resolve()
+      if (!active) return
+      setLoading(true)
+      setError(null)
+      try {
+        const [configRes, instRes] = await Promise.all([
+          monitoringApi.getConfigForInstallation(installationId),
+          installationsApi.getInstallation(installationId).catch(() => null),
+        ])
+        if (!active) return
+        if (instRes?.data) {
+          const inst = instRes.data
+          setLabel(inst.reference ? `${inst.reference}${inst.client_nom ? ` — ${inst.client_nom}` : ''}` : `#${installationId}`)
+        } else {
+          setLabel(`#${installationId}`)
+        }
+        const rows = configRes.data?.results ?? configRes.data ?? []
+        const config = rows[0]
+        if (!config?.id) {
+          setError("Ce système n'a pas de configuration de supervision.")
+          setData(null)
+          return
+        }
+        const co2Res = await monitoringApi.getCo2(config.id)
+        if (active) setData(co2Res.data)
+      } catch {
+        if (active) setError('Impossible de charger le détail CO₂ de ce système.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    load()
+    return () => { active = false }
+  }, [installationId])
+
+  const stats = useMemo(() => (data ? [
+    {
+      label: 'CO₂ évité (système)',
+      value: `${formatNumber(data.co2_tonnes, { decimals: 3 })} t`,
+      icon: METRIC_ICONS.co2,
+      hint: `${formatNumber(data.co2_kg, { decimals: 0 })} kg`,
+      tone: 'impact',
+    },
+    {
+      label: 'Production cumulée',
+      value: `${formatNumber(data.production_kwh, { decimals: 0 })} kWh`,
+      icon: METRIC_ICONS.production,
+      tone: 'impact',
+    },
+    {
+      label: 'Facteur réseau',
+      value: `${formatNumber(data.co2_kg_par_kwh, { decimals: 2 })} kg/kWh`,
+      icon: METRIC_ICONS.co2,
+      hint: 'CO₂ évité par kWh autoproduit',
+    },
+  ] : []), [data])
+
+  return (
+    <div className="page">
+      <div className="page-header">
+        <h1 className="page-title">Suivi CO₂ — {label || `#${installationId}`}</h1>
+        <div className="page-subtitle">CO₂ évité par la production solaire de ce système.</div>
+      </div>
+      <MonitoringNav />
+
+      <Link to="/production/parc" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowLeft size={16} /> Retour à la vue parc
+      </Link>
+
+      {loading ? (
+        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+      ) : error ? (
+        <EmptyState icon={METRIC_ICONS.co2} title="Détail indisponible" description={error} className="my-6" />
+      ) : (
+        <ModuleDashboard stats={stats} />
       )}
     </div>
   )

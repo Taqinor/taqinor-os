@@ -47,17 +47,19 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1268",
     "backend/django_core/apps/ventes/quote_engine/builder.py:741",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1262",
-    # compta/services.py entries re-based (NTMAR RAS/timbre extensions,
-    # 2026-07-17, +36 lines above them from the RAS convention/timbre-mode
-    # signature edits; same NPS/ROI/percentage round() sites, unmoved logic,
-    # verified uniform shift, NOT new sites — bug-class #34).
-    "backend/django_core/apps/compta/services.py:9658",
+    # compta/services.py entries re-based (WIR153, 2026-07-31, -3 lines above
+    # them from removing two dead OCR-provider try/except blocks + docstring
+    # edits in extraire_releve_bancaire/extraire_justificatif_note_frais;
+    # same NPS/ROI/percentage round() sites, unmoved logic, verified by AST
+    # arg-text diff against origin/main — identical, uniform -3 shift, NOT
+    # new sites — bug-class #34).
+    "backend/django_core/apps/compta/services.py:9655",
+    "backend/django_core/apps/compta/services.py:7599",
     "backend/django_core/apps/compta/services.py:7602",
-    "backend/django_core/apps/compta/services.py:7605",
-    "backend/django_core/apps/compta/services.py:12126",
-    "backend/django_core/apps/compta/services.py:12528",
-    "backend/django_core/apps/compta/services.py:8911",
-    "backend/django_core/apps/compta/services.py:8915",
+    "backend/django_core/apps/compta/services.py:12123",
+    "backend/django_core/apps/compta/services.py:12525",
+    "backend/django_core/apps/compta/services.py:8908",
+    "backend/django_core/apps/compta/services.py:8912",
     # XSAL14 (2026-07-16) — builder.py edits shifted existing display-round
     # sites; re-based 1:1 (premium engine, sanctioned rounding).
     "backend/django_core/apps/ventes/quote_engine/builder.py:1285",

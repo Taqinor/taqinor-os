@@ -3,9 +3,14 @@ import { Check, X, ClipboardCheck, AlertTriangle, PlusCircle, RefreshCw } from '
 import adsengineApi from './adsengineApi'
 import {
   actionTypeLabel, budgetDiff, actionCreative, formatMAD, REJECTION_REASONS,
-  actionWarnings, editCopyDiff,
+  actionWarnings, editCopyDiff, emptyGrid,
 } from './adsengine'
 import EditCopyComposer from './EditCopyComposer'
+// WIR63 — grille dayparting (ADSDEEP36), montée dans ManualActionComposer.jsx
+// (composeur) mais jamais côté REVUE : une carte `set_schedule` n'affichait
+// que le libellé générique, sans montrer l'artefact réel (la grille horaire
+// elle-même) comme le fait déjà `editCopyDiff` pour EDIT_COPY.
+import DaypartingGrid from './DaypartingGrid'
 // PUB10 — la console montrait Approuver/Rejeter à tout `responsable` alors que
 // le back exige `adsengine_approve` (permission DISTINCTE de proposer,
 // ENG19) — découverte en 403 seulement. Masque/grise les contrôles.
@@ -32,6 +37,20 @@ function isTypingTarget(el) {
   if (!el) return false
   if (TYPING_TAGS.has(el.tagName)) return true
   return !!el.isContentEditable
+}
+
+// WIR63 — miroir de `editCopyDiff` (adsengine.js) pour `kind==='set_schedule'`
+// (ADSDEEP36) : le payload de `propose_native_schedule` (services.py) ne porte
+// QUE la grille PROPOSÉE (`payload.grid`) — aucun snapshot "avant" n'est
+// capturé côté backend à la proposition. L'« avant » affiché est donc le
+// défaut Meta DOCUMENTÉ (aucun horaire posé = diffusion 24/7 autorisée,
+// `dayparting.empty_grid` côté backend / `emptyGrid()` ici) — jamais une
+// valeur inventée, exactement la même grille que verrait un ad set neuf.
+function daypartingDiff(action) {
+  if (!action || action.type !== 'set_schedule') return null
+  const grid = action.payload?.grid
+  if (!grid) return null
+  return { before: emptyGrid(), after: grid }
 }
 
 // PUB41 — sondage doux (poll_ms) de la boîte d'approbation : l'écran-vaisseau-
@@ -288,6 +307,7 @@ export default function ApprovalsScreen() {
                 const creative = actionCreative(a)
                 const warnings = actionWarnings(a)
                 const copyDiff = editCopyDiff(a)
+                const daypart = daypartingDiff(a)
                 // PUB51 — carte visuellement focalisée pour la navigation J/K.
                 const focused = i === focusedIndex
                 return (
@@ -363,6 +383,28 @@ export default function ApprovalsScreen() {
                             <div data-testid="ae-edit-copy-after">
                               <strong style={{ fontSize: '0.8rem', color: '#64748b' }}>Proposé</strong>
                               <p style={{ margin: '0.2rem 0' }}>{copyDiff.after.body || '—'}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* WIR63 — avant/après (kind set_schedule, ADSDEEP36) : grille
+                            horaire LECTURE SEULE, même patron 2-colonnes que le diff
+                            EDIT_COPY ci-dessus. */}
+                        {daypart && (
+                          <div className="ae-dayparting-diff" data-testid="ae-dayparting-diff"
+                            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem',
+                              background: '#f8fafc', padding: '0.6rem', borderRadius: 6, margin: '0.5rem 0' }}>
+                            <div data-testid="ae-dayparting-before">
+                              <strong style={{ fontSize: '0.8rem', color: '#64748b' }}>Actuel (défaut 24/7)</strong>
+                              <div style={{ marginTop: '0.3rem', overflowX: 'auto' }}>
+                                <DaypartingGrid value={daypart.before} readOnly />
+                              </div>
+                            </div>
+                            <div data-testid="ae-dayparting-after">
+                              <strong style={{ fontSize: '0.8rem', color: '#64748b' }}>Proposé</strong>
+                              <div style={{ marginTop: '0.3rem', overflowX: 'auto' }}>
+                                <DaypartingGrid value={daypart.after} readOnly />
+                              </div>
                             </div>
                           </div>
                         )}

@@ -7,6 +7,7 @@ côté serveur, jamais depuis le corps de la requête.
 """
 from django.utils import timezone
 
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework import authentication, exceptions, permissions
 from rest_framework.throttling import SimpleRateThrottle
 
@@ -108,3 +109,25 @@ class ApiKeyRateThrottle(SimpleRateThrottle):
         if not isinstance(api_key, ApiKey):
             return None  # non throttlé ici
         return self.cache_format % {'scope': self.scope, 'ident': api_key.pk}
+
+
+class ApiKeyAuthenticationScheme(OpenApiAuthenticationExtension):
+    """YAPIC6 — décrit `ApiKeyAuthentication` dans le schéma OpenAPI.
+
+    Même raison que `CookieJWTAuthenticationScheme` (authentication/
+    cookie_auth.py) : sans extension, drf-spectacular émet « could not resolve
+    authenticator » sur chaque vue publique et n'expose aucun `securitySchemes`.
+    Définie dans ce module pour être enregistrée dès que l'authenticator est
+    chargé.
+    """
+
+    target_class = 'apps.publicapi.auth.ApiKeyAuthentication'
+    name = 'publicApiKey'
+
+    def get_security_definition(self, auto_schema):
+        return {
+            'type': 'apiKey',
+            'in': 'header',
+            'name': 'Authorization',
+            'description': f'En-tête `Authorization: {AUTH_KEYWORD} <clé>`.',
+        }

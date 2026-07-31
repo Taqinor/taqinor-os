@@ -170,3 +170,38 @@ def tarif_applicable(acte, convention):
         'taux_prise_charge_pct': 0,
         'source': 'base',
     }
+
+
+def libelle_rh_praticien(company, employe_id):
+    """WIR92 — libellé RH résolu d'un praticien lié à un dossier employé
+    (``Praticien.employe_id``, string-ref vers ``rh.DossierEmploye``).
+
+    Import LOCAL de ``apps.rh.selectors`` (cross-app, jamais ``rh.models``
+    direct) — pattern déjà établi par
+    ``apps.flotte.selectors.divergences_permis_flotte_rh``. Si ``employe_id``
+    est vide, ou si l'app ``rh``/le dossier est indisponible, renvoie
+    ``None`` : un praticien sans lien RH garde un comportement strictement
+    inchangé (jamais de régression).
+
+    Renvoie une chaîne ``"Nom Prénom — Poste"`` (poste omis si vide), ou
+    ``None``.
+    """
+    if not employe_id:
+        return None
+    try:
+        from apps.rh import selectors as rh_selectors
+    except Exception:  # pragma: no cover - app rh indisponible
+        return None
+
+    try:
+        fiche = rh_selectors.fiche_identite_employe(company, employe_id)
+    except Exception:  # pragma: no cover - lecture cross-app défensive
+        return None
+    if fiche is None:
+        return None
+
+    nom_complet = f"{fiche.get('nom', '')} {fiche.get('prenom', '')}".strip()
+    poste = fiche.get('poste') or ''
+    if poste:
+        return f'{nom_complet} — {poste}'
+    return nom_complet

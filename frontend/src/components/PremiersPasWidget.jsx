@@ -1,8 +1,18 @@
-// NTDMO13 — widget « Premiers pas » du Dashboard.
+// NTDMO13/WIR59 — widget « Premiers pas » du Dashboard.
 // Carte compacte listant la checklist d'onboarding de l'utilisateur avec une
 // barre de progression (« Premiers pas — 2/6 »). Autonome : se masque dès que
 // tout est fait (100 %) ou après « Tout ignorer ». Progression persistée
 // côté serveur (company + user), donc stable après déconnexion/reconnexion.
+// SEUL tracker d'onboarding du Dashboard (WIR59 — voir la note dans
+// pages/Dashboard.jsx : l'ancienne bannière VX36 à compteur discordant a été
+// retirée).
+//
+// WIR59 — un item sans `event_key` (configurer_societe/import_clients/
+// inviter_coequipier) n'a AUCUN déclencheur automatique : il gagne un bouton
+// « Marquer comme fait » manuel (alternative explicite, cf.
+// apps/onboarding/services.py). Un item AVEC `event_key` se coche tout seul
+// (devis/paiement/chantier) — pas de bouton, pour ne pas suggérer une action
+// inutile.
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Check, ChevronRight, X } from 'lucide-react'
@@ -34,6 +44,13 @@ export default function PremiersPasWidget() {
       const r = await api.post('/onboarding/progress/ignorer-tout/')
       setResume(r.data)
     } catch { /* silencieux */ }
+  }
+  // WIR59 — coche manuellement un item sans event_key.
+  const markDone = async (id) => {
+    try {
+      const r = await api.post(`/onboarding/progress/${id}/marquer-fait/`)
+      setResume(r.data)
+    } catch { /* silencieux — non bloquant */ }
   }
 
   return (
@@ -94,6 +111,17 @@ export default function PremiersPasWidget() {
               {it.lien && !it.fait && (
                 <ChevronRight
                   className="size-3.5 text-muted-foreground" aria-hidden="true" />
+              )}
+              {/* WIR59 — aucun event_key : pas de déclencheur automatique,
+                  action manuelle explicite. */}
+              {!it.fait && !it.event_key && (
+                <button
+                  type="button"
+                  onClick={() => markDone(it.id)}
+                  className="shrink-0 text-[11px] font-medium text-primary hover:underline"
+                >
+                  Marquer comme fait
+                </button>
               )}
               {!it.fait && (
                 <button

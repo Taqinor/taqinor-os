@@ -6,12 +6,18 @@ import { configureStore } from '@reduxjs/toolkit'
 
 // WIR156 — la liste interroge maintenant messagesApi.status (mon statut +
 // statuts des collègues) au montage : on le stub pour éviter tout réseau.
-const { statusMe, statusColleagues, setStatus, clearStatus, setDnd } = vi.hoisted(() => ({
+// WIR155 — ajoute les onglets Fils/Favoris (threads.listFollowed / listBookmarks).
+const {
+  statusMe, statusColleagues, setStatus, clearStatus, setDnd,
+  listFollowed, listBookmarks,
+} = vi.hoisted(() => ({
   statusMe: vi.fn(() => Promise.resolve({ data: { status_emoji: '', status_text: '', is_dnd: false } })),
   statusColleagues: vi.fn(() => Promise.resolve({ data: [] })),
   setStatus: vi.fn((d) => Promise.resolve({ data: { ...d, is_dnd: false } })),
   clearStatus: vi.fn(() => Promise.resolve({ data: { status_emoji: '', status_text: '', is_dnd: false } })),
   setDnd: vi.fn(() => Promise.resolve({ data: { is_dnd: true } })),
+  listFollowed: vi.fn(() => Promise.resolve({ data: [] })),
+  listBookmarks: vi.fn(() => Promise.resolve({ data: [] })),
 }))
 vi.mock('../../api/messagesApi', () => ({
   default: {
@@ -19,6 +25,8 @@ vi.mock('../../api/messagesApi', () => ({
       me: statusMe, colleagues: statusColleagues,
       setStatus, clear: clearStatus, setDnd,
     },
+    threads: { listFollowed },
+    listBookmarks,
   },
 }))
 
@@ -124,5 +132,48 @@ describe('ConversationList — WIR156 (statut + DND + présence collègues)', ()
     )
     expect(await screen.findByLabelText('Statut du collègue')).toHaveTextContent('🌴')
     expect(screen.getAllByLabelText('Ne pas déranger').length).toBeGreaterThan(0)
+  })
+})
+
+describe('ConversationList — WIR155 (onglets Fils / Favoris)', () => {
+  it('l’onglet Fils liste les fils suivis et ouvre leur conversation', async () => {
+    listFollowed.mockResolvedValueOnce({
+      data: [{ root_message_id: 1, conversation_id: 1, root_preview: 'Question du fil', reply_count: 3, unread: 2 }],
+    })
+    const onSelect = vi.fn()
+    render(
+      <Provider store={storeWith(convs)}>
+        <ConversationList currentUserId={9} onSelect={onSelect} />
+      </Provider>,
+    )
+    await userEvent.click(screen.getByRole('tab', { name: /Fils/ }))
+    await userEvent.click(await screen.findByText('Question du fil'))
+    expect(onSelect).toHaveBeenCalledWith(1)
+  })
+
+  it('l’onglet Fils affiche un état vide sans fil suivi', async () => {
+    listFollowed.mockResolvedValueOnce({ data: [] })
+    render(
+      <Provider store={storeWith(convs)}>
+        <ConversationList currentUserId={9} />
+      </Provider>,
+    )
+    await userEvent.click(screen.getByRole('tab', { name: /Fils/ }))
+    expect(await screen.findByText('Aucun fil suivi')).toBeInTheDocument()
+  })
+
+  it('l’onglet Favoris liste les messages enregistrés et ouvre leur conversation', async () => {
+    listBookmarks.mockResolvedValueOnce({
+      data: [{ id: 1, message_detail: { conversation: 2, body: 'À relire', created_at: '2026-06-21T10:00:00Z' } }],
+    })
+    const onSelect = vi.fn()
+    render(
+      <Provider store={storeWith(convs)}>
+        <ConversationList currentUserId={9} onSelect={onSelect} />
+      </Provider>,
+    )
+    await userEvent.click(screen.getByRole('tab', { name: /Favoris/ }))
+    await userEvent.click(await screen.findByText('À relire'))
+    expect(onSelect).toHaveBeenCalledWith(2)
   })
 })

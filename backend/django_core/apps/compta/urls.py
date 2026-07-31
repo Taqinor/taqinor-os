@@ -86,6 +86,8 @@ from .views import (
     LigneImmobilisationEnCoursViewSet,
     ContratRevenuViewSet, ObligationPerformanceViewSet,
     EcheancierReconnaissanceViewSet,
+    ModeleEcritureViewSet, LigneModeleEcritureViewSet,
+    AbonnementEcritureViewSet,
 )
 
 router = DefaultRouter()
@@ -266,6 +268,10 @@ router.register(r'lignes-immobilisation-en-cours',
 router.register(r'contrats-revenu', ContratRevenuViewSet)
 router.register(r'obligations-performance', ObligationPerformanceViewSet)
 router.register(r'echeances-reconnaissance', EcheancierReconnaissanceViewSet)
+# ── XACC8 / WIR107 — Modèles d'écriture & écritures récurrentes ────────────
+router.register(r'modeles-ecriture', ModeleEcritureViewSet)
+router.register(r'lignes-modele-ecriture', LigneModeleEcritureViewSet)
+router.register(r'abonnements-ecriture', AbonnementEcritureViewSet)
 
 urlpatterns = [
     # XMKT30 (partiel) — calendrier marketing agrégé (campagnes + posts

@@ -2915,6 +2915,30 @@ def ribs_par_employe(company, employe_ids):
     return {d.id: (d.rib or '') for d in qs}
 
 
+def cnss_par_employe(company, employe_ids):
+    """Mappe ``employe_id -> cnss`` du dossier RH (WIR89, cross-app, lecture seule).
+
+    Symétrique de :func:`ribs_par_employe` (ARC25) pour le numéro CNSS : la paie
+    lit le numéro CNSS de RÉFÉRENCE porté par la fiche RH maître
+    (``DossierEmploye.cnss``) pour un groupe d'employés, SANS jamais importer
+    ``rh.models`` — afin de CONTRÔLER (jamais fusionner) la cohérence avec le
+    ``ProfilPaie.numero_cnss`` de paie. Le numéro est renvoyé BRUT (tel que
+    saisi) ; la normalisation de comparaison reste à la charge de l'appelant.
+
+    Toujours scopé société. Un ``employe_id`` inconnu / hors société / hors
+    ``employe_ids`` est absent du dict renvoyé. Renvoie ``{}`` si la société ou
+    la liste manque.
+    """
+    if company is None or not employe_ids:
+        return {}
+    qs = (
+        DossierEmploye.objects
+        .filter(company=company, id__in=list(employe_ids))
+        .only('id', 'cnss')
+    )
+    return {d.id: (d.cnss or '') for d in qs}
+
+
 # ── ARC40 — provider KPI pour le reporting fédéré ────────────────────────────
 
 def kpi_effectifs_absences(company):

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Gauge, Sun } from 'lucide-react'
+import { AlertTriangle, Gauge, Leaf, Sun } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
-import { Badge, Card, DataTable, EmptyState, Segmented } from '../../ui'
+import { Badge, Card, DataTable, EmptyState, IconButton, Segmented } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { formatNumber, formatPercent, timeAgo } from '../../lib/format'
@@ -195,9 +195,22 @@ export default function FleetPage() {
           </Badge>
         )),
     },
+    {
+      id: 'actions', header: '', width: 60, align: 'right',
+      accessor: () => '',
+      cell: (v, r) => (
+        <IconButton variant="ghost" label="Détail CO₂" onClick={() => goToCo2(r.installation)}>
+          <Leaf />
+        </IconButton>
+      ),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- goToCo2 recréé par rendu (navigate stable)
   ], [])
 
   const goToAnalytics = () => navigate('/production/analytique')
+  // WIR122 — drill-down CO₂ par système : Co2Page.jsx n'affichait que
+  // l'agrégat flotte (getCo2Fleet), jamais le détail d'UN système précis.
+  const goToCo2 = (installationId) => navigate(`/production/co2?installation=${installationId}`)
 
   return (
     <div className="page">
@@ -284,9 +297,18 @@ export default function FleetPage() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-medium">{s.reference || `#${s.installation}`}</span>
-                    <Badge tone={stale ? 'warning' : badgeTone}>
-                      {stale ? 'Périmé' : (s.pr_pct == null ? '—' : formatPercent(s.pr_pct, { decimals: 1 }))}
-                    </Badge>
+                    <div className="flex items-center gap-1">
+                      <Badge tone={stale ? 'warning' : badgeTone}>
+                        {stale ? 'Périmé' : (s.pr_pct == null ? '—' : formatPercent(s.pr_pct, { decimals: 1 }))}
+                      </Badge>
+                      <IconButton
+                        variant="ghost"
+                        label="Détail CO₂"
+                        onClick={(e) => { e.stopPropagation(); goToCo2(s.installation) }}
+                      >
+                        <Leaf />
+                      </IconButton>
+                    </div>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                     <div>

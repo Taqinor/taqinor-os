@@ -1,20 +1,267 @@
 import { useMemo, useState } from 'react'
 import {
   ShieldAlert, ListChecks, CheckCircle2, QrCode, Plus, Wrench, AlertOctagon,
+  Lock, LockOpen, XCircle,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import {
   Tabs, TabsList, TabsTrigger, TabsContent, Badge, Dialog, DialogContent,
-  DialogTitle, Button, Input, Label, toast,
+  DialogTitle, Button, Input, Label, Textarea, toast,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { formatDate } from '../../lib/format'
 import { QhseResourceList } from './QhseResourceList'
-import { useQhseList } from './useQhseList'
+import { useQhseList, rowsFrom } from './useQhseList'
 import {
   EvalRisqueStatutPill, PermisStatutPill, LotoStatutPill,
   IncidentStatutPill, IncidentTypePill, GravitePill, CnssStatutPill,
 } from './qhsePills'
+import { INCIDENT_TYPES, GRAVITE } from './qhseStatus'
+
+// WIR126 — miroir de `PermisTravail.TypePermis` (backend, apps/qhse/models.py).
+const TYPE_PERMIS_OPTIONS = [
+  { value: 'hauteur', label: 'Travail en hauteur' },
+  { value: 'consignation_elec', label: 'Consignation électrique' },
+  { value: 'point_chaud', label: 'Point chaud (soudure / flamme)' },
+  { value: 'espace_confine', label: 'Espace confiné' },
+  { value: 'autre', label: 'Autre' },
+]
+
+// WIR126 — création d'un permis de travail (QHSE23). Le `statut` est en
+// lecture seule au CRUD (brouillon par défaut côté serveur) : piloté ensuite
+// par les actions `valider`/`cloturer`.
+function CreerPermisDialog({ onClose, onCreated }) {
+  const [titre, setTitre] = useState('')
+  const [typePermis, setTypePermis] = useState('hauteur')
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [mesures, setMesures] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!titre.trim()) { toast.error('Le titre est requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.permisTravail.create({
+        titre: titre.trim(),
+        type_permis: typePermis,
+        date_debut: dateDebut || null,
+        date_fin: dateFin || null,
+        mesures_prevention: mesures.trim(),
+      })
+      toast.success('Permis de travail créé (brouillon).')
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Nouveau permis de travail</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Titre</Label>
+            <Input aria-label="Titre" value={titre} onChange={(e) => setTitre(e.target.value)} />
+          </div>
+          <div>
+            <Label>Type de permis</Label>
+            <Select value={typePermis} onValueChange={setTypePermis}>
+              <SelectTrigger aria-label="Type de permis"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TYPE_PERMIS_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Début de validité</Label>
+              <Input aria-label="Début de validité" type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+            </div>
+            <div>
+              <Label>Fin de validité</Label>
+              <Input aria-label="Fin de validité" type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label>Mesures de prévention</Label>
+            <Textarea aria-label="Mesures de prévention" value={mesures} onChange={(e) => setMesures(e.target.value)} rows={3} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Création…' : 'Créer'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR126 — création d'une consignation LOTO (QHSE24), rattachée à un permis
+// existant (typiquement `consignation_elec`). Le statut initial `consignee`
+// est posé côté serveur.
+function CreerLotoDialog({ permis, onClose, onCreated }) {
+  const [permisId, setPermisId] = useState(permis[0]?.id ? String(permis[0].id) : '')
+  const [equipement, setEquipement] = useState('')
+  const [pointConsignation, setPointConsignation] = useState('')
+  const [consignateur, setConsignateur] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!permisId) { toast.error('Un permis de travail est requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.consignationsLoto.create({
+        permis: Number(permisId),
+        equipement: equipement.trim(),
+        point_consignation: pointConsignation.trim(),
+        consignateur: consignateur.trim(),
+      })
+      toast.success('Consignation LOTO enregistrée.')
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Nouvelle consignation LOTO</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Permis de travail</Label>
+            <Select value={permisId} onValueChange={setPermisId}>
+              <SelectTrigger aria-label="Permis de travail"><SelectValue placeholder="Choisir un permis…" /></SelectTrigger>
+              <SelectContent>
+                {permis.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.reference || `PT-${p.id}`} — {p.titre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Équipement</Label>
+            <Input aria-label="Équipement" value={equipement} onChange={(e) => setEquipement(e.target.value)} />
+          </div>
+          <div>
+            <Label>Point de consignation</Label>
+            <Input aria-label="Point de consignation" value={pointConsignation} onChange={(e) => setPointConsignation(e.target.value)} />
+          </div>
+          <div>
+            <Label>Consignateur</Label>
+            <Input aria-label="Consignateur" value={consignateur} onChange={(e) => setConsignateur(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving || permis.length === 0}>
+              {saving ? 'Enregistrement…' : 'Créer'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR126 — création d'un incident HSE (QHSE29). La création à elle seule
+// déclenche la chaîne d'escalade chatter/notification déjà testée côté
+// serveur (aucune action serveur supplémentaire à câbler ici).
+function CreerIncidentDialog({ onClose, onCreated }) {
+  const [titre, setTitre] = useState('')
+  const [typeIncident, setTypeIncident] = useState('incident')
+  const [gravite, setGravite] = useState('mineure')
+  const [dateIncident, setDateIncident] = useState('')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!titre.trim()) { toast.error('Le titre est requis.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.incidents.create({
+        titre: titre.trim(),
+        type_incident: typeIncident,
+        gravite,
+        date_incident: dateIncident || null,
+        description: description.trim(),
+      })
+      toast.success('Incident déclaré.')
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Déclarer un incident</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Titre</Label>
+            <Input aria-label="Titre" value={titre} onChange={(e) => setTitre(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Type d’événement</Label>
+              <Select value={typeIncident} onValueChange={setTypeIncident}>
+                <SelectTrigger aria-label="Type d’événement"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(INCIDENT_TYPES).map(([value, { label }]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Gravité</Label>
+              <Select value={gravite} onValueChange={setGravite}>
+                <SelectTrigger aria-label="Gravité"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(GRAVITE).map(([value, { label }]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label>Date de l’événement</Label>
+            <Input aria-label="Date de l’événement" type="date" value={dateIncident} onChange={(e) => setDateIncident(e.target.value)} />
+          </div>
+          <div>
+            <Label>Description</Label>
+            <Textarea aria-label="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Déclaration…' : 'Déclarer'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 // XQHS16 — création d'un lien de signalement QR public par chantier.
 function CreerLienSignalementDialog({ onClose, onCreated }) {
@@ -152,6 +399,55 @@ export default function Risques() {
   const [cnssChecklist, setCnssChecklist] = useState(null)
   const [creatingLien, setCreatingLien] = useState(false)
   const [liensReload, setLiensReload] = useState(0)
+
+  // WIR126 — Permis & LOTO, Incidents : création + actions de cycle de vie.
+  const [creatingPermis, setCreatingPermis] = useState(false)
+  const [permisReload, setPermisReload] = useState(0)
+  const [creatingLoto, setCreatingLoto] = useState(false)
+  const [lotoPermisOptions, setLotoPermisOptions] = useState([])
+  const [lotoReload, setLotoReload] = useState(0)
+  const [creatingIncident, setCreatingIncident] = useState(false)
+  const [incidentsReload, setIncidentsReload] = useState(0)
+
+  async function ouvrirCreationLoto() {
+    try {
+      const res = await qhseApi.permisTravail.list()
+      setLotoPermisOptions(rowsFrom(res))
+    } catch {
+      setLotoPermisOptions([])
+    }
+    setCreatingLoto(true)
+  }
+
+  async function validerPermis(p) {
+    try {
+      await qhseApi.permisTravail.valider(p.id)
+      toast.success('Permis validé.')
+      setPermisReload((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Validation impossible.')
+    }
+  }
+
+  async function cloturerPermis(p) {
+    try {
+      await qhseApi.permisTravail.cloturer(p.id)
+      toast.success('Permis clôturé.')
+      setPermisReload((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Clôture impossible.')
+    }
+  }
+
+  async function deconsignerLoto(l) {
+    try {
+      await qhseApi.consignationsLoto.deconsigner(l.id)
+      toast.success('Consignation déconsignée.')
+      setLotoReload((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Déconsignation impossible.')
+    }
+  }
 
   const evalCols = useMemo(() => [
     { id: 'reference', header: 'Réf.', width: 130, accessor: (r) => r.reference },
@@ -363,12 +659,37 @@ export default function Risques() {
             fetcher={() => qhseApi.permisTravail.list()}
             columns={permisCols}
             exportName="qhse-permis-travail"
+            deps={[permisReload]}
+            actions={
+              <Button onClick={() => setCreatingPermis(true)}>
+                <Plus size={16} /> Nouveau permis
+              </Button>
+            }
+            rowActions={(r) => [
+              ...(r.statut === 'brouillon'
+                ? [{ id: 'valider', label: 'Valider', icon: CheckCircle2, onClick: () => validerPermis(r) }]
+                : []),
+              ...(r.statut === 'brouillon' || r.statut === 'valide'
+                ? [{ id: 'cloturer', label: 'Clôturer', icon: XCircle, onClick: () => cloturerPermis(r) }]
+                : []),
+            ]}
           />
           <QhseResourceList
             title="Consignations LOTO"
             fetcher={() => qhseApi.consignationsLoto.list()}
             columns={lotoCols}
             exportName="qhse-loto"
+            deps={[lotoReload]}
+            actions={
+              <Button onClick={ouvrirCreationLoto}>
+                <Lock size={16} /> Nouvelle consignation
+              </Button>
+            }
+            rowActions={(r) => (
+              r.statut === 'consignee'
+                ? [{ id: 'deconsigner', label: 'Déconsigner', icon: LockOpen, onClick: () => deconsignerLoto(r) }]
+                : []
+            )}
           />
         </TabsContent>
 
@@ -408,6 +729,12 @@ export default function Risques() {
             fetcher={() => qhseApi.incidents.list()}
             columns={incidentsCols}
             exportName="qhse-incidents"
+            deps={[incidentsReload]}
+            actions={
+              <Button onClick={() => setCreatingIncident(true)}>
+                <Plus size={16} /> Déclarer un incident
+              </Button>
+            }
           />
           <QhseResourceList
             title="Déclarations CNSS"
@@ -428,6 +755,19 @@ export default function Risques() {
             fetcher={() => qhseApi.analysesIncident.list()}
             columns={analysesCols}
             exportName="qhse-analyses-incident"
+            rowActions={(r) => [
+              {
+                id: 'capa', label: 'Générer CAPA', icon: Wrench,
+                onClick: async () => {
+                  try {
+                    await qhseApi.analysesIncident.genererCapa(r.id)
+                    toast.success('CAPA générée depuis l’analyse.')
+                  } catch (err) {
+                    toast.error(err?.response?.data?.detail ?? 'Génération impossible.')
+                  }
+                },
+              },
+            ]}
           />
         </TabsContent>
 
@@ -503,6 +843,28 @@ export default function Risques() {
         <EtapesDeclarationDialog
           declaration={cnssChecklist}
           onClose={() => setCnssChecklist(null)}
+        />
+      )}
+
+      {creatingPermis && (
+        <CreerPermisDialog
+          onClose={() => setCreatingPermis(false)}
+          onCreated={() => setPermisReload((n) => n + 1)}
+        />
+      )}
+
+      {creatingLoto && (
+        <CreerLotoDialog
+          permis={lotoPermisOptions}
+          onClose={() => setCreatingLoto(false)}
+          onCreated={() => setLotoReload((n) => n + 1)}
+        />
+      )}
+
+      {creatingIncident && (
+        <CreerIncidentDialog
+          onClose={() => setCreatingIncident(false)}
+          onCreated={() => setIncidentsReload((n) => n + 1)}
         />
       )}
     </div>

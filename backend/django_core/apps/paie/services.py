@@ -2944,6 +2944,55 @@ def controler_coherence_rib(periode):
     return divergences
 
 
+def controler_coherence_cnss(periode):
+    """Contrôle croisé n° CNSS paie ↔ RH d'une période (WIR89, lecture seule).
+
+    Symétrique de :func:`controler_coherence_rib` (ARC25) pour le numéro CNSS.
+    Lit les divergences via ``apps.paie.selectors.divergences_cnss_periode``
+    (``ProfilPaie.numero_cnss`` vs ``rh.DossierEmploye.cnss`` — CONTRÔLE, jamais
+    fusion) et, s'il y en a, émet UNE notification interne vers les
+    responsables paie (``apps.notifications.resolve_recipients`` → repli
+    Responsable/Admin) pour qu'un humain tranche. AUCUNE divergence → SILENCE
+    (aucune notification).
+
+    Best-effort et STRICTEMENT non bloquant : toute erreur (lecture ou
+    notification) est avalée — un échec de contrôle ne doit JAMAIS empêcher la
+    déclaration CNSS. Renvoie la liste des divergences détectées (vide si tout
+    concorde ou en cas d'erreur).
+    """
+    from . import selectors as paie_selectors
+
+    company = getattr(periode, 'company', None)
+    if company is None:
+        return []
+    try:
+        divergences = paie_selectors.divergences_cnss_periode(periode)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        return []
+    if not divergences:
+        return []
+
+    try:
+        from apps.notifications import services as notif_services
+
+        recipients = notif_services.resolve_recipients(
+            company, 'paie_cnss_divergence')
+        nb = len(divergences)
+        titre = (
+            'Divergence n° CNSS paie ↔ RH '
+            f'({periode.mois:02d}/{periode.annee})')
+        corps = (
+            f'{nb} salarié(s) affilié(s) CNSS ont un n° CNSS de paie '
+            'différent du n° CNSS de leur fiche RH. À vérifier avant la '
+            'déclaration (aucune modification automatique).')
+        notif_services.notify_many(
+            recipients, 'paie_cnss_divergence',
+            title=titre, body=corps, company=company)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
+    return divergences
+
+
 def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
                            compte_emetteur=None):
     """Génère (ou régénère) l'ordre de virement d'une période (PAIE30).
@@ -3396,6 +3445,11 @@ def declaration_cnss(periode):
          'nombre_salaries'}
     """
     from .models import BulletinPaie
+
+    try:
+        controler_coherence_cnss(periode)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        pass
 
     le_jour = date(periode.annee, periode.mois, 1)
     parametre = parametre_en_vigueur(periode.company, le_jour)

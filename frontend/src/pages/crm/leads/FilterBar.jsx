@@ -24,6 +24,11 @@ const ALL = '__all'
 const toSel = (v) => (v ? v : ALL)
 const fromSel = (v) => (v === ALL ? '' : v)
 
+// LB36 — « aucun filtre actif du tout » : source UNIQUE, partagée par la
+// détection d'un « Effacer les filtres » (resync/annulation du débounce) et
+// par `isDirty` (affichage du bouton) — jamais deux règles de comparaison.
+const isAllCleared = (f) => Object.keys(EMPTY_FILTERS).every((k) => f[k] === EMPTY_FILTERS[k])
+
 // Barre de recherche/filtres partagée par les quatre vues — LB43 (retour
 // fondateur) : anatomie Odoo 17 vérifiée à la source (SearchBar +
 // SearchBarMenu). UNE ligne : recherche → « facettes » des filtres actifs
@@ -52,6 +57,24 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
   if (prevQ !== filters.q) {
     setPrevQ(filters.q)
     setSearchLocal(filters.q)
+  }
+  // LB36 — « Effacer les filtres » PENDANT le débounce ressuscitait la
+  // recherche : quand l'effacement laisse `filters.q` INCHANGÉ (il était déjà
+  // vide, seul un autre filtre était posé), le resync ci-dessus ne se
+  // déclenche jamais — et le timer en vol ré-appliquait le texte tapé APRÈS
+  // l'effacement. On détecte donc la RÉINITIALISATION COMPLÈTE (tous les
+  // filtres ramenés à EMPTY_FILTERS) et on ramène le texte local ; comme
+  // `searchLocal` est la SEULE dépendance de l'effet de débounce, React en
+  // exécute le cleanup et le `clearTimeout` ANNULE le timer en vol (le
+  // nouveau passage sort immédiatement, searchLocal === filters.q). Toujours
+  // le motif « adjust state during render », jamais un setState-in-effect.
+  // Gardé sur la RÉINITIALISATION seule (et non sur tout changement de
+  // `filters`) pour ne jamais effacer une frappe en cours quand un AUTRE
+  // filtre bouge, ni sur notre propre commit débouncé (qui pose `q`).
+  const [prevFilters, setPrevFilters] = useState(filters)
+  if (prevFilters !== filters) {
+    setPrevFilters(filters)
+    if (isAllCleared(filters) && searchLocal !== filters.q) setSearchLocal(filters.q)
   }
   useEffect(() => {
     if (searchLocal === filters.q) return undefined
@@ -82,7 +105,16 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
   const setPerdus = (value) => setFilters({ ...filters, perdus: value })
   const setArchived = (value) => setFilters({ ...filters, archived: value })
 
-  const isDirty = Object.keys(EMPTY_FILTERS).some(k => filters[k] !== EMPTY_FILTERS[k])
+  const isDirty = !isAllCleared(filters)
+
+  // LB36 — l'effacement local vide AUSSI le texte de recherche tout de suite :
+  // quand `filters` est DÉJÀ EMPTY_FILTERS (même référence), React court-circuite
+  // le `setFilters` et FilterBar ne re-rend même pas — le resync ci-dessus ne
+  // pourrait alors rien annuler. Un seul chemin d'effacement dans la barre.
+  const clearAll = () => {
+    setSearchLocal(EMPTY_FILTERS.q)
+    setFilters(EMPTY_FILTERS)
+  }
 
   const [open, setOpen] = useState(false)
   // Mobile : la recherche est une icône qui déplie l'input pleine largeur
@@ -287,7 +319,7 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
           variant="link"
           size="sm"
           className="fb-clear"
-          onClick={() => setFilters(EMPTY_FILTERS)}
+          onClick={clearAll}
         >
           Effacer les filtres
         </Button>

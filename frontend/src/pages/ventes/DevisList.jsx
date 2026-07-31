@@ -38,7 +38,8 @@ import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
-import { useSavedViews } from '../../hooks/useSavedViews'
+import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
+import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useRotatingLabel } from '../../hooks/useRotatingLabel'
 import { useHasPermission, useCanValiderVente, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -54,6 +55,8 @@ import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import DealSignedCelebration from '../../ui/DealSignedCelebration'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
+// WIR96 — panneau « Suivi du partage » (ouvertures du lien + relances).
+import DevisSuiviPartagePanel from './DevisSuiviPartagePanel'
 import { StateBlock } from '../../components/StateBlock'
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
 
@@ -88,7 +91,8 @@ function DevisTableSkeleton() {
   )
 }
 
-const DL_SAVED_VIEWS_KEY = 'taqinor.ventes.devis.savedViews'
+// WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
+const DL_ECRAN = 'ventes.devis'
 
 // VX132 — chargement long CONSCIENT : la génération du devis PDF premium est
 // la latence connue la plus longue de l'app (schémas, produits, chiffrage) ;
@@ -346,6 +350,7 @@ function DevisRow({ d, ctx }) {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
@@ -354,6 +359,7 @@ function DevisRow({ d, ctx }) {
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
+    handleProformaPdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   } = ctx
   // Expiration calculée à la volée (T7) : un devis en attente dont la
@@ -892,6 +898,15 @@ function DevisRow({ d, ctx }) {
               <DropdownMenuItem onSelect={() => toggleHistorique(d.id)}>
                 {histoOpenId === d.id ? "Masquer l'historique" : "Historique des modifications"}
               </DropdownMenuItem>
+              {/* WIR103/XFAC10 — proforma PDF (aucun impact comptable). */}
+              <DropdownMenuItem onSelect={() => handleProformaPdf(d)}>
+                Proforma (PDF)
+              </DropdownMenuItem>
+              {/* WIR96 — suivi du partage : « vu le … » (OuverturePartage)
+                  + relances consignées (RelanceDevisAbandonne). */}
+              <DropdownMenuItem onSelect={() => toggleSuiviPartage(d.id)}>
+                {suiviOpenId === d.id ? 'Masquer le suivi du partage' : 'Suivi du partage'}
+              </DropdownMenuItem>
               {/* QX27 — actions historiquement dans « Autres actions » :
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
               {d.is_active && d.statut !== 'brouillon' && (
@@ -1036,6 +1051,23 @@ function DevisRow({ d, ctx }) {
         </td>
       </tr>
     )}
+    {/* WIR96 — Panneau « Suivi du partage » : ouverture du lien de
+        proposition + relances consignées côté marketing. */}
+    {suiviOpenId === d.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-2">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">
+              Suivi du partage — {d.reference}
+            </p>
+            <DevisSuiviPartagePanel
+              data={suiviCache[d.id]}
+              loading={suiviLoadingId === d.id}
+            />
+          </div>
+        </td>
+      </tr>
+    )}
     {/* QG11 — Panneau « Voir le design 3D » : rendu LECTURE
         SEULE du plan de toiture stocké (roof_layout). */}
     {roofOpenId === d.id && (
@@ -1147,6 +1179,24 @@ export default function DevisList() {
     }
   }
 
+  // WIR96 — Panneau « Suivi du partage » : ouverture du lien de proposition
+  // (marketing.OuverturePartage, « vu le … ») + relances consignées
+  // (marketing.RelanceDevisAbandonne). Même patron repliable que l'historique.
+  const [suiviOpenId, setSuiviOpenId] = useState(null)
+  const [suiviCache, setSuiviCache] = useState({})   // id → {ouverture, relances}
+  const [suiviLoadingId, setSuiviLoadingId] = useState(null)
+  const toggleSuiviPartage = (id) => {
+    if (suiviOpenId === id) { setSuiviOpenId(null); return }
+    setSuiviOpenId(id)
+    if (suiviCache[id] === undefined) {
+      setSuiviLoadingId(id)
+      ventesApi.getSuiviPartageDevis(id)
+        .then(res => setSuiviCache(c => ({ ...c, [id]: res.data || null })))
+        .catch(() => setSuiviCache(c => ({ ...c, [id]: null })))
+        .finally(() => setSuiviLoadingId(l => (l === id ? null : l)))
+    }
+  }
+
   // ── Filtre statut + recherche (référence / client) ──
   // QX12 — deep-link ?statut=<key> pré-règle le filtre au montage (liens de
   // notification / Dashboard). Une valeur inconnue retombe sur « tous ».
@@ -1173,15 +1223,20 @@ export default function DevisList() {
   // bouton « voir les versions remplacées » les réaffiche, toujours badgées
   // « Remplacé » + lien vers la version courante.
   const [showSuperseded, setShowSuperseded] = useState(false)
-  // Vues enregistrées (FG11).
-  const { savedViews: devisSavedViews, saveView: saveDevisView, deleteView: deleteDevisView } = useSavedViews(DL_SAVED_VIEWS_KEY)
+  // WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11 :
+  // vues EQUIPE désormais visibles par l'équipe, cf. ViewsManagerPopover).
+  const { createView: createDevisView } = useServerSavedViews(DL_ECRAN)
   const saveCurrentDevisView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
-    saveDevisView(name, { statutFilter, query })
+    const trimmed = (name || '').trim()
+    if (!trimmed) return
+    createDevisView({
+      nom: trimmed, configuration: { statutFilter, query }, visibilite: 'PERSONNELLE',
+    }).catch(() => toast.error('Enregistrement de la vue impossible.'))
   }
-  const applyDevisView = (v) => {
-    if (v.state?.statutFilter !== undefined) setStatutFilter(v.state.statutFilter)
-    if (v.state?.query !== undefined) setQuery(v.state.query)
+  const applyDevisView = (configuration) => {
+    if (configuration?.statutFilter !== undefined) setStatutFilter(configuration.statutFilter)
+    if (configuration?.query !== undefined) setQuery(configuration.query)
   }
 
   // ── Sélection multiple pour génération PDF par lot ──
@@ -1808,6 +1863,18 @@ export default function DevisList() {
     setSelectedIds([])
   }
 
+  // WIR103/XFAC10 — Proforma PDF : document sans aucun impact comptable
+  // (jamais une facture, jamais une écriture). Le backend était complet et
+  // testé mais n'avait AUCUN appelant côté client. Le POST renvoie le PDF.
+  const handleProformaPdf = async (d) => {
+    try {
+      const res = await ventesApi.getProformaPdf(d.id)
+      openPdfBlob(res.data, `Proforma_${d.reference}.pdf`)
+    } catch {
+      toast.error('Proforma indisponible.')
+    }
+  }
+
   const handleTelechargerPdf = async (d) => {
     setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
     try {
@@ -1968,6 +2035,7 @@ export default function DevisList() {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
@@ -1976,6 +2044,7 @@ export default function DevisList() {
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
+    handleProformaPdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   }
 
@@ -2143,23 +2212,11 @@ export default function DevisList() {
               aria-label="Rechercher un devis"
             />
           </div>
-          <div className="lp-saved-views">
+          <div className="flex items-center gap-1.5">
             <Button type="button" variant="link" size="sm" onClick={saveCurrentDevisView}>
               ⭐ Enregistrer cette vue
             </Button>
-            {devisSavedViews.map((v) => (
-              <span key={v.name} className="lp-saved-view-chip">
-                <button type="button" className="lp-saved-view-apply"
-                        onClick={() => applyDevisView(v)} title="Appliquer cette vue">
-                  {v.name}
-                </button>
-                <button type="button" className="lp-saved-view-del"
-                        onClick={() => deleteDevisView(v.name)}
-                        aria-label={`Supprimer la vue ${v.name}`}>
-                  ✕
-                </button>
-              </span>
-            ))}
+            <ViewsManagerPopover ecran={DL_ECRAN} onApply={applyDevisView} />
           </div>
           {/* U7 — bascule pour réafficher les révisions remplacées (masquées
               par défaut). N'apparaît que s'il y en a au moins une. */}

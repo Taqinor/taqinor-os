@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useDispatch } from 'react-redux'
-import { Users, UserMinus, LogOut, Check, Pencil } from 'lucide-react'
+import { Users, UserMinus, LogOut, Check, Pencil, Mail, Download } from 'lucide-react'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
   Button, Input, Label, MultiSelect, Avatar, AvatarFallback, initials,
@@ -10,12 +10,19 @@ import {
 } from '../../ui'
 import messagesApi from '../../api/messagesApi'
 import { toastError, toastSuccess } from '../../lib/toast'
+import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
 import { upsertConversation } from './store/messagingSlice'
 import { displayName } from './time'
 
 /* S20 — Gestion des membres d'un canal via un Sheet latéral. Un admin du canal
    peut le renommer, ajouter / retirer des membres ; tout membre peut quitter.
-   `isAdmin` est fourni par l'appelant (rôle dans la conversation). */
+   `isAdmin` est fourni par l'appelant (rôle dans la conversation).
+
+   WIR157 / XKB32/ZCTR12 — panneau de canal étendu, réservé aux admins du
+   canal (`isAdmin`) : alias e-mail entrant (canal-comme-liste-de-diffusion,
+   NO-OP sans clé mail configurée côté serveur — le champ reste un simple
+   libellé) et export intégral de la conversation (JSON/CSV, traçabilité
+   CNDP loi 09-08). */
 export default function ManageMembers({ open, onOpenChange, conversation, currentUserId, isAdmin, onLeft }) {
   const dispatch = useDispatch()
   const [name, setName] = useState('')
@@ -23,6 +30,10 @@ export default function ManageMembers({ open, onOpenChange, conversation, curren
   const [toAdd, setToAdd] = useState([])
   const [options, setOptions] = useState([])
   const [busy, setBusy] = useState(false)
+  const [alias, setAlias] = useState('')
+  const [editingAlias, setEditingAlias] = useState(false)
+  const [aliasSaving, setAliasSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const members = conversation?.members ?? []
   const memberIds = new Set(members.map((m) => m.id))
@@ -33,6 +44,9 @@ export default function ManageMembers({ open, onOpenChange, conversation, curren
     setName(conversation?.name ?? '')
     setEditingName(false)
     setToAdd([])
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du Sheet
+    setAlias(conversation?.alias_email ?? '')
+    setEditingAlias(false)
     let alive = true
     messagesApi.listCompanyMembers()
       .then((r) => {
@@ -111,6 +125,34 @@ export default function ManageMembers({ open, onOpenChange, conversation, curren
     }
   }
 
+  // WIR157 / ZCTR12 — pose/lève l'alias e-mail du canal (vide = lever).
+  const saveAlias = async () => {
+    setAliasSaving(true)
+    try {
+      await messagesApi.setChannelAlias(conversation.id, alias.trim())
+      dispatch(upsertConversation({ id: conversation.id, alias_email: alias.trim() }))
+      setEditingAlias(false)
+      toastSuccess(alias.trim() ? 'Alias e-mail enregistré' : 'Alias e-mail retiré')
+    } catch (err) {
+      toastError(err.response?.data?.detail || 'Alias impossible à enregistrer')
+    } finally {
+      setAliasSaving(false)
+    }
+  }
+
+  // WIR157 / XKB32 — export intégral de la conversation (JSON ou CSV).
+  const exportConv = async (format) => {
+    setExporting(true)
+    try {
+      const res = await messagesApi.exportConversation(conversation.id, format)
+      downloadBlob(res.data, stampedFilename(`conversation-${conversation.id}`, format))
+    } catch (err) {
+      toastError(err.response?.data?.detail || 'Export impossible')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   if (!conversation) return null
 
   return (
@@ -176,6 +218,43 @@ export default function ManageMembers({ open, onOpenChange, conversation, curren
             <Button size="sm" onClick={addMembers} loading={busy} disabled={!toAdd.length}>
               Ajouter
             </Button>
+          </div>
+        )}
+
+        {/* WIR157 / ZCTR12 — alias e-mail entrant du canal. */}
+        {isAdmin && (
+          <div className="mt-4 grid gap-1.5">
+            <Label htmlFor="msg-alias-email">
+              <Mail aria-hidden="true" className="inline size-3.5 align-text-bottom" /> Alias e-mail entrant
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="msg-alias-email"
+                type="email"
+                value={alias}
+                placeholder="canal@exemple.ma"
+                onChange={(e) => { setAlias(e.target.value); setEditingAlias(true) }}
+              />
+              <Button size="sm" onClick={saveAlias} loading={aliasSaving}
+                      disabled={!editingAlias} aria-label="Enregistrer l’alias">
+                Enregistrer
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* WIR157 / XKB32 — export intégral de la conversation (admin). */}
+        {isAdmin && (
+          <div className="mt-4 grid gap-1.5">
+            <Label>Exporter la conversation</Label>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={() => exportConv('json')} loading={exporting}>
+                <Download aria-hidden="true" /> JSON
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => exportConv('csv')} loading={exporting}>
+                <Download aria-hidden="true" /> CSV
+              </Button>
+            </div>
           </div>
         )}
 

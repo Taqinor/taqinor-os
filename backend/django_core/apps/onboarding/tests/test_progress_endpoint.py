@@ -57,3 +57,31 @@ class OnboardingProgressEndpointTest(TestCase):
         c.post('/api/django/onboarding/progress/ignorer-tout/')
         r = c.get('/api/django/onboarding/progress/')
         self.assertTrue(r.data['termine'])
+
+    # ── WIR59 ────────────────────────────────────────────────────────────
+    def test_list_exposes_event_key_per_item(self):
+        r = self._client(self.u1).get('/api/django/onboarding/progress/')
+        by_key = {it['key']: it['event_key'] for it in r.data['items']}
+        self.assertEqual(by_key['premier_devis'], 'devis')
+        self.assertEqual(by_key['premier_paiement'], 'paiement')
+        self.assertEqual(by_key['premier_chantier'], 'chantier')
+        self.assertEqual(by_key['configurer_societe'], '')
+        self.assertEqual(by_key['import_clients'], '')
+        self.assertEqual(by_key['inviter_coequipier'], '')
+
+    def test_marquer_fait_completes_item_without_event(self):
+        item = OnboardingChecklistItem.objects.get(key='configurer_societe')
+        c = self._client(self.u1)
+        r = c.post(f'/api/django/onboarding/progress/{item.id}/marquer-fait/')
+        self.assertEqual(r.status_code, 200)
+        done = [it for it in r.data['items'] if it['key'] == 'configurer_societe']
+        self.assertTrue(done and done[0]['fait'])
+
+    def test_marquer_fait_is_idempotent(self):
+        item = OnboardingChecklistItem.objects.get(key='inviter_coequipier')
+        c = self._client(self.u1)
+        c.post(f'/api/django/onboarding/progress/{item.id}/marquer-fait/')
+        r = c.post(f'/api/django/onboarding/progress/{item.id}/marquer-fait/')
+        self.assertEqual(r.status_code, 200)
+        done = [it for it in r.data['items'] if it['key'] == 'inviter_coequipier']
+        self.assertTrue(done and done[0]['fait'])

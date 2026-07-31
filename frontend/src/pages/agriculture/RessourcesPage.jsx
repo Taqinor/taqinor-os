@@ -17,6 +17,10 @@ import useAgricultureResource from '../../features/agriculture/useAgricultureRes
    heures + carburant, NTAGR11). Les coûts remontent sur le cockpit campagne
    via `selectors.cout_main_oeuvre_campagne`/heures moteur cumulées côté
    backend — cet écran ne fait qu'afficher/saisir.
+
+   WIR141 — `EquipeSaisonniere` et `MaterielAgricole` (CRUD backend complet)
+   n'avaient aucune UI de création : « Nouvelle équipe » sur l'onglet
+   Pointage, « Nouveau matériel » sur l'onglet Matériel.
    ========================================================================== */
 
 const TYPE_MATERIEL_LABEL = {
@@ -259,13 +263,164 @@ function UtilisationDialog({ materiel, campagnes, onClose, onSaved }) {
   )
 }
 
+// WIR141 — Création d'une équipe saisonnière (aucune UI jusqu'ici).
+function EquipeDialog({ onClose, onSaved }) {
+  const [nom, setNom] = useState('')
+  const [chefEquipeId, setChefEquipeId] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(nom || chefEquipeId)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!nom) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await agricultureApi.equipesSaisonnieres.create({
+        nom, chef_equipe_id: chefEquipeId === '' ? null : chefEquipeId,
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.nom || data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouvelle équipe saisonnière</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="eq-nom">Nom</Label>
+            <Input id="eq-nom" autoFocus value={nom} onChange={(e) => setNom(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="eq-chef">Chef d’équipe — id utilisateur (option.)</Label>
+            <Input
+              id="eq-chef" type="number" step="1" value={chefEquipeId}
+              onChange={(e) => setChefEquipeId(e.target.value)}
+            />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!nom || saving}>
+              {saving ? 'Enregistrement…' : 'Créer l’équipe'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR141 — Création d'un matériel agricole (aucune UI jusqu'ici).
+function MaterielDialog({ parcelles, onClose, onSaved }) {
+  const [nom, setNom] = useState('')
+  const [typeMateriel, setTypeMateriel] = useState('tracteur')
+  const [numeroSerie, setNumeroSerie] = useState('')
+  const [parcelleAffectee, setParcelleAffectee] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(nom || numeroSerie || parcelleAffectee)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!nom) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await agricultureApi.materiels.create({
+        nom, type_materiel: typeMateriel, numero_serie: numeroSerie,
+        parcelle_affectee: parcelleAffectee || null,
+      })
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(
+        data?.nom || data?.detail
+        || (typeof data === 'string' ? data : 'Enregistrement impossible.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouveau matériel</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="mat-nom">Nom</Label>
+            <Input id="mat-nom" autoFocus value={nom} onChange={(e) => setNom(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="mat-type">Type</Label>
+              <select
+                id="mat-type" value={typeMateriel}
+                onChange={(e) => setTypeMateriel(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+              >
+                {Object.entries(TYPE_MATERIEL_LABEL).map(([v, label]) => (
+                  <option key={v} value={v}>{label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="mat-serie">N° série (option.)</Label>
+              <Input id="mat-serie" value={numeroSerie} onChange={(e) => setNumeroSerie(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="mat-parcelle">Parcelle affectée (option.)</Label>
+            <select
+              id="mat-parcelle" value={parcelleAffectee}
+              onChange={(e) => setParcelleAffectee(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+            >
+              <option value="">— Aucune —</option>
+              {(parcelles || []).map((p) => (
+                <option key={p.id} value={p.id}>{p.nom}</option>
+              ))}
+            </select>
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!nom || saving}>
+              {saving ? 'Enregistrement…' : 'Créer le matériel'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function PointageTab() {
   const { data: pointages, loading, error, reload } = useAgricultureResource(
     agricultureApi.pointages.list, {})
-  const { data: equipes } = useAgricultureResource(agricultureApi.equipesSaisonnieres.list, {})
+  const { data: equipes, reload: reloadEquipes } = useAgricultureResource(
+    agricultureApi.equipesSaisonnieres.list, {})
   const { data: campagnes } = useAgricultureResource(agricultureApi.campagnes.list, {})
   const { data: parcelles } = useAgricultureResource(agricultureApi.parcelles.list, {})
   const [showForm, setShowForm] = useState(false)
+  const [showEquipeForm, setShowEquipeForm] = useState(false)
 
   const columns = useMemo(() => [
     { id: 'date', header: 'Date', width: 100, accessor: (r) => r.date, cell: (v) => v || '—' },
@@ -291,9 +446,14 @@ function PointageTab() {
         title="Pointage journalier"
         subtitle="Saisie rapide équipe/tâche/parcelle/jour."
         actions={(
-          <Button onClick={() => setShowForm(true)}>
-            <Plus /> Nouveau pointage
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={() => setShowForm(true)}>
+              <Plus /> Nouveau pointage
+            </Button>
+            <Button variant="outline" onClick={() => setShowEquipeForm(true)}>
+              <Plus /> Nouvelle équipe
+            </Button>
+          </div>
         )}
         columns={columns}
         rows={pointages}
@@ -314,6 +474,16 @@ function PointageTab() {
           }}
         />
       )}
+      {showEquipeForm && (
+        <EquipeDialog
+          onClose={() => setShowEquipeForm(false)}
+          onSaved={() => {
+            setShowEquipeForm(false)
+            reloadEquipes()
+            toast.success('Équipe créée.')
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -322,7 +492,9 @@ function MaterielTab() {
   const { data: materiels, loading, error, reload } = useAgricultureResource(
     agricultureApi.materiels.list, {})
   const { data: campagnes } = useAgricultureResource(agricultureApi.campagnes.list, {})
+  const { data: parcelles } = useAgricultureResource(agricultureApi.parcelles.list, {})
   const [utilisationMateriel, setUtilisationMateriel] = useState(null)
+  const [showMaterielForm, setShowMaterielForm] = useState(false)
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Matériel', width: 200, accessor: (r) => r.nom, cell: (v) => v || '—' },
@@ -351,6 +523,11 @@ function MaterielTab() {
       <ListShell
         title="Matériel"
         subtitle="Parc de matériel agricole (heures moteur cumulées)."
+        actions={(
+          <Button variant="outline" onClick={() => setShowMaterielForm(true)}>
+            <Plus /> Nouveau matériel
+          </Button>
+        )}
         columns={columns}
         rows={materiels}
         loading={loading}
@@ -360,6 +537,17 @@ function MaterielTab() {
         emptyTitle="Aucun matériel"
         emptyDescription="Aucun matériel agricole enregistré pour l’instant."
       />
+      {showMaterielForm && (
+        <MaterielDialog
+          parcelles={parcelles}
+          onClose={() => setShowMaterielForm(false)}
+          onSaved={() => {
+            setShowMaterielForm(false)
+            reload()
+            toast.success('Matériel créé.')
+          }}
+        />
+      )}
       {utilisationMateriel && (
         <UtilisationDialog
           materiel={utilisationMateriel} campagnes={campagnes}

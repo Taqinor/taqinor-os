@@ -725,6 +725,67 @@ export default function DevisGenerator({
     }
   }
 
+  // ── WIR99/DC12 — Pré-remplissage d'un devis SANS LEAD depuis le profil
+  // site/énergie réutilisable du client (`crm.SiteProfile`, résolu côté
+  // serveur par `/ventes/devis/prefill-site/`). Miroir EXACT d'`applyLead` :
+  // mêmes champs, mêmes garde-fous « touched » — un champ que l'utilisateur a
+  // déjà réglé n'est JAMAIS écrasé. Aucun profil (ou aucun client) → no-op
+  // strict : le comportement historique est inchangé.
+  const applySiteProfile = (p) => {
+    if (!p) return
+    if (!modeTouched.current
+        && p.type_installation && LEAD_TYPE_TO_MODE[p.type_installation]) {
+      onModeChange(LEAD_TYPE_TO_MODE[p.type_installation])
+    }
+    if (LEAD_TYPE_TO_MODE[p.type_installation] === 'agricole') {
+      if (p.pompe_cv != null && p.pompe_cv !== '') setPompeCv(String(p.pompe_cv))
+      if (p.pompe_hmt_m != null && p.pompe_hmt_m !== '') setPompeHmt(String(p.pompe_hmt_m))
+      if (p.pompe_debit_m3h != null && p.pompe_debit_m3h !== '') setPompeDebit(String(p.pompe_debit_m3h))
+      if (!pompeAlimTouched.current) {
+        if (p.raccordement === 'monophase') setPompeAlim('mono')
+        else if (p.raccordement === 'triphase') setPompeAlim('tri')
+      }
+    }
+    if (p.conso_mensuelle_kwh) setConsoMensuelle(String(p.conso_mensuelle_kwh))
+    const hiver = parseFloat(p.facture_hiver) || 0
+    if (hiver > 0) {
+      const ete = (p.ete_differente && p.facture_ete) ? parseFloat(p.facture_ete) : hiver
+      setFHiver(String(p.facture_hiver))
+      setFEte(p.ete_differente && p.facture_ete ? String(p.facture_ete) : '')
+      if (!nbPanneauxTouched.current) {
+        const suggested = estimerPanneaux(hiver, quoteLogic.panneauxParTranche)
+        if (suggested > 0) setNbPanneaux(String(suggested))
+      }
+      setMonthly(estimerMois(hiver, ete))
+    }
+  }
+
+  // Sélection d'un client (chemin SANS lead) : pose l'id puis va chercher son
+  // profil site. Best-effort — une absence de profil ou une erreur réseau ne
+  // doit jamais empêcher de sélectionner le client.
+  const applyClient = (v) => {
+    const id = v ? String(v) : ''
+    setClientId(id)
+    if (!id || leadId) return
+    ventesApi.getPrefillSite(id)
+      .then((res) => applySiteProfile(res?.data?.profil))
+      .catch(() => {})
+  }
+
+  // Client pré-sélectionné par ?client=<id> : même pré-remplissage, une seule
+  // fois au montage (jamais rejoué ensuite).
+  const sitePrefillDone = useRef(false)
+  useEffect(() => {
+    if (sitePrefillDone.current || !clientId || leadId) return
+    sitePrefillDone.current = true
+    ventesApi.getPrefillSite(clientId)
+      .then((res) => applySiteProfile(res?.data?.profil))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pré-remplissage
+    // au montage uniquement (garde `sitePrefillDone`) ; rejouer à chaque
+    // changement d'état écraserait la saisie en cours.
+  }, [clientId, leadId])
+
   // ── Devis automatique (bouton « ⚡ Devis auto » du lead) ──
   // Sensible au marché du lead : résidentiel (comportement historique),
   // agricole (pompage, mêmes appels que le flux manuel) ou industriel
@@ -1837,7 +1898,7 @@ export default function DevisGenerator({
                         }))}
                         value={clientId ? String(clientId) : null}
                         onSearch={onSearchClient}
-                        onChange={(v) => setClientId(v ? String(v) : '')}
+                        onChange={(v) => applyClient(v)}
                         placeholder="— Sélectionner un client —"
                         searchPlaceholder="Nom ou ICE…"
                         emptyText="Aucun client dans vos données"

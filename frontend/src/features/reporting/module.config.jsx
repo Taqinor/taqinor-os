@@ -55,6 +55,10 @@ const SavSlaPage = lazy(() => import('../../pages/reporting/SavSlaPage'))
 const FieldServiceReportPage = lazy(() => import('../../pages/reporting/FieldServiceReportPage'))
 // XFSM17 — scorecard coaching par technicien vs moyenne équipe.
 const TechnicienScorecardPage = lazy(() => import('../../pages/reporting/TechnicienScorecardPage'))
+// WIR84 — consommateur des agrégateurs Quote-to-Cash de `apps/ventes`
+// (FG45 `/ventes/dashboard/`, FG47 `/ventes/insights/cash-flow/`,
+// ZFAC10 `/ventes/etats/analyse-facturation/`), jusqu'ici sans appelant.
+const QuoteToCashPage = lazy(() => import('../../pages/reporting/QuoteToCashPage'))
 
 const RESPONSABLE_ADMIN = ['responsable', 'admin']
 
@@ -69,6 +73,8 @@ const config = {
       { to: '/rapports',             label: 'Rapports',         k: 'nav.rapports',   icon: navIcon(BarChart3),    roles: ['responsable','admin'] },
       { to: '/reporting/balance-agee', label: 'Balance âgée',   k: 'nav.balance_agee', icon: navIcon(BarChart3),  roles: ['responsable','admin'] },
       { to: '/reporting/commercial', label: 'Tableau commercial', k: 'nav.tableau_commercial', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
+      // WIR84 — écran consommateur des agrégateurs Quote-to-Cash de `ventes`.
+      { to: '/reporting/quote-to-cash', label: 'Quote-to-Cash', k: 'nav.quote_to_cash', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // WIR17/FG98 — cohortes de rétention/CA (route déjà enregistrée
       // ci-dessous, jusqu'ici sans entrée de menu).
       { to: '/reporting/cohortes',   label: 'Cohortes',         k: 'nav.cohortes',   icon: navIcon(BarChart3),    roles: ['responsable','admin'] },
@@ -94,6 +100,7 @@ const config = {
     { path: '/rapports', component: Rapports },
     { path: '/reporting/balance-agee', component: BalanceAgeePage },
     { path: '/reporting/commercial', component: CommercialDashboard, roles: RESPONSABLE_ADMIN },
+    { path: '/reporting/quote-to-cash', component: QuoteToCashPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/cohortes', component: CohortsPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/dashboards', component: DashboardConfigPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/dashboards/partage', component: DashboardSharePage, roles: RESPONSABLE_ADMIN },

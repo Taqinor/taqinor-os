@@ -13,6 +13,35 @@ class Migration(migrations.Migration):
       - DB: drop the old VARCHAR column and add a fresh nullable bigint FK
       - State: record the field change in Django's migration graph
     Data was already preserved in role_legacy by migration 0004.
+
+    ────────────────────────────────────────────────────────────────────────
+    REVUE DE SÛRETÉ — RETOUR ARRIÈRE : DÉFAUT RÉEL TROUVÉ, CORRIGÉ ICI
+    ────────────────────────────────────────────────────────────────────────
+    L'ALLER est sans perte : la migration 0004 a recopié le VARCHAR ``role``
+    dans ``role_legacy`` AVANT que ce ``DROP COLUMN "role"`` ne s'exécute.
+
+    Le RETOUR, lui, était destructeur en silence. L'ancien ``reverse_sql``
+    recréait ``role`` avec ``DEFAULT 'normal'`` et s'arrêtait là : chaque
+    utilisateur — administrateurs compris — se retrouvait estampillé
+    ``'normal'``. Un ``migrate authentication 0004`` rétrogradait donc
+    silencieusement TOUS les comptes, sans le moindre message. Or la donnée
+    n'était pas perdue : ``role_legacy`` la porte toujours, colonne créée par
+    0004 (dont cette migration dépend, donc encore présente au moment du
+    rollback) et maintenue à jour depuis — 0009 la resynchronise depuis la FK
+    ``role``, et ``CustomUser.save()`` la tient alignée. ``role_legacy`` est
+    exactement le miroir VARCHAR de ``role`` : même ``max_length=20``, mêmes
+    choix (admin / responsable / normal), ``NOT NULL DEFAULT 'normal'``.
+
+    CORRECTIF (RETOUR UNIQUEMENT — le ``sql=`` de l'aller n'est pas touché) :
+    le reverse RESTAURE désormais ``role`` depuis ``role_legacy`` au lieu de
+    tout écraser par ``'normal'``, et il le fait AVANT de supprimer
+    ``role_id`` (restaurer d'abord, détruire ensuite). La suppression de
+    ``role_id`` reste normale et voulue : cette colonne est CRÉÉE par l'aller,
+    revenir en arrière signifie revenir au monde VARCHAR où elle n'existait
+    pas — et ``role_legacy`` en porte déjà la traduction fidèle. Si
+    ``role_legacy`` venait à manquer (état bricolé à la main), l'``UPDATE``
+    échoue BRUYAMMENT et la transaction annule tout : jamais de corruption
+    silencieuse.
     """
 
     dependencies = [
@@ -33,13 +62,23 @@ class Migration(migrations.Migration):
                         CREATE INDEX "authentication_customuser_role_id_idx"
                             ON "authentication_customuser" ("role_id");
                     """,
+                    # Retour arrière SANS PERTE (cf. revue en tête de classe) :
+                    # on recrée la colonne VARCHAR puis on la REMPLIT depuis
+                    # `role_legacy` — le miroir maintenu par 0004/0009 — avant
+                    # de supprimer `role_id`. L'ancienne version s'arrêtait au
+                    # `DEFAULT 'normal'` et rétrogradait silencieusement tous
+                    # les comptes.
                     reverse_sql="""
+                        ALTER TABLE "authentication_customuser"
+                            ADD COLUMN "role" varchar(20) NOT NULL DEFAULT 'normal';
+                        UPDATE "authentication_customuser"
+                           SET "role" = "role_legacy"
+                         WHERE "role_legacy" IS NOT NULL
+                           AND "role_legacy" <> '';
                         DROP INDEX IF EXISTS
                             "authentication_customuser_role_id_idx";
                         ALTER TABLE "authentication_customuser"
                             DROP COLUMN IF EXISTS "role_id";
-                        ALTER TABLE "authentication_customuser"
-                            ADD COLUMN "role" varchar(20) NOT NULL DEFAULT 'normal';
                     """,
                 ),
             ],

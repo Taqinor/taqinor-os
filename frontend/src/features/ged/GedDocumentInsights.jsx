@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Clock, ShieldCheck, Download, Star } from 'lucide-react'
+import { Clock, ShieldCheck, Download, Star, Plus, Trash2 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
+import rolesApi from '../../api/rolesApi'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Button, Badge, Spinner, EmptyState, Tabs, TabsList, TabsTrigger, TabsContent,
-  toast,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Switch, toast,
 } from '../../ui'
 import { formatDate } from '../../lib/format'
 
@@ -16,22 +18,82 @@ import { formatDate } from '../../lib/format'
    • « Qui voit ce document et pourquoi » (XGED22) — niveau effectif par
      utilisateur/rôle + la source de résolution, exportable en CSV.
    Inclut aussi l'étoile favori personnel (ZGED7).
+
+   WIR163 — l'onglet « Accès » gagne un formulaire de GESTION (miroir
+   kb.KbArticleAcl) : accorder/révoquer une entrée AclGed directement sur ce
+   document (utilisateur OU rôle, niveau lecture/écriture/gestion, propagation
+   aux sous-éléments). Écriture réservée responsable/admin CÔTÉ BACKEND (403 →
+   toast, comme partout dans l'ERP) — aucun gating de rôle ajouté ici. Poser
+   une entrée a un effet IMMÉDIAT (aucun cache) : on recharge le rapport « qui
+   voit » après chaque ajout/retrait.
    ========================================================================== */
+
+const NIVEAU_OPTIONS = [
+  { value: 'lecture', label: 'Lecture' },
+  { value: 'ecriture', label: 'Écriture' },
+  { value: 'gestion', label: 'Gestion' },
+]
 
 export default function GedDocumentInsights({ document, onClose }) {
   const [timeline, setTimeline] = useState(null)
   const [acl, setAcl] = useState(null)
+  const [entries, setEntries] = useState(null)
+  const [users, setUsers] = useState([])
+  const [roles, setRoles] = useState([])
   const [favori, setFavori] = useState(!!document?.favori)
+  const [draft, setDraft] = useState({
+    principalType: 'utilisateur', principalId: '', niveau: 'lecture',
+    herite: true,
+  })
+
+  const reloadAcl = () => {
+    if (!document) return
+    gedApi.getPermissionsEffectives(document.id)
+      .then((r) => setAcl(r.data?.results ?? r.data ?? []))
+      .catch(() => setAcl([]))
+    gedApi.getAcls({ document: document.id })
+      .then((r) => setEntries(r.data?.results ?? r.data ?? []))
+      .catch(() => setEntries([]))
+  }
 
   useEffect(() => {
     if (!document) return
     gedApi.getTimeline(document.id)
       .then((r) => setTimeline(r.data?.results ?? r.data ?? []))
       .catch(() => setTimeline([]))
-    gedApi.getPermissionsEffectives(document.id)
-      .then((r) => setAcl(r.data?.results ?? r.data ?? []))
-      .catch(() => setAcl([]))
+    reloadAcl()
+    gedApi.getUsers().then((r) => setUsers(r.data?.results ?? r.data ?? []))
+      .catch(() => setUsers([]))
+    rolesApi.getRoles().then((r) => setRoles(r.data?.results ?? r.data ?? []))
+      .catch(() => setRoles([]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document])
+
+  const addAcl = async () => {
+    if (!draft.principalId) {
+      toast.error('Choisissez un utilisateur ou un rôle.')
+      return
+    }
+    try {
+      await gedApi.createAcl({
+        document: document.id,
+        [draft.principalType]: Number(draft.principalId),
+        niveau: draft.niveau,
+        herite: draft.herite,
+      })
+      toast.success('Droit d’accès ajouté.')
+      setDraft((d) => ({ ...d, principalId: '' }))
+      reloadAcl()
+    } catch { toast.error('Ajout impossible (doublon ?).') }
+  }
+
+  const removeAcl = async (id) => {
+    try {
+      await gedApi.deleteAcl(id)
+      toast.success('Droit d’accès retiré.')
+      reloadAcl()
+    } catch { toast.error('Suppression impossible.') }
+  }
 
   const exportCsv = async () => {
     try {
@@ -116,6 +178,88 @@ export default function GedDocumentInsights({ document, onClose }) {
                 ))}
               </ul>
             )}
+
+            {/* WIR163 — accorder/révoquer un droit d'accès direct sur ce
+                document (miroir kb.KbArticleAcl). Écriture réservée
+                responsable/admin côté backend (403 → toast). */}
+            <div className="mt-4 border-t pt-3">
+              <p className="mb-2 text-sm font-medium">Gérer les droits d’accès</p>
+              <div className="flex flex-wrap items-end gap-2">
+                <Select value={draft.principalType}
+                  onValueChange={(v) => setDraft((d) => (
+                    { ...d, principalType: v, principalId: '' }))}>
+                  <SelectTrigger aria-label="Type de principal" className="w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="utilisateur">Utilisateur</SelectItem>
+                    <SelectItem value="role">Rôle</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={draft.principalId}
+                  onValueChange={(v) => setDraft((d) => ({ ...d, principalId: v }))}>
+                  <SelectTrigger aria-label={
+                    draft.principalType === 'role' ? 'Choisir un rôle' : 'Choisir un utilisateur'
+                  } className="w-44">
+                    <SelectValue placeholder={
+                      draft.principalType === 'role' ? 'Rôle…' : 'Utilisateur…'
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(draft.principalType === 'role' ? roles : users).map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.nom || p.username || p.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={draft.niveau}
+                  onValueChange={(v) => setDraft((d) => ({ ...d, niveau: v }))}>
+                  <SelectTrigger aria-label="Niveau d’accès" className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NIVEAU_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Switch checked={draft.herite}
+                    onCheckedChange={(v) => setDraft((d) => ({ ...d, herite: v }))}
+                    aria-label="Hérité vers les sous-éléments" />
+                  Hérité
+                </label>
+                <Button type="button" variant="outline" size="sm" onClick={addAcl}>
+                  <Plus size={14} /> Ajouter
+                </Button>
+              </div>
+              {entries === null ? <Spinner /> : entries.length === 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Aucun droit posé directement sur ce document.
+                </p>
+              ) : (
+                <ul className="mt-2 flex flex-col gap-1.5" data-testid="ged-acl-entries">
+                  {entries.map((e) => (
+                    <li key={e.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                      <span className="flex items-center gap-2">
+                        <Badge tone="neutral">
+                          {e.utilisateur_nom || e.role_nom || '—'}
+                        </Badge>
+                        <Badge tone="info">{e.niveau}</Badge>
+                      </span>
+                      <Button
+                        type="button" variant="ghost" size="sm"
+                        onClick={() => removeAcl(e.id)}
+                        aria-label="Retirer ce droit"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
       </SheetContent>

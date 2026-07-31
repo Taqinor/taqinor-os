@@ -34,3 +34,27 @@ backend/django_core/apps/facturation/migrations/0002_odx17_rename_stale_contentt
 backend/django_core/apps/adsengine/migrations/0012_adseng4_guardian_treasury.py
 backend/django_core/apps/crm/migrations/0061_adseng1_lead_meta_ids.py
 backend/django_core/apps/qhse/migrations/0056_wir128_permis_valideur_fk.py
+
+# WIR95 — conversion des 8 références opaques `*_id` du module portail en
+# vraies FK string-référencées (5 modèles). Signalements : 8 RemoveField,
+# 8 RenameField, 1 RunPython `.update()` non batché. Ils sont INHÉRENTS au
+# patron entier -> FK (il n'existe pas de variante « corrigée » sans
+# RemoveField/RenameField), d'où l'exception à la règle d'en-tête, et non un
+# contournement : la revue a d'abord CORRIGÉ un vrai défaut avant d'autoriser
+# le fichier. Audit opération par opération (docstring en tête de la
+# migration) :
+#   - ALLER sans perte : la copie des ids (passe 3) précède TOUS les
+#     RemoveField (passe 4) ; le renommage (passe 5) ramène chaque colonne à
+#     son nom d'origine `<champ>_id`, donc `.filter(x_id=)/.create(x_id=)`
+#     continuent de fonctionner. `MigrationAutodetector` : 0 écart vs les
+#     modèles réels.
+#   - RETOUR corrigé pendant cette revue : le reverse était un `pass`, qui
+#     recréait les colonnes entières VIDES puis supprimait les `*_tmp_id`
+#     porteuses de la donnée => perte silencieuse des 8 références. Corrigé
+#     par (a) une passe 1 rendant nullables les 5 anciens entiers NOT NULL
+#     (sinon le ADD COLUMN du rollback est refusé sur table peuplée) et
+#     (b) un reverse qui RECOPIE `*_tmp_id -> *_id`. Rollback vérifié sans
+#     perte ; il échoue bruyamment (jamais silencieusement) si une ligne
+#     créée après coup porte une référence NULL.
+#   - `.update()` global assumé : tables `compta_*portail` à faible volume.
+backend/django_core/apps/portail/migrations/0003_wir95_fk_references.py

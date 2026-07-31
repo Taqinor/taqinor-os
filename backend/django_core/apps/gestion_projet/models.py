@@ -2094,18 +2094,27 @@ class SousTraitant(models.Model):
     Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
     corps de requête. Modèle entièrement additif.
 
-    ARC22 — RÉGRESSION DC34 constatée : ce carnet est un 3e référentiel
+    ARC22 — RÉGRESSION DC34 constatée : ce carnet était un 3e référentiel
     sous-traitant parallèle, alors que DC34 a unifié le sous-traitant sur
     ``stock.Fournisseur`` (``type=SERVICE``) + son satellite
     ``stock.SousTraitantProfile`` (voir ``apps/installations/views/
     soustraitant.py``, qui orchestre déjà EXCLUSIVEMENT via ce master).
-    ``fournisseur`` ci-dessous est le lien ADDITIF (nullable) vers ce master :
-    le carnet ``gestion_projet`` local N'EST PAS supprimé/fusionné par ARC22
-    (ça reste la propriété de DC34, cf. son annotation) — seul un NOUVEAU
-    sous-traitant projet créé via ``services.creer_sous_traitant_via_master``
-    pose ce lien ; le backfill (``manage.py backfill_sous_traitant_fournisseur``)
-    rattache les lignes EXISTANTES par correspondance nom/téléphone, sans
-    jamais fusionner ni geler les colonnes dupliquées (hors scope ARC22).
+    ``fournisseur`` ci-dessous est le lien ADDITIF (nullable) vers ce master ;
+    le backfill (``manage.py backfill_sous_traitant_fournisseur``) a rattaché
+    les lignes existantes par correspondance nom/téléphone.
+
+    WIR87 — la régression est REFERMÉE : ce carnet local reste un MIROIR
+    (jamais supprimé — ``LotSousTraitance.sous_traitant`` continue d'y
+    référencer sa FK), mais il n'a plus qu'UN SEUL point d'écriture,
+    ``SousTraitantViewSet.perform_create``/``perform_update`` (via
+    ``services.creer_sous_traitant_via_master``/
+    ``modifier_sous_traitant_via_master``) : toute création pose ``fournisseur``
+    (plus de ligne orpheline hors master) et toute modification GÈLE les
+    colonnes dupliquées (nom/specialite/contact/telephone/email/actif) en les
+    écrivant sur les DEUX côtés dans le même appel — elles ne peuvent plus
+    diverger. L'écran canonique (``RisquesPage.jsx`` → onglet Sous-traitance)
+    n'appelle même plus cet endpoint local : il lit/écrit directement le
+    master via ``installations/sous-traitants/``.
     """
     company = models.ForeignKey(
         'authentication.Company',

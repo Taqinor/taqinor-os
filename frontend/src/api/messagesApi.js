@@ -106,6 +106,71 @@ const messagesApi = {
     setDnd: (data) => api.post('/chat/status/dnd/', data),
     colleagues: () => api.get('/chat/status/colleagues/'),
   },
+
+  // ── WIR155 / XKB24 — Fils de discussion ──
+  // Répondre à un message racine crée une réponse (auto-suit le fil pour
+  // l'auteur racine + le répondant) ; `list` liste les réponses d'un fil ;
+  // `listFollowed` alimente la boîte « Fils » (fils suivis, non-lus).
+  threads: {
+    reply: (messageId, data) =>
+      api.post(`/chat/messages/${messageId}/reply/`, data),
+    list: (messageId) => api.get(`/chat/messages/${messageId}/thread/`),
+    follow: (messageId) =>
+      api.post(`/chat/messages/${messageId}/thread-follow/`),
+    unfollow: (messageId) =>
+      api.post(`/chat/messages/${messageId}/thread-unfollow/`),
+    markRead: (messageId) =>
+      api.post(`/chat/messages/${messageId}/thread-read/`),
+    listFollowed: () => api.get('/chat/messages/threads/'),
+  },
+
+  // ── WIR155 / XKB27 — « Me le rappeler » + favoris (signets personnels) ──
+  remindMe: (messageId, remindAt) =>
+    api.post(`/chat/messages/${messageId}/remind-me/`, { remind_at: remindAt }),
+  toggleBookmark: (messageId) =>
+    api.post(`/chat/messages/${messageId}/bookmark/`),
+  listBookmarks: () => api.get('/chat/messages/bookmarks/'),
+
+  // ── WIR155 / XKB27 — « Envoyer plus tard » (messages programmés) ──
+  scheduled: {
+    list: (params) => api.get('/chat/scheduled-messages/', { params }),
+    create: (data) => api.post('/chat/scheduled-messages/', data),
+    cancel: (id) => api.delete(`/chat/scheduled-messages/${id}/`),
+  },
+
+  // ── WIR155 / XKB28 — réponses enregistrées (snippets `:raccourci`) ──
+  canned: {
+    list: (prefix) =>
+      api.get('/chat/canned-responses/', { params: prefix ? { prefix } : {} }),
+    create: (data) => api.post('/chat/canned-responses/', data),
+    remove: (id) => api.delete(`/chat/canned-responses/${id}/`),
+  },
+
+  // ── WIR155 / XKB30 — sondages ──
+  poll: {
+    create: (data) => api.post('/chat/messages/poll/', data),
+    vote: (messageId, optionIds) =>
+      api.post(`/chat/messages/${messageId}/poll-vote/`, { option_ids: optionIds }),
+    close: (messageId) => api.post(`/chat/messages/${messageId}/poll-close/`),
+    results: (messageId) => api.get(`/chat/messages/${messageId}/poll-results/`),
+  },
+
+  // ── WIR157 / XKB32 — rétention (admin), alias e-mail de canal, export ──
+  retention: {
+    list: () => api.get('/chat/retention-policies/'),
+    create: (data) => api.post('/chat/retention-policies/', data),
+    update: (id, data) => api.patch(`/chat/retention-policies/${id}/`, data),
+    // Historique des purges (RetentionSweepRun), traçabilité CNDP.
+    historique: () => api.get('/chat/retention-policies/historique/'),
+  },
+  setChannelAlias: (conversationId, aliasEmail) =>
+    api.post(`/chat/conversations/${conversationId}/alias-email/`,
+      { alias_email: aliasEmail }),
+  // `responseType: 'blob'` : le backend répond du JSON OU du CSV selon
+  // `?export=`, jamais du HTML/texte brut — un blob couvre les deux (WIR157).
+  exportConversation: (conversationId, format = 'json') =>
+    api.get(`/chat/conversations/${conversationId}/export/`,
+      { params: { export: format }, responseType: 'blob' }),
 }
 
 export default messagesApi

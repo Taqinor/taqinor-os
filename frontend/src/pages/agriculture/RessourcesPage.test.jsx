@@ -17,6 +17,11 @@ beforeAll(() => {
   }
 })
 
+const { equipesCreate, materielsCreate } = vi.hoisted(() => ({
+  equipesCreate: vi.fn(() => Promise.resolve({ data: { id: 2, nom: 'Équipe B' } })),
+  materielsCreate: vi.fn(() => Promise.resolve({ data: { id: 6 } })),
+}))
+
 vi.mock('../../api/agricultureApi', () => ({
   default: {
     pointages: {
@@ -28,7 +33,10 @@ vi.mock('../../api/agricultureApi', () => ({
       }),
       create: vi.fn(() => Promise.resolve({ data: { id: 2 } })),
     },
-    equipesSaisonnieres: { list: () => Promise.resolve({ data: [{ id: 1, nom: 'Équipe A' }] }) },
+    equipesSaisonnieres: {
+      list: () => Promise.resolve({ data: [{ id: 1, nom: 'Équipe A' }] }),
+      create: (...args) => equipesCreate(...args),
+    },
     campagnes: { list: () => Promise.resolve({ data: [{ id: 7, culture: 'Tomate' }] }) },
     parcelles: { list: () => Promise.resolve({ data: [{ id: 3, nom: 'Parcelle 1' }] }) },
     materiels: {
@@ -39,6 +47,7 @@ vi.mock('../../api/agricultureApi', () => ({
           heures_moteur: '12.5',
         }],
       }),
+      create: (...args) => materielsCreate(...args),
     },
     utilisationsMateriel: { create: vi.fn(() => Promise.resolve({ data: { id: 5 } })) },
   },
@@ -80,5 +89,39 @@ describe('RessourcesPage (NTAGR12)', () => {
 
     await user.click(screen.getByRole('button', { name: /Nouveau pointage/ }))
     expect(await screen.findByRole('heading', { name: 'Nouveau pointage' })).toBeInTheDocument()
+  })
+})
+
+// WIR141 — EquipeSaisonniere/MaterielAgricole n'avaient aucune UI de création.
+describe('RessourcesPage — création équipe/matériel (WIR141)', () => {
+  it('crée une équipe saisonnière depuis l’onglet Pointage', async () => {
+    const user = userEvent.setup()
+    withProviders(<RessourcesPage />)
+    await waitFor(() => expect(screen.getAllByText('Fatima Z.').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /Nouvelle équipe/ }))
+    await user.type(screen.getByLabelText('Nom'), 'Équipe B')
+    await user.click(screen.getByRole('button', { name: 'Créer l’équipe' }))
+
+    await waitFor(() => expect(equipesCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ nom: 'Équipe B' }),
+    ))
+  })
+
+  it('crée un matériel depuis l’onglet Matériel', async () => {
+    const user = userEvent.setup()
+    withProviders(<RessourcesPage />)
+    await waitFor(() => expect(screen.getAllByText('Fatima Z.').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('tab', { name: 'Matériel' }))
+    await waitFor(() => expect(screen.getAllByText('Tracteur MF 1').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /Nouveau matériel/ }))
+    await user.type(screen.getByLabelText('Nom'), 'Pulvérisateur P2')
+    await user.click(screen.getByRole('button', { name: 'Créer le matériel' }))
+
+    await waitFor(() => expect(materielsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ nom: 'Pulvérisateur P2' }),
+    ))
   })
 })

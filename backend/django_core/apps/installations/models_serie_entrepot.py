@@ -33,7 +33,7 @@ class SerieEntrepot(models.Model):
         null=True, blank=True,
         related_name='installations_series_entrepot')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,
+        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — numéro de série d'une unité physique = fait de traçabilité non reconstructible (même classe que LotEntrepot)
         related_name='installations_series_entrepot')
     numero_serie = models.CharField(max_length=120)
     emplacement = models.ForeignKey(

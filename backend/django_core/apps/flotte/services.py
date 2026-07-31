@@ -2249,26 +2249,22 @@ def extraire_recu_carburant(file_bytes, *, mime=''):
     vide) car ici l'appelant a besoin de distinguer "aucune donnée" de
     "fonctionnalité indisponible" pour renvoyer le bon code HTTP.
 
-    Quand activé, délègue à un module fournisseur isolé
-    (``flotte_ocr_provider``, non câblé dans ce dépôt) qui appelle le service
-    OCR ``backend/fastapi_ia`` (Zhipu AI) et renvoie un dict de champs bruts.
-    Le mapping vers les champs ``PleinCarburant`` est fait par
-    ``mapper_recu_vers_plein``. Ne lève jamais au-delà du RuntimeError
-    "indisponible" ci-dessus — toute erreur provider est avalée et renvoie un
-    dict vide (aucun champ extrait, jamais de crash de l'écran de saisie).
+    WIR153 — AUCUN module fournisseur n'existe encore dans ce dépôt
+    (contrairement à ce que disait cette docstring auparavant : elle
+    référençait un import mort ``flotte_ocr_provider``, jamais câblé, avalé
+    silencieusement par un ``except ImportError``). Le flag activé sans
+    provider réel reste donc un NO-OP DÉTERMINISTE — dict vide, aucun champ
+    extrait, jamais de crash de l'écran de saisie. Une fois un provider
+    branché (appel HTTP vers le service OCR ``backend/fastapi_ia``, Zhipu AI,
+    même motif que ``apps.crm.intake_photo``), le mapping vers les champs
+    ``PleinCarburant`` reste fait par ``mapper_recu_vers_plein``.
     """
     if not ocr_pleins_active():
         raise RuntimeError('OCR indisponible (configuration manquante).')
     if not file_bytes:
         return {}
-    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
-        from . import flotte_ocr_provider as provider  # noqa: F401
-    except ImportError:  # pragma: no cover
-        return {}
-    try:  # pragma: no cover
-        return provider.extraire_recu(file_bytes, mime=mime) or {}
-    except Exception:  # pragma: no cover - jamais casser l'écran de saisie.
-        return {}
+    # Aucun provider câblé — dégradation propre (dict vide), jamais un crash.
+    return {}
 
 
 def mapper_recu_vers_plein(champs_bruts):

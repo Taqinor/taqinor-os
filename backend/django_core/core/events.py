@@ -275,7 +275,10 @@ importe ``apps.audit``.
     ``apps/ged/apps.py`` ``ready()`` (``apps/ged/receivers.py``) et route le
     fichier via ``ged.services.router_document_module`` si un
     ``RoutageDocumentaire`` existe pour la ``source`` — sinon no-op silencieux
-    (comportement actuel inchangé). Arguments du signal :
+    (comportement actuel inchangé). WIR165 — premier ÉMETTEUR RÉEL :
+    ``apps/ventes/utils/pdf.py`` ``generate_facture_pdf`` (``source=
+    'ventes_facture'``), best-effort, juste après le stockage du PDF de
+    facture. Arguments du signal :
 
     * ``source`` — code de module (ex. ``paie_bulletin``, ``rh_document``,
       ``sav_piece_jointe``, ``ventes_facture``) — doit correspondre à la
@@ -553,6 +556,19 @@ avoir_cree = django.dispatch.Signal()
 # ``devis_accepted``. `paiement_fournisseur_enregistre` : instance, company.
 facture_fournisseur_creee = django.dispatch.Signal()
 paiement_fournisseur_enregistre = django.dispatch.Signal()
+
+# WIR85 / XACC6 — un ``stock.MouvementStock`` vient d'être enregistré
+# (``stock.services.record_stock_movement``, le seul point de création).
+# Émis SYNCHRONEMENT et en best-effort après l'écriture du mouvement : il ne
+# change jamais le mouvement lui-même ni un statut de document (règle #4).
+#   Arguments : instance (stock.MouvementStock), company.
+#   Abonné dans ce repo : compta (``poster_mouvement_stock``, écriture
+#   d'inventaire permanent — doublement gardée par le toggle
+#   ``COMPTA_AUTO_ECRITURES``/WIR24 ET par ``PlanComptable.inventaire_permanent``,
+#   les deux OFF par défaut : sans opt-in explicite, RIEN n'est écrit).
+# ``stock`` n'importe jamais ``apps.compta`` — l'instance transite par le
+# signal, exactement comme ``facture_fournisseur_creee``.
+mouvement_stock_enregistre = django.dispatch.Signal()
 
 # Émis à l'annulation d'un chantier (``apps.installations``) — YSERV9.
 # Arguments : installation (installations.Installation), user (peut être

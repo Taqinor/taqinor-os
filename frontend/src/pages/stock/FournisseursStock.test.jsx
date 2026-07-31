@@ -33,6 +33,13 @@ vi.mock('../../api/stockApi', () => ({
     updateFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     deleteFournisseur: vi.fn(() => Promise.resolve({})),
     performanceFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
+    // WIR108 — référentiel catégories fournisseur.
+    getCategoriesFournisseur: vi.fn(() => Promise.resolve({
+      data: [{ id: 10, nom: 'Panneaux', archived: false }],
+    })),
+    createCategorieFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
+    updateCategorieFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
+    deleteCategorieFournisseur: vi.fn(() => Promise.resolve({})),
   },
 }))
 
@@ -108,6 +115,43 @@ describe('FournisseursStock — statut de blocage (WIR26) + fiche 360 (WIR27)', 
 
     await waitFor(() => expect(stockApi.updateFournisseur).toHaveBeenCalledWith(
       2, expect.objectContaining({ statut: 'actif' }),
+    ))
+  })
+})
+
+describe('FournisseursStock — catégories fournisseur (WIR108)', () => {
+  it('crée une catégorie depuis le gestionnaire « Catégories »', async () => {
+    renderPage()
+    await screen.findByRole('grid', { name: 'Fournisseurs' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Catégories' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Panneaux')).toBeInTheDocument()
+
+    await userEvent.type(within(dialog).getByPlaceholderText('Nouvelle catégorie…'), 'Onduleurs')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Ajouter' }))
+
+    await waitFor(() => expect(stockApi.createCategorieFournisseur).toHaveBeenCalledWith(
+      { nom: 'Onduleurs' },
+    ))
+  })
+
+  it('assigne une catégorie à un fournisseur depuis la fiche', async () => {
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    const row = within(grid).getByText('Actif SARL').closest('tr')
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Modifier' }))
+    const dialog = await screen.findByRole('dialog')
+
+    // Deux comboboxes dans l'ordre du formulaire : catégorie puis statut.
+    const combos = within(dialog).getAllByRole('combobox')
+    await userEvent.click(combos[0])
+    await userEvent.click(await screen.findByRole('option', { name: 'Panneaux' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(stockApi.updateFournisseur).toHaveBeenCalledWith(
+      1, expect.objectContaining({ categorie: 10 }),
     ))
   })
 })

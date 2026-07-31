@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AclGedViewSet,
     AnnotationDocumentViewSet, ArchivageLegalViewSet, CabinetViewSet,
     ChampSignatureViewSet, CoffreViewSet, DemandeApprobationViewSet,
     DemandeDispositionViewSet, DemandeDocumentViewSet,
@@ -14,13 +15,14 @@ from .views import (
     QuotaStockageViewSet, RegleAclMetadonneeViewSet,
     RegleApprobationGedViewSet, RegleDossierViewSet, RoleSignataireViewSet,
     RoutageDocumentaireViewSet, SignataireDemandeViewSet,
-    TypeChampSignatureViewSet, ValidationOcrDocumentViewSet,
-    VueGedEnregistreeViewSet,
+    TamponSocieteViewSet, TypeChampSignatureViewSet,
+    ValidationOcrDocumentViewSet, VueGedEnregistreeViewSet,
     analytique_ged, mes_favoris, mes_recents, public_depot, public_partage,
     public_signataire, public_signature,
 )
 
 router = DefaultRouter()
+router.register(r'acls', AclGedViewSet)
 router.register(r'cabinets', CabinetViewSet)
 router.register(r'coffres', CoffreViewSet)
 router.register(r'dossiers', FolderViewSet)
@@ -49,6 +51,7 @@ router.register(r'exigences-dossier', ExigenceDossierViewSet)
 router.register(r'demandes-document', DemandeDocumentViewSet)
 router.register(r'validations-ocr', ValidationOcrDocumentViewSet)
 router.register(r'annotations', AnnotationDocumentViewSet)
+router.register(r'tampons-societe', TamponSocieteViewSet)
 router.register(r'regles-dossier', RegleDossierViewSet)
 router.register(r'regles-approbation', RegleApprobationGedViewSet)
 router.register(r'regles-acl-metadonnee', RegleAclMetadonneeViewSet)

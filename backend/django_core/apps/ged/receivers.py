@@ -4,6 +4,13 @@ Abonne ``ged`` à l'événement ``document_produit`` exposé par ``core.events``
 pour centraliser un fichier produit par une autre app (paie/rh/sav/ventes…)
 SANS que ``ged`` importe cette app ni l'inverse. Câblé au démarrage par
 ``GedConfig.ready``.
+
+WIR165 — premier ÉMETTEUR RÉEL : ``apps/ventes/utils/pdf.py``
+``generate_facture_pdf`` émet ``document_produit(source='ventes_facture', …)``
+juste après avoir stocké le PDF de facture (best-effort, ne bloque jamais la
+génération). Ce récepteur reste no-op tant qu'aucun ``RoutageDocumentaire``
+actif n'existe pour cette ``source`` — un admin l'active en créant un
+``RoutageDocumentaire(source='ventes_facture', …)`` pour sa société.
 """
 import logging
 

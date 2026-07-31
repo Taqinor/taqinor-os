@@ -41,6 +41,9 @@ const WebsiteLeadPayloadsPage = lazy(() => import('../../pages/crm/WebsiteLeadPa
 // `forecast/historique/` existent déjà (`IsAnyRole`, filtre équipe côté
 // serveur pour un Responsable non-Admin).
 const ForecastPage = lazy(() => import('../../pages/crm/forecast/ForecastPage'))
+// WIR99/DC12 — création/édition du profil site réutilisable par client
+// (`SiteProfile`), qui pré-remplit le générateur de devis SANS lead.
+const SiteProfilePage = lazy(() => import('../../pages/crm/SiteProfilePage'))
 
 const config = {
   key: 'crm',
@@ -55,6 +58,8 @@ const config = {
       { to: '/crm/forecast',         label: 'Forecast',         k: 'nav.forecast',   icon: navIcon(TrendingUp),    roles: ['normal','responsable','admin'] },
       { to: '/carte',                label: 'Carte',            k: 'nav.carte',      icon: navIcon(Map),           roles: ['normal','responsable','admin'] },
       { to: '/crm/parrainage',       label: 'Parrainage',       k: 'nav.parrainage', icon: navIcon(UserPlus),   roles: ['normal','responsable','admin'] },
+      // WIR99/DC12 — profil site réutilisable par client (pré-remplit le devis).
+      { to: '/crm/profils-site',     label: 'Profils site',     k: 'nav.profils_site', icon: navIcon(Users),   roles: ['normal','responsable','admin'] },
     ],
   },
   routes: [
@@ -66,6 +71,8 @@ const config = {
     { path: '/calendrier', component: CalendarPage },
     { path: '/carte', component: CartePage },
     { path: '/crm/parrainage', component: ParrainagePage },
+    // WIR99/DC12 — écran minimal create/edit du profil site par client.
+    { path: '/crm/profils-site', component: SiteProfilePage },
     // QX16 — rejeu des payloads leads site web.
     { path: '/crm/payloads-site-web', component: WebsiteLeadPayloadsPage },
     // WIR15/NTCRM7 — Forecast (manager rollup).

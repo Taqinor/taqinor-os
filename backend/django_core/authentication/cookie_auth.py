@@ -3,6 +3,7 @@ Authentification JWT via httpOnly cookie.
 Remplace la lecture du token dans l'en-tete Authorization.
 """
 from django.contrib.auth import get_user_model
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.tokens import AccessToken
@@ -90,3 +91,35 @@ class CookieJWTAuthentication(BaseAuthentication):
 
     def authenticate_header(self, request):
         return 'Bearer realm="api"'
+
+
+class CookieJWTAuthenticationScheme(OpenApiAuthenticationExtension):
+    """YAPIC6 — décrit `CookieJWTAuthentication` dans le schéma OpenAPI.
+
+    Sans cette extension, drf-spectacular émettait « could not resolve
+    authenticator » sur CHAQUE vue (1244 avertissements uniques, ~66 % du
+    bruit du schéma) et le document ne portait AUCUN `securitySchemes` — donc
+    ni Swagger ni un client généré ne savaient comment s'authentifier.
+
+    Elle est définie ici (et non dans un module `schema.py` séparé) parce que
+    drf-spectacular n'enregistre une extension que si son module est importé :
+    la poser à côté de la classe cible garantit l'enregistrement dès que
+    l'authenticator lui-même est chargé.
+    """
+
+    target_class = 'authentication.cookie_auth.CookieJWTAuthentication'
+    name = 'cookieJWT'
+
+    def get_security_definition(self, auto_schema):
+        # Le porteur PRIMAIRE est le cookie httpOnly `access_token` ; le repli
+        # `Authorization: Bearer <jwt>` reste accepté par `authenticate()`
+        # (compat scripts/tests) et est décrit dans la description.
+        return {
+            'type': 'apiKey',
+            'in': 'cookie',
+            'name': 'access_token',
+            'description': (
+                "JWT d'accès porté par le cookie httpOnly `access_token`. "
+                "Repli accepté : en-tête `Authorization: Bearer <jwt>`."
+            ),
+        }

@@ -23,6 +23,17 @@ vi.mock('../../api/stockApi', () => ({
     getFacturesFournisseurDe: vi.fn(),
     getRetoursFournisseurDe: vi.fn(),
     getDocumentsConformiteFournisseur: vi.fn(),
+    // WIR108 — acomptes/avoirs/contacts.
+    getAcomptesFournisseurDe: vi.fn(),
+    createAcompteFournisseur: vi.fn(),
+    getAvoirsFournisseurDe: vi.fn(),
+    createAvoirFournisseur: vi.fn(),
+    validerAvoirFournisseur: vi.fn(),
+    imputerAvoirFournisseur: vi.fn(),
+    getContactsFournisseurDe: vi.fn(),
+    createContactFournisseur: vi.fn(),
+    updateContactFournisseur: vi.fn(),
+    deleteContactFournisseur: vi.fn(),
   },
 }))
 
@@ -175,6 +186,92 @@ describe('XPUR25 — onglets détaillés (endpoints réels existants)', () => {
     const panel = await screen.findByTestId('f360-tab-retours')
     expect(within(panel).getByText('RET-1')).toBeInTheDocument()
     expect(stockApi.getRetoursFournisseurDe).toHaveBeenCalledWith('7')
+  })
+})
+
+describe('WIR108 — acomptes, avoirs, contacts', () => {
+  const stubCommon = () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.performanceFournisseur.mockImplementation(rejectNotFound)
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getRetoursFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getDocumentsConformiteFournisseur.mockResolvedValue({ data: [] })
+  }
+
+  it('Acomptes : liste les acomptes et permet d\'en créer un rattaché à un BCF', async () => {
+    stubCommon()
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({
+      data: [{ id: 11, reference: 'BCF-11' }],
+    })
+    stockApi.getAcomptesFournisseurDe.mockResolvedValue([
+      { id: 1, bon_commande: 11, bon_commande_reference: 'BCF-11', montant: 5000, montant_consomme: 0 },
+    ])
+    stockApi.createAcompteFournisseur.mockResolvedValue({ data: {} })
+
+    renderPage({ authState: { role: 'admin' } })
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Acomptes/ }))
+    const panel = await screen.findByTestId('f360-tab-acomptes')
+    expect(within(panel).getByText(/BCF-11/)).toBeInTheDocument()
+
+    await userEvent.click(within(panel).getByRole('button', { name: /Nouvel acompte/ }))
+    const montant = await screen.findByLabelText(/Montant \(MAD\)/)
+    await userEvent.type(montant, '2000')
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => {
+      expect(stockApi.createAcompteFournisseur).toHaveBeenCalledWith(
+        expect.objectContaining({ bon_commande: 11, montant: 2000 }))
+    })
+  })
+
+  it('Avoirs : créer un avoir puis l\'imputer réduit le solde dû', async () => {
+    stubCommon()
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getFacturesFournisseurDe.mockResolvedValue({
+      data: [{ id: 21, reference: 'FAF-21', solde_du: 1000 }],
+    })
+    stockApi.getAvoirsFournisseurDe.mockResolvedValue({
+      data: [{ id: 5, reference: 'AVF-000001', statut: 'valide', montant_ttc: 300, montant_disponible: 300 }],
+    })
+    stockApi.imputerAvoirFournisseur.mockResolvedValue({ data: {} })
+
+    renderPage({ authState: { role: 'admin' }, fournisseurId: '9' })
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Avoirs/ }))
+    const panel = await screen.findByTestId('f360-tab-avoirs')
+    expect(within(panel).getByText('AVF-000001')).toBeInTheDocument()
+
+    await userEvent.click(within(panel).getByRole('button', { name: 'Imputer' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Imputer' }))
+
+    await waitFor(() => {
+      expect(stockApi.imputerAvoirFournisseur).toHaveBeenCalledWith(
+        5, expect.objectContaining({ facture: 21 }))
+    })
+  })
+
+  it('Contacts : ajoute un contact secondaire', async () => {
+    stubCommon()
+    stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.getContactsFournisseurDe.mockResolvedValue({ data: [] })
+    stockApi.createContactFournisseur.mockResolvedValue({ data: {} })
+
+    renderPage({ authState: { role: 'admin' } })
+
+    await userEvent.click(await screen.findByRole('tab', { name: /Contacts/ }))
+    const panel = await screen.findByTestId('f360-tab-contacts')
+    expect(within(panel).getByText('Aucun contact secondaire.')).toBeInTheDocument()
+
+    await userEvent.click(within(panel).getByRole('button', { name: /Nouveau contact/ }))
+    await userEvent.type(await screen.findByLabelText('Nom'), 'Jean Dupont')
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => {
+      expect(stockApi.createContactFournisseur).toHaveBeenCalledWith(
+        expect.objectContaining({ nom: 'Jean Dupont' }))
+    })
   })
 })
 

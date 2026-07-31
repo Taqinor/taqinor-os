@@ -4,6 +4,7 @@ import {
   Bell, BellOff, Sparkles, Copy, GitMerge, PackagePlus, UserPlus2, Undo2,
 } from 'lucide-react'
 import savApi from '../../api/savApi'
+import stockApi from '../../api/stockApi'
 import { Badge, Button, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, toast } from '../../ui'
 
 /**
@@ -83,7 +84,7 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert }) {
     } finally { setLeadBusy(false) }
   }
 
-  // ── XSAV27 — prêts d'équipement (loaner) ──
+  // ── WIR118 (XSAV27) — prêts d'équipement (loaner) : liste + création ──
   const [prets, setPrets] = useState([])
   const loadPrets = () => {
     savApi.getPretsEquipement(ticketId).then((r) => setPrets(r.data ?? [])).catch(() => {})
@@ -95,6 +96,34 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert }) {
       toast.success('Prêt retourné')
       loadPrets()
     } catch (err) { toast.error(err?.response?.data?.detail ?? 'Retour impossible.') }
+  }
+
+  const [pretFormOpen, setPretFormOpen] = useState(false)
+  const [produits, setProduits] = useState([])
+  const [pretProduitId, setPretProduitId] = useState('')
+  const [pretNumeroSerie, setPretNumeroSerie] = useState('')
+  const [pretDateRetourPrevue, setPretDateRetourPrevue] = useState('')
+  const [pretBusy, setPretBusy] = useState(false)
+  useEffect(() => {
+    if (!pretFormOpen || produits.length) return
+    stockApi.getProduits().then((r) => setProduits(r.data.results ?? r.data ?? [])).catch(() => {})
+  }, [pretFormOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+  const creerPret = async () => {
+    if (!pretProduitId) return
+    setPretBusy(true)
+    try {
+      await savApi.creerPretEquipement(ticketId, {
+        produit: pretProduitId,
+        numero_serie: pretNumeroSerie || undefined,
+        date_retour_prevue: pretDateRetourPrevue || undefined,
+      })
+      toast.success('Prêt créé')
+      setPretProduitId(''); setPretNumeroSerie(''); setPretDateRetourPrevue('')
+      setPretFormOpen(false)
+      loadPrets()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création du prêt impossible.')
+    } finally { setPretBusy(false) }
   }
 
   // ── XSAV23 — macros (réponses types) ──
@@ -200,12 +229,43 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert }) {
         )}
       </div>
 
-      {/* XSAV27 — prêts d'équipement */}
+      {/* WIR118 (XSAV27) — prêts d'équipement */}
       <div className="flex flex-col gap-1.5">
-        <span className="flex items-center gap-2 text-sm font-medium">
-          <PackagePlus className="size-4 text-muted-foreground" aria-hidden="true" />
-          Prêts d'équipement
-        </span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2 text-sm font-medium">
+            <PackagePlus className="size-4 text-muted-foreground" aria-hidden="true" />
+            Prêts d'équipement
+          </span>
+          <Button type="button" size="sm" variant="outline" onClick={() => setPretFormOpen((o) => !o)}>
+            {pretFormOpen ? 'Annuler' : 'Nouveau prêt'}
+          </Button>
+        </div>
+        {pretFormOpen && (
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+            <Select value={pretProduitId} onValueChange={setPretProduitId}>
+              <SelectTrigger aria-label="Produit prêté"><SelectValue placeholder="Choisir un produit" /></SelectTrigger>
+              <SelectContent>
+                {produits.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Input
+              placeholder="N° de série (optionnel)"
+              value={pretNumeroSerie}
+              onChange={(e) => setPretNumeroSerie(e.target.value)}
+            />
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              Date de retour prévue
+              <Input
+                type="date"
+                value={pretDateRetourPrevue}
+                onChange={(e) => setPretDateRetourPrevue(e.target.value)}
+              />
+            </label>
+            <Button type="button" size="sm" loading={pretBusy} disabled={!pretProduitId} onClick={creerPret}>
+              Créer le prêt
+            </Button>
+          </div>
+        )}
         {prets.length === 0 ? (
           <p className="text-xs text-muted-foreground">Aucun prêt sur ce ticket.</p>
         ) : (

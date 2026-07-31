@@ -223,12 +223,13 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       if (res) setOpenedAt(res.id, res.date_modification)
       onSavedRef.current?.()
     } catch (err) {
-      if (err?.response?.status === 400) {
-        toast.error("Retour d'étape non autorisé")
-      }
-      // Autre échec (réseau/serveur) : silencieux, comme le reste du moteur
-      // (best-effort) — le stage affiché reste simplement l'ancien (server
-      // jamais mis à jour), rien à réconcilier.
+      // LW42 — messages fidèles : un 400 avec `detail` (ex. lead perdu
+      // verrouillé) affiche LE TEXTE SERVEUR, jamais le générique fixe
+      // « Retour d'étape non autorisé » qui mentait sur la vraie raison.
+      // Toute autre panne (réseau/serveur/400 sans detail) reste visible —
+      // plus de clic muet en offline — via un toast générique distinct.
+      const detail = err?.response?.data?.detail
+      toast.error(detail || "Échec du changement d'étape — réessayez.")
     }
   }, [flush])
 

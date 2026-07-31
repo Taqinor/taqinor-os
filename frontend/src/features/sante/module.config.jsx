@@ -2,7 +2,10 @@
    Fichier de configuration de module (données + composant lazy), pas un module
    de composants : le fast-refresh ne s'y applique pas (cf. moduleRoutes.jsx). */
 import { lazy } from 'react'
-import { ClipboardList, ShieldCheck, Stethoscope, UserPlus } from 'lucide-react'
+import {
+  BedDouble, CalendarCog, ClipboardList, Handshake, Receipt, ShieldCheck,
+  Stethoscope, UserPlus,
+} from 'lucide-react'
 
 /* ============================================================================
    NTSAN — Config du module Santé (cabinet/clinique), auto-enregistrée.
@@ -20,6 +23,14 @@ const ReceptionScreen = lazy(() => import('./ReceptionScreen'))
 // `sante.alertes_prise_en_charge_expirant` (`/sante/prises-en-charge?id=`),
 // jusque-là non enregistrée (404 systématique).
 const PrisesEnChargePage = lazy(() => import('./PrisesEnChargePage'))
+// WIR142 — 6 surfaces d'administration santé jusque-là sans écran :
+// admissions, conventions/grilles, actes réalisés, factures/paiements,
+// configuration agenda.
+const AdmissionsScreen = lazy(() => import('./AdmissionsScreen'))
+const ConventionsScreen = lazy(() => import('./ConventionsScreen'))
+const ActesRealisesScreen = lazy(() => import('./ActesRealisesScreen'))
+const FacturationScreen = lazy(() => import('./FacturationScreen'))
+const AgendaConfigScreen = lazy(() => import('./AgendaConfigScreen'))
 
 const config = {
   key: 'sante',
@@ -52,6 +63,36 @@ const config = {
         icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['normal', 'responsable', 'admin'],
       },
+      {
+        to: '/sante/admissions',
+        label: 'Admissions',
+        icon: <BedDouble size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['normal', 'responsable', 'admin'],
+      },
+      {
+        to: '/sante/conventions',
+        label: 'Conventions & grilles',
+        icon: <Handshake size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
+      {
+        to: '/sante/actes-realises',
+        label: 'Actes réalisés',
+        icon: <Stethoscope size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['normal', 'responsable', 'admin'],
+      },
+      {
+        to: '/sante/facturation',
+        label: 'Facturation',
+        icon: <Receipt size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['normal', 'responsable', 'admin'],
+      },
+      {
+        to: '/sante/config-agenda',
+        label: 'Configuration agenda',
+        icon: <CalendarCog size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
     ],
   },
   titles: [
@@ -59,6 +100,11 @@ const config = {
     ['/sante/agenda', 'Agenda (Santé)'],
     ['/sante/nomenclature-actes', 'Nomenclature des actes'],
     ['/sante/prises-en-charge', 'Prises en charge'],
+    ['/sante/admissions', 'Admissions'],
+    ['/sante/conventions', 'Conventions & grilles tarifaires'],
+    ['/sante/actes-realises', 'Actes réalisés'],
+    ['/sante/facturation', 'Facturation santé'],
+    ['/sante/config-agenda', 'Configuration agenda'],
   ],
   sectionLabels: { sante: 'Santé' },
   routes: [
@@ -77,6 +123,26 @@ const config = {
     {
       path: '/sante/prises-en-charge', component: PrisesEnChargePage,
       roles: ['normal', 'responsable', 'admin'],
+    },
+    {
+      path: '/sante/admissions', component: AdmissionsScreen,
+      roles: ['normal', 'responsable', 'admin'],
+    },
+    {
+      path: '/sante/conventions', component: ConventionsScreen,
+      roles: ['responsable', 'admin'],
+    },
+    {
+      path: '/sante/actes-realises', component: ActesRealisesScreen,
+      roles: ['normal', 'responsable', 'admin'],
+    },
+    {
+      path: '/sante/facturation', component: FacturationScreen,
+      roles: ['normal', 'responsable', 'admin'],
+    },
+    {
+      path: '/sante/config-agenda', component: AgendaConfigScreen,
+      roles: ['responsable', 'admin'],
     },
   ],
 }

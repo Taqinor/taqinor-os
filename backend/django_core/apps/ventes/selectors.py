@@ -701,6 +701,30 @@ def encours_ouvert_par_tiers(company):
     return [v for v in par_client.values() if v['encours'] > 0]
 
 
+def reste_du_factures_brouillon(company, client_id):
+    """WIR93 — reste dû des factures ``BROUILLON`` d'un client, borné société.
+
+    C'est le SEUL écart d'assiette autorisé entre les deux moteurs de crédit :
+    ``encours_ouvert_par_tiers`` (moteur ``apps.credit``, NTCRD4) inclut les
+    brouillons, tandis que ``crm.selectors.client_credit_warning`` (moteur
+    FG41/XFAC28) ne compte que ``emise``/``en_retard``. Point d'entrée
+    cross-app sanctionné pour ``apps.credit.services.ecart_encours_moteurs``
+    (jamais un import direct de ``ventes.models``). Lecture seule."""
+    from decimal import Decimal
+    from .models import Facture
+
+    total = Decimal('0')
+    qs = (Facture.objects
+          .filter(company=company, client_id=client_id,
+                  statut=Facture.Statut.BROUILLON)
+          .prefetch_related('paiements', 'avoirs'))
+    for facture in qs:
+        du = facture.montant_du
+        if du:
+            total += Decimal(du)
+    return total
+
+
 def ca_devis_factures_par_clients(company, client_ids):
     """XSAL9 — CA (devis + factures) agrégé, PAR client, pour une liste
     d'ids clients d'une même société. Point d'entrée cross-app sanctionné

@@ -1735,7 +1735,35 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
     _notify_seuil_atteint_si_franchi(
         company=company, produit=produit,
         quantite_avant=quantite_avant, quantite_apres=quantite_apres)
+    _emit_mouvement_stock_enregistre(mouvement, company)
     return mouvement
+
+
+def _emit_mouvement_stock_enregistre(mouvement, company):
+    """WIR85 / XACC6 — émet ``core.events.mouvement_stock_enregistre``.
+
+    ``compta.services.poster_mouvement_stock`` (inventaire permanent) était
+    défini et testé mais n'avait AUCUN appelant de production, et aucun
+    événement « mouvement de stock » n'existait sur le bus : l'écriture
+    automatique ne partait jamais. Ce point d'émission — le SEUL endroit du
+    dépôt qui crée un ``MouvementStock`` — le branche.
+
+    ``stock`` n'importe jamais ``apps.compta`` : l'instance transite par le
+    signal. Best-effort strict : un abonné qui échoue ne doit JAMAIS faire
+    échouer le mouvement de stock lui-même (le stock reste la source de vérité,
+    la comptabilité en est le miroir). Le double garde-fou (toggle WIR24
+    ``COMPTA_AUTO_ECRITURES`` + ``PlanComptable.inventaire_permanent``) vit
+    côté abonné : ici on émet toujours."""
+    if company is None:
+        return
+    try:
+        from core.events import mouvement_stock_enregistre
+        mouvement_stock_enregistre.send(
+            sender=type(mouvement), instance=mouvement, company=company)
+    except Exception:  # noqa: BLE001 — miroir best-effort, jamais bloquant
+        logger.warning(
+            'WIR85: émission mouvement_stock_enregistre échouée pour le '
+            'mouvement %s', getattr(mouvement, 'pk', '?'), exc_info=True)
 
 
 def _notify_seuil_atteint_si_franchi(*, company, produit, quantite_avant,

@@ -86,6 +86,44 @@ test('mute / members / leave gardent leurs chemins backend', () => {
   assert.match(src, /leaveConversation:[\s\S]*?\/leave\/`/)
 })
 
+// ── WIR155/WIR157 — nouveaux endpoints (fils, rappels/favoris, programmés,
+// réponses enregistrées, sondages, rétention/alias/export). ──
+test('threads.reply / list / listFollowed → routes XKB24', () => {
+  assert.match(src, /reply:[\s\S]*?api\.post\(`\/chat\/messages\/\$\{messageId\}\/reply\/`/)
+  assert.match(src, /list:[\s\S]*?api\.get\(`\/chat\/messages\/\$\{messageId\}\/thread\/`/)
+  assert.match(src, /listFollowed:[\s\S]*?'\/chat\/messages\/threads\/'/)
+})
+
+test('remindMe / toggleBookmark / listBookmarks → routes XKB27', () => {
+  assert.match(src, /remindMe:[\s\S]*?\/remind-me\/`/)
+  assert.match(src, /toggleBookmark:[\s\S]*?\/bookmark\/`/)
+  assert.match(src, /listBookmarks:[\s\S]*?'\/chat\/messages\/bookmarks\/'/)
+})
+
+test('scheduled.create / cancel → /chat/scheduled-messages/', () => {
+  assert.match(src, /scheduled:[\s\S]*?create:[\s\S]*?'\/chat\/scheduled-messages\/'/)
+  assert.match(src, /cancel:[\s\S]*?\/chat\/scheduled-messages\/\$\{id\}\/`/)
+})
+
+test('canned.list / create / remove → /chat/canned-responses/', () => {
+  assert.match(src, /canned:[\s\S]*?list:[\s\S]*?'\/chat\/canned-responses\/'/)
+  assert.match(src, /canned:[\s\S]*?create:[\s\S]*?'\/chat\/canned-responses\/'/)
+})
+
+test('poll.create / vote / close / results → routes XKB30', () => {
+  assert.match(src, /poll:[\s\S]*?create:[\s\S]*?'\/chat\/messages\/poll\/'/)
+  assert.match(src, /vote:[\s\S]*?\/poll-vote\/`/)
+  assert.match(src, /close:[\s\S]*?\/poll-close\/`/)
+  assert.match(src, /results:[\s\S]*?\/poll-results\/`/)
+})
+
+test('retention.list / historique + setChannelAlias + exportConversation (WIR157)', () => {
+  assert.match(src, /retention:[\s\S]*?'\/chat\/retention-policies\/'/)
+  assert.match(src, /historique:[\s\S]*?'\/chat\/retention-policies\/historique\/'/)
+  assert.match(src, /setChannelAlias:[\s\S]*?\/alias-email\/`/)
+  assert.match(src, /exportConversation:[\s\S]*?\/export\/`/)
+})
+
 // Garde un usage du stub pour éviter un "unused" et documenter la forme.
 test('stub d’API enregistre les appels (sanity)', () => {
   const stub = makeStub()

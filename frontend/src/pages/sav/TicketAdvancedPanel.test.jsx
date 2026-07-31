@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
 /* XSAV12/21/27/28, ZSAV8/9 — panneau d'actions avancées du ticket. savApi
@@ -14,12 +15,20 @@ vi.mock('../../api/savApi', () => ({
     fusionnerTicket: vi.fn(),
     creerLeadDepuisTicket: vi.fn(),
     getPretsEquipement: vi.fn(() => Promise.resolve({ data: [] })),
+    creerPretEquipement: vi.fn(),
     retournerPretEquipement: vi.fn(),
     getReponsesType: vi.fn(() => Promise.resolve({ data: [] })),
   },
 }))
 
+vi.mock('../../api/stockApi', () => ({
+  default: {
+    getProduits: vi.fn(() => Promise.resolve({ data: { results: [{ id: 4, nom: 'Onduleur Huawei 5kW' }] } })),
+  },
+}))
+
 import savApi from '../../api/savApi'
+import stockApi from '../../api/stockApi'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -116,5 +125,22 @@ describe('TicketAdvancedPanel — XSAV27 prêts d\'équipement', () => {
     expect(await screen.findByText(/Onduleur de prêt/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Retourner/ }))
     await waitFor(() => expect(savApi.retournerPretEquipement).toHaveBeenCalledWith(5, 1))
+  })
+
+  it('WIR118 — crée un prêt depuis le formulaire (produit + retour prévue)', async () => {
+    savApi.creerPretEquipement.mockResolvedValue({ data: { id: 2 } })
+    renderPanel()
+    fireEvent.click(await screen.findByRole('button', { name: 'Nouveau prêt' }))
+    await waitFor(() => expect(stockApi.getProduits).toHaveBeenCalled())
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Produit prêté' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'Onduleur Huawei 5kW' }))
+    fireEvent.change(screen.getByPlaceholderText('N° de série (optionnel)'), { target: { value: 'SN-777' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Créer le prêt' }))
+    await waitFor(() => expect(savApi.creerPretEquipement).toHaveBeenCalledWith(5, expect.objectContaining({
+      produit: '4', numero_serie: 'SN-777',
+    })))
+    expect(savApi.getPretsEquipement).toHaveBeenCalledTimes(2)
   })
 })

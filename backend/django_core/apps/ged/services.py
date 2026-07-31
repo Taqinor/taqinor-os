@@ -78,23 +78,19 @@ def ocr_enabled():
 def ocr_extract_text(file_bytes, *, mime=''):
     """GED33 — Extrait le texte d'un fichier image/PDF par OCR (no-op sans clé).
 
-    NO-OP PAR DÉFAUT : renvoie '' tant que `ocr_enabled()` est faux — le
-    squelette d'appel provider est isolé ici pour un futur branchement (Zhipu OCR
-    via le service FastAPI IA) sans toucher au reste du module. Ne lève jamais
-    (robustesse : l'OCR ne doit pas casser un dépôt documentaire)."""
+    NO-OP PAR DÉFAUT : renvoie '' tant que `ocr_enabled()` est faux. WIR153 —
+    AUCUN module fournisseur n'existe encore dans ce dépôt (contrairement à
+    ce que disait cette docstring auparavant : elle référençait un import
+    mort ``ocr_provider``, jamais câblé, avalé silencieusement par un
+    ``except ImportError``). Le flag activé sans provider réel reste donc un
+    NO-OP DÉTERMINISTE — chaîne vide, jamais de crash. Une fois un provider
+    branché (appel HTTP vers le service OCR ``backend/fastapi_ia``, Zhipu OCR,
+    même motif que ``apps.crm.intake_photo``), il doit exposer
+    ``extract_text(file_bytes, mime=mime) -> str``."""
     if not file_bytes or not ocr_enabled():
         return ''
-    provider = None
-    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
-        from . import ocr_provider as provider  # noqa: F401
-    except ImportError:
-        provider = None
-    if provider is None:  # pragma: no cover
-        return ''
-    try:  # pragma: no cover
-        return provider.extract_text(file_bytes, mime=mime) or ''
-    except Exception:  # pragma: no cover - jamais bloquer un dépôt.
-        return ''
+    # Aucun provider câblé — dégradation propre (chaîne vide), jamais un crash.
+    return ''
 
 
 def ocr_index_document(document, *, file_bytes=None, mime=''):
@@ -2568,6 +2564,15 @@ def esign_provider_name():
 def demander_signature(document, *, signataire_nom, signataire_email,
                        company, created_by=None):
     """GED30 — Demande une signature électronique sur un document (STUB no-op).
+
+    WIR138 — POINT DE BASCULE VERS LE SOCLE CANONIQUE. ``core.esign`` est le
+    socle désigné des demandes de signature adossées à un prestataire externe ;
+    il est PARQUÉ tant qu'aucun compte Yousign/DocuSign n'est provisionné (voir
+    ``core/esign.py`` et ``docs/esign-socle.md``). Ce chemin GED est le SEUL des
+    trois qui devra alors router son envoi externe via
+    ``core.esign.creer_demande()``/``envoyer()`` — ne JAMAIS réimplémenter un
+    connecteur ici (le stub optionnel ``esign_provider`` ci-dessous n'est qu'un
+    point d'extension local en attendant).
 
     Crée une `DemandeSignatureDocument` `en_attente` rattachée au document. La
     `company` est TOUJOURS fournie par l'appelant (résolue côté serveur depuis

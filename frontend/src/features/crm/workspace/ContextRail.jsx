@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import {
+  useState, useEffect, useCallback, useRef,
+} from 'react'
 import { Tabs, TabsList, TabsTrigger, TabsContent, Button } from '../../../ui'
 import ActivitiesPanel from '../../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../../components/AttachmentsPanel'
@@ -56,8 +58,11 @@ export default function ContextRail({
     }
     const openWa = () => {
       changeTab('devis')
+      // LW44 — `ui/Checkbox` est un bouton Radix (`role="checkbox"`), jamais
+      // un `<input type="checkbox">` : l'ancien sélecteur ne matchait RIEN,
+      // le focus était un no-op silencieux.
       requestAnimationFrame(() => {
-        document.querySelector('.lw-context-devis input[type="checkbox"]')?.focus()
+        document.querySelector('.lw-context-devis [role="checkbox"]')?.focus()
       })
     }
     window.addEventListener('lw:open-note-composer', openNote)
@@ -71,16 +76,24 @@ export default function ContextRail({
   const [openActivites, setOpenActivites] = useState(0)
   const [nbPieces, setNbPieces] = useState(0)
 
+  // LW43 — garde d'identité : `requestedId` capturé À L'ENVOI, comparé au
+  // VRAI courant (`leadIdRef`, tenu à jour à chaque rendu) — les compteurs
+  // Activités/Pièces du lead A en vol ne peignent plus le lead B après un
+  // J/K rapide (même patron `cancelled` que LeadDetailPage.jsx).
+  const leadIdRef = useRef(leadId)
+  useEffect(() => { leadIdRef.current = leadId })
   const loadCounts = useCallback(() => {
     if (!leadId) return
-    recordsApi.getActivities('crm.lead', leadId)
+    const requestedId = leadId
+    recordsApi.getActivities('crm.lead', requestedId)
       .then((r) => {
+        if (leadIdRef.current !== requestedId) return
         const list = r.data.results ?? r.data
         setOpenActivites(list.filter((a) => !a.done).length)
       })
       .catch(() => {})
-    recordsApi.getAttachments('crm.lead', leadId)
-      .then((r) => setNbPieces((r.data.results ?? r.data).length))
+    recordsApi.getAttachments('crm.lead', requestedId)
+      .then((r) => { if (leadIdRef.current === requestedId) setNbPieces((r.data.results ?? r.data).length) })
       .catch(() => {})
   }, [leadId])
 

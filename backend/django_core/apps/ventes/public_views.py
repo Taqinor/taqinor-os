@@ -137,9 +137,32 @@ def _stamp_view(link):
                 pk=link.pk, first_viewed_at__isnull=True,
             ).update(first_viewed_at=now)
         link.refresh_from_db(fields=['view_count', 'last_viewed_at', 'first_viewed_at'])
+        _enregistrer_ouverture_marketing(link)
         return is_first
     except Exception:  # noqa: BLE001 — best-effort, never break the public GET
         return False
+
+
+def _enregistrer_ouverture_marketing(link):
+    """WIR96 — miroir marketing de l'ouverture du lien public.
+
+    ``marketing.OuverturePartage`` existait, routé mais INERTE : aucun code ne
+    l'écrivait, donc aucune ouverture n'était jamais consignée. On l'alimente
+    ici, à l'endroit exact où ShareLink est déjà horodaté, via la frontière
+    ``apps.marketing.services`` (jamais un import des modèles marketing).
+    Strictement best-effort : une erreur ne doit jamais casser le GET public
+    ni l'horodatage ShareLink, qui reste la source de vérité côté ventes."""
+    if not getattr(link, 'company_id', None):
+        return
+    try:
+        from apps.marketing.services import enregistrer_ouverture_partage
+        cible = 'facture' if link.facture_id else 'devis'
+        doc = link.facture if link.facture_id else link.devis
+        enregistrer_ouverture_partage(
+            link.company, token=link.token, cible=cible,
+            cible_reference=getattr(doc, 'reference', '') or '')
+    except Exception:  # noqa: BLE001 — miroir best-effort, jamais bloquant
+        pass
 
 
 def _notify_first_open(link):

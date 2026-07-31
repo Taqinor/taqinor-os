@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
@@ -19,7 +19,11 @@ vi.mock('../../../api/gestionProjetApi', () => ({
     getDocuments: vi.fn(() => Promise.resolve({ data: [] })),
     getCommentaires: vi.fn(() => Promise.resolve({ data: [] })),
     getModeles: vi.fn(() => Promise.resolve({ data: [] })),
-    getSousTraitants: vi.fn(() => Promise.resolve({ data: [] })),
+    // WIR87 — le carnet lit/écrit désormais le master DC34
+    // (`installations/sous-traitants/`), plus `gestion_projet.SousTraitant`.
+    getSousTraitantsMaster: vi.fn(() => Promise.resolve({ data: [] })),
+    createSousTraitantMaster: vi.fn(() => Promise.resolve({ data: {} })),
+    updateSousTraitantMaster: vi.fn(() => Promise.resolve({ data: {} })),
     getLotsSousTraitance: vi.fn(() => Promise.resolve({ data: [] })),
     getMatriceRisques: vi.fn(() => Promise.resolve({
       data: {
@@ -71,5 +75,65 @@ describe('RisquesPage — ZPRJ7-9', () => {
     await user.selectOptions(screen.getByLabelText('Projet'), '10')
     await user.click(await screen.findByRole('button', { name: /Rapport PDF/ }))
     await waitFor(() => expect(gestionProjetApi.getRapportAvancementPdf).toHaveBeenCalledWith('10'))
+  })
+})
+
+describe('RisquesPage — carnet de sous-traitants sur le master DC34 (WIR87)', () => {
+  it('lit le carnet via le master (installations/sous-traitants/), plus le carnet local', async () => {
+    gestionProjetApi.getSousTraitantsMaster.mockResolvedValueOnce({
+      data: [{
+        id: 7, raison_sociale: 'Terrass’Pro', metier: 'terrassement',
+        metier_display: 'Terrassement', contact_nom: 'Karim', telephone: '0600000000',
+        actif: true,
+      }],
+    })
+    const user = userEvent.setup()
+    withProviders(<RisquesPage />)
+    await user.click(await screen.findByRole('tab', { name: 'Sous-traitance' }))
+
+    expect(await screen.findByText('Terrass’Pro')).toBeInTheDocument()
+    expect(screen.getByText('Terrassement')).toBeInTheDocument()
+    expect(gestionProjetApi.getSousTraitantsMaster).toHaveBeenCalled()
+    expect(gestionProjetApi.getSousTraitants).toBeUndefined()
+  })
+
+  it('crée un sous-traitant via le master — jamais le carnet local', async () => {
+    const user = userEvent.setup()
+    withProviders(<RisquesPage />)
+    await user.click(await screen.findByRole('tab', { name: 'Sous-traitance' }))
+    await user.click(await screen.findByRole('button', { name: /Nouveau sous-traitant/ }))
+
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText('Raison sociale'), 'Élec’Sud')
+    await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => {
+      expect(gestionProjetApi.createSousTraitantMaster).toHaveBeenCalledWith(
+        expect.objectContaining({ raison_sociale: 'Élec’Sud', metier: 'autre' }))
+    })
+    expect(gestionProjetApi.getSousTraitantsMaster).toHaveBeenCalledTimes(2) // chargement initial + rechargement post-création
+  })
+
+  it('modifier un sous-traitant existant appelle updateSousTraitantMaster', async () => {
+    gestionProjetApi.getSousTraitantsMaster.mockResolvedValue({
+      data: [{
+        id: 7, raison_sociale: 'Terrass’Pro', metier: 'terrassement',
+        metier_display: 'Terrassement', contact_nom: 'Karim', telephone: '0600000000',
+        actif: true,
+      }],
+    })
+    const user = userEvent.setup()
+    withProviders(<RisquesPage />)
+    await user.click(await screen.findByRole('tab', { name: 'Sous-traitance' }))
+    await screen.findByText('Terrass’Pro')
+
+    await user.click(screen.getByRole('button', { name: 'Modifier' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => {
+      expect(gestionProjetApi.updateSousTraitantMaster).toHaveBeenCalledWith(
+        7, expect.objectContaining({ raison_sociale: 'Terrass’Pro' }))
+    })
   })
 })

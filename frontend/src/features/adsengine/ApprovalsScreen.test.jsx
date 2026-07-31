@@ -203,6 +203,47 @@ describe('ApprovalsScreen — avertissements + composeur EDIT_COPY (ADSDEEP35)',
   })
 })
 
+/* WIR63 — DaypartingGrid (ADSDEEP36) était montée dans ManualActionComposer.jsx
+   (composeur) mais jamais côté REVUE : une carte `set_schedule` n'affichait
+   que le libellé générique. Miroir de `editCopyDiff` : avant (défaut Meta
+   24/7, `emptyGrid()`, aucune donnée inventée) / après (grille proposée). */
+describe('ApprovalsScreen — grille dayparting avant/après (WIR63, set_schedule)', () => {
+  const SCHEDULE_ACTIONS = [
+    { id: 31, type: 'set_schedule', reason_fr: 'Poser un horaire de diffusion.',
+      payload: {
+        adset_id: 'a1', mode: 'native',
+        grid: { mon: Array.from({ length: 24 }, (_, h) => (h >= 8 && h < 20 ? 1 : 0)),
+                tue: Array(24).fill(1), wed: Array(24).fill(1), thu: Array(24).fill(1),
+                fri: Array(24).fill(1), sat: Array(24).fill(1), sun: Array(24).fill(1) },
+      } },
+  ]
+
+  it('rend la grille avant (24/7 par défaut) et après (proposée), lecture seule', async () => {
+    mocks.pending.mockResolvedValue({ data: SCHEDULE_ACTIONS })
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+
+    const diff = screen.getByTestId('ae-dayparting-diff')
+    expect(diff).toBeInTheDocument()
+
+    const before = within(screen.getByTestId('ae-dayparting-before'))
+    const after = within(screen.getByTestId('ae-dayparting-after'))
+    // Avant : 24/7 (défaut Meta, aucune restriction) — lundi 3h autorisé.
+    expect(before.getByTestId('dp-cell-mon-3')).toHaveAttribute('aria-pressed', 'true')
+    // Après : la grille PROPOSÉE — lundi 3h bloqué, lundi 10h autorisé.
+    expect(after.getByTestId('dp-cell-mon-3')).toHaveAttribute('aria-pressed', 'false')
+    expect(after.getByTestId('dp-cell-mon-10')).toHaveAttribute('aria-pressed', 'true')
+    // Lecture seule : les cellules sont désactivées (jamais éditables ici).
+    expect(after.getByTestId('dp-cell-mon-10')).toBeDisabled()
+  })
+
+  it('n\'affiche aucune grille pour une action d\'un autre kind', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    expect(screen.queryByTestId('ae-dayparting-diff')).toBeNull()
+  })
+})
+
 describe('PUB10 — parité permissions UI', () => {
   it('manage-sans-approve : Approuver/Rejeter/batch sont grisés, le composeur reste actif', async () => {
     mocks.permissions = ['adsengine_manage'] // pas adsengine_approve

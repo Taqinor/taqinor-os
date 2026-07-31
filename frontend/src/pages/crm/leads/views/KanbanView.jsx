@@ -132,6 +132,10 @@ export const STAGE_PROBABILITY = {
 const DraggableCard = memo(function DraggableCard({
   lead, busy, onOpen, onAutoQuote, users, onReassign,
   selected, onToggleSelect, onPlanifierRelance, onInlineSave, onMarkPerdu,
+  // LB38 — booléen « une sélection est en cours quelque part sur le board »
+  // (jamais le `Set` entier) : révèle la case de TOUTES les cartes pendant
+  // qu'on constitue une sélection (blueprint D3). Primitive → memo intact.
+  selectionActive,
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
@@ -152,6 +156,7 @@ const DraggableCard = memo(function DraggableCard({
         <LeadCard lead={lead} busy={busy} onOpen={onOpen} onAutoQuote={onAutoQuote}
                   users={users} onReassign={onReassign}
                   selected={selected} onToggleSelect={onToggleSelect}
+                  selectionActive={selectionActive}
                   onPlanifierRelance={onPlanifierRelance} onMarkPerdu={onMarkPerdu} />
       </div>
       <StageMover lead={lead} onInlineSave={onInlineSave} />
@@ -432,6 +437,7 @@ export default function KanbanView({
                 users={users}
                 onReassign={onReassign}
                 selected={selected.has(lead.id)}
+                selectionActive={selected.size > 0}
                 onToggleSelect={onToggleSelect}
                 onPlanifierRelance={onPlanifierRelance}
                 onInlineSave={onInlineSave}
@@ -441,7 +447,15 @@ export default function KanbanView({
           </StageColumn>
         ))}
       </div>
-      <DragOverlay dropAnimation={prefersReducedMotion ? DROP_ANIMATION_REDUCED : DROP_ANIMATION}>
+      {/* LB40 — `zIndex` explicite : dnd-kit pose 999 par défaut sur son
+          calque de glisser, DESSOUS la barre bulk flottante (`--z-sticky`,
+          1100) — la carte glissée passait sous la barre pendant une
+          sélection. Prop native dnd-kit (jamais un z-index en dur sur notre
+          `.kb-drag-overlay` : le calque parent est celui qui empile). */}
+      <DragOverlay
+        zIndex={1200}
+        dropAnimation={prefersReducedMotion ? DROP_ANIMATION_REDUCED : DROP_ANIMATION}
+      >
         {activeLead ? (
           <div className={prefersReducedMotion ? 'kb-drag-overlay kb-drag-overlay--flat' : 'kb-drag-overlay'}>
             <LeadCard lead={activeLead} />

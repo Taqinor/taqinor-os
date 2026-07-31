@@ -108,6 +108,12 @@ const innovationApi = {
     lierAnnonce: (id, data) =>
       api.post(`/innovation/feedback-produit/${id}/lier-annonce/`, data),
   },
+
+  // ── WIR150 — annonces produit (repli local NTIDE39, palier admin) ──
+  annonces: {
+    list: (params) => api.get('/innovation/annonces-produit/', { params }),
+    create: (data) => api.post('/innovation/annonces-produit/', data),
+  },
 }
 
 export default innovationApi

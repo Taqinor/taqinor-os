@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { initState } from './draftCore'
 import IdentityRail from './IdentityRail'
 import crmApi from '../../../api/crmApi'
@@ -126,6 +126,16 @@ describe('LW14 — IdentityRail identité + actions', () => {
     expect(screen.getByText(/Facture saisie/)).toBeInTheDocument()
     expect(screen.getByText(/Prêt à deviser/)).toBeInTheDocument()
   })
+
+  // LW45 — état « manquant » discret RÉTABLI (l'ancien en-tête stylait aussi
+  // ces chips en négatif ; le refactor LW14 les avait réduits à une absence
+  // silencieuse, seule l'infobulle du CTA « Devis automatique » restait).
+  it('rend les chips QX28 en état « manquant » discret quand les données sont absentes', () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(screen.getByText(/Toit non épinglé/)).toBeInTheDocument()
+    expect(screen.getByText(/Facture manquante/)).toBeInTheDocument()
+    expect(screen.getByText(/Devis non prêt/)).toBeInTheDocument()
+  })
 })
 
 describe('LW15 — triade responsable · prochaine action · relance', () => {
@@ -223,6 +233,21 @@ describe('LW18 — bannières intelligentes (doublons · client_match)', () => {
     expect(await screen.findByText('Karim B.')).toBeInTheDocument()
     expect(screen.queryByText(/doublon/)).toBeNull()
     expect(screen.queryByText(/correspond au client/)).toBeNull()
+  })
+
+  // LW43 — garde d'identité : une réponse doublons LENTE pour le lead A ne
+  // doit plus jamais peindre la bannière sur le lead B après un J/K rapide
+  // (course reproduite en gardant la promesse de A EN VOL pendant le rerender
+  // vers B — même patron `cancelled` que LeadDetailPage.jsx).
+  it('réponse doublons du lead A résolue APRÈS navigation vers B → jamais peinte sur B', async () => {
+    let resolveA
+    crmApi.getLeadDuplicates.mockImplementationOnce(() => new Promise((res) => { resolveA = res }))
+    const { rerender } = render(<IdentityRail state={makeState({ id: 7 })} onAction={onAction} users={[]} />)
+    rerender(<IdentityRail state={makeState({ id: 8 })} onAction={onAction} users={[]} />)
+    await waitFor(() => expect(crmApi.getLeadDuplicates).toHaveBeenCalledTimes(2))
+    resolveA({ data: [{ id: 99, nom: 'Doublon de A', telephone: '0600000000', ville: 'Casablanca' }] })
+    await screen.findByText('Karim B.')
+    expect(screen.queryByText(/doublon/)).toBeNull()
   })
 })
 

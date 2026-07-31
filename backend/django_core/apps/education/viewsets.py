@@ -98,8 +98,20 @@ class ClasseViewSet(CompanyScopedModelViewSet):
 
 
 class FamilleViewSet(CompanyScopedModelViewSet):
-    queryset = Famille.objects.all()
+    """WIR91 — chaque famille créée est aussi résolue/rattachée à un
+    ``crm.Client`` (``services.resoudre_client_pour_famille`` : lien déjà
+    posé si envoyé dans le corps, sinon email du parent 1 de la même
+    société, sinon création) — sans quoi chaque famille créée restait un
+    doublon jamais rattaché à un dossier client CRM (même patron que
+    ``sante.PatientViewSet``, WIR54)."""
+
+    queryset = Famille.objects.select_related('client').all()
     serializer_class = FamilleSerializer
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        from .services import resoudre_client_pour_famille
+        resoudre_client_pour_famille(serializer.instance)
 
     @action(detail=True, methods=['post'], url_path='compte-parent',
             permission_classes=[IsAuthenticated])

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { Search, Plus, Hash, BellOff, Moon, Smile, X } from 'lucide-react'
+import { Search, Plus, Hash, BellOff, Moon, Smile, X, MessagesSquare, Bookmark } from 'lucide-react'
 import { Avatar, AvatarFallback, Badge, Input, initials } from '../../ui'
 import { cn } from '../../lib/cn'
 import messagesApi from '../../api/messagesApi'
@@ -113,10 +113,111 @@ function lastPreview(conv) {
   return lm.body || ''
 }
 
+// WIR155 / XKB24 — boîte « Fils » : fils suivis par l'utilisateur (toutes
+// conversations confondues), avec compteur de non-lus. Cliquer un fil ouvre
+// SA conversation (le fil se déplie ensuite dans MessageBubble/ThreadPanel) —
+// pas de nouvelle route, réutilise `onSelect` déjà branché par ChatPage.
+function FilsList({ onSelect }) {
+  const [items, setItems] = useState(null) // null = chargement
+
+  useEffect(() => {
+    let alive = true
+    // messagesApi.threads peut être absent (mocks partiels préexistants dans
+    // d'autres tests) : dégrade silencieusement plutôt que de faire planter
+    // tout le sous-arbre de rendu (même garde que MyStatusBar ci-dessus).
+    if (!messagesApi.threads?.listFollowed) {
+      setItems([])
+      return undefined
+    }
+    messagesApi.threads.listFollowed()
+      .then((r) => { if (alive) setItems(r.data || []) })
+      .catch(() => { if (alive) setItems([]) })
+    return () => { alive = false }
+  }, [])
+
+  if (items === null) {
+    return <div className="px-3 py-6 text-center text-sm text-muted-foreground">Chargement…</div>
+  }
+  if (items.length === 0) {
+    return <div className="px-3 py-6 text-center text-sm text-muted-foreground">Aucun fil suivi</div>
+  }
+  return (
+    <ul className="flex-1 overflow-y-auto" role="list" aria-label="Fils suivis">
+      {items.map((t) => (
+        <li key={t.root_message_id}>
+          <button
+            type="button"
+            onClick={() => onSelect?.(t.conversation_id)}
+            className="flex w-full items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
+          >
+            <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+              {t.root_preview || 'Fil sans aperçu'}
+            </span>
+            <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+              {t.reply_count} réponse{t.reply_count > 1 ? 's' : ''}
+              {t.unread > 0 && <Badge tone="primary">{t.unread > 99 ? '99+' : t.unread}</Badge>}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// WIR155 / XKB27 — onglet « Favoris » : messages enregistrés (signets
+// personnels) de l'utilisateur, toutes conversations confondues.
+function FavorisList({ onSelect }) {
+  const [items, setItems] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    if (!messagesApi.listBookmarks) {
+      setItems([])
+      return undefined
+    }
+    messagesApi.listBookmarks()
+      .then((r) => { if (alive) setItems(r.data?.results ?? r.data ?? []) })
+      .catch(() => { if (alive) setItems([]) })
+    return () => { alive = false }
+  }, [])
+
+  if (items === null) {
+    return <div className="px-3 py-6 text-center text-sm text-muted-foreground">Chargement…</div>
+  }
+  if (items.length === 0) {
+    return <div className="px-3 py-6 text-center text-sm text-muted-foreground">Aucun favori</div>
+  }
+  return (
+    <ul className="flex-1 overflow-y-auto" role="list" aria-label="Messages favoris">
+      {items.map((b) => {
+        const msg = b.message_detail || {}
+        return (
+          <li key={b.id}>
+            <button
+              type="button"
+              onClick={() => onSelect?.(msg.conversation)}
+              className="flex w-full flex-col items-start gap-0.5 border-b border-border/60 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
+            >
+              <span className="w-full truncate text-sm text-foreground">
+                {msg.body || (msg.attachments?.length ? '📎 Pièce jointe' : 'Message')}
+              </span>
+              <span className="text-xs text-muted-foreground">{shortTime(msg.created_at)}</span>
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 export default function ConversationList({ onSelect, onNew, currentUserId }) {
   const conversations = useSelector(selectConversations)
   const activeId = useSelector(selectActiveId)
   const [query, setQuery] = useState('')
+  // WIR155 — bascule Discussions / Fils / Favoris (mêmes props `onSelect`
+  // que la liste de conversations : ouvrir un fil/favori ouvre SA
+  // conversation, sans nouvelle route ni prop remontée à ChatPage).
+  const [view, setView] = useState('discussions')
   // WIR156 — statuts des collègues (indicateur emoji / DND dans la liste).
   const [colleagues, setColleagues] = useState({})
   useEffect(() => {
@@ -151,6 +252,46 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
     <div className="flex h-full flex-col" data-testid="conversation-list">
       {/* WIR156 — mon statut / DND en haut de la liste. */}
       <MyStatusBar />
+
+      {/* WIR155 — bascule Discussions / Fils / Favoris. */}
+      <div className="flex items-center gap-1 border-b border-border p-1.5" role="tablist" aria-label="Vue de la messagerie">
+        <button
+          type="button" role="tab" aria-selected={view === 'discussions'}
+          onClick={() => setView('discussions')}
+          className={cn(
+            'flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+            view === 'discussions' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+        >
+          Discussions
+        </button>
+        <button
+          type="button" role="tab" aria-selected={view === 'fils'}
+          onClick={() => setView('fils')}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+            view === 'fils' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+        >
+          <MessagesSquare size={13} aria-hidden="true" /> Fils
+        </button>
+        <button
+          type="button" role="tab" aria-selected={view === 'favoris'}
+          onClick={() => setView('favoris')}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+            view === 'favoris' ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          )}
+        >
+          <Bookmark size={13} aria-hidden="true" /> Favoris
+        </button>
+      </div>
+
+      {view === 'fils' && <FilsList onSelect={onSelect} />}
+      {view === 'favoris' && <FavorisList onSelect={onSelect} />}
+
+      {view === 'discussions' && (
+      <>
       <div className="flex items-center gap-2 border-b border-border p-2">
         <Input
           type="search"
@@ -238,6 +379,8 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
           })
         )}
       </ul>
+      </>
+      )}
     </div>
   )
 }

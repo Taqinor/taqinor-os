@@ -85,7 +85,9 @@ test('LB28 : busy-lock réel — verrou local partagé par le glisser ET le sele
 test('LB28 : listeners de drag isolés sur une poignée (le sélecteur de mois reste hors du conteneur listeners)', () => {
   // Le conteneur `{...listeners} {...attributes}` n'enveloppe QUE LeadCard ;
   // MonthMover est un frère, hors de la poignée (comme StageMover/KanbanView).
-  assert.match(SRC, /<div \{\.\.\.listeners\} \{\.\.\.attributes\}>\s*\n\s*<LeadCard/)
+  // LB35 — le MÊME nœud porte désormais `data-lead-id` (cible du focus
+  // post-drop) ; l'isolation testée ici est inchangée.
+  assert.match(SRC, /<div data-lead-id=\{lead\.id\} \{\.\.\.listeners\} \{\.\.\.attributes\}>\s*\n\s*<LeadCard/)
   assert.match(SRC, /<MonthMover lead=\{lead\} monthOptions=\{monthOptions\} onCommitDate=\{onCommitDate\} busy=\{busy\} \/>/)
 })
 
@@ -121,4 +123,54 @@ test('XSAL15 : la vue est enregistrée dans ViewSwitcher et LeadsPage (VALID_VIE
   assert.match(LEADSPAGE_SRC, /import \{\s*\n\s*VALID_VIEWS,/)
   assert.match(URLFILTERS_SRC, /'kanban', 'liste', 'calendrier', 'graphique', 'carte', 'prevision'/)
   assert.match(LEADSPAGE_SRC, /\{view === 'prevision' && <ForecastView \{\.\.\.viewProps\} \/>\}/)
+})
+
+// ── LB35 — parité des trois invariants du kanban (memo, focus post-drop, pan).
+// Même motif de sonde que LeadsPageMemoStability.test.mjs : assertions sur la
+// SOURCE (aucun node_modules dans ce worktree/lane), on verrouille le CONTRAT.
+
+test('LB35 : ForecastView mémoïse DraggableCard (memo(), parité LB6/KanbanView)', () => {
+  assert.match(SRC, /const DraggableCard = memo\(function DraggableCard\(/)
+  assert.match(SRC, /^import \{ memo, /m)
+  // Le composant est bien REFERMÉ sur memo() (`})` et non `}`) — garde-fou
+  // explicite contre un demi-fix qui ne compilerait pas.
+  const start = SRC.indexOf('const DraggableCard = memo(function DraggableCard(')
+  const end = SRC.indexOf('\nfunction MonthColumn(', start)
+  assert.ok(start > 0 && end > start, 'DraggableCard introuvable')
+  // (\r? — le dépôt est checkouté en CRLF sous Windows.)
+  assert.match(SRC.slice(start, end), /\r?\n\}\)\r?\n\r?$/)
+})
+
+test('LB35 : `data-lead-id` posé sur le MÊME nœud que `{...listeners} {...attributes}` (motif LB12)', () => {
+  assert.match(SRC, /<div data-lead-id=\{lead\.id\} \{\.\.\.listeners\} \{\.\.\.attributes\}>/)
+})
+
+test('LB35 : un drop RÉUSSI restaure le focus sur la carte déplacée (souris ET clavier)', () => {
+  const start = SRC.indexOf('const handleDragEnd = ')
+  const end = SRC.indexOf('const handleDragCancel', start)
+  assert.ok(start > 0 && end > start, 'handleDragEnd introuvable')
+  const block = SRC.slice(start, end)
+  const commitIdx = block.indexOf('commitDate(lead, over.id)')
+  assert.ok(commitIdx > 0, 'appel commitDate introuvable')
+  const after = block.slice(commitIdx)
+  assert.match(after, /requestAnimationFrame\(\(\) => \{/)
+  assert.match(after, /document\.querySelector\(`\[data-lead-id="\$\{lead\.id\}"\]`\)\?\.focus\(\)/)
+  // La restauration suit les gardes (pas de `over` / drop sur place / « Non
+  // daté ») : aucune sortie anticipée ne l'atteint jamais.
+  assert.ok(block.indexOf('if (over.id === UNDATED_KEY) return') < commitIdx)
+  // Le focus n'est tenté qu'en cas de SUCCÈS (chaîné sur `.then`, jamais
+  // avant que le store ait re-parenté la carte — onInlineSave n'est pas
+  // optimiste, contrairement au changeStage du kanban).
+  assert.match(after, /\.then\(\(\) => \{[\s\S]*requestAnimationFrame/)
+  // Un seul handleDragEnd : souris et clavier partagent le même chemin.
+  assert.equal((SRC.match(/const handleDragEnd = /g) || []).length, 1)
+})
+
+test('LB35 : drag-to-pan via le hook EXISTANT usePanScroll (jamais une 2e implémentation)', () => {
+  assert.match(SRC, /import \{ usePanScroll \} from '\.\.\/\.\.\/\.\.\/\.\.\/features\/kanban\/usePanScroll'/)
+  assert.match(SRC, /const boardRef = usePanScroll\(\)/)
+  // Callback-ref posé sur `.kb-board` (le scrolleur), pas ailleurs.
+  assert.match(SRC, /<div className="kb-board fv-board" ref=\{boardRef\}/)
+  // Aucun écouteur de pan maison dans la vue.
+  assert.doesNotMatch(SRC, /addEventListener\('pointerdown'/)
 })

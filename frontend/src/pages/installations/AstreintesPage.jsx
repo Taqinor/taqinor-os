@@ -62,7 +62,11 @@ function ListShell({ loading, error, empty, children }) {
     </p>
   )
   if (error) return <EmptyState title="Impossible de charger" description={error} className="py-6" />
-  return children ?? <EmptyState icon={CalendarClock} title={empty} className="py-6" />
+  // `children` vaut `false` quand la liste est vide (`rows.length > 0 && …`) :
+  // on teste la valeur, pas seulement null/undefined, sinon l'état vide ne
+  // s'afficherait jamais.
+  if (!children) return <EmptyState icon={CalendarClock} title={empty} className="py-6" />
+  return children
 }
 
 // ── Astreintes ──────────────────────────────────────────────────────────────

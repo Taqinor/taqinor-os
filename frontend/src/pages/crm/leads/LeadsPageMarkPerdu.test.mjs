@@ -43,7 +43,13 @@ test('LB5 : viewProps transmet onMarkPerdu à toutes les vues', () => {
 })
 
 test('LB5 : KanbanView forwarde onMarkPerdu → DraggableCard → LeadCard (aucun rupture de chaîne)', () => {
-  assert.match(KANBAN_SRC, /onMarkPerdu,?\s*\n\}\) \{/) // signature export default
+  // LB38 — assertion recalée sur l'INTENTION (la signature de DraggableCard
+  // reçoit bien `onMarkPerdu`) plutôt que sur sa dernière ligne : elle cassait
+  // dès qu'une prop était ajoutée après `onMarkPerdu` (ici `selectionActive`).
+  const dcStart = KANBAN_SRC.indexOf('const DraggableCard = memo(function DraggableCard({')
+  const dcEnd = KANBAN_SRC.indexOf('}) {', dcStart)
+  assert.ok(dcStart > 0 && dcEnd > dcStart, 'signature de DraggableCard introuvable')
+  assert.match(KANBAN_SRC.slice(dcStart, dcEnd), /onMarkPerdu,/)
   assert.match(KANBAN_SRC, /onMarkPerdu=\{onMarkPerdu\}/) // <DraggableCard onMarkPerdu={onMarkPerdu} />
 })
 

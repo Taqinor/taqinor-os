@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .models import (
-    AnnotationDocument, ArchivageLegal, Cabinet, CertificatDestruction,
+    AclGed, AnnotationDocument, ArchivageLegal, Cabinet, CertificatDestruction,
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
     DemandeDocument, DemandeSignatureDocument, DepotPublic,
     Document, DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion,
@@ -9,8 +9,8 @@ from .models import (
     ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
     RegleAclMetadonnee, RegleApprobationGed, RegleDossier, RoleSignataire,
-    RoutageDocumentaire, QuotaStockage, SignataireDemande, TypeChampSignature,
-    ValidationOcrDocument, VueGedEnregistree,
+    RoutageDocumentaire, QuotaStockage, SignataireDemande, TamponSociete,
+    TypeChampSignature, ValidationOcrDocument, VueGedEnregistree,
 )
 from . import services
 
@@ -1073,6 +1073,68 @@ class RegleApprobationGedSerializer(serializers.ModelSerializer):
             'actif', 'created_by', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class AclGedSerializer(serializers.ModelSerializer):
+    """WIR163 — Droit d'accès GED19 par dossier/document (héritage + override).
+
+    ``company``/``created_by`` posés côté serveur (TenantMixin/ViewSet) —
+    jamais lus du corps de requête. La cible (``folder`` XOR ``document``, au
+    moins un principal ``utilisateur``/``role``) est re-validée ici — les
+    mêmes règles que ``AclGed.clean()`` — pour renvoyer un 400 propre plutôt
+    que de laisser la ``CheckConstraint`` base lever une 500 ; la cible doit
+    en plus appartenir à la société de l'appelant (jamais de fuite
+    cross-société via un id de dossier/document d'une autre société)."""
+    utilisateur_nom = serializers.CharField(
+        source='utilisateur.username', read_only=True, default=None)
+    role_nom = serializers.CharField(
+        source='role.nom', read_only=True, default=None)
+    folder_nom = serializers.CharField(
+        source='folder.nom', read_only=True, default=None)
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True, default=None)
+
+    class Meta:
+        model = AclGed
+        fields = [
+            'id', 'folder', 'folder_nom', 'document', 'document_nom',
+            'utilisateur', 'utilisateur_nom', 'role', 'role_nom', 'niveau',
+            'herite', 'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        folder = attrs.get('folder', getattr(self.instance, 'folder', None))
+        document = attrs.get(
+            'document', getattr(self.instance, 'document', None))
+        if bool(folder) == bool(document):
+            raise serializers.ValidationError(
+                "Une entrée ACL cible exactement un dossier OU un document.")
+        utilisateur = attrs.get(
+            'utilisateur', getattr(self.instance, 'utilisateur', None))
+        role = attrs.get('role', getattr(self.instance, 'role', None))
+        if not utilisateur and not role:
+            raise serializers.ValidationError(
+                "Une entrée ACL désigne au moins un utilisateur ou un rôle.")
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request else None
+        company_id = getattr(user, 'company_id', None) if user else None
+        if company_id is not None:
+            cible = folder or document
+            if getattr(cible, 'company_id', None) != company_id:
+                raise serializers.ValidationError(
+                    "Le dossier/document ciblé doit appartenir à votre société.")
+        return attrs
+
+
+class TamponSocieteSerializer(serializers.ModelSerializer):
+    """WIR164 — Tampon prédéfini PROPRE à la société (XGED16, en plus des 3
+    tampons système `TAMPONS_SYSTEME`, jamais modifiables). `company` posée
+    côté serveur — jamais lue du corps de requête."""
+    class Meta:
+        model = TamponSociete
+        fields = ['id', 'libelle', 'created_at']
+        read_only_fields = ['created_at']
 
 
 class RegleAclMetadonneeSerializer(serializers.ModelSerializer):

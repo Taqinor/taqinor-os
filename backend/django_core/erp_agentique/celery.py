@@ -72,6 +72,10 @@ app.conf.enable_utc = False
 #     SOCIÉTÉ (InnovationSettings.feedback_digest_actif, désactivé par
 #     défaut) — apps/innovation/tasks.py (no-op tant qu'aucune société ne
 #     l'active ; la fréquence hebdo, elle, ne notifie que le lundi).
+#   - WIR73 : import GED hebdomadaire des pièces jointes éparses (idempotent,
+#     lundi 03:25) — apps/ged/tasks.py (`migrate_attachments_to_ged`, GED7).
+#   - WIR148 : génération quotidienne de l'échéancier de loyer des baux actifs
+#     (idempotent, 02:38) — apps/immobilier/tasks.py.
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -699,6 +703,24 @@ app.conf.beat_schedule = {
     'fiscal-rappels-fiscaux': {
         'task': 'fiscal.rappels_fiscaux',
         'schedule': crontab(hour=6, minute=40),
+    },
+    # WIR73 (GED7) — planifie `migrate_attachments_to_ged` en récurrent :
+    # sans cette entrée, une pièce jointe créée après le dernier import MANUEL
+    # n'apparaissait jamais en GED (la commande existait, testée, mais rien ne
+    # l'exécutait). Hebdomadaire (lundi, heure creuse) — idempotente (clé
+    # company + file_key), rejouer ne duplique jamais un document déjà importé.
+    'ged-migrer-pieces-jointes-hebdo': {
+        'task': 'ged.migrer_pieces_jointes',
+        'schedule': crontab(hour=3, minute=25, day_of_week=1),
+    },
+    # WIR148 (NTPRO6) — génère réellement les `EcheanceLoyer` des baux actifs :
+    # avant cette entrée, seule la commande manage `generer_echeances_loyer`
+    # fonctionnait (jamais exécutée automatiquement) — l'échéancier restait
+    # silencieusement vide sans relance manuelle. Quotidien, heure creuse ;
+    # idempotent (unique_together bail + periode_debut).
+    'immobilier-generer-echeances-loyer-quotidien': {
+        'task': 'immobilier.generer_echeances_loyer',
+        'schedule': crontab(hour=2, minute=38),
     },
 }
 

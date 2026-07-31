@@ -12,16 +12,23 @@ Mappage événement → clé d'auto-complétion (``OnboardingChecklistItem.event
   l'acceptation est le premier jalon de cycle de vie observable — dès qu'un
   devis existe et bouge, l'item se coche pour l'utilisateur agissant.
 * ``facture_payee`` → ``'paiement'`` (item « Encaisser votre 1er paiement »).
+* WIR59 — ``intervention_completed`` → ``'chantier'`` (item « Suivre votre
+  1er chantier ») : une intervention terminée/validée (``apps.installations``,
+  YSERV2) est le premier jalon observable de suivi de chantier — même patron
+  que devis/paiement, aucun import d'``apps.installations`` ici (le signal
+  porte tout ce qu'il faut dans ses kwargs).
 
-Les instances (``devis``/``facture``) ne sont manipulées qu'au travers des
-kwargs du signal (attributs ``company``/``created_by``) — aucun import de modèle
-d'une autre app.
+Les instances (``devis``/``facture``/``intervention``) ne sont manipulées qu'au
+travers des kwargs du signal (attributs ``company``/``created_by``/``user``) —
+aucun import de modèle d'une autre app.
 """
 import logging
 
 from django.dispatch import receiver
 
-from core.events import devis_accepted, devis_sent, facture_payee
+from core.events import (
+    devis_accepted, devis_sent, facture_payee, intervention_completed,
+)
 
 from .services import completer_par_evenement
 
@@ -54,3 +61,12 @@ def _complete_on_facture_payee(sender, instance, company, **kwargs):
     # la facture (best-effort).
     user = getattr(instance, 'created_by', None)
     _safe_complete('paiement', company, user)
+
+
+@receiver(intervention_completed,
+          dispatch_uid='onboarding_complete_chantier_on_intervention')
+def _complete_on_intervention_completed(
+        sender, intervention, company, user, **kwargs):
+    # WIR59 — ``user`` peut être None (action système) : ``_safe_complete``
+    # est déjà no-op sans utilisateur (cf. ``marquer_item_complete``).
+    _safe_complete('chantier', company, user)

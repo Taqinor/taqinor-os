@@ -17,6 +17,10 @@ beforeAll(() => {
   }
 })
 
+const { intrantsCreate } = vi.hoisted(() => ({
+  intrantsCreate: vi.fn(() => Promise.resolve({ data: { id: 4 } })),
+}))
+
 vi.mock('../../api/agricultureApi', () => ({
   default: {
     intrants: {
@@ -29,6 +33,7 @@ vi.mock('../../api/agricultureApi', () => ({
           },
         ],
       }),
+      create: (...args) => intrantsCreate(...args),
     },
     campagnes: {
       list: () => Promise.resolve({
@@ -36,6 +41,14 @@ vi.mock('../../api/agricultureApi', () => ({
       }),
     },
     etapesCampagne: { create: vi.fn(() => Promise.resolve({ data: { id: 1 } })) },
+  },
+}))
+
+vi.mock('../../api/stockApi', () => ({
+  default: {
+    getProduits: () => Promise.resolve({
+      data: [{ id: 55, nom: 'Cuivre 20WP' }],
+    }),
   },
 }))
 
@@ -71,5 +84,24 @@ describe('IntrantsPage (NTAGR8)', () => {
 
     await user.click(screen.getByRole('button', { name: /Ajouter un traitement/ }))
     expect(await screen.findByText('Nouvelle étape — Vigne')).toBeInTheDocument()
+  })
+})
+
+// WIR141 — IntrantAgricole (catalogue agronomique) n'avait aucune UI de
+// création : dialogue « Nouvel intrant » (produit stock + catégorie/dose/DAR).
+describe('IntrantsPage — création d’un intrant (WIR141)', () => {
+  it('crée un intrant à partir d’un produit du catalogue stock', async () => {
+    const user = userEvent.setup()
+    withProviders(<IntrantsPage />)
+    await waitFor(() => expect(screen.getAllByText('Bouillie bordelaise').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /Nouvel intrant/ }))
+    await user.selectOptions(screen.getByLabelText('Produit (catalogue stock)'), '55')
+    await user.selectOptions(screen.getByLabelText('Catégorie'), 'engrais')
+    await user.click(screen.getByRole('button', { name: 'Créer l’intrant' }))
+
+    await waitFor(() => expect(intrantsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ produit_id: '55', categorie: 'engrais' }),
+    ))
   })
 })

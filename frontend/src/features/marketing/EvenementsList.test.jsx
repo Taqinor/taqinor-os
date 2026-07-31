@@ -7,6 +7,11 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   create: vi.fn(),
   navigate: vi.fn(),
+  // WIR162 — EvenementForm.jsx charge les modèles au montage (création
+  // uniquement) ; vide par défaut pour ne pas perturber les tests existants
+  // (le sélecteur ne s'affiche que si des modèles existent).
+  typesList: vi.fn(),
+  creerEvenement: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -21,6 +26,7 @@ vi.mock('../../api/marketingApi', () => ({
       return Array.isArray(data) ? data : (data?.results || [])
     },
     evenements: { list: mocks.list, create: mocks.create },
+    typesEvenement: { list: mocks.typesList, creerEvenement: mocks.creerEvenement },
   },
 }))
 
@@ -53,6 +59,7 @@ describe('EvenementsList', () => {
           date_debut: '2026-04-20T09:00:00Z', nb_inscrits: 12 },
       ],
     })
+    mocks.typesList.mockResolvedValue({ data: [] })
   })
 
   it('affiche les événements chargés', async () => {
@@ -77,5 +84,26 @@ describe('EvenementsList', () => {
     fireEvent.click(screen.getByTestId('evenement-save'))
     await waitFor(() => expect(mocks.create).toHaveBeenCalled())
     expect(mocks.create.mock.calls[0][0].nom).toBe('Porte ouverte Agadir')
+  })
+
+  // WIR162 — sélecteur de modèle réutilisable (ZMKT14) : choisir un modèle
+  // route vers `typesEvenement.creerEvenement` plutôt que le POST générique.
+  it('créer depuis un modèle appelle typesEvenement.creerEvenement()', async () => {
+    mocks.typesList.mockResolvedValue({ data: [{ id: 5, nom: 'Salon type' }] })
+    mocks.creerEvenement.mockResolvedValue({ data: { id: 42 } })
+    renderScreen()
+    await screen.findByText('SIAM 2026')
+    fireEvent.click(screen.getByTestId('evenements-nouveau'))
+
+    expect(await screen.findByTestId('evenement-type-modele')).toBeInTheDocument()
+    fireEvent.change(screen.getByTestId('evenement-nom'), { target: { value: 'SIAM 2027' } })
+    fireEvent.change(screen.getByTestId('evenement-date-debut'), { target: { value: '2027-04-20T09:00' } })
+    fireEvent.change(screen.getByTestId('evenement-type-modele'), { target: { value: '5' } })
+    fireEvent.click(screen.getByTestId('evenement-save'))
+
+    await waitFor(() => expect(mocks.creerEvenement).toHaveBeenCalledWith(
+      5, expect.objectContaining({ nom: 'SIAM 2027' }),
+    ))
+    expect(mocks.create).not.toHaveBeenCalled()
   })
 })

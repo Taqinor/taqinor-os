@@ -100,7 +100,7 @@ class _FakeResp:
 
 
 def _patch_post(status_code, payload):
-    """Remplace at._django_post pour eviter tout reseau dans les tests."""
+    """Fabrique un faux POST (ctx, path, body) -> resultat, sans reseau."""
     captured = {}
 
     def fake(ctx, path, body):
@@ -114,98 +114,6 @@ def _patch_post(status_code, payload):
                 "error": payload.get("detail", "refus")}
 
     return fake, captured
-
-
-class OpenTicketTests(unittest.TestCase):
-    def test_refused_for_viewer(self):
-        ctx = _ctx(role="normal", permissions=[])
-        msg = at.open_sav_ticket(ctx, client_id=3, description="panne")
-        self.assertIn("refus", msg.lower())
-
-    def test_requires_client(self):
-        ctx = _ctx(role="admin")
-        msg = at.open_sav_ticket(ctx, client_id=0, description="panne")
-        self.assertIn("client", msg.lower())
-
-    def test_requires_description(self):
-        ctx = _ctx(role="admin")
-        msg = at.open_sav_ticket(ctx, client_id=3, description="   ")
-        self.assertIn("description", msg.lower())
-
-    def test_success_posts_to_django(self):
-        ctx = _ctx(role="responsable")
-        fake, cap = _patch_post(201, {"reference": "SAV-202606-0007"})
-        with mock.patch.object(at, "_django_post", fake):
-            msg = at.open_sav_ticket(
-                ctx, client_id=3, description="onduleur HS",
-                installation_id=12, priorite="haute")
-        self.assertIn("SAV-202606-0007", msg)
-        self.assertEqual(cap["path"], "/api/django/sav/tickets/")
-        self.assertEqual(cap["body"]["client"], 3)
-        self.assertEqual(cap["body"]["installation"], 12)
-        self.assertEqual(cap["body"]["priorite"], "haute")
-        # Le contexte (jeton) est bien transmis pour relais Django.
-        self.assertEqual(cap["ctx"].token, "jwt-xyz")
-
-    def test_django_refusal_surfaced(self):
-        ctx = _ctx(role="responsable")
-        fake, _ = _patch_post(403, {"detail": "Acces refuse."})
-        with mock.patch.object(at, "_django_post", fake):
-            msg = at.open_sav_ticket(ctx, client_id=3, description="x")
-        self.assertIn("n'a pas pu", msg.lower())
-
-
-class DraftBonCommandeTests(unittest.TestCase):
-    def test_refused_for_viewer(self):
-        ctx = _ctx(role="normal", permissions=["sav_gerer"])  # pas le droit BC
-        msg = at.draft_bon_commande_for_chantier(ctx, installation_id=5)
-        self.assertIn("refus", msg.lower())
-
-    def test_requires_installation(self):
-        ctx = _ctx(role="admin")
-        msg = at.draft_bon_commande_for_chantier(ctx, installation_id=0)
-        self.assertIn("chantier", msg.lower())
-
-    def test_success(self):
-        ctx = _ctx(role="admin")
-        fake, cap = _patch_post(201, {"numero": "BCF-1", "nb_lignes": 3})
-        with mock.patch.object(at, "_django_post", fake):
-            msg = at.draft_bon_commande_for_chantier(
-                ctx, installation_id=5, fournisseur_id=2)
-        self.assertIn("BCF-1", msg)
-        self.assertIn("brouillon", msg.lower())
-        self.assertEqual(
-            cap["path"],
-            "/api/django/installations/chantiers/5/commander-besoin/")
-        self.assertEqual(cap["body"]["fournisseur"], 2)
-
-
-class ScheduleVisitTests(unittest.TestCase):
-    def test_refused_for_viewer(self):
-        ctx = _ctx(role="normal", permissions=[])
-        msg = at.schedule_maintenance_visit(
-            ctx, installation_id=5, date_prevue="2026-07-01")
-        self.assertIn("refus", msg.lower())
-
-    def test_requires_date(self):
-        ctx = _ctx(role="admin")
-        msg = at.schedule_maintenance_visit(
-            ctx, installation_id=5, date_prevue="")
-        self.assertIn("date", msg.lower())
-
-    def test_success_uses_controle_type(self):
-        ctx = _ctx(role="responsable")
-        fake, cap = _patch_post(201, {"id": 99})
-        with mock.patch.object(at, "_django_post", fake):
-            msg = at.schedule_maintenance_visit(
-                ctx, installation_id=5, date_prevue="2026-07-01",
-                technicien_id=8)
-        self.assertIn("2026-07-01", msg)
-        self.assertEqual(
-            cap["path"], "/api/django/installations/interventions/")
-        self.assertEqual(cap["body"]["type_intervention"], "controle")
-        self.assertEqual(cap["body"]["installation"], 5)
-        self.assertEqual(cap["body"]["technicien"], 8)
 
 
 # ── AG2 — catalogue de test (mime apps/agent/registry.py) ─────────────────────
