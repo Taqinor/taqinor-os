@@ -774,11 +774,27 @@ class AffectationTransportViewSet(CompanyScopedModelViewSet):
 
     SOFT WARNING : affecter un élève à un circuit sans véhicule disponible
     (vérifié via ``flotte/selectors.py``) renvoie un champ ``avertissement``
-    dans la réponse mais N'EMPÊCHE JAMAIS l'enregistrement — jamais un 400."""
+    dans la réponse mais N'EMPÊCHE JAMAIS l'enregistrement — jamais un 400.
+
+    NTEDU24 — chaque création/mise à jour re-synchronise la composante
+    transport des lignes d'échéance FUTURES (jamais rétroactif —
+    ``services_transport.resynchroniser_lignes_futures_transport``)."""
 
     queryset = AffectationTransport.objects.select_related(
         'eleve', 'circuit', 'arret').all()
     serializer_class = AffectationTransportSerializer
+
+    def perform_create(self, serializer):
+        from .services_transport import resynchroniser_lignes_futures_transport
+
+        instance = serializer.save(company=self.request.user.company)
+        resynchroniser_lignes_futures_transport(instance.eleve)
+
+    def perform_update(self, serializer):
+        from .services_transport import resynchroniser_lignes_futures_transport
+
+        instance = serializer.save()
+        resynchroniser_lignes_futures_transport(instance.eleve)
 
     def _avec_avertissement(self, response):
         from .services import avertissement_vehicule_circuit

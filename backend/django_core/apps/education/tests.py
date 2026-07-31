@@ -15,10 +15,11 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 
 from .models import (
-    AnneeScolaire, Classe, CreneauEmploiDuTemps, Eleve, Evaluation, Famille,
-    GrilleTarifaire, IncidentDiscipline, Inscription, InscriptionCantine,
-    LigneEcheance, Matiere, MatiereClasse, MenuCantine, Niveau, Note,
-    ParametresEducation, Presence, Remise, Seance)
+    AffectationTransport, AnneeScolaire, Classe, CircuitTransport,
+    CreneauEmploiDuTemps, Eleve, Evaluation, Famille, GrilleTarifaire,
+    IncidentDiscipline, Inscription, InscriptionCantine, LigneEcheance,
+    Matiere, MatiereClasse, MenuCantine, Niveau, Note, ParametresEducation,
+    Presence, Remise, Seance)
 from .services import affecter_classe, valider_inscription
 
 User = get_user_model()
@@ -855,6 +856,95 @@ class NTEDU26CantineEcheancierTests(EducationTestCaseMixin, TestCase):
 
         deuxieme = LigneEcheance.objects.get(pk=lignes[1].pk)
         self.assertEqual(deuxieme.cantine_montant, Decimal('0'))
+
+
+class NTEDU24TransportEcheancierTests(EducationTestCaseMixin, TestCase):
+    """NTEDU24 — facturation transport dans l'échéancier."""
+
+    def setUp(self):
+        super().setUp()
+        GrilleTarifaire.objects.create(
+            company=self.company, annee_scolaire=self.annee,
+            niveau=self.niveau_cp, frais_inscription=Decimal('0'),
+            scolarite_annuelle=Decimal('12000'),
+            transport_mensuel=Decimal('300'))
+        self.eleve = Eleve.objects.create(
+            company=self.company, famille=self.famille, nom='X', prenom='Y',
+            classe=self.classe)
+        self.circuit = CircuitTransport.objects.create(
+            company=self.company, nom='Circuit A')
+
+    def test_affectation_active_facture_transport_dans_chaque_mensualite(self):
+        AffectationTransport.objects.create(
+            company=self.company, eleve=self.eleve, circuit=self.circuit,
+            date_debut=self.annee.date_debut)
+
+        from .services_echeancier import generer_echeancier
+        echeancier = generer_echeancier(self.eleve, self.annee)
+
+        for ligne in echeancier.lignes.all():
+            self.assertEqual(ligne.transport_montant, Decimal('300'))
+        self.assertEqual(
+            echeancier.montant_total,
+            Decimal('12000.00') + Decimal('300') * echeancier.nombre_echeances)
+
+    def test_sans_affectation_aucun_montant_transport(self):
+        from .services_echeancier import generer_echeancier
+        echeancier = generer_echeancier(self.eleve, self.annee)
+
+        for ligne in echeancier.lignes.all():
+            self.assertEqual(ligne.transport_montant, Decimal('0'))
+        self.assertEqual(echeancier.montant_total, Decimal('12000.00'))
+
+    def test_retirer_transport_najuste_que_les_lignes_futures(self):
+        affectation = AffectationTransport.objects.create(
+            company=self.company, eleve=self.eleve, circuit=self.circuit,
+            date_debut=self.annee.date_debut)
+
+        from .services_echeancier import generer_echeancier
+        echeancier = generer_echeancier(self.eleve, self.annee)
+        lignes = list(echeancier.lignes.all().order_by('date_echeance'))
+        premiere = lignes[0]
+        premiere.statut = LigneEcheance.Statut.FACTUREE
+        premiere.save(update_fields=['statut'])
+        montant_facture_avant = premiere.montant
+
+        # NTEDU24 — "retirer" un élève du transport = poser date_fin (pas de
+        # suppression, ``date_fin`` vide = actif est la règle du modèle).
+        affectation.date_fin = affectation.date_debut
+        affectation.save(update_fields=['date_fin'])
+
+        from .services_transport import resynchroniser_lignes_futures_transport
+        resynchroniser_lignes_futures_transport(self.eleve)
+
+        premiere.refresh_from_db()
+        self.assertEqual(premiere.montant, montant_facture_avant)
+
+        deuxieme = LigneEcheance.objects.get(pk=lignes[1].pk)
+        self.assertEqual(deuxieme.transport_montant, Decimal('0'))
+
+    def test_api_update_affectation_resynchronise_lignes_futures(self):
+        affectation = AffectationTransport.objects.create(
+            company=self.company, eleve=self.eleve, circuit=self.circuit,
+            date_debut=self.annee.date_debut)
+
+        from .services_echeancier import generer_echeancier
+        echeancier = generer_echeancier(self.eleve, self.annee)
+        lignes = list(echeancier.lignes.all().order_by('date_echeance'))
+        premiere = lignes[0]
+        premiere.statut = LigneEcheance.Statut.FACTUREE
+        premiere.save(update_fields=['statut'])
+        montant_facture_avant = premiere.montant
+
+        response = self.client.patch(
+            f'/api/django/education/transport/affectations/{affectation.pk}/',
+            {'date_fin': str(affectation.date_debut)}, format='json')
+        self.assertEqual(response.status_code, 200)
+
+        premiere.refresh_from_db()
+        self.assertEqual(premiere.montant, montant_facture_avant)
+        deuxieme = LigneEcheance.objects.get(pk=lignes[1].pk)
+        self.assertEqual(deuxieme.transport_montant, Decimal('0'))
 
 
 class NTEDU27IncidentDisciplineTests(EducationTestCaseMixin, TestCase):
