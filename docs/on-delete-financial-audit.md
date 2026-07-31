@@ -5,7 +5,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | Fichier:ligne | Modèle.champ | Cible | Politique |
 |---|---|---|---|
 | `backend/django_core/apps/achats/models.py:43` | PrixFournisseur.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/achats/models.py:46` | PrixFournisseur.produit | stock.Produit | CASCADE |
+| `backend/django_core/apps/achats/models.py:46` | PrixFournisseur.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/achats/models.py:115` | BonCommandeFournisseur.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/achats/models.py:282` | LigneBonCommandeFournisseur.produit | stock.Produit | SET_NULL |
 | `backend/django_core/apps/achats/models.py:378` | ReceptionFournisseur.company | authentication.Company | CASCADE |
@@ -218,9 +218,9 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/cpq/models.py:72` | ContrainteCompatibilite.produit_b | stock.Produit | CASCADE |
 | `backend/django_core/apps/cpq/models.py:115` | RegleProduitCPQ.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/cpq/models.py:151` | OffreGroupee.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/cpq/models.py:188` | LigneOffreGroupee.produit | stock.Produit | CASCADE |
+| `backend/django_core/apps/cpq/models.py:188` | LigneOffreGroupee.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/cpq/models.py:218` | PrixContractuel.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/cpq/models.py:224` | PrixContractuel.produit | stock.Produit | CASCADE |
+| `backend/django_core/apps/cpq/models.py:224` | PrixContractuel.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/cpq/models.py:270` | SeuilMargeFamille.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/cpq/models.py:311` | RegleApprobationRemise.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/cpq/models.py:375` | EtapeApprobationDevis.company | authentication.Company | CASCADE |
@@ -574,7 +574,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/installations/models_rfq.py:86` | RFQOffre.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_rfq.py:135` | RFQConsultation.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_serie_entrepot.py:31` | SerieEntrepot.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/installations/models_serie_entrepot.py:35` | SerieEntrepot.produit | stock.Produit | CASCADE |
+| `backend/django_core/apps/installations/models_serie_entrepot.py:35` | SerieEntrepot.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/installations/models_storage_rules.py:26` | CategorieStockage.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_storage_rules.py:54` | RegleRangement.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/installations/models_storage_rules.py:58` | RegleRangement.produit | stock.Produit | CASCADE |
@@ -937,12 +937,12 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/stock/models.py:789` | ConditionnementProduit.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py:792` | ConditionnementProduit.produit | Produit | CASCADE |
 | `backend/django_core/apps/stock/models.py:835` | LotEntrepot.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/stock/models.py:838` | LotEntrepot.produit | Produit | CASCADE |
+| `backend/django_core/apps/stock/models.py:838` | LotEntrepot.produit | Produit | PROTECT |
 | `backend/django_core/apps/stock/models.py:905` | MouvementStock.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py:912` | MouvementStock.produit | Produit | PROTECT |
 | `backend/django_core/apps/stock/models.py:958` | EmplacementStock.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py:986` | StockEmplacement.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/stock/models.py:989` | StockEmplacement.produit | Produit | CASCADE |
+| `backend/django_core/apps/stock/models.py:989` | StockEmplacement.produit | Produit | PROTECT |
 | `backend/django_core/apps/stock/models.py:1036` | ProfilSaisonnier.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py:1039` | ProfilSaisonnier.produit | Produit | CASCADE |
 | `backend/django_core/apps/stock/models.py:1101` | TransfertStock.company | authentication.Company | CASCADE |
@@ -960,7 +960,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/stock/models.py:1544` | KitComposant.produit | Produit | PROTECT |
 | `backend/django_core/apps/stock/models.py:1590` | RevisionKit.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py:1640` | FicheTechnique.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/stock/models.py:1643` | FicheTechnique.produit | Produit | CASCADE |
+| `backend/django_core/apps/stock/models.py:1643` | FicheTechnique.produit | Produit | PROTECT |
 | `backend/django_core/apps/stock/models.py:1695` | ModeleBonCommandeFournisseur.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/stock/models.py:1726` | ModeleBonCommandeFournisseurLigne.produit | Produit | CASCADE |
 | `backend/django_core/apps/stock/models.py:1755` | NomenclatureCodeBarres.company | authentication.Company | CASCADE |
@@ -1009,15 +1009,15 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/ventes/models.py:1548` | RoofLayout.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ventes/models.py:1558` | RoofLayout.devis | ventes.Devis | SET_NULL |
 | `backend/django_core/apps/ventes/models.py:1756` | FicheTechnique.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/ventes/models.py:1763` | FicheTechnique.produit | stock.Produit | CASCADE |
+| `backend/django_core/apps/ventes/models.py:1763` | FicheTechnique.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/ventes/models.py:1875` | RemiseEncaissement.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ventes/models.py:1929` | LigneRemiseEncaissement.paiement | facturation.Paiement | PROTECT |
 | `backend/django_core/apps/ventes/models.py:1955` | MandatPaiement.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ventes/models.py:1998` | TentativeDebitMandat.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ventes/models.py:2007` | TentativeDebitMandat.paiement | facturation.Paiement | SET_NULL |
 | `backend/django_core/apps/ventes/models.py:2029` | ListePrix.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/ventes/models.py:2075` | LignePrixListe.produit | stock.Produit | CASCADE |
-| `backend/django_core/apps/ventes/models.py:2108` | RegleListePrix.produit | stock.Produit | CASCADE |
+| `backend/django_core/apps/ventes/models.py:2075` | LignePrixListe.produit | stock.Produit | PROTECT |
+| `backend/django_core/apps/ventes/models.py:2108` | RegleListePrix.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/ventes/models.py:2175` | PlanCommission.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ventes/models.py:2234` | LivraisonBC.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ventes/models.py:2237` | LivraisonBC.bon_commande | BonCommande | CASCADE |

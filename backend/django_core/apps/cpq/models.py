@@ -186,7 +186,7 @@ class LigneOffreGroupee(models.Model):
         OffreGroupee, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='lignes')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,  # on_delete: ligne sans objet si produit supprimé
+        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — la ligne porte un prix imposé / une remise négociée (valeur) ; refuser la suppression du produit plutôt que perdre la tarification convenue du bundle
         related_name='cpq_lignes_offre')
     quantite = models.DecimalField(
         max_digits=10, decimal_places=2, default=1)
@@ -222,7 +222,7 @@ class PrixContractuel(TenantModel):
         'crm.Client', on_delete=models.CASCADE,  # on_delete: prix sans objet si client supprimé
         related_name='cpq_prix_contractuels')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,  # on_delete: prix sans objet si produit supprimé
+        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — prix contractuel NÉGOCIÉ client×produit (donnée réelle) ; refuser la suppression du produit plutôt que d'effacer l'accord tarifaire
         related_name='cpq_prix_contractuels')
     prix_ht = models.DecimalField(max_digits=12, decimal_places=2)
     date_debut = models.DateField(null=True, blank=True)

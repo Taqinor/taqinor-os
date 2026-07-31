@@ -1762,7 +1762,7 @@ class FicheTechnique(models.Model):
     # Un produit du catalogue porte au plus UNE fiche normalisée par société.
     produit = models.ForeignKey(
         'stock.Produit',
-        on_delete=models.CASCADE,  # on_delete: fiche sans objet si produit supprimé
+        on_delete=models.PROTECT,  # on_delete: PROTECT — la fiche porte des paramètres constructeur saisis à la main + le PDF datasheet (catalogue RÉEL, non reconstructible) ; refuser la suppression du produit
         related_name='fiches_techniques',
         verbose_name='Produit',
     )
@@ -2073,7 +2073,7 @@ class LignePrixListe(models.Model):
         ListePrix, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='lignes')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,  # on_delete: ligne sans objet si produit supprimé
+        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — prix unitaire convenu dans une liste de prix (donnée réelle) ; refuser la suppression du produit plutôt que d'effacer la ligne tarifaire
         related_name='lignes_liste_prix')
     prix_unitaire = models.DecimalField(max_digits=10, decimal_places=2)
 
@@ -2106,7 +2106,7 @@ class RegleListePrix(models.Model):
         ListePrix, on_delete=models.CASCADE,  # on_delete: composant du parent
         related_name='regles')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,  # on_delete: règle sans objet si produit supprimé
+        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — règle de prix réelle ; SET_NULL serait DANGEREUX ici (produit=NULL = portée « tout le catalogue » : une règle produit deviendrait une remise globale silencieuse)
         null=True, blank=True,
         related_name='regles_liste_prix')
     categorie_nom = models.CharField(max_length=150, blank=True, default='')
