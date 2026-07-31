@@ -367,6 +367,13 @@ class FeedbackProduit(TenantModel):
         max_length=255, blank=True, default='', verbose_name='Page source')
     user_agent = models.CharField(
         max_length=500, blank=True, default='', verbose_name='User-Agent')
+    # NTIDE45 — flag manuel « étoilé » (important). Bascule
+    # ``services.notifier_feedback_etoile`` UNE SEULE fois, à la transition
+    # False → True (jamais répété), vers les admins/gérants de la société
+    # (« founder », ``CustomUser.admins_actifs_qs`` — dégrade en silence si
+    # personne n'est admin).
+    starred = models.BooleanField(
+        default=False, verbose_name='Marqué important (étoilé)')
     # NTIDE39 — lien vers l'annonce produit qui a fermé ce feedback. Le
     # feedback lui-même n'est jamais supprimé (dossier produit, même
     # convention que ``Idee`` qui ne se supprime jamais) : seule la

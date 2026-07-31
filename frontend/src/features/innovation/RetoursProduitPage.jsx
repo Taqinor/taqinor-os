@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Inbox, Link2, Plus } from 'lucide-react'
+import { Inbox, Link2, Plus, Star } from 'lucide-react'
 import innovationApi from '../../api/innovationApi'
 import {
   Badge, Button, Card, DataTable, EmptyState, IconButton,
@@ -88,6 +88,18 @@ export default function RetoursProduitPage() {
     setMessage('')
   }, [])
 
+  // NTIDE45 — marquer/démarquer « étoilé » (notifie les admins à la
+  // transition False → True, géré côté serveur).
+  const toggleEtoile = useCallback((feedback) => {
+    setBusyId(feedback.id)
+    innovationApi.feedback.etoiler(feedback.id)
+      .then((r) => {
+        setFeedbacks((prev) => prev.map((f) => (f.id === r.data.id ? r.data : f)))
+      })
+      .catch(() => toast.error('Action impossible.'))
+      .finally(() => setBusyId(null))
+  }, [])
+
   const confirmerLiaison = () => {
     if (!lierTarget) return
     const body = { message }
@@ -130,15 +142,27 @@ export default function RetoursProduitPage() {
       cell: (v) => (v ? formatDateTime(v) : '—'),
     },
     {
-      id: 'actions', header: '', width: 120, align: 'right',
+      id: 'actions', header: '', width: 150, align: 'right',
       accessor: () => '',
-      cell: (v, r) => (r.statut !== 'adresse' ? (
-        <IconButton variant="ghost" label="Lier une annonce" disabled={busyId === r.id} onClick={() => openLier(r)}>
-          <Link2 />
-        </IconButton>
-      ) : (r.annonce_titre ? <span className="text-xs text-muted-foreground">{r.annonce_titre}</span> : null)),
+      cell: (v, r) => (
+        <div className="flex items-center justify-end gap-1">
+          <IconButton
+            variant="ghost"
+            label={r.starred ? 'Retirer important' : 'Marquer important'}
+            disabled={busyId === r.id}
+            onClick={() => toggleEtoile(r)}
+          >
+            <Star className={r.starred ? 'fill-current text-warning' : ''} />
+          </IconButton>
+          {r.statut !== 'adresse' ? (
+            <IconButton variant="ghost" label="Lier une annonce" disabled={busyId === r.id} onClick={() => openLier(r)}>
+              <Link2 />
+            </IconButton>
+          ) : (r.annonce_titre ? <span className="text-xs text-muted-foreground">{r.annonce_titre}</span> : null)}
+        </div>
+      ),
     },
-  ], [busyId, openLier])
+  ], [busyId, openLier, toggleEtoile])
 
   return (
     <div className="page">

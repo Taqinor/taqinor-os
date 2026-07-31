@@ -365,6 +365,29 @@ def fermer_feedback_via_annonce(feedback, *, annonce_id=None, annonce_data=None,
     return feedback
 
 
+# ── Feedback « étoilé » (NTIDE45) ────────────────────────────────────────────
+
+
+def notifier_feedback_etoile(feedback):
+    """NTIDE45 — notifie les admins/gérants de la société (« founder », si
+    déployé — même patron de destinataires que ``CustomUser.
+    admins_actifs_qs``, réutilisé sans réinvention) quand un feedback est
+    marqué « étoilé » (important). Dégrade en silence si personne n'est
+    admin/propriétaire actif pour cette société (``notify_many`` sur un
+    queryset vide, aucune erreur)."""
+    from authentication.models import CustomUser
+
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify_many
+
+    destinataires = CustomUser.admins_actifs_qs(feedback.company)
+    notify_many(
+        destinataires, EventType.FEEDBACK_STARRED,
+        f'Feedback marqué important : {feedback.titre}',
+        body=feedback.description,
+        link='/innovation/retours-produit', company=feedback.company)
+
+
 BULK_ACTIONS = frozenset({'set_statut', 'add_tag', 'remove_tag'})
 
 

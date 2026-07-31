@@ -107,6 +107,8 @@ const innovationApi = {
     // NTIDE39 — fermeture via annonce produit (« c'est livré »).
     lierAnnonce: (id, data) =>
       api.post(`/innovation/feedback-produit/${id}/lier-annonce/`, data),
+    // NTIDE45 — marquer/démarquer « étoilé » (important), notifie les admins.
+    etoiler: (id) => api.post(`/innovation/feedback-produit/${id}/etoiler/`),
   },
 
   // ── WIR150 — annonces produit (repli local NTIDE39, palier admin) ──

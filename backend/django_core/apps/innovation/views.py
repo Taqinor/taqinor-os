@@ -622,6 +622,22 @@ class FeedbackProduitViewSet(CompanyScopedModelViewSet):
             instance.save(update_fields=['statut', 'updated_at'])
         return Response(self.get_serializer(instance).data)
 
+    # ── NTIDE45 — marquer/démarquer « étoilé » (important) ──────────────────
+    @action(detail=True, methods=['post'], url_path='etoiler')
+    def etoiler(self, request, pk=None):
+        """Bascule ``starred``. Notifie les admins/gérants UNE SEULE fois, à
+        la transition False → True (jamais répétée, jamais à la
+        dé-marquation)."""
+        feedback = self.get_object()
+        if not feedback.starred:
+            feedback.starred = True
+            feedback.save(update_fields=['starred', 'updated_at'])
+            services.notifier_feedback_etoile(feedback)
+        else:
+            feedback.starred = False
+            feedback.save(update_fields=['starred', 'updated_at'])
+        return Response(FeedbackProduitSerializer(feedback).data)
+
     # ── NTIDE39 — fermeture via annonce produit (« vous l'aviez demandé,
     #    c'est livré ») ────────────────────────────────────────────────────
     @action(detail=True, methods=['post'], url_path='lier-annonce')
