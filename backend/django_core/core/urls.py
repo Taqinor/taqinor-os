@@ -25,6 +25,7 @@ from .dashboard_partage import (
     dashboard_public,
     dashboard_tv,
 )
+from .vues_api import VuePersonnaliseeViewSet
 from .views import (
     ApiUsagePlanViewSet,
     BackgroundJobViewSet,
@@ -121,6 +122,9 @@ router.register(r'dashboards-partages', PartageDashboardViewSet,
 router.register(r'dashboards-partages-internes',
                 DashboardPartageInterneViewSet,
                 basename='dashboard-partage-interne')
+# NTEXT16 — vues de liste personnalisées (?cible=crm.lead), partageables
+# prive/equipe/societe et toujours bornées à la société.
+router.register(r'vues', VuePersonnaliseeViewSet, basename='vue-personnalisee')
 
 urlpatterns = router.urls + [
     # XPLT10 — accès public lecture seule (aucune identité de confiance,

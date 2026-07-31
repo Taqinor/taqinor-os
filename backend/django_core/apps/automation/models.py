@@ -252,6 +252,51 @@ class AutomationRule(models.Model):
         return self.nom
 
 
+class AutomationStep(models.Model):
+    """NTEXT4 — UNE étape d'une SÉQUENCE d'actions rattachée à une règle.
+
+    Historiquement une règle n'a qu'UNE action (``action_type`` /
+    ``action_config`` portés par ``AutomationRule``). Une règle peut désormais
+    porter N étapes exécutées DANS L'ORDRE (``ordre``, puis ``id`` à égalité) :
+    « envoyer un email PUIS créer un ticket SAV PUIS assigner le lead ».
+
+    RÉTRO-COMPAT STRICTE : une règle SANS étape exécute son ``action_type`` /
+    ``action_config`` historique, journalise UN run, message inchangé — le
+    comportement d'aujourd'hui est byte-identique. Dès qu'au moins une étape
+    existe, la séquence REMPLACE l'action unique et chaque étape journalise son
+    PROPRE ``AutomationRun`` (voir ``engine.run_action``).
+
+    Portée société : l'étape n'a volontairement PAS de FK ``company`` — elle est
+    scopée par sa règle (``rule.company``), qui reste l'unique porteuse du
+    tenant ; une étape ne s'atteint jamais autrement que par sa règle.
+    """
+
+    rule = models.ForeignKey(
+        AutomationRule,
+        on_delete=models.CASCADE,  # on_delete: une étape n'existe QUE dans sa règle (composition, même patron que IncomingWebhookTrigger.rule) ; supprimer la règle supprime sa séquence
+        related_name='steps', verbose_name='Règle')
+    ordre = models.PositiveIntegerField(
+        default=0, help_text="Rang d'exécution (croissant, id à égalité).")
+    action_type = models.CharField(
+        max_length=40, choices=ActionType.choices)
+    action_config = models.JSONField(default=dict, blank=True)
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Étape d'automatisation"
+        verbose_name_plural = "Étapes d'automatisation"
+        ordering = ['ordre', 'id']
+        indexes = [
+            models.Index(fields=['rule', 'ordre'],
+                         name='automation_step_rule_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.rule_id}#{self.ordre}:{self.action_type}'
+
+
 class AutomationRun(models.Model):
     """Journal d'UNE exécution de règle (N72) — chaque tentative est tracée."""
 
