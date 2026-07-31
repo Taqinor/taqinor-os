@@ -44,7 +44,9 @@ function PollBlock({ message, currentUserId }) {
 
   useEffect(() => {
     let alive = true
-    setLoading(true)
+    // Différé d'un microtask : un setState synchrone dans le corps d'un effet
+    // déclenche un rendu en cascade (react-hooks/set-state-in-effect).
+    Promise.resolve().then(() => { if (alive) setLoading(true) })
     messagesApi.poll.results(message.id)
       .then((r) => { if (alive) setPoll(r.data) })
       .catch(() => { if (alive) setPoll(null) })

@@ -208,7 +208,12 @@ export default function PatrimoineTree() {
   // `payload[parentField] = PARENTS[parentField].id` sans switch dupliqué.
   const PARENTS = { site, batiment, niveau }
 
-  const reloadCurrentLevel = useCallback(async () => {
+  // Fonctions simples (pas de `useCallback`) : elles sont clefées sur
+  // `currentLevel`, une variable LOCALE recalculée à chaque rendu — la
+  // mémoïsation manuelle n'apportait rien et empêchait le compilateur React de
+  // la préserver (react-hooks/preserve-manual-memoization). Aucune n'est
+  // utilisée comme dépendance : appelées uniquement depuis des gestionnaires.
+  const reloadCurrentLevel = async () => {
     if (currentLevel === 'site') {
       const res = await immobilierApi.sites.list()
       setSites(rowsFrom(res.data))
@@ -222,10 +227,9 @@ export default function PatrimoineTree() {
       const res = await immobilierApi.locaux.list({ niveau: niveau.id })
       setLocaux(rowsFrom(res.data))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentLevel, site, batiment, niveau])
+  }
 
-  const openCreateForm = useCallback(() => {
+  const openCreateForm = () => {
     const config = LEVEL_CONFIG[currentLevel]
     const initial = {}
     config.fields.forEach((f) => {
@@ -236,9 +240,9 @@ export default function PatrimoineTree() {
     setFormRowId(null)
     setFormErreur(null)
     setFormOpen(true)
-  }, [currentLevel])
+  }
 
-  const openEditForm = useCallback((row) => {
+  const openEditForm = (row) => {
     const config = LEVEL_CONFIG[currentLevel]
     const initial = {}
     config.fields.forEach((f) => {
@@ -249,7 +253,7 @@ export default function PatrimoineTree() {
     setFormRowId(row.id)
     setFormErreur(null)
     setFormOpen(true)
-  }, [currentLevel])
+  }
 
   const closeForm = useCallback(() => setFormOpen(false), [])
 

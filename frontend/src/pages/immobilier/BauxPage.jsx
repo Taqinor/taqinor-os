@@ -83,7 +83,10 @@ export default function BauxPage() {
 
   useEffect(() => {
     let annule = false
-    fetchListes()
+    // Différé d'un microtask : l'analyse statique ne peut pas prouver que cette
+    // fonction async ne pose pas d'état de façon synchrone
+    // (react-hooks/set-state-in-effect). Comportement inchangé.
+    Promise.resolve().then(fetchListes)
       .catch(() => { if (!annule) setErreur('Chargement des baux impossible.') })
       .finally(() => { if (!annule) setLoading(false) })
     return () => { annule = true }

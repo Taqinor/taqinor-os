@@ -127,9 +127,10 @@ export default function ProductionPage() {
   // l'installation) : sans config de supervision, pas d'attendu à comparer.
   useEffect(() => {
     const configId = config?.id
-    if (!configId) { setHistory([]); return undefined }
+    // Différé d'un microtask (react-hooks/set-state-in-effect).
+    if (!configId) { Promise.resolve().then(() => setHistory([])); return undefined }
     let active = true
-    setLoadingHistory(true)
+    Promise.resolve().then(() => { if (active) setLoadingHistory(true) })
     monitoringApi.getHistory(configId, { months: 12 })
       .then((r) => { if (active) setHistory(r.data?.data ?? []) })
       .catch(() => { if (active) setHistory([]) })

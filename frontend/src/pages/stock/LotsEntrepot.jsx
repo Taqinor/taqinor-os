@@ -185,7 +185,9 @@ export default function LotsEntrepot() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { reload() }, [avecStock]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Différé d'un microtask : `reload` pose `loading` de façon synchrone
+  // (react-hooks/set-state-in-effect). Comportement inchangé.
+  useEffect(() => { Promise.resolve().then(reload) }, [avecStock]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     stockApi.getProduits({ ordering: 'nom' })

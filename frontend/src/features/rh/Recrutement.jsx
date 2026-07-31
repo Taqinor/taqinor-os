@@ -806,7 +806,9 @@ function FeedbackDialog({ evaluation, onClose }) {
 
   useEffect(() => {
     let vivant = true
-    setLoading(true)
+    // Différé d'un microtask : pas de setState synchrone dans le corps d'un
+    // effet (react-hooks/set-state-in-effect).
+    Promise.resolve().then(() => { if (vivant) setLoading(true) })
     Promise.allSettled([
       rhApi.getRetoursFeedback360({ evaluation: evaluation.id }),
       rhApi.getSyntheseFeedback360({ evaluation: evaluation.id }),

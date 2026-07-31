@@ -219,7 +219,7 @@ function OngletRetours({ fournisseurId }) {
 // fournisseur côté serveur) : le formulaire propose les BCF du fournisseur
 // (déjà chargés pour l'onglet BCF). Imputation automatique à la facturation
 // (`consommer_acomptes_bcf`, serveur) — pas d'action manuelle ici.
-function AcompteForm({ fournisseurId, bcfs, onClose, onSaved }) {
+function AcompteForm({ bcfs, onClose, onSaved }) {
   const [fields, setFields] = useState({
     bon_commande: bcfs[0]?.id ? String(bcfs[0].id) : '',
     montant: '', date_versement: '', mode: 'virement', note: '',
@@ -362,7 +362,7 @@ function OngletAcomptes({ fournisseurId, canWrite }) {
         </ul>
       )}
       {showForm && (
-        <AcompteForm fournisseurId={fournisseurId} bcfs={bcfs}
+        <AcompteForm bcfs={bcfs}
                      onClose={() => setShowForm(false)} onSaved={reload} />
       )}
     </div>

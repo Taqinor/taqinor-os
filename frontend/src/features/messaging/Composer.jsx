@@ -501,7 +501,10 @@ export default function Composer({
     }
   }
   useEffect(() => {
-    if (scheduleOpen) loadScheduledQueue()
+    // Différé d'un microtask : l'analyse statique ne peut pas prouver que cette
+    // fonction async ne pose pas d'état de façon synchrone
+    // (react-hooks/set-state-in-effect). Comportement inchangé.
+    if (scheduleOpen) Promise.resolve().then(loadScheduledQueue)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rechargé à l'ouverture du popover uniquement
   }, [scheduleOpen, activeId])
 

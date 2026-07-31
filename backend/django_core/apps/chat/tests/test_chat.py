@@ -1343,7 +1343,11 @@ class XKB32RetentionExportTests(TestCase):
         newer = RetentionSweepRun.objects.create(
             company=self.company, messages_purged=3)
 
-        other_company = make_company()
+        # `make_company()` fait un get_or_create sur un slug FIXE : l'appeler
+        # sans argument renvoie la MÊME société que `setUp`, donc le run
+        # « d'une autre société » atterrissait en fait dans celle-ci et la
+        # scoping n'était jamais réellement testée. Slug explicite.
+        other_company = make_company(slug='chat-co-autre', nom='Autre Co')
         RetentionSweepRun.objects.create(
             company=other_company, messages_purged=99)
 

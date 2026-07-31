@@ -88,7 +88,9 @@ export default function ChecklistPage() {
   }, [])
 
   useEffect(() => {
-    if (!folderId) { setChecklist(null); return }
+    // Différé d'un microtask : un setState synchrone dans le corps d'un effet
+    // déclenche un rendu en cascade (react-hooks/set-state-in-effect).
+    if (!folderId) { Promise.resolve().then(() => setChecklist(null)); return }
     gedApi.getChecklist(folderId)
       .then((r) => setChecklist(r.data))
       .catch(() => setChecklist([]))

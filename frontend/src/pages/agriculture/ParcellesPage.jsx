@@ -363,9 +363,10 @@ function IrrigationDialog({ parcelle, campagneId, onClose }) {
   const [cockpitLoading, setCockpitLoading] = useState(false)
 
   useEffect(() => {
-    if (!campagneId) { setCockpit(null); return }
+    // Différé d'un microtask (react-hooks/set-state-in-effect).
+    if (!campagneId) { Promise.resolve().then(() => setCockpit(null)); return }
     let cancelled = false
-    setCockpitLoading(true)
+    Promise.resolve().then(() => { if (!cancelled) setCockpitLoading(true) })
     agricultureApi.campagnes.coutIrrigation(campagneId)
       .then((res) => { if (!cancelled) setCockpit(res.data) })
       .catch(() => { if (!cancelled) setCockpit(null) })

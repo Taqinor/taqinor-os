@@ -126,7 +126,9 @@ function FilsList({ onSelect }) {
     // d'autres tests) : dégrade silencieusement plutôt que de faire planter
     // tout le sous-arbre de rendu (même garde que MyStatusBar ci-dessus).
     if (!messagesApi.threads?.listFollowed) {
-      setItems([])
+      // Différé d'un microtask : un setState synchrone dans le corps d'un effet
+      // déclenche un rendu en cascade (même idiome que `setMe(null)` ci-dessus).
+      Promise.resolve().then(() => { if (alive) setItems([]) })
       return undefined
     }
     messagesApi.threads.listFollowed()
@@ -172,7 +174,9 @@ function FavorisList({ onSelect }) {
   useEffect(() => {
     let alive = true
     if (!messagesApi.listBookmarks) {
-      setItems([])
+      // Différé d'un microtask (cf. FilsList) : pas de setState synchrone dans
+      // le corps d'un effet.
+      Promise.resolve().then(() => { if (alive) setItems([]) })
       return undefined
     }
     messagesApi.listBookmarks()

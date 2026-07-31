@@ -68,7 +68,15 @@ const PER_CHUNK_BUDGET_KB = 350
 // 2026-07-19 : 2550 -> 2650. WIR vague 2 : ~30 nouveaux écrans lazy (P3) —
 // croissance répartie sur de nombreux petits chunks (pas un seul chunk gonflé),
 // AUCUNE nouvelle dépendance npm. Réel ~2589 Ko ; palier généreux habituel.
-const TOTAL_BUDGET_KB = 2650
+// 2026-07-31 : 2650 -> 2790. Vague WIR-P3 finale (78 tâches) : ~40 nouveaux
+// écrans lazy — module éducation complet (9), santé (5), hôtellerie (3), stock
+// (4), immobilier (3), agriculture, POS retraits, répertoire Tiers (2),
+// innovation (2), monitoring, Quote-to-Cash, GED checklist, ventes (3), CRM
+// SiteProfile, paramètres (3), compta (2). Croissance répartie sur beaucoup de
+// petits chunks : le garde per-chunk (350) passe SANS marge consommée, donc
+// aucun chunk gonflé et aucun impact sur le chargement initial (tout est
+// lazy). AUCUNE nouvelle dépendance npm. Réel ~2741 Ko ; palier habituel.
+const TOTAL_BUDGET_KB = 2790
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -113,7 +121,11 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // Publicité : croissance/créatif/science/finance), tous lazy-loadés = chacun son
 // propre chunk (réel ~503). Le total gzip reste sous budget (~2636/2650 Ko) —
 // pas de prolifération de structure ; palier généreux habituel.
-const MAX_CHUNK_COUNT = 540
+// 2026-07-31 : 540 -> 570. Vague WIR-P3 finale : ~40 écrans lazy de plus,
+// chacun son propre chunk (réel ~541) — croissance produit une-route-un-chunk,
+// pas une prolifération de structure ; le budget gzip (2790) +
+// PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous de poids.
+const MAX_CHUNK_COUNT = 570
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux
