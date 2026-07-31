@@ -16,7 +16,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.roles.models import Role
 
-from .models import FavoriUtilisateur, SavedView
+from .models import FavoriUtilisateur, SavedView, UxParametres
 
 User = get_user_model()
 
@@ -426,3 +426,136 @@ class FavoriUtilisateurApiTests(TestCase):
         self.assertEqual(
             auth(self.com1).delete(f'{self.BASE}{favori.pk}/').status_code, 204)
         self.assertEqual(FavoriUtilisateur.objects.count(), 0)
+
+
+class UxParametresApiTests(TestCase):
+    """NTUX27 — réglages UX par société (singleton) et ce qu'ils GOUVERNENT."""
+
+    BASE = '/api/django/uxviews/parametres/'
+    VUES = '/api/django/uxviews/saved-views/'
+
+    def setUp(self):
+        self.co_a = make_company('uxprm-a', 'Prm A')
+        self.co_b = make_company('uxprm-b', 'Prm B')
+        self.directeur = make_user(self.co_a, 'uxprm-directeur', role_legacy='responsable')
+        self.commercial = make_user(self.co_a, 'uxprm-com', role_legacy='normal')
+        self.directeur_b = make_user(self.co_b, 'uxprm-b-directeur', role_legacy='responsable')
+
+    def _desactiver_partage(self):
+        parametres = UxParametres.get_or_default(self.co_a)
+        parametres.permettre_vues_partagees_equipe = False
+        parametres.save(update_fields=['permettre_vues_partagees_equipe'])
+        return parametres
+
+    def test_lecture_cree_les_reglages_au_defaut(self):
+        self.assertEqual(UxParametres.objects.count(), 0)
+        resp = auth(self.commercial).get(self.BASE)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['duree_hover_peek_ms'], 400)
+        self.assertEqual(resp.data['duree_undo_toast_s'], 10)
+        self.assertTrue(resp.data['permettre_vues_partagees_equipe'])
+        self.assertEqual(resp.data['roles_autorises_definir_defaut'], [])
+        self.assertEqual(UxParametres.objects.count(), 1)
+
+    def test_ecriture_reservee_directeur_admin(self):
+        self.assertEqual(
+            auth(self.commercial).patch(
+                self.BASE, {'duree_undo_toast_s': 30}, format='json').status_code, 403)
+        resp = auth(self.directeur).patch(
+            self.BASE, {'duree_undo_toast_s': 30}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            UxParametres.get_or_default(self.co_a).duree_undo_toast_s, 30)
+
+    def test_reglages_isoles_par_societe(self):
+        auth(self.directeur).patch(self.BASE, {'duree_hover_peek_ms': 900}, format='json')
+        resp = auth(self.directeur_b).get(self.BASE)
+        self.assertEqual(resp.data['duree_hover_peek_ms'], 400)
+        self.assertEqual(UxParametres.objects.count(), 2)
+
+    def test_role_dune_autre_societe_refuse(self):
+        role_b = make_role(self.co_b, 'Directeur B')
+        resp = auth(self.directeur).patch(
+            self.BASE, {'roles_autorises_definir_defaut': [role_b.pk]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    # ── Ce que le réglage GOUVERNE (NTUX1/NTUX2) ────────────────────────────
+    def test_partage_desactive_refuse_une_nouvelle_vue_equipe(self):
+        self._desactiver_partage()
+        resp = auth(self.commercial).post(self.VUES, {
+            'ecran': 'crm.leads', 'nom': 'Partagée', 'configuration': {},
+            'visibilite': 'EQUIPE',
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        # Une vue PERSONNELLE reste évidemment créable.
+        self.assertEqual(auth(self.commercial).post(self.VUES, {
+            'ecran': 'crm.leads', 'nom': 'Perso', 'configuration': {},
+        }, format='json').status_code, 201)
+
+    def test_partage_desactive_ne_supprime_ni_ne_departage_lexistant(self):
+        vue = SavedView.objects.create(
+            company=self.co_a, owner=self.commercial, ecran='crm.leads',
+            nom='Déjà partagée', visibilite=SavedView.Visibilite.EQUIPE)
+        self._desactiver_partage()
+        # Toujours en base, toujours partagée, toujours visible de l'équipe.
+        vue.refresh_from_db()
+        self.assertEqual(vue.visibilite, SavedView.Visibilite.EQUIPE)
+        noms = [ligne['nom'] for ligne in rows(auth(self.directeur).get(self.VUES))]
+        self.assertIn('Déjà partagée', noms)
+        # Une édition SANS bascule de visibilité passe (la vue n'est pas gelée
+        # pour son propriétaire, elle est juste non re-partageable).
+        resp = auth(self.commercial).patch(
+            f'{self.VUES}{vue.pk}/', {'nom': 'Renommée'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        vue.refresh_from_db()
+        self.assertEqual(vue.visibilite, SavedView.Visibilite.EQUIPE)
+
+    def test_partage_desactive_refuse_une_vue_par_defaut_de_role(self):
+        role = make_role(self.co_a, 'Commercial')
+        vue = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Défaut')
+        self._desactiver_partage()
+        resp = auth(self.directeur).post(
+            f'{self.VUES}{vue.pk}/definir-par-defaut-role/',
+            {'role': role.pk}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_roles_autorises_restreint_qui_pose_le_defaut(self):
+        from apps.roles.models import Role
+
+        role_autorise = Role.objects.create(
+            company=self.co_a, nom='Directeur commercial', permissions=['crm_gerer'])
+        role_autre = Role.objects.create(
+            company=self.co_a, nom='Chef de projet', permissions=['crm_gerer'])
+        parametres = UxParametres.get_or_default(self.co_a)
+        parametres.roles_autorises_definir_defaut.set([role_autorise])
+
+        refuse = make_user(self.co_a, 'uxprm-refuse')
+        refuse.role = role_autre
+        refuse.save(update_fields=['role'])
+        permis = make_user(self.co_a, 'uxprm-permis')
+        permis.role = role_autorise
+        permis.save(update_fields=['role'])
+
+        # Partagée à l'équipe : sinon la vue d'un AUTRE propriétaire est hors
+        # `get_queryset` et l'appel renverrait 404 avant d'atteindre le garde
+        # de rôle que ce test vise.
+        vue = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads',
+            nom='Défaut', visibilite=SavedView.Visibilite.EQUIPE)
+        url = f'{self.VUES}{vue.pk}/definir-par-defaut-role/'
+        self.assertEqual(
+            auth(refuse).post(url, {'role': role_autorise.pk}, format='json'
+                              ).status_code, 403)
+        self.assertEqual(
+            auth(permis).post(url, {'role': role_autorise.pk}, format='json'
+                              ).status_code, 200)
+
+    def test_liste_vide_de_roles_autorises_ne_restreint_rien(self):
+        role = make_role(self.co_a, 'Commercial')
+        vue = SavedView.objects.create(
+            company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Défaut')
+        resp = auth(self.directeur).post(
+            f'{self.VUES}{vue.pk}/definir-par-defaut-role/',
+            {'role': role.pk}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)

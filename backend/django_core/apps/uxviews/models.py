@@ -116,3 +116,52 @@ class FavoriUtilisateur(TenantModel):
             return ''
         ct = self.content_type
         return f'{ct.app_label}.{ct.model}'
+
+
+class UxParametres(TenantModel):
+    """NTUX27 — réglages UX du module, UN jeu par société.
+
+    Portés par la société (jamais par utilisateur) : ce sont des règles de
+    gouvernance posées depuis `/parametres/ux` (Directeur/Admin), lues par
+    TOUS les écrans. `company` est REDÉCLARÉE en `OneToOneField` sur le socle
+    `TenantModel` (motif ARC1 documenté dans `core.models.TenantModel`) pour
+    matérialiser l'unicité par société au niveau base.
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        # on_delete: composition — les réglages n'existent que pour leur société.
+        on_delete=models.CASCADE,
+        related_name='ux_parametres', verbose_name='Société',
+    )
+    # NTUX22 — délai avant l'aperçu au survol, en millisecondes.
+    duree_hover_peek_ms = models.PositiveIntegerField(
+        'Délai avant aperçu au survol (ms)', default=400)
+    # NTUX6 — durée du bandeau « annuler » après une suppression, en secondes.
+    duree_undo_toast_s = models.PositiveIntegerField(
+        "Durée du bandeau « annuler » (s)", default=10)
+    # NTUX1/NTUX2 — à faux, plus AUCUNE nouvelle vue ne peut être partagée à
+    # l'équipe. Les vues DÉJÀ partagées ne sont jamais supprimées : elles
+    # restent visibles et repassent simplement en lecture seule.
+    permettre_vues_partagees_equipe = models.BooleanField(
+        "Autoriser les vues partagées d'équipe", default=True)
+    # NTUX2 — restreint QUI peut poser la vue par défaut d'un rôle. VIDE = pas
+    # de restriction supplémentaire (le garde Directeur/Admin suffit, comportement
+    # historique). STRING FK — jamais d'import de `apps.roles.models`.
+    roles_autorises_definir_defaut = models.ManyToManyField(
+        'roles.Role', blank=True, related_name='ux_parametres_defaut',
+        verbose_name='Rôles autorisés à définir une vue par défaut',
+    )
+
+    class Meta:
+        verbose_name = 'Réglages UX'
+        verbose_name_plural = 'Réglages UX'
+
+    def __str__(self):
+        return f'Réglages UX — {self.company_id}'
+
+    @classmethod
+    def get_or_default(cls, company):
+        """Réglages de la société, créés au défaut à la première lecture."""
+        parametres, _ = cls.objects.get_or_create(company=company)
+        return parametres

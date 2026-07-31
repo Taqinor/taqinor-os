@@ -1,17 +1,22 @@
 import json
 
 from django.db.models import Q
+from rest_framework import generics, permissions
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import (
+    IsAdminOrResponsableTier, IsAnyRole, IsResponsableOrAdmin,
+)
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import FavoriUtilisateur, SavedView
-from .serializers import FavoriUtilisateurSerializer, SavedViewSerializer
+from .models import FavoriUtilisateur, SavedView, UxParametres
+from .serializers import (
+    FavoriUtilisateurSerializer, SavedViewSerializer, UxParametresSerializer,
+)
 
 
 def _is_valid_configuration(configuration):
@@ -62,9 +67,28 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             return [IsResponsableOrAdmin()]
         return [IsAnyRole()]
 
+    def _verifier_partage_autorise(self, serializer, instance=None):
+        """NTUX27 — refuse de PARTAGER une vue à l'équipe quand la société a
+        désactivé `permettre_vues_partagees_equipe`.
+
+        Ne fire QUE sur une bascule vers EQUIPE : une vue DÉJÀ partagée éditée
+        pour une autre raison garde sa visibilité (le réglage repasse les vues
+        existantes en lecture seule, il n'en supprime ni n'en départage aucune).
+        """
+        if serializer.validated_data.get('visibilite') != SavedView.Visibilite.EQUIPE:
+            return
+        if instance is not None and instance.visibilite == SavedView.Visibilite.EQUIPE:
+            return
+        parametres = UxParametres.get_or_default(self.request.user.company)
+        if not parametres.permettre_vues_partagees_equipe:
+            raise ValidationError({'visibilite': (
+                "Le partage de vues à l'équipe est désactivé pour votre société."
+            )})
+
     def perform_create(self, serializer):
         # NTUX28 (limites anti-abus) reste hors périmètre de ce lot — posé ici
         # comme garde-fou de base minimal : owner/company toujours serveur.
+        self._verifier_partage_autorise(serializer)
         serializer.save(company=self.request.user.company, owner=self.request.user)
 
     def perform_update(self, serializer):
@@ -75,6 +99,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             instance.est_defaut_role and IsResponsableOrAdmin().has_permission(self.request, self)
         ):
             raise PermissionDenied("Vous ne pouvez modifier que vos propres vues.")
+        self._verifier_partage_autorise(serializer, instance=instance)
         serializer.save()
 
     def perform_destroy(self, instance):
@@ -100,6 +125,21 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         role_id = request.data.get('role', instance.role_id)
         if not role_id:
             raise ValidationError({'role': 'Un rôle est requis pour définir une vue par défaut.'})
+        # NTUX27 — une vue par défaut de rôle EST une vue partagée : si la
+        # société a désactivé le partage d'équipe, on ne peut plus en poser.
+        parametres = UxParametres.get_or_default(request.user.company)
+        if not parametres.permettre_vues_partagees_equipe:
+            raise ValidationError({'detail': (
+                "Le partage de vues à l'équipe est désactivé pour votre société."
+            )})
+        # NTUX27 — restriction FINE optionnelle : quand la société a nommé des
+        # rôles autorisés, le Directeur/Admin ne suffit plus, il faut porter
+        # l'un de ces rôles. Liste VIDE = comportement historique inchangé.
+        autorises = list(
+            parametres.roles_autorises_definir_defaut.values_list('id', flat=True))
+        if autorises and request.user.role_id not in autorises:
+            raise PermissionDenied(
+                "Votre rôle n'est pas autorisé à définir une vue par défaut.")
         SavedView.objects.filter(
             company=instance.company, ecran=instance.ecran, role_id=role_id,
             est_defaut_role=True,
@@ -287,3 +327,41 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
                 element.save(update_fields=['ordre', 'updated_at'])
         return Response(
             FavoriUtilisateurSerializer(self.get_queryset(), many=True).data)
+
+
+class UxParametresView(generics.RetrieveUpdateAPIView):
+    """NTUX27 — réglages UX de la société (écran `/parametres/ux`).
+
+    SINGLETON par société : il n'y a rien à lister ni à créer, la ressource est
+    résolue depuis `request.user.company` (jamais depuis une URL ni un corps —
+    aucune fuite inter-société possible) et créée au défaut à la première
+    lecture. D'où une vue de DÉTAIL sans identifiant plutôt qu'un ModelViewSet.
+
+    LECTURE ouverte à tout collaborateur interne : `duree_hover_peek_ms` et
+    `duree_undo_toast_s` pilotent l'UI de CHAQUE utilisateur, ils doivent donc
+    être lisibles par tous. ÉCRITURE réservée Directeur/Admin (le palier limité
+    n'entre pas dans `/parametres/*`).
+    """
+
+    serializer_class = UxParametresSerializer
+    # Pas de PUT : un réglage se modifie champ par champ (PATCH), jamais par
+    # remplacement complet (qui réinitialiserait silencieusement les autres).
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_permissions(self):
+        if self.request.method in permissions.SAFE_METHODS:
+            return [IsAnyRole()]
+        return [IsAdminOrResponsableTier()]
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # Sert au garde « pas de rôle d'une autre société » du serializer.
+        context['company'] = self.request.user.company
+        return context
+
+    def get_object(self):
+        return UxParametres.get_or_default(self.request.user.company)
+
+    def perform_update(self, serializer):
+        # La société est TOUJOURS celle de l'appelant — jamais lue du corps.
+        serializer.save(company=self.request.user.company)

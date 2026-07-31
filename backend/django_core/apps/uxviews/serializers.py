@@ -3,7 +3,7 @@ from typing import Optional
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
 
-from .models import FavoriUtilisateur, SavedView
+from .models import FavoriUtilisateur, SavedView, UxParametres
 
 
 class SavedViewSerializer(serializers.ModelSerializer):
@@ -114,3 +114,31 @@ class FavoriUtilisateurSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         data['modele'] = instance.cle_modele
         return data
+
+
+class UxParametresSerializer(serializers.ModelSerializer):
+    """NTUX27 — réglages UX de la société.
+
+    `company` n'est JAMAIS lue du corps : la vue résout les réglages depuis
+    `request.user.company`.
+    """
+
+    class Meta:
+        model = UxParametres
+        fields = [
+            'id', 'duree_hover_peek_ms', 'duree_undo_toast_s',
+            'permettre_vues_partagees_equipe', 'roles_autorises_definir_defaut',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_roles_autorises_definir_defaut(self, value):
+        """Un rôle d'une AUTRE société n'a rien à faire ici (les ids de rôle
+        sont devinables — sans ce garde, on ouvrirait une référence croisée)."""
+        company = self.context.get('company')
+        if company is not None:
+            etrangers = [role for role in value if role.company_id != company.id]
+            if etrangers:
+                raise serializers.ValidationError(
+                    "Un rôle d'une autre société ne peut pas être autorisé.")
+        return value
