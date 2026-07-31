@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Inbox, Link2, Plus } from 'lucide-react'
+import { EyeOff, Inbox, Link2, Plus, Star } from 'lucide-react'
 import innovationApi from '../../api/innovationApi'
 import {
   Badge, Button, Card, DataTable, EmptyState, IconButton,
@@ -26,6 +26,8 @@ export default function RetoursProduitPage() {
   const [feedbacks, setFeedbacks] = useState([])
   const [resume, setResume] = useState([])
   const [annonces, setAnnonces] = useState([])
+  // NTIDE46 — pages les plus commentées (10+ feedbacks/semaine).
+  const [hotspot, setHotspot] = useState([])
   const [loading, setLoading] = useState(true)
 
   const [annonceDialogOpen, setAnnonceDialogOpen] = useState(false)
@@ -43,6 +45,7 @@ export default function RetoursProduitPage() {
     innovationApi.feedback.list().then((r) => setFeedbacks(r.data?.results ?? r.data ?? [])).catch(() => {})
     innovationApi.feedback.resume().then((r) => setResume(r.data?.results ?? [])).catch(() => {})
     innovationApi.annonces.list().then((r) => setAnnonces(r.data?.results ?? r.data ?? [])).catch(() => {})
+    innovationApi.feedback.hotspot().then((r) => setHotspot(r.data?.results ?? [])).catch(() => {})
   }
 
   useEffect(() => {
@@ -51,12 +54,14 @@ export default function RetoursProduitPage() {
       innovationApi.feedback.list(),
       innovationApi.feedback.resume(),
       innovationApi.annonces.list(),
+      innovationApi.feedback.hotspot(),
     ])
-      .then(([f, r, a]) => {
+      .then(([f, r, a, h]) => {
         if (!active) return
         setFeedbacks(f.data?.results ?? f.data ?? [])
         setResume(r.data?.results ?? [])
         setAnnonces(a.data?.results ?? a.data ?? [])
+        setHotspot(h.data?.results ?? [])
       })
       .catch(() => {})
       .finally(() => { if (active) setLoading(false) })
@@ -86,6 +91,35 @@ export default function RetoursProduitPage() {
     setAnnonceId('')
     setNouvelleAnnonce({ titre: '', description: '', lien: '' })
     setMessage('')
+  }, [])
+
+  // NTIDE45 — marquer/démarquer « étoilé » (notifie les admins à la
+  // transition False → True, géré côté serveur).
+  const toggleEtoile = useCallback((feedback) => {
+    setBusyId(feedback.id)
+    innovationApi.feedback.etoiler(feedback.id)
+      .then((r) => {
+        setFeedbacks((prev) => prev.map((f) => (f.id === r.data.id ? r.data : f)))
+      })
+      .catch(() => toast.error('Action impossible.'))
+      .finally(() => setBusyId(null))
+  }, [])
+
+  // NTIDE47 — modération : masquer sans supprimer (palier Directeur strict
+  // côté serveur — un Responsable reçoit un 403, affiché en toast). Le
+  // masqué disparaît de la liste admin normale (même règle backend que la
+  // boîte à idées, NTIDE19).
+  const masquerFeedback = useCallback((feedback) => {
+    setBusyId(feedback.id)
+    innovationApi.feedback.masquer(feedback.id)
+      .then(() => {
+        setFeedbacks((prev) => prev.filter((f) => f.id !== feedback.id))
+        toast.success('Retour masqué.')
+      })
+      .catch((err) => toast.error(
+        err?.response?.status === 403
+          ? 'Réservé au Directeur.' : 'Action impossible.'))
+      .finally(() => setBusyId(null))
   }, [])
 
   const confirmerLiaison = () => {
@@ -130,15 +164,30 @@ export default function RetoursProduitPage() {
       cell: (v) => (v ? formatDateTime(v) : '—'),
     },
     {
-      id: 'actions', header: '', width: 120, align: 'right',
+      id: 'actions', header: '', width: 150, align: 'right',
       accessor: () => '',
-      cell: (v, r) => (r.statut !== 'adresse' ? (
-        <IconButton variant="ghost" label="Lier une annonce" disabled={busyId === r.id} onClick={() => openLier(r)}>
-          <Link2 />
-        </IconButton>
-      ) : (r.annonce_titre ? <span className="text-xs text-muted-foreground">{r.annonce_titre}</span> : null)),
+      cell: (v, r) => (
+        <div className="flex items-center justify-end gap-1">
+          <IconButton
+            variant="ghost"
+            label={r.starred ? 'Retirer important' : 'Marquer important'}
+            disabled={busyId === r.id}
+            onClick={() => toggleEtoile(r)}
+          >
+            <Star className={r.starred ? 'fill-current text-warning' : ''} />
+          </IconButton>
+          {r.statut !== 'adresse' ? (
+            <IconButton variant="ghost" label="Lier une annonce" disabled={busyId === r.id} onClick={() => openLier(r)}>
+              <Link2 />
+            </IconButton>
+          ) : (r.annonce_titre ? <span className="text-xs text-muted-foreground">{r.annonce_titre}</span> : null)}
+          <IconButton variant="ghost" label="Masquer (modération)" disabled={busyId === r.id} onClick={() => masquerFeedback(r)}>
+            <EyeOff />
+          </IconButton>
+        </div>
+      ),
     },
-  ], [busyId, openLier])
+  ], [busyId, openLier, toggleEtoile, masquerFeedback])
 
   return (
     <div className="page">
@@ -162,6 +211,21 @@ export default function RetoursProduitPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* ── NTIDE46 — pages les plus commentées (10+ feedbacks/semaine) ── */}
+      {hotspot.length > 0 && (
+        <Card className="mb-4 p-3">
+          <div className="mb-2 text-sm font-semibold text-foreground">Pages les plus commentées</div>
+          <ul className="flex flex-col gap-1 text-sm">
+            {hotspot.map((h) => (
+              <li key={h.source_page} className="flex items-center justify-between gap-2">
+                <span className="truncate text-foreground">{h.source_page}</span>
+                <Badge tone="warning">{h.nombre}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
       <div className="mb-4 flex justify-end">

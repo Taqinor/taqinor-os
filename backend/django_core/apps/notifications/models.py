@@ -212,6 +212,11 @@ class EventType(models.TextChoices):
     # FeedbackProduit) non-lu, par thème — notifie les gérants/staff de
     # chaque société (même patron de destinataires que N76 daily_digest).
     FEEDBACK_DIGEST = 'feedback_digest', 'Récapitulatif feedback produit'
+    # NTIDE45 — un feedback produit (apps.innovation.FeedbackProduit) est
+    # marqué « étoilé » (important) : notifie les admins/gérants de la
+    # société (« founder », si déployé — même patron de destinataires que
+    # ``FEEDBACK_DIGEST``), UNE SEULE fois, à la transition False → True.
+    FEEDBACK_STARRED = 'feedback_starred', 'Feedback marqué important'
     # NTEDU40 — un élève actif n'a aucune ``education.Inscription`` créée pour
     # l'année scolaire suivante après la date limite paramétrable
     # (``ParametresEducation.date_limite_reinscription``) : notifie

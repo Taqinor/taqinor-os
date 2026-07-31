@@ -19,6 +19,9 @@ const PremiersPasWidget = lazy(() => import('../components/PremiersPasWidget'))
 const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntitiesWidget'))
 // WIR144 — tuiles KPI crédit fédérées (kpi_providers) sur le cockpit direction.
 const CreditKpiCards = lazy(() => import('../features/credit/CreditKpiCards'))
+// NTIDE50 — tuiles KPI innovation fédérées (kpi_providers) : « Idées cette
+// semaine » + top idée votée, même patron que CreditKpiCards (WIR144).
+const InnovationKpiCard = lazy(() => import('../features/innovation/InnovationKpiCard'))
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -1004,6 +1007,16 @@ export function Component() {
             <ErrorBoundary>
               <Suspense fallback={null}>
                 <CreditKpiCards />
+              </Suspense>
+            </ErrorBoundary>
+          )}
+
+          {/* NTIDE50 — KPI innovation fédérés (kpi_providers) : « Idées cette
+              semaine » + top idée votée, drill-down /innovation/idees. */}
+          {profile === 'directeur' && (
+            <ErrorBoundary>
+              <Suspense fallback={null}>
+                <InnovationKpiCard />
               </Suspense>
             </ErrorBoundary>
           )}

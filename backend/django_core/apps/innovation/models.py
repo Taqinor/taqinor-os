@@ -88,6 +88,16 @@ class Idee(TenantModel):
     # (``?include_archived=1``, réservé au même palier).
     archived = models.BooleanField(
         default=False, verbose_name='Masquée (modération)')
+    # NTIDE48 — « boîte à idées publique » (gated, OFF par défaut,
+    # ``InnovationSettings.idees_clients_actif``) : référence OPAQUE (comme
+    # ``linked_id``) vers un client — jamais un ``ForeignKey`` cross-app vers
+    # ``crm.Client``. NULL = idée interne (comportement historique, immense
+    # majorité des lignes). Une idée avec ``client_id`` renseigné est
+    # masquée des équipes (``get_queryset``) — seul le palier admin
+    # (``IdeasSeeAll``) la voit.
+    client_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID client (opaque, boîte à idées publique)')
 
     class Meta:
         verbose_name = 'Idée'
@@ -191,6 +201,14 @@ class InnovationSettings(TenantModel):
     feedback_digest_frequence = models.CharField(
         max_length=10, choices=Frequence.choices, default=Frequence.QUOTIDIEN,
         verbose_name='Fréquence du digest feedback produit')
+    # NTIDE48 — toggle « boîte à idées publique » (gated, OFF par défaut,
+    # comme ``campagnes_activees``/``feedback_digest_actif`` ci-dessus).
+    # Quand ON, une idée client (``Idee.client_id`` renseigné) est stockée
+    # dans la MÊME table ``Idee``, scopée société, mais masquée des équipes
+    # (``get_queryset``) — seul le palier admin (``IdeasSeeAll``) la voit.
+    idees_clients_actif = models.BooleanField(
+        default=False,
+        verbose_name="Permettre aux clients d'envoyer des idées")
 
     class Meta:
         verbose_name = 'Paramètres innovation'
@@ -317,6 +335,15 @@ class FeedbackProduit(TenantModel):
         LU = 'lu', 'Lu'
         ADRESSE = 'adresse', 'Adressé'
 
+    # NTIDE42 — sentiment optionnel (« +1 / Neutre / -1 »), dénormalisé sur la
+    # ligne (jamais un modèle séparé) : agrégé par ``selectors.feedback_by_
+    # theme`` (résumé par sentiment, NTIDE38). Vide = non renseigné (le champ
+    # reste optionnel, jamais imposé au formulaire NTIDE37).
+    class Sentiment(models.TextChoices):
+        POSITIF = 'positif', "+1 (je l'adore)"
+        NEUTRE = 'neutre', "Neutre (c'est ok)"
+        NEGATIF = 'negatif', "-1 (ça m'énerve)"
+
     company = models.ForeignKey(
         'authentication.Company',
         # on_delete: feedback scopé société — disparaît avec elle (nettoyage tenant standard).
@@ -335,6 +362,43 @@ class FeedbackProduit(TenantModel):
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.ENVOYE,
         verbose_name='Statut')
+    sentiment = models.CharField(
+        max_length=10, choices=Sentiment.choices, blank=True, default='',
+        verbose_name='Sentiment')
+    # NTIDE43 — contexte opaque (même patron que ``Idee.linked_type``/
+    # ``linked_id``, réutilise EXACTEMENT les mêmes choix devis/ticket/
+    # chantier — même app, aucun souci de frontière cross-app) : pré-rempli
+    # côté client quand le bouton feedback (NTIDE37) est ouvert depuis une
+    # page détail (ex. « Feedback : Devis #123 »). Jamais résolu en objet
+    # métier côté serveur — juste affiché tel quel.
+    context_type = models.CharField(
+        max_length=10, choices=Idee.LinkedType.choices, blank=True,
+        default='', verbose_name='Type de contexte (devis/ticket/chantier)')
+    context_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de contexte (opaque)')
+    # NTIDE44 — provenance du feedback (UN-PII : jamais de donnée
+    # personnelle, seulement d'où vient la demande). ``source_page`` vient du
+    # CLIENT (chemin de la page ouverte) ; ``user_agent`` est capturé CÔTÉ
+    # SERVEUR depuis l'en-tête HTTP (jamais lu du corps de requête — plus
+    # fiable, cf. ``views.FeedbackProduitViewSet.perform_create``).
+    source_page = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Page source')
+    user_agent = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='User-Agent')
+    # NTIDE45 — flag manuel « étoilé » (important). Bascule
+    # ``services.notifier_feedback_etoile`` UNE SEULE fois, à la transition
+    # False → True (jamais répété), vers les admins/gérants de la société
+    # (« founder », ``CustomUser.admins_actifs_qs`` — dégrade en silence si
+    # personne n'est admin).
+    starred = models.BooleanField(
+        default=False, verbose_name='Marqué important (étoilé)')
+    # NTIDE47 — modération : le palier Directeur/Administrateur STRICT (pas
+    # Responsable, ``permissions.FeedbackModerate``) peut « masquer » un
+    # feedback inapproprié SANS le supprimer (flag, jamais de hard delete —
+    # même convention que ``Idee.archived``, NTIDE19). Journalisé via le
+    # chatter générique (``records.Activity``).
+    archived = models.BooleanField(
+        default=False, verbose_name='Masqué (modération)')
     # NTIDE39 — lien vers l'annonce produit qui a fermé ce feedback. Le
     # feedback lui-même n'est jamais supprimé (dossier produit, même
     # convention que ``Idee`` qui ne se supprime jamais) : seule la

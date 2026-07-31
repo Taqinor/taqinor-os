@@ -365,6 +365,68 @@ def fermer_feedback_via_annonce(feedback, *, annonce_id=None, annonce_data=None,
     return feedback
 
 
+# ── Webhook idée-création (NTIDE51, gated) ──────────────────────────────────
+
+
+def post_webhook_idee_creation(idee):
+    """NTIDE51 — POST un webhook sortant à chaque création d'idée, SI
+    ``INNOVATION_WEBHOOK_URL`` est configurée (variable d'environnement,
+    gated/optionnelle) : NO-OP silencieux si vide (comportement par
+    défaut). Payload : titre/description/auteur/contexte + horodatage ISO.
+
+    DÉFENSIF : une erreur réseau/timeout/HTTP n'interrompt JAMAIS la
+    création de l'idée (même convention que les notifications best-effort
+    de ce module) — jamais d'exception remontée à l'appelant."""
+    import logging
+    import os
+
+    url = os.environ.get('INNOVATION_WEBHOOK_URL', '') or ''
+    if not url:
+        return False
+
+    from django.utils import timezone
+
+    payload = {
+        'titre': idee.titre,
+        'description': idee.description,
+        'auteur': getattr(idee.auteur, 'username', None),
+        'context': idee.contexte,
+        'timestamp': timezone.now().isoformat(),
+    }
+    try:
+        import requests
+        requests.post(url, json=payload, timeout=5)
+        return True
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        logging.getLogger(__name__).warning(
+            "innovation: échec de l'envoi du webhook idée-création",
+            exc_info=True)
+        return False
+
+
+# ── Feedback « étoilé » (NTIDE45) ────────────────────────────────────────────
+
+
+def notifier_feedback_etoile(feedback):
+    """NTIDE45 — notifie les admins/gérants de la société (« founder », si
+    déployé — même patron de destinataires que ``CustomUser.
+    admins_actifs_qs``, réutilisé sans réinvention) quand un feedback est
+    marqué « étoilé » (important). Dégrade en silence si personne n'est
+    admin/propriétaire actif pour cette société (``notify_many`` sur un
+    queryset vide, aucune erreur)."""
+    from authentication.models import CustomUser
+
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify_many
+
+    destinataires = CustomUser.admins_actifs_qs(feedback.company)
+    notify_many(
+        destinataires, EventType.FEEDBACK_STARRED,
+        f'Feedback marqué important : {feedback.titre}',
+        body=feedback.description,
+        link='/innovation/retours-produit', company=feedback.company)
+
+
 BULK_ACTIONS = frozenset({'set_statut', 'add_tag', 'remove_tag'})
 
 

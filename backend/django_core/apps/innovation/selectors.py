@@ -83,7 +83,10 @@ def idees_similaires(company, texte, limit=3):
     ``icontains`` titre+description (même patron que ``apps.kb.selectors``),
     top N par votes (plus de votes = plus consolidée), plus récente d'abord
     en cas d'égalité. Exclut les brouillons d'autrui (invisibles/hors sujet
-    pour la dédup) et les idées masquées (modération, NTIDE19)."""
+    pour la dédup), les idées masquées (modération, NTIDE19) et les idées
+    client (boîte à idées publique, NTIDE48 — « masquées des équipes sauf
+    admin » : cette route reste ouverte à tout utilisateur interne connecté,
+    IdeasVote, donc jamais un idée client dans ses suggestions)."""
     from django.db.models import Q
 
     from .models import Idee
@@ -91,7 +94,8 @@ def idees_similaires(company, texte, limit=3):
     texte = (texte or '').strip()
     if not texte:
         return []
-    qs = (Idee.objects.filter(company=company, draft=False, archived=False)
+    qs = (Idee.objects.filter(
+            company=company, draft=False, archived=False, client_id__isnull=True)
           .filter(Q(titre__icontains=texte) | Q(description__icontains=texte))
           .order_by('-votes_count', '-created_at')[:limit])
     return list(qs.values('id', 'titre', 'contexte', 'votes_count', 'statut'))
@@ -331,17 +335,87 @@ def segments_disponibles(company):
     return segments
 
 
+def hotspot_feedback(company, seuil=10):
+    """NTIDE46 — pages ayant reçu au moins ``seuil`` feedbacks (défaut 10)
+    sur les 7 DERNIERS jours (``FeedbackProduit.source_page``, NTIDE44),
+    triées par nombre décroissant. Les feedbacks sans ``source_page``
+    renseigné sont ignorés (rien à rattacher à une page). NTIDE47 — un
+    feedback masqué (modération) n'est plus compté (même exclusion que
+    ``feedback_by_theme``)."""
+    from datetime import timedelta
+
+    from django.db.models import Count
+    from django.utils import timezone
+
+    from .models import FeedbackProduit
+
+    depuis = timezone.now() - timedelta(days=7)
+    qs = (FeedbackProduit.objects.filter(
+            company=company, created_at__gte=depuis, archived=False)
+          .exclude(source_page='')
+          .values('source_page')
+          .annotate(nombre=Count('id'))
+          .filter(nombre__gte=seuil)
+          .order_by('-nombre', 'source_page'))
+    return [{'source_page': r['source_page'], 'nombre': r['nombre']}
+            for r in qs]
+
+
+def kpi_innovation(company):
+    """NTIDE50 — tuiles KPI innovation FÉDÉRÉES pour l'endpoint reporting
+    fédéré (ARC40, ``apps/reporting/reports.py::kpi_federes``). Déclaré dans
+    ``apps/innovation/platform.py`` (``kpi_providers``) — le reporting
+    n'importe AUCUN modèle de cette app, ce sélecteur est le SEUL point de
+    contact. Chaque tuile : ``{id, label, valeur}``.
+
+    - ``innovation_idees_semaine`` : nombre d'idées PROPOSÉES sur les 7
+      derniers jours (mêmes exclusions que le tableau de bord — brouillons/
+      masquées, NTIDE6/18/19).
+    - ``innovation_top_idee_semaine`` : l'idée la plus votée de la semaine
+      (titre dans le libellé, nombre de votes en valeur) — absente si
+      aucune idée cette semaine (jamais une tuile vide/à zéro inventée).
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import Idee
+
+    depuis = timezone.now() - timedelta(days=7)
+    qs = Idee.objects.filter(
+        company=company, draft=False, archived=False, created_at__gte=depuis)
+    total = qs.count()
+    tuiles = [{
+        'id': 'innovation_idees_semaine',
+        'label': 'Idées cette semaine',
+        'valeur': total,
+    }]
+    top = qs.order_by('-votes_count', '-created_at').first()
+    if top is not None:
+        tuiles.append({
+            'id': 'innovation_top_idee_semaine',
+            'label': f'Top idée (semaine) : {top.titre}',
+            'valeur': top.votes_count,
+        })
+    return tuiles
+
+
 def feedback_by_theme(company):
     """NTIDE38 — agrégation admin du feedback produit (NTIDE36), PAR THÈME :
     total, nombre NON-LU (``statut == envoye``, jamais encore ouvert par
-    l'admin) et jusqu'à 3 citations (titres) les plus récentes. Un thème
-    sans aucun feedback n'apparaît pas (liste courte, adaptée à un
-    affichage direct)."""
+    l'admin), jusqu'à 3 citations (titres) les plus récentes, et
+    ``par_sentiment`` (NTIDE42 — répartition « +1/Neutre/-1 », clés absentes
+    si aucun feedback de ce sentiment ; ``non_renseigne`` regroupe les
+    feedbacks sans sentiment saisi, omis s'il vaut 0). Un thème sans aucun
+    feedback n'apparaît pas (liste courte, adaptée à un affichage direct).
+    NTIDE47 — un feedback masqué (modération) n'est plus compté (même
+    exclusion que la boîte à idées, NTIDE19/NTIDE6)."""
     from .models import FeedbackProduit
 
     resultat = []
     for value, label in FeedbackProduit.Theme.choices:
-        qs = FeedbackProduit.objects.filter(company=company, theme=value)
+        qs = FeedbackProduit.objects.filter(
+            company=company, theme=value, archived=False)
         total = qs.count()
         if total == 0:
             continue
@@ -349,8 +423,17 @@ def feedback_by_theme(company):
         exemples = list(
             qs.order_by('-created_at', '-id')
             .values_list('titre', flat=True)[:3])
+        par_sentiment = {}
+        for s_value, _ in FeedbackProduit.Sentiment.choices:
+            n = qs.filter(sentiment=s_value).count()
+            if n:
+                par_sentiment[s_value] = n
+        non_renseigne = qs.filter(sentiment='').count()
+        if non_renseigne:
+            par_sentiment['non_renseigne'] = non_renseigne
         resultat.append({
             'theme': value, 'theme_display': label, 'total': total,
             'non_lus': non_lus, 'exemples': exemples,
+            'par_sentiment': par_sentiment,
         })
     return resultat
