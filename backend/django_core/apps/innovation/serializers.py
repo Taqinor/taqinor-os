@@ -178,12 +178,17 @@ class FeedbackProduitSerializer(serializers.ModelSerializer):
             'id', 'titre', 'description', 'theme', 'theme_display',
             'sentiment', 'sentiment_display',
             'context_type', 'context_type_display', 'context_id',
+            'source_page', 'user_agent',
             'statut', 'statut_display', 'auteur', 'auteur_nom', 'annonce',
             'annonce_titre', 'message_fermeture', 'date_creation',
         ]
+        # NTIDE44 — ``user_agent`` est en LECTURE SEULE (visible au founder
+        # dans le détail) mais jamais lu du corps de requête : posé côté
+        # serveur depuis l'en-tête HTTP (``perform_create``), un client ne
+        # peut pas le falsifier via le payload JSON.
         read_only_fields = [
             'auteur', 'statut', 'annonce', 'message_fermeture',
-            'date_creation']
+            'date_creation', 'user_agent']
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', None)

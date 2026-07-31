@@ -66,6 +66,9 @@ export default function FeedbackButton() {
         titre: t, description: description.trim(), theme, sentiment,
         context_type: contexte?.type || '',
         context_id: contexte?.id || null,
+        // NTIDE44 — page d'où part la demande (un-PII, ``user_agent`` est
+        // capturé côté serveur depuis l'en-tête HTTP, jamais depuis ici).
+        source_page: location.pathname,
       })
       toast.success('Merci pour votre retour !')
       setTitre(''); setDescription(''); setTheme('autre'); setSentiment('')

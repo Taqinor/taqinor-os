@@ -358,6 +358,15 @@ class FeedbackProduit(TenantModel):
         default='', verbose_name='Type de contexte (devis/ticket/chantier)')
     context_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='ID de contexte (opaque)')
+    # NTIDE44 — provenance du feedback (UN-PII : jamais de donnée
+    # personnelle, seulement d'où vient la demande). ``source_page`` vient du
+    # CLIENT (chemin de la page ouverte) ; ``user_agent`` est capturé CÔTÉ
+    # SERVEUR depuis l'en-tête HTTP (jamais lu du corps de requête — plus
+    # fiable, cf. ``views.FeedbackProduitViewSet.perform_create``).
+    source_page = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Page source')
+    user_agent = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='User-Agent')
     # NTIDE39 — lien vers l'annonce produit qui a fermé ce feedback. Le
     # feedback lui-même n'est jamais supprimé (dossier produit, même
     # convention que ``Idee`` qui ne se supprime jamais) : seule la

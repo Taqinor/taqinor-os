@@ -604,8 +604,14 @@ class FeedbackProduitViewSet(CompanyScopedModelViewSet):
         return super().get_permissions()
 
     def perform_create(self, serializer):
+        # NTIDE44 — ``user_agent`` capturé CÔTÉ SERVEUR depuis l'en-tête HTTP
+        # (jamais lu du corps de requête, un client ne peut pas le falsifier).
+        # ``source_page`` reste écrit par le client (chemin de la page
+        # ouverte, cf. serializer) : c'est une donnée UN-PII, jamais une
+        # donnée personnelle.
         serializer.save(
-            company=self.request.user.company, auteur=self.request.user)
+            company=self.request.user.company, auteur=self.request.user,
+            user_agent=self.request.META.get('HTTP_USER_AGENT', '')[:500])
 
     def retrieve(self, request, *args, **kwargs):
         """NTIDE36/38 — ouvrir un feedback ``envoye`` le bascule ``lu``
