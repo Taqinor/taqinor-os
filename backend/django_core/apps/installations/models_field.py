@@ -213,10 +213,10 @@ class PhotoChecklistMeta(models.Model):
     l'étape ne supprime jamais la photo déjà prise.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
         null=True, blank=True, related_name='photo_checklist_metas')
     attachment = models.OneToOneField(
-        'records.Attachment', on_delete=models.CASCADE,
+        'records.Attachment', on_delete=models.CASCADE,  # on_delete: composition (piece jointe)
         related_name='checklist_meta')
     checklist_item = models.ForeignKey(
         'installations.ChantierChecklistItem', on_delete=models.SET_NULL,
