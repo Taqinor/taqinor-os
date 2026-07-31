@@ -438,3 +438,59 @@ class WebVitalMetric(TenantModel):
 
     def __str__(self):
         return f'{self.metric}={self.value} [{self.route}] ({self.company_id})'
+
+
+class RapportDefinition(TenantModel):
+    """NTEXT10 — définition de rapport croisé SAUVEGARDÉE (report builder).
+
+    Un rapport est une SPEC, jamais un résultat figé : ``dataset`` désigne un
+    dataset enregistré auprès de ``core.data_explorer`` (chaque app métier
+    enregistre les siens, avec un ``queryset_provider`` DÉJÀ scopé société), et
+    ``spec`` porte la requête au format ``data_explorer.run_query`` (``select``
+    / ``filters`` / ``group_by`` / ``aggregates`` / ``formula_measures`` /
+    ``order_by`` / ``limit``). ``pivot_spec`` est OPTIONNEL : quand il est
+    renseigné, le résultat plat est croisé par ``core.pivot.build_pivot``
+    (``rows`` / ``columns`` / ``measure`` / ``agg`` / ``formula`` /
+    ``extra_measures``).
+
+    Rejouable : le rapport se réexécute à la demande sur les données du jour
+    (``POST …/rapport-definitions/<id>/executer/``).
+
+    Aucune importation d'app métier ici : le lien au domaine est le NOM du
+    dataset (chaîne), résolu par le noyau — même frontière que ``SavedQuery``.
+    ``partage`` reproduit la visibilité personnelle/société existante : un
+    rapport ``prive`` n'est visible que de son ``owner``, un rapport
+    ``societe`` de toute la société (jamais au-delà).
+    """
+
+    class Partage(models.TextChoices):
+        PRIVE = 'prive', 'Privé'
+        SOCIETE = 'societe', 'Société'
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: même politique que core.SavedQuery (le sibling direct) — un rapport PERSONNEL disparaît avec son propriétaire ; jamais SET_NULL (dé-scoperait silencieusement la ligne)
+        null=True, blank=True, related_name='rapport_definitions',
+        verbose_name='Propriétaire',
+        help_text='Vide = rapport de société (non personnel).')
+    titre = models.CharField(max_length=255)
+    dataset = models.CharField(
+        max_length=80,
+        help_text="Nom d'un dataset enregistré (core.data_explorer).")
+    spec = models.JSONField(default=dict, blank=True)
+    # Vide/absent = rapport PLAT (aucun croisement appliqué).
+    pivot_spec = models.JSONField(default=dict, blank=True)
+    partage = models.CharField(
+        max_length=10, choices=Partage.choices, default=Partage.PRIVE)
+
+    class Meta:
+        verbose_name = 'Définition de rapport'
+        verbose_name_plural = 'Définitions de rapport'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'dataset'],
+                         name='rpt_rapportdef_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} ({self.dataset})'
