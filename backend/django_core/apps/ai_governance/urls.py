@@ -1,7 +1,8 @@
 """Routes du module « ai_governance » — montées sous ``/api/django/ai/``."""
 from django.urls import path
 
-from .views import CrInterventionView, DescriptionProduitView, RedigerView
+from .views import (CrInterventionView, DescriptionProduitView,
+                    RapportPeriodeView, RedigerView)
 
 urlpatterns = [
     # NTAI11 — brouillon de réponse/relance par canal (jamais envoyé).
@@ -12,4 +13,7 @@ urlpatterns = [
     # NTAI13 — brouillon de description commerciale d'un produit catalogue.
     path('description-produit/', DescriptionProduitView.as_view(),
          name='ai-description-produit'),
+    # NTAI36 — brouillon de rapport d'activité périodique (chiffres serveur).
+    path('rapport-periode/', RapportPeriodeView.as_view(),
+         name='ai-rapport-periode'),
 ]

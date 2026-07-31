@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 
 from core.ai.registry import get_provider, is_capability_configured
 
@@ -452,5 +454,223 @@ def cr_intervention_depuis_audio(*, company, file_bytes, ticket_id=None,
         'structure': structure,
         # Contrat explicite : rien n'est enregistré, aucun statut changé.
         'applique': False,
+        'source': res.provider,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI36 — Brouillon de rapport d'activité périodique
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# RÈGLE STRUCTURANTE : les CHIFFRES sont calculés par le SERVEUR (via les
+# sélecteurs de lecture existants), le LLM ne fait que les METTRE EN PHRASES.
+# Un garde-fou vérifie ensuite que le narratif ne contient AUCUN nombre absent
+# des métriques calculées — un rapport qui invente un chiffre est REFUSÉ, pas
+# publié avec une note de bas de page.
+
+#: Modules couverts (chacun adossé à un sélecteur de lecture EXISTANT).
+RAPPORT_MODULES = ('commercial', 'facturation')
+
+#: Prompt système par défaut (futur « défaut code » de NTAI5, clé
+#: ``ai.rapport_periode``).
+RAPPORT_SYSTEM = (
+    "Tu es analyste d'activité pour un installateur solaire au Maroc. Rédige "
+    "en français un court narratif (4 à 6 phrases) commentant les métriques "
+    "fournies. INTERDICTION ABSOLUE d'introduire un chiffre qui ne figure pas "
+    "dans la liste : ne calcule rien, n'extrapole rien, ne compare à aucune "
+    "période absente. Reprends les nombres tels quels."
+)
+
+#: Séparateurs de milliers tolérés (espace fine/insécable incluses).
+_ESPACES = ' ' + chr(9) + chr(0x00A0) + chr(0x202F) + chr(0x2009)
+
+#: Nombres d'un texte, séparateurs de milliers compris.
+_NOMBRE_RE = re.compile(r'\d+(?:[' + _ESPACES + r']\d{3})*(?:[.,]\d+)?')
+
+#: Table de suppression des espaces avant comparaison numérique.
+_SANS_ESPACES = {ord(c): None for c in _ESPACES}
+
+#: Un jour — passage d'une borne de fin EXCLUSIVE à INCLUSIVE.
+_UN_JOUR = timedelta(days=1)
+
+
+def _normaliser_nombre(valeur) -> str | None:
+    """Forme canonique comparable d'un nombre ('1 234,50' -> '1234.5')."""
+    brut = str(valeur).strip().translate(_SANS_ESPACES).replace(',', '.')
+    try:
+        dec = Decimal(brut)
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    texte = f'{dec:f}'
+    if '.' in texte:
+        texte = texte.rstrip('0').rstrip('.')
+    return texte or '0'
+
+
+def _formes_autorisees(valeur) -> set:
+    """Formes acceptables d'une métrique (exacte, tronquée, arrondie).
+
+    Un narratif qui dit « environ 1 235 » pour 1234,56 reste légitime ; un
+    narratif qui sort un 999 de nulle part ne l'est pas.
+    """
+    formes = set()
+    canonique = _normaliser_nombre(valeur)
+    if canonique is None:
+        return formes
+    formes.add(canonique)
+    try:
+        dec = Decimal(canonique)
+    except (InvalidOperation, ValueError):
+        return formes
+    formes.add(_normaliser_nombre(int(dec)))
+    formes.add(_normaliser_nombre(int(dec.to_integral_value())))
+    return {f for f in formes if f}
+
+
+def nombres_hors_source(texte: str, valeurs) -> list:
+    """Nombres du narratif ABSENTS des valeurs calculées serveur.
+
+    Liste vide = narratif entièrement adossé aux chiffres du serveur.
+    """
+    autorises = set()
+    for valeur in valeurs:
+        autorises |= _formes_autorisees(valeur)
+    intrus = []
+    for brut in _NOMBRE_RE.findall(texte or ''):
+        canonique = _normaliser_nombre(brut)
+        if canonique is not None and canonique not in autorises:
+            intrus.append(brut.strip())
+    return intrus
+
+
+def _bornes_periode(periode: str) -> tuple:
+    """('2026-07') → (date(2026, 7, 1), date(2026, 8, 1)) — fin EXCLUE."""
+    try:
+        annee_txt, mois_txt = str(periode).strip().split('-', 1)
+        annee, mois = int(annee_txt), int(mois_txt)
+        debut = date(annee, mois, 1)
+    except (ValueError, TypeError):
+        raise AiCopiloteUnavailable(
+            'Période invalide — format attendu AAAA-MM (ex. 2026-07).')
+    fin = date(annee + 1, 1, 1) if mois == 12 else date(annee, mois + 1, 1)
+    return debut, fin
+
+
+def metriques_periode(*, company, module, periode) -> list[dict]:
+    """Métriques CALCULÉES SERVEUR d'un module sur une période mensuelle.
+
+    Chaque entrée : ``{'cle', 'label', 'valeur', 'unite'}``. Lecture seule,
+    scopée société, via les sélecteurs EXISTANTS des apps métier (jamais leurs
+    modèles — règle cross-app). Aucun ``prix_achat`` n'entre ici.
+    """
+    debut, fin = _bornes_periode(periode)
+
+    if module == 'commercial':
+        from apps.crm.selectors import attribution_leads
+
+        # `fin` est INCLUSIVE côté attribution_leads → dernier jour du mois.
+        rapport = attribution_leads(company, debut, fin - _UN_JOUR)
+        lignes = rapport.get('par_source') or []
+        nb_leads = sum(int(li.get('nb_leads') or 0) for li in lignes)
+        nb_signes = sum(int(li.get('nb_signes') or 0) for li in lignes)
+        ca_signe = sum(
+            (Decimal(str(li.get('ca_signe') or 0)) for li in lignes),
+            Decimal('0'))
+        taux = (Decimal(nb_signes) * 100 / Decimal(nb_leads)
+                if nb_leads else Decimal('0'))
+        return [
+            {'cle': 'nb_leads', 'label': 'Leads créés',
+             'valeur': nb_leads, 'unite': ''},
+            {'cle': 'nb_signes', 'label': 'Leads signés',
+             'valeur': nb_signes, 'unite': ''},
+            {'cle': 'taux_conversion_pct', 'label': 'Taux de conversion',
+             'valeur': round(float(taux), 1), 'unite': '%'},
+            {'cle': 'ca_signe', 'label': 'CA signé',
+             'valeur': ca_signe, 'unite': 'MAD'},
+        ]
+
+    if module == 'facturation':
+        from apps.ventes.selectors import analyse_facturation
+
+        lignes = analyse_facturation(company, debut, fin)
+        nb_factures = sum(int(li.get('nb_factures') or 0) for li in lignes)
+        total_ht = sum(
+            (Decimal(str(li.get('total_ht') or 0)) for li in lignes),
+            Decimal('0'))
+        total_ttc = sum(
+            (Decimal(str(li.get('total_ttc') or 0)) for li in lignes),
+            Decimal('0'))
+        return [
+            {'cle': 'nb_factures', 'label': 'Factures émises',
+             'valeur': nb_factures, 'unite': ''},
+            {'cle': 'total_ht', 'label': 'Total HT facturé',
+             'valeur': total_ht, 'unite': 'MAD'},
+            {'cle': 'total_ttc', 'label': 'Total TTC facturé',
+             'valeur': total_ttc, 'unite': 'MAD'},
+        ]
+
+    raise AiCopiloteUnavailable(
+        f'Module inconnu — attendu : {", ".join(RAPPORT_MODULES)}.')
+
+
+def build_rapport_prompt(module, periode, metriques) -> str:
+    """Prompt utilisateur : uniquement les métriques calculées serveur."""
+    lignes = [
+        f"- {m['label']} : {m['valeur']}{(' ' + m['unite']) if m['unite'] else ''}"
+        for m in metriques
+    ]
+    return (f'Module : {module}\nPériode : {periode}\n'
+            'Métriques (les SEULS chiffres autorisés) :\n' + '\n'.join(lignes))
+
+
+def rapport_periode(*, company, module, periode, max_tokens=400) -> dict:
+    """NTAI36 — Brouillon de rapport d'activité périodique, chiffres serveur.
+
+    Renvoie ``{module, periode, metriques, narratif, envoye: False}``. Le
+    narratif est REFUSÉ (400) s'il contient un nombre absent des métriques.
+    Sans clé LLM : 503 douce — les métriques restent lisibles via l'écran de
+    reporting existant.
+    """
+    module = str(module or '').strip().lower()
+    if module not in RAPPORT_MODULES:
+        raise AiCopiloteUnavailable(
+            f'Module inconnu — attendu : {", ".join(RAPPORT_MODULES)}.')
+
+    metriques = metriques_periode(
+        company=company, module=module, periode=periode)
+
+    if not is_capability_configured('llm'):
+        raise AiCopiloteUnavailable(
+            "Aucun fournisseur LLM n'est configuré (clé absente) — les "
+            'métriques restent consultables dans le reporting.',
+            configured=False)
+
+    prompt = build_rapport_prompt(module, periode, metriques)
+    res = get_provider('llm').complete(
+        prompt=prompt, system=RAPPORT_SYSTEM, max_tokens=max_tokens)
+    if not res.ok or not (res.data or {}).get('text'):
+        raise AiCopiloteUnavailable(
+            "Le fournisseur n'a pas produit de narratif exploitable.")
+
+    narratif = str(res.data['text']).strip()
+    # Garde « aucun nombre inventé » : le millésime et le mois de la période
+    # sont légitimes (« en juillet 2026 »), tout le reste doit venir du serveur.
+    debut, _fin = _bornes_periode(periode)
+    autorisees = [m['valeur'] for m in metriques] + [debut.year, debut.month]
+    intrus = nombres_hors_source(narratif, autorisees)
+    if intrus:
+        raise AiCopiloteUnavailable(
+            'Narratif refusé — chiffres absents des métriques calculées : '
+            f'{", ".join(intrus[:5])}.')
+
+    return {
+        'module': module,
+        'periode': periode,
+        'metriques': [
+            {**m, 'valeur': str(m['valeur'])} for m in metriques
+        ],
+        'narratif': narratif,
+        # Contrat explicite : brouillon éditable, jamais diffusé tout seul.
+        'envoye': False,
         'source': res.provider,
     }

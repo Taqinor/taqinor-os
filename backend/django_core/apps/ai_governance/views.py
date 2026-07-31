@@ -124,3 +124,31 @@ class CrInterventionView(APIView):
         except AiCopiloteUnavailable as exc:
             return _unavailable_response(exc)
         return Response(resultat)
+
+
+class RapportPeriodeView(APIView):
+    """NTAI36 — ``POST /api/django/ai/rapport-periode/``.
+
+    Body ``{"module": "commercial|facturation", "periode": "AAAA-MM"}``.
+
+    Les CHIFFRES sont calculés par le serveur via les sélecteurs de lecture
+    existants ; le LLM ne fait que les mettre en phrases. Un narratif
+    contenant un nombre absent des métriques est REFUSÉ (400), jamais rendu.
+    Brouillon éditable — ``envoye: false``, aucune diffusion automatique.
+    """
+
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+
+    def post(self, request):
+        from .services import rapport_periode
+
+        try:
+            resultat = rapport_periode(
+                company=request.user.company,
+                module=request.data.get('module') or '',
+                periode=request.data.get('periode') or '')
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
