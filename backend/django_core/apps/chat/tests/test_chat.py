@@ -13,6 +13,7 @@ Couvre :
   * S9 — notifications (in-app) aux membres non en sourdine, mention plus forte.
 """
 import io
+import itertools
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -31,9 +32,27 @@ from apps.chat import services
 
 User = get_user_model()
 
+# Compteur de tenants : garantit qu'un ``make_company()`` sans argument rend
+# une société DIFFÉRENTE à chaque appel (voir la docstring du helper).
+_company_seq = itertools.count(1)
 
-def make_company(slug='chat-co', nom='Chat Co'):
-    company, _ = Company.objects.get_or_create(slug=slug, defaults={'nom': nom})
+
+def make_company(slug=None, nom=None):
+    """Une société NEUVE à chaque appel.
+
+    Historiquement ce helper avait un slug par DÉFAUT fixe (``'chat-co'``) et
+    faisait un ``get_or_create`` dessus : deux appels dans le même test
+    renvoyaient donc la MÊME ligne, et un test qui écrivait
+    ``other_company = make_company()`` croyait fabriquer un second tenant sans
+    en fabriquer aucun — l'assertion « pas de fuite cross-tenant » ne prouvait
+    rien (bug réel, corrigé ligne ~1350). Le compteur rend cette erreur
+    impossible : le défaut est unique par appel, et un slug explicite reste
+    accepté quand un test veut nommer sa société.
+    """
+    n = next(_company_seq)
+    company, _ = Company.objects.get_or_create(
+        slug=slug or f'chat-co-{n}',
+        defaults={'nom': nom or f'Chat Co {n}'})
     return company
 
 
