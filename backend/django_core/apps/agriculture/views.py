@@ -9,6 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
@@ -46,6 +47,14 @@ class _AgricultureBaseViewSet(CompanyScopedModelViewSet):
     écriture responsable/admin."""
 
     def get_permissions(self):
+        # Une garde déclarée par l'@action elle-même PRIME sur le tiering
+        # lecture/écriture ci-dessous. L'ancienne version ne consultait QUE
+        # `self.action`, donc tout `permission_classes=` posé sur une @action
+        # était jeté en silence et l'endpoint retombait sur
+        # `IsResponsableOrAdmin` (l'@action n'étant pas dans READ_ACTIONS).
+        declared = declared_action_permissions(self)
+        if declared is not None:
+            return declared
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
