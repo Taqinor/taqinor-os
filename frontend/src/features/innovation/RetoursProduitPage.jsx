@@ -26,6 +26,8 @@ export default function RetoursProduitPage() {
   const [feedbacks, setFeedbacks] = useState([])
   const [resume, setResume] = useState([])
   const [annonces, setAnnonces] = useState([])
+  // NTIDE46 — pages les plus commentées (10+ feedbacks/semaine).
+  const [hotspot, setHotspot] = useState([])
   const [loading, setLoading] = useState(true)
 
   const [annonceDialogOpen, setAnnonceDialogOpen] = useState(false)
@@ -43,6 +45,7 @@ export default function RetoursProduitPage() {
     innovationApi.feedback.list().then((r) => setFeedbacks(r.data?.results ?? r.data ?? [])).catch(() => {})
     innovationApi.feedback.resume().then((r) => setResume(r.data?.results ?? [])).catch(() => {})
     innovationApi.annonces.list().then((r) => setAnnonces(r.data?.results ?? r.data ?? [])).catch(() => {})
+    innovationApi.feedback.hotspot().then((r) => setHotspot(r.data?.results ?? [])).catch(() => {})
   }
 
   useEffect(() => {
@@ -51,12 +54,14 @@ export default function RetoursProduitPage() {
       innovationApi.feedback.list(),
       innovationApi.feedback.resume(),
       innovationApi.annonces.list(),
+      innovationApi.feedback.hotspot(),
     ])
-      .then(([f, r, a]) => {
+      .then(([f, r, a, h]) => {
         if (!active) return
         setFeedbacks(f.data?.results ?? f.data ?? [])
         setResume(r.data?.results ?? [])
         setAnnonces(a.data?.results ?? a.data ?? [])
+        setHotspot(h.data?.results ?? [])
       })
       .catch(() => {})
       .finally(() => { if (active) setLoading(false) })
@@ -186,6 +191,21 @@ export default function RetoursProduitPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* ── NTIDE46 — pages les plus commentées (10+ feedbacks/semaine) ── */}
+      {hotspot.length > 0 && (
+        <Card className="mb-4 p-3">
+          <div className="mb-2 text-sm font-semibold text-foreground">Pages les plus commentées</div>
+          <ul className="flex flex-col gap-1 text-sm">
+            {hotspot.map((h) => (
+              <li key={h.source_page} className="flex items-center justify-between gap-2">
+                <span className="truncate text-foreground">{h.source_page}</span>
+                <Badge tone="warning">{h.nombre}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
       <div className="mb-4 flex justify-end">

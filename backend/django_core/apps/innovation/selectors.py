@@ -331,6 +331,29 @@ def segments_disponibles(company):
     return segments
 
 
+def hotspot_feedback(company, seuil=10):
+    """NTIDE46 — pages ayant reçu au moins ``seuil`` feedbacks (défaut 10)
+    sur les 7 DERNIERS jours (``FeedbackProduit.source_page``, NTIDE44),
+    triées par nombre décroissant. Les feedbacks sans ``source_page``
+    renseigné sont ignorés (rien à rattacher à une page)."""
+    from datetime import timedelta
+
+    from django.db.models import Count
+    from django.utils import timezone
+
+    from .models import FeedbackProduit
+
+    depuis = timezone.now() - timedelta(days=7)
+    qs = (FeedbackProduit.objects.filter(company=company, created_at__gte=depuis)
+          .exclude(source_page='')
+          .values('source_page')
+          .annotate(nombre=Count('id'))
+          .filter(nombre__gte=seuil)
+          .order_by('-nombre', 'source_page'))
+    return [{'source_page': r['source_page'], 'nombre': r['nombre']}
+            for r in qs]
+
+
 def feedback_by_theme(company):
     """NTIDE38 — agrégation admin du feedback produit (NTIDE36), PAR THÈME :
     total, nombre NON-LU (``statut == envoye``, jamais encore ouvert par

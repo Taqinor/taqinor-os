@@ -104,6 +104,8 @@ const innovationApi = {
     get: (id) => api.get(`/innovation/feedback-produit/${id}/`),
     // NTIDE38 — agrégation par thème (counts + citations).
     resume: () => api.get('/innovation/feedback-resume/'),
+    // NTIDE46 — pages ayant reçu 10+ feedbacks sur les 7 derniers jours.
+    hotspot: () => api.get('/innovation/feedback-hotspot/'),
     // NTIDE39 — fermeture via annonce produit (« c'est livré »).
     lierAnnonce: (id, data) =>
       api.post(`/innovation/feedback-produit/${id}/lier-annonce/`, data),

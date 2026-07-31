@@ -681,3 +681,16 @@ class FeedbackResumeView(APIView):
         return Response({
             'results': selectors.feedback_by_theme(request.user.company),
         })
+
+
+class FeedbackHotspotView(APIView):
+    """NTIDE46 — « Pages les plus commentées » : pages ayant reçu au moins
+    10 feedbacks/semaine (``source_page``, NTIDE44). Même palier que le
+    tableau de bord d'idées (``IdeasSeeAll``) : surface d'administration."""
+
+    permission_classes = [IdeasSeeAll]
+
+    def get(self, request):
+        return Response({
+            'results': selectors.hotspot_feedback(request.user.company),
+        })
