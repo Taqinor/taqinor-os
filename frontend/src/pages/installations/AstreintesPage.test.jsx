@@ -43,6 +43,12 @@ describe('AstreintesPage (WIR114)', () => {
     expect(await screen.findByTestId('astreinte-1')).toBeInTheDocument()
   })
 
+  it('affiche l\'état vide quand aucune astreinte n\'existe', async () => {
+    inst.getAstreintes.mockResolvedValue({ data: [] })
+    render(<AstreintesPage />)
+    expect(await screen.findByText('Aucune astreinte planifiée')).toBeInTheDocument()
+  })
+
   it('crée une astreinte via le dialogue', async () => {
     inst.getAstreintes.mockResolvedValue({ data: [] })
     const user = userEvent.setup()
