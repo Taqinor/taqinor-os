@@ -41,6 +41,33 @@ SUPPRESSION_PRODUIT_INTERDITE = (
 )
 
 
+# Même garde, même raison, pour le FOURNISSEUR — l'autre moitié du catalogue
+# réel. Un fournisseur porte les prix d'achat NÉGOCIÉS de ses références
+# (`achats.PrixFournisseur`, désormais PROTECT) : sa suppression est refusée
+# par le collecteur Django dès qu'un tarif existe, et l'API
+# (`FournisseurViewSet.destroy`) ARCHIVE au lieu de détruire. L'admin Django
+# court-circuitait ce repli exactement comme pour le produit — pire, un
+# fournisseur SANS tarif mais avec contacts, documents de conformité, jetons
+# portail ou profil sous-traitant partait SILENCIEUSEMENT avec eux. Le garde
+# est donc INCONDITIONNEL et REFUSE (il ne recopie pas l'archivage : un bouton
+# « Supprimer » qui archive est un mensonge d'interface, et une divergence
+# silencieuse admin/API est elle-même un défaut).
+SUPPRESSION_FOURNISSEUR_INTERDITE = (
+    "Suppression d'un fournisseur INTERDITE depuis l'administration Django : "
+    "elle détruirait des données catalogue saisies à la main (prix d'achat "
+    "négociés par référence, paliers de quantité, code article fournisseur) "
+    "ainsi que, en cascade et sans avertissement, ses contacts, documents de "
+    "conformité, jetons de portail et profil sous-traitant. Le chemin "
+    "supporté est l'ARCHIVAGE, qui conserve tout l'historique : depuis "
+    "l'écran Stock → Fournisseurs (bouton Supprimer, qui archive), ou via "
+    "l'API « DELETE /api/django/stock/fournisseurs/<id>/ ». Un fournisseur "
+    "déjà archivé peut, si nécessaire, être réellement supprimé par l'action "
+    "dédiée « DELETE /api/django/stock/fournisseurs/<id>/force-delete/ » "
+    "(rôle Admin), qui elle refuse en 409 tant qu'un prix d'achat ou un "
+    "document d'achat le retient."
+)
+
+
 @admin.register(Categorie)
 class CategorieAdmin(admin.ModelAdmin):
     list_display = ('nom', 'description')
@@ -49,8 +76,48 @@ class CategorieAdmin(admin.ModelAdmin):
 
 @admin.register(Fournisseur)
 class FournisseurAdmin(admin.ModelAdmin):
-    list_display = ('nom', 'email', 'telephone')
+    list_display = ('nom', 'email', 'telephone', 'is_archived')
+    list_filter = ('is_archived',)
     search_fields = ('nom', 'email')
+
+    # ── Garde anti-perte de données (voir SUPPRESSION_FOURNISSEUR_INTERDITE) ─
+    # Mêmes quatre verrous redondants que `ProduitAdmin`/`CompanyAdmin` : la
+    # suppression d'un fournisseur ne doit dépendre d'aucun détail
+    # d'implémentation de Django.
+
+    def has_delete_permission(self, request, obj=None):
+        """Verrou 1 — aucune suppression, pour personne (superuser compris)."""
+        return False
+
+    def get_actions(self, request):
+        """Verrou 2 — retire explicitement l'action groupée `delete_selected`.
+
+        C'est le chemin le plus dangereux : il n'a AUCUN repli
+        `ProtectedError` → archivage, contrairement à
+        `FournisseurViewSet.destroy`.
+        """
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
+
+    def delete_view(self, request, object_id, extra_context=None):
+        """Verrou 3 — message explicite au lieu d'un « 403 Forbidden » muet,
+        pour orienter vers l'archivage plutôt que d'inciter au contournement."""
+        self.message_user(request, SUPPRESSION_FOURNISSEUR_INTERDITE,
+                          level=messages.ERROR)
+        return HttpResponseRedirect(reverse(
+            'admin:%s_%s_changelist' % (self.opts.app_label,
+                                        self.opts.model_name),
+            current_app=self.admin_site.name,
+        ))
+
+    def delete_model(self, request, obj):
+        """Verrou 4a — refus dur, même si appelé depuis une action maison."""
+        raise PermissionDenied(SUPPRESSION_FOURNISSEUR_INTERDITE)
+
+    def delete_queryset(self, request, queryset):
+        """Verrou 4b — idem pour la suppression en masse."""
+        raise PermissionDenied(SUPPRESSION_FOURNISSEUR_INTERDITE)
 
 
 @admin.register(Produit)
