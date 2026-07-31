@@ -10,6 +10,14 @@ beforeAll(() => {
   }
 })
 
+// WIR122 — drill-down CO₂ : le bouton par ligne navigue vers Co2Page avec
+// `?installation=<id>` (résolu ensuite en config puis en détail CO₂).
+const navigateMock = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, useNavigate: () => navigateMock }
+})
+
 // DataTable lit la densité via useDensity → <ThemeProvider> ; MemoryRouter pour NavLink.
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -64,5 +72,16 @@ describe('FleetPage (WR6 — vue parc)', () => {
 
     await userEvent.click(screen.getByRole('radio', { name: '90 j' }))
     expect(monitoringApi.getFleet).toHaveBeenCalledWith({ window_days: 90 })
+  })
+
+  it('WIR122 — le bouton « Détail CO₂ » d\'une ligne ouvre le drill-down du système', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    renderPage(<FleetPage />)
+    await screen.findByText('Systèmes actifs')
+
+    const buttons = screen.getAllByLabelText('Détail CO₂')
+    expect(buttons.length).toBeGreaterThan(0)
+    await userEvent.click(buttons[0])
+    expect(navigateMock).toHaveBeenCalledWith('/production/co2?installation=11')
   })
 })

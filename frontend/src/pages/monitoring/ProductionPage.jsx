@@ -5,15 +5,16 @@
 // (fournisseur / activation) est éditable par responsable/admin. Tout no-ope
 // proprement tant qu'aucun fournisseur n'est configuré.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, RefreshCw, Search, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Plus, RefreshCw, Search, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import monitoringApi from '../../api/monitoringApi'
 import { formatNumber } from '../../lib/format'
 import {
-  Button, Badge, Spinner, EmptyState, Input,
+  Button, Badge, Spinner, EmptyState, Input, IconButton,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Card, CardContent, DataTable, Switch, Label,
 } from '../../ui'
+import { useConfirmDialog, toast } from '../../ui/confirm'
 import { ModuleDashboard } from '../../ui/module'
 // VX148 — courbe de tendance kWh (pattern OmAnalyticsPage.jsx) : l'écran le
 // plus consulté du dossier monitoring n'avait AUCUN graphique quand ses 4
@@ -35,6 +36,7 @@ export function buildProductionChartData(readings) {
 }
 
 export default function ProductionPage() {
+  const { confirmDelete } = useConfirmDialog()
   const [systems, setSystems] = useState([])
   const [loadingSystems, setLoadingSystems] = useState(true)
   const [selectedId, setSelectedId] = useState('')
@@ -46,6 +48,11 @@ export default function ProductionPage() {
   const [providers, setProviders] = useState([])
   const [syncing, setSyncing] = useState(false)
   const [msg, setMsg] = useState(null)
+
+  // WIR122 — historique mensuel attendu vs réel (FG84) : `getHistory` était
+  // défini dans monitoringApi.js sans aucun appelant.
+  const [history, setHistory] = useState([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
 
   const [form, setForm] = useState({ date: todayISO(), energy_kwh: '', period_days: 30, note: '' })
 
@@ -116,6 +123,20 @@ export default function ProductionPage() {
     return () => { active = false }
   }, [selectedId])
 
+  // WIR122 — historique mensuel (attendu vs réel), dépend de la CONFIG (pas de
+  // l'installation) : sans config de supervision, pas d'attendu à comparer.
+  useEffect(() => {
+    const configId = config?.id
+    if (!configId) { setHistory([]); return undefined }
+    let active = true
+    setLoadingHistory(true)
+    monitoringApi.getHistory(configId, { months: 12 })
+      .then((r) => { if (active) setHistory(r.data?.data ?? []) })
+      .catch(() => { if (active) setHistory([]) })
+      .finally(() => { if (active) setLoadingHistory(false) })
+    return () => { active = false }
+  }, [config?.id])
+
   const filteredSystems = useMemo(() => {
     const needle = q.trim().toLowerCase()
     if (!needle) return systems
@@ -140,6 +161,22 @@ export default function ProductionPage() {
         reloadReadings(selectedId)
       })
       .catch(() => setMsg({ ok: false, text: 'Échec de l’enregistrement du relevé.' }))
+  }
+
+  // WIR122 — un relevé mal saisi (typo de date/valeur) était insupprimable :
+  // `deleteReading` existait dans monitoringApi.js sans aucun appelant.
+  const removeReading = async (r) => {
+    const ok = await confirmDelete({
+      title: 'Supprimer ce relevé ?',
+      description: `Le relevé du ${r.date} (${r.energy_kwh} kWh) sera définitivement supprimé.`,
+    })
+    if (!ok) return
+    monitoringApi.deleteReading(r.id)
+      .then(() => {
+        toast.success('Relevé supprimé.')
+        reloadReadings(selectedId)
+      })
+      .catch(() => toast.error('Suppression impossible.'))
   }
 
   const saveConfig = (patch) => {
@@ -192,6 +229,44 @@ export default function ProductionPage() {
       cell: (v) => <Badge tone={v === 'Automatique' ? 'primary' : 'neutral'}>{v}</Badge>,
     },
     { id: 'note', header: 'Note', accessor: (r) => r.note ?? '' },
+    {
+      id: 'actions', header: '', width: 70, align: 'right',
+      accessor: () => '',
+      cell: (v, r) => (
+        <IconButton variant="ghost" label="Supprimer" onClick={() => removeReading(r)}>
+          <Trash2 />
+        </IconButton>
+      ),
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- removeReading recréé par rendu ;
+  // WIR122 — `selectedId` reste en dépendance : `removeReading` recharge la
+  // liste via `reloadReadings(selectedId)` après suppression — une fermeture
+  // figée sur l'installation du premier rendu (`[]`) rechargerait le mauvais
+  // système, ou aucun (`reloadReadings` sort tôt si `id` est vide).
+  ], [selectedId])
+
+  // WIR122 — historique mensuel : la DataTable expose déjà un export CSV
+  // client (H33, aucun bouton dédié à réinventer) dès que `hideable` reste
+  // par défaut sur les colonnes.
+  const historyColumns = useMemo(() => [
+    { id: 'month', header: 'Mois', width: 110, accessor: (r) => r.month },
+    {
+      id: 'actual_kwh', header: 'Réel (kWh)', width: 130, align: 'right',
+      accessor: (r) => Number(r.actual_kwh) || 0,
+      cell: (v, r) => formatNumber(r.actual_kwh, { decimals: 0 }),
+    },
+    {
+      id: 'expected_kwh', header: 'Attendu (kWh)', width: 140, align: 'right',
+      accessor: (r) => (r.expected_kwh == null ? -1 : Number(r.expected_kwh)),
+      cell: (v, r) => (r.expected_kwh == null ? '—' : formatNumber(r.expected_kwh, { decimals: 0 })),
+    },
+    {
+      id: 'ratio_pct', header: 'Réel / attendu', width: 130, align: 'right',
+      accessor: (r) => (r.ratio_pct == null ? -1 : Number(r.ratio_pct)),
+      cell: (v, r) => (r.ratio_pct == null
+        ? <span className="text-muted-foreground">—</span>
+        : <Badge tone={r.ratio_pct >= 90 ? 'success' : r.ratio_pct >= 70 ? 'warning' : 'danger'}>{r.ratio_pct}%</Badge>),
+    },
   ], [])
 
   return (
@@ -353,6 +428,32 @@ export default function ProductionPage() {
               aria-label="Relevés de production"
             />
           )}
+
+          {/* Historique mensuel attendu vs réel (WIR122, FG84) */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="mb-3 text-sm font-semibold">Historique mensuel (attendu vs réel)</div>
+              {loadingHistory ? (
+                <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+              ) : history.length === 0 ? (
+                <EmptyState
+                  title="Aucun historique"
+                  description="L'historique mensuel apparaît dès qu'au moins un relevé est enregistré."
+                  className="my-2"
+                />
+              ) : (
+                <DataTable
+                  data={history}
+                  columns={historyColumns}
+                  getRowId={(row) => row.month}
+                  searchable={false}
+                  pageSize={12}
+                  exportName={`historique-production-${selectedId}`}
+                  aria-label="Historique mensuel de production"
+                />
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>
