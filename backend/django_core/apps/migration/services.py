@@ -11,19 +11,141 @@ NTMIG5 — la garde « pas de succès sans reconcile » : un lot ne devient
 """
 from django.utils import timezone
 
-from .models import LotMigration, ProjetMigration
+from .models import LotMigration, ProjetMigration, RapportReconciliation
+
+
+class LotFige(ValueError):
+    """Le lot est déjà réconcilié : on n'y rejoue plus ni analyse ni
+    chargement sans lever d'abord la réconciliation.
+
+    Sans cette garde, recharger un lot déjà réconcilié écraserait ses
+    compteurs miroir et rendrait MENSONGER le rapport déjà remis au client
+    (le PV dirait « conforme » sur des chiffres qui ne sont plus ceux du
+    chargement réel).
+    """
 
 
 class ReconcileBloque(ValueError):
     """Clôture refusée : réconciliation non conforme et non dérogée.
 
     Porte la liste des ``ecarts`` bloquants pour que l'appelant (endpoint,
-    écran) puisse les afficher au lieu d'un simple « échec ».
+    écran) puisse les afficher au lieu d'un simple « échec » (NTMIG5).
     """
 
     def __init__(self, message, ecarts=None):
         super().__init__(message)
         self.ecarts = ecarts or []
+
+
+def _refuser_si_fige(lot):
+    if lot.statut == LotMigration.Statut.RECONCILIE:
+        raise LotFige(
+            'Lot déjà réconcilié : rejouer une analyse ou un chargement '
+            'invaliderait son rapport. Levez la réconciliation d\'abord.')
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG15 — étalonnage tenant : un système externe STABLE par projet
+# ─────────────────────────────────────────────────────────────────────────
+def external_system_pour(projet):
+    """Système externe stable d'un projet : ``migration:<source>``.
+
+    C'est la clé d'idempotence de tout le groupe : les ``ExternalRef`` posés
+    par le premier chargement sont retrouvés par les suivants, donc un ré-import
+    du même fichier ne duplique JAMAIS (2ᵉ passe = 0 création, N mises à jour),
+    et un rollback de lot peut cibler exactement ce qu'il a créé.
+    """
+    return f'migration:{projet.source}'
+
+
+def analyser_lot(lot, file_bytes, filename, *, mapping_name=None):
+    """Aperçu DRY-RUN STRICT : rien n'est écrit dans les tables cibles.
+
+    Pose au passage les comptages source sur le lot (base du reconcile). Le
+    dry-run rejoue le rapprochement réel et renvoie les ``conflits`` /
+    ``ecrasements_*`` : l'intégrateur voit, AVANT d'importer, quelles valeurs
+    déjà saisies le fichier toucherait.
+    """
+    from apps.dataimport import services as dataimport_services
+
+    _refuser_si_fige(lot)
+    apercu = dataimport_services.dry_run(
+        file_bytes, filename, lot.entite, company=lot.company,
+        mapping_name=mapping_name, mode='upsert',
+        external_system=external_system_pour(lot.projet))
+    lot.source_lignes = apercu.get('total_lignes', 0)
+    lot.statut = LotMigration.Statut.ANALYSE
+    lot.save(update_fields=['source_lignes', 'statut', 'updated_at'])
+    return apercu
+
+
+def charger_lot(lot, file_bytes, filename, *, mode='upsert',
+                mapping_name=None, user=None):
+    """Charge un lot via le moteur ``dataimport`` — jamais un 2ᵉ importateur.
+
+    Deux garanties non négociables :
+
+    * ``external_system`` vaut TOUJOURS ``migration:<source>`` (NTMIG15) : un
+      second passage du même fichier retrouve les enregistrements par
+      ``ExternalRef`` et met à jour au lieu de dupliquer ;
+    * ``ecraser`` n'est JAMAIS activé — le chargement est en REMPLISSAGE SEUL.
+      Une cellule vide ou absente ne remplace pas une valeur déjà saisie, et
+      une valeur déjà saisie n'est pas remplacée par la source (le moteur la
+      remonte dans ``refuses``). Une migration ne doit jamais effacer ce qu'un
+      humain a corrigé à la main côté TAQINOR ; c'est volontairement NON
+      paramétrable depuis l'API.
+    """
+    from apps.dataimport import services as dataimport_services
+
+    _refuser_si_fige(lot)
+    result = dataimport_services.commit(
+        file_bytes, filename, lot.entite, lot.company, user,
+        mode=mode, external_system=external_system_pour(lot.projet),
+        mapping_name=mapping_name, ecraser=False)
+
+    lot.source_lignes = result.get('total', 0)
+    lot.crees = result.get('created', 0)
+    lot.maj = result.get('updated', 0)
+    lot.erreurs = len(result.get('skipped', []))
+    job_id = result.get('job_id')
+    if job_id:
+        lot.import_job_id = job_id
+    lot.statut = LotMigration.Statut.CHARGE
+    lot.save(update_fields=[
+        'source_lignes', 'crees', 'maj', 'erreurs', 'import_job',
+        'statut', 'updated_at'])
+    return result
+
+
+def reconcilier_lot(lot):
+    """Produit un :class:`RapportReconciliation` — comptages source vs cible.
+
+    ``conforme`` seulement si zéro erreur ET comptage cible == comptage source
+    (et, si les deux totaux financiers sont connus, écart nul). Chaque appel
+    crée un NOUVEAU rapport : l'historique des constats n'est jamais réécrit.
+    """
+    total_cible = lot.crees + lot.maj
+    ecarts = []
+    if lot.erreurs:
+        ecarts.append({
+            'type': 'erreurs', 'nb': lot.erreurs,
+            'detail': f'{lot.erreurs} ligne(s) en erreur, non importée(s).'})
+    if lot.source_lignes and total_cible != lot.source_lignes:
+        ecarts.append({
+            'type': 'comptage', 'source': lot.source_lignes,
+            'cible': total_cible,
+            'detail': (f'Comptage cible ({total_cible}) différent de la '
+                       f'source ({lot.source_lignes}).')})
+    if not lot.source_lignes and not lot.crees and not lot.maj:
+        ecarts.append({
+            'type': 'jamais_charge',
+            'detail': 'Aucun chargement enregistré pour ce lot.'})
+    return RapportReconciliation.objects.create(
+        company=lot.company, lot=lot,
+        nb_source=lot.source_lignes, nb_cible_crees=lot.crees,
+        nb_cible_existants=lot.maj, nb_erreurs=lot.erreurs,
+        total_financier_source=lot.source_montant,
+        ecarts=ecarts, conforme=not ecarts)
 
 
 def deroger_reconcile(lot, motif, user):

@@ -8,6 +8,7 @@ est posé côté serveur en création, jamais lu du corps de requête.
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 
@@ -17,7 +18,16 @@ from core.viewsets import CompanyScopedModelViewSet
 from . import services
 from .models import LotMigration, ProjetMigration
 from .serializers import (
-    LotMigrationSerializer, ProjetMigrationSerializer)
+    LotMigrationSerializer, ProjetMigrationSerializer,
+    RapportReconciliationSerializer)
+
+
+def _fichier_de(request):
+    """Récupère le fichier téléversé (multipart) → (octets, nom)."""
+    fichier = request.FILES.get('fichier') or request.FILES.get('file')
+    if fichier is None:
+        raise ValidationError({'fichier': 'Fichier source requis.'})
+    return fichier.read(), fichier.name
 
 
 class IsDirecteurOuAdmin(BasePermission):
@@ -74,6 +84,7 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         'projet', 'derogation_par').all()
     serializer_class = LotMigrationSerializer
     permission_classes = [IsDirecteurOuAdmin]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -90,6 +101,52 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         if projet.company_id != self.request.user.company_id:
             raise ValidationError({'projet': 'Projet introuvable.'})
         serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'], url_path='analyser')
+    def analyser(self, request, pk=None):
+        """Analyse DRY-RUN du fichier source : rien n'est écrit en cible.
+
+        Renvoie l'aperçu ``dataimport`` (mapping, comptages, et surtout les
+        ``conflits``/``ecrasements_*`` : ce que le fichier toucherait sur des
+        fiches déjà remplies) et pose les comptages source sur le lot.
+        """
+        lot = self.get_object()
+        file_bytes, filename = _fichier_de(request)
+        try:
+            apercu = services.analyser_lot(
+                lot, file_bytes, filename,
+                mapping_name=request.data.get('mapping_name') or None)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(apercu)
+
+    @action(detail=True, methods=['post'], url_path='charger')
+    def charger(self, request, pk=None):
+        """NTMIG15 — chargement délégué à ``dataimport``.
+
+        ``external_system`` = ``migration:<source>`` (rejeu idempotent) et
+        REMPLISSAGE SEUL : l'API n'expose délibérément aucun interrupteur
+        d'écrasement — une migration n'efface jamais une valeur déjà saisie.
+        """
+        lot = self.get_object()
+        file_bytes, filename = _fichier_de(request)
+        try:
+            result = services.charger_lot(
+                lot, file_bytes, filename,
+                mode=request.data.get('mode') or 'upsert',
+                mapping_name=request.data.get('mapping_name') or None,
+                user=request.user)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response({
+            'lot': LotMigrationSerializer(lot).data, 'resultat': result})
+
+    @action(detail=True, methods=['post'], url_path='reconcilier')
+    def reconcilier(self, request, pk=None):
+        """Produit le rapport de réconciliation du lot (source vs cible)."""
+        lot = self.get_object()
+        rapport = services.reconcilier_lot(lot)
+        return Response(RapportReconciliationSerializer(rapport).data)
 
     @action(detail=True, methods=['post'], url_path='deroger')
     def deroger(self, request, pk=None):
