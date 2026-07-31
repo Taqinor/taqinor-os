@@ -67,6 +67,61 @@ const santeApi = {
   // ── Conventions (NTSAN9) ── noms utilisés pour l'affichage des PEC.
   conventions: {
     list: (params) => api.get('/sante/conventions/', { params }),
+    create: (data) => api.post('/sante/conventions/', data),
+  },
+
+  // ── Grilles tarifaires (NTSAN8) — tarifs par convention/acte. ──
+  grillesTarifaires: {
+    list: (params) => api.get('/sante/grilles-tarifaires/', { params }),
+    create: (data) => api.post('/sante/grilles-tarifaires/', data),
+  },
+
+  // ── Admissions (NTSAN6 — WIR142) — ouvrir/clôturer un séjour patient. ──
+  admissions: {
+    list: (params) => api.get('/sante/admissions/', { params }),
+    create: (data) => api.post('/sante/admissions/', data),
+    cloturer: (id) => api.post(`/sante/admissions/${id}/cloturer/`),
+  },
+
+  // ── Actes réalisés (NTSAN10 — WIR142) — `tarif_applique_ttc` est TOUJOURS
+  // calculé côté serveur, jamais envoyé par le client. ──
+  actesRealises: {
+    list: (params) => api.get('/sante/actes-realises/', { params }),
+    create: (data) => api.post('/sante/actes-realises/', data),
+  },
+
+  // ── Factures santé (NTSAN13 — WIR142) — `POST` agrège des ActeRealise
+  // existants non facturés : {admission, actes_realises: [...], convention?,
+  // remise_ttc?}. Split tiers payant/patient calculé côté serveur. ──
+  facturesSante: {
+    list: (params) => api.get('/sante/factures-sante/', { params }),
+    get: (id) => api.get(`/sante/factures-sante/${id}/`),
+    create: (data) => api.post('/sante/factures-sante/', data),
+  },
+
+  // ── Encaissement (NTSAN15 — WIR142) — `encaisse_par` posé côté serveur. ──
+  paiementsSante: {
+    list: (params) => api.get('/sante/paiements-sante/', { params }),
+    create: (data) => api.post('/sante/paiements-sante/', data),
+  },
+
+  // ── Configuration agenda (WIR142) — horaires/indisponibilités/motifs/
+  // sites du praticien. ──
+  horairesOuverturePraticien: {
+    list: (params) => api.get('/sante/horaires-ouverture-praticien/', { params }),
+    create: (data) => api.post('/sante/horaires-ouverture-praticien/', data),
+  },
+  indisponibilitesPraticien: {
+    list: (params) => api.get('/sante/indisponibilites-praticien/', { params }),
+    create: (data) => api.post('/sante/indisponibilites-praticien/', data),
+  },
+  motifsConsultation: {
+    list: (params) => api.get('/sante/motifs-consultation/', { params }),
+    create: (data) => api.post('/sante/motifs-consultation/', data),
+  },
+  sitesPraticien: {
+    list: (params) => api.get('/sante/sites-praticien/', { params }),
+    create: (data) => api.post('/sante/sites-praticien/', data),
   },
 }
 

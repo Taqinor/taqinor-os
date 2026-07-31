@@ -43,6 +43,17 @@ class Praticien(TenantModel):
     duree_consultation_defaut_min = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='Durée par défaut de consultation (min)')
+    # WIR92 — string-FK optionnel vers rh.DossierEmploye, JAMAIS un import
+    # direct du modèle rh (pattern agriculture.PointageAgricole.employe_id) :
+    # relie un praticien salarié à son dossier RH/paie sans dupliquer
+    # l'identité. Résolu paresseusement via `apps.rh.selectors` (voir
+    # `selectors.libelle_rh_praticien`). Additif — un praticien sans lien
+    # garde un comportement strictement inchangé.
+    employe_id = models.IntegerField(
+        null=True, blank=True, verbose_name='Employé RH (id)',
+        help_text=(
+            'Lien optionnel vers le dossier employé RH '
+            '(rh.DossierEmploye) — jamais dupliqué.'))
 
     class Meta:
         verbose_name = 'Praticien'
