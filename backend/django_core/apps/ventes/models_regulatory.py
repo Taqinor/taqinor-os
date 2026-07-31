@@ -74,11 +74,11 @@ class RegulatoryDossier(models.Model):
         COMPTAGE_POSE = 'comptage_pose', 'Comptage posé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='dossiers_reglementaires', verbose_name='Société')
-    # Rattachement principal : le devis de l'affaire (même app).
+    # Rattachement principal : le devis de l'affaire (même app). YDATA2.
     devis = models.ForeignKey(
-        'ventes.Devis', on_delete=models.CASCADE,
+        'ventes.Devis', on_delete=models.PROTECT,  # preuve réglementaire ONEE/ANRE
         related_name='dossiers_reglementaires', verbose_name='Devis')
     # Lien OPTIONNEL au chantier (app installations) en FK CHAÎNE — jamais
     # d'import du modèle installations.
@@ -144,7 +144,7 @@ class DossierChecklistItem(models.Model):
         NON_APPLICABLE = 'na', 'Non applicable'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='dossier_checklist_items', verbose_name='Société')
     dossier = models.ForeignKey(
         RegulatoryDossier, on_delete=models.CASCADE,
@@ -200,7 +200,7 @@ class DossierExchange(models.Model):
         AUTRE = 'autre', 'Autre'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='dossier_exchanges', verbose_name='Société')
     dossier = models.ForeignKey(
         RegulatoryDossier, on_delete=models.CASCADE,
@@ -255,10 +255,10 @@ class SubventionDossier(models.Model):
         VERSE = 'verse', 'Versé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='subvention_dossiers', verbose_name='Société')
     devis = models.ForeignKey(
-        'ventes.Devis', on_delete=models.CASCADE,
+        'ventes.Devis', on_delete=models.PROTECT,  # montant demandé/accordé/versé
         related_name='subvention_dossiers', verbose_name='Devis')
     programme = models.CharField(
         max_length=10, choices=Programme.choices,
@@ -319,10 +319,10 @@ class Regularisation8221(models.Model):
         REFUSEE = 'refusee', 'Refusée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='regularisations_8221', verbose_name='Société')
     devis = models.ForeignKey(
-        'ventes.Devis', on_delete=models.SET_NULL, null=True, blank=True,
+        'ventes.Devis', on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: lien devis optionnel
         related_name='regularisations_8221', verbose_name='Devis')
     chantier = models.ForeignKey(
         'installations.Installation', on_delete=models.SET_NULL,
