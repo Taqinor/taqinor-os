@@ -14,6 +14,11 @@ import api from './axios'
    ========================================================================== */
 
 const portailApi = {
+  // NTPRT19 — marque du portail pour le domaine appelant. PUBLIC (sans
+  // session) : la page de login doit pouvoir se brander avant toute auth. La
+  // société est résolue côté serveur par l'en-tête Host — on n'envoie AUCUN
+  // identifiant de société (ce serait un énumérateur de tenants).
+  themePublic: () => api.get('/public/portail/theme/'),
   devis: {
     liste: () => api.get('/portail/mes-devis/'),
     detail: (id) => api.get(`/portail/mes-devis/${id}/`),

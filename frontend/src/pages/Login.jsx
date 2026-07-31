@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { setCredentials } from '../features/auth/store/authSlice'
 import api from '../api/axios'
 import identityApi from '../api/identityApi'
+// NTPRT19 — marque white-label du portail, résolue par le DOMAINE appelant.
+import portailApi from '../api/portailApi'
+import { normalizeTenantTheme } from '../design/tenantTheme'
 // VX46 — module d'atterrissage au login (« Mes préférences »), résolu depuis
 // `moduleConfigs` (UX1) + le dernier module visité (VX11) ; repli `/dashboard`
 // inchangé quand aucune préférence n'est choisie.
@@ -33,9 +36,29 @@ const BRAND_TOKENS = `
 // ici. Marque produit NEUTRE fixée au build (env), plus de logo/texte
 // "Taqinor" en dur — la première chose qu'un tenant #2 doit voir n'est pas la
 // marque d'un autre client. Défaut sobre si la variable n'est pas fournie.
+//
+// NTPRT19 — SEULE exception, et elle ne contredit pas la règle ci-dessus : si
+// le NOM DE DOMAINE appelant est le domaine white-label déclaré par une société
+// (`TenantTheme.domaine`), le serveur renvoie SA marque. La société est résolue
+// par l'en-tête `Host` seul — jamais par un paramètre que le visiteur
+// choisirait, ce qui ferait de l'endpoint un énumérateur de tenants. Sur le
+// domaine générique, aucun thème ne correspond : l'écran reste EXACTEMENT
+// celui d'aujourd'hui.
 const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'ERP'
 
-function ProductBrand() {
+function ProductBrand({ marque }) {
+  const nom = marque?.nomAffichage || PRODUCT_NAME
+  if (marque?.logoUrl) {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: 10, height: 52,
+      }}>
+        <img src={marque.logoUrl} alt={nom}
+             style={{ maxHeight: 44, maxWidth: 220, objectFit: 'contain' }} />
+      </div>
+    )
+  }
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -44,10 +67,12 @@ function ProductBrand() {
       <span style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         width: 40, height: 40, borderRadius: 10,
-        background: 'linear-gradient(135deg, var(--login-azur) 0%, var(--login-azur-bright) 100%)',
+        background: marque?.couleurPrimaire
+          ? marque.couleurPrimaire
+          : 'linear-gradient(135deg, var(--login-azur) 0%, var(--login-azur-bright) 100%)',
         color: '#fff', fontWeight: 800, fontSize: 18,
       }} aria-hidden="true">
-        {PRODUCT_NAME.charAt(0).toUpperCase()}
+        {nom.charAt(0).toUpperCase()}
       </span>
       {/* VX150 — le wordmark utilise la POLICE DE MARQUE (var(--font-display),
           Archivo — la même que les headings/logo), au lieu d'hériter la police
@@ -57,7 +82,7 @@ function ProductBrand() {
         fontFamily: 'var(--font-display)',
         fontSize: 22, fontWeight: 700, color: '#0c1335', letterSpacing: '-0.01em',
       }}>
-        {PRODUCT_NAME}
+        {nom}
       </span>
     </div>
   )
@@ -117,6 +142,19 @@ export default function Login() {
   }
   const [otpRequired, setOtpRequired] = useState(false)
   const [otp,         setOtp]         = useState('')
+
+  // NTPRT19 — marque du tenant pour CE domaine (endpoint public, résolu par
+  // l'en-tête Host côté serveur). Aucun domaine white-label ⇒ marque vide ⇒
+  // écran STRICTEMENT identique à aujourd'hui. Un échec réseau/permission ne
+  // doit jamais empêcher de se connecter : on retombe en silence.
+  const [marque, setMarque] = useState(null)
+  useEffect(() => {
+    let annule = false
+    portailApi.themePublic()
+      .then((r) => { if (!annule) setMarque(normalizeTenantTheme(r.data)) })
+      .catch(() => { if (!annule) setMarque(null) })
+    return () => { annule = true }
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -186,7 +224,7 @@ export default function Login() {
 
         {/* Marque produit centrée */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
-          <ProductBrand />
+          <ProductBrand marque={marque} />
         </div>
 
         {/* Ligne décorative */}

@@ -82,7 +82,12 @@ def _envoyer_identifiants_portail(user, mot_de_passe, company):
         from django.conf import settings
         from django.core.mail import send_mail
 
-        societe = getattr(company, 'nom', '') or 'votre prestataire'
+        # NTPRT19 — l'email portail porte la marque du TENANT (nom affiché de
+        # ``TenantTheme``, repli ``CompanyProfile`` puis raison sociale) et
+        # jamais le branding ERP par défaut.
+        from .branding import marque_portail
+        societe = (marque_portail(company).get('nom_affichage')
+                   or 'votre prestataire')
         send_mail(
             subject=f'Votre accès au portail client {societe}',
             message=(
