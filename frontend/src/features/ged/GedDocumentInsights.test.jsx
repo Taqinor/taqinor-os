@@ -92,7 +92,9 @@ describe('WIR70 GedDocumentInsights', () => {
     await screen.findByText('sami')
     await user.click(screen.getByRole('combobox', { name: /Choisir un utilisateur/ }))
     await user.click(await screen.findByText('reda'))
-    await user.click(screen.getByRole('button', { name: /Ajouter/ }))
+    // Nom exact : le regex /Ajouter/ matchait AUSSI le bouton favori
+    // (aria-label « Ajouter aux favoris » quand `doc.favori` est faux).
+    await user.click(screen.getByRole('button', { name: 'Ajouter' }))
     await waitFor(() => expect(H.createAcl).toHaveBeenCalledWith({
       document: 42, utilisateur: 6, niveau: 'lecture', herite: true,
     }))

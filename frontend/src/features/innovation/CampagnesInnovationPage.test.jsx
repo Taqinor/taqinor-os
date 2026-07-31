@@ -47,13 +47,16 @@ beforeEach(() => { vi.clearAllMocks() })
 describe('CampagnesInnovationPage (WIR150)', () => {
   it('liste les campagnes existantes', async () => {
     renderPage(<CampagnesInnovationPage />)
-    expect(await screen.findByText('Idées pompage')).toBeInTheDocument()
+    // DataTable rend à la fois la table desktop et le repli carte mobile (CSS
+    // seul, les deux existent dans le DOM en jsdom) : on cible le PREMIER
+    // match, même patron que ModelesBcf.test.jsx / qhse.render.test.jsx.
+    expect((await screen.findAllByText('Idées pompage'))[0]).toBeInTheDocument()
   })
 
   it('crée une campagne depuis le formulaire', async () => {
     const user = userEvent.setup()
     renderPage(<CampagnesInnovationPage />)
-    await screen.findByText('Idées pompage')
+    await screen.findAllByText('Idées pompage')
 
     await user.click(screen.getByRole('button', { name: /Nouvelle campagne/ }))
     await user.type(screen.getByLabelText('Nom'), 'Relance O&M')
@@ -65,9 +68,9 @@ describe('CampagnesInnovationPage (WIR150)', () => {
   it('affiche le rapport d’une campagne', async () => {
     const user = userEvent.setup()
     renderPage(<CampagnesInnovationPage />)
-    await screen.findByText('Idées pompage')
+    await screen.findAllByText('Idées pompage')
 
-    await user.click(screen.getByRole('button', { name: 'Rapport' }))
+    await user.click(screen.getAllByRole('button', { name: 'Rapport' })[0])
     await waitFor(() => expect(rapport).toHaveBeenCalledWith(1))
     expect(await screen.findByText('Idée A')).toBeInTheDocument()
   })
@@ -75,9 +78,9 @@ describe('CampagnesInnovationPage (WIR150)', () => {
   it('clone une campagne', async () => {
     const user = userEvent.setup()
     renderPage(<CampagnesInnovationPage />)
-    await screen.findByText('Idées pompage')
+    await screen.findAllByText('Idées pompage')
 
-    await user.click(screen.getByRole('button', { name: 'Cloner' }))
+    await user.click(screen.getAllByRole('button', { name: 'Cloner' })[0])
     await waitFor(() => expect(cloner).toHaveBeenCalledWith(1))
   })
 })

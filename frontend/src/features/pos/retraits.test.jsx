@@ -77,7 +77,11 @@ describe('RetraitsScreen — création d’une commande retrait (WIR151)', () =>
     await user.click(screen.getByRole('button', { name: /Nouvelle commande/ }))
     expect(await screen.findByText('Nouvelle commande retrait')).toBeInTheDocument()
 
-    await user.click(screen.getByLabelText('Client'))
+    // Combobox = <button role="combobox"> : jsdom ne calcule pas fiablement
+    // HTMLLabelElement.control pour un bouton, donc getByLabelText échoue même
+    // si le <label htmlFor> est correct. Même patron que FinancesPage.test.jsx
+    // / GedDocumentInsights.test.jsx pour ce composant.
+    await user.click(screen.getByRole('combobox', { name: 'Client' }))
     await user.type(screen.getByPlaceholderText('Nom du client…'), 'Client Retrait')
     await user.click(await screen.findByText('Client Retrait'))
 

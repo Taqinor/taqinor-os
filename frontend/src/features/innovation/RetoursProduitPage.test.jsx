@@ -52,14 +52,17 @@ beforeEach(() => { vi.clearAllMocks() })
 describe('RetoursProduitPage (WIR150)', () => {
   it('liste les retours et le résumé par thème', async () => {
     renderPage(<RetoursProduitPage />)
-    expect(await screen.findByText('Export PDF trop lent')).toBeInTheDocument()
+    // DataTable rend à la fois la table desktop et le repli carte mobile (CSS
+    // seul, les deux existent dans le DOM en jsdom) : on cible le PREMIER
+    // match, même patron que ModelesBcf.test.jsx / qhse.render.test.jsx.
+    expect((await screen.findAllByText('Export PDF trop lent'))[0]).toBeInTheDocument()
     expect(screen.getByText('2 non lu(s)')).toBeInTheDocument()
   })
 
   it('crée une annonce produit', async () => {
     const user = userEvent.setup()
     renderPage(<RetoursProduitPage />)
-    await screen.findByText('Export PDF trop lent')
+    await screen.findAllByText('Export PDF trop lent')
 
     await user.click(screen.getByRole('button', { name: /Nouvelle annonce/ }))
     const dialog = await screen.findByRole('dialog')
@@ -72,9 +75,9 @@ describe('RetoursProduitPage (WIR150)', () => {
   it('clôture un retour en le liant à une annonce existante', async () => {
     const user = userEvent.setup()
     renderPage(<RetoursProduitPage />)
-    await screen.findByText('Export PDF trop lent')
+    await screen.findAllByText('Export PDF trop lent')
 
-    await user.click(screen.getByRole('button', { name: 'Lier une annonce' }))
+    await user.click(screen.getAllByRole('button', { name: 'Lier une annonce' })[0])
     const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('combobox', { name: 'Annonce' }))
     await user.click(await screen.findByRole('option', { name: 'PDF v2 déployé' }))

@@ -139,50 +139,59 @@ describe('education — module.config (WIR143)', () => {
     expect(config.sectionLabels.education).toBe('Éducation')
   })
 
+  // NB (même patron que compta.test.jsx) : sous charge parallèle (cold
+  // transform de plusieurs fichiers lourds à la fois), le rendu peut dépasser
+  // largement 5 s — délai interne relevé ET délai de test explicite (30 s,
+  // au-delà du défaut vitest.config.js) pour ne pas le plafonner en sous-main.
   it('monte Structure via /education/structure avec la classe chargée', async () => {
     renderRoute('/education/structure')
-    await waitFor(() => expect(screen.getByText('CE1-A')).toBeTruthy(), { timeout: 5000 })
+    await waitFor(() => expect(screen.getByText('CE1-A')).toBeTruthy(), { timeout: 25000 })
     expect(screen.getByText('2 / 30')).toBeTruthy()
-  })
+  }, 30000)
 
   it('monte Familles & élèves via /education/familles-eleves avec l’élève chargé', async () => {
     renderRoute('/education/familles-eleves')
-    await waitFor(() => expect(screen.getByText('EL-0001')).toBeTruthy(), { timeout: 5000 })
-  })
+    await waitFor(() => expect(screen.getByText('EL-0001')).toBeTruthy(), { timeout: 25000 })
+  }, 30000)
 
   it('monte Inscriptions via /education/inscriptions', async () => {
     renderRoute('/education/inscriptions')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Inscriptions' })).toBeTruthy(), { timeout: 5000 })
-    expect(screen.getByText('en_attente')).toBeTruthy()
-  })
+    // Le <h1> est un rendu statique (présent dès le premier commit du
+    // composant, avant la résolution de `useEducationResource`) : attendre
+    // dessus ne garantit PAS que la liste d'inscriptions (fetch async séparé)
+    // est arrivée. « en_attente » vient de cette liste : il lui faut son
+    // propre waitFor, sinon la ligne suivante course contre le chargement.
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Inscriptions' })).toBeTruthy(), { timeout: 25000 })
+    await waitFor(() => expect(screen.getByText('en_attente')).toBeTruthy(), { timeout: 25000 })
+  }, 30000)
 
   it('monte Échéancier via /education/echeancier (lecture seule)', async () => {
     renderRoute('/education/echeancier')
-    await waitFor(() => expect(screen.getByText(/Total 12000.00/)).toBeTruthy(), { timeout: 5000 })
-  })
+    await waitFor(() => expect(screen.getByText(/Total 12000.00/)).toBeTruthy(), { timeout: 25000 })
+  }, 30000)
 
   it('monte Présences via /education/presences', async () => {
     renderRoute('/education/presences')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Présences' })).toBeTruthy(), { timeout: 5000 })
-  })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Présences' })).toBeTruthy(), { timeout: 25000 })
+  }, 30000)
 
   it('monte Notes via /education/notes', async () => {
     renderRoute('/education/notes')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes' })).toBeTruthy(), { timeout: 5000 })
-  })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Notes' })).toBeTruthy(), { timeout: 25000 })
+  }, 30000)
 
   it('monte Emploi du temps via /education/emploi-du-temps', async () => {
     renderRoute('/education/emploi-du-temps')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Emploi du temps' })).toBeTruthy(), { timeout: 5000 })
-  })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Emploi du temps' })).toBeTruthy(), { timeout: 25000 })
+  }, 30000)
 
   it('monte Cantine via /education/cantine avec le menu chargé', async () => {
     renderRoute('/education/cantine')
-    await waitFor(() => expect(screen.getByText(/Poulet riz/)).toBeTruthy(), { timeout: 5000 })
-  })
+    await waitFor(() => expect(screen.getByText(/Poulet riz/)).toBeTruthy(), { timeout: 25000 })
+  }, 30000)
 
   it('monte Discipline via /education/discipline', async () => {
     renderRoute('/education/discipline')
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Discipline' })).toBeTruthy(), { timeout: 5000 })
-  })
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Discipline' })).toBeTruthy(), { timeout: 25000 })
+  }, 30000)
 })
