@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { LogOut, FileDown, CheckCircle2, Printer, Pencil } from 'lucide-react'
+import { LogOut, FileDown, CheckCircle2, Printer, Pencil, Award } from 'lucide-react'
 import { RecordShell } from '../../ui/module'
 import {
   DefinitionList, EmptyState, Skeleton, Badge, toast,
@@ -19,10 +19,19 @@ import { StatutEmploye, TYPE_CONTRAT_LABELS } from './constants.jsx'
    UX22 + XRH1/4/5/6/15/16 + YHIRE2/ZRH12 — Dossier employé (détail).
    ----------------------------------------------------------------------------
    Onglets : Identité, Contrat, Documents, Rémunération (gated salaires_voir),
-   Habilitations, Formations, Intégration (checklist XRH4), Chatter (XRH6).
+   Habilitations, Formations, Intégration (checklist XRH4), Badges (ZRH14 —
+   WIR131), Chatter (XRH6).
    En-tête : bouton Sortie (YHIRE2 — désactive le compte + checklist offboarding)
    et téléchargement du certificat de travail (ZRH12) une fois l'employé sorti.
    Rémunération inclut le compa-ratio (XRH16) — donnée paie, gatée par permission.
+
+   WIR131 — l'onglet Badges était invisible : `attributions-badge`/
+   `badges-reconnaissance` (ViewSets + wrappers `getAttributionsBadge`/
+   `getBadgesReconnaissance`/`attribuerBadge` déjà présents dans rhApi.js)
+   n'avaient aucun appelant. Tout employé authentifié peut attribuer un badge
+   du catalogue société à un collègue (jamais à soi-même — refusé côté
+   serveur, 400) ; ce dossier liste les badges REÇUS par CET employé
+   (`?beneficiaire=<id>`).
    ========================================================================== */
 
 function Liste({ rows, loading, empty, renderRow }) {
@@ -62,11 +71,15 @@ export default function EmployeDetail() {
   const [formation, setFormation] = useState(null)
   const [integration, setIntegration] = useState(null)
   const [chatter, setChatter] = useState([])
+  // WIR131 — badges reçus (ZRH14) + catalogue société pour le formulaire.
+  const [badgesRecus, setBadgesRecus] = useState([])
+  const [badgesCatalogue, setBadgesCatalogue] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [subLoading, setSubLoading] = useState(true)
   const [sortieOpen, setSortieOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
+  const [badgeOpen, setBadgeOpen] = useState(false)
   const [departements, setDepartements] = useState([])
   const [reloadTick, setReloadTick] = useState(0)
 
@@ -96,6 +109,8 @@ export default function EmployeDetail() {
       rhApi.getRegistreFormation(id),
       rhApi.getIntegration(id),
       rhApi.getHistoriqueEmploye(id),
+      // WIR131 — badges reçus par ce dossier.
+      rhApi.getAttributionsBadge({ beneficiaire: id }),
     ]
     if (canSalaires) {
       calls.push(rhApi.getRemunerations({ employe: id }))
@@ -103,12 +118,13 @@ export default function EmployeDetail() {
     }
     Promise.allSettled(calls).then((results) => {
       if (!vivant) return
-      const [docRes, habRes, formRes, intRes, chatRes, remRes, compaRes] = results
+      const [docRes, habRes, formRes, intRes, chatRes, badgeRes, remRes, compaRes] = results
       if (docRes.status === 'fulfilled') setDocuments(unwrap(docRes.value.data))
       if (habRes.status === 'fulfilled') setHabilitations(unwrap(habRes.value.data))
       if (formRes.status === 'fulfilled') setFormation(formRes.value.data)
       if (intRes.status === 'fulfilled') setIntegration(intRes.value.data)
       if (chatRes.status === 'fulfilled') setChatter(unwrap(chatRes.value.data))
+      if (badgeRes.status === 'fulfilled') setBadgesRecus(unwrap(badgeRes.value.data))
       if (canSalaires && remRes?.status === 'fulfilled') {
         setRemunerations(unwrap(remRes.value.data))
       }
@@ -120,6 +136,16 @@ export default function EmployeDetail() {
     })
     return () => { vivant = false }
   }, [id, canSalaires, reloadTick])
+
+  // WIR131 — catalogue de badges société (indépendant du dossier consulté,
+  // chargé une fois — même patron que les départements ci-dessous).
+  useEffect(() => {
+    let vivant = true
+    rhApi.getBadgesReconnaissance()
+      .then((res) => { if (vivant) setBadgesCatalogue(unwrap(res.data).filter((b) => b.actif !== false)) })
+      .catch(() => { /* non bloquant — l'onglet reste vide */ })
+    return () => { vivant = false }
+  }, [])
 
   // WIR33 — départements pour le sélecteur du formulaire d'édition (une fois,
   // indépendant du dossier consulté).
@@ -355,6 +381,35 @@ export default function EmployeDetail() {
     />
   )
 
+  // WIR131 — badges de reconnaissance (ZRH14) reçus par ce dossier.
+  const badgesTab = (
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setBadgeOpen(true)} disabled={badgesCatalogue.length === 0}>
+          <Award size={15} strokeWidth={1.75} aria-hidden="true" />
+          Attribuer un badge
+        </Button>
+      </div>
+      <Liste
+        rows={badgesRecus}
+        loading={subLoading}
+        empty="Aucun badge reçu pour l’instant."
+        renderRow={(b) => (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-medium">{b.badge_icone ? `${b.badge_icone} ` : ''}{b.badge_nom || `Badge #${b.badge}`}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {b.attribue_par_nom ? `Par ${b.attribue_par_nom}` : '—'}
+                {b.date_creation ? ` · ${formatDate(b.date_creation)}` : ''}
+                {b.message ? ` · ${b.message}` : ''}
+              </p>
+            </div>
+          </div>
+        )}
+      />
+    </div>
+  )
+
   const remunerationTab = (
     <div className="flex flex-col gap-4">
       {/* XRH16 — compa-ratio (salaire vs bande du poste), donnée paie gatée. */}
@@ -398,6 +453,7 @@ export default function EmployeDetail() {
     { value: 'habilitations', label: 'Habilitations', content: habilitationsTab, count: habilitations.length },
     { value: 'formations', label: 'Formations', content: formationsTab, count: formationsRows.length },
     { value: 'integration', label: 'Intégration', content: integrationTab, count: integrationLignes.length },
+    { value: 'badges', label: 'Badges', content: badgesTab, count: badgesRecus.length },
     { value: 'chatter', label: 'Activité', content: chatterTab, count: chatter.length },
   ]
 
@@ -460,6 +516,14 @@ export default function EmployeDetail() {
           departements={departements}
           onClose={() => setEditOpen(false)}
           onSaved={() => { setEditOpen(false); recharger() }}
+        />
+      )}
+      {badgeOpen && (
+        <BadgeDialog
+          employe={emp}
+          catalogue={badgesCatalogue}
+          onClose={() => setBadgeOpen(false)}
+          onSaved={() => { setBadgeOpen(false); recharger() }}
         />
       )}
     </div>
@@ -660,6 +724,76 @@ function SortieDialog({ employe, onClose, onSaved }) {
             <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!dateSortie || !motif || saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer la sortie'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR131 (ZRH14) — Attribuer un badge de reconnaissance à ce dossier ── */
+function BadgeDialog({ employe, catalogue, onClose, onSaved }) {
+  const [badge, setBadge] = useState(catalogue[0]?.id ? String(catalogue[0].id) : '')
+  const [message, setMessage] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(message)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(badge)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.attribuerBadge({
+        badge: Number(badge),
+        beneficiaire: Number(employe.id),
+        message: message || '',
+      })
+      toast.success('Badge attribué.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.beneficiaire || 'Attribution impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Attribuer un badge — {employe.nom} {employe.prenom}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="bd-badge">Badge</Label>
+            <select
+              id="bd-badge"
+              autoFocus
+              value={badge}
+              onChange={(e) => setBadge(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+            >
+              {catalogue.map((b) => (
+                <option key={b.id} value={b.id}>{b.icone ? `${b.icone} ` : ''}{b.nom}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="bd-message">Message (optionnel)</Label>
+            <Textarea id="bd-message" value={message} onChange={(e) => setMessage(e.target.value)} rows={2} placeholder="Ex. Merci pour ton aide sur le chantier !" />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>
+              {saving ? 'Attribution…' : 'Attribuer le badge'}
             </Button>
           </DialogFooter>
         </form>

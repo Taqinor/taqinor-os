@@ -94,6 +94,19 @@ const marketingApi = {
       api.get(`/marketing/evenements-marketing/${id}/borne/`, { params: { q } }),
   },
   billetsEvenement: resource('billets-evenement'),
+  // WIR162 — ZMKT14/16/17 : ces 3 ressources étaient routées côté backend
+  // (ViewSets + serializers complets) mais aucun wrapper n'existait côté
+  // front, contrairement à `billetsEvenement` (déjà enveloppée, mais elle
+  // aussi jamais appelée) — un événement ne se créait qu'avec nom/dates.
+  typesEvenement: {
+    ...resource('types-evenement'),
+    // ZMKT14 — crée un événement à partir d'un modèle réutilisable (recopie
+    // `config_defaut`) ; seuls `nom`/`date_debut` restent à saisir.
+    creerEvenement: (id, data) =>
+      api.post(`/marketing/types-evenement/${id}/creer-evenement/`, data),
+  },
+  questionsEvenement: resource('questions-evenement'),
+  communicationsEvenement: resource('communications-evenement'),
   inscriptionsEvenement: {
     ...resource('inscriptions-evenement'),
     pointer: (id) => api.post(`/marketing/inscriptions-evenement/${id}/pointer/`),
