@@ -2219,6 +2219,14 @@ class ComptePortailClientSerializer(serializers.ModelSerializer):
 
 
 class AcceptationDevisPortailSerializer(serializers.ModelSerializer):
+    # WIR95 — ``devis_id`` n'est plus un champ modèle littéral (c'est
+    # désormais l'attname de la FK ``devis``) : DRF ``ModelSerializer`` ne le
+    # résout pas automatiquement depuis une string dans ``Meta.fields``, donc
+    # on le déclare explicitement (même format JSON qu'avant — aucun
+    # changement d'API). Lecture/écriture via l'attname reste supportée par
+    # Django (``obj.devis_id``, ``.filter(devis_id=…)``, ``.create(devis_id=…)``).
+    devis_id = serializers.IntegerField(min_value=0)
+
     class Meta:
         model = AcceptationDevisPortail
         fields = [
@@ -2231,6 +2239,9 @@ class AcceptationDevisPortailSerializer(serializers.ModelSerializer):
 
 
 class PaiementFacturePortailSerializer(serializers.ModelSerializer):
+    # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
+    facture_id = serializers.IntegerField(min_value=0)
+
     class Meta:
         model = PaiementFacturePortail
         fields = [
@@ -2243,16 +2254,25 @@ class PaiementFacturePortailSerializer(serializers.ModelSerializer):
 
 
 class DocumentClientPortailSerializer(serializers.ModelSerializer):
+    # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
+    client_id = serializers.IntegerField(min_value=0)
+    lead_id = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+
     class Meta:
         model = DocumentClientPortail
         fields = [
             'id', 'client_id', 'lead_id', 'type_document', 'libelle',
-            'fichier', 'traite', 'date_depot',
+            'fichier', 'document_ged', 'traite', 'date_depot',
         ]
-        read_only_fields = ['traite', 'date_depot']
+        # WIR94 — ``document_ged`` posé côté serveur (dépôt GED automatique
+        # au ``save()``, jamais lu du corps de requête).
+        read_only_fields = ['document_ged', 'traite', 'date_depot']
 
 
 class JalonChantierPortailSerializer(serializers.ModelSerializer):
+    # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
+    chantier_id = serializers.IntegerField(min_value=0)
+
     class Meta:
         model = JalonChantierPortail
         fields = [
@@ -2263,13 +2283,19 @@ class JalonChantierPortailSerializer(serializers.ModelSerializer):
 
 
 class DemandeTicketPortailSerializer(serializers.ModelSerializer):
+    # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
+    client_id = serializers.IntegerField(min_value=0)
+    chantier_id = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    ticket_id = serializers.IntegerField(
+        min_value=0, required=False, allow_null=True, read_only=True)
+
     class Meta:
         model = DemandeTicketPortail
         fields = [
             'id', 'client_id', 'chantier_id', 'sujet', 'description',
             'statut', 'ticket_id', 'date_creation',
         ]
-        read_only_fields = ['statut', 'ticket_id', 'date_creation']
+        read_only_fields = ['statut', 'date_creation']
 
 
 class PartenaireSerializer(serializers.ModelSerializer):

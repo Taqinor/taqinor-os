@@ -32,7 +32,7 @@ from apps.records.serializers import resolve_target
 
 from . import selectors, services
 from .models import (
-    AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
+    AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
     DemandeDispositionError, DemandeDocument,
     DemandeSignatureDocument, DepotPublic, Document, DocumentLien,
@@ -42,10 +42,11 @@ from .models import (
     PartageGed, PlanificationDocument, PolitiqueRetention,
     QuotaDepasseError, QuotaStockage, RegleAclMetadonnee,
     RegleApprobationGed, RegleDossier, RoleSignataire, RoutageDocumentaire,
-    SignataireDemande, TypeChampSignature, ValidationOcrDocument,
-    VueGedEnregistree,
+    SignataireDemande, TamponSociete, TypeChampSignature,
+    ValidationOcrDocument, VueGedEnregistree,
 )
 from .serializers import (
+    AclGedSerializer,
     AnnotationDocumentSerializer, ArchivageLegalSerializer, CabinetSerializer,
     ChampSignatureSerializer, CoffreSerializer, DemandeApprobationSerializer,
     DemandeDispositionSerializer, DemandeDocumentSerializer,
@@ -60,8 +61,8 @@ from .serializers import (
     RegleAclMetadonneeSerializer, RegleApprobationGedSerializer,
     RegleDossierSerializer, RoleSignataireSerializer,
     RoutageDocumentaireSerializer, SignataireDemandeSerializer,
-    TypeChampSignatureSerializer, ValidationOcrDocumentSerializer,
-    VueGedEnregistreeSerializer,
+    TamponSocieteSerializer, TypeChampSignatureSerializer,
+    ValidationOcrDocumentSerializer, VueGedEnregistreeSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -3142,6 +3143,34 @@ class AnnotationDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return response
 
 
+class TamponSocieteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """WIR164 — Tampons PROPRES à la société (XGED16), en plus des 3 tampons
+    système (`TAMPONS_SYSTEME`, jamais gérés ici — constante applicative,
+    partagée par toutes les sociétés). Avant ce ViewSet, `tampons_disponibles()`
+    ne retombait QUE sur les 3 tampons système : aucun chemin d'écriture
+    n'existait pour qu'une société ajoute les siens. Lecture : tout rôle
+    authentifié. Écriture (créer/supprimer) : responsable/admin. `company`
+    posée côté serveur — jamais lue du corps de requête. Un tampon créé ici
+    apparaît IMMÉDIATEMENT dans `GET annotations/tampons/`
+    (`services.tampons_disponibles`) et peut être apposé via le chemin
+    existant `POST annotations/` (`type_annotation='tampon'`)."""
+    queryset = TamponSociete.objects.all()
+    serializer_class = TamponSocieteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
 class RegleDossierViewSet(TenantMixin, viewsets.ModelViewSet):
     """XGED19 — Règles d'action automatique à l'upload dans un dossier."""
     queryset = RegleDossier.objects.select_related('folder', 'created_by').all()
@@ -3194,6 +3223,49 @@ class RegleApprobationGedViewSet(TenantMixin, viewsets.ModelViewSet):
         if errors:
             from rest_framework.exceptions import ValidationError
             raise ValidationError({'condition_group': errors})
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+
+class AclGedViewSet(TenantMixin, viewsets.ModelViewSet):
+    """WIR163 — API de gestion des droits d'accès GED19 (`AclGed`).
+
+    CRUD des entrées ACL par dossier/document (héritage + override, résolu en
+    lecture par `selectors.acl_effective`/`documents_visible_to_user` — poser
+    une entrée ici a un effet IMMÉDIAT sur ce qu'un autre utilisateur voit,
+    aucun cache). Lecture : tout rôle authentifié (IsAnyRole). Écriture
+    (créer/modifier/révoquer) : réservée responsable/admin
+    (IsResponsableOrAdmin) — même patron que `RegleAclMetadonneeViewSet` /
+    `kb.KbArticleAclViewSet`. `company` posée côté serveur (TenantMixin) —
+    jamais lue du corps de requête. Filtres optionnels `?folder=<id>` /
+    `?document=<id>` / `?niveau=<lecture|ecriture|gestion>`.
+    """
+    queryset = AclGed.objects.select_related(
+        'folder', 'document', 'utilisateur', 'role', 'created_by').all()
+    serializer_class = AclGedSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        folder = params.get('folder')
+        if folder:
+            qs = qs.filter(folder_id=folder)
+        document = params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        niveau = params.get('niveau')
+        if niveau:
+            qs = qs.filter(niveau=niveau)
+        return qs
+
+    def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 

@@ -8,6 +8,7 @@ import { toast } from '../../../ui'
 import ApprobationPage from './ApprobationPage.jsx'
 import RetentionPage from './RetentionPage.jsx'
 import TagsPage from './TagsPage.jsx'
+import ChecklistPage from './ChecklistPage.jsx'
 
 /* UX45–UX47 — tests de rendu (smoke) + chemin d'erreur legal-hold (403).
    Toutes les données gedApi sont mockées : on vérifie que les écrans montent
@@ -40,6 +41,26 @@ vi.mock('../../../api/gedApi', () => ({
     createChampSignature: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
     deleteChampSignature: vi.fn(() => Promise.resolve({ data: {} })),
     annulerDemandeSignature: vi.fn(() => Promise.resolve({ data: {} })),
+    // WIR164 — checklist (XGED8), validation OCR (XGED13), tampons (XGED16).
+    getDossiers: vi.fn(() => Promise.resolve({ data: [] })),
+    getCabinets: vi.fn(() => Promise.resolve({ data: [] })),
+    getExigences: vi.fn(() => Promise.resolve({ data: [] })),
+    getDemandesDocument: vi.fn(() => Promise.resolve({ data: [] })),
+    getValidationsOcr: vi.fn(() => Promise.resolve({ data: [] })),
+    getTamponsSociete: vi.fn(() => Promise.resolve({ data: [] })),
+    getStampsDisponibles: vi.fn(() => Promise.resolve({
+      data: ['Payé', 'Validé', 'Confidentiel'],
+    })),
+    getChecklist: vi.fn(() => Promise.resolve({ data: [] })),
+    createExigence: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    deleteExigence: vi.fn(() => Promise.resolve({ data: {} })),
+    createDemandeDocument: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    relancerDemandeDocument: vi.fn(() => Promise.resolve({ data: {} })),
+    validerOcr: vi.fn(() => Promise.resolve({ data: {} })),
+    createTamponSociete: vi.fn(() => Promise.resolve({ data: { id: 9, libelle: 'Archivé RH' } })),
+    deleteTamponSociete: vi.fn(() => Promise.resolve({ data: {} })),
+    getVersions: vi.fn(() => Promise.resolve({ data: [{ id: 55, version: 1 }] })),
+    createAnnotation: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   },
 }))
 
@@ -135,5 +156,51 @@ describe('UX47 TagsPage', () => {
     renderPage(<TagsPage />)
     expect(await screen.findByText('Taxonomie de tags')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Liens transverses' })).toBeInTheDocument()
+  })
+})
+
+describe('WIR164 ChecklistPage', () => {
+  it('rend les onglets checklist/exigences/demandes/OCR/tampons sans planter', async () => {
+    renderPage(<ChecklistPage />)
+    expect(await screen.findByRole('tab', { name: /Checklist/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Exigences' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Demandes de pièces' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Validation OCR' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Tampons/ })).toBeInTheDocument()
+  })
+
+  it('crée un tampon société propre depuis le formulaire (WIR164)', async () => {
+    renderPage(<ChecklistPage />)
+    await userEvent.click(await screen.findByRole('tab', { name: /Tampons/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Nouveau tampon/i }))
+    await userEvent.type(screen.getByPlaceholderText('Ex. Archivé RH'), 'Archivé RH')
+    await userEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    await waitFor(() => {
+      expect(gedApi.createTamponSociete).toHaveBeenCalledWith({ libelle: 'Archivé RH' })
+      expect(toast.success).toHaveBeenCalledWith('Tampon créé.')
+    })
+  })
+
+  it('appose un tampon sur la dernière version d’un document (WIR164)', async () => {
+    gedApi.getDocumentsList.mockResolvedValueOnce({
+      data: [{ id: 4, nom: 'Bail.pdf' }],
+    })
+    renderPage(<ChecklistPage />)
+    await userEvent.click(await screen.findByRole('tab', { name: /Tampons/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Apposer un tampon/i }))
+
+    await userEvent.click(screen.getByRole('combobox', { name: /Choisir un document/i }))
+    await userEvent.click(await screen.findByText('Bail.pdf'))
+    await userEvent.click(screen.getByRole('combobox', { name: /Choisir un tampon/i }))
+    await userEvent.click(await screen.findByText('Payé'))
+    await userEvent.click(screen.getByRole('button', { name: 'Apposer' }))
+
+    await waitFor(() => {
+      expect(gedApi.getVersions).toHaveBeenCalledWith({ document: '4' })
+      expect(gedApi.createAnnotation).toHaveBeenCalledWith({
+        version: 55, type_annotation: 'tampon', page: 0, x: 10, y: 10, contenu: 'Payé',
+      })
+      expect(toast.success).toHaveBeenCalledWith('Tampon apposé.')
+    })
   })
 })
