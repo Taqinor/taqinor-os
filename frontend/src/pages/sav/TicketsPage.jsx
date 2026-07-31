@@ -71,10 +71,12 @@ import {
   DataTable,
   toast,
 } from '../../ui'
-import { useSavedViews } from '../../hooks/useSavedViews'
+import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
+import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 
-const TP_SAVED_VIEWS_KEY = 'taqinor.sav.tickets.savedViews'
+// WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
+const TP_ECRAN = 'sav.tickets'
 
 const formatDateFR = (iso) => {
   if (!iso) return '—'
@@ -1447,14 +1449,19 @@ export default function TicketsPage() {
   // VX172 — pending visible sur « Exporter Excel » (VX49 pose déjà le toast
   // d'erreur ; ceci ajoute juste l'état chargement manquant).
   const [xlsxBusy, setXlsxBusy] = useState(false)
-  // Vues enregistrées (FG11).
-  const { savedViews: ticketSavedViews, saveView: saveTicketView, deleteView: deleteTicketView } = useSavedViews(TP_SAVED_VIEWS_KEY)
+  // WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11 :
+  // vues EQUIPE désormais visibles par l'équipe, cf. ViewsManagerPopover).
+  const { createView: createTicketView } = useServerSavedViews(TP_ECRAN)
   const saveCurrentTicketView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
-    saveTicketView(name, { filters })
+    const trimmed = (name || '').trim()
+    if (!trimmed) return
+    createTicketView({
+      nom: trimmed, configuration: { filters }, visibilite: 'PERSONNELLE',
+    }).catch(() => toast.error('Enregistrement de la vue impossible.'))
   }
-  const applyTicketView = (v) => {
-    if (v.state?.filters) setFilters({ ...EMPTY_TICKET_FILTERS, ...v.state.filters })
+  const applyTicketView = (configuration) => {
+    if (configuration?.filters) setFilters({ ...EMPTY_TICKET_FILTERS, ...configuration.filters })
   }
 
   const reload = () => dispatch(fetchTickets())
@@ -1740,23 +1747,11 @@ export default function TicketsPage() {
               <SelectItem value="sans">Sans annulés</SelectItem>
             </SelectContent>
           </Select>
-          <div className="lp-saved-views">
+          <div className="flex items-center gap-1.5">
             <Button type="button" variant="link" size="sm" onClick={saveCurrentTicketView}>
               ⭐ Enregistrer cette vue
             </Button>
-            {ticketSavedViews.map((v) => (
-              <span key={v.name} className="lp-saved-view-chip">
-                <button type="button" className="lp-saved-view-apply"
-                        onClick={() => applyTicketView(v)} title="Appliquer cette vue">
-                  {v.name}
-                </button>
-                <button type="button" className="lp-saved-view-del"
-                        onClick={() => deleteTicketView(v.name)}
-                        aria-label={`Supprimer la vue ${v.name}`}>
-                  ✕
-                </button>
-              </span>
-            ))}
+            <ViewsManagerPopover ecran={TP_ECRAN} onApply={applyTicketView} />
           </div>
         </div>
 

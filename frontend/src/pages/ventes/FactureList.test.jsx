@@ -48,9 +48,20 @@ vi.mock('../../api/parametresApi', async (importOriginal) => {
   }
 })
 
+// WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11).
+vi.mock('../../api/uxviewsApi', () => ({
+  default: {
+    listSavedViews: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+    createSavedView: vi.fn(() => Promise.resolve({ data: { id: 1, ecran: 'ventes.factures' } })),
+    updateSavedView: vi.fn(() => Promise.resolve({ data: {} })),
+    deleteSavedView: vi.fn(() => Promise.resolve({})),
+  },
+}))
+
 import FactureList from './FactureList'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
+import uxviewsApi from '../../api/uxviewsApi'
 // ARC53 — FactureList rend son tableau via le moteur `ui/datatable` (useDensity),
 // qui EXIGE un <ThemeProvider> dans l'arbre (présent en prod via <Layout>). Ajout
 // de wrapper de HARNAIS uniquement — aucune assertion n'est modifiée.
@@ -83,6 +94,24 @@ const baseFacture = {
   date_emission: '2026-07-01', date_echeance: '2026-08-01',
   total_ttc: 5000, montant_paye: 0, montant_du: 5000,
 }
+
+describe('FactureList — WIR21 : vues sauvegardées côté serveur', () => {
+  it('affiche le bouton « Vues » (ViewsManagerPopover) et charge les vues serveur', async () => {
+    renderList({ factures: [baseFacture] })
+    expect(await screen.findByTestId('uxviews-open-btn')).toBeInTheDocument()
+    await waitFor(() => expect(uxviewsApi.listSavedViews).toHaveBeenCalledWith('ventes.factures'))
+  })
+
+  it('« Enregistrer cette vue » crée une SavedView serveur (ecran ventes.factures)', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Factures en retard')
+    renderList({ factures: [baseFacture] })
+    fireEvent.click(await screen.findByRole('button', { name: /Enregistrer cette vue/ }))
+    await waitFor(() => expect(uxviewsApi.createSavedView).toHaveBeenCalledWith(expect.objectContaining({
+      ecran: 'ventes.factures', nom: 'Factures en retard', visibilite: 'PERSONNELLE',
+    })))
+    promptSpy.mockRestore()
+  })
+})
 
 describe('FactureList — WR2b : « Payer en ligne »', () => {
   it('crée le lien de paiement et le copie au presse-papier', async () => {

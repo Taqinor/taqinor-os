@@ -78,6 +78,15 @@ const monitoringApi = {
   // Envoi du rapport O&M par e-mail (PDF joint). body { period, recipient? }.
   emailOmReport: (configId, data) =>
     api.post(`/monitoring/configs/${configId}/email-om-report/`, data),
+
+  // ── WIR123 — Abonnements de supervision (revenu récurrent, FG244) ──
+  getAbonnements: (params) => api.get('/monitoring/abonnements-monitoring/', { params }),
+  createAbonnement: (data) => api.post('/monitoring/abonnements-monitoring/', data),
+  renouvelerAbonnement: (id) => api.post(`/monitoring/abonnements-monitoring/${id}/renouveler/`, {}),
+  facturerAbonnement: (id) => api.post(`/monitoring/abonnements-monitoring/${id}/facturer/`, {}),
+  suspendreAbonnement: (id) => api.post(`/monitoring/abonnements-monitoring/${id}/suspendre/`, {}),
+  resilierAbonnement: (id, motif) =>
+    api.post(`/monitoring/abonnements-monitoring/${id}/resilier/`, { motif }),
 }
 
 export default monitoringApi

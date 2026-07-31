@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + composant lazy), pas un module
    de composants : le fast-refresh ne s'y applique pas (cf. moduleRoutes.jsx). */
 import { lazy } from 'react'
-import { Lightbulb } from 'lucide-react'
+import { Lightbulb, Megaphone, Inbox } from 'lucide-react'
 
 /* ============================================================================
    Groupe NTIDE — Config du module Innovation (boîte à idées interne, auto-
@@ -21,6 +21,9 @@ const ProposerIdeePage = lazy(() => import('./ProposerIdeePage'))
 const InnovationDashboard = lazy(() => import('./InnovationDashboard'))
 // NTIDE15 — mes idées (route dédiée).
 const MesIdeesPage = lazy(() => import('./MesIdeesPage'))
+// WIR150 — campagnes ciblées + retours produit (canal founder).
+const CampagnesInnovationPage = lazy(() => import('./CampagnesInnovationPage'))
+const RetoursProduitPage = lazy(() => import('./RetoursProduitPage'))
 
 const ADMIN_RESPONSABLE = ['responsable', 'admin']
 const TOUS_ROLES = ['normal', 'responsable', 'admin']
@@ -50,6 +53,18 @@ const config = {
         icon: <Lightbulb size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ADMIN_RESPONSABLE,
       },
+      {
+        to: '/innovation/campagnes',
+        label: 'Campagnes',
+        icon: <Megaphone size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ADMIN_RESPONSABLE,
+      },
+      {
+        to: '/innovation/retours-produit',
+        label: 'Retours produit',
+        icon: <Inbox size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ADMIN_RESPONSABLE,
+      },
     ],
   },
   titles: [
@@ -57,6 +72,8 @@ const config = {
     ['/innovation/proposer', 'Proposer une idée'],
     ['/innovation/mes-idees', 'Mes idées'],
     ['/innovation/tableau-bord', 'Tableau de bord — Idées'],
+    ['/innovation/campagnes', 'Campagnes innovation'],
+    ['/innovation/retours-produit', 'Retours produit'],
   ],
   sectionLabels: { innovation: 'Innovation' },
   routes: [
@@ -65,6 +82,8 @@ const config = {
     { path: '/innovation/proposer', component: ProposerIdeePage },
     { path: '/innovation/mes-idees', component: MesIdeesPage },
     { path: '/innovation/tableau-bord', component: InnovationDashboard, roles: ADMIN_RESPONSABLE },
+    { path: '/innovation/campagnes', component: CampagnesInnovationPage, roles: ADMIN_RESPONSABLE },
+    { path: '/innovation/retours-produit', component: RetoursProduitPage, roles: ADMIN_RESPONSABLE },
   ],
 }
 

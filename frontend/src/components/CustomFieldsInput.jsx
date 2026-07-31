@@ -5,14 +5,19 @@
 import { useEffect, useState } from 'react'
 import customFieldsApi from '../api/customFieldsApi'
 
-export default function CustomFieldsInput({ module, value, onChange }) {
+export default function CustomFieldsInput({ module, value, onChange, onDefsLoaded }) {
   const [defs, setDefs] = useState([])
   const data = value || {}
 
   useEffect(() => {
     customFieldsApi.getDefs(module)
-      .then(r => setDefs((r.data.results ?? r.data).filter(d => d.actif)))
-      .catch(() => setDefs([]))
+      .then(r => {
+        const actifs = (r.data.results ?? r.data).filter(d => d.actif)
+        setDefs(actifs)
+        onDefsLoaded?.(actifs)
+      })
+      .catch(() => { setDefs([]); onDefsLoaded?.([]) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onDefsLoaded n'est volontairement pas une dépendance (callback stable côté appelant non garanti)
   }, [module])
 
   if (!defs.length) return null

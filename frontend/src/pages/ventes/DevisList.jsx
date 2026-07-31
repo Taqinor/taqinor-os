@@ -38,7 +38,8 @@ import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
-import { useSavedViews } from '../../hooks/useSavedViews'
+import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
+import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useRotatingLabel } from '../../hooks/useRotatingLabel'
 import { useHasPermission, useCanValiderVente, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -88,7 +89,8 @@ function DevisTableSkeleton() {
   )
 }
 
-const DL_SAVED_VIEWS_KEY = 'taqinor.ventes.devis.savedViews'
+// WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
+const DL_ECRAN = 'ventes.devis'
 
 // VX132 — chargement long CONSCIENT : la génération du devis PDF premium est
 // la latence connue la plus longue de l'app (schémas, produits, chiffrage) ;
@@ -1173,15 +1175,20 @@ export default function DevisList() {
   // bouton « voir les versions remplacées » les réaffiche, toujours badgées
   // « Remplacé » + lien vers la version courante.
   const [showSuperseded, setShowSuperseded] = useState(false)
-  // Vues enregistrées (FG11).
-  const { savedViews: devisSavedViews, saveView: saveDevisView, deleteView: deleteDevisView } = useSavedViews(DL_SAVED_VIEWS_KEY)
+  // WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11 :
+  // vues EQUIPE désormais visibles par l'équipe, cf. ViewsManagerPopover).
+  const { createView: createDevisView } = useServerSavedViews(DL_ECRAN)
   const saveCurrentDevisView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
-    saveDevisView(name, { statutFilter, query })
+    const trimmed = (name || '').trim()
+    if (!trimmed) return
+    createDevisView({
+      nom: trimmed, configuration: { statutFilter, query }, visibilite: 'PERSONNELLE',
+    }).catch(() => toast.error('Enregistrement de la vue impossible.'))
   }
-  const applyDevisView = (v) => {
-    if (v.state?.statutFilter !== undefined) setStatutFilter(v.state.statutFilter)
-    if (v.state?.query !== undefined) setQuery(v.state.query)
+  const applyDevisView = (configuration) => {
+    if (configuration?.statutFilter !== undefined) setStatutFilter(configuration.statutFilter)
+    if (configuration?.query !== undefined) setQuery(configuration.query)
   }
 
   // ── Sélection multiple pour génération PDF par lot ──
@@ -2143,23 +2150,11 @@ export default function DevisList() {
               aria-label="Rechercher un devis"
             />
           </div>
-          <div className="lp-saved-views">
+          <div className="flex items-center gap-1.5">
             <Button type="button" variant="link" size="sm" onClick={saveCurrentDevisView}>
               ⭐ Enregistrer cette vue
             </Button>
-            {devisSavedViews.map((v) => (
-              <span key={v.name} className="lp-saved-view-chip">
-                <button type="button" className="lp-saved-view-apply"
-                        onClick={() => applyDevisView(v)} title="Appliquer cette vue">
-                  {v.name}
-                </button>
-                <button type="button" className="lp-saved-view-del"
-                        onClick={() => deleteDevisView(v.name)}
-                        aria-label={`Supprimer la vue ${v.name}`}>
-                  ✕
-                </button>
-              </span>
-            ))}
+            <ViewsManagerPopover ecran={DL_ECRAN} onApply={applyDevisView} />
           </div>
           {/* U7 — bascule pour réafficher les révisions remplacées (masquées
               par défaut). N'apparaît que s'il y en a au moins une. */}

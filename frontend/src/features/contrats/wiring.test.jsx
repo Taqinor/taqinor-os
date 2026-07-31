@@ -23,6 +23,7 @@ beforeAll(() => {
 const {
   changerStatut, signer, createOrdreLocation,
   createContrat, createModele, createClause,
+  creerVersion, createContratLien, genererDevisRenouvellement, updateContrat,
 } = vi.hoisted(() => ({
   changerStatut: vi.fn(() => Promise.resolve({ data: {} })),
   signer: vi.fn(() => Promise.resolve({ data: { contrat_signe: false } })),
@@ -36,6 +37,14 @@ const {
   createClause: vi.fn(() => Promise.resolve({
     data: { id: 9, titre: 'Confidentialité générale', type_clause: 'confidentialite', categorie: '', actif: true },
   })),
+  // WIR75 — figer une version / créer un lien / devis de renouvellement /
+  // champs personnalisés (custom_data).
+  creerVersion: vi.fn(() => Promise.resolve({ data: { id: 1, version: 1 } })),
+  createContratLien: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  genererDevisRenouvellement: vi.fn(() => Promise.resolve({
+    data: { devis_id: 99, devis_reference: 'DEV-2026-099', note: '' },
+  })),
+  updateContrat: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 
 vi.mock('../../api/contratsApi', () => {
@@ -76,6 +85,11 @@ vi.mock('../../api/contratsApi', () => {
       renouveler: () => Promise.resolve({ data: {} }),
       creerAvenant: () => Promise.resolve({ data: {} }),
       resilier: () => Promise.resolve({ data: {} }),
+      // WIR75
+      creerVersion,
+      createContratLien,
+      genererDevisRenouvellement,
+      updateContrat,
       // Location
       getOrdresLocation: empty,
       ordresLocationEnRetard: empty,
@@ -144,6 +158,40 @@ describe('ContratDetail — actions du cycle de vie (CONTRAT12-17)', () => {
     const btn = await screen.findByRole('button', { name: /En approbation/ })
     fireEvent.click(btn)
     await waitFor(() => expect(changerStatut).toHaveBeenCalledWith('7', 'en_approbation'))
+  })
+})
+
+// WIR75 — quatre wrappers `contratsApi` existaient sans appelant (creerVersion,
+// createContratLien, genererDevisRenouvellement) + champs personnalisés (module
+// `contrat`) jamais montés.
+describe('ContratDetail — WIR75 versions / liens / devis de renouvellement', () => {
+  it('fige une version depuis l’onglet Versions', async () => {
+    withProviders(<ContratDetail />)
+    await waitFor(() => expect(screen.getByText('CT-2026-07-0001')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('tab', { name: /Versions/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Figer une version' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Figer la version' }))
+    await waitFor(() => expect(creerVersion).toHaveBeenCalledWith('7', {}))
+  })
+
+  it('crée un lien vers un devis depuis l’onglet Liens', async () => {
+    withProviders(<ContratDetail />)
+    await waitFor(() => expect(screen.getByText('CT-2026-07-0001')).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('tab', { name: /Liens/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Créer un lien' }))
+    fireEvent.change(await screen.findByLabelText('Identifiant de la cible'), { target: { value: '12' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Créer le lien' }))
+    await waitFor(() => expect(createContratLien).toHaveBeenCalledWith({
+      contrat: '7', type_cible: 'devis', cible_id: 12, libelle: '',
+    }))
+  })
+
+  it('génère un devis de renouvellement depuis la barre d’actions', async () => {
+    withProviders(<ContratDetail />)
+    await waitFor(() => expect(screen.getByText('CT-2026-07-0001')).toBeInTheDocument())
+    fireEvent.click(await screen.findByRole('button', { name: 'Devis de renouvellement' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Générer le devis' }))
+    await waitFor(() => expect(genererDevisRenouvellement).toHaveBeenCalledWith('7', {}))
   })
 })
 

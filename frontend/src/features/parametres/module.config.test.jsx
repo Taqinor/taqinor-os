@@ -12,6 +12,11 @@ import { describe, it, expect } from 'vitest'
 describe.each([
   ['WIR13', '/parametres/territoires', 'Territoires'],
   ['WIR14', '/parametres/playbooks', 'Playbooks'],
+  // WIR21 — /parametres/vues (NTUX23) existait en route sans lien de menu ;
+  // le rapport de gouvernance des vues sauvegardées n'a de données qu'une
+  // fois les 4 écrans (devis/tickets/produits/factures) basculés au système
+  // serveur (`uxviews.SavedView`), fait dans le même lot.
+  ['WIR21', '/parametres/vues', 'Vues sauvegardées'],
 ])('parametres — module.config (%s %s)', (_task, path, label) => {
   it(`déclare ${path} en route ET en entrée de menu, gatées responsable/admin`, async () => {
     const { default: config } = await import('./module.config.jsx')

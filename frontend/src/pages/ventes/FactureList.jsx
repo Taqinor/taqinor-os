@@ -34,7 +34,8 @@ import {
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
 import PaiementDialog from './PaiementDialog'
 import { errorMessageFrom } from '../../lib/toast'
-import { useSavedViews } from '../../hooks/useSavedViews'
+import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
+import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { useRotatingLabel } from '../../hooks/useRotatingLabel'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
@@ -77,7 +78,8 @@ function FactureTableSkeleton() {
   )
 }
 
-const FL_SAVED_VIEWS_KEY = 'taqinor.ventes.factures.savedViews'
+// WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
+const FL_ECRAN = 'ventes.factures'
 
 // VX132 — chargement long conscient (voir DevisList.jsx PDF_GENERATION_LABELS) :
 // libellés honnêtes côté client uniquement — le PDF facture reste le moteur
@@ -609,15 +611,20 @@ export default function FactureList() {
   const [typeFilter, setTypeFilter]   = useState('')
   // ZFAC9 — bascule Liste/Kanban (wiring/données only, réutilise `filtered`).
   const [viewMode, setViewMode]       = useState('liste')
-  // Vues enregistrées (FG11).
-  const { savedViews: factSavedViews, saveView: saveFactView, deleteView: deleteFactView } = useSavedViews(FL_SAVED_VIEWS_KEY)
+  // WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11 :
+  // vues EQUIPE désormais visibles par l'équipe, cf. ViewsManagerPopover).
+  const { createView: createFactView } = useServerSavedViews(FL_ECRAN)
   const saveCurrentFactView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
-    saveFactView(name, { activeTab, typeFilter })
+    const trimmed = (name || '').trim()
+    if (!trimmed) return
+    createFactView({
+      nom: trimmed, configuration: { activeTab, typeFilter }, visibilite: 'PERSONNELLE',
+    }).catch(() => toast.error('Enregistrement de la vue impossible.'))
   }
-  const applyFactView = (v) => {
-    if (v.state?.activeTab !== undefined) setActiveTab(v.state.activeTab)
-    if (v.state?.typeFilter !== undefined) setTypeFilter(v.state.typeFilter)
+  const applyFactView = (configuration) => {
+    if (configuration?.activeTab !== undefined) setActiveTab(configuration.activeTab)
+    if (configuration?.typeFilter !== undefined) setTypeFilter(configuration.typeFilter)
   }
   const [actionId, setActionId]       = useState(null)
   const [pdfGenerating, setPdfGenerating] = useState({})
@@ -1517,23 +1524,11 @@ export default function FactureList() {
             <strong className="text-foreground">{formatMAD(resteAEncaisserOnglet)}</strong>
           </span>
         )}
-        <div className="lp-saved-views">
+        <div className="flex items-center gap-1.5">
           <Button type="button" variant="link" size="sm" onClick={saveCurrentFactView}>
             ⭐ Enregistrer cette vue
           </Button>
-          {factSavedViews.map((v) => (
-            <span key={v.name} className="lp-saved-view-chip">
-              <button type="button" className="lp-saved-view-apply"
-                      onClick={() => applyFactView(v)} title="Appliquer cette vue">
-                {v.name}
-              </button>
-              <button type="button" className="lp-saved-view-del"
-                      onClick={() => deleteFactView(v.name)}
-                      aria-label={`Supprimer la vue ${v.name}`}>
-                ✕
-              </button>
-            </span>
-          ))}
+          <ViewsManagerPopover ecran={FL_ECRAN} onApply={applyFactView} />
         </div>
         {/* ZFAC9 — bascule Liste/Kanban : réutilise `filtered` déjà chargé,
             aucune donnée/refonte nouvelle. */}
