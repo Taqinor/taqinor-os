@@ -77,3 +77,39 @@ test('NTIDE60: le vote incrémente le compteur, un second vote du même votant e
     await voterContext.close()
   }
 })
+
+// ── NTIDE61 — cycle admin examiner→retenir ───────────────────────────────────
+test('NTIDE61: admin examine puis retient une idée — chatter loggé, statut mis à jour', async ({ page }) => {
+  const titre = uniq('Idée à examiner')
+
+  await page.goto('/innovation/proposer')
+  await page.getByLabel('Titre').fill(titre)
+  await page.getByRole('button', { name: "Proposer l'idée" }).click()
+  await expect(page).toHaveURL(/\/innovation\/idees\/\d+$/)
+
+  // Statut de départ : « Ouvert ».
+  await expect(page.getByText('Ouvert', { exact: true })).toBeVisible()
+
+  // ── Examiner (ouvert → examinée) ──
+  await page.getByRole('button', { name: 'Examiner' }).click()
+  await expect(page.getByText('Statut mis à jour.')).toBeVisible()
+  await expect(page.getByText('Examinée', { exact: true })).toBeVisible()
+
+  // Chatter loggé (onglet Historique — Radix tabs, activation au clic réel).
+  await page.getByRole('tab', { name: /Historique/ }).click()
+  await expect(page.getByText('Ouvert → Examinée')).toBeVisible()
+
+  // ── Retenir (examinée → retenue) ──
+  await page.getByRole('button', { name: 'Retenir' }).click()
+  await expect(page.getByText('Statut mis à jour.')).toBeVisible()
+  await expect(page.getByText('Retenue', { exact: true })).toBeVisible()
+  await expect(page.getByText('Examinée → Retenue')).toBeVisible()
+
+  // Notification du proposant (NTIDE52 — ici l'admin est son propre
+  // proposant : la cloche de notifications, dans l'en-tête, doit porter la
+  // ligne « idée retenue »).
+  await page.reload()
+  await page.locator('.nb-btn').click()
+  await expect(page.locator('.nb-panel')).toBeVisible()
+  await expect(page.locator('.nb-panel').getByText(titre)).toBeVisible()
+})
