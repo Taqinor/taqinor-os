@@ -103,7 +103,10 @@ def render_rapport_migration_html(projet, *, today=None):
     # d'une marque en dur (une seule instance sert plusieurs sociétés).
     company_nom = escape(getattr(projet.company, 'nom', '') or '')
     editeur = f' par {company_nom}' if company_nom else ''
-    lots = list(projet.lots.all())
+    # Lots RE-FILTRÉS sur la société du projet : un PV remis à un client ne
+    # doit pas pouvoir lister la ligne d'une autre société.
+    from .services import lots_du_projet
+    lots = list(lots_du_projet(projet))
     lignes = ''.join(_ligne_lot_html(lot) for lot in lots)
     nb_derog = sum(1 for lot in lots if lot.derogation_reconcile)
     pied = (

@@ -31,21 +31,29 @@ def _fichier_de(request):
 
 
 class IsDirecteurOuAdmin(BasePermission):
-    """Palier Administrateur OU Directeur uniquement.
+    """Palier Administrateur OU Directeur uniquement, comptes INTERNES.
 
     Les deux rôles système sont mappés au palier ``admin`` (``menu_tier``, qui
-    renvoie déjà ``admin`` pour un superuser) ; le Responsable et
-    l'Utilisateur limité sont exclus. Une migration réécrit des données
-    métier en masse : ce n'est pas une action d'utilisateur courant.
+    renvoie déjà ``admin`` pour un superuser) ; le Responsable et l'Utilisateur
+    limité sont exclus. Une migration réécrit des données métier en masse : ce
+    n'est pas une action d'utilisateur courant.
+
+    Le contrôle de PORTÉE est refait ici : cette classe remplace le
+    ``ScopedPermission`` par défaut, qui est le seul endroit où l'exclusion des
+    comptes de portail est appliquée. Sans ce rappel, un compte portail portant
+    un rôle large passerait la garde.
     """
 
-    message = 'Action réservée aux Administrateurs et Directeurs.'
+    message = 'Action réservée aux Administrateurs et Directeurs internes.'
 
     def has_permission(self, request, view):
         user = request.user
-        return bool(
-            user and user.is_authenticated
-            and getattr(user, 'menu_tier', None) == CustomUser.ROLE_ADMIN)
+        if not (user and user.is_authenticated):
+            return False
+        if getattr(user, 'portee', CustomUser.PORTEE_INTERNE) != \
+                CustomUser.PORTEE_INTERNE:
+            return False
+        return getattr(user, 'menu_tier', None) == CustomUser.ROLE_ADMIN
 
 
 class ProjetMigrationViewSet(CompanyScopedModelViewSet):
@@ -77,6 +85,19 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
         serializer.save(
             company=self.request.user.company,
             cree_par=self.request.user)
+
+    def perform_destroy(self, instance):
+        """Un projet clôturé n'est pas supprimable.
+
+        La suppression cascaderait sur ses lots ET sur leurs rapports de
+        réconciliation : la pièce justificative remise au client migré
+        disparaîtrait en une requête. Un projet terminé se garde.
+        """
+        if instance.statut == ProjetMigration.Statut.TERMINE:
+            raise ValidationError({'detail': (
+                'Projet clôturé : sa suppression effacerait les rapports de '
+                'réconciliation qui en sont la preuve. Non supprimable.')})
+        super().perform_destroy(instance)
 
     @action(detail=True, methods=['post'], url_path='terminer')
     def terminer(self, request, pk=None):
@@ -120,6 +141,20 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'projet': 'Projet introuvable.'})
         serializer.save(company=self.request.user.company)
 
+    def perform_destroy(self, instance):
+        """Un lot qui a réellement chargé des données n'est pas supprimable.
+
+        Ses rapports partiraient avec lui (cascade), et avec eux la seule trace
+        reliant les enregistrements importés à ce lot : plus rien ne
+        permettrait ensuite de dire ce qui a été migré, ni d'annuler le lot.
+        """
+        if (instance.statut == LotMigration.Statut.RECONCILIE
+                or instance.import_job_id is not None):
+            raise ValidationError({'detail': (
+                'Ce lot a chargé des données : le supprimer effacerait sa '
+                'traçabilité et ses rapports. Non supprimable.')})
+        super().perform_destroy(instance)
+
     @action(detail=True, methods=['post'], url_path='analyser')
     def analyser(self, request, pk=None):
         """Analyse DRY-RUN du fichier source : rien n'est écrit en cible.
@@ -151,7 +186,10 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         try:
             result = services.charger_lot(
                 lot, file_bytes, filename,
-                mode=request.data.get('mode') or 'upsert',
+                # Le mode demandé est FILTRÉ par le service : « creer » ne
+                # rapproche rien et ferait des doublons à chaque passe, il
+                # n'est jamais accepté depuis une requête.
+                mode=request.data.get('mode') or None,
                 mapping_name=request.data.get('mapping_name') or None,
                 user=request.user)
         except ValueError as exc:
@@ -169,7 +207,8 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         """
         lot = self.get_object()
         try:
-            services.charger_depuis_odoo_api(lot, params=request.data)
+            services.charger_depuis_odoo_api(
+                lot, params=request.data, user=request.user)
         except services.ConnecteurNonConfigure as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

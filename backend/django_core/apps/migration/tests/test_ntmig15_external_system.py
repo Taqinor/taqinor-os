@@ -42,13 +42,24 @@ class ExternalSystemTests(TestCase):
         self.lot = LotMigration.objects.create(
             company=self.company, projet=self.projet, entite='clients')
 
-    def test_external_system_derive_de_la_source(self):
+    def test_external_system_porte_la_source_ET_le_projet(self):
         self.assertEqual(
-            services.external_system_pour(self.projet), 'migration:odoo')
+            services.external_system_pour(self.projet),
+            f'migration:odoo:{self.projet.pk}')
         sage = ProjetMigration.objects.create(
             company=self.company, nom='Autre', source='sage')
         self.assertEqual(
-            services.external_system_pour(sage), 'migration:sage')
+            services.external_system_pour(sage),
+            f'migration:sage:{sage.pk}')
+
+    def test_deux_projets_meme_source_ne_partagent_pas_leurs_refs(self):
+        """Sans l'id de projet dans la clé, un rollback d'un projet
+        supprimerait les enregistrements créés par l'autre."""
+        autre = ProjetMigration.objects.create(
+            company=self.company, nom='2e reprise', source='odoo')
+        self.assertNotEqual(
+            services.external_system_pour(self.projet),
+            services.external_system_pour(autre))
 
     def test_rejeu_ne_duplique_pas(self):
         r1 = services.charger_lot(
@@ -63,9 +74,10 @@ class ExternalSystemTests(TestCase):
         self.assertEqual(
             Client.objects.filter(company=self.company).count(), 2)
 
-        # Les ExternalRef portent bien le système stable migration:<source>.
+        # Les ExternalRef portent bien le système stable du PROJET.
         refs = ExternalRef.objects.filter(
-            company=self.company, external_system='migration:odoo')
+            company=self.company,
+            external_system=f'migration:odoo:{self.projet.pk}')
         self.assertEqual(refs.count(), 2)
 
         # Compteurs miroir du lot = la DERNIÈRE passe (0 créés, 2 màj).

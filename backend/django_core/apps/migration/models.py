@@ -167,17 +167,21 @@ class RapportReconciliation(TenantModel):
         verbose_name = 'Rapport de réconciliation'
         verbose_name_plural = 'Rapports de réconciliation'
 
-    def save(self, *args, **kwargs):
+    def save(self, force_insert=False, force_update=False, using=None,
+             update_fields=None):
         src = self.total_financier_source
         cib = self.total_financier_cible
         if src is not None and cib is not None:
             self.ecart_financier = Decimal(cib) - Decimal(src)
             # Un ``update_fields`` restreint ne doit pas faire disparaître
-            # silencieusement l'écart qu'on vient de recalculer.
-            champs = kwargs.get('update_fields')
-            if champs is not None and 'ecart_financier' not in champs:
-                kwargs['update_fields'] = list(champs) + ['ecart_financier']
-        super().save(*args, **kwargs)
+            # silencieusement l'écart qu'on vient de recalculer. La signature
+            # est explicite (et non ``*args``) pour que le cas positionnel
+            # ``save(False, False, None, ['conforme'])`` soit couvert lui aussi.
+            if (update_fields is not None
+                    and 'ecart_financier' not in update_fields):
+                update_fields = list(update_fields) + ['ecart_financier']
+        super().save(force_insert=force_insert, force_update=force_update,
+                     using=using, update_fields=update_fields)
 
     def __str__(self):
         etat = 'conforme' if self.conforme else 'écarts'

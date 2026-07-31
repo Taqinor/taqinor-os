@@ -91,6 +91,34 @@ class RapportContenuTests(TestCase):
         self.assertIn('&lt;script&gt;', html)
 
 
+class RapportIsolationTests(TestCase):
+    """Isolation société du PV — le 404 tombe dans ``get_object()``, AVANT
+    tout rendu, donc ce test n'a pas besoin de WeasyPrint et ne doit PAS être
+    étiqueté @tag('pdf') (le CI exclut ce tag : la garde ne serait jamais
+    vérifiée)."""
+
+    def setUp(self):
+        self.company = make_company('mig-g19iso-co', 'Migr G19 iso')
+        self.projet = ProjetMigration.objects.create(
+            company=self.company, nom='Client F', source='sage')
+
+    def test_pv_dune_autre_societe_est_404(self):
+        autre_co = make_company('mig-g19iso-autre', 'Autre')
+        autre_admin = make_admin(autre_co, 'mig-g19iso-autre-admin')
+        resp = auth(autre_admin).get(
+            f'/api/django/migration/projets-migration/{self.projet.pk}/'
+            'rapport/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_pv_refuse_a_un_non_admin(self):
+        from ._base import make_user
+        simple = make_user(self.company, 'mig-g19iso-simple')
+        resp = auth(simple).get(
+            f'/api/django/migration/projets-migration/{self.projet.pk}/'
+            'rapport/')
+        self.assertEqual(resp.status_code, 403)
+
+
 @tag('pdf')
 class RapportPdfEndpointTests(TestCase):
     def setUp(self):
@@ -109,11 +137,3 @@ class RapportPdfEndpointTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp['Content-Type'], 'application/pdf')
         self.assertTrue(resp.content.startswith(b'%PDF'))
-
-    def test_pv_dune_autre_societe_est_404(self):
-        autre_co = make_company('mig-g19pdf-autre', 'Autre')
-        autre_admin = make_admin(autre_co, 'mig-g19pdf-autre-admin')
-        resp = auth(autre_admin).get(
-            f'/api/django/migration/projets-migration/{self.projet.pk}/'
-            'rapport/')
-        self.assertEqual(resp.status_code, 404)
