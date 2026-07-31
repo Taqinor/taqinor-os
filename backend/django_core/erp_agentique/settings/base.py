@@ -622,6 +622,51 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
     'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
+    # YAPIC6 — nommage STABLE des jeux de choix partagés. Sans ces entrées,
+    # drf-spectacular baptise un jeu de choix ambigu avec un suffixe de hachage
+    # (`UniteF3aEnum`, `Regle614Enum`…) : un nom illisible pour un client
+    # généré, ET instable — la moindre modification d'un libellé de choix
+    # ailleurs change le hachage, donc le nom du composant. Chaque entrée
+    # ci-dessous fixe le nom d'UN jeu de choix précis (clé = le jeu, pas le
+    # champ), ce qui fusionne aussi ses doublons en un seul composant.
+    #
+    # C'est du NOMMAGE DE SCHÉMA UNIQUEMENT : aucune valeur de choix, aucun
+    # modèle et aucune réponse d'API ne change. Les jeux visés sont ceux que le
+    # générateur signalait comme non résolus ; plusieurs sont littéralement
+    # partagés par deux champs de noms différents (`regle`/`periodicite` et
+    # `unite`/`periodicite` ont les mêmes couples valeur/libellé), d'où un nom
+    # neutre qui convient aux deux.
+    'ENUM_NAME_OVERRIDES': {
+        # neuf / bon / usage_normal / degrade
+        'EtatGeneralPieceEnum':
+            'apps.immobilier.models.PieceEtatLieux.EtatGeneral',
+        # fr / en / ar — partagé par core.ContentTranslation et
+        # parametres.TranslationOverride (jeu identique).
+        'LocaleEnum': 'core.models.ContentTranslation.Locale',
+        # virement / cheque / especes (libellés de compta.PaymentRun ;
+        # paie.ProfilPaie porte les mêmes valeurs avec d'AUTRES libellés,
+        # donc un jeu distinct que le générateur nomme déjà sans ambiguïté).
+        'ModePaiementReglementEnum':
+            'apps.compta.models.PaymentRun.ModePaiement',
+        # mensuelle / trimestrielle / semestrielle / annuelle — même jeu sous
+        # `regle` (installations.RecurrenceIntervention) et sous `periodicite`
+        # (assurances.EcheancePrime).
+        'RecurrenceMensuelleAnnuelleEnum':
+            'apps.installations.models_intervention.RecurrenceIntervention.Regle',
+        # particulier / entreprise
+        'TypeTiersParticulierEntrepriseEnum': 'apps.tiers.models.Tiers.TypeTiers',
+        # mensuel / trimestriel / semestriel / annuel — même jeu sous `unite`
+        # (contrats.PlanRecurrent) et sous `periodicite` (sav.ContratMaintenance).
+        'PeriodiciteMensuelAnnuelEnum':
+            'apps.contrats.models.PlanRecurrent.Unite',
+        # mensuelle / trimestrielle
+        'PeriodiciteMensuelleTrimestrielleEnum':
+            'apps.compta.models.AllocationRecurrente.Periodicite',
+        # en_cours / conforme / non_conforme / reserves — jeu identique dans
+        # installations.CommissioningRecord et ventes.CommissioningTest.
+        'ResultatCommissioningEnum':
+            'apps.installations.models_chantier.CommissioningRecord.Resultat',
+    },
 }
 
 # Simple JWT Configuration
