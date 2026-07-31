@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
   Plus, Trash2, StickyNote, Sparkles, Pencil, Wrench, History, Clock,
-  ShieldCheck, ExternalLink, Zap, ChevronRight, ChevronLeft, Link2,
+  ShieldCheck, ExternalLink, Zap, ChevronRight, ChevronLeft, Link2, ScanLine,
 } from 'lucide-react'
 import {
   DndContext, PointerSensor, TouchSensor, useDraggable, useDroppable,
@@ -12,7 +12,11 @@ import {
 import { Link, useSearchParams } from 'react-router-dom'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
+import stockApi from '../../api/stockApi'
 import api from '../../api/axios'
+// NTMOB15 — scan QR/code-barres natif : sélectionne directement l'équipement
+// concerné au lieu d'une recherche manuelle dans la liste déroulante.
+import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { timeAgo } from '../../lib/format'
 import importApi from '../../api/importApi'
@@ -228,6 +232,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   useDirtyGuard(dirty)
 
   const [equipements, setEquipements] = useState([])
+  // NTMOB15 — scan QR/code-barres natif de l'équipement concerné.
+  const [equipScannerOpen, setEquipScannerOpen] = useState(false)
   const [users, setUsers] = useState([])
   const [interventions, setInterventions] = useState([])
   // L316 — date prévue pré-remplie à aujourd'hui (éditable).
@@ -292,6 +298,32 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     api.get('/users/').then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // NTMOB15 — scanner le QR/n° de série de l'équipement concerné sélectionne
+  // directement l'option correspondante (même endpoint de résolution N20 que
+  // EquipementsPage.jsx). Un équipement scanné hors du chantier de CE ticket
+  // n'est jamais accepté — la liste `equipements` est déjà scopée au chantier.
+  const handleEquipScanned = async (value) => {
+    setEquipScannerOpen(false)
+    try {
+      const res = await stockApi.resolveCode(value)
+      if (res.data?.type !== 'equipement') {
+        toast.error('Ce code ne correspond pas à un équipement.')
+        return
+      }
+      const found = equipements.find((e) => e.id === res.data.id)
+      if (!found) {
+        toast.error("Cet équipement n'appartient pas à ce chantier.")
+        return
+      }
+      set('equipement', String(found.id))
+      toast.success(`Équipement lié : ${found.produit_nom ?? 'Produit'}.`)
+    } catch (err) {
+      toast.error(err?.response?.status === 404
+        ? 'Équipement introuvable pour ce code.'
+        : 'Lecture du code impossible.')
+    }
+  }
 
   // L296 — saut de statut hors ordre détecté (pour avertir avant submit).
   const statutSautHorsOrdre = !isStatusTransitionAllowed(current.statut, fields.statut)
@@ -736,19 +768,40 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           <FormSection title="Équipement concerné"
                        description="La garantie effective est calculée automatiquement à partir de l'équipement lié.">
             <FormField label="Équipement (du chantier)" fullWidth>
-              <Select value={fields.equipement ? String(fields.equipement) : '__none'}
-                      onValueChange={(v) => set('equipement', v === '__none' ? '' : v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">— Aucun (garantie manuelle) —</SelectItem>
-                  {equipements.map((e) => (
-                    <SelectItem key={e.id} value={String(e.id)}>
-                      {(e.produit_nom ?? 'Produit')} — {e.numero_serie ?? 'sans n° série'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select value={fields.equipement ? String(fields.equipement) : '__none'}
+                        onValueChange={(v) => set('equipement', v === '__none' ? '' : v)}>
+                  <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— Aucun (garantie manuelle) —</SelectItem>
+                    {equipements.map((e) => (
+                      <SelectItem key={e.id} value={String(e.id)}>
+                        {(e.produit_nom ?? 'Produit')} — {e.numero_serie ?? 'sans n° série'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {/* NTMOB15 — scan QR/n° de série au lieu d'une recherche manuelle. */}
+                <Button type="button" variant="outline" size="sm"
+                        onClick={() => setEquipScannerOpen(true)}>
+                  <ScanLine /> Scanner
+                </Button>
+              </div>
             </FormField>
+            {equipScannerOpen && (
+              <div
+                className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-black/60 p-4"
+                role="dialog" aria-modal="true"
+              >
+                <div className="w-full max-w-md">
+                  <BarcodeScanner
+                    formats={['qr_code']}
+                    onDetected={handleEquipScanned}
+                    onClose={() => setEquipScannerOpen(false)}
+                  />
+                </div>
+              </div>
+            )}
             <FormField
               label={fields.equipement
                 ? 'Sous garantie (calculée — verrouillée)'
