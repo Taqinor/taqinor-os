@@ -9,10 +9,37 @@ Flux en deux temps, multi-tenant :
      ignorés. Les enregistrements créés sont marqués d'origine (import).
 
 Séparé de la migration ponctuelle des 619 leads Odoo (gardée à part).
+
+SÉCURITÉ DES DONNÉES RÉELLES (garde-fou « écrasement »)
+-------------------------------------------------------
+Les modes ``maj``/``upsert`` écrivent sur des fiches EXISTANTES — donc sur les
+deux seuls jeux de données réels du parc (le catalogue ``stock.Produit`` et le
+pipeline ``crm.Lead``). Trois protections, toutes actives par défaut :
+
+1. **Remplissage seul par défaut** (``ecraser=False``) — une ligne importée ne
+   peut que RENSEIGNER un champ vide. Un champ déjà rempli n'est JAMAIS remplacé
+   sans que l'appelant demande explicitement ``ecraser=True`` : c'est le même
+   contrat que les webhooks entrants (fill-only), après l'incident où une source
+   externe avait écrasé des noms de leads réels. Les valeurs refusées sont
+   renvoyées ligne par ligne (rien n'est avalé en silence).
+2. **Aperçu AVANT écriture** — ``dry_run(..., mode=..., ecraser=...)`` rejoue le
+   MÊME rapprochement que le commit (mêmes helpers ``_match_*``) sans rien
+   écrire, et liste champ par champ ce qui serait écrasé (ancienne → nouvelle).
+3. **Journal réversible** — chaque fiche modifiée laisse (a) le détail des
+   champs et de leurs valeurs PRÉCÉDENTES sur ``ImportJobRow`` et (b) une ligne
+   d'audit via la primitive plateforme ``apps.audit.recorder`` (jamais un
+   journal maison).
+
+Une cellule VIDE n'écrase jamais rien, quel que soit le mode : ``_row_to_fields``
+écarte les valeurs vides avant tout traitement.
 """
+import logging
+
 from django.db import transaction
 
 from .parsing import iter_rows, normalize_header
+
+logger = logging.getLogger(__name__)
 
 # Mapping en-tête (normalisé) → champ modèle, par cible.
 FIELD_MAPS = {
@@ -183,15 +210,25 @@ def _map_headers(headers, target, saved_mapping=None):
     return mapped, unmapped
 
 
-def dry_run(file_bytes, filename, target, company=None, mapping_name=None):
+def dry_run(file_bytes, filename, target, company=None, mapping_name=None,
+            mode='creer', ecraser=False, external_system=None):
     """Aperçu : mapping colonne→champ + 10 premières lignes mappées + non-mappés.
 
     XPLT2 — si ``mapping_name`` désigne un ``ImportMapping`` sauvegardé (pour
     ``company``+``target``), son mapping colonne→champ est réappliqué en
     priorité sur le mapping automatique habituel.
+
+    APERÇU DES ÉCRASEMENTS — l'aperçu rejoue en plus, SANS RIEN ÉCRIRE, le
+    rapprochement exact du commit (``mode``/``external_system`` identiques) et
+    répond à la seule question qui compte avant d'importer sur des données
+    réelles : *quelles valeurs déjà saisies ce fichier remplacerait-il, et par
+    quoi ?* (clés ``conflits``/``ecrasements_total``/``ecrasements_appliques``).
+    Sans ``company`` le rapprochement est impossible (multi-tenant) : l'aperçu
+    se limite alors au mapping, comme avant.
     """
     if target not in TARGETS:
         raise ValueError("Cible d'import inconnue.")
+    _check_mode(target, mode)
     headers, rows = parse_rows(file_bytes, filename)
     if len(rows) > MAX_ROWS:
         raise ImportTooLarge(
@@ -207,14 +244,21 @@ def dry_run(file_bytes, filename, target, company=None, mapping_name=None):
     preview = []
     for row in rows[:10]:
         preview.append({field: row.get(col) for col, field in mapped.items()})
-    return {
+    result = {
         'target': target,
         'colonnes': headers,
         'mapping': mapped,
         'non_mappees': unmapped,
         'apercu': preview,
         'total_lignes': len(rows),
+        'mode': mode,
+        'ecraser': bool(ecraser),
     }
+    if company is not None and mapped:
+        result.update(_analyser_conflits(
+            target, rows, mapped, company, mode, external_system,
+            ecraser=ecraser))
+    return result
 
 
 def save_mapping(company, target, nom, mapping):
@@ -251,7 +295,16 @@ def _row_to_fields(row, mapped):
 # ``upsert`` crée si aucune correspondance n'est trouvée.
 MODES = {'creer', 'maj', 'upsert'}
 
+# Cibles où un rapprochement fiable existe : les seules qui acceptent maj/upsert
+# (donc les seules où un écrasement est seulement POSSIBLE).
+UPSERT_TARGETS = ('leads', 'clients')
+
 DEFAULT_EXTERNAL_SYSTEM = 'import'
+
+# Aperçu : nombre maximum de lignes DÉTAILLÉES renvoyées (les compteurs, eux,
+# portent sur la totalité du fichier). Borne la réponse d'un fichier de 10 000
+# lignes sans jamais masquer l'existence d'un écrasement.
+MAX_CONFLITS_DETAILLES = 200
 
 
 def _get_or_create_ref(company, external_system, external_id, obj):
@@ -276,43 +329,313 @@ def _find_by_external_id(company, external_system, external_id, model):
     return model.objects.filter(company=company, pk=ref.object_id).first()
 
 
-def _apply_updates(instance, fields, skip_keys=()):
-    """Met à jour uniquement les champs FOURNIS (non vides) — jamais d'écrasement
-    par une valeur absente de la ligne importée."""
-    changed = []
+def _txt(valeur):
+    """Forme texte stable d'une valeur (comparaison + journalisation)."""
+    return '' if valeur is None else str(valeur)
+
+
+def _identique(ancienne, nouvelle):
+    """Vrai si les deux valeurs sont la MÊME donnée.
+
+    La comparaison se fait sur la forme texte : une cellule CSV/XLSX arrive
+    toujours en texte alors que la valeur stockée peut être typée — comparer
+    brut ferait passer une réécriture inutile pour un vrai changement (et la
+    ferait apparaître à tort comme un écrasement dans l'aperçu)."""
+    return _txt(ancienne).strip() == _txt(nouvelle).strip()
+
+
+def _diff_fields(instance, fields, skip_keys=()):
+    """Diff LECTURE SEULE entre une fiche existante et une ligne importée.
+
+    Renvoie ``(ecrasements, remplissages)`` :
+
+    * ``ecrasements`` — champs DÉJÀ REMPLIS dont la valeur diffère. Ce sont les
+      SEULS changements destructeurs : une donnée réelle y serait remplacée.
+      Format ``{'champ', 'ancienne', 'nouvelle'}``.
+    * ``remplissages`` — champs vides que la ligne renseignerait (jamais
+      destructeur). Format ``{'champ', 'nouvelle'}``.
+
+    Une cellule vide n'apparaît dans aucune des deux listes : ``_row_to_fields``
+    les a déjà écartées, donc un import ne peut jamais VIDER un champ rempli.
+
+    Partagé par l'aperçu (``dry_run``) et l'écriture (``_apply_updates``) pour
+    qu'ils ne puissent pas diverger.
+    """
+    ecrasements, remplissages = [], []
     for key, value in fields.items():
-        if key in skip_keys:
-            continue
-        if not hasattr(instance, key):
+        if key in skip_keys or not hasattr(instance, key):
             continue
         if value in (None, ''):
             continue
-        if getattr(instance, key, None) != value:
-            setattr(instance, key, value)
-            changed.append(key)
+        ancienne = getattr(instance, key, None)
+        if _identique(ancienne, value):
+            continue
+        if ancienne in (None, ''):
+            remplissages.append({'champ': key, 'nouvelle': _txt(value)})
+        else:
+            ecrasements.append({'champ': key, 'ancienne': _txt(ancienne),
+                                'nouvelle': _txt(value)})
+    return ecrasements, remplissages
+
+
+def _apply_updates(instance, fields, skip_keys=(), ecraser=False):
+    """Met à jour une fiche existante à partir d'une ligne importée.
+
+    Ne considère QUE les champs fournis non vides (une valeur absente n'efface
+    jamais rien). Par défaut (``ecraser=False``) le comportement est
+    REMPLISSAGE SEUL : un champ déjà rempli est laissé intact et la valeur
+    entrante est renvoyée dans ``refuses`` au lieu d'être appliquée en silence.
+    ``ecraser=True`` (opt-in explicite de l'appelant) applique aussi ces
+    remplacements — et les journalise comme tels.
+
+    Renvoie ``(changed, modifications, refuses)`` :
+
+    * ``changed`` — noms des champs réellement écrits (``update_fields``) ;
+    * ``modifications`` — pour CHAQUE champ écrit, sa valeur PRÉCÉDENTE et la
+      nouvelle + ``ecrasement`` (vrai si la précédente n'était pas vide). C'est
+      la trace qui rend l'import réversible ;
+    * ``refuses`` — écrasements bloqués par le garde-fou (mode remplissage seul).
+    """
+    ecrasements, remplissages = _diff_fields(instance, fields, skip_keys)
+    changed, modifications, refuses = [], [], []
+
+    for item in remplissages:
+        setattr(instance, item['champ'], fields[item['champ']])
+        changed.append(item['champ'])
+        modifications.append({'champ': item['champ'], 'ancienne': '',
+                              'nouvelle': item['nouvelle'], 'ecrasement': False})
+
+    for item in ecrasements:
+        if not ecraser:
+            refuses.append(dict(item))
+            continue
+        setattr(instance, item['champ'], fields[item['champ']])
+        changed.append(item['champ'])
+        modifications.append(dict(item, ecrasement=True))
+
     if changed:
         instance.save(update_fields=changed)
-    return changed
+    return changed, modifications, refuses
+
+
+def _journaliser_maj(instance, company, user, modifications, filename):
+    """Trace d'audit d'une fiche modifiée par un import.
+
+    Réutilise la primitive plateforme ``apps.audit.recorder`` (entonnoir ARC16 :
+    ``AuditLog`` + diff structuré ``changes``) plutôt qu'un journal maison. UNE
+    ligne d'audit par FICHE, portant le diff de tous ses champs modifiés — et
+    non une ligne par champ : un import de 10 000 lignes en produirait des
+    dizaines de milliers, avec autant de requêtes de chaînage.
+
+    Best-effort de bout en bout (même contrat que ``recorder.record``) : une
+    trace d'audit qui échoue ne casse jamais l'import.
+    """
+    if not modifications:
+        return
+    try:
+        from apps.audit.models import AuditLog
+        from apps.audit.recorder import record
+        resume = ', '.join(
+            f"{m['champ']} « {m['ancienne']} » → « {m['nouvelle']} »"
+            for m in modifications)
+        prefixe = 'Import (écrasement)' if any(
+            m['ecrasement'] for m in modifications) else 'Import'
+        record(
+            AuditLog.Action.UPDATE, instance=instance, company=company,
+            user=user if getattr(user, 'pk', None) else None,
+            detail=f'{prefixe} « {filename} » : {resume}'[:2000],
+            changes=[{'field': m['champ'], 'old': m['ancienne'],
+                      'new': m['nouvelle']} for m in modifications])
+    except Exception:  # noqa: BLE001 — best-effort, ne jamais casser l'import
+        logger.debug('audit import échoué', exc_info=True)
+
+
+def _check_mode(target, mode):
+    """Valide le couple cible/mode — MÊME règle pour l'aperçu et le commit (un
+    mode refusé à l'écriture doit l'être aussi à l'aperçu)."""
+    if mode not in MODES:
+        raise ValueError("Mode d'import inconnu (creer, maj ou upsert).")
+    if mode != 'creer' and target not in UPSERT_TARGETS:
+        raise ValueError(
+            f"Le mode « {mode} » n'est pas supporté pour la cible « {target} » "
+            "(seuls leads et clients supportent maj/upsert).")
+
+
+# --- Rapprochement : helpers PARTAGÉS par l'aperçu et le commit ---------------
+# L'aperçu doit désigner EXACTEMENT la fiche que le commit modifierait, sinon il
+# ment. Les deux passent donc par ces mêmes fonctions (aucune duplication de la
+# logique de rapprochement).
+
+def _match_lead(company, f, ext_id, external_system):
+    """Lead rapproché en mode maj/upsert : identifiant externe d'abord, sinon
+    contact normalisé (email/téléphone)."""
+    from apps.crm.models import Lead
+    from apps.crm.services import find_duplicates_by_contact
+    existing = _find_by_external_id(company, external_system, ext_id, Lead)
+    if existing is None:
+        dupes = find_duplicates_by_contact(
+            company, phone=f.get('telephone'), email=f.get('email'))
+        existing = dupes[0] if dupes else None
+    return existing
+
+
+def _match_client(company, f, ext_id, external_system):
+    from apps.crm.models import Client
+    existing = _find_by_external_id(company, external_system, ext_id, Client)
+    if existing is None and f.get('email'):
+        existing = Client.objects.filter(
+            company=company, email__iexact=f['email']).first()
+    return existing
+
+
+def _doublon_lead(company, f):
+    """Fiche existante qui fait IGNORER la ligne en mode ``creer``."""
+    from apps.crm.models import Lead
+    if f.get('email'):
+        return Lead.objects.filter(
+            company=company, email__iexact=f['email']).first()
+    if f.get('telephone'):
+        return Lead.objects.filter(
+            company=company, telephone=f['telephone']).first()
+    return None
+
+
+def _doublon_client(company, f):
+    from apps.crm.models import Client
+    if f.get('email'):
+        return Client.objects.filter(
+            company=company, email__iexact=f['email']).first()
+    return None
+
+
+def _doublon_produit(company, f):
+    from apps.stock.models import Produit
+    if f.get('sku'):
+        return Produit.objects.filter(company=company, sku=f['sku']).first()
+    return None
+
+
+def _analyser_conflits(target, rows, mapped, company, mode, external_system,
+                       ecraser=False):
+    """Rejoue le rapprochement du commit SANS RIEN ÉCRIRE (cœur de l'aperçu).
+
+    Pour chaque ligne : quelle fiche existante elle vise, ce qu'elle
+    ÉCRASERAIT (valeur actuelle → valeur du fichier, champ par champ) et ce
+    qu'elle se contenterait de remplir. Les cibles créées uniquement et sans
+    rapprochement (véhicules, contrats, dossiers RH… — écriture déléguée à
+    l'app propriétaire) n'ont rien à prévisualiser : aucune fiche existante
+    n'y est jamais touchée.
+    """
+    external_system = external_system or DEFAULT_EXTERNAL_SYSTEM
+    conflits = []
+    resume = {'creation': 0, 'mise_a_jour': 0, 'ignoree': 0}
+    ecrasements_total = 0
+    lignes_ecrasees = 0
+    tronque = False
+
+    for i, row in enumerate(rows, 1):
+        f = _row_to_fields(row, mapped)
+        if not f:
+            continue
+        ext_id = f.pop('external_id', None)
+        existing, action, raison = None, 'creation', None
+
+        # Mêmes lignes écartées d'emblée que par le commit, sinon les compteurs
+        # de l'aperçu annonceraient des créations qui n'auront pas lieu.
+        if target == 'leads' and not (
+                f.get('nom') or f.get('email') or f.get('telephone')):
+            continue
+        if target in ('clients', 'products') and not f.get('nom'):
+            continue
+
+        if target == 'leads':
+            if mode in ('maj', 'upsert'):
+                existing = _match_lead(company, f, ext_id, external_system)
+                if existing is None and mode == 'maj':
+                    action = 'ignoree'
+                    raison = 'aucune correspondance (maj seule)'
+            else:
+                existing = _doublon_lead(company, f)
+                if existing is not None:
+                    action, raison = 'ignoree', 'doublon (existe déjà)'
+        elif target == 'clients':
+            if mode in ('maj', 'upsert'):
+                existing = _match_client(company, f, ext_id, external_system)
+                if existing is None and mode == 'maj':
+                    action = 'ignoree'
+                    raison = 'aucune correspondance (maj seule)'
+            else:
+                existing = _doublon_client(company, f)
+                if existing is not None:
+                    action, raison = 'ignoree', 'doublon (email existe)'
+        elif target == 'products':
+            existing = _doublon_produit(company, f)
+            if existing is not None:
+                action, raison = 'ignoree', 'doublon (SKU existe)'
+        else:
+            continue
+
+        if existing is not None and action != 'ignoree':
+            action = 'mise_a_jour'
+        resume[action] += 1
+
+        if existing is None:
+            continue
+
+        ecrasements, remplissages = _diff_fields(existing, f)
+        if action == 'mise_a_jour' and ecrasements:
+            lignes_ecrasees += 1
+            ecrasements_total += len(ecrasements)
+        if not ecrasements and not remplissages and action == 'mise_a_jour':
+            continue  # rien à signaler : la ligne est identique à la fiche
+        if len(conflits) >= MAX_CONFLITS_DETAILLES:
+            tronque = True
+            continue
+        conflits.append({
+            'ligne': i,
+            'action': action,
+            'raison': raison,
+            'cible': existing._meta.label_lower,
+            'cible_id': existing.pk,
+            'cible_libelle': str(existing)[:150],
+            'ecrasements': ecrasements,
+            'remplissages': [r['champ'] for r in remplissages],
+        })
+
+    return {
+        'conflits': conflits,
+        'conflits_tronques': tronque,
+        'resume': resume,
+        # Champs déjà remplis dont la valeur DIFFÈRE, sur les lignes qui seraient
+        # effectivement mises à jour : le risque, indépendamment du garde-fou.
+        'ecrasements_total': ecrasements_total,
+        'lignes_ecrasees': lignes_ecrasees,
+        # Ce qui serait RÉELLEMENT écrit compte tenu du garde-fou : 0 en mode
+        # remplissage seul (défaut), sinon tous les écrasements ci-dessus.
+        'ecrasements_appliques': ecrasements_total if ecraser else 0,
+    }
 
 
 def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
-                external_system=None, mapping_name=None):
+                external_system=None, mapping_name=None, ecraser=False):
     """Crée (mode=creer, défaut inchangé) ou rapproche+met à jour (maj/upsert)
     les enregistrements. Renvoie un récapitulatif (dont ``lignes`` : le détail
-    ligne par ligne utilisé par XPLT2 pour le journal ``ImportJob``)."""
+    ligne par ligne utilisé par XPLT2 pour le journal ``ImportJob``, et
+    ``maj_par_ligne`` : pour chaque fiche modifiée, ses valeurs PRÉCÉDENTES).
+
+    ``ecraser=False`` (défaut) = remplissage seul : les champs déjà remplis ne
+    sont pas remplacés, les valeurs entrantes correspondantes sont remontées
+    dans ``refuses``. ``ecraser=True`` = l'appelant assume les remplacements,
+    qui sont alors tous journalisés (``ImportJobRow`` + ``AuditLog``).
+    """
     if target not in TARGETS:
         raise ValueError("Cible d'import inconnue.")
-    if mode not in MODES:
-        raise ValueError("Mode d'import inconnu (creer, maj ou upsert).")
     # XPLT1 — le rapprochement maj/upsert n'est câblé que pour les cibles où un
     # contact (email/téléphone) permet un rapprochement fiable (leads, clients).
     # Les autres cibles gardent le comportement historique (création seule) et
     # refusent explicitement un mode qu'elles ne supportent pas encore, plutôt
     # que de l'ignorer silencieusement.
-    if mode != 'creer' and target not in ('leads', 'clients'):
-        raise ValueError(
-            f"Le mode « {mode} » n'est pas supporté pour la cible « {target} » "
-            "(seuls leads et clients supportent maj/upsert).")
+    _check_mode(target, mode)
     external_system = external_system or DEFAULT_EXTERNAL_SYSTEM
     headers, rows = parse_rows(file_bytes, filename)
     if len(rows) > MAX_ROWS:
@@ -327,6 +650,21 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
             saved_mapping = m.mapping
     mapped, _ = _map_headers(headers, target, saved_mapping)
     created, updated, skipped = 0, 0, []
+    # Ligne → fiche touchée + valeurs PRÉCÉDENTES de chaque champ modifié (+ les
+    # écrasements refusés par le garde-fou). Persisté par ``commit()`` sur
+    # ``ImportJobRow`` : c'est ce qui rend l'import auditable et réversible.
+    maj_par_ligne = {}
+
+    def _noter_maj(ligne, instance, modifications, refuses):
+        if not modifications and not refuses:
+            return
+        maj_par_ligne[ligne] = {
+            'cible': instance._meta.label_lower,
+            'cible_id': instance.pk,
+            'modifications': modifications,
+            'refuses': refuses,
+        }
+        _journaliser_maj(instance, company, user, modifications, filename)
 
     # ERR51 — Tout l'import est atomique : une erreur en cours de boucle annule
     # l'intégralité du lot (jamais de demi-import laissant le compteur perdu et
@@ -334,7 +672,6 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
     with transaction.atomic():
         if target == 'leads':
             from apps.crm.models import Lead
-            from apps.crm.services import find_duplicates_by_contact
             for i, row in enumerate(rows, 1):
                 f = _row_to_fields(row, mapped)
                 if not f.get('nom') and not f.get('email') and not f.get('telephone'):
@@ -344,16 +681,12 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
 
                 existing = None
                 if mode in ('maj', 'upsert'):
-                    existing = _find_by_external_id(
-                        company, external_system, ext_id, Lead)
-                    if existing is None:
-                        dupes = find_duplicates_by_contact(
-                            company, phone=f.get('telephone'),
-                            email=f.get('email'))
-                        existing = dupes[0] if dupes else None
+                    existing = _match_lead(company, f, ext_id, external_system)
 
                 if existing is not None:
-                    _apply_updates(existing, f)
+                    _, modifications, refuses = _apply_updates(
+                        existing, f, ecraser=ecraser)
+                    _noter_maj(i, existing, modifications, refuses)
                     if ext_id:
                         _get_or_create_ref(
                             company, external_system, ext_id, existing)
@@ -367,14 +700,7 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
 
                 # Création (mode=creer, ou mode=upsert sans correspondance).
                 if mode == 'creer':
-                    dup = Lead.objects.filter(company=company)
-                    if f.get('email'):
-                        dup = dup.filter(email__iexact=f['email'])
-                    elif f.get('telephone'):
-                        dup = dup.filter(telephone=f['telephone'])
-                    else:
-                        dup = Lead.objects.none()
-                    if dup.exists():
+                    if _doublon_lead(company, f) is not None:
                         skipped.append({'ligne': i, 'raison': 'doublon (existe déjà)'})
                         continue
                 tags = (f.pop('tags', '') or '')
@@ -395,14 +721,12 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
 
                 existing = None
                 if mode in ('maj', 'upsert'):
-                    existing = _find_by_external_id(
-                        company, external_system, ext_id, Client)
-                    if existing is None and f.get('email'):
-                        existing = Client.objects.filter(
-                            company=company, email__iexact=f['email']).first()
+                    existing = _match_client(company, f, ext_id, external_system)
 
                 if existing is not None:
-                    _apply_updates(existing, f)
+                    _, modifications, refuses = _apply_updates(
+                        existing, f, ecraser=ecraser)
+                    _noter_maj(i, existing, modifications, refuses)
                     if ext_id:
                         _get_or_create_ref(
                             company, external_system, ext_id, existing)
@@ -414,8 +738,7 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                         {'ligne': i, 'raison': 'aucune correspondance (maj seule)'})
                     continue
 
-                if mode == 'creer' and f.get('email') and Client.objects.filter(
-                        company=company, email__iexact=f['email']).exists():
+                if mode == 'creer' and _doublon_client(company, f) is not None:
                     skipped.append({'ligne': i, 'raison': 'doublon (email existe)'})
                     continue
                 client = Client.objects.create(company=company, **f)
@@ -431,8 +754,10 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 if not f.get('nom'):
                     skipped.append({'ligne': i, 'raison': 'nom manquant'})
                     continue
-                if f.get('sku') and Produit.objects.filter(
-                        company=company, sku=f['sku']).exists():
+                # Le catalogue réel n'est JAMAIS écrasé par un import : un SKU
+                # déjà présent fait ignorer la ligne (l'aperçu le dit, champ par
+                # champ, via le même ``_doublon_produit``).
+                if _doublon_produit(company, f) is not None:
                     skipped.append({'ligne': i, 'raison': 'doublon (SKU existe)'})
                     continue
                 for k in ('prix_vente', 'prix_achat'):
@@ -588,13 +913,15 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 else:
                     skipped.append({'ligne': i, 'raison': message or 'erreur'})
 
-    return {'ok': True, 'target': target, 'mode': mode, 'created': created,
-            'updated': updated, 'skipped': skipped, 'total': len(rows),
-            'headers': headers, 'rows': rows}
+    return {'ok': True, 'target': target, 'mode': mode, 'ecraser': bool(ecraser),
+            'created': created, 'updated': updated, 'skipped': skipped,
+            'total': len(rows), 'headers': headers, 'rows': rows,
+            'maj_par_ligne': maj_par_ligne}
 
 
 def commit(file_bytes, filename, target, company, user, mode='creer',
-           external_system=None, mapping_name=None, rollback_on_error=False):
+           external_system=None, mapping_name=None, rollback_on_error=False,
+           ecraser=False):
     """XPLT2 — enveloppe publique de ``_commit_raw`` : journalise l'import dans
     un ``ImportJob``/``ImportJobRow`` (statut par ligne, motif d'échec,
     contenu brut ré-importable) et applique le choix commit partiel (défaut,
@@ -605,13 +932,19 @@ def commit(file_bytes, filename, target, company, user, mode='creer',
     journalisé statut ECHEC et la réponse renvoie l'erreur sans avoir rien
     persisté. ``rollback_on_error=False`` (défaut) : comportement historique —
     les lignes en échec sont signalées, les autres restent commitées.
+
+    ``ecraser`` (défaut ``False`` = remplissage seul) : voir ``_apply_updates``.
+    Chaque fiche modifiée laisse sur son ``ImportJobRow`` la valeur PRÉCÉDENTE
+    de chaque champ écrit (``modifications``) et les écrasements bloqués par le
+    garde-fou (``refuses``) — de quoi auditer et revenir en arrière.
     """
     from .models import ImportJob, ImportJobRow
 
     def _run():
         return _commit_raw(
             file_bytes, filename, target, company, user, mode=mode,
-            external_system=external_system, mapping_name=mapping_name)
+            external_system=external_system, mapping_name=mapping_name,
+            ecraser=ecraser)
 
     if rollback_on_error:
         # Rejoue tout dans UNE transaction externe : si des lignes ont échoué,
@@ -625,9 +958,13 @@ def commit(file_bytes, filename, target, company, user, mode='creer',
 
     rows = result.pop('rows', [])
     headers = result.pop('headers', [])
+    maj_par_ligne = result.pop('maj_par_ligne', {})
     skipped_by_line = {s['ligne']: s['raison'] for s in result['skipped']}
     error_count = len(skipped_by_line)
     rolled_back = rollback_on_error and error_count > 0
+    ecrasements = [m for detail in maj_par_ligne.values()
+                   for m in detail['modifications'] if m['ecrasement']]
+    refuses = [r for detail in maj_par_ligne.values() for r in detail['refuses']]
 
     if rolled_back:
         statut = ImportJob.Statut.ECHEC
@@ -642,24 +979,38 @@ def commit(file_bytes, filename, target, company, user, mode='creer',
         created_count=0 if rolled_back else result['created'],
         updated_count=0 if rolled_back else result['updated'],
         error_count=error_count,
+        ecraser=bool(ecraser),
+        ecrasement_count=0 if rolled_back else len(ecrasements),
+        refus_count=0 if rolled_back else len(refuses),
         created_by=user if getattr(user, 'pk', None) else None)
 
     job_rows = []
     for i, row in enumerate(rows, 1):
         raison = skipped_by_line.get(i)
+        detail = {} if rolled_back else maj_par_ligne.get(i, {})
         job_rows.append(ImportJobRow(
             job=job, ligne=i,
             statut=ImportJobRow.Statut.ERREUR if raison else ImportJobRow.Statut.OK,
             motif=raison,
-            donnees={h: row.get(h) for h in headers} if raison else {}))
+            donnees={h: row.get(h) for h in headers} if raison else {},
+            cible_type=detail.get('cible') or '',
+            cible_id=detail.get('cible_id'),
+            modifications=detail.get('modifications') or [],
+            refuses=detail.get('refuses') or []))
     if job_rows:
         ImportJobRow.objects.bulk_create(job_rows)
 
     result['job_id'] = job.pk
     result['statut'] = statut
+    # Ce que l'import a réellement remplacé (et ce que le garde-fou a bloqué) :
+    # remonté dans la réponse pour que l'écran le montre sans re-requêter.
+    result['ecrasements'] = len(ecrasements)
+    result['refuses'] = refuses
     if rolled_back:
         result['created'] = 0
         result['updated'] = 0
+        result['ecrasements'] = 0
+        result['refuses'] = []
     return result
 
 

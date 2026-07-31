@@ -10,6 +10,10 @@ const importApi = {
     fd.append('file', file)
     fd.append('target', target)
     if (options.mapping) fd.append('mapping', options.mapping)
+    // L'aperçu doit rejouer EXACTEMENT le rapprochement du commit pour pouvoir
+    // annoncer les écrasements : on lui envoie donc le même mode/garde-fou.
+    if (options.mode) fd.append('mode', options.mode)
+    if (options.ecraser) fd.append('ecraser', 'true')
     return api.post('/imports/dry-run/', fd)
   },
   commit: (file, target, options = {}) => {
@@ -21,6 +25,9 @@ const importApi = {
     if (options.external_system) fd.append('external_system', options.external_system)
     if (options.mapping) fd.append('mapping', options.mapping)
     if (options.rollback_on_error) fd.append('rollback_on_error', 'true')
+    // Garde-fou : sans ce drapeau, l'import ne peut que RENSEIGNER un champ
+    // vide — jamais remplacer une valeur déjà saisie.
+    if (options.ecraser) fd.append('ecraser', 'true')
     return api.post('/imports/commit/', fd)
   },
   // XPLT2 — mappings colonne→champ sauvegardés (sélecteur), optionnellement
