@@ -2853,20 +2853,36 @@ class CompteurUsageViewSet(_ContratsBaseViewSet):
 
         Corps : ``contenu`` (texte CSV) OU un fichier ``fichier`` (multipart).
         Colonnes : ``cible_id``, ``code_compteur``, ``periode_debut``,
-        ``periode_fin``, ``quantite`` (+ ``type_cible`` optionnel). Idempotent
-        par ``(cible, code, période)`` (un doublon met à jour, ne duplique
-        pas). Réponse synchrone : lignes insérées / mises à jour / rejetées.
-        Écriture gardée par ``contrat_gerer`` (base)."""
+        ``periode_fin``, ``quantite`` (+ ``type_cible`` optionnel). Rapproché
+        par ``(cible, code, période)``.
+
+        GARDE-FOU « ÉCRASEMENT » — ``apercu=true`` rejoue le rapprochement
+        SANS RIEN ÉCRIRE et liste ce que le fichier remplacerait ; sans
+        ``ecraser=true`` un relevé déjà saisi (potentiellement à la main)
+        n'est JAMAIS remplacé — la valeur entrante repart dans ``refuses``.
+        Drapeaux STRICTS : seul un « vrai » explicite (``1``/``true``/``oui``)
+        les active, jamais une valeur absente ou mal comprise. ``company``
+        vient TOUJOURS de ``request.user.company``, jamais du corps de la
+        requête (multi-tenant). Écriture gardée par ``contrat_gerer`` (base).
+        """
         contenu = request.data.get('contenu')
+        filename = ''
         if not contenu and 'fichier' in request.FILES:
-            contenu = request.FILES['fichier'].read().decode('utf-8', 'replace')
+            upload = request.FILES['fichier']
+            contenu = upload.read().decode('utf-8', 'replace')
+            filename = getattr(upload, 'name', '') or ''
         if not contenu:
             return Response(
                 {'detail': 'Aucun contenu CSV fourni (champ « contenu » ou '
                            '« fichier »).'},
                 status=status.HTTP_400_BAD_REQUEST)
+        apercu = str(request.data.get('apercu', '')).strip().lower() in (
+            '1', 'true', 'oui')
+        ecraser = str(request.data.get('ecraser', '')).strip().lower() in (
+            '1', 'true', 'oui')
         rapport = services.importer_compteurs_usage_csv(
-            request.user.company, contenu)
+            request.user.company, contenu, apercu=apercu, ecraser=ecraser,
+            user=request.user, filename=filename)
         return Response(rapport, status=status.HTTP_200_OK)
 
 

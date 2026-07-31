@@ -43,6 +43,15 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+def _flag(valeur):
+    """Drapeau d'import STRICT : seul un « vrai » explicite active l'option.
+
+    Toute autre valeur (absente, vide, '0', 'false', un mot inattendu) laisse
+    l'option DÉSACTIVÉE — un écrasement du tarif réel ne peut donc jamais
+    résulter d'une valeur mal comprise (même règle que `dataimport.views`)."""
+    return str(valeur).strip().lower() in ('1', 'true', 'yes', 'on', 'oui')
+
+
 class PrixFournisseurViewSet(CompanyScopedModelViewSet):
     """N17 — prix d'achat multi-fournisseurs par SKU (INTERNE). Lecture tout
     rôle, écriture stock_modifier. `company` posé serveur ; produit/fournisseur
@@ -111,7 +120,13 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
         """XPUR14 — import/mise à jour du tarif d'un fournisseur depuis un
         xlsx (même format que l'export). Corps multipart : ``fournisseur``
         (id), ``file``. CRÉATION + MISE À JOUR par SKU — jamais de
-        suppression silencieuse."""
+        suppression silencieuse.
+
+        Garde-fou « écrasement » (le tarif fournisseur est une donnée RÉELLE
+        saisie à la main) : ``apercu=true`` ne fait que LISTER ce que le
+        fichier remplacerait (aucune écriture), et sans ``ecraser=true`` un
+        prix déjà saisi n'est jamais remplacé — les valeurs bloquées repartent
+        dans ``refuses``."""
         from ..services import import_prix_fournisseur_xlsx
         fournisseur_id = request.data.get('fournisseur')
         upload = request.FILES.get('file')
@@ -126,5 +141,8 @@ class PrixFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Fournisseur introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
         result = import_prix_fournisseur_xlsx(
-            request.user.company, fournisseur, upload.read())
+            request.user.company, fournisseur, upload.read(),
+            apercu=_flag(request.data.get('apercu')),
+            ecraser=_flag(request.data.get('ecraser')),
+            user=request.user, filename=getattr(upload, 'name', '') or '')
         return Response(result, status=status.HTTP_200_OK)

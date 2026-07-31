@@ -203,8 +203,12 @@ class TestExportImportXlsx(Xpur14Base):
              '10:1000;50:900'],
             ['PAN-XPUR14B', 'Panneau X14b', '', 550, None, None, ''],
         ])
+        # `ecraser=True` : opt-in explicite (le tarif 400 déjà saisi est une
+        # donnée réelle — sans cet opt-in il est PRÉSERVÉ, cf.
+        # `test_import_ecrasement_tarif_fournisseur.py`). La mise à jour de
+        # masse légitime reste, elle, strictement inchangée.
         result = import_prix_fournisseur_xlsx(
-            self.company, self.fournisseur, file_bytes)
+            self.company, self.fournisseur, file_bytes, ecraser=True)
         self.assertEqual(result['created'], 1)
         self.assertEqual(result['updated'], 1)
         self.assertEqual(result['errors'], [])

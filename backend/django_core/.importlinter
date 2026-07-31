@@ -106,6 +106,19 @@ ignore_imports =
 # automation→audit.
     apps.automation.engine -> apps.audit.recorder
     apps.automation.engine -> apps.audit.models
+# Garde-fou « écrasement » des imports — la plateforme d'import générique
+# (`dataimport.services`) écrit sa PROPRE trace d'audit best-effort dans
+# `_journaliser_maj` (imports fonction-locaux `audit.recorder`/`audit.models`,
+# posés par la vague précédente). Depuis que les importeurs MÉTIER
+# (stock : tarif fournisseur, contrats : compteurs d'usage, credit, entités…)
+# RÉUTILISENT cette primitive au lieu de recopier un journal maison, le chemin
+# transitif ventes→stock.services|contrats.services→dataimport→audit apparaît.
+# C'est le logging transverse de la plateforme d'import, PAS ventes atteignant
+# audit directement — même motif exact que les exceptions
+# notifications/stock/automation ci-dessus. Un import DIRECT
+# `apps.ventes.* -> apps.audit.*` resterait détecté.
+    apps.dataimport.services -> apps.audit.recorder
+    apps.dataimport.services -> apps.audit.models
 
 [importlinter:contract:ged-models-decoupled]
 name = GED models never import a business-core domain's models (string FKs only — GED38)

@@ -245,15 +245,16 @@ def rejeter_derogation(derogation, user):
     return derogation
 
 
-def importer_limites_csv(company, file_bytes, filename, *, user=None):
-    """NTCRD39 — import CSV/XLSX en masse de limites de crédit initiales.
+def _lire_lignes_limites_csv(company, file_bytes, filename):
+    """Parse + valide-rapproche chaque ligne d'un import de limites de crédit,
+    SANS RIEN ÉCRIRE. Partagé par l'aperçu et l'écriture (``importer_limites_csv``)
+    pour qu'ils ne puissent jamais diverger sur le rapprochement.
 
-    Réutilise le PARSEUR de ``apps.dataimport`` (``parsing.iter_rows`` —
-    importable, jamais une édition de ``dataimport.services``). Colonnes
-    attendues : ``client`` (email OU id), ``montant_limite``, ``mode_hold``
-    (optionnel). Validation LIGNE À LIGNE : un client introuvable met la ligne
-    en erreur sans bloquer le batch. Idempotent par (company, client) —
-    ``update_or_create``. Renvoie ``{'crees': int, 'erreurs': [{ligne, motif}]}``.
+    Renvoie ``(total_lignes, resultats, erreurs)`` où chaque élément de
+    ``resultats`` est ``{'ligne', 'client', 'row', 'fields', 'existing'}`` —
+    ``fields`` ne contient QUE les valeurs non vides fournies par la ligne
+    (``montant_limite``/``mode_hold``) : une cellule vide n'entre jamais dans
+    le diff, donc ne peut jamais écraser ni vider un champ existant.
     """
     from apps.crm.selectors import find_client_by_email, get_company_client
     from apps.dataimport.parsing import iter_rows, normalize_header
@@ -263,7 +264,7 @@ def importer_limites_csv(company, file_bytes, filename, *, user=None):
     _headers, rows = iter_rows(file_bytes, filename)
     modes_valides = {c.value for c in LimiteCredit.ModeHold}
 
-    crees = 0
+    resultats = []
     erreurs = []
     for idx, row in enumerate(rows, start=1):
         norm = {normalize_header(k): v for k, v in row.items()}
@@ -281,18 +282,154 @@ def importer_limites_csv(company, file_bytes, filename, *, user=None):
             continue
 
         try:
-            montant = Decimal(montant_raw) if montant_raw else None
+            # Quantifié à la précision du champ (2 décimales) AVANT tout
+            # diff : sinon un « 50000 » venu du fichier, comparé au
+            # « 50000.00 » relu de la base, passerait pour un ÉCRASEMENT
+            # alors que c'est la même valeur (faux positif d'aperçu, et
+            # refus injustifié en mode remplissage seul).
+            montant = (Decimal(montant_raw).quantize(Decimal('0.01'))
+                       if montant_raw else None)
         except Exception:
             erreurs.append({'ligne': idx, 'motif': f'Montant invalide : {montant_raw!r}'})
             continue
 
-        defaults = {'company': company, 'montant_limite': montant, 'cree_par': user}
+        # Cellule vide écartée d'emblée : ``fields`` ne porte que ce que la
+        # ligne renseigne réellement (jamais une valeur vide qui viderait un
+        # champ déjà rempli lors du diff/écriture).
+        fields = {}
+        if montant_raw:
+            fields['montant_limite'] = montant
         if mode in modes_valides:
-            defaults['mode_hold'] = mode
-        LimiteCredit.objects.update_or_create(client=client, defaults=defaults)
-        crees += 1
+            fields['mode_hold'] = mode
 
-    return {'crees': crees, 'erreurs': erreurs}
+        existing = LimiteCredit.objects.filter(
+            company=company, client=client).first()
+        resultats.append({
+            'ligne': idx, 'client': client, 'row': row,
+            'fields': fields, 'existing': existing,
+        })
+
+    return len(rows), resultats, erreurs
+
+
+def importer_limites_csv(company, file_bytes, filename, *, user=None,
+                         apercu=False, ecraser=False):
+    """NTCRD39 — import CSV/XLSX en masse de limites de crédit.
+
+    Réutilise le PARSEUR de ``apps.dataimport`` (``parsing.iter_rows`` —
+    importable, jamais une édition de ``dataimport.services``). Colonnes
+    attendues : ``client`` (email OU id), ``montant_limite``, ``mode_hold``
+    (optionnel). Validation LIGNE À LIGNE : un client introuvable met la ligne
+    en erreur sans bloquer le batch.
+
+    GARDE-FOU ÉCRASEMENT — réutilise la primitive PLATEFORME
+    ``apps.dataimport.services`` (``diff_import``/``appliquer_maj_import``/
+    ``enregistrer_job``), jamais un diff/journal maison :
+
+    * une ligne visant un client SANS ``LimiteCredit`` existante CRÉE une
+      nouvelle fiche — jamais destructeur, comportement historique inchangé ;
+    * une ligne visant un client AVEC une ``LimiteCredit`` déjà existante
+      passe par ``appliquer_maj_import`` : ``ecraser=False`` (DÉFAUT) =
+      REMPLISSAGE SEUL, un champ déjà rempli (``montant_limite``/
+      ``mode_hold``) n'est JAMAIS remplacé — la valeur entrante repart dans
+      ``refuses`` ; ``ecraser=True`` (opt-in explicite de l'appelant) applique
+      aussi les remplacements, et la valeur PRÉCÉDENTE de chaque champ écrit
+      est journalisée (une ligne ``AuditLog`` par fiche via
+      ``appliquer_maj_import``, + le lot complet via ``enregistrer_job`` —
+      consultable comme n'importe quel ``ImportJob``/``ImportJobRow``) ;
+    * ``apercu=True`` (dry-run) rejoue EXACTEMENT le même rapprochement
+      (``_lire_lignes_limites_csv``) et le même diff (``diff_import``) SANS
+      RIEN ÉCRIRE : pour chaque fiche existante touchée, quel champ serait
+      remplacé (ancienne → nouvelle valeur) ;
+    * une cellule vide n'écrase ni ne vide jamais un champ déjà rempli
+      (écartée avant tout diff par ``_lire_lignes_limites_csv``).
+
+    Renvoie, mode écriture (rétro-compatible) : ``{'crees': int, 'erreurs':
+    [{ligne, motif}], 'maj': int, 'ecraser': bool, 'ecrasements': [...],
+    'refuses': [...], 'job_id': int}``. Mode ``apercu`` : ``{'apercu': True,
+    'ecraser': bool, 'total_lignes': int, 'creations': int, 'maj': int,
+    'erreurs': [...], 'conflits': [{ligne, client_id, client, ecrasements,
+    remplissages}]}``.
+    """
+    from apps.dataimport.services import (
+        appliquer_maj_import, diff_import, enregistrer_job)
+
+    total_lignes, resultats, erreurs = _lire_lignes_limites_csv(
+        company, file_bytes, filename)
+
+    if apercu:
+        creations = 0
+        maj = 0
+        conflits = []
+        for r in resultats:
+            if r['existing'] is None:
+                creations += 1
+                continue
+            maj += 1
+            ecrasements, remplissages = diff_import(r['existing'], r['fields'])
+            if ecrasements or remplissages:
+                conflits.append({
+                    'ligne': r['ligne'],
+                    'client_id': r['client'].pk,
+                    'client': str(r['client']),
+                    'ecrasements': ecrasements,
+                    'remplissages': [rp['champ'] for rp in remplissages],
+                })
+        return {
+            'apercu': True, 'ecraser': bool(ecraser),
+            'total_lignes': total_lignes, 'creations': creations, 'maj': maj,
+            'erreurs': erreurs, 'conflits': conflits,
+        }
+
+    from .models import LimiteCredit
+
+    crees = 0
+    maj = 0
+    ecrasements = []
+    refuses = []
+    lignes_job = [{'ligne': e['ligne'], 'statut': 'erreur', 'motif': e['motif']}
+                  for e in erreurs]
+
+    for r in resultats:
+        client, fields, existing = r['client'], r['fields'], r['existing']
+
+        if existing is None:
+            defaults = {'company': company, 'cree_par': user, **fields}
+            limite = LimiteCredit.objects.create(client=client, **defaults)
+            crees += 1
+            lignes_job.append({
+                'ligne': r['ligne'], 'statut': 'ok',
+                'cible': 'credit.limitecredit', 'cible_id': limite.pk,
+            })
+            continue
+
+        # Compte comme ``_commit_raw`` (dataimport) : une fiche RAPPROCHÉE
+        # compte en mise à jour même si le garde-fou a fini par tout refuser
+        # (cohérent avec l'aperçu, qui compte de la même façon).
+        maj += 1
+        _changed, modifications, row_refuses = appliquer_maj_import(
+            existing, fields, company, user=user, filename=filename,
+            skip_keys=('company', 'client', 'cree_par'), ecraser=ecraser)
+        for m in modifications:
+            if m['ecrasement']:
+                ecrasements.append(dict(m, ligne=r['ligne'], client_id=client.pk))
+        for ref in row_refuses:
+            refuses.append(dict(ref, ligne=r['ligne'], client_id=client.pk))
+        lignes_job.append({
+            'ligne': r['ligne'], 'statut': 'ok',
+            'cible': 'credit.limitecredit', 'cible_id': existing.pk,
+            'modifications': modifications, 'refuses': row_refuses,
+        })
+
+    job = enregistrer_job(
+        company, 'limites_credit', filename, user=user,
+        mode='maj' if maj and not crees else 'creer', ecraser=ecraser,
+        total_lignes=total_lignes, created=crees, updated=maj, lignes=lignes_job)
+
+    return {
+        'crees': crees, 'erreurs': erreurs, 'maj': maj, 'ecraser': bool(ecraser),
+        'ecrasements': ecrasements, 'refuses': refuses, 'job_id': job.pk,
+    }
 
 
 def _html_position_credit(client):
