@@ -10,7 +10,7 @@ Registre de MATÉRIALISEURS
 prise en charge par un matérialiseur ENREGISTRÉ (même patron que
 ``core.data_explorer.register_dataset`` / ``core.retention.register_retention_policy``)::
 
-    register_materializer('automation_rules', poser, retirer=None)
+    register_materializer('automation_rules', poser)
 
     poser(company, definition) -> (reference: str | None, cree: bool)
 
