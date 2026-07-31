@@ -1,0 +1,996 @@
+# YAPIC6 — base de reference des avertissements drf-spectacular (GENEREE).
+# Regenerer : python scripts/check_openapi_schema.py --write-baseline
+# check_openapi_schema.py echoue sur toute signature ABSENTE de cette
+# liste (nouveau serializer non resolu, nouvelle collision d'operationId,
+# nouveau type non resolu...). Une entree qui disparait est un progres :
+# elle peut etre retiree d'ici lors de la prochaine regeneration.
+Error|AccountAuditView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AchatsParametresViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AdChatterView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AdFullStoryView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AdObjectionsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AdPreviewsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AdminOpsSettingsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AdsCockpitView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AgentActionLogView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AgentActionUndoView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AgentActionsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AlertSnoozeView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ApiUsagePlanView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AttestationView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AttributionBilanView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AudienceDeliveryEstimateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AudienceView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AutomationDraftView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|BacklogDropAssetView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|BacklogListView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|BacklogLotApproveView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|BalanceOuvertureViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|BonLivraisonView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|BreakGlassView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|BreakdownsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|BriefLatestView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|BulkEditViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CalendrierMarketingRescheduleView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CalendrierMarketingView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CalendrierQhseViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CampaignFunnelView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CatalogueView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ChangePasswordView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ChantierDebourseVsFactureView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ChronoActifViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CockpitRhViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CohortReportView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CommentCountsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CommentDeleteView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CommentFaqView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CommentHideView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CommentListView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CommentPrivateReplyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CommentReplyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ComparateurCashFinancementViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ComparateurDevisViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ConfigurateurDemarrerView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ConfigurateurGenererDevisView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ConfigurateurRepondreView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ConfigurateurResultatView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ConsolidationViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ControleBudgetaireCommandeView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CookieTokenRefreshView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CostPerSignatureView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CoutNonQualiteViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CoverageReportView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CreativeLeaderboardView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CreativeScatterView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|DisponibilitesView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|DocsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|DossierRemiseView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|DriversViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|EcheancesRhViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|EngagementAudienceView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|EtatsComptablesViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ExplorationLedgerView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|FactoryLaneRoiView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|FeedbackResumeView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|FieldSyncView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|GeoHoldoutReportView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|GroundedGenerationView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|GuardrailSingletonView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ImportChantierPhotoView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InnovationSettingsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InstagramCommentDeleteView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InstagramCommentHideView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InstagramCommentListView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InstagramCommentReplyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InstagramMediaListView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InstagramMediaToggleCommentsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InstagramPublishView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InstagramQuotaView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InterventionLienClientPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InterventionRapportPdfPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|InterventionRapportPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|Iso9001ReadinessViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|KiosquePointageViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|LeadsTimeseriesView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|LettrageViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|LoginBannerView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|LogoutView|exception raised while getting serializer. Hint: Is get_serializer_class() returning None or is get_queryset() not worki
+Error|MdeCalculatorView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MediaResolveView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MesIdentifiantsVoipView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MetaConnectionHealthView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MetaConnectionStatusView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MetricsDashboardV2View|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MetricsDashboardView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MetricsLeadsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MetricsPacingView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ModuleCatalogViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|NotificationPreferenceViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|OcrToCrmView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|OdooCostPerSignatureView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|OnboardingProgressViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PVReceptionView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ParametresTaxeSejourView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ParetoDefautsViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PilotageViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PortailSelfServiceViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ProposeCuratedActionView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ProvisionsPeriodeViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PublicActivityCreateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PublicChangelogView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PublicLeadCreateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PublicLeadUpdateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PublicOpenApiSchemaView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|PublicTicketPDFView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|RFQConsultationPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|RealLeadsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ReconciliationBackfillView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ReconciliationListView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|RecrutementStatistiquesViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ReglageCreditView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ReglageRHViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ReglageTempsViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|RegretRegistryView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ReportExportView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SandboxResetView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SandboxTryView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ScheduledJobViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ScimGroupDetailView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ScimGroupsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ScimUserDetailView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ScimUsersView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SecurityPostureView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SessionRevokeView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SignalCohortView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SignalsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SimulationDetailView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SimulationListView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|StatusView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SwitchCompanyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SyncStatusView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|SystemStatusViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TableauBordHseViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TableauBordView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TenantConsoleListView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TenantConsoleNoteView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TenantConsoleStatutView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TimelineView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TodayQueueView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TourneeLivraisonView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TwoFactorDisableView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TwoFactorEnableView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TwoFactorSetupView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|TwoFactorStatusView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ValiderCompatibiliteView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|VarianceViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|VariantFunnelView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|VariantReportView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|VisualFatigueView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|VoipParametresView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|WeatherTriggerView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|WiringHealthView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|WorkflowTemplateViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|WorkingHoursConfigViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|adoption_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|analyse_facturation_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|analytics|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|analytique_ged|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|approbations_en_attente|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|archive_chantier|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|archive_client|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|assignable_users|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|attachments_all|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|attachments_count|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|attention_summary|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|audit_analytics|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|audit_log|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|automation_templates|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|avenant_public_approuver|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|avenant_public_detail|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|badges_credit_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|balance_agee_export|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|balance_agee|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|calendar_check|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|calendar_events|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|calendar_ics_subscription|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|calendar_ics|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|calendar_reschedule|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|calendrier_reglementaire|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|careers_apply|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|careers_list|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|cash_flow_forecast|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|causerie_securite_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|cf_group_by|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|client_credit_warning|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|client_releve_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|client_releve|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|client_score_comportement|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|cohorts|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|collect_vital|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|commercial_dashboard|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|commissions|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|commit|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|compute_roi|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|config_export|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|config_import|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|contact|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|couverture_actif|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|dashboard_public|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|dashboard_quote_to_cash|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|dashboard_tv|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|dashboard|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|db_stats_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|decider_approbation|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|decider_en_masse|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|declaration_raccordement|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|delete_logo|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|delete_signature|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|desinscription_publique|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|diagnostic_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|diffusion_public_ouvrir|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|dossier_contentieux|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|double_optin_confirmer|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|dry_run|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ecatalogue_demander_devis|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ecatalogue_public|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|email_config|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|enquete_certificat_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|enquete_publique|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|enquete_soumettre|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|equipement_public_signaler|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|equipes_statistiques|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|evaluation_projet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|evenement_inscription_publique|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|export_comptable|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|export_list|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|export_objects_list|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|export_object|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|export_status|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|exposition_credit|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|fiabilite_insight_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|fiche_credit_client|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|fiche_produit_etre_rappele_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|fiche_produit_showroom_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|fiche_remise_premium|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|field_service_report|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|file_action_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|forecast_historique_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|forecast_rollup_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|formulaire_intake_public|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|formulaire_intake_soumettre|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|funnel_velocity|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|geo_points|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|get_chat_session|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|get_document_templates|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|get_productible|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|get_profile|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|get_tariff_settings|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|global_search|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|health_live|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|health_ready|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|health_score_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ia_suggestion_analyse|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ia_suggestion_classification|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|importer_limites|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|integrite_insight|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|job_costing|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|job_erreurs_csv|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|journal_admin_pdf_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|journal_ventes|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|kpi_federes|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|lead_playbook_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|lead_roof_footprint|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|lettre_relance_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|lettre_relance_premium|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|limite_suggeree_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|list_mappings|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|maintenance_toggle|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|mes_favoris|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|mes_recents|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|messages_endpoint|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|meta|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|metrics_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|notifications|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|numerotation_audit|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|numerotation_preview|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|object_as_of|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|object_history|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|open_chat_session|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|pareto_pannes_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|parts_forecast_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|pay_page|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|pay_webhook|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ping|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|pipeline|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_avancement|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_contester_facture|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_demande_contrat|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_echeancier|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_fournisseur_confirmer_bcf_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_fournisseur_documents_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_liste_attente|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_mes_contrats|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_mes_eleves|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_mon_releve_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_mon_releve|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|position_credit_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|post_chat_message|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|prix_applicable_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|profitability|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|proposal_accept|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|proposal_activate_option|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|proposal_contact_request|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|proposal_data|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|proposal_engagement|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|proposal_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|proposal_request_otp|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|proposal_virement_declare|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_article|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_bcf_document|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_booking_reserve|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_booking_status|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_depot|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_document|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_partage|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_promesse_detail|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_promesse_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_promesse_signer|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_signalement|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_signataire|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|public_signature|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|purge_audit_retention|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|push_subscribe|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|push_unsubscribe|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|rapport_attribution|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|rapport_budget|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|rapport_couts|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|rapport_derogations_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|rapport_remplacement|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|recurring_revenue|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|redirection_lien_tracke|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|relances_list|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|releve_commit|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|releve_dry_run|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|resume_par_equipe_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|roof_config|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|roof_load_check|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|sales_leaderboard|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|sales_report|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|sauvegarde|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|sav_sla_insight|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|sav_taux_attache|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|sav_tickets_cout_moyen|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|sav_tickets_pivot|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|save_mapping|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|schema_unifilaire_devis|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|schema_unifilaire|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|score_credit_client|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|secrets_rotation_due|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|security_events_export|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|security_events|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|service_report|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|settings_audit_log|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|settings_audit_sections|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|stats|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|stock_report|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|suivi_public|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|support_bundle_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|tableau_bord|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|tableau_conformite_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|technicien_scorecard|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ticket_public_satisfaction|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ticket_public_status|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|tracker_usage_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|update_document_templates|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|update_profile|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|update_tariff_settings|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|upload_logo|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|upload_signature|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|vapid_public_key|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|vitals_p75|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|webhook_brevo_campagne|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|webhook_sms_stop|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|win_loss_by_source|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Warning|<global>|encountered multiple names for the same choice set (ConfidentialiteDefautEnum). This may be unwanted even though the gen
+Warning|<global>|encountered multiple names for the same choice set (ConversationKindEnum). This may be unwanted even though the generate
+Warning|<global>|encountered multiple names for the same choice set (EtatGeneralC#Enum). This may be unwanted even though the generated s
+Warning|<global>|encountered multiple names for the same choice set (FormatExportEnum). This may be unwanted even though the generated sc
+Warning|<global>|encountered multiple names for the same choice set (HabilitationTypeEnum). This may be unwanted even though the generate
+Warning|<global>|encountered multiple names for the same choice set (LanguePrefereeEnum). This may be unwanted even though the generated
+Warning|<global>|encountered multiple names for the same choice set (ModeHoldEnum). This may be unwanted even though the generated schema
+Warning|<global>|encountered multiple names for the same choice set (NiveauRequisEnum). This may be unwanted even though the generated sc
+Warning|<global>|encountered multiple names for the same choice set (PalierApprobateurEnum). This may be unwanted even though the generat
+Warning|<global>|encountered multiple names for the same choice set (ProbabiliteEnum). This may be unwanted even though the generated sch
+Warning|<global>|encountered multiple names for the same choice set (RoleCibleEnum). This may be unwanted even though the generated schem
+Warning|<global>|encountered multiple names for the same choice set (ScenarioPrevisionnelDefautEnum). This may be unwanted even though th
+Warning|<global>|encountered multiple names for the same choice set (SeveriteEnum). This may be unwanted even though the generated schema
+Warning|<global>|encountered multiple names for the same choice set (StatutLegacyEnum). This may be unwanted even though the generated sc
+Warning|<global>|encountered multiple names for the same choice set (TypeContratDefautEnum). This may be unwanted even though the generat
+Warning|<global>|encountered multiple names for the same choice set (TypePhaseEnum). This may be unwanted even though the generated schem
+Warning|<global>|encountered multiple names for the same choice set (TypePoliceEnum). This may be unwanted even though the generated sche
+Warning|<global>|encountered multiple names for the same choice set (TypeTiersBdaEnum). This may be unwanted even though the generated sc
+Warning|<global>|encountered multiple names for the same choice set (UniteA#cEnum). This may be unwanted even though the generated schema
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "canal". The same name has been used for m
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "categorie". The same name has been used f
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "etape". The same name has been used for m
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "etat_general". The same name has been use
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "gravite". The same name has been used for
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "kind". The same name has been used for mu
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "langue". The same name has been used for
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "mode". The same name has been used for mu
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "niveau". The same name has been used for
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "orientation". The same name has been used
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "periodicite". The same name has been used
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "phase". The same name has been used for m
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "priorite". The same name has been used fo
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "raccordement". The same name has been use
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "regime_#". The same name has been used fo
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "role". The same name has been used for mu
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "source". The same name has been used for
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "statut". The same name has been used for
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type". The same name has been used for mu
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_cible". The same name has been used
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_contrat". The same name has been use
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_facture". The same name has been use
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_installation". The same name has bee
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_tiers". The same name has been used
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "unite". The same name has been used for m
+Warning|<global>|operationId "api_django_adsengine_simulations_retrieve" has collisions [('/api/django/adsengine/simulations/', 'get'), (
+Warning|<global>|operationId "api_django_core_saved_queries_run_create" has collisions [('/api/django/core/saved-queries/{id}/run/', 'pos
+Warning|<global>|operationId "api_django_crm_objectifs_attainment_retrieve" has collisions [('/api/django/crm/objectifs/{id}/attainment/'
+Warning|<global>|operationId "api_django_identity_scim_v#_Groups_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/
+Warning|<global>|operationId "api_django_identity_scim_v#_Users_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/U
+Warning|<global>|operationId "api_django_kb_parcours_articles_retrieve" has collisions [('/api/django/kb/parcours-articles/{id}/', 'get')
+Warning|<global>|operationId "api_django_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/django/sav/contrats-mainte
+Warning|<global>|operationId "api_v#_adsengine_simulations_retrieve" has collisions [('/api/v#/adsengine/simulations/', 'get'), ('/api/v#
+Warning|<global>|operationId "api_v#_core_saved_queries_run_create" has collisions [('/api/v#/core/saved-queries/{id}/run/', 'post'), ('/
+Warning|<global>|operationId "api_v#_crm_objectifs_attainment_retrieve" has collisions [('/api/v#/crm/objectifs/{id}/attainment/', 'get')
+Warning|<global>|operationId "api_v#_identity_scim_v#_Groups_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Groups',
+Warning|<global>|operationId "api_v#_identity_scim_v#_Users_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Users', '
+Warning|<global>|operationId "api_v#_kb_parcours_articles_retrieve" has collisions [('/api/v#/kb/parcours-articles/{id}/', 'get'), ('/api
+Warning|<global>|operationId "api_v#_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/v#/sav/contrats-maintenance/{i
+Warning|AbonnementAddOnLigneViewSet > AbonnementAddOnLigneSerializer|unable to resolve type hint for function "get_montant_periode". Consider using a type hint or @extend_schema_field. Defa
+Warning|AccidentTravailViewSet > AccidentTravailSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|AccuseCharteViewSet > AccuseCharteSerializer|unable to resolve type hint for function "get_conducteur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|AchatsParametresViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|ActivityTypeViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|ActivityViewSet > ActivitySerializer|unable to resolve type hint for function "get_state". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|ActivityViewSet > ActivitySerializer|unable to resolve type hint for function "get_target_label". Consider using a type hint or @extend_schema_field. Default
+Warning|ActivityViewSet > ActivitySerializer|unable to resolve type hint for function "get_target_model". Consider using a type hint or @extend_schema_field. Default
+Warning|ActivityViewSet > ActivitySerializer|unable to resolve type hint for function "get_target_phone". Consider using a type hint or @extend_schema_field. Default
+Warning|ActivityViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|AdCampaignMirrorViewSet > AdCampaignMirrorSerializer|unable to resolve type hint for function "get_budget_quotidien_mad". Consider using a type hint or @extend_schema_field.
+Warning|AdCampaignMirrorViewSet > AdCampaignMirrorSerializer|unable to resolve type hint for function "get_depense_mad". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|AdCampaignMirrorViewSet > AdCampaignMirrorSerializer|unable to resolve type hint for function "get_nb_leads". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|AdCampaignMirrorViewSet > AdCampaignMirrorSerializer|unable to resolve type hint for function "get_statut_display". Consider using a type hint or @extend_schema_field. Defau
+Warning|AffectationConducteurViewSet > AffectationConducteurSerializer|unable to resolve type hint for function "get_accessoires_avertissement". Consider using a type hint or @extend_schema_f
+Warning|AffectationConducteurViewSet > AffectationConducteurSerializer|unable to resolve type hint for function "get_charte_avertissement". Consider using a type hint or @extend_schema_field.
+Warning|AffectationConducteurViewSet > AffectationConducteurSerializer|unable to resolve type hint for function "get_conducteur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|AffectationConducteurViewSet > AffectationConducteurSerializer|unable to resolve type hint for function "get_permis_avertissement". Consider using a type hint or @extend_schema_field.
+Warning|AffectationConducteurViewSet > AffectationConducteurSerializer|unable to resolve type hint for function "get_vehicule_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|AffectationRosterViewSet > AffectationRosterSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|AffectationVehiculeViewSet > AffectationVehiculeSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|AnalyseIncidentViewSet > AnalyseIncidentSerializer|unable to resolve type hint for function "get_nb_capa". Consider using a type hint or @extend_schema_field. Defaulting t
+Warning|AnalyseRisquesChantierViewSet > AnalyseRisquesChantierSerializer|unable to resolve type hint for function "get_redacteur_nom". Consider using a type hint or @extend_schema_field. Defaul
+Warning|AnnonceViewSet > AnnonceSerializer|unable to resolve type hint for function "get_is_expiree". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|AnnonceViewSet > AnnonceSerializer|unable to resolve type hint for function "get_lus_count". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|ApiKeyViewSet > ApiKeySerializer|unable to resolve type hint for function "get_created_by_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|AppelViewSet > AppelSerializer|unable to resolve type hint for function "get_cible". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|AppelViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|ApprovalRequestViewSet > ApprovalRequestSerializer|unable to resolve type hint for function "get_approvals_count". Consider using a type hint or @extend_schema_field. Defa
+Warning|AssumptionNodeViewSet > AssumptionNodeSerializer|unable to resolve type hint for function "get_dead_branch". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|AssumptionNodeViewSet|could not derive type of path parameter "test_id" because model "apps.adsengine.models.AssumptionNode" contained no such
+Warning|AssuranceVehiculeViewSet > AssuranceVehiculeSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|AssuranceVehiculeViewSet > AssuranceVehiculeSerializer|unable to resolve type hint for function "get_statut_calcule". Consider using a type hint or @extend_schema_field. Defau
+Warning|AstreinteViewSet > AstreinteSerializer|unable to resolve type hint for function "get_technicien_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|AttachmentViewSet > AttachmentSerializer|unable to resolve type hint for function "get_url". Consider using a type hint or @extend_schema_field. Defaulting to st
+Warning|AttachmentViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|AttestationSousTraitantViewSet > AttestationSousTraitantSerializer|unable to resolve type hint for function "get_est_valide". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|AttributionBadgeViewSet > AttributionBadgeSerializer|unable to resolve type hint for function "get_attribue_par_nom". Consider using a type hint or @extend_schema_field. Def
+Warning|AttributionBadgeViewSet > AttributionBadgeSerializer|unable to resolve type hint for function "get_beneficiaire_nom". Consider using a type hint or @extend_schema_field. Def
+Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_model". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_module". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_timestamp_local". Consider using a type hint or @extend_schema_field. Defa
+Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_utilisateur". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|AuditLogViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|AvanceSalaireViewSet > AvanceSalaireSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|AvanceSalaireViewSet > AvanceSalaireSerializer|unable to resolve type hint for function "get_solde_restant". Consider using a type hint or @extend_schema_field. Defaul
+Warning|AvenantViewSet > AvenantSerializer|unable to resolve type hint for function "get_cree_par_username". Consider using a type hint or @extend_schema_field. De
+Warning|AvoirViewSet > AvoirSerializer|unable to resolve type hint for function "get_client_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|AvoirViewSet > AvoirSerializer|unable to resolve type hint for function "get_tva_par_taux". Consider using a type hint or @extend_schema_field. Default
+Warning|BackgroundJobViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|BadgeReconnaissanceViewSet > BadgeReconnaissanceSerializer|unable to resolve type hint for function "get_nombre_attributions". Consider using a type hint or @extend_schema_field.
+Warning|BesoinFormationViewSet > BesoinFormationSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|BesoinFormationViewSet > BesoinFormationSerializer|unable to resolve type hint for function "get_session_liee_intitule". Consider using a type hint or @extend_schema_field
+Warning|BonCommandeFournisseurViewSet > BonCommandeFournisseurSerializer > LigneBonCommandeFournisseurSerializer|unable to resolve type hint for function "get_produit_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|BonCommandeFournisseurViewSet > BonCommandeFournisseurSerializer > LigneBonCommandeFournisseurSerializer|unable to resolve type hint for function "get_produit_sku". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|BonCommandeFournisseurViewSet > BonCommandeFournisseurSerializer|unable to resolve type hint for function "get_acomptes". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|BonCommandeViewSet > BonCommandeSerializer|unable to resolve type hint for function "get_has_facture". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|BonCommandeViewSet > BonCommandeSerializer|unable to resolve type hint for function "get_total_ht". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|BonCommandeViewSet > BonCommandeSerializer|unable to resolve type hint for function "get_total_ttc". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|BonCommandeViewSet > BonCommandeSerializer|unable to resolve type hint for function "get_total_tva". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|BrandedTemplateViewSet > BrandedTemplateSerializer|unable to resolve type hint for function "get_variables". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|BudgetProjetViewSet > BudgetProjetSerializer|Encountered # components with identical names "BudgetProjet" and different identities <class 'apps.installations.seriali
+Warning|BudgetProjetViewSet > BudgetProjetSerializer|Encountered # components with identical names "BudgetProjetRequest" and different identities <class 'apps.installations.
+Warning|BudgetProjetViewSet > BudgetProjetSerializer|Encountered # components with identical names "PatchedBudgetProjetRequest" and different identities <class 'apps.install
+Warning|BudgetProjetViewSet > BudgetProjetSerializer|unable to resolve type hint for function "get_total". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|BudgetProjetViewSet|Encountered # components with identical names "PaginatedBudgetProjetList" and different identities <class 'apps.installa
+Warning|BulletinPaieViewSet > BulletinPaieSerializer|Encountered # components with identical names "BulletinPaie" and different identities <class 'apps.rh.serializers.Bullet
+Warning|BulletinPaieViewSet > BulletinPaieSerializer|Encountered # components with identical names "BulletinPaieRequest" and different identities <class 'apps.paie.serialize
+Warning|BulletinPaieViewSet > BulletinPaieSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|BulletinPaieViewSet > BulletinPaieSerializer|unable to resolve type hint for function "get_url". Consider using a type hint or @extend_schema_field. Defaulting to st
+Warning|BulletinPaieViewSet|Encountered # components with identical names "PaginatedBulletinPaieList" and different identities <class 'apps.rh.seria
+Warning|CaisseViewSet > CaisseSerializer|unable to resolve type hint for function "get_solde_courant". Consider using a type hint or @extend_schema_field. Defaul
+Warning|CampagneEvaluationViewSet > CampagneEvaluationSerializer > EvaluationEmployeSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|CampagneEvaluationViewSet > CampagneEvaluationSerializer > EvaluationEmployeSerializer|unable to resolve type hint for function "get_evaluateur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|CampagneInnovationViewSet > CampagneInnovationDetailSerializer|unable to resolve type hint for function "get_historique". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_clic_pct". Consider using a type hint or @extend_schema_field. Defaul
+Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_delivre_pct". Consider using a type hint or @extend_schema_field. Def
+Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_desinscription_pct". Consider using a type hint or @extend_schema_fie
+Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_ouverture_pct". Consider using a type hint or @extend_schema_field. D
+Warning|CanalViewSet > CanalSerializer|unable to resolve type hint for function "get_en_usage". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|CandidatureViewSet > CandidatureSerializer|unable to resolve type hint for function "get_employe_cree_nom". Consider using a type hint or @extend_schema_field. Def
+Warning|CandidatureViewSet > CandidatureSerializer|unable to resolve type hint for function "get_ouverture_intitule". Consider using a type hint or @extend_schema_field. D
+Warning|CannedResponseViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|CarteCarburantViewSet > CarteCarburantSerializer|unable to resolve type hint for function "get_conducteur_label". Consider using a type hint or @extend_schema_field. Def
+Warning|CarteCarburantViewSet > CarteCarburantSerializer|unable to resolve type hint for function "get_vehicule_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|CarteGriseVehiculeViewSet > CarteGriseVehiculeSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|CarteGriseVehiculeViewSet > CarteGriseVehiculeSerializer|unable to resolve type hint for function "get_statut_calcule". Consider using a type hint or @extend_schema_field. Defau
+Warning|CategorieEquipementViewSet > CategorieEquipementSerializer|unable to resolve type hint for function "get_nb_equipements". Consider using a type hint or @extend_schema_field. Defau
+Warning|CauserieSecuriteViewSet > CauserieSecuriteSerializer > CauserieParticipantSerializer|unable to resolve type hint for function "get_participant_nom". Consider using a type hint or @extend_schema_field. Defa
+Warning|CauserieSecuriteViewSet > CauserieSecuriteSerializer|unable to resolve type hint for function "get_animateur_nom". Consider using a type hint or @extend_schema_field. Defaul
+Warning|CertificationViewSet > CertificationSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ChampSignatureViewSet > ChampSignatureSerializer|unable to resolve type hint for function "get_type_champ_ref_detail". Consider using a type hint or @extend_schema_field
+Warning|ChangelogViewSet > ChangelogEntrySerializer|unable to resolve type hint for function "get_lu". Consider using a type hint or @extend_schema_field. Defaulting to str
+Warning|CheckinSecuriteViewSet > CheckinSecuriteSerializer|unable to resolve type hint for function "get_en_retard". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|CheckinSecuriteViewSet > CheckinSecuriteSerializer|unable to resolve type hint for function "get_technicien_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|ClauseViewSet > ClauseSerializer|unable to resolve type hint for function "get_corps_localise". Consider using a type hint or @extend_schema_field. Defau
+Warning|ClauseViewSet > ClauseSerializer|unable to resolve type hint for function "get_titre_localise". Consider using a type hint or @extend_schema_field. Defau
+Warning|ClientViewSet > ClientSerializer|unable to resolve type hint for function "get_created_by_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|ClientViewSet > ClientSerializer|unable to resolve type hint for function "get_devis_count". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ClientViewSet > ClientSerializer|unable to resolve type hint for function "get_total_facture_ttc". Consider using a type hint or @extend_schema_field. De
+Warning|ClientViewSet > ClientSerializer|unable to resolve type hint for function "get_total_paye". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|CoffreFortBulletinViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|CoffreViewSet > CoffreSerializer|unable to resolve type hint for function "get_document_count". Consider using a type hint or @extend_schema_field. Defau
+Warning|CommentViewSet > CommentSerializer|unable to resolve type hint for function "get_author_display". Consider using a type hint or @extend_schema_field. Defau
+Warning|CommentViewSet > CommentSerializer|unable to resolve type hint for function "get_target_model". Consider using a type hint or @extend_schema_field. Default
+Warning|CommentViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|CommentaireVarianceViewSet > CommentaireVarianceSerializer|unable to resolve type hint for function "get_auteur_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|CommissioningRecordViewSet > CommissioningRecordSerializer|unable to resolve type hint for function "get_instrument_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|CommissioningRecordViewSet > CommissioningRecordSerializer|unable to resolve type hint for function "get_instrument_numero_serie". Consider using a type hint or @extend_schema_fie
+Warning|CompetenceEmployeViewSet > CompetenceEmployeSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|CompetitorPageViewSet > CompetitorPageSerializer|unable to resolve type hint for function "get_ad_library_url". Consider using a type hint or @extend_schema_field. Defau
+Warning|ConcurrentPerteViewSet > ConcurrentPerteSerializer|unable to resolve type hint for function "get_saisi_par_nom". Consider using a type hint or @extend_schema_field. Defaul
+Warning|ConducteurViewSet > ConducteurSerializer|unable to resolve type hint for function "get_user_display". Consider using a type hint or @extend_schema_field. Default
+Warning|ConfigPackageViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|ConformiteEnvironnementaleViewSet > ConformiteEnvironnementaleSerializer|unable to resolve type hint for function "get_statut_courant". Consider using a type hint or @extend_schema_field. Defau
+Warning|ConsentRecordViewSet > ConsentRecordSerializer|Encountered # components with identical names "ConsentRecord" and different identities <class 'core.serializers.ConsentR
+Warning|ConsentRecordViewSet > ConsentRecordSerializer|Encountered # components with identical names "ConsentRecordRequest" and different identities <class 'core.serializers.C
+Warning|ConsentRecordViewSet > ConsentRecordSerializer|Encountered # components with identical names "PatchedConsentRecordRequest" and different identities <class 'core.serial
+Warning|ConsentRecordViewSet > ConsentRecordSerializer|unable to resolve type hint for function "get_is_active". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|ConsentRecordViewSet|Encountered # components with identical names "PaginatedConsentRecordList" and different identities <class 'core.seriali
+Warning|ContratMaintenanceViewSet > ContratMaintenanceSerializer|unable to resolve type hint for function "get_droits_restants". Consider using a type hint or @extend_schema_field. Defa
+Warning|ContratMaintenanceViewSet > ContratMaintenanceSerializer|unable to resolve type hint for function "get_due". Consider using a type hint or @extend_schema_field. Defaulting to st
+Warning|ContratMaintenanceViewSet > ContratMaintenanceSerializer|unable to resolve type hint for function "get_equipements_detail". Consider using a type hint or @extend_schema_field. D
+Warning|ContratMaintenanceViewSet > ContratMaintenanceSerializer|unable to resolve type hint for function "get_facturation_due". Consider using a type hint or @extend_schema_field. Defa
+Warning|ContratMaintenanceViewSet > ContratMaintenanceSerializer|unable to resolve type hint for function "get_prochaine_facturation". Consider using a type hint or @extend_schema_field
+Warning|ContratMaintenanceViewSet > ContratMaintenanceSerializer|unable to resolve type hint for function "get_prochaine_visite". Consider using a type hint or @extend_schema_field. Def
+Warning|ContratMaintenanceViewSet > ContratMaintenanceSerializer|unable to resolve type hint for function "get_renouvellement_du". Consider using a type hint or @extend_schema_field. De
+Warning|ContratVehiculeViewSet > ContratVehiculeSerializer|unable to resolve type hint for function "get_fournisseur_label". Consider using a type hint or @extend_schema_field. De
+Warning|ContratVehiculeViewSet > ContratVehiculeSerializer|unable to resolve type hint for function "get_statut_calcule". Consider using a type hint or @extend_schema_field. Defau
+Warning|ContratVehiculeViewSet > ContratVehiculeSerializer|unable to resolve type hint for function "get_vehicule_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|ContratViewSet > ContratSerializer|unable to resolve type hint for function "get_client_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|ContratViewSet > ContratSerializer|unable to resolve type hint for function "get_echeance_preavis". Consider using a type hint or @extend_schema_field. Def
+Warning|ContratViewSet > ContratSerializer|unable to resolve type hint for function "get_jours_avant_echeance". Consider using a type hint or @extend_schema_field.
+Warning|ContratViewSet > ContratSerializer|unable to resolve type hint for function "get_jours_avant_preavis". Consider using a type hint or @extend_schema_field.
+Warning|ContratViewSet > ContratSerializer|unable to resolve type hint for function "get_responsable_nom". Consider using a type hint or @extend_schema_field. Defa
+Warning|ConversationViewSet > ConversationSerializer > ConversationMemberSerializer|unable to resolve type hint for function "get_user_detail". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ConversationViewSet > ConversationSerializer|unable to resolve type hint for function "get_last_message". Consider using a type hint or @extend_schema_field. Default
+Warning|ConversationViewSet > ConversationSerializer|unable to resolve type hint for function "get_unread_count". Consider using a type hint or @extend_schema_field. Default
+Warning|ConversationViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|CoutVehiculeViewSet > CoutVehiculeSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|CoutVehiculeViewSet > CoutVehiculeSerializer|unable to resolve type hint for function "get_conducteur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|CoutVehiculeViewSet > CoutVehiculeSerializer|unable to resolve type hint for function "get_fournisseur_label". Consider using a type hint or @extend_schema_field. De
+Warning|CoutVehiculeViewSet > CoutVehiculeSerializer|unable to resolve type hint for function "get_reference_avertissement". Consider using a type hint or @extend_schema_fie
+Warning|CreativeAssetViewSet > CreativeAssetSerializer|unable to resolve type hint for function "get_checklist_warnings". Consider using a type hint or @extend_schema_field. D
+Warning|CreativeAssetViewSet > CreativeAssetSerializer|unable to resolve type hint for function "get_consent_block". Consider using a type hint or @extend_schema_field. Defaul
+Warning|CreativeAssetViewSet > CreativeAssetSerializer|unable to resolve type hint for function "get_is_video". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|CreativeAssetViewSet > CreativeAssetSerializer|unable to resolve type hint for function "get_preview_url". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|CreativeAssetViewSet > CreativeAssetSerializer|unable to resolve type hint for function "get_provenance". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|CycleBudgetaireViewSet > CycleBudgetaireSerializer|unable to resolve type hint for function "get_exercice_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|DeclarationCnssViewSet > DeclarationCnssSerializer|unable to resolve type hint for function "get_statut_courant". Consider using a type hint or @extend_schema_field. Defau
+Warning|DeclarationSinistreViewSet > DeclarationSinistreSerializer|unable to resolve type hint for function "get_risque_libelle". Consider using a type hint or @extend_schema_field. Defau
+Warning|DemandeAllocationViewSet > DemandeAllocationSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|DemandeRHViewSet > DemandeRHSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|DemandeSignatureDocumentViewSet > DemandeSignatureDocumentSerializer|unable to resolve type hint for function "get_signataires". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|DemandeVehiculeViewSet > DemandeVehiculeSerializer|unable to resolve type hint for function "get_demandeur_nom". Consider using a type hint or @extend_schema_field. Defaul
+Warning|DemandeVehiculeViewSet > DemandeVehiculeSerializer|unable to resolve type hint for function "get_vehicule_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|DepartementViewSet > DepartementSerializer|Encountered # components with identical names "Departement" and different identities <class 'apps.rh.serializers.Departe
+Warning|DepartementViewSet > DepartementSerializer|Encountered # components with identical names "DepartementRequest" and different identities <class 'apps.rh.serializers.
+Warning|DepartementViewSet > DepartementSerializer|Encountered # components with identical names "PatchedDepartementRequest" and different identities <class 'apps.rh.seria
+Warning|DepartementViewSet > DepartementSerializer|unable to resolve type hint for function "get_responsable_nom". Consider using a type hint or @extend_schema_field. Defa
+Warning|DepartementViewSet|Encountered # components with identical names "PaginatedDepartementList" and different identities <class 'apps.rh.serial
+Warning|DerogationViewSet > DerogationSerializer|unable to resolve type hint for function "get_statut_courant". Consider using a type hint or @extend_schema_field. Defau
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_bon_commande_etat". Consider using a type hint or @extend_schema_field. De
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_chantier". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_comparaison_options". Consider using a type hint or @extend_schema_field.
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_date_expiration". Consider using a type hint or @extend_schema_field. Defa
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_deja_consulte". Consider using a type hint or @extend_schema_field. Defaul
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_derniere_consultation". Consider using a type hint or @extend_schema_field
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_engagement". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_est_signe". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_factures_liees". Consider using a type hint or @extend_schema_field. Defau
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_is_expired". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_lead_facture_hiver". Consider using a type hint or @extend_schema_field. D
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_lead_meta_ad_id". Consider using a type hint or @extend_schema_field. Defa
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_lead_nom". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_lead_type_installation". Consider using a type hint or @extend_schema_fiel
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_marge_snapshot". Consider using a type hint or @extend_schema_field. Defau
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_marge_sous_seuil". Consider using a type hint or @extend_schema_field. Def
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_nb_options". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_nombre_vues". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_signature_info". Consider using a type hint or @extend_schema_field. Defau
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_solde". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_superseded_by_ref". Consider using a type hint or @extend_schema_field. De
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_total_affiche". Consider using a type hint or @extend_schema_field. Defaul
+Warning|DevisViewSet > DevisSerializer|unable to resolve type hint for function "get_version_parent_ref". Consider using a type hint or @extend_schema_field. D
+Warning|DocumentConformiteFournisseurViewSet > DocumentConformiteFournisseurSerializer|unable to resolve type hint for function "get_est_valide". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|DocumentEmployeViewSet > DocumentEmployeSerializer|unable to resolve type hint for function "get_url". Consider using a type hint or @extend_schema_field. Defaulting to st
+Warning|DocumentLienViewSet > DocumentLienSerializer|unable to resolve type hint for function "get_target_label". Consider using a type hint or @extend_schema_field. Default
+Warning|DocumentLienViewSet > DocumentLienSerializer|unable to resolve type hint for function "get_target_model". Consider using a type hint or @extend_schema_field. Default
+Warning|DocumentProjetViewSet > DocumentProjetSerializer|Encountered # components with identical names "DocumentProjet" and different identities <class 'apps.installations.seria
+Warning|DocumentProjetViewSet > DocumentProjetSerializer|Encountered # components with identical names "DocumentProjetRequest" and different identities <class 'apps.installation
+Warning|DocumentProjetViewSet > DocumentProjetSerializer|Encountered # components with identical names "PatchedDocumentProjetRequest" and different identities <class 'apps.insta
+Warning|DocumentProjetViewSet|Encountered # components with identical names "PaginatedDocumentProjetList" and different identities <class 'apps.instal
+Warning|DocumentTagViewSet > DocumentTagSerializer|unable to resolve type hint for function "get_chemin". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|DocumentTagViewSet > DocumentTagSerializer|unable to resolve type hint for function "get_document_count". Consider using a type hint or @extend_schema_field. Defau
+Warning|DocumentViewSet > DocumentSerializer|unable to resolve type hint for function "get_contact_label". Consider using a type hint or @extend_schema_field. Defaul
+Warning|DocumentViewSet > DocumentSerializer|unable to resolve type hint for function "get_derniere_version". Consider using a type hint or @extend_schema_field. Def
+Warning|DocumentViewSet > DocumentSerializer|unable to resolve type hint for function "get_tags". Consider using a type hint or @extend_schema_field. Defaulting to s
+Warning|DocumentViewSet > DocumentSerializer|unable to resolve type hint for function "get_version_count". Consider using a type hint or @extend_schema_field. Defaul
+Warning|DossierEmployeViewSet > DossierEmployeSerializer|unable to resolve type hint for function "get_nombre_avantages_sociaux". Consider using a type hint or @extend_schema_fi
+Warning|DossierEmployeViewSet > DossierEmployeSerializer|unable to resolve type hint for function "get_nombre_ayants_droit". Consider using a type hint or @extend_schema_field.
+Warning|DotationEpiViewSet > DotationEpiSerializer|unable to resolve type hint for function "get_a_controler". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|DotationEpiViewSet > DotationEpiSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|DotationEpiViewSet > DotationEpiSerializer|unable to resolve type hint for function "get_perime". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|EcheanceDeclarativeViewSet > EcheanceDeclarativeSerializer|unable to resolve type hint for function "en_retard". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|EcheanceEntretienViewSet > EcheanceEntretienSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|EcheanceEntretienViewSet > EcheanceEntretienSerializer|unable to resolve type hint for function "get_plan_type". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|EcheanceReglementaireViewSet > EcheanceReglementaireSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|EcheanceReglementaireViewSet > EcheanceReglementaireSerializer|unable to resolve type hint for function "get_statut_calcule". Consider using a type hint or @extend_schema_field. Defau
+Warning|EcheancierPaiementViewSet > EcheancierPaiementSerializer|unable to resolve type hint for function "get_montant_regle". Consider using a type hint or @extend_schema_field. Defaul
+Warning|EcheancierPaiementViewSet > EcheancierPaiementSerializer|unable to resolve type hint for function "get_reste_a_payer". Consider using a type hint or @extend_schema_field. Defaul
+Warning|EcheancierScolariteViewSet > EcheancierScolariteSerializer > LigneEcheanceSerializer|Encountered # components with identical names "LigneEcheance" and different identities <class 'apps.education.serializer
+Warning|EcritureComptableViewSet > EcritureComptableSerializer|unable to resolve type hint for function "get_total_credit". Consider using a type hint or @extend_schema_field. Default
+Warning|EcritureComptableViewSet > EcritureComptableSerializer|unable to resolve type hint for function "get_total_debit". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ElementEtatLieuxViewSet > ElementEtatLieuxSerializer|unable to resolve type hint for function "get_photos_entree". Consider using a type hint or @extend_schema_field. Defaul
+Warning|ElementsVariablesPaieViewSet > ElementsVariablesPaieSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|EmployeDeviceMapViewSet > EmployeDeviceMapSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|EngineAlertViewSet > EngineAlertSerializer|unable to resolve type hint for function "get_link". Consider using a type hint or @extend_schema_field. Defaulting to s
+Warning|EngineAlertViewSet > EngineAlertSerializer|unable to resolve type hint for function "get_snoozed_until". Consider using a type hint or @extend_schema_field. Defaul
+Warning|EngineAlertViewSet > EngineAlertSerializer|unable to resolve type hint for function "get_wa_links". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|EntretienRecrutementViewSet > EntretienRecrutementSerializer > NoteEntretienSerializer|unable to resolve type hint for function "get_evaluateur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|EntretienSortieViewSet > EntretienSortieSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|EquipeMaintenanceViewSet > EquipeMaintenanceSerializer|unable to resolve type hint for function "get_membres_count". Consider using a type hint or @extend_schema_field. Defaul
+Warning|EquipeViewSet > EquipeSerializer|Encountered # components with identical names "Equipe" and different identities <class 'apps.installations.serializers.E
+Warning|EquipeViewSet > EquipeSerializer|Encountered # components with identical names "EquipeRequest" and different identities <class 'apps.installations.serial
+Warning|EquipeViewSet > EquipeSerializer|Encountered # components with identical names "PatchedEquipeRequest" and different identities <class 'apps.installations
+Warning|EquipeViewSet|Encountered # components with identical names "PaginatedEquipeList" and different identities <class 'apps.installations.
+Warning|EquipementViewSet > EquipementSerializer|unable to resolve type hint for function "get_client_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|EquipementViewSet > EquipementSerializer|unable to resolve type hint for function "get_garantie_etat". Consider using a type hint or @extend_schema_field. Defaul
+Warning|EquipementViewSet > EquipementSerializer|unable to resolve type hint for function "get_garantie_jours_restants". Consider using a type hint or @extend_schema_fie
+Warning|EquipementViewSet > EquipementSerializer|unable to resolve type hint for function "get_nb_tickets_#m". Consider using a type hint or @extend_schema_field. Defaul
+Warning|EquipementViewSet > EquipementSerializer|unable to resolve type hint for function "get_nb_tickets_ouverts". Consider using a type hint or @extend_schema_field. D
+Warning|EquipementViewSet|could not derive type of path parameter "downtime_id" because model "apps.sav.models.Equipement" contained no such field
+Warning|EtatDesLieuxViewSet > EtatDesLieuxSerializer|unable to resolve type hint for function "get_vehicule_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|EtatLieuxImmoViewSet > EtatLieuxImmoSerializer > PieceEtatLieuxSerializer > ElementEtatLieuxSerializer|unable to resolve type hint for function "get_photos_entree". Consider using a type hint or @extend_schema_field. Defaul
+Warning|EtatLieuxImmoViewSet|could not derive type of path parameter "element_id" because model "apps.immobilier.models.EtatLieuxImmo" contained no s
+Warning|EtatLieuxImmoViewSet|could not derive type of path parameter "photo_id" because model "apps.immobilier.models.EtatLieuxImmo" contained no suc
+Warning|EvaluationEmployeViewSet > EvaluationEmployeSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|EvaluationEmployeViewSet > EvaluationEmployeSerializer|unable to resolve type hint for function "get_evaluateur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|EvaluationRisqueViewSet > EvaluationRisqueSerializer|unable to resolve type hint for function "get_criticite_max". Consider using a type hint or @extend_schema_field. Defaul
+Warning|EvenementBanquetViewSet > EvenementBanquetSerializer|unable to resolve type hint for function "date_evenement". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|FactureFournisseurViewSet > FactureFournisseurSerializer|unable to resolve type hint for function "get_sous_totaux_par_taux". Consider using a type hint or @extend_schema_field.
+Warning|FactureSanteViewSet > FactureSanteSerializer|unable to resolve type hint for function "get_montant_du". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|FactureSousTraitantViewSet > _FactureSousTraitantSerializer|unable to resolve type hint for function "get_sous_traitant_nom". Consider using a type hint or @extend_schema_field. De
+Warning|FactureSousTraitantViewSet > _FactureSousTraitantSerializer|unable to resolve type hint for function "get_statut_display". Consider using a type hint or @extend_schema_field. Defau
+Warning|FactureSousTraitantViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|FactureViewSet > FactureSerializer > PaiementSerializer|unable to resolve type hint for function "get_client_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|FactureViewSet > FactureSerializer|unable to resolve type hint for function "get_avoirs". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|FactureViewSet > FactureSerializer|unable to resolve type hint for function "get_is_overdue". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|FactureViewSet > FactureSerializer|unable to resolve type hint for function "get_tva_par_taux". Consider using a type hint or @extend_schema_field. Default
+Warning|FeedbackProduitViewSet > FeedbackProduitSerializer|unable to resolve type hint for function "get_auteur_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|FeuilleTempsViewSet > FeuilleTempsSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|FicheTechniqueViewSet > FicheTechniqueSerializer|Encountered # components with identical names "FicheTechnique" and different identities <class 'apps.ventes.serializers.
+Warning|FicheTechniqueViewSet > FicheTechniqueSerializer|Encountered # components with identical names "FicheTechniqueRequest" and different identities <class 'apps.ventes.seria
+Warning|FicheTechniqueViewSet > FicheTechniqueSerializer|Encountered # components with identical names "PatchedFicheTechniqueRequest" and different identities <class 'apps.vente
+Warning|FicheTechniqueViewSet|Encountered # components with identical names "PaginatedFicheTechniqueList" and different identities <class 'apps.ventes
+Warning|FollowerViewSet > FollowerSerializer|unable to resolve type hint for function "get_target_model". Consider using a type hint or @extend_schema_field. Default
+Warning|FollowerViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|FollowupLevelViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|FournisseurViewSet > FournisseurSerializer|unable to resolve type hint for function "get_nb_bons_commande". Consider using a type hint or @extend_schema_field. Def
+Warning|FournisseurViewSet > FournisseurSerializer|unable to resolve type hint for function "get_nb_produits". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|FournisseurViewSet|could not derive type of path parameter "token_id" because model "apps.stock.models.Fournisseur" contained no such field
+Warning|GarageViewSet > GarageSerializer|unable to resolve type hint for function "get_fournisseur_label". Consider using a type hint or @extend_schema_field. De
+Warning|GarantieFlotteViewSet > GarantieFlotteSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|GarantieFlotteViewSet > GarantieFlotteSerializer|unable to resolve type hint for function "get_active". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|GarantieFlotteViewSet > GarantieFlotteSerializer|unable to resolve type hint for function "get_date_fin". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|GrilleTarifaireViewSet > GrilleTarifaireSerializer|Encountered # components with identical names "GrilleTarifaire" and different identities <class 'apps.sante.serializers.
+Warning|GrilleTarifaireViewSet > GrilleTarifaireSerializer|Encountered # components with identical names "GrilleTarifaireRequest" and different identities <class 'apps.sante.seria
+Warning|GrilleTarifaireViewSet > GrilleTarifaireSerializer|Encountered # components with identical names "PatchedGrilleTarifaireRequest" and different identities <class 'apps.sant
+Warning|GrilleTarifaireViewSet|Encountered # components with identical names "PaginatedGrilleTarifaireList" and different identities <class 'apps.sante
+Warning|HabilitationViewSet > HabilitationSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|HeuresSuppViewSet > HeuresSuppSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|IdeeViewSet > IdeeDetailSerializer|unable to resolve type hint for function "get_auteur_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|IdeeViewSet > IdeeDetailSerializer|unable to resolve type hint for function "get_historique". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|IdeeViewSet > IdeeSerializer|unable to resolve type hint for function "get_auteur_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|IncidentPresenceViewSet > IncidentPresenceSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|IncomingWebhookTriggerViewSet > IncomingWebhookTriggerSerializer|unable to resolve type hint for function "get_url_path". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|IndisponibiliteRessourceViewSet > IndisponibiliteRessourceSerializer|unable to resolve type hint for function "get_technicien_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|InfractionViewSet > InfractionSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|InfractionViewSet > InfractionSerializer|unable to resolve type hint for function "get_conducteur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|InspectionVehiculeViewSet > InspectionVehiculeSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|InspectionVehiculeViewSet > InspectionVehiculeSerializer|unable to resolve type hint for function "get_conducteur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|InspectionVehiculeViewSet > InspectionVehiculeSerializer|unable to resolve type hint for function "get_modele_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|InspectionVehiculeViewSet > InspectionVehiculeSerializer|unable to resolve type hint for function "get_nb_items_fail". Consider using a type hint or @extend_schema_field. Defaul
+Warning|InstallationViewSet > InstallationSerializer > InterventionSerializer|unable to resolve type hint for function "get_client_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|InstallationViewSet > InstallationSerializer > InterventionSerializer|unable to resolve type hint for function "get_crew_time". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|InstallationViewSet > InstallationSerializer > InterventionSerializer|unable to resolve type hint for function "get_distance_site_km". Consider using a type hint or @extend_schema_field. Def
+Warning|InstallationViewSet > InstallationSerializer > InterventionSerializer|unable to resolve type hint for function "get_equipe_noms". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|InstallationViewSet > InstallationSerializer > InterventionSerializer|unable to resolve type hint for function "get_photos_obligatoires_manquantes". Consider using a type hint or @extend_sch
+Warning|InstallationViewSet > InstallationSerializer > InterventionSerializer|unable to resolve type hint for function "get_preparation_completion". Consider using a type hint or @extend_schema_fiel
+Warning|InstallationViewSet > InstallationSerializer > InterventionSerializer|unable to resolve type hint for function "get_preparation_confirmee". Consider using a type hint or @extend_schema_field
+Warning|InstallationViewSet > InstallationSerializer > InterventionSerializer|unable to resolve type hint for function "get_reserves_ouvertes". Consider using a type hint or @extend_schema_field. De
+Warning|InstallationViewSet > InstallationSerializer > InterventionSerializer|unable to resolve type hint for function "get_statut_ordre". Consider using a type hint or @extend_schema_field. Default
+Warning|InstallationViewSet > InstallationSerializer > InterventionSerializer|unable to resolve type hint for function "get_technicien_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|InstallationViewSet > InstallationSerializer|unable to resolve type hint for function "get_checklist_completion". Consider using a type hint or @extend_schema_field.
+Warning|InstallationViewSet > InstallationSerializer|unable to resolve type hint for function "get_client_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|InstallationViewSet > InstallationSerializer|unable to resolve type hint for function "get_est_parc". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|InstallationViewSet > InstallationSerializer|unable to resolve type hint for function "get_lead_nom". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|InstallationViewSet > InstallationSerializer|unable to resolve type hint for function "get_nb_interventions". Consider using a type hint or @extend_schema_field. Def
+Warning|InstallationViewSet > InstallationSerializer|unable to resolve type hint for function "get_parc_garantie_etat". Consider using a type hint or @extend_schema_field. D
+Warning|InstallationViewSet > InstallationSerializer|unable to resolve type hint for function "get_regime_suggere". Consider using a type hint or @extend_schema_field. Defau
+Warning|InstallationViewSet > InstallationSerializer|unable to resolve type hint for function "get_statut_canonique". Consider using a type hint or @extend_schema_field. Def
+Warning|InstallationViewSet > InstallationSerializer|unable to resolve type hint for function "get_statut_ordre". Consider using a type hint or @extend_schema_field. Default
+Warning|InstallationViewSet > InstallationSerializer|unable to resolve type hint for function "get_technicien_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|InterventionViewSet > InterventionSerializer|unable to resolve type hint for function "get_client_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|InterventionViewSet > InterventionSerializer|unable to resolve type hint for function "get_crew_time". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|InterventionViewSet > InterventionSerializer|unable to resolve type hint for function "get_distance_site_km". Consider using a type hint or @extend_schema_field. Def
+Warning|InterventionViewSet > InterventionSerializer|unable to resolve type hint for function "get_equipe_noms". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|InterventionViewSet > InterventionSerializer|unable to resolve type hint for function "get_photos_obligatoires_manquantes". Consider using a type hint or @extend_sch
+Warning|InterventionViewSet > InterventionSerializer|unable to resolve type hint for function "get_preparation_completion". Consider using a type hint or @extend_schema_fiel
+Warning|InterventionViewSet > InterventionSerializer|unable to resolve type hint for function "get_preparation_confirmee". Consider using a type hint or @extend_schema_field
+Warning|InterventionViewSet > InterventionSerializer|unable to resolve type hint for function "get_reserves_ouvertes". Consider using a type hint or @extend_schema_field. De
+Warning|InterventionViewSet > InterventionSerializer|unable to resolve type hint for function "get_statut_ordre". Consider using a type hint or @extend_schema_field. Default
+Warning|InterventionViewSet > InterventionSerializer|unable to resolve type hint for function "get_technicien_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|IntrantAgricoleViewSet > IntrantAgricoleSerializer|unable to resolve type hint for function "get_produit_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|KbArticleViewSet > KbArticleSerializer|Encountered # components with identical names "KbArticle" and different identities <class 'apps.sav.serializers.KbArticl
+Warning|KbArticleViewSet > KbArticleSerializer|Encountered # components with identical names "KbArticleRequest" and different identities <class 'apps.sav.serializers.K
+Warning|KbArticleViewSet > KbArticleSerializer|Encountered # components with identical names "PatchedKbArticleRequest" and different identities <class 'apps.sav.serial
+Warning|KbArticleViewSet > KbArticleSerializer|unable to resolve type hint for function "get_has_couverture". Consider using a type hint or @extend_schema_field. Defau
+Warning|KbArticleViewSet > KbArticleSerializer|unable to resolve type hint for function "get_proprietes_effectives". Consider using a type hint or @extend_schema_field
+Warning|KbArticleViewSet|Encountered # components with identical names "PaginatedKbArticleList" and different identities <class 'apps.sav.seriali
+Warning|KitOutillageViewSet > KitOutillageSerializer|unable to resolve type hint for function "get_type_intervention_label". Consider using a type hint or @extend_schema_fie
+Warning|KitProduitViewSet > KitProduitSerializer > KitComposantSerializer|Encountered # components with identical names "KitComposant" and different identities <class 'apps.stock.serializers.Kit
+Warning|KitProduitViewSet > KitProduitSerializer > KitComposantSerializer|Encountered # components with identical names "KitComposantRequest" and different identities <class 'apps.stock.serializ
+Warning|KitProduitViewSet > KitProduitSerializer|unable to resolve type hint for function "get_disponibilite_potentielle". Consider using a type hint or @extend_schema_f
+Warning|KitProduitViewSet > KitProduitSerializer|unable to resolve type hint for function "get_nb_composants". Consider using a type hint or @extend_schema_field. Defaul
+Warning|LeadTagViewSet > LeadTagSerializer|unable to resolve type hint for function "get_en_usage". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_client_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_devis". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_devis_auto". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_next_activity". Consider using a type hint or @extend_schema_field. Defaul
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_owner_avatar". Consider using a type hint or @extend_schema_field. Default
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_owner_nom". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_owner_poste". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_pii_masked". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_score". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_score_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_score_reasons". Consider using a type hint or @extend_schema_field. Defaul
+Warning|LeadViewSet > LeadSerializer|unable to resolve type hint for function "get_stage_since_days". Consider using a type hint or @extend_schema_field. Def
+Warning|LeadViewSet|could not derive type of path parameter "activite_id" because model "apps.crm.models.Lead" contained no such field. Cons
+Warning|ListeDiffusionViewSet > ListeDiffusionSerializer|unable to resolve type hint for function "get_nb_abonnes". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|MainCouranteViewSet > MainCouranteSerializer|unable to resolve type hint for function "get_auteur_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|MarqueViewSet > MarqueSerializer|unable to resolve type hint for function "get_en_usage". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|MeView > UserSerializer|unable to resolve type hint for function "get_active_company_id". Consider using a type hint or @extend_schema_field. De
+Warning|MeView > UserSerializer|unable to resolve type hint for function "get_avatar_url". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|MeView > UserSerializer|unable to resolve type hint for function "get_modules_desactives". Consider using a type hint or @extend_schema_field. D
+Warning|MeView > UserSerializer|unable to resolve type hint for function "get_permissions". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|MeView > UserSerializer|unable to resolve type hint for function "get_societes_operables". Consider using a type hint or @extend_schema_field. D
+Warning|MeView > UserSerializer|unable to resolve type hint for function "menu_tier". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|MessageViewSet > MessageSerializer|unable to resolve type hint for function "get_is_pinned". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|MessageViewSet > MessageSerializer|unable to resolve type hint for function "get_reply_count". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|MessageViewSet > MessageSerializer|unable to resolve type hint for function "get_sender_detail". Consider using a type hint or @extend_schema_field. Defaul
+Warning|MessageViewSet > MessageSerializer|unable to resolve type hint for function "get_shared_url". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|MessageViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|MetaConnectionViewSet > MetaConnectionSerializer|unable to resolve type hint for function "get_has_credentials". Consider using a type hint or @extend_schema_field. Defa
+Warning|ModeleProjetViewSet > ModeleProjetSerializer|Encountered # components with identical names "ModeleProjet" and different identities <class 'apps.installations.seriali
+Warning|ModeleProjetViewSet > ModeleProjetSerializer|Encountered # components with identical names "ModeleProjetRequest" and different identities <class 'apps.installations.
+Warning|ModeleProjetViewSet > ModeleProjetSerializer|Encountered # components with identical names "PatchedModeleProjetRequest" and different identities <class 'apps.install
+Warning|ModeleProjetViewSet|Encountered # components with identical names "PaginatedModeleProjetList" and different identities <class 'apps.installa
+Warning|ModuleCatalogViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|MonitoringConfigViewSet > MonitoringConfigSerializer|unable to resolve type hint for function "get_has_credentials". Consider using a type hint or @extend_schema_field. Defa
+Warning|MonitoringConfigViewSet > MonitoringConfigSerializer|unable to resolve type hint for function "get_provider_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|MotifPerteViewSet > MotifPerteSerializer|unable to resolve type hint for function "get_en_usage". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|NiveauViewSet > NiveauSerializer|Encountered # components with identical names "Niveau" and different identities <class 'apps.immobilier.serializers.Nive
+Warning|NiveauViewSet > NiveauSerializer|Encountered # components with identical names "NiveauRequest" and different identities <class 'apps.immobilier.serialize
+Warning|NiveauViewSet > NiveauSerializer|Encountered # components with identical names "PatchedNiveauRequest" and different identities <class 'apps.immobilier.se
+Warning|NiveauViewSet|Encountered # components with identical names "PaginatedNiveauList" and different identities <class 'apps.immobilier.ser
+Warning|NotationFinChantierViewSet > NotationFinChantierSerializer|unable to resolve type hint for function "get_peut_cloturer". Consider using a type hint or @extend_schema_field. Defaul
+Warning|NoteDeFraisViewSet > NoteDeFraisSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|NoteDebitViewSet > NoteDebitSerializer|unable to resolve type hint for function "get_client_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|NotificationPreferenceViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|NotificationViewSet > NotificationSerializer|unable to resolve type hint for function "get_category". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|NotificationViewSet > NotificationSerializer|unable to resolve type hint for function "get_is_action". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|NotificationViewSet > NotificationSerializer|unable to resolve type hint for function "get_severity". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|ObjectifCommercialViewSet > ObjectifCommercialSerializer|unable to resolve type hint for function "get_metric_display". Consider using a type hint or @extend_schema_field. Defau
+Warning|ObjectifCommercialViewSet > ObjectifCommercialSerializer|unable to resolve type hint for function "get_owner_nom". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|ObjectifCommercialViewSet > ObjectifCommercialSerializer|unable to resolve type hint for function "get_period_type_display". Consider using a type hint or @extend_schema_field.
+Warning|ObligationFiscaleViewSet > ObligationFiscaleSerializer|Encountered # components with identical names "ObligationFiscale" and different identities <class 'apps.fiscal.serialize
+Warning|ObligationFiscaleViewSet > ObligationFiscaleSerializer|Encountered # components with identical names "ObligationFiscaleRequest" and different identities <class 'apps.compta.se
+Warning|ObligationFiscaleViewSet|Encountered # components with identical names "PaginatedObligationFiscaleList" and different identities <class 'apps.fis
+Warning|OnboardingProgressViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|OrdreAssemblageViewSet > OrdreAssemblageSerializer|unable to resolve type hint for function "get_cout_prevu". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|OrdreAssemblageViewSet > OrdreAssemblageSerializer|unable to resolve type hint for function "get_temps_prevu_min". Consider using a type hint or @extend_schema_field. Defa
+Warning|OrdreAssemblageViewSet > OrdreAssemblageSerializer|unable to resolve type hint for function "get_temps_reel_min". Consider using a type hint or @extend_schema_field. Defau
+Warning|OrdreAssemblageViewSet|could not derive type of path parameter "etape_modele_id" because model "apps.installations.models_kitting.OrdreAssembla
+Warning|OrdreAssemblageViewSet|could not derive type of path parameter "item_modele_id" because model "apps.installations.models_kitting.OrdreAssemblag
+Warning|OrdreMissionViewSet > OrdreMissionSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|OrdreReparationViewSet > OrdreReparationSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|OrdreReparationViewSet > OrdreReparationSerializer|unable to resolve type hint for function "get_garage_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|OrdreReparationViewSet > OrdreReparationSerializer|unable to resolve type hint for function "get_type_service_libelle". Consider using a type hint or @extend_schema_field.
+Warning|OutillageViewSet > OutillageSerializer|unable to resolve type hint for function "get_a_calibrer". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|OuverturePosteViewSet > OuverturePosteSerializer|unable to resolve type hint for function "get_departement_nom". Consider using a type hint or @extend_schema_field. Defa
+Warning|OuverturePosteViewSet > OuverturePosteSerializer|unable to resolve type hint for function "get_poste_ref_intitule". Consider using a type hint or @extend_schema_field. D
+Warning|PaiementSousTraitantViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|PaiementViewSet|could not derive type of path parameter "retenue_id" because model "apps.facturation.models.Paiement" contained no such
+Warning|ParametrageRelanceClientViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|PartageGedViewSet > PartageGedSerializer|unable to resolve type hint for function "get_public_url". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|PeriodeReportingESGViewSet > PeriodeReportingESGSerializer|unable to resolve type hint for function "get_figee_par_nom". Consider using a type hint or @extend_schema_field. Defaul
+Warning|PermisConduireViewSet > PermisConduireSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|PermisConduireViewSet > PermisConduireSerializer|unable to resolve type hint for function "get_valide". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|PermisTravailViewSet > PermisTravailSerializer|unable to resolve type hint for function "get_delivre_par_nom". Consider using a type hint or @extend_schema_field. Defa
+Warning|PermisTravailViewSet > PermisTravailSerializer|unable to resolve type hint for function "get_valide_par_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|PieceFlotteViewSet > PieceFlotteSerializer|unable to resolve type hint for function "get_cout_total". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|PieceFlotteViewSet > PieceFlotteSerializer|unable to resolve type hint for function "get_vehicule_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|PlanEntretienViewSet > PlanEntretienSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|PlanEntretienViewSet > PlanEntretienSerializer|unable to resolve type hint for function "get_type_actif". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|PlanInspectionChantierViewSet > PlanInspectionChantierSerializer|unable to resolve type hint for function "get_nb_hold_points_bloquants". Consider using a type hint or @extend_schema_fi
+Warning|PlanInspectionChantierViewSet > PlanInspectionChantierSerializer|unable to resolve type hint for function "get_peut_avancer". Consider using a type hint or @extend_schema_field. Default
+Warning|PlaybookEtapeViewSet > PlaybookEtapeSerializer|unable to resolve type hint for function "get_stage_display". Consider using a type hint or @extend_schema_field. Defaul
+Warning|PleinCarburantViewSet > PleinCarburantSerializer|unable to resolve type hint for function "get_prix_unitaire". Consider using a type hint or @extend_schema_field. Defaul
+Warning|PleinCarburantViewSet > PleinCarburantSerializer|unable to resolve type hint for function "get_vehicule_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|PneumatiqueViewSet > PneumatiqueSerializer|unable to resolve type hint for function "get_vehicule_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|PointContactViewSet > PointContactSerializer|unable to resolve type hint for function "get_saisi_par_nom". Consider using a type hint or @extend_schema_field. Defaul
+Warning|PointageViewSet > PointageSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|PoliceAssuranceViewSet > PoliceAssuranceSerializer|unable to resolve type hint for function "get_employe_couvert_libelle". Consider using a type hint or @extend_schema_fie
+Warning|PortailSelfServiceViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|PresenceChantierViewSet > PresenceChantierSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|PresquAccidentViewSet > PresquAccidentSerializer|unable to resolve type hint for function "get_declare_par_nom". Consider using a type hint or @extend_schema_field. Defa
+Warning|PrimeAttribueeViewSet > PrimeAttribueeSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_bcf_sources_en_commande". Consider using a type hint or @extend_schema_fie
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_categorie_type_display". Consider using a type hint or @extend_schema_fiel
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_derniere_date_mouvement". Consider using a type hint or @extend_schema_fie
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_description_localise". Consider using a type hint or @extend_schema_field.
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_is_low_stock". Consider using a type hint or @extend_schema_field. Default
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_is_low_stock_disponible". Consider using a type hint or @extend_schema_fie
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_marge_pct". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_nb_mouvements". Consider using a type hint or @extend_schema_field. Defaul
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_nom_localise". Consider using a type hint or @extend_schema_field. Default
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_premiere_date_mouvement". Consider using a type hint or @extend_schema_fie
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_quantite_disponible". Consider using a type hint or @extend_schema_field.
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_quantite_en_commande". Consider using a type hint or @extend_schema_field.
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_quantite_reservee". Consider using a type hint or @extend_schema_field. De
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_stock_par_emplacement". Consider using a type hint or @extend_schema_field
+Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_unite_stock_display". Consider using a type hint or @extend_schema_field.
+Warning|ProfilPaieViewSet > ProfilPaieSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ProjetChantierViewSet > ProjetChantierSerializer|Encountered # components with identical names "PatchedProjetChantierRequest" and different identities <class 'apps.insta
+Warning|ProjetChantierViewSet > ProjetChantierSerializer|Encountered # components with identical names "ProjetChantier" and different identities <class 'apps.installations.seria
+Warning|ProjetChantierViewSet > ProjetChantierSerializer|Encountered # components with identical names "ProjetChantierRequest" and different identities <class 'apps.installation
+Warning|ProjetChantierViewSet|Encountered # components with identical names "PaginatedProjetChantierList" and different identities <class 'apps.instal
+Warning|ProjetTacheViewSet > ProjetTacheSerializer|unable to resolve type hint for function "get_assigne_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ProjetTacheViewSet > ProjetTacheSerializer|unable to resolve type hint for function "get_nb_sous_taches". Consider using a type hint or @extend_schema_field. Defau
+Warning|ProjetViewSet > ProjetSerializer|Encountered # components with identical names "PatchedProjetRequest" and different identities <class 'apps.installations
+Warning|ProjetViewSet > ProjetSerializer|Encountered # components with identical names "Projet" and different identities <class 'apps.installations.serializers.P
+Warning|ProjetViewSet > ProjetSerializer|Encountered # components with identical names "ProjetRequest" and different identities <class 'apps.installations.serial
+Warning|ProjetViewSet|Encountered # components with identical names "PaginatedProjetList" and different identities <class 'apps.installations.
+Warning|PromessePaiementViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|PublicProduitViewSet > PublicProduitSerializer|unable to resolve type hint for function "get_quantite_disponible". Consider using a type hint or @extend_schema_field.
+Warning|QuizFormationViewSet > QuizFormationSerializer|unable to resolve type hint for function "get_competence_libelle". Consider using a type hint or @extend_schema_field. D
+Warning|QuotaStockageViewSet > QuotaStockageSerializer|unable to resolve type hint for function "get_depasse". Consider using a type hint or @extend_schema_field. Defaulting t
+Warning|QuotaStockageViewSet > QuotaStockageSerializer|unable to resolve type hint for function "get_utilise_octets". Consider using a type hint or @extend_schema_field. Defau
+Warning|RFIViewSet > RFISerializer|unable to resolve type hint for function "get_en_retard". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|RFQViewSet > RFQSerializer|unable to resolve type hint for function "get_comparatif". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|ReceptionFournisseurViewSet > ReceptionFournisseurSerializer > LigneReceptionFournisseurSerializer|unable to resolve type hint for function "get_designation". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ReceptionFournisseurViewSet > ReceptionFournisseurSerializer > LigneReceptionFournisseurSerializer|unable to resolve type hint for function "get_produit_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ReceptionFournisseurViewSet > ReceptionFournisseurSerializer > LigneReceptionFournisseurSerializer|unable to resolve type hint for function "get_produit_sku". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ReceptionFournisseurViewSet > ReceptionFournisseurSerializer|unable to resolve type hint for function "get_controle_qhse_ouvert". Consider using a type hint or @extend_schema_field.
+Warning|ReclamationViewSet > ReclamationSerializer|unable to resolve type hint for function "get_audit". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|ReclamationViewSet > ReclamationSerializer|unable to resolve type hint for function "get_ncr". Consider using a type hint or @extend_schema_field. Defaulting to st
+Warning|ReleveCourbeIVViewSet > ReleveCourbeIVSerializer|unable to resolve type hint for function "get_fill_factor". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ReleveTelematiqueViewSet > ReleveTelematiqueSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|RemiseAccessoireViewSet > RemiseAccessoireSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|RemiseAccessoireViewSet > RemiseAccessoireSerializer|unable to resolve type hint for function "get_conducteur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|RendezVousViewSet > RendezVousSerializer|unable to resolve type hint for function "delai_annulation_h". Consider using a type hint or @extend_schema_field. Defau
+Warning|RendezVousViewSet > RendezVousSerializer|unable to resolve type hint for function "get_patient_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|RendezVousViewSet > RendezVousSerializer|unable to resolve type hint for function "get_praticien_nom". Consider using a type hint or @extend_schema_field. Defaul
+Warning|ReservationVehiculeViewSet > ReservationVehiculeSerializer|unable to resolve type hint for function "get_conducteur_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|ReservationVehiculeViewSet > ReservationVehiculeSerializer|unable to resolve type hint for function "get_vehicule_label". Consider using a type hint or @extend_schema_field. Defau
+Warning|ResiliationViewSet > ResiliationSerializer|unable to resolve type hint for function "get_cree_par_username". Consider using a type hint or @extend_schema_field. De
+Warning|RetentionPolicyViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|RetenueGarantieViewSet > RetenueGarantieSerializer|Encountered # components with identical names "PatchedRetenueGarantieRequest" and different identities <class 'apps.cont
+Warning|RetenueGarantieViewSet > RetenueGarantieSerializer|Encountered # components with identical names "RetenueGarantie" and different identities <class 'apps.contrats.serialize
+Warning|RetenueGarantieViewSet > RetenueGarantieSerializer|Encountered # components with identical names "RetenueGarantieRequest" and different identities <class 'apps.contrats.se
+Warning|RetenueGarantieViewSet|Encountered # components with identical names "PaginatedRetenueGarantieList" and different identities <class 'apps.contr
+Warning|RetourFeedback360ViewSet > RetourFeedback360Serializer|unable to resolve type hint for function "get_repondant_nom". Consider using a type hint or @extend_schema_field. Defaul
+Warning|ReunionChantierViewSet > ReunionChantierSerializer|unable to resolve type hint for function "get_redige_par_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|RevisionDocumentViewSet > RevisionDocumentSerializer|unable to resolve type hint for function "get_auteur_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|RevisionDocumentViewSet > RevisionDocumentSerializer|unable to resolve type hint for function "get_fichier_url". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|RoleViewSet > RoleSerializer|unable to resolve type hint for function "get_users". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|RoleViewSet > RoleSerializer|unable to resolve type hint for function "get_users_count". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|SanctionViewSet > SanctionSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|SandboxEnvironmentViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|SavedViewViewSet > SavedViewSerializer|Encountered # components with identical names "PatchedSavedViewRequest" and different identities <class 'apps.uxviews.se
+Warning|SavedViewViewSet > SavedViewSerializer|Encountered # components with identical names "SavedView" and different identities <class 'apps.uxviews.serializers.Save
+Warning|SavedViewViewSet > SavedViewSerializer|Encountered # components with identical names "SavedViewRequest" and different identities <class 'apps.uxviews.serialize
+Warning|ScheduledMessageViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|SessionFormationViewSet > SessionFormationSerializer > InscriptionFormationSerializer|unable to resolve type hint for function "get_participant_nom". Consider using a type hint or @extend_schema_field. Defa
+Warning|SessionFormationViewSet > SessionFormationSerializer|unable to resolve type hint for function "get_competence_visee_libelle". Consider using a type hint or @extend_schema_fi
+Warning|SessionListView > UserSessionSerializer|unable to resolve type hint for function "get_is_current". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|SignalementVehiculeViewSet > SignalementVehiculeSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|SignalementVehiculeViewSet > SignalementVehiculeSerializer|unable to resolve type hint for function "get_auteur_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|SinistreViewSet > SinistreSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|SituationTravauxViewSet > SituationTravauxSerializer|unable to resolve type hint for function "get_montant_periode_total". Consider using a type hint or @extend_schema_field
+Warning|SodRuleViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|SousTraitantViewSet > SousTraitantSerializer|Encountered # components with identical names "PatchedSousTraitantRequest" and different identities <class 'apps.install
+Warning|SousTraitantViewSet > SousTraitantSerializer|Encountered # components with identical names "SousTraitant" and different identities <class 'apps.installations.seriali
+Warning|SousTraitantViewSet > SousTraitantSerializer|Encountered # components with identical names "SousTraitantRequest" and different identities <class 'apps.installations.
+Warning|SousTraitantViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|TacheViewSet > TacheSerializer|unable to resolve type hint for function "get_pct_checklist_fait". Consider using a type hint or @extend_schema_field. D
+Warning|TagViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|TaggedItemViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|TentativeQuizViewSet > TentativeQuizSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|TicketViewSet > TicketSerializer > TicketInterventionSerializer|unable to resolve type hint for function "get_technicien_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_canal_resolution_propose". Consider using a type hint or @extend_schema_fi
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_client_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_client_telephone". Consider using a type hint or @extend_schema_field. Def
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_couverture_proposee". Consider using a type hint or @extend_schema_field.
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_equipement_couvert". Consider using a type hint or @extend_schema_field. D
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_nb_interventions". Consider using a type hint or @extend_schema_field. Def
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_sla_due_at_effectif". Consider using a type hint or @extend_schema_field.
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_sous_garantie_effectif". Consider using a type hint or @extend_schema_fiel
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_sous_garantie_effectif_display". Consider using a type hint or @extend_sch
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_statut_ordre". Consider using a type hint or @extend_schema_field. Default
+Warning|TicketViewSet > TicketSerializer|unable to resolve type hint for function "get_technicien_nom". Consider using a type hint or @extend_schema_field. Defau
+Warning|TicketViewSet|could not derive type of path parameter "activite_id" because model "apps.sav.models.Ticket" contained no such field. Co
+Warning|TicketViewSet|could not derive type of path parameter "piece_id" because model "apps.sav.models.Ticket" contained no such field. Consi
+Warning|TicketViewSet|could not derive type of path parameter "pret_id" because model "apps.sav.models.Ticket" contained no such field. Consid
+Warning|TrajetChantierViewSet > TrajetChantierSerializer|unable to resolve type hint for function "distance_calculee_km". Consider using a type hint or @extend_schema_field. Def
+Warning|TrajetChantierViewSet > TrajetChantierSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|TrajetTelematiqueViewSet > TrajetTelematiqueSerializer|unable to resolve type hint for function "duree_minutes". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|TrajetTelematiqueViewSet > TrajetTelematiqueSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|TrajetTelematiqueViewSet > TrajetTelematiqueSerializer|unable to resolve type hint for function "vitesse_moyenne_kmh". Consider using a type hint or @extend_schema_field. Defa
+Warning|TrashViewSet > DeletionRecordSerializer|unable to resolve type hint for function "get_model_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|TypeInterventionViewSet > TypeInterventionSerializer|unable to resolve type hint for function "get_en_usage". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|UserChatStatusViewSet > UserChatStatusSerializer|unable to resolve type hint for function "get_is_dnd". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "get_active_company_id". Consider using a type hint or @extend_schema_field. De
+Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "get_avatar_url". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "get_modules_desactives". Consider using a type hint or @extend_schema_field. D
+Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "get_permissions". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "get_societes_operables". Consider using a type hint or @extend_schema_field. D
+Warning|UserViewSet > UserSerializer|unable to resolve type hint for function "menu_tier". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|UserViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|VehiculeViewSet > VehiculeSerializer|unable to resolve type hint for function "get_checklist_mise_en_service_ok". Consider using a type hint or @extend_schem
+Warning|VehiculeViewSet > VehiculeSerializer|unable to resolve type hint for function "get_emplacement_stock_label". Consider using a type hint or @extend_schema_fie
+Warning|VehiculeViewSet > VehiculeSerializer|unable to resolve type hint for function "get_modele_ref_label". Consider using a type hint or @extend_schema_field. Def
+Warning|VeilleReglementaireViewSet > VeilleReglementaireSerializer|Encountered # components with identical names "PatchedVeilleReglementaireRequest" and different identities <class 'apps.
+Warning|VeilleReglementaireViewSet > VeilleReglementaireSerializer|Encountered # components with identical names "VeilleReglementaire" and different identities <class 'apps.qhse.serialize
+Warning|VeilleReglementaireViewSet > VeilleReglementaireSerializer|Encountered # components with identical names "VeilleReglementaireRequest" and different identities <class 'apps.qhse.se
+Warning|VeilleReglementaireViewSet|Encountered # components with identical names "PaginatedVeilleReglementaireList" and different identities <class 'apps.q
+Warning|VersionContratViewSet > VersionContratSerializer|unable to resolve type hint for function "get_cree_par_username". Consider using a type hint or @extend_schema_field. De
+Warning|VisiteMedicaleViewSet > VisiteMedicaleSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|VisiteTechniqueViewSet > VisiteTechniqueSerializer|unable to resolve type hint for function "get_actif_label". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|VisiteTechniqueViewSet > VisiteTechniqueSerializer|unable to resolve type hint for function "get_statut_calcule". Consider using a type hint or @extend_schema_field. Defau
+Warning|VoteIdeeViewSet > VoteIdeeSerializer|unable to resolve type hint for function "get_votant_nom". Consider using a type hint or @extend_schema_field. Defaultin
+Warning|VueGedEnregistreeViewSet > VueGedEnregistreeSerializer|unable to resolve type hint for function "get_est_a_moi". Consider using a type hint or @extend_schema_field. Defaulting
+Warning|WorkingHoursConfigViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi

@@ -47,6 +47,23 @@ class OpenAPISchemaGenerationTests(TestCase):
                 f"aucune opération de schéma trouvée pour le préfixe {prefix}",
             )
 
+    def test_authenticators_are_described_in_the_schema(self):
+        """YAPIC6 — les deux authenticators maison ont leur extension.
+
+        Sans `OpenApiAuthenticationExtension`, drf-spectacular émettait
+        « could not resolve authenticator » sur CHAQUE vue (1 244
+        avertissements uniques, ~66 % du bruit) et le document ne portait
+        AUCUN `securitySchemes` : ni Swagger ni un client généré ne savaient
+        s'authentifier. Cf. authentication/cookie_auth.py et
+        apps/publicapi/auth.py.
+        """
+        schemes = self.schema.get('components', {}).get('securitySchemes', {})
+        self.assertIn('cookieJWT', schemes)
+        self.assertIn('publicApiKey', schemes)
+        self.assertEqual(schemes['cookieJWT']['in'], 'cookie')
+        self.assertEqual(schemes['cookieJWT']['name'], 'access_token')
+        self.assertEqual(schemes['publicApiKey']['in'], 'header')
+
 
 class OpenAPIDocsEndpointsTests(TestCase):
     """Les 3 endpoints (schema/docs/redoc) existent et exigent une session."""
