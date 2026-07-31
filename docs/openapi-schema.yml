@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8225, operations: 15138, components: 4090}
+counts: {paths: 8225, operations: 15138, components: 4093}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -358,8 +358,8 @@ operations:
 - get /api/django/adsengine/reporting/variantes/ -> django_adsengine_reporting_variantes_retrieve
 - get /api/django/adsengine/signaux/ -> django_adsengine_signaux_retrieve
 - get /api/django/adsengine/signaux/cohorte/ -> django_adsengine_signaux_cohorte_retrieve
-- get /api/django/adsengine/simulations/ -> django_adsengine_simulations_retrieve
-- get /api/django/adsengine/simulations/{key}/ -> django_adsengine_simulations_retrieve_2
+- get /api/django/adsengine/simulations/ -> django_adsengine_simulations_list
+- get /api/django/adsengine/simulations/{key}/ -> django_adsengine_simulations_retrieve
 - get /api/django/adsengine/stats-bras/ -> django_adsengine_stats_bras_list
 - post /api/django/adsengine/stats-bras/ -> django_adsengine_stats_bras_create
 - delete /api/django/adsengine/stats-bras/{id}/ -> django_adsengine_stats_bras_destroy
@@ -2503,12 +2503,12 @@ operations:
 - put /api/django/crm/motifs-perte/{id}/ -> django_crm_motifs_perte_update
 - get /api/django/crm/objectifs/ -> django_crm_objectifs_list
 - post /api/django/crm/objectifs/ -> django_crm_objectifs_create
-- get /api/django/crm/objectifs/attainment/ -> django_crm_objectifs_attainment_retrieve
+- get /api/django/crm/objectifs/attainment/ -> django_crm_objectifs_attainment_list
 - delete /api/django/crm/objectifs/{id}/ -> django_crm_objectifs_destroy
 - get /api/django/crm/objectifs/{id}/ -> django_crm_objectifs_retrieve
 - patch /api/django/crm/objectifs/{id}/ -> django_crm_objectifs_partial_update
 - put /api/django/crm/objectifs/{id}/ -> django_crm_objectifs_update
-- get /api/django/crm/objectifs/{id}/attainment/ -> django_crm_objectifs_attainment_retrieve_2
+- get /api/django/crm/objectifs/{id}/attainment/ -> django_crm_objectifs_attainment_retrieve
 - get /api/django/crm/parrainages/ -> django_crm_parrainages_list
 - post /api/django/crm/parrainages/ -> django_crm_parrainages_create
 - get /api/django/crm/parrainages/stats/ -> django_crm_parrainages_stats_retrieve
@@ -7953,8 +7953,8 @@ operations:
 - get /api/v1/adsengine/reporting/variantes/ -> v1_adsengine_reporting_variantes_retrieve
 - get /api/v1/adsengine/signaux/ -> v1_adsengine_signaux_retrieve
 - get /api/v1/adsengine/signaux/cohorte/ -> v1_adsengine_signaux_cohorte_retrieve
-- get /api/v1/adsengine/simulations/ -> v1_adsengine_simulations_retrieve
-- get /api/v1/adsengine/simulations/{key}/ -> v1_adsengine_simulations_retrieve_2
+- get /api/v1/adsengine/simulations/ -> v1_adsengine_simulations_list
+- get /api/v1/adsengine/simulations/{key}/ -> v1_adsengine_simulations_retrieve
 - get /api/v1/adsengine/stats-bras/ -> v1_adsengine_stats_bras_list
 - post /api/v1/adsengine/stats-bras/ -> v1_adsengine_stats_bras_create
 - delete /api/v1/adsengine/stats-bras/{id}/ -> v1_adsengine_stats_bras_destroy
@@ -10098,12 +10098,12 @@ operations:
 - put /api/v1/crm/motifs-perte/{id}/ -> v1_crm_motifs_perte_update
 - get /api/v1/crm/objectifs/ -> v1_crm_objectifs_list
 - post /api/v1/crm/objectifs/ -> v1_crm_objectifs_create
-- get /api/v1/crm/objectifs/attainment/ -> v1_crm_objectifs_attainment_retrieve
+- get /api/v1/crm/objectifs/attainment/ -> v1_crm_objectifs_attainment_list
 - delete /api/v1/crm/objectifs/{id}/ -> v1_crm_objectifs_destroy
 - get /api/v1/crm/objectifs/{id}/ -> v1_crm_objectifs_retrieve
 - patch /api/v1/crm/objectifs/{id}/ -> v1_crm_objectifs_partial_update
 - put /api/v1/crm/objectifs/{id}/ -> v1_crm_objectifs_update
-- get /api/v1/crm/objectifs/{id}/attainment/ -> v1_crm_objectifs_attainment_retrieve_2
+- get /api/v1/crm/objectifs/{id}/attainment/ -> v1_crm_objectifs_attainment_retrieve
 - get /api/v1/crm/parrainages/ -> v1_crm_parrainages_list
 - post /api/v1/crm/parrainages/ -> v1_crm_parrainages_create
 - get /api/v1/crm/parrainages/stats/ -> v1_crm_parrainages_stats_retrieve
@@ -16651,6 +16651,7 @@ components:
 - NotificationRoutingRule
 - NotificationRoutingRuleRequest
 - NullEnum
+- ObjectifAttainment
 - ObjectifCommercial
 - ObjectifCommercialRequest
 - ObjectifESGTrajectoire
@@ -17249,6 +17250,7 @@ components:
 - PaginatedNoteList
 - PaginatedNotificationList
 - PaginatedNotificationRoutingRuleList
+- PaginatedObjectifAttainmentList
 - PaginatedObjectifCommercialList
 - PaginatedObjectifESGTrajectoireList
 - PaginatedObligationFiscaleList
@@ -18923,6 +18925,7 @@ components:
 - SimulationFinancementRequest
 - SimulationPublique
 - SimulationPubliqueRequest
+- SimulationScenario
 - Sinistre
 - SinistreRequest
 - SinistreStatutEnum

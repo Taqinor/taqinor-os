@@ -144,7 +144,6 @@ Error|SessionRevokeView|unable to guess serializer. This is graceful fallback ha
 Error|SignalCohortView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|SignalsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|SimulationDetailView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|SimulationListView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|StatusView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|SwitchCompanyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|SyncStatusView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -428,16 +427,12 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_contrat". The same name has been use
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_facture". The same name has been use
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_installation". The same name has bee
-Warning|<global>|operationId "django_adsengine_simulations_retrieve" has collisions [('/api/django/adsengine/simulations/', 'get'), ('/ap
 Warning|<global>|operationId "django_core_saved_queries_run_create" has collisions [('/api/django/core/saved-queries/{id}/run/', 'post'),
-Warning|<global>|operationId "django_crm_objectifs_attainment_retrieve" has collisions [('/api/django/crm/objectifs/{id}/attainment/', 'g
 Warning|<global>|operationId "django_identity_scim_v#_Groups_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/Grou
 Warning|<global>|operationId "django_identity_scim_v#_Users_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/Users
 Warning|<global>|operationId "django_kb_parcours_articles_list" has collisions [('/api/django/kb/parcours-articles/', 'get'), ('/api/djan
 Warning|<global>|operationId "django_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/django/sav/contrats-maintenanc
-Warning|<global>|operationId "v#_adsengine_simulations_retrieve" has collisions [('/api/v#/adsengine/simulations/', 'get'), ('/api/v#/ads
 Warning|<global>|operationId "v#_core_saved_queries_run_create" has collisions [('/api/v#/core/saved-queries/{id}/run/', 'post'), ('/api/
-Warning|<global>|operationId "v#_crm_objectifs_attainment_retrieve" has collisions [('/api/v#/crm/objectifs/{id}/attainment/', 'get'), ('
 Warning|<global>|operationId "v#_identity_scim_v#_Groups_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Groups', 'ge
 Warning|<global>|operationId "v#_identity_scim_v#_Users_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Users', 'get'
 Warning|<global>|operationId "v#_kb_parcours_articles_list" has collisions [('/api/v#/kb/parcours-articles/', 'get'), ('/api/v#/kb/parcou
