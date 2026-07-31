@@ -22,7 +22,10 @@ from .views import (
     JalonChantierPortailViewSet,
     PaiementFacturePortailViewSet,
 )
-from .views_client import MesDevisPortailViewSet
+from .views_client import (
+    MesDevisPortailViewSet,
+    MesFacturesPortailViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'comptes-portail', ComptePortailClientViewSet,
@@ -44,6 +47,8 @@ router.register(r'demandes-ticket-portail', DemandeTicketPortailViewSet,
 # seules que le client lui-même appelle.
 router.register(r'mes-devis', MesDevisPortailViewSet,
                 basename='portail-mes-devis')
+router.register(r'mes-factures', MesFacturesPortailViewSet,
+                basename='portail-mes-factures')
 
 urlpatterns = [
     path('', include(router.urls)),

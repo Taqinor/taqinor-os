@@ -14,6 +14,7 @@ l'acceptation). ``/proposal`` reste l'unique voie PDF devis (règle #4).
 """
 
 from apps.compta.services import (  # noqa: F401
+    cmi_actif,
     initier_paiement_facture,
     rapprocher_paiement_facture,
     signer_acceptation_devis,

@@ -126,3 +126,76 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
             'reference': devis.reference,
             'statut': devis.statut,
         })
+
+
+class MesFacturesPortailViewSet(viewsets.ViewSet):
+    """NTPRT11 — « Mes commandes & factures » : liste, détail, intention de
+    paiement (GATED CMI)."""
+
+    permission_classes = [IsPortalClientUser]
+
+    def list(self, request):
+        from apps.ventes.selectors import factures_du_client_portail
+        company, client_id = _scope(request)
+        return Response({
+            'results': factures_du_client_portail(company, client_id),
+            'paiement_en_ligne_actif': services.cmi_actif(),
+        })
+
+    def retrieve(self, request, pk=None):
+        from apps.ventes.selectors import factures_du_client_portail
+        company, client_id = _scope(request)
+        for ligne in factures_du_client_portail(company, client_id):
+            if str(ligne['id']) == str(pk):
+                return Response(ligne)
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=True, methods=['post'], url_path='payer',
+            permission_classes=[IsPortalClientUser])
+    def payer(self, request, pk=None):
+        """Crée une intention de paiement locale — JAMAIS d'appel payant.
+
+        Critère NTPRT11 : sans clé CMI, le bouton « Payer » crée une intention
+        ``initie`` ET renvoie les coordonnées bancaires (RIB de
+        ``CompanyProfile``) comme repli — jamais une erreur. Avec CMI actif, la
+        même intention est créée et l'intégration (future) prend le relais dans
+        ``services.initier_paiement_facture`` : rien n'est décidé ici.
+        """
+        from apps.parametres.selectors import company_identity
+        from apps.ventes.selectors import facture_du_client_portail
+
+        company, client_id = _scope(request)
+        facture = facture_du_client_portail(company, client_id, pk)
+        if facture is None:
+            return Response({'detail': 'Introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        from .models import PaiementFacturePortail
+        actif = services.cmi_actif()
+        paiement = PaiementFacturePortail.objects.create(
+            company=company,
+            facture=facture,
+            montant=facture.montant_du,
+            methode=(PaiementFacturePortail.Methode.CARTE if actif
+                     else PaiementFacturePortail.Methode.VIREMENT),
+        )
+        services.initier_paiement_facture(paiement)
+        paiement.refresh_from_db(fields=['reference', 'statut'])
+
+        # Repli virement : UNIQUEMENT le nom, la banque et le RIB de la société
+        # émettrice — jamais le reste de son identité légale (on ne déverse pas
+        # ``company_identity`` entier vers un écran externe).
+        identite = company_identity(company)
+        return Response({
+            'paiement_id': paiement.id,
+            'reference': paiement.reference,
+            'statut': paiement.statut,
+            'montant': str(paiement.montant),
+            'paiement_en_ligne_actif': actif,
+            'virement': {
+                'beneficiaire': identite.get('nom', ''),
+                'banque': identite.get('banque', ''),
+                'rib': identite.get('rib', ''),
+            },
+        })

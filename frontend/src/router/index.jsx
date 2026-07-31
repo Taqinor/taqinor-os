@@ -72,6 +72,7 @@ const LexiquePage = lazy(() => import('../pages/aide/LexiquePage'))
 const PortalClientLayout = lazy(() => import('../features/portail/client/PortalClientLayout'))
 const PortailClientAccueil = lazy(() => import('../features/portail/client/PortailClientAccueil'))
 const PortailClientDevis = lazy(() => import('../features/portail/client/PortailClientDevis'))
+const PortailClientFactures = lazy(() => import('../features/portail/client/PortailClientFactures'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -305,6 +306,12 @@ const router = createBrowserRouter([
     path: '/portail/client/devis',
     loader: portalLoader(PORTEE_CLIENT),
     element: <WithPortal shell={PortalClientLayout}><PortailClientDevis /></WithPortal>,
+  },
+  // NTPRT11 — « Mes commandes & factures » + paiement en ligne GATÉ (CMI).
+  {
+    path: '/portail/client/factures',
+    loader: portalLoader(PORTEE_CLIENT),
+    element: <WithPortal shell={PortalClientLayout}><PortailClientFactures /></WithPortal>,
   },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },

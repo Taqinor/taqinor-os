@@ -1501,3 +1501,43 @@ def devis_du_client_portail_obj(company, client_id, devis_id):
             .filter(company=company, client_id=client_id, pk=devis_id)
             .exclude(statut=Devis.Statut.BROUILLON)
             .first())
+
+
+def factures_du_client_portail(company, client_id, *, limit=200):
+    """NTPRT11 — Factures visibles par le client ``client_id`` sur son portail.
+
+    Mêmes règles : brouillons internes exclus, aucun champ de coût.
+    ``montant_du`` est le reste à payer déjà calculé par le modèle (source
+    unique — jamais un recalcul local qui divergerait de l'écran interne).
+    """
+    from .models import Facture
+
+    if company is None or not client_id:
+        return []
+    qs = (Facture.objects
+          .filter(company=company, client_id=client_id)
+          .exclude(statut=Facture.Statut.BROUILLON)
+          .order_by('-date_emission', '-id')[:limit])
+    return [{
+        'id': f.id,
+        'reference': f.reference,
+        'statut': f.statut,
+        'statut_display': f.get_statut_display(),
+        'date_emission': f.date_emission,
+        'date_echeance': f.date_echeance,
+        'montant_ttc': str(f.total_ttc),
+        'montant_du': str(f.montant_du),
+        'payee': f.statut == Facture.Statut.PAYEE,
+    } for f in qs]
+
+
+def facture_du_client_portail(company, client_id, facture_id):
+    """NTPRT11 — UNE facture du client (objet ORM), ou ``None``. Voir ci-dessus."""
+    from .models import Facture
+
+    if company is None or not client_id or not facture_id:
+        return None
+    return (Facture.objects
+            .filter(company=company, client_id=client_id, pk=facture_id)
+            .exclude(statut=Facture.Statut.BROUILLON)
+            .first())
