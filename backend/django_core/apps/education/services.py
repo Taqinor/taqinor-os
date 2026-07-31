@@ -746,3 +746,30 @@ def donnees_bulletin(eleve, periode):
         'appreciation_generale': (
             bulletin.appreciation_generale if bulletin is not None else ''),
     }
+
+
+# =============================================================================
+# NTEDU23 — Transport scolaire : avertissement « véhicule indisponible ».
+# =============================================================================
+
+def avertissement_vehicule_circuit(circuit):
+    """NTEDU23 — message d'AVERTISSEMENT si le circuit n'a pas de véhicule
+    disponible (``''`` quand tout va bien).
+
+    SOFT WARNING, jamais un blocage : l'établissement compose ses circuits
+    avant d'immobiliser un bus, donc l'affectation d'un élève doit toujours
+    s'enregistrer. La disponibilité est lue via le SÉLECTEUR de l'app cible
+    (``apps.flotte.selectors.vehicule_operationnel``) — import FONCTION-LOCAL,
+    jamais ``flotte.models``."""
+    from apps.flotte.selectors import vehicule_operationnel
+
+    if circuit is None:
+        return ''
+    if not circuit.vehicule_id:
+        return (f"Aucun véhicule n'est affecté au circuit « {circuit.nom} » : "
+                f"l'affectation est enregistrée malgré tout.")
+    if not vehicule_operationnel(circuit.company, circuit.vehicule_id):
+        return (f"Le véhicule du circuit « {circuit.nom} » n'est pas en "
+                f"service (maintenance, réforme ou cession) : l'affectation "
+                f"est enregistrée malgré tout.")
+    return ''

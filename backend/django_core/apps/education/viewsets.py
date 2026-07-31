@@ -15,21 +15,23 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AnneeScolaire, Bulletin, Classe, CreneauEmploiDuTemps,
-    EcheancierScolarite, Eleve, Evaluation, Famille, GrilleTarifaire,
-    IncidentDiscipline, Inscription, InscriptionCantine, Matiere,
-    MatiereClasse, MenuCantine, Niveau, Note, ParametresEducation,
-    PeriodeScolaire, Presence, Remise, Seance)
+    AffectationTransport, AnneeScolaire, ArretTransport, Bulletin,
+    CircuitTransport, Classe, CreneauEmploiDuTemps, EcheancierScolarite,
+    Eleve, Evaluation, Famille, GrilleTarifaire, IncidentDiscipline,
+    Inscription, InscriptionCantine, Matiere, MatiereClasse, MenuCantine,
+    Niveau, Note, ParametresEducation, PeriodeScolaire, Presence, Remise,
+    Seance)
 from .serializers import (
-    AnneeScolaireSerializer, BulletinSerializer, ClasseSerializer,
-    CreneauEmploiDuTempsSerializer, EcheancierScolariteSerializer,
-    EleveSerializer, EvaluationSerializer, FamilleSerializer,
-    GrilleTarifaireSerializer, IncidentDisciplineSerializer,
-    InscriptionCantineSerializer, InscriptionSerializer,
-    MatiereClasseSerializer, MatiereSerializer, MenuCantineSerializer,
-    NiveauSerializer, NoteSerializer, ParametresEducationSerializer,
-    PeriodeScolaireSerializer, PresenceSerializer, RemiseSerializer,
-    SeanceSerializer)
+    AffectationTransportSerializer, AnneeScolaireSerializer,
+    ArretTransportSerializer, BulletinSerializer, CircuitTransportSerializer,
+    ClasseSerializer, CreneauEmploiDuTempsSerializer,
+    EcheancierScolariteSerializer, EleveSerializer, EvaluationSerializer,
+    FamilleSerializer, GrilleTarifaireSerializer,
+    IncidentDisciplineSerializer, InscriptionCantineSerializer,
+    InscriptionSerializer, MatiereClasseSerializer, MatiereSerializer,
+    MenuCantineSerializer, NiveauSerializer, NoteSerializer,
+    ParametresEducationSerializer, PeriodeScolaireSerializer,
+    PresenceSerializer, RemiseSerializer, SeanceSerializer)
 
 
 class AnneeScolaireViewSet(CompanyScopedModelViewSet):
@@ -745,3 +747,50 @@ class BulletinViewSet(CompanyScopedModelViewSet):
 
     queryset = Bulletin.objects.select_related('eleve', 'periode').all()
     serializer_class = BulletinSerializer
+
+
+class CircuitTransportViewSet(CompanyScopedModelViewSet):
+    """NTEDU23 — circuits de ramassage. ``vehicule`` est une FK à chaîne vers
+    ``flotte.Vehicule`` : aucune écriture flotte n'est faite ici."""
+
+    queryset = CircuitTransport.objects.select_related('vehicule').all()
+    serializer_class = CircuitTransportSerializer
+
+
+class ArretTransportViewSet(CompanyScopedModelViewSet):
+    """NTEDU23 — arrêts ordonnés d'un circuit."""
+
+    queryset = ArretTransport.objects.select_related('circuit').all()
+    serializer_class = ArretTransportSerializer
+
+
+class AffectationTransportViewSet(CompanyScopedModelViewSet):
+    """NTEDU23 — affectation élève → circuit/arrêt.
+
+    SOFT WARNING : affecter un élève à un circuit sans véhicule disponible
+    (vérifié via ``flotte/selectors.py``) renvoie un champ ``avertissement``
+    dans la réponse mais N'EMPÊCHE JAMAIS l'enregistrement — jamais un 400."""
+
+    queryset = AffectationTransport.objects.select_related(
+        'eleve', 'circuit', 'arret').all()
+    serializer_class = AffectationTransportSerializer
+
+    def _avec_avertissement(self, response):
+        from .services import avertissement_vehicule_circuit
+
+        affectation = AffectationTransport.objects.select_related(
+            'circuit').filter(
+                company=self.request.user.company,
+                pk=(response.data or {}).get('id')).first()
+        if affectation is not None:
+            response.data['avertissement'] = avertissement_vehicule_circuit(
+                affectation.circuit)
+        return response
+
+    def create(self, request, *args, **kwargs):
+        return self._avec_avertissement(
+            super().create(request, *args, **kwargs))
+
+    def update(self, request, *args, **kwargs):
+        return self._avec_avertissement(
+            super().update(request, *args, **kwargs))

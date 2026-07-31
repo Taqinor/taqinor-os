@@ -78,6 +78,23 @@ def actif_par_engin(company, engin_id):
         company=company, engin_id=engin_id).first()
 
 
+def vehicule_operationnel(company, vehicule_id):
+    """NTEDU23 — le véhicule existe-t-il, dans CETTE société, et est-il en
+    service (statut ``actif``) ?
+
+    Sélecteur cross-app LECTURE SEULE : les modules qui référencent un
+    véhicule par FK à chaîne (``education.CircuitTransport`` pour le transport
+    scolaire, etc.) appellent CETTE fonction plutôt que d'importer
+    ``flotte.models``. Un véhicule en maintenance / réformé / vendu — ou
+    inexistant, ou d'une autre société — répond ``False`` : à l'appelant de
+    décider s'il bloque ou se contente d'un avertissement."""
+    if not vehicule_id:
+        return False
+    return Vehicule.objects.filter(
+        company=company, pk=vehicule_id,
+        statut=Vehicule.Statut.ACTIF).exists()
+
+
 def conducteurs_de_la_societe(company, actif_only=False):
     """FLOTTE7 — Conducteurs d'une société (queryset scopé).
 

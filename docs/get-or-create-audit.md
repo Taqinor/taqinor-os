@@ -116,8 +116,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/education/models.py:764` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/education/services.py:547` | get_or_create | Famille.objects | company, nom |
 | `backend/django_core/apps/education/services_planning.py:81` | get_or_create | Seance.objects | classe, company, date, heure_debut, matiere |
-| `backend/django_core/apps/education/viewsets.py:473` | update_or_create | Presence.objects | company, eleve, seance |
-| `backend/django_core/apps/education/viewsets.py:546` | update_or_create | Note.objects | company, eleve, evaluation |
+| `backend/django_core/apps/education/viewsets.py:475` | update_or_create | Presence.objects | company, eleve, seance |
+| `backend/django_core/apps/education/viewsets.py:548` | update_or_create | Note.objects | company, eleve, evaluation |
 | `backend/django_core/apps/einvoice/services.py:168` | get_or_create | TransmissionDGI.objects | company, einvoice |
 | `backend/django_core/apps/esg/management/commands/seed_catalogue_esg.py:22` | get_or_create | CatalogueIndicateurESG.objects | code, company |
 | `backend/django_core/apps/esg/services.py:192` | get_or_create | FacteurEmissionVersionCounter.objects.select_for_update() | categorie, company, unite |

@@ -1026,3 +1026,83 @@ class Bulletin(TenantModel):
 
     def __str__(self):
         return f"Bulletin {self.eleve} — {self.periode}"
+
+
+# =============================================================================
+# NTEDU23 — Transport scolaire : circuits, arrêts, affectations.
+# =============================================================================
+
+class CircuitTransport(TenantModel):
+    """NTEDU23 — circuit de ramassage scolaire. ``vehicule`` référence
+    ``flotte.Vehicule`` PAR FK À CHAÎNE (jamais un import de
+    ``apps.flotte.models``) ; la DISPONIBILITÉ du véhicule est lue via
+    ``apps.flotte.selectors.vehicule_operationnel`` — frontière cross-app
+    respectée dans les deux sens (référence par chaîne, lecture par
+    sélecteur)."""
+
+    nom = models.CharField(max_length=100, verbose_name='Nom du circuit')
+    vehicule = models.ForeignKey(
+        'flotte.Vehicule', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='circuits_transport_education',
+        verbose_name='Véhicule (flotte)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Circuit de transport'
+        verbose_name_plural = 'Circuits de transport'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class ArretTransport(TenantModel):
+    """NTEDU23 — arrêt d'un circuit, ordonné le long du parcours."""
+
+    circuit = models.ForeignKey(
+        CircuitTransport, on_delete=models.CASCADE, related_name='arrets',  # on_delete: composition (parent-enfant)
+        verbose_name='Circuit')
+    nom = models.CharField(max_length=120, verbose_name='Nom de l\'arrêt')
+    ordre = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Ordre sur le circuit')
+    heure_passage_estimee = models.TimeField(
+        null=True, blank=True, verbose_name='Heure de passage estimée')
+
+    class Meta:
+        verbose_name = 'Arrêt de transport'
+        verbose_name_plural = 'Arrêts de transport'
+        ordering = ['circuit', 'ordre']
+
+    def __str__(self):
+        return f"{self.nom} ({self.circuit})"
+
+
+class AffectationTransport(TenantModel):
+    """NTEDU23 — affectation d'un élève à un circuit/arrêt sur une période.
+    ``date_fin`` vide = affectation en cours.
+
+    L'absence de véhicule DISPONIBLE sur le circuit est un AVERTISSEMENT
+    (« soft warning ») retourné par l'API : elle n'empêche JAMAIS
+    l'enregistrement — l'établissement affecte souvent les élèves avant
+    d'immobiliser un bus."""
+
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='affectations_transport', verbose_name='Élève')
+    circuit = models.ForeignKey(
+        CircuitTransport, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='affectations', verbose_name='Circuit')
+    arret = models.ForeignKey(
+        ArretTransport, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='affectations', verbose_name='Arrêt')
+    date_debut = models.DateField(verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+
+    class Meta:
+        verbose_name = 'Affectation transport'
+        verbose_name_plural = 'Affectations transport'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return f"{self.eleve} — {self.circuit}"
