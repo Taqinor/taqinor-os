@@ -20,9 +20,23 @@ Une exception NON gérée par DRF (``exception_handler`` renvoie ``None``) est
 elle aussi enveloppée ici en 500 ``server_error`` — le SEUL endroit qui
 transforme une exception Python arbitraire en JSON, pour que 100% des
 réponses d'erreur DRF (y compris les crashs) portent la même forme.
+
+``django.db.models.ProtectedError`` (bug user-visible, 2026-07-31) reçoit un
+traitement DÉDIÉ dans ce même seau « non géré par DRF » : plusieurs FK
+``on_delete=PROTECT`` protègent désormais une preuve financière/légale
+(``RegulatoryDossier.devis``, ``SubventionDossier.devis``,
+``PaiementFacturePortail.facture``, ``AcceptationDevisPortail.devis``…) et le
+refus de suppression est CORRECT — mais sans ce traitement, il remontait en
+500 générique au lieu d'un 409 explicite. Centralisé ICI (plutôt que dans
+chaque viewset) pour que TOUT app en bénéficie sans y penser ; ne RÉGRESSE
+jamais ``apps.crm``/``apps.stock`` qui interceptent DÉJÀ ``ProtectedError``
+localement dans leur ``destroy()`` et renvoient leur propre ``Response`` —
+cette branche ne voit donc que les ``ProtectedError`` qu'AUCUNE vue n'a
+attrapées (ex. ``apps.ventes`` Devis/Facture, qui n'avaient aucun override).
 """
 from __future__ import annotations
 
+from django.db.models import ProtectedError
 from rest_framework import exceptions as drf_exceptions
 from rest_framework import status
 from rest_framework.response import Response
@@ -92,6 +106,54 @@ def _request_id(context) -> str | None:
     return getattr(request, 'request_id', None) if request is not None else None
 
 
+def _protected_error_message(exc: ProtectedError) -> str:
+    """Message FR expliquant CE qui bloque encore la suppression.
+
+    ``exc.protected_objects`` (posé par Django) porte les instances dont le
+    FK ``on_delete=PROTECT`` pointe vers l'enregistrement qu'on essaie de
+    supprimer — on les regroupe par modèle (``verbose_name``) pour un message
+    lisible sans jamais importer le modèle concerné (générique, réflexif :
+    `core` reste une couche foundation qui n'importe aucune app domaine)."""
+    par_modele: dict[str, int] = {}
+    for obj in getattr(exc, 'protected_objects', None) or []:
+        meta = getattr(obj, '_meta', None)
+        label = str(getattr(meta, 'verbose_name', None) or type(obj).__name__)
+        par_modele[label] = par_modele.get(label, 0) + 1
+    if par_modele:
+        details = ', '.join(
+            f'{count} {label}' for label, count in par_modele.items())
+        return (
+            'Suppression refusée : cet enregistrement est encore référencé '
+            f'par {details}. Supprimez ou détachez d\'abord ces éléments '
+            'avant de réessayer.'
+        )
+    return (
+        'Suppression refusée : cet enregistrement est encore référencé par '
+        "d'autres données (preuve financière ou légale conservée)."
+    )
+
+
+def _protected_error_response(exc: ProtectedError, request_id: str | None) -> Response:
+    """409 clair pour un ``ProtectedError`` non intercepté par la vue.
+
+    Forme cohérente avec le reste du module : ``detail`` à la racine (même
+    clé que les 401/403/404 DRF natifs, et que le pattern déjà en place dans
+    ``apps.crm``/``apps.stock`` pour leurs propres 409 « objet référencé ») +
+    l'enveloppe machine ``error`` (YAPIC3) pour les clients qui testent
+    ``code`` plutôt qu'un message humain."""
+    message = _protected_error_message(exc)
+    body = {
+        'detail': message,
+        'error': {
+            'code': 'protected_error',
+            'message': message,
+            'fields': None,
+            'request_id': request_id,
+        },
+    }
+    return Response(body, status=status.HTTP_409_CONFLICT)
+
+
 def _rate_limit_headers_for(exc, context):
     """YAPIC12 — X-RateLimit-Limit/X-RateLimit-Remaining sur un 429. Ne
     RE-DÉCLENCHE jamais ``allow_request`` (mutation de l'état du throttle,
@@ -126,6 +188,12 @@ def taqinor_exception_handler(exc, context):
     request_id = _request_id(context)
 
     if response is None:
+        # ``ProtectedError`` (django.db.models) n'est pas une APIException
+        # DRF : `drf_exception_handler` renvoie None pour elle comme pour
+        # tout bug applicatif. Elle a SA propre branche (409 explicite,
+        # jamais un 500) — voir le docstring du module en tête de fichier.
+        if isinstance(exc, ProtectedError):
+            return _protected_error_response(exc, request_id)
         # Exception non gérée par DRF (ex. bug applicatif) — la forme
         # unifiée reste due même ici ; le statut HTTP/sémantique tenant ne
         # change JAMAIS (toujours 500, jamais masqué en 200).
