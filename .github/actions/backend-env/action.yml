@@ -130,15 +130,31 @@ runs:
           if [ "$EXACT" = 'true' ]; then
             echo "Exact hit — dump already matches the current migration set."
           elif [ -f /tmp/testdb.manifest ]; then
-            manifest | LC_ALL=C sort > /tmp/cur.manifest
-            LC_ALL=C sort /tmp/testdb.manifest > /tmp/old.manifest
-            # comm -23 = lines in the OLD (restored) manifest absent from the
-            # CURRENT one -> some recorded migration was edited/removed -> unsafe.
-            if [ -n "$(comm -23 /tmp/old.manifest /tmp/cur.manifest)" ]; then
-              echo "An existing migration changed/removed since the cached dump — rebuilding CLEAN (no false-green delta)."
-              REBUILD=yes
-            else
+            manifest > /tmp/cur.manifest
+            # scripts/ci_testdb_manifest_diff.py applies EXACTLY the rule the inline
+            # `comm -23` applied here before (rebuild iff any "<sha>  <path>" line
+            # recorded next to the dump is not present, unchanged, in the current
+            # tree — paths are unique per manifest, so the two are the same
+            # predicate), and additionally NAMES and CLASSIFIES the files that force
+            # the rebuild (edited in place / renumbered / renamed / deleted) so this
+            # log alone explains why a run paid the ~70-minute replay. Read that
+            # file's docstring before touching this: it carries the proof of why a
+            # RENUMBER cannot be waved through as "just a rename" (a renumber
+            # re-chains the migration behind a colliding one that is NOT in the
+            # dump, so delta-applying it is a dependency inversion) and the two
+            # upstream changes that make renumbers free. It is unit-tested in
+            # scripts/tests/test_ci_testdb_manifest_diff.py, including equivalence
+            # with the `comm -23` semantics. ANY non-zero exit — verdict REBUILD, an
+            # empty/malformed/unreadable manifest, a crash — means rebuild clean.
+            GUARD="${GITHUB_WORKSPACE}/scripts/ci_testdb_manifest_diff.py"
+            # Loud failure if the guard is missing/moved: a silently-unfindable
+            # guard would exit non-zero and tax EVERY run with a ~70-min rebuild.
+            test -f "$GUARD"
+            if python "$GUARD" /tmp/testdb.manifest /tmp/cur.manifest; then
               echo "Only new migrations added since the cached dump — safe to apply the delta."
+            else
+              echo "Rebuilding CLEAN (no false-green delta) — see the verdict above for the file(s) that forced it."
+              REBUILD=yes
             fi
           else
             echo "Restored dump predates WOW8-INCR (no manifest) — rebuilding CLEAN to be safe."
