@@ -6,6 +6,7 @@ Run with:
         python manage.py test apps.ventes.tests.test_pdf -v 2
 """
 import base64
+import itertools
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
@@ -21,11 +22,22 @@ User = get_user_model()
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+# Compteur de tenants : une société NEUVE à chaque appel sans argument.
+_company_seq = itertools.count(1)
 
-def make_company():
+
+def make_company(slug=None, nom=None):
+    """Une société neuve par appel — passer ``slug`` pour la nommer.
+
+    Sans compteur, ce helper faisait un ``get_or_create`` sur un slug FIXE
+    ('test-pdf-co') : deux appels rendaient la MÊME ligne, et un test
+    cross-tenant écrivant ``other = make_company()`` ne testait rien.
+    """
     from authentication.models import Company
+    n = next(_company_seq)
     company, _ = Company.objects.get_or_create(
-        slug='test-pdf-co', defaults={'nom': 'Test PDF Co'},
+        slug=slug or f'test-pdf-co-{n}',
+        defaults={'nom': nom or f'Test PDF Co {n}'},
     )
     return company
 

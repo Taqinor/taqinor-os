@@ -4,6 +4,7 @@ Quand relance_reminders avance la date de relance au niveau suivant, la date
 est reportée au prochain jour ouvré de la société (par défaut Lun–Ven) via le
 référentiel calendrier partagé — on ne relance jamais un client un week-end.
 """
+import itertools
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -18,10 +19,22 @@ from apps.ventes import scheduled
 User = get_user_model()
 
 
-def _company():
+# Compteur de tenants : une société NEUVE à chaque appel sans slug.
+_company_seq = itertools.count(1)
+
+
+def _company(slug=None, nom=None):
+    """Une société neuve par appel — passer ``slug`` pour la nommer.
+
+    Sans compteur, ``get_or_create`` tapait toujours le même slug fixe
+    ('dc19v-co') : deux appels rendaient la MÊME société, rendant tout
+    test cross-tenant vide de sens.
+    """
     from authentication.models import Company
+    n = next(_company_seq)
     c, _ = Company.objects.get_or_create(
-        slug='dc19v-co', defaults={'nom': 'DC19V Co'})
+        slug=slug or f'dc19v-co-{n}',
+        defaults={'nom': nom or f'DC19V Co {n}'})
     return c
 
 
