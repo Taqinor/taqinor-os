@@ -15,7 +15,6 @@ from .views import (
     releve_commit,
     roof_config,
     RoofLayoutViewSet,  # FG245
-    FicheTechniqueViewSet,  # FG254
     DevisPresetViewSet,  # QJ16-wiring
     RegulatoryDossierViewSet,  # FG268
     DossierChecklistItemViewSet,  # FG268
@@ -76,9 +75,11 @@ router.register(r'avoirs', AvoirViewSet)
 router.register(r'notes-debit', NoteDebitViewSet, basename='note-debit')
 # FG245 — calepinage toiture (placement panneaux), compte calculé serveur.
 router.register(r'calepinages', RoofLayoutViewSet, basename='calepinage')
-# FG254 / DC35 — bibliothèque de fiches techniques normalisées (datasheets).
-router.register(r'fiches-techniques', FicheTechniqueViewSet,
-                basename='fiche-technique')
+# WIR104 — la surface « fiche technique » de ventes (FG254/DC35) est RETIRÉE :
+# elle doublait `/stock/fiches-techniques/`, seule version réellement consommée
+# (le frontend n'appelait que `stockApi`). Le modèle `ventes.FicheTechnique`
+# reste en base (aucune migration destructive) mais n'a plus d'API — une seule
+# surface « fiche technique » est désormais exposée, celle de `stock`.
 router.register(r'niveaux-relance', FollowupLevelViewSet,
                 basename='niveau-relance')
 # ZFAC8 — réglage responsable/mode de relance par client.

@@ -82,6 +82,18 @@ const ventesApi = {
   // WR1 — FG44 : refus explicite (motif/date/chatter), fait avancer le funnel
   // (devis_refused) — chemin canonique, à la place d'un PATCH statut direct.
   refuserDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/refuser/`, payload),
+  // ── WIR104 — Cluster réglementaire / mise en service (FG245, FG268-287) ──
+  // Décision consignée en tête de `apps/ventes/models_regulatory.py` : ces
+  // données RESTENT dans `ventes` (dossier réglementaire de l'affaire), face à
+  // `installations` (exécution physique). Elles étaient toutes complètes côté
+  // serveur et sans aucun consommateur : cette lecture générique alimente
+  // l'écran `/ventes/dossiers-reglementaires`. `resource` vient TOUJOURS d'une
+  // liste blanche côté écran, jamais d'une saisie utilisateur.
+  getReglementaire: (resource, params) =>
+    api.get(`/ventes/${resource}/`, { params }),
+  getCalendrierReglementaire: (params) =>
+    api.get('/ventes/calendrier-reglementaire/', { params }),
+
   // ── WIR103 — Palier avancé facturation : note de débit + proforma ──
   // Les deux étaient complets et testés côté serveur mais n'avaient AUCUN
   // wrapper client (zéro UI). Le reste du palier (pénalités, encaissement

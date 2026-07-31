@@ -1733,6 +1733,18 @@ class RoofLayout(models.Model):
 class FicheTechnique(models.Model):
     """FG254 / DC35 — fiche technique normalisée d'un module ou onduleur.
 
+    WIR104 — SURFACE API RETIRÉE (doublon tranché). Ce modèle doublait
+    ``stock.FicheTechnique``, exposé sur ``/stock/fiches-techniques/`` : seule
+    la version STOCK est consommée par le frontend (``stockApi``), la route
+    ``/ventes/fiches-techniques/`` n'avait aucun appelant. La route, le
+    ViewSet et le serializer de ventes ont donc été supprimés ; il n'existe
+    plus qu'UNE seule surface « fiche technique ». Le modèle et sa table sont
+    CONSERVÉS (aucune migration destructive, retrait trivialement revertable) :
+    si des données existent, elles doivent être fusionnées dans
+    ``stock.FicheTechnique`` — qui devra alors accueillir les deux champs que
+    ventes portait en plus (``type_fiche`` et ``coef_temp_voc``) — avant toute
+    suppression de table.
+
     Bibliothèque de fiches techniques (datasheets) rattachées à un produit du
     catalogue (``stock.Produit`` via FK chaîne, jamais d'import du modèle stock
     — couche découplée M1). Cette fiche NE RE-STOCKE PAS les attributs déjà
