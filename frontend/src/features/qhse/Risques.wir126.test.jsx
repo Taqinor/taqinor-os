@@ -105,7 +105,10 @@ describe('Risques — Permis & LOTO (WIR126)', () => {
     withProviders(<Risques />)
     await user.click(screen.getByRole('tab', { name: 'Permis & LOTO' }))
 
-    await waitFor(() => expect(screen.getByText('Soudure toiture')).toBeTruthy())
+    // DataTable rend à la fois la table desktop et le repli carte mobile
+    // (CSS seul, `dt-desktop:hidden` — les deux existent dans le DOM en
+    // jsdom) : getAllByText, même patron que qhse.render.test.jsx.
+    await waitFor(() => expect(screen.getAllByText('Soudure toiture').length).toBeGreaterThan(0))
     await user.click(screen.getByRole('button', { name: /Nouveau permis/ }))
 
     await user.type(screen.getByLabelText('Titre'), 'Travail en hauteur toiture')
@@ -120,12 +123,14 @@ describe('Risques — Permis & LOTO (WIR126)', () => {
     const user = userEvent.setup()
     withProviders(<Risques />)
     await user.click(screen.getByRole('tab', { name: 'Permis & LOTO' }))
-    await waitFor(() => expect(screen.getByText('Soudure toiture')).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText('Soudure toiture').length).toBeGreaterThan(0))
 
-    await user.click(screen.getByRole('button', { name: 'Valider' }))
+    // RowActions rend le bouton à la fois côté table desktop et carte
+    // mobile (même patron que le texte de ligne ci-dessus) : premier match.
+    await user.click(screen.getAllByRole('button', { name: 'Valider' })[0])
     await waitFor(() => expect(permisValider).toHaveBeenCalledWith(10))
 
-    await user.click(screen.getByRole('button', { name: 'Clôturer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Clôturer' })[0])
     await waitFor(() => expect(permisCloturer).toHaveBeenCalledWith(10))
   })
 
@@ -133,7 +138,7 @@ describe('Risques — Permis & LOTO (WIR126)', () => {
     const user = userEvent.setup()
     withProviders(<Risques />)
     await user.click(screen.getByRole('tab', { name: 'Permis & LOTO' }))
-    await waitFor(() => expect(screen.getByText('TGBT chantier')).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText('TGBT chantier').length).toBeGreaterThan(0))
 
     await user.click(screen.getByRole('button', { name: /Nouvelle consignation/ }))
     const dialog = await screen.findByRole('dialog')
@@ -149,9 +154,9 @@ describe('Risques — Permis & LOTO (WIR126)', () => {
     const user = userEvent.setup()
     withProviders(<Risques />)
     await user.click(screen.getByRole('tab', { name: 'Permis & LOTO' }))
-    await waitFor(() => expect(screen.getByText('TGBT chantier')).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText('TGBT chantier').length).toBeGreaterThan(0))
 
-    await user.click(screen.getByRole('button', { name: 'Déconsigner' }))
+    await user.click(screen.getAllByRole('button', { name: 'Déconsigner' })[0])
     await waitFor(() => expect(lotoDeconsigner).toHaveBeenCalledWith(20))
   })
 })
@@ -177,9 +182,9 @@ describe('Risques — Incidents (WIR126)', () => {
     const user = userEvent.setup()
     withProviders(<Risques />)
     await user.click(screen.getByRole('tab', { name: 'Incidents' }))
-    await waitFor(() => expect(screen.getByText('INC-000030')).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText('INC-000030').length).toBeGreaterThan(0))
 
-    await user.click(screen.getByRole('button', { name: 'Générer CAPA' }))
+    await user.click(screen.getAllByRole('button', { name: 'Générer CAPA' })[0])
     await waitFor(() => expect(genererCapa).toHaveBeenCalledWith(30))
   })
 })

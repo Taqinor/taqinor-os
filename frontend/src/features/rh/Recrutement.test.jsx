@@ -124,9 +124,11 @@ describe('Recrutement — ATS (XRH17-23)', () => {
     renderRecrutement()
     await screen.findByText('EPI, recrutement & évaluations')
     fireEvent.click(screen.getByRole('radio', { name: 'Évaluations' }))
-    await screen.findByText('Bennani Youssef')
+    // DataTable rend la table desktop ET le repli carte mobile (CSS seul,
+    // les deux existent dans le DOM en jsdom) : getAllBy*, premier match.
+    await screen.findAllByText('Bennani Youssef')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Feedback 360°' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Feedback 360°' })[0])
     expect(await screen.findByText(/Feedback 360° — Bennani Youssef/)).toBeInTheDocument()
     await waitFor(() => expect(rhApi.getSyntheseFeedback360).toHaveBeenCalledWith({ evaluation: 9 }))
 
