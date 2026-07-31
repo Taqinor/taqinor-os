@@ -134,6 +134,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x). A 3.12+/3.13 CI would not catch 3.11-only SyntaxErrors (e.g. backslash in f-string) that crash the live PDF generator.
+          cache: 'pip'   # YAPIC6 — ce job installe désormais aussi requirements.txt (génération du schéma OpenAPI) ; sans cache l'install serait payée en entier à chaque run.
+          cache-dependency-path: backend/django_core/requirements.txt
       - name: Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)
         run: python -m compileall -q backend/django_core/apps backend/django_core/erp_agentique backend/fastapi_ia
       - run: pip install flake8 import-linter==2.11
@@ -220,6 +222,36 @@ jobs:
         run: python scripts/check_tenant_isolation.py
       - name: Test the tenant-isolation checker itself (YDATA21)
         run: python -m unittest scripts.tests.test_check_tenant_isolation -v
+      # YAPIC6 — le schéma OpenAPI (YAPIC5) doit rester GÉNÉRABLE, VALIDE
+      # (validation OpenAPI 3 de drf-spectacular) et sans NOUVEL avertissement
+      # de génération : un serializer non résolu ou une collision d'operationId
+      # introduits par une PR font rougir ce job. Le repo porte ~990 constats
+      # préexistants (386 vues sans serializer resolvable, champs
+      # SerializerMethod non typés, collisions d'énums) qu'aucune tâche unique
+      # ne peut solder : ils sont figés dans scripts/openapi_schema_allow.txt,
+      # et SEULE une signature nouvelle échoue — c'est un `--fail-on-warn`
+      # borné. docs/openapi-schema.yml versionne l'inventaire des opérations
+      # (le document complet fait ~20 Mo, illisible en revue) pour que le diff
+      # de contrat apparaisse dans la PR.
+      #
+      # COÛT : le générateur importe TOUT l'URLconf, donc les vraies
+      # dépendances backend (WeasyPrint & co) — d'où les deux installations
+      # ci-dessous. Elles n'allongent QUE ce job, qui tourne EN PARALLÈLE des
+      # 4 shards `backend-tests` (le chemin critique du gate) : le temps de mur
+      # du merge est inchangé. AUCUNE base de données n'est nécessaire (le
+      # générateur ne fait qu'introspecter vues et serializers).
+      - name: Install WeasyPrint system libraries (URLconf import — YAPIC6)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
+      - name: Install backend dependencies for schema generation (YAPIC6)
+        working-directory: backend/django_core
+        run: pip install -r requirements.txt
+      - name: Test the OpenAPI-schema checker itself (YAPIC6)
+        run: python -m unittest scripts.tests.test_check_openapi_schema -v
+      - name: OpenAPI schema — generate, validate, no NEW warning (YAPIC6)
+        run: python scripts/check_openapi_schema.py
 
   # WOW6 — the fast backend suite is sharded 4× across free public-repo runners
   # (matrix legs run concurrently, each on its own 4-vCPU runner + Postgres). The
