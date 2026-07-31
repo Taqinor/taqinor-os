@@ -283,10 +283,10 @@ def catalogued_but_undeclared() -> set[str]:
 # peut donc pas être vérifiée par introspection du source. Leur entrée au
 # catalogue reste purement documentaire tant qu'un producteur n'existe pas.
 NO_STATIC_EMITTER = {
-    # ``document_produit`` : signal générique consommé par ged/receivers, jamais
-    # émis directement aujourd'hui (voir apps/ged/services.py — « jamais appelé
-    # directement par l'app »).
-    "document_produit",
+    # ``document_produit`` : RETIRÉ de cette réserve — WIR165 (ZGED6) en a posé
+    # le premier émetteur RÉEL (``apps/ventes/utils/pdf.py``, source=
+    # 'ventes_facture'), donc la parité de payload est désormais vérifiable et
+    # DOIT l'être (le cliquet se resserre, il ne se relâche jamais).
     # ``lead_erased`` (PUB100) : « seam » posé côté récepteur seul — adsengine
     # (on_lead_erased) anonymise ses miroirs sur effacement CNDP d'un lead CRM,
     # mais aucun producteur ne l'émet encore dans le code (le flux d'effacement

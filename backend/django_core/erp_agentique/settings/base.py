@@ -957,6 +957,12 @@ CELERY_TASK_ROUTES = {
     # (NTMAR15), planifiés au beat, heures creuses.
     'compta.generer_ecritures_recurrentes': {'queue': 'scheduled'},
     'fiscal.rappels_fiscaux': {'queue': 'scheduled'},
+    # WIR73 (GED7) — import récurrent des pièces jointes vers la GED
+    # (hebdomadaire, lundi heure creuse) : job beat, donc queue `scheduled`.
+    'ged.migrer_pieces_jointes': {'queue': 'scheduled'},
+    # WIR148 (NTPRO6) — génération quotidienne des échéances de loyer des baux
+    # actifs : job beat, donc queue `scheduled`.
+    'immobilier.generer_echeances_loyer': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF
