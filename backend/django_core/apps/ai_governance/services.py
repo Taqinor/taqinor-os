@@ -20,6 +20,9 @@ retombe — le corps des fonctions ci-dessous ne change pas.
 """
 from __future__ import annotations
 
+import json
+import re
+
 from core.ai.registry import get_provider, is_capability_configured
 
 
@@ -305,4 +308,149 @@ def rediger_brouillon(*, company, content_type, object_id, canal='email',
         # Contrat explicite : RIEN n'a été envoyé ni enregistré.
         'envoye': False,
         'source': res.source,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI12 — Compte rendu d'intervention DICTÉ (voix → CR structuré SAV)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Reprend les garde-fous du flux OCR existant (XSAL8 ``scan_carte_visite``) :
+# taille bornée, octets magiques vérifiés, débit limité côté vue, et surtout
+# AUCUNE PERSISTANCE de l'audio — les octets ne vivent qu'en mémoire le temps
+# de la transcription (jamais de MinIO, jamais de pièce jointe).
+#
+# Ce service NE CHANGE JAMAIS le statut du ticket : le moteur SAV existant
+# reste seul maître des transitions. Il rend un CR structuré à valider.
+
+#: Taille max d'un mémo vocal (mémo de chantier de quelques minutes).
+CR_AUDIO_MAX_BYTES = 20 * 1024 * 1024  # 20 Mo
+
+#: Octets magiques des conteneurs audio courants d'un téléphone de chantier.
+#: Même motif que ``crm.services._CARTE_VISITE_MAGIC`` — aucune dépendance
+#: nouvelle, aucune confiance dans le ``Content-Type`` déclaré par le client.
+CR_AUDIO_MAGIC = {
+    'audio/ogg': lambda h: h[:4] == b'OggS',
+    'audio/wav': lambda h: h[:4] == b'RIFF' and h[8:12] == b'WAVE',
+    'audio/mpeg': lambda h: h[:3] == b'ID3' or (
+        len(h) >= 2 and h[0] == 0xFF and (h[1] & 0xE0) == 0xE0),
+    'audio/mp4': lambda h: h[4:8] == b'ftyp',
+    'audio/flac': lambda h: h[:4] == b'fLaC',
+    'audio/webm': lambda h: h[:4] == b'\x1a\x45\xdf\xa3',
+}
+
+#: Sections du compte rendu structuré (ordre stable, contrat de l'UI).
+CR_SECTIONS = ('diagnostic', 'travaux', 'pieces', 'recommandations')
+
+#: Prompt système par défaut (futur « défaut code » de NTAI5, clé
+#: ``ai.cr_intervention``).
+CR_SYSTEM = (
+    "Tu es un technicien SAV solaire au Maroc. À partir du mémo vocal "
+    "transcrit ci-dessous, produis UNIQUEMENT un objet JSON avec exactement "
+    'les clés "diagnostic", "travaux", "pieces", "recommandations" (valeurs = '
+    "chaînes en français). N'invente rien : si le mémo ne dit rien d'une "
+    "section, mets une chaîne vide. Aucun texte hors du JSON."
+)
+
+
+def _detect_audio_mime(entete: bytes) -> str | None:
+    """MIME déduit des octets magiques, ou ``None`` si non reconnu."""
+    for mime, test in CR_AUDIO_MAGIC.items():
+        try:
+            if test(entete):
+                return mime
+        except IndexError:  # pragma: no cover - entête trop court
+            continue
+    return None
+
+
+def _parse_cr_json(texte: str) -> dict:
+    """Extrait le CR structuré d'une sortie LLM (tolère un JSON entouré).
+
+    Renvoie toujours les 4 sections (chaînes, éventuellement vides). Si aucun
+    JSON exploitable n'est présent, le texte brut atterrit dans ``diagnostic``
+    — jamais d'exception, jamais de section inventée.
+    """
+    brut = (texte or '').strip()
+    charge = None
+    match = re.search(r'\{.*\}', brut, re.DOTALL)
+    if match:
+        try:
+            charge = json.loads(match.group(0))
+        except (ValueError, TypeError):
+            charge = None
+    if not isinstance(charge, dict):
+        return {'diagnostic': brut, 'travaux': '', 'pieces': '',
+                'recommandations': ''}
+    return {
+        section: str(charge.get(section) or '').strip()
+        for section in CR_SECTIONS
+    }
+
+
+def cr_intervention_depuis_audio(*, company, file_bytes, ticket_id=None,
+                                 max_tokens=600) -> dict:
+    """NTAI12 — Transcrit un mémo vocal puis le structure en CR d'intervention.
+
+    Renvoie ``{transcript, cr: {diagnostic, travaux, pieces, recommandations},
+    ticket_id, applique: False}``. NE PERSISTE PAS l'audio et N'ÉCRIT RIEN sur
+    le ticket (statut inclus) : le CR est un pré-remplissage à valider.
+
+    Lève :class:`AiCopiloteUnavailable` : fichier absent/trop gros/format non
+    reconnu ou ticket hors société (400) ; aucune clé STT (503, aucun appel
+    réseau).
+    """
+    from apps.sav.selectors import ticket_scoped
+    from core.ai.services import transcribe_audio
+
+    if not file_bytes:
+        raise AiCopiloteUnavailable('Aucun fichier audio fourni.')
+    if len(file_bytes) > CR_AUDIO_MAX_BYTES:
+        raise AiCopiloteUnavailable('Mémo vocal trop volumineux (max 20 Mo).')
+
+    mime = _detect_audio_mime(file_bytes[:12])
+    if mime is None:
+        raise AiCopiloteUnavailable(
+            'Format audio non reconnu (OGG, WAV, MP3, M4A, FLAC ou WebM).')
+
+    ticket = None
+    if ticket_id not in (None, ''):
+        try:
+            ticket = ticket_scoped(company, ticket_id)
+        except (TypeError, ValueError):
+            ticket = None
+        if ticket is None:
+            raise AiCopiloteUnavailable('Ticket introuvable.')
+
+    res = transcribe_audio(content=file_bytes, mime_type=mime, language='fr')
+    if not res.configured:
+        raise AiCopiloteUnavailable(
+            "Aucun fournisseur de transcription n'est configuré (clé "
+            'absente) — saisie manuelle requise.', configured=False)
+    transcript = str((res.data or {}).get('text') or '').strip()
+    if not res.ok or not transcript:
+        raise AiCopiloteUnavailable(
+            "La transcription n'a produit aucun texte exploitable.")
+
+    cr = {section: '' for section in CR_SECTIONS}
+    structure = False
+    if is_capability_configured('llm'):
+        llm = get_provider('llm').complete(
+            prompt=transcript, system=CR_SYSTEM, max_tokens=max_tokens)
+        if llm.ok and (llm.data or {}).get('text'):
+            cr = _parse_cr_json(llm.data['text'])
+            structure = True
+    if not structure:
+        # Dégradation : sans LLM, le technicien reçoit quand même sa dictée
+        # transcrite, à répartir lui-même dans les sections.
+        cr['diagnostic'] = transcript
+
+    return {
+        'ticket_id': getattr(ticket, 'id', None),
+        'transcript': transcript,
+        'cr': cr,
+        'structure': structure,
+        # Contrat explicite : rien n'est enregistré, aucun statut changé.
+        'applique': False,
+        'source': res.provider,
     }

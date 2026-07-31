@@ -6,6 +6,7 @@ configurée, elles répondent 503 avec un message FR explicite et ne font aucun
 appel réseau.
 """
 from rest_framework import status
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -83,6 +84,43 @@ class RedigerView(APIView):
                 object_id=object_id,
                 canal=request.data.get('canal') or 'email',
                 intention=request.data.get('intention') or '')
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class CrInterventionView(APIView):
+    """NTAI12 — ``POST /api/django/ai/cr-intervention/`` (multipart).
+
+    Champs : ``file`` (mémo vocal) et ``ticket_id`` optionnel. Transcrit puis
+    structure le mémo en ``{diagnostic, travaux, pieces, recommandations}``
+    pour PRÉ-REMPLIR le rapport du ticket SAV.
+
+    Ne change JAMAIS le statut du ticket (le moteur SAV existant reste seul
+    maître des transitions) et ne persiste JAMAIS l'audio reçu.
+    """
+
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    parser_classes = [MultiPartParser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_transcription'
+
+    def post(self, request):
+        from .services import cr_intervention_depuis_audio
+
+        upload = request.FILES.get('file')
+        if not upload:
+            return Response({'detail': 'Aucun fichier audio fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            content = upload.read()
+        finally:
+            upload.close()
+
+        try:
+            resultat = cr_intervention_depuis_audio(
+                company=request.user.company, file_bytes=content,
+                ticket_id=request.data.get('ticket_id'))
         except AiCopiloteUnavailable as exc:
             return _unavailable_response(exc)
         return Response(resultat)
