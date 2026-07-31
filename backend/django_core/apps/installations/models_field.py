@@ -16,6 +16,7 @@ Cet enum est une liste FERMÉE, en ordre d'entonnoir. « annulé » n'est PAS un
 """
 from django.conf import settings
 from django.db import models
+from core.models import TenantModel
 from .models_installation import Installation  # noqa: F401
 from .models_intervention import Intervention
 
@@ -199,7 +200,7 @@ class PhotoAnnotation(models.Model):
         return f'Annotation · pièce {self.attachment_id}'
 
 
-class PhotoChecklistMeta(models.Model):
+class PhotoChecklistMeta(TenantModel):
     """NTMOB11 — horodatage SERVEUR + géolocalisation d'une photo prise pour
     une ÉTAPE DE CHECKLIST chantier précise (capture multi-photos terrain,
     même hors-ligne). ADJACENTE à `PhotoAnnotation` ci-dessus : même patron
@@ -211,6 +212,12 @@ class PhotoChecklistMeta(models.Model):
     ``checklist_item`` est NULLABLE et ``SET_NULL`` : une photo prise hors
     contexte de checklist (générique) n'a simplement pas de lien ; supprimer
     l'étape ne supprime jamais la photo déjà prise.
+
+    ARC1 — hérite de ``core.models.TenantModel`` (FK ``company`` +
+    ``created_at``/``updated_at``) ; ``company`` est REDÉCLARÉE ci-dessous
+    pour poser un ``related_name`` explicite ET conserver la nullabilité
+    déjà posée par la migration 0098 (PLAYBOOK ARC1 — jamais d'AlterField
+    superflue sur un champ inchangé).
     """
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
