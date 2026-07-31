@@ -205,3 +205,19 @@ def libelle_rh_praticien(company, employe_id):
     if poste:
         return f'{nom_complet} — {poste}'
     return nom_complet
+
+
+def patients_par_cycle_sterilisation(company, cycle):
+    """NTSAN24 — traçabilité instrument → patient : liste des ``Patient``
+    ayant reçu un acte utilisant un ``InstrumentSterilise`` de ``cycle``, en
+    UNE SEULE requête indexée (jointure ``Patient → ActeRealise
+    (company/patient, indexé) → M2M instruments_utilises (indexé des deux
+    côtés) → InstrumentSterilise.cycle (FK indexée)``), pour un rappel
+    sanitaire : "quels patients ont reçu un instrument du cycle X"."""
+    from .models import Patient
+
+    return list(
+        Patient.objects.filter(
+            company=company,
+            actes_realises__instruments_utilises__cycle=cycle,
+        ).distinct().order_by('nom', 'prenom'))

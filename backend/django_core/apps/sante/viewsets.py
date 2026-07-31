@@ -301,6 +301,11 @@ class ActeRealiseViewSet(CompanyScopedModelViewSet):
             quantite=data.get('quantite', 1),
             facturable=data.get('facturable', True),
         )
+        # NTSAN24 — M2M posé APRÈS création (``realiser_acte`` ne le connaît
+        # pas) : jamais perdu si fourni à la création de l'acte.
+        instruments = data.get('instruments_utilises')
+        if instruments:
+            instance.instruments_utilises.set(instruments)
         serializer.instance = instance
 
 
@@ -491,6 +496,25 @@ class CycleSterilisationViewSet(CompanyScopedModelViewSet):
         appliquer_statut_cycle_sterilisation(
             serializer.instance, ancien_statut=ancien_statut,
             user=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='patients-concernes')
+    def patients_concernes(self, request, pk=None):
+        """NTSAN24 — traçabilité instrument → patient : patients ayant reçu
+        un acte utilisant un instrument stérilisé de CE cycle (rappel
+        sanitaire), en une seule requête indexée
+        (``selectors.patients_par_cycle_sterilisation``)."""
+        from .selectors import patients_par_cycle_sterilisation
+
+        cycle = self.get_object()
+        patients = patients_par_cycle_sterilisation(
+            request.user.company, cycle)
+        return Response({
+            'count': len(patients),
+            'results': [
+                {'id': p.id, 'nom': p.nom, 'prenom': p.prenom}
+                for p in patients
+            ],
+        })
 
 
 class InstrumentSteriliseViewSet(CompanyScopedModelViewSet):

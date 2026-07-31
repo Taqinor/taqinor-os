@@ -413,6 +413,15 @@ class ActeRealise(TenantModel):
     facture_sante = models.ForeignKey(
         'FactureSante', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_actes', verbose_name='Facture santé')
+    # NTSAN24 — traçabilité instrument → patient : M2M LÉGER (jamais un
+    # champ obligatoire — un acte peut ne mentionner aucun instrument
+    # stérilisé) vers les instruments/kits RÉELLEMENT utilisés pour cet
+    # acte. Permet, en cas de rappel sanitaire, de retrouver en une seule
+    # requête indexée tous les patients ayant reçu un instrument d'un cycle
+    # donné (``selectors.patients_par_cycle_sterilisation``).
+    instruments_utilises = models.ManyToManyField(
+        'InstrumentSterilise', blank=True, related_name='actes_realises',
+        verbose_name='Instruments stérilisés utilisés')
 
     class Meta:
         verbose_name = 'Acte réalisé'
