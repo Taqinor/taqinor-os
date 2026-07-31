@@ -74,7 +74,7 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
             return [HasPermissionOrLegacy('stock_voir')()]
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('stock_modifier')()]
-        elif self.action == 'destroy':
+        elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
         return [IsAdminRole()]
 
@@ -91,10 +91,107 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
         categorie_id = self.request.query_params.get('categorie')
         if categorie_id:
             qs = qs.filter(categorie_id=categorie_id)
-        return qs
+        # Archivage — même patron que `ProduitViewSet` : les fournisseurs
+        # archivés sortent des listes par défaut, restent consultables avec
+        # `?show_archived=true`, et sont toujours visibles pour les actions
+        # qui n'ont de sens que sur un archivé.
+        if self.request.query_params.get('show_archived') == 'true':
+            return qs
+        if self.action in ('force_delete', 'unarchive'):
+            return qs
+        return qs.filter(is_archived=False)
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+    def destroy(self, request, *args, **kwargs):
+        """Supprime le fournisseur — ou l'ARCHIVE quand la suppression est
+        refusée par une FK PROTECT.
+
+        Le cas qui motive ce repli : `achats.PrixFournisseur.fournisseur` est
+        PROTECT (prix d'achat NÉGOCIÉS, saisis à la main — donnée catalogue
+        réelle). Sans ce repli, l'API renverrait une 500 ; avec lui, elle se
+        comporte EXACTEMENT comme `ProduitViewSet.destroy` : rien n'est
+        détruit, la fiche est archivée, tout l'historique est conservé.
+        """
+        fournisseur = self.get_object()
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError as exc:
+            bloquants = sorted({
+                obj._meta.verbose_name for obj in exc.protected_objects
+            })
+            fournisseur.is_archived = True
+            fournisseur.save(update_fields=['is_archived'])
+            return Response(
+                {
+                    'archived': True,
+                    'detail': (
+                        'Ce fournisseur a été archivé car des données réelles '
+                        f'lui sont rattachées ({", ".join(bloquants)}). '
+                        "L'historique et les prix d'achat sont conservés."
+                    ),
+                    'bloquants': bloquants,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+    @action(detail=True, methods=['patch'], url_path='unarchive')
+    def unarchive(self, request, *args, **kwargs):
+        """Remet un fournisseur archivé en service (l'archivage est
+        réversible : aucune donnée n'a été détruite)."""
+        fournisseur = self.get_object()
+        if not fournisseur.is_archived:
+            return Response(
+                {'detail': "Ce fournisseur n'est pas archivé."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        fournisseur.is_archived = False
+        fournisseur.save(update_fields=['is_archived'])
+        return Response(self.get_serializer(fournisseur).data)
+
+    @action(detail=True, methods=['delete'], url_path='force-delete')
+    def force_delete(self, request, *args, **kwargs):
+        """Suppression DÉFINITIVE d'un fournisseur déjà archivé (rôle Admin).
+
+        Échappatoire explicite, jamais silencieuse : si des données réelles
+        (prix d'achat négociés, bons de commande, factures…) le retiennent
+        encore, on refuse en 409 en NOMMANT les bloquants — jamais de
+        destruction en cascade d'un prix saisi à la main."""
+        fournisseur = self.get_object()
+        if not fournisseur.is_archived:
+            return Response(
+                {
+                    'detail': (
+                        'Seuls les fournisseurs archivés peuvent être '
+                        'supprimés définitivement.'
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            with transaction.atomic():
+                fournisseur.delete()
+        except ProtectedError as exc:
+            bloquants = sorted({
+                obj._meta.verbose_name for obj in exc.protected_objects
+            })
+            return Response(
+                {
+                    'detail': (
+                        'Suppression définitive refusée : ce fournisseur '
+                        'porte encore des données réelles rattachées '
+                        f'({", ".join(bloquants)}). Supprimez-les d\'abord '
+                        'ou laissez le fournisseur archivé.'
+                    ),
+                    'bloquants': bloquants,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(
+            {'detail': 'Fournisseur supprimé définitivement.'},
+            status=status.HTTP_200_OK,
+        )
 
     def create(self, request, *args, **kwargs):
         # XPUR5 — doublon ICE (warning non bloquant) ajouté à la réponse.

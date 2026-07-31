@@ -88,6 +88,13 @@ class ImportJob(models.Model):
     created_count = models.PositiveIntegerField(default=0)
     updated_count = models.PositiveIntegerField(default=0)
     error_count = models.PositiveIntegerField(default=0)
+    # Garde-fou « écrasement » : ce que le lot était AUTORISÉ à faire
+    # (``ecraser`` — remplissage seul par défaut), combien de valeurs déjà
+    # saisies il a réellement remplacées, et combien le garde-fou a bloquées.
+    # Voir ``services._apply_updates``.
+    ecraser = models.BooleanField(default=False)
+    ecrasement_count = models.PositiveIntegerField(default=0)
+    refus_count = models.PositiveIntegerField(default=0)
     created_by = models.ForeignKey(
         'authentication.CustomUser', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='dataimport_jobs')
@@ -117,6 +124,19 @@ class ImportJobRow(models.Model):
     motif = models.CharField(max_length=255, blank=True, null=True)
     # Contenu brut de la ligne (utile pour régénérer un CSV de ré-import).
     donnees = models.JSONField(default=dict, blank=True)
+    # Fiche existante touchée par cette ligne (``app.modele`` + pk). Vide quand
+    # la ligne n'a modifié aucune fiche (création, doublon ignoré, erreur).
+    cible_type = models.CharField(max_length=100, blank=True, default='')
+    cible_id = models.PositiveIntegerField(null=True, blank=True)
+    # Valeur PRÉCÉDENTE de chaque champ écrit — le journal qui rend un import
+    # sur données réelles auditable ET réversible :
+    # ``[{"champ", "ancienne", "nouvelle", "ecrasement": bool}]`` où
+    # ``ecrasement`` signale que la valeur précédente n'était PAS vide.
+    modifications = models.JSONField(default=list, blank=True)
+    # Écrasements REFUSÉS par le mode remplissage seul (``ecraser=False``) :
+    # ``[{"champ", "ancienne", "nouvelle"}]``. Rien n'est avalé en silence —
+    # l'appelant voit exactement ce qu'il devrait autoriser explicitement.
+    refuses = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ['ligne']

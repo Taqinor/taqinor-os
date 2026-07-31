@@ -108,12 +108,12 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/credit/tasks.py:76` | update_or_create | EncoursCache.objects | client |
 | `backend/django_core/apps/credit/views.py:375` | get_or_create | ReglageCredit.objects | company |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
-| `backend/django_core/apps/crm/services.py:104` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:3566` | get_or_create | MessageTemplate.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:105` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
+| `backend/django_core/apps/crm/services.py:3567` | get_or_create | MessageTemplate.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:1456` | get_or_create | MotifPerte.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:1508` | get_or_create | Canal.objects | cle, company |
-| `backend/django_core/apps/dataimport/services.py:224` | update_or_create | ImportMapping.objects | company, entity, nom |
-| `backend/django_core/apps/dataimport/services.py:261` | get_or_create | ExternalRef.objects | company, external_id, external_system |
+| `backend/django_core/apps/dataimport/services.py:268` | update_or_create | ImportMapping.objects | company, entity, nom |
+| `backend/django_core/apps/dataimport/services.py:314` | get_or_create | ExternalRef.objects | company, external_id, external_system |
 | `backend/django_core/apps/education/models.py:764` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/education/services_planning.py:81` | get_or_create | Seance.objects | classe, company, date, heure_debut, matiere |
 | `backend/django_core/apps/education/viewsets.py:441` | update_or_create | Presence.objects | company, eleve, seance |
@@ -255,7 +255,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/stock/management/commands/backfill_unites_mesure.py:52` | get_or_create | UniteMesure.objects | code, company |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:391` | get_or_create | Categorie.objects | company, nom |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:550` | get_or_create | Categorie.objects | company, nom |
-| `backend/django_core/apps/stock/models.py:411` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/stock/models.py:423` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/stock/services.py:197` | get_or_create | EmplacementStock.objects | company, nom |
 | `backend/django_core/apps/stock/services.py:316` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services.py:322` | get_or_create | StockEmplacement.objects | emplacement, produit |
