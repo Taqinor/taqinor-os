@@ -110,6 +110,12 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         # NTIDE28 — tag auto-appliqué si l'auteur matche le segment d'une
         # campagne active portant un ``tag_auto`` (no-op silencieux sinon).
         services.maybe_apply_campagne_tag(idee, self.request.user)
+        # NTIDE52 — gabarit e-mail personnalisable « idée reçue » (bienvenue),
+        # jamais pour un brouillon (NTIDE18 — pas encore vraiment « reçue » du
+        # point de vue de l'équipe tant qu'elle reste interne à l'auteur).
+        if not draft:
+            from apps.notifications.models import EventType
+            services.notifier_email_idee(idee, 'recue', EventType.IDEA_RECEIVED)
 
     # ── NTIDE10 — autocomplétion du contexte ────────────────────────────────
     @action(detail=False, methods=['get'], url_path='contextes',
@@ -547,6 +553,13 @@ class InnovationSettingsView(APIView):
             'seuil_votes_notification': 'Seuil de votes pour notifier l\'auteur',
             'feedback_digest_actif': 'Digest feedback produit activé',
             'feedback_digest_frequence': 'Fréquence du digest feedback produit',
+            # NTIDE52 — gabarits e-mail du cycle de vie d'une idée.
+            'email_recue_sujet': 'Sujet e-mail — idée reçue',
+            'email_recue_corps': 'Corps e-mail — idée reçue',
+            'email_retenue_sujet': 'Sujet e-mail — idée retenue',
+            'email_retenue_corps': 'Corps e-mail — idée retenue',
+            'email_realisee_sujet': 'Sujet e-mail — idée réalisée',
+            'email_realisee_corps': 'Corps e-mail — idée réalisée',
         }
         anciennes = {f: getattr(instance, f) for f in champs_label}
         serializer.save()

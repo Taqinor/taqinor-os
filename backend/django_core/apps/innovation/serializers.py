@@ -89,6 +89,11 @@ class InnovationSettingsSerializer(serializers.ModelSerializer):
             'message_relance', 'seuil_votes_notification',
             # NTIDE40 — digest feedback produit (désactivé par défaut).
             'feedback_digest_actif', 'feedback_digest_frequence',
+            # NTIDE52 — gabarits e-mail du cycle de vie d'une idée (vide =
+            # gabarit par défaut, cf. ``models.EMAIL_IDEE_DEFAULTS``).
+            'email_recue_sujet', 'email_recue_corps',
+            'email_retenue_sujet', 'email_retenue_corps',
+            'email_realisee_sujet', 'email_realisee_corps',
         ]
 
 
