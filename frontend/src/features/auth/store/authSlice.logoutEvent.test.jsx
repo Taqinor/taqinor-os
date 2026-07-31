@@ -10,7 +10,11 @@ import { configureStore } from '@reduxjs/toolkit'
 
 vi.mock('../../../api/axios', () => ({ default: { post: vi.fn(() => Promise.resolve({ data: {} })) } }))
 
-const broadcastLogout = vi.fn()
+// `vi.mock` est HISSÉ en tête de fichier : une variable de premier niveau
+// référencée dans la factory n'est pas encore initialisée quand elle s'exécute
+// (« Cannot access 'broadcastLogout' before initialization »). `vi.hoisted`
+// est le mécanisme prévu pour ça.
+const { broadcastLogout } = vi.hoisted(() => ({ broadcastLogout: vi.fn() }))
 vi.mock('../../../providers/session-bridge', async () => {
   const actual = await vi.importActual('../../../providers/session-bridge')
   return { ...actual, broadcastLogout }

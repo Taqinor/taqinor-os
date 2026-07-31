@@ -52,7 +52,9 @@ describe('ConventionsScreen', () => {
     renderScreen()
 
     await waitFor(() => {
-      expect(screen.getByText('CNOPS Casablanca')).toBeInTheDocument()
+      // DataTable rend SIMULTANÉMENT la ligne bureau et la carte mobile
+      // (masquage CSS seul, non évalué en jsdom) -> 2 occurrences.
+      expect(screen.getAllByText('CNOPS Casablanca').length).toBeGreaterThan(0)
     })
     expect(screen.getAllByText('Consultation générale').length).toBeGreaterThan(0)
   })

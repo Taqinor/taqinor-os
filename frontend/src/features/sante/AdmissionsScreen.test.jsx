@@ -56,7 +56,9 @@ describe('AdmissionsScreen', () => {
     renderScreen()
 
     await waitFor(() => {
-      expect(screen.getByText('Alami Sara')).toBeInTheDocument()
+      // DataTable rend SIMULTANÉMENT la ligne bureau et la carte mobile
+      // (masquage CSS seul, non évalué en jsdom) -> 2 occurrences.
+      expect(screen.getAllByText('Alami Sara').length).toBeGreaterThan(0)
     })
     expect(screen.getByText('En cours')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Clôturer/i })).toBeInTheDocument()

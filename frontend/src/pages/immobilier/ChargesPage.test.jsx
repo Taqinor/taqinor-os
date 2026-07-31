@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -62,9 +62,16 @@ describe('ChargesPage — dépenses (WIR149)', () => {
     const user = userEvent.setup()
     withProviders(<ChargesPage />)
 
-    await user.selectOptions(screen.getByLabelText('Sélectionner un bâtiment'), '1')
+    // Les bâtiments arrivent d'un fetch async : sans cette attente, le select
+    // est encore vide et userEvent lève « Value "1" not found in options ».
+    const selectBatiment = screen.getByLabelText('Sélectionner un bâtiment')
+    await waitFor(() => expect(
+      within(selectBatiment).getByRole('option', { name: /./ }),
+    ).toBeInTheDocument())
+    await user.selectOptions(selectBatiment, '1')
     await user.click(screen.getByRole('button', { name: 'Charger' }))
-    await waitFor(() => expect(screen.getByText('Nettoyage')).toBeInTheDocument())
+    // DataTable rend la ligne bureau ET la carte mobile (masquage CSS seul).
+    await waitFor(() => expect(screen.getAllByText('Nettoyage').length).toBeGreaterThan(0))
 
     await user.selectOptions(screen.getByLabelText('Poste'), '7')
     fireEvent.change(screen.getByLabelText('Date de la dépense'), { target: { value: '2026-07-15' } })
