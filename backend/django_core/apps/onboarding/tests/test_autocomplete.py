@@ -1,9 +1,9 @@
-"""NTDMO12 — auto-complétion des items via le bus core.events."""
+"""NTDMO12/WIR59 — auto-complétion des items via le bus core.events."""
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
-from core.events import devis_sent, facture_payee
+from core.events import devis_sent, facture_payee, intervention_completed
 from apps.onboarding.models import OnboardingChecklistItem, OnboardingProgress
 
 User = get_user_model()
@@ -20,6 +20,11 @@ class _FakeFacture:
     def __init__(self, company, created_by):
         self.company = company
         self.created_by = created_by
+
+
+class _FakeIntervention:
+    def __init__(self):
+        self.pk = 1
 
 
 class OnboardingAutoCompleteTest(TestCase):
@@ -62,3 +67,23 @@ class OnboardingAutoCompleteTest(TestCase):
         item = OnboardingChecklistItem.objects.get(key='premier_devis')
         self.assertEqual(OnboardingProgress.objects.filter(
             user=self.user, item=item).count(), 1)
+
+    # WIR59 — premier_chantier gagne un event_key réel ('chantier'), câblé sur
+    # intervention_completed (apps.installations, YSERV2) : jusqu'ici cet item
+    # ne se complétait JAMAIS (aucun event_key), seul « Ignorer » le masquait.
+    def test_intervention_completed_auto_completes_premier_chantier(self):
+        self.assertEqual(
+            OnboardingChecklistItem.objects.get(key='premier_chantier')
+            .event_key, 'chantier')
+        self.assertFalse(self._is_done('premier_chantier'))
+        intervention_completed.send_robust(
+            sender=None, intervention=_FakeIntervention(),
+            company=self.company, user=self.user)
+        self.assertTrue(self._is_done('premier_chantier'))
+
+    def test_intervention_completed_tolerates_missing_user(self):
+        # ``user`` peut être None (action système) — best-effort, ne lève pas.
+        intervention_completed.send_robust(
+            sender=None, intervention=_FakeIntervention(),
+            company=self.company, user=None)
+        self.assertFalse(self._is_done('premier_chantier'))

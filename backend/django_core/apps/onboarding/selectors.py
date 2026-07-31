@@ -17,10 +17,15 @@ def _role_nom(user):
 def checklist_pour_utilisateur(company, user):
     """Retourne la liste ordonnée d'items résolus pour ``user`` dans ``company``.
 
-    Chaque entrée : dict {key, libelle, ordre, lien, fait (bool), complete_le}.
-    Filtrée par rôle (``roles_cibles`` vide = tous) et company-scopée via le
-    progrès de l'utilisateur courant.
-    """
+    Chaque entrée : dict {key, libelle, ordre, lien, fait (bool), complete_le,
+    event_key}. Filtrée par rôle (``roles_cibles`` vide = tous) et
+    company-scopée via le progrès de l'utilisateur courant.
+
+    WIR59 — ``event_key`` est exposé pour que le frontend sache quels items
+    n'ont AUCUN déclencheur automatique (``core.events``) : ceux-là seuls
+    proposent un bouton « Marquer comme fait » manuel (l'alternative
+    explicitement autorisée quand aucun événement de bus n'existe pour ce
+    jalon, ex. configurer_societe/import_clients/inviter_coequipier)."""
     from .models import OnboardingChecklistItem, OnboardingProgress
     role_nom = _role_nom(user)
     items = [
@@ -46,6 +51,7 @@ def checklist_pour_utilisateur(company, user):
             'lien': it.lien,
             'fait': bool(p and p.complete_le is not None),
             'complete_le': p.complete_le if p else None,
+            'event_key': it.event_key,
         })
     return resolved
 

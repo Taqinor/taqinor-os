@@ -5,10 +5,14 @@ const MesEquipesCard = lazy(() => import('../components/MesEquipesCard'))
 // VX86 — carte « Attend votre décision » (boîte d'approbations centralisée),
 // chargée paresseusement comme les autres compléments autonomes du Dashboard.
 const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsAttentionCard'))
-// VX36 — bannière de prise en main (autonome : se masque si terminé/rejeté),
-// visible dès le premier login en haut du Dashboard.
-const OnboardingBanner = lazy(() => import('../components/OnboardingBanner'))
-// NTDMO13 — widget « Premiers pas » (checklist onboarding, autonome).
+// NTDMO13/WIR59 — widget « Premiers pas » (checklist onboarding, autonome) :
+// SEUL tracker d'onboarding affiché sur le Dashboard. `OnboardingBanner`
+// (VX36, état à 3 étapes calculé CÔTÉ CLIENT via `useOnboardingSteps`)
+// s'affichait ICI EN PLUS, avec un compteur discordant du vrai catalogue
+// backend (6 items) — retiré (le hook `useOnboardingSteps` reste utilisé
+// ailleurs : Sidebar coachmarks, Paramètres > Prise en main, hors périmètre
+// WIR59). `PremiersPasWidget` est la source de vérité serveur (company+user
+// scopée, les 6 items du catalogue réel).
 const PremiersPasWidget = lazy(() => import('../components/PremiersPasWidget'))
 // NTUX11 — historique de navigation récente unifié (autonome : ne rend rien
 // si aucune entité récente).
@@ -780,13 +784,9 @@ export function Component() {
         />
       </div>
 
-      {/* VX36 — bannière de prise en main (autonome : se masque si terminé ou
-          « ne plus afficher »). En tête, visible au premier login. */}
-      <Suspense fallback={null}>
-        <OnboardingBanner />
-      </Suspense>
-
-      {/* NTDMO13 — widget « Premiers pas » (checklist, se masque à 100 %). */}
+      {/* NTDMO13/WIR59 — widget « Premiers pas » (checklist, se masque à
+          100 %) : UNIQUE tracker d'onboarding du Dashboard (voir la note sur
+          l'import ci-dessus). */}
       <Suspense fallback={null}>
         <PremiersPasWidget />
       </Suspense>
