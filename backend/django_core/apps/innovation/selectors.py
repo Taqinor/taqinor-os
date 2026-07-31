@@ -361,6 +361,45 @@ def hotspot_feedback(company, seuil=10):
             for r in qs]
 
 
+def kpi_innovation(company):
+    """NTIDE50 — tuiles KPI innovation FÉDÉRÉES pour l'endpoint reporting
+    fédéré (ARC40, ``apps/reporting/reports.py::kpi_federes``). Déclaré dans
+    ``apps/innovation/platform.py`` (``kpi_providers``) — le reporting
+    n'importe AUCUN modèle de cette app, ce sélecteur est le SEUL point de
+    contact. Chaque tuile : ``{id, label, valeur}``.
+
+    - ``innovation_idees_semaine`` : nombre d'idées PROPOSÉES sur les 7
+      derniers jours (mêmes exclusions que le tableau de bord — brouillons/
+      masquées, NTIDE6/18/19).
+    - ``innovation_top_idee_semaine`` : l'idée la plus votée de la semaine
+      (titre dans le libellé, nombre de votes en valeur) — absente si
+      aucune idée cette semaine (jamais une tuile vide/à zéro inventée).
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import Idee
+
+    depuis = timezone.now() - timedelta(days=7)
+    qs = Idee.objects.filter(
+        company=company, draft=False, archived=False, created_at__gte=depuis)
+    total = qs.count()
+    tuiles = [{
+        'id': 'innovation_idees_semaine',
+        'label': 'Idées cette semaine',
+        'valeur': total,
+    }]
+    top = qs.order_by('-votes_count', '-created_at').first()
+    if top is not None:
+        tuiles.append({
+            'id': 'innovation_top_idee_semaine',
+            'label': f'Top idée (semaine) : {top.titre}',
+            'valeur': top.votes_count,
+        })
+    return tuiles
+
+
 def feedback_by_theme(company):
     """NTIDE38 — agrégation admin du feedback produit (NTIDE36), PAR THÈME :
     total, nombre NON-LU (``statut == envoye``, jamais encore ouvert par
