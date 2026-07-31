@@ -372,6 +372,24 @@ def segments_disponibles(company):
     return segments
 
 
+def auteurs_autocomplete(company, q='', limit=10):
+    """NTIDE54 — autocomplétion utilisateurs de ``company`` pour les
+    formulaires admin de création d'idée en masse (import/gestion, cf.
+    ``manage.py import_ideas``, NTIDE24) : filtre optionnel ``?q=`` sur le
+    ``username`` (``icontains``), triés par nom, limité à ``limit``. Jamais
+    un utilisateur d'une autre société (scopé, comme tout le reste du
+    module)."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    qs = User.objects.filter(company=company)
+    q = (q or '').strip()
+    if q:
+        qs = qs.filter(username__icontains=q)
+    qs = qs.order_by('username')[:limit]
+    return list(qs.values('id', 'username'))
+
+
 def feedback_by_theme(company):
     """NTIDE38 — agrégation admin du feedback produit (NTIDE36), PAR THÈME :
     total, nombre NON-LU (``statut == envoye``, jamais encore ouvert par

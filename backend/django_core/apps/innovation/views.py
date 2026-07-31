@@ -142,6 +142,17 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         """KPI par statut, top votes, plus récentes, heat-chart contexte."""
         return Response(selectors.tableau_bord_idees(request.user.company))
 
+    # ── NTIDE54 — autocomplétion auteur (formulaires admin, création en masse) ─
+    @action(detail=False, methods=['get'], url_path='auteurs',
+            permission_classes=[IdeasSeeAll])
+    def auteurs(self, request):
+        """Utilisateurs de la société (``?q=`` filtre sur le username) —
+        réservé au palier admin/responsable, surface d'administration comme
+        le tableau de bord."""
+        q = request.query_params.get('q', '')
+        data = selectors.auteurs_autocomplete(request.user.company, q)
+        return Response({'results': data})
+
     # ── NTIDE5 — machine à états + chatter ──────────────────────────────────
     def _transition(self, request, target):
         idee = self.get_object()
