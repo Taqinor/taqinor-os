@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('termine_le', models.DateTimeField(blank=True, null=True)),
                 ('api_key', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='bulk_jobs', to='publicapi.apikey')),
-                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='bulk_jobs', to='authentication.company')),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='%(app_label)s_%(class)s_set', to='authentication.company', verbose_name='Société')),
             ],
             options={
                 'verbose_name': 'Job bulk (API publique)',

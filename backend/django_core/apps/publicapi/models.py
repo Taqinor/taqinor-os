@@ -523,7 +523,7 @@ class SandboxTenant(models.Model):
 __all__ += ['SandboxTenant', 'API_KEY_PREFIX_BY_ENV']
 
 
-class BulkJob(models.Model):
+class BulkJob(TenantModel):
     """NTAPI13 — job asynchrone bulk (export/import) de l'API publique.
 
     Émis par ``POST /api/public/exports/`` ou ``/imports/`` (clé API),
@@ -557,11 +557,8 @@ class BulkJob(models.Model):
         (STATUT_ECHEC, 'Échec'),
     ]
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: tenant (societe)
-        related_name='bulk_jobs',
-    )
+    # ARC1/SCA4 — company + created_at/updated_at viennent de core.TenantModel :
+    # la paire multi-société n'est jamais re-écrite à la main (garde check_platform).
     api_key = models.ForeignKey(
         ApiKey,
         on_delete=models.SET_NULL,  # on_delete: une clé révoquée ne doit pas effacer l'historique du job
@@ -586,8 +583,6 @@ class BulkJob(models.Model):
     erreurs = models.PositiveIntegerField(default=0)
     cursor = models.PositiveIntegerField(default=0)
     message_erreur = models.TextField(blank=True, default='')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
     termine_le = models.DateTimeField(null=True, blank=True)
 
     class Meta:
