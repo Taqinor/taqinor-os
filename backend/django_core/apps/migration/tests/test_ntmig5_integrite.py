@@ -253,6 +253,17 @@ class ChampsFigesApresCreationTests(TestCase):
         self.projet.refresh_from_db()
         self.assertEqual(self.projet.source, 'odoo')
 
+    def test_une_entite_inconnue_est_refusee_a_la_creation(self):
+        resp = auth(self.admin).post(
+            self.LOTS, {'projet': self.projet.pk, 'entite': 'nimportequoi'})
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('entite', resp.data)
+
+    def test_une_entite_connue_est_acceptee(self):
+        resp = auth(self.admin).post(
+            self.LOTS, {'projet': self.projet.pk, 'entite': 'fournisseurs'})
+        self.assertEqual(resp.status_code, 201, resp.data)
+
     def test_le_nom_reste_modifiable(self):
         resp = auth(self.admin).patch(
             f'{self.PROJETS}{self.projet.pk}/', {'nom': 'Nouveau nom'})

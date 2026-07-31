@@ -68,6 +68,21 @@ class LotMigrationSerializer(_CreationSeulementMixin,
             'dernier_rapport', 'created_at', 'updated_at',
         ]
 
+    def validate_entite(self, value):
+        """L'entité doit être une cible d'import RÉELLE.
+
+        Sans ce contrôle, on crée un lot que rien ne pourra jamais charger, et
+        l'erreur ne surgit qu'à l'étape « Analyser » — avec un message du
+        moteur d'import au lieu du champ fautif.
+        """
+        from apps.dataimport import services as dataimport_services
+
+        if value not in dataimport_services.TARGETS:
+            cibles = ', '.join(sorted(dataimport_services.TARGETS))
+            raise serializers.ValidationError(
+                f"Entité inconnue. Cibles disponibles : {cibles}.")
+        return value
+
     @extend_schema_field(RapportReconciliationSerializer(allow_null=True))
     def get_dernier_rapport(self, obj):
         rapport = obj.rapports.order_by('-created_at').first()
