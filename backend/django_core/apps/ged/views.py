@@ -32,7 +32,7 @@ from apps.records.serializers import resolve_target
 
 from . import selectors, services
 from .models import (
-    AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
+    AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
     DemandeDispositionError, DemandeDocument,
     DemandeSignatureDocument, DepotPublic, Document, DocumentLien,
@@ -46,6 +46,7 @@ from .models import (
     VueGedEnregistree,
 )
 from .serializers import (
+    AclGedSerializer,
     AnnotationDocumentSerializer, ArchivageLegalSerializer, CabinetSerializer,
     ChampSignatureSerializer, CoffreSerializer, DemandeApprobationSerializer,
     DemandeDispositionSerializer, DemandeDocumentSerializer,
@@ -3194,6 +3195,49 @@ class RegleApprobationGedViewSet(TenantMixin, viewsets.ModelViewSet):
         if errors:
             from rest_framework.exceptions import ValidationError
             raise ValidationError({'condition_group': errors})
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+
+class AclGedViewSet(TenantMixin, viewsets.ModelViewSet):
+    """WIR163 — API de gestion des droits d'accès GED19 (`AclGed`).
+
+    CRUD des entrées ACL par dossier/document (héritage + override, résolu en
+    lecture par `selectors.acl_effective`/`documents_visible_to_user` — poser
+    une entrée ici a un effet IMMÉDIAT sur ce qu'un autre utilisateur voit,
+    aucun cache). Lecture : tout rôle authentifié (IsAnyRole). Écriture
+    (créer/modifier/révoquer) : réservée responsable/admin
+    (IsResponsableOrAdmin) — même patron que `RegleAclMetadonneeViewSet` /
+    `kb.KbArticleAclViewSet`. `company` posée côté serveur (TenantMixin) —
+    jamais lue du corps de requête. Filtres optionnels `?folder=<id>` /
+    `?document=<id>` / `?niveau=<lecture|ecriture|gestion>`.
+    """
+    queryset = AclGed.objects.select_related(
+        'folder', 'document', 'utilisateur', 'role', 'created_by').all()
+    serializer_class = AclGedSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        folder = params.get('folder')
+        if folder:
+            qs = qs.filter(folder_id=folder)
+        document = params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        niveau = params.get('niveau')
+        if niveau:
+            qs = qs.filter(niveau=niveau)
+        return qs
+
+    def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 

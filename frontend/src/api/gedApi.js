@@ -289,6 +289,24 @@ const gedApi = {
   getMesFavoris: () => api.get('/ged/mes-favoris/'),
   // XGED26 — analytique workflow & signature (gestion/admin).
   getAnalytique: (params) => api.get('/ged/analytique/', { params }),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // WIR163 — Gestion des droits d'accès GED19 (AclGed) : accorder/révoquer
+  // une entrée sur un dossier/document (lecture : tout rôle ; écriture :
+  // responsable/admin). Effet immédiat sur `documents_visible_to_user` —
+  // aucun cache.
+  // ══════════════════════════════════════════════════════════════════════
+  // `params` : { folder, document, niveau }.
+  getAcls: (params) => api.get('/ged/acls/', { params }),
+  // `data` : { folder? , document?, utilisateur?, role?, niveau, herite? }
+  // (exactement un dossier OU document ; au moins un utilisateur OU rôle).
+  createAcl: (data) => api.post('/ged/acls/', data),
+  updateAcl: (id, data) => api.patch(`/ged/acls/${id}/`, data),
+  deleteAcl: (id) => api.delete(`/ged/acls/${id}/`),
+  // Réutilise l'endpoint /users/ existant (portée société côté serveur) —
+  // même patron que `messagesApi.listCompanyMembers` — pour peupler le
+  // sélecteur « utilisateur » du formulaire d'octroi ACL.
+  getUsers: () => api.get('/users/'),
   // Vues enregistrées (filtres sauvegardés) partagées de la société.
   getVues: (params) => api.get('/ged/vues/', { params }),
   // Lien de dépôt public tokenisé (la page publique PublicDepotPage fonctionne).

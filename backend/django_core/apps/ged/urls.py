@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AclGedViewSet,
     AnnotationDocumentViewSet, ArchivageLegalViewSet, CabinetViewSet,
     ChampSignatureViewSet, CoffreViewSet, DemandeApprobationViewSet,
     DemandeDispositionViewSet, DemandeDocumentViewSet,
@@ -21,6 +22,7 @@ from .views import (
 )
 
 router = DefaultRouter()
+router.register(r'acls', AclGedViewSet)
 router.register(r'cabinets', CabinetViewSet)
 router.register(r'coffres', CoffreViewSet)
 router.register(r'dossiers', FolderViewSet)
