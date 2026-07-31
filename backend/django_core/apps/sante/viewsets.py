@@ -404,6 +404,24 @@ class FactureSanteViewSet(CompanyScopedModelViewSet):
             date_fin=request.query_params.get('date_fin'))
         return Response(data)
 
+    @action(detail=False, methods=['get'], url_path='export-lot')
+    def export_lot(self, request):
+        """NTSAN40 — export groupé (ZIP) des feuilles de soins PDF de toutes
+        les factures de la période `?date_debut=&date_fin=` (AAAA-MM-JJ,
+        toutes deux optionnelles). RÉUTILISE le générateur PDF de NTSAN14 EN
+        BOUCLE (``services.exporter_feuilles_soins_lot``) — jamais un moteur
+        PDF alternatif."""
+        from .services import exporter_feuilles_soins_lot
+
+        zip_bytes = exporter_feuilles_soins_lot(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'))
+        resp = HttpResponse(zip_bytes, content_type='application/zip')
+        resp['Content-Disposition'] = (
+            'attachment; filename="feuilles_soins.zip"')
+        return resp
+
 
 class DisponibilitesView(APIView):
     """NTSAN29 — `GET /api/django/sante/disponibilites/?praticien=&date=` :
