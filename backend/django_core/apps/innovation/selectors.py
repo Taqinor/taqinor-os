@@ -390,6 +390,40 @@ def auteurs_autocomplete(company, q='', limit=10):
     return list(qs.values('id', 'username'))
 
 
+def idees_geolocalisees(company):
+    """NTIDE55 — idées liées à un CHANTIER (``linked_type == 'chantier'``,
+    NTIDE14) avec un GPS exploitable, pour affichage sur carte (admin seul).
+
+    Le GPS est lu via ``apps.installations.selectors.installation_gps_map``
+    — JAMAIS un import direct d'``Installation`` (règle de frontière
+    cross-app : ``linked_id`` reste par ailleurs une référence opaque, comme
+    partout ailleurs dans ce module). Une idée liée à un chantier SANS GPS
+    est simplement absente (jamais une coordonnée fabriquée) ; brouillons/
+    masquées exclues (même règle que le tableau de bord, NTIDE6)."""
+    from apps.installations.selectors import installation_gps_map
+
+    from .models import Idee
+
+    qs = (Idee.objects.filter(
+        company=company, linked_type=Idee.LinkedType.CHANTIER,
+        draft=False, archived=False)
+        .exclude(linked_id__isnull=True))
+    gps_map = installation_gps_map(list(qs.values_list('linked_id', flat=True)))
+
+    resultat = []
+    for idee in qs:
+        coords = gps_map.get(idee.linked_id)
+        if not coords or coords[0] is None or coords[1] is None:
+            continue
+        resultat.append({
+            'id': idee.id, 'titre': idee.titre, 'statut': idee.statut,
+            'statut_display': idee.get_statut_display(),
+            'linked_id': idee.linked_id,
+            'gps_lat': coords[0], 'gps_lng': coords[1],
+        })
+    return resultat
+
+
 def feedback_by_theme(company):
     """NTIDE38 — agrégation admin du feedback produit (NTIDE36), PAR THÈME :
     total, nombre NON-LU (``statut == envoye``, jamais encore ouvert par

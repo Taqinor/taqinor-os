@@ -153,6 +153,15 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         data = selectors.auteurs_autocomplete(request.user.company, q)
         return Response({'results': data})
 
+    # ── NTIDE55 — géolocalisation des idées liées à un chantier (carte admin) ─
+    @action(detail=False, methods=['get'], url_path='geolocalisation',
+            permission_classes=[IdeasSeeAll])
+    def geolocalisation(self, request):
+        """Idées liées à un chantier AVEC un GPS exploitable, pour affichage
+        sur carte (« Affichage admin seul », NTIDE55)."""
+        data = selectors.idees_geolocalisees(request.user.company)
+        return Response({'results': data})
+
     # ── NTIDE5 — machine à états + chatter ──────────────────────────────────
     def _transition(self, request, target):
         idee = self.get_object()
