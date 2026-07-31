@@ -1008,6 +1008,33 @@ def attacher_tiers_au_lead(lead: Lead, client: Client) -> None:
         pass
 
 
+def dupliquer_client(client: Client, *, user) -> Client:
+    """NTUX13 — Duplique une fiche ``Client`` en une fiche indépendante.
+
+    ``nom`` reçoit le suffixe « (copie) » et les identifiants UNIQUES
+    (``email``, ``ice``) sont VIDÉS — jamais recopiés tels quels — pour
+    forcer une saisie explicite plutôt que de créer silencieusement un
+    doublon sur une contrainte d'unicité (company, email) ou de propager un
+    ICE qui identifie légalement une AUTRE entreprise. Les autres champs
+    (téléphone, adresse, type, CIN/IF/RC) sont recopiés tels quels — ce sont
+    des coordonnées, pas des identifiants d'unicité."""
+    copie = Client.objects.create(
+        company=client.company,
+        nom=f'{client.nom} (copie)',
+        prenom=client.prenom,
+        email=None,
+        telephone=client.telephone,
+        adresse=client.adresse,
+        type_client=client.type_client,
+        cin=client.cin,
+        ice=None,
+        if_fiscal=client.if_fiscal,
+        rc=client.rc,
+        created_by=user,
+    )
+    return copie
+
+
 def resolve_client_for_lead(lead: Lead) -> Client:
     from django.db import IntegrityError, transaction
 

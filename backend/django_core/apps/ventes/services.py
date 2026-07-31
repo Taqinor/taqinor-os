@@ -79,6 +79,63 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields):
     return devis
 
 
+def dupliquer_devis(devis, *, user):
+    """NTUX13 — Duplique ``devis`` en un devis BROUILLON totalement
+    INDÉPENDANT (nouveau numéro, jamais le statut de la source — même un
+    devis ``accepte``/``envoye`` redémarre en ``brouillon``).
+
+    À la différence de ``dupliquer-variante`` (QJ15, ``views/devis.py``) qui
+    groupe ses copies avec l'original via ``version_parent``/``version`` pour
+    une comparaison côte-à-côte, CE duplicata est délibérément SANS lien de
+    version : ``version=1``, ``version_parent=None``. Aucun chantier/
+    BonCommande/Facture n'est jamais copié — ces objets naissent en aval d'un
+    devis ACCEPTÉ (rule #4) et ne sont référencés nulle part sur ``Devis``
+    lui-même, donc un brouillon frais n'en hérite jamais.
+
+    Les lignes sont clonées à l'identique (mêmes quantités/prix/sections)."""
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.utils.company_settings import create_numbered
+
+    company = devis.company
+    holder = {}
+
+    def _save(ref):
+        obj = Devis.objects.create(
+            company=company, reference=ref,
+            client=devis.client, lead=devis.lead,
+            statut=Devis.Statut.BROUILLON,
+            taux_tva=devis.taux_tva,
+            remise_globale=devis.remise_globale,
+            note=(f'[Copie de {devis.reference}] ' + (devis.note or '')).strip(),
+            mode_installation=devis.mode_installation,
+            etude_params=devis.etude_params,
+            prix_cible_kwc=devis.prix_cible_kwc,
+            devise=devis.devise,
+            taux_change=devis.taux_change,
+            created_by=user,
+            # Duplicata indépendant : jamais de groupe de version (à la
+            # différence de dupliquer-variante, QJ15).
+            version=1, version_parent=None, is_active=True,
+        )
+        holder['obj'] = obj
+        return obj
+
+    create_numbered(Devis, company, 'devis', _save)
+    copie = holder['obj']
+
+    for ligne in devis.lignes.all():
+        LigneDevis.objects.create(
+            devis=copie, produit=ligne.produit, designation=ligne.designation,
+            quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
+            remise=ligne.remise, type_ligne=ligne.type_ligne, ordre=ligne.ordre,
+            taux_tva=ligne.taux_tva, groupe_index=ligne.groupe_index,
+            groupe_label=ligne.groupe_label,
+        )
+    logger.info('NTUX13: devis %s dupliqué en %s (company %s)',
+                devis.reference, copie.reference, getattr(company, 'id', '?'))
+    return copie
+
+
 def create_devis_from_reserve(*, reserve, user):
     """XFSM18 — crée un DEVIS brouillon de réparation à partir d'une réserve
     d'intervention (`installations.Reserve`), pour donner un chemin de devis

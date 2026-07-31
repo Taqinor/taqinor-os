@@ -152,11 +152,23 @@ class ClientViewSet(CompanyScopedModelViewSet):
         # Ce get_permissions prime sur le permission_classes de l'action.
         if self.action in READ_ACTIONS + ['export_xlsx', 'documents', 'search']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS:
+        elif self.action in WRITE_ACTIONS + ['dupliquer']:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+    @action(detail=True, methods=['post'], url_path='dupliquer',
+            permission_classes=[IsResponsableOrAdmin])
+    def dupliquer(self, request, pk=None):
+        """NTUX13 — Duplique cette fiche client (suffixe « (copie) », email/
+        ICE vidés — voir ``services.dupliquer_client``)."""
+        source = self.get_object()
+        from .services import dupliquer_client
+        copie = dupliquer_client(source, user=request.user)
+        return Response(
+            ClientSerializer(copie, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
