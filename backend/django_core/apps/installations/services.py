@@ -106,6 +106,36 @@ def ensure_default_template(company):
     return template
 
 
+def dupliquer_checklist_template(template, *, user=None):
+    """NTUX13 — Duplique un ``ChecklistTemplate`` (en-tête + toutes ses
+    ``ChecklistEtapeModele``) en un template indépendant, TOUJOURS non
+    protégé (``protege=False``) même si la source l'est — le template
+    « Défaut » système reste unique, une copie n'en hérite jamais le statut
+    protégé. ``type_installation`` n'est PAS recopié : deux templates avec le
+    même type auto-sélectionné se marcheraient dessus (``template_for_
+    installation`` ne sait choisir qu'UN match) — la copie reste sans type
+    tant qu'un opérateur ne le réassigne pas explicitement. Chaque étape
+    garde sa ``cle`` (l'unicité est PAR template, jamais globale — copier la
+    même clé sous un NOUVEAU template ne collisionne jamais)."""
+    copie = ChecklistTemplate.objects.create(
+        company=template.company,
+        nom=f'{template.nom} (copie)',
+        type_installation=None,
+        ordre=template.ordre,
+        actif=template.actif,
+        protege=False,
+    )
+    for etape in template.etapes.all():
+        ChecklistEtapeModele.objects.create(
+            company=template.company, template=copie,
+            cle=etape.cle, libelle=etape.libelle, ordre=etape.ordre,
+            capture_serie=etape.capture_serie,
+            photo_obligatoire=etape.photo_obligatoire,
+            actif=etape.actif, protege=False,
+        )
+    return copie
+
+
 def seed_checklist_etapes(company):
     """Amorce le template « Défaut » et ses étapes par défaut (idempotent,
     additif). Conservé pour l'amorçage à l'affichage des Paramètres (N4)."""

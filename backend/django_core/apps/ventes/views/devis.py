@@ -135,7 +135,7 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
             'generer_facture', 'reviser', 'noter',
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
-            'envoyer_email', 'dupliquer_variante', 'variantes',
+            'envoyer_email', 'dupliquer_variante', 'variantes', 'dupliquer',
             'save_preset', 'apply_preset', 'contacter_superieur',
             'whatsapp', 'proforma_pdf',
             # QX21be — atomic create + replace-lines (self.action is the
@@ -1002,6 +1002,24 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
             [DevisSerializer(v, context={'request': request}).data
              for v in results],
         )
+
+    @action(detail=True, methods=['post'], url_path='dupliquer',
+            permission_classes=[IsResponsableOrAdmin])
+    def dupliquer(self, request, pk=None):
+        """NTUX13 — Duplication INDÉPENDANTE (à ne pas confondre avec
+        ``dupliquer-variante``, QJ15, qui groupe ses copies via
+        ``version_parent`` pour une comparaison côte-à-côte). Le duplicata
+        repart TOUJOURS en ``brouillon`` avec un nouveau numéro, quel que
+        soit le statut de la source (jamais une copie de statut ``accepte``/
+        ``envoye``), et ne porte aucun lien vers le chantier/BonCommande/
+        Facture de l'original (ces objets naissent en aval d'une acceptation
+        et ne sont référencés nulle part sur ``Devis`` — rien à copier)."""
+        source = self.get_object()
+        from ..services import dupliquer_devis
+        copie = dupliquer_devis(source, user=request.user)
+        return Response(
+            DevisSerializer(copie, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='approuver-remise',
             permission_classes=[IsAdminRole])

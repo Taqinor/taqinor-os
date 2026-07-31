@@ -111,6 +111,20 @@ FIELD_MAPS = {
         'tel': 'telephone', 'cin': 'cin', 'poste': 'poste',
         'date_embauche': 'date_embauche', 'type_contrat': 'type_contrat',
     },
+    # NTEDU36 — Élèves (migration scolaire depuis Excel/ancien système).
+    # Écriture DÉLÉGUÉE à ``apps.education.services.creer_eleve_import``
+    # (jamais les modèles ``Eleve``/``Famille`` directement, motif XFLT22).
+    'eleves_education': {
+        'nom': 'nom', 'prenom': 'prenom', 'prénom': 'prenom',
+        'date_naissance': 'date_naissance', 'naissance': 'date_naissance',
+        'sexe': 'sexe', 'cin': 'cin',
+        'classe': 'classe_nom', 'classe_nom': 'classe_nom',
+        'famille': 'famille_nom', 'famille_nom': 'famille_nom',
+        'nom_famille': 'famille_nom',
+        'telephone': 'parent1_telephone', 'tel': 'parent1_telephone',
+        'telephone_parent': 'parent1_telephone',
+        'email': 'parent1_email', 'email_parent': 'parent1_email',
+    },
 }
 
 
@@ -1023,6 +1037,22 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
                 elif statut == 'doublon':
                     skipped.append(
                         {'ligne': i, 'raison': 'doublon (matricule existe)'})
+                else:
+                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
+
+        # NTEDU36 — Élèves (import scolaire) : écriture DÉLÉGUÉE à
+        # ``apps.education.services.creer_eleve_import`` (jamais les modèles
+        # education directement, motif XFLT22). Une ligne en erreur (ex.
+        # classe inconnue) est SKIPPÉE avec son motif — jamais bloquante pour
+        # les autres lignes valides du fichier (rapport d'erreurs
+        # téléchargeable réutilisé tel quel, XPLT2).
+        elif target == 'eleves_education':
+            from apps.education.services import creer_eleve_import
+            for i, row in enumerate(rows, 1):
+                f = _row_to_fields(row, mapped)
+                statut, message = creer_eleve_import(company, f)
+                if statut == 'cree':
+                    created += 1
                 else:
                     skipped.append({'ligne': i, 'raison': message or 'erreur'})
 

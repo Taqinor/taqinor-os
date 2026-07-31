@@ -105,6 +105,7 @@ const PATHS = [
   '/education/emploi-du-temps',
   '/education/cantine',
   '/education/discipline',
+  '/education/import',
 ]
 
 function renderRoute(path) {
@@ -125,7 +126,8 @@ function renderRoute(path) {
 }
 
 describe('education — module.config (WIR143)', () => {
-  it('déclare les 9 routes ET les 9 entrées de nav ÉDUCATION, gatées', () => {
+  // NTEDU36 — 10e route/entrée de nav ajoutée (Import CSV élèves).
+  it('déclare les 10 routes ET les 10 entrées de nav ÉDUCATION, gatées', () => {
     expect(config.key).toBe('education')
     expect(config.nav.label).toBe('ÉDUCATION')
     for (const p of PATHS) {
@@ -193,5 +195,11 @@ describe('education — module.config (WIR143)', () => {
   it('monte Discipline via /education/discipline', async () => {
     renderRoute('/education/discipline')
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Discipline' })).toBeTruthy(), { timeout: 25000 })
+  }, 30000)
+
+  it('monte Import via /education/import (NTEDU36)', async () => {
+    renderRoute('/education/import')
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Import CSV élèves' })).toBeTruthy(), { timeout: 25000 })
+    expect(screen.getByRole('button', { name: 'Importer un fichier' })).toBeTruthy()
   }, 30000)
 })

@@ -2772,6 +2772,16 @@ class ModeleProjetViewSet(_GestionProjetBaseViewSet):
             TacheSerializer(taches, many=True).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """NTUX13 — Duplique ce modèle de projet (en-tête + tâches-types) en
+        un modèle indépendant (suffixe « (copie) » sur le nom — voir
+        ``services.dupliquer_modele_projet``)."""
+        modele = self.get_object()
+        copie = services.dupliquer_modele_projet(modele)
+        return Response(
+            ModeleProjetSerializer(copie).data, status=status.HTTP_201_CREATED)
+
 
 class ModeleTacheViewSet(_GestionProjetBaseViewSet):
     """Tâches-types d'un modèle de projet (PROJ35) — CRUD scopé société.

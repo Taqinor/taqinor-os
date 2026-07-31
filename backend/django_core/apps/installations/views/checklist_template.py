@@ -135,3 +135,15 @@ class ChecklistTemplateViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewS
         if template.protege:
             return "Le modèle « Défaut » est protégé — désactivez-le plutôt."
         return None
+
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """NTUX13 — Duplique ce modèle de checklist (en-tête + étapes) en un
+        template indépendant, jamais protégé, sans type auto-sélectionné
+        (voir ``services.dupliquer_checklist_template``)."""
+        from ..services import dupliquer_checklist_template
+        source = self.get_object()
+        copie = dupliquer_checklist_template(source, user=request.user)
+        return Response(
+            ChecklistTemplateSerializer(copie).data,
+            status=status.HTTP_201_CREATED)

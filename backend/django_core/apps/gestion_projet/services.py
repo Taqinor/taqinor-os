@@ -494,6 +494,35 @@ def instancier_modele(modele, projet):
     return creees
 
 
+@transaction.atomic
+def dupliquer_modele_projet(modele):
+    """NTUX13 — Duplique un ``ModeleProjet`` (en-tête + toutes ses
+    ``ModeleTache``) en un modèle indépendant de la MÊME société.
+
+    ``nom`` reçoit le suffixe « (copie) » : la contrainte d'unicité
+    ``(company, nom)`` interdirait sinon un simple recopiage à l'identique.
+    ``actif`` et ``type_installation`` sont recopiés tels quels (pas de règle
+    métier particulière contrairement au devis/client, ce modèle n'a ni
+    statut ni identifiant unique à effacer). Renvoie le nouveau modèle."""
+    from .models import ModeleProjet, ModeleTache
+
+    copie = ModeleProjet.objects.create(
+        company=modele.company,
+        nom=f'{modele.nom} (copie)',
+        type_installation=modele.type_installation,
+        description=modele.description,
+        actif=modele.actif,
+    )
+    for mt in modele.taches.order_by('ordre', 'id'):
+        ModeleTache.objects.create(
+            company=modele.company, modele=copie,
+            type_phase=mt.type_phase, code_wbs=mt.code_wbs,
+            libelle=mt.libelle, ordre=mt.ordre,
+            charge_estimee=mt.charge_estimee,
+        )
+    return copie
+
+
 # ── Sous-traitance & clôture + REX (PROJ38) ──────────────────────────────────
 class ClotureError(Exception):
     """Erreur métier à la clôture d'un projet."""

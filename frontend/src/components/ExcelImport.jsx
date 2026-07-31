@@ -16,6 +16,8 @@ const TARGET_LABEL = {
   // WIR48/XFLT22/ARC13 — cibles déjà implémentées côté serveur mais jusqu'ici
   // non listées ici (aucun écran ne les instanciait).
   vehicules: 'véhicules', contrats: 'contrats', dossiers_rh: 'dossiers RH',
+  // NTEDU36 — migration élèves (Excel/ancien système).
+  eleves_education: 'élèves',
 }
 
 const MODES = [
