@@ -71,6 +71,7 @@ const LexiquePage = lazy(() => import('../pages/aide/LexiquePage'))
 // NTPRT8 — shell + écrans du PORTAIL CLIENT authentifié (hors shell ERP).
 const PortalClientLayout = lazy(() => import('../features/portail/client/PortalClientLayout'))
 const PortailClientAccueil = lazy(() => import('../features/portail/client/PortailClientAccueil'))
+const PortailClientDevis = lazy(() => import('../features/portail/client/PortailClientDevis'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -298,6 +299,12 @@ const router = createBrowserRouter([
     path: '/portail/client',
     loader: portalLoader(PORTEE_CLIENT),
     element: <WithPortal shell={PortalClientLayout}><PortailClientAccueil /></WithPortal>,
+  },
+  // NTPRT10 — « Mes devis » : liste + PDF `/proposal` (règle #4) + acceptation.
+  {
+    path: '/portail/client/devis',
+    loader: portalLoader(PORTEE_CLIENT),
+    element: <WithPortal shell={PortalClientLayout}><PortailClientDevis /></WithPortal>,
   },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },

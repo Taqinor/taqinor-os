@@ -1446,3 +1446,58 @@ def faits_temoignage_devis(company, devis_id):
         'ville': (etude.get('ville') or '').strip() or None,
         'reference': devis.reference,
     }
+
+
+# ── NTPRT10/NTPRT11 — Lectures self-service du PORTAIL CLIENT ───────────────
+#
+# Point d'entrée cross-app UNIQUE de ``apps.portail`` sur les documents
+# ``ventes`` (jamais un import de ``apps.ventes.models`` depuis portail).
+# Lecture SEULE et volontairement PAUVRE : uniquement ce qu'un client peut voir
+# de SON dossier. Aucun champ de coût/marge n'y figure (``prix_achat``,
+# ``marge``… ne sortent JAMAIS vers un écran client — registre
+# ``core.permissions.SENSITIVE_FIELDS``), ni aucune donnée interne
+# (propriétaire, notes, portée de visibilité).
+#
+# Les fonctions exigent ``company`` ET ``client_id`` : un ``client_id`` absent
+# renvoie VIDE, jamais tous les documents de la société.
+
+def devis_du_client_portail(company, client_id, *, limit=200):
+    """NTPRT10 — Devis visibles par le client ``client_id`` sur son portail.
+
+    Les BROUILLONS internes sont EXCLUS : un devis non envoyé n'a jamais été
+    montré au client, l'exposer serait une fuite de travail en cours.
+    """
+    from .models import Devis
+
+    if company is None or not client_id:
+        return []
+    qs = (Devis.objects
+          .filter(company=company, client_id=client_id)
+          .exclude(statut=Devis.Statut.BROUILLON)
+          .order_by('-date_creation')[:limit])
+    return [{
+        'id': d.id,
+        'reference': d.reference,
+        'statut': d.statut,
+        'statut_display': d.get_statut_display(),
+        'date_creation': d.date_creation,
+        'date_validite': d.date_validite,
+        'total_ttc': str(d.total_ttc),
+        'accepte': d.statut == Devis.Statut.ACCEPTE,
+    } for d in qs]
+
+
+def devis_du_client_portail_obj(company, client_id, devis_id):
+    """NTPRT10 — UN devis du client (objet ORM), ou ``None``.
+
+    Le triplet (société, client, id) est exigé : un devis d'un autre client —
+    ou d'une autre société — est INTROUVABLE, jamais « trouvé puis refusé ».
+    """
+    from .models import Devis
+
+    if company is None or not client_id or not devis_id:
+        return None
+    return (Devis.objects
+            .filter(company=company, client_id=client_id, pk=devis_id)
+            .exclude(statut=Devis.Statut.BROUILLON)
+            .first())

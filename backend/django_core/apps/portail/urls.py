@@ -22,6 +22,7 @@ from .views import (
     JalonChantierPortailViewSet,
     PaiementFacturePortailViewSet,
 )
+from .views_client import MesDevisPortailViewSet
 
 router = DefaultRouter()
 router.register(r'comptes-portail', ComptePortailClientViewSet,
@@ -36,6 +37,13 @@ router.register(r'jalons-chantier-portail', JalonChantierPortailViewSet,
                 basename='portail-jalon-chantier')
 router.register(r'demandes-ticket-portail', DemandeTicketPortailViewSet,
                 basename='portail-demande-ticket')
+
+# NTPRT10/NTPRT11 — surface self-service du CLIENT connecté (compte réel
+# NTPRT1/2, garde `IsPortalClientUser`). Les routes ci-dessus restent des
+# écrans INTERNES d'administration des comptes portail ; celles-ci sont les
+# seules que le client lui-même appelle.
+router.register(r'mes-devis', MesDevisPortailViewSet,
+                basename='portail-mes-devis')
 
 urlpatterns = [
     path('', include(router.urls)),

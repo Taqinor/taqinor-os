@@ -30,7 +30,7 @@ au portail (``auth/me``, ``auth/logout``, ``token``/``token/refresh``) restent
 sur ``IsAuthenticated``/``AllowAny`` et demeurent donc joignables par un compte
 portail — la frontière est nette.
 """
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 # Valeur canonique de ``CustomUser.portee`` pour un compte interne (défaut).
 # Répliquée en littéral (jamais un import de ``authentication.models`` ici) pour
@@ -100,3 +100,99 @@ class IsPortalScopedUser(BasePermission):
 
     def has_permission(self, request, view):
         return is_portal_user(getattr(request, 'user', None))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTPRT10/11/20/21/27 — Gardes par PORTÉE EXACTE (jamais « portail quelconque »)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# ``IsPortalScopedUser`` ci-dessus accorde l'accès à N'IMPORTE QUEL compte
+# portail. C'est le bon contrat pour une surface commune, mais PAS pour un
+# endpoint métier : les devis d'un client ne doivent jamais être lisibles par un
+# compte FOURNISSEUR ou PARTENAIRE, même authentifié « portail ». Les classes
+# ci-dessous exigent donc :
+#
+#   (a) la portée EXACTE attendue par l'endpoint, ET
+#   (b) un id de rattachement NON NUL — un compte portail orphelin (aucune
+#       entité liée) doit voir RIEN, jamais tout : sans cette condition, un
+#       filtre ``.filter(client_id=None)`` — ou pire, un filtre oublié — devient
+#       une fuite silencieuse.
+
+class _IsPortalUserOfScope(BasePermission):
+    """Base : compte portail de la portée EXACTE ``portee_requise``, rattaché."""
+
+    portee_requise = None
+    message = 'Accès réservé aux comptes du portail concerné.'
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not is_portal_user(user):
+            return False
+        if getattr(user, 'portee', PORTEE_INTERNE) != self.portee_requise:
+            return False
+        return portal_scope_id(user) is not None
+
+
+class IsPortalClientUser(_IsPortalUserOfScope):
+    """Compte PORTAIL CLIENT rattaché à un client (NTPRT10/11)."""
+    portee_requise = 'portail_client'
+
+
+class IsPortalFournisseurUser(_IsPortalUserOfScope):
+    """Compte PORTAIL FOURNISSEUR rattaché à un fournisseur (NTPRT20/21)."""
+    portee_requise = 'portail_fournisseur'
+
+
+class IsPortalPartenaireUser(_IsPortalUserOfScope):
+    """Compte PORTAIL PARTENAIRE rattaché à un partenaire (NTPRT27)."""
+    portee_requise = 'portail_partenaire'
+
+
+class IsInternalWriterOrPortalClientOwner(BasePermission):
+    """NTPRT10 — LECTURE d'un document par son propriétaire côté portail.
+
+    Sert le cas « le client relit SON propre document sur le chemin canonique »
+    (règle #4 : ``/proposal`` reste l'UNIQUE rendu PDF devis client — on ouvre
+    ce chemin au client plutôt que d'en créer un second).
+
+    Contrat, volontairement le plus restrictif qui satisfasse le besoin :
+
+    * INTERNE — comportement d'``IsResponsableOrAdmin`` reproduit À
+      L'IDENTIQUE (``user.is_responsable``) : aucun accès interne n'est élargi
+      ni retiré ;
+    * PORTAIL — uniquement la portée ``portail_client``, uniquement en méthode
+      SÛRE (jamais une écriture par ce chemin), uniquement s'il est rattaché à
+      un client, et — au niveau OBJET — uniquement si l'objet appartient
+      EXACTEMENT à ce client (``obj.<owner_field> == portail_client_id``).
+
+    ``has_object_permission`` n'est consultée par DRF que lorsque la vue appelle
+    ``get_object()`` : tout endpoint portant cette garde DOIT le faire (c'est le
+    cas de ``/proposal``). Le viewset borne en plus son queryset, de sorte qu'un
+    document d'autrui répond 404 (aucun oracle d'existence) plutôt que 403.
+    """
+
+    owner_field = 'client_id'
+    message = "Ce document n'est pas accessible depuis votre espace."
+
+    def has_permission(self, request, view):
+        user = getattr(request, 'user', None)
+        if not (user and getattr(user, 'is_authenticated', False)):
+            return False
+        if is_portal_user(user):
+            return (
+                getattr(user, 'portee', PORTEE_INTERNE) == 'portail_client'
+                and portal_scope_id(user) is not None
+                and request.method in SAFE_METHODS
+            )
+        # Interne : strictement la garde historique de l'endpoint.
+        return bool(getattr(user, 'is_responsable', False))
+
+    def has_object_permission(self, request, view, obj):
+        user = getattr(request, 'user', None)
+        if not is_portal_user(user):
+            # Interne : déjà tranché par has_permission (garde inchangée).
+            return True
+        scope = portal_scope_id(user)
+        if scope is None:
+            return False
+        return getattr(obj, self.owner_field, None) == scope
