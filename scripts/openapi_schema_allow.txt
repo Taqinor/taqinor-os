@@ -17,6 +17,7 @@ Error|AgentActionUndoView|unable to guess serializer. This is graceful fallback 
 Error|AgentActionsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|AlertSnoozeView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ApiUsagePlanView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|AssistantConfigView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|AttestationView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|AttributionBilanView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|AudienceDeliveryEstimateView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -60,8 +61,10 @@ Error|CookieTokenRefreshView|unable to guess serializer. This is graceful fallba
 Error|CostPerSignatureView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CoutNonQualiteViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CoverageReportView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|CrInterventionView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CreativeLeaderboardView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CreativeScatterView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|DescriptionProduitView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|DisponibilitesView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|DocsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|DossierRemiseView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -71,6 +74,7 @@ Error|EngagementAudienceView|unable to guess serializer. This is graceful fallba
 Error|EtatsComptablesViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ExplorationLedgerView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|FactoryLaneRoiView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|FeedbackHotspotView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|FeedbackResumeView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|FieldSyncView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|GeoHoldoutReportView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -97,6 +101,8 @@ Error|LoginBannerView|unable to guess serializer. This is graceful fallback hand
 Error|LogoutView|exception raised while getting serializer. Hint: Is get_serializer_class() returning None or is get_queryset() not worki
 Error|MdeCalculatorView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|MediaResolveView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MesDevisPortailViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|MesFacturesPortailViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|MesIdentifiantsVoipView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|MetaConnectionHealthView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|MetaConnectionStatusView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -126,10 +132,12 @@ Error|PublicLeadUpdateView|unable to guess serializer. This is graceful fallback
 Error|PublicOpenApiSchemaView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|PublicTicketPDFView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|RFQConsultationPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|RapportPeriodeView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|RealLeadsView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ReconciliationBackfillView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ReconciliationListView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|RecrutementStatistiquesViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|RedigerView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ReglageCreditView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ReglageRHViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ReglageTempsViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -198,6 +206,7 @@ Error|calendar_ics_subscription|unable to guess serializer. This is graceful fal
 Error|calendar_ics|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|calendar_reschedule|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|calendrier_reglementaire|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|candidature_fournisseur|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|careers_apply|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|careers_list|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|cash_flow_forecast|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -305,6 +314,8 @@ Error|pay_webhook|unable to guess serializer. This is graceful fallback handling
 Error|ping|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|pipeline|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|portail_avancement|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_bulletin_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_bulletins|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|portail_contester_facture|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|portail_demande_contrat|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|portail_echeancier|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -315,6 +326,7 @@ Error|portail_mes_contrats|unable to guess serializer. This is graceful fallback
 Error|portail_mes_eleves|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|portail_mon_releve_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|portail_mon_releve|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|portail_presences|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|position_credit_pdf|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|post_chat_message|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|prix_applicable_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -379,7 +391,10 @@ Error|suivi_public|unable to guess serializer. This is graceful fallback handlin
 Error|support_bundle_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|tableau_bord|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|tableau_conformite_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|tableau_de_bord_fournisseur|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|tableau_de_bord_partenaire|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|technicien_scorecard|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|theme_portail_public|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ticket_public_satisfaction|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ticket_public_status|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|tracker_usage_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -398,6 +413,7 @@ Warning|<global>|encountered multiple names for the same choice set (Conversatio
 Warning|<global>|encountered multiple names for the same choice set (FormatExportEnum). This may be unwanted even though the generated sc
 Warning|<global>|encountered multiple names for the same choice set (HabilitationTypeEnum). This may be unwanted even though the generate
 Warning|<global>|encountered multiple names for the same choice set (LanguePrefereeEnum). This may be unwanted even though the generated
+Warning|<global>|encountered multiple names for the same choice set (LinkedTypeEnum). This may be unwanted even though the generated sche
 Warning|<global>|encountered multiple names for the same choice set (ModeHoldEnum). This may be unwanted even though the generated schema
 Warning|<global>|encountered multiple names for the same choice set (NiveauRequisEnum). This may be unwanted even though the generated sc
 Warning|<global>|encountered multiple names for the same choice set (PalierApprobateurEnum). This may be unwanted even though the generat
@@ -434,11 +450,15 @@ Warning|<global>|operationId "django_core_saved_queries_run_create" has collisio
 Warning|<global>|operationId "django_identity_scim_v#_Groups_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/Grou
 Warning|<global>|operationId "django_identity_scim_v#_Users_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/Users
 Warning|<global>|operationId "django_kb_parcours_articles_list" has collisions [('/api/django/kb/parcours-articles/', 'get'), ('/api/djan
+Warning|<global>|operationId "django_portail_mes_devis_retrieve" has collisions [('/api/django/portail/mes-devis/', 'get'), ('/api/django
+Warning|<global>|operationId "django_portail_mes_factures_retrieve" has collisions [('/api/django/portail/mes-factures/', 'get'), ('/api/
 Warning|<global>|operationId "django_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/django/sav/contrats-maintenanc
 Warning|<global>|operationId "v#_core_saved_queries_run_create" has collisions [('/api/v#/core/saved-queries/{id}/run/', 'post'), ('/api/
 Warning|<global>|operationId "v#_identity_scim_v#_Groups_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Groups', 'ge
 Warning|<global>|operationId "v#_identity_scim_v#_Users_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Users', 'get'
 Warning|<global>|operationId "v#_kb_parcours_articles_list" has collisions [('/api/v#/kb/parcours-articles/', 'get'), ('/api/v#/kb/parcou
+Warning|<global>|operationId "v#_portail_mes_devis_retrieve" has collisions [('/api/v#/portail/mes-devis/', 'get'), ('/api/v#/portail/mes
+Warning|<global>|operationId "v#_portail_mes_factures_retrieve" has collisions [('/api/v#/portail/mes-factures/', 'get'), ('/api/v#/porta
 Warning|<global>|operationId "v#_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/v#/sav/contrats-maintenance/{id}/r
 Warning|AbonnementAddOnLigneViewSet > AbonnementAddOnLigneSerializer|unable to resolve type hint for function "get_montant_periode". Consider using a type hint or @extend_schema_field. Defa
 Warning|AccidentTravailViewSet > AccidentTravailSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
@@ -785,6 +805,8 @@ Warning|MeView > UserSerializer|unable to resolve type hint for function "get_mo
 Warning|MeView > UserSerializer|unable to resolve type hint for function "get_permissions". Consider using a type hint or @extend_schema_field. Defaulti
 Warning|MeView > UserSerializer|unable to resolve type hint for function "get_societes_operables". Consider using a type hint or @extend_schema_field. D
 Warning|MeView > UserSerializer|unable to resolve type hint for function "menu_tier". Consider using a type hint or @extend_schema_field. Defaulting to
+Warning|MesDevisPortailViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|MesFacturesPortailViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|MessageViewSet > MessageSerializer|unable to resolve type hint for function "get_is_pinned". Consider using a type hint or @extend_schema_field. Defaulting
 Warning|MessageViewSet > MessageSerializer|unable to resolve type hint for function "get_reply_count". Consider using a type hint or @extend_schema_field. Defaulti
 Warning|MessageViewSet > MessageSerializer|unable to resolve type hint for function "get_sender_detail". Consider using a type hint or @extend_schema_field. Defaul
