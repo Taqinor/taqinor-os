@@ -21,6 +21,8 @@ import api from './axios'
        + POST /pos/sessions/<id>/cloturer/       clôturer (comptage espèces/TPE)
        + GET  /pos/sessions/<id>/rapport-z/      rapport Z de la session
    - Retraits (C&C)    : /pos/retraits/          (CommandeRetraitViewSet)
+       + POST /pos/retraits/                     créer une commande retrait (client)
+       + POST /pos/retraits/<id>/lignes/         ajouter une ligne (produit + qté)
        + POST /pos/retraits/<id>/marquer-pret/   marquer prêt au retrait
        + POST /pos/retraits/<id>/remettre/       remettre (code de retrait)
    - Config matériel   : /pos/config-materiel/   (ConfigMaterielPOSViewSet)
@@ -69,6 +71,12 @@ const posApi = {
 
   // ── Commandes de retrait / click-and-collect (XPOS15) ─────────────────────
   getRetraits: (params) => api.get('/pos/retraits/', { params }),
+  // WIR151 — création d'une commande retrait (client + lignes), jusqu'ici
+  // sans appelant côté client alors que `CommandeRetraitViewSet.perform_
+  // create`/`ajouter_ligne` sont complets côté backend.
+  createRetrait: (data) => api.post('/pos/retraits/', data || {}),
+  ajouterLigneRetrait: (retraitId, data) =>
+    api.post(`/pos/retraits/${retraitId}/lignes/`, data),
   marquerPret: (retraitId) =>
     api.post(`/pos/retraits/${retraitId}/marquer-pret/`),
   remettreRetrait: (retraitId, data) =>

@@ -84,6 +84,23 @@ class CampagneCulturaleViewSet(_AgricultureBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    @action(detail=True, methods=['get'], url_path='cout-irrigation',
+            permission_classes=[IsAnyRole])
+    def cout_irrigation(self, request, pk=None):
+        """WIR141 — Expose les sélecteurs NTAGR14 (jusqu'ici sans appelant
+        REST) : coût d'irrigation PAYANTE + volume irrigué en pompage
+        solaire de la fenêtre de la campagne."""
+        from .selectors import (
+            cout_irrigation_campagne, volume_irrigation_solaire_campagne,
+        )
+
+        campagne = self.get_object()
+        return Response({
+            'cout_irrigation_mad': str(cout_irrigation_campagne(campagne)),
+            'volume_irrigation_solaire_m3': str(
+                volume_irrigation_solaire_campagne(campagne)),
+        })
+
     @action(detail=True, methods=['get'], url_path='registre-phyto-pdf',
             permission_classes=[IsResponsableOrAdmin])
     def registre_phyto_pdf(self, request, pk=None):

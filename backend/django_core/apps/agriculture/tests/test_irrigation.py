@@ -2,12 +2,16 @@
 
 Couvre : création d'un point d'irrigation avec source pompage solaire
 optionnelle (lue via ``installations.selectors``, jamais un import de
-modèle), enregistrement d'un relevé, cross-tenant refusé."""
+modèle), enregistrement d'un relevé, cross-tenant refusé, et (WIR141)
+l'endpoint ``cout-irrigation`` d'une campagne."""
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.test import TestCase
 
-from apps.agriculture.models import Exploitation, Parcelle, PointIrrigation
+from apps.agriculture.models import (
+    CampagneCulturale, Exploitation, Parcelle, PointIrrigation,
+)
 
 from .helpers import auth, make_company, make_user, rows
 
@@ -93,3 +97,40 @@ class PointIrrigationApiTests(TestCase):
             'parcelle': parcelle_b.id, 'type_source': 'puits',
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
+
+
+class CampagneCoutIrrigationEndpointTests(TestCase):
+    """WIR141 — ``GET campagnes/<id>/cout-irrigation/`` (sélecteurs NTAGR14,
+    jusqu'ici sans appelant REST)."""
+
+    def setUp(self):
+        self.co = make_company('agr-irr-cockpit', 'Ferme Cockpit Irrigation')
+        self.admin = make_user(self.co, 'agr-irr-cockpit-admin', 'admin')
+        exploitation = Exploitation.objects.create(
+            company=self.co, nom='Domaine')
+        self.parcelle = Parcelle.objects.create(
+            company=self.co, exploitation=exploitation, nom='Parcelle 1')
+        self.campagne = CampagneCulturale.objects.create(
+            company=self.co, parcelle=self.parcelle, culture='Blé',
+            date_semis='2026-01-01', date_recolte_prevue='2026-06-30')
+
+    def test_returns_paid_cost_and_solar_volume(self):
+        payant = PointIrrigation.objects.create(
+            company=self.co, parcelle=self.parcelle, type_source='reseau')
+        payant.releves.create(
+            company=self.co, date='2026-03-01', volume_m3=Decimal('10'),
+            cout_energie_mad=Decimal('80.00'))
+        solaire = PointIrrigation.objects.create(
+            company=self.co, parcelle=self.parcelle,
+            type_source='pompage_solaire', installation_id=1)
+        solaire.releves.create(
+            company=self.co, date='2026-03-02', volume_m3=Decimal('25'))
+
+        api = auth(self.admin)
+        url = (
+            f'/api/django/agriculture/campagnes/{self.campagne.id}'
+            '/cout-irrigation/')
+        resp = api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['cout_irrigation_mad'], '80.00')
+        self.assertEqual(resp.data['volume_irrigation_solaire_m3'], '25')
