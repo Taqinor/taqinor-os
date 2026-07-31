@@ -3,7 +3,7 @@ import { Megaphone, Plus, Copy, LineChart } from 'lucide-react'
 import innovationApi from '../../api/innovationApi'
 import {
   Badge, Button, Card, DataTable, EmptyState, IconButton,
-  Input, Label, MultiSelect, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Input, Label, MultiSelect,
   Spinner, Textarea, toast,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
