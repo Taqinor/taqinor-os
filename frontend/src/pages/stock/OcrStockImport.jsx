@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   FileText, Truck, PackageMinus, HelpCircle, Check, X, AlertCircle, AlertTriangle,
   ChevronLeft, ChevronRight, RefreshCw, Building2, Repeat, Upload, ArrowDownUp,
+  ScanLine,
 } from 'lucide-react'
 import { FileUpload } from '../../ui/FileUpload'
 import { formatMAD } from '../../lib/format'
@@ -12,6 +13,8 @@ import {
   Input, Segmented, Checkbox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+// NTMOB13 — scan de document structuré vers OCR (recadrage auto/manuel).
+import DocumentScanCapture from '../../features/pwa/DocumentScanCapture'
 import {
   processOcrStockDocument,
   clearStockOcrResult,
@@ -653,7 +656,13 @@ function Step0DocType({ selectedValue, onSelect }) {
 }
 
 // ── Étape 1 (ex-Step1) : Upload ───────────────────────────────────────────────
+// NTMOB13 — au-delà du choix de fichier déjà numérisé, le technicien peut
+// scanner un document papier (bon de livraison…) directement à la caméra du
+// téléphone : DocumentScanCapture (recadrage auto/manuel) produit un fichier
+// JPEG remis au MÊME `onFile` → même flux OCR qu'un PDF téléversé.
 function Step1Upload({ loading, error, onFile, onReset, docType }) {
+  const [scanOpen, setScanOpen] = useState(false)
+
   if (loading) return (
     <div className="flex min-h-72 flex-col items-center justify-center gap-5">
       <Spinner className="size-12 text-primary" />
@@ -699,6 +708,21 @@ function Step1Upload({ loading, error, onFile, onReset, docType }) {
             <X /> changer
           </Button>
         </div>
+      )}
+
+      {/* NTMOB13 — scanner un document papier au dépôt plutôt que choisir un
+          fichier déjà numérisé. Repli automatique sur le choix de fichier
+          (ci-dessous) si l'appareil n'a pas de caméra exploitable. */}
+      {scanOpen ? (
+        <DocumentScanCapture
+          filename="scan-ocr.jpg"
+          onScan={(file) => { onFile(file); setScanOpen(false) }}
+          onClose={() => setScanOpen(false)}
+        />
+      ) : (
+        <Button type="button" variant="outline" onClick={() => setScanOpen(true)}>
+          <ScanLine /> Scanner un document (caméra)
+        </Button>
       )}
 
       {/* G26 — primitif FileUpload ; même dispatch OCR (onFile → processFile). */}
