@@ -181,6 +181,12 @@ CATALOG = {
         "Un mouvement de stock (stock.MouvementStock) vient d'être "
         "enregistré — entrée, sortie ou ajustement.",
         ['instance', 'company']),
+    # NTUX7 — alimente la corbeille transverse 30 jours (``apps.trash``) sans
+    # qu'aucune app émettrice ne connaisse la corbeille.
+    'record_soft_deleted': _e(
+        "Un enregistrement métier est soft-supprimé (archivé/annulé) — "
+        "alimente la corbeille transverse 30 jours.",
+        ['instance', 'company', 'user', 'type_libelle', 'libelle', 'donnees']),
 }
 
 

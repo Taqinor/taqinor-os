@@ -258,6 +258,10 @@ INSTALLED_APPS = [
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
     # la couche UX power-user (NTUX2-11). Additive, company-scopée.
     'apps.uxviews',
+    # NTUX7 — Corbeille transverse 30 jours : UNE table `ElementSupprime` pour
+    # tout le repo, alimentée par l'événement `core.events.record_soft_deleted`
+    # (aucune app émettrice n'importe la corbeille). Additive, company-scopée.
+    'apps.trash',
     # Groupe NTMAR — Facturation électronique DGI (schéma XML derrière flag,
     # dry-run/réel), scaffold de signature électronique et file d'attente de
     # transmission Simpl inerte (gated, voir EINVOICE_ENABLED).
