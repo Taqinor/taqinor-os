@@ -71,8 +71,10 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # NTEDU4 — Inscription.date_demande : date (jour) de la demande d'inscription,
     # même motif que les dates-ancre facture/paiement ci-dessus (pas un horodatage).
     # Remappé 255->259 (NTEDU25 : Eleve.allergies inséré avant Inscription
-    # dans models.py), même champ.
-    "backend/django_core/apps/education/models.py:259",
+    # dans models.py), puis 259->268 (WIR91 : Famille.client, +9 lignes
+    # insérées avant Inscription dans le même fichier), même champ inchangé
+    # (vérifié: déclaration identique DateField(auto_now_add=True) avant/après).
+    "backend/django_core/apps/education/models.py:268",
 }
 TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # CommissionPartenaire.paye_le — date de paiement (jour, pas horodatage),
