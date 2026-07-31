@@ -9,6 +9,7 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qj30_multivilla_render -v 2
 """
+import itertools
 import uuid
 from decimal import Decimal
 
@@ -22,10 +23,22 @@ from apps.ventes.models import Devis, LigneDevis, ShareLink
 User = get_user_model()
 
 
-def make_company():
+# Compteur de tenants : une société NEUVE à chaque appel sans slug.
+_company_seq = itertools.count(1)
+
+
+def make_company(slug=None, nom=None):
+    """Une société neuve par appel — passer ``slug`` pour la nommer.
+
+    Sans compteur, ce helper faisait un ``get_or_create`` sur un slug
+    FIXE ('test-qj30-co') : deux appels rendaient la MÊME société, et un
+    test cross-tenant écrivant ``other = make_company()`` ne testait rien.
+    """
     from authentication.models import Company
+    n = next(_company_seq)
     c, _ = Company.objects.get_or_create(
-        slug='test-qj30-co', defaults={'nom': 'Test QJ30 Co'})
+        slug=slug or f'test-qj30-co-{n}',
+        defaults={'nom': nom or f'Test QJ30 Co {n}'})
     return c
 
 

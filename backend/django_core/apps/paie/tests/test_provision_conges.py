@@ -88,9 +88,12 @@ class ProvisionTests(TestCase):
         self.assertEqual(prov, Decimal('75.00'))
 
     def test_provision_zero_si_taux_nul(self):
-        profil = make_profil(
-            make_company('cp-prov2'), make_dossier(make_company('cp-prov2')),
-            Decimal('0'))
+        # UNE seule société ici (le dossier et le profil doivent vivre dans le
+        # MÊME tenant) : on la nomme explicitement plutôt que d'appeler deux
+        # fois ``make_company('cp-prov2')``, qui faisait un get_or_create sur le
+        # même slug et masquait l'intention derrière un faux « deux sociétés ».
+        co = make_company('cp-prov2')
+        profil = make_profil(co, make_dossier(co), Decimal('0'))
         self.assertEqual(provision_conges_payes(profil, None), Decimal('0.00'))
 
 

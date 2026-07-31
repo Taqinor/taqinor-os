@@ -6,6 +6,7 @@ moteur de devis via DC2). Tout lecteur passe par un accesseur UNIQUE,
 ``parametres.selectors.tariff_for``, qui lit CompanyProfile — et NON
 TariffSettings — pour ces repères. Ces tests verrouillent ce choix.
 """
+import itertools
 from decimal import Decimal
 
 from django.test import TestCase
@@ -16,9 +17,21 @@ from apps.parametres.models_tariff import TariffSettings
 from apps.parametres.selectors import tariff_for
 
 
-def _company():
+# Compteur de tenants : une société NEUVE à chaque appel sans slug.
+_company_seq = itertools.count(1)
+
+
+def _company(slug=None, nom=None):
+    """Une société neuve par appel — passer ``slug`` pour la nommer.
+
+    Sans compteur, ``get_or_create`` tapait toujours le même slug fixe
+    ('dc5-co') : deux appels rendaient la MÊME société, rendant tout
+    test cross-tenant vide de sens.
+    """
+    n = next(_company_seq)
     c, _ = Company.objects.get_or_create(
-        slug='dc5-co', defaults={'nom': 'DC5 Co'})
+        slug=slug or f'dc5-co-{n}',
+        defaults={'nom': nom or f'DC5 Co {n}'})
     return c
 
 

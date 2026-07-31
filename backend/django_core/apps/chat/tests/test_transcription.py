@@ -8,6 +8,7 @@ poids réels en CI) :
   (c) échec (MinIO/réseau)  → `transcript_status=failed` après les retries ;
   (d) idempotence           → une pièce déjà transcrite n'est pas retraitée.
 """
+import itertools
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
@@ -23,9 +24,21 @@ from apps.chat import tasks
 User = get_user_model()
 
 
-def _company():
+# Compteur de tenants : une société NEUVE à chaque appel sans slug.
+_company_seq = itertools.count(1)
+
+
+def _company(slug=None, nom=None):
+    """Une société neuve par appel — passer ``slug`` pour la nommer.
+
+    Sans compteur, ``get_or_create`` tapait toujours le même slug fixe
+    ('trans-co') : deux appels rendaient la MÊME société, rendant tout
+    test cross-tenant vide de sens.
+    """
+    n = next(_company_seq)
     c, _ = Company.objects.get_or_create(
-        slug='trans-co', defaults={'nom': 'Trans Co'})
+        slug=slug or f'trans-co-{n}',
+        defaults={'nom': nom or f'Trans Co {n}'})
     return c
 
 

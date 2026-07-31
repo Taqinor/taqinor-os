@@ -8,6 +8,7 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_quote_engine -v 2
 """
+import itertools
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -21,10 +22,23 @@ from apps.ventes.models import Devis, LigneDevis
 User = get_user_model()
 
 
-def make_company():
+# Compteur de tenants : une société NEUVE à chaque appel sans argument.
+_company_seq = itertools.count(1)
+
+
+def make_company(slug=None, nom=None):
+    """Une société neuve par appel — passer ``slug`` pour la nommer.
+
+    Sans compteur, ce helper faisait un ``get_or_create`` sur un slug
+    FIXE ('test-qe-co') : deux appels rendaient la MÊME ligne, et un test
+    écrivant ``other = make_company()`` croyait fabriquer un second
+    tenant sans en fabriquer aucun (assertion cross-tenant vide de sens).
+    """
     from authentication.models import Company
+    n = next(_company_seq)
     company, _ = Company.objects.get_or_create(
-        slug='test-qe-co', defaults={'nom': 'Test QE Co'},
+        slug=slug or f'test-qe-co-{n}',
+        defaults={'nom': nom or f'Test QE Co {n}'},
     )
     return company
 
