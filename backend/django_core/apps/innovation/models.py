@@ -374,6 +374,13 @@ class FeedbackProduit(TenantModel):
     # personne n'est admin).
     starred = models.BooleanField(
         default=False, verbose_name='Marqué important (étoilé)')
+    # NTIDE47 — modération : le palier Directeur/Administrateur STRICT (pas
+    # Responsable, ``permissions.FeedbackModerate``) peut « masquer » un
+    # feedback inapproprié SANS le supprimer (flag, jamais de hard delete —
+    # même convention que ``Idee.archived``, NTIDE19). Journalisé via le
+    # chatter générique (``records.Activity``).
+    archived = models.BooleanField(
+        default=False, verbose_name='Masqué (modération)')
     # NTIDE39 — lien vers l'annonce produit qui a fermé ce feedback. Le
     # feedback lui-même n'est jamais supprimé (dossier produit, même
     # convention que ``Idee`` qui ne se supprime jamais) : seule la

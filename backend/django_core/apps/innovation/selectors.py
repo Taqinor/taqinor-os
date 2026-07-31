@@ -335,7 +335,9 @@ def hotspot_feedback(company, seuil=10):
     """NTIDE46 — pages ayant reçu au moins ``seuil`` feedbacks (défaut 10)
     sur les 7 DERNIERS jours (``FeedbackProduit.source_page``, NTIDE44),
     triées par nombre décroissant. Les feedbacks sans ``source_page``
-    renseigné sont ignorés (rien à rattacher à une page)."""
+    renseigné sont ignorés (rien à rattacher à une page). NTIDE47 — un
+    feedback masqué (modération) n'est plus compté (même exclusion que
+    ``feedback_by_theme``)."""
     from datetime import timedelta
 
     from django.db.models import Count
@@ -344,7 +346,8 @@ def hotspot_feedback(company, seuil=10):
     from .models import FeedbackProduit
 
     depuis = timezone.now() - timedelta(days=7)
-    qs = (FeedbackProduit.objects.filter(company=company, created_at__gte=depuis)
+    qs = (FeedbackProduit.objects.filter(
+            company=company, created_at__gte=depuis, archived=False)
           .exclude(source_page='')
           .values('source_page')
           .annotate(nombre=Count('id'))
@@ -361,12 +364,15 @@ def feedback_by_theme(company):
     ``par_sentiment`` (NTIDE42 — répartition « +1/Neutre/-1 », clés absentes
     si aucun feedback de ce sentiment ; ``non_renseigne`` regroupe les
     feedbacks sans sentiment saisi, omis s'il vaut 0). Un thème sans aucun
-    feedback n'apparaît pas (liste courte, adaptée à un affichage direct)."""
+    feedback n'apparaît pas (liste courte, adaptée à un affichage direct).
+    NTIDE47 — un feedback masqué (modération) n'est plus compté (même
+    exclusion que la boîte à idées, NTIDE19/NTIDE6)."""
     from .models import FeedbackProduit
 
     resultat = []
     for value, label in FeedbackProduit.Theme.choices:
-        qs = FeedbackProduit.objects.filter(company=company, theme=value)
+        qs = FeedbackProduit.objects.filter(
+            company=company, theme=value, archived=False)
         total = qs.count()
         if total == 0:
             continue

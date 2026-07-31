@@ -21,7 +21,7 @@ comportement qu'avant NTIDE22, nommage explicite en plus :
                               une idée sans la supprimer, NTIDE19).
 """
 from authentication.permissions import (
-    IsAdminOrResponsableTier, IsAnyRole, IsResponsableOrAdmin,
+    IsAdminOrResponsableTier, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 
 
@@ -44,3 +44,10 @@ class IdeasChangeStatus(IsResponsableOrAdmin):
 class IdeasModerate(IsResponsableOrAdmin):
     """``ideas_moderate`` — modération de contenu (masquer une idée sans la
     supprimer) : palier Directeur/Responsable."""
+
+
+class FeedbackModerate(IsAdminRole):
+    """``feedback_moderate`` — modération du feedback produit (NTIDE47,
+    masquer sans supprimer) : palier Directeur/Administrateur STRICT
+    (``IsAdminRole``, ``user.is_admin_role``) — contrairement à
+    ``IdeasModerate`` sur les idées, jamais le palier Responsable ici."""

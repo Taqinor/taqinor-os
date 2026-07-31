@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Inbox, Link2, Plus, Star } from 'lucide-react'
+import { EyeOff, Inbox, Link2, Plus, Star } from 'lucide-react'
 import innovationApi from '../../api/innovationApi'
 import {
   Badge, Button, Card, DataTable, EmptyState, IconButton,
@@ -105,6 +105,23 @@ export default function RetoursProduitPage() {
       .finally(() => setBusyId(null))
   }, [])
 
+  // NTIDE47 — modération : masquer sans supprimer (palier Directeur strict
+  // côté serveur — un Responsable reçoit un 403, affiché en toast). Le
+  // masqué disparaît de la liste admin normale (même règle backend que la
+  // boîte à idées, NTIDE19).
+  const masquerFeedback = useCallback((feedback) => {
+    setBusyId(feedback.id)
+    innovationApi.feedback.masquer(feedback.id)
+      .then(() => {
+        setFeedbacks((prev) => prev.filter((f) => f.id !== feedback.id))
+        toast.success('Retour masqué.')
+      })
+      .catch((err) => toast.error(
+        err?.response?.status === 403
+          ? 'Réservé au Directeur.' : 'Action impossible.'))
+      .finally(() => setBusyId(null))
+  }, [])
+
   const confirmerLiaison = () => {
     if (!lierTarget) return
     const body = { message }
@@ -164,10 +181,13 @@ export default function RetoursProduitPage() {
               <Link2 />
             </IconButton>
           ) : (r.annonce_titre ? <span className="text-xs text-muted-foreground">{r.annonce_titre}</span> : null)}
+          <IconButton variant="ghost" label="Masquer (modération)" disabled={busyId === r.id} onClick={() => masquerFeedback(r)}>
+            <EyeOff />
+          </IconButton>
         </div>
       ),
     },
-  ], [busyId, openLier, toggleEtoile])
+  ], [busyId, openLier, toggleEtoile, masquerFeedback])
 
   return (
     <div className="page">

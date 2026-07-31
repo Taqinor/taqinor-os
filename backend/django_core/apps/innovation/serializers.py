@@ -178,7 +178,7 @@ class FeedbackProduitSerializer(serializers.ModelSerializer):
             'id', 'titre', 'description', 'theme', 'theme_display',
             'sentiment', 'sentiment_display',
             'context_type', 'context_type_display', 'context_id',
-            'source_page', 'user_agent', 'starred',
+            'source_page', 'user_agent', 'starred', 'archived',
             'statut', 'statut_display', 'auteur', 'auteur_nom', 'annonce',
             'annonce_titre', 'message_fermeture', 'date_creation',
         ]
@@ -187,9 +187,11 @@ class FeedbackProduitSerializer(serializers.ModelSerializer):
         # serveur depuis l'en-tête HTTP (``perform_create``), un client ne
         # peut pas le falsifier via le payload JSON. ``starred`` (NTIDE45) :
         # jamais PATCH-able, muté uniquement par l'action ``etoiler``.
+        # ``archived`` (NTIDE47) : jamais PATCH-able, muté uniquement par
+        # l'action ``masquer`` (palier Directeur STRICT).
         read_only_fields = [
             'auteur', 'statut', 'annonce', 'message_fermeture',
-            'date_creation', 'user_agent', 'starred']
+            'date_creation', 'user_agent', 'starred', 'archived']
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', None)

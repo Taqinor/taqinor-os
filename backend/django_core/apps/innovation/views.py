@@ -23,7 +23,8 @@ from .models import (
     InnovationSettings, VoteIdee,
 )
 from .permissions import (
-    IdeasChangeStatus, IdeasModerate, IdeasSeeAll, IdeasVote,
+    FeedbackModerate, IdeasChangeStatus, IdeasModerate, IdeasSeeAll,
+    IdeasVote,
 )
 from .serializers import (
     AnnonceProduitSerializer, CampagneInnovationDetailSerializer,
@@ -603,6 +604,19 @@ class FeedbackProduitViewSet(CompanyScopedModelViewSet):
             return [IdeasVote()]
         return super().get_permissions()
 
+    def get_queryset(self):
+        # NTIDE47 — un feedback masqué (modération, palier Directeur STRICT)
+        # disparaît des listes admin normales ; reste consultable via
+        # ``?include_archived=1`` réservé au même palier (même convention que
+        # ``IdeeViewSet.get_queryset``/NTIDE19).
+        qs = super().get_queryset()
+        include_archived = (
+            self.request.query_params.get('include_archived') == '1'
+            and FeedbackModerate().has_permission(self.request, self))
+        if not include_archived:
+            qs = qs.exclude(archived=True)
+        return qs
+
     def perform_create(self, serializer):
         # NTIDE44 — ``user_agent`` capturé CÔTÉ SERVEUR depuis l'en-tête HTTP
         # (jamais lu du corps de requête, un client ne peut pas le falsifier).
@@ -636,6 +650,26 @@ class FeedbackProduitViewSet(CompanyScopedModelViewSet):
         else:
             feedback.starred = False
             feedback.save(update_fields=['starred', 'updated_at'])
+        return Response(FeedbackProduitSerializer(feedback).data)
+
+    # ── NTIDE47 — modération : masquer sans supprimer (Directeur STRICT) ────
+    @action(detail=True, methods=['post'], url_path='masquer',
+            permission_classes=[FeedbackModerate])
+    def masquer(self, request, pk=None):
+        """Ne supprime jamais le feedback : il disparaît des listes admin
+        normales (``get_queryset``) mais reste consultable via
+        ``?include_archived=1`` (même palier). Journalise dans le chatter
+        générique (ARC8), comme la modération des idées (NTIDE19)."""
+        feedback = self.get_object()
+        if not feedback.archived:
+            feedback.archived = True
+            feedback.save(update_fields=['archived', 'updated_at'])
+            from apps.records.models import Activity
+            from apps.records.services import log_activity
+            log_activity(
+                feedback, Activity.Kind.MODIFICATION, user=request.user,
+                field='archived', field_label='Masqué', old_value='False',
+                new_value='True', company=feedback.company)
         return Response(FeedbackProduitSerializer(feedback).data)
 
     # ── NTIDE39 — fermeture via annonce produit (« vous l'aviez demandé,

@@ -111,6 +111,8 @@ const innovationApi = {
       api.post(`/innovation/feedback-produit/${id}/lier-annonce/`, data),
     // NTIDE45 — marquer/démarquer « étoilé » (important), notifie les admins.
     etoiler: (id) => api.post(`/innovation/feedback-produit/${id}/etoiler/`),
+    // NTIDE47 — modération : masquer sans supprimer (palier Directeur strict).
+    masquer: (id) => api.post(`/innovation/feedback-produit/${id}/masquer/`),
   },
 
   // ── WIR150 — annonces produit (repli local NTIDE39, palier admin) ──
