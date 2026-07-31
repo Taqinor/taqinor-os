@@ -17,7 +17,7 @@ import ProduitPicker from '../../components/ProduitPicker'
 import { Progress, Checkbox, Input, Spinner, Button, toast } from '../../ui'
 import { cn } from '../../lib/cn'
 import { formatDate } from '../../lib/format'
-import { compressImage } from '../../ui/file-utils'
+import { compressPhotoForUpload } from '../preferences/prefs'
 import CameraCapture from '../../features/pwa/CameraCapture'
 import {
   withOfflineFallback, FIELD_OPS,
@@ -97,7 +97,7 @@ export default function ChantierChecklist({
   // capture — les photos déjà envoyées restent acquises.
   const capturePhoto = async (cle, file, geo) => {
     try {
-      const compressed = await compressImage(file)
+      const compressed = await compressPhotoForUpload(file)
       const res = await recordsApi.uploadAttachment(
         'installations.installation', installationId, compressed, 'pendant')
       await installationsApi.ajouterChecklistPhotoMeta(installationId, {

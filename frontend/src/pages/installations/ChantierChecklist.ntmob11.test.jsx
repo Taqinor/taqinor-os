@@ -19,10 +19,14 @@ const { installationsApiMock, recordsApiMock } = vi.hoisted(() => ({
 vi.mock('../../api/installationsApi', () => ({ default: installationsApiMock }))
 vi.mock('../../api/recordsApi', () => ({ default: recordsApiMock }))
 // Compression réelle dépend du décodage d'image (Image/canvas) — hors
-// périmètre de ce test (déjà passthrough-safe en environnement sans decode,
-// cf. ui/file-utils.js), on la neutralise en identité pour rester focalisé
-// sur le câblage upload → métadonnées.
-vi.mock('../../ui/file-utils', () => ({ compressImage: vi.fn((f) => Promise.resolve(f)) }))
+// périmètre de ce test (couvert par CameraCapture.test.jsx / prefs.test.jsx),
+// on la neutralise en identité pour rester focalisé sur le câblage upload →
+// métadonnées. NTMOB12 — ChantierChecklist passe désormais par le wrapper
+// `compressPhotoForUpload` (respecte la préférence Qualité photo), plus
+// directement par `compressImage`.
+vi.mock('../preferences/prefs', () => ({
+  compressPhotoForUpload: vi.fn((f) => Promise.resolve(f)),
+}))
 // N91 — le repli hors-ligne n'est pas le sujet ici (couvert ailleurs) :
 // exécute toujours l'appel réseau directement.
 vi.mock('../../features/installations/offline/fieldOutbox', () => ({
