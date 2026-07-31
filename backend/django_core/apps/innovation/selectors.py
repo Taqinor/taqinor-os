@@ -267,6 +267,47 @@ def timeline(company, statut=None, contexte=None):
             for row in qs if row['jour'] is not None]
 
 
+def timeline_idee(idee):
+    """NTIDE53 — timeline des changements de STATUT d'UNE idée (minigraph
+    affiché sur son détail), depuis le chatter générique (``records.
+    Activity``, filtré ``field == 'statut'``, ARC8 — même journal que
+    ``transitionner``/``reouvrir``). Un point par transition, dans l'ordre
+    chronologique, en plus du point de départ implicite (création, toujours
+    ``ouvert``) : ``{statut, statut_display, date, jours_depuis_creation}``.
+
+    ``jours_depuis_creation`` est un entier (jours pleins écoulés depuis
+    ``idee.created_at``, jamais négatif pour un point réel) — exactement la
+    forme attendue par l'exemple du critère d'acceptation (« créée→examinée
+    J+2→retenue J+5→réalisée J+60 »)."""
+    from apps.records.services import chatter_qs
+
+    from .models import Idee as IdeeModel
+
+    points = [{
+        'statut': IdeeModel.Statut.OUVERT.value,
+        'statut_display': IdeeModel.Statut.OUVERT.label,
+        'date': idee.created_at.isoformat(),
+        'jours_depuis_creation': 0,
+    }]
+    qs = (chatter_qs(idee, company=idee.company)
+          .filter(field='statut')
+          .order_by('created_at', 'id'))
+    for activite in qs:
+        statut = activite.new_value or ''
+        try:
+            statut_display = IdeeModel.Statut(statut).label
+        except ValueError:
+            statut_display = statut
+        points.append({
+            'statut': statut,
+            'statut_display': statut_display,
+            'date': activite.created_at.isoformat(),
+            'jours_depuis_creation':
+                (activite.created_at.date() - idee.created_at.date()).days,
+        })
+    return points
+
+
 def tableau_bord_campagnes(company):
     """NTIDE34 — agrégat admin « Nos campagnes innovation » : cartes
     actives/fermées/brouillons, top 5 campagnes par nb d'idées reçues

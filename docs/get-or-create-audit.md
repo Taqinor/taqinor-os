@@ -150,7 +150,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/innovation/services.py:177` | get_or_create | InnovationSettings.objects | company |
 | `backend/django_core/apps/innovation/services.py:235` | get_or_create | Tag.objects | company, nom |
 | `backend/django_core/apps/innovation/services.py:241` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
-| `backend/django_core/apps/innovation/views.py:533` | get_or_create | InnovationSettings.objects | company |
+| `backend/django_core/apps/innovation/views.py:543` | get_or_create | InnovationSettings.objects | company |
 | `backend/django_core/apps/installations/field_capture.py:79` | get_or_create | MaterielConsommation.objects | intervention |
 | `backend/django_core/apps/installations/field_capture.py:334` | get_or_create | SafetyChecklistSlot.objects | cle, company |
 | `backend/django_core/apps/installations/field_capture.py:344` | get_or_create | SafetySignoff.objects | intervention |

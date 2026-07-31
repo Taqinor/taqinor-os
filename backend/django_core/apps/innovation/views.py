@@ -294,6 +294,16 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         qs = chatter_qs(idee, company=idee.company)
         return Response(ChatterActivitySerializer(qs, many=True).data)
 
+    # ── NTIDE53 — timeline des changements de statut (minigraph détail) ──────
+    @action(detail=True, methods=['get'], url_path='timeline',
+            permission_classes=[IdeasVote])
+    def timeline(self, request, pk=None):
+        """Un point par transition de statut, avec le nombre de jours écoulés
+        depuis la création (``selectors.timeline_idee``) — même palier que le
+        détail/l'historique (tout utilisateur connecté ayant accès à l'idée)."""
+        idee = self.get_object()
+        return Response({'results': selectors.timeline_idee(idee)})
+
     # ── NTIDE12 — export .xlsx (paramètres → campagnes innovation) ──────────
     @action(detail=False, methods=['get'], url_path='export-xlsx',
             permission_classes=[IdeasSeeAll])

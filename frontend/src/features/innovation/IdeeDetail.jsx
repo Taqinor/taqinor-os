@@ -10,6 +10,7 @@ import {
   Button, Textarea, Input, EmptyState, Spinner, DefinitionList, Badge, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '../../ui'
+import { AreaSansAxe } from '../../ui/charts'
 import { formatDateTime } from '../../lib/format'
 import innovationApi from '../../api/innovationApi'
 import FilterSelect from './FilterSelect'
@@ -42,6 +43,8 @@ export default function IdeeDetail() {
   const currentUser = useSelector((s) => s.auth.user)
   const [idee, setIdee] = useState(null)
   const [activites, setActivites] = useState([])
+  // NTIDE53 — timeline des changements de statut (minigraph, cf. plus bas).
+  const [timeline, setTimeline] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
@@ -67,6 +70,15 @@ export default function IdeeDetail() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // NTIDE53 — timeline des changements de statut, rechargée après chaque
+  // transition (même dépendance que ``load``, requête à part car servie par
+  // un sélecteur dédié plutôt que par le détail de l'idée).
+  useEffect(() => {
+    innovationApi.timelineIdee(id)
+      .then((res) => setTimeline(res.data?.results || []))
+      .catch(() => setTimeline([]))
+  }, [id, idee?.statut])
 
   const runTransition = async (key, extra) => {
     setBusy(true)
@@ -202,6 +214,23 @@ export default function IdeeDetail() {
         </div>
       )}
       <DefinitionList items={items} />
+      {/* NTIDE53 — minigraph « créée→examinée J+2→retenue J+5→… » : un point
+          par transition, jours écoulés depuis la création. Rien à montrer
+          tant qu'aucune transition n'a eu lieu (un seul point = départ). */}
+      {timeline.length > 1 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium text-muted-foreground">Progression</span>
+          <AreaSansAxe
+            data={timeline}
+            dataKey="jours_depuis_creation"
+            xKey="statut_display"
+            tone="info"
+            height={120}
+            name="Jours depuis la création"
+            tooltipFormat={(value) => `J+${value}`}
+          />
+        </div>
+      )}
     </div>
   )
 
