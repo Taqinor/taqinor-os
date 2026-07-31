@@ -11,8 +11,18 @@ Frontière cross-app (CLAUDE.md) : ``portail`` ne lit ventes/crm/sav QUE via
 leurs ``selectors.py``/``services.py`` ou par référence opaque (id/texte) —
 jamais d'import de leurs ``models``. Le compte portail se lie au client par une
 STRING-FK ``'crm.Client'`` (référence textuelle, aucun import). Devis/factures/
-chantiers/tickets sont désignés par id opaque. Tout est multi-société : chaque
-modèle porte un FK ``company`` posé côté serveur (jamais lu du corps de requête).
+chantiers/tickets/leads sont désormais désignés par de VRAIES ``ForeignKey``
+STRING-référencées (``'ventes.Devis'``, ``'facturation.Facture'``,
+``'crm.Client'``, ``'crm.Lead'``, ``'installations.Installation'``,
+``'sav.Ticket'``) — WIR95 : même patron que ``pos.CommandeRetrait.devis``,
+jamais un import direct des modèles cibles. ``on_delete=SET_NULL`` +
+``db_constraint=False`` (le CONTRAINTE FK n'est jamais posée au niveau base —
+ces cinq apps restent des domaines mutuellement DÉCOUPLÉS, la contrainte
+d'intégrité vit au niveau du framework Django/ORM : toute suppression via l'ORM
+met la référence à NULL au lieu de laisser un id orphelin silencieux ; un id
+existant qui ne correspond déjà à rien n'est plus un problème bloquant côté
+migration). Tout est multi-société : chaque modèle porte un FK ``company``
+posé côté serveur (jamais lu du corps de requête).
 
 ATTENTION surface AUTH : les mécanismes d'authentification portail (tokens/
 comptes clients) sont conservés À L'IDENTIQUE — aucun élargissement d'accès.
@@ -101,7 +111,20 @@ class AcceptationDevisPortail(models.Model):
         related_name='acceptations_devis_portail',
         verbose_name='Société',
     )
-    devis_id = models.PositiveIntegerField(verbose_name='Id du devis')
+    # WIR95 — string-FK (jamais un import de ``apps.ventes.models``) ; SET_NULL
+    # + db_constraint=False : un devis supprimé ne laisse plus d'id orphelin
+    # silencieux, sans coupler les deux domaines au niveau base. L'attname
+    # ``devis_id`` reste utilisable partout où le code lisait l'ancien champ
+    # (même patron que ``pos.CommandeRetrait.devis``).
+    devis = models.ForeignKey(
+        'ventes.Devis',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='acceptations_portail',
+        verbose_name='Devis',
+    )
     option_choisie = models.CharField(
         max_length=120, blank=True, default='',
         verbose_name='Option choisie')
@@ -153,7 +176,17 @@ class PaiementFacturePortail(models.Model):
         related_name='paiements_facture_portail',
         verbose_name='Société',
     )
-    facture_id = models.PositiveIntegerField(verbose_name='Id de la facture')
+    # WIR95 — string-FK (jamais un import de ``apps.facturation.models``) ;
+    # SET_NULL + db_constraint=False (voir docstring du module).
+    facture = models.ForeignKey(
+        'facturation.Facture',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='paiements_portail',
+        verbose_name='Facture',
+    )
     montant = models.DecimalField(
         max_digits=14, decimal_places=2, default=0,
         verbose_name='Montant (MAD)')
@@ -187,8 +220,9 @@ class DocumentClientPortail(models.Model):
     """Document téléversé par le client depuis le portail (FG231).
 
     Le client dépose ses factures ONEE (ou autre justificatif) pour affiner
-    l'étude solaire — l'app y lit la consommation. Scopé société ; lié au client
-    par id (cross-app, jamais d'import crm) et, optionnellement, au lead. Le
+    l'étude solaire — l'app y lit la consommation. Scopé société ; lié au
+    client (et optionnellement au lead) par de VRAIES ``ForeignKey``
+    string-référencées (WIR95 — jamais un import de ``apps.crm.models``). Le
     fichier va dans le stockage objet (MinIO/S3) ; aucun prix/marge ici.
 
     WIR94 — en plus du ``FileField`` historique (conservé pour compat
@@ -207,9 +241,26 @@ class DocumentClientPortail(models.Model):
         related_name='documents_client_portail',
         verbose_name='Société',
     )
-    client_id = models.PositiveIntegerField(verbose_name='Id du client')
-    lead_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name='Id du lead')
+    # WIR95 — string-FK (jamais un import de ``apps.crm.models``) ; SET_NULL +
+    # db_constraint=False (voir docstring du module).
+    client = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='documents_portail',
+        verbose_name='Client',
+    )
+    lead = models.ForeignKey(
+        'crm.Lead',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='documents_portail',
+        verbose_name='Lead',
+    )
     type_document = models.CharField(
         max_length=14, choices=TypeDoc.choices, default=TypeDoc.FACTURE_ONEE,
         verbose_name='Type de document')
@@ -312,7 +363,17 @@ class JalonChantierPortail(models.Model):
         related_name='jalons_chantier_portail',
         verbose_name='Société',
     )
-    chantier_id = models.PositiveIntegerField(verbose_name='Id du chantier')
+    # WIR95 — string-FK (jamais un import de ``apps.installations.models``) ;
+    # SET_NULL + db_constraint=False (voir docstring du module).
+    chantier = models.ForeignKey(
+        'installations.Installation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='jalons_portail',
+        verbose_name='Chantier',
+    )
     libelle = models.CharField(max_length=120, verbose_name='Jalon')
     ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
     atteint = models.BooleanField(default=False, verbose_name='Atteint')
@@ -355,17 +416,41 @@ class DemandeTicketPortail(models.Model):
         related_name='demandes_ticket_portail',
         verbose_name='Société',
     )
-    client_id = models.PositiveIntegerField(verbose_name='Id du client')
-    chantier_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name='Id du chantier')
+    # WIR95 — string-FKs (jamais un import de ``apps.crm``/``installations``/
+    # ``sav.models``) ; SET_NULL + db_constraint=False (voir docstring module).
+    client = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='demandes_ticket_portail',
+        verbose_name='Client',
+    )
+    chantier = models.ForeignKey(
+        'installations.Installation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='demandes_ticket_portail',
+        verbose_name='Chantier',
+    )
     sujet = models.CharField(max_length=200, verbose_name='Sujet')
     description = models.TextField(
         blank=True, default='', verbose_name='Description')
     statut = models.CharField(
         max_length=16, choices=Statut.choices, default=Statut.SOUMISE,
         verbose_name='Statut')
-    ticket_id = models.PositiveIntegerField(
-        null=True, blank=True, verbose_name='Id du ticket SAV créé')
+    ticket = models.ForeignKey(
+        'sav.Ticket',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        db_constraint=False,
+        related_name='demandes_portail',
+        verbose_name='Ticket SAV créé',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
 
