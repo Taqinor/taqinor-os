@@ -47,7 +47,7 @@ class PrixFournisseur(models.Model):
         'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — porte un prix d'achat fournisseur NÉGOCIÉ (donnée réelle, non reconstructible) ; on refuse la suppression du produit plutôt que d'effacer silencieusement l'historique de prix
         related_name='prix_fournisseurs')
     fournisseur = models.ForeignKey(
-        'stock.Fournisseur', on_delete=models.CASCADE,
+        'stock.Fournisseur', on_delete=models.PROTECT,  # on_delete: PROTECT — symétrique de `produit` ci-dessus : le tarif est un prix d'achat NÉGOCIÉ saisi à la main (donnée catalogue réelle, non reconstructible) ; on refuse la suppression du fournisseur plutôt que d'effacer silencieusement tous ses prix
         related_name='prix_produits')
     # Prix d'ACHAT — donnée INTERNE, jamais sur un document client.
     prix_achat = models.DecimalField(max_digits=10, decimal_places=2, default=0)

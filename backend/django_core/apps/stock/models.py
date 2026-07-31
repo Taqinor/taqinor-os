@@ -178,6 +178,18 @@ class Fournisseur(models.Model):
         help_text="Fiche du répertoire unifié des parties prenantes reflétant "
                   "ce fournisseur. Renseignée automatiquement (miroir).")
 
+    # ── Archivage (même patron que `Produit.is_archived`) ───────────────────
+    # Un fournisseur qui porte des PRIX NÉGOCIÉS (`achats.PrixFournisseur`,
+    # PROTECT) ne peut plus être supprimé : `FournisseurViewSet.destroy`
+    # rattrape le `ProtectedError` et ARCHIVE au lieu de détruire. Les
+    # fournisseurs archivés sortent des listes API par défaut
+    # (`?show_archived=true` pour les revoir), exactement comme les produits.
+    is_archived = models.BooleanField(
+        default=False,
+        verbose_name='Archivé',
+        help_text="Fournisseur archivé : masqué des listes, ses prix d'achat "
+                  'et son historique sont conservés.')
+
     class Meta:
         verbose_name = "Fournisseur"
         verbose_name_plural = "Fournisseurs"
