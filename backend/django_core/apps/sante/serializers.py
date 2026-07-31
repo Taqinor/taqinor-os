@@ -157,11 +157,24 @@ class ActeRealiseSerializer(serializers.ModelSerializer):
             'id', 'admission', 'patient', 'praticien', 'acte',
             'date_realisation', 'quantite', 'tarif_applique_ttc',
             'facturable', 'prise_en_charge', 'facture_sante',
+            'instruments_utilises',
         ]
         read_only_fields = ['tarif_applique_ttc', 'facture_sante']
 
     def validate_admission(self, value):
         return _meme_societe(self, value, 'Admission')
+
+    def validate_instruments_utilises(self, value):
+        # NTSAN24 — M2M léger, jamais un instrument d'une autre société
+        # (même garde-fou tenant que les FK simples, appliqué élément par
+        # élément).
+        request = self.context.get('request')
+        if request is not None:
+            for instrument in value:
+                if instrument.company_id != request.user.company_id:
+                    raise serializers.ValidationError(
+                        'Instrument stérilisé inconnu.')
+        return value
 
     def validate_patient(self, value):
         return _meme_societe(self, value, 'Patient')

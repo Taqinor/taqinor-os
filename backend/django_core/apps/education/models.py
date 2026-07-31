@@ -465,6 +465,14 @@ class LigneEcheance(TenantModel):
     # lignes futures (statut a_venir) sans toucher les lignes déjà facturées
     # quand une InscriptionCantine change (services_cantine.resynchroniser_
     # lignes_futures_cantine — jamais rétroactif).
+    transport_montant = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant transport (inclus)')  # NTEDU24 — composante
+    # transport du montant total, ISOLÉE (même principe que cantine_montant)
+    # pour un recalcul propre des lignes futures (statut a_venir) sans
+    # toucher les lignes déjà facturées quand une AffectationTransport change
+    # (services_transport.resynchroniser_lignes_futures_transport — jamais
+    # rétroactif).
 
     class Meta:
         verbose_name = "Ligne d'échéance"
@@ -1013,6 +1021,15 @@ class Bulletin(TenantModel):
         verbose_name='Période')
     appreciation_generale = models.TextField(
         blank=True, default='', verbose_name='Appréciation générale')
+    publie = models.BooleanField(
+        default=False, verbose_name='Publié')  # NTEDU33 — visibilité portail
+    # parents : un bulletin en brouillon (``publie=False``) n'est JAMAIS
+    # exposé par ``public_views.portail_bulletins`` même si les notes sont
+    # déjà saisies — bascule EXCLUSIVEMENT via l'action dédiée
+    # ``BulletinViewSet.publier`` (jamais un PATCH direct, même politique que
+    # ``IncidentDiscipline.statut``).
+    date_publication = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de publication')
 
     class Meta:
         verbose_name = 'Bulletin'

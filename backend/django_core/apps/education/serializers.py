@@ -250,8 +250,13 @@ class PeriodeScolaireSerializer(serializers.ModelSerializer):
 class BulletinSerializer(serializers.ModelSerializer):
     class Meta:
         model = Bulletin
-        fields = ['id', 'eleve', 'periode', 'appreciation_generale']
-        read_only_fields = ['id']
+        fields = [
+            'id', 'eleve', 'periode', 'appreciation_generale', 'publie',
+            'date_publication']
+        # NTEDU33 — `publie`/`date_publication` basculent EXCLUSIVEMENT via
+        # BulletinViewSet.publier (jamais un PATCH direct, même politique que
+        # IncidentDiscipline.statut).
+        read_only_fields = ['id', 'publie', 'date_publication']
 
 
 # =============================================================================

@@ -511,6 +511,36 @@ def imprimer_feuille_soins(facture_sante_id, *, company=None):
     return facture, render_feuille_soins_pdf(contexte)
 
 
+def exporter_feuilles_soins_lot(company, *, date_debut=None, date_fin=None):
+    """NTSAN40 — export PAR LOT (fin de journée/mois) des feuilles de soins
+    de toutes les ``FactureSante`` d'une période, pour la comptabilité/
+    l'archivage.
+
+    RÉUTILISE ``imprimer_feuille_soins`` (NTSAN14) EN BOUCLE — jamais un
+    moteur PDF alternatif. Le queryset est itéré UNE SEULE FOIS (``order_by
+    id``, aucun doublon possible) : EXACTEMENT une feuille par facture de la
+    période. Renvoie les octets d'un ZIP (stdlib ``zipfile``, même patron que
+    ``apps.ged.services.zipper_documents``) — un fichier
+    ``feuille_soins_<id>.pdf`` par facture."""
+    import io
+    import zipfile
+
+    from .models import FactureSante
+
+    qs = FactureSante.objects.filter(company=company).order_by('id')
+    if date_debut:
+        qs = qs.filter(date_emission__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_emission__date__lte=date_fin)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for facture in qs:
+            _, pdf_bytes = imprimer_feuille_soins(facture.id, company=company)
+            zf.writestr(f'feuille_soins_{facture.id}.pdf', pdf_bytes)
+    return buf.getvalue()
+
+
 # =============================================================================
 # NTSAN23 — Stérilisation : émission de l'événement « cycle non conforme ».
 #

@@ -45,6 +45,7 @@ def generer_echeancier(eleve, annee_scolaire):
     from .models import ParametresEducation
     from .services_cantine import montant_cantine_mensuel
     from .services_remises import montant_remises_approuvees
+    from .services_transport import montant_transport_mensuel
 
     montant_brut = grille.frais_inscription + grille.scolarite_annuelle
     remise_totale, remises = montant_remises_approuvees(
@@ -62,6 +63,11 @@ def generer_echeancier(eleve, annee_scolaire):
     cantine_mensuel = montant_cantine_mensuel(eleve, annee_scolaire)
     montant_total += cantine_mensuel * nombre_echeances
 
+    # NTEDU24 — transport actif inclus dans CHAQUE mensualité (même principe
+    # que la cantine, jamais seulement la 1re).
+    transport_mensuel = montant_transport_mensuel(eleve, annee_scolaire)
+    montant_total += transport_mensuel * nombre_echeances
+
     with transaction.atomic():
         echeancier = EcheancierScolarite.objects.create(
             company=eleve.company, eleve=eleve, annee_scolaire=annee_scolaire,
@@ -74,24 +80,28 @@ def generer_echeancier(eleve, annee_scolaire):
             echeancier, frais_inscription=grille.frais_inscription,
             scolarite_nette=(
                 montant_total - grille.frais_inscription
-                - cantine_mensuel * nombre_echeances),
+                - cantine_mensuel * nombre_echeances
+                - transport_mensuel * nombre_echeances),
             nombre_echeances=nombre_echeances,
             date_debut=annee_scolaire.date_debut,
-            cantine_mensuel=cantine_mensuel)
+            cantine_mensuel=cantine_mensuel,
+            transport_mensuel=transport_mensuel)
 
     return echeancier
 
 
 def _generer_lignes(
         echeancier, *, frais_inscription, scolarite_nette,
-        nombre_echeances, date_debut, cantine_mensuel=Decimal('0')):
+        nombre_echeances, date_debut, cantine_mensuel=Decimal('0'),
+        transport_mensuel=Decimal('0')):
     """Génère EXACTEMENT ``nombre_echeances`` lignes (aucune ligne
     supplémentaire pour les frais d'inscription — ils sont intégrés à la 1re
     mensualité) : ``échéancier complet`` = un nombre de lignes fixe et
     prévisible, quel que soit le nombre de composantes tarifaires.
-    ``cantine_mensuel`` (NTEDU26) est ajouté à CHAQUE ligne (contrairement aux
-    frais d'inscription, ponctuels) et tracé séparément sur
-    ``LigneEcheance.cantine_montant`` pour un recalcul non-rétroactif."""
+    ``cantine_mensuel`` (NTEDU26) et ``transport_mensuel`` (NTEDU24) sont
+    ajoutés à CHAQUE ligne (contrairement aux frais d'inscription, ponctuels)
+    et tracés séparément sur ``LigneEcheance.cantine_montant``/
+    ``transport_montant`` pour un recalcul non-rétroactif."""
     from .models import LigneEcheance
 
     mensualite = (
@@ -99,16 +109,19 @@ def _generer_lignes(
     lignes = []
     for i in range(nombre_echeances):
         montant = (
-            mensualite + cantine_mensuel
+            mensualite + cantine_mensuel + transport_mensuel
             + (frais_inscription if i == 0 else Decimal('0')))
         libelle = f"Scolarité — mensualité {i + 1}/{nombre_echeances}"
         if i == 0 and frais_inscription:
             libelle += " (+ frais d'inscription)"
         if cantine_mensuel:
             libelle += " (+ cantine)"
+        if transport_mensuel:
+            libelle += " (+ transport)"
         lignes.append(LigneEcheance(
             company=echeancier.company, echeancier=echeancier,
             libelle=libelle, montant=montant, cantine_montant=cantine_mensuel,
+            transport_montant=transport_mensuel,
             date_echeance=_add_months(date_debut, i)))
 
     LigneEcheance.objects.bulk_create(lignes)
