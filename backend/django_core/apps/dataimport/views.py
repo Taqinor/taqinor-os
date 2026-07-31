@@ -36,6 +36,11 @@ MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 Mo
 MAX_ROWS = 10000
 
 
+def _bool(valeur):
+    """Drapeau de formulaire multipart (toujours reçu en texte)."""
+    return str(valeur or '').strip().lower() in ('1', 'true', 'on', 'oui')
+
+
 def _read(request):
     f = request.FILES.get('file')
     target = request.data.get('target')
@@ -63,15 +68,24 @@ def dry_run(request):
 
     XPLT2 — ``mapping`` (nom d'un ``ImportMapping`` sauvegardé) réapplique un
     mapping colonne→champ mémorisé au lieu du mapping automatique par en-tête.
+
+    ``mode``/``ecraser``/``external_system`` sont ceux qui seront envoyés au
+    commit : l'aperçu rejoue le MÊME rapprochement sans rien écrire et liste,
+    champ par champ, les valeurs déjà saisies que le fichier remplacerait. La
+    société reste TOUJOURS celle du serveur (jamais le corps de la requête).
     """
     f, target, err = _read(request)
     if err:
         return err
     mapping_name = request.data.get('mapping') or None
+    mode = (request.data.get('mode') or 'creer').strip().lower()
+    ecraser = _bool(request.data.get('ecraser'))
+    external_system = request.data.get('external_system') or None
     try:
         result = services.dry_run(
             f.read(), f.name, target, company=request.user.company,
-            mapping_name=mapping_name)
+            mapping_name=mapping_name, mode=mode, ecraser=ecraser,
+            external_system=external_system)
     except ValueError as exc:
         # Erreur attendue (cible inconnue, plafond de lignes…) : message clair.
         return Response({'detail': str(exc)}, status=400)
@@ -89,7 +103,10 @@ def dry_run(request):
 @permission_classes([IsResponsableOrAdmin])
 @parser_classes([MultiPartParser, FormParser])
 def commit(request):
-    """Import effectif : création uniquement, doublons ignorés, origine marquée."""
+    """Import effectif. ``creer`` (défaut) : création seule, doublons ignorés,
+    origine marquée. ``maj``/``upsert`` : mise à jour en REMPLISSAGE SEUL — un
+    champ déjà rempli n'est remplacé que si l'appelant envoie ``ecraser=true``,
+    et chaque remplacement laisse sa valeur précédente sur l'``ImportJob``."""
     f, target, err = _read(request)
     if err:
         return err
@@ -109,14 +126,17 @@ def commit(request):
     # XPLT2 — mapping sauvegardé optionnel + choix commit partiel (défaut,
     # comportement historique) vs rollback atomique total si une ligne échoue.
     mapping_name = request.data.get('mapping') or None
-    rollback_on_error = str(
-        request.data.get('rollback_on_error') or '').strip().lower() in (
-        '1', 'true', 'on', 'oui')
+    rollback_on_error = _bool(request.data.get('rollback_on_error'))
+    # Garde-fou : sans ``ecraser=true`` explicite, un import ne peut que
+    # RENSEIGNER un champ vide — jamais remplacer une valeur déjà saisie. Le
+    # défaut sûr est donc l'absence du drapeau.
+    ecraser = _bool(request.data.get('ecraser'))
     try:
         result = services.commit(
             f.read(), f.name, target, request.user.company, request.user,
             mode=mode, external_system=external_system,
-            mapping_name=mapping_name, rollback_on_error=rollback_on_error)
+            mapping_name=mapping_name, rollback_on_error=rollback_on_error,
+            ecraser=ecraser)
     except ValueError as exc:
         # Erreur attendue (cible inconnue, plafond de lignes…) : message clair.
         return Response({'detail': str(exc)}, status=400)

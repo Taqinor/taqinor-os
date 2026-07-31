@@ -397,7 +397,7 @@ backend/django_core/apps/customfields/models.py:103
 backend/django_core/apps/customfields/models.py:142
 backend/django_core/apps/customfields/models.py:145
 backend/django_core/apps/customfields/models.py:43
-backend/django_core/apps/dataimport/models.py:113
+backend/django_core/apps/dataimport/models.py:120
 backend/django_core/apps/dataimport/models.py:19
 backend/django_core/apps/dataimport/models.py:25
 backend/django_core/apps/dataimport/models.py:49

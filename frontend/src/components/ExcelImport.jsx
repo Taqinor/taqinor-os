@@ -38,6 +38,10 @@ export default function ExcelImport({ target, onClose, onDone }) {
   const [err, setErr] = useState(null)
   // XPLT1 — mode d'import.
   const [mode, setMode] = useState('creer')
+  // Garde-fou anti-écrasement : par défaut un import ne fait que RENSEIGNER les
+  // champs vides. Cocher la case autorise le remplacement des valeurs déjà
+  // saisies — l'aperçu liste alors exactement lesquelles.
+  const [ecraser, setEcraser] = useState(false)
   // XPLT2 — mapping sauvegardé sélectionné + nom pour en sauvegarder un nouveau.
   const [savedMappings, setSavedMappings] = useState([])
   const [mappingChoice, setMappingChoice] = useState('')
@@ -53,10 +57,14 @@ export default function ExcelImport({ target, onClose, onDone }) {
     return () => { active = false }
   }, [target])
 
-  const doDryRun = async (f, mappingName) => {
+  const doDryRun = async (f, mappingName, opts = {}) => {
     setBusy(true); setErr(null); setResult(null)
     try {
-      const { data } = await importApi.dryRun(f, target, { mapping: mappingName || undefined })
+      const { data } = await importApi.dryRun(f, target, {
+        mapping: mappingName || undefined,
+        mode: opts.mode ?? mode,
+        ecraser: opts.ecraser ?? ecraser,
+      })
       setPreview(data)
     } catch (e) {
       setErr(e?.response?.data?.detail ?? 'Lecture du fichier impossible.')
@@ -75,12 +83,24 @@ export default function ExcelImport({ target, onClose, onDone }) {
     if (file) doDryRun(file, nom)
   }
 
+  // Le mode et le garde-fou changent ce que l'import ferait : l'aperçu doit
+  // être recalculé, sinon il annoncerait des écrasements qui n'ont plus cours.
+  const onModeChange = (valeur) => {
+    setMode(valeur)
+    if (file) doDryRun(file, mappingChoice, { mode: valeur })
+  }
+
+  const onEcraserChange = (valeur) => {
+    setEcraser(valeur)
+    if (file) doDryRun(file, mappingChoice, { ecraser: valeur })
+  }
+
   const doCommit = async () => {
     if (!file) return
     setBusy(true); setErr(null)
     try {
       const { data } = await importApi.commit(file, target, {
-        mode, mapping: mappingChoice || undefined,
+        mode, ecraser, mapping: mappingChoice || undefined,
       })
       setResult(data)
       onDone?.()
@@ -137,7 +157,11 @@ export default function ExcelImport({ target, onClose, onDone }) {
         <h3 className="mt-0">Importer des {TARGET_LABEL[target] ?? target} (CSV / Excel)</h3>
         <p className="text-[13px] text-muted-foreground">
           Choisissez un fichier .csv ou .xlsx. Un aperçu des 10 premières lignes
-          s'affiche avant l'import. Rien n'est écrasé : les doublons sont ignorés.
+          s'affiche avant l'import.
+          {mode === 'creer'
+            ? " Rien n'est écrasé : les doublons sont ignorés."
+            : " Les champs déjà remplis ne sont pas remplacés, sauf si vous"
+              + ' cochez « Écraser les valeurs déjà saisies ».'}
         </p>
 
         {/* XPLT1/WIR48 — mode d'import. maj/upsert ne sont câblés que pour
@@ -150,13 +174,34 @@ export default function ExcelImport({ target, onClose, onDone }) {
               id="excel-import-mode"
               className="rounded-md border border-input bg-card px-2 py-1.5 text-sm"
               value={mode}
-              onChange={(e) => setMode(e.target.value)}
+              onChange={(e) => onModeChange(e.target.value)}
               disabled={busy}
             >
               {modesDisponibles.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
+          </label>
+        )}
+
+        {/* Garde-fou anti-écrasement : opt-in explicite, jamais le défaut. */}
+        {modesDisponibles.length > 1 && mode !== 'creer' && (
+          <label className="mt-2 flex items-start gap-2 text-[13px]">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={ecraser}
+              onChange={(e) => onEcraserChange(e.target.checked)}
+              disabled={busy}
+            />
+            <span>
+              Écraser les valeurs déjà saisies
+              <span className="block text-xs text-muted-foreground">
+                Décoché (recommandé) : l'import ne fait que renseigner les champs
+                vides. Coché : il remplace aussi les valeurs existantes — chaque
+                valeur remplacée est conservée dans le journal d'import.
+              </span>
+            </span>
           </label>
         )}
 
@@ -206,6 +251,49 @@ export default function ExcelImport({ target, onClose, onDone }) {
             {preview.non_mappees.length > 0 && (
               <div className="mb-1.5 text-xs text-warning">
                 Colonnes ignorées : {preview.non_mappees.join(', ')}
+              </div>
+            )}
+
+            {/* Aperçu des écrasements : ce que ce fichier remplacerait dans des
+                données déjà saisies, champ par champ, AVANT toute écriture. */}
+            {preview.ecrasements_total > 0 && (
+              <div className="form-error-box mb-2">
+                <strong>{preview.ecrasements_total}</strong> valeur(s) déjà
+                saisie(s) sur <strong>{preview.lignes_ecrasees}</strong> ligne(s)
+                diffèrent de ce fichier.
+                {preview.ecrasements_appliques > 0
+                  ? ` ${preview.ecrasements_appliques} seront REMPLACÉES.`
+                  : ' Elles seront CONSERVÉES (case « Écraser » décochée).'}
+                <div className="mt-1.5 max-w-full overflow-x-auto rounded-lg border border-border">
+                  <table className="data-table text-xs">
+                    <thead>
+                      <tr>
+                        <th className="whitespace-nowrap">Ligne</th>
+                        <th className="whitespace-nowrap">Fiche</th>
+                        <th className="whitespace-nowrap">Champ</th>
+                        <th className="whitespace-nowrap">Valeur actuelle</th>
+                        <th className="whitespace-nowrap">Valeur du fichier</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(preview.conflits || []).flatMap((c) =>
+                        (c.ecrasements || []).map((e) => (
+                          <tr key={`${c.ligne}-${e.champ}`}>
+                            <td className="whitespace-nowrap">{c.ligne}</td>
+                            <td>{c.cible_libelle}</td>
+                            <td className="whitespace-nowrap">{e.champ}</td>
+                            <td>{e.ancienne}</td>
+                            <td>{e.nouvelle}</td>
+                          </tr>
+                        )))}
+                    </tbody>
+                  </table>
+                </div>
+                {preview.conflits_tronques && (
+                  <div className="mt-1 text-xs">
+                    Seules les premières lignes concernées sont détaillées.
+                  </div>
+                )}
               </div>
             )}
             {/* L871 — aperçu 10 lignes utilisable sur 375px : 12px, scroll
@@ -262,8 +350,18 @@ export default function ExcelImport({ target, onClose, onDone }) {
             <div className="alert alert-info rounded-lg border border-success/40 bg-success/12 px-4 py-3 text-success">
               <strong>{result.created}</strong> créé(s)
               {typeof result.updated === 'number' ? <> · <strong>{result.updated}</strong> mis à jour</> : null}
-              {' '}· {result.skipped.length} ignoré(s).
+              {' '}· {result.skipped.length} ignoré(s)
+              {result.ecrasements ? <> · <strong>{result.ecrasements}</strong> valeur(s) remplacée(s)</> : null}.
             </div>
+            {/* Valeurs protégées par le garde-fou : rien n'est avalé en
+                silence, l'utilisateur voit ce qu'il devrait autoriser. */}
+            {result.refuses?.length > 0 && (
+              <div className="mt-2.5 text-[13px]">
+                <strong>{result.refuses.length}</strong> valeur(s) déjà saisie(s)
+                ont été conservées (case « Écraser » décochée) :{' '}
+                {[...new Set(result.refuses.map((r) => r.champ))].join(', ')}.
+              </div>
+            )}
             {/* L870 — détail des lignes ignorées (numéro + raison), pas que le
                 compte. Le backend renvoie skipped:[{ligne, raison}]. */}
             {result.skipped.length > 0 && (

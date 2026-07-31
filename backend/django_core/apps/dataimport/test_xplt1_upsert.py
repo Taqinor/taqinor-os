@@ -94,11 +94,16 @@ class TestModeUpsertLeads(ImportBase):
 
 class TestModeUpsertClients(ImportBase):
     def test_upsert_updates_existing_client_by_email(self):
+        """Mise à jour en masse légitime : elle reste possible à l'identique,
+        mais le remplacement d'une valeur DÉJÀ SAISIE (« Ancien » → « NouveauNom »)
+        demande désormais l'opt-in explicite ``ecraser=true`` (garde-fou
+        anti-écrasement silencieux)."""
         Client.objects.create(company=self.company, nom='Ancien', email='c@x.ma')
         f = self._csv('Nom,Email,Ice\nNouveauNom,c@x.ma,001122334455667\n')
         resp = self.api.post(
             '/api/django/imports/commit/',
-            {'file': f, 'target': 'clients', 'mode': 'upsert'}, format='multipart')
+            {'file': f, 'target': 'clients', 'mode': 'upsert',
+             'ecraser': 'true'}, format='multipart')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['created'], 0)
         self.assertEqual(resp.data['updated'], 1)
