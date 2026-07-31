@@ -56,6 +56,7 @@ import ConfidentialiteSection from './ConfidentialiteSection'
 import ApplicationsSection from './ApplicationsSection'
 import MarketplaceSection from './MarketplaceSection'
 import ReferentielsSection from './ReferentielsSection'
+import ChatRetentionSection from './ChatRetentionSection'
 
 // N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
 // Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
@@ -76,6 +77,10 @@ const MARKETPLACE_TAB = { key: 'marketplace', label: 'Marketplace', group: 'avan
 // WIR66 — onglet « Référentiels » (taux de TVA / conditions de paiement /
 // unités de mesure). Ajouté localement, même logique que N96/N94/XPLT23/ODX5.
 const REFERENTIELS_TAB = { key: 'referentiels', label: 'Référentiels', group: 'avance' }
+// WIR157 — onglet « Rétention (Discuter) » (politique de rétention chat +
+// historique des purges, loi 09-08/CNDP). Ajouté localement, même logique
+// que N96/N94/XPLT23/ODX5/WIR159/WIR66.
+const CHAT_RETENTION_TAB = { key: 'chat_retention', label: 'Rétention (Discuter)', group: 'equipe' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -100,7 +105,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, CHAT_RETENTION_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -940,6 +945,8 @@ export default function ParametresEntreprise() {
           {tab === 'marketplace' && <MarketplaceSection />}
           {/* WIR66 — référentiels société : TVA / conditions / unités. */}
           {tab === 'referentiels' && <ReferentielsSection />}
+          {/* WIR157 — rétention chat (Discuter) + historique des purges (autonome). */}
+          {tab === 'chat_retention' && <ChatRetentionSection />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
