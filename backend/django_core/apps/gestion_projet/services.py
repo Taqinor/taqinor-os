@@ -2573,22 +2573,27 @@ def creer_tache_depuis_activite(activite, *, projet_id, company=None):
         statut=Tache.Statut.A_FAIRE)
 
 
-# ── ARC22 — chemin de création VIA le master sous-traitant unifié DC34 ──────
+# ── ARC22/WIR87 — chemin de création VIA le master sous-traitant unifié DC34 ─
 def creer_sous_traitant_via_master(
         *, company, user=None, nom, specialite='', contact='', telephone='',
         email='', actif=True):
-    """ARC22 — crée un ``SousTraitant`` (carnet projet local) EN CRÉANT AUSSI
-    son pendant sur le référentiel unifié DC34 (``stock.Fournisseur``
-    type=service + ``SousTraitantProfile``), via ``stock.services.
-    create_sous_traitant`` — frontière cross-app respectée : ce module
-    n'importe JAMAIS ``apps.stock.models``, uniquement son point d'entrée
-    ``services.py`` (import fonction-local, CLAUDE.md).
+    """ARC22/WIR87 — crée un ``SousTraitant`` (carnet projet local, MIROIR)
+    EN CRÉANT AUSSI son pendant sur le référentiel unifié DC34
+    (``stock.Fournisseur`` type=service + ``SousTraitantProfile``), via
+    ``stock.services.create_sous_traitant`` — frontière cross-app respectée :
+    ce module n'importe JAMAIS ``apps.stock.models``, uniquement son point
+    d'entrée ``services.py`` (import fonction-local, CLAUDE.md).
 
-    C'est le chemin de création RECOMMANDÉ pour tout NOUVEAU sous-traitant
-    (corrige la régression PROJ38 constatée par ARC22 : avant cette fonction,
-    le carnet ``gestion_projet`` ne posait jamais le lien ``fournisseur``).
-    L'ancien chemin de création directe (``SousTraitantViewSet.create``) reste
-    disponible SANS lien — additif, aucune rupture de compat.
+    WIR87 — c'est désormais le SEUL chemin de création (``SousTraitantViewSet.
+    perform_create`` y route systématiquement) : la « régression PROJ38/ARC22 »
+    est refermée, plus aucune création directe SANS lien ``fournisseur``
+    n'est possible via cette app. L'UI (``RisquesPage.jsx``) n'appelle même
+    plus cet endpoint local : elle écrit directement sur le master
+    (``installations/sous-traitants/``, façade ``stock.services.
+    create_sous_traitant``/``update_sous_traitant``) — cette fonction reste le
+    point d'entrée pour tout AUTRE appelant de l'app ``gestion_projet``
+    (ex. un futur import en masse) qui a besoin du miroir local pour ses
+    propres FK (``LotSousTraitance.sous_traitant``).
 
     ``specialite`` (texte libre du carnet projet) n'a pas de correspondance
     STRICTE avec ``SousTraitantProfile.Metier`` (enum fermé) : le mapping
@@ -2612,3 +2617,45 @@ def creer_sous_traitant_via_master(
         company=company, nom=nom, specialite=specialite, contact=contact,
         telephone=telephone, email=email, actif=actif,
         fournisseur=fournisseur)
+
+
+def modifier_sous_traitant_via_master(sous_traitant, **champs):
+    """WIR87 — modifie un ``SousTraitant`` (carnet local, MIROIR) en GELANT
+    sa cohérence avec le master DC34 : si la ligne est liée (``fournisseur``
+    posé — le cas normal depuis ARC22/WIR87), les colonnes DUPLIQUÉES
+    (nom/specialite/contact/telephone/email/actif) sont écrites sur les
+    DEUX côtés dans le MÊME appel, via ``stock.services.update_sous_traitant``
+    (jamais un import de ``apps.stock.models``) — elles ne peuvent plus
+    diverger. Une ligne legacy NON liée (créée avant ARC22, backfill manqué)
+    retombe sur une mise à jour LOCALE seule (comportement historique
+    préservé, jamais bloquant).
+
+    ``champs`` : sous-ensemble de {nom, specialite, contact, telephone,
+    email, actif} — seules les clés fournies sont modifiées (mêmes
+    sémantiques que ``update_sous_traitant`` côté stock).
+
+    Renvoie le ``SousTraitant`` (carnet local) mis à jour.
+    """
+    local_fields = []
+    for champ in ('nom', 'specialite', 'contact', 'telephone', 'email',
+                  'actif'):
+        if champ in champs:
+            setattr(sous_traitant, champ, champs[champ])
+            local_fields.append(champ)
+    if local_fields:
+        sous_traitant.save(update_fields=local_fields)
+
+    if sous_traitant.fournisseur_id:
+        from apps.stock import services as stock_services
+
+        stock_services.update_sous_traitant(
+            fournisseur=sous_traitant.fournisseur,
+            metier=stock_services.map_specialite_to_metier(champs['specialite'])
+            if 'specialite' in champs else None,
+            actif=champs.get('actif'),
+            nom=champs.get('nom'),
+            contact_personne=champs.get('contact'),
+            telephone=champs.get('telephone'),
+            email=champs.get('email'))
+
+    return sous_traitant

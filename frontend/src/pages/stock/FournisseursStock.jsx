@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid, Tags, Archive } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import ExcelImport from '../../components/ExcelImport'
@@ -58,8 +58,107 @@ function frErr(err, fallback = 'Une erreur est survenue.') {
   return fallback
 }
 
+// ── WIR108 — gestion des catégories fournisseur (XPUR5, référentiel léger) ──
+function CategorieFournisseurManager({ categories, onClose, onChanged, isAdmin }) {
+  const [nom, setNom] = useState('')
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const creer = async (ev) => {
+    ev.preventDefault()
+    if (!nom.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      await stockApi.createCategorieFournisseur({ nom: nom.trim() })
+      setNom('')
+      onChanged()
+    } catch (err) {
+      setError(frErr(err, 'Création impossible.'))
+    } finally { setSaving(false) }
+  }
+
+  const toggleArchive = async (cat) => {
+    try {
+      await stockApi.updateCategorieFournisseur(cat.id, { archived: !cat.archived })
+      onChanged()
+    } catch (err) {
+      setError(frErr(err, 'Modification impossible.'))
+    }
+  }
+
+  const supprimer = async (cat) => {
+    if (!window.confirm(`Supprimer la catégorie « ${cat.nom} » ?`)) return
+    try {
+      await stockApi.deleteCategorieFournisseur(cat.id)
+      onChanged()
+    } catch (err) {
+      setError(frErr(err, 'Suppression impossible (catégorie utilisée).'))
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Catégories fournisseur</DialogTitle>
+          <DialogDescription>
+            Référentiel léger (XPUR5), filtrable sur la liste des fournisseurs.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={creer} className="flex items-end gap-2">
+          <div className="flex-1">
+            <Input value={nom} onChange={(e) => setNom(e.target.value)}
+                   placeholder="Nouvelle catégorie…" />
+          </div>
+          <Button type="submit" loading={saving} disabled={!nom.trim()}>
+            <Plus className="size-4" /> Ajouter
+          </Button>
+        </form>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        {categories.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucune catégorie.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {categories.map((c) => (
+              <li key={c.id} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
+                <span className={c.archived ? 'text-muted-foreground line-through' : ''}>{c.nom}</span>
+                <span className="flex items-center gap-1">
+                  <IconButton size="sm" variant="ghost"
+                              label={c.archived ? 'Réactiver' : 'Archiver'}
+                              onClick={() => toggleArchive(c)}>
+                    <Archive className="size-4" aria-hidden="true" />
+                  </IconButton>
+                  {isAdmin && (
+                    <IconButton size="sm" variant="ghost" label="Supprimer"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => supprimer(c)}>
+                      <Trash2 className="size-4" aria-hidden="true" />
+                    </IconButton>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Modal de création / édition d'un fournisseur ────────────────────────────
-function FournisseurForm({ fournisseur, onClose, onSaved }) {
+function FournisseurForm({ fournisseur, categories, onClose, onSaved }) {
   const isNew = !fournisseur?.id
   const [fields, setFields] = useState({
     nom: fournisseur?.nom ?? '',
@@ -70,6 +169,8 @@ function FournisseurForm({ fournisseur, onClose, onSaved }) {
     // XPUR4 — statut de blocage (actif par défaut, comportement historique).
     statut: fournisseur?.statut ?? 'actif',
     motif_blocage: fournisseur?.motif_blocage ?? '',
+    // XPUR5 — catégorie (référentiel léger, optionnelle).
+    categorie: fournisseur?.categorie != null ? String(fournisseur.categorie) : '',
   })
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
@@ -97,6 +198,8 @@ function FournisseurForm({ fournisseur, onClose, onSaved }) {
         adresse: fields.adresse.trim() || null,
         statut: fields.statut,
         motif_blocage: fields.motif_blocage.trim() || null,
+        // XPUR5 — catégorie référentielle (optionnelle).
+        categorie: fields.categorie ? Number(fields.categorie) : null,
       }
       if (isNew) await stockApi.createFournisseur(payload)
       else await stockApi.updateFournisseur(fournisseur.id, payload)
@@ -147,6 +250,20 @@ function FournisseurForm({ fournisseur, onClose, onSaved }) {
           <FormField label="Téléphone" htmlFor="fou-tel">
             <Input id="fou-tel" value={fields.telephone}
                    onChange={(e) => setField('telephone', e.target.value)} />
+          </FormField>
+          {/* XPUR5/WIR108 — catégorie (référentiel léger, « Gérer les
+              catégories » sur la liste pour créer/archiver). */}
+          <FormField label="Catégorie" htmlFor="fou-categorie">
+            <Select value={fields.categorie || '__none__'}
+                    onValueChange={(v) => setField('categorie', v === '__none__' ? '' : v)}>
+              <SelectTrigger id="fou-categorie"><SelectValue placeholder="Aucune" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Aucune</SelectItem>
+                {(categories ?? []).filter((c) => !c.archived).map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FormField>
           <FormField label="Adresse" htmlFor="fou-adr" fullWidth>
             <Textarea id="fou-adr" rows={2} value={fields.adresse}
@@ -283,6 +400,8 @@ export default function FournisseursStock() {
   const [selected, setSelected] = useState(null) // objet fournisseur ou {} (nouveau)
   const [scorecard, setScorecard] = useState(null) // WR4 — perf fournisseur (admin)
   const [showImport, setShowImport] = useState(false) // VX109 — import Excel/CSV
+  const [categories, setCategories] = useState([]) // XPUR5/WIR108 — référentiel catégories
+  const [showCategories, setShowCategories] = useState(false)
   const isAdmin = canDelete
 
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
@@ -293,8 +412,13 @@ export default function FournisseursStock() {
       .catch(() => setError('Chargement des fournisseurs impossible.'))
       .finally(() => setLoading(false))
   }
+  const reloadCategories = () => {
+    stockApi.getCategoriesFournisseur({ ordering: 'nom' })
+      .then((r) => setCategories(r.data?.results ?? r.data ?? []))
+      .catch(() => {})
+  }
 
-  useEffect(() => { reload() }, [])
+  useEffect(() => { reload(); reloadCategories() }, [])
 
   const delFournisseur = async (f) => {
     if (!window.confirm(`Supprimer le fournisseur « ${f.nom} » ?`)) return
@@ -317,6 +441,10 @@ export default function FournisseursStock() {
           {STATUT_LABELS[f.statut] ?? 'Actif'}
         </Badge>
       ) },
+    // XPUR5/WIR108 — catégorie assignée (référentiel « Catégories »).
+    { id: 'categorie_nom', header: 'Catégorie', minWidth: 120,
+      accessor: (f) => f.categorie_nom ?? '',
+      cell: (v) => v || <span className="text-muted-foreground">—</span> },
     { id: 'contact_personne', header: 'Contact', minWidth: 140,
       accessor: (f) => f.contact_personne ?? '',
       cell: (v) => v || <span className="text-muted-foreground">—</span> },
@@ -373,6 +501,10 @@ export default function FournisseursStock() {
         </div>
         {canWrite && (
           <div className="flex items-center gap-2">
+            {/* XPUR5/WIR108 — CRUD du référentiel catégories fournisseur. */}
+            <Button variant="outline" onClick={() => setShowCategories(true)}>
+              <Tags /> Catégories
+            </Button>
             <Button variant="outline" onClick={() => setShowImport(true)}>
               <Upload /> Importer
             </Button>
@@ -411,11 +543,16 @@ export default function FournisseursStock() {
       />
 
       {selected && (
-        <FournisseurForm fournisseur={selected}
+        <FournisseurForm fournisseur={selected} categories={categories}
                          onClose={() => setSelected(null)} onSaved={reload} />
       )}
       {scorecard && (
         <ScorecardModal fournisseur={scorecard} onClose={() => setScorecard(null)} />
+      )}
+      {showCategories && (
+        <CategorieFournisseurManager categories={categories} isAdmin={isAdmin}
+                                     onClose={() => setShowCategories(false)}
+                                     onChanged={reloadCategories} />
       )}
     </div>
   )

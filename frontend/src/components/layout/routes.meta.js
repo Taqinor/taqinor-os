@@ -22,6 +22,11 @@ const BASE_PAGE_TITLES = [
   ['/stock/categories', 'Catégories & marques'],
   ['/stock/ocr-import', 'Import OCR'],
   ['/stock/mouvements', 'Mouvements de stock'],
+  // WIR109 — inventaire/stock avancé.
+  ['/stock/lots-entrepot', 'Lots en entrepôt (FEFO)'],
+  ['/stock/inventaires-annuels', 'Inventaires annuels'],
+  ['/stock/revalorisations', 'Revalorisations de stock'],
+  ['/stock/conditionnements', 'Conditionnements produit'],
   ['/stock', 'Stock'],
 
   // CRM
