@@ -24,6 +24,10 @@ import RouteErrorBoundary from '../components/RouteErrorBoundary'
 import { buildModuleRoutes } from './moduleRoutes'
 // ODX6 — source unique des modules désactivés (état /auth/me/ → store).
 import { isModuleDisabled } from './moduleGating'
+// NTPRT8/20/27 — portée d'un compte PORTAIL externe (source unique, pure).
+import {
+  PORTEE_CLIENT, peutEntrerDansPortail, portalHomePath,
+} from '../features/portail/portalScope'
 
 // ── Pages lazy ────────────────────────────────────────────────────────────────
 const Landing = lazy(() => import('../pages/Landing'))
@@ -64,6 +68,9 @@ const NotFound = lazy(() => import('../ui/NotFound'))
 const Forbidden = lazy(() => import('../ui/Forbidden'))
 // VX247(d) — glossaire métier statique (les HelpTip VX47 y pointent).
 const LexiquePage = lazy(() => import('../pages/aide/LexiquePage'))
+// NTPRT8 — shell + écrans du PORTAIL CLIENT authentifié (hors shell ERP).
+const PortalClientLayout = lazy(() => import('../features/portail/client/PortalClientLayout'))
+const PortailClientAccueil = lazy(() => import('../features/portail/client/PortailClientAccueil'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -106,9 +113,61 @@ const buildLoginRedirect = (request) => {
   return redirect('/login')
 }
 
-const authLoader = async ({ request }) => {
+// ── NTPRT8/20/27 — Frontière PORTAIL externe ⟷ ERP interne ────────────────────
+//
+// La garde qui FAIT AUTORITÉ est le backend (NTPRT5 : un compte `portee !=
+// interne` reçoit 403 sur toute route interne). Ces loaders ne font qu'éviter à
+// un client/fournisseur/partenaire d'atterrir sur une coquille ERP vide.
+//
+// `ensurePortalScope` garantit que la PORTÉE est connue avant de décider : au
+// retour de `/token/`, le store ne porte que `{ username }` (le login ne
+// rappelle pas /auth/me/), donc `user.portee` est encore `undefined` — décider
+// sur cette valeur laisserait passer un compte portail vers /dashboard le temps
+// d'un écran. On force alors UN `fetchMe()` (une seule fois : ensuite `portee`
+// est défini, y compris à `interne`).
+const ensurePortalScope = async () => {
   const ok = await ensureSession()
-  return ok ? null : buildLoginRedirect(request)
+  if (!ok) return null
+  let user = store.getState().auth.user
+  if (!user || user.portee === undefined) {
+    await store.dispatch(fetchMe())
+    user = store.getState().auth.user
+  }
+  return user || null
+}
+
+// Renvoie une redirection vers le shell portail si `user` est un compte
+// externe, sinon `null` (compte interne — parcours inchangé).
+const redirectSiPortail = (user) => {
+  const home = portalHomePath(user)
+  return home ? redirect(home) : null
+}
+
+const authLoader = async ({ request }) => {
+  const user = await ensurePortalScope()
+  if (!user) return buildLoginRedirect(request)
+  return redirectSiPortail(user)
+}
+
+// Garde des routes `/portail/<scope>` : session valide + portée EXACTE.
+// Un interne y est renvoyé sur /dashboard ; un compte portail d'une AUTRE
+// portée (fournisseur sur l'espace client) est renvoyé sur SON portail —
+// jamais toléré « parce qu'il est portail ».
+const portalLoader = (portee) => async ({ request }) => {
+  const user = await ensurePortalScope()
+  if (!user) return buildLoginRedirect(request)
+  if (peutEntrerDansPortail(user, portee)) return null
+  return redirectSiPortail(user) || redirect('/dashboard')
+}
+
+// Catch-all (VX78) : la route 404 n'a volontairement AUCUN loader (un visiteur
+// anonyme doit voir le 404, pas /login). On y ajoute donc la SEULE bascule
+// portail — sans exiger de session — pour qu'un lien périmé ne rende jamais la
+// coquille ERP à un compte externe.
+const notFoundLoader = async () => {
+  const { isAuthenticated, user } = store.getState().auth
+  if (!isAuthenticated) return null
+  return redirectSiPortail(user)
 }
 
 // ERR27 — Garde de rôle/permission sur les routes d'administration. Reflète
@@ -118,8 +177,12 @@ const authLoader = async ({ request }) => {
 // VX131(c) — un refus rebondissait en SILENCE vers `/dashboard` (aucun écran
 // dédié, aucune explication) : redirige désormais vers `/403` (ui/Forbidden.jsx).
 const roleLoader = (roles, perm) => async ({ request }) => {
-  const ok = await ensureSession()
-  if (!ok) return buildLoginRedirect(request)
+  const user = await ensurePortalScope()
+  if (!user) return buildLoginRedirect(request)
+  // NTPRT8 — un compte portail externe ne franchit jamais une route interne,
+  // même gardée par rôle : il rejoint son propre shell.
+  const versPortail = redirectSiPortail(user)
+  if (versPortail) return versPortail
   const { role, permissions } = store.getState().auth
   const tier = role || 'normal'
   const allowed = roles.includes(tier) && (!perm || (permissions || []).includes(perm))
@@ -176,6 +239,22 @@ function WithLayout({ children }) {
   )
 }
 
+// NTPRT8/20/27 — équivalent de `WithLayout` pour les PORTAILS EXTERNES : même
+// error-boundary + Suspense keyées par chemin, mais AUCUNE surface interne
+// (pas de Layout ERP, pas de palette de commandes, pas de quick-create).
+function WithPortal({ shell: Shell, children }) {
+  const { pathname } = useLocation()
+  return (
+    <RouteErrorBoundary key={pathname}>
+      <Suspense fallback={<Fallback />}>
+        <Shell>
+          <div key={pathname} className="route-fade">{children}</div>
+        </Shell>
+      </Suspense>
+    </RouteErrorBoundary>
+  )
+}
+
 const router = createBrowserRouter([
   // Entrée de l'OS : un visiteur non connecté arrive DIRECTEMENT sur le login.
   // La landing reste dans le code (route /landing) mais n'est plus l'entrée.
@@ -211,6 +290,15 @@ const router = createBrowserRouter([
   { path: '/dashboards-tv', loader: authLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><DashboardsTvPage /></Suspense></RouteErrorBoundary> },
   // XKB19 — consultation publique d'un article KB partagé (sans login, sans layout ERP).
   { path: '/kb/public/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicArticlePage /></Suspense></RouteErrorBoundary> },
+
+  // NTPRT8 — PORTAIL CLIENT authentifié. Shell dédié (jamais le shell ERP) ;
+  // `portalLoader` exige la portée EXACTE `portail_client` et renvoie tout
+  // autre compte vers SON espace (ou /dashboard pour un interne).
+  {
+    path: '/portail/client',
+    loader: portalLoader(PORTEE_CLIENT),
+    element: <WithPortal shell={PortalClientLayout}><PortailClientAccueil /></WithPortal>,
+  },
 
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
@@ -257,7 +345,10 @@ const router = createBrowserRouter([
 
   // Catch-all — VX78 : un favori/lien périmé affiche désormais l'écran 404
   // (ui/NotFound.jsx) au lieu de rebondir en silence vers /dashboard.
-  { path: '*', element: <WithLayout><NotFound /></WithLayout> },
+  // NTPRT8 — `notFoundLoader` n'exige AUCUNE session (le 404 anonyme est
+  // préservé) mais renvoie un compte PORTAIL connecté vers son shell : un lien
+  // périmé ne doit jamais rendre la coquille ERP à un client externe.
+  { path: '*', loader: notFoundLoader, element: <WithLayout><NotFound /></WithLayout> },
 ])
 
 export default router
