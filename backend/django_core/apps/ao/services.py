@@ -204,6 +204,7 @@ def emettre_changement_statut_automation(appel_offre, *, ancien_statut,
 LIBELLE_REMISE_PLIS = 'Remise des plis'
 LIBELLE_OUVERTURE = 'Ouverture des plis'
 LIBELLE_VALIDITE = "Fin de validité de l'offre"
+LIBELLE_CAUTION = 'Échéance de la caution {type}'
 
 #: Rappel par défaut (jours avant) par type d'échéance.
 RAPPELS_PAR_DEFAUT = {
@@ -211,6 +212,8 @@ RAPPELS_PAR_DEFAUT = {
     EcheanceAO.TypeEcheance.OUVERTURE: 1,
     EcheanceAO.TypeEcheance.VALIDITE: 15,
 }
+#: Rappel des échéances de caution (AOF16).
+RAPPEL_CAUTION_JOURS = 15
 
 
 def jours_validite_effectifs(appel_offre):
@@ -265,17 +268,29 @@ def echeances_attendues(appel_offre):
             'date_echeance': date_echeance,
             'rappel_jours': RAPPELS_PAR_DEFAUT[type_echeance],
         })
+    # AOF16 — l'échéance de CHAQUE caution rejoint l'échéancier : une caution
+    # périmée le jour de l'ouverture fait rejeter le pli.
+    for caution in appel_offre.cautions.exclude(date_echeance=None):
+        attendues.append({
+            'type_echeance': types.AUTRE,
+            'libelle': LIBELLE_CAUTION.format(
+                type=caution.get_type_caution_display().lower()),
+            'date_echeance': caution.date_echeance,
+            'rappel_jours': RAPPEL_CAUTION_JOURS,
+        })
     return attendues
 
 
 def generer_echeancier_ao(appel_offre):
     """Génère/MET À JOUR l'échéancier d'un AO — IDEMPOTENT (AOF15).
 
-    Clé d'idempotence : ``(company, appel_offre, type_echeance)``. Rejouer sur
-    un dossier inchangé ne crée rien ; rejouer après une PROROGATION met à jour
-    la date de l'échéance existante (et donc décale son rappel) au lieu d'en
-    ajouter une nouvelle. Aucune I/O réseau ici : le service calcule et écrit,
-    l'envoi éventuel appartient à la tâche planifiée.
+    Clé d'idempotence : ``(company, appel_offre, type_echeance, libelle)`` —
+    le libellé entre dans la clé parce que plusieurs cautions partagent le
+    type ``AUTRE``. Rejouer sur un dossier inchangé ne crée rien ; rejouer
+    après une PROROGATION met à jour la date de l'échéance existante (et donc
+    décale son rappel) au lieu d'en ajouter une nouvelle. Aucune I/O réseau
+    ici : le service calcule et écrit, l'envoi éventuel appartient à la tâche
+    planifiée.
 
     Returns:
         ``{'creees': int, 'mises_a_jour': int, 'inchangees': int}``.
@@ -285,6 +300,7 @@ def generer_echeancier_ao(appel_offre):
         existante = EcheanceAO.objects.filter(
             company=appel_offre.company, appel_offre=appel_offre,
             type_echeance=attendue['type_echeance'],
+            libelle=attendue['libelle'],
         ).first()
         if existante is None:
             EcheanceAO.objects.create(
@@ -292,22 +308,96 @@ def generer_echeancier_ao(appel_offre):
                 **attendue)
             resume['creees'] += 1
             continue
-        change = (
-            existante.date_echeance != attendue['date_echeance']
-            or existante.libelle != attendue['libelle']
-        )
-        if not change:
+        if existante.date_echeance == attendue['date_echeance']:
             resume['inchangees'] += 1
             continue
         existante.date_echeance = attendue['date_echeance']
-        existante.libelle = attendue['libelle']
         # Une prorogation ROUVRE l'échéance : une date repoussée redevient
         # « à traiter », sinon le rappel décalé ne serait jamais émis.
         existante.traitee = False
         existante.save(update_fields=[
-            'date_echeance', 'libelle', 'traitee', 'updated_at'])
+            'date_echeance', 'traitee', 'updated_at'])
         resume['mises_a_jour'] += 1
     return resume
+
+
+# ── AOF16 — Les DEUX régimes de cautionnement ──────────────────────────────
+#
+# Constat marché : le cautionnement DÉFINITIF est un TAUX du montant initial
+# (3 % au Maroc) ; le PROVISOIRE est un MONTANT ABSOLU fixé par le CPS
+# (10 000 / 25 000 / 30 000 / 50 000 DH). Le provisoire n'est donc JAMAIS
+# dérivé du montant de l'offre — il se saisit. Et le taux du définitif est LU
+# dans ``ExigenceCPS`` : c'est une clause du marché, pas une loi du produit.
+# Le figer en constante produirait un jour une caution non conforme.
+
+def taux_caution_definitive(appel_offre):
+    """Taux (%) du cautionnement définitif, LU dans les clauses du CPS.
+
+    Raises:
+        ValidationError: aucune clause ``CAUTION_DEFINITIVE_TAUX`` saisie. On
+        refuse d'inventer un taux — mieux vaut un blocage explicite qu'une
+        caution calculée sur une hypothèse.
+    """
+    from .models import ExigenceCPS
+
+    clause = appel_offre.exigences_cps.filter(
+        type_exigence=ExigenceCPS.TypeExigence.CAUTION_DEFINITIVE_TAUX,
+        valeur_num__isnull=False,
+    ).order_by('-updated_at').first()
+    if clause is None:
+        raise ValidationError({'caution': (
+            "Le taux du cautionnement définitif n'est pas saisi dans les "
+            "clauses du CPS de cet appel d'offres : il se lit dans le marché, "
+            "il ne se devine pas."
+        )})
+    return clause.valeur_num
+
+
+def deriver_caution_definitive(appel_offre, *, montant_marche=None,
+                               banque='', date_echeance=None):
+    """Crée/MET À JOUR la caution DÉFINITIVE, dérivée du taux du CPS (AOF16).
+
+    ``montant_marche`` par défaut : le montant HT de NOTRE offre. Le résultat
+    est arrondi au centime. IDEMPOTENT : un second appel met à jour la caution
+    définitive existante au lieu d'en créer une seconde.
+
+    La caution PROVISOIRE n'est jamais touchée ici : son montant est absolu et
+    saisi (cf. la clause ``CAUTION_PROVISOIRE`` du CPS).
+    """
+    from .models import CautionSoumission
+
+    taux = taux_caution_definitive(appel_offre)
+    base = montant_marche
+    if base is None:
+        base = appel_offre.montant_offre_ht or Decimal('0.00')
+    montant = (Decimal(base) * Decimal(taux) / Decimal('100')).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    caution = appel_offre.cautions.filter(
+        type_caution=CautionSoumission.TypeCaution.DEFINITIVE).first()
+    if caution is None:
+        return CautionSoumission.objects.create(
+            company=appel_offre.company, appel_offre=appel_offre,
+            type_caution=CautionSoumission.TypeCaution.DEFINITIVE,
+            montant=montant, banque=banque, date_echeance=date_echeance)
+    caution.montant = montant
+    champs = ['montant', 'updated_at']
+    if banque:
+        caution.banque = banque
+        champs.append('banque')
+    if date_echeance is not None:
+        caution.date_echeance = date_echeance
+        champs.append('date_echeance')
+    caution.save(update_fields=champs)
+    return caution
+
+
+def cautions_expirant_avant_ouverture(appel_offre):
+    """Cautions dont l'échéance tombe AVANT l'ouverture des plis (AOF16)."""
+    return [
+        caution for caution in appel_offre.cautions.all()
+        if caution.expire_avant_ouverture
+    ]
 
 
 # ── FG226 — Échéances d'AO dues (rappels) ──────────────────────────────────

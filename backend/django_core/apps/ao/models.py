@@ -549,6 +549,23 @@ class CautionSoumission(TenantModel):
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
+    # ── AOF16 — acte + pièce jointe ────────────────────────────────────────
+    #
+    # ATTENTION : ``banque``, ``date_emission``, ``date_echeance``,
+    # ``date_restitution`` et ``statut`` EXISTAIENT DÉJÀ ci-dessus — les
+    # redéclarer aurait produit une migration en double champ. Seuls les deux
+    # champs ci-dessous sont NOUVEAUX.
+    reference_acte = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name="Référence de l'acte de cautionnement")
+    #: Pièce jointe via ``records.Attachment`` (MinIO) — JAMAIS un
+    #: ``FileField`` : le garde ARC26 gèle ``apps/ao/models.py`` à l'unique
+    #: ``PieceSoumission.fichier`` historique.
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cautions_ao', verbose_name='Acte scanné')
+
     class Meta:
         verbose_name = 'Caution de soumission'
         verbose_name_plural = 'Cautions de soumission'
@@ -557,6 +574,19 @@ class CautionSoumission(TenantModel):
 
     def __str__(self):
         return f'{self.type_caution} {self.montant} MAD ({self.banque})'
+
+    @property
+    def expire_avant_ouverture(self):
+        """AOF16 — la caution expire-t-elle AVANT l'ouverture des plis ?
+
+        Une caution provisoire périmée le jour de l'ouverture fait rejeter le
+        pli : c'est une alerte, pas une information. ``None`` quand l'une des
+        deux dates manque (jamais un faux « tout va bien »).
+        """
+        ouverture = self.appel_offre.date_ouverture_plis
+        if self.date_echeance is None or ouverture is None:
+            return None
+        return self.date_echeance < ouverture
 
 
 # ── FG225 — Dossier de soumission (pièces administratives) ─────────────────

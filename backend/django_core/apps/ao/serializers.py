@@ -111,13 +111,19 @@ class CautionSoumissionSerializer(serializers.ModelSerializer):
         source='get_type_caution_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # AOF16 — alerte : une caution périmée le jour de l'ouverture fait rejeter
+    # le pli. ``None`` quand une des deux dates manque (jamais un faux « OK »).
+    expire_avant_ouverture = serializers.BooleanField(
+        read_only=True, allow_null=True)
 
     class Meta:
         model = CautionSoumission
         fields = [
             'id', 'appel_offre', 'type_caution', 'type_caution_display',
-            'montant', 'banque', 'date_emission', 'date_echeance',
-            'date_restitution', 'statut', 'statut_display', 'date_creation',
+            'montant', 'banque', 'reference_acte', 'attachment',
+            'date_emission', 'date_echeance', 'date_restitution',
+            'expire_avant_ouverture', 'statut', 'statut_display',
+            'date_creation',
         ]
         read_only_fields = ['date_creation']
 

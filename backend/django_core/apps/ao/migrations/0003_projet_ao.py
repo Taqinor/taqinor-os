@@ -1,6 +1,6 @@
-# AOF5 + AOF12 + AOF13 + AOF14 — le PROJET d'appel d'offres au complet, en une
-# seule migration additive (le groupe AOF impose des migrations groupées :
-# chaque migration nouvelle force un cache-MISS du gate CI).
+# AOF5 + AOF12 + AOF13 + AOF14 + AOF16 — le PROJET d'appel d'offres au complet,
+# en une seule migration additive (le groupe AOF impose des migrations
+# groupées : chaque migration nouvelle force un cache-MISS du gate CI).
 #
 #   * AOF5  — ``reference_acheteur`` : la référence du marché CÔTÉ ACHETEUR,
 #     strictement distincte de NOTRE référence générée ``AO-YYYYMM-0001``.
@@ -15,10 +15,16 @@
 #   * AOF14 — ``ExigenceCPS`` : les clauses du CPS deviennent des données
 #     paramétrables (table NEUVE, aucune exigence d'assurance — celles-ci
 #     vivent dans ``apps.assurances``, NTASS19).
+#   * AOF16 — ``CautionSoumission`` gagne EXACTEMENT deux champs :
+#     ``reference_acte`` et ``attachment`` (FK ``records.Attachment``, JAMAIS
+#     un ``FileField`` — garde ARC26). ``banque``, ``date_emission``,
+#     ``date_echeance``, ``date_restitution`` et ``statut`` EXISTAIENT déjà et
+#     ne sont PAS redéclarés (une redéclaration aurait produit une migration en
+#     double champ).
 #
 # AUCUN champ de coût, de marge ni de bénéfice : l'économie de l'AO vit dans
 # des tables SÉPARÉES derrière ``ao_rentabilite_voir``. Aucun
-# ``AlterModelTable`` (``db_table='compta_appeloffre'`` inchangée).
+# ``AlterModelTable`` (``db_table='compta_*'`` inchangées).
 
 import django.core.validators
 import django.db.models.deletion
@@ -31,6 +37,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('ao', '0002_tenantmodel'),
         ('authentication', '0026_ntmob6_customuser_mobile_home_route'),
+        ('records', '0013_vx210_snooze_trigger_event'),
     ]
 
     operations = [
@@ -118,6 +125,16 @@ class Migration(migrations.Migration):
             model_name='appeloffre',
             name='validite_offre_jours',
             field=models.PositiveIntegerField(default=75, verbose_name="Validité de l'offre (jours)"),
+        ),
+        migrations.AddField(
+            model_name='cautionsoumission',
+            name='attachment',
+            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='cautions_ao', to='records.attachment', verbose_name='Acte scanné'),
+        ),
+        migrations.AddField(
+            model_name='cautionsoumission',
+            name='reference_acte',
+            field=models.CharField(blank=True, default='', max_length=120, verbose_name="Référence de l'acte de cautionnement"),
         ),
         migrations.AlterField(
             model_name='appeloffre',
