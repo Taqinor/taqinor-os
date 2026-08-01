@@ -12,6 +12,14 @@ from apps.ao.fabrique import contexte as ctx
 from apps.ao.fabrique import empreinte as emp
 
 
+def _calepinage(batiment, compte, kwc):
+    """Un résultat CONFORME au contrat AOF112 (validé à l'entrée du contexte)."""
+    return {'batiment': batiment, 'compte_retenu': compte,
+            'compte_optimal': compte, 'optimal': True, 'kwc': kwc,
+            'methode': 'dp_exact', 'pas_recherche_m': 0.01,
+            'hash_entree': 'a' * 64, 'version_moteur': '1.0.0'}
+
+
 def dossier_frdisi():
     """Le dossier RÉEL du 27/07 — les montants sont ceux du bordereau final."""
     return {
@@ -33,9 +41,8 @@ def dossier_frdisi():
             {'code': 'C', 'libelle': 'École', 'ville': 'Casablanca'},
         ],
         'calepinage': [
-            {'batiment': 'A', 'compte_retenu': 152},
-            {'batiment': 'B', 'compte_retenu': 120},
-            {'batiment': 'C', 'compte_retenu': 288},
+            _calepinage('A', 152, 95.0), _calepinage('B', 120, 75.0),
+            _calepinage('C', 288, 180.0),
         ],
         'equipements': [
             {'role': 'module', 'designation': 'Module 625 Wc', 'quantite': 560},
@@ -157,7 +164,8 @@ class TestDivergence(unittest.TestCase):
     def test_un_module_de_plus_change_l_empreinte(self):
         d = dossier_frdisi()
         a = ctx.construire_contexte(d)
-        d['calepinage'][2]['compte_retenu'] = 314
+        # Le moteur rejoué publie 314 au lieu de 288 (obstacle retiré).
+        d['calepinage'][2] = _calepinage('C', 314, 196.25)
         b = ctx.construire_contexte(d)
         self.assertNotEqual(a['empreinte'], b['empreinte'])
         self.assertEqual(emp.sections_divergentes(a, b), ('calepinage',))

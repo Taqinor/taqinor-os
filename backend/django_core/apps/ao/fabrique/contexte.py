@@ -40,6 +40,7 @@ from types import MappingProxyType
 
 from .empreinte import (CLES_SIGNIFIANTES, empreinte_contexte,
                         cles_hors_perimetre)
+from .resultat_calepinage import valider_lot
 
 VERSION_CONTEXTE = 1
 
@@ -191,9 +192,18 @@ def _batiments(dossier):
 
 
 def _calepinage(dossier):
-    """Résultats de calepinage FIGÉS — consommés, JAMAIS recalculés (AOF112)."""
-    return [dict(r) if hasattr(r, 'keys') else r
-            for r in (_lire(dossier, 'calepinage') or ())]
+    """Résultats de calepinage FIGÉS — consommés, JAMAIS recalculés.
+
+    C'est ICI que le contrat AOF112 est opposé : le lot passe par
+    `valider_lot`, donc un compte retenu inférieur à l'optimum prouvé, une
+    sensibilité au delta recopié ou un résultat sans `hash_entree` n'entrent
+    pas dans un dossier. La validation est faite UNE fois, à l'entrée ; aucune
+    pièce ne la refait et aucune ne la contourne.
+    """
+    brut = _lire(dossier, 'calepinage') or ()
+    if not brut:
+        return []
+    return [r.vers_dict() for r in valider_lot(brut).resultats]
 
 
 def _equipement(src):
