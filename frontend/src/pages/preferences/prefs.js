@@ -7,9 +7,9 @@
 // design/theme.js — réutilisées telles quelles, PAS dupliquées ici) + les deux
 // préférences qui n'avaient encore aucune surface :
 //   • module d'atterrissage au login (`taqinor.landingModule`) — liste depuis
-//     `moduleConfigs` (UX1), lu par Login.jsx à la connexion ; repli `/dashboard`
-//     inchangé quand aucune préférence n'est choisie ou que le module choisi
-//     n'existe plus.
+//     `moduleConfigs` (UX1), lu par Login.jsx à la connexion ; depuis ODY3 le
+//     repli n'est plus `/dashboard` mais le Menu d'accueil `/apps` quand aucune
+//     préférence n'est choisie ou que le module choisi n'existe plus.
 //   • réduction de mouvement — override APP du media query OS
 //     (`prefers-reduced-motion`), pour l'utilisateur qui veut le confort de
 //     mouvement réduit sans changer son réglage système.
