@@ -39,6 +39,7 @@ import { EmptyState } from '../../ui/EmptyState'
 import { Button } from '../../ui/Button'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import OnboardingBanner from '../../components/OnboardingBanner'
+import useAppBadges from '../../lib/apps/useAppBadges'
 
 /* ODY13 — annonces FR du glisser-déposer (le défaut de dnd-kit est anglais).
    Un lecteur d'écran doit pouvoir suivre tout le trajet au clavier. */
@@ -71,7 +72,7 @@ const INSTRUCTIONS_LECTEUR = {
         l'activation native du bouton d'ouverture. Les deux sur le même
         élément se voleraient la touche. */
 function CelluleApp({
-  app, index, actif, estFavori, reordonnable,
+  app, index, actif, estFavori, reordonnable, badge,
   onOuvrir, onBasculerFavori, onFocusTuile, onKeyDownTuile, registerRef,
 }) {
   const { attributes, listeners, setNodeRef: setDrag, isDragging } = useDraggable({
@@ -103,7 +104,18 @@ function CelluleApp({
         onClick={(e) => onOuvrir(app, e.currentTarget.closest('.home-menu-cell'))}
         onKeyDown={(e) => onKeyDownTuile(e, index)}
       >
-        <AppIcon icon={app.icon} accent={app.accent} size="sm" />
+        <span className="home-menu-tile-iconwrap">
+          <AppIcon icon={app.icon} accent={app.accent} size="sm" />
+          {/* ODY10 — badge vivant : rendu APRÈS la grille (la réponse fédérée
+              arrive plus tard), jamais un « 0 », et absent pour une app dont
+              le module est désactivé (le serveur ne l'émet même pas). */}
+          {badge && (
+            <span className="home-menu-tile-badge" title={badge.label}>
+              <span aria-hidden="true">{badge.valeur}</span>
+              <span className="sr-only">{`${badge.valeur} — ${badge.label}`}</span>
+            </span>
+          )}
+        </span>
         <span className="home-menu-tile-label">{app.label}</span>
       </button>
       <button
@@ -135,6 +147,10 @@ function CelluleApp({
 export default function HomeMenu() {
   const navigate = useNavigate()
   const apps = useInstalledApps()
+  // ODY10 — badges vivants : UN appel agrégé (endpoint fédéré ARC40), cache
+  // court, JAMAIS bloquant — `{}` au premier rendu, la grille est peinte
+  // d'abord et les compteurs arrivent ensuite.
+  const badges = useAppBadges()
   const [query, setQuery] = useState('')
   const [pinned, setPinned] = useState(readPinned)
   const [recent] = useState(readRecent)
@@ -370,6 +386,7 @@ export default function HomeMenu() {
                         actif={index === activeIndex}
                         estFavori={pinned.includes(app.key)}
                         reordonnable={reordonnable}
+                        badge={badges[app.key]}
                         onOuvrir={ouvrir}
                         onBasculerFavori={basculerFavori}
                         onFocusTuile={setActiveIndex}

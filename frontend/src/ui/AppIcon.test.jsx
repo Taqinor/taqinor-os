@@ -17,6 +17,11 @@ const SENTINEL = 'GLYPHE-CRM'
 // La bannière de prise en main (VX36, montée par HomeMenu depuis ODY14) fait
 // ses propres lectures réseau : inerte ici, ce test ne porte pas sur elle.
 vi.mock('../components/OnboardingBanner', () => ({ default: () => null }))
+// ODY10 — l'appel fédéré des badges (HomeMenu) est doublé : ce test ne porte
+// pas sur eux et ne doit toucher aucun réseau.
+vi.mock('../api/reportingApi', () => ({
+  default: { kpiBadges: () => Promise.resolve({ data: { badges: [] } }) },
+}))
 
 vi.mock('../router/moduleRoutes', () => ({
   moduleConfigs: [

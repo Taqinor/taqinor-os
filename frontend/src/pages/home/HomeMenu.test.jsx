@@ -5,7 +5,7 @@
 //     grille, Échap efface.
 //   • Favoris : MÊME clé localStorage que VX9/VX10, jamais une seconde.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
@@ -58,6 +58,11 @@ vi.mock('../../router/prefetchMap', () => ({
 const { bannerMock } = vi.hoisted(() => ({ bannerMock: vi.fn(() => null) }))
 vi.mock('../../components/OnboardingBanner', () => ({ default: bannerMock }))
 
+// ODY10 — l'appel fédéré des badges est doublé : la grille ne doit JAMAIS
+// dépendre de lui (elle se peint d'abord).
+const { badgesMock } = vi.hoisted(() => ({ badgesMock: vi.fn(() => Promise.resolve({ data: { badges: [] } })) }))
+vi.mock('../../api/reportingApi', () => ({ default: { kpiBadges: badgesMock } }))
+
 const navigateMock = vi.fn()
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom')
@@ -67,6 +72,7 @@ vi.mock('react-router-dom', async () => {
 import HomeMenu from './HomeMenu'
 import { filtrerApps, grouperApps, normalise } from '../../lib/apps/appSearch'
 import { PINNED_KEY, RECENT_KEY, ORDER_KEY, applyOrder } from '../../lib/apps/appPrefs'
+import { _resetBadgeCache } from '../../lib/apps/useAppBadges'
 
 function renderHome({ role = 'admin', permissions = [], modulesDesactives = [] } = {}) {
   const store = configureStore({
@@ -141,6 +147,33 @@ describe('ODY2 — HomeMenu (rendu)', () => {
     navigateMock.mockClear()
     prefetchMock.mockClear()
     bannerMock.mockClear()
+    badgesMock.mockClear()
+    _resetBadgeCache()
+  })
+
+  it('ODY10 — UN seul appel agrégé pour les badges, et la grille est peinte avant', () => {
+    renderHome()
+    // La grille est là AVANT toute réponse de badges (aucun await ici).
+    expect(screen.getAllByRole('listitem').length).toBeGreaterThan(0)
+    expect(badgesMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('ODY10 — un badge reçu s’affiche sur la tuile de SON app', async () => {
+    badgesMock.mockImplementationOnce(() => Promise.resolve({
+      data: { badges: [{ app: 'crm', valeur: 7, label: 'Relances en retard' }] },
+    }))
+    renderHome()
+    await waitFor(() => expect(within(celluleDe('CRM')).getByTitle('Relances en retard'))
+      .toHaveTextContent('7'))
+    // Les autres apps restent sans badge.
+    expect(within(celluleDe('Ventes')).queryByTitle('Relances en retard')).toBeNull()
+  })
+
+  it('ODY10 — une erreur réseau laisse simplement la grille sans compteurs', async () => {
+    badgesMock.mockImplementationOnce(() => Promise.reject(new Error('offline')))
+    renderHome()
+    await waitFor(() => expect(badgesMock).toHaveBeenCalled())
+    expect(screen.getAllByRole('listitem').length).toBeGreaterThan(0)
   })
 
   it('ODY12 — le survol d’une tuile précharge le chunk de son cockpit', () => {

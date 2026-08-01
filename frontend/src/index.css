@@ -8721,3 +8721,34 @@ textarea.form-control {
     transition: none;
   }
 }
+
+/* ==========================================================================
+   ODY10 — Badges vivants sur la grille. Bloc APPEND-ONLY.
+   Le badge est POSITIONNE sur la pastille (conteneur dedie) : il arrive apres
+   la grille (reponse federee asynchrone) et ne doit donc RIEN decaler quand
+   il apparait — d'ou un positionnement absolu, hors flux.
+   ========================================================================== */
+.home-menu-tile-iconwrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.home-menu-tile-badge {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1;
+  /* Detache le badge de la pastille quel que soit le fond (clair/sombre). */
+  box-shadow: 0 0 0 2px var(--card);
+}
