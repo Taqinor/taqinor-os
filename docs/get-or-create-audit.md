@@ -47,6 +47,15 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/views.py:2303` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py:203` | update_or_create | CtwaReferral.objects | company, wa_message_id |
 | `backend/django_core/apps/ai_governance/drift.py:118` | update_or_create | DriftSnapshot.objects | company, date, modele |
+| `backend/django_core/apps/ao/calepinage_service.py:457` | update_or_create | VarianteCalepinage.objects | company, nom, parent, role, toiture |
+| `backend/django_core/apps/ao/calepinage_views.py:300` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:267` | get_or_create | ReleveAO.objects | appel_offre, company, date_visite |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:276` | update_or_create | BatimentAO.objects | appel_offre, code, company |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:283` | update_or_create | ToitureAO.objects | batiment, code_document, company |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:296` | update_or_create | ObstacleAO.objects | company, repere, toiture |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:319` | update_or_create | VarianteCalepinage.objects | company, nom, toiture |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:348` | get_or_create | BordereauPrix.objects | appel_offre, company, intitule |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:352` | update_or_create | LigneBordereau.objects | bordereau, company, designation |
 | `backend/django_core/apps/ao/management/commands/seed_pack_ao.py:146` | get_or_create | ModelePack.objects | code, company |
 | `backend/django_core/apps/ao/services.py:446` | update_or_create | ResultatAO.objects | appel_offre, company |
 | `backend/django_core/apps/ao/services.py:541` | get_or_create | PresetCalepinage.objects | company, nom |
@@ -281,8 +290,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/stock/services.py:3703` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/views/marque.py:57` | get_or_create | Marque.objects | company, nom |
 | `backend/django_core/apps/uxviews/models.py:166` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/ventes/services.py:2585` | get_or_create | Produit.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:3954` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/services.py:2763` | get_or_create | Produit.objects | company, nom |
+| `backend/django_core/apps/ventes/services.py:4132` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/views/liste_prix.py:72` | update_or_create | LignePrixListe.objects | liste, produit_id |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:81` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
 | `backend/django_core/apps/voip/services.py:26` | get_or_create | VoipParametres.objects | company |

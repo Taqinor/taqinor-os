@@ -3,8 +3,8 @@
 Le trou réel
 ============
 Les trois scripts de dépôt du 27/07 n'ont AUCUN ``savefig(metadata=…)`` et
-leurs chemins de sortie contiennent « OneDrive - Atlencia » et « TAQINOR » en
-dur. Un PDF déposé porte donc, dans ses propriétés, le nom du bureau
+leurs chemins de sortie portent en dur le dossier infonuagique et le nom du
+bureau. Un PDF déposé porte donc, dans ses propriétés, le nom du bureau
 d'exécution, la version de matplotlib et l'arborescence du poste qui l'a
 produit — c'est-à-dire précisément ce que la marque blanche existe pour
 cacher, offert en deux clics à n'importe quel destinataire.
@@ -16,8 +16,8 @@ planches matplotlib ET le PDF fusionné — avec la même passe :
 * ``Author``   = SOUMISSIONNAIRE (jamais le bureau, même hors marque blanche :
                  le pli est déposé par le soumissionnaire, point) ;
 * ``Subject``  = objet du marché ;
-* ``Creator`` / ``Producer`` NEUTRALISÉS (chaînes vides) — pas « TAQINOR »,
-  pas « Matplotlib », pas « WeasyPrint » ;
+* ``Creator`` / ``Producer`` NEUTRALISÉS (chaînes vides) — ni le nom du
+  bureau, ni « Matplotlib », ni « WeasyPrint » ;
 * mots-clés et champs libres vidés, XMP purgé.
 
 Et une VÉRIFICATION, pas seulement un nettoyage : ``verifier_absence_chemins``
