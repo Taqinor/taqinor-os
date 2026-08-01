@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Plus, X, Star, Trash2, Pencil } from 'lucide-react'
+import { Plus, X, Star, Trash2, Pencil, ImagePlus } from 'lucide-react'
 import {
   createProduit,
   updateProduit,
@@ -21,8 +21,19 @@ import {
   toast,
 } from '../../ui'
 import { isDirty } from '../../ui/form-utils'
+import { compressImage, validateFile } from '../../ui/file-utils'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
+
+// APX18 — photo produit : seules les images, bornées à 10 Mo — le MÊME
+// plafond que la primitive plateforme `records.storage` côté serveur, pour
+// qu'un refus se voie AVANT le réseau plutôt qu'en 400. `image/*` reste large
+// à dessein : la compression VX77 réencode en JPEG (bord long 1600 px) ce que
+// le navigateur sait décoder, HEIC d'iPhone compris, et le serveur reste
+// l'autorité (octets magiques : PNG/JPEG/WebP).
+// La photo est INTERNE : elle n'entre dans aucun PDF ni sortie client.
+const PHOTO_ACCEPT = 'image/*'
+const PHOTO_MAX_SIZE = 10 * 1024 * 1024
 
 // VX92 — « Créer un autre » : persisté par utilisateur/poste (localStorage),
 // défaut OFF (comportement historique inchangé). Un salon = 10 leads/produits
@@ -313,6 +324,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const initialFields = {
     nom:            produit?.nom            ?? '',
     sku:            produit?.sku            ?? '',
+    // APX20 — `marque` et `garantie` (TEXTE) existaient au modèle et
+    // alimentaient déjà les fiches produits des PDF de devis, mais AUCUN écran
+    // ne permettait de les saisir : la création rapide promettait « vous
+    // pourrez compléter (catégorie, marque, garantie…) plus tard depuis
+    // Stock » et Stock ne le permettait pas. Promesse tenue ici.
+    marque:         produit?.marque         ?? '',
+    garantie:       produit?.garantie       ?? '',
     description:    produit?.description    ?? '',
     prix_vente:     String(produit?.prix_vente  ?? ''),
     prix_achat:     String(produit?.prix_achat  ?? '0'),
@@ -332,6 +350,50 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // WIR67 — champs personnalisés du module « produit » (le backend valide/
   // persiste `custom_data` du Produit, même motif que Lead/Client).
   const [customData, setCustomData] = useState(produit?.custom_data || {})
+
+  // ── APX18 — photo produit ────────────────────────────────────────────────
+  // `photoFile` = nouvelle image choisie (déjà compressée VX77) ; `photoRetiree`
+  // = l'utilisateur a supprimé la photo existante. Les deux sont envoyés APRÈS
+  // la création/mise à jour (un PATCH multipart séparé — le payload JSON ne
+  // peut pas porter de fichier). Aucune des deux n'entre dans un PDF.
+  const [photoFile, setPhotoFile] = useState(null)
+  const [photoApercu, setPhotoApercu] = useState(null)   // objectURL local
+  const [photoRetiree, setPhotoRetiree] = useState(false)
+  const [photoErreur, setPhotoErreur] = useState(null)
+  const photoInputRef = useRef(null)
+  // URL servie par l'action authentifiée quand une photo est déjà enregistrée.
+  const photoExistante = (!photoRetiree && !photoApercu) ? (produit?.image_url ?? null) : null
+
+  // L'objectURL de l'aperçu est révoqué dès qu'il est remplacé/abandonné :
+  // sans ça chaque essai de photo fuit un blob pour la durée de la session.
+  useEffect(() => () => { if (photoApercu) URL.revokeObjectURL(photoApercu) }, [photoApercu])
+
+  const choisirPhoto = async (file) => {
+    setPhotoErreur(null)
+    if (!file) return
+    const check = validateFile(file, { accept: PHOTO_ACCEPT, maxSize: PHOTO_MAX_SIZE })
+    if (!check.ok) { setPhotoErreur(check.message); return }
+    // VX77 — compression cliente : une photo d'appareil moderne fait 4-8 Mo,
+    // intenable sur la 3G rurale. Le helper est un passthrough silencieux si
+    // le canvas n'est pas disponible — il ne fait JAMAIS échouer l'envoi.
+    const compresse = await compressImage(file)
+    setPhotoFile(compresse)
+    setPhotoRetiree(false)
+    setPhotoApercu((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return typeof URL.createObjectURL === 'function' ? URL.createObjectURL(compresse) : null
+    })
+  }
+
+  const retirerPhoto = () => {
+    setPhotoErreur(null)
+    setPhotoFile(null)
+    setPhotoApercu((prev) => { if (prev) URL.revokeObjectURL(prev); return null })
+    // Ne marque « retirée » que s'il y avait bien une photo enregistrée :
+    // annuler un choix local ne doit pas déclencher un PATCH de suppression.
+    setPhotoRetiree(!!produit?.image_url)
+    if (photoInputRef.current) photoInputRef.current.value = ''
+  }
 
   const dirty = isDirty(initialFieldsSnapshot, fields)
   useDirtyGuard(dirty)
@@ -417,6 +479,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
       const payload = {
         nom:            fields.nom.trim(),
         sku:            fields.sku.trim() || null,
+        // APX20 — vidés → null (le modèle est nullable) : effacer une marque
+        // doit vraiment l'effacer, pas y laisser une chaîne vide.
+        marque:         fields.marque.trim() || null,
+        garantie:       fields.garantie.trim() || null,
         description:    fields.description.trim() || null,
         prix_vente:     fields.prix_vente,
         prix_achat:     fields.prix_achat,
@@ -430,11 +496,28 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         // WIR67 — champs personnalisés du module « produit ».
         custom_data: customData,
       }
+      let enregistre
       if (isEdit) {
-        await dispatch(updateProduit({ id: produit.id, data: payload })).unwrap()
+        enregistre = await dispatch(updateProduit({ id: produit.id, data: payload })).unwrap()
       } else {
-        await dispatch(createProduit(payload)).unwrap()
+        enregistre = await dispatch(createProduit(payload)).unwrap()
         ecrireLastTva(fields.tva)  // VX93 — mémorise la TVA pour le prochain produit
+      }
+      // APX18 — la photo part en SECOND, en multipart, une fois l'id connu
+      // (création) ou sur l'id existant (édition). Un échec d'upload ne perd
+      // JAMAIS le produit déjà enregistré : on le signale sans annuler.
+      const cibleId = enregistre?.id ?? produit?.id
+      if (cibleId && (photoFile || photoRetiree)) {
+        try {
+          await stockApi.uploadProduitImage(cibleId, photoFile)
+        } catch (errPhoto) {
+          // Le serveur renvoie déjà un message français (format refusé,
+          // fichier trop lourd…) : on le montre plutôt qu'un « échec ».
+          const raison = errPhoto?.response?.data?.detail
+          toast.error(raison
+            ? `Produit enregistré, mais la photo a été refusée : ${raison}`
+            : 'Produit enregistré, mais la photo n\'a pas pu être envoyée.')
+        }
       }
       onSaved?.()
       // VX92 — « Créer un autre » (uniquement à la création) : on vide le
@@ -447,6 +530,9 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         // VX249(b) — le produit SUIVANT reçoit un NOUVEAU défaut TVA : «
         // suggéré » redevient vrai.
         setTvaTouched(false)
+        // APX18 — le produit SUIVANT repart sans photo (sinon la photo du
+        // précédent serait re-téléversée en boucle).
+        retirerPhoto()
         nomRef.current?.focus()
       } else {
         onClose()
@@ -493,6 +579,15 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             <FormField label="SKU / Référence" htmlFor="pf-sku" error={errors.sku}>
               <Input id="pf-sku" invalid={!!errors.sku} value={fields.sku}
                      onChange={e => setField('sku', e.target.value)} placeholder="REF-001" />
+            </FormField>
+
+            {/* APX20 — marque : consommée par la fiche produit des PDF de devis
+                (et par le groupement CATÉGORIE → MARQUE du catalogue). */}
+            <FormField label="Marque" htmlFor="pf-marque" error={errors.marque}
+                       hint="Apparaît sur la fiche produit des devis.">
+              <Input id="pf-marque" invalid={!!errors.marque} value={fields.marque}
+                     onChange={e => setField('marque', e.target.value)}
+                     placeholder="JA Solar, Deye, VEICHI…" />
             </FormField>
 
             {/* Catégorie (avec création inline) */}
@@ -577,6 +672,47 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               <Textarea id="pf-desc" rows={2} value={fields.description}
                         onChange={e => setField('description', e.target.value)}
                         placeholder="Description optionnelle…" />
+            </FormField>
+
+            {/* APX18 — Photo produit. INTERNE : elle sert la vignette du
+                catalogue et l'en-tête de la fiche, jamais un document client
+                (aucun PDF ne la lit) et jamais à côté du prix d'achat. */}
+            <FormField
+              label="Photo du produit" htmlFor="pf-photo" fullWidth
+              error={photoErreur}
+              hint="Facultatif — affichée dans le catalogue et sur la fiche. Jamais sur un document client."
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <div
+                  className="pf-photo-apercu flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted/40"
+                  data-testid="pf-photo-apercu"
+                >
+                  {(photoApercu || photoExistante)
+                    ? (
+                      <img
+                        src={photoApercu || photoExistante}
+                        alt={`Photo de ${fields.nom || 'ce produit'}`}
+                        className="size-full object-cover"
+                      />
+                    )
+                    : <ImagePlus className="size-6 text-muted-foreground" aria-hidden="true" />}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    id="pf-photo"
+                    ref={photoInputRef}
+                    type="file"
+                    accept={PHOTO_ACCEPT}
+                    className="pf-photo-input"
+                    onChange={(e) => choisirPhoto(e.target.files?.[0] ?? null)}
+                  />
+                  {(photoApercu || photoExistante) && (
+                    <Button type="button" variant="ghost" size="sm" onClick={retirerPhoto}>
+                      Retirer la photo
+                    </Button>
+                  )}
+                </div>
+              </div>
             </FormField>
           </FormSection>
 
@@ -666,9 +802,18 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
           </FormSection>
 
           <FormSection
-            title="Garantie structurée"
-            description="Alimente les horloges de garantie du parc d'équipements. Optionnel."
+            title="Garantie"
+            description="Le texte part sur la fiche produit des devis ; les durées en mois alimentent les horloges de garantie du parc d'équipements. Tout est optionnel."
           >
+            {/* APX20 — garantie TEXTE, distincte des durées numériques
+                ci-dessous : c'est elle que lisent les fiches produits des PDF
+                de devis, et aucun écran ne permettait de la saisir. */}
+            <FormField label="Texte de garantie" htmlFor="pf-gar-txt" fullWidth
+                       hint="Phrase constructeur telle qu'elle doit apparaître sur le devis.">
+              <Input id="pf-gar-txt" value={fields.garantie}
+                     onChange={e => setField('garantie', e.target.value)}
+                     placeholder="ex : 12 ans produit, 25 ans performance" />
+            </FormField>
             <FormField label="Garantie équipement (mois)" htmlFor="pf-gar"
                        hint="Laisser vide si non renseignée.">
               <Input id="pf-gar" type="number" min="0" step="1" inputMode="numeric"
