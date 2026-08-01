@@ -20,15 +20,20 @@
 //     seul écran autorisé au dégradé avec ModuleHero (contrainte VXD).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useSelector } from 'react-redux'
 import {
   DndContext, KeyboardSensor, PointerSensor, TouchSensor,
   closestCenter, useDraggable, useDroppable, useSensor, useSensors,
 } from '@dnd-kit/core'
-import { GripVertical, Search, Star } from 'lucide-react'
+import { GripVertical, RotateCcw, Search, Star } from 'lucide-react'
 import useInstalledApps from '../../lib/apps/useInstalledApps'
 import {
   readPinned, writePinned, readRecent, pushRecent, readOrder, writeOrder, applyOrder,
+  resumeTarget, readLastApp,
 } from '../../lib/apps/appPrefs'
+// ODY29 — préférence « à l'ouverture d'une app » (proposer / toujours
+// reprendre / toujours le cockpit), rangée avec les autres réglages VX46.
+import { getAppResumePref, APP_RESUME_ALWAYS, APP_RESUME_ASK } from '../preferences/prefs'
 import { normalise, grouperApps } from '../../lib/apps/appSearch'
 import AppIcon from '../../ui/AppIcon'
 import { runAppTransition, marquerIconeSortante } from '../../lib/apps/appTransition'
@@ -40,6 +45,10 @@ import { Button } from '../../ui/Button'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import OnboardingBanner from '../../components/OnboardingBanner'
 import useAppBadges from '../../lib/apps/useAppBadges'
+// ODY6 — LE MÊME écran sert d'accueil mobile : sous 768 px la grille passe en
+// 3-4 colonnes (CSS) et le type-ahead bureau cède la place à une barre de
+// RECHERCHE tactile. Hook média PARTAGÉ (M158) — jamais une 2e détection.
+import { useIsMobile } from '../../ui/ResponsiveDialog'
 
 /* ODY13 — annonces FR du glisser-déposer (le défaut de dnd-kit est anglais).
    Un lecteur d'écran doit pouvoir suivre tout le trajet au clavier. */
@@ -72,8 +81,8 @@ const INSTRUCTIONS_LECTEUR = {
         l'activation native du bouton d'ouverture. Les deux sur le même
         élément se voleraient la touche. */
 function CelluleApp({
-  app, index, actif, estFavori, reordonnable, badge,
-  onOuvrir, onBasculerFavori, onFocusTuile, onKeyDownTuile, registerRef,
+  app, index, actif, estFavori, reordonnable, badge, reprise,
+  onOuvrir, onBasculerFavori, onReprendre, onFocusTuile, onKeyDownTuile, registerRef,
 }) {
   const { attributes, listeners, setNodeRef: setDrag, isDragging } = useDraggable({
     id: app.key, disabled: !reordonnable,
@@ -87,6 +96,10 @@ function CelluleApp({
     <div
       ref={setRefs}
       role="listitem"
+      // ODY6/ODY31 — ancre DOM stable de la tuile, même convention que
+      // `aside.sidebar[data-app]` (ODY4) : les specs Playwright désignent une
+      // app par sa CLÉ, jamais par un libellé (que le badge ODY10 rallonge).
+      data-app={app.key}
       className={[
         'home-menu-cell',
         isDragging ? 'home-menu-cell--drag' : '',
@@ -140,6 +153,27 @@ function CelluleApp({
           <GripVertical size={13} strokeWidth={1.75} aria-hidden="true" />
         </button>
       )}
+      {/* ODY29 — « Reprendre » : QUATRIÈME contrôle frère (jamais imbriqué dans
+          la tuile — `nested-interactive`). Il n'apparaît que si cette app a
+          vraiment un ailleurs à proposer, et seulement sous la préférence
+          « proposer » : sous « toujours reprendre » c'est la tuile elle-même
+          qui y mène, sous « toujours le cockpit » rien n'est proposé.
+          `tabIndex={-1}` comme l'étoile et la poignée : la grille garde son
+          parcours clavier tuile-à-tuile (une tuile = une tabulation), et le
+          chemin clavier de la reprise est la préférence « toujours reprendre ». */}
+      {reprise && (
+        <button
+          type="button"
+          className="home-menu-tile-resume"
+          tabIndex={-1}
+          title={`Reprendre : ${reprise}`}
+          aria-label={`Reprendre ${app.label} où vous en étiez`}
+          onClick={(e) => onReprendre(e, app, reprise)}
+        >
+          <RotateCcw size={11} strokeWidth={2} aria-hidden="true" />
+          <span className="home-menu-tile-resume-label">Reprendre</span>
+        </button>
+      )}
     </div>
   )
 }
@@ -147,6 +181,18 @@ function CelluleApp({
 export default function HomeMenu() {
   const navigate = useNavigate()
   const apps = useInstalledApps()
+  // ODY6 — au pouce, la page n'est plus « un champ qu'on tape » mais « une
+  // grille qu'on touche » : le champ ne prend PAS le focus au chargement
+  // (le clavier logiciel masquerait la moitié des apps avant tout geste).
+  const tactile = useIsMobile()
+  // ODY29 — la mémoire de reprise est propre à l'utilisateur ET à la session.
+  const userId = useSelector((s) => s.auth.user?.id)
+  // Lues UNE fois au montage : la grille est justement l'écran où l'on revient
+  // APRÈS avoir quitté une app, donc l'état du stockage y est déjà à jour.
+  const [reprisePref] = useState(getAppResumePref)
+  // ODY32 — l'app d'où l'on ressort : c'est SA tuile qui doit récupérer le
+  // focus, pour que sortir et revenir ne perde jamais la place du clavier.
+  const [derniereApp] = useState(readLastApp)
   // ODY10 — badges vivants : UN appel agrégé (endpoint fédéré ARC40), cache
   // court, JAMAIS bloquant — `{}` au premier rendu, la grille est peinte
   // d'abord et les compteurs arrivent ensuite.
@@ -166,6 +212,18 @@ export default function HomeMenu() {
   // une app absente de l'ordre enregistré (nouvellement installée) reste
   // visible, à la fin — jamais perdue.
   const appsOrdonnees = useMemo(() => applyOrder(apps, ordrePerso), [apps, ordrePerso])
+
+  // ODY29 — pour chaque app, la route où l'utilisateur s'était arrêté, ou ''
+  // si elle n'existe pas / vaut déjà le cockpit (proposer « Reprendre » vers
+  // l'écran où le clic mène déjà serait un faux choix). Odoo, lui, oublie.
+  const reprises = useMemo(() => {
+    const table = {}
+    apps.forEach((a) => {
+      const cible = resumeTarget(a.key, userId, a.to)
+      if (cible) table[a.key] = cible
+    })
+    return table
+  }, [apps, userId])
 
   const sections = useMemo(
     () => grouperApps(appsOrdonnees, { query, pinned, recent }),
@@ -195,14 +253,31 @@ export default function HomeMenu() {
   // Transitions quand dispo), sinon le fondu de route existant (VX134(c))
   // suffit, et sous `prefers-reduced-motion` c'est INSTANTANÉ. La navigation
   // n'est JAMAIS conditionnée à la réussite de l'effet (cf. appTransition.js).
-  const ouvrir = useCallback((app, node) => {
+  // ODY29 — où mène un clic sur la tuile : le cockpit, SAUF sous la préférence
+  // « toujours reprendre », qui entre directement là où l'utilisateur s'était
+  // arrêté. Le clavier (Entrée sur la recherche) suit la MÊME règle.
+  const destinationDe = useCallback((app) => {
+    if (!app) return ''
+    const reprise = reprises[app.key]
+    return reprisePref === APP_RESUME_ALWAYS && reprise ? reprise : app.to
+  }, [reprises, reprisePref])
+
+  const ouvrir = useCallback((app, node, cible) => {
     if (!app) return
+    const destination = cible || destinationDe(app)
     pushRecent(app.key)
     const nettoyer = marquerIconeSortante(node)
-    const transition = runAppTransition(() => navigate(app.to))
+    const transition = runAppTransition(() => navigate(destination))
     if (transition?.finished?.then) transition.finished.then(nettoyer, nettoyer)
     else nettoyer()
-  }, [navigate])
+  }, [navigate, destinationDe])
+
+  // « Reprendre » : même entrée d'app, destination explicite.
+  const reprendre = useCallback((event, app, cible) => {
+    event.stopPropagation()
+    event.preventDefault()
+    ouvrir(app, event.currentTarget.closest('.home-menu-cell'), cible)
+  }, [ouvrir])
 
   const basculerFavori = useCallback((event, key) => {
     event.stopPropagation()
@@ -306,16 +381,36 @@ export default function HomeMenu() {
     writeOrder(cles)
   }, [appsOrdonnees])
 
-  // Focus initial sur le champ : la page EST le type-ahead. Le champ n'est
-  // jamais conditionnel → effet simple, pas de callback ref nécessaire.
+  // Focus initial, UNE fois par montage de l'écran :
+  //   • ODY32 — si l'on ressort d'une app, le focus revient sur SA tuile (le
+  //     voyage aller-retour ne perd pas la place du clavier) ;
+  //   • sinon, sur BUREAU, le champ : la page EST le type-ahead ;
+  //   • ODY6 — au pouce, ni l'un ni l'autre : donner le focus au champ ferait
+  //     surgir le clavier logiciel par-dessus la grille avant tout geste.
+  // `RouteFocus` (VX197) pose le focus sur `<main>` à chaque navigation ; cet
+  // effet, monté PLUS BAS dans l'arbre, s'exécute après lui et précise la
+  // cible. Si l'ordre changeait un jour, le repli resterait `<main>` — moins
+  // fin, jamais cassé.
+  const focusInitialFait = useRef(false)
   useEffect(() => {
+    if (focusInitialFait.current) return
+    focusInitialFait.current = true
+    if (tactile) return
+    const index = ordre.findIndex((a) => a.key === derniereApp)
+    if (index >= 0) {
+      focusTuile(index)
+      return
+    }
     inputRef.current?.focus()
-  }, [])
+  }, [tactile, ordre, derniereApp, focusTuile])
 
   let position = -1
 
   return (
-    <div className="home-menu" data-testid="home-menu">
+    <div
+      className={`home-menu${tactile ? ' home-menu--tactile' : ''}`}
+      data-testid="home-menu"
+    >
       {/* Fond signature « Lumière sur Nuit » — purement décoratif. */}
       <div className="home-menu-glow" aria-hidden="true" />
 
@@ -323,7 +418,9 @@ export default function HomeMenu() {
         <header className="home-menu-head">
           <h2 className="home-menu-title">Mes applications</h2>
           <p className="home-menu-subtitle">
-            Choisissez une application pour y entrer. Tapez pour filtrer.
+            {tactile
+              ? 'Touchez une application pour y entrer.'
+              : 'Choisissez une application pour y entrer. Tapez pour filtrer.'}
           </p>
         </header>
 
@@ -339,6 +436,11 @@ export default function HomeMenu() {
             placeholder="Rechercher une application…"
             aria-label="Rechercher une application"
             autoComplete="off"
+            // ODY6 — clavier logiciel de RECHERCHE (touche « Rechercher »
+            // plutôt que « Entrée ») ; la taille ≥16px imposée en CSS empêche
+            // iOS de zoomer sur le champ au focus.
+            inputMode="search"
+            enterKeyHint="search"
           />
         </div>
 
@@ -387,8 +489,13 @@ export default function HomeMenu() {
                         estFavori={pinned.includes(app.key)}
                         reordonnable={reordonnable}
                         badge={badges[app.key]}
+                        // ODY29 — « Reprendre » n'est proposé QUE sous la
+                        // préférence par défaut : les deux autres choix sont
+                        // des décisions déjà prises, on ne les redemande pas.
+                        reprise={reprisePref === APP_RESUME_ASK ? reprises[app.key] : ''}
                         onOuvrir={ouvrir}
                         onBasculerFavori={basculerFavori}
+                        onReprendre={reprendre}
                         onFocusTuile={setActiveIndex}
                         onKeyDownTuile={onTileKeyDown}
                         registerRef={registerRef}

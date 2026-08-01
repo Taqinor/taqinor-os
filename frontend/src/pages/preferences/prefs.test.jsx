@@ -11,6 +11,8 @@ import {
   LANDING_LAST_MODULE,
   getReducedMotionPref, setReducedMotionPref, applyReducedMotion,
   getPhotoQualityPref, setPhotoQualityPref, compressPhotoForUpload,
+  getAppResumePref, setAppResumePref,
+  APP_RESUME_KEY, APP_RESUME_ASK, APP_RESUME_ALWAYS, APP_RESUME_NEVER,
 } from './prefs'
 import { compressImage } from '../../ui/file-utils'
 
@@ -31,6 +33,7 @@ describe('VX46 — prefs.js (logique pure, persistance localStorage)', () => {
     window.localStorage.removeItem(REDUCED_MOTION_KEY)
     window.localStorage.removeItem(LAST_MODULE_KEY)
     window.localStorage.removeItem(PHOTO_QUALITY_KEY)
+    window.localStorage.removeItem(APP_RESUME_KEY)
     document.documentElement.removeAttribute('data-reduced-motion')
     document.getElementById('taqinor-reduced-motion-override')?.remove()
     compressImage.mockClear()
@@ -124,6 +127,32 @@ describe('VX46 — prefs.js (logique pure, persistance localStorage)', () => {
     applyReducedMotion(true)
     const tags = document.querySelectorAll('#taqinor-reduced-motion-override')
     expect(tags.length).toBe(1)
+  })
+
+  describe('ODY29 — à l’ouverture d’une app (proposer / toujours / jamais)', () => {
+    it('défaut = proposer (aucune clé écrite)', () => {
+      expect(getAppResumePref()).toBe(APP_RESUME_ASK)
+      expect(window.localStorage.getItem(APP_RESUME_KEY)).toBeNull()
+    })
+
+    it('persiste « toujours reprendre » puis « toujours le cockpit »', () => {
+      setAppResumePref(APP_RESUME_ALWAYS)
+      expect(getAppResumePref()).toBe(APP_RESUME_ALWAYS)
+      setAppResumePref(APP_RESUME_NEVER)
+      expect(getAppResumePref()).toBe(APP_RESUME_NEVER)
+    })
+
+    it('revenir au défaut efface la clé', () => {
+      setAppResumePref(APP_RESUME_ALWAYS)
+      setAppResumePref(APP_RESUME_ASK)
+      expect(getAppResumePref()).toBe(APP_RESUME_ASK)
+      expect(window.localStorage.getItem(APP_RESUME_KEY)).toBeNull()
+    })
+
+    it('une valeur inconnue en stockage retombe sur le défaut', () => {
+      window.localStorage.setItem(APP_RESUME_KEY, 'n’importe quoi')
+      expect(getAppResumePref()).toBe(APP_RESUME_ASK)
+    })
   })
 
   describe('NTMOB12 — qualité photo (Standard compressé / Original)', () => {

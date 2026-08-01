@@ -22,24 +22,101 @@ test('E16: no horizontal overflow on key pages', async ({ page }) => {
 })
 
 test('E16: the full navigation menu is reachable on mobile', async ({ page }) => {
-  await page.goto('/dashboard')
+  // ODY4/ODY6 — the drawer is no longer a GLOBAL stack of every section: it is
+  // the nav of the ACTIVE APP. What E16 actually guards is unchanged (the C1
+  // fix: the menu scrolls inside the safe area instead of clipping its bottom
+  // items), so the spec now opens it on a RICH app — Stock has 14 sections, by
+  // far enough to overflow an iPhone drawer — instead of on `/dashboard`, which
+  // is now the single-section « Tableau de bord » app.
+  await page.goto('/stock')
   await expect(page.locator('.header-title')).toBeVisible()
 
   // Open the drawer (hamburger only shows at mobile widths).
   await page.getByRole('button', { name: 'Ouvrir le menu' }).click()
 
-  // The last items (admin-only, at the very bottom) must be reachable, i.e. the
-  // menu scrolls inside the safe area instead of clipping them.
-  // « Paramètres » exists in several sections (admin, Paie, SAV « Paramètres SAV »),
-  // so a name match is ambiguous (strict-mode violation) — target the ADMIN
-  // settings link by its unique href /parametres, which sits at the very bottom.
-  const settings = page.locator('a[href="/parametres"]')
-  await settings.scrollIntoViewIfNeeded()
-  await expect(settings).toBeVisible()
+  // Enough entries that clipping would be a real risk, and the LAST one of them
+  // must still be reachable by scrolling. Targeting « the last nav link » rather
+  // than one hardcoded href keeps the guard alive when Stock's sections move.
+  const navLinks = page.locator('aside.sidebar .sidebar-nav a')
+  // `count()` ne patiente pas : on attend d'abord que la nav de l'app soit
+  // réellement rendue, sinon un comptage trop tôt renverrait 0.
+  await expect(navLinks.first()).toBeVisible()
+  expect(await navLinks.count(), 'Stock expose assez de sections pour risquer le rognage')
+    .toBeGreaterThan(5)
+  const last = navLinks.last()
+  await last.scrollIntoViewIfNeeded()
+  await expect(last).toBeVisible()
+
+  // Below the nav sit the two permanent controls of the drawer: the ⊞ exit back
+  // to the home menu (ODY5) and the logout.
+  const exit = page.getByRole('link', { name: 'Toutes les apps' })
+  await exit.scrollIntoViewIfNeeded()
+  await expect(exit).toBeVisible()
 
   const logout = page.getByRole('button', { name: 'Déconnexion' })
   await logout.scrollIntoViewIfNeeded()
   await expect(logout).toBeVisible()
+})
+
+// ── ODY6 — le paradigme ERP-Apps AU POUCE ───────────────────────────────────
+// Le parcours complet demandé par ODY6 : accueil (le Menu d'accueil EST
+// l'accueil mobile) → une app → sortie par l'onglet « Apps » → une AUTRE app.
+// À chaque étape : aucun débordement horizontal, et aucune destination d'une
+// autre app sous le pouce.
+//
+// Les apps désignées par leur CLÉ (`[data-app="ventes"]`), jamais par leur
+// libellé : le badge ODY10 s'ajoute au nom accessible de la tuile.
+async function entrerDansApp(page, cle) {
+  await page.locator(`.home-menu-cell[data-app="${cle}"] .home-menu-tile`).click()
+  // La coquille est reconstruite sur l'app cible (ancre ODY4, la même que
+  // cross-app.spec.js : l'attribut existe quelle que soit la largeur).
+  await expect(page.locator('aside.sidebar')).toHaveAttribute('data-app', cle)
+  // Puis le cockpit de l'app est réellement peint, avant toute MESURE.
+  await expect(page.locator('.header-title')).toBeVisible()
+  await page.waitForLoadState('networkidle').catch(() => {})
+}
+
+test('ODY6: accueil → app → sortie → autre app, entièrement au pouce', async ({ page }) => {
+  // 1) Le Menu d'accueil EST l'accueil mobile — et il n'a PAS de barre
+  //    d'onglets (une barre qui pointerait vers l'écran courant serait un
+  //    repère faux ; le ⊞ de l'en-tête reste la sortie partout ailleurs).
+  await page.goto('/apps')
+  await expect(page.getByRole('heading', { name: 'Mes applications' })).toBeVisible()
+  await assertNoHorizontalOverflow(page, '/apps')
+  await expect(page.locator('nav.bottom-tabbar')).toHaveCount(0)
+
+  // 2) Entrer dans Ventes au toucher.
+  await entrerDansApp(page, 'ventes')
+  await assertNoHorizontalOverflow(page, '/ventes (immersion)')
+
+  // 3) La barre basse est celle de CETTE app, et d'aucune autre.
+  const tabbar = page.locator('nav.bottom-tabbar')
+  await expect(tabbar).toHaveAttribute('data-app', 'ventes')
+  await expect(tabbar.locator('a[href="/dashboard"]'), 'l’onglet Accueil figé a disparu')
+    .toHaveCount(0)
+  await expect(tabbar.locator('a[href^="/crm"]'), 'aucune autre app sous le pouce')
+    .toHaveCount(0)
+
+  // 4) Le tiroir « Plus » est le tiroir DE L'APP (Ventes a plus de sections que
+  //    de créneaux, il existe donc), et ne liste que ses sections.
+  await tabbar.getByRole('button', { name: /^Plus de sections de/ }).click()
+  // Classe exacte plutôt que role=dialog : un seul nœud possible, donc aucune
+  // ambiguïté de mode strict si un autre overlay était monté.
+  const tiroir = page.locator('.app-grid-drawer')
+  await expect(tiroir.locator('a[href^="/ventes"]').first()).toBeVisible()
+  await expect(tiroir.locator('a[href^="/crm"]')).toHaveCount(0)
+  await tiroir.getByRole('button', { name: 'Fermer' }).click()
+  await expect(tiroir).toHaveCount(0)
+
+  // 5) LA sortie au pouce : l'onglet « Apps » ramène à la grille.
+  await tabbar.getByRole('link', { name: 'Apps' }).click()
+  await expect(page).toHaveURL(/\/apps/)
+  await expect(page.getByRole('heading', { name: 'Mes applications' })).toBeVisible()
+
+  // 6) …d'où l'on entre dans une AUTRE app : la coquille bascule entièrement.
+  await entrerDansApp(page, 'crm')
+  await expect(page.locator('nav.bottom-tabbar')).toHaveAttribute('data-app', 'crm')
+  await assertNoHorizontalOverflow(page, '/crm (immersion)')
 })
 
 // E16+ — Régression iPhone : un modal d'édition (haut) doit TENIR dans l'écran et

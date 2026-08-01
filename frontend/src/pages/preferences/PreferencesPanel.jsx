@@ -31,6 +31,7 @@ import {
   getLandingModule, setLandingModule, LANDING_LAST_MODULE,
   getReducedMotionPref, setReducedMotionPref,
   getPhotoQualityPref, setPhotoQualityPref,
+  getAppResumePref, setAppResumePref, APP_RESUME_ALWAYS, APP_RESUME_NEVER,
 } from './prefs'
 
 // NTMOB6 — sélecteur de démarrage par rôle : « revenir au dashboard classique
@@ -96,6 +97,14 @@ export default function PreferencesPanel({ open, onOpenChange }) {
   const [landing, setLanding] = useState(getLandingModule)
   const [reducedMotion, setReducedMotion] = useState(getReducedMotionPref)
   const [photoQuality, setPhotoQuality] = useState(getPhotoQualityPref)
+  const [appResume, setAppResume] = useState(getAppResumePref)
+
+  // ODY29 — que faire de la route mémorisée quand on rouvre une app.
+  const handleAppResumeChange = (e) => {
+    const value = e.target.value
+    setAppResume(value)
+    setAppResumePref(value)
+  }
 
   const handleLandingChange = (e) => {
     const value = e.target.value
@@ -165,6 +174,29 @@ export default function PreferencesPanel({ open, onOpenChange }) {
             </select>
             <p className="mt-1 text-xs text-muted-foreground">
               L'écran ouvert automatiquement après la connexion.
+            </p>
+          </div>
+
+          {/* ODY29 — chaque app se souvient de l'endroit où vous l'avez
+              quittée (le temps de la session). Ce réglage dit quoi en faire :
+              le proposer, y aller tout de suite, ou l'ignorer. */}
+          <div>
+            <label htmlFor="pref-app-resume" className="mb-1.5 block text-sm font-semibold text-foreground">
+              À l'ouverture d'une app
+            </label>
+            <select
+              id="pref-app-resume"
+              value={appResume}
+              onChange={handleAppResumeChange}
+              className="h-9 w-full rounded-md border border-border bg-card px-2.5 text-sm text-foreground"
+            >
+              <option value="">Proposer de reprendre (par défaut)</option>
+              <option value={APP_RESUME_ALWAYS}>Toujours reprendre où j'en étais</option>
+              <option value={APP_RESUME_NEVER}>Toujours ouvrir le cockpit de l'app</option>
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Chaque app retient votre dernier écran pendant la session ; les
+              filtres et tris des tableaux, eux, restent enregistrés comme avant.
             </p>
           </div>
 

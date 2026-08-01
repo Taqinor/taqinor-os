@@ -1,11 +1,17 @@
 // ODY4 — tests des fonctions PURES de résolution « route → app active ».
 // (Le rendu de la coquille en immersion est couvert par
 // `components/layout/Sidebar.ody4.test.jsx`.)
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { renderHook } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import { MemoryRouter } from 'react-router-dom'
 import {
   buildAppRouteIndex, resolveAppKey, appNavItems, crossAppTransition,
-  ORPHAN_NAV_ITEMS, HOME_MENU_PATH,
+  ORPHAN_NAV_ITEMS, HOME_MENU_PATH, useActiveApp,
+  annoncerBascule, _resetAnnonceForTests,
 } from './ActiveAppContext'
+import { resumeKey, RESUME_PREFIX, LAST_APP_KEY } from './appPrefs'
 import { moduleConfigs } from '../../router/moduleRoutes'
 
 const FIXTURE = [
@@ -130,5 +136,121 @@ describe('ODY4 — cohérence du registre réel', () => {
 
   it('le Menu d’accueil n’appartient à AUCUNE app (coquille neutre)', () => {
     expect(resolveAppKey(realIndex, HOME_MENU_PATH)).toBeNull()
+  })
+})
+
+// ── ODY29 — chaque app se souvient de l'endroit où on l'a quittée ───────────
+// L'écriture se fait dans `useActiveApp` : c'est le seul endroit qui connaît
+// déjà le couple (route → app). On l'observe donc en montant vraiment le hook.
+describe('ODY29 — useActiveApp mémorise la route de reprise', () => {
+  function monter(path, { user = null } = {}) {
+    const store = configureStore({
+      reducer: {
+        auth: (s = { role: 'admin', permissions: [], modulesDesactives: [], user }) => s,
+      },
+    })
+    return renderHook(() => useActiveApp(), {
+      wrapper: ({ children }) => (
+        <Provider store={store}>
+          <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
+        </Provider>
+      ),
+    })
+  }
+
+  beforeEach(() => {
+    window.sessionStorage.clear()
+  })
+
+  it('mémorise la route courante sous la clé de son app', () => {
+    monter('/crm/leads')
+    expect(window.sessionStorage.getItem(resumeKey('crm', null))).toBe('/crm/leads')
+  })
+
+  it('la clé porte l’utilisateur : une session n’écrase pas celle d’un autre', () => {
+    monter('/ventes/devis', { user: { id: 7 } })
+    expect(window.sessionStorage.getItem(resumeKey('ventes', 7))).toBe('/ventes/devis')
+    expect(window.sessionStorage.getItem(resumeKey('ventes', 8))).toBeNull()
+  })
+
+  it('un écran hors de toute app (Menu d’accueil) n’écrit RIEN', () => {
+    monter(HOME_MENU_PATH)
+    const cles = []
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      cles.push(window.sessionStorage.key(i))
+    }
+    expect(cles.filter((k) => k.startsWith(RESUME_PREFIX))).toEqual([])
+  })
+
+  it('ODY32 — mémorise aussi l’app quittée, pour le retour de focus', () => {
+    monter('/sav')
+    expect(window.sessionStorage.getItem(LAST_APP_KEY)).toBe('sav')
+  })
+
+  it('une app désactivée pour la société n’écrit rien non plus', () => {
+    const store = configureStore({
+      reducer: {
+        auth: (s = {
+          role: 'admin', permissions: [], modulesDesactives: ['crm'], user: null,
+        }) => s,
+      },
+    })
+    renderHook(() => useActiveApp(), {
+      wrapper: ({ children }) => (
+        <Provider store={store}>
+          <MemoryRouter initialEntries={['/crm/leads']}>{children}</MemoryRouter>
+        </Provider>
+      ),
+    })
+    expect(window.sessionStorage.getItem(resumeKey('crm', null))).toBeNull()
+  })
+})
+
+// ── ODY32 — annonce DISCRÈTE de la bascule d'app ────────────────────────────
+// La règle tient en une phrase : cette région ne parle que quand on change
+// d'APPLICATION. `RouteFocus` (VX197) annonce déjà le nom d'écran à chaque
+// navigation — on ne double jamais ce canal.
+describe('ODY32 — annonce de bascule d’app', () => {
+  const region = () => document.getElementById('taqinor-app-annonce')
+
+  beforeEach(() => {
+    _resetAnnonceForTests()
+  })
+
+  it('la toute première résolution ne dit RIEN (chargement direct, F5)', () => {
+    expect(annoncerBascule('crm', 'CRM')).toBe(false)
+    expect(region()).toBeNull()
+  })
+
+  it('un vrai changement d’app est annoncé une fois, poliment', () => {
+    annoncerBascule(null, '') // le Menu d'accueil : 1re résolution
+    expect(annoncerBascule('ventes', 'VENTES')).toBe(true)
+    expect(region()).not.toBeNull()
+    expect(region().getAttribute('aria-live')).toBe('polite')
+    expect(region().className).toContain('sr-only')
+    expect(region().textContent).toBe('Application VENTES')
+  })
+
+  it('naviguer DANS la même app ne dit rien (pas de doublon de RouteFocus)', () => {
+    annoncerBascule(null, '')
+    annoncerBascule('ventes', 'VENTES')
+    expect(annoncerBascule('ventes', 'VENTES')).toBe(false)
+    expect(region().textContent).toBe('Application VENTES')
+  })
+
+  it('ressortir au Menu d’accueil ne dit rien non plus', () => {
+    annoncerBascule(null, '')
+    annoncerBascule('ventes', 'VENTES')
+    expect(annoncerBascule(null, '')).toBe(false)
+    // …mais l'app suivante est bien annoncée : l'état a suivi la sortie.
+    expect(annoncerBascule('crm', 'CRM')).toBe(true)
+    expect(region().textContent).toBe('Application CRM')
+  })
+
+  it('une seule région pour toute la page, quel que soit le nombre d’appels', () => {
+    annoncerBascule(null, '')
+    annoncerBascule('crm', 'CRM')
+    annoncerBascule('ventes', 'VENTES')
+    expect(document.querySelectorAll('#taqinor-app-annonce')).toHaveLength(1)
   })
 })

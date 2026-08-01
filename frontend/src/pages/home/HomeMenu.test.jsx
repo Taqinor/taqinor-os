@@ -71,12 +71,17 @@ vi.mock('react-router-dom', async () => {
 
 import HomeMenu from './HomeMenu'
 import { filtrerApps, grouperApps, normalise } from '../../lib/apps/appSearch'
-import { PINNED_KEY, RECENT_KEY, ORDER_KEY, applyOrder } from '../../lib/apps/appPrefs'
+import {
+  PINNED_KEY, RECENT_KEY, ORDER_KEY, applyOrder, resumeKey, resumeTarget, LAST_APP_KEY,
+} from '../../lib/apps/appPrefs'
+import { APP_RESUME_KEY, APP_RESUME_ALWAYS, APP_RESUME_NEVER } from '../preferences/prefs'
 import { _resetBadgeCache } from '../../lib/apps/useAppBadges'
 
-function renderHome({ role = 'admin', permissions = [], modulesDesactives = [] } = {}) {
+function renderHome({
+  role = 'admin', permissions = [], modulesDesactives = [], user = null,
+} = {}) {
   const store = configureStore({
-    reducer: { auth: (s = { role, permissions, modulesDesactives, user: null }) => s },
+    reducer: { auth: (s = { role, permissions, modulesDesactives, user }) => s },
   })
   return render(
     <Provider store={store}>
@@ -342,5 +347,132 @@ describe('ODY2 — HomeMenu (rendu)', () => {
     renderHome()
     expect(screen.queryByText('Aucune app activée')).not.toBeInTheDocument()
     expect(screen.getAllByRole('listitem').length).toBeGreaterThan(0)
+  })
+})
+
+// ── ODY29 — l'état de chaque app survit à la sortie (Odoo le perd) ──────────
+describe('ODY29 — reprise par app', () => {
+  const REPRISE_CRM = '/crm/leads/42'
+  const reprendreCrm = () => screen.queryByRole('button', { name: /Reprendre CRM où vous en étiez/ })
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    window.sessionStorage.clear()
+    navigateMock.mockClear()
+    badgesMock.mockClear()
+    _resetBadgeCache()
+  })
+
+  describe('le store de reprise (fonction pure)', () => {
+    it('resumeTarget : rien en mémoire → aucune reprise', () => {
+      expect(resumeTarget('crm', null, '/crm')).toBe('')
+    })
+
+    it('resumeTarget : mémoire identique au cockpit → aucune reprise (faux choix)', () => {
+      window.sessionStorage.setItem(resumeKey('crm', null), '/crm')
+      expect(resumeTarget('crm', null, '/crm')).toBe('')
+    })
+
+    it('resumeTarget : mémoire différente du cockpit → c’est elle la reprise', () => {
+      window.sessionStorage.setItem(resumeKey('crm', null), REPRISE_CRM)
+      expect(resumeTarget('crm', null, '/crm')).toBe(REPRISE_CRM)
+    })
+
+    it('la clé porte l’utilisateur : deux comptes ne se reprennent jamais', () => {
+      expect(resumeKey('crm', 7)).not.toBe(resumeKey('crm', 8))
+      window.sessionStorage.setItem(resumeKey('crm', 7), REPRISE_CRM)
+      expect(resumeTarget('crm', 8, '/crm')).toBe('')
+    })
+
+    it('une valeur qui n’est pas un chemin absolu est ignorée', () => {
+      window.sessionStorage.setItem(resumeKey('crm', null), 'https://ailleurs.example')
+      expect(resumeTarget('crm', null, '/crm')).toBe('')
+    })
+  })
+
+  it('par défaut : « Reprendre » est PROPOSÉ, la tuile mène toujours au cockpit', () => {
+    window.sessionStorage.setItem(resumeKey('crm', null), REPRISE_CRM)
+    renderHome()
+    expect(reprendreCrm()).toBeInTheDocument()
+    // La tuile, elle, n'a pas changé de destination.
+    fireEvent.click(ouvreur(celluleDe('CRM')))
+    expect(navigateMock).toHaveBeenCalledWith('/crm')
+  })
+
+  it('cliquer « Reprendre » ouvre la route mémorisée, pas le cockpit', () => {
+    window.sessionStorage.setItem(resumeKey('crm', null), REPRISE_CRM)
+    renderHome()
+    fireEvent.click(reprendreCrm())
+    expect(navigateMock).toHaveBeenCalledWith(REPRISE_CRM)
+  })
+
+  it('aucune mémoire pour une app : aucune pastille sur sa tuile', () => {
+    window.sessionStorage.setItem(resumeKey('crm', null), REPRISE_CRM)
+    renderHome()
+    expect(within(celluleDe('Ventes'))
+      .queryByRole('button', { name: /Reprendre/ })).toBeNull()
+  })
+
+  it('préférence « toujours reprendre » : la tuile y mène, plus de pastille', () => {
+    window.localStorage.setItem(APP_RESUME_KEY, APP_RESUME_ALWAYS)
+    window.sessionStorage.setItem(resumeKey('crm', null), REPRISE_CRM)
+    renderHome()
+    expect(reprendreCrm()).toBeNull()
+    fireEvent.click(ouvreur(celluleDe('CRM')))
+    expect(navigateMock).toHaveBeenCalledWith(REPRISE_CRM)
+  })
+
+  it('préférence « toujours le cockpit » : rien n’est proposé, rien ne change', () => {
+    window.localStorage.setItem(APP_RESUME_KEY, APP_RESUME_NEVER)
+    window.sessionStorage.setItem(resumeKey('crm', null), REPRISE_CRM)
+    renderHome()
+    expect(reprendreCrm()).toBeNull()
+    fireEvent.click(ouvreur(celluleDe('CRM')))
+    expect(navigateMock).toHaveBeenCalledWith('/crm')
+  })
+
+  it('la reprise d’un AUTRE utilisateur n’est jamais proposée', () => {
+    window.sessionStorage.setItem(resumeKey('crm', 7), REPRISE_CRM)
+    renderHome({ user: { id: 8 } })
+    expect(reprendreCrm()).toBeNull()
+  })
+
+  it('« Reprendre » alimente les récents comme une ouverture normale', () => {
+    window.sessionStorage.setItem(resumeKey('crm', null), REPRISE_CRM)
+    renderHome()
+    fireEvent.click(reprendreCrm())
+    expect(JSON.parse(window.localStorage.getItem(RECENT_KEY))).toEqual(['crm'])
+  })
+})
+
+// ── ODY32 — le focus fait l'aller-retour ────────────────────────────────────
+describe('ODY32 — retour de focus sur la tuile d’origine', () => {
+  const champ = () => screen.getByRole('searchbox', { name: /Rechercher une application/ })
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    window.sessionStorage.clear()
+    navigateMock.mockClear()
+    badgesMock.mockClear()
+    _resetBadgeCache()
+  })
+
+  it('ressortir d’une app rend le focus à SA tuile, pas au champ', () => {
+    window.sessionStorage.setItem(LAST_APP_KEY, 'ventes')
+    renderHome()
+    expect(document.activeElement).toBe(ouvreur(celluleDe('Ventes')))
+  })
+
+  it('sans app quittée, le focus va au champ : la page EST le type-ahead', () => {
+    renderHome()
+    expect(document.activeElement).toBe(champ())
+  })
+
+  it('une app quittée qui n’est plus visible ne vole pas le focus', () => {
+    // Module désactivé entre-temps (ODX6) : sa tuile n'existe plus, on retombe
+    // proprement sur le champ au lieu de chercher un nœud absent.
+    window.sessionStorage.setItem(LAST_APP_KEY, 'ventes')
+    renderHome({ modulesDesactives: ['ventes'] })
+    expect(document.activeElement).toBe(champ())
   })
 })

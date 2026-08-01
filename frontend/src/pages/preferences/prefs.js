@@ -26,6 +26,14 @@ export const LANDING_KEY = 'taqinor.landingModule'
 export const LANDING_LAST_MODULE = '__dernier__'
 export const REDUCED_MOTION_KEY = 'taqinor.reducedMotion'
 export const PHOTO_QUALITY_KEY = 'taqinor.photoQuality'
+/** ODY29 — « À l'ouverture d'une app » : que faire de la route mémorisée. */
+export const APP_RESUME_KEY = 'taqinor.appResume'
+/** Proposer « Reprendre » sur la tuile — DÉFAUT (absence de clé). */
+export const APP_RESUME_ASK = ''
+/** Entrer directement là où l'utilisateur s'était arrêté. */
+export const APP_RESUME_ALWAYS = 'reprendre'
+/** Toujours entrer par le cockpit de l'app (aucune proposition). */
+export const APP_RESUME_NEVER = 'cockpit'
 
 function storage() {
   try {
@@ -102,6 +110,32 @@ export function getLastModuleSegment() {
   } catch {
     return ''
   }
+}
+
+// ── ODY29 — À l'ouverture d'une app (proposer / toujours / jamais) ──────────
+// La MÉMOIRE elle-même (quelle route pour quelle app) vit dans
+// `lib/apps/appPrefs.js` (sessionStorage, clé par app+utilisateur) ; seule la
+// PRÉFÉRENCE de comportement est ici, avec les autres réglages VX46.
+
+/** '' (proposer, défaut) | 'reprendre' | 'cockpit'. */
+export function getAppResumePref() {
+  const s = storage()
+  if (!s) return APP_RESUME_ASK
+  try {
+    const value = s.getItem(APP_RESUME_KEY)
+    return value === APP_RESUME_ALWAYS || value === APP_RESUME_NEVER ? value : APP_RESUME_ASK
+  } catch {
+    return APP_RESUME_ASK
+  }
+}
+
+export function setAppResumePref(value) {
+  const s = storage()
+  if (!s) return
+  try {
+    if (value === APP_RESUME_ALWAYS || value === APP_RESUME_NEVER) s.setItem(APP_RESUME_KEY, value)
+    else s.removeItem(APP_RESUME_KEY) // retour au défaut : on efface la clé.
+  } catch { /* stockage indisponible : réglage non persisté sur cet appareil */ }
 }
 
 // ── NTMOB12 — Qualité photo (Standard compressé / Original) ─────────────────
