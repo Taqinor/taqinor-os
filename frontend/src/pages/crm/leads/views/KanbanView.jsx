@@ -191,12 +191,20 @@ const DraggableCard = memo(function DraggableCard({
    les totaux RÉELS de l'étape : on ne cache pas des leads, on en diffère
    l'affichage. */
 export const RENDER_CAP = 40
-/* Le pager mobile ne montre QU'UNE colonne mais les 6 sont montées : 6×40
-   cartes × ~66 nœuds ≈ 15 000 éléments sous le doigt (dont 240 <select> du
-   StageMover). Au pointeur grossier on monte 10 cartes par étape (≈ 1,5
-   écran de colonne) — « Charger plus » reste l'échappatoire, les données
-   sont déjà en mémoire. Le poids n°1 du balayage (audit 2026-08-01). */
-export const RENDER_CAP_TACTILE = 10
+/* ORDRE FONDATEUR 2026-08-01 : « pourquoi Charger plus ? mets-les TOUS —
+   l'utilisateur balaie vers le bas de toute façon ».
+   ---------------------------------------------------------------------------
+   Le plafond tactile de 10 cartes par étape est RETIRÉ — constante ET bouton.
+   Il avait été posé pour alléger le geste, mais il payait le mauvais prix : au
+   téléphone la colonne est un rouleau qu'on parcourt AU POUCE — un bouton qui coupe ce
+   rouleau tous les 10 leads est exactement l'interruption qu'on cherche à
+   supprimer, et il rendait le pipeline illisible (on ne voit plus la fin de
+   son étape). Le vrai poids du balayage était ailleurs et il est corrigé
+   (round 4 : la colonne ne vole plus le geste ; round 3 : StageMover non
+   monté au doigt). AU POINTEUR GROSSIER ON MONTE DONC TOUT, sans plafond ni
+   bouton. Le desktop garde APX9 intact (RENDER_CAP = 40 + « Charger plus »),
+   parce que là 6 colonnes sont visibles EN MÊME TEMPS — le mur de nœuds y est
+   réel, alors que le pager mobile n'en montre qu'une. */
 
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
 // LB9 — région nommée (axe/lecteur d'écran atteignent chaque colonne par son
@@ -382,17 +390,15 @@ export default function KanbanView({
   // l'utilisatrice n'a jamais replié une colonne), écrit à chaque bascule.
   // APX9 — combien de cartes sont MONTÉES par étape (jamais combien sont
   // chargées : tout est déjà en mémoire). Défaut RENDER_CAP.
+  // Cet état ne sert QU'AU DESKTOP : au doigt on monte tout (ordre fondateur
+  // 2026-08-01), il n'y a donc ni plafond à repousser ni bouton pour le faire.
   const [limiteParEtape, setLimiteParEtape] = useState({})
-  const capActif = pointerCoarse ? RENDER_CAP_TACTILE : RENDER_CAP
   const chargerPlus = useCallback((stageKey) => {
     setLimiteParEtape((prev) => ({
       ...prev,
-      // Le pas d'extension reste RENDER_CAP (40) ; la BASE, elle, dépend du
-      // pointeur (10 au doigt) — sans quoi le premier « Charger plus » tactile
-      // sauterait de 10 à 80 (base desktop 40 + pas 40).
-      [stageKey]: (prev[stageKey] ?? capActif) + RENDER_CAP,
+      [stageKey]: (prev[stageKey] ?? RENDER_CAP) + RENDER_CAP,
     }))
-  }, [capActif])
+  }, [])
 
   /* EZ14 — adoptions n°7 et 8 : sur le board, la RÉASSIGNATION et le
      changement d'étape au CLAVIER (StageMover) gagnent l'undo.
@@ -589,12 +595,15 @@ export default function KanbanView({
             collapsed={collapsedStages.has(col.key)}
             onToggleCollapse={() => toggleCollapsed(col.key)}
           >
-            {/* APX9 — plafond de RENDU : on ne monte que les N premières
-                cartes, le reste attend « Charger plus ». Les données sont déjà
-                en mémoire — aucun appel réseau ici. */}
+            {/* APX9 — plafond de RENDU au DESKTOP : on ne monte que les N
+                premières cartes, le reste attend « Charger plus ». Les données
+                sont déjà en mémoire — aucun appel réseau ici.
+                AU DOIGT : aucun plafond (ordre fondateur 2026-08-01) — la
+                colonne est un rouleau qu'on parcourt au pouce, `restants`
+                vaut donc 0 et le bouton n'est jamais rendu. */}
             {(() => {
               const visibles = col.leads
-              const limite = limiteParEtape[col.key] ?? capActif
+              const limite = pointerCoarse ? visibles.length : (limiteParEtape[col.key] ?? RENDER_CAP)
               const restants = Math.max(0, visibles.length - limite)
               return (
                 <>
