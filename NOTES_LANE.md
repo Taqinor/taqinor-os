@@ -33,3 +33,27 @@ touché (une autre lane y travaille en parallèle).
 3. **Contrat import-linter `calepinage-est-un-noyau-pur`** : inchangé et
    satisfait (le sous-paquet n'importe aucun `core.models` / `core.services` /
    `apps.*` / Django).
+
+4. **Adaptateur `Resultat` -> `DonneesPlanche` à écrire côté consommateur.**
+   `rendu/planche.py` définit le CONTRAT de projection (`DonneesPlanche` et ses
+   structures) mais ne connaît pas `core.calepinage.types` (pas encore sur cette
+   base). La fonction qui projette un `Resultat`/`Plan` validé vers une
+   `DonneesPlanche` appartient au consommateur (`apps.ao`) ou à une tâche
+   ultérieure du paquet ; elle n'a été ni écrite ni devinée ici.
+
+## DÉCISIONS DE CETTE LANE
+
+* **Zéro `pyplot`.** `Feuille` instancie `Figure` + `FigureCanvasAgg` directement.
+  C'est ce qui satisfait d'un coup les trois exigences d'AOF63 (pas d'état global,
+  deux fils concurrents indépendants, zéro figure fuitée) et c'est aussi ce qui
+  évite l'attribut `savefig` interdit par le test de pureté d'AOF33 (l'API
+  bas-niveau `canvas.print_figure` est utilisée à la place).
+* **Une seule tolérance d'arithmétique métier dans `rendu/`** : `bandeau.ecart`
+  (AOF67), nommée dans `ARITHMETIQUE_TOLEREE` de
+  `core/tests/test_calepinage_planche.py` et dont le corps est vérifié par AST
+  dans `core/tests/test_calepinage_bandeau.py`.
+* **Le « test de contenu binaire » d'AOF64 est doublé.** matplotlib écrit les
+  PDF en polices Type 3 : aucun texte rendu n'y figure littéralement, donc un
+  `assertNotIn(b"TAQINOR", pdf)` seul serait vert quoi qu'il arrive. Le contrôle
+  porte donc (a) sur les textes rendus relus sur la figure et (b) sur le
+  dictionnaire de métadonnées, seul littéral du fichier — avec témoin négatif.
