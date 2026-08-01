@@ -170,9 +170,13 @@ class TestClauseDeReserve(BaseBordereau):
                       ' '.join(ctx.exception.message_dict['clause_reserve']))
 
     def test_le_serializer_refuse_aussi(self):
+        # `intitule` distinct de celui du bordereau du setUp : sans lui, la
+        # contrainte d'unicité (appel_offre, intitule, indice_revision) —
+        # ajoutée par YDATA — répond AVANT la validation métier, et le test
+        # ne prouverait plus rien sur la clause de réserve.
         serializer = BordereauPrixSerializer(data={
-            'appel_offre': self.ao.id, 'marche_prix_unitaires': True,
-            'clause_reserve': '   '})
+            'appel_offre': self.ao.id, 'intitule': 'Bordereau bis',
+            'marche_prix_unitaires': True, 'clause_reserve': '   '})
         self.assertFalse(serializer.is_valid())
         self.assertIn('clause_reserve', serializer.errors)
 
