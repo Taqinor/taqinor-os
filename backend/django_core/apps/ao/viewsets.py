@@ -159,6 +159,9 @@ class DossierAOViewSet(AoBaseViewSet):
             'bloquant': bool(passe['bloquants']),
             'bloquants': passe['bloquants'],
             'avertissements': passe['avertissements'],
+            # AOF149 — comptées ET nommées : jamais tues.
+            'nombre_hors_controle': passe['nombre_hors_controle'],
+            'hors_controle': passe['hors_controle'],
         })
 
     @action(detail=True, methods=['get'], url_path='controle-administratif')

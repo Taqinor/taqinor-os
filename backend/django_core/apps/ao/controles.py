@@ -388,6 +388,38 @@ def _cotes_a_confirmer(ctx):
     return anomalies
 
 
+@regle('AO_PIECES_HORS_CONTROLE',
+       'Les pièces FOURNIES sont signalées hors contrôle, avec leur motif',
+       severite=INFO)
+def _pieces_hors_controle(ctx):
+    """AOF149 — ce qui n'est pas fabriqué n'est JAMAIS présumé vert.
+
+    Ces pièces ne sont pas des anomalies : elles sont HORS du périmètre des
+    invariants. Les taire donnerait un dossier « tout vert » dont un tiers
+    n'a jamais été vérifié — plus dangereux qu'un dossier orange.
+    """
+    hors = [p for p in ctx['pieces'] if p.etat_controle == 'hors_controle']
+    if not hors:
+        return []
+    return [_anomalie(
+        f'{len(hors)} pièce(s) HORS CONTRÔLE (non produites par la fabrique, '
+        f'donc non vérifiées par les invariants) : '
+        + ' ; '.join(
+            f'{p.code} « {p.libelle} » — {p.motif or "motif manquant"}'
+            for p in hors) + '.',
+        objet='pièces hors contrôle')]
+
+
+@regle('AO_HORS_CONTROLE_SANS_MOTIF',
+       'Une pièce hors contrôle DOIT dire pourquoi elle y échappe')
+def _hors_controle_sans_motif(ctx):
+    anomalies = []
+    for piece in ctx['pieces']:
+        for raison in piece.raisons_hors_controle():
+            anomalies.append(_anomalie(raison, objet=f'pièce {piece.code}'))
+    return anomalies
+
+
 @regle('AO_SANITISATION',
        'Aucun mot bloquant de sanitisation dans les rendus client')
 def _sanitisation(ctx):

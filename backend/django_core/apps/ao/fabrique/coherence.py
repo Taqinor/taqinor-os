@@ -23,6 +23,7 @@ __all__ = [
     'controles_bloquants',
     'empreinte_dossier',
     'passer_controle',
+    'pieces_hors_controle',
 ]
 
 
@@ -117,12 +118,31 @@ def passer_controle(dossier, *, codes=None):
                  if r['severite'] == controles.BLOQUANT]
     avertissements = [r for r in resultats
                       if r['severite'] == controles.AVERTISSEMENT]
+    hors = pieces_hors_controle(dossier)
     return {
         'empreinte': empreinte,
         'bloquants': bloquants,
         'avertissements': avertissements,
         'resultats': resultats,
+        # AOF149 — le rapport COMPTE et NOMME les pièces hors contrôle : un
+        # dossier « tout vert » dont un tiers n'a jamais été vérifié est plus
+        # dangereux qu'un dossier orange.
+        'hors_controle': [
+            {'code': piece.code, 'libelle': piece.libelle,
+             'motif': piece.motif, 'etat': piece.etat_controle}
+            for piece in hors
+        ],
+        'nombre_hors_controle': len(hors),
     }
+
+
+def pieces_hors_controle(dossier):
+    """Les pièces PRÉSENTES que la fabrique n'a pas produites (AOF149)."""
+    from ..models import PieceDossierAO
+
+    return [piece for piece in dossier.pieces.all()
+            if piece.controlee == PieceDossierAO.HORS_CONTROLE
+            and piece.presente]
 
 
 def controles_bloquants(dossier):

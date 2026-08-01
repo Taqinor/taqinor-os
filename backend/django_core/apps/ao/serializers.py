@@ -599,6 +599,11 @@ class PieceDossierAOSerializer(serializers.ModelSerializer):
     visibilite_display = serializers.CharField(
         source='get_visibilite_display', read_only=True)
     source = serializers.CharField(read_only=True)
+    # AOF149 — l'état de contrôle est AFFICHÉ distinctement : une pièce
+    # fournie n'apparaît jamais « verte », mais « hors contrôle ».
+    etat_controle = serializers.CharField(read_only=True)
+    controlee_display = serializers.CharField(
+        source='get_controlee_display', read_only=True)
 
     class Meta:
         model = PieceDossierAO
@@ -606,8 +611,24 @@ class PieceDossierAOSerializer(serializers.ModelSerializer):
             'id', 'dossier', 'ordre', 'code', 'libelle', 'type_piece',
             'type_piece_display', 'obligatoire', 'presente', 'visibilite',
             'visibilite_display', 'attachment', 'piece_soumission', 'signee',
-            'motif', 'source',
+            'motif', 'source', 'controlee', 'controlee_display',
+            'etat_controle', 'empreinte_source',
         ]
+        read_only_fields = ['empreinte_source']
+
+    def validate(self, attrs):
+        """Une pièce HORS CONTRÔLE doit dire POURQUOI elle y échappe."""
+        instance = getattr(self, 'instance', None)
+        controlee = attrs.get(
+            'controlee', getattr(instance, 'controlee', 'fabriquee'))
+        motif = attrs.get('motif', getattr(instance, 'motif', '') or '')
+        if controlee == PieceDossierAO.HORS_CONTROLE and not motif.strip():
+            raise serializers.ValidationError({'motif': (
+                "Une pièce que la fabrique n'a pas produite doit dire "
+                'POURQUOI elle échappe aux contrôles : sans motif, elle '
+                'passerait silencieusement pour conforme.'
+            )})
+        return attrs
 
 
 class PieceAdministrativeSerializer(serializers.ModelSerializer):

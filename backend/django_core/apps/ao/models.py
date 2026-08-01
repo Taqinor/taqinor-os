@@ -2762,6 +2762,20 @@ class PieceDossierAO(TenantModel):
     )
     motif = models.TextField(
         blank=True, default='', verbose_name='Motif / commentaire')
+    #: AOF149 — ce qui n'est pas FABRIQUÉ par la fabrique n'est jamais présumé
+    #: vert. Les invariants d'AOF146 ne s'appliquent qu'aux pièces produites
+    #: ici : dès qu'une pièce est fournie à la main (acte d'engagement au
+    #: modèle de l'acheteur, attestations, caution bancaire, checklist remplie
+    #: par le partenaire), elle échappe aux contrôles. Un dossier « tout vert »
+    #: dont un tiers n'a jamais été vérifié est plus dangereux qu'un dossier
+    #: orange : elle est donc marquée HORS CONTRÔLE, avec un motif OBLIGATOIRE.
+    controlee = models.CharField(
+        max_length=14, default='fabriquee',
+        choices=[
+            ('fabriquee', 'Fabriquée (contrôlée)'),
+            ('hors_controle', 'Fournie — HORS CONTRÔLE'),
+        ],
+        verbose_name='Régime de contrôle')
     #: AOF146 — empreinte du CONTEXTE au moment où l'artefact a été produit.
     #: Une pièce dont l'empreinte diverge de l'empreinte courante du dossier
     #: est PÉRIMÉE : c'est le défaut réel du « LISEZ-MOI figé » resté dans le
@@ -2795,6 +2809,10 @@ class PieceDossierAO(TenantModel):
         etat = 'présente' if self.presente else 'manquante'
         return f'{self.code} {self.libelle} ({etat})'
 
+    #: AOF149 — les deux régimes de contrôle, nommés une seule fois.
+    FABRIQUEE = 'fabriquee'
+    HORS_CONTROLE = 'hors_controle'
+
     @property
     def source(self):
         """« generee » / « legacy » / « aucune » — d'où vient le fichier."""
@@ -2803,6 +2821,39 @@ class PieceDossierAO(TenantModel):
         if self.piece_soumission_id:
             return 'legacy'
         return 'aucune'
+
+    @property
+    def etat_controle(self):
+        """« manquante » / « hors_controle » / « verte » (AOF149).
+
+        Une pièce FOURNIE n'apparaît JAMAIS « verte » : le vert veut dire
+        « vérifié par la fabrique », et une pièce qu'elle n'a pas produite n'a
+        pas été vérifiée. Elle est « hors contrôle », avec son motif.
+        """
+        if not self.presente:
+            return 'manquante'
+        if self.controlee == self.HORS_CONTROLE:
+            return 'hors_controle'
+        return 'verte'
+
+    def raisons_hors_controle(self):
+        """Motif manquant sur une pièce hors contrôle (liste, jamais None)."""
+        if self.controlee != self.HORS_CONTROLE:
+            return []
+        if (self.motif or '').strip():
+            return []
+        return [(
+            f'Pièce {self.code} « {self.libelle} » déclarée HORS CONTRÔLE '
+            f"sans motif : une pièce que la fabrique n'a pas produite doit "
+            f'dire POURQUOI elle échappe aux contrôles.'
+        )]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        raisons = self.raisons_hors_controle()
+        if raisons:
+            raise ValidationError({'motif': raisons})
 
 
 # ── AOF116 — Gabarits de pack + bibliothèque de sections ───────────────────
