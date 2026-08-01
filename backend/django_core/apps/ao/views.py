@@ -24,8 +24,13 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
+from rest_framework.views import APIView
+
+from core.permissions import ScopedPermission
 
 from . import services
+from .permissions import AO_GERER, AO_VOIR
 from .models import (
     AppelOffre,
     BatimentAO,
@@ -88,6 +93,55 @@ def _filtres_exacts(queryset, params, champs):
             continue
         queryset = queryset.filter(**{champ: valeur})
     return queryset
+
+
+# ── AOF31 — Contrat d'API PUBLIÉ ───────────────────────────────────────────
+#
+# Le contrat n'est pas une page de documentation qu'on oublie de mettre à jour :
+# il est DÉRIVÉ du routeur au moment de la requête. Une ressource ajoutée sans
+# être décrite apparaît quand même ; une ressource retirée disparaît. C'est ce
+# qui permet aux lanes frontend et fabrique de coder contre quelque chose de
+# vrai plutôt que contre une liste recopiée à la main.
+
+class ContratApiAO(APIView):
+    """``GET /api/django/ao/contrat/`` — les ressources AO et leurs filtres.
+
+    Gardé par ``ao_voir`` comme le reste du domaine : le contrat décrit un
+    périmètre métier, il n'a pas à être plus public que les données.
+    """
+    permission_classes = [ScopedPermission]
+    read_permission = AO_VOIR
+    write_permission = AO_GERER
+
+    def get(self, request):
+        from .urls import router
+
+        ressources = []
+        for prefixe, viewset, basename in router.registry:
+            modele = getattr(viewset, 'queryset', None)
+            actions = sorted(
+                nom for nom in dir(viewset)
+                if getattr(getattr(viewset, nom, None), 'mapping', None)
+            )
+            ressources.append({
+                'prefixe': prefixe,
+                'basename': basename,
+                'modele': (modele.model._meta.label_lower
+                           if modele is not None else None),
+                'recherche': list(getattr(viewset, 'search_fields', []) or []),
+                'tri': list(getattr(viewset, 'ordering_fields', []) or []),
+                'actions': actions,
+            })
+        return Response({
+            'prefixe': '/api/django/ao/',
+            'permissions': {'lecture': AO_VOIR, 'ecriture': AO_GERER},
+            'pagination': {
+                'style': 'page',
+                'parametres': ['page', 'page_size'],
+                'taille_par_defaut': api_settings.PAGE_SIZE,
+            },
+            'ressources': sorted(ressources, key=lambda r: r['prefixe']),
+        })
 
 
 # ── FG222 — Gestion des appels d'offres ────────────────────────────────────
