@@ -13,8 +13,13 @@ import { SIGNE_INTERCEPT } from '../signeIntercept'
    LB3 — (5) le rejet SIGNE_INTERCEPT (SigneDialog qui s'ouvre) restaure SANS
    toaster ; (6) un vrai échec réseau restaure ET toaste (contrat inchangé). */
 
+// ORDRE FONDATEUR 2026-08-01 — le StageMover peut désormais faire RECULER un
+// lead, sous confirmation (features/crm/confirmRecul, bâti sur ce module).
+// `mockConfirmerRecul` est piloté par test : `true` = l'utilisatrice a dit oui.
+const mockConfirmerRecul = vi.fn(() => Promise.resolve(true))
 vi.mock('../../../../ui/confirm', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
+  useConfirmDialog: () => ({ confirm: mockConfirmerRecul, confirmDelete: vi.fn() }),
 }))
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -43,7 +48,9 @@ describe('KanbanView · StageMover (J140 clavier + L151 optimiste)', () => {
     fireEvent.change(screen.getByLabelText(/Changer l'étape/), {
       target: { value: 'CONTACTED' },
     })
-    expect(onInlineSave).toHaveBeenCalledWith(lead, 'stage', 'CONTACTED')
+    // 4e argument (ordre fondateur 2026-08-01) : les marqueurs write-only du
+    // serializer. Une AVANCÉE n'en porte aucun.
+    expect(onInlineSave).toHaveBeenCalledWith(lead, 'stage', 'CONTACTED', { confirmeRecul: false })
     // Pendant le commit : libellé inline + valeur optimiste affichée.
     await waitFor(() => expect(screen.getByText('Enregistrement…')).toBeInTheDocument())
     expect(screen.getByLabelText(/Changer l'étape/)).toHaveValue('CONTACTED')
@@ -68,7 +75,9 @@ describe('KanbanView · StageMover (J140 clavier + L151 optimiste)', () => {
     fireEvent.change(screen.getByLabelText(/Changer l'étape/), {
       target: { value: 'SIGNED' },
     })
-    await waitFor(() => expect(onInlineSave).toHaveBeenCalledWith(lead, 'stage', 'SIGNED'))
+    await waitFor(() => expect(onInlineSave).toHaveBeenCalledWith(
+      lead, 'stage', 'SIGNED', { confirmeRecul: false },
+    ))
     // Le select revient honnêtement à l'étape réelle (fini le « Signé ✓
     // Enregistré » fantôme d'un faux Promise.resolve()).
     await waitFor(() =>
@@ -76,9 +85,10 @@ describe('KanbanView · StageMover (J140 clavier + L151 optimiste)', () => {
     expect(toast.error).not.toHaveBeenCalled()
   })
 
-  it('LB4 : les options de recul sont grisées, COLD→actif reste sélectionnable (bug #7/#8)', () => {
-    // Un lead FOLLOW_UP (rang 3) : reculer vers NEW/CONTACTED/QUOTE_SENT est
-    // interdit (disabled), avancer vers SIGNED ou parker en COLD reste permis.
+  it("ordre fondateur 2026-08-01 : seule l'étape COURANTE est grisée — reculer est légitime", () => {
+    // AVANT (LB4) : reculer était grisé, donc impossible et inexpliqué. Un
+    // <option disabled> n'apprend rien à personne. Le garde-fou n'a pas
+    // disparu — il est devenu une QUESTION (test suivant).
     render(
       <StageMover
         lead={{ id: 8, nom: 'Test2', stage: 'FOLLOW_UP' }}
@@ -87,12 +97,69 @@ describe('KanbanView · StageMover (J140 clavier + L151 optimiste)', () => {
     )
     const select = screen.getByLabelText(/Changer l'étape/)
     const byValue = (v) => [...select.options].find((o) => o.value === v)
-    expect(byValue('NEW').disabled).toBe(true)
-    expect(byValue('CONTACTED').disabled).toBe(true)
-    expect(byValue('QUOTE_SENT').disabled).toBe(true)
-    expect(byValue('FOLLOW_UP').disabled).toBe(false) // étape courante
-    expect(byValue('SIGNED').disabled).toBe(false)
-    expect(byValue('COLD').disabled).toBe(false)
+    for (const s of ['NEW', 'CONTACTED', 'QUOTE_SENT', 'SIGNED', 'COLD']) {
+      expect(byValue(s).disabled).toBe(false)
+    }
+    // La seule option qui ne veut rien dire : l'étape déjà en cours.
+    expect(byValue('FOLLOW_UP').disabled).toBe(true)
+  })
+
+  it('ordre fondateur 2026-08-01 : un recul CONFIRMÉ enregistre avec le marqueur', async () => {
+    const onInlineSave = vi.fn(() => Promise.resolve())
+    mockConfirmerRecul.mockResolvedValueOnce(true)
+    render(
+      <StageMover
+        lead={{ id: 10, nom: 'Recul', stage: 'FOLLOW_UP' }}
+        onInlineSave={onInlineSave}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/Changer l'étape/), {
+      target: { value: 'CONTACTED' },
+    })
+    await waitFor(() => expect(onInlineSave).toHaveBeenCalled())
+    // La question a bien été posée, et elle NOMME le lead et les deux étapes.
+    expect(mockConfirmerRecul).toHaveBeenCalled()
+    expect(mockConfirmerRecul.mock.calls[0][0].title).toContain('Recul')
+    expect(mockConfirmerRecul.mock.calls[0][0].title).toContain('Relance')
+    expect(mockConfirmerRecul.mock.calls[0][0].title).toContain('Contacté')
+    // Le marqueur accompagne l'enregistrement (sans lui le serveur 400).
+    expect(onInlineSave).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 10 }), 'stage', 'CONTACTED', { confirmeRecul: true },
+    )
+  })
+
+  it("ordre fondateur 2026-08-01 : un recul ANNULÉ n'enregistre RIEN", async () => {
+    const onInlineSave = vi.fn(() => Promise.resolve())
+    mockConfirmerRecul.mockResolvedValueOnce(false)
+    render(
+      <StageMover
+        lead={{ id: 11, nom: 'Annulé', stage: 'FOLLOW_UP' }}
+        onInlineSave={onInlineSave}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/Changer l'étape/), {
+      target: { value: 'NEW' },
+    })
+    await waitFor(() => expect(mockConfirmerRecul).toHaveBeenCalled())
+    expect(onInlineSave).not.toHaveBeenCalled()
+  })
+
+  it("une AVANCÉE ne pose aucune question et ne porte pas le marqueur", async () => {
+    const onInlineSave = vi.fn(() => Promise.resolve())
+    render(
+      <StageMover
+        lead={{ id: 12, nom: 'Avance', stage: 'NEW' }}
+        onInlineSave={onInlineSave}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/Changer l'étape/), {
+      target: { value: 'CONTACTED' },
+    })
+    await waitFor(() => expect(onInlineSave).toHaveBeenCalled())
+    expect(mockConfirmerRecul).not.toHaveBeenCalled()
+    expect(onInlineSave).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 12 }), 'stage', 'CONTACTED', { confirmeRecul: false },
+    )
   })
 
   it('LB4 : un lead COLD peut réactiver vers n’importe quelle étape active (bug #7)', () => {

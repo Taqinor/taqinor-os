@@ -19,6 +19,11 @@ import { isTypingTarget } from '../../../providers/shortcuts'
 import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
 import { pushRecentEntity } from '../../../providers/commandActions'
 import { normalizeMaPhone } from '../../../lib/format'
+import { isStageMoveBackward } from '../stages'
+// ORDRE FONDATEUR 2026-08-01 — la MÊME question que sur le board (elle nomme le
+// lead et les deux étapes) : une seule formulation pour tous les gestes qui
+// font reculer un lead.
+import { useConfirmerRecul } from '../confirmRecul'
 import { useLeadDraft, rememberVille } from './useLeadDraft'
 import { schedulePrefetch } from './leadPrefetch'
 import { getField } from './draftCore'
@@ -145,6 +150,12 @@ export default function LeadWorkspace({
   // entier — on ne dépend que de scalaires.
   const leadId = lead?.id ?? null
   const leadArchived = !!lead?.is_archived
+  // Ordre fondateur 2026-08-01 — scalaires du recul confirmé, hoistés pour la
+  // même raison que ci-dessus (deps du useCallback = scalaires uniquement).
+  // L'étape de RÉFÉRENCE est celle du serveur, jamais celle du draft : `stage`
+  // n'entre jamais dans le draft (voir useLeadDraft.changeStage).
+  const stageCourant = state.server?.stage ?? null
+  const leadNom = state.server?.nom ?? lead?.nom ?? ''
 
   // ── Données de référence (partagées avec les rails / sections) ────────────
   const [users, setUsers] = useState([])
@@ -226,6 +237,20 @@ export default function LeadWorkspace({
     })
   }, [leadId, leadArchived, leaveGuard, dispatch, onSaved, onClose])
 
+  /* ORDRE FONDATEUR 2026-08-01 — « les leads doivent pouvoir REVENIR EN
+     ARRIÈRE d'étape, avec une confirmation avant ».
+     Une AVANCÉE part directement (rien à demander) ; un RECUL pose la question
+     partagée (elle nomme le lead et les deux étapes) et n'appelle le moteur
+     qu'après un oui — avec le marqueur que le serveur exige. Annulée, on ne
+     touche à rien : aucun PATCH, l'étape affichée ne bouge pas. */
+  const confirmerRecul = useConfirmerRecul()
+  const changeStageConfirme = useCallback(async (cible) => {
+    if (!isStageMoveBackward(stageCourant, cible)) return changeStage(cible)
+    const ok = await confirmerRecul({ nom: leadNom, stage: stageCourant }, cible)
+    if (!ok) return undefined
+    return changeStage(cible, { confirmeRecul: true })
+  }, [changeStage, confirmerRecul, stageCourant, leadNom])
+
   // Contrat d'action des rails (IdentityRail/ContextRail — autres lanes) :
   // toutes les sorties/points de mutation passent par ici.
   const onAction = useCallback((type, payload) => {
@@ -254,13 +279,18 @@ export default function LeadWorkspace({
       // pour 1-4) ; un recul de funnel refusé (400) surface un toast — géré
       // à l'INTÉRIEUR de `changeStage` (useLeadDraft.js), un seul endroit
       // pour les DEUX appelants (raccourci clavier + StageControl).
-      case 'change-stage': return changeStage(payload)
+      // ORDRE FONDATEUR 2026-08-01 — un recul est désormais possible, sous
+      // confirmation. La QUESTION se pose ici et pas dans StageControl :
+      // c'est le seul point par lequel passent les DEUX entrées du contrôle
+      // (le menu d'étape ET les raccourcis « 1-4 »), et StageControl reste ce
+      // que son contrat annonce — un déclencheur qui ne patche jamais.
+      case 'change-stage': return changeStageConfirme(payload)
       // 'apply-card' : volontairement inerte pour l'instant (hors périmètre).
       case 'refresh': return draft.refreshServer()
       case 'close': return leaveGuard(onClose)
       default: return undefined
     }
-  }, [doArchive, leaveGuard, leadId, navigate, draft, onClose, setField, changeStage])
+  }, [doArchive, leaveGuard, leadId, navigate, draft, onClose, setField, changeStageConfirme])
 
   // ── File de rafale (◀▶ + J/K), gardée par leaveGuard (draft flushé) ───────
   const queueIndex = (leadsQueue && mode === 'edit')

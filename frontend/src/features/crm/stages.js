@@ -129,6 +129,26 @@ export function isStageMoveAllowed(current, target) {
   return funnelRank(target) > funnelRank(current)
 }
 
+// ORDRE FONDATEUR 2026-08-01 — « les leads doivent pouvoir REVENIR EN ARRIÈRE
+// d'étape, avec une confirmation avant ».
+// `isStageMoveAllowed` garde EXACTEMENT sa sémantique : « ce mouvement avance
+// (ou parque au froid) ». On ne l'élargit pas — c'est le miroir byte-à-byte de
+// `_bulk_stage_allowed`, et le bulk reste en avant seulement. On ajoute à côté
+// la question complémentaire : « ce mouvement RECULE ? ». Les surfaces
+// composent les deux — autorisé = avance OU recul-confirmé — et n'ont ainsi
+// jamais à redériver un rang de funnel localement (c'est ce qui avait produit
+// le bug #7, où COLD était classé au rang le plus haut).
+//   isStageMoveAllowed(a, b) et isStageMoveBackward(a, b) sont MUTUELLEMENT
+//   EXCLUSIFS et couvrent tout couple d'étapes distinctes.
+// COLD est HORS recul dans les deux sens : y aller est un parking, en venir est
+// une réactivation — `isStageMoveAllowed` les autorise déjà, ils n'ont donc
+// jamais besoin d'une confirmation.
+export function isStageMoveBackward(current, target) {
+  if (current === target) return false
+  if (current === 'COLD' || target === 'COLD') return false
+  return funnelRank(target) < funnelRank(current)
+}
+
 // Total TTC du devis le plus récent du lead (le serializer trie déjà du plus
 // récent au plus ancien) — 0 si aucun devis.
 export const latestDevisTotal = (lead) => {
