@@ -23,7 +23,11 @@ import {
 import { formatDateTime, formatDate } from '../../lib/format'
 import { telHref } from '../../lib/contactLinks'
 import { downloadVCard } from '../../lib/vcard'
-import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
+import {
+  withOfflineFallback, FIELD_OPS, queuePhoto, OutboxQuotaError,
+} from './offline/fieldOutbox'
+// EZ8 — le badge de synchro est monté LÀ où les photos partent en file.
+import OfflineSyncIndicator from './offline/OfflineSyncIndicator'
 import CameraCapture from '../pwa/CameraCapture'
 import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import {
@@ -36,20 +40,36 @@ import { TICKET_OPEN_STATUSES, TICKET_STATUS_LABELS } from '../sav/ticketStatuse
 // elle se synchronisera toute seule au retour du réseau.
 const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
 
-// VX105 — un upload photo/mémo n'est PAS filé (pas d'outbox binaire — territoire
-// FG386) : un échec réseau signifie que la photo est PERDUE si le technicien ne
-// la reprend pas. Le message d'échec doit donc être DISTINCT du « mis en file »
-// de succès du panneau voisin, et persistant (jamais l'illusion d'un envoi).
+// EZ8 — une photo n'est PLUS perdue sur une coupure réseau : elle part dans la
+// file BINAIRE de l'outbox terrain EXISTANT (jamais un 2ᵉ outbox — VX105 ×3) et
+// se rejoue toute seule au retour du réseau. Le message « reprenez-la » ne reste
+// que pour ce qui n'a VRAIMENT pas pu être filé (stockage saturé).
 function isNetworkFailure(err) {
   return (typeof navigator !== 'undefined' && navigator.onLine === false) || !err?.response
 }
-function photoUploadError(err) {
-  if (isNetworkFailure(err)) {
-    toast.error(
-      'Photo NON envoyée — réseau indisponible. Reprenez-la au retour du réseau.',
-      { duration: Infinity })
-    return
+
+// Met la photo en file, ou dit HONNÊTEMENT qu'elle n'a pas pu l'être.
+// `blob` est la photo DÉJÀ compressée (VX77) — jamais l'original de 4-8 Mo.
+async function filerPhoto(blob, { intervention, slot }) {
+  try {
+    await queuePhoto(blob, { intervention, slot })
+    return true
+  } catch (e) {
+    if (e instanceof OutboxQuotaError || e?.quota) {
+      toast.error(e.message, { duration: Infinity })
+    } else {
+      toast.error(
+        'Photo NON envoyée — réseau indisponible et mise en file impossible. '
+        + 'Reprenez-la au retour du réseau.',
+        { duration: Infinity })
+    }
+    return false
   }
+}
+
+function photoUploadError(err) {
+  // Erreur APPLICATIVE (le serveur a répondu) : à voir tout de suite, jamais
+  // filée — la refiler ne ferait que rejouer le même refus.
   toast.error(err?.response?.data?.detail ?? 'Téléversement impossible.')
 }
 
@@ -495,18 +515,37 @@ export function PhotosPanel({ intervention, onChanged }) {
     const slot = burstSlotRef.current
     if (!slot || rafale.length === 0) return
     setBusy(true)
+    // EZ8 — la rafale ne s'arrête plus à la première coupure : chaque photo
+    // qui ne passe pas est FILÉE, on continue avec les suivantes, et le bilan
+    // est annoncé une seule fois (envoyées / en file / perdues).
+    let envoyees = 0
+    let filees = 0
+    let perdues = 0
     try {
       for (const p of rafale) {
         const oriented = p.rotation === 0 ? p.file : await rotateImageBlob(p.file, p.rotation)
         const toSend = await compressPhotoForUpload(oriented)
-        await installationsApi.ajouterPhoto(id, toSend, slot.cle)
+        try {
+          await installationsApi.ajouterPhoto(id, toSend, slot.cle)
+          envoyees += 1
+        } catch (err) {
+          if (!isNetworkFailure(err)) { photoUploadError(err); perdues += 1; continue }
+          // eslint-disable-next-line no-await-in-loop
+          if (await filerPhoto(toSend, { intervention: id, slot: slot.cle })) filees += 1
+          else perdues += 1
+        }
       }
-      toast.success(`${rafale.length} photo${rafale.length > 1 ? 's' : ''} ajoutée${rafale.length > 1 ? 's' : ''}.`)
+      if (envoyees > 0) {
+        toast.success(`${envoyees} photo${envoyees > 1 ? 's' : ''} ajoutée${envoyees > 1 ? 's' : ''}.`)
+      }
+      if (filees > 0) {
+        toast.success(
+          `${filees} photo${filees > 1 ? 's' : ''} en file — envoi automatique au retour du réseau.`)
+      }
       clearRafale()
       await load(); onChanged?.()
-    } catch (err) {
-      photoUploadError(err)
     } finally { setBusy(false) }
+    return { envoyees, filees, perdues }
   }
   // Flux d'upload commun (choix de fichier ET capture caméra en direct).
   const uploadPhoto = async (file, slot) => {
@@ -518,8 +557,16 @@ export function PhotosPanel({ intervention, onChanged }) {
       // rurale. Les PDF/SVG passent intouchés (compressImage() no-op).
       // NTMOB12 — respecte la préférence « Qualité photo » (Mes préférences).
       const toSend = await compressPhotoForUpload(file)
-      await installationsApi.ajouterPhoto(id, toSend, slot)
-      toast.success('Photo ajoutée.')
+      try {
+        await installationsApi.ajouterPhoto(id, toSend, slot)
+        toast.success('Photo ajoutée.')
+      } catch (err) {
+        if (!isNetworkFailure(err)) throw err
+        // EZ8 — coupure réseau : la photo part en FILE, elle n'est pas perdue.
+        if (await filerPhoto(toSend, { intervention: id, slot })) {
+          toast.success('Photo en file — envoi automatique au retour du réseau.')
+        }
+      }
       await load(); onChanged?.()
     } catch (err) {
       photoUploadError(err)
@@ -549,6 +596,10 @@ export function PhotosPanel({ intervention, onChanged }) {
 
   return (
     <div className="flex flex-col gap-4 py-2 text-sm">
+      {/* EZ8 — badge de synchro À L'ENDROIT où les photos partent en file :
+          compteur exact (actions + photos) et bouton « Synchroniser ».
+          Silencieux quand tout est envoyé. */}
+      <OfflineSyncIndicator />
       <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
         className="hidden" onChange={onFile} />
       <input ref={burstRef} type="file" accept="image/png,image/jpeg,image/webp"
