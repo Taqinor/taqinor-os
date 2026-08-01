@@ -22,6 +22,13 @@ const { apiMock, rolesApiMock } = vi.hoisted(() => ({
 }))
 vi.mock('../../api/axios', () => ({ default: apiMock }))
 vi.mock('../../api/rolesApi', () => ({ default: rolesApiMock }))
+// ODY26 — l'axe « Applications visibles » monte les entrees de nav des apps
+// installees ; celle d'adsengine embarque un badge (`TodayNavIcon`) qui appelle
+// `adsengineApi.today.get()` au montage. Sans ce stub il rend `undefined.then`
+// et fait tomber tout le rendu. Meme motif que les tests adsengine existants.
+vi.mock('../../features/adsengine/adsengineApi', () => ({
+  default: { today: { get: () => Promise.resolve({ data: {} }) } },
+}))
 
 if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = class {

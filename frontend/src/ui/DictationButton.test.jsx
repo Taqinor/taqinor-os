@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent , act } from '@testing-library/react'
 import { DictationButton, isDictationSupported, DICTATION_PRIVACY_FR } from './DictationButton'
 
 /* EZ15 — Dictée INLINE au bureau (Web Speech du navigateur).
@@ -124,8 +124,11 @@ describe('DictationButton (EZ15)', () => {
     render(<DictationButton onText={() => {}} />)
     fireEvent.click(screen.getByRole('button', { name: 'Dicter' }))
     const rec = FakeRecognition.derniere
-    rec.onerror({ error: 'not-allowed' })
-    rec.onend()
+    // Ces rappels viennent du navigateur, PAS d'un evenement React : sans
+    // `act`, le `setEcoute(false)` qu'ils declenchent n'est pas encore
+    // rendu quand on interroge le DOM juste apres.
+    act(() => { rec.onerror({ error: 'not-allowed' }) })
+    act(() => { rec.onend() })
     expect(rec.startCount).toBe(1)
     expect(screen.getByRole('button', { name: 'Dicter' })).toHaveAttribute('aria-pressed', 'false')
     off()

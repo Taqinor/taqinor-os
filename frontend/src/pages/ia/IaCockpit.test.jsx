@@ -48,7 +48,9 @@ describe('IaCockpit', () => {
   it('affiche le titre et le KPI Actions IA (admin voit les 3 cartes)', async () => {
     renderWith(<IaCockpit />, 'admin')
     expect(screen.getByText('Intelligence')).toBeInTheDocument()
-    expect(screen.getByText('Traitement OCR')).toBeInTheDocument()
+    // `ModuleDashboard` rend des squelettes tant que `loading` est vrai :
+    // les tuiles n'existent qu'APRES la resolution du catalogue d'actions.
+    expect(await screen.findByText('Traitement OCR')).toBeInTheDocument()
     expect(screen.getByText('Agent IA conversationnel')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText('3')).toBeInTheDocument())
     expect(iaApi.getAgentActions).toHaveBeenCalledTimes(1)
@@ -56,7 +58,7 @@ describe('IaCockpit', () => {
 
   it('masque OCR et Agent IA pour un rôle normal (garde historique du menu)', async () => {
     renderWith(<IaCockpit />, 'normal')
-    expect(screen.getByText('Actions IA disponibles')).toBeInTheDocument()
+    expect(await screen.findByText('Actions IA disponibles')).toBeInTheDocument()
     expect(screen.queryByText('Traitement OCR')).not.toBeInTheDocument()
     expect(screen.queryByText('Agent IA conversationnel')).not.toBeInTheDocument()
     await waitFor(() => expect(screen.getByText('3')).toBeInTheDocument())

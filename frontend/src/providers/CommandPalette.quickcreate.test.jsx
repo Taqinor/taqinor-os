@@ -75,7 +75,12 @@ describe('CommandPalette — quick-create (NTUX10)', () => {
   it('sélectionner « Créer un devis » navigue toujours (écran dédié, pas de modal)', () => {
     openPalette()
     fireEvent.click(screen.getByText('Créer un devis'))
-    expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/nouveau')
+    // ODY27 — la palette navigue via `useCrossAppNavigate`, qui relaie
+    // `navigate(to, options)` : le 2e argument (undefined ici) ferait
+    // echouer un `toHaveBeenCalledWith` strict. On asserte la DESTINATION,
+    // qui est ce que ce test garde vraiment.
+    expect(navigateMock).toHaveBeenCalled()
+    expect(navigateMock.mock.calls[0][0]).toBe('/ventes/devis/nouveau')
     expect(openQuickCreateMock).not.toHaveBeenCalled()
   })
 
