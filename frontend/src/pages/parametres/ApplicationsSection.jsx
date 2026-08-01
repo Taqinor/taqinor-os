@@ -133,6 +133,21 @@ function dateCourte(iso) {
   return `${jj}/${mm}`
 }
 
+/* ODY25 — La ligne d'état d'une carte, construite à partir du JOURNAL
+   D'INSTALLATION (`GET /core/modules/journal/`) quand il existe :
+   « Installée le 12/07 par Meryem » / « Désactivée le 03/08 par Reda ».
+   Sans entrée de journal (bascule antérieure à ODY25, ou app jamais touchée),
+   on retombe sur la date du ModuleToggle, puis sur rien du tout — jamais sur
+   un auteur inventé. */
+function ligneEtat(mod, entree, ligneToggle) {
+  const quand = dateCourte(entree?.le ?? ligneToggle?.updated_at)
+  const par = entree?.par ? ` par ${entree.par}` : ''
+  if (!quand) return ''
+  return mod.actif
+    ? `Installée le ${quand}${par}`
+    : `Désactivée le ${quand}${par}`
+}
+
 export default function ApplicationsSection() {
   // Admin-gated (Directeur) : plus strict que le défaut admin/responsable
   // des autres sections — bascule de module est une action sensible.
@@ -141,6 +156,8 @@ export default function ApplicationsSection() {
   const [modules, setModules] = useState([])
   // clé module -> ligne ModuleToggle ({raison, updated_at}) quand elle existe.
   const [toggles, setToggles] = useState({})
+  // ODY25 — clé module -> dernière bascule journalisée ({actif, par, le, raison}).
+  const [journal, setJournal] = useState({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [busyKey, setBusyKey] = useState(null)
@@ -153,13 +170,23 @@ export default function ApplicationsSection() {
   const load = () => Promise.all([
     coreApi.modules.catalogue(),
     coreApi.modules.toggles.list(),
+    // ODY25 — le journal ENRICHIT la boutique, il ne la conditionne pas : s'il
+    // échoue (droits, backend plus ancien), l'écran reste pleinement
+    // fonctionnel avec un état sans auteur plutôt qu'une page en erreur.
+    coreApi.modules.journal().catch(() => ({ data: [] })),
   ])
-    .then(([catalogueRes, togglesRes]) => {
+    .then(([catalogueRes, togglesRes, journalRes]) => {
       setModules(catalogueRes.data ?? [])
       const rows = togglesRes.data?.results ?? togglesRes.data ?? []
       const map = {}
       rows.forEach((row) => { map[row.module] = row })
       setToggles(map)
+      const entrees = journalRes?.data?.results ?? journalRes?.data ?? []
+      const parModule = {}
+      ;(Array.isArray(entrees) ? entrees : []).forEach((row) => {
+        if (!parModule[row.module]) parModule[row.module] = row
+      })
+      setJournal(parModule)
       setLoadError(false)
     })
     .catch(() => setLoadError(true))
@@ -352,8 +379,14 @@ export default function ApplicationsSection() {
             <div className="module-store-grid">
               {group.items.map((mod) => {
                 const ligne = toggles[mod.key]
-                const raison = !mod.actif ? ligne?.raison : null
-                const quand = dateCourte(ligne?.updated_at)
+                const entree = journal[mod.key]
+                const raison = !mod.actif ? (ligne?.raison || entree?.raison) : null
+                // UNE seule phrase (un seul nœud de texte) : « Désactivée le
+                // 03/08 par Reda — raison : hors offre ».
+                const etatComplet = [
+                  ligneEtat(mod, entree, ligne),
+                  raison ? `raison : ${raison}` : '',
+                ].filter(Boolean).join(' — ')
                 const requis = mod.depends ?? []
                 return (
                   <div key={mod.key} className="module-store-card"
@@ -391,13 +424,8 @@ export default function ApplicationsSection() {
                         Nécessite : {nomsLisibles(requis)}
                       </p>
                     )}
-                    {mod.actif && quand && (
-                      <p className="mt-1.5 text-xs text-muted-foreground">
-                        Installée · le {quand}
-                      </p>
-                    )}
-                    {raison && (
-                      <p className="mt-1.5 text-xs italic text-muted-foreground">Motif : {raison}</p>
+                    {etatComplet && (
+                      <p className="mt-1.5 text-xs text-muted-foreground">{etatComplet}</p>
                     )}
                   </div>
                 )

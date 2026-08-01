@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
@@ -56,17 +56,26 @@ const TOGGLES = [
   { id: 10, module: 'flotte', actif: false, raison: 'Hors offre pilote' },
 ]
 
-const { catalogue, activer, desactiver, listToggles } = vi.hoisted(() => ({
+// ODY25 — journal d'installation (dernière bascule par module).
+const JOURNAL = [
+  {
+    module: 'flotte', actif: false, par: 'Reda',
+    le: '2026-08-03T09:30:00Z', raison: 'Hors offre pilote',
+  },
+]
+
+const { catalogue, activer, desactiver, listToggles, journal } = vi.hoisted(() => ({
   catalogue: vi.fn(),
   activer: vi.fn(() => Promise.resolve({ data: { actives: [] } })),
   desactiver: vi.fn(),
   listToggles: vi.fn(() => Promise.resolve({ data: [] })),
+  journal: vi.fn(() => Promise.resolve({ data: [] })),
 }))
 
 vi.mock('../../api/coreApi', () => ({
   default: {
     modules: {
-      catalogue, activer, desactiver,
+      catalogue, activer, desactiver, journal,
       toggles: { list: listToggles },
     },
   },
@@ -75,6 +84,11 @@ vi.mock('../../api/coreApi', () => ({
 import ApplicationsSection from './ApplicationsSection'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
+// `vi.clearAllMocks()` n'efface QUE l'historique d'appels : une implémentation
+// posée par `mockResolvedValue` dans un test fuiterait sur les suivants. On
+// repose donc le défaut « journal vide » avant chaque test (les deux tests
+// ODY25 le redéfinissent ensuite explicitement).
+beforeEach(() => { journal.mockResolvedValue({ data: [] }) })
 
 function renderWithRole(role) {
   const store = configureStore({ reducer: { auth: (state = { role }) => state } })
@@ -106,8 +120,9 @@ describe('ApplicationsSection (ODX5 + boutique ODY24)', () => {
     expect(screen.getByText('Services')).toBeInTheDocument()
     // Dépendance affichée en clair (libellé résolu, pas la clé technique).
     expect(screen.getByText(/Nécessite : Stock/)).toBeInTheDocument()
-    // Motif de désactivation affiché sous le module désactivé.
-    expect(screen.getByText(/Motif : Hors offre pilote/)).toBeInTheDocument()
+    // Motif de désactivation affiché sous le module désactivé (ODY25 : le
+    // motif rejoint la phrase d'état « … — raison : … »).
+    expect(screen.getByText(/raison : Hors offre pilote/)).toBeInTheDocument()
     // États rendus (langage boutique ODY24).
     expect(screen.getAllByText('Installée').length).toBe(2)
     expect(screen.getAllByText('Disponible').length).toBe(2)
@@ -206,6 +221,28 @@ describe('ApplicationsSection (ODX5 + boutique ODY24)', () => {
     await user.click(screen.getByRole('button', { name: 'Désactiver en cascade' }))
 
     await waitFor(() => expect(desactiver).toHaveBeenNthCalledWith(2, 'sav', { cascade: true }))
+  })
+
+  it('ODY25 — affiche QUI a désactivé QUOI et QUAND (journal d’installation)', async () => {
+    catalogue.mockResolvedValue({ data: CATALOGUE })
+    listToggles.mockResolvedValue({ data: TOGGLES })
+    journal.mockResolvedValue({ data: JOURNAL })
+    renderWithRole('admin')
+
+    const flotteRow = await screen.findByTestId('module-row-flotte')
+    expect(within(flotteRow).getByText(
+      'Désactivée le 03/08 par Reda — raison : Hors offre pilote',
+    )).toBeInTheDocument()
+  })
+
+  it('ODY25 — un journal indisponible n’empêche pas la boutique de s’afficher', async () => {
+    catalogue.mockResolvedValue({ data: CATALOGUE })
+    listToggles.mockResolvedValue({ data: TOGGLES })
+    journal.mockRejectedValue({ response: { status: 403 } })
+    renderWithRole('admin')
+
+    expect(await screen.findByTestId('module-row-stock')).toBeInTheDocument()
+    expect(screen.queryByText('Impossible de charger le catalogue des modules')).toBeNull()
   })
 
   it('ODY24 — la recherche filtre la boutique (libellé, insensible aux accents)', async () => {

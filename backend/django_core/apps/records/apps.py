@@ -15,3 +15,10 @@ class RecordsConfig(AppConfig):
         'description': 'Chatter, activités et pièces jointes.',
         'categorie': 'Technique',
     }
+
+    def ready(self):
+        # ODY25 — journal d'installation des applications : `records` s'abonne
+        # à `core.events.module_toggled` et écrit la bascule dans SON chatter
+        # générique (ARC8). Import seul : le décorateur `@receiver` fait le
+        # câblage, idempotent au rechargement grâce à son `dispatch_uid`.
+        from . import receivers  # noqa: F401
