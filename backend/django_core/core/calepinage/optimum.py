@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 from core.calepinage.moteur import compter_plan, compter_rangee
+from core.calepinage.politique_pas import politique_par_defaut
 from core.calepinage.types import MethodePreuve, Plan, Preuve
 from core.calepinage.units import TOL_LONGUEUR_M
 
@@ -70,10 +71,15 @@ def positions_grille(ymin, ymax, pas):
 
 
 def _pas_apres(politique, parametres, kit, y0):
-    """Espacement après une rangée — scalaire par défaut, POLITIQUE si fournie."""
-    if politique is not None:
-        return politique.pas_apres_rangee(kit, y0)
-    return parametres.allee_m
+    """Espacement après une rangée — TOUJOURS une politique (AOF46).
+
+    Sans politique explicite, ``politique_par_defaut`` rend une ``AlleeFixe``
+    construite sur ``parametres.allee_m`` : le comportement AO est strictement
+    inchangé, et le DP n'a plus qu'UN seul chemin de calcul d'espacement.
+    """
+    if politique is None:
+        politique = politique_par_defaut(parametres)
+    return politique.pas_apres_rangee(kit, y0)
 
 
 def optimiser(surface, parametres, obstacles=(), zones=(), politique=None):
