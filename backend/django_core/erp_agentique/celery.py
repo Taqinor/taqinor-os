@@ -106,6 +106,13 @@ app.conf.beat_schedule = {
         'task': 'ventes.devis_followup_nudges',
         'schedule': crontab(hour=8, minute=15),
     },
+    # AOF15 — rappels d'échéances d'appel d'offres (remise des plis, ouverture,
+    # fin de validité). Un dossier d'AO se perd sur une date, jamais sur la
+    # technique : passage quotidien tôt, avant la journée de travail.
+    'ao-rappeler-echeances': {
+        'task': 'ao.rappeler_echeances',
+        'schedule': crontab(hour=6, minute=30),
+    },
     'notifications-daily-digest': {
         'task': 'notifications.daily_digest',
         'schedule': crontab(hour=7, minute=30),

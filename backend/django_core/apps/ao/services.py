@@ -8,6 +8,7 @@ dans ``apps.compta.services`` malgré la sortie ODX11 des modèles).
 ``ao`` ne lit crm/ventes QUE via leurs selectors/services ou par référence
 opaque — jamais leurs ``models`` (le lead reste un ``lead_id`` opaque).
 """
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ValidationError
@@ -132,6 +133,8 @@ def changer_statut_ao(appel_offre, nouveau_statut, *, user=None, motif=''):
         setattr(appel_offre, AppelOffre.ATTR_STATUT_AUTORISE, False)
 
     _journaliser_statut(appel_offre, ancien_statut, nouveau_statut, user, motif)
+    emettre_changement_statut_automation(
+        appel_offre, ancien_statut=ancien_statut, user=user)
 
     signal = _SIGNAUX_PAR_STATUT.get(nouveau_statut)
     if signal is not None:
@@ -154,6 +157,157 @@ def _journaliser_statut(appel_offre, ancien, nouveau, user, motif):
         old_value=libelles.get(ancien, ancien),
         new_value=libelles.get(nouveau, nouveau),
         body=motif or '', company=appel_offre.company)
+
+
+def emettre_changement_statut_automation(appel_offre, *, ancien_statut,
+                                         user=None):
+    """AOF15/ARC34 — évalue les règles no-code ``RECORD_STATE_CHANGE``.
+
+    Même précédent que ``contrats.services`` et ``gestion_projet.services`` :
+    appel direct à ``apps.automation.engine.evaluate()`` par un import
+    FONCTION-LOCAL, émission depuis le SERVICE (jamais depuis un modèle). Le
+    couple ``(ao.appeloffre, statut)`` est déclaré automatisable dans
+    ``apps/ao/platform.py`` (``automation_state_fields``) — la surface est donc
+    RÉELLEMENT câblée, jamais seulement annoncée (règle d'honnêteté ARC41). Le
+    statut visé est le statut de DOMAINE de l'AO, jamais une étape STAGES.py.
+    Best-effort : aucune erreur ne remonte, la transition est déjà actée.
+    """
+    if appel_offre.statut == ancien_statut:
+        return
+    try:
+        from apps.automation.engine import evaluate
+        from apps.automation.models import TriggerType
+
+        evaluate(
+            TriggerType.RECORD_STATE_CHANGE, appel_offre, appel_offre.company,
+            context={
+                'model': 'ao.appeloffre', 'field': 'statut',
+                'old_value': ancien_statut, 'new_value': appel_offre.statut,
+            },
+            user=user)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
+
+
+# ── AOF15 — Échéancier DÉRIVÉ du projet et du CPS ──────────────────────────
+#
+# L'échéancier n'est jamais saisi à la main : il se DÉRIVE des dates du projet
+# (remise des plis, ouverture, fin de validité) et des ``ExigenceCPS`` qui les
+# paramètrent. La génération est IDEMPOTENTE — rejouer ne duplique rien — et
+# une PROROGATION (validité rallongée, ouverture repoussée) DÉCALE l'échéance
+# existante au lieu d'en créer une seconde : sans cela un dossier prorogé deux
+# fois afficherait trois dates de validité concurrentes, et l'utilisateur
+# apprendrait à ignorer le bandeau de rappel.
+
+#: Libellés STABLES : ils servent de clé d'idempotence avec le type
+#: d'échéance. Les changer casserait la déduplication d'un dossier existant.
+LIBELLE_REMISE_PLIS = 'Remise des plis'
+LIBELLE_OUVERTURE = 'Ouverture des plis'
+LIBELLE_VALIDITE = "Fin de validité de l'offre"
+
+#: Rappel par défaut (jours avant) par type d'échéance.
+RAPPELS_PAR_DEFAUT = {
+    EcheanceAO.TypeEcheance.REMISE_PLIS: 7,
+    EcheanceAO.TypeEcheance.OUVERTURE: 1,
+    EcheanceAO.TypeEcheance.VALIDITE: 15,
+}
+
+
+def jours_validite_effectifs(appel_offre):
+    """Durée de validité RÉELLEMENT applicable, en jours (AOF15).
+
+    La clause ``VALIDITE_OFFRE`` du CPS (``ExigenceCPS``) PRIME sur la valeur
+    portée par le projet : c'est le règlement de consultation qui fait foi, et
+    une prorogation écrite se saisit comme une clause. À défaut de clause, on
+    retombe sur ``AppelOffre.validite_offre_jours``.
+    """
+    from .models import ExigenceCPS
+
+    clause = appel_offre.exigences_cps.filter(
+        type_exigence=ExigenceCPS.TypeExigence.VALIDITE_OFFRE,
+        valeur_num__isnull=False,
+    ).order_by('-updated_at').first()
+    if clause is not None:
+        return int(clause.valeur_num)
+    return appel_offre.validite_offre_jours or 0
+
+
+def date_fin_validite_effective(appel_offre):
+    """Fin de validité DÉRIVÉE (jamais stockée) — clause CPS prioritaire."""
+    base = appel_offre.date_ouverture_plis or appel_offre.date_limite
+    jours = jours_validite_effectifs(appel_offre)
+    if base is None or not jours:
+        return None
+    return base + timedelta(days=jours)
+
+
+def echeances_attendues(appel_offre):
+    """Les échéances que le projet IMPLIQUE aujourd'hui (calcul pur).
+
+    Renvoie une liste de dicts ``{type_echeance, libelle, date_echeance,
+    rappel_jours}``. Une date absente ne produit AUCUNE échéance — une date
+    inventée serait pire qu'une date manquante.
+    """
+    types = EcheanceAO.TypeEcheance
+    candidats = (
+        (types.REMISE_PLIS, LIBELLE_REMISE_PLIS, appel_offre.date_limite),
+        (types.OUVERTURE, LIBELLE_OUVERTURE, appel_offre.date_ouverture_plis),
+        (types.VALIDITE, LIBELLE_VALIDITE,
+         date_fin_validite_effective(appel_offre)),
+    )
+    attendues = []
+    for type_echeance, libelle, date_echeance in candidats:
+        if date_echeance is None:
+            continue
+        attendues.append({
+            'type_echeance': type_echeance,
+            'libelle': libelle,
+            'date_echeance': date_echeance,
+            'rappel_jours': RAPPELS_PAR_DEFAUT[type_echeance],
+        })
+    return attendues
+
+
+def generer_echeancier_ao(appel_offre):
+    """Génère/MET À JOUR l'échéancier d'un AO — IDEMPOTENT (AOF15).
+
+    Clé d'idempotence : ``(company, appel_offre, type_echeance)``. Rejouer sur
+    un dossier inchangé ne crée rien ; rejouer après une PROROGATION met à jour
+    la date de l'échéance existante (et donc décale son rappel) au lieu d'en
+    ajouter une nouvelle. Aucune I/O réseau ici : le service calcule et écrit,
+    l'envoi éventuel appartient à la tâche planifiée.
+
+    Returns:
+        ``{'creees': int, 'mises_a_jour': int, 'inchangees': int}``.
+    """
+    resume = {'creees': 0, 'mises_a_jour': 0, 'inchangees': 0}
+    for attendue in echeances_attendues(appel_offre):
+        existante = EcheanceAO.objects.filter(
+            company=appel_offre.company, appel_offre=appel_offre,
+            type_echeance=attendue['type_echeance'],
+        ).first()
+        if existante is None:
+            EcheanceAO.objects.create(
+                company=appel_offre.company, appel_offre=appel_offre,
+                **attendue)
+            resume['creees'] += 1
+            continue
+        change = (
+            existante.date_echeance != attendue['date_echeance']
+            or existante.libelle != attendue['libelle']
+        )
+        if not change:
+            resume['inchangees'] += 1
+            continue
+        existante.date_echeance = attendue['date_echeance']
+        existante.libelle = attendue['libelle']
+        # Une prorogation ROUVRE l'échéance : une date repoussée redevient
+        # « à traiter », sinon le rappel décalé ne serait jamais émis.
+        existante.traitee = False
+        existante.save(update_fields=[
+            'date_echeance', 'libelle', 'traitee', 'updated_at'])
+        resume['mises_a_jour'] += 1
+    return resume
 
 
 # ── FG226 — Échéances d'AO dues (rappels) ──────────────────────────────────
