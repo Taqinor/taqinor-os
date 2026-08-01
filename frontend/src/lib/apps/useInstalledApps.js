@@ -67,7 +67,11 @@ export function buildInstalledApps(
       return {
         key: c.key,
         label: c.nav.label,
-        icon: firstVisible.icon,
+        // APX1 — un module PEUT déclarer son icône d'app (`nav.icon`) : le
+        // glyphe devient alors indépendant de l'ORDRE de ses items. Sans ce
+        // champ (cas de tous les autres modules aujourd'hui), repli EXACT sur
+        // le comportement ODY1 : l'icône du premier item réellement ouvrable.
+        icon: c.nav.icon ?? firstVisible.icon,
         accent: c.nav.accent,
         to: firstVisible.to,
         // Pas encore déclarée dans les module.config (aucune ne le fait

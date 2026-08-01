@@ -191,7 +191,10 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           <span>Ce contact correspond au client {clientMatch[0].nom}</span>
           <a
             className="lw-banner-link"
-            href={`/crm/clients/${clientMatch[0].id}`}
+            /* APX1 — `/crm/clients/:id` n'a JAMAIS existé côté routeur (404
+               vérifié) : la fiche client s'ouvre par le lien profond `?id=`
+               que ClientList lit déjà (VX220, `ClientList.jsx:71-75`). */
+            href={`/crm?id=${clientMatch[0].id}`}
             target="_blank"
             rel="noopener noreferrer"
           >

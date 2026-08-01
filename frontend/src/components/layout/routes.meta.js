@@ -176,7 +176,11 @@ const TITLE_KEYS = {
 // inchangé (texte, non cliquable) pour les sections sans cockpit unique.
 const BASE_SECTION_LABELS = {
   stock: { label: 'Stock', to: '/stock' },
-  crm: { label: 'CRM', to: '/crm' },
+  // APX1 — la PORTE du CRM est `/crm/leads` (fondateur 2026-08-01) : le 1er
+  // segment du fil d'Ariane y renvoie, comme le lanceur/les épinglés/
+  // l'atterrissage (tous dérivés de `nav.items[0].to`). Pointait `/crm`
+  // (Clients) : le CRM avait deux « portes » contradictoires.
+  crm: { label: 'CRM', to: '/crm/leads' },
   ventes: { label: 'Ventes', to: '/ventes/devis' },
   chantiers: { label: 'Chantiers', to: '/chantiers' },
   parc: { label: 'Chantiers', to: '/chantiers' },
@@ -192,8 +196,10 @@ const BASE_SECTION_LABELS = {
   'dashboards-tv': { label: 'Analyse', to: '/reporting' },
   admin: { label: 'Administration', to: '/parametres' },
   parametres: { label: 'Administration', to: '/parametres' },
-  activites: { label: 'CRM', to: '/crm' },
-  calendrier: { label: 'CRM', to: '/crm' },
+  // APX1 — mêmes libellés « CRM » : même porte, sinon deux breadcrumbs
+  // « CRM » mèneraient à deux écrans différents.
+  activites: { label: 'CRM', to: '/crm/leads' },
+  calendrier: { label: 'CRM', to: '/crm/leads' },
   dashboard: { label: 'Tableau de bord', to: null },
   // ODY2 — le Menu d'accueil est sa propre racine (pas un sous-écran).
   apps: { label: 'Mes applications', to: '/apps' },

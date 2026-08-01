@@ -25,6 +25,10 @@ function configFor(key) {
  */
 export function iconNodeForApp(key) {
   const config = configFor(key)
+  // APX1 — `nav.icon` (icône d'app déclarée par le module) prime : elle rend le
+  // glyphe indépendant de l'ordre des items, et garde donc les QUATRE surfaces
+  // ODY9 d'accord avec `useInstalledApps()` qui applique la même précédence.
+  if (config?.nav?.icon) return config.nav.icon
   const items = config?.nav?.items ?? []
   const item = items.find((it) => it?.icon)
   return item?.icon ?? null
