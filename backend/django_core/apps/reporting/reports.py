@@ -421,7 +421,7 @@ def kpi_federes(request):
     ODY10 — « badges vivants » du Menu d'accueil. La réponse porte désormais
     AUSSI une clé ``badges`` : au plus UN compteur par app, DÉRIVÉ des tuiles
     déjà collectées ci-dessus — aucune requête supplémentaire, aucune
-    ré-agrégation à la main, aucune migration. ``?format=badges`` renvoie les
+    ré-agrégation à la main, aucune migration. ``?vue=badges`` renvoie les
     badges SEULS (charge utile légère pour une grille qui ne veut pas des
     tuiles détaillées). Un module désactivé pour la société disparaît du
     registre plateforme, donc de ses tuiles, donc de son badge : le gating
@@ -463,7 +463,11 @@ def kpi_federes(request):
             tuiles.append(normalisee)
 
     badges = _badges_depuis_tuiles(tuiles)
-    if request.query_params.get('format') == 'badges':
+    # ODY10 — le parametre s'appelle `vue`, PAS `format` : `format` est
+    # reserve par la negociation de contenu de DRF (URL_FORMAT_OVERRIDE),
+    # qui cherche un renderer nomme « badges », n'en trouve aucun et repond
+    # 404 avant meme que cette reponse soit rendue.
+    if request.query_params.get('vue') == 'badges':
         return Response({'count': len(badges), 'badges': badges})
     return Response({'count': len(tuiles), 'tuiles': tuiles, 'badges': badges})
 

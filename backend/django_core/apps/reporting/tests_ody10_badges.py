@@ -2,7 +2,7 @@
 
 Le contrat : au plus UN badge par app, DÉRIVÉ des tuiles que
 ``reports/kpi-federes/`` collecte déjà (aucune requête supplémentaire, aucune
-ré-agrégation à la main, aucun nouveau modèle ni migration), ``?format=badges``
+ré-agrégation à la main, aucun nouveau modèle ni migration), ``?vue=badges``
 pour une charge utile légère, et un cloisonnement société ABSOLU : la société A
 ne voit jamais les compteurs de B.
 """
@@ -128,9 +128,9 @@ class BadgeEndpointTests(TestCase):
         self.assertIn('gestion_projet', badges)
         self.assertEqual(badges['gestion_projet']['valeur'], 2)
 
-    def test_format_badges_renvoie_les_badges_SEULS(self):
+    def test_vue_badges_renvoie_les_badges_SEULS(self):
         self._seed_projets(self.company, 3)
-        resp = self.api.get(URL, {'format': 'badges'})
+        resp = self.api.get(URL, {'vue': 'badges'})
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertNotIn('tuiles', resp.data)
         self.assertEqual(resp.data['count'], len(resp.data['badges']))
@@ -140,14 +140,14 @@ class BadgeEndpointTests(TestCase):
         """Multi-tenant strict : le badge de A ne fuit jamais chez B."""
         self._seed_projets(self.company, 5)
         # B n'a AUCUN projet : elle ne doit voir aucun badge projets.
-        resp_b = auth(self.autre_user).get(URL, {'format': 'badges'})
+        resp_b = auth(self.autre_user).get(URL, {'vue': 'badges'})
         self.assertNotIn('gestion_projet', self._badges(resp_b))
         # Et A voit bien les siens, à leur valeur exacte.
-        resp_a = self.api.get(URL, {'format': 'badges'})
+        resp_a = self.api.get(URL, {'vue': 'badges'})
         self.assertEqual(self._badges(resp_a)['gestion_projet']['valeur'], 5)
         # Une donnée de B n'augmente pas le badge de A.
         self._seed_projets(self.other, 4)
-        resp_a2 = self.api.get(URL, {'format': 'badges'})
+        resp_a2 = self.api.get(URL, {'vue': 'badges'})
         self.assertEqual(self._badges(resp_a2)['gestion_projet']['valeur'], 5)
 
     def test_module_desactive_na_pas_de_badge(self):
@@ -155,7 +155,7 @@ class BadgeEndpointTests(TestCase):
         self._seed_compta(self.company)
         ModuleToggle.objects.create(
             company=self.company, module='gestion_projet', actif=False)
-        badges = self._badges(self.api.get(URL, {'format': 'badges'}))
+        badges = self._badges(self.api.get(URL, {'vue': 'badges'}))
         self.assertNotIn('gestion_projet', badges)
         # compta, restée active, garde le sien.
         self.assertIn('compta', badges)
@@ -163,6 +163,6 @@ class BadgeEndpointTests(TestCase):
     def test_superuser_sans_societe_recoit_une_liste_vide(self):
         su = User.objects.create_superuser(
             username='ody10_su', password='x', email='ody10su@example.com')
-        resp = auth(su).get(URL, {'format': 'badges'})
+        resp = auth(su).get(URL, {'vue': 'badges'})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['badges'], [])

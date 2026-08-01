@@ -143,7 +143,7 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // réel ~586. Croissance une-route-un-chunk, pas une prolifération de structure ;
 // le budget gzip (2900) + PER_CHUNK_BUDGET_KB (350) restent les vrais
 // garde-fous de poids.
-const MAX_CHUNK_COUNT = 610
+export const MAX_CHUNK_COUNT = 610
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

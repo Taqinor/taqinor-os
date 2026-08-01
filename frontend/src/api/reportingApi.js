@@ -99,10 +99,10 @@ const reportingApi = {
   kpiFederes: () => api.get('/reporting/reports/kpi-federes/'),
   // ODY10 — badges vivants du Menu d'accueil : au plus UN compteur par app,
   // DÉRIVÉ des mêmes tuiles fédérées (aucune ré-agrégation côté client, aucun
-  // second endpoint). `?format=badges` allège la charge utile — la grille ne
+  // second endpoint). `?vue=badges` allège la charge utile — la grille ne
   // veut pas le détail des tuiles.
   kpiBadges: () => api.get('/reporting/reports/kpi-federes/', {
-    params: { format: 'badges' },
+    params: { vue: 'badges' },
   }),
   // QJ18 — Tableau de bord commercial (entonnoir, vélocité, classement).
   commercialDashboard: (params) =>

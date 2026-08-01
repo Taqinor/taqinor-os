@@ -1,7 +1,7 @@
 // ODY10 — Badges vivants de la grille d'apps (l'accueil respire).
 // ----------------------------------------------------------------------------
 // UN SEUL appel réseau, agrégé côté serveur : l'endpoint fédéré ARC40 EXISTANT
-// `GET /reporting/reports/kpi-federes/?format=badges` (les providers sont
+// `GET /reporting/reports/kpi-federes/?vue=badges` (les providers sont
 // déclarés par chaque app dans son `platform.py`, collectés par
 // `core/platform.py`, gating ModuleToggle inclus). On ne ré-agrège JAMAIS à la
 // main côté client, et on n'interroge jamais une app en particulier.
