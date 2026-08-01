@@ -420,28 +420,68 @@ def _hors_controle_sans_motif(ctx):
     return anomalies
 
 
+def _module_sanitisation():
+    """``fabrique.sanitisation`` (AOF143) ou ``None`` s'il n'est pas là."""
+    try:
+        from .fabrique import sanitisation
+    except ImportError:  # pragma: no cover — le module est présent
+        return None
+    return sanitisation
+
+
 @regle('AO_SANITISATION',
        'Aucun mot bloquant de sanitisation dans les rendus client')
 def _sanitisation(ctx):
-    """Branché sur ``fabrique.sanitisation`` (AOF143) dès qu'il existe.
+    """Passe les textes CLIENT du dossier au lexique bloquant d'AOF143.
 
-    Tant que le module n'est pas là, la règle rend un AVERTISSEMENT explicite
-    — jamais un vert silencieux (cf. l'honnêteté du vert, en tête de module).
+    Un mot bloquant dans une pièce remise est BLOQUANT ici comme il l'est au
+    rendu : c'est le même refus, constaté à la porte du dépôt.
+
+    Cette règle appelle l'API RÉELLE du module (``analyser``). Elle visait
+    autrefois un ``mots_bloquants`` qui n'a jamais existé — mais l'appel était
+    à l'intérieur d'une boucle sur des textes toujours vides, si bien que
+    l'erreur ne se voyait pas : la règle rendait un VERT SILENCIEUX. C'est
+    précisément ce que la règle jumelle ci-dessous rend désormais impossible.
     """
-    try:
-        from .fabrique import sanitisation  # noqa: F401
-    except ImportError:
+    sanitisation = _module_sanitisation()
+    if sanitisation is None:
+        return []  # la non-exécution est dite par AO_SANITISATION_NON_EXECUTEE
+    anomalies = []
+    for texte, objet in ctx.get('textes_client') or ():
+        champs = [{'champ': objet, 'valeur': texte, 'portee': 'client'}]
+        for constat in sanitisation.analyser(champs):
+            if constat['niveau'] != sanitisation.BLOQUANT:
+                continue
+            anomalies.append(_anomalie(
+                'Mot bloquant « %s » trouvé dans %s : %s'
+                % (constat['mot'], objet, constat['extrait']), objet=objet))
+    return anomalies
+
+
+@regle('AO_SANITISATION_NON_EXECUTEE',
+       'La sanitisation a-t-elle eu quelque chose à lire ?',
+       severite=AVERTISSEMENT)
+def _sanitisation_non_executee(ctx):
+    """L'honnêteté du vert : un point NON VÉRIFIÉ ne se tait jamais.
+
+    Deux façons de ne pas être vérifié — le module absent, ou AUCUN texte
+    client collecté pour ce dossier. Dans les deux cas la règle bloquante
+    ci-dessus n'a rien lu ; sans cet avertissement, son silence se lirait
+    comme un feu vert.
+    """
+    if _module_sanitisation() is None:
         return [_anomalie(
             'Règle de sanitisation NON EXÉCUTÉE : le module '
-            'apps.ao.fabrique.sanitisation (AOF143) n\'est pas encore '
-            'branché. Ce point du dossier n\'a donc PAS été vérifié.',
+            "apps.ao.fabrique.sanitisation (AOF143) n'est pas branché. "
+            "Ce point du dossier n'a donc PAS été vérifié.",
             objet='sanitisation')]
-    anomalies = []
-    for texte, objet in ctx.get('textes_client', ()):
-        for mot in sanitisation.mots_bloquants(texte):
-            anomalies.append(_anomalie(
-                f'Mot bloquant « {mot} » trouvé dans {objet}.', objet=objet))
-    return anomalies
+    if not (ctx.get('textes_client') or ()):
+        return [_anomalie(
+            'Règle de sanitisation NON EXÉCUTÉE : aucun texte client n\'a '
+            'été collecté pour ce dossier, le lexique bloquant n\'a donc '
+            "rien eu à lire. Ce point du dossier n'a donc PAS été vérifié.",
+            objet='sanitisation')]
+    return []
 
 
 def executer_regles(contexte, *, codes=None):

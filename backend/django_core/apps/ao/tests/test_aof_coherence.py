@@ -41,7 +41,8 @@ class TestRegistre(SimpleTestCase):
                      'AO_REFERENCE_PRODUIT_UNIQUE', 'AO_PLANCHES_CITEES',
                      'AO_FICHES_ANNEXES', 'AO_ARTEFACT_PERIME',
                      'AO_PIECES_OBLIGATOIRES', 'AO_OBSTACLES_NON_MESURES',
-                     'AO_COTES_A_CONFIRMER', 'AO_SANITISATION'):
+                     'AO_COTES_A_CONFIRMER', 'AO_SANITISATION',
+                     'AO_SANITISATION_NON_EXECUTEE'):
             self.assertIn(code, controles.REGLES, code)
 
     def test_une_regle_qui_leve_ne_rend_jamais_un_vert(self):
@@ -228,13 +229,40 @@ class TestAutresInvariants(BaseCoherence):
             provenance=ObstacleAO.Provenance.DEVINE)
         self.assertIn('AO_OBSTACLES_NON_MESURES', self._codes(self._passe()))
 
-    def test_la_sanitisation_non_branchee_avertit_au_lieu_de_verdir(self):
+    def test_la_sanitisation_sans_texte_a_lire_avertit_au_lieu_de_verdir(self):
+        """AOF143 a livré le module : la non-exécution a changé de cause.
+
+        Tant que le module manquait, l'avertissement disait « pas branché ».
+        Le module est là, mais le contexte de contrôle ne collecte encore
+        AUCUN texte client : la règle bloquante ne lit rien, et son silence
+        se lirait comme un feu vert. C'est cette seconde non-exécution que
+        la règle jumelle déclare.
+        """
         passe = self._passe()
         codes = {item['code_regle'] for item in passe['avertissements']}
-        self.assertIn('AO_SANITISATION', codes)
-        message = next(item['message'] for item in passe['avertissements']
-                       if item['code_regle'] == 'AO_SANITISATION')
+        self.assertIn('AO_SANITISATION_NON_EXECUTEE', codes)
+        message = next(
+            item['message'] for item in passe['avertissements']
+            if item['code_regle'] == 'AO_SANITISATION_NON_EXECUTEE')
         self.assertIn("n'a donc PAS été vérifié", message)
+
+    def test_un_mot_bloquant_dans_un_texte_client_bloque_vraiment(self):
+        """La règle appelle l'API RÉELLE d'AOF143, pas un nom fantôme."""
+        contexte = coherence.contexte_controle(self.dossier)
+        contexte['textes_client'] = (
+            ('Le coût de revient du lot est maîtrisé.', 'memoire.3'),)
+        resultats = controles.executer_regles(
+            contexte, codes={'AO_SANITISATION',
+                             'AO_SANITISATION_NON_EXECUTEE'})
+        bloquants = [r for r in resultats
+                     if r['code_regle'] == 'AO_SANITISATION']
+        self.assertTrue(bloquants, resultats)
+        self.assertEqual(bloquants[0]['severite'], controles.BLOQUANT)
+        self.assertIn('memoire.3', bloquants[0]['message'])
+        # Un texte a été lu : la règle de non-exécution se tait.
+        self.assertEqual(
+            [r for r in resultats
+             if r['code_regle'] == 'AO_SANITISATION_NON_EXECUTEE'], [])
 
     def test_aucun_champ_ne_stocke_un_montant_en_lettres(self):
         self.assertNotIn('AO_LETTRES_RECALCULEES', self._codes(self._passe()))
