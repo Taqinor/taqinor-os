@@ -4911,6 +4911,19 @@ textarea.form-control {
   outline-offset: 2px;
 }
 
+/* (E) — la carte ne « pop » plus au contact du doigt. `useDraggable` (dnd-kit)
+   pose `role="button"` sur l'enveloppe de la carte : la règle M155
+   `[role="button"]:active { transform: scale(0.985) }` — écrite pour de vrais
+   boutons — s'y appliquait donc, et `:active` remontant aussi la chaîne des
+   ancêtres, le moindre tap SUR un contrôle interne faisait sauter la carte
+   entière. Règle ajoutée (jamais une modification de M155, qui reste juste
+   pour les boutons) ; sa spécificité (0,3,0) l'emporte sur (0,2,0), donc
+   l'ordre dans le fichier n'y change rien. Les vrais <button> de la carte
+   gardent leur retour tactile via le sélecteur `button:active` de M155. */
+.kb-drag-wrap [role="button"]:active {
+  transform: none;
+}
+
 /* VX192 — carte chantier ouvrable au clavier : un <button> transparent qui
    enveloppe la carte sans altérer sa mise en page (reset complet des styles
    par défaut du bouton), focalisable au clavier avec un anneau visible. */
