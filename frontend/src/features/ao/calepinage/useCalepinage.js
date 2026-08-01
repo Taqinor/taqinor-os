@@ -85,9 +85,7 @@ export default function useCalepinage(calepinageId, parametres, options = {}) {
 
   // Refs : lus au moment de l'envoi, jamais comme dépendances d'effet.
   const parametresRef = useRef(parametres)
-  parametresRef.current = parametres
   const cleRef = useRef(cle)
-  cleRef.current = cle
 
   const seqRef = useRef(0)
   const monteRef = useRef(true)
@@ -103,7 +101,17 @@ export default function useCalepinage(calepinageId, parametres, options = {}) {
   // Miroir en ref de la clé affichée : lue par l'effet de recalcul SANS
   // devenir une dépendance (elle relancerait l'effet qu'elle doit arbitrer).
   const cleAfficheeRef = useRef(null)
-  cleAfficheeRef.current = etat.cleAffichee
+
+  // Les refs ne sont JAMAIS écrites pendant le rendu (accès interdit —
+  // react-hooks/refs) : cet effet, sans tableau de dépendances, les
+  // resynchronise après CHAQUE rendu, avant l'effet de recalcul ci-dessous
+  // (les hooks s'exécutent dans leur ordre de déclaration) afin qu'il lise
+  // toujours la valeur la plus fraîche.
+  useEffect(() => {
+    parametresRef.current = parametres
+    cleRef.current = cle
+    cleAfficheeRef.current = etat.cleAffichee
+  })
 
   const [enVol, setEnVol] = useState(false)
   const [erreur, setErreur] = useState(null)
