@@ -39,6 +39,36 @@ ON_DEMAND_ALLOWLIST = {
     # jamais périodique — un job bulk n'existe que sur demande d'un client).
     'publicapi.process_bulk_export_job',
     'publicapi.process_bulk_import_job',
+    # AOF — module Appels d'offres. Le SEUL job périodique du module est
+    # ``ao.rappeler_echeances`` (rappels de remise des plis / ouverture / fin
+    # de validité), bien planifié au beat à 6 h 30 et routé vers `scheduled`.
+    # Les cinq tâches ci-dessous sont, elles, des travaux LOURDS déclenchés par
+    # une action utilisateur — chacune passe par ``core.jobs.submit`` +
+    # ``BackgroundJob`` (jamais une file maison), donc suivie et rejouable ;
+    # les planifier périodiquement referait un calcul que personne n'a demandé.
+    #
+    # AOF61 — calepinage d'une toiture : soumis par l'endpoint de calcul
+    # (``submit(KIND_CALEPINAGE, …)`` dans ``calepinage_views.py``).
+    'ao.calculer_calepinage',
+    # AOF — ingestion d'un support de plan (rastérisation/normalisation) :
+    # soumise par ``ingestion_tasks.lancer_ingestion_plan``
+    # (``submit(KIND_INGESTION_PLAN, …)``), à l'ajout d'un ``PlanSource``.
+    'ao.ingerer_plan',
+    # AOF15 — (re)génération de l'échéancier d'un AO, IDEMPOTENTE : variante
+    # asynchrone de ``services.generer_echeancier_ao``, appelée à la demande
+    # après une création ou une prorogation. Le chemin synchrone du service
+    # reste le chemin nominal ; la tâche n'est jamais périodique (c'est le
+    # beat ``ao.rappeler_echeances`` qui surveille les dates au quotidien).
+    'ao.generer_echeancier',
+    # AOF153 — production du pack de dossier (9 pièces + planches + fusion +
+    # ZIP) : bien trop lourde pour une requête HTTP, déclenchée à la demande et
+    # IDEMPOTENTE par empreinte de contexte (un double-clic ne produit jamais
+    # deux packs). Périodiser reviendrait à refabriquer des pièces figées.
+    'ao.produire_pack',
+    # AOF160 — classeur DIRECTEUR de rentabilité (xlsx) : export lourd à la
+    # demande, ``visibilite='directeur'`` (exclu de tout manifeste de dépôt),
+    # distribué par URL signée courte. Jamais périodique.
+    'ao.produire_rentabilite_xlsx',
 }
 
 

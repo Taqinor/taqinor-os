@@ -988,6 +988,11 @@ CELERY_TASK_ROUTES = {
     # NTIAG — surveillance mensuelle du drift des modèles IA : job beat, donc
     # queue `scheduled`.
     'ai_governance.surveiller_drift_mensuel': {'queue': 'scheduled'},
+    # AOF15 — rappels quotidiens des échéances d'appel d'offres (remise des
+    # plis, ouverture, fin de validité), planifiés au beat à 6 h 30 : job beat,
+    # donc queue `scheduled`. Les autres tâches AO sont, elles, déclenchées à
+    # la demande (cf. ON_DEMAND_ALLOWLIST du garde QX11).
+    'ao.rappeler_echeances': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

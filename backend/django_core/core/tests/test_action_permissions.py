@@ -28,6 +28,16 @@ UNGUARDED_ACTION_BASELINE = {
     # (Administrateur only) + company-scopés. Le scanner ne crédite que les
     # gardes PAR action → dette coarse figée (fine-grain ultérieur, YRBAC3).
     "adminops": 5,
+    # AOF — les 19 @action d'``apps/ao/views.py`` héritent TOUTES de
+    # ``AoBaseViewSet`` (``apps/ao/viewsets.py``), qui déclare précisément un
+    # ``get_permissions`` : ``ScopedPermission`` (lecture ``ao_voir``, écriture
+    # ``ao_gerer``) CUMULÉ avec les permissions déclarées par action, sur un
+    # queryset company-scopé (``CompanyScopedModelViewSet``). Le scanner est
+    # statique et ne regarde que le corps de la CLASSE portant l'``@action`` —
+    # il ne suit pas l'héritage, et encore moins vers un AUTRE fichier
+    # (``viewsets.py``) : d'où 19 en dette COARSE apparente, pas un trou de
+    # garde. Même forme que qhse/assurances/gestion_projet ci-dessus.
+    "ao": 19,
     # NTASS — les viewsets assurances héritent de ``_AssurancesBaseViewSet``
     # (WriteScopedPermissionMixin + CompanyScopedModelViewSet) : gardés au
     # niveau CLASSE (read/write assurances_voir/gerer, company-scopé, zéro fuite
