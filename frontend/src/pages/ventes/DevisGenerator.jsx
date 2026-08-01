@@ -454,11 +454,25 @@ export default function DevisGenerator({
   // (au moins un identifiant de cible OU une note OU des factures OU des
   // paramètres techniques). Tant que le formulaire est vierge, ni brouillon ni
   // garde ne s'activent (évite un bandeau/blocage sur un simple montage).
+  // EZ4 — L'ANGLE MORT DU BROUILLON : `dirty` ignorait `lines`, `discountPct`,
+  // `tauxTva` et `villaGroups` — or ces quatre champs sont DÉJÀ dans
+  // `draftSnapshot` ci-dessus. Un utilisateur qui n'avait fait qu'ajouter des
+  // LIGNES (le cœur du devis) n'était donc ni sauvegardé ni protégé par la
+  // garde de fermeture d'onglet. Seul ce prédicat était à corriger.
+  const lignesSaisies = lines.some(
+    (l) => l.produit || (l.designation || '').trim() || parseFloat(l.prix_unit_ttc) > 0,
+  )
+  const remiseSaisie = parseFloat(discountPct) > 0
+  const tvaModifiee = String(tauxTva ?? '') !== '' && parseFloat(tauxTva) !== TVA_STANDARD_DEFAUT
+  // `villaGroups` a des libellés PAR DÉFAUT : le signal utile est le mode
+  // multi-propriétés lui-même (défaut 'none'), pas la présence de libellés.
+  const villasSaisies = multiMode !== 'none'
   const dirty = Boolean(
     leadId || clientId || note || fHiver || fEte || nbPanneaux
-    || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa,
+    || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa
+    || lignesSaisies || remiseSaisie || tvaModifiee || villasSaisies,
   )
-  const { restored, restore, discard, clear } = useDraftAutosave(draftKey, draftSnapshot, {
+  const { restored, restore, discard, clear, savedAt } = useDraftAutosave(draftKey, draftSnapshot, {
     enabled: dirty,
   })
   useDirtyGuard(dirty)
@@ -1822,6 +1836,25 @@ export default function DevisGenerator({
               </Button>
             </div>
           </div>
+        )}
+        {/* EZ4 — la confiance vient de la CONTINUITÉ VISIBLE (patron
+            Docs/Notion) : tant qu'on ne voit rien, on ne sait pas si le travail
+            est à l'abri. Discret, jamais bloquant. */}
+        {savedAt && (
+          <p
+            data-testid="draft-saved-indicator"
+            className="text-xs text-muted-foreground"
+            role="status"
+          >
+            Brouillon enregistré à{' '}
+            {(() => {
+              try {
+                return new Date(savedAt).toLocaleTimeString('fr-FR', {
+                  hour: '2-digit', minute: '2-digit',
+                })
+              } catch { return 'l’instant' }
+            })()}
+          </p>
         )}
         {refsLoading && (
           <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
