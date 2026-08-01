@@ -50,6 +50,16 @@ reste qu'à l'appeler depuis la couche Django, qui appartient à l'autre lane.
    gabarit et le nom du template ; l'appel `core.pdf.render_pdf` est laissé à
    la couche Django (un seul point d'appel, jamais WeasyPrint en direct).
 
+## EN ATTENTE D'UNE DÉCISION DU FONDATEUR
+
+- **AOF129 — noms du bureau d'études en marque blanche.** Le ratchet
+  d'étanchéité sait refuser tout nom de bureau en marque blanche sur une pièce
+  client ; la constante `NOMS_MARQUE_BLANCHE` de
+  `apps/ao/tests/test_aof_etancheite_pack.py` est volontairement VIDE tant que
+  le fondateur n'a pas arrêté la liste (mettre un nom deviné aurait produit un
+  faux rouge sur une pièce légitime). Le mécanisme est testé avec un nom
+  injecté : il suffit de remplir la constante pour qu'il morde.
+
 ## Décisions prises dans la lane
 
 - **Refus du sous-optimum (AOF112) sans échappatoire.** `compte_retenu <
