@@ -53,6 +53,8 @@ import {
   TabsContent,
   Textarea,
   toast,
+  // EZ9 — bascule « Plein soleil » (écran terrain).
+  SunlightToggle,
 } from '../../ui'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { usePullToRefresh } from '../../ui/usePullToRefresh'
@@ -642,6 +644,8 @@ export default function InterventionsPage() {
           <Badge tone="primary">{filtered.length}</Badge>
         </h2>
         <div className="page-header-actions lp-header-actions flex flex-wrap items-center gap-2">
+          {/* EZ9 — même bascule que « Ma journée » : un seul réglage persisté. */}
+          <SunlightToggle />
           <Select value={fStatut || '__all__'}
                   onValueChange={(v) => setFStatut(v === '__all__' ? '' : v)}>
             <SelectTrigger className="h-9 w-40" aria-label="Filtrer par statut">

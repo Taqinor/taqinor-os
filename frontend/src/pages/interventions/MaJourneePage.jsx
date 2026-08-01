@@ -27,6 +27,8 @@ import {
   // APX26 — bandeau « Prochaine action » partagé avec la fiche chantier
   // (la duplication était auto-documentée juste sous NEXT_ACTION).
   NextActionBanner,
+  // EZ9 — bascule « Plein soleil » (écran terrain).
+  SunlightToggle,
 } from '../../ui'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { usePullToRefresh } from '../../ui/usePullToRefresh'
@@ -321,9 +323,11 @@ export default function MaJourneePage() {
         <CalendarDays className="size-5 text-primary" aria-hidden="true" />
         <h1 className="text-lg font-semibold">Ma journée</h1>
         <span className="text-sm text-muted-foreground">{formatDate(today, { long: true })}</span>
+        {/* EZ9 — bascule « Plein soleil » à portée de pouce sur l'écran terrain. */}
+        <SunlightToggle className="ml-auto" />
         {/* VX226(b) — actualisation manuelle discrète (repli au throttle
             visibilitychange ci-dessus, pour un besoin immédiat). */}
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={refreshNow} disabled={manualRefreshing}
+        <Button size="sm" variant="ghost" onClick={refreshNow} disabled={manualRefreshing}
                 aria-label="Actualiser">
           <RefreshCw className={`size-4${manualRefreshing ? ' animate-spin' : ''}`} aria-hidden="true" />
         </Button>
