@@ -228,3 +228,16 @@ le dict de contexte.
   par la lane A au fold, sur les artefacts : note de calcul, checklist
   docx/pdf, page de garde + sommaire, rapport de contrôle, ZIP de dépôt, PDF
   « bon à tirer » (le classeur de rentabilité, lui, est directeur).
+
+### Tâches bloquées par la composition (jamais de substitut local)
+
+- **AOF141 — bascule d'équipement atomique : `[BLOCKED: attend AOF118]`.**
+  `basculer_equipement()` opère sur `EquipementAO` (rôle, snapshot catalogue,
+  fiche technique, `remplace` self-FK) — modèle livré par AOF118, absent de
+  `dev-aof` au moment de ce run. Recréer un équipement local pour « pouvoir
+  avancer » serait exactement le poste de dette n°1 du dépôt. Le PLAN de
+  bascule (quels emplacements doivent changer, quelles grandeurs dérivées se
+  recalculent, quelle fiche s'ajoute et laquelle se retire) est en revanche
+  livré et testé dans `apps/ao/fabrique/bascule_rapport.py` (AOF142) : le jour
+  où AOF118 est sur la branche, `basculer_equipement` n'a plus qu'à APPLIQUER
+  ce plan en une transaction et à journaliser via `records.services.log_activity`.
