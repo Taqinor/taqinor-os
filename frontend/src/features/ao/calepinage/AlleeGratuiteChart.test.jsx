@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import AlleeGratuiteChart from './AlleeGratuiteChart'
 import TiroirAllees from './TiroirAllees'
@@ -105,15 +105,15 @@ describe('TiroirAllees (AOF96)', () => {
     expect(onChange).toHaveBeenCalledWith({ allee_m: 1.9 })
   })
 
-  it('accepte une largeur libre sans jamais arrondir ni rejeter la saisie', async () => {
+  it('accepte une largeur libre sans jamais arrondir ni rejeter la saisie', () => {
     const onChange = vi.fn()
     render(<TiroirAllees donnees={DONNEES} valeurs={{ allee_m: 0.6 }} onChange={onChange} />)
     const champ = screen.getByLabelText(/Largeur d'allée/)
     expect(champ).toHaveAttribute('step', 'any')
     expect(champ.closest('form')).toHaveAttribute('novalidate')
-    await userEvent.clear(champ)
-    await userEvent.type(champ, '1.937')
+    fireEvent.change(champ, { target: { value: '1.937' } })
     expect(onChange).toHaveBeenLastCalledWith({ allee_m: 1.937 })
+    expect(champ).toHaveValue(1.937)
   })
 
   it('le bouton du plateau applique la largeur gratuite comme paramètre', async () => {
