@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Badge, Button, Input, Label, Textarea } from '../../../ui'
 import { formatDate } from '../../../lib/format'
+import { deltaReel } from './QuestionFiche.utils'
 
 /* ============================================================================
    AOF107 (1/3) — Fiche question : impact PRÉVU → delta RÉEL.
@@ -53,13 +54,6 @@ function signe(v) {
   return v > 0 ? `+${v}` : String(v)
 }
 
-/** Delta RÉEL = soustraction d'affichage entre deux comptes serveur. */
-export function deltaReel(question) {
-  const { compte_avant_modules: avant, compte_apres_modules: apres } = question || {}
-  if (!Number.isFinite(avant) || !Number.isFinite(apres)) return null
-  return apres - avant
-}
-
 function texteImpactPrevu(question) {
   const mini = question?.impact_min_modules
   const maxi = question?.impact_max_modules
@@ -85,14 +79,21 @@ export function QuestionFiche({
   const [decision, setDecision] = useState(question?.decision ?? '')
   const [dateDecision, setDateDecision] = useState(question?.date_decision ?? '')
 
-  useEffect(() => {
+  // La fiche re-synchronise ses champs locaux quand `question` change
+  // (nouvelle référence — on ouvre une AUTRE question) : ajustement pendant
+  // le rendu (pattern React recommandé pour dériver un état depuis des props
+  // qui changent) plutôt qu'un `useEffect`, qui provoquerait un rendu en
+  // cascade évitable.
+  const [derniereQuestion, setDerniereQuestion] = useState(question)
+  if (question !== derniereQuestion) {
+    setDerniereQuestion(question)
     setTexte(question?.texte ?? '')
     setImpactMin(question?.impact_min_modules ?? '')
     setImpactMax(question?.impact_max_modules ?? '')
     setReponse(question?.reponse ?? '')
     setDecision(question?.decision ?? '')
     setDateDecision(question?.date_decision ?? '')
-  }, [question])
+  }
 
   if (!question) return null
 
@@ -235,8 +236,10 @@ export function QuestionFiche({
                 ? h.compte_apres_modules - h.compte_avant_modules
                 : null
               return (
-                // eslint-disable-next-line react/no-array-index-key -- historique en lecture seule, append-only
-                <li key={i}>
+                // Clé stable issue de la donnée (`date`) + index en garde
+                // anti-collision (plusieurs recalculs pourraient partager une
+                // même date) — jamais l'index seul.
+                <li key={`${h.date}-${i}`}>
                   {`${formatDate(h.date)} — delta ${d != null ? signe(d) : '—'} module(s)`}
                 </li>
               )
