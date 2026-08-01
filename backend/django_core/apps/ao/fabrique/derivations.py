@@ -3,7 +3,7 @@
 **Le constat.** La bascule de batterie du dossier FRDISI n'a pas été un
 renommage de désignation : elle a exigé de RECALCULER tout le bilan de
 stockage. 3 piles de 6 packs → 96,48 kWh à 307,2 V par banc → 289,4 kWh
-installés → couverture nocturne 100 % avec ≈ 5 kWh de marge. Chacun de ces
+installés → couverture nocturne 100 % avec ≈ 5 kWh d'excédent. Chacun de ces
 chiffres apparaît dans plusieurs pièces ; chacun devait bouger ensemble. Un
 seul champ saisi dans la chaîne, et la pièce qui le porte devient fausse
 silencieusement au premier changement d'équipement.
@@ -18,6 +18,13 @@ la chaîne se rejoue.
 nombre de modules vient du moteur de calepinage via le contrat AOF112 et entre
 ici comme donnée d'entrée. Le module en dérive l'ÉLECTROTECHNIQUE (chaînes,
 onduleurs, ratio DC/AC), ce qui est une autre question.
+
+**Aucune grandeur d'ingénierie ne porte le mot « marge ».** L'excédent de
+couverture nocturne (`excedent_nocturne_kwh`) EST une marge au sens technique,
+mais les gardes d'étanchéité des pièces client (AOF129, `rendus/note_calcul`)
+refusent tout ce qui porte ce mot : elles ne peuvent pas distinguer une marge
+commerciale d'une marge d'ingénierie, et c'est très bien — la sévérité de la
+garde ne se relâche pas, c'est la grandeur qui se nomme sans ambiguïté.
 
 Toutes les valeurs sont publiées en pleine précision ; l'arrondi d'affichage
 appartient à `core.formats_fr`, jamais au calcul.
@@ -84,7 +91,13 @@ def _capacite_utile_kwh(v):
     return v['capacite_installee_kwh'] * v['profondeur_decharge']
 
 
-def _marge_nocturne_kwh(v):
+def _excedent_nocturne_kwh(v):
+    """Ce qui RESTE de capacité utile une fois la nuit couverte.
+
+    Négatif = la nuit n'est pas tenue (c'est le signal que `controles_cps`
+    reprend). Grandeur d'INGÉNIERIE : voir l'avertissement de nommage en tête
+    de module — jamais « marge ».
+    """
     return v['capacite_utile_kwh'] - v['besoin_nocturne_kwh']
 
 
@@ -153,8 +166,9 @@ REGLES = (
            ('capacite_installee_kwh', 'profondeur_decharge'),
            _capacite_utile_kwh,
            '{capacite_installee_kwh} kWh × {profondeur_decharge}'),
-    _regle('marge_nocturne_kwh', 'Marge sur le besoin nocturne', 'kWh',
-           ('capacite_utile_kwh', 'besoin_nocturne_kwh'), _marge_nocturne_kwh,
+    _regle('excedent_nocturne_kwh', 'Excédent sur le besoin nocturne', 'kWh',
+           ('capacite_utile_kwh', 'besoin_nocturne_kwh'),
+           _excedent_nocturne_kwh,
            '{capacite_utile_kwh} kWh − {besoin_nocturne_kwh} kWh'),
     _regle('couverture_nocturne_pct', 'Couverture du besoin nocturne', '%',
            ('capacite_utile_kwh', 'besoin_nocturne_kwh'),

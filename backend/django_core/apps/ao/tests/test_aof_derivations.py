@@ -55,9 +55,9 @@ class TestCasFrdisi(unittest.TestCase):
     def test_dix_huit_packs(self):
         self.assertEqual(self.d['packs_total'], 18)
 
-    def test_couverture_nocturne_100_pct_avec_5_kwh_de_marge(self):
+    def test_couverture_nocturne_100_pct_avec_5_kwh_d_excedent(self):
         self.assertEqual(self.d['couverture_nocturne_pct'], 100.0)
-        self.assertAlmostEqual(self.d['marge_nocturne_kwh'], 5.0, places=0)
+        self.assertAlmostEqual(self.d['excedent_nocturne_kwh'], 5.0, places=0)
 
     def test_chaines_de_16(self):
         self.assertEqual(self.d['chaines_completes'], 35)
@@ -101,7 +101,7 @@ class TestChaineRejouee(unittest.TestCase):
         apres = der.deriver(entrees_frdisi(capacite_pack_ah=280.0))
         for cle in ('capacite_pack_kwh', 'capacite_banc_kwh',
                     'capacite_installee_kwh', 'capacite_utile_kwh',
-                    'marge_nocturne_kwh', 'couverture_nocturne_pct'):
+                    'excedent_nocturne_kwh', 'couverture_nocturne_pct'):
             self.assertNotEqual(avant[cle], apres[cle], cle)
         # La tension de banc, elle, ne dépend PAS de la capacité du pack.
         self.assertEqual(avant['tension_banc_v'], apres['tension_banc_v'])
@@ -109,7 +109,7 @@ class TestChaineRejouee(unittest.TestCase):
     def test_un_pack_plus_petit_casse_la_couverture_nocturne(self):
         apres = der.deriver(entrees_frdisi(capacite_pack_ah=200.0))
         self.assertLess(apres['couverture_nocturne_pct'], 100.0)
-        self.assertLess(apres['marge_nocturne_kwh'], 0)
+        self.assertLess(apres['excedent_nocturne_kwh'], 0)
         self.assertTrue(der.controles_cps(apres))
 
     def test_dependants_liste_ce_qui_bouge(self):
