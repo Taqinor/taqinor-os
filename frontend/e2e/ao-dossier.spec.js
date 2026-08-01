@@ -11,7 +11,7 @@
 // accessible dérivé d'une icône — voir le commentaire d'en-tête de helpers.js.
 import { test, expect } from '@playwright/test'
 import {
-  openAoDemoAffaire, aoVariante, aoPiece, firstAoControleBloquant,
+  openAoDemoAffaire, aoVariante, firstAoControleBloquant,
 } from './helpers'
 
 test('AOF187 (2/3): comparer deux variantes, en retenir une, constater la péremption des pièces', async ({ page }) => {
