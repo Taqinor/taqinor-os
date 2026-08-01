@@ -42,8 +42,14 @@ export async function uiLogin(page, { username, password } = ADMIN) {
 // tombe sur une base sans lead resout deux elements et Playwright echoue en
 // mode strict — ce qui n'a rien a voir avec ce que le test verifie.
 export function boutonNouveauLead(page) {
+  // Desktop : le bouton vit dans l'en-tete de page. Mobile : l'en-tete n'en
+  // rend AUCUN (LB47) et l'action canonique est le bouton flottant. Les deux
+  // ne coexistent jamais, donc `.or()` resout toujours a UN seul element —
+  // tout en excluant l'action de coach de l'etat vide du kanban, qui porte le
+  // meme nom accessible et faisait echouer le mode strict sur une base sans lead.
   return page.locator('.lp-header-actions')
     .getByRole('button', { name: '+ Nouveau lead' })
+    .or(page.locator('.fab-button[aria-label="+ Nouveau lead"]'))
 }
 
 export async function gotoLeads(page) {
