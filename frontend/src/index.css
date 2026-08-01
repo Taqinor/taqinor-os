@@ -5251,6 +5251,17 @@ textarea.form-control {
     scroll-snap-align: start;
     min-height: 0;
     overflow-y: auto;
+    /* (D) — la règle VX175(b) plus haut couvre `.kb-board` (l'axe X) mais PAS
+       `.kb-col`, qui est pourtant LE scrolleur vertical au téléphone : sans
+       `-webkit-overflow-scrolling: touch` le défilement de la colonne saccade
+       « pas à pas » sur Safari iOS (aucune inertie), et sans
+       `overscroll-behavior-y` il CHAÎNE — arrivé en bas de la colonne, la
+       poussée continue dans la page puis dans le pull-to-refresh. `contain`
+       (et non `none`) coupe uniquement le chaînage : le rebond élastique
+       LOCAL de la colonne, lui, reste — c'est l'accusé de réception « tu es
+       au bout », on ne le supprime pas. */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     /* La colonne est ICI le scrolleur : même règle que .kb-board — un
        scrollIntoView n'enterre jamais le haut d'une carte sous l'en-tête
        sticky (cause du rouge MB6 mobile-safari en CI). */
