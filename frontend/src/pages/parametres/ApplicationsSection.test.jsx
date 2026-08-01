@@ -17,7 +17,19 @@ beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia() 
 
 /* ODX5 — Onglet « Applications » : catalogue de modules (ODX3) admin-gated,
    toggle par module, confirmation de désactivation en cascade, motif
-   (`raison`) affiché sous un module désactivé. */
+   (`raison`) affiché sous un module désactivé.
+
+   ODY24 — la matrice ODX5 est CONSERVÉE ; trois attentes ont été adaptées à la
+   boutique, parce que le comportement qu'elles assertaient a délibérément
+   changé (jamais une spec cassée léguée à la tâche suivante) :
+     1. l'état s'écrit « Installée » / « Disponible » (langage du Menu
+        d'accueil) et non plus « Activé » / « Désactivé » ;
+     2. les dépendances se lisent « Nécessite : … » ;
+     3. la cascade est ANNONCÉE AVANT la bascule (aperçu calculé sur le graphe
+        `depends` du catalogue déjà chargé) : désactiver un module dont un
+        dépendant est actif n'envoie plus un premier appel voué au 400 — le
+        dialogue s'ouvre d'abord. Le chemin 400 serveur reste testé plus bas
+        comme FILET (divergence aperçu/serveur). */
 
 const CATALOGUE = [
   {
@@ -30,6 +42,12 @@ const CATALOGUE = [
   },
   {
     key: 'flotte', label: 'Flotte', icone: 'truck', depends: [],
+    installable: true, description: '', categorie: 'Stock', actif: false,
+  },
+  // ODY24 — module DISPONIBLE dont la dépendance est elle aussi disponible :
+  // l'installer doit annoncer l'auto-install de « Flotte » avant de l'écrire.
+  {
+    key: 'logistique', label: 'Logistique', icone: 'truck', depends: ['flotte'],
     installable: true, description: '', categorie: 'Stock', actif: false,
   },
 ]
@@ -63,7 +81,7 @@ function renderWithRole(role) {
   return render(<Provider store={store}><ApplicationsSection /></Provider>)
 }
 
-describe('ApplicationsSection (ODX5)', () => {
+describe('ApplicationsSection (ODX5 + boutique ODY24)', () => {
   it('un rôle non-admin voit un accès restreint (admin-gated, plus strict que responsable)', async () => {
     catalogue.mockResolvedValue({ data: CATALOGUE })
     listToggles.mockResolvedValue({ data: TOGGLES })
@@ -78,7 +96,7 @@ describe('ApplicationsSection (ODX5)', () => {
     renderWithRole('admin')
 
     // « Stock » désigne à la fois le titre de la catégorie et le libellé du
-    // module — on scope la recherche à la ligne du module (data-testid) pour
+    // module — on scope la recherche à la carte du module (data-testid) pour
     // ne pas être ambigu vis-à-vis du titre de groupe (même texte).
     const stockRow = await screen.findByTestId('module-row-stock')
     expect(within(stockRow).getByText('Stock')).toBeInTheDocument()
@@ -87,15 +105,15 @@ describe('ApplicationsSection (ODX5)', () => {
     // Catégories du manifest rendues comme titres de groupe.
     expect(screen.getByText('Services')).toBeInTheDocument()
     // Dépendance affichée en clair (libellé résolu, pas la clé technique).
-    expect(screen.getByText(/Dépend de : Stock/)).toBeInTheDocument()
+    expect(screen.getByText(/Nécessite : Stock/)).toBeInTheDocument()
     // Motif de désactivation affiché sous le module désactivé.
     expect(screen.getByText(/Motif : Hors offre pilote/)).toBeInTheDocument()
-    // États rendus.
-    expect(screen.getAllByText('Activé').length).toBe(2)
-    expect(screen.getByText('Désactivé')).toBeInTheDocument()
+    // États rendus (langage boutique ODY24).
+    expect(screen.getAllByText('Installée').length).toBe(2)
+    expect(screen.getAllByText('Disponible').length).toBe(2)
   })
 
-  it('active un module désactivé (interrupteur → activer)', async () => {
+  it('active un module désactivé sans dépendance manquante (interrupteur → activer)', async () => {
     catalogue.mockResolvedValue({ data: CATALOGUE })
     listToggles.mockResolvedValue({ data: TOGGLES })
     const user = userEvent.setup()
@@ -120,7 +138,49 @@ describe('ApplicationsSection (ODX5)', () => {
     await waitFor(() => expect(desactiver).toHaveBeenCalledWith('sav', { cascade: false }))
   })
 
-  it('propose la cascade sur 400 dépendance, puis désactive en cascade après confirmation', async () => {
+  it('ODY24 — annonce la cascade AVANT la désactivation, puis désactive en cascade', async () => {
+    catalogue.mockResolvedValue({ data: CATALOGUE })
+    listToggles.mockResolvedValue({ data: TOGGLES })
+    desactiver.mockResolvedValueOnce({ data: { desactives: ['stock', 'sav'] } })
+    const user = userEvent.setup()
+    renderWithRole('admin')
+    // « Stock » est ambigu (titre de catégorie + libellé de module) : on
+    // attend la carte du module Stock via son data-testid.
+    await screen.findByTestId('module-row-stock')
+
+    await user.click(screen.getByRole('switch', { name: 'Désactiver le module Stock' }))
+
+    // Aperçu AVANT tout appel serveur : aucune requête n'est partie.
+    expect(await screen.findByText('Désactiver « Stock » ?')).toBeInTheDocument()
+    expect(screen.getByText(/Les modules actifs suivants en dépendent : Après-vente/))
+      .toBeInTheDocument()
+    expect(desactiver).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Désactiver en cascade' }))
+
+    await waitFor(() => expect(desactiver).toHaveBeenCalledWith('stock', { cascade: true }))
+    expect(desactiver).toHaveBeenCalledTimes(1)
+  })
+
+  it('ODY24 — annonce l’auto-install des dépendances AVANT d’activer', async () => {
+    catalogue.mockResolvedValue({ data: CATALOGUE })
+    listToggles.mockResolvedValue({ data: TOGGLES })
+    const user = userEvent.setup()
+    renderWithRole('admin')
+    await screen.findByTestId('module-row-logistique')
+
+    await user.click(screen.getByRole('switch', { name: 'Activer le module Logistique' }))
+
+    expect(await screen.findByText('Installer « Logistique » ?')).toBeInTheDocument()
+    expect(screen.getByText(/Cette application a besoin de : Flotte/)).toBeInTheDocument()
+    expect(activer).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Installer avec ses dépendances' }))
+
+    await waitFor(() => expect(activer).toHaveBeenCalledWith('logistique'))
+  })
+
+  it('ODY24 — le 400 de dépendance reste le FILET si l’aperçu et le serveur divergent', async () => {
     catalogue.mockResolvedValue({ data: CATALOGUE })
     listToggles.mockResolvedValue({ data: TOGGLES })
     desactiver
@@ -128,26 +188,36 @@ describe('ApplicationsSection (ODX5)', () => {
         response: {
           status: 400,
           data: {
-            detail: "Impossible de désactiver « stock » : les modules actifs suivants en dépendent — sav.",
-            dependants: ['sav'],
+            detail: "Impossible de désactiver « sav » : les modules actifs suivants en dépendent — monitoring.",
+            dependants: ['monitoring'],
           },
         },
       })
-      .mockResolvedValueOnce({ data: { desactives: ['stock', 'sav'] } })
+      .mockResolvedValueOnce({ data: { desactives: ['sav', 'monitoring'] } })
     const user = userEvent.setup()
     renderWithRole('admin')
-    // « Stock » est ambigu (titre de catégorie + libellé de module) : on
-    // attend la ligne du module Stock via son data-testid.
-    await screen.findByTestId('module-row-stock')
+    await screen.findByText('Après-vente')
 
-    await user.click(screen.getByRole('switch', { name: 'Désactiver le module Stock' }))
+    // Le catalogue chargé ne connaît aucun dépendant actif de « sav » : la
+    // bascule part directement, et c'est le serveur qui ouvre le dialogue.
+    await user.click(screen.getByRole('switch', { name: 'Désactiver le module Après-vente' }))
 
-    // La 400 de dépendance est affichée (dialogue de confirmation cascade).
-    expect(await screen.findByText('Désactiver « Stock » ?')).toBeInTheDocument()
-    expect(screen.getByText(/les modules actifs suivants en dépendent — sav/)).toBeInTheDocument()
-
+    expect(await screen.findByText('Désactiver « Après-vente » ?')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Désactiver en cascade' }))
 
-    await waitFor(() => expect(desactiver).toHaveBeenNthCalledWith(2, 'stock', { cascade: true }))
+    await waitFor(() => expect(desactiver).toHaveBeenNthCalledWith(2, 'sav', { cascade: true }))
+  })
+
+  it('ODY24 — la recherche filtre la boutique (libellé, insensible aux accents)', async () => {
+    catalogue.mockResolvedValue({ data: CATALOGUE })
+    listToggles.mockResolvedValue({ data: TOGGLES })
+    const user = userEvent.setup()
+    renderWithRole('admin')
+    await screen.findByTestId('module-row-stock')
+
+    await user.type(screen.getByLabelText('Rechercher une application'), 'apres')
+
+    await waitFor(() => expect(screen.queryByTestId('module-row-stock')).toBeNull())
+    expect(screen.getByTestId('module-row-sav')).toBeInTheDocument()
   })
 })
