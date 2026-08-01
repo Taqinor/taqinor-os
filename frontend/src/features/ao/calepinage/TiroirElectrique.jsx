@@ -52,7 +52,14 @@ export default function TiroirElectrique({ donnees, valeurs = {}, onChange, onCo
   // La conformité remonte telle quelle : la porte de publication est en amont.
   useEffect(() => { onConformite?.(conformite) }, [conformite, onConformite])
 
-  useEffect(() => { setSaisie(valeurs.taille_chaine ?? '') }, [valeurs.taille_chaine])
+  // La valeur de référence reste celle du serveur : on se recale dessus quand
+  // elle change, en ajustant l'état AU RENDU (jamais dans un effet — évite le
+  // rendu en cascade ; https://react.dev/learn/you-might-not-need-an-effect).
+  const [tailleChainePrec, setTailleChainePrec] = useState(valeurs.taille_chaine)
+  if (valeurs.taille_chaine !== tailleChainePrec) {
+    setTailleChainePrec(valeurs.taille_chaine)
+    setSaisie(valeurs.taille_chaine ?? '')
+  }
 
   if (!donnees) return null
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Input, Label,
 } from '../../../ui'
@@ -26,8 +26,14 @@ export default function TiroirAllees({ donnees, valeurs = {}, onChange, perime =
   const [saisie, setSaisie] = useState(valeurs.allee_m ?? '')
 
   // La valeur de référence reste celle du serveur : on se recale dessus quand
-  // elle change (préréglage, plateau appliqué, recommandation acceptée).
-  useEffect(() => { setSaisie(valeurs.allee_m ?? '') }, [valeurs.allee_m])
+  // elle change (préréglage, plateau appliqué, recommandation acceptée), en
+  // ajustant l'état AU RENDU (jamais dans un effet — évite le rendu en
+  // cascade ; https://react.dev/learn/you-might-not-need-an-effect).
+  const [alleeMPrec, setAlleeMPrec] = useState(valeurs.allee_m)
+  if (valeurs.allee_m !== alleeMPrec) {
+    setAlleeMPrec(valeurs.allee_m)
+    setSaisie(valeurs.allee_m ?? '')
+  }
 
   if (!donnees) return null
 

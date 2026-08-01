@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { AlertTriangle, Minus, Maximize2, Plus } from 'lucide-react'
 import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
 import { cn } from '../../../lib/cn'
@@ -47,9 +47,12 @@ export default function CalepinageStudio({ calepinageId, onConformite }) {
   } = useCalepinage(calepinageId, parametres)
 
   // Les paramètres d'atelier viennent du serveur — jamais d'un défaut local.
-  useEffect(() => {
-    if (parametresServeur && parametres === null) setParametres(parametresServeur)
-  }, [parametresServeur, parametres])
+  // Ajusté AU RENDU (jamais dans un effet — évite le rendu en cascade) : la
+  // garde `parametres === null` fait de ce recalage une initialisation
+  // ponctuelle, pas un effet qui écraserait les modifications des tiroirs.
+  if (parametresServeur && parametres === null) {
+    setParametres(parametresServeur)
+  }
 
   // Un tiroir ne modifie JAMAIS un résultat : il remonte un patch de
   // paramètres, et c'est le serveur qui recalcule (AOF94).

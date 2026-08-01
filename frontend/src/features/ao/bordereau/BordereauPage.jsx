@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { AlertTriangle, ClipboardList } from 'lucide-react'
 import {
   Button, Card, EmptyState, Skeleton, Textarea, toast,
@@ -132,7 +132,16 @@ export default function BordereauPage({
   const [occupe, setOccupe] = useState(false)
   const [aDeverrouiller, setADeverrouiller] = useState(null)
 
-  useEffect(() => { setBordereau(bordereauInitial ?? null) }, [bordereauInitial])
+  // On se recale sur le bordereau reçu du parent quand IL change, en ajustant
+  // l'état AU RENDU (jamais dans un effet — évite le rendu en cascade ;
+  // https://react.dev/learn/you-might-not-need-an-effect). Les mises à jour
+  // internes (appliquerReponse) restent inchangées : seul un bordereauInitial
+  // qui change d'identité déclenche ce recalage.
+  const [bordereauInitialPrec, setBordereauInitialPrec] = useState(bordereauInitial)
+  if (bordereauInitial !== bordereauInitialPrec) {
+    setBordereauInitialPrec(bordereauInitial)
+    setBordereau(bordereauInitial ?? null)
+  }
 
   // Tout service renvoie le bordereau RECALCULÉ : on le remplace en bloc, on
   // ne « patche » jamais une ligne localement (sinon les totaux divergent).
@@ -175,7 +184,7 @@ export default function BordereauPage({
     )
   }, [executer, onDeverrouiller])
 
-  const sections = bordereau?.sections ?? []
+  const sections = useMemo(() => bordereau?.sections ?? [], [bordereau])
   const lignesParSection = useMemo(() => {
     const carte = new Map(sections.map((s) => [s.id, []]))
     for (const l of bordereau?.lignes ?? []) {

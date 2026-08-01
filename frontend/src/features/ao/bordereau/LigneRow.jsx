@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { KeyRound, Lock } from 'lucide-react'
 import {
   Badge, Button, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../../ui'
 import { formatDate, formatMAD } from '../../../lib/format'
+import { SOURCE_BADGE, quantiteVerrouillee, cadreAcheteur } from './LigneRow.utils'
 
 /* ============================================================================
    AOF179 — Une ligne du bordereau des prix.
@@ -33,26 +34,6 @@ import { formatDate, formatMAD } from '../../../lib/format'
    PAR LE SERVEUR.
    ========================================================================== */
 
-export const SOURCE_BADGE = {
-  calepinage: { label: 'quantité issue du calepinage — verrouillée', tone: 'info' },
-  acheteur: { label: 'cadre acheteur — non modifiable', tone: 'warning' },
-  manuelle: { label: 'manuelle', tone: 'neutral' },
-  catalogue: { label: 'catalogue', tone: 'neutral' },
-}
-
-/** Quantité modifiable ? Verrouillée par provenance (calepinage/acheteur) ou par
-    le drapeau serveur, sauf déverrouillage explicite déjà tracé. */
-export function quantiteVerrouillee(ligne) {
-  if (ligne?.deverrouillee) return false
-  if (ligne?.quantite_verrouillee) return true
-  return ligne?.quantite_source === 'calepinage' || ligne?.quantite_source === 'acheteur'
-}
-
-/** Le cadre de l'acheteur fige AUSSI la désignation et l'unité (AOF121). */
-export function cadreAcheteur(ligne) {
-  return ligne?.quantite_source === 'acheteur' && !ligne?.deverrouillee
-}
-
 export default function LigneRow({
   ligne,
   sections = [],
@@ -64,7 +45,14 @@ export default function LigneRow({
   occupe = false,
 }) {
   const [quantite, setQuantite] = useState(String(ligne.quantite ?? ''))
-  useEffect(() => { setQuantite(String(ligne.quantite ?? '')) }, [ligne.quantite])
+  // La valeur de référence reste celle du serveur : on se recale dessus quand
+  // elle change, en ajustant l'état AU RENDU (jamais dans un effet — évite le
+  // rendu en cascade ; https://react.dev/learn/you-might-not-need-an-effect).
+  const [quantitePrec, setQuantitePrec] = useState(ligne.quantite)
+  if (ligne.quantite !== quantitePrec) {
+    setQuantitePrec(ligne.quantite)
+    setQuantite(String(ligne.quantite ?? ''))
+  }
 
   const verrou = quantiteVerrouillee(ligne)
   const acheteur = cadreAcheteur(ligne)
