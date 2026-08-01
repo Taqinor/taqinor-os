@@ -114,7 +114,36 @@ parle de rentabilité » est le chemin le plus court vers la fuite de marge.
 
 ---
 
-## 5. Règles de sanitisation
+## 5. Composition du gabarit de pack
+
+Le pack est un ASSEMBLAGE ordonné, pas un dossier de fichiers : son gabarit
+déclare quelles pièces entrent, dans quel ordre, et dans quel profil de
+visibilité. Les neuf familles de pièces :
+
+1. page de garde + sommaire (paginés, dérivés — jamais tapés) ;
+2. acte d'engagement ;
+3. bordereau des prix unitaires / DQE, avec sa clause de réserve ;
+4. montants en lettres (recalculés à chaque rendu) ;
+5. mémoire technique ;
+6. note de calcul (productible : source UNIQUE, partagée avec la simulation) ;
+7. planches de calepinage A3 (profil « dépôt » ou « interne », `rendu/`) ;
+8. simulation de rentabilité 25 ans — **pièce CLIENT, sans aucun coût** ;
+9. pièces administratives (attestations, RC, déclaration sur l'honneur…).
+
+Trois règles d'assemblage :
+
+- **Aucun gabarit ne contient de chiffre littéral** — tout vient du contexte
+  de dossier unique (§2).
+- **La fusion PDF passe par `apps.ged.services.fusionner_pdf`**, et le rendu
+  HTML→PDF par `core.pdf.render_pdf` (ARC11). Jamais un import direct de
+  WeasyPrint, jamais un assembleur maison.
+- **La règle #4 tient sans exception** : `/proposal` reste le seul chemin PDF
+  du devis CLIENT ; la fabrique AO est un domaine NEUF, sans aucun couplage à
+  `apps/ventes/quote_engine` — pas même en lecture de ses jetons visuels.
+
+---
+
+## 6. Règles de sanitisation
 
 La sanitisation est **bloquante avant tout rendu client** : aucune pièce ne se
 génère si elle échoue. Elle vérifie qu'aucune clé de coût, de marge, de
@@ -125,7 +154,7 @@ tableau de bord).
 
 ---
 
-## 6. Non-objectif v1 acté : **pas de signature électronique**
+## 7. Non-objectif v1 acté : **pas de signature électronique**
 
 Le dépôt marocain visé est **papier, en deux exemplaires, avec paraphe
 manuscrit**. `PieceDossierAO.signee` est donc un booléen de POINTAGE HUMAIN,
@@ -135,7 +164,7 @@ dépôt. Le jour où la signature devient un besoin, elle se branchera sur
 
 ---
 
-## 7. Rétention et DSR des artefacts (AOF168)
+## 8. Rétention et DSR des artefacts (AOF168)
 
 - **Trois politiques, toutes OFF par défaut** (`AO_PHOTOS_RELEVE_PURGE_DAYS`,
   `AO_IMAGES_QUESTIONS_PURGE_DAYS`, `AO_PLANS_SOURCE_PURGE_DAYS`, défaut `0`).
@@ -155,7 +184,7 @@ dépôt. Le jour où la signature devient un besoin, elle se branchera sur
 
 ---
 
-## 8. Amont du tunnel : les avis de marchés (AOF169)
+## 9. Amont du tunnel : les avis de marchés (AOF169)
 
 `services.creer_appel_offre_depuis_avis(company, avis)` est le **point de
 contact UNIQUE** de l'amont : l'import de fichier (`imports.importer_avis`), la
@@ -168,3 +197,25 @@ test de grep l'impose sur tout le paquet (règle #5 du dépôt). La collecte
 AUTOMATIQUE vit dans une app séparée, sous gate intégral : fichier `tos_risk/`
 décrivant cible, risque et mitigation, **plus** l'accord explicite du fondateur
 avant la première exécution.
+
+---
+
+## 10. `docs/CODEMAP.md` — qui l'écrit, et pourquoi pas les lanes
+
+AOF194 demande la mise à jour de `docs/CODEMAP.md` §3/§4 + §10 et le re-stamp
+`codemap_fingerprint.py --write`. **Aucune lane de ce groupe n'écrit dans
+`CODEMAP.md` :** l'empreinte de structure est un hash global, donc deux lanes
+qui la re-stampent chacune de leur côté produisent un conflit à CHAQUE fold —
+c'est mécanique, pas de la malchance. La régénération et le re-stamp
+appartiennent donc à l'orchestrateur, **dans le commit de fold**, une fois
+toutes les lanes intégrées. La commande, depuis la racine :
+
+```
+PYTHONIOENCODING=utf-8 python scripts/codemap_fingerprint.py --write
+PYTHONIOENCODING=utf-8 python scripts/codemap_fingerprint.py --check
+```
+
+Nouveaux modules à refléter en §4 pour la lane intégrations + gouvernance :
+`apps/ao/kpis.py`, `apps/ao/agent_actions.py`, `apps/ao/dsr.py`,
+`apps/ao/retention.py`, `apps/ao/management/commands/seed_ao_demo.py`, et la
+route `GET /api/django/ao/tableau-marches/`.
