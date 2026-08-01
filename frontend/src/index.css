@@ -9577,3 +9577,35 @@ textarea.form-control {
   .kb-charger-plus,
   .lv-charger-plus { min-height: 44px; }
 }
+
+/* ===========================================================================
+   APX10 — LE RESTE DU CRM REJOINT LE NIVEAU DES LEADS.
+   ---------------------------------------------------------------------------
+   Etat verifie : ClientList, Forecast et Ma file ouvraient sur un `<h2>` nu
+   dans un `page-header` generique, et `ModuleHero` (VX15) n'etait consomme par
+   AUCUN ecran crm — l'app la plus travaillee de l'ERP n'avait d'identite que
+   sur son board.
+
+   Deux grammaires, JAMAIS une troisieme :
+     - ModuleHero (VX15) pour les ecrans qui sont une DESTINATION (Forecast,
+       Ma file), comme le cockpit ODY15 ;
+     - la ligne de controle LB43 (`lp-controlbar`) pour les ecrans de LISTE
+       (Clients, Parrainage, Payloads), exactement comme le board des leads.
+
+   La pastille d'accent est le meme jeton azur que la nav CRM, le cockpit et
+   les heros : une seule couleur de module dans tout l'ecran.
+   =========================================================================== */
+.crm-controlbar .crm-accent-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.5rem;
+  border-radius: 999px;
+  background: var(--module-accent-azur);
+  vertical-align: middle;
+}
+/* La ligne de controle hors du board leads a besoin d'un peu d'air en bas
+   (sur `.lp-page` c'est la zone de vue qui le fournit). */
+.crm-controlbar {
+  margin-bottom: 0.75rem;
+}
