@@ -2136,6 +2136,12 @@ class LigneBordereau(TenantModel):
     )
     quantite_verrouillee = models.BooleanField(
         default=False, verbose_name='Quantité verrouillée')
+    #: AOF135 — le CAPEX « hors stockage » de la simulation client se DÉRIVE
+    #: du bordereau : il faut donc savoir quelle ligne EST du stockage. Un
+    #: booléen porté par la ligne évite de deviner sur la désignation (le
+    #: chercher-remplacer que tout ce groupe combat).
+    est_stockage = models.BooleanField(
+        default=False, verbose_name='Ligne de stockage (batteries)')
 
     class Meta:
         verbose_name = 'Ligne de bordereau'
@@ -2987,3 +2993,198 @@ class EquipementAO(TenantModel):
         if puissance in (None, ''):
             return None
         return Decimal(str(puissance)) * (self.quantite or Decimal('0'))
+
+
+# ── AOF135 — Simulation de rentabilité : PIÈCE CLIENT, sans AUCUN coût ─────
+
+class SimulationRentabilite(TenantModel):
+    """Simulation de rentabilité remise au maître d'ouvrage (AOF135).
+
+    **Objet DISTINCT de l'économie directeur (AOF157).** Les fusionner « parce
+    que ça parle de rentabilité » est le chemin le plus court vers la fuite de
+    marge : cette pièce est CLIENT, elle ne porte donc AUCUN coût de revient,
+    AUCUNE marge, AUCUN bénéfice. Un test d'introspection le vérifie.
+
+    Rien n'est saisi deux fois : la puissance vient du CALEPINAGE (variantes
+    retenues), le CAPEX vient du BORDEREAU (total TTC, et total TTC hors
+    lignes de stockage). Ne restent en paramètres que ce qui ne se dérive pas :
+    le productible spécifique du site (avec sa provenance CITÉE), le tarif,
+    l'inflation, la dégradation annuelle et le taux d'actualisation.
+
+    ``source_hash`` fige l'empreinte des entrées : une simulation dont
+    l'empreinte ne correspond plus au dossier est PÉRIMÉE, jamais « à peu près
+    juste ».
+    """
+
+    appel_offre = models.OneToOneField(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: simulation fille d'un AO : aucune existence hors de lui
+        related_name='simulation_rentabilite',
+        verbose_name="Appel d'offres",
+    )
+    bordereau = models.ForeignKey(
+        BordereauPrix,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='simulations', verbose_name='Bordereau source du CAPEX',
+    )
+    duree_annees = models.PositiveSmallIntegerField(
+        default=25, verbose_name='Durée de la simulation (ans)')
+    #: Productible SPÉCIFIQUE du site, en kWh par kWc et par an. Sa provenance
+    #: est CITÉE (``productible_source``) : un productible sans source n'est
+    #: pas défendable devant un maître d'ouvrage.
+    productible_kwh_par_kwc_an = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Productible spécifique (kWh/kWc/an)')
+    productible_source = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Source du productible')
+    tarif_kwh = models.DecimalField(
+        max_digits=8, decimal_places=4, default=Decimal('0.0000'),
+        verbose_name='Tarif du kWh évité (MAD)')
+    inflation_tarif_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Inflation annuelle du tarif (%)')
+    degradation_annuelle_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.50'),
+        verbose_name='Dégradation annuelle des modules (%)')
+    taux_actualisation_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        verbose_name="Taux d'actualisation (%)")
+    part_autoconsommee_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('100.00'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Part autoconsommée (%)')
+    source_hash = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte des entrées')
+
+    class Meta:
+        verbose_name = 'Simulation de rentabilité (AO)'
+        verbose_name_plural = 'Simulations de rentabilité (AO)'
+        db_table = 'ao_simulation_rentabilite'
+        ordering = ['appel_offre']
+
+    def __str__(self):
+        return f'Simulation {self.duree_annees} ans — {self.appel_offre.reference}'
+
+    # ── Grandeurs DÉRIVÉES (jamais saisies deux fois) ────────────────────
+
+    @property
+    def puissance_kwc(self):
+        """Puissance retenue, somme des variantes RETENUES (calepinage)."""
+        total = Decimal('0.000')
+        for variante in self.appel_offre.variantes_calepinage.filter(
+                est_retenue=True):
+            total += Decimal(str(variante.puissance_kwc or 0))
+        return total
+
+    @property
+    def productible_kwh_an(self):
+        """Productible de la première année — puissance × productible spécifique."""
+        return (self.puissance_kwc
+                * (self.productible_kwh_par_kwc_an or Decimal('0')))
+
+    @property
+    def economie_annuelle_initiale(self):
+        """Économie de la première année (MAD), part autoconsommée incluse."""
+        part = (self.part_autoconsommee_pct or Decimal('0')) / Decimal('100')
+        return (self.productible_kwh_an * (self.tarif_kwh or Decimal('0'))
+                * part).quantize(Decimal('0.01'))
+
+    @property
+    def capex_total(self):
+        """CAPEX TOTAL = montant TTC du bordereau (aucun coût de revient)."""
+        if self.bordereau_id is None:
+            return Decimal('0.00')
+        return self.bordereau.total_ttc
+
+    @property
+    def capex_hors_stockage(self):
+        """CAPEX hors stockage = TTC du bordereau moins les lignes stockage."""
+        if self.bordereau_id is None:
+            return Decimal('0.00')
+        facteur = Decimal('1') - (
+            self.bordereau.remise_globale_pct or Decimal('0')) / Decimal('100')
+        stockage_ttc = Decimal('0.00')
+        for ligne in self.bordereau.lignes.filter(est_stockage=True):
+            ht = ligne.montant_ht * facteur
+            stockage_ttc += ht * (
+                Decimal('1') + ligne.taux_tva_effectif / Decimal('100'))
+        return (self.capex_total - stockage_ttc).quantize(Decimal('0.01'))
+
+    def _annee(self, rang):
+        """Grandeurs de l'année ``rang`` (1-indexée), sans effet de bord."""
+        degradation = (Decimal('1') - (
+            self.degradation_annuelle_pct or Decimal('0')) / Decimal('100')
+        ) ** (rang - 1)
+        inflation = (Decimal('1') + (
+            self.inflation_tarif_pct or Decimal('0')) / Decimal('100')
+        ) ** (rang - 1)
+        economie = self.economie_annuelle_initiale * degradation * inflation
+        actualisation = (Decimal('1') + (
+            self.taux_actualisation_pct or Decimal('0')) / Decimal('100')
+        ) ** rang
+        return {
+            'annee': rang,
+            'productible_kwh': (self.productible_kwh_an * degradation
+                                ).quantize(Decimal('0.01')),
+            'economie': economie.quantize(Decimal('0.01')),
+            'economie_actualisee': (economie / actualisation).quantize(
+                Decimal('0.01')),
+        }
+
+    @property
+    def tableau_annuel(self):
+        """Le tableau année par année — la donnée du classeur et du PDF."""
+        lignes = []
+        cumul = Decimal('0.00')
+        cumul_actualise = Decimal('0.00')
+        for rang in range(1, int(self.duree_annees or 0) + 1):
+            annee = self._annee(rang)
+            cumul += annee['economie']
+            cumul_actualise += annee['economie_actualisee']
+            annee['economie_cumulee'] = cumul
+            annee['economie_cumulee_actualisee'] = cumul_actualise
+            lignes.append(annee)
+        return lignes
+
+    @property
+    def economies_cumulees(self):
+        """Économies cumulées sur toute la durée (MAD)."""
+        lignes = self.tableau_annuel
+        return lignes[-1]['economie_cumulee'] if lignes else Decimal('0.00')
+
+    def _annees_pour_atteindre(self, cible, cle):
+        """Années (interpolées) pour que le cumul ``cle`` atteigne ``cible``."""
+        if cible <= 0:
+            return None
+        precedent = Decimal('0.00')
+        for ligne in self.tableau_annuel:
+            cumul = ligne[cle]
+            if cumul >= cible:
+                flux = cumul - precedent
+                if flux <= 0:
+                    return Decimal(ligne['annee'])
+                reste = (cible - precedent) / flux
+                return (Decimal(ligne['annee'] - 1) + reste).quantize(
+                    Decimal('0.01'))
+            precedent = cumul
+        return None
+
+    @property
+    def payback_simple_ans(self):
+        """Retour SIMPLE sur le CAPEX hors stockage (années, None si jamais)."""
+        return self._annees_pour_atteindre(
+            self.capex_hors_stockage, 'economie_cumulee')
+
+    @property
+    def roi_sur_ttc_ans(self):
+        """Retour sur le montant TTC REMIS (années) — le ROI de l'offre."""
+        return self._annees_pour_atteindre(
+            self.capex_total, 'economie_cumulee')
+
+    @property
+    def payback_actualise_ans(self):
+        """Retour ACTUALISÉ sur le CAPEX hors stockage (années)."""
+        return self._annees_pour_atteindre(
+            self.capex_hors_stockage, 'economie_cumulee_actualisee')
