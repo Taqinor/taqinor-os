@@ -6,6 +6,7 @@ import { unwrapList } from '../../../api/resource'
 import { Badge, Button, Card, EmptyState, Skeleton, toast } from '../../../ui'
 import BasculeAssistant from './BasculeAssistant'
 import RapportBascule from './RapportBascule'
+import { ROLES } from './EquipementsPage.utils'
 
 /* ============================================================================
    AOF180 — Écran « Équipements retenus » (+ bascule + rapport).
@@ -26,21 +27,6 @@ import RapportBascule from './RapportBascule'
    ========================================================================== */
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
-
-export const ROLES = [
-  ['module', 'Modules'],
-  ['onduleur', 'Onduleurs'],
-  ['batterie', 'Batteries'],
-  ['coffret_dc', 'Coffrets DC'],
-  ['coffret_ac', 'Coffrets AC'],
-  ['tgpv', 'TGPV'],
-  ['cable', 'Câbles'],
-  ['structure', 'Structures'],
-  ['ems', 'EMS'],
-  ['station_meteo', 'Stations météo'],
-  ['afficheur', 'Afficheurs'],
-  ['variateur', 'Variateurs'],
-]
 
 const APPRO_TONE = {
   disponible: 'success',
