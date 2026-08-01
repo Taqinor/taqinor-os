@@ -21,6 +21,7 @@ import { Star } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../ui/Dialog'
 import useInstalledApps from '../../lib/apps/useInstalledApps'
 import AppIcon from '../../ui/AppIcon'
+import { prefetchRoute } from '../../router/prefetchMap'
 import { isTypingTarget } from '../../providers/shortcuts'
 
 // Même clé que VX10 (PinnedApps) — état d'épinglage PARTAGÉ entre la Sidebar et
@@ -217,6 +218,10 @@ function AppLauncherSection({ title, entries, pinned, onOpen, onTogglePin }) {
             role="listitem"
             className="app-launcher-tile"
             onClick={() => onOpen(entry)}
+            /* ODY12 — même préchargement que la grille du Menu d'accueil :
+               survol/focus charge le chunk du cockpit avant le clic. */
+            onMouseEnter={() => prefetchRoute(entry.to)}
+            onFocus={() => prefetchRoute(entry.to)}
           >
             {/* ODY9 — LE composant d'icône d'app (même pastille que le Menu
                 d'accueil, les épinglés et l'écran Applications). */}

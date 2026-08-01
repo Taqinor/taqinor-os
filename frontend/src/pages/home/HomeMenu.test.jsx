@@ -42,6 +42,16 @@ vi.mock('../../router/moduleRoutes', () => ({
   ],
 }))
 
+// ODY12 — le préchargement au survol/focus est observé, pas exécuté (un vrai
+// import() de chunk n'a aucun sens sous jsdom).
+const prefetchMock = vi.fn()
+vi.mock('../../router/prefetchMap', () => ({
+  prefetchRoute: (...args) => prefetchMock(...args),
+  PREFETCH_MAP: {},
+  shouldSkipPrefetch: () => false,
+  _resetPrefetchCacheForTests: () => {},
+}))
+
 const navigateMock = vi.fn()
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom')
@@ -115,6 +125,19 @@ describe('ODY2 — HomeMenu (rendu)', () => {
   beforeEach(() => {
     window.localStorage.clear()
     navigateMock.mockClear()
+    prefetchMock.mockClear()
+  })
+
+  it('ODY12 — le survol d’une tuile précharge le chunk de son cockpit', () => {
+    renderHome()
+    fireEvent.mouseEnter(ouvreur(celluleDe('CRM')))
+    expect(prefetchMock).toHaveBeenCalledWith('/crm')
+  })
+
+  it('ODY12 — le focus clavier précharge aussi (pas seulement la souris)', () => {
+    renderHome()
+    fireEvent.focus(ouvreur(celluleDe('Ventes')))
+    expect(prefetchMock).toHaveBeenCalledWith('/ventes/devis')
   })
 
   it('la grille = les apps installées ∩ rôle (source ODY1, pas un 2e registre)', () => {

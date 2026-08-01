@@ -23,6 +23,7 @@ import { readPinned, writePinned, readRecent, pushRecent } from '../../lib/apps/
 import { normalise, grouperApps } from '../../lib/apps/appSearch'
 import AppIcon from '../../ui/AppIcon'
 import { runAppTransition, marquerIconeSortante } from '../../lib/apps/appTransition'
+import { prefetchRoute } from '../../router/prefetchMap'
 
 export default function HomeMenu() {
   const navigate = useNavigate()
@@ -208,7 +209,13 @@ export default function HomeMenu() {
                         ref={(node) => { tileRefs.current[index] = node }}
                         className="home-menu-tile"
                         tabIndex={index === activeIndex ? 0 : -1}
-                        onFocus={() => setActiveIndex(index)}
+                        /* ODY12 — vitesse perçue : le survol/focus précharge le
+                           chunk du cockpit (table EXISTANTE prefetchMap.js), si
+                           bien qu'au clic il est déjà en cache. Aucun écran
+                           blanc à l'entrée : `WithLayout` monte déjà un
+                           `<Suspense>` à repli SQUELETTE (RouteFallback, O65). */
+                        onMouseEnter={() => prefetchRoute(app.to)}
+                        onFocus={() => { setActiveIndex(index); prefetchRoute(app.to) }}
                         onClick={(e) => ouvrir(app, e.currentTarget.closest('.home-menu-cell'))}
                         onKeyDown={(e) => onTileKeyDown(e, index)}
                       >
