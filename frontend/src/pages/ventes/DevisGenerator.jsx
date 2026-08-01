@@ -8,6 +8,8 @@ import {
 import {
   ArrowLeft, Target, ClipboardList, User, Zap, Sprout, BarChart3,
   ShoppingCart, StickyNote, FileText, RotateCcw, Sun, Plus, Trash2,
+  // EZ3 — actions du panneau de succès (envoyer / aperçu).
+  Send, Eye,
 } from 'lucide-react'
 // QX21 — la sauvegarde passe désormais par les endpoints ATOMIQUES de ventesApi
 // (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
@@ -229,11 +231,21 @@ export default function DevisGenerator({
   const pompeAlimTouched = useRef(false)
   const nbPanneauxTouched = useRef(false)
 
-  // Fin de parcours : embarqué → callbacks (jamais de navigation) ; pleine
-  // page → retour à la liste des devis (comportement historique).
-  const finish = (devisId) => {
+  // EZ3 — L'ABANDON POST-CRÉATION. En pleine page, `finish()` renvoyait sur la
+  // liste NUE en JETANT l'id du devis qu'on venait de passer 20 minutes à
+  // construire : il fallait le retrouver à la main pour l'envoyer. Le mode
+  // embarqué, lui, recevait déjà `onDone(devisId)`.
+  // Désormais, la création en pleine page ouvre un PANNEAU DE SUCCÈS qui offre
+  // l'action suivante évidente (envoyer, aperçu) sans re-chercher quoi que ce
+  // soit. Le mode embarqué est INCHANGÉ.
+  const [succes, setSucces] = useState(null) // { id, reference, total }
+  const finish = (devisId, devisData) => {
     if (embedded) { onDone?.(devisId); return }
-    navigate('/ventes/devis')
+    setSucces({
+      id: devisId,
+      reference: devisData?.reference ?? editDevis?.reference ?? '',
+      total: devisData?.total_ttc ?? null,
+    })
   }
   const cancel = () => {
     if (embedded) { onCancel?.(); return }
@@ -1512,6 +1524,7 @@ export default function DevisGenerator({
       })
 
       let devisId
+      let devisCree = null
       if (editDevis) {
         // QX21 — ÉDITION ATOMIQUE : le patch du devis PUIS le remplacement des
         // lignes en une transaction serveur. Un échec préserve les lignes
@@ -1519,6 +1532,7 @@ export default function DevisGenerator({
         await ventesApi.patchDevis(editDevis.id, payload)
         await ventesApi.replaceLignesDevis(editDevis.id, lignesPayload)
         devisId = editDevis.id
+        devisCree = { reference: editDevis.reference }
       } else {
         // QX21 — CRÉATION ATOMIQUE : devis + lignes en UN commit serveur → plus
         // de brouillon orphelin/partiel si la connexion est coupée en cours de
@@ -1529,10 +1543,11 @@ export default function DevisGenerator({
           ...payload, lignes: lignesPayload,
         })
         devisId = data.id
+        devisCree = data
       }
 
       clear() // VX62 — succès : purge le brouillon local.
-      finish(devisId)
+      finish(devisId, devisCree)
     } catch (err) {
       // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
       const raw = err?.response?.data ?? err
@@ -1707,6 +1722,51 @@ export default function DevisGenerator({
       confirmLabel: 'Réinitialiser',
     })
     if (ok) window.location.reload()
+  }
+
+  // EZ3 — PANNEAU DE SUCCÈS : la création ne se termine plus par un renvoi sur
+  // la liste nue. Le devis fraîchement créé s'annonce (numéro + total) et
+  // propose l'action SUIVANTE évidente. « Envoyer par WhatsApp » ouvre la liste
+  // sur ce devis précis AVEC l'aperçu WhatsApp déjà ouvert (le flux existant de
+  // DevisList, jamais un second) — un clic ici, un clic « Ouvrir WhatsApp ».
+  if (succes && !embedded) {
+    return (
+      <div className="page gen-page">
+        <Card className="mx-auto max-w-xl" data-testid="devis-succes">
+          <CardContent className="flex flex-col gap-4 pt-6 text-center">
+            <div>
+              <p className="text-sm text-muted-foreground">Devis enregistré</p>
+              <p className="font-display text-xl font-bold">{succes.reference || '—'}</p>
+              {succes.total != null && (
+                <p className="num mt-1 text-2xl font-semibold">{formatMoney(succes.total)}</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <Button
+                onClick={() => navigate(`/ventes/devis?devis=${succes.id}&envoyer=1`)}
+                data-testid="succes-whatsapp"
+              >
+                <Send /> Envoyer par WhatsApp
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/ventes/devis?devis=${succes.id}&apercu=1`)}
+                data-testid="succes-apercu"
+              >
+                <Eye /> Aperçu du PDF
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => navigate(`/ventes/devis?devis=${succes.id}`)}
+                data-testid="succes-liste"
+              >
+                Retour à la liste
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
