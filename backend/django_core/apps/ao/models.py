@@ -63,6 +63,14 @@ class AppelOffre(TenantModel):
     )
     reference = models.CharField(
         max_length=120, verbose_name="Référence de l'AO")
+    # AOF5 — NOTRE référence (``reference``, générée ``AO-YYYYMM-0001`` par
+    # ``core.numbering``) et la référence du marché CÔTÉ ACHETEUR sont deux
+    # choses distinctes : les confondre rend impossible de retrouver un dossier
+    # à partir de l'avis publié, et fait entrer dans notre séquence un numéro
+    # que nous ne contrôlons pas.
+    reference_acheteur = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name="Référence du marché (acheteur)")
     objet = models.CharField(max_length=255, verbose_name='Objet')
     acheteur = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Acheteur')

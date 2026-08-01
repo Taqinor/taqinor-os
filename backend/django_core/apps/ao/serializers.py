@@ -27,14 +27,20 @@ class AppelOffreSerializer(serializers.ModelSerializer):
         source='get_type_marche_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # AOF5 — la référence n'est plus obligatoire à la création : laissée vide,
+    # elle est générée côté serveur (``AO-YYYYMM-0001``) par
+    # ``core.numbering``. Fournie explicitement, elle est respectée (reprise
+    # d'un dossier historique).
+    reference = serializers.CharField(
+        max_length=120, required=False, allow_blank=True)
 
     class Meta:
         model = AppelOffre
         fields = [
-            'id', 'reference', 'objet', 'acheteur', 'type_marche',
-            'type_marche_display', 'lot', 'date_limite', 'montant_estime',
-            'caution_provisoire', 'statut', 'statut_display', 'lead_id',
-            'date_creation',
+            'id', 'reference', 'reference_acheteur', 'objet', 'acheteur',
+            'type_marche', 'type_marche_display', 'lot', 'date_limite',
+            'montant_estime', 'caution_provisoire', 'statut', 'statut_display',
+            'lead_id', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 

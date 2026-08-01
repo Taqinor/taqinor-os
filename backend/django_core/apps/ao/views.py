@@ -55,8 +55,26 @@ class AppelOffreViewSet(AoBaseViewSet):
     queryset = AppelOffre.objects.all()
     serializer_class = AppelOffreSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['reference', 'objet', 'acheteur', 'lot']
+    search_fields = ['reference', 'reference_acheteur', 'objet', 'acheteur',
+                     'lot']
     ordering_fields = ['date_creation', 'date_limite', 'statut']
+
+    def perform_create(self, serializer):
+        """AOF5 — référence auto ``AO-YYYYMM-0001`` quand elle n'est pas fournie.
+
+        La société reste posée CÔTÉ SERVEUR dans les deux branches (jamais lue
+        du corps de requête) : ``super()`` pour la branche « référence
+        fournie », ``serializer.save(company=…)`` dans la fabrique de référence
+        pour l'autre.
+        """
+        if (serializer.validated_data.get('reference') or '').strip():
+            return super().perform_create(serializer)
+        societe = self.request.user.company
+        services.creer_appel_offre_avec_reference(
+            societe,
+            lambda reference: serializer.save(
+                company=societe, reference=reference),
+        )
 
 
 # ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────

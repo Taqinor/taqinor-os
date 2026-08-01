@@ -12,7 +12,34 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from django.utils import timezone
 
-from .models import EcheanceAO, ResultatAO
+from core.numbering import create_with_reference
+
+from .models import AppelOffre, EcheanceAO, ResultatAO
+
+#: AOF5 — préfixe de NOTRE numérotation d'appels d'offres (``AO-YYYYMM-0001``).
+#: La référence de l'acheteur vit dans ``AppelOffre.reference_acheteur`` et
+#: n'entre JAMAIS dans cette séquence.
+PREFIXE_REFERENCE_AO = 'AO'
+
+
+# ── AOF5 — Numérotation des appels d'offres ────────────────────────────────
+
+def creer_appel_offre_avec_reference(company, save_fn):
+    """Crée un ``AppelOffre`` en lui attribuant une référence libre.
+
+    Délègue à ``core.numbering.create_with_reference`` : plus-haut-numéro-
+    utilisé + 1 par société et par mois, dans un savepoint, avec réessai sur
+    une course. JAMAIS ``count() + 1`` ni un ``max + 1`` recalculé localement —
+    ce motif a déjà coûté une collision de références en production (une
+    suppression fait rétrécir le compte alors que le plus haut numéro utilisé,
+    lui, reste).
+
+    ``save_fn`` reçoit la référence générée et doit effectuer la création
+    réelle (``serializer.save(...)`` ou ``AppelOffre.objects.create(...)``)
+    puis retourner l'instance.
+    """
+    return create_with_reference(
+        AppelOffre, PREFIXE_REFERENCE_AO, company, save_fn)
 
 
 # ── FG226 — Échéances d'AO dues (rappels) ──────────────────────────────────
