@@ -2,7 +2,7 @@
 
 Generated from commit `dev` on 2026-06-29, refreshed for the functional-domain expansion wave (5 parallel worktree lanes: apps/compta clôture de période + OD manuelles + à-nouveaux FG115–117; apps/ventes solar string-design + inverter match + tilt/azimut FG246/247/249; apps/installations jalons/modèles-de-projet/réunions FG293/296/298; **NEW app apps/flotte** Vehicule+EnginRoulant FLOTTE1/2/4; **NEW app apps/ged** Cabinet/Folder/Document/Version GED1/2/3 — all additive, company-scoped, tested), on top of the prior `dev-uiwave-20260621` world-class UI wave (34 frontend UI/UX tasks: premium DataTable, calm chrome, foundation hooks/primitives, page redesigns) (PLAN2 priority-queue run — Group Q Devis↔Toiture-3D pipeline backend (Q1–Q7: Devis.roof_layout/roof_image + layout endpoints, Lead roof_point/roof_outline/bill_kwh + per-lead token, build_devis_from_layout() service, MinIO roof-image, layout-aware quote data with byte-identical no-layout path, tokenized /proposal data endpoint + e-sign accept); Group R agentic layer — NEW APP `apps/agent` (in-code action registry + `/api/django/agent/` catalogue, AG1), FastAPI registry-driven tools with propose→confirm (`/sql-agent/confirm`, AG2) surfaced on /query, assistant confirm/result cards (AG3), domain agent actions in ventes/crm/stock/sav/installations `agent_actions.py` (AG4–AG9), Groq-Whisper assistant voice `/sql-agent/transcribe` (AG10) + voice/hands-free chat (AG11/AG12); Group S internal team chat — NEW APP `apps/chat` (Conversation/Member/Message/Attachment/Reaction/Mention, company+membership scoped, `/api/django/chat/`, S1–S9), self-hosted faster-whisper `/chat/transcribe` (NEW dep, `CHAT_TRANSCRIPTION_ENABLED`, S10) + Celery transcription pipeline (S11), full React `features/messaging` UI + `/messages` route (S12–S20); design/UI/reporting polish (F120–F123 OKLCH tokens, G124–G128 primitives, K147/N161/K148/K149/J146/P167 chart kit + dashboard + table unification); P171 DataTable→@tanstack engine swap (API-compatible, full parity). ADDITIVE migrations: ventes/0024, crm/0024, chat/0001, notifications/0007. Founder standing consent recorded in CLAUDE.md lifting the ARCH/AUTH/COST/DECISION/GALLERY/DEP gate. + 2026-06-22 greenfield-foundations run: 7 NEW apps stood up (apps/rh DossierEmploye master FG154/DC29, apps/paie ParametrePaie/BaremeIR PAIE1/2/4, apps/gestion_projet Projet/ProjetChantier PROJ1, apps/contrats Contrat CONTRAT1/2, apps/qhse NCR/CAPA QHSE1/9/10, apps/kb KbArticle KB1, apps/litiges Reclamation LITIGE1) — additive, multi-tenant, admin-gated, tested; INSTALLED_APPS+urls wired; 13 tasks ticked. BLOCKED: S21 WebSocket/Channels (needs provisioned ASGI/nginx-WS infra), I134/I138 ⌘K palette (reconcile with existing providers).) + 2026-06-22 `claude/serene-ptolemy-dj5cs0` wave-1 run: 8 parallel worktree lanes — FG122 (compta consolidated treasury position + AR/AP/payroll/TVA projection, GL-only selector + read endpoint), M4 (last `ventes → audit` back-edge removed — PDF audit capture now flows through the `core.events.document_pdf_generated` bus with an `audit` receiver; new import-linter contract pins it), FG157 (apps/rh `Remuneration` gated by the new `salaires_voir` permission), PAIE3 (apps/paie 2026 Moroccan legal payroll defaults seeded editable + `valide_par_fondateur` flag), PROJ5 (apps/gestion_projet `Tache` WBS with self-FK sub-tasks), QHSE5 (apps/qhse auto-conformity min/max on `PointControleModele`/`ReleveControle`), FG350 (frontend global `CopilotPanel` drawer reusing the FastAPI agent), GED5 (frontend `/ged` arborescent navigator over existing ged endpoints) — all additive, multi-tenant, tested; ADDITIVE migrations rh/0004, paie/0002, qhse/0004, gestion_projet/0005. + wave-2 (same run): FG123 (compta `RapprochementBancaire`/`LigneReleve`/`PointageReleve` — statement↔GL pointing, écart-zero close, no écriture), FG49 (ventes account-coded grand-livre export CGNC 3421/7111/4455, xlsx+csv, configurable codes), FG351 (apps/agent registry guarded write actions `ventes.devis.create`/`crm.client.create`/`crm.lead.create` via propose→confirm + FastAPI dynamic action_tools), FG158 (rh `DossierEmploye` emergency-contact + extended coordinates fields), PAIE5 (paie family-charge deduction params + `compute_ir` helper), GED6 (ged `DocumentLien` generic-target link via `records.ALLOWED_TARGETS` +ventes.boncommande), PROJ6 (gestion_projet `DependanceTache` FS/SS/FF/SF + lag with cycle guards), QHSE6 (qhse hold-point gating selector/endpoint) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0006, rh/0005, paie/0003, ged/0002, gestion_projet/0006 (FG49/FG351/QHSE6 need none); import-linter stays 4/4. + wave-3 (same run, 7 lanes): FG124 (compta `Caisse`/`MouvementCaisse`/`ClotureCaisse` petty-cash with optional GL posting honouring the FG115 period lock), FG50 (ventes acompte transfer/refund on facture cancel — re-point Paiement or reversing negative Paiement, chatter, no migration), FG159 (rh `DocumentEmploye` vault reusing `records.Attachment` MinIO storage + optional expiry), PAIE6 (paie `Rubrique` configurable payslip-line catalogue + idempotent seed), GED7 (ged `migrate_attachments_to_ged` command importing records.Attachment into Documents reusing file_key + DocumentLien), PROJ7 (gestion_projet `Jalon` milestones + `facturation_pct`), QHSE7 (qhse `ReleveCourbeIV` PV string I-V curve + fill factor) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0007, rh/0006, paie/0004, gestion_projet/0007, qhse/0005 (FG50/GED7 need none); import-linter stays 4/4. FG352 (RAG/pgvector, DEP:langchain-textsplitters) intentionally left [ ] for a focused run. + 2026-06-22 `claude/plan-md-completion-ysbchz` drain: 8 parallel worktree lanes off PLAN.md (compta FG125–130, ventes FG51/53/248/250/251, core FG355–359 NoOp-AI, rh FG160–165, paie PAIE7–12, ged GED8–13, gestion_projet PROJ8–13, qhse QHSE8/11–15 — 46 tasks; ADDITIVE migrations across those apps + customfields/0003; new NoOp scaffolds add no external dependency; GED12 semantic embedding OFF by default). + 2026-06-23 PLAN2 **Group U** drain (U1–U14, 10 parallel worktree lanes, one self-merge): lead-modal stays-open UX (U1), mouse-wheel + mobile-header CSS regressions (U2/U3), WhatsApp-send flips devis→envoyé via a NEW `core.events.devis_sent` event (U4), surface generated factures/BC in the devis list + BC-state warning (U5/U8), hide/badge superseded devis revisions (U7), auto-create chantier on devis acceptance via the `devis_accepted` bus (U6), stock reservation on the direct generer-facture path (U9), relance-escalation reset on full payment (U10), phantom-signé flag on post-acceptance refusal (U11, flag-only), direct nullable lead FK on Facture/BonCommande (U12), avatar same-origin proxy fix (U13), GED « Documents » write UI + `documents/televerser/` upload (U14) — additive, multi-tenant, tested; ADDITIVE migrations ventes/0027_devis_date_envoi + 0028_boncommande_lead_facture_lead. + 2026-06-24 PLAN.md batch-1 drain (8 parallel worktree lanes off the FG/module wave plan, adversarial review + local CI incl. makemigrations-check & full affected test run, one self-merge): 7 shipped — FG52 (ventes multi-currency `devise`/`taux_change` + CompanyProfile default), FG166 (rh `Pointage` clock-in/out), CONTRAT6 (contrats `confidentialite` gated on `menu_tier`), FLOTTE5 (flotte `ActifFlotte` unified asset ref), PAIE13 (paie multi-profile base-salary + proration), GED14 (ged inline `apercu` preview), PROJ14 (gestion_projet delay detection). ADDITIVE migrations ventes/0029 + parametres/0025, rh/0008, contrats/0005, flotte/0005, paie/0006. **FG131 (compta 3-way match) DEFERRED/backed-out** — the build duplicated stock's BonCommandeFournisseur/FactureFournisseur (reverse-accessor clash); needs a rebuild reusing stock procurement via selectors/services (left `[ ]`). + 2026-06-27 `claude/lucid-banzai-33af1c` PLAN.md wave-1 drain (5 parallel worktree lanes, one self-merge): PAIE14 (paie heures-sup majorées 25/50/100 %), FG167 (rh `FeuilleTemps` timesheets + labour-hours selector), CONTRAT7 (contrats `ModeleContrat` + `/instancier/`), FLOTTE7 (flotte `Conducteur` + permis), QHSE16 (qhse `Audit`/`ReponseCritere` + score → NCR) — all additive, multi-tenant, tested; ADDITIVE migrations paie/0007, rh/0009, contrats/0006, flotte/0006, qhse/0010. No new external/paid dependency, no auth change. Validated on the docker CI harness (511 affected-app tests green, makemigrations --check clean). + 2026-06-27 same run waves 2+3 (9 more file-disjoint lanes): GED15 (ged document version history + restore, `restored_from` audit), PROJ15 (gestion_projet `RessourceProfil`/`Equipe`, internal cout_horaire), FG39 (crm `ObjectifCommercial` + attainment selector, backend), FG5 (notifications `WorkingHoursConfig`/`Holiday` + calendar helpers + `seed_ma_holidays`, opt-in), FG86 (sav `Ticket.share_token` + public read-only tracking endpoint, allowlist no cout/chatter), KB5 (kb `seed_kb_templates` 5 SOP/ONEE/82-21 gabarits), FG96 (reporting `DashboardConfig` per-user/role, backend), FG102 (publicapi webhook deliveries history + replay + test, backend), FG297 (installations `DocumentProjet`/`RevisionDocument` versioned project-doc register) — all additive, multi-tenant, tested; ADDITIVE migrations ged/0008, gestion_projet/0010, crm/0028, notifications/0010, sav/0009, reporting/0003, installations/0014 (KB5/FG102 need none); import-linter stays 4/4. No new external/paid dependency, no auth change. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-1 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI, one self-merge): FG135 (compta `NoteFrais` notes de frais + remboursements, justificatif photo, écritures équilibrées, verrou de période, réf NDF race-safe), FG291 (installations `Projet` programme multi-chantiers regroupant chantiers/devis/tickets par FK chaînes, machine d'états propre — NEW arch component), FG255 (ventes `ev_charger_sizing` borne VE couplée au PV, math pure), FG361 (core `forecast.py` prévision CA/devis mensuels, Holt-Winters statsmodels + repli pur Python), FG172 (rh `Competence`/`CompetenceEmploye` matrice de compétences), CONTRAT13 (contrats `RegleApprobation` par montant/type + résolveur), FLOTTE13 (flotte conso L/100 km & kWh/100 km depuis pleins+odomètre, endpoint scopé), GED17 (ged `Document.statut` cycle de vie brouillon→…→obsolète, machine d'états gardée, distinct de STAGES.py) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0011, installations/0016, rh/0014, contrats/0010, ged/0011 (FG255/FG361/FLOTTE13 need none). **NEW external dependency `statsmodels==0.14.4`** (FG361, import défensif + repli si absente). Adversarial review fixed 2 CI-red issues pre-merge (FG361 garde NaN avant clamp, FLOTTE13 action `consommation` en lecture tout rôle) + an FG135 reference race; core stays a foundation layer (import-linter 4/4). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-2 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI): FG136 (compta `BaremeIndemnite`+`IndemniteChantier` indemnités km/per-diem, haversine, écritures équilibrées + verrou de période), FG292 (installations `ProjetTache` tâches/sous-tâches + prédécesseur avec gardes anti-cycle — étend l'ARCH Projet FG291), FG256 (ventes `battery_storage_sizing` autoconso-max vs backup-heures, math pure), FG362 (core `win_probability.py` scorer pur fondation + `reporting/pipeline.py` pondéré par lead, repli statique), FG173 (rh `Habilitation` électriques NF C 18-510 + expiry), CONTRAT14 (contrats `EtapeApprobation` workflow depuis `RegleApprobation`, ne touche pas `Contrat.statut`), FLOTTE14 (flotte `CarteCarburant` + détecteur d'anomalies pleins), QHSE19 (qhse `RetourClientQualite` satisfaction 1–5) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0012, installations/0017, rh/0015, contrats/0011, flotte/0012, qhse/0013 (FG256/FG362 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). Fixed an FG136 constraint Q-order migration drift pre-merge (makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-3 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI incl. the 8 wave-3 test modules run green before push): FG137 (compta `DeclarationTVA` préparation TVA collectée−déductible par régime/méthode + export), FG294 (installations `BudgetProjet`/`BudgetEngagement` budget vs réel agrégé cross-app via get_model/selectors, alerte dépassement — ARCH), FG257 (ventes `simulate_bankable_yield` P50/P90 + Performance Ratio, math pure), FG363 (core `churn_risk.py` scorer pur fondation), FG174 (rh `Certification` non-électriques + expiry), CONTRAT15 (contrats `ContratActivity` chatter/journal des transitions), FLOTTE15 (flotte `PlanEntretien` entretien préventif km/date/heures via ActifFlotte), GED18 (ged `DemandeApprobation` workflow réutilisant la machine d'états GED17) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0013, installations/0018, rh/0016, contrats/0012, flotte/0013, ged/0012 (FG257/FG363 need none). No new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, FG363 stdlib-only). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-4 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-4 test modules before push — **ZERO migrations this wave**, all aggregation/pure-math/helper tasks): FG138 (compta `releve_deductions_tva` annexe TVA déductible depuis le GL, réconcilie FG137), FG295 (installations `projet_pnl` P&L consolidé revenu−coûts par Projet, réutilise les agrégats cross-app FG294), FG258 (ventes `hourly_self_consumption` profil autoconso 8760 h + parser xlsx openpyxl déjà présent), FG364 (core `stock_reorder.py` prévision rupture/réappro, stdlib seul), FG175 (rh `echeances_rh` moteur d'alertes d'expiration unifié + commande notifiant via `notifications.notify`), PROJ18 (gestion_projet `plan_de_charge` capacité vs affecté), PAIE20 (paie helper `cimr_salariale` CIMR optionnelle par employé, champs préexistants), QHSE20 (qhse `iso9001_readiness` tableau de bord) — all additive, multi-tenant, tested; NO migrations; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). No migration drift. + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-5 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-5 test modules before push): FG139 (compta `RetenueSource` RAS retenue à la source + bordereau de versement, export `?export=csv`), FG299 (installations `plan_de_charge_equipes` capacité vs affecté des techniciens/équipes sur interventions), FG259 (ventes `net_metering_savings` valorisation surplus injecté par tranche loi 13-09), FG365 (core `payment_delay.py` prédiction de retard de paiement, stdlib seul), FG176 (rh `verifier_habilitation_requise` garde d'affectation par habilitation, blocage doux), CONTRAT16 (contrats `SignatureContrat` e-sign in-app loi 53-05, preuve serveur, bascule statut signé), FLOTTE16 (flotte `EcheanceEntretien` génération idempotente d'échéances dues + alertes), GED19 (ged `AclGed` ACL par dossier/document héritage+override, rétrocompatible) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0014, contrats/0013, flotte/0014, ged/0013 (FG299/FG259/FG365/FG176 need none). No new external/paid dependency, no auth change; import-linter 4/4. Fixed a GED19 CheckConstraint `condition=` migration drift pre-merge (Django 5.1 deconstruction; Meta.constraints aligned with the migration, makemigrations --check clean). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-6 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of the 8 wave-6 test modules before push): FG140 (compta aide au calcul de l'IS — barème progressif + cotisation minimale + 4 acomptes + régularisation, selectors-only), FG300 (installations `conflits_affectation` double-booking technicien/camionnette même jour), FG260 (ventes `tariff_escalation_projection` escalade ONEE 20-25 ans + VAN/TRI stdlib), **FG366 (core moteur de workflow BPM générique `WorkflowDefinition/StepDefinition/Instance/StepInstance` cible générique contenttypes + SLA/escalades — NEW ARCH component dans la fondation, import-linter 4/4)**, FG177 (rh `VisiteMedicale` du travail + aptitude + expiry, alimente FG175), PROJ19 (gestion_projet `conflits_affectation` ressources chevauchantes), PAIE21 (paie frais professionnels — déjà présent, tests ajoutés), QHSE21 (qhse `EvaluationRisque`/`LigneEvaluationRisque` document unique, criticité=gravité×probabilité) — all additive, multi-tenant, tested; ADDITIVE migrations core/0002 (BPM), rh/0017, qhse/0014 (FG140/FG300/FG260/PROJ19/PAIE21 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-7 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 9 wave-7 test modules before push): FG141 (compta `export_fec` export FEC DGI 18 colonnes, `?export=fec`), FG301 (installations `nivellement_charge` rééquilibrage des interventions surchargées sans conflit, lecture seule), FG261 (ventes `optimize_subscribed_power` réduction puissance souscrite post-PV C&I), FG367 (core `rules.py` évaluateur de conditions ET/OU/NON + actions séquentielles, pur fondation), FG178 (rh `EpiCatalogue`/`DotationEpi` dotation EPI nominative), CONTRAT17 (contrats auto signé→actif sur signature), FLOTTE17 (flotte `Garage`/`OrdreReparation` ordres de réparation + coûts), GED20 (ged `PartageGed` partage tokenisé public expiry/password/quota) — all additive, multi-tenant, tested; ADDITIVE migrations rh/0018, flotte/0015, ged/0014 (FG141/FG301/FG261/FG367/CONTRAT17 need none). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation). GED20 introduces a PUBLIC AllowAny tokenized document endpoint (token-only resolution, expiry/quota/password-hash, no cross-tenant leak — security model calqué sur ventes.ShareLink). + 2026-06-29 `claude/relaxed-edison-c91f99` PLAN.md wave-8 drain (8 parallel file-disjoint worktree lanes, adversarial review + local docker CI of 8 wave-8 test modules before push): FG142 (compta `liasse_fiscale` trousse liasse fiscale bilan+CPC+balance+annexe-TVA, réutilise les sélecteurs), FG302 (installations `IndisponibiliteRessource` calendrier de disponibilité technicien/camionnette + sélecteur d'exclusion), FG262 (ventes `module_degradation_curve` dégradation modules + planchers de garantie), FG368 (core `core/jobs.py` + `ScheduledJobViewSet` liste/exécution des jobs Celery Beat, admin, câblé `/api/django/core/`), FG179 (rh péremption/contrôle EPI dérivés + alertes, alimente FG175), PROJ20 (gestion_projet `nivellement_charge` rééquilibrage ressources projet), PAIE22 (paie calcul IR — déjà présent PAIE5, 30 tests ajoutés), QHSE22 (qhse `document_unique_valide`/`exiger_document_unique` gate document unique avant pose) — all additive, multi-tenant, tested; ADDITIVE migrations installations/0019, rh/0019 (FG142/FG262/FG368/PROJ20/PAIE22/QHSE22 need none). FG368 added a root-URLConf line (`api/django/core/` → `core.urls`, orchestrator wiring step). No migration drift; no new external/paid dependency, no auth change; import-linter 4/4 (core reste fondation, jobs via celery infra). Wave-9 PLAN.md drain (2026-06-29, 8 parallel file-disjoint worktree lanes): rh `EmargementEpi` (FG180), contrats `VersionContrat` (CONTRAT18), flotte `Pneumatique`/`PieceFlotte` (FLOTTE18), ged watermarking flags `Document.watermark_diffusion`/`PartageGed.watermark` (GED21, lazy PyMuPDF/Pillow — no hard dep), core workflow-template library + `/api/django/core/` workflow-templates route (FG369), plus selector/endpoint-only FG143 (compta état 9421), FG303 (installations van planning), FG263 (ventes PPA model) — all additive & company-scoped, 4 additive migrations (rh 0020, contrats 0014, flotte 0016, ged 0015). Wave-10 PLAN.md drain (2026-06-29, 7 parallel file-disjoint worktree lanes in apps disjoint from wave 9): crm `ConcurrentPerte` (lost-deal competitor capture FG242), gestion_projet `BudgetProjet`/`LigneBudgetProjet` (PROJ21), qhse `PermisTravail` (QHSE23), kb `KbArticleAcl`/`KbLecture` (role ACL + read tracking KB7), sav `AlarmeOnduleur` (inverter alarms FG280), plus paie allocations-familiales employer charge (PAIE23, fields on ParametrePaie/BulletinPaie) and selector-only LITIGE6 (disputes dashboard) — all additive & company-scoped, 6 additive migrations (crm 0029, gestion_projet 0013, kb 0005, paie 0011, qhse 0015, sav 0011). Wave-11 PLAN.md drain (2026-06-29, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes off the merged base): compta `TimbreFiscal` (droit de timbre cash FG144), rh `AccidentTravail` (HSE/accidents register FG181), installations `SousTraitant` (subcontractor registry FG304), ged `PolitiqueRetention` (non-destructive retention policies GED22), flotte `EcheanceReglementaire` (regulatory deadlines FLOTTE19), plus pure-math FG264 (ventes pumping-cycle water yield) — all additive & company-scoped, 5 additive migrations (compta 0015, rh 0021, installations 0020, ged 0016, flotte 0017). Wave-12 PLAN.md drain (2026-06-29, 3 parallel file-disjoint lanes resuming wave-10 app lanes): qhse `ConsignationLoto` (LOTO on a work permit QHSE24), crm `PointContact` (multi-touch attribution journal FG204), plus paie taxe de formation professionnelle employer charge (PAIE24, BulletinPaie snapshot) — all additive & company-scoped, 3 additive migrations (paie 0012, qhse 0016, crm 0030). Wave-13 PLAN.md drain (2026-06-30, 6 parallel file-disjoint worktree lanes resuming wave-9 app lanes): compta `RetenueGarantie`/`CautionBancaire` (FG145), rh `PresquAccident` (near-miss FG182), installations `OrdreSousTraitance` (subcontractor work orders FG305), ged `ArchivageLegal` (legal write-once GED23), flotte `BaremeVignette` + `Vehicule.puissance_fiscale` (TSAV FLOTTE20), plus selector-only PROJ22 (committed-vs-actual project cost) — all additive & company-scoped, 5 additive migrations (compta 0016, rh 0022, installations 0021, ged 0017, flotte 0018).
 Structure fingerprint: b4934e6ea06f65c18f95a7a87e7050adbc4a60507beb29b2155d0748993d10d0
-Plan fingerprint: e4b60f00510f0c0475c2889d097078a33bb8a1ddf5a4166665ae5b4e098d32c4
+Plan fingerprint: 0b219771936a75faa3d622b99ae4396a97e4fc399059c9e9529eaa6313c7f0b5
 
 > This file is **regenerated by the build pipeline**. It is derived by reading the
 > actual source (models, urls, serializers, settings, docker-compose, requirements,
@@ -926,7 +926,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1128)**
+**Done (1129)**
 
 - `ERR1` — [FastAPI] NL→SQL agent has no SELECT-only enforcement in code…
 - `ERR2` — [FastAPI] NL→SQL tenant isolation is defeatable four ways…
@@ -1173,6 +1173,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGEN8` — Rayon d'explosion
 - `AGEN9` — Audit & rollback génération
 - `AGEN10` — Simulation génération
+- `AOF6` — PRÉ-REQUIS D'INSERTION (fait dans le commit qui ajoute ce groupe, jamais en lane) …
 - `ARC1` — Modèle de base `core.TenantModel`
 - `ARC2` — `CompanyScopedModelViewSet` : le viewset de base unique
 - `ARC3` — Sweep TenantMixin : installations
@@ -2057,9 +2058,202 @@ Things this map could not fully verify from source — do not over-trust:
 - `VX250` — La fiche annonce son état et ses relations : « en attente de… » + compteurs (@lane…
 - `VX251` — Le dispatch au glisser-déposer : réaffecter une intervention comme
 
-**Open — to build (132)**
+**Open — to build (325)**
 
 - `ERR114` — [ventes/quote_engine]
+- `AOF1` — Reloger le CORPS des 8 ViewSets et des 2 services AO de `compta` vers `ao`
+- `AOF2` — Permissions dédiées `ao_voir` / `ao_gerer` / `ao_rentabilite_voir` — corriger la…
+- `AOF3` — `AoBaseViewSet` : socle conforme et rebasement des 8 viewsets
+- `AOF4` — Convertir les 8 modèles legacy à `core.models.TenantModel`
+- `AOF5` — Référence AO auto via `core.numbering` + `reference_acheteur` distincte
+- `AOF7` — Rouvrir la nav du module AO (WIR166 reste `[x]`, seul `module.config.jsx` est touché)
+- `AOF8` — Contrat de hooks DOM `data-ao-*` FIGÉ AVANT le premier écran
+- `AOF9` — Tokens de provenance + `ProvenanceBadge`
+- `AOF10` — Pastilles d'état AO (`statusAo.js`) : affaire, pièce, variante, contrôle
+- `AOF11` — Client API `aoApi.js` sur la factory partagée, avec l'endpoint rentabilité ISOLÉ
+- `AOF12` — Projet AO complet : champs additifs sur `AppelOffre`
+- `AOF13` — Statuts étendus, table `TRANSITIONS` déclarative, service `changer_statut_ao` + 2…
+- `AOF14` — `ExigenceCPS` : les clauses du CPS deviennent des données paramétrables
+- `AOF15` — Échéancier dérivé du CPS + rappels + surfaces d'automatisation
+- `AOF16` — Compléter `CautionSoumission` : acte, pièce jointe, et les DEUX régimes…
+- `AOF17` — Lien CRM sans couplage : selectors AO ↔ lead
+- `AOF18` — `BatimentAO` + `ToitureAO`
+- `AOF19` — Contrat de géométrie : repère local métrique canonique, lat/lng seulement en frontière
+- `AOF20` — `PlanSource` + calibration : les 3 portes d'entrée sont UN CHAMP, pas trois chemins de…
+- `AOF21` — `PieceConsultation` : rattacher le DCE reçu (CPS, règlement, plans d'architecte, cadres…
+- `AOF22` — `ObstacleAO` : entité de premier rang, provenance contrainte, dégagement dérivé
+- `AOF23` — `ChaineCotes` + fermetures + statut de cote porté par la DONNÉE
+- `AOF24` — `ReleveAO` : la visite contradictoire comme objet
+- `AOF25` — `SerieQuestions` + `QuestionAO` : le workflow Q/R sur documents annotés
+- `AOF26` — `KitCalepinage` : catalogue des kits de pose + seed idempotent
+- `AOF27` — `PresetCalepinage` : jeux de paramètres nommés, réutilisables et réappliquables
+- `AOF28` — `VarianteCalepinage` : le modèle pivot (role + parent + preuve), pas trois tables…
+- `AOF29` — Empreinte d'entrée + péremption automatique en cascade
+- `AOF30` — Import CSV d'un relevé (obstacles + chaînes de cotes) sur `dataimport`
+- `AOF31` — Routage AO complet : viewsets, filtres, pagination, contrat d'API publié
+- `AOF32` — Résultat d'ouverture des plis : exploiter `ResultatAO` au lieu de le laisser mort
+- `AOF33` — Squelette du paquet `core/calepinage/` + contrat de pureté ARMÉ EN CI + version de…
+- `AOF34` — `types.py` + `units.py` : contrat de données gelé (dataclasses frozen), zéro globale…
+- `AOF35` — `obstacles.py` : provenance × type → dégagement dérivé, règle appliquée TRACÉE, statut…
+- `AOF36` — `zones.py` + `rives.py` : 4 natures de contour, 4 rives NOMMÉES
+- `AOF37` — `solveur_cotes.py` : port structuré de `chain`/`closure`/`spread` (fin des `print`)
+- `AOF38` — Protocole `Surface` + implémentation rectangle (suite de conformité réutilisable)
+- `AOF39` — `surfaces/polygone.py` : polygone quelconque (le L en est un cas), sans shapely
+- `AOF40` — `surfaces/arc.py` : géométrie courbe de première classe — correction de pas +…
+- `AOF41` — `surfaces/multi.py` + `site.py` : multi-niveaux, pente/azimut, agrégation de site
+- `AOF42` — `moteur.py` : le COMPTEUR générique (chemin de code A), qui ne pose rien
+- `AOF43` — `poseur.py` : le POSEUR indépendant (chemin de code B), qui ne compte rien
+- `AOF44` — `optimum.py` : UN SEUL DP exact au pas de 1 cm généralisé multi-kits + objet `Preuve` à…
+- `AOF45` — Refus MOTEUR d'une orientation inconstructible (`ErreurOrientation`)
+- `AOF46` — Politique de pas injectable : `AlleeFixe` / `AntiOmbrage` / `Affleurant` — ce qui…
+- `AOF47` — Mode de pose « rangées uniformes à phase balayée » — sans lui, l'échelle de…
+- `AOF48` — Performance : balayage sur points de rupture, mémoïsation, budget de calcul, bench…
+- `AOF49` — `robustesse.py` : marges de tronçon et de bande, départage AUTOMATIQUE des optima
+- `AOF50` — `allee_gratuite.py` : la plus grande allée à compte constant (l'argument commercial…
+- `AOF51` — `garde_fous.py` : `valider(plan)` NON CONTOURNABLE, exécuté EN PRODUCTION et pas…
+- `AOF52` — `sensibilites.py` : variantes défavorables recalculées, PLANCHER publié, phrase de…
+- `AOF53` — `echelle.py` : échelle de décomposition marche par marche + ASSERTIONS D'HONNÊTETÉ
+- `AOF54` — `recommandations.py` : propositions APPLIQUABLES à gain RECALCULÉ, jamais un conseil
+- `AOF55` — `etude.py` : objet Étude multi-variantes + comparatif CALCULÉ (fin des fichiers frères)
+- `AOF56` — `electrique.py` : modules → kWc → chaînes → onduleurs → ratio DC/AC, ET la contrainte…
+- `AOF57` — `serialisation.py` : schéma JSON VERSIONNÉ + hash d'entrée au MILLIMÈTRE
+- `AOF58` — [GATED: nouvelle dépendance `ezdxf`] Export DXF du calepinage (livrable bureau…
+- `AOF59` — [GATED: décision fondateur] Export de la géométrie vers un simulateur bancable (PVsyst…
+- `AOF60` — Service d'orchestration `apps/ao` : la couture, STATELESS côté moteur
+- `AOF61` — API calepinage : calcul synchrone borné, job asynchrone, cache tenant
+- `AOF62` — Actions de variante IDEMPOTENTES : `retenir` / `comparer` / `sensibilites` / `marches`
+- `AOF63` — `rendu/feuille.py` : industrialisation de `dessin.py` sans état global ni chemin en dur
+- `AOF64` — `rendu/cartouche.py` + `MarqueRendu` : la marque de rendu est DISTINCTE de la société…
+- `AOF65` — `rendu/couleurs.py` : le statut de cote est porté par la DONNÉE, la couleur en découle
+- `AOF66` — `rendu/planche.py` : assemblage depuis un `Plan` VALIDÉ, AUCUN recalcul
+- `AOF67` — Bandeau d'engagement : formulation imposée, GÉNÉRÉE depuis les variables
+- `AOF68` — Bloc de notes auto-replié + gardes de mise en page
+- `AOF69` — Rendu spécifique ARC : cotes radiales et tangentielles, développé, murets
+- `AOF70` — `rendu/profils.py` : profils INTERNE / DÉPÔT, lexique de substitution, métadonnées PDF…
+- `AOF71` — Job d'ingestion de plan + service de calibration (backend)
+- `AOF72` — [GATED: nouvelle dépendance `ezdxf`] Parseur DXF en IMPORT — la porte d'entrée n°1 au…
+- `AOF73` — `StudioShell` : la coquille d'atelier plein écran, réutilisable (AO et villas)
+- `AOF74` — Canvas SVG en MÈTRES : viewBox, pan, zoom, grille, règles, barre d'état
+- `AOF75` — Export d'une vue d'atelier en image (SVG → PNG) : la brique partagée que trois écrans…
+- `AOF76` — Sélection, poignées, accrochage, undo/redo (voie souris)
+- `AOF77` — Tableau de géométrie ÉDITABLE au clavier — la condition du gate a11y, pas un bonus
+- `AOF78` — Wizard « Nouvelle toiture » à trois portes CUMULABLES
+- `AOF79` — Underlay PDF (pdfjs) et underlay image — zéro nouvelle dépendance
+- `AOF80` — Calibration 2 points OBLIGATOIRE et BLOQUANTE
+- `AOF81` — Import DXF : écran de mapping des calques + état dégradé
+- `AOF82` — Porte n°3 : reprise du polygone depuis le lecteur de cartes EXISTANT
+- `AOF83` — Contrat de coordonnées côté front : lng/lat ↔ mètres locaux, testé DANS LES DEUX SENS
+- `AOF84` — Porte n°2 : outil de tracé from scratch (souris ET clavier)
+- `AOF85` — Chaînes de cotes : création, édition, rendu type plan
+- `AOF86` — Panneau « Fermetures » (chain / closure / spread) avec ARBITRAGE OBLIGATOIRE
+- `AOF87` — Cote déduite → bascule automatique « à confirmer » + liste des points à lever
+- `AOF88` — Outils obstacles (rectangle, polygone, muret/joint) + repères lettrés + inspecteur
+- `AOF89` — Outil de saisie des ZONES (interdite / réservée / préférée) — sinon trois natures sur…
+- `AOF90` — Liste d'obstacles synchronisée, compteur de provenance, GARDE DE PUBLICATION
+- `AOF91` — Saisie des enveloppes non rectangulaires : le « L » d'un seul tenant et l'arc…
+- `AOF92` — Atelier de calepinage : structure `StudioShell` + rendu du plan CALCULÉ
+- `AOF93` — Barre de verdict permanente
+- `AOF94` — Règle « AUCUN chiffre métier calculé côté front » + état de recalcul HONNÊTE + garde de…
+- `AOF95` — Tiroir « Kits » (portrait / paysage / mixte) avec CONTRE-ÉPREUVE affichée
+- `AOF96` — Tiroir « Allées » + graphe de l'allée gratuite (affordance, pas découverte)
+- `AOF97` — Tiroir « Rives & dégagements »
+- `AOF98` — Tiroir « Orientation & segments » avec REFUS des orientations inconstructibles
+- `AOF99` — Tiroir « Contraintes électriques » + alerte de non-conformité NOMMÉE
+- `AOF100` — Panneau « Suggestions du moteur » ACTIONNABLES — la boucle 512 → 618 rendue mécanique
+- `AOF101` — Mode expert + marges de robustesse affichées en centimètres
+- `AOF102` — Comparateur de variantes côte à côte — LE différenciateur marché
+- `AOF103` — Panneau « Sensibilités » avec plancher et phrase GÉNÉRÉE
+- `AOF104` — Échelle de décomposition (waterfall) avec GARDE D'HONNÊTETÉ
+- `AOF105` — Historique des calepinages et comparaison A/B de deux versions
+- `AOF106` — Écran « Questions terrain » : séries datées + annotateur d'image (cercle + lettre)
+- `AOF107` — Fiche question (impact prévu → delta RÉEL) + export prêt à coller + garde de…
+- `AOF108` — Promotion de `montant_en_lettres` en fondation `core`
+- `AOF109` — Style « administratif » de l'arrêté en lettres — un arrêté mal orthographié est un…
+- `AOF110` — `core/formats_fr.py` : UN SEUL formateur pour HTML/PDF, XLSX et cartouches matplotlib
+- `AOF111` — Contexte de dossier UNIQUE + empreinte : zéro re-saisie, zéro littéral
+- `AOF112` — Contrat `ResultatCalepinage` : consommé, JAMAIS recalculé
+- `AOF113` — Source UNIQUE du productible pour la note de calcul ET la simulation
+- `AOF114` — Registre des règles de dérivation : toute grandeur dérivée est RECALCULÉE, jamais…
+- `AOF115` — `DossierAO` sur le kit `core/documents.py` + `PieceDossierAO`
+- `AOF116` — Moteur de gabarits + seed du gabarit de pack FRDISI + bibliothèque de sections
+- `AOF117` — Feuille de style PROPRE de la fabrique — zéro couplage au moteur de devis (règle #4)
+- `AOF118` — `EquipementAO` : string-FK vers le catalogue + SNAPSHOT figé
+- `AOF119` — Contrôle d'approvisionnement du matériel retenu (via `stock.selectors`)
+- `AOF120` — Bordereau v2 : sections, TVA, quantités TRAÇABLES, totaux serveur
+- `AOF121` — Import du bordereau ACHETEUR (BPU/DQE) et VERROUILLAGE de sa structure
+- `AOF122` — Alimentation du bordereau depuis les variantes RETENUES
+- `AOF123` — Renumérotation et déplacement de ligne à TOTAL INVARIANT
+- `AOF124` — Bibliothèque de prix : proposer un PU depuis l'historique RÉEL
+- `AOF125` — Prix unitaires EN LETTRES par ligne + arrêté du bordereau, toujours RECALCULÉS
+- `AOF126` — Clause de réserve quantités : UN SEUL texte, DEUX insertions, contrôle d'identité…
+- `AOF127` — Export XLSX du bordereau — un montant est un NOMBRE avec un format de cellule, jamais…
+- `AOF128` — Rendu PDF du bordereau + concordance PROUVÉE avec le XLSX
+- `AOF129` — Test d'ÉTANCHÉITÉ du pack client — un RATCHET écrit AVANT les écrans et AVANT…
+- `AOF130` — Duplication d'affaire : le gabarit d'affaire réutilisable
+- `AOF131` — Lettre de soumission
+- `AOF132` — Acte d'engagement — pièce HYBRIDE « fournie par l'acheteur mais à remplir »
+- `AOF133` — Mémoire technique par SECTIONS COMPOSABLES, pas un texte libre
+- `AOF134` — Note de calcul à bilans RECALCULÉS
+- `AOF135` — Simulation de rentabilité 25 ans — PIÈCE CLIENT, sans AUCUN coût
+- `AOF136` — Checklist partenaire : un OBJET SUIVI, pas un document mort
+- `AOF137` — `PieceAdministrative` : une attestation est une donnée DATÉE, pas une case à cocher
+- `AOF138` — [GATED: nouvelle dépendance `python-docx`] Rendu ÉDITABLE de la checklist partenaire en…
+- `AOF139` — Page de garde, sommaire et bordereau des pièces
+- `AOF140` — `PlancheAO` : indices AUTOMATIQUES et référence croisée avec le mémoire
+- `AOF141` — Bascule d'équipement ATOMIQUE — une opération nommée, jamais un chercher-remplacer
+- `AOF142` — Rapport de bascule avec EMPLACEMENTS SUSPECTS + gestion des annexes
+- `AOF143` — Sanitisation à DEUX NIVEAUX — contextuelle par champ, jamais un grep
+- `AOF144` — Marque blanche de premier rang : `soumissionnaire` ≠ `bureau_execution`
+- `AOF145` — Métadonnées PDF forcées et purge des chemins sur TOUT PDF sortant, planches comprises
+- `AOF146` — Contrôleur de cohérence croisée : une PORTE, pas un rapport
+- `AOF147` — Détecteur de littéraux orphelins + MESURE de son taux de faux positifs AVANT activation…
+- `AOF148` — Rapport de contrôle PDF horodaté et ARCHIVÉ : la preuve de vérification
+- `AOF149` — Pièce « hors contrôle » : ce qui n'est pas fabriqué n'est JAMAIS présumé vert
+- `AOF150` — Archivage MinIO IMMUABLE + manifeste de pack
+- `AOF151` — ZIP de dépôt : exclusion STRUCTURELLE des pièces internes et directeur
+- `AOF152` — PDF unique « bon à tirer » : fusion ordonnée pour l'impression en 2 exemplaires
+- `AOF153` — Génération asynchrone IDEMPOTENTE du pack, pièce par pièce
+- `AOF154` — Endpoints de la fabrique + journal métier
+- `AOF155` — Verrou de dossier pendant cascade, bascule et génération
+- `AOF156` — Approbation humaine avant dépôt sur `core.WorkflowDefinition` — jamais un mécanisme…
+- `AOF157` — `CibleFinanciere` + `EconomieAO` + `LigneCoutRevient` — table SÉPARÉE, permission…
+- `AOF158` — Cascade de prix INVERSE : le solveur de répartition, pas une règle de trois
+- `AOF159` — Propagation de la cascade aux SIX CIBLES DÉCLARÉES + historique exposé
+- `AOF160` — Excel directeur de rentabilité attendue — classeur SÉPARÉ, structurellement exclu du…
+- `AOF161` — Écran rentabilité `/ao/:id/rentabilite` — la seule tâche de la lane…
+- `AOF162` — Adaptateur VILLA : `AreaRecord` roofPro11 → `EntreeCalepinage` → sortie compatible…
+- `AOF163` — Point d'entrée VILLA du moteur partagé, sans projet AO
+- `AOF164` — [COORDINATION REQUISE] Bascule du devis/simulateur résidentiel ERP sur le moteur…
+- `AOF165` — Manifeste plateforme AO : recherche, chatter, champs personnalisés, automatisation…
+- `AOF166` — KPI AO + tableau de bord des marchés (supersede NTMAR27)
+- `AOF167` — Actions d'agent AO (`agent_actions_module`)
+- `AOF168` — Rétention, DSR et purge des données AO
+- `AOF169` — Import CSV des avis de marchés publics (absorbe NTMAR21) — l'amont du tunnel
+- `AOF170` — Liste des affaires AO (`ListShell`)
+- `AOF171` — Fiche affaire (`RecordShell`) + chatter
+- `AOF172` — Tableau de bord AO + centre d'échéances
+- `AOF173` — Bibliothèque : kits, presets, gabarits de dossier, textes normalisés
+- `AOF174` — Écran « Dossier de soumission » : pièces, états, péremption
+- `AOF175` — Prévisualisation de pièce et comparaison de versions
+- `AOF176` — Panneau « Contrôles avant dépôt » et blocage VISIBLE du ZIP
+- `AOF177` — Suivi de la génération asynchrone du pack et du ZIP
+- `AOF178` — Échéances et jalons du dossier
+- `AOF179` — Écran Bordereau : édition des lignes et des sections
+- `AOF180` — Écran Équipements retenus + assistant de bascule + rapport
+- `AOF181` — Écran « CPS & exigences » : l'analyse du cahier des charges
+- `AOF182` — Écran administratif : cautions, pièces datées et vérifications avant dépôt
+- `AOF183` — Goldens FRDISI : extraction, RÉCONCILIATION contre les scripts d'origine, et comptes…
+- `AOF184` — Goldens d'échelle et de sensibilité : A=112, F=120, H=126 + les 5 sensibilités de…
+- `AOF185` — Tests de propriétés / fuzz géométrique (le filet qui attrape ce que les goldens ne…
+- `AOF186` — Seed de démonstration « AO FRDISI » pour la CI e2e et la reprise en main
+- `AOF187` — Trois specs e2e du parcours AO
+- `AOF188` — Passe d'accessibilité (clair et sombre) — gate CI distinct
+- `AOF189` — Mode CHANTIER (tablette 768-1024) : l'éditeur devient un outil de relevé
+- `AOF190` — Mode MOBILE (375) : le refus EXPLICITE est un choix de design, pas un manque
+- `AOF191` — File hors-ligne de saisie de relevé — et RIEN d'autre
+- `AOF192` — Budget de bundle : isoler l'atelier dans son propre chunk
+- `AOF193` — Baselines des gardes plateforme + passage HÔTE de TOUS les `check_*.py` avant push
+- `AOF194` — Documentation du moteur et de la fabrique + CODEMAP + empreinte
 - `N100` — Build out multi-tenant operation on the existing tenant_id foundation (strict…
 - `N101` — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup…
 - `N102` — After the modules above are built, update the master project document + PLAN + DONE log…

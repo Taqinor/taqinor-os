@@ -10262,3 +10262,22 @@ textarea.form-control {
   width: 0;
   height: 0;
 }
+
+/* ── EZ5 — Puissance cible (kWc) facultative du « Devis automatique » ──────
+   Champ compact pose dans la rangee CTA de l'onglet Devis de la fiche lead
+   (`.lw-context-devis-cta`, deja en flex wrap). Volontairement etroit : il ne
+   pousse pas les deux boutons a la ligne sur un ecran large, et il passe
+   dessous tout seul quand la place manque. */
+.lw-devis-kwc {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.lw-devis-kwc-label {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.lw-devis-kwc-input.lw-devis-kwc-input {
+  width: 5.5rem;
+}
