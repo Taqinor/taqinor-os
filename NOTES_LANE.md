@@ -455,4 +455,39 @@ retombe **exactement** sur le témoin (48 + 34 + 38 = 120). C'est ce que fait
 `apps/ao/tests/test_orchestration_calepinage.py`, et c'est une remarque pour la
 lane `core-calepinage` : le `parametres.kits` de ce golden mérite d'être
 complété.
+---
+
+## NOTES — lane `intégrations + gouvernance` (AOF163-169, 186, 193, 194)
+
+- **AOF165 livrée PARTIELLEMENT (blocage réel, pas un raccourci).** `import_specs`
+  (`obstacles`, `chaines`) est déclaré ET prouvé câblé (AOF30 + ARC32). Trois surfaces
+  restent VIDES **à dessein**, chacune avec sa raison écrite dans `apps/ao/platform.py`
+  et verrouillée par un test de `test_platform_ao.py` :
+  * `searchable_models` — `apps/reporting/search.py` n'itère que les clés présentes À LA
+    FOIS dans le manifeste ET dans son registre local `_SEARCH_SPECS` ; aucune spec AO n'y
+    existe. Déclarer rendrait une recherche VIDE tout en périmant l'entrée de baseline
+    `('ao.appeloffre','chatter_sans_recherche')` de `core/platform_coverage.py` → CI rouge
+    des deux côtés. Le câblage manquant est dans une app transverse, que la tâche interdit
+    explicitement de toucher (« sans toucher aux surfaces transverses »).
+  * `record_targets` — ne peut pas s'étendre sans la précédente : une cible chatter non
+    cherchable et hors baseline est une dérive NOUVELLE, donc rouge.
+  * `customfield_models` — les valeurs sont stockées dans un champ `custom_data`
+    (`JSONField`) porté par le MODÈLE CIBLE (patron `contrats.Contrat`, `flotte.Vehicule`).
+    Aucun modèle d'`apps/ao/models.py` ne le porte, et ce fichier appartient à une autre
+    lane de ce run. Débloquer = `custom_data` + migration additive sur `AppelOffre` et
+    `BatimentAO`, puis déclarer DANS LE MÊME COMMIT.
+  * `automation_state_fields` — la « date limite » n'est volontairement PAS déclarée : ce
+    n'est pas un champ d'ÉTAT (les couperets passent par `EcheanceAO` + le beat
+    `ao.rappeler_echeances`). Un test l'interdit explicitement.
+- **AOF186 : `seed_ao_demo` sème le bordereau LEGACY.** AOF120 (bordereau v2 :
+  `SectionBordereau`, TVA, `quantite_source`, verrou de quantité) n'est pas construit dans
+  ce run — le seed crée donc `BordereauPrix` + 3 `LigneBordereau` (une par bâtiment,
+  quantité = engagement du golden). Quand AOF120 landera, ajouter les sections au seed est
+  additif : les quantités, elles, resteront lues dans les goldens. Le pack documentaire
+  (fabrique) n'est pas semé non plus, pour la même raison.
+- **AOF169 : le sas `apps/veille_ao` (Groupe VAO) n'existe pas encore.** La note du plan
+  demande de le consommer plutôt que de réécrire un parseur ; il n'y a rien à consommer, donc
+  l'import passe par la primitive plateforme `apps.dataimport.parsing.iter_rows` (jamais un
+  parseur maison) et `services.creer_appel_offre_depuis_avis` est le point de contact UNIQUE
+  que VAO30 trouvera déjà en place — à ne pas dupliquer.
 

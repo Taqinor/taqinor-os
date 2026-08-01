@@ -1541,3 +1541,64 @@ def facture_du_client_portail(company, client_id, facture_id):
             .filter(company=company, client_id=client_id, pk=facture_id)
             .exclude(statut=Facture.Statut.BROUILLON)
             .first())
+
+
+# ── AOF164 — comparaison A/B du calepinage d'un devis (LECTURE SEULE) ───────
+#
+# C'est le SEUL endroit qui confronte le compte d'un devis EXISTANT au compte
+# du moteur. Il ne récrit rien : ni les lignes, ni ``etude_params``, ni
+# ``layout_hash``. **Un devis déjà émis ne doit jamais voir son compte bouger
+# rétroactivement** — un client qui a reçu « 24 panneaux » a reçu 24 panneaux,
+# quelle que soit l'opinion ultérieure du moteur. La fonction refuse donc
+# explicitement tout devis hors ``brouillon``, avec un motif en français.
+
+#: Le seul statut dont le compte est encore malléable.
+STATUT_RECALCULABLE = 'brouillon'
+
+
+def comparaison_calepinage_devis(devis):
+    """Compare le compte STOCKÉ du devis au compte du moteur — sans rien écrire.
+
+    Rend un dict ``{'recalculable', 'motif', 'compte_stocke', 'compte_moteur',
+    'ecart'}``. ``recalculable`` est ``False`` dès que le devis a quitté le
+    brouillon : la comparaison reste LISIBLE (elle informe l'arbitrage), mais
+    aucun appelant n'a le droit de l'appliquer.
+    """
+    from .services import _is_panel, compte_moteur_du_layout
+
+    if devis is None:
+        return None
+    statut = getattr(devis, 'statut', '')
+    stocke = 0
+    for ligne in devis.lignes.all():
+        if _is_panel(ligne.designation):
+            stocke += int(ligne.quantite or 0)
+
+    if statut != STATUT_RECALCULABLE:
+        return {
+            'recalculable': False,
+            'motif': ("Devis %s au statut « %s » : un devis déjà émis n'est "
+                      'jamais recalculé.'
+                      % (devis.reference, devis.get_statut_display())),
+            'compte_stocke': stocke,
+            'compte_moteur': None,
+            'ecart': None,
+        }
+
+    mesure = compte_moteur_du_layout(devis.roof_layout)
+    if mesure is None:
+        return {
+            'recalculable': True,
+            'motif': ('Aucune géométrie exploitable : le moteur ne se '
+                      'prononce pas sur ce devis.'),
+            'compte_stocke': stocke,
+            'compte_moteur': None,
+            'ecart': None,
+        }
+    return {
+        'recalculable': True,
+        'motif': '',
+        'compte_stocke': stocke,
+        'compte_moteur': int(mesure['modules']),
+        'ecart': int(mesure['modules']) - stocke,
+    }

@@ -3,6 +3,11 @@
 # spec, so the guard does not block on ~1300 pre-existing FKs). One
 # 'path:lineno' per line. A NEW CASCADE must instead carry an inline
 # '# on_delete: <reason>' comment, or be added here after review.
+# Vérifié 2026-08-01 (Groupe AOF, lane intégrations + gouvernance / AOF193) :
+# `check_on_delete.py` VERT sur l'hôte, aucune entrée à réaligner. Cette lane
+# n'ajoute ni modèle ni migration, donc aucune ligne n'a bougé. Le RITUEL de
+# gates hôte à passer avant tout push est écrit dans
+# `docs/ao-fabrique-documentaire.md` §1 — le lire AVANT de rebaser ce fichier.
 # Rebased 2026-08-01 (Groupe AOF, W0/W1) : les 15 entrées
 # `apps/ao/models.py` sont RETIRÉES — chacune de ces FK porte désormais son
 # propre commentaire inline `# on_delete: <raison>` dans le modèle, ce qui rend

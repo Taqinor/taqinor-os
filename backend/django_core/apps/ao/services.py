@@ -1674,3 +1674,192 @@ def aligner_quantite_modules(appel_offre, *, user=None):
         equipement.save(update_fields=['quantite', 'updated_at'])
         touches += 1
     return Decimal(total), touches
+# ── AOF163 — Point d'entrée VILLA du moteur PARTAGÉ, sans projet AO ────────
+#
+# Le moteur ``core/calepinage`` a DEUX consommateurs qui ne peuvent pas
+# s'importer l'un l'autre : ``apps.ao`` et ``apps.ventes``. Le format
+# d'obstacle AO (rectangle + dégagement PAR obstacle + PROVENANCE) est le
+# format CANONIQUE : la villa s'y adapte par
+# ``core.calepinage.adaptateurs.villa`` (AOF162), jamais l'inverse.
+#
+# Ces fonctions sont PURES au sens base de données : elles ne lisent et
+# n'écrivent AUCUNE ligne AO. Un appel villa ne doit laisser aucune trace dans
+# ``apps/ao`` — un ``AppelOffre`` fantôme par simulation de villa serait à la
+# fois une fuite de données et un compteur faux (test dédié).
+
+
+def _entree_calepinage_canonique(*, repere, surface, kits, parametres,
+                                 obstacles=(), zones=()):
+    """Assemble l'``EntreeCalepinage`` canonique (format AO) — sans ORM.
+
+    ``appliquer_regles`` DÉRIVE le dégagement de chaque obstacle depuis son
+    type et sa provenance : le moteur ne devine jamais un dégagement en
+    silence, et la villa hérite donc exactement de la même règle que l'AO.
+    """
+    from core.calepinage.obstacles import appliquer_regles
+    from core.calepinage.serialisation import EntreeCalepinage
+
+    return EntreeCalepinage(
+        repere=repere, surfaces=(surface,), kits=tuple(kits),
+        parametres=parametres,
+        obstacles=tuple(appliquer_regles(tuple(obstacles))),
+        zones=tuple(zones))
+
+
+def _preuve_publiable(resultat, politique):
+    """``ResultatOptimum`` -> preuve sérialisable (aucun coût, aucun prix)."""
+    return {
+        'methode': resultat.preuve.methode.value,
+        'pas_recherche_m': resultat.preuve.pas_recherche_m,
+        'compte_retenu': resultat.preuve.compte_retenu,
+        'compte_optimal': resultat.preuve.compte_optimal,
+        'borne_superieure': resultat.preuve.borne_superieure,
+        'nb_plans_optimaux': resultat.preuve.nb_plans_optimaux,
+        'ecart_a_l_optimum': resultat.ecart_a_l_optimum,
+        'politique_pas': getattr(politique, 'code', ''),
+    }
+
+
+def calepiner_surface(*, surface, kits, parametres, obstacles=(), zones=(),
+                      politique=None, repere='SURFACE'):
+    """Calepine UNE enveloppe et ses obstacles — SANS aucun projet AO.
+
+    C'est le point d'entrée PARTAGÉ : la villa (``apps.ventes``, qui lit via
+    ``apps.ao.selectors``) et l'AO passent par le MÊME moteur sur le MÊME
+    format d'entrée. Aucune ligne n'est créée, aucune n'est lue : la fonction
+    ne touche pas l'ORM (elle est appelable hors transaction, hors société).
+
+    Rend un dict ``{'entree', 'resultat', 'preuve', 'rangees', 'tables'}`` où
+    ``resultat`` est un ``ResultatCalepinage`` — le MÊME objet que le chemin
+    AO, porteur du couple ``(hash_entree, version_moteur)``.
+    """
+    from core.calepinage.perf import optimiser_economique
+    from core.calepinage.poseur import poser_plan
+    from core.calepinage.serialisation import ResultatCalepinage
+
+    entree = _entree_calepinage_canonique(
+        repere=repere, surface=surface, kits=kits, parametres=parametres,
+        obstacles=obstacles, zones=zones)
+    calcul = optimiser_economique(entree.surfaces[0], entree.parametres,
+                                  entree.obstacles, entree.zones, politique)
+    rangees = tuple((y0, entree.parametres.kit(code))
+                    for y0, code in calcul.rangees)
+    tables = poser_plan(entree.surfaces[0], rangees, entree.obstacles,
+                        entree.zones)
+    return {
+        'entree': entree,
+        'resultat': ResultatCalepinage.depuis_resultat(entree, calcul),
+        'preuve': _preuve_publiable(calcul, politique),
+        'rangees': calcul.rangees,
+        'tables': tuple(tables),
+    }
+
+
+def calepiner_villa(area, *, ordre='lnglat', kit=None, retrait_m=None,
+                    pas_recherche_m=0.01):
+    """Calepine une toiture VILLA (``AreaRecord`` du lecteur de cartes).
+
+    ``ordre`` est EXPLICITE et jamais deviné : le lecteur de cartes sérialise
+    en ``[lng, lat]`` (GeoJSON) tandis que le lead CRM stocke ``[lat, lng]`` —
+    une confusion produit une toiture retournée, plausible et fausse.
+
+    Aucune ligne AO n'est créée ni lue : une villa n'a pas de projet AO.
+    Rend le même dict que ``calepiner_surface`` + ``projection``,
+    ``politique`` et ``panneaux`` (structure compatible avec l'écran existant,
+    pour ne rien casser côté front).
+    """
+    from core.calepinage.adaptateurs.villa import (
+        RETRAIT_VILLA_M, vers_entree, vers_panneaux,
+    )
+    from core.calepinage.types import KIT_VILLA_720
+
+    kit = kit or KIT_VILLA_720
+    entree, projection, politique = vers_entree(
+        area, ordre=ordre, kit=kit,
+        retrait_m=RETRAIT_VILLA_M if retrait_m is None else retrait_m,
+        pas_recherche_m=pas_recherche_m)
+    sortie = calepiner_surface(
+        surface=entree.surfaces[0], kits=entree.kits,
+        parametres=entree.parametres, obstacles=entree.obstacles,
+        zones=entree.zones, politique=politique, repere=entree.repere)
+    sortie['projection'] = projection
+    sortie['politique'] = politique
+    sortie['panneaux'] = vers_panneaux(sortie['tables'], projection, kit)
+    return sortie
+
+
+# ── AOF169 — l'AMONT du tunnel : créer une affaire depuis un AVIS publié ───
+#
+# **Aucun scraping, jamais** (règle #5 du dépôt). La source d'un avis est un
+# FICHIER importé ou une saisie manuelle : aucun appel réseau vers le portail
+# national des marchés publics — ni vers aucun autre portail — n'existe dans
+# ``apps/ao``, et un test de grep l'impose sur tout le paquet (le nom de
+# domaine est lui-même un motif interdit, il n'est donc écrit nulle part).
+# La collecte AUTOMATIQUE est traitée dans une app SÉPARÉE
+# (``apps/veille_ao``, Groupe VAO), sous gate intégral de la règle #5.
+#
+# Cette fonction est le POINT DE CONTACT UNIQUE de l'amont : l'import de
+# fichier, la saisie manuelle et — le jour où il existera — le sas de veille
+# passent tous par elle. C'est ce qui garantit qu'il n'y aura jamais deux
+# chemins de création d'affaire avec deux règles de déduplication différentes.
+
+#: Champs d'avis reportables sur un AO EXISTANT lors d'un ré-import.
+#: ``reference`` (NOTRE numérotation) et ``statut`` n'en sont PAS : un avis
+#: rectifié ne renumérote pas un dossier et ne le fait pas reculer d'étape.
+CHAMPS_AVIS = (
+    'objet', 'acheteur', 'maitre_ouvrage', 'lot', 'montant_estime',
+    'caution_provisoire', 'date_limite', 'date_ouverture_plis',
+    'mode_passation', 'type_marche',
+)
+
+
+def creer_appel_offre_depuis_avis(company, avis, *, user=None):
+    """Crée — ou met à jour — l'affaire correspondant à un avis publié.
+
+    Déduplication par ``reference_acheteur`` DANS LA SOCIÉTÉ : deux acheteurs
+    différents peuvent parfaitement publier la même référence, et deux sociétés
+    du même ERP ne partagent jamais leurs dossiers.
+
+    Rend ``(appel_offre, cree)``. La création passe par
+    ``creer_appel_offre_avec_reference`` (donc ``core.numbering``) : NOTRE
+    référence ``AO-YYYYMM-0001`` reste générée par la plateforme, jamais
+    recopiée depuis l'avis — la référence de l'acheteur vit dans son propre
+    champ, et les confondre rendrait impossible de retrouver un dossier depuis
+    l'avis publié.
+    """
+    reference_acheteur = (avis or {}).get('reference_acheteur') or ''
+    reference_acheteur = str(reference_acheteur).strip()
+    if not reference_acheteur:
+        raise ValidationError(
+            {'reference_acheteur': "La référence de l'acheteur est "
+                                   'obligatoire : elle déduplique les avis.'})
+
+    # Une valeur ABSENTE de l'avis laisse le défaut du modèle (``montant_estime``
+    # et ``caution_provisoire`` sont NON NULS) : on ne pousse jamais un ``None``
+    # dans un champ qui n'en accepte pas.
+    valeurs = {champ: avis[champ] for champ in CHAMPS_AVIS
+               if champ in avis and avis[champ] is not None}
+
+    existant = AppelOffre.objects.filter(
+        company=company, reference_acheteur=reference_acheteur).first()
+    if existant is not None:
+        modifies = []
+        for champ, valeur in valeurs.items():
+            # Un avis rectifié qui ne redit PAS une valeur ne doit pas
+            # l'effacer : seules les valeurs réellement portées écrasent.
+            if valeur in (None, ''):
+                continue
+            if getattr(existant, champ) != valeur:
+                setattr(existant, champ, valeur)
+                modifies.append(champ)
+        if modifies:
+            existant.save(update_fields=modifies)
+        return (existant, False)
+
+    def _creer(reference):
+        return AppelOffre.objects.create(
+            company=company, reference=reference,
+            reference_acheteur=reference_acheteur,
+            statut=AppelOffre.Statut.IDENTIFIE, **valeurs)
+
+    return (creer_appel_offre_avec_reference(company, _creer), True)

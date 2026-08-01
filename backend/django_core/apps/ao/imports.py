@@ -4,10 +4,27 @@ Besoin réel : un technicien relève une toiture sur tableur, hors ligne, sans
 tablette. Sans cette porte, son relevé se resaisit à la main — et une saisie
 manuelle de 28 obstacles produit des écarts qu'on ne détecte qu'au calepinage.
 
-Deux spécifications d'import :
+Trois spécifications d'import :
 
 * ``obstacles`` — repère, nature, x0, x1, y0, y1, hauteur, provenance ;
-* ``chaines`` — libellé, axe, segments, mesure totale, tolérance.
+* ``chaines`` — libellé, axe, segments, mesure totale, tolérance ;
+* ``avis`` — AOF169, l'AMONT du tunnel : les avis de marchés publiés
+  (référence acheteur, acheteur, objet, montant estimé, dates de remise et
+  d'ouverture, lot, mode de passation) créent les ``AppelOffre``
+  correspondants, DÉDUPLIQUÉS par référence acheteur.
+
+**Aucun scraping, jamais** (AOF169 / règle #5 du dépôt). La voie retenue est
+l'IMPORT d'un fichier ou la saisie manuelle : aucun appel réseau vers le
+portail national des marchés publics — ni vers aucun autre portail — n'existe
+dans ce module, et un test de grep l'impose sur tout le paquet (le nom de
+domaine lui-même fait partie des motifs interdits, il n'est donc écrit nulle
+part ici). La question de la collecte AUTOMATIQUE est
+traitée AILLEURS, dans une app séparée (``apps/veille_ao``, Groupe VAO), sous
+gate intégral de la règle #5 : fichier ``tos_risk/`` + accord écrit du
+fondateur avant la première exécution. Quand ce sas existera, ``importer_avis``
+lui empruntera ses lignes au lieu d'un fichier — la fonction de création
+(``services.creer_appel_offre_depuis_avis``) est déjà le point de contact
+unique prévu pour ça, il n'y aura pas de second parseur à écrire.
 
 Trois garanties :
 
@@ -28,11 +45,11 @@ from decimal import Decimal, InvalidOperation
 
 from apps.dataimport.parsing import normalize_header
 
-from .models import ChaineCotes, ObstacleAO, StatutCote
+from .models import AppelOffre, ChaineCotes, ObstacleAO, StatutCote
 
 __all__ = [
     'FIELD_MAPS_AO', 'previsualiser', 'importer_obstacles',
-    'importer_chaines',
+    'importer_chaines', 'importer_avis',
 ]
 
 #: En-tête normalisé → champ. Même forme que ``dataimport.FIELD_MAPS`` :
@@ -56,6 +73,30 @@ FIELD_MAPS_AO = {
         'mesure': 'mesure_globale_m', 'mesure_totale': 'mesure_globale_m',
         'total': 'mesure_globale_m',
         'tolerance': 'tolerance_m', 'tolerance_m': 'tolerance_m',
+    },
+    # AOF169 — les en-têtes d'un avis publié. Plusieurs libellés pointent le
+    # même champ : un avis est recopié à la main depuis un portail ou un
+    # bulletin, jamais exporté d'un gabarit imposé.
+    'avis': {
+        'reference': 'reference_acheteur',
+        'reference_acheteur': 'reference_acheteur',
+        'reference_marche': 'reference_acheteur',
+        'numero': 'reference_acheteur', 'num_ao': 'reference_acheteur',
+        'acheteur': 'acheteur', 'maitre_ouvrage': 'maitre_ouvrage',
+        'organisme': 'acheteur', 'administration': 'acheteur',
+        'objet': 'objet', 'intitule': 'objet', 'designation': 'objet',
+        'lot': 'lot', 'numero_lot': 'lot',
+        'montant': 'montant_estime', 'montant_estime': 'montant_estime',
+        'estimation': 'montant_estime',
+        'caution': 'caution_provisoire',
+        'caution_provisoire': 'caution_provisoire',
+        'date_limite': 'date_limite', 'date_remise': 'date_limite',
+        'remise': 'date_limite', 'echeance': 'date_limite',
+        'date_ouverture': 'date_ouverture_plis',
+        'date_ouverture_plis': 'date_ouverture_plis',
+        'ouverture': 'date_ouverture_plis',
+        'mode_passation': 'mode_passation', 'mode': 'mode_passation',
+        'type_marche': 'type_marche',
     },
 }
 
@@ -187,9 +228,87 @@ def _valider_chaine(donnees):
     return champs, erreurs
 
 
+_MODES_PASSATION = {v for v, _ in AppelOffre.ModePassation.choices}
+_TYPES_MARCHE = {v for v, _ in AppelOffre.TypeMarche.choices}
+
+#: Formats de date acceptés dans un avis — le jour vient EN PREMIER (usage
+#: marocain/français). ``%m/%d`` n'est PAS accepté : accepter les deux rendrait
+#: « 03/04/2026 » ambigu, et une date de remise mal lue fait rater un dépôt.
+_FORMATS_DATE = ('%d/%m/%Y', '%d-%m-%Y', '%Y-%m-%d', '%d.%m.%Y')
+
+
+def _date(valeur, champ, erreurs):
+    """``str`` -> ``date``, ou ``None``. Une date illisible est un REJET."""
+    from datetime import date, datetime
+
+    if valeur in (None, ''):
+        return None
+    if isinstance(valeur, datetime):
+        return valeur.date()
+    if isinstance(valeur, date):
+        return valeur
+    texte = str(valeur).strip()
+    for fmt in _FORMATS_DATE:
+        try:
+            return datetime.strptime(texte, fmt).date()
+        except ValueError:
+            continue
+    erreurs.append(
+        f'{champ} : « {texte} » n\'est pas une date lisible '
+        '(jj/mm/aaaa ou aaaa-mm-jj).')
+    return None
+
+
+def _valider_avis(donnees):
+    """AOF169 — ``(champs, erreurs)`` pour une ligne d'avis de marché.
+
+    ``reference_acheteur`` est OBLIGATOIRE : c'est la clé de déduplication.
+    Sans elle un ré-import créerait des jumeaux, ce qui est exactement le
+    défaut que cette tâche existe pour empêcher.
+    """
+    erreurs = []
+    reference = (donnees.get('reference_acheteur') or '').strip()
+    if not reference:
+        erreurs.append(
+            "référence acheteur : obligatoire (c'est la clé de "
+            'déduplication d\'un avis).')
+    objet = (donnees.get('objet') or '').strip()
+    if not objet:
+        erreurs.append("objet : obligatoire (un avis sans objet n'est pas "
+                       'exploitable).')
+    mode = (donnees.get('mode_passation') or '').strip().lower()
+    if mode and mode not in _MODES_PASSATION:
+        erreurs.append(f'mode de passation : « {mode} » inconnu.')
+        mode = ''
+    type_marche = (donnees.get('type_marche') or '').strip().lower()
+    if type_marche and type_marche not in _TYPES_MARCHE:
+        erreurs.append(f'type de marché : « {type_marche} » inconnu.')
+        type_marche = ''
+
+    champs = {
+        'reference_acheteur': reference,
+        'objet': objet,
+        'acheteur': (donnees.get('acheteur') or '').strip(),
+        'maitre_ouvrage': (donnees.get('maitre_ouvrage') or '').strip(),
+        'lot': (donnees.get('lot') or '').strip(),
+        'montant_estime': _decimal(
+            donnees.get('montant_estime'), 'montant estimé', erreurs),
+        'caution_provisoire': _decimal(
+            donnees.get('caution_provisoire'), 'caution provisoire', erreurs),
+        'date_limite': _date(
+            donnees.get('date_limite'), 'date limite de remise', erreurs),
+        'date_ouverture_plis': _date(
+            donnees.get('date_ouverture_plis'), "date d'ouverture", erreurs),
+        'mode_passation': mode or AppelOffre.ModePassation.APPEL_OUVERT,
+        'type_marche': type_marche or AppelOffre.TypeMarche.PUBLIC,
+    }
+    return champs, erreurs
+
+
 _VALIDATEURS = {
     'obstacles': _valider_obstacle,
     'chaines': _valider_chaine,
+    'avis': _valider_avis,
 }
 
 
@@ -279,3 +398,53 @@ def importer_chaines(toiture, fichier_octets, filename, *, releve=None):
         chaine.recalculer_fermeture()
         chaine.save()
     return {'crees': crees, 'mis_a_jour': mis_a_jour, 'rejets': rejets}
+
+
+# ── AOF169 — l'AMONT du tunnel : les avis de marchés publiés ───────────────
+
+def importer_avis(company, fichier_octets, filename, *, user=None):
+    """Importe des avis de marché — IDEMPOTENT par ``reference_acheteur``.
+
+    Ré-importer le même fichier MET À JOUR les affaires existantes au lieu
+    d'en créer des jumelles : un avis paraît, puis paraît RECTIFIÉ, et la
+    deuxième parution ne doit pas ouvrir un second dossier.
+
+    La création passe par ``services.creer_appel_offre_depuis_avis`` — point de
+    contact UNIQUE, celui-là même qu'empruntera la veille (``apps/veille_ao``)
+    quand son sas existera. **Aucun appel réseau ici** (règle #5) : la source
+    est un FICHIER, jamais un portail.
+    """
+    from .services import creer_appel_offre_depuis_avis
+
+    apercu = previsualiser(fichier_octets, filename, 'avis')
+    crees = mis_a_jour = 0
+    rejets = []
+    for ligne in apercu['lignes']:
+        if ligne['erreurs']:
+            rejets.append(ligne)
+            continue
+        _ao, cree = creer_appel_offre_depuis_avis(
+            company, dict(ligne['champs']), user=user)
+        if cree:
+            crees += 1
+        else:
+            mis_a_jour += 1
+    return {'crees': crees, 'mis_a_jour': mis_a_jour, 'rejets': rejets}
+
+
+def saisir_avis(company, avis, *, user=None):
+    """Saisie MANUELLE d'un avis (même validation, même déduplication).
+
+    L'écran de saisie et le fichier passent par le MÊME validateur : un avis
+    tapé à la main ne doit pas avoir le droit d'être moins propre qu'un avis
+    importé. Rend ``(appel_offre, cree, erreurs)`` — ``appel_offre`` vaut
+    ``None`` quand la saisie est rejetée.
+    """
+    from .services import creer_appel_offre_depuis_avis
+
+    champs, erreurs = _valider_avis(avis or {})
+    if erreurs:
+        return (None, False, erreurs)
+    appel_offre, cree = creer_appel_offre_depuis_avis(
+        company, champs, user=user)
+    return (appel_offre, cree, [])
