@@ -28,7 +28,8 @@ from openpyxl import load_workbook
 
 from apps.ao.fabrique import approvisionnement, bibliotheque_prix
 from apps.ao.fabrique.contexte import construire_contexte
-from apps.ao.fabrique.rendus import bordereau_pdf, bordereau_xlsx, lettre
+from apps.ao.fabrique.rendus import (acte_engagement, bordereau_pdf,
+                                     bordereau_xlsx, lettre)
 from apps.ao.tests.aof_fixtures import (bordereau_depose, contexte_dossier,
                                         rendre_gabarit)
 
@@ -158,6 +159,21 @@ def artefact_lettre_soumission():
                           lettre.contexte_gabarit(lignes, contexte))
 
 
+def artefact_acte_engagement():
+    lignes, contexte = _lignes_et_contexte()
+    return rendre_gabarit(acte_engagement.NOM_GABARIT,
+                          acte_engagement.contexte_gabarit(lignes, contexte))
+
+
+def artefact_acte_fiche_de_report():
+    lignes, contexte = _lignes_et_contexte()
+    vue = acte_engagement.contexte_gabarit(
+        lignes, contexte,
+        modele_acheteur={'reference': 'DCE-03',
+                         'libelle': "Acte d'engagement (E3)"})
+    return rendre_gabarit(acte_engagement.NOM_GABARIT, vue)
+
+
 def artefact_contexte_dossier():
     _, contexte = _lignes_et_contexte()
     return dict(contexte)
@@ -192,6 +208,9 @@ ARTEFACTS_COUVERTS = (
     ('bordereau des prix — PDF (HTML rendu)', artefact_bordereau_pdf),
     ('bordereau des prix — classeur XLSX', artefact_bordereau_xlsx),
     ('lettre de soumission — PDF (HTML rendu)', artefact_lettre_soumission),
+    ("acte d'engagement — PDF autonome", artefact_acte_engagement),
+    ("acte d'engagement — fiche de report des valeurs",
+     artefact_acte_fiche_de_report),
     ('contexte de dossier — charge utile API non-directeur',
      artefact_contexte_dossier),
     ("contrôle d'approvisionnement — charge utile API",
