@@ -482,6 +482,26 @@ const NEXT_ACTION = {
   terminee: { tab: 'outils', text: 'confirmer le retour d’outillage.' },
 }
 
+/**
+ * EZ7 — la signature entre dans la SÉQUENCE : sur site, une fois les photos
+ * obligatoires faites (le serveur dit `photos_obligatoires_manquantes === 0`),
+ * la prochaine action devient « faire signer le client » — sinon elle restait
+ * l'onglet 9/10 que personne n'ouvrait.
+ * Tant que le compte de photos manquantes est INCONNU (champ non servi), on ne
+ * suppose rien : la séquence historique s'applique.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé
+export function prochaineAction(interv) {
+  if (!interv) return null
+  if (interv.statut === 'sur_site' && interv.photos_obligatoires_manquantes === 0) {
+    if (!interv.signe_le) {
+      return { tab: 'signature', text: 'faire signer le client.' }
+    }
+    return { tab: 'trajet', text: 'enregistrer le retour dépôt.' }
+  }
+  return NEXT_ACTION[interv.statut] ?? null
+}
+
 function InterventionFlowSheet({
   interv, initialTab, isMobile, onClose, onChanged,
   indiceStatut, onIndiceStatut,
@@ -525,7 +545,7 @@ function InterventionFlowSheet({
   }
   if (!interv) return null
 
-  const next = NEXT_ACTION[interv.statut]
+  const next = prochaineAction(interv)
 
   // VX43 — bottom-sheet sous 768px (glisser-vers-le-bas-pour-fermer inclus
   // nativement par Sheet.jsx pour side="bottom") ; tiroir latéral inchangé
