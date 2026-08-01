@@ -176,6 +176,25 @@ def evaluer_plan_impose(surface, parametres, rangees, obstacles=(), zones=(),
         ecart_a_l_optimum=compte_optimal - plan.modules)
 
 
+def calculer(surface, parametres, obstacles=(), zones=(), politique=None):
+    """Point d'entrée UNIQUE : le mode de pose des ``Parametres`` décide.
+
+    ``RANGEES_EXPLICITES_DP`` -> DP exact ; ``RANGEES_UNIFORMES_PHASE`` ->
+    balayage de phase du moteur v1 (AOF47), borné par le DP. L'import est
+    local : ``pose_uniforme`` dépend de ce module pour ``ResultatOptimum``.
+    """
+    from core.calepinage.types import ModePose
+
+    if parametres.mode_pose is ModePose.RANGEES_UNIFORMES_PHASE:
+        from core.calepinage.pose_uniforme import balayer_phase
+
+        borne = optimiser(surface, parametres, obstacles, zones,
+                          politique).preuve.compte_optimal
+        return balayer_phase(surface, parametres, obstacles, zones,
+                             borne_superieure=borne)
+    return optimiser(surface, parametres, obstacles, zones, politique)
+
+
 def borne_superieure_kit(surface, kit, obstacles=(), zones=(),
                          pas_recherche=0.01):
     """Borne haute d'un kit : meilleure rangée × nombre de rangées possibles.
