@@ -38,6 +38,9 @@ test('E16: the full navigation menu is reachable on mobile', async ({ page }) =>
   // must still be reachable by scrolling. Targeting « the last nav link » rather
   // than one hardcoded href keeps the guard alive when Stock's sections move.
   const navLinks = page.locator('aside.sidebar .sidebar-nav a')
+  // `count()` ne patiente pas : on attend d'abord que la nav de l'app soit
+  // réellement rendue, sinon un comptage trop tôt renverrait 0.
+  await expect(navLinks.first()).toBeVisible()
   expect(await navLinks.count(), 'Stock expose assez de sections pour risquer le rognage')
     .toBeGreaterThan(5)
   const last = navLinks.last()
