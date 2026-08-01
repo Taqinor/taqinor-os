@@ -69,6 +69,12 @@ test('AOF172 — tableauMarches() appelle GET /ao/tableau-marches/ (endpoint AOF
   assert.match(body, /tableauMarches:\s*\(\)\s*=>\s*api\.get\('\/ao\/tableau-marches\/'\)/)
 })
 
+test('AOF173 — bibliotheque.appliquer()/dossiersImpactes() existent', () => {
+  const body = aoApiBody()
+  assert.match(body, /appliquer:\s*\(id\)\s*=>\s*api\.post\(`\/ao\/bibliotheque\/\$\{id\}\/appliquer\/`\)/)
+  assert.match(body, /dossiersImpactes:\s*\(id\)\s*=>\s*api\.get\(`\/ao\/bibliotheque\/\$\{id\}\/dossiers-impactes\/`\)/)
+})
+
 test('ISOLEMENT — le corps de `aoApi` ne mentionne JAMAIS "rentabilite" (aucun chemin réseau mêlé)', () => {
   const body = aoApiBody()
   assert.doesNotMatch(body, /rentabilite/i)

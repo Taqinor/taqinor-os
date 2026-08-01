@@ -90,7 +90,16 @@ const aoApi = {
   pieces: crud('pieces-soumission'),
 
   // ── Bibliothèque : kits, presets, gabarits, textes normalisés ──
-  bibliotheque: crud('bibliotheque'),
+  bibliotheque: {
+    ...crud('bibliotheque'),
+    // AOF173 — appliquer un jeu de paramètres/kit : UN clic, UN appel, tracé
+    // côté serveur (qui/quand/quoi). Modifier un texte normalisé PARTAGÉ
+    // réutilise `update()` ci-dessus (PATCH sur le MÊME id — jamais de
+    // duplication silencieuse) ; `dossiersImpactes()` liste les dossiers qui
+    // le reprennent, à afficher AVANT toute validation.
+    appliquer: (id) => api.post(`/ao/bibliotheque/${id}/appliquer/`),
+    dossiersImpactes: (id) => api.get(`/ao/bibliotheque/${id}/dossiers-impactes/`),
+  },
 
   // AOF172/AOF166 — appel agrégé UNIQUE du tableau de bord (nom d'endpoint +
   // selector repris nominativement de NTMAR27 par AOF166, pour éviter deux
