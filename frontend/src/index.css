@@ -5239,8 +5239,10 @@ textarea.form-control {
    (StageMover — chemin clavier/souris sans drag, gardes LB3/LB4 conservées)
    n'a pas à occuper le repos de chaque carte. Replié à hauteur nulle au repos,
    il se révèle au survol de la carte (pointeur fin) et — resté FOCALISABLE —
-   se déplie dès que le focus clavier l'atteint (:focus-within, la règle anti
-   « tabbable invisible » du contrat APX2). Au doigt (ni survol ni tab), il
+   se déplie dès que le focus CLAVIER l'atteint (:has(:focus-visible) : un TAP
+   iOS donne le focus au wrapper tabbable dnd-kit et dépliait le sélecteur
+   sous le doigt — :focus-visible ne s'allume pas au tap ; règle anti
+   « tabbable invisible » du contrat APX2 préservée au clavier). Au doigt, il
    disparaît : l'étape se change dans la fenêtre du lead (pilule) ou en mode
    déplacement. Bonus densité : chaque carte rend ~34px au repos. */
 .kb-stage-mover {
@@ -5250,7 +5252,7 @@ textarea.form-control {
   margin-top: 0;
   transition: max-height 150ms ease, opacity 150ms ease, margin-top 150ms ease;
 }
-.kb-drag-wrap:focus-within .kb-stage-mover {
+.kb-drag-wrap:has(:focus-visible) .kb-stage-mover {
   max-height: 4rem;
   opacity: 1;
   margin-top: 0.28rem;
@@ -5297,6 +5299,12 @@ textarea.form-control {
     overflow: scroll hidden;
     scroll-snap-type: x mandatory;
     overscroll-behavior-x: contain;
+    /* L'axe de snap est X : sans `scroll-padding-left`, la position `start`
+       de la 1ʳᵉ colonne vaut scrollLeft = 8 px (le padding du board fait
+       partie du contenu scrollable) — `mandatory` TIRAIT le board de 0 à 8 px
+       dès la pose. Aligné sur le padding : chaque étape se pose avec la même
+       gouttière, zéro micro-correction. */
+    scroll-padding-left: 0.5rem;
   }
 
   .kb-col {
@@ -10174,55 +10182,9 @@ textarea.form-control {
 .lp-page[data-view] .kb-col-money {
   text-align: right;
 }
-.lp-page[data-view] .kb-col-activite {
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  margin-top: 0.2rem;
-  height: 4px;
-}
-.lp-page[data-view] .kb-act-seg {
-  flex-shrink: 1;
-  min-width: 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  cursor: pointer;
-  /* La cible visuelle fait 4 px de haut ; la zone de FRAPPE en fait 14 grace a
-     l'overlay ci-dessous — la barre reste fine sans devenir intouchable. */
-  position: relative;
-}
-.lp-page[data-view] .kb-act-seg::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 14px;
-  transform: translateY(-50%);
-}
-.lp-page[data-view] .kb-act-seg--danger { background: var(--destructive); }
-.lp-page[data-view] .kb-act-seg--warning { background: var(--warning-text); }
-.lp-page[data-view] .kb-act-seg--success { background: var(--success); }
-.lp-page[data-view] .kb-act-seg--muted {
-  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
-}
-/* Segment actif : le seul a garder son opacite pleine, les autres s'estompent
-   — l'etat du filtre se LIT sans lire un libelle. */
-.lp-page[data-view] .kb-col-activite:has(.kb-act-seg--on) .kb-act-seg:not(.kb-act-seg--on) {
-  opacity: 0.35;
-}
-.lp-page[data-view] .kb-act-seg--on {
-  outline: 1px solid var(--foreground);
-  outline-offset: 1px;
-}
-.lp-page[data-view] .kb-act-seg:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-@media (hover: hover) {
-  .lp-page[data-view] .kb-act-seg:hover { filter: brightness(1.15); }
-}
+/* APX6 — barre segmentée RETIRÉE sur ordre fondateur (2026-08-01, « enlève
+   ça ») : la « case grise » au-dessus de chaque étape. `.kb-col-money` (LB9)
+   reste seule dans l'en-tête. */
 
 /* ===========================================================================
    APX7 — TELEPHONE ET TABLETTE : 5+ leads par etape, `hover:none` servi a

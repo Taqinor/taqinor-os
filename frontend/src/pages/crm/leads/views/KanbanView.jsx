@@ -171,47 +171,11 @@ const DraggableCard = memo(function DraggableCard({
   )
 })
 
-/* APX6 — LA BARRE D'ACTIVITÉ SEGMENTÉE (la signature Odoo des en-têtes de
-   colonne).
-   ---------------------------------------------------------------------------
-   VÉRIFICATION D'ABORD (exigée par la tâche) : l'en-tête LB9 portait déjà le
-   compteur ET la somme (« total MAD · Prév. pondéré », UNE seule rangée). Ce
-   qui manquait, c'est la lecture d'un coup d'œil de l'ÉTAT D'ACTIVITÉ de
-   l'étape : combien de leads y sont en retard, dus aujourd'hui, planifiés, ou
-   sans aucune activité prévue.
-
-   Les quatre seaux dérivent de `lead.next_activity.state`, DÉJÀ présent dans
-   la charge utile lue par la carte (LeadCard `kb-act-${state}`) : zéro requête
-   nouvelle, zéro champ serveur nouveau. Les clés d'étape, elles, viennent
-   toujours de `stages.js` (miroir de STAGES.py, règle #2) — aucune liste
-   d'étapes n'apparaît ici. */
-const ACTIVITE_SEAUX = [
-  { key: 'overdue', label: 'en retard', tone: 'danger' },
-  { key: 'today', label: 'aujourd’hui', tone: 'warning' },
-  { key: 'upcoming', label: 'planifié', tone: 'success' },
-  { key: 'none', label: 'sans activité', tone: 'muted' },
-]
-
-/** activiteSeau — seau d'activité d'un lead. `next_activity` absente = « sans
-    activité » (le seau qui compte : c'est celui-là qu'un commercial doit vider). */
-// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
-// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
-// eslint-disable-next-line react-refresh/only-export-components
-export function activiteSeau(lead) {
-  const state = lead?.next_activity?.state
-  return ACTIVITE_SEAUX.some((s) => s.key === state) ? state : 'none'
-}
-
-/** repartitionActivite — {overdue, today, upcoming, none} pour une colonne.
-    Fonction PURE (testable sans React ni navigateur). */
-// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
-// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
-// eslint-disable-next-line react-refresh/only-export-components
-export function repartitionActivite(leads) {
-  const acc = { overdue: 0, today: 0, upcoming: 0, none: 0 }
-  for (const lead of leads ?? []) acc[activiteSeau(lead)] += 1
-  return acc
-}
+/* APX6 — RETIRÉ sur ordre fondateur (2026-08-01, « enlève ça ») : la barre
+   segmentée d'activité des en-têtes de colonne (la « case grise, parfois
+   grise/rouge ») encombrait chaque étape sur téléphone. La somme `.num` de
+   l'en-tête (LB9) reste ; le contrat d'absence vit dans
+   KanbanActivityBar.apx6.test.mjs. */
 
 /* APX9 — PLAFOND DE RENDU PAR COLONNE.
    ---------------------------------------------------------------------------
@@ -227,6 +191,12 @@ export function repartitionActivite(leads) {
    les totaux RÉELS de l'étape : on ne cache pas des leads, on en diffère
    l'affichage. */
 export const RENDER_CAP = 40
+/* Le pager mobile ne montre QU'UNE colonne mais les 6 sont montées : 6×40
+   cartes × ~66 nœuds ≈ 15 000 éléments sous le doigt (dont 240 <select> du
+   StageMover). Au pointeur grossier on monte 10 cartes par étape (≈ 1,5
+   écran de colonne) — « Charger plus » reste l'échappatoire, les données
+   sont déjà en mémoire. Le poids n°1 du balayage (audit 2026-08-01). */
+export const RENDER_CAP_TACTILE = 10
 
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
 // LB9 — région nommée (axe/lecteur d'écran atteignent chaque colonne par son
@@ -238,13 +208,10 @@ export const RENDER_CAP = 40
 // cartes (`children`) ne sont même pas montées — mais le `<section>` garde
 // EXACTEMENT le même `ref={setNodeRef}`/`id: col.key` qu'en dépliée : elle
 // reste une zone droppable à part entière (surbrillance `kb-over` incluse).
-function StageColumn({ col, collapsed, onToggleCollapse, children, activiteFiltre, onFiltrerActivite }) {
+function StageColumn({ col, collapsed, onToggleCollapse, children }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.key })
   // Prévisionnel pondéré : total devis × probabilité de l'étape.
   const forecast = col.totalDevis * (STAGE_PROBABILITY[col.key] ?? 0)
-  // APX6 — répartition d'activité de l'étape (mémoïsée : la colonne se rend à
-  // chaque frappe de recherche, VX187/LB6).
-  const repartition = useMemo(() => repartitionActivite(col.leads), [col.leads])
   const chevronLabel = collapsed
     ? `Déplier la colonne ${col.label}`
     : `Replier la colonne ${col.label}`
@@ -290,35 +257,6 @@ function StageColumn({ col, collapsed, onToggleCollapse, children, activiteFiltr
           >
             {formatMAD(col.totalDevis)} · Prév. {formatMAD(forecast)}
           </span>
-        )}
-        {/* APX6 — barre segmentée d'activité, proportionnelle au nombre de
-            leads de l'étape. Chaque segment est un BOUTON : il filtre la
-            colonne (et seulement elle) sur ce seau ; re-cliquer l'enlève. Un
-            seau vide n'est pas rendu (jamais un segment de largeur nulle et
-            tabbable). Le libellé accessible porte le compte : la couleur n'est
-            jamais le seul porteur de sens. */}
-        {!collapsed && col.count > 0 && (
-          <div
-            className="kb-col-activite"
-            role="group"
-            aria-label={`Activité de l’étape ${col.label}`}
-          >
-            {ACTIVITE_SEAUX.filter((s) => repartition[s.key] > 0).map((s) => (
-              <button
-                key={s.key}
-                type="button"
-                className={`kb-act-seg kb-act-seg--${s.tone}${activiteFiltre === s.key ? ' kb-act-seg--on' : ''}`}
-                style={{ flexGrow: repartition[s.key] }}
-                aria-pressed={activiteFiltre === s.key}
-                title={`${repartition[s.key]} lead${repartition[s.key] > 1 ? 's' : ''} ${s.label} — cliquer pour filtrer cette étape`}
-                onClick={() => onFiltrerActivite?.(col.key, s.key)}
-              >
-                <span className="sr-only">
-                  {repartition[s.key]} lead{repartition[s.key] > 1 ? 's' : ''} {s.label}
-                </span>
-              </button>
-            ))}
-          </div>
         )}
       </header>
       {collapsed ? (
@@ -425,7 +363,10 @@ export default function KanbanView({
      passif, au doigt seulement ; `scrollend` absent (vieux iOS) = silence
      propre, `vibrate` absent (iOS) = no-op défensif, jamais une erreur. */
   useEffect(() => {
-    const el = boardRef.current
+    // `boardRef` est la FONCTION callback-ref d'usePanScroll — le nœud vit
+    // sur `boardRef.node` (lire `.current` sur la fonction = undefined muet :
+    // le haptique était mort-né au round 2, attrapé par l'audit).
+    const el = boardRef.node?.current
     if (!el || !pointerCoarse || !('onscrollend' in el)) return undefined
     const onSettle = () => navigator.vibrate?.(5)
     el.addEventListener('scrollend', onSettle, { passive: true })
@@ -439,29 +380,19 @@ export default function KanbanView({
   // collapsedColumns.js) : lu UNE FOIS au montage (lazy useState — jamais de
   // repli par défaut, `readCollapsedStages()` renvoie `[]` tant que
   // l'utilisatrice n'a jamais replié une colonne), écrit à chaque bascule.
-  /* APX6 — filtre d'activité PAR COLONNE (`{ [stageKey]: seau }`). Volontairement
-     LOCAL et éphémère : c'est un coup de projecteur sur une étape (« montre-moi
-     les 7 en retard de Devis envoyé »), pas une 7ᵉ dimension du jeu de filtres
-     global — l'ajouter à `EMPTY_FILTERS` en ferait une chose à persister, à
-     mettre dans l'URL et à afficher en facette, pour un geste qui se défait
-     d'un second clic. Re-cliquer le même segment l'enlève. */
-  const [activiteParEtape, setActiviteParEtape] = useState({})
   // APX9 — combien de cartes sont MONTÉES par étape (jamais combien sont
   // chargées : tout est déjà en mémoire). Défaut RENDER_CAP.
   const [limiteParEtape, setLimiteParEtape] = useState({})
+  const capActif = pointerCoarse ? RENDER_CAP_TACTILE : RENDER_CAP
   const chargerPlus = useCallback((stageKey) => {
     setLimiteParEtape((prev) => ({
       ...prev,
-      [stageKey]: (prev[stageKey] ?? RENDER_CAP) + RENDER_CAP,
+      // Le pas d'extension reste RENDER_CAP (40) ; la BASE, elle, dépend du
+      // pointeur (10 au doigt) — sans quoi le premier « Charger plus » tactile
+      // sauterait de 10 à 80 (base desktop 40 + pas 40).
+      [stageKey]: (prev[stageKey] ?? capActif) + RENDER_CAP,
     }))
-  }, [])
-  const filtrerActivite = useCallback((stageKey, seau) => {
-    setActiviteParEtape((prev) => (
-      prev[stageKey] === seau
-        ? (() => { const next = { ...prev }; delete next[stageKey]; return next })()
-        : { ...prev, [stageKey]: seau }
-    ))
-  }, [])
+  }, [capActif])
 
   /* EZ14 — adoptions n°7 et 8 : sur le board, la RÉASSIGNATION et le
      changement d'étape au CLAVIER (StageMover) gagnent l'undo.
@@ -657,21 +588,13 @@ export default function KanbanView({
             col={col}
             collapsed={collapsedStages.has(col.key)}
             onToggleCollapse={() => toggleCollapsed(col.key)}
-            activiteFiltre={activiteParEtape[col.key] ?? null}
-            onFiltrerActivite={filtrerActivite}
           >
-            {/* APX6 — le filtre d'activité ne masque QUE des cartes : les
-                compteurs et la somme de l'en-tête restent les totaux RÉELS de
-                l'étape (sinon cliquer un segment redessinerait la barre qu'on
-                vient de cliquer).
-                APX9 — puis le plafond de RENDU : on ne monte que les N
-                premières cartes, le reste attend « Charger plus ». Les données
-                sont déjà en mémoire — aucun appel réseau ici. */}
+            {/* APX9 — plafond de RENDU : on ne monte que les N premières
+                cartes, le reste attend « Charger plus ». Les données sont déjà
+                en mémoire — aucun appel réseau ici. */}
             {(() => {
-              const visibles = activiteParEtape[col.key]
-                ? col.leads.filter((l) => activiteSeau(l) === activiteParEtape[col.key])
-                : col.leads
-              const limite = limiteParEtape[col.key] ?? RENDER_CAP
+              const visibles = col.leads
+              const limite = limiteParEtape[col.key] ?? capActif
               const restants = Math.max(0, visibles.length - limite)
               return (
                 <>
@@ -689,7 +612,12 @@ export default function KanbanView({
                       selectionActive={selected.size > 0}
                       onToggleSelect={onToggleSelect}
                       onPlanifierRelance={onPlanifierRelance}
-                      onInlineSave={inlineSaveAvecUndo}
+                      // Au doigt le StageMover n'est même plus MONTÉ (déjà
+                      // inatteignable — :has(:focus-visible) + hover — mais il
+                      // coûtait 9 nœuds + un <select> natif par carte).
+                      // `undefined` est stable : memo intact. Chemins restants
+                      // tactile-clavier : KeyboardSensor + pilule de la fenêtre.
+                      onInlineSave={pointerCoarse ? undefined : inlineSaveAvecUndo}
                       onMarkPerdu={onMarkPerdu}
                     />
                   ))}
