@@ -1,13 +1,19 @@
-"""Routes du module Appels d'offres (``apps.ao``) — ODX11.
+"""Routes du module Appels d'offres (``apps.ao``) — ODX11 puis AOF31.
 
-Nouveau préfixe ``/api/django/ao/…``. Les mêmes ViewSets sont AUSSI servis par
-``apps.compta.urls`` sous ``/api/django/compta/…`` (routes historiques
-conservées à l'identique pour ne casser aucun client). Les ViewSets gardent le
-scoping ``request.user.company`` + l'assignation forcée de ``company`` (hérité
-de ``_ComptaBaseViewSet`` = ``TenantMixin``).
+Préfixe ``/api/django/ao/…``. Les 8 ViewSets HISTORIQUES sont AUSSI servis par
+``apps.compta.urls`` sous ``/api/django/compta/…`` (routes conservées à
+l'identique pour ne casser aucun client) — les classes, elles, vivent
+désormais dans ``apps.ao.views`` (AOF1).
 
-Basenames explicitement préfixés ``ao-…`` pour NE PAS entrer en collision avec
-les noms d'URL du routeur compta (qui reverse ``appeloffre-list`` etc.).
+**Tous les basenames sont préfixés ``ao-``.** Ce n'est pas de la cosmétique :
+le routeur compta enregistre les mêmes ViewSets et reverse ``appeloffre-list``
+etc. Sans le préfixe, deux entrées porteraient le même nom d'URL et
+``reverse()`` renverrait silencieusement la mauvaise — un test explicite
+(``test_routes_ao``) vérifie qu'aucune collision n'existe.
+
+AOF31 — le contrat d'API (``/contrat/``) est DÉRIVÉ de ce routeur : il ne peut
+pas se désynchroniser de la réalité. La pagination est celle du projet
+(``core.pagination.StandardPagination``), donc transverse et non redéclarée.
 """
 
 from django.urls import include, path
@@ -15,17 +21,54 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AppelOffreViewSet,
+    ContratApiAO,
+    BatimentAOViewSet,
     BordereauPrixViewSet,
     CautionSoumissionViewSet,
+    ChaineCotesViewSet,
     DossierSoumissionViewSet,
     EcheanceAOViewSet,
+    ExigenceCPSViewSet,
+    KitCalepinageViewSet,
     LigneBordereauViewSet,
+    ObstacleAOViewSet,
+    PieceConsultationViewSet,
     PieceSoumissionViewSet,
+    PlanSourceViewSet,
+    PresetCalepinageViewSet,
+    ReleveAOViewSet,
+    QuestionAOViewSet,
     ResultatAOViewSet,
+    SerieQuestionsViewSet,
+    ToitureAOViewSet,
+    VarianteCalepinageViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'appels-offres', AppelOffreViewSet, basename='ao-appel-offre')
+router.register(r'pieces-consultation', PieceConsultationViewSet,
+                basename='ao-piece-consultation')
+router.register(r'exigences-cps', ExigenceCPSViewSet,
+                basename='ao-exigence-cps')
+router.register(r'batiments', BatimentAOViewSet, basename='ao-batiment')
+router.register(r'toitures', ToitureAOViewSet, basename='ao-toiture')
+router.register(r'plans-source', PlanSourceViewSet,
+                basename='ao-plan-source')
+router.register(r'obstacles', ObstacleAOViewSet,
+                basename='ao-obstacle')
+router.register(r'chaines-cotes', ChaineCotesViewSet,
+                basename='ao-chaine-cotes')
+router.register(r'releves', ReleveAOViewSet, basename='ao-releve')
+router.register(r'series-questions', SerieQuestionsViewSet,
+                basename='ao-serie-questions')
+router.register(r'questions', QuestionAOViewSet,
+                basename='ao-question')
+router.register(r'kits-calepinage', KitCalepinageViewSet,
+                basename='ao-kit-calepinage')
+router.register(r'presets-calepinage', PresetCalepinageViewSet,
+                basename='ao-preset-calepinage')
+router.register(r'variantes-calepinage', VarianteCalepinageViewSet,
+                basename='ao-variante-calepinage')
 router.register(r'bordereaux-prix', BordereauPrixViewSet,
                 basename='ao-bordereau-prix')
 router.register(r'lignes-bordereau', LigneBordereauViewSet,
@@ -40,5 +83,7 @@ router.register(r'echeances-ao', EcheanceAOViewSet, basename='ao-echeance')
 router.register(r'resultats-ao', ResultatAOViewSet, basename='ao-resultat')
 
 urlpatterns = [
+    # AOF31 — contrat d'API publié, dérivé du routeur ci-dessus.
+    path('contrat/', ContratApiAO.as_view(), name='ao-contrat'),
     path('', include(router.urls)),
 ]

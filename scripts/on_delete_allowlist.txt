@@ -3,6 +3,14 @@
 # spec, so the guard does not block on ~1300 pre-existing FKs). One
 # 'path:lineno' per line. A NEW CASCADE must instead carry an inline
 # '# on_delete: <reason>' comment, or be added here after review.
+# Rebased 2026-08-01 (Groupe AOF, W0/W1) : les 15 entrées
+# `apps/ao/models.py` sont RETIRÉES — chacune de ces FK porte désormais son
+# propre commentaire inline `# on_delete: <raison>` dans le modèle, ce qui rend
+# le fichier immunisé aux décalages de lignes (la lane AO fait grossir
+# `apps/ao/models.py` à chaque tâche). La baisse de 15 entrées est un
+# RÉTRÉCISSEMENT de la baseline, jamais un élargissement. `roles/models.py:419`
+# → `:442` (même FK `Role.company`, décalée par les 3 permissions `ao_*`
+# ajoutées à ALL_PERMISSIONS ; aucun NOUVEAU CASCADE).
 # Rebased 2026-07-31 (protection des prix fournisseur) : 121 entrées
 # stock/models.py remappées (+12 à partir de la ligne 181) après l'ajout du
 # champ `Fournisseur.is_archived`. MÊME jeu de FK, aucun NOUVEAU CASCADE —
@@ -73,21 +81,6 @@ backend/django_core/apps/adsengine/models.py:769
 backend/django_core/apps/adsengine/models.py:89
 backend/django_core/apps/adsengine/models.py:95
 backend/django_core/apps/agent/models.py:28
-backend/django_core/apps/ao/models.py:100
-backend/django_core/apps/ao/models.py:106
-backend/django_core/apps/ao/models.py:136
-backend/django_core/apps/ao/models.py:142
-backend/django_core/apps/ao/models.py:193
-backend/django_core/apps/ao/models.py:199
-backend/django_core/apps/ao/models.py:244
-backend/django_core/apps/ao/models.py:250
-backend/django_core/apps/ao/models.py:279
-backend/django_core/apps/ao/models.py:285
-backend/django_core/apps/ao/models.py:327
-backend/django_core/apps/ao/models.py:333
-backend/django_core/apps/ao/models.py:375
-backend/django_core/apps/ao/models.py:381
-backend/django_core/apps/ao/models.py:44
 backend/django_core/apps/audit/models.py:61
 backend/django_core/apps/chat/models.py:137
 backend/django_core/apps/chat/models.py:140
@@ -1491,7 +1484,7 @@ backend/django_core/apps/rh/models.py:944
 backend/django_core/apps/rh/models.py:946
 backend/django_core/apps/rh/models.py:96
 backend/django_core/apps/roles/models.py:382
-backend/django_core/apps/roles/models.py:419
+backend/django_core/apps/roles/models.py:442
 backend/django_core/apps/sante/models.py:154
 backend/django_core/apps/sante/models.py:157
 backend/django_core/apps/sante/models.py:212
