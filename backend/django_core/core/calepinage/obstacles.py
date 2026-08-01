@@ -116,12 +116,17 @@ def appliquer_regles(obstacles):
     sortie = []
     for o in obstacles:
         if o.provenance is Provenance.ECARTE:
+            # Un motif d'écartement déjà écrit (« souche jamais relevée »,
+            # « pan coupé confirmé absent ») est de l'information de dossier :
+            # on la GARDE et on la complète, on ne l'écrase pas.
+            standard = ("obstacle ÉCARTÉ : géométrie conservée, hors du "
+                        "compte et sans dégagement")
             sortie.append(Obstacle(
                 repere=o.repere, x0=o.x0, x1=o.x1, y0=o.y0, y1=o.y1,
                 type_obstacle=o.type_obstacle, provenance=o.provenance,
                 degagement_m=0.0, hauteur_m=o.hauteur_m,
-                regle_appliquee="obstacle ÉCARTÉ : géométrie conservée, "
-                                "hors du compte et sans dégagement"))
+                regle_appliquee=("%s — %s" % (o.regle_appliquee, standard)
+                                 if o.regle_appliquee else standard)))
             continue
         valeur, regle = degagement_effectif(o)
         sortie.append(Obstacle(
