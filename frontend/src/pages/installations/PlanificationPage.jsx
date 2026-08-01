@@ -504,7 +504,6 @@ function CalendrierTab() {
   // Fetch du calendrier au changement de plage : `setLoading(true)` ouvre le
   // cycle et `finally` le referme — motif de chargement standard, borne par
   // le drapeau `alive`, sans cascade possible.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     let alive = true
     // eslint-disable-next-line react-hooks/set-state-in-effect

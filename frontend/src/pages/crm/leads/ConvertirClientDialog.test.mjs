@@ -42,7 +42,9 @@ test('appelle crmApi.convertirLeadEnClient(leadId, {mode, client_id?})', () => {
 test('IdentityRail : le bouton « Convertir en client » est masqué si le lead a déjà un client', () => {
   assert.match(IDENTITY_SRC, /const alreadyClient = !!server\.client/)
   assert.match(IDENTITY_SRC, /\{!alreadyClient && \(/)
-  assert.match(IDENTITY_SRC, /onClick=\{\(\) => onAction\('convert'\)\}/)
+  // LWC2 — « Convertir » vit désormais dans le menu ⋯ du rail (DropdownMenuItem,
+  // onSelect), plus un bouton empilé ; même action, même garde alreadyClient.
+  assert.match(IDENTITY_SRC, /onSelect=\{\(\) => onAction\('convert'\)\}/)
 })
 
 test('LeadWorkspace : monte ConvertirClientDialog et rafraîchit la fiche après conversion', () => {

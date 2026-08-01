@@ -2,7 +2,8 @@
 // miroir de STAGES.py — jamais de liste d'étapes en dur ici), glisser-déposer
 // via @dnd-kit/core. Le parent gère l'optimistic update : on ne mute rien.
 import { memo, useCallback, useMemo, useState } from 'react'
-import { ChevronDown, LayoutGrid } from 'lucide-react'
+// VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
+import { ChevronDown, LayoutGrid, X } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -30,6 +31,9 @@ import { toast } from '../../../../ui/confirm'
 // Un board se démonte au moindre changement de vue : aucun commit différé ici.
 import { mutateWithUndo } from '../../../../lib/mutateWithUndo'
 import { EmptyState, Button } from '../../../../ui'
+// Hook média CANONIQUE (le même que LeadsPage) : ici interrogé sur
+// `(pointer: coarse)` — c'est le POINTEUR qui décide, jamais une largeur.
+import { useIsMobile } from '../../../../ui/ResponsiveDialog'
 import { isSigneIntercept } from '../signeIntercept'
 import LeadCard from './LeadCard'
 
@@ -358,6 +362,12 @@ export default function KanbanView({
   onClearFilters,
   onNewLead,
   onImportLeads,
+  // (B1) — « mode déplacement » possédé par LeadsPage (entrée du menu ⋯
+  // mobile). NON persisté : il retombe OFF à la navigation. Absent = OFF,
+  // donc un consommateur qui ne le câble pas garde exactement l'ancien
+  // comportement au desktop et perd seulement le drag tactile.
+  dragMode = false,
+  onExitDragMode,
 }) {
   // VX135 — préférence reduced-motion lue en JS : le tilt (transform statique
   // posé par dnd-kit/CSS) et le dropAnimation (JS pur) échappent tous deux au
@@ -369,16 +379,42 @@ export default function KanbanView({
   const boardRef = usePanScroll()
   // Message éphémère « On ne recule pas une étape » lors d'un drag refusé.
   const [reculMsg, setReculMsg] = useState(false)
-  // distance 6px : un clic simple ouvre la fiche, le drag exige un mouvement ;
-  // sur mobile, appui long 150 ms pour glisser, le scroll reste naturel.
+  /* PHYSIQUE TACTILE (B1/B2) — deux défauts du TouchSensor, corrigés ensemble.
+     B2 : `{ delay: 150, tolerance: 8 }` armait un drag pendant un scroll LENT
+     (150 ms de contact, 8 px de tolérance : un pouce qui démarre doucement
+     reste dedans). → `{ delay: 300, tolerance: 5 }`, l'appui long devient une
+     intention, plus un accident.
+     B1 : `TouchSensor.setup()` (dnd-kit) installe un `touchmove` NON PASSIF
+     permanent sur `window` dès que le sensor est MONTÉ — donc même sans le
+     moindre drag, tout le scroll au doigt de la page passe par un écouteur
+     qui peut appeler preventDefault, et le navigateur perd son scroll natif.
+     Sur pointeur GROSSIER on ne monte donc le sensor QUE si le « mode
+     déplacement » est actif (entrée « Réorganiser par glisser » du menu ⋯
+     mobile, LeadsPage). Le desktop (souris, PointerSensor) est STRICTEMENT
+     inchangé, et le StageMover sous chaque carte reste le chemin sans-drag —
+     réordonner reste possible au doigt sans jamais activer le mode. */
+  const pointerCoarse = useIsMobile('(pointer: coarse)')
+  const touchDragMonte = !pointerCoarse || dragMode
+  // distance 6px : un clic simple ouvre la fiche, le drag exige un mouvement.
+  const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  const touchSensor = useSensor(TouchSensor, {
+    activationConstraint: { delay: 300, tolerance: 5 },
+  })
+  // VX192 — sensor clavier natif (@dnd-kit/core), 0 dépendance.
+  const keyboardSensor = useSensor(KeyboardSensor)
+  // `useSensors` filtre les entrées nulles : l'arité de l'appel (donc ses
+  // dépendances) reste constante, seul le tableau produit rétrécit.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 150, tolerance: 8 },
-    }),
-    // VX192 — sensor clavier natif (@dnd-kit/core), 0 dépendance.
-    useSensor(KeyboardSensor),
+    pointerSensor,
+    touchDragMonte ? touchSensor : null,
+    keyboardSensor,
   )
+  /* Le NOMBRE de sensors change quand le mode bascule ; dnd-kit dérive de ce
+     tableau les dépendances de `useSensorSetup`, qui doivent rester de taille
+     constante. On remonte donc proprement le contexte — ce qui garantit aussi
+     le teardown de l'écouteur non passif. La clé est CONSTANTE au desktop :
+     jamais de remontage là où rien ne change. */
+  const dndKey = touchDragMonte ? 'dnd-tactile' : 'dnd-sans-tactile'
   const columns = useMemo(() => groupLeadsByStage(leads), [leads])
   const [activeLead, setActiveLead] = useState(null)
 
@@ -551,6 +587,7 @@ export default function KanbanView({
 
   return (
     <DndContext
+      key={dndKey} // (B1) — remontage propre quand le jeu de sensors change
       sensors={sensors}
       accessibility={{
         announcements,
@@ -565,6 +602,26 @@ export default function KanbanView({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
+      {/* (B1) — sortie du mode déplacement, à portée de pouce. Rendue
+          UNIQUEMENT en pointeur grossier : au desktop le drag souris n'a
+          jamais été conditionné, il n'y a donc rien à désactiver. */}
+      {pointerCoarse && dragMode && (
+        <div
+          className="kb-dragmode-chip mb-2 flex w-fit items-center gap-1 rounded-lg border border-border bg-muted pl-3 text-[13px] font-semibold"
+          role="status"
+        >
+          <span>Déplacement activé</span>
+          <button
+            type="button"
+            className="kb-dragmode-exit inline-flex min-h-[44px] min-w-[44px] items-center justify-center"
+            aria-label="Désactiver le mode déplacement"
+            title="Désactiver le mode déplacement"
+            onClick={onExitDragMode}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )}
       {reculMsg && (
         <div
           className="kb-recul-msg mb-2 rounded-lg border border-destructive/30 bg-destructive/12 px-3 py-1.5 text-[13px] font-semibold text-destructive"

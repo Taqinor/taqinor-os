@@ -4911,6 +4911,19 @@ textarea.form-control {
   outline-offset: 2px;
 }
 
+/* (E) — la carte ne « pop » plus au contact du doigt. `useDraggable` (dnd-kit)
+   pose `role="button"` sur l'enveloppe de la carte : la règle M155
+   `[role="button"]:active { transform: scale(0.985) }` — écrite pour de vrais
+   boutons — s'y appliquait donc, et `:active` remontant aussi la chaîne des
+   ancêtres, le moindre tap SUR un contrôle interne faisait sauter la carte
+   entière. Règle ajoutée (jamais une modification de M155, qui reste juste
+   pour les boutons) ; sa spécificité (0,3,0) l'emporte sur (0,2,0), donc
+   l'ordre dans le fichier n'y change rien. Les vrais <button> de la carte
+   gardent leur retour tactile via le sélecteur `button:active` de M155. */
+.kb-drag-wrap [role="button"]:active {
+  transform: none;
+}
+
 /* VX192 — carte chantier ouvrable au clavier : un <button> transparent qui
    enveloppe la carte sans altérer sa mise en page (reset complet des styles
    par défaut du bouton), focalisable au clavier avec un anneau visible. */
@@ -5230,19 +5243,38 @@ textarea.form-control {
      horizontal aimanté par scroll-snap natif ; la COLONNE redevient le
      scrolleur vertical (axes imbriqués : board = X aimanté, colonne = Y) —
      l'en-tête sticky se re-résout tout seul contre la colonne. */
+  /* (C) — `x mandatory` + `scroll-snap-align: center` VOLAIENT le geste
+     diagonal : le navigateur DOIT se poser sur un point d'ancrage, donc le
+     moindre composant horizontal d'un scroll vertical réaimantait la colonne
+     et coupait le geste. `proximity` n'aimante que si le doigt s'arrête déjà
+     près d'un point (l'affordance LB42 « une étape à la fois » est conservée,
+     elle cesse simplement d'être un péage), et `start` aligne le bord GAUCHE
+     de la colonne plutôt que son centre — un ancrage centré rejouait un décalage
+     à chaque micro-mouvement. */
   .kb-board {
     gap: 0.6rem;
     padding: 0.5rem;
     -webkit-overflow-scrolling: touch;
     overflow: scroll hidden;
-    scroll-snap-type: x mandatory;
+    scroll-snap-type: x proximity;
   }
 
   .kb-col {
     flex: 0 0 90%;
-    scroll-snap-align: center;
+    scroll-snap-align: start;
     min-height: 0;
     overflow-y: auto;
+    /* (D) — la règle VX175(b) plus haut couvre `.kb-board` (l'axe X) mais PAS
+       `.kb-col`, qui est pourtant LE scrolleur vertical au téléphone : sans
+       `-webkit-overflow-scrolling: touch` le défilement de la colonne saccade
+       « pas à pas » sur Safari iOS (aucune inertie), et sans
+       `overscroll-behavior-y` il CHAÎNE — arrivé en bas de la colonne, la
+       poussée continue dans la page puis dans le pull-to-refresh. `contain`
+       (et non `none`) coupe uniquement le chaînage : le rebond élastique
+       LOCAL de la colonne, lui, reste — c'est l'accusé de réception « tu es
+       au bout », on ne le supprime pas. */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     /* La colonne est ICI le scrolleur : même règle que .kb-board — un
        scrollIntoView n'enterre jamais le haut d'une carte sous l'en-tête
        sticky (cause du rouge MB6 mobile-safari en CI). */
@@ -6496,14 +6528,89 @@ textarea.form-control {
   margin-bottom: 0.85rem;
 }
 
-.lw-rail-actions {
+/* LWC2 — bande « Faits clés » : l'information que la pile de boutons occupait
+   sans la donner (montant du dernier devis, canal, dernier échange). Tokens
+   sémantiques uniquement → lisible en clair comme en sombre. */
+.lw-facts {
   display: flex;
   flex-direction: column;
+  gap: 0.3rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.lw-facts-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.lw-facts-label {
+  flex: 0 0 auto;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.lw-facts-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--foreground);
+  text-align: right;
+}
+.lw-facts-amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lw-facts-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+}
+
+/* LWC2 — 2 CTA côte à côte + menu « ⋯ » (au lieu de 6 boutons empilés). */
+.lw-rail-actions {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
 }
 .lw-rail-actions > * {
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
   justify-content: center;
+}
+.lw-rail-actions-more {
+  flex: 0 0 auto;
+  width: 44px;
+  min-width: 44px;
+  font-size: var(--text-body);
+  line-height: 1;
+}
+.lw-rail-actions-menu [role="menuitem"] {
+  min-height: 44px;
+}
+/* Sous 768 px, la barre-pouce (.lw-thumbbar) porte déjà WhatsApp : ce bouton
+   serait un doublon dans le rail. */
+@media (max-width: 767px) {
+  .lw-rail-actions-wa {
+    display: none;
+  }
 }
 
 /* ── LW15 : triade (responsable · prochaine action · relance) ──────────────── */
@@ -6557,44 +6664,57 @@ textarea.form-control {
   text-decoration: underline;
 }
 
-/* ── LW16 : StageControl — rangée d'étapes + pourrissement (rotting) ───────── */
+/* ── LW16/LWC1 : StageControl — UNE pilule compacte + menu ▾ des autres ────── */
 
 .lw-stage {
-  margin-bottom: 0.85rem;
+  margin-bottom: 0.6rem;
 }
-.lw-stage-row {
+/* LWC1 — la rangée des 6 pastilles (90-120 px) devient une seule ligne de
+   ≤44 px : pilule de l'étape courante + « depuis X j » inline + chevron. Toute
+   la ligne est le déclencheur du menu (cible tactile pleine largeur). */
+.lw-stagepill {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.lw-stage-pill {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  line-height: 0;
-}
-.lw-stage-pill--ghost {
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  border-radius: 9999px;
-  opacity: 0.75;
-  transition: opacity var(--motion-fast) var(--ease-standard);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 @media (hover: hover) {
-  .lw-stage-pill--ghost:hover {
-    opacity: 1;
+  .lw-stagepill:hover {
+    background: color-mix(in oklch, var(--muted-foreground) 8%, transparent);
   }
 }
-.lw-stage-pill--current {
-  cursor: default;
+@media (prefers-reduced-motion: reduce) {
+  .lw-stagepill {
+    transition: none;
+  }
+}
+.lw-stagepill-chev {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: var(--text-small);
+  line-height: 1;
 }
 /* Ancienneté d'étape : neutre par défaut, chauffe avec la rampe rotting. Le
    compteur de jours passe par `.num` dans le JSX (StageControl.jsx, LW33) —
    ce `font-variant-numeric` reste pour le mot « depuis…j » hors du span.num. */
 .lw-stage-since {
-  margin: 0.35rem 0 0;
+  margin: 0;
+  min-width: 0;
   font-size: var(--text-small);
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .lw-stage-since--warning {
   display: inline-block;
@@ -6612,6 +6732,11 @@ textarea.form-control {
   border-radius: 9999px;
   color: var(--destructive);
   background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}
+/* Menu des AUTRES étapes : items ≥44 px (tactile), pastille de couleur gardée
+   pour que l'identité visuelle d'une étape survive au compactage. */
+.lw-stage-menu [role="menuitem"] {
+  min-height: 44px;
 }
 
 /* ── LW17 : score expliqué (popover des raisons) ──────────────────────────── */
@@ -10112,9 +10237,16 @@ textarea.form-control {
     opacity: 0;
     overflow: hidden;
   }
-  /* Le focus clavier DEPLIE toujours reellement — une tablette avec clavier
-     externe reste pilotable, et aucun controle n'est « tabbable invisible ». */
-  .kb-card--lead:focus-within > .kb-card-reveal {
+  /* Le focus CLAVIER DEPLIE toujours reellement — une tablette avec clavier
+     externe reste pilotable, et aucun controle n'est « tabbable invisible ».
+     (F) — mais `:focus-within` ne distingue pas le clavier du DOIGT : sur iOS,
+     taper un controle interne (case, menu, ☎) lui donne le focus, et la carte
+     depliait ses 14rem animees sous le pouce a chaque tap. `:has(:focus-visible)`
+     porte exactement l'intention ecrite ci-dessus — `:focus-visible` est
+     precisement le focus que le navigateur juge devoir MONTRER, c'est-a-dire le
+     clavier externe et pas le tap. Le depliage reste un vrai depliage
+     (max-height + opacity, jamais visibility: hidden). */
+  .kb-card--lead:has(:focus-visible) > .kb-card-reveal {
     max-height: 14rem;
     margin-top: 0.28rem;
     opacity: 1;

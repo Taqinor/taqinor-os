@@ -4,8 +4,10 @@ import { initState } from './draftCore'
 import StageControl from './StageControl'
 import { PIPELINE_STAGES, STAGE_LABELS, CONVERSION_STAGE } from '../stages'
 
-/* LW16 — StageControl : rangée d'étapes, rotting, SIGNED gardé. On lit les
-   clés/labels depuis stages.js (règle #2), jamais de littéral local. */
+/* LW16 — StageControl : étape, rotting, SIGNED gardé.
+   LWC1 — la forme a changé (UNE pilule + menu ▾ au lieu des 6 pastilles en
+   rangée) ; le CONTRAT ne change pas : onChangeStage(key) / onSigne(). On lit
+   les clés/labels depuis stages.js (règle #2), jamais de littéral local. */
 
 afterEach(() => cleanup())
 
@@ -16,6 +18,15 @@ const makeState = (over = {}) => initState({
   lead: { id: 3, stage: CONTACTED, stage_since_days: 8, ...over },
   mode: 'edit',
 })
+
+// Le déclencheur est la pilule entière (cible tactile ≥44 px). Radix ouvre le
+// menu au clavier (Entrée) comme au pointeur — le clavier est le chemin stable
+// en jsdom.
+const ouvrirMenu = (container) => {
+  const trigger = container.querySelector('.lw-stagepill')
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+  return trigger
+}
 
 describe('LW16 — StageControl', () => {
   it('CONTACTED à 8 j affiche l\'ancienneté en classe/rotting warning', () => {
@@ -43,19 +54,47 @@ describe('LW16 — StageControl', () => {
     expect(since).toHaveAttribute('data-rotting', 'ok')
   })
 
-  it('cliquer l\'étape signée ouvre la signature (onSigne), jamais un PATCH direct', () => {
+  // LWC1 — compactage : au repos, UNE seule pilule (l'étape courante), jamais
+  // les 6. Les autres étapes ne coûtent plus une ligne de rail.
+  it('au repos, seule l\'étape COURANTE est rendue (menu fermé)', () => {
+    const { container } = render(<StageControl state={makeState()} onChangeStage={vi.fn()} onSigne={vi.fn()} />)
+    expect(container.querySelectorAll('.lw-stagepill')).toHaveLength(1)
+    expect(screen.getByText(STAGE_LABELS[CONTACTED])).toBeInTheDocument()
+    expect(screen.queryByText(STAGE_LABELS[QUOTE_SENT])).toBeNull()
+    expect(screen.queryByRole('menuitem')).toBeNull()
+  })
+
+  it('le groupe garde son étiquette aria « Étape du lead »', () => {
+    render(<StageControl state={makeState()} onChangeStage={vi.fn()} onSigne={vi.fn()} />)
+    expect(screen.getByRole('group', { name: 'Étape du lead' })).toBeInTheDocument()
+  })
+
+  it('le menu liste les AUTRES étapes, jamais l\'étape courante', async () => {
+    const { container } = render(<StageControl state={makeState()} onChangeStage={vi.fn()} onSigne={vi.fn()} />)
+    ouvrirMenu(container)
+    const items = await screen.findAllByRole('menuitem')
+    expect(items).toHaveLength(PIPELINE_STAGES.length - 1)
+    const noms = items.map((i) => i.textContent)
+    expect(noms).not.toContain(STAGE_LABELS[CONTACTED])
+    expect(noms).toContain(STAGE_LABELS[QUOTE_SENT])
+    expect(noms).toContain(STAGE_LABELS[CONVERSION_STAGE])
+  })
+
+  it('choisir l\'étape signée ouvre la signature (onSigne), jamais un PATCH direct', async () => {
     const onChangeStage = vi.fn()
     const onSigne = vi.fn()
-    render(<StageControl state={makeState()} onChangeStage={onChangeStage} onSigne={onSigne} />)
-    fireEvent.click(screen.getByRole('button', { name: new RegExp(STAGE_LABELS[CONVERSION_STAGE]) }))
+    const { container } = render(<StageControl state={makeState()} onChangeStage={onChangeStage} onSigne={onSigne} />)
+    ouvrirMenu(container)
+    fireEvent.click(await screen.findByRole('menuitem', { name: STAGE_LABELS[CONVERSION_STAGE] }))
     expect(onSigne).toHaveBeenCalledTimes(1)
     expect(onChangeStage).not.toHaveBeenCalled()
   })
 
-  it('cliquer une autre étape appelle onChangeStage(key)', () => {
+  it('choisir une autre étape appelle onChangeStage(key)', async () => {
     const onChangeStage = vi.fn()
-    render(<StageControl state={makeState()} onChangeStage={onChangeStage} onSigne={vi.fn()} />)
-    fireEvent.click(screen.getByRole('button', { name: new RegExp(STAGE_LABELS[QUOTE_SENT]) }))
+    const { container } = render(<StageControl state={makeState()} onChangeStage={onChangeStage} onSigne={vi.fn()} />)
+    ouvrirMenu(container)
+    fireEvent.click(await screen.findByRole('menuitem', { name: STAGE_LABELS[QUOTE_SENT] }))
     expect(onChangeStage).toHaveBeenCalledWith(QUOTE_SENT)
   })
 
