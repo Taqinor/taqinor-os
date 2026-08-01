@@ -59,12 +59,15 @@ describe('Header — I136 polissage en-tête', () => {
     expect(titleEl.tagName.toLowerCase()).not.toMatch(/^h[1-6]$/)
   })
 
-  it('expose un repère de marque/logo CLIQUABLE qui ramène au dashboard', async () => {
+  // ODY5 — le repère de marque ramène désormais au MENU D'ACCUEIL (`/apps`) :
+  // dans le paradigme ERP-Apps, « accueil » = mes apps, et le tableau de bord
+  // n'est qu'une app parmi elles.
+  it('expose un repère de marque/logo CLIQUABLE qui ramène au Menu d’accueil', async () => {
     renderHeader('/ventes/devis')
     const brand = screen.getByRole('button', { name: /accueil|taqinor/i })
     expect(brand).toBeInTheDocument()
     await userEvent.click(brand)
-    expect(navigateMock).toHaveBeenCalledWith('/dashboard')
+    expect(navigateMock).toHaveBeenCalledWith('/apps')
   })
 
   it('affiche l\'affordance ⌘K avec une touche kbd', () => {
@@ -81,6 +84,50 @@ describe('Header — I136 polissage en-tête', () => {
     await userEvent.click(screen.getByLabelText(/Recherche et commandes/i))
     expect(listener).toHaveBeenCalled()
     window.removeEventListener('taqinor:command-palette', listener)
+  })
+})
+
+/* ── ODY5 — identité d'app + sortie canonique ──────────────────────────── */
+describe('Header — ODY5 : la topbar dit dans quelle app on est, et comment en sortir', () => {
+  beforeEach(() => navigateMock.mockClear())
+
+  it('affiche la pastille de l’app active, et elle CHANGE avec la route', () => {
+    const ventes = renderHeader('/ventes/devis')
+    expect(ventes.container.querySelector('.header-app-pill-name').textContent).toBe('VENTES')
+    ventes.unmount()
+
+    const dash = renderHeader('/dashboard')
+    expect(dash.container.querySelector('.header-app-pill-name').textContent).toBe('TABLEAU DE BORD')
+  })
+
+  it('hors de toute app (Menu d’accueil), aucune pastille d’app n’est affichée', () => {
+    const { container } = renderHeader('/apps')
+    expect(container.querySelector('.header-app-pill')).toBeNull()
+  })
+
+  it('le bouton ⊞ est LA sortie canonique : il ramène au Menu d’accueil', async () => {
+    renderHeader('/ventes/devis')
+    await userEvent.click(screen.getByRole('button', { name: 'Toutes les apps' }))
+    expect(navigateMock).toHaveBeenCalledWith('/apps')
+  })
+
+  it('il n’existe QU’UNE sortie ⊞ dans l’en-tête (jamais deux affordances concurrentes)', () => {
+    renderHeader('/ventes/devis')
+    expect(screen.getAllByRole('button', { name: 'Toutes les apps' })).toHaveLength(1)
+  })
+
+  it('le fil d’Ariane reste une hiérarchie app › page (1er segment cliquable vers le cockpit)', () => {
+    const { container } = renderHeader('/ventes/factures')
+    const link = container.querySelector('.breadcrumbs a')
+    expect(link).toBeInTheDocument()
+    // ODY5 — pointe vers le cockpit de l'APP active (VX11), pas vers un
+    // segment d'URL intermédiaire inexistant.
+    expect(link).toHaveAttribute('href', '/ventes/cockpit')
+  })
+
+  it('ODY5 — un titre de sous-route n’est plus masqué par le préfixe générique (/crm/cockpit ≠ « Clients »)', () => {
+    const { container } = renderHeader('/crm/forecast')
+    expect(container.querySelector('.header-title').textContent).not.toBe('Clients')
   })
 })
 

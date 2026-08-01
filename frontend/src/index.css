@@ -8453,3 +8453,42 @@ textarea.form-control {
   padding: 0.5rem;
   margin: 0 0.4rem 0.4rem;
 }
+
+/* ── ODY5 — Pastille d'app dans l'en-tete ──────────────────────────────────
+   Bloc APPEND-ONLY. L'en-tete porte l'identite de l'app active a gauche : le
+   liseré prend l'accent de module (VX8), le texte reste sur les tokens de
+   premier plan de l'en-tete, donc AA en clair comme en sombre. La pastille
+   disparait sous 640px : la sidebar et le fil d'Ariane portent deja
+   l'identite, et `.header-left` n'a aucune garde de largeur a cette taille
+   (regression VX181 deja constatee sur 320-375px). */
+.header-app-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 11rem;
+  padding: 0.24rem 0.55rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--module-accent, var(--border));
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--foreground);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .header-app-pill:hover { background: var(--muted); }
+}
+.header-app-pill-icon { display: inline-flex; flex-shrink: 0; }
+.header-app-pill-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 639px) {
+  .header-app-pill { display: none; }
+}
