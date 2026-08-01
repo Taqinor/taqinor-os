@@ -49,13 +49,13 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/ai_governance/drift.py:118` | update_or_create | DriftSnapshot.objects | company, date, modele |
 | `backend/django_core/apps/ao/calepinage_service.py:457` | update_or_create | VarianteCalepinage.objects | company, nom, parent, role, toiture |
 | `backend/django_core/apps/ao/calepinage_views.py:300` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:267` | get_or_create | ReleveAO.objects | appel_offre, company, date_visite |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:276` | update_or_create | BatimentAO.objects | appel_offre, code, company |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:283` | update_or_create | ToitureAO.objects | batiment, code_document, company |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:296` | update_or_create | ObstacleAO.objects | company, repere, toiture |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:319` | update_or_create | VarianteCalepinage.objects | company, nom, toiture |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:348` | get_or_create | BordereauPrix.objects | appel_offre, company, intitule |
-| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:352` | update_or_create | LigneBordereau.objects | bordereau, company, designation |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:283` | get_or_create | ReleveAO.objects | appel_offre, company, date_visite |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:292` | update_or_create | BatimentAO.objects | appel_offre, code, company |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:299` | update_or_create | ToitureAO.objects | batiment, code_document, company |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:312` | update_or_create | ObstacleAO.objects | company, repere, toiture |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:339` | update_or_create | VarianteCalepinage.objects | company, est_retenue, toiture |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:371` | get_or_create | BordereauPrix.objects | appel_offre, company, indice_revision, intitule |
+| `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:378` | update_or_create | LigneBordereau.objects | bordereau, company, numero |
 | `backend/django_core/apps/ao/management/commands/seed_pack_ao.py:146` | get_or_create | ModelePack.objects | code, company |
 | `backend/django_core/apps/ao/services.py:446` | update_or_create | ResultatAO.objects | appel_offre, company |
 | `backend/django_core/apps/ao/services.py:541` | get_or_create | PresetCalepinage.objects | company, nom |
