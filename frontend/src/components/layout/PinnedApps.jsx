@@ -7,10 +7,14 @@
 //     défensif, jamais d'exception si le stockage est indisponible).
 //   • Masquée quand aucune app n'est épinglée (pas de bande vide) et masquée
 //     en tiroir replié (mêmes contraintes visuelles que `.sidebar-role`).
+//   • ODY1 — la liste d'apps épinglables vient de `useInstalledApps()` (source
+//     UNIQUE « mes apps » : registre ∩ modules actifs société ∩ rôle) au lieu
+//     de lire `moduleConfigs` directement — une app désactivée en Paramètres
+//     ou hors rôle courant disparaît de la bande ET du sélecteur.
 import { useEffect, useMemo, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Pin, Plus, X } from 'lucide-react'
-import { moduleConfigs } from '../../router/moduleRoutes'
+import useInstalledApps from '../../lib/apps/useInstalledApps'
 
 // Même clé que AppLauncher.jsx (VX9) — état d'épinglage PARTAGÉ.
 const PINNED_KEY = 'taqinor.sidebar.pinned'
@@ -32,22 +36,12 @@ function writePinned(list) {
   } catch { /* stockage indisponible : on ignore, état en mémoire seulement */ }
 }
 
-// buildEntries — mêmes règles que AppLauncher.jsx (VX9) : un module « coquille »
-// avec section `nav` → une entrée { key, label, to, icon }.
-function buildEntries(configs) {
-  return configs
-    .filter((c) => c.nav && c.nav.items && c.nav.items.length > 0)
-    .map((c) => {
-      const first = c.nav.items[0]
-      return { key: c.key, label: c.nav.label, to: first.to, icon: first.icon }
-    })
-}
-
 export default function PinnedApps({ collapsed }) {
   const [pinned, setPinned] = useState(readPinned)
   const [pickerOpen, setPickerOpen] = useState(false)
 
-  const entries = useMemo(() => buildEntries(moduleConfigs), [])
+  // ODY1 — source unique « mes apps » (registre ∩ modules actifs ∩ rôle).
+  const entries = useInstalledApps()
   const entryByKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries])
 
   // Re-synchronise si une AUTRE surface (AppLauncher, VX9) modifie la même clé
