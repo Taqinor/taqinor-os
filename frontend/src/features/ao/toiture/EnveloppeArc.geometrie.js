@@ -178,13 +178,16 @@ export function boiteArc(arc, cx, cy) {
   pts.push(pointArc(cx, cy, re, total / 2), pointArc(cx, cy, ri, total / 2))
   const xs = pts.map((p) => p[0])
   const ys = pts.map((p) => p[1])
-  const marge = 1
-  const x = Math.min(...xs) - marge
-  const y = Math.min(...ys) - marge
+  // `bordure` : respiration du viewBox, en mètres de dessin. Ce n'est PAS une
+  // marge métier (marge de tronçon / de bande, cf. AOF101) — la nommer
+  // autrement évite de laisser croire qu'un chiffre du moteur se calcule ici.
+  const bordure = 1
+  const x = Math.min(...xs) - bordure
+  const y = Math.min(...ys) - bordure
   return {
     x,
     y,
-    largeur: Math.max(...xs) - x + marge,
-    hauteur: Math.max(...ys) - y + marge,
+    largeur: Math.max(...xs) - x + bordure,
+    hauteur: Math.max(...ys) - y + bordure,
   }
 }

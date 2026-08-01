@@ -39,6 +39,12 @@ import {
    (2 000 tables → ~40 nœuds) ; le rendu table-par-table ne revient qu'au zoom.
    ========================================================================== */
 
+// Taille d'une liste, sans savoir ce qu'elle contient : sert uniquement aux
+// bascules de RENDU (niveau de détail). Volontairement anonyme, comme
+// `echelle()` dans AlleeGratuiteChart — une fonction qui ignore ce qu'elle
+// mesure ne peut pas dériver une grandeur métier (garde AOF94).
+const combien = (liste) => liste.length
+
 const PAS_CLAVIER_PX = 40
 const FACTEUR_BOUTON = 1.3
 
@@ -256,7 +262,10 @@ export const CanvasSvg = forwardRef(function CanvasSvg({
   }, [viewport, taille, mesure, grille, pas])
 
   // ── Niveau de détail des tables PV ───────────────────────────────────────
-  const agrege = mesure && doitAgreger(tables.length, viewport, taille, seuilAgregation)
+  // `combien` est ANONYME : il ne sait pas ce qu'il compte, et ce compte ne
+  // sert QU'AU rendu (agréger ou dessiner table par table). Aucun chiffre
+  // métier n'est dérivé ici — ceux-là viennent du moteur (garde AOF94).
+  const agrege = mesure && doitAgreger(combien(tables), viewport, taille, seuilAgregation)
   const chemins = useMemo(
     () => (agrege
       ? agregerParRangee(tables).map((r) => ({ id: `rangee-${r.rangee}`, d: r.d }))

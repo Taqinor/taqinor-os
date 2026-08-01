@@ -68,13 +68,17 @@ export default function EnveloppeArc({
   }, [])
 
   const controle = useMemo(() => validerArc(params), [params])
-  const { arc, pas, rangees } = useMemo(
+  // `proposees` : les bandes que la GÉOMÉTRIE LOCALE de l'arc propose au
+  // relevé (EnveloppeArc.geometrie.js) — un dessin d'aide à la saisie, pas le
+  // calepinage. Le mot « rangées » reste réservé aux rangées RENVOYÉES par le
+  // moteur, qu'aucun écran ne recompte côté client (garde AOF94).
+  const { arc, pas, rangees: proposees } = useMemo(
     () => rangeesProposees(params, moduleLargeurM),
     [params, moduleLargeurM],
   )
   const aCheval = useMemo(
-    () => rangees.filter((r) => rangeeACheval(r, arc.murets)),
-    [rangees, arc.murets],
+    () => proposees.filter((r) => rangeeACheval(r, arc.murets)),
+    [proposees, arc.murets],
   )
   const recouvrement = useMemo(
     () => recouvrementEvite(moduleLargeurM, arc.rayonExtM, arc.rayonIntM, 0),
@@ -183,8 +187,8 @@ export default function EnveloppeArc({
       </p>
 
       <p data-ao-arc-a-cheval={aCheval.length}>
-        {rangees.length} rangée{rangees.length > 1 ? 's' : ''} proposée
-        {rangees.length > 1 ? 's' : ''}, {aCheval.length} à cheval sur un muret.
+        {proposees.length} rangée{proposees.length > 1 ? 's' : ''} proposée
+        {proposees.length > 1 ? 's' : ''}, {aCheval.length} à cheval sur un muret.
       </p>
 
       {/* Les deux rendus, CÔTE À CÔTE : le développé sert au relevé, le réel est
@@ -220,7 +224,7 @@ export default function EnveloppeArc({
                 data-ao-arc-muret={mu.index}
               />
             ))}
-            {rangees.map((r) => (
+            {proposees.map((r) => (
               <rect
                 key={`r${r.debut.toFixed(3)}`}
                 x={r.debut}

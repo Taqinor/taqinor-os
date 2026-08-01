@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Input, Label, Segmented, Switch } from '../../../ui'
 import { safeGet, safeSet } from '../../../lib/safeStorage'
 import RobustesseBadges from './RobustesseBadges'
@@ -82,6 +82,20 @@ export function ModeExpert({
   const cle = cleStockage(utilisateurId)
   const [actif, setActif] = useState(() => safeGet(cle) === true)
 
+  // Identifiants UNIQUES par instance (`useId`) : deux ateliers montés côte à
+  // côte (comparaison de variantes, un panneau par utilisateur) partageaient
+  // sinon le même `id="ao-mode-expert"`. Le `label[for]` en double ne nomme
+  // alors qu'UN seul interrupteur — le second devient anonyme pour un lecteur
+  // d'écran comme pour le pilotage vocal.
+  const uid = useId()
+  const idExpert = `${uid}-mode-expert`
+  const idDescription = `${uid}-mode-expert-description`
+  const idPasRecherche = `${uid}-pas-recherche`
+  const idPhase = `${uid}-phase`
+  const idSeuilTroncon = `${uid}-seuil-troncon`
+  const idSeuilBande = `${uid}-seuil-bande`
+  const idRangeeForcee = `${uid}-rangee-forcee`
+
   const basculer = (valeur) => {
     setActif(valeur)
     safeSet(cle, valeur)
@@ -93,14 +107,14 @@ export function ModeExpert({
     <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-ao-tiroir="expert">
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-col gap-0.5">
-          <Label htmlFor="ao-mode-expert">Mode expert</Label>
-          <p id="ao-mode-expert-description" className="text-xs font-normal text-muted-foreground">
+          <Label htmlFor={idExpert}>Mode expert</Label>
+          <p id={idDescription} className="text-xs font-normal text-muted-foreground">
             Réglages fins du moteur — pas de recherche, seuils, phase, forçage de rangée.
           </p>
         </div>
         <Switch
-          id="ao-mode-expert"
-          aria-describedby="ao-mode-expert-description"
+          id={idExpert}
+          aria-describedby={idDescription}
           checked={actif}
           onCheckedChange={basculer}
         />
@@ -122,27 +136,27 @@ export function ModeExpert({
 
           <div className="grid grid-cols-2 gap-3">
             <ChampNombreExpert
-              id="ao-expert-pas-recherche"
+              id={idPasRecherche}
               label="Pas de recherche (m)"
               valeur={valeurs.pas_recherche_m}
               onValide={(n) => onChange?.({ pas_recherche_m: n })}
             />
             <ChampNombreExpert
-              id="ao-expert-phase"
+              id={idPhase}
               label="Phase (m)"
               valeur={valeurs.phase_m}
               disabled={modePose !== 'rangees_uniformes_phase'}
               onValide={(n) => onChange?.({ phase_m: n })}
             />
             <ChampNombreExpert
-              id="ao-expert-seuil-troncon"
+              id={idSeuilTroncon}
               label="Seuil marge tronçon (cm)"
               valeur={Number.isFinite(valeurs.marge_troncon_min_m) ? valeurs.marge_troncon_min_m * 100 : null}
               suffixe={100}
               onValide={(n) => onChange?.({ marge_troncon_min_m: n })}
             />
             <ChampNombreExpert
-              id="ao-expert-seuil-bande"
+              id={idSeuilBande}
               label="Seuil marge bande (cm)"
               valeur={Number.isFinite(valeurs.marge_bande_min_m) ? valeurs.marge_bande_min_m * 100 : null}
               suffixe={100}
@@ -151,9 +165,9 @@ export function ModeExpert({
           </div>
 
           <div className="flex flex-col gap-1">
-            <Label htmlFor="ao-expert-rangee-forcee">Forçage de rangée (repère)</Label>
+            <Label htmlFor={idRangeeForcee}>Forçage de rangée (repère)</Label>
             <Input
-              id="ao-expert-rangee-forcee"
+              id={idRangeeForcee}
               value={valeurs.rangee_forcee ?? ''}
               placeholder="Aucun forçage"
               onChange={(e) => onChange?.({ rangee_forcee: e.target.value || null })}
