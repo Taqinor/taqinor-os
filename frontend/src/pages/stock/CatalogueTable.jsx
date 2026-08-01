@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
 import {
-  AlertTriangle, History, Pencil, Trash2, PackageSearch,
+  AlertTriangle, History, Pencil, Trash2, PackageSearch, PackagePlus,
+  TrendingDown,
 } from 'lucide-react'
 import {
-  Badge, Button, Checkbox, DataTable, EditableCell,
+  Badge, Checkbox, DataTable, EditableCell, Progress,
 } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { categorieIcone, keySpec, prixTtc, sansPrix } from '../../features/stock/catalogue'
@@ -21,6 +22,14 @@ import { formatMAD } from '../../lib/format'
      vraie disposition, jamais de spinner en parallèle) + useDelayedLoading
      pour ne rien clignoter sur une attente imperceptible ;
    - cartes mobiles : repli automatique du moteur sous 768 px (data-dt-cards).
+
+   APX18 — vignette 40 px en 1ʳᵉ colonne : la photo du produit, ou l'icône de
+   sa catégorie. La boîte est identique dans les deux cas.
+
+   APX19 — le niveau de stock se lit sans le lire : jauge colorée, sévérité
+   RUPTURE ≠ SOUS SEUIL (elles partageaient un badge unique), et surtout UNE
+   SEULE hauteur de ligne — chaque zone de cellule est réservée même vide, et
+   le réassort a quitté la grille pour le menu de ligne.
 
    STATUS / DONNÉES INTERNES : `prix_achat` n'est JAMAIS exposé ici (donnée
    interne). On affiche prix de vente HT, TTC, stock, seuil — comme l'écran
@@ -57,6 +66,59 @@ const suggestionCommande = (p) => {
   const seuil = Number(p.seuil_alerte) || 0
   const stock = Number(p.quantite_stock) || 0
   return Math.max(seuil * 2 - stock, 0)
+}
+
+/* ── APX19 — Le niveau de stock devient LISIBLE ────────────────────────────
+   Avant : un chiffre nu passé en gras-rouge quand il était bas, et LE MÊME
+   badge « stock bas » pour une rupture (0 en stock, on ne peut plus vendre)
+   et pour un sous-seuil (il en reste, il faut recommander). Deux situations
+   d'urgence très différentes, un seul signal.
+
+   Maintenant : TROIS sévérités distinctes, lues sans lire — une jauge colorée
+   (vert / orange / rouge) et, pour les deux états à problème, un badge dont le
+   TON ET le libellé diffèrent. La sévérité vient de `is_low_stock` (calculé
+   serveur, seule autorité) ; la rupture prime dessus. */
+const SEV_RUPTURE = 'rupture'
+const SEV_BAS = 'bas'
+const SEV_OK = 'ok'
+
+export function severiteStock(p) {
+  const stock = Number(p?.quantite_stock) || 0
+  if (stock <= 0) return SEV_RUPTURE
+  const seuil = Number(p?.seuil_alerte) || 0
+  if (p?.is_low_stock || (seuil > 0 && stock <= seuil)) return SEV_BAS
+  return SEV_OK
+}
+
+const TON_SEV = {
+  [SEV_RUPTURE]: 'danger',
+  [SEV_BAS]: 'warning',
+  [SEV_OK]: 'success',
+}
+
+/* Remplissage de la jauge, en %. La cible « saine » est 2× le seuil — la MÊME
+   cible que la suggestion de réassort déjà affichée (`suggestionCommande`), on
+   n'invente pas un second barème. Sans seuil renseigné, un stock non nul est
+   plein (on ne peut rien promettre d'autre honnêtement). */
+export function jaugeStock(p) {
+  const stock = Math.max(0, Number(p?.quantite_stock) || 0)
+  const seuil = Number(p?.seuil_alerte) || 0
+  if (seuil <= 0) return stock > 0 ? 100 : 0
+  return Math.round(Math.min(100, (stock / (seuil * 2)) * 100))
+}
+
+// Ligne de détail du stock — TOUJOURS rendue (vide si rien à dire) : c'est ce
+// qui garantit une hauteur de ligne unique quelles que soient les données.
+function detailStock(p) {
+  if ((Number(p.quantite_reservee) || 0) > 0) {
+    return `${p.quantite_reservee} rés. · ${p.quantite_disponible} dispo`
+  }
+  // N15 — ventilation par emplacement (lecture) si le stock est réparti.
+  if (Array.isArray(p.stock_par_emplacement) && p.stock_par_emplacement.length > 1) {
+    return p.stock_par_emplacement
+      .map((b) => `${b.emplacement_nom} ${b.quantite}`).join(' · ')
+  }
+  return ''
 }
 
 // Validation partagée : nombre fini ≥ 0 (stock, seuil, prix). Renvoie un
@@ -208,10 +270,15 @@ export function CatalogueTable({
       header: 'Stock',
       align: 'right',
       numeric: true,
-      width: 130,
+      // APX19 — la jauge et sa ligne de détail ont besoin d'un peu d'air.
+      width: 150,
       searchable: false,
       accessor: (p) => p.quantite_stock,
+      // APX19 — trois zones de hauteur FIXE : le chiffre, la jauge, une ligne
+      // de détail toujours présente (vide si rien à dire). La ligne du tableau
+      // a donc une seule hauteur, quelles que soient les données.
       cell: (value, p) => {
+        const sev = severiteStock(p)
         const body = editable
           ? (
             <EditableCell
@@ -223,19 +290,18 @@ export function CatalogueTable({
               onSave={(v, r) => onInlineSave(r, 'quantite_stock', v)}
             />
           )
-          : <strong className={p.is_low_stock ? 'text-destructive' : ''}>{value}</strong>
+          : <strong className={sev === SEV_OK ? '' : 'text-destructive'}>{value}</strong>
+        const detail = detailStock(p)
         return (
-          <div className="flex flex-col items-end">
-            {body}
-            {p.quantite_reservee > 0 && (
-              <span className="text-xs text-muted-foreground">{p.quantite_reservee} rés. · {p.quantite_disponible} dispo</span>
-            )}
-            {/* N15 — ventilation par emplacement (lecture) si stock réparti. */}
-            {Array.isArray(p.stock_par_emplacement) && p.stock_par_emplacement.length > 1 && (
-              <span className="text-xs text-muted-foreground">
-                {p.stock_par_emplacement.map((b) => `${b.emplacement_nom} ${b.quantite}`).join(' · ')}
-              </span>
-            )}
+          <div className="pcat-stock">
+            <div className="pcat-stock-val">{body}</div>
+            <Progress
+              className="pcat-jauge"
+              value={jaugeStock(p)}
+              tone={TON_SEV[sev]}
+              aria-label={`Niveau de stock : ${value} en stock, seuil d'alerte ${p.seuil_alerte ?? 0}`}
+            />
+            <span className="pcat-stock-detail" data-testid="pcat-stock-detail">{detail}</span>
           </div>
         )
       },
@@ -246,44 +312,69 @@ export function CatalogueTable({
       header: 'Seuil',
       align: 'right',
       numeric: true,
-      width: 150,
+      // APX19 — la cellule ne porte plus que le seuil + un badge : elle n'a
+      // plus besoin de la largeur qu'exigeait le bouton « Réapprovisionner ».
+      width: 128,
       searchable: false,
       accessor: (p) => p.seuil_alerte,
-      cell: (value, p) => (
-        <div className="flex flex-col items-end gap-0.5">
-          {editable
-            ? (
-              <EditableCell
-                value={value}
-                row={p}
-                align="right"
-                inputType="number"
-                validate={validatePositif}
-                onSave={(v, r) => onInlineSave(r, 'seuil_alerte', v)}
-              />
-            )
-            : <span className="tabular-nums">{value}</span>}
-          {p.is_low_stock && (
-            <Badge tone="danger"><AlertTriangle className="size-3" /> stock bas</Badge>
-          )}
-          {p.is_low_stock && suggestionCommande(p) > 0 && (
-            <span className="text-xs text-muted-foreground">commander ~{suggestionCommande(p)}</span>
-          )}
-          {p.is_low_stock && onReapprovisionner && (
-            <Button type="button" variant="outline" size="sm" className="h-7"
-                    onClick={() => onReapprovisionner(p)}>
-              Réapprovisionner
-            </Button>
-          )}
-        </div>
-      ),
+      // APX19 — DEUX zones de hauteur fixe : le seuil, puis UN emplacement de
+      // badge (occupé ou vide). Avant, cette cellule empilait jusqu'à quatre
+      // éléments (seuil + badge + « commander ~N » + bouton) : c'est elle qui
+      // faisait varier la hauteur de ligne d'un produit à l'autre. Le « commander
+      // ~N » et l'action de réassort ont rejoint le menu de ligne (≤ 2 clics,
+      // 1 seul au survol) — rien n'est perdu, la hauteur ne bouge plus.
+      cell: (value, p) => {
+        const sev = severiteStock(p)
+        return (
+          <div className="pcat-seuil">
+            <div className="pcat-seuil-val">
+              {editable
+                ? (
+                  <EditableCell
+                    value={value}
+                    row={p}
+                    align="right"
+                    inputType="number"
+                    validate={validatePositif}
+                    onSave={(v, r) => onInlineSave(r, 'seuil_alerte', v)}
+                  />
+                )
+                : <span className="tabular-nums">{value}</span>}
+            </div>
+            <span className="pcat-sev" data-testid="pcat-sev">
+              {sev === SEV_RUPTURE && (
+                <Badge tone="danger"><AlertTriangle className="size-3" /> Rupture</Badge>
+              )}
+              {sev === SEV_BAS && (
+                <Badge tone="warning"><TrendingDown className="size-3" /> Sous seuil</Badge>
+              )}
+            </span>
+          </div>
+        )
+      },
       exportValue: (p) => p.seuil_alerte,
     },
-  ], [editable, onInlineSave, onReapprovisionner, selectable, selected, onToggleSelect])
+  ], [editable, onInlineSave, selectable, selected, onToggleSelect])
 
   // Actions de ligne (≤2 rapides + menu kebab) — historique / éditer / supprimer.
   const rowActions = (p) => {
     const acts = []
+    // APX19 — le réassort passe en PREMIÈRE action : le moteur révèle les deux
+    // premières au survol (et en permanence au toucher), donc réapprovisionner
+    // coûte 1 clic à la souris et 2 par le menu. Il n'apparaît que sur un
+    // produit qui en a besoin, et la quantité suggérée est DANS le libellé —
+    // c'est elle qui vivait en 3ᵉ ligne de la cellule Seuil.
+    if (onReapprovisionner && severiteStock(p) !== SEV_OK) {
+      const suggestion = suggestionCommande(p)
+      acts.push({
+        id: 'reappro',
+        label: suggestion > 0
+          ? `Réapprovisionner (commander ~${suggestion})`
+          : 'Réapprovisionner',
+        icon: PackagePlus,
+        onClick: () => onReapprovisionner(p),
+      })
+    }
     // ZPUR10/ZSTK3 — fiche produit : quantité « en commande » + prévisionnel.
     if (onDetail) acts.push({ id: 'detail', label: 'Fiche produit (en commande, prévisionnel)', icon: PackageSearch, onClick: () => onDetail(p) })
     if (onHistorique) acts.push({ id: 'hist', label: 'Historique des mouvements', icon: History, onClick: () => onHistorique(p) })

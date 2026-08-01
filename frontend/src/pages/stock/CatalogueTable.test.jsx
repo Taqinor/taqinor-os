@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import { CatalogueTable } from './CatalogueTable.jsx'
+import { CatalogueTable, severiteStock, jaugeStock } from './CatalogueTable.jsx'
 
 /* ============================================================================
    J142 - Stock refonte : le catalogue passe au moteur DataTable unifie.
@@ -152,5 +152,134 @@ describe('CatalogueTable (J142)', () => {
   it('ne rend aucune case de selection en lecture seule', () => {
     renderTable({ canWrite: false, onInlineSave: null, onToggleSelect: null })
     expect(screen.queryByLabelText(/lectionner Panneau 550 Wc/)).toBeNull()
+  })
+})
+
+/* ============================================================================
+   APX19 — Le niveau de stock devient LISIBLE : jauge colorée, sévérité
+   distincte (rupture ≠ sous seuil, deux urgences différentes qui partageaient
+   un seul badge), et UNE SEULE hauteur de ligne.
+   ========================================================================== */
+
+const rupture = (over = {}) => baseProduit({
+  id: 10, nom: 'Batterie Deyness 5 kWh', sku: 'BAT-DEY-5',
+  quantite_stock: 0, quantite_disponible: 0, seuil_alerte: 5,
+  is_low_stock: true, ...over,
+})
+const sousSeuil = (over = {}) => baseProduit({
+  id: 11, nom: 'Onduleur Deye 5 kW', sku: 'OND-DEY-5',
+  quantite_stock: 3, quantite_reservee: 2, quantite_disponible: 1,
+  seuil_alerte: 5, is_low_stock: true, ...over,
+})
+const sain = (over = {}) => baseProduit({
+  id: 12, nom: 'Cable solaire 6 mm', sku: 'CAB-6',
+  quantite_stock: 40, quantite_disponible: 40, seuil_alerte: 5,
+  is_low_stock: false, ...over,
+})
+
+describe('APX19 — severite du stock (logique pure)', () => {
+  it('distingue rupture, sous seuil et sain', () => {
+    expect(severiteStock(rupture())).toBe('rupture')
+    expect(severiteStock(sousSeuil())).toBe('bas')
+    expect(severiteStock(sain())).toBe('ok')
+  })
+
+  it('la rupture prime sur is_low_stock (0 en stock = on ne peut plus vendre)', () => {
+    expect(severiteStock({ quantite_stock: 0, seuil_alerte: 0, is_low_stock: false }))
+      .toBe('rupture')
+  })
+
+  it('deduit le sous-seuil meme si le serveur n\'a pas pose is_low_stock', () => {
+    expect(severiteStock({ quantite_stock: 2, seuil_alerte: 5 })).toBe('bas')
+  })
+
+  it('la jauge vise 2x le seuil — la MEME cible que la suggestion de reassort', () => {
+    expect(jaugeStock({ quantite_stock: 0, seuil_alerte: 5 })).toBe(0)
+    expect(jaugeStock({ quantite_stock: 5, seuil_alerte: 5 })).toBe(50)
+    expect(jaugeStock({ quantite_stock: 10, seuil_alerte: 5 })).toBe(100)
+    // Jamais au-dessus de 100 (un surstock ne deborde pas la piste).
+    expect(jaugeStock({ quantite_stock: 999, seuil_alerte: 5 })).toBe(100)
+    // Sans seuil renseigne, on ne promet rien : plein si non nul, vide sinon.
+    expect(jaugeStock({ quantite_stock: 7, seuil_alerte: 0 })).toBe(100)
+    expect(jaugeStock({ quantite_stock: 0, seuil_alerte: 0 })).toBe(0)
+  })
+})
+
+describe('APX19 — severite lisible sans lire', () => {
+  it('rupture et sous seuil ne portent plus LE MEME badge', () => {
+    renderTable({ produits: [rupture(), sousSeuil()], canWrite: false, onInlineSave: null })
+    expect(screen.getAllByText('Rupture').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Sous seuil').length).toBeGreaterThan(0)
+  })
+
+  it('un produit sain ne porte aucun badge d\'alerte', () => {
+    renderTable({ produits: [sain()], canWrite: false, onInlineSave: null })
+    expect(screen.queryByText('Rupture')).toBeNull()
+    expect(screen.queryByText('Sous seuil')).toBeNull()
+  })
+
+  it('rend une jauge de niveau par produit', () => {
+    const { container } = renderTable({
+      produits: [sousSeuil()], canWrite: false, onInlineSave: null,
+    })
+    expect(container.querySelector('.pcat-jauge')).toBeTruthy()
+  })
+})
+
+describe('APX19 — une seule hauteur de ligne', () => {
+  it('les zones de hauteur fixe existent sur CHAQUE ligne, remplies ou vides', () => {
+    renderTable({
+      produits: [rupture(), sousSeuil(), sain()],
+      canWrite: false, onInlineSave: null, onToggleSelect: null,
+    })
+    // Le moteur peut rendre chaque ligne deux fois (table + carte mobile) :
+    // ce qui compte est qu'AUCUNE ligne ne perde sa reserve de hauteur.
+    const details = screen.getAllByTestId('pcat-stock-detail')
+    const severites = screen.getAllByTestId('pcat-sev')
+    expect(details.length).toBeGreaterThanOrEqual(3)
+    expect(severites.length).toBeGreaterThanOrEqual(3)
+    // Le produit sain a une ligne de detail VIDE — presente quand meme : c'est
+    // elle qui empeche la hauteur de dependre des donnees. Celui qui a du
+    // stock reserve la remplit : les deux cas coexistent a hauteur egale.
+    expect(details.some((d) => d.textContent === '')).toBe(true)
+    expect(details.some((d) => /2 rés\. · 1 dispo/.test(d.textContent))).toBe(true)
+    // Meme chose cote severite : occupee pour rupture/sous-seuil, vide pour sain.
+    expect(severites.some((s) => s.textContent === '')).toBe(true)
+    expect(severites.some((s) => s.textContent !== '')).toBe(true)
+  })
+
+  it('la cellule Seuil n\'empile plus bouton ni « commander ~N »', () => {
+    renderTable({
+      produits: [sousSeuil()], canWrite: false, onInlineSave: null,
+      onReapprovisionner: () => {},
+    })
+    // « commander ~7 » vivait en 3e ligne de la cellule : il est passe dans le
+    // libelle de l'action de ligne, plus dans la grille.
+    const cellules = screen.getAllByTestId('pcat-sev')
+    for (const c of cellules) expect(c.textContent).not.toMatch(/commander/i)
+  })
+})
+
+describe('APX19 — reassort en <= 2 clics', () => {
+  it('expose « Reapprovisionner » avec la quantite suggeree, et l\'appelle', () => {
+    const onReapprovisionner = vi.fn()
+    renderTable({
+      produits: [sousSeuil()], canWrite: false, onInlineSave: null,
+      onToggleSelect: null, onReapprovisionner,
+    })
+    // Suggestion = 2x seuil - stock = 10 - 3 = 7.
+    const boutons = screen.getAllByLabelText(/Réapprovisionner \(commander ~7\)/)
+    expect(boutons.length).toBeGreaterThan(0)
+    fireEvent.click(boutons[0])
+    expect(onReapprovisionner).toHaveBeenCalledTimes(1)
+    expect(onReapprovisionner.mock.calls[0][0].id).toBe(11)
+  })
+
+  it('aucun reassort propose sur un produit sain', () => {
+    renderTable({
+      produits: [sain()], canWrite: false, onInlineSave: null,
+      onToggleSelect: null, onReapprovisionner: () => {},
+    })
+    expect(screen.queryByLabelText(/Réapprovisionner/)).toBeNull()
   })
 })
