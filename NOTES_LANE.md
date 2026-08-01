@@ -148,3 +148,10 @@ touché (une autre lane y travaille en parallèle).
   porte donc (a) sur les textes rendus relus sur la figure et (b) sur le
   dictionnaire de métadonnées, seul littéral du fichier — avec témoin négatif.
 
+
+## ARBITRAGE ORCHESTRATEUR (fold batch 2, 2026-08-01)
+
+- **matplotlib dans core/calepinage/rendu/** : exemption ACCORDÉE et posée dans
+  test_calepinage_purete.py (SOUS_PAQUET_RENDU + DEPENDANCES_RENDU). Portée : le seul
+  sous-paquet rendu/, où matplotlib reste confiné à feuille.py. Le calcul demeure
+  stdlib + numpy ; les verrous django/rest_framework/celery/I-O restent globaux.
