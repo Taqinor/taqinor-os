@@ -40,6 +40,9 @@ const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: 
 // ODY2 — Menu d'accueil plein écran (`/apps`) : la porte d'entrée du paradigme
 // « j'ouvre → MES apps ». Grille des apps installées ∩ autorisées (ODY1).
 const HomeMenu = lazy(() => import('../pages/home/HomeMenu'))
+// ODY8 — écran « App non activée » (module OFF pour la société), à la place du
+// renvoi muet vers /dashboard.
+const AppNotInstalled = lazy(() => import('../pages/home/AppNotInstalled'))
 const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
 const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -221,17 +224,31 @@ const rootLoader = async () => {
 }
 
 // ODX6 — Garde de MODULE. Enveloppe un loader de base (auth ou rôle) : une fois
-// la session/le rôle validés (le loader de base a renvoyé `null`), on redirige
-// vers /dashboard si le module `key` de la route est désactivé pour la société.
+// la session/le rôle validés (le loader de base a renvoyé `null`), on décide du
+// sort d'une route dont le module `key` est désactivé pour la société.
 // Défaut (aucun toggle → liste vide) ⇒ le module n'est jamais désactivé, donc
-// comportement byte-identique à aujourd'hui. La liste vient du store, alimentée
-// par /auth/me/ (déjà résolue par `ensureSession`).
+// comportement byte-identique. La liste vient du store, alimentée par /auth/me/
+// (déjà résolue par `ensureSession`).
+//
+// ODY8 — ce refus renvoyait EN SILENCE vers `/dashboard` : l'utilisateur
+// changeait d'écran sans savoir pourquoi ni comment obtenir l'app. Il atterrit
+// désormais sur l'écran dédié `/app-non-activee` (pages/home/AppNotInstalled),
+// qui NOMME l'app et donne la marche à suivre selon le rôle. Cette fonction est
+// l'UNIQUE implémentation du refus ; ses deux points d'appel (les routes du
+// registre, injectées dans `buildModuleRoutes`, et les routes déclarées
+// directement ici) en héritent automatiquement.
+//
+// L'ORDRE compte : `base(args)` s'exécute d'ABORD, donc un refus de RÔLE
+// (roleLoader → `/403`, VX131) l'emporte et l'utilisateur n'apprend même pas si
+// l'app est installée — aucune donnée révélée.
 const moduleLoader = (key, base) => async (args) => {
   const result = await base(args)
   // Le loader de base a redirigé (login / rôle insuffisant) → on respecte.
   if (result) return result
   const disabled = store.getState().auth.modulesDesactives || []
-  if (isModuleDisabled(disabled, key)) return redirect('/dashboard')
+  if (isModuleDisabled(disabled, key)) {
+    return redirect(`/app-non-activee?app=${encodeURIComponent(key)}`)
+  }
   return null
 }
 
@@ -362,6 +379,9 @@ const router = createBrowserRouter([
   // ODY2 — Menu d'accueil : la grille de MES apps. `/dashboard` reste une route
   // valide (l'app « Tableau de bord »), ce n'est plus la porte d'entrée.
   { path: '/apps', loader: authLoader, element: <WithLayout><HomeMenu /></WithLayout> },
+  // ODY8 — porte dédiée d'une app non activée pour la société (`?app=<clé>`),
+  // à la place du renvoi silencieux vers /dashboard.
+  { path: '/app-non-activee', loader: authLoader, element: <WithLayout><AppNotInstalled /></WithLayout> },
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
   // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).
