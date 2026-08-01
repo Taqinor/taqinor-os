@@ -191,7 +191,7 @@ export default function PiecePreview({
   return (
     <div
       className={plein
-        ? 'fixed inset-0 z-50 flex flex-col gap-2 bg-background p-3'
+        ? 'fixed inset-0 z-[var(--z-modal)] flex flex-col gap-2 bg-background p-3'
         : 'flex flex-col gap-2'}
       role={plein ? 'dialog' : undefined}
       aria-modal={plein ? 'true' : undefined}
