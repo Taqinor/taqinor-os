@@ -194,3 +194,32 @@ touché (une autre lane y travaille en parallèle).
   `docs/get-or-create-audit.md`, `docs/on-delete-financial-audit.md`,
   `docs/money-fields-audit.md`.
 
+---
+
+# NOTES — lane `backend/ao` (service moteur + API de calepinage)
+
+Tâches de cette lane : AOF58, AOF59, AOF60, AOF61, AOF62, AOF71.
+
+Contrainte de co-activité : deux autres lanes écrivent dans `apps/ao`. Cette
+lane n'a donc modifié AUCUN de `models.py` / `serializers.py` / `views.py` /
+`services.py` / `selectors.py`, ni aucune migration : tout son code vit dans
+des fichiers NEUFS (`calepinage_io.py`, `calepinage_service.py`,
+`calepinage_serializers.py`, `calepinage_views.py`, `calepinage_tasks.py`,
+`ingestion_service.py`) et le seul point de couture est un `include()` ajouté
+en fin d'`apps/ao/urls.py`.
+
+## AOF58 — `[BLOCKED: nouvelle dépendance ezdxf — accord fondateur]`
+
+Export DXF du calepinage. `ezdxf` est **absent de `requirements.txt`** et la
+tâche est explicitement `[GATED]` sur l'accord du fondateur : aucune
+dépendance n'a été ajoutée, rien n'a été écrit dans
+`core/calepinage/export/dxf.py`. La tâche reste `[ ]`.
+
+Deux points pour le jour du déblocage :
+
+- l'IMPORT DXF (AOF72) partage la même dépendance mais reste un sujet DISTINCT
+  (porte d'entrée vs livrable) — ne pas les fusionner sous une seule tâche ;
+- la géométrie à exporter est déjà disponible sans recalcul :
+  `apps/ao/calepinage_io.plan_vers_json()` rend enveloppe, rangées et tables
+  posées, et `core/calepinage/rendu/` porte déjà les calques logiques.
+
