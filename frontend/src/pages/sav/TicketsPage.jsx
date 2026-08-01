@@ -13,6 +13,10 @@ import { Link, useSearchParams } from 'react-router-dom'
 // APX31 — MÊME garde champ-de-saisie que la file J/K des leads (LW) : une
 // seule définition dans tout l'ERP, jamais une copie locale.
 import { isTypingTarget } from '../../providers/shortcuts'
+// EZ15 — dictée INLINE navigateur, surface BUREAU uniquement (le terrain —
+// intervention, checklist — appartient à NTMOB30 et à sa transcription
+// serveur : jamais deux boutons micro sur un même champ).
+import { DictationButton, DICTATION_PRIVACY_FR } from '../../ui/DictationButton'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
@@ -63,6 +67,7 @@ import {
   TooltipProvider,
   Button,
   Badge,
+  HelpTip,
   StatusPill,
   Card,
   EmptyState,
@@ -883,8 +888,20 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               </Select>
             </FormField>
             <FormField label="Description" fullWidth>
-              <Textarea rows={2} value={fields.description ?? ''}
-                        onChange={(e) => set('description', e.target.value)} />
+              {/* EZ15 — dictée inline au BUREAU (le TERRAIN appartient à
+                  NTMOB30 : jamais deux boutons micro sur un même champ). Le
+                  bouton n'existe pas sur un navigateur sans Web Speech — le
+                  champ est alors strictement celui d'avant. */}
+              <div className="flex items-start gap-2">
+                <Textarea rows={2} className="flex-1" value={fields.description ?? ''}
+                          onChange={(e) => set('description', e.target.value)} />
+                <DictationButton
+                  label="Dicter la description du ticket"
+                  onText={(txt) => set('description', fields.description
+                    ? `${fields.description} ${txt}` : txt)}
+                />
+                <HelpTip label="Confidentialité de la dictée">{DICTATION_PRIVACY_FR}</HelpTip>
+              </div>
             </FormField>
           </FormSection>
 
