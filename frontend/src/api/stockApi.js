@@ -15,6 +15,20 @@ const stockApi = {
   // QP2 — clone serveur (nouveau nom, SKU frais, prix d'achat copié côté
   // serveur) ; réservé Directeur + Commercial responsable (QG4).
   dupliquerProduit: (id, nom) => api.post(`/stock/produits/${id}/dupliquer/`, { nom }),
+  // APX18 — photo produit. UN seul aller-retour : le serveur téléverse dans
+  // MinIO (primitive plateforme `records.Attachment`, ARC26) ET rattache la
+  // pièce jointe au produit dans la même transaction — jamais de pièce jointe
+  // orpheline. `file = null` retire la photo. Les écrans lisent ensuite
+  // `produit.image_url` (endpoint plateforme, même origine, cookie httpOnly).
+  // INTERNE : la photo n'entre dans aucun PDF ni sortie client-facing.
+  uploadProduitImage: (id, file) => {
+    if (!file) return api.delete(`/stock/produits/${id}/photo/`)
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post(`/stock/produits/${id}/photo/`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 
   // Catégories
   getCategories: (params) => api.get('/stock/categories/', { params }),

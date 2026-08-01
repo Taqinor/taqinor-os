@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -220,6 +221,16 @@ class ProduitSerializer(serializers.ModelSerializer):
     quantite_en_commande = serializers.SerializerMethodField()
     bcf_sources_en_commande = serializers.SerializerMethodField()
 
+    # APX18 — photo produit, en LECTURE SEULE ici. Le téléversement passe par
+    # l'action dédiée `POST /stock/produits/<id>/photo/` (multipart), qui
+    # stocke le fichier dans MinIO via la primitive plateforme
+    # `records.Attachment` (ARC26 — jamais un FileField de plus). `image_url`
+    # pointe l'endpoint de téléchargement plateforme (même origine, cookie
+    # httpOnly, scopé société) et vaut `None` sans photo : chaque écran
+    # dégrade alors sur l'icône de catégorie.
+    # INTERNE : jamais dans un PDF, jamais à côté de `prix_achat`.
+    image_url = serializers.SerializerMethodField()
+
     # XSTK3 — déclaré explicitement `required=False` : DRF (≥ 3.14) dérive un
     # validateur "unique together" depuis la `UniqueConstraint` conditionnelle
     # `(company, code_barres)` du modèle et force sinon ce champ à
@@ -281,6 +292,10 @@ class ProduitSerializer(serializers.ModelSerializer):
         fields = [
             # Identité & catalogue
             'id', 'company', 'nom', 'description', 'sku', 'marque',
+            # APX18 — photo produit : URL de téléchargement de la pièce jointe
+            # MinIO liée (lecture seule ; l'envoi passe par l'action
+            # `photo/`). Écrans INTERNES uniquement.
+            'image_url',
             # YHARD4 — variantes localisées (repli FR, cf. core/i18n_content.py)
             'nom_localise', 'description_localise',
             # XSTK3 — code-barres fabricant (EAN/UPC/GTIN)
@@ -327,6 +342,11 @@ class ProduitSerializer(serializers.ModelSerializer):
         # jamais accepté du corps (évite tout choix d'unité d'une autre société).
         read_only_fields = ['company', 'date_creation', 'date_mise_a_jour',
                             'unite']
+        # APX18 — `photo` (la FK vers `records.Attachment`) n'est
+        # DÉLIBÉRÉMENT pas exposée : elle se pose uniquement par l'action
+        # `POST /stock/produits/<id>/photo/`, qui téléverse ET rattache dans
+        # la même transaction. L'accepter du corps laisserait un client
+        # pointer la pièce jointe d'un autre enregistrement.
         # XSTK3 — l'optionalité de `code_barres` (que DRF forcerait à tort à
         # `required=True` via l'UniqueTogetherValidator dérivé de la contrainte
         # partielle) est restaurée par la déclaration EXPLICITE du champ
@@ -388,6 +408,23 @@ class ProduitSerializer(serializers.ModelSerializer):
             return None
         pct = (vente - achat) / vente * Decimal('100')
         return str(pct.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP))
+
+    # APX18 — drf-spectacular ne peut pas deviner le type de retour d'un
+    # SerializerMethodField : sans annotation il emet un avertissement de
+    # schema (garde YAPIC6). URL de telechargement, ou null sans photo.
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_image_url(self, obj):
+        """APX18 — URL de téléchargement de la photo (MinIO), ou None.
+
+        C'est l'endpoint PLATEFORME `records.Attachment.download` : même
+        origine (le cookie httpOnly part tout seul dans un `<img src>`),
+        authentifié, scopé société — jamais une URL média brute ni une URL
+        présignée pointant l'hôte MinIO interne (injoignable du navigateur).
+        `None` sans photo : chaque écran dégrade sur l'icône de catégorie.
+        """
+        if not obj.photo_id:
+            return None
+        return f'/api/django/records/attachments/{obj.photo_id}/download/'
 
     def get_quantite_reservee(self, obj):
         return self._reserved_map().get(obj.id, 0)

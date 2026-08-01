@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { initState } from './draftCore'
-import DevisTab, { devisTrackCurrent, missingFieldTarget, waArmed } from './DevisTab'
+import DevisTab, { devisTrackCurrent, devisIntent, missingFieldTarget, waArmed } from './DevisTab'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
    `.num`, actions facture/chantier busy-par-id), CTA « Devis automatique »
@@ -76,6 +76,20 @@ describe('LW21 — logique pure (co-localisée, testable sans DOM)', () => {
     expect(waArmed('123', 1)).toBe(false)
     expect(waArmed('', 1)).toBe(false)
   })
+
+  // EZ5 — contrat « chaîne OU objet » du payload open-devis : sans cible kWc
+  // rien ne change pour les appelants existants (IdentityRail, palette…).
+  it('devisIntent : sans cible → la chaîne de mode ; avec cible → { mode, targetKwc }', () => {
+    expect(devisIntent('auto', '')).toBe('auto')
+    expect(devisIntent('auto', '   ')).toBe('auto')
+    expect(devisIntent('auto', null)).toBe('auto')
+    expect(devisIntent('auto', undefined)).toBe('auto')
+    expect(devisIntent('auto', '3')).toEqual({ mode: 'auto', targetKwc: '3' })
+    expect(devisIntent('premium', ' 6.5 ')).toEqual({ mode: 'premium', targetKwc: '6.5' })
+    // « edit » ouvre le générateur, qui a son PROPRE champ kWc : jamais deux
+    // cibles rivales pour le même devis.
+    expect(devisIntent('edit', '3')).toBe('edit')
+  })
 })
 
 describe('LW21 — CTA devis automatique', () => {
@@ -88,6 +102,15 @@ describe('LW21 — CTA devis automatique', () => {
     await user.click(screen.getByRole('button', { name: /Devis modifiable/ }))
     await user.click(screen.getByText('Remise %…'))
     expect(onAction).toHaveBeenCalledWith('open-devis', 'remise')
+  })
+
+  // EZ5 — « je veux 3 kWc », pas « je veux 4 panneaux ».
+  it('une puissance cible saisie voyage avec l’intention de devis', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab()
+    await user.type(screen.getByLabelText(/Puissance cible/), '3')
+    await user.click(screen.getByRole('button', { name: /Devis automatique/ }))
+    expect(onAction).toHaveBeenCalledWith('open-devis', { mode: 'auto', targetKwc: '3' })
   })
 
   it('devis_auto pas prêt → liste des champs manquants cliquables (saute au champ du centre)', async () => {

@@ -12,6 +12,9 @@
 const DB_NAME = 'taqinor-field-outbox'
 const STORE = 'ops'
 const KEY = 'queue'
+// EZ8 — la file BINAIRE (photos) vit dans le MÊME object store, sous une autre
+// clé : un seul outbox, une seule base, deux files (JSON / binaire).
+const BINARY_KEY = 'queue-binaire'
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -27,13 +30,13 @@ function openDb() {
   })
 }
 
-function idbAdapter() {
+function idbAdapter(key = KEY) {
   return {
     async load() {
       const db = await openDb()
       return new Promise((resolve) => {
         const tx = db.transaction(STORE, 'readonly')
-        const req = tx.objectStore(STORE).get(KEY)
+        const req = tx.objectStore(STORE).get(key)
         req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : [])
         req.onerror = () => resolve([])
       })
@@ -42,7 +45,7 @@ function idbAdapter() {
       const db = await openDb()
       return new Promise((resolve) => {
         const tx = db.transaction(STORE, 'readwrite')
-        tx.objectStore(STORE).put(ops, KEY)
+        tx.objectStore(STORE).put(ops, key)
         tx.oncomplete = () => resolve()
         tx.onerror = () => resolve()
       })
@@ -83,4 +86,18 @@ export function createFieldOutboxStore() {
     if (typeof localStorage !== 'undefined' && localStorage) return localStorageAdapter()
   } catch { /* repli */ }
   return memoryAdapter()
+}
+
+// EZ8 — store de la file BINAIRE. PAS de repli localStorage : un ArrayBuffer
+// n'y survit pas (JSON.stringify le réduirait à `{}` — une photo silencieusement
+// vidée serait pire que pas de file du tout). Sans IndexedDB, on retombe sur la
+// mémoire et on le DIT (`persistent: false`) pour que l'UI reste honnête : la
+// file ne survivra pas à la fermeture de l'onglet.
+export function createBinaryOutboxStore() {
+  try {
+    if (typeof indexedDB !== 'undefined' && indexedDB) {
+      return { store: idbAdapter(BINARY_KEY), persistent: true }
+    }
+  } catch { /* repli */ }
+  return { store: memoryAdapter(), persistent: false }
 }

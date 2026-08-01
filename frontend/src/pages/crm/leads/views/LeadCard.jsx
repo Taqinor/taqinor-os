@@ -180,6 +180,57 @@ const prochaineAction = (lead) => {
 // Nombre de tags rendus « en clair » avant le repli « +N » (blueprint D3).
 const TAGS_VISIBLE = 2
 
+// APX2 — nombre de POINTS de tag rendus au repos avant le « +N » (les
+// libellés en clair restent, révélés). 3 points tiennent en 3rem sur L3.
+const TAG_DOTS_VISIBLE = 3
+
+/* APX2 — LE BUDGET DE SIGNAUX (fondateur 2026-08-01, « we see a lot of leads
+   at once »).
+   ---------------------------------------------------------------------------
+   La carte au repos tient en TROIS lignes ≤76 px. Le contrat LB13 « 4 zones »
+   est explicitement REMPLACÉ : rien ne disparaît, tout se CONDENSE.
+
+   La règle dure : la ligne d'action (précédence D3, inchangée) doit rester
+   DISTINGUABLE SANS SURVOL. On ne peut donc pas simplement la cacher — son
+   TEXTE part dans la zone révélée, mais son ÉTAT reste au repos sous forme
+   d'une icône colorée sur L2, jamais supprimée. `signalFor` est la fonction
+   pure qui traduit la ligne d'action en {tone, glyph, label} : une seule
+   source pour le texte révélé ET l'icône au repos — impossible qu'ils
+   divergent. */
+const SIGNAL_TONES = {
+  perdu: 'perdu',
+  danger: 'danger',
+  warning: 'warning',
+  info: 'info',
+  success: 'success',
+  muted: 'muted',
+}
+
+/** signalFor — état condensé de la ligne d'action (même précédence que le
+    rendu ci-dessous). Retourne null quand il n'y a RIEN à signaler. */
+function signalFor({ perdu, relanceEnRetard, rappelDemande, dernierDevisExpire, nextActivityState, slaMinutes, factureManquante, action }) {
+  if (perdu) return { tone: SIGNAL_TONES.perdu, glyph: '✗', label: 'Perdu' }
+  if (relanceEnRetard) return { tone: SIGNAL_TONES.danger, glyph: '⚠', label: 'Relance en retard' }
+  if (rappelDemande) return { tone: SIGNAL_TONES.info, glyph: '☎', label: 'Rappel demandé' }
+  if (dernierDevisExpire) return { tone: SIGNAL_TONES.warning, glyph: '⌛', label: 'Devis expiré' }
+  if (nextActivityState) {
+    const tone = nextActivityState === 'overdue'
+      ? SIGNAL_TONES.danger
+      : nextActivityState === 'today' ? SIGNAL_TONES.warning : SIGNAL_TONES.success
+    return { tone, glyph: '⏰', label: 'Activité planifiée' }
+  }
+  if (slaMinutes != null) {
+    return {
+      tone: slaMinutes >= 30 ? SIGNAL_TONES.danger : SIGNAL_TONES.warning,
+      glyph: '⏱',
+      label: 'À contacter — premier contact en attente',
+    }
+  }
+  if (factureManquante) return { tone: SIGNAL_TONES.warning, glyph: '↯', label: 'Facture à renseigner' }
+  if (action) return { tone: SIGNAL_TONES.muted, glyph: '→', label: action.label }
+  return null
+}
+
 function LeadCard({
   lead, busy = false, onOpen, onAutoQuote, users = [], onReassign,
   selected = false, onToggleSelect, onPlanifierRelance,
@@ -205,6 +256,10 @@ function LeadCard({
   const tags = tagList(lead)
   const nomComplet =
     [lead.nom, lead.prenom].filter(Boolean).join(' ') || lead.societe || '—'
+  // APX2 — L1 = « nom · société », les DEUX tronqués sur une seule ligne. La
+  // société n'est rendue que si elle n'est pas déjà le nom affiché (cas d'un
+  // lead sans nom de contact : `nomComplet` vaut alors déjà la société).
+  const societeLabel = lead.societe && lead.societe !== nomComplet ? lead.societe : null
   const canal = CANAL_LABELS[lead.canal]
   const typeLabel = TYPE_INSTALLATION_LABELS[lead.type_installation] || null
   // Devis le plus récent (le serializer trie du plus récent au plus ancien).
@@ -257,8 +312,26 @@ function LeadCard({
   const rappelDemande = !perdu && lead.contact_preference === 'phone_ok'
   const action = prochaineAction(lead)
 
+  // APX2 — l'icône colorée qui reste au repos, dérivée de la MÊME précédence
+  // que la ligne d'action révélée (une seule source de vérité).
+  const signal = signalFor({
+    perdu,
+    relanceEnRetard,
+    rappelDemande,
+    dernierDevisExpire,
+    nextActivityState: lead.next_activity?.state ?? null,
+    slaMinutes: minutesNouveau,
+    factureManquante,
+    action,
+  })
+
   const classes = [
     'kb-card',
+    // APX2 — modifieur de DENSITÉ propre à la carte LEAD. `.kb-card` est
+    // partagé avec le kanban Installations et `ui/StatusAccentCard` : toutes
+    // les règles de densité APX2 sont scopées ici pour ne JAMAIS bouger d'un
+    // pixel une surface qui appartient à une autre lane.
+    'kb-card--lead',
     perdu ? 'kb-card-perdu' : '',
     busy ? 'kb-card-busy' : '',
     selected ? 'kb-card-selected' : '',
@@ -342,7 +415,9 @@ function LeadCard({
           position: 'relative',
         }}
       >
-        {/* ── TÊTE : checkbox (révélée) · nom · score · action perdu ── */}
+        {/* ── L1 / TÊTE : checkbox (révélée) · nom · société · menu (révélé) ──
+            APX2 : le ScoreBadge a quitté la tête pour le micro-badge de L2 (le
+            budget de signaux de la carte au repos vit sur UNE ligne). ── */}
         <div className="kb-card-head">
           {onToggleSelect && (
             // LB17 — cible tactile ≥44×44 via le label enveloppant (stylesheet,
@@ -364,8 +439,7 @@ function LeadCard({
             </label>
           )}
           <span className="kb-card-name">{nomComplet}</span>
-          {/* VX24 — ScoreBadge partagé (features/crm) ; VX221 — tooltip top-3 facteurs. */}
-          <ScoreBadge lead={lead} />
+          {societeLabel && <span className="kb-card-societe">{societeLabel}</span>}
           {/* LB15 — menu ••• (révélé au survol/focus, permanent au toucher) :
               toutes les actions du lead, atteignables au clavier. Le bouton ✗
               20×20 a quitté la face (blueprint D3). */}
@@ -433,24 +507,200 @@ function LeadCard({
           )}
         </div>
 
-        {/* ── VALEUR : montant (devis sinon estimé) · type d'installation ── */}
-        {(valeur || typeLabel) && (
-          <div className="kb-card-value">
-            {valeur && (
+        {/* ── L2 / VALEUR + BUDGET DE SIGNAUX (APX2) : montant `.num`, puis les
+            trois signaux qui NE DISPARAISSENT JAMAIS au repos —
+            (1) l'icône colorée de la ligne d'action (relance en retard / devis
+                expiré / SLA… restent distinguables SANS survol),
+            (2) le micro-badge de score (VX221, tooltip conservé),
+            (3) la pastille « rotting » (rampe LB14, teintée par [data-rot]).
+            La ligne est TOUJOURS rendue : c'est le socle du budget, même sans
+            montant. Le chip « type d'installation » est passé dans la zone
+            révélée (il condense, il ne disparaît pas). ── */}
+        <div className="kb-card-value">
+          {valeur && (
+            <span
+              className="kb-card-montant num"
+              title={valeur.estime ? nbsp('Montant estimé (avant devis)') : nbsp('Total TTC du dernier devis')}
+            >
+              {valeur.estime ? 'est. ' : ''}{valeur.montant}
+            </span>
+          )}
+          <span className="kb-card-signals">
+            {signal && (
               <span
-                className="kb-card-montant num"
-                title={valeur.estime ? nbsp('Montant estimé (avant devis)') : nbsp('Total TTC du dernier devis')}
+                className={`kb-card-signal kb-signal-${signal.tone}`}
+                title={nbsp(signal.label)}
+                aria-label={signal.label}
+                role="img"
               >
-                {valeur.estime ? 'est. ' : ''}{valeur.montant}
+                {signal.glyph}
               </span>
             )}
-            {typeLabel && <span className="kb-card-type">{typeLabel}</span>}
+            {/* VX24 — ScoreBadge partagé (features/crm) ; VX221 — tooltip top-3 facteurs.
+                APX2 : rendu en micro-badge (classe de taille sur l'enveloppe,
+                le composant partagé reste intact — la sonde VX221 aussi). */}
+            <span className="kb-card-score-micro">
+              <ScoreBadge lead={lead} />
+            </span>
+            {/* LB14 — pastille de rotting : le liseré `[data-rot='danger']` et
+                la pill d'âge existent déjà ; cette pastille rend le niveau
+                lisible au repos même quand la pill d'âge est absente. */}
+            {rot !== 'ok' && (
+              <span
+                className="kb-rot-dot"
+                aria-label={rot === 'danger' ? 'Lead qui stagne' : 'Lead qui commence à traîner'}
+                title={nbsp(rot === 'danger' ? 'Stagne dans cette étape' : 'Commence à traîner dans cette étape')}
+                role="img"
+              />
+            )}
+          </span>
+
+          {/* ── APX7 — ACTIONS RAPIDES, SUR LA LIGNE DU MONTANT.
+              Elles vivaient dans la zone révélée : au TOUCHER (`hover:none`)
+              cette zone est permanente, ce qui ajoutait ~36 px par carte et ne
+              laissait que ~3 cartes sur un 390×844. Elles remontent ici, sur
+              L2 : au toucher la ligne du montant DEVIENT la rangée d'actions
+              44×44 (téléphone ET tablette — jamais un seuil de largeur : c'est
+              `hover:none` qui décide, donc l'iPad WebKit hérite exactement de
+              l'anatomie du téléphone, VX68) ; en pointeur fin elles restent
+              révélées au survol / au focus. UN SEUL exemplaire des liens
+              tel/WhatsApp dans le DOM (contrat) — jamais un doublon tactile.
+              Le RESTE (texte d'action, type, canal/ville, readiness, tags en
+              clair) reste derrière le menu ••• et la fiche. ── */}
+          <div className="kb-quick" aria-label="Actions rapides">
+            {/* LB17 — PII masquée (le serializer nullifie tel/whatsapp sans la
+                permission client_pii_voir, `lead.pii_masked`) : à la place des
+                actions d'appel, un cadenas tooltipé — plus jamais un blanc muet. */}
+            {lead.pii_masked ? (
+              <span
+                className="kb-quick-lock"
+                title="Coordonnées masquées (permission PII)"
+                aria-label="Coordonnées masquées (permission PII)"
+              >
+                <Lock size={12} aria-hidden="true" />
+              </span>
+            ) : (
+              <>
+                {tel && (
+                  <a
+                    className="kb-quick-btn kb-quick-tel"
+                    href={tel}
+                    title="Appeler"
+                    aria-label={`Appeler ${nomComplet}`}
+                    onClick={(e) => { e.stopPropagation(); armCallNudge() }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                  >
+                    ☎
+                  </a>
+                )}
+                {wa && (
+                  <ExternalLink
+                    className="kb-quick-btn kb-quick-wa"
+                    href={wa}
+                    title="Ouvrir WhatsApp"
+                    aria-label={`Ouvrir WhatsApp pour ${nomComplet}`}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                  >
+                    💬
+                  </ExternalLink>
+                )}
+              </>
+            )}
+            {/* ⚡ Devis auto : révélé au survol en pointeur fin, mais MASQUÉ au
+                toucher — il double l'item « Devis auto » du menu •••, et la
+                ligne tactile ne garde que ce qui n'existe nulle part ailleurs
+                (appeler / WhatsApp). */}
+            <button
+              type="button"
+              className="kb-flash kb-quick-btn"
+              disabled={!lead.devis_auto?.pret}
+              title={lead.devis_auto?.pret
+                ? (roofReady ? 'Devis auto — repère toit disponible' : 'Devis auto')
+                : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
+              aria-label="Devis auto"
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (onAutoQuote) onAutoQuote(lead)
+              }}
+            >
+              <Zap size={14} aria-hidden="true" />
+            </button>
           </div>
-        )}
+        </div>
+
+        {/* ── L3 / PIED (APX2) : tags en POINTS (3 + n) · pill d'âge · avatar 16.
+            Les libellés de tags en clair, le canal/la ville et les micro-icônes
+            de readiness ont rejoint la zone révélée — condensés, jamais
+            supprimés. ── */}
+        <div className="kb-card-foot">
+          {tags.length > 0 && (
+            <span className="kb-tag-dots" title={nbsp(tags.join(' · '))} aria-label={`Étiquettes : ${tags.join(', ')}`}>
+              {tags.slice(0, TAG_DOTS_VISIBLE).map((tag) => (
+                <span
+                  key={tag}
+                  className="kb-tag-dot"
+                  style={{ background: tagColor(tag).bg }}
+                  aria-hidden="true"
+                />
+              ))}
+              {tags.length > TAG_DOTS_VISIBLE && (
+                <span className="kb-tag-dots-more" aria-hidden="true">+{tags.length - TAG_DOTS_VISIBLE}</span>
+              )}
+            </span>
+          )}
+          {ageJours != null && (
+            <span
+              className="kb-age-pill"
+              title={nbsp(
+                rot === 'danger'
+                  ? `Stagne dans cette étape depuis ${ageJours} jours — à relancer`
+                  : rot === 'warning'
+                    ? `Dans cette étape depuis ${ageJours} jours — commence à traîner`
+                    : `Dans cette étape depuis ${ageJours} jour${ageJours > 1 ? 's' : ''}`,
+              )}
+            >
+              {ageJours} j
+            </span>
+          )}
+          <span
+            className="kb-card-assignee"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            <AssigneePicker
+              users={users}
+              value={lead.owner ?? ''}
+              onChange={(id) => onReassign?.(lead, id)}
+              size={16}
+              compact
+              disabled={!onReassign}
+            />
+          </span>
+        </div>
+
+        {/* ── ZONE RÉVÉLÉE (APX2) — dépliée par `@media (hover:hover)` au survol
+            ET par `:focus-within` (clavier, à TOUTE largeur, jamais par une
+            largeur d'écran : l'iPad `hover:none` hérite de l'anatomie tactile
+            APX7). Posée APRÈS les trois lignes de repos, donc la carte grandit
+            vers le BAS et aucun contrôle révélé n'apparaît sous la position de
+            repos du curseur. `:focus-within` DÉPLIE réellement le conteneur
+            (max-height + opacity, JAMAIS `visibility: hidden` qui empêcherait
+            le focus d'y entrer) : chaque contrôle révélé a une bounding box
+            non nulle au moment où il reçoit le focus — l'anti-pattern
+            « tabbable invisible » que LB17 a corrigé ne revient pas. ── */}
+        <div className="kb-card-reveal">
+          {typeLabel && <span className="kb-card-type">{typeLabel}</span>}
 
         {/* ── UNE ligne d'action — précédence D3 : perdu > relance en retard >
             ☎ rappel > devis expiré > next_activity > SLA premier-contact (NEW)
-            > facture manquante > suggestion d'étape. ── */}
+            > facture manquante > suggestion d'étape. Son ÉTAT est déjà sur L2
+            (icône colorée) ; ici vit son TEXTE. ── */}
         {perdu ? (
           <div className="kb-card-actionline kb-actionline-perdu">Perdu</div>
         ) : relanceEnRetard ? (
@@ -517,7 +767,8 @@ function LeadCard({
           )
         ) : null}
 
-        {/* ── Tags plafonnés à 2 + « +N » ── */}
+        {/* ── Tags EN CLAIR plafonnés à 2 + « +N » (révélés — les points de L3
+            en sont la forme condensée). ── */}
         {tags.length > 0 && (
           <div className="kb-tags">
             {tags.slice(0, TAGS_VISIBLE).map((tag) => {
@@ -536,8 +787,8 @@ function LeadCard({
           </div>
         )}
 
-        {/* ── PIED : canal · ville · readiness · pill d'âge · avatar ── */}
-        <div className="kb-card-foot">
+        {/* ── MÉTA révélée : canal · ville · readiness ── */}
+        <div className="kb-card-meta">
           {(canal || lead.ville) && (
             <span className="kb-foot-meta">
               {[canal, lead.ville].filter(Boolean).join(' · ')}
@@ -564,100 +815,9 @@ function LeadCard({
               )}
             </span>
           )}
-          {ageJours != null && (
-            <span
-              className="kb-age-pill"
-              title={nbsp(
-                rot === 'danger'
-                  ? `Stagne dans cette étape depuis ${ageJours} jours — à relancer`
-                  : rot === 'warning'
-                    ? `Dans cette étape depuis ${ageJours} jours — commence à traîner`
-                    : `Dans cette étape depuis ${ageJours} jour${ageJours > 1 ? 's' : ''}`,
-              )}
-            >
-              {ageJours} j
-            </span>
-          )}
-          <span
-            className="kb-card-assignee"
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-          >
-            <AssigneePicker
-              users={users}
-              value={lead.owner ?? ''}
-              onChange={(id) => onReassign?.(lead, id)}
-              size={24}
-              compact
-              disabled={!onReassign}
-            />
-          </span>
         </div>
 
-        {/* ── Actions rapides révélées au survol (permanentes sur (hover:none))
-            — tel / WhatsApp / ⚡ Devis auto. Les hrefs tel/wa restent toujours
-            présents dans le DOM (contrat). LB15 ajoute ici le menu •••. ── */}
-        <div className="kb-quick" aria-label="Actions rapides">
-          {/* LB17 — PII masquée (le serializer nullifie tel/whatsapp sans la
-              permission client_pii_voir, `lead.pii_masked`) : à la place des
-              actions d'appel, un cadenas tooltipé — plus jamais un blanc muet. */}
-          {lead.pii_masked ? (
-            <span
-              className="kb-quick-lock"
-              title="Coordonnées masquées (permission PII)"
-              aria-label="Coordonnées masquées (permission PII)"
-            >
-              <Lock size={12} aria-hidden="true" />
-            </span>
-          ) : (
-            <>
-              {tel && (
-                <a
-                  className="kb-quick-btn kb-quick-tel"
-                  href={tel}
-                  title="Appeler"
-                  aria-label={`Appeler ${nomComplet}`}
-                  onClick={(e) => { e.stopPropagation(); armCallNudge() }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
-                >
-                  ☎
-                </a>
-              )}
-              {wa && (
-                <ExternalLink
-                  className="kb-quick-btn kb-quick-wa"
-                  href={wa}
-                  title="Ouvrir WhatsApp"
-                  aria-label={`Ouvrir WhatsApp pour ${nomComplet}`}
-                  onClick={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
-                >
-                  💬
-                </ExternalLink>
-              )}
-            </>
-          )}
-          <button
-            type="button"
-            className="kb-flash kb-quick-btn"
-            disabled={!lead.devis_auto?.pret}
-            title={lead.devis_auto?.pret
-              ? (roofReady ? 'Devis auto — repère toit disponible' : 'Devis auto')
-              : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
-            aria-label="Devis auto"
-            onPointerDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (onAutoQuote) onAutoQuote(lead)
-            }}
-          >
-            <Zap size={14} aria-hidden="true" />
-          </button>
-        </div>
+        </div>{/* /kb-card-reveal (APX2) */}
 
         {/* VX87 — nudge post-appel : proposé au retour dans l'onglet après un
             tap tel: (armCallNudge), jamais intrusif — dismissable, ne bloque
@@ -672,6 +832,9 @@ function LeadCard({
             <span className="kb-call-nudge-text">Appel terminé — noter le résultat ?</span>
             <CallLogPopover
               leadId={lead.id}
+              // EZ1 — la relance déjà posée est TRANSMISE : le popover
+              // l'affiche et exige un choix, il ne l'écrase plus en silence.
+              relanceActuelle={lead.relance_date ?? null}
               trigger={<button type="button" className="kb-call-nudge-log">Noter</button>}
               onLogged={dismissNudge}
             />

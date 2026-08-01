@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 /* VX204 — `checkUnread()` (sondage léger toutes les 30 s du compteur de
    notifications) n'avait AUCUNE détection de série d'échecs
@@ -26,9 +28,26 @@ vi.mock('../../api/notificationsApi', () => ({
 import notificationsApi from '../../api/notificationsApi'
 import NotificationBell from './NotificationBell'
 
+// ODY27 — la palette/la cloche interrogent desormais la source UNIQUE des
+// apps visibles (`useInstalledApps`, ODY1), qui lit le store : un Provider
+// Redux minimal est donc necessaire pour monter le composant. Role admin et
+// aucun module desactive = toutes les apps visibles, donc AUCUN filtrage :
+// les assertions de ce fichier restent celles d'avant ODY27.
+const ody27Store = configureStore({
+  reducer: { auth: (s = { role: 'admin', permissions: [], modulesDesactives: [], user: null }) => s },
+})
+function ShellWrapper({ children }) {
+  return (
+    <Provider store={ody27Store}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </Provider>
+  )
+}
+
+
 function renderBell() {
   return render(
-    <MemoryRouter><NotificationBell /></MemoryRouter>,
+    <ShellWrapper><NotificationBell /></ShellWrapper>,
   )
 }
 

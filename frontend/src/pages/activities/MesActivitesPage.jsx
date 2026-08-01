@@ -19,6 +19,9 @@ import {
   Button, Badge, Card, CardHeader, CardTitle, CardContent,
   EmptyState, Spinner, Input,
 } from '../../ui'
+// APX10 — identité de module (VX15) : « Ma file » est l'écran d'activités du
+// CRM, il porte donc le hero et l'accent azur comme le cockpit et les leads.
+import { ModuleHero } from '../../ui/module'
 import { DatePicker } from '../../ui/DatePicker'
 import { today as todayDate } from '../../ui/date-utils'
 import ExternalLink from '../../ui/ExternalLink'
@@ -318,22 +321,25 @@ export default function MesActivitesPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h2>
-          <ListChecks className="mr-2 inline size-5 align-[-3px] text-muted-foreground" aria-hidden="true" />
-          Ma file
-          {maFile.total > 0 && <Badge tone="primary" className="ml-2 align-middle">{maFile.total}</Badge>}
-        </h2>
-      </div>
-      <p className="mb-3 text-sm text-muted-foreground">
-        {/* VX83 — en-tête unique, plus-urgent-d'abord, à travers les modules. */}
-        {[
+      {/* APX10 — identité CRM : le `page-header` générique (h2 nu) devient le
+          hero de module VX15, avec l'accent azur du CRM. Le sous-titre EST le
+          résumé « plus-urgent-d'abord » de VX83 : il n'est pas dupliqué, il
+          remonte simplement dans le hero. */}
+      <ModuleHero
+        title="Ma file"
+        subtitle={[
           resume.en_retard ? `${resume.en_retard} en retard` : null,
           resume.aujourdhui ? `${resume.aujourdhui} aujourd'hui` : null,
           resume.approbations ? `${resume.approbations} approbation${resume.approbations > 1 ? 's' : ''}` : null,
         ].filter(Boolean).join(' · ')
           || 'Tout ce qui vous attend, à travers les modules, du plus urgent au moins urgent.'}
-      </p>
+        accent="var(--module-accent-azur)"
+        headingAs="h2"
+        className="mb-3"
+        actions={maFile.total > 0
+          ? <Badge tone="primary">{maFile.total}</Badge>
+          : null}
+      />
 
       {actionError && (
         <p className="form-error mb-3" role="alert">{actionError}</p>
@@ -513,8 +519,12 @@ export default function MesActivitesPage() {
           Sous la file unifiée, la vue de travail « Mes activités » d'origine :
           buckets par échéance, colonne contact QX25, actions Fait/Reporter,
           moteur de tableau partagé P167. Rien n'a été retiré. */}
-      <div className="page-header mt-2">
-        <h3 className="text-base font-semibold">
+      {/* APX10 — sous-section (pas un second hero : un écran n'a qu'une
+          identité de module). On remplace le `page-header` legacy par la
+          grammaire de ligne de contrôle LB43, avec la pastille d'accent CRM. */}
+      <div className="lp-controlbar crm-controlbar mt-2">
+        <h3 className="lp-cb-title text-base font-semibold">
+          <span className="crm-accent-dot" aria-hidden="true" />
           <AlarmClock className="mr-2 inline size-4 align-[-2px] text-muted-foreground" aria-hidden="true" />
           Mes activités
           {total > 0 && <Badge tone="primary" className="ml-2 align-middle">{total}</Badge>}

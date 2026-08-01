@@ -1,10 +1,10 @@
-import { Fragment, useEffect, useState, useMemo } from 'react'
+import { Fragment, useCallback, useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
-  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer, Zap,
+  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer, Zap, Receipt, Eye,
 } from 'lucide-react'
 import {
   fetchFactures,
@@ -21,6 +21,8 @@ import FactureForm from './FactureForm'
 import FactureKanbanBoard from './FactureKanbanBoard'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
+  // APX12 — le langage UNIQUE des KPI d'argent.
+  Stat,
   Skeleton, SkeletonTableRow,
   Tabs, TabsList, TabsTrigger,
   Input, Checkbox,
@@ -32,6 +34,18 @@ import {
   toast,
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+// APX13 — la chaîne documentaire devis→BC→facture, visible ici aussi.
+import DocumentStageTrack from '../../ui/DocumentStageTrack'
+import { DOC_STATUT_TRACK, factureTrack } from '../../features/ventes/documentChain'
+// APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
+import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
+// APX17 — confirmation maison (VX19/L152), jamais une popup du système.
+import { useConfirmDialog } from '../../ui/confirm'
+// EZ13 — confirmation À SÉVÉRITÉ (VX244) pour le marquage sec « payée ».
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import PaiementDialog from './PaiementDialog'
 // WIR103/ZFAC4 — modale « Note de débit » (création + téléchargement PDF).
 import NoteDebitDialog from './NoteDebitDialog'
@@ -184,11 +198,15 @@ function FactureRow({ f, ctx }) {
     saveEcheance, setEcheanceEditId, startEditEcheance,
     dgiActif, isAdmin,
     actionId, pdfGenerating, pdfDownloading, waBusy, payLinkBusy, dgiBusy,
-    openEdit, doAction, emettreFacture, marquerPayeeFacture, annulerFacture,
+    openEdit, doAction, emettreFacture, annulerFacture,
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     openNoteDebit,
+    // APX14 - ouvre l'apercu PDF inline de cette facture.
+    openPreview,
+    // EZ13 - marquage sec, relegue au menu et explique.
+    openMarquerPayee,
     highlightFactureId,
   } = ctx
   const overdue = isOverdue(f)
@@ -232,9 +250,14 @@ function FactureRow({ f, ctx }) {
               ? ` ${Math.round(toNumber(f.pourcentage))} %` : ''}
           </div>
         )}
+        {/* APX13 — l'AMONT du document, cliquable. Le lien pointait sur
+            `?ref=` — un paramètre que DevisList ne lit PAS (vérifié) : il
+            atterrissait sur la liste nue. Il pointe désormais sur `?devis=<id>`
+            (QX12), que la liste lit déjà pour surligner + scroller jusqu'au
+            devis d'origine. */}
         {f.devis_reference && f.devis && (
           <div className="mt-0.5 text-xs">
-            <Link to={`/ventes/devis?ref=${encodeURIComponent(f.devis_reference)}`}
+            <Link to={`/ventes/devis?devis=${encodeURIComponent(f.devis)}`}
                   className="text-primary hover:underline">
               Devis {f.devis_reference}
             </Link>
@@ -328,6 +351,14 @@ function FactureRow({ f, ctx }) {
       </td>
       <td data-label="Statut">
         <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
+        {/* APX13 — la chaîne devis→BC→facture, visible à CETTE étape aussi
+            (le stepper VX141 n'existait que sur la liste des devis : il
+            disparaissait aux deux étapes suivantes du parcours). */}
+        <DocumentStageTrack
+          className="mt-1"
+          stages={DOC_STATUT_TRACK}
+          {...factureTrack(f)}
+        />
         {/* VX52 — le sens « télédéclaration DGI » ne vivait que dans `title`
             (survol) : sur mobile, un préfixe explicite le rend lisible. */}
         {['emise', 'payee', 'en_retard'].includes(f.statut) && f.statut_teledeclaration && (
@@ -391,16 +422,19 @@ function FactureRow({ f, ctx }) {
               Émettre
             </Button>
           )}
-          {(f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
-            <Button size="sm" variant="success" loading={busy}
-                    onClick={() => doAction(marquerPayeeFacture, f.id, `Marquer la facture ${f.reference} comme payée ?`)}>
-              <Check /> Payée
-            </Button>
-          )}
+          {/* EZ13 — « ✓ Payée » ÉTAIT ICI, en `variant="success"`, juste à
+              côté d'« ⚡ Encaisser ». C'est le bouton PAUVRE : marquage sec qui
+              DETRUIT mode, date et référence du règlement, alors qu'Encaisser
+              capture tout en 3 clics. Sur une liste chargée, le pauvre
+              gagnait. Il est désormais relégué au menu ⫰ (ci-dessous), derrière
+              un AlertDialog qui EXPLIQUE ce qu'on perd. « Encaisser » devient
+              l'unique action rapide — avec, DANS son dialogue, l'option
+              « paiement simple (sans détail) » pour qui veut vraiment aller
+              vite sans rien détruire. */}
           {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && nba !== 'encaisser' && (
-            <Button size="sm" variant="outline"
+            <Button size="sm" variant="default"
                     onClick={() => openPayModal(f)} title="Enregistrer un paiement">
-              Enregistrer paiement
+              <Zap className="size-3.5" aria-hidden="true" /> Encaisser
             </Button>
           )}
           {/* FG53/WR2b — lien « Payer en ligne » (copié au presse-papier). */}
@@ -438,6 +472,23 @@ function FactureRow({ f, ctx }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/* EZ13 — le marquage sec « Payée » vit ICI désormais, jamais
+                    plus à côté d'Encaisser. Il DETRUIT mode/date/référence du
+                    règlement : la confirmation l'explique au lieu de demander
+                    « êtes-vous sûr ? ». */}
+                {(f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
+                  <DropdownMenuItem
+                    data-testid="marquer-payee"
+                    onSelect={(e) => { e.preventDefault(); openMarquerPayee(f) }}>
+                    <Check /> Marquer payée (sans détail)
+                  </DropdownMenuItem>
+                )}
+                {/* APX14 — aperçu du PDF SANS quitter l'écran. */}
+                {f.fichier_pdf && (
+                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openPreview(f) }}>
+                    <Eye /> Aperçu du PDF
+                  </DropdownMenuItem>
+                )}
                 {['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem
                     disabled={isWaBusy || !waPhoneOk}
@@ -542,6 +593,8 @@ export default function FactureList() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
   useDocumentTitle('Factures')
   const dispatch = useDispatch()
+  // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
+  const { confirm } = useConfirmDialog()
   const [searchParams, setSearchParams] = useSearchParams()
   const { factures, loading, error } = useSelector(s => s.ventes)
   const isAdmin = useSelector(s => s.auth.role) === 'admin'
@@ -826,6 +879,13 @@ export default function FactureList() {
     () => factures.reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
     [factures])
 
+  // APX11 — sous-titre utile de l'en-tête : combien de factures restent à
+  // encaisser (dérivé des factures DÉJÀ chargées, aucun appel réseau).
+  const impayeesCount = useMemo(
+    () => factures.filter(f => f.statut !== 'annulee' && f.statut !== 'brouillon'
+      && (toNumber(f.montant_du) || 0) > 0).length,
+    [factures])
+
   const totalEnRetard = useMemo(
     () => factures.filter(isOverdue)
       .reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
@@ -917,8 +977,10 @@ export default function FactureList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, loading, factures])
 
+  // APX17 — confirmation maison (AlertDialog Radix), jamais la popup du
+  // système.
   const doAction = async (thunk, id, confirmMsg) => {
-    if (confirmMsg && !window.confirm(confirmMsg)) return
+    if (confirmMsg && !(await confirm({ title: confirmMsg }))) return
     setActionId(id)
     try {
       await dispatch(thunk(id)).unwrap()
@@ -981,6 +1043,36 @@ export default function FactureList() {
       setPdfDownloading(prev => ({ ...prev, [f.id]: false }))
     }
   }
+
+  // APX14 — aperçu INLINE de la facture : le PDF s'ouvre dans un panneau, plus
+  // dans un onglet qu'il faut quitter. La source reste le PDF LEGACY propre
+  // aux factures (règle #4 — seul le PDF de DEVIS passe par `/proposal` ;
+  // aucun chemin nouveau n'est créé ici).
+  const [previewFacture, setPreviewFacture] = useState(null)
+  // EZ12 — L'ENCAISSEMENT OFFRE SA SUITE. Le parcours d'encaissement est le
+  // meilleur de l'app (3 clics) mais il s'arrêtait sec : rien n'était offert
+  // après. La suite HONNÊTE est la page des Encaissements filtrée sur le
+  // client — PAS le rapprochement bancaire, qui est « strictement distinct
+  // de l'import de paiements clients » (compta/models.py) : un paiement
+  // fraîchement encaissé n'y apparaît PAS tant que le relevé n'est pas importé.
+  const [dernierEncaissement, setDernierEncaissement] = useState(null)
+  const openPreview = (f) => setPreviewFacture(f)
+
+  // EZ13 — marquage sec « payée » : facture ciblée par la confirmation qui
+  // EXPLIQUE la perte (mode, date et référence du règlement ne seront pas
+  // enregistrés). Jamais une popup « êtes-vous sûr ? ».
+  const [payeeSecheTarget, setPayeeSecheTarget] = useState(null)
+  const openMarquerPayee = (f) => setPayeeSecheTarget(f)
+  const fetchFacturePreviewBlob = useCallback(async () => {
+    const f = previewFacture
+    if (!f) return null
+    try {
+      const res = await ventesApi.telechargerPdfFacture(f.id)
+      return res.data instanceof Blob ? res.data : new Blob([res.data], { type: 'application/pdf' })
+    } catch {
+      throw new Error('Fichier introuvable. Régénérez le PDF.')
+    }
+  }, [previewFacture])
 
   // Envoyer par WhatsApp : construit le message côté serveur (FR/Darija) puis
   // montre un aperçu (message + lien public) avant d'ouvrir wa.me ; le
@@ -1154,26 +1246,43 @@ export default function FactureList() {
     saveEcheance, setEcheanceEditId, startEditEcheance,
     dgiActif, isAdmin,
     actionId, pdfGenerating, pdfDownloading, waBusy, payLinkBusy, dgiBusy,
-    openEdit, doAction, emettreFacture, marquerPayeeFacture, annulerFacture,
+    openEdit, doAction, emettreFacture, annulerFacture,
     openPayModal, handleLienPaiement, handleTelechargerPdf, handleGenererPdf,
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     openNoteDebit,
+    // APX14 - ouvre l'apercu PDF inline de cette facture.
+    openPreview,
+    // EZ13 - marquage sec, relegue au menu et explique.
+    openMarquerPayee,
     highlightFactureId,
   }
 
   // VX21 — l'en-tête de page reste TOUJOURS visible (chargement, erreur,
   // données), parité DevisList/J141 : la mise en page ne saute plus au retour
   // des données (plus de spinner plein écran qui remplace toute la page).
+  // APX11 — en-tête unique VX28 + icône/accent du module (le `<h2>` et son
+  // badge sont conservés tels quels : ancres e2e inchangées).
   const pageHeader = (
-    <div className="page-header">
-      <h2>
-        Factures
-        {factures.length > 0 && (
-          <Badge tone="primary" className="ml-2 align-middle">{factures.length}</Badge>
-        )}
-      </h2>
-      <div className="flex flex-wrap items-center gap-2">
+    <PageHeader
+      style={VENTES_ACCENT_STYLE}
+      className="app-accent-rail"
+      icon={Receipt}
+      title={(
+        <>
+          Factures
+          {factures.length > 0 && (
+            <Badge tone="primary" className="ml-2 align-middle">{factures.length}</Badge>
+          )}
+        </>
+      )}
+      subtitle={
+        impayeesCount > 0
+          ? `${impayeesCount} facture${impayeesCount > 1 ? 's' : ''} à encaisser`
+          : 'Facturation, encaissements et avoirs'
+      }
+      actions={(
+        <>
         <Input
           type="search"
           className="w-full sm:w-56"
@@ -1251,7 +1360,9 @@ export default function FactureList() {
           ))}
         </div>
         <Button onClick={openNew}><Plus /> Nouvelle facture</Button>
-      </div>
+        </>
+      )}
+    >
       {/* VX142(a) — Journal comptable : Dialog mois/trimestre (remplace le
           window.prompt() texte libre). */}
       <Dialog open={journalOpen} onOpenChange={setJournalOpen}>
@@ -1325,7 +1436,7 @@ export default function FactureList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageHeader>
   )
 
   if (loading) {
@@ -1369,6 +1480,51 @@ export default function FactureList() {
     <div className="page">
       {pageHeader}
 
+      {/* EZ13 — le marquage sec explique CE QU'ON PERD, et offre le chemin
+          riche en échappatoire (« Encaisser » capture mode/date/référence). */}
+      <ConfirmDialog
+        open={!!payeeSecheTarget}
+        onOpenChange={(o) => { if (!o) setPayeeSecheTarget(null) }}
+        severity="medium"
+        title={`Marquer ${payeeSecheTarget?.reference ?? ''} payée sans détail ?`}
+        description="Le MODE de règlement, la DATE et la RÉFÉRENCE ne seront pas enregistrés : la facture passera à « payée » sans trace d'encaissement. Préférez « Encaisser » si vous avez ces informations."
+        confirmLabel="Marquer payée quand même"
+        onConfirm={() => {
+          const f = payeeSecheTarget
+          setPayeeSecheTarget(null)
+          if (f) doAction(marquerPayeeFacture, f.id)
+        }}
+      />
+
+      {/* EZ12 — après l'encaissement, l'action SUIVANTE est offerte : voir
+          l'encaissement dans les Encaissements, filtré sur ce client
+          (`PaiementsPage` lit déjà `?client=`). Un clic, aucune recherche. */}
+      {dernierEncaissement && (
+        <div
+          role="status"
+          data-testid="encaissement-suite"
+          className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
+        >
+          <span>
+            Paiement enregistré sur {dernierEncaissement.reference}
+            {dernierEncaissement.client_nom ? ` — ${dernierEncaissement.client_nom}` : ''}.
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild size="sm" variant="outline" data-testid="voir-encaissement">
+              <Link to={dernierEncaissement.client
+                ? `/ventes/paiements?client=${dernierEncaissement.client}`
+                : '/ventes/paiements'}
+              >
+                Voir l’encaissement
+              </Link>
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setDernierEncaissement(null)}>
+              Fermer
+            </Button>
+          </div>
+        </div>
+      )}
+
       {showForm && (
         <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} />
       )}
@@ -1377,7 +1533,19 @@ export default function FactureList() {
       <PaiementDialog
         facture={payTarget}
         onOpenChange={(o) => { if (!o) setPayTarget(null) }}
-        onSaved={() => dispatch(fetchFactures())}
+        onSaved={() => { dispatch(fetchFactures()); setDernierEncaissement(payTarget) }}
+      />
+
+      {/* APX14 — aperçu du PDF de la facture, INLINE. Source = le PDF LEGACY
+          propre aux factures ; le moteur `/proposal` reste réservé au PDF de
+          DEVIS (règle #4), et aucun chemin nouveau n'est créé. */}
+      <PdfPreviewSheet
+        open={!!previewFacture}
+        onOpenChange={(o) => { if (!o) setPreviewFacture(null) }}
+        title={`Aperçu — ${previewFacture?.reference ?? ''}`}
+        description="Facture. Téléchargeable ou ouvrable dans un onglet."
+        filename={previewFacture ? `${previewFacture.reference}.pdf` : undefined}
+        fetchBlob={fetchFacturePreviewBlob}
       />
 
       {/* ── WIR103/ZFAC4 — Modale « Note de débit » (création + PDF) ── */}
@@ -1481,43 +1649,44 @@ export default function FactureList() {
           (Stripe) — un directeur voit la santé de trésorerie d'un coup d'œil.
           Anatomie complète : valeur + delta (vs mois précédent où pertinent)
           + période. Dérivées des factures déjà chargées, aucun appel réseau. */}
+      {/* APX12 — UN seul langage de KPI d'argent : les 4 cartes passent par
+          `<Stat>` (chiffres `.num` tabulaires, delta en icône lucide). Le
+          glyphe de tendance en TEXTE posé ici régressait VX129 — c'était le
+          dernier site du dossier ventes à ne pas parler ce langage. */}
       {factures.length > 0 && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Card className="p-3 text-sm">
-            <div className="text-muted-foreground">Encaissé ce mois</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums">{formatMAD(encaisseMois)}</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {encaisseMoisPrecedent > 0 ? (
-                <span className={encaisseMois >= encaisseMoisPrecedent ? 'text-success' : 'text-destructive'}>
-                  {encaisseMois >= encaisseMoisPrecedent ? '▲' : '▼'}{' '}
-                  {formatMAD(Math.abs(encaisseMois - encaisseMoisPrecedent))} vs mois dernier
-                </span>
-              ) : 'Mois en cours'}
-            </div>
-          </Card>
-          <Card className="p-3 text-sm">
-            <div className="text-muted-foreground">Total dû</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums">{formatMAD(totalDu)}</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              Toutes factures non soldées
-            </div>
-          </Card>
-          <Card className="p-3 text-sm">
-            <div className="text-muted-foreground">En retard</div>
-            <div className={`mt-1 text-lg font-semibold tabular-nums ${countEnRetard > 0 ? 'text-destructive' : ''}`}>
-              {formatMAD(totalEnRetard)}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {countEnRetard} facture{countEnRetard > 1 ? 's' : ''} échue{countEnRetard > 1 ? 's' : ''}
-            </div>
-          </Card>
-          <Card className="p-3 text-sm">
-            <div className="text-muted-foreground">À échoir ≤ 7 j</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums">{formatMAD(totalAEcheoirSoon)}</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {aEcheoirSoon.length} facture{aEcheoirSoon.length > 1 ? 's' : ''} · 7 prochains jours
-            </div>
-          </Card>
+          <Stat
+            className="p-3 sm:p-3"
+            label="Encaissé ce mois"
+            value={formatMAD(encaisseMois)}
+            delta={encaisseMoisPrecedent > 0 ? {
+              direction: encaisseMois >= encaisseMoisPrecedent ? 'up' : 'down',
+              value: `${formatMAD(Math.abs(encaisseMois - encaisseMoisPrecedent))} vs mois dernier`,
+            } : undefined}
+            hint={encaisseMoisPrecedent > 0 ? undefined : 'Mois en cours'}
+          />
+          <Stat
+            className="p-3 sm:p-3"
+            label="Total dû"
+            value={formatMAD(totalDu)}
+            hint="Toutes factures non soldées"
+          />
+          <Stat
+            className="p-3 sm:p-3"
+            label="En retard"
+            value={(
+              <span className={countEnRetard > 0 ? 'text-destructive' : undefined}>
+                {formatMAD(totalEnRetard)}
+              </span>
+            )}
+            hint={`${countEnRetard} facture${countEnRetard > 1 ? 's' : ''} échue${countEnRetard > 1 ? 's' : ''}`}
+          />
+          <Stat
+            className="p-3 sm:p-3"
+            label="À échoir ≤ 7 j"
+            value={formatMAD(totalAEcheoirSoon)}
+            hint={`${aEcheoirSoon.length} facture${aEcheoirSoon.length > 1 ? 's' : ''} · 7 prochains jours`}
+          />
         </div>
       )}
 

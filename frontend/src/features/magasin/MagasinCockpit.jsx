@@ -1,8 +1,12 @@
 import { useMemo } from 'react'
-import { MapPin, PackageCheck, ClipboardList, Boxes } from 'lucide-react'
-import { ModuleDashboard } from '../../ui/module'
+import { Link } from 'react-router-dom'
+import { MapPin, PackageCheck, ClipboardList, Boxes, Archive } from 'lucide-react'
+import { ModuleDashboard, ModuleHero } from '../../ui/module'
+import { Button } from '../../ui'
 import installationsApi from '../../api/installationsApi'
 import useMagasinResource from './useMagasinResource'
+// APX22 — accent unique de la famille inventaire (Stock/Magasin/Logistique).
+import { INVENTAIRE_ACCENT } from '../stock/inventaireAccent'
 
 /* ============================================================================
    XSTK1 — Cockpit Magasin (`/magasin`).
@@ -10,6 +14,8 @@ import useMagasinResource from './useMagasinResource'
    Bandeau de KPI de synthèse (casiers, put-away à faire, prélèvements en
    cours, colis en préparation) avec liens vers chaque écran. Purement
    informatif : aucune action ici, aucun coût/prix d'achat.
+   ODY17 — identité de cockpit VX15 (ModuleHero) + raccourcis vers les écrans
+   Magasin, en plus du bandeau KPI déjà existant (kpiSlot, inchangé).
    ========================================================================== */
 
 export default function MagasinCockpit() {
@@ -21,40 +27,74 @@ export default function MagasinCockpit() {
   const loading = bins.loading || putaways.loading || pickLists.loading || colisList.loading
   const error = bins.error || putaways.error || pickLists.error || colisList.error
 
+  // APX22 — les tuiles deviennent des FILES D'ACTION (« N à traiter » façon
+  // Odoo Inventory) et mènent chacune à la liste DÉJÀ filtrée sur le statut
+  // qui a servi à les compter. Aucun endpoint nouveau : ce sont les quatre
+  // appels déjà faits ci-dessus. Les casiers passent en dernier — c'est un
+  // référentiel, pas une file d'action.
   const stats = useMemo(() => [
     {
-      label: 'Casiers actifs',
-      value: bins.data.length,
-      icon: MapPin,
-      to: '/magasin/casiers',
-    },
-    {
-      label: 'À ranger',
+      label: 'Rangements à traiter',
       value: putaways.data.length,
       hint: 'Put-away en attente',
       icon: PackageCheck,
       to: '/magasin/rangement',
     },
     {
-      label: 'Prélèvements en cours',
+      label: 'Prélèvements à traiter',
       value: pickLists.data.length,
+      hint: 'Listes de prélèvement en cours',
       icon: ClipboardList,
       to: '/magasin/prelevements',
     },
     {
-      label: 'Colis en préparation',
+      label: 'Colis à traiter',
       value: colisList.data.length,
+      hint: 'Colis en préparation',
       icon: Boxes,
       to: '/magasin/colisage',
+    },
+    {
+      label: 'Casiers actifs',
+      value: bins.data.length,
+      hint: 'Référentiel d’emplacements',
+      icon: MapPin,
+      to: '/magasin/casiers',
     },
   ], [bins.data, putaways.data, pickLists.data, colisList.data])
 
   return (
-    <div className="page flex flex-col gap-4">
-      <h2 className="font-display text-xl font-semibold tracking-tight">Magasin</h2>
-      {/* VX15 — `accent` : pastille de couleur de module (token sémantique
-          existant en attendant le registre VX8 ; jamais une couleur inventée). */}
-      <ModuleDashboard stats={stats} loading={loading} error={error} accent="var(--info)" />
+    // APX22 — même conteneur que les autres écrans de la famille inventaire
+    // (`ui-root` + padding de StockList) : Magasin était en `page`, Stock en
+    // `ui-root` — deux gouttières différentes pour deux écrans voisins.
+    <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
+      {/* ODY17 — ModuleHero VX15 : identité de cockpit + actions rapides vers
+          les 4 écrans Magasin (Casiers/Rangement/Prélèvements/Colisage).
+          APX22 — `accent` : token VX8 de la FAMILLE INVENTAIRE (source unique
+          `features/stock/inventaireAccent.js`, la clé que Stock portait déjà),
+          posé identiquement sur `ModuleDashboard` ci-dessous. */}
+      <ModuleHero
+        title="Magasin"
+        subtitle="Casiers, rangement, prélèvements et colisage d'entrepôt."
+        accent={INVENTAIRE_ACCENT}
+        actions={(
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/magasin/casiers"><MapPin /> Casiers</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/magasin/rangement"><PackageCheck /> Rangement</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/magasin/prelevements"><ClipboardList /> Prélèvements</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/magasin/entrepot"><Archive /> Entrepôt</Link>
+            </Button>
+          </>
+        )}
+      />
+      <ModuleDashboard stats={stats} loading={loading} error={error} accent={INVENTAIRE_ACCENT} />
     </div>
   )
 }

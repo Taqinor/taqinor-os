@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ClipboardCheck } from 'lucide-react'
 import savApi from '../../api/savApi'
 import {
-  Button, Checkbox, Input, Spinner, toast,
+  Button, Checkbox, ChecklistProgress, Input, Spinner, toast,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 
@@ -116,9 +116,10 @@ export default function TicketChecklistPanel({ ticketId }) {
         </>
       ) : (
         <>
-          <p className="text-xs text-muted-foreground">
-            {cochees}/{items.length} point{items.length > 1 ? 's' : ''} coché{cochees > 1 ? 's' : ''}.
-          </p>
+          {/* APX31 — « X/Y points » était du TEXTE PLAT, alors que le panneau
+              chantier montrait déjà une barre : les deux adoptent désormais le
+              MÊME composant partagé (ui/ChecklistProgress). */}
+          <ChecklistProgress done={cochees} total={items.length} noun="point" />
           <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
             {items.map((it) => (
               <li key={it.cle} className="flex flex-col gap-1.5 p-2.5 text-sm">

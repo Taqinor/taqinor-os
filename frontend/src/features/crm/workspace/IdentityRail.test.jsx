@@ -219,13 +219,15 @@ describe('LW18 — bannières intelligentes (doublons · client_match)', () => {
     expect(screen.getAllByRole('button', { name: /Fusionner ici/ })).toHaveLength(2)
   })
 
-  it('client_match → bannière avec lien vers /crm/clients/:id', async () => {
+  // APX1 — la cible était `/crm/clients/42`, une route INEXISTANTE (404 réel).
+  // Le lien profond vivant est `?id=` (VX220, lu par ClientList.jsx).
+  it('client_match → bannière avec lien profond vers /crm?id=<pk> (jamais le 404 /crm/clients/:id)', async () => {
     crmApi.getLeadClientMatch.mockResolvedValueOnce({ data: [
       { id: 42, nom: 'Atlas Agri SARL', nb_devis: 3, nb_chantiers: 1 },
     ] })
     render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
     expect(await screen.findByText(/correspond au client Atlas Agri SARL/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Ouvrir la fiche/ })).toHaveAttribute('href', '/crm/clients/42')
+    expect(screen.getByRole('link', { name: /Ouvrir la fiche/ })).toHaveAttribute('href', '/crm?id=42')
   })
 
   it('aucune bannière quand ni doublon ni client correspondant (silencieux)', async () => {

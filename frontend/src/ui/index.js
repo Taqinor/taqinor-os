@@ -17,6 +17,10 @@ export * from './Separator'
 export * from './Skeleton'
 export * from './FadeSwap'
 export * from './EmptyState'
+// APX26 — bandeau « Prochaine action » partagé (chantier + Ma journée).
+export * from './NextActionBanner'
+// EZ9 — bascule « Plein soleil » (écrans terrain).
+export * from './SunlightToggle'
 export * from './ErrorBoundary'
 export * from './NotFound'
 export * from './Forbidden'
@@ -60,6 +64,10 @@ export * from './DefinitionList'
 export * from './Tabs'
 export * from './Accordion'
 export * from './Progress'
+// APX31 — avancement de checklist : UN composant, adopté par le panneau SAV ET
+// le panneau chantier (ils rendaient deux réponses différentes à la même
+// question « où en suis-je ? »).
+export * from './ChecklistProgress'
 export * from './FloatingActionButton'
 export * from './ScrollProgress'
 

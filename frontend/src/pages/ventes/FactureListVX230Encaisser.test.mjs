@@ -31,7 +31,9 @@ test('VX230 : PaiementDialog se (ré)initialise à chaque nouvelle facture cibl�
 test('VX230 : FactureList monte le PaiementDialog partagé et rafraîchit la liste au save', () => {
   assert.match(FACTURE_LIST, /import PaiementDialog from '\.\/PaiementDialog'/)
   assert.match(FACTURE_LIST, /<PaiementDialog[\s\S]{0,160}facture=\{payTarget\}/)
-  assert.match(FACTURE_LIST, /onSaved=\{\(\) => dispatch\(fetchFactures\(\)\)\}/)
+  // EZ12 — le save rafraîchit TOUJOURS la liste ; il arme en plus le bandeau
+  // « Voir l'encaissement » (l'action suivante offerte).
+  assert.match(FACTURE_LIST, /onSaved=\{\(\) => \{ dispatch\(fetchFactures\(\)\); setDernierEncaissement\(payTarget\) \}\}/)
   // La modale locale (et ses constantes) ne vit plus ici.
   assert.doesNotMatch(FACTURE_LIST, /const handleEnregistrerPaiement/)
   assert.doesNotMatch(FACTURE_LIST, /const MODES_PAIEMENT/)

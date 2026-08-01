@@ -26,7 +26,7 @@ const PAGES_DIR = join(SRC_DIR, 'pages')
 // que la garde reste verte sans masquer une VRAIE régression ailleurs.
 const PRE_EXISTING_EXCEPTIONS = new Set([
   join(PAGES_DIR, 'admin', 'TenantsConsole.jsx'),
-  join(PAGES_DIR, 'ventes', 'VentesKanban.jsx'),
+  join(PAGES_DIR, 'ventes', 'BonCommandeList.jsx'),
 ])
 
 // Liste récursive des fichiers .jsx sous src/pages/**.

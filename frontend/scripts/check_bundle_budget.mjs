@@ -76,7 +76,19 @@ const PER_CHUNK_BUDGET_KB = 350
 // petits chunks : le garde per-chunk (350) passe SANS marge consommée, donc
 // aucun chunk gonflé et aucun impact sur le chargement initial (tout est
 // lazy). AUCUNE nouvelle dépendance npm. Réel ~2741 Ko ; palier habituel.
-const TOTAL_BUDGET_KB = 2790
+// 2026-08-01 : 2790 -> 2900. Lot ODY + APX + EZ (85 tâches) : le paradigme
+// app-first (Menu d'accueil `/apps`, coquille par app, écran « app non activée »),
+// 6 cockpits d'app, l'intérieur des apps principales (densité kanban/liste,
+// chaîne documentaire, aperçu PDF, kanbans devis, fiche chantier en onglets,
+// grille horaire, cockpit trésorerie) et les 5 trajets quotidiens EZ (undo
+// universel, dictée, mode plein soleil, outbox photos). Réel ~2832.6 Ko.
+// Croissance RÉPARTIE : aucun chunk gonflé — les deux seuls gros chunks
+// (roof-tool 455.8, pdf.worker 347.7) sont des vendors PRÉEXISTANTS sur leur
+// budget dédié, et PER_CHUNK_BUDGET_KB (350) passe sans marge consommée par le
+// code applicatif. AUCUNE nouvelle dépendance npm (contrainte tenue par les 9
+// lanes). Palier généreux habituel (~110 Ko) pour ne pas re-bumper à chaque
+// vague ; le garde per-chunk + les budgets vendors restent les vrais garde-fous.
+const TOTAL_BUDGET_KB = 2900
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -125,7 +137,13 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // chacun son propre chunk (réel ~541) — croissance produit une-route-un-chunk,
 // pas une prolifération de structure ; le budget gzip (2790) +
 // PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous de poids.
-const MAX_CHUNK_COUNT = 570
+// 2026-08-01 : 570 -> 610. Lot ODY + APX + EZ : chaque nouvel écran lazy porte
+// son propre chunk (Menu d'accueil, app non activée, 6 cockpits, comparateur
+// avant/après, grille de planification, aperçu PDF, table compta partagée…) —
+// réel ~586. Croissance une-route-un-chunk, pas une prolifération de structure ;
+// le budget gzip (2900) + PER_CHUNK_BUDGET_KB (350) restent les vrais
+// garde-fous de poids.
+export const MAX_CHUNK_COUNT = 610
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

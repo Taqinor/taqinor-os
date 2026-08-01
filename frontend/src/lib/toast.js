@@ -95,6 +95,16 @@ export function toastPromise(promise, messages = {}) {
  * Le motif « safe undo » : l'effet réel est différé jusqu'à expiration du
  * toast ; si l'utilisateur clique « Annuler » avant, rien n'est commis.
  *
+ * ⚠ EZ14 — `onCommit` EST UN COMMIT DIFFÉRÉ (`setTimeout` ci-dessous). Sur une
+ * surface où l'utilisateur navigue (un board, une liste filtrable), le
+ * composant se démonte et le timer part avec la page : l'écriture est PERDUE
+ * en silence alors que l'écran vient de dire « c'est fait ». Ne l'utilisez que
+ * sur un écran qui reste monté le temps du toast (dialogue, page de détail).
+ * Partout ailleurs, passez par `lib/mutateWithUndo.js` : il applique tout de
+ * suite et exécute l'appel INVERSE à l'annulation — rien ne peut se perdre,
+ * puisque rien n'attend. (`toastWithUndo` SANS `onCommit` est déjà ce
+ * motif-là et reste parfaitement sûr.)
+ *
  *   toastWithUndo({
  *     message: '1 lead supprimé.',
  *     onCommit: () => api.delete(id),   // exécuté après le délai si non annulé

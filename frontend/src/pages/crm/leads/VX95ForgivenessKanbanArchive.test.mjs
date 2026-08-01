@@ -17,20 +17,26 @@ const STOCK_LIST = readFileSync(
   join(HERE, '..', '..', 'stock', 'StockList.jsx'), 'utf8',
 )
 
-test('ListView : archiver un lead affiche toastWithUndo restaurant via restoreLead', () => {
+// EZ14 — le motif VX95 (« appliquer tout de suite, l'inverse à l'annulation »)
+// est INCHANGÉ ; il passe désormais par l'util unique `mutateWithUndo`, qui
+// n'accepte PAS de commit différé. Ce que VX95 protège reste vrai : l'undo
+// d'un archivage est une restauration, et réciproquement.
+test('VX95/EZ14 : archiver un lead offre l’undo dont l’inverse est restoreLead', () => {
   const start = LIST_VIEW.indexOf('const onArchive =')
   assert.ok(start > 0)
   const block = LIST_VIEW.slice(start, start + 700)
-  assert.match(block, /toastWithUndo\(/)
-  assert.match(block, /restoreLead\(lead\.id\)/)
+  assert.match(block, /mutateWithUndo\(\{/)
+  assert.match(block, /apply: \(\) => dispatch\(archiveLead\(lead\.id\)\)\.unwrap\(\)/)
+  assert.match(block, /revert: \(\) => dispatch\(restoreLead\(lead\.id\)\)\.unwrap\(\)/)
 })
 
-test('ListView : restaurer un lead affiche toastWithUndo relançant archiveLead', () => {
+test('VX95/EZ14 : restaurer un lead offre l’undo dont l’inverse est archiveLead', () => {
   const start = LIST_VIEW.indexOf('const onRestore =')
   assert.ok(start > 0)
   const block = LIST_VIEW.slice(start, start + 700)
-  assert.match(block, /toastWithUndo\(/)
-  assert.match(block, /archiveLead\(lead\.id\)/)
+  assert.match(block, /mutateWithUndo\(\{/)
+  assert.match(block, /apply: \(\) => dispatch\(restoreLead\(lead\.id\)\)\.unwrap\(\)/)
+  assert.match(block, /revert: \(\) => dispatch\(archiveLead\(lead\.id\)\)\.unwrap\(\)/)
 })
 
 test('LeadsPage.runBulk : archive/unarchive en masse déclenchent toastWithUndo avec action inverse sur le même lot', () => {

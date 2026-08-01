@@ -23,8 +23,12 @@ test('VX87 : le popover appelle crmApi.logInteraction (ressuscite le site d\'app
   assert.match(SRC, /crmApi\.logInteraction\(leadId, \{/)
 })
 
-test('VX87 : la « prochaine action » pose relance_date via updateLead dans le MÊME geste', () => {
-  assert.match(SRC, /crmApi\.updateLead\(leadId, \{ relance_date: dateInDays\(nextActionDays\) \}\)/)
+// EZ1 — la « prochaine action » pose toujours `relance_date` dans le MÊME
+// geste, mais elle n'écrase plus en silence : l'écriture est conditionnée par
+// `ecrasera` (vrai seulement s'il n'y avait pas de relance, ou si l'utilisateur
+// a explicitement choisi « Remplacer »).
+test('VX87/EZ1 : la « prochaine action » pose relance_date via updateLead dans le MÊME geste', () => {
+  assert.match(SRC, /if \(ecrasera\) \{\s*\n\s*await crmApi\.updateLead\(leadId, \{ relance_date: dateRelance \}\)/)
 })
 
 test('VX87 : les 5 issues OUTCOME_LABELS (hors clé vide) sont proposées comme choix', () => {

@@ -23,6 +23,14 @@ export function shouldSkipPrefetch(nav = (typeof navigator !== 'undefined' ? nav
 
 // path Sidebar (`item.to`) → chargeur de chunk (identique à l'import lazy du
 // routeur). 8 destinations les plus fréquentes du menu de tête.
+//
+// ODY12 — la GRILLE du Menu d'accueil (et le lanceur VX9) survolent des
+// COCKPITS d'app : on complète donc la table avec les cockpits des apps qui
+// n'y figuraient pas encore. Chaque entrée reste une COPIE EXACTE de l'import
+// lazy déclaré par le module (cf. `features/<module>/module.config.jsx`) — un
+// chemin qui bouge se met à jour aux DEUX endroits. Un cockpit absent de cette
+// table n'est pas une erreur : `prefetchRoute` est un no-op silencieux et la
+// navigation reste identique (elle paie simplement son chunk au clic).
 export const PREFETCH_MAP = {
   '/dashboard': () => import('../pages/Dashboard'),
   '/activites': () => import('../pages/activities/MesActivitesPage'),
@@ -32,6 +40,13 @@ export const PREFETCH_MAP = {
   '/ventes/factures': () => import('../pages/ventes/FactureList'),
   '/stock': () => import('../pages/stock/StockList'),
   '/chantiers': () => import('../pages/installations/InstallationsPage'),
+  // ODY12 — cockpits d'app supplémentaires (copies des module.config).
+  '/sav': () => import('../pages/sav/TicketsPage'),
+  '/rh': () => import('../features/rh/RhCockpit.jsx'),
+  '/comptabilite': () => import('../features/compta/pages/CockpitPage.jsx'),
+  '/reporting': () => import('../pages/Reporting'),
+  '/ged': () => import('../pages/ged/DocumentsPage'),
+  '/messages': () => import('../pages/messaging/ChatPage'),
 }
 
 // Chaque destination n'est chargée qu'UNE fois (le navigateur cache déjà le

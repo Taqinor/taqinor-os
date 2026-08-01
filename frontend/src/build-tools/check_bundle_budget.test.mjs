@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 
-import { checkBundleBudget } from '../../scripts/check_bundle_budget.mjs'
+import { checkBundleBudget, MAX_CHUNK_COUNT } from '../../scripts/check_bundle_budget.mjs'
 
 // YHARD7 — budget de performance du bundle. Ces tests fabriquent un faux
 // dossier `dist/assets/` avec des fichiers .js de taille contrôlée (pas de
@@ -130,12 +130,15 @@ test('a non-heavy chunk in modulepreload is never flagged', () => {
 test('chunk count metric is reported and a runaway chunk count fails', () => {
   const dir = makeDistDir()
   try {
-    // 571 minuscules chunks > le plafond MAX_CHUNK_COUNT (570).
-    for (let i = 0; i < 571; i += 1) {
+    // Un chunk de plus que le plafond COURANT — derive de la constante
+    // exportee, jamais recopie : un relevement de palier (chaque vague en
+    // fait un) ne doit pas transformer ce test en faux vert.
+    const runaway = MAX_CHUNK_COUNT + 1
+    for (let i = 0; i < runaway; i += 1) {
       writeJsOfGzipSizeKb(path.join(dir, 'assets', `icon-${i}.js`), 0.1)
     }
     const result = checkBundleBudget(dir)
-    assert.equal(result.chunkCount, 571)
+    assert.equal(result.chunkCount, runaway)
     assert.ok(result.violations.some((v) => v.includes('NOMBRE DE CHUNKS')))
   } finally {
     rmSync(dir, { recursive: true, force: true })

@@ -47,7 +47,10 @@ describe('TicketChecklistPanel (WR11 — FG82)', () => {
     await waitFor(() =>
       expect(screen.getByText('Nettoyage des panneaux')).toBeInTheDocument())
     expect(screen.getByText('Serrage des connexions')).toBeInTheDocument()
-    expect(screen.getByText('1/2 points coché.')).toBeInTheDocument()
+    // APX31 — le texte plat « 1/2 points coché. » est devenu le composant
+    // partage `ui/ChecklistProgress` (barre + compte), commun au panneau
+    // chantier : il rend « 1/2 points · 50% ».
+    expect(screen.getByText('1/2 points · 50%')).toBeInTheDocument()
 
     const boxes = screen.getAllByRole('checkbox')
     fireEvent.click(boxes[0])

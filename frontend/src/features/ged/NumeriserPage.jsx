@@ -13,6 +13,8 @@ import {
   Camera, Trash2, RotateCw, Loader2, FileText, Upload, X,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
+// APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
+import { PageHeader } from '../../ui/PageHeader'
 import {
   Card, CardContent, Button, EmptyState, Select, SelectTrigger, SelectValue,
   SelectContent, SelectItem, Input, Textarea, toast, FloatingActionButton,
@@ -123,13 +125,14 @@ export default function NumeriserPage() {
 
   return (
     <div className="page">
-      <div className="mb-4">
-        <h1 className="text-xl font-semibold">Numériser</h1>
-        <p className="text-[12.5px] text-muted-foreground">
-          Prenez des photos successives à la caméra du téléphone — elles seront
-          assemblées en un seul PDF et classées dans le dossier choisi.
-        </p>
-      </div>
+      {/* APX32 (e) — 4ᵉ idiome d'en-tête du repo (`<h1>` nu + `<p>` en taille
+          arbitraire) : l'en-tête UNIQUE de l'app (VX28). */}
+      <PageHeader
+        className="mb-4"
+        icon={Camera}
+        title="Numériser"
+        subtitle="Prenez des photos successives à la caméra du téléphone — elles seront assemblées en un seul PDF et classées dans le dossier choisi."
+      />
 
       {error ? (
         <EmptyState title="Erreur" description={error} />

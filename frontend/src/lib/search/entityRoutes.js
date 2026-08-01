@@ -82,6 +82,19 @@ export const TYPE_ACCENT = {
 }
 
 /**
+ * pathForType — ODY27 : un chemin REPRÉSENTATIF du type d'entité, servant
+ * uniquement à décider à quelle app il appartient (`useAppVisibility()
+ * .isPathVisible`). On réutilise les tables ci-dessus — jamais une 2ᵉ table
+ * type → module. Un type inconnu renvoie `''` : `isPathVisible('')` vaut VRAI,
+ * donc un nouveau type n'est jamais masqué par accident.
+ */
+export function pathForType(type) {
+  if (ROUTE[type]) return ROUTE[type](1)
+  if (LIST_ROUTE[type]) return LIST_ROUTE[type]('')
+  return ''
+}
+
+/**
  * useEntitySearch — recherche transverse débouncée (~250 ms), même patron que
  * l'un et l'autre composant AVANT cette tâche : `term.length < 2` = pas de
  * requête (réponse immédiate, groupes vidés) ; sinon débounce 250 ms puis

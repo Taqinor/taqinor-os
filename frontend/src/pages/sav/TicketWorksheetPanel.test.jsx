@@ -12,6 +12,31 @@ const sav = vi.hoisted(() => ({
 }))
 vi.mock('../../api/savApi', () => ({ default: sav }))
 
+/* APX31 — ce panneau a rejoint le kit : le <select> natif du choix de modele est
+   devenu un Radix Select, que jsdom n'ouvre pas de facon fiable (portail +
+   pointer events). Pattern etabli du depot (paie/PaieDeclarations.test.jsx,
+   monitoring/ClientPortalPage.test.jsx) : on remplace les primitives Select par
+   un <select> natif pour piloter le choix ; tout le reste de `../../ui` reste
+   REEL, donc le test continue de valider le vrai panneau. */
+vi.mock('../../ui', async (importActual) => {
+  const actual = await importActual()
+  const Passthrough = ({ children }) => <>{children}</>
+  return {
+    ...actual,
+    Select: ({ value, onValueChange, children }) => (
+      <select role="combobox" aria-label="Modèle" value={value}
+        onChange={(e) => onValueChange(e.target.value)}>
+        <option value="" />
+        {children}
+      </select>
+    ),
+    SelectTrigger: Passthrough,
+    SelectValue: () => null,
+    SelectContent: Passthrough,
+    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
+  }
+})
+
 import TicketWorksheetPanel from './TicketWorksheetPanel'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })

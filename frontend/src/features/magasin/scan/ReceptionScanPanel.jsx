@@ -1,12 +1,21 @@
-import { useMemo, useState } from 'react'
+import {
+  useEffect, useMemo, useRef, useState,
+} from 'react'
 import { Card, Badge, Button, Input, Label } from '../../../ui'
 import stockApi from '../../../api/stockApi'
+import { cn } from '../../../lib/cn'
 import useStockFlags from '../../parametres/useStockFlags'
 import ScanInputBar from './ScanInputBar'
-import { playRejectBeep } from './scanFeedback'
+import { playRejectBeep, triggerScanHaptic } from './scanFeedback'
 import {
   SCAN_MODES, matchBcfLigne, nextReceptionQuantite, rejectedScan, acceptedScan,
 } from './scanFlows'
+
+// APX23 — durée du flash plein écran (accepté/refusé). Sous reduced-motion,
+// c'est aussi la durée d'affichage de la bordure statique de repli (voir
+// index.css, bloc APX23) : même fenêtre temporelle, l'un OU l'autre est visible
+// selon la préférence de mouvement, jamais les deux.
+const SCAN_FLASH_MS = 150
 
 /* ============================================================================
    XSTK5 — Réception scan-first (`ReceptionScanPanel`).
@@ -40,6 +49,21 @@ export default function ReceptionScanPanel({ bonCommandeId }) {
   const [lastAccepted, setLastAccepted] = useState(null)
   const [capture, setCapture] = useState({ numeros_serie: '', numero_lot: '' })
   const [busy, setBusy] = useState(false)
+  // APX23 — flash fort (accepté ≠ refusé, à l'œil ET au poignet). 'accept' |
+  // 'reject' | null ; auto-effacé après SCAN_FLASH_MS (voir index.css APX23).
+  const [flash, setFlash] = useState(null)
+  const flashTimeout = useRef(null)
+
+  useEffect(() => () => {
+    if (flashTimeout.current) clearTimeout(flashTimeout.current)
+  }, [])
+
+  const triggerFlash = (tone) => {
+    setFlash(tone)
+    triggerScanHaptic()
+    if (flashTimeout.current) clearTimeout(flashTimeout.current)
+    flashTimeout.current = setTimeout(() => setFlash(null), SCAN_FLASH_MS)
+  }
 
   const load = async () => {
     if (!bonCommandeId) return
@@ -65,15 +89,18 @@ export default function ReceptionScanPanel({ bonCommandeId }) {
     } catch {
       setLastRejected(rejectedScan(code))
       playRejectBeep()
+      triggerFlash('reject')
       return
     }
     const ligne = matchBcfLigne(resolved.id, lignes)
     if (!ligne) {
       setLastRejected(rejectedScan(code))
       playRejectBeep()
+      triggerFlash('reject')
       return
     }
     setLastAccepted(acceptedScan(ligne))
+    triggerFlash('accept')
     if (resolved.gs1) {
       setCapture({
         numeros_serie: resolved.gs1.numero_serie || '',
@@ -111,69 +138,85 @@ export default function ReceptionScanPanel({ bonCommandeId }) {
   }
 
   return (
-    <Card className="flex flex-col gap-3 p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h3 className="font-display text-base font-semibold tracking-tight">
-            Réception scan — {bcf?.reference || '…'}
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Scannez un produit/EAN pour incrémenter sa quantité reçue.
-          </p>
-        </div>
-        {loading && <Badge tone="neutral">Chargement…</Badge>}
-      </div>
-
-      <ScanInputBar
-        mode={mode}
-        onModeChange={setMode}
-        onScan={handleScan}
-        lastRejected={lastRejected}
-      />
-
-      {mode === SCAN_MODES.SAISIE_QUANTITE && (
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="reception-qte-saisie">Quantité à recevoir (prochain scan)</Label>
-          <Input
-            id="reception-qte-saisie"
-            type="number"
-            inputMode="decimal"
-            step="any"
-            noValidate
-            value={saisie}
-            onChange={(e) => setSaisie(e.target.value)}
-            className="w-32"
-          />
-        </div>
+    <>
+      {flash && (
+        <div
+          aria-hidden="true"
+          data-testid="scan-flash-overlay"
+          data-tone={flash}
+          className={cn('apx23-scan-flash', `apx23-scan-flash--${flash}`)}
+        />
       )}
-
-      {lastAccepted?.ligne && (
-        <div className="rounded-lg border border-border bg-muted/30 p-2 text-sm">
-          Dernier scan accepté : <strong>{lastAccepted.ligne.produit_nom || lastAccepted.ligne.designation}</strong>
-          {' '}({lastAccepted.ligne.quantite_recue}/{lastAccepted.ligne.quantite})
-          {lotsSeriesActif && (capture.numeros_serie || capture.numero_lot) && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              {capture.numeros_serie && <span>Série : {capture.numeros_serie} </span>}
-              {capture.numero_lot && <span>Lot : {capture.numero_lot}</span>}
-            </div>
-          )}
+      <Card
+        data-flash={flash || undefined}
+        className={cn(
+          'flex flex-col gap-3 p-4 sm:p-5',
+          flash && cn('apx23-scan-flash-border', `apx23-scan-flash-border--${flash}`),
+        )}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h3 className="font-display text-base font-semibold tracking-tight">
+              Réception scan — {bcf?.reference || '…'}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Scannez un produit/EAN pour incrémenter sa quantité reçue.
+            </p>
+          </div>
+          {loading && <Badge tone="neutral">Chargement…</Badge>}
         </div>
-      )}
 
-      <ul className="flex flex-col divide-y divide-border">
-        {lignes.map((ligne) => (
-          <li key={ligne.id} className="flex items-center gap-3 py-2 text-sm">
-            <span className="flex-1">{ligne.produit_nom || ligne.designation}</span>
-            <span className="text-muted-foreground">
-              {ligne.quantite_recue ?? 0} / {ligne.quantite}
-            </span>
-          </li>
-        ))}
-      </ul>
+        <ScanInputBar
+          mode={mode}
+          onModeChange={setMode}
+          onScan={handleScan}
+          lastRejected={lastRejected}
+        />
 
-      <Button size="sm" variant="outline" disabled={busy} onClick={load}>
-        Rafraîchir
-      </Button>
-    </Card>
+        {mode === SCAN_MODES.SAISIE_QUANTITE && (
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="reception-qte-saisie">Quantité à recevoir (prochain scan)</Label>
+            <Input
+              id="reception-qte-saisie"
+              type="number"
+              inputMode="decimal"
+              step="any"
+              noValidate
+              value={saisie}
+              onChange={(e) => setSaisie(e.target.value)}
+              className="w-32"
+            />
+          </div>
+        )}
+
+        {lastAccepted?.ligne && (
+          <div className="rounded-lg border border-border bg-muted/30 p-2 text-sm">
+            Dernier scan accepté : <strong>{lastAccepted.ligne.produit_nom || lastAccepted.ligne.designation}</strong>
+            {' '}({lastAccepted.ligne.quantite_recue}/{lastAccepted.ligne.quantite})
+            {lotsSeriesActif && (capture.numeros_serie || capture.numero_lot) && (
+              <div className="mt-1 text-xs text-muted-foreground">
+                {capture.numeros_serie && <span>Série : {capture.numeros_serie} </span>}
+                {capture.numero_lot && <span>Lot : {capture.numero_lot}</span>}
+              </div>
+            )}
+          </div>
+        )}
+
+        <ul className="flex flex-col divide-y divide-border">
+          {lignes.map((ligne) => (
+            <li key={ligne.id} className="flex items-center gap-3 py-2 text-sm">
+              <span className="flex-1">{ligne.produit_nom || ligne.designation}</span>
+              <span className="text-muted-foreground">
+                {ligne.quantite_recue ?? 0} / {ligne.quantite}
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        <Button size="sm" variant="outline" disabled={busy} onClick={load}>
+          Rafraîchir
+        </Button>
+      </Card>
+    </>
   )
 }

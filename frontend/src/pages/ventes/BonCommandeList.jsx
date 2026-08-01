@@ -1,7 +1,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
-import { Search, Plus, FilePlus2, PackageX } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Search, Plus, FilePlus2, PackageX, ShoppingCart } from 'lucide-react'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+// APX13 — la chaîne documentaire devis→BC→facture, visible ici aussi.
+import DocumentStageTrack from '../../ui/DocumentStageTrack'
+import { DOC_STATUT_TRACK, bonCommandeTrack } from '../../features/ventes/documentChain'
 import {
   fetchBonsCommande,
   createBonCommande,
@@ -25,6 +31,10 @@ import {
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { ouvrirPdfBlob } from '../../utils/pdfBlob'
+// APX15(d) — plus jamais de JSON brut dans un message d'erreur.
+import { frenchError } from '../../lib/frenchError'
+// APX17 — confirmation maison (VX19/L152), jamais une popup du système.
+import { useConfirmDialog } from '../../ui/confirm'
 
 const STATUT_DISPLAY = {
   en_attente: 'En attente',
@@ -45,6 +55,9 @@ export default function BonCommandeList() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { bonsCommande, loading, error } = useSelector(s => s.ventes)
+
+  // APX17 — confirmation maison (Radix), jamais la popup du système.
+  const { confirm } = useConfirmDialog()
 
   const [activeTab, setActiveTab] = useState('tous')
   const [search, setSearch]       = useState('')
@@ -79,14 +92,16 @@ export default function BonCommandeList() {
     annule:     bonsCommande.filter(b => b.statut === 'annule').length,
   }), [bonsCommande])
 
+  // APX17 — plus une seule popup du système : la confirmation passe par le
+  // dialogue maison (VX19/L152, monté une seule fois à la racine).
   const doAction = async (thunk, id, confirmMsg) => {
-    if (confirmMsg && !window.confirm(confirmMsg)) return
+    if (confirmMsg && !(await confirm({ title: confirmMsg }))) return
     setActionId(id)
     setActionError('')
     try {
       await dispatch(thunk(id)).unwrap()
     } catch (err) {
-      setActionError(err?.detail ?? "L'action a échoué. Réessayez.")
+      setActionError(frenchError(err, "L'action a échoué. Réessayez."))
     } finally {
       setActionId(null)
     }
@@ -95,7 +110,12 @@ export default function BonCommandeList() {
   // Création de facture depuis un BC : message FR clair quand une facture
   // existe déjà (le backend renvoie un 400), avec un raccourci vers les factures.
   const handleCreerFacture = async (bc) => {
-    if (!window.confirm(`Créer une facture pour ${bc.reference} ?`)) return
+    const ok = await confirm({
+      title: `Créer une facture pour ${bc.reference} ?`,
+      confirmLabel: 'Créer la facture',
+      destructive: false,
+    })
+    if (!ok) return
     setActionId(bc.id)
     setActionError('')
     try {
@@ -105,9 +125,13 @@ export default function BonCommandeList() {
       const detail = err?.detail ?? ''
       if (/existe déjà/i.test(detail)) {
         setActionError(`Une facture existe déjà pour le BC ${bc.reference}.`)
-        if (window.confirm('Une facture existe déjà pour ce BC. Ouvrir la liste des factures ?')) {
-          navigate('/ventes/factures')
-        }
+        const go = await confirm({
+          title: 'Une facture existe déjà pour ce BC.',
+          description: 'Ouvrir la liste des factures ?',
+          confirmLabel: 'Ouvrir les factures',
+          destructive: false,
+        })
+        if (go) navigate('/ventes/factures')
       } else {
         setActionError(detail || 'Création de la facture impossible. Réessayez.')
       }
@@ -152,25 +176,34 @@ export default function BonCommandeList() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h2>
-          Bons de commande
-          {bonsCommande.length > 0 && (
-            <Badge tone="primary" className="ml-2 align-middle">{bonsCommande.length}</Badge>
-          )}
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            type="search"
-            className="w-full sm:w-64"
-            leading={<Search />}
-            placeholder="Référence, client…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <Button onClick={openNew}><Plus /> Nouveau BC</Button>
-        </div>
-      </div>
+      {/* APX11 — en-tête unique VX28 + accent Ventes. */}
+      <PageHeader
+        style={VENTES_ACCENT_STYLE}
+        className="app-accent-rail"
+        icon={ShoppingCart}
+        title={(
+          <>
+            Bons de commande
+            {bonsCommande.length > 0 && (
+              <Badge tone="primary" className="ml-2 align-middle">{bonsCommande.length}</Badge>
+            )}
+          </>
+        )}
+        subtitle="Le maillon devis → bon de commande → facture"
+        actions={(
+          <>
+            <Input
+              type="search"
+              className="w-full sm:w-64"
+              leading={<Search />}
+              placeholder="Référence, client…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            <Button onClick={openNew}><Plus /> Nouveau BC</Button>
+          </>
+        )}
+      />
 
       {actionError && (
         <div role="alert" className="mt-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -244,7 +277,19 @@ export default function BonCommandeList() {
                     <tr key={bc.id}>
                       <td><strong>{bc.reference}</strong></td>
                       <td>{bc.client_nom ?? '—'}</td>
-                      <td>{bc.devis_reference ?? <span className="text-muted-foreground">—</span>}</td>
+                      {/* APX13 — l'AMONT du document devient cliquable :
+                          `?devis=<id>` est le paramètre que DevisList lit
+                          déjà (QX12) pour surligner + scroller. */}
+                      <td>
+                        {bc.devis_reference && bc.devis
+                          ? (
+                            <Link to={`/ventes/devis?devis=${encodeURIComponent(bc.devis)}`}
+                                  className="text-primary hover:underline">
+                              {bc.devis_reference}
+                            </Link>
+                          )
+                          : (bc.devis_reference ?? <span className="text-muted-foreground">—</span>)}
+                      </td>
                       <td className="ta-right tabular-nums">
                         {bc.total_ttc != null
                           ? formatMAD(bc.total_ttc)
@@ -257,6 +302,14 @@ export default function BonCommandeList() {
                       </td>
                       <td>
                         <StatusPill status={bc.statut} label={STATUT_DISPLAY[bc.statut] ?? STATUT_DISPLAY.en_attente} />
+                        {/* APX13 — la chaîne devis→BC→facture, visible à
+                            CETTE étape aussi (le stepper VX141 n'existait
+                            que sur la liste des devis). */}
+                        <DocumentStageTrack
+                          className="mt-1"
+                          stages={DOC_STATUT_TRACK}
+                          {...bonCommandeTrack(bc)}
+                        />
                       </td>
                       <td>
                         {/* XSAL12 — état dérivé de livraison partielle (lecture seule). */}
@@ -382,8 +435,9 @@ function BCForm({ bc = null, onClose, onSaved }) {
       }
       onSaved()
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? JSON.stringify(err)
-      setErrors(prev => ({ ...prev, submit: msg }))
+      // APX15(d) — le repli jetait du JSON BRUT à l'écran (« {"client":["Ce
+      // champ est obligatoire."]} ») : message français, jamais de jargon.
+      setErrors(prev => ({ ...prev, submit: frenchError(err, 'Enregistrement impossible. Réessayez.') }))
     } finally {
       setSaving(false)
     }

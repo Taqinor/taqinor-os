@@ -81,8 +81,12 @@ export function SignatureClientPanel({ intervention, onChanged }) {
         <>
           <p className="text-[12px] text-muted-foreground">
             Faites signer le client dans le cadre ci-dessous, puis enregistrez.
+            {/* EZ7 — la signature n'est plus « une option de plus » : c'est la
+                preuve de fin de visite (et la société peut l'exiger pour
+                clôturer). Seul le NOM du signataire reste facultatif. */}
+            {' '}C’est la preuve de fin de visite.
           </p>
-          <Input placeholder="Nom du signataire (optionnel)"
+          <Input placeholder="Nom du signataire (si le client le donne)"
             value={nom} onChange={(e) => setNom(e.target.value)} />
           <SignaturePad onChange={setSig} />
           <div className="flex items-center gap-2">

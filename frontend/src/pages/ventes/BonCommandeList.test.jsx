@@ -28,7 +28,7 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
 })
 
 import ventesApi from '../../api/ventesApi'
-import VentesKanban from './VentesKanban'
+import BonCommandeList from './BonCommandeList'
 
 const BC_AVEC_RELIQUAT = {
   id: 1,
@@ -58,14 +58,14 @@ function makeStore(bonsCommande = []) {
 function renderPage(bonsCommande) {
   return render(
     <Provider store={makeStore(bonsCommande)}>
-      <MemoryRouter><VentesKanban /></MemoryRouter>
+      <MemoryRouter><BonCommandeList /></MemoryRouter>
     </Provider>,
   )
 }
 
 beforeEach(() => { vi.clearAllMocks() })
 
-describe('VentesKanban — XSAL12 livraison partielle', () => {
+describe('BonCommandeList — XSAL12 livraison partielle', () => {
   it('affiche « Livrer partiellement » pour un BC confirmé avec devis', () => {
     renderPage([BC_AVEC_RELIQUAT])
     expect(screen.getByRole('button', { name: 'Livrer partiellement' })).toBeInTheDocument()
@@ -99,7 +99,7 @@ describe('VentesKanban — XSAL12 livraison partielle', () => {
   })
 })
 
-describe('VentesKanban — ZSAL8 PDF', () => {
+describe('BonCommandeList — ZSAL8 PDF', () => {
   it('télécharge le PDF du BC via le bouton PDF', async () => {
     ventesApi.getBonCommandePdf.mockResolvedValue({ data: new Blob(['%PDF'], { type: 'application/pdf' }) })
     URL.createObjectURL = vi.fn(() => 'blob:mock')

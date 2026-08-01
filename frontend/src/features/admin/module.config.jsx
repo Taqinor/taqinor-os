@@ -2,22 +2,38 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
+import { LayoutDashboard } from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Administration vers le registre (phase
    2, après les pilotes ARC48 stock/sav).
    ----------------------------------------------------------------------------
-   Routes-only (aucune section `nav` : Sidebar.jsx garde son menu
-   Administration hard-codé, non touché — `buildModuleRoutes` traite `nav`
-   comme optionnel via `.filter(Boolean)`, donc « Sidebar sans doublon » tient
-   trivialement ici). Les titres de page (`routes.meta.js` →
+   Les ROUTES restent routes-only ici (aucun changement — leurs entrées de
+   menu vivent désormais dans `features/parametres/module.config.jsx`, voir
+   ODY23 ci-dessous, exactement comme Journal pointe vers une route déclarée
+   dans `reporting`). Les titres de page (`routes.meta.js` →
    `BASE_PAGE_TITLES`/`SECTION_LABELS`) restent déjà déclarés là-bas pour ces
    chemins et ne sont PAS dupliqués ici.
+
+   ODY23 — « Dashboard → app Tableau de bord » (distincte de l'app
+   Paramètres qui absorbe le reste d'Administration, cf.
+   `features/parametres/module.config.jsx`). `pages/Dashboard.jsx` et sa route
+   `/dashboard` restent HORS PÉRIMÈTRE (propriété ODY27, déjà un cockpit VX15
+   ModuleHero) : ce fichier n'ajoute qu'un item de nav qui y pointe — aucune
+   route nouvelle, aucun fichier touché en dehors de celui-ci. Choix assumé
+   (à revoir si le fondateur préfère un fichier `features/dashboard/` dédié,
+   hors périmètre ODY23 qui ne peut créer de nouveau module.config) : la clé
+   `admin` de ce fichier porte donc DEUX rôles au sens ERP-Apps — ses `routes`
+   restent des écrans d'Administration, sa `nav` (nouvelle) représente
+   l'app Tableau de bord. Un futur renommage de fichier/clé est un
+   changement mécanique, pas une restructuration — cf. rapport de tâche ODY23.
 
    Gating préservé à l'identique (index.jsx:153-160 `roleLoader`) :
    - `/admin/users`, `/admin/roles` : `roles: ['responsable','admin']`.
    - `/admin/tenants` (SCA22 — console fondateur, le serveur exige superuser) :
      `roles: ['admin']` seul.
+   - `/dashboard` : `authLoader` (aucun rôle — ouvert à tout authentifié,
+     index.jsx:339, INCHANGÉ).
    ========================================================================== */
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
@@ -33,6 +49,16 @@ const GouvernanceAccesPage = lazy(() => import('../../pages/admin/GouvernanceAcc
 const config = {
   key: 'admin',
   order: 80,
+  nav: {
+    label: 'TABLEAU DE BORD', labelKey: 'nav.section.dashboard',
+    // VX8 — l'une des 7 clés --module-accent-* réelles de tokens.css (pas
+    // 'primary', qui n'en fait pas partie malgré son usage dans quelques
+    // module.config verticaux préexistants).
+    accent: 'azur',
+    items: [
+      { to: '/dashboard', label: 'Tableau de bord', k: 'nav.dashboard', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['normal', 'responsable', 'admin'] },
+    ],
+  },
   routes: [
     { path: '/admin/users', component: UsersManagement, roles: ['responsable', 'admin'] },
     { path: '/admin/roles', component: RolesManagement, roles: ['responsable', 'admin'] },

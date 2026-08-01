@@ -1,6 +1,10 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { Paperclip } from 'lucide-react'
-import { Button, IconButton } from '../../../ui'
+import { Button, IconButton, HelpTip } from '../../../ui'
+// EZ15 — dictée INLINE navigateur (bureau). Frontière avec NTMOB30, qui
+// possède le TERRAIN (enregistrement + transcription serveur) : jamais deux
+// boutons micro sur un même champ.
+import { DictationButton, DICTATION_PRIVACY_FR } from '../../../ui/DictationButton'
 import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
 import marketingApi from '../../../api/marketingApi'
@@ -199,6 +203,17 @@ export default function TimelineTab({
           onChange={(e) => setComposer({ note: e.target.value })}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }}
         />
+        {/* EZ15 — dictée inline au BUREAU. Le bouton n'existe pas sur un
+            navigateur sans Web Speech (Firefox) : le champ est alors
+            strictement celui d'avant. Le texte s'AJOUTE (jamais un
+            remplacement) — on peut dicter après avoir tapé, et l'inverse. */}
+        <DictationButton
+          label="Dicter la note"
+          onText={(txt) => setComposer({
+            note: composer.note ? `${composer.note} ${txt}` : txt,
+          })}
+        />
+        <HelpTip label="Confidentialité de la dictée">{DICTATION_PRIVACY_FR}</HelpTip>
         <input
           ref={noteFileInputRef}
           type="file"
