@@ -41,7 +41,8 @@ describe('VX9 — AppLauncher', () => {
 
   it("s'ouvre sur l'événement `taqinor:app-launcher` et liste des apps", () => {
     renderLauncherOpen()
-    expect(screen.getByRole('dialog', { name: /Lanceur d'applications/i })).toBeInTheDocument()
+    // Nom accessible = le DialogTitle (aria-labelledby l'emporte sur aria-label).
+    expect(screen.getByRole('dialog', { name: /Mes applications/i })).toBeInTheDocument()
     expect(screen.getByText('Toutes les applications')).toBeInTheDocument()
     expect(screen.getAllByRole('listitem').length).toBeGreaterThan(0)
   })
