@@ -5250,12 +5250,21 @@ textarea.form-control {
   margin-top: 0;
   transition: max-height 150ms ease, opacity 150ms ease, margin-top 150ms ease;
 }
-.kb-drag-wrap:hover .kb-stage-mover,
 .kb-drag-wrap:focus-within .kb-stage-mover {
   max-height: 4rem;
   opacity: 1;
   margin-top: 0.28rem;
   overflow: visible;
+}
+/* Le survol ne révèle qu'en pointeur fin (garde hover-compat du repo) ; le
+   chemin clavier (:focus-within, ci-dessus) marche sur TOUT appareil. */
+@media (hover: hover) {
+  .kb-drag-wrap:hover .kb-stage-mover {
+    max-height: 4rem;
+    opacity: 1;
+    margin-top: 0.28rem;
+    overflow: visible;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .kb-stage-mover { transition: none; }

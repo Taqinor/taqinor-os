@@ -52,10 +52,16 @@ test('VX87 : TimelineTab (onglet Historique du cockpit) monte CallLogPopover', (
   assert.match(TIMELINE_SRC, /<CallLogPopover/)
 })
 
-test('VX87 : LeadCard.jsx arme le nudge sur les deux liens tel: (swipe + contact)', () => {
+test('VX87 : LeadCard.jsx arme le nudge sur CHAQUE lien tel: de la carte', () => {
+  // GESTES PURS (fondateur 2026-08-01) : le swipe-to-action est retiré, son
+  // lien tel: avec lui — il reste UN site (la rangée .kb-quick, 44px). Le
+  // contrat devient : tout lien tel: rendu par la carte arme le nudge, et
+  // aucun lien tel: n'existe sans armement.
   assert.match(LEADCARD_SRC, /useCallEndedNudge/)
   const armCount = (LEADCARD_SRC.match(/armCallNudge\(\)/g) || []).length
-  assert.ok(armCount >= 2, `attendu ≥2 sites d'armement, trouvé ${armCount}`)
+  assert.ok(armCount >= 1, `attendu ≥1 site d'armement, trouvé ${armCount}`)
+  const telLinks = (LEADCARD_SRC.match(/href=\{tel\}/g) || []).length
+  assert.equal(telLinks, armCount, `chaque lien tel: doit armer le nudge (liens=${telLinks}, armements=${armCount})`)
 })
 
 test('VX87 : ListView.jsx arme le nudge sur les deux liens tel: (icône compacte + colonne)', () => {
