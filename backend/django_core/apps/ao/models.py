@@ -731,6 +731,131 @@ class ToitureAO(TenantModel):
         return self.surface_m2
 
 
+# ── AOF23 — Chaînes de cotes : le STATUT est porté par la DONNÉE ───────────
+
+class StatutCote(models.TextChoices):
+    """Fiabilité d'une cote — portée par la DONNÉE, jamais par un style.
+
+    Ce statut alimentera le dessin, la légende, la section « À CONFIRMER À
+    L'EXÉCUTION » et la liste des points à lever : le coder comme une couleur
+    dans un gabarit le rendrait impossible à interroger.
+    """
+    MESURE = 'MESURE', 'Mesurée sur site'
+    A_CONFIRMER = 'A_CONFIRMER', 'À confirmer à l\'exécution'
+    PLAN_OU_DEDUIT = 'PLAN_OU_DEDUIT', 'Lue sur plan ou déduite'
+
+
+class ChaineCotes(TenantModel):
+    """Une chaîne de cotes et sa FERMETURE (AOF23).
+
+    Une chaîne additionne des segments et se compare à une mesure totale. Le
+    RÉSIDU (en mètres ET en pourcentage) est la seule façon honnête de dire si
+    un relevé tient debout.
+
+    **Règle métier gravée :** une cote DÉDUITE d'une fermeture exacte PRIME sur
+    une valeur annoncée arrondie, et bascule automatiquement en
+    ``A_CONFIRMER``. Cas réel : 51,10 − (19,36 + 7,92 + 4,50 + 10,50) = 8,82 m
+    déduits, contre « ≈ 8,5 » annoncé — l'écart de 0,32 m se publie, il ne se
+    gomme pas.
+
+    La tolérance est PAR CHAÎNE (0,02 à 0,30 m constatés selon l'instrument et
+    la longueur) : une tolérance globale serait tantôt laxiste, tantôt absurde.
+    """
+
+    class Axe(models.TextChoices):
+        X = 'x', 'Axe X (longueur)'
+        Y = 'y', 'Axe Y (largeur)'
+        OBLIQUE = 'oblique', 'Oblique / diagonale'
+
+    class Verdict(models.TextChoices):
+        OK = 'ok', 'Fermeture OK'
+        ECART = 'ecart', 'Écart de fermeture'
+        INCOMPLETE = 'incomplete', 'Chaîne incomplète'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les cotes suivent la societe
+        related_name='chaines_cotes_ao',
+        verbose_name='Société',
+    )
+    toiture = models.ForeignKey(
+        ToitureAO,
+        on_delete=models.CASCADE,  # on_delete: chaine fille d'une toiture : aucune existence hors d'elle
+        related_name='chaines_cotes',
+        verbose_name='Toiture',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    axe = models.CharField(
+        max_length=8, choices=Axe.choices, default=Axe.X, verbose_name='Axe')
+    #: ``[{"libelle": "A→B", "valeur_m": 19.36, "statut": "MESURE",
+    #:    "valeur_annoncee_m": 8.5, "deduit": true}, …]``
+    segments = models.JSONField(
+        default=list, blank=True, verbose_name='Segments')
+    mesure_totale_m = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Mesure totale (m)')
+    #: Tolérance PROPRE à cette chaîne (0,02 à 0,30 m constatés).
+    tolerance_m = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('0.050'),
+        verbose_name='Tolérance (m)')
+    #: Résidus CALCULÉS et PERSISTÉS (le rapport doit pouvoir les citer).
+    residu_m = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Résidu (m)')
+    residu_pct = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True,
+        verbose_name='Résidu (%)')
+    verdict = models.CharField(
+        max_length=12, choices=Verdict.choices, default=Verdict.INCOMPLETE,
+        verbose_name='Verdict')
+
+    class Meta:
+        verbose_name = 'Chaîne de cotes (AO)'
+        verbose_name_plural = 'Chaînes de cotes (AO)'
+        db_table = 'ao_chaine_cotes'
+        ordering = ['toiture', 'axe', 'id']
+        indexes = [models.Index(fields=['company', 'toiture'])]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_axe_display()})'
+
+    @property
+    def somme_segments_m(self):
+        total = Decimal('0.000')
+        for segment in self.segments or []:
+            valeur = segment.get('valeur_m')
+            if valeur in (None, ''):
+                continue
+            total += Decimal(str(valeur))
+        return total
+
+    @property
+    def cotes_a_confirmer(self):
+        """Les segments ORANGE — la liste des points à lever en dérive."""
+        return [
+            segment for segment in (self.segments or [])
+            if segment.get('statut') == StatutCote.A_CONFIRMER
+        ]
+
+    def recalculer_fermeture(self):
+        """Recalcule résidu (m et %) + verdict. Valeurs PERSISTÉES à l'appel."""
+        if self.mesure_totale_m is None:
+            self.residu_m = None
+            self.residu_pct = None
+            self.verdict = self.Verdict.INCOMPLETE
+            return self.verdict
+        residu = Decimal(self.mesure_totale_m) - self.somme_segments_m
+        self.residu_m = residu.quantize(Decimal('0.001'))
+        total = Decimal(self.mesure_totale_m)
+        self.residu_pct = (
+            (residu / total * Decimal('100')).quantize(Decimal('0.001'))
+            if total else None)
+        self.verdict = (
+            self.Verdict.OK if abs(self.residu_m) <= Decimal(self.tolerance_m)
+            else self.Verdict.ECART)
+        return self.verdict
+
+
 # ── AOF22 — L'obstacle est une ENTITÉ DE PREMIER RANG ──────────────────────
 
 class ObstacleAO(TenantModel):

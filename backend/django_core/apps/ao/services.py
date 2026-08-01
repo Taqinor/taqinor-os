@@ -18,7 +18,9 @@ from django.utils import timezone
 from core import events
 from core.numbering import create_with_reference
 
-from .models import AppelOffre, EcheanceAO, PlanSource, ResultatAO
+from .models import (
+    AppelOffre, EcheanceAO, PlanSource, ResultatAO, StatutCote,
+)
 
 #: AOF5 — préfixe de NOTRE numérotation d'appels d'offres (``AO-YYYYMM-0001``).
 #: La référence de l'acheteur vit dans ``AppelOffre.reference_acheteur`` et
@@ -399,6 +401,112 @@ def cautions_expirant_avant_ouverture(appel_offre):
         caution for caution in appel_offre.cautions.all()
         if caution.expire_avant_ouverture
     ]
+
+
+# ── AOF23 — Fermetures de chaînes : la déduction PRIME sur l'annoncé ───────
+
+def recalculer_chaine(chaine):
+    """Recalcule la fermeture d'une chaîne PUIS persiste (AOF23)."""
+    chaine.recalculer_fermeture()
+    chaine.save(update_fields=[
+        'residu_m', 'residu_pct', 'verdict', 'updated_at'])
+    return chaine
+
+
+def deduire_segment(chaine, index, *, user=None):
+    """Déduit le segment ``index`` de la FERMETURE EXACTE de la chaîne.
+
+    Règle métier gravée : la valeur DÉDUITE prime sur la valeur ANNONCÉE
+    (souvent arrondie sur le terrain), et le segment bascule automatiquement en
+    ``A_CONFIRMER``. Cas réel : 51,10 − (19,36 + 7,92 + 4,50 + 10,50) = 8,82 m
+    déduits contre « ≈ 8,5 » annoncé — l'écart de 0,32 m se PUBLIE.
+
+    La valeur annoncée n'est pas jetée : elle est conservée dans
+    ``valeur_annoncee_m`` pour que l'écart reste citable.
+
+    Raises:
+        ValidationError: sans mesure totale, aucune déduction n'est possible.
+    """
+    if chaine.mesure_totale_m is None:
+        raise ValidationError({'mesure_totale_m': (
+            "Sans mesure totale, aucun segment ne peut être déduit d'une "
+            'fermeture.'
+        )})
+    segments = [dict(s) for s in (chaine.segments or [])]
+    if not 0 <= index < len(segments):
+        raise ValidationError({'segments': 'Segment inexistant.'})
+
+    autres = Decimal('0.000')
+    for position, segment in enumerate(segments):
+        if position == index:
+            continue
+        valeur = segment.get('valeur_m')
+        if valeur not in (None, ''):
+            autres += Decimal(str(valeur))
+    deduit = (Decimal(chaine.mesure_totale_m) - autres).quantize(
+        Decimal('0.001'))
+
+    cible = segments[index]
+    annoncee = cible.get('valeur_m')
+    if annoncee not in (None, '') and Decimal(str(annoncee)) != deduit:
+        cible['valeur_annoncee_m'] = float(Decimal(str(annoncee)))
+    cible['valeur_m'] = float(deduit)
+    cible['deduit'] = True
+    # Une valeur déduite n'a JAMAIS été mesurée : elle est à confirmer.
+    cible['statut'] = StatutCote.A_CONFIRMER.value
+    segments[index] = cible
+
+    chaine.segments = segments
+    chaine.recalculer_fermeture()
+    chaine.save(update_fields=[
+        'segments', 'residu_m', 'residu_pct', 'verdict', 'updated_at'])
+    _journaliser_chaine(chaine, cible, annoncee, deduit, user)
+    return chaine
+
+
+def proposer_compensation_prorata(chaine):
+    """PROPOSE une répartition du résidu au prorata — sans RIEN appliquer.
+
+    Appliquer une compensation en silence transformerait un écart de relevé en
+    fausse précision : la proposition est rendue à l'utilisateur, qui décide.
+    Renvoie ``{'residu_m', 'segments': [{'index', 'libelle', 'valeur_m',
+    'valeur_proposee_m', 'delta_m'}]}`` ou ``None`` si rien à répartir.
+    """
+    if chaine.residu_m in (None, '') or Decimal(chaine.residu_m) == 0:
+        return None
+    somme = chaine.somme_segments_m
+    if somme == 0:
+        return None
+    residu = Decimal(chaine.residu_m)
+    lignes = []
+    for index, segment in enumerate(chaine.segments or []):
+        valeur = segment.get('valeur_m')
+        if valeur in (None, ''):
+            continue
+        valeur = Decimal(str(valeur))
+        delta = (residu * valeur / somme).quantize(Decimal('0.001'))
+        lignes.append({
+            'index': index,
+            'libelle': segment.get('libelle', ''),
+            'valeur_m': float(valeur),
+            'valeur_proposee_m': float(valeur + delta),
+            'delta_m': float(delta),
+        })
+    return {'residu_m': float(residu), 'applique': False, 'segments': lignes}
+
+
+def _journaliser_chaine(chaine, segment, annoncee, deduit, user):
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        chaine.toiture.batiment.appel_offre, Activity.Kind.MODIFICATION,
+        user=user, field='segments',
+        field_label=f'Chaîne « {chaine.libelle} » — {segment.get("libelle", "")}',
+        old_value=('' if annoncee in (None, '') else str(annoncee)),
+        new_value=str(deduit),
+        body='Cote déduite de la fermeture — à confirmer à l\'exécution.',
+        company=chaine.company)
 
 
 # ── AOF22 — Obstacles : provenance, dégagement dérivé, écartement ──────────

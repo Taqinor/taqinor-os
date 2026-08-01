@@ -1,24 +1,23 @@
-# AOF18 + AOF20 + AOF21 + AOF22 — GÉOMÉTRIE du projet, PIÈCES REÇUES du DCE et
-# OBSTACLES : ``ao_batiment``, ``ao_toiture``, ``ao_plan_source``,
-# ``ao_piece_consultation``, ``ao_obstacle``.
+# AOF18 + AOF20 + AOF21 + AOF22 + AOF23 — GÉOMÉTRIE, PIÈCES REÇUES du DCE,
+# OBSTACLES et CHAÎNES DE COTES : ``ao_batiment``, ``ao_toiture``,
+# ``ao_plan_source``, ``ao_piece_consultation``, ``ao_obstacle``,
+# ``ao_chaine_cotes``.
 #
-# Cinq tables NEUVES (aucun impact sur les tables ``compta_*`` héritées).
+# Six tables NEUVES (aucun impact sur les tables ``compta_*`` héritées).
 #
-#   * AOF18 — la toiture stocke son enveloppe en repère LOCAL MÉTRIQUE
-#     (``contour_local_m``) : le nom du champ porte l'unité ET l'ordre des axes,
-#     pour rendre DÉTECTABLE l'inversion lat/lng entre l'outil de tracé
-#     (``[lng, lat]``) et le lead CRM (``[lat, lng]``) — conversion en frontière
-#     (AOF19).
-#   * AOF20 — ``PlanSource`` : les TROIS portes d'entrée sont UN CHAMP
-#     (``origine``). Le fichier passe par ``records.Attachment`` — JAMAIS un
-#     ``FileField`` (garde ARC26).
-#   * AOF21 — ``PieceConsultation`` : le DCE REÇU de l'acheteur, additifs
-#     compris ; ``ExigenceCPS`` gagne son lien documentaire + ``a_reverifier``.
-#   * AOF22 — ``ObstacleAO`` : la PROVENANCE est une donnée de premier rang
-#     (elle pilote le dégagement ET le caractère engageable), et un obstacle
-#     mesuré n'est JAMAIS supprimé — il passe ``ECARTE`` en CONSERVANT sa
-#     géométrie, ce qui rend le retour arrière trivial et l'échelle de
-#     décomposition reproductible.
+#   * AOF18 — enveloppe en repère LOCAL MÉTRIQUE (``contour_local_m``) : le nom
+#     du champ porte l'unité ET l'ordre des axes, pour rendre DÉTECTABLE
+#     l'inversion lat/lng entre l'outil de tracé et le lead CRM (AOF19).
+#   * AOF20 — ``PlanSource`` : les TROIS portes d'entrée sont UN CHAMP. Le
+#     fichier passe par ``records.Attachment``, JAMAIS un ``FileField``.
+#   * AOF21 — ``PieceConsultation`` : le DCE REÇU, additifs compris.
+#   * AOF22 — ``ObstacleAO`` : la PROVENANCE pilote le dégagement ET le
+#     caractère engageable ; un obstacle mesuré n'est jamais supprimé (ÉCARTÉ,
+#     géométrie CONSERVÉE).
+#   * AOF23 — ``ChaineCotes`` : fermeture, résidu en mètres ET en pourcentage,
+#     tolérance PAR CHAÎNE, et statut de fiabilité porté par la DONNÉE (jamais
+#     par un style) — c'est lui qui alimentera la section « À CONFIRMER À
+#     L'EXÉCUTION ».
 
 import django.db.models.deletion
 from decimal import Decimal
@@ -185,6 +184,30 @@ class Migration(migrations.Migration):
                 'ordering': ['toiture', 'repere', 'id'],
             },
         ),
+        migrations.CreateModel(
+            name='ChaineCotes',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('libelle', models.CharField(max_length=255, verbose_name='Libellé')),
+                ('axe', models.CharField(choices=[('x', 'Axe X (longueur)'), ('y', 'Axe Y (largeur)'), ('oblique', 'Oblique / diagonale')], default='x', max_length=8, verbose_name='Axe')),
+                ('segments', models.JSONField(blank=True, default=list, verbose_name='Segments')),
+                ('mesure_totale_m', models.DecimalField(blank=True, decimal_places=3, max_digits=10, null=True, verbose_name='Mesure totale (m)')),
+                ('tolerance_m', models.DecimalField(decimal_places=3, default=Decimal('0.050'), max_digits=6, verbose_name='Tolérance (m)')),
+                ('residu_m', models.DecimalField(blank=True, decimal_places=3, max_digits=10, null=True, verbose_name='Résidu (m)')),
+                ('residu_pct', models.DecimalField(blank=True, decimal_places=3, max_digits=8, null=True, verbose_name='Résidu (%)')),
+                ('verdict', models.CharField(choices=[('ok', 'Fermeture OK'), ('ecart', 'Écart de fermeture'), ('incomplete', 'Chaîne incomplète')], default='incomplete', max_length=12, verbose_name='Verdict')),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='chaines_cotes_ao', to='authentication.company', verbose_name='Société')),
+                ('toiture', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='chaines_cotes', to='ao.toitureao', verbose_name='Toiture')),
+            ],
+            options={
+                'verbose_name': 'Chaîne de cotes (AO)',
+                'verbose_name_plural': 'Chaînes de cotes (AO)',
+                'db_table': 'ao_chaine_cotes',
+                'ordering': ['toiture', 'axe', 'id'],
+            },
+        ),
         migrations.AddIndex(
             model_name='batimentao',
             index=models.Index(fields=['company', 'appel_offre'], name='ao_batiment_company_974dc7_idx'),
@@ -220,5 +243,9 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name='obstacleao',
             index=models.Index(fields=['company', 'provenance'], name='ao_obstacle_company_aed528_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='chainecotes',
+            index=models.Index(fields=['company', 'toiture'], name='ao_chaine_c_company_b9e11c_idx'),
         ),
     ]

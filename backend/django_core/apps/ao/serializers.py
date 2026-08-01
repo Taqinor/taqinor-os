@@ -13,6 +13,7 @@ from .models import (
     BatimentAO,
     BordereauPrix,
     CautionSoumission,
+    ChaineCotes,
     DossierSoumission,
     EcheanceAO,
     ExigenceCPS,
@@ -106,6 +107,31 @@ class ToitureAOSerializer(serializers.ModelSerializer):
         sonde = ToitureAO(**donnees)
         sonde.clean()
         return attrs
+
+
+class ChaineCotesSerializer(serializers.ModelSerializer):
+    """AOF23 — la chaîne, sa fermeture et ses cotes à confirmer."""
+    axe_display = serializers.CharField(
+        source='get_axe_display', read_only=True)
+    verdict_display = serializers.CharField(
+        source='get_verdict_display', read_only=True)
+    #: Résidus CALCULÉS et persistés — jamais saisis.
+    residu_m = serializers.DecimalField(
+        max_digits=10, decimal_places=3, read_only=True, allow_null=True)
+    residu_pct = serializers.DecimalField(
+        max_digits=8, decimal_places=3, read_only=True, allow_null=True)
+    verdict = serializers.CharField(read_only=True)
+    somme_segments_m = serializers.DecimalField(
+        max_digits=12, decimal_places=3, read_only=True)
+    cotes_a_confirmer = serializers.ListField(read_only=True)
+
+    class Meta:
+        model = ChaineCotes
+        fields = [
+            'id', 'toiture', 'libelle', 'axe', 'axe_display', 'segments',
+            'mesure_totale_m', 'tolerance_m', 'somme_segments_m', 'residu_m',
+            'residu_pct', 'verdict', 'verdict_display', 'cotes_a_confirmer',
+        ]
 
 
 class ObstacleAOSerializer(serializers.ModelSerializer):

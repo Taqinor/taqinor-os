@@ -31,6 +31,7 @@ from .models import (
     BatimentAO,
     BordereauPrix,
     CautionSoumission,
+    ChaineCotes,
     DossierSoumission,
     EcheanceAO,
     ExigenceCPS,
@@ -47,6 +48,7 @@ from .serializers import (
     BatimentAOSerializer,
     BordereauPrixSerializer,
     CautionSoumissionSerializer,
+    ChaineCotesSerializer,
     DossierSoumissionSerializer,
     EcheanceAOSerializer,
     ExigenceCPSSerializer,
@@ -235,6 +237,57 @@ class ToitureAOViewSet(AoBaseViewSet):
     def _recalculer(toiture):
         toiture.recalculer_surface()
         toiture.save(update_fields=['surface_m2', 'updated_at'])
+
+
+class ChaineCotesViewSet(AoBaseViewSet):
+    """Chaînes de cotes et fermetures (AOF23).
+
+    ``deduire`` applique la règle métier gravée : la cote DÉDUITE d'une
+    fermeture exacte prime sur la valeur annoncée et bascule en
+    ``A_CONFIRMER``. ``compensation`` PROPOSE une répartition au prorata sans
+    RIEN appliquer — une compensation silencieuse transformerait un écart de
+    relevé en fausse précision.
+    """
+    queryset = ChaineCotes.objects.all()
+    serializer_class = ChaineCotesSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle']
+    ordering_fields = ['libelle', 'axe', 'verdict']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'axe', 'verdict'))
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        services.recalculer_chaine(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        services.recalculer_chaine(serializer.instance)
+
+    @action(detail=True, methods=['post'], url_path='deduire')
+    def deduire(self, request, pk=None):
+        try:
+            index = int(request.data.get('index'))
+        except (TypeError, ValueError):
+            return Response({'index': 'Index de segment requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            chaine = services.deduire_segment(
+                self.get_object(), index, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'segments': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(chaine).data)
+
+    @action(detail=True, methods=['get'], url_path='compensation')
+    def compensation(self, request, pk=None):
+        """PROPOSE la compensation au prorata — n'applique RIEN."""
+        return Response(
+            services.proposer_compensation_prorata(self.get_object()))
 
 
 class ObstacleAOViewSet(AoBaseViewSet):
