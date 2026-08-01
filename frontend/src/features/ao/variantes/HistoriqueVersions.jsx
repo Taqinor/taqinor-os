@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { History, AlertTriangle, Undo2 } from 'lucide-react'
 import aoApi from '../../../api/aoApi'
 import useResource from '../../../hooks/useResource'
@@ -50,15 +50,24 @@ export function HistoriqueVersions({ calepinageId, onRestaure }) {
   )
 
   // Par défaut : la plus ancienne en A, la plus récente en B (ordre serveur
-  // conservé — le front ne retrie pas un historique).
-  useEffect(() => {
-    if (versions.length < 2) return
-    setAId((prev) => (versions.some((v) => v.id === prev) ? prev : versions[versions.length - 1].id))
-    setBId((prev) => (versions.some((v) => v.id === prev) ? prev : versions[0].id))
-  }, [versions])
+  // conservé — le front ne retrie pas un historique). Dérivé au RENDU (pas
+  // stocké via un effet) : `aId`/`bId` ne portent qu'un éventuel choix
+  // explicite de l'utilisateur ; tant qu'il n'y en a pas — ou qu'il ne
+  // correspond plus à une version connue — la valeur effective retombe sur
+  // le défaut, recalculée à chaque rendu.
+  const aIdEffectif = useMemo(() => {
+    if (versions.length < 2) return null
+    if (aId != null && versions.some((v) => v.id === aId)) return aId
+    return versions[versions.length - 1].id
+  }, [versions, aId])
+  const bIdEffectif = useMemo(() => {
+    if (versions.length < 2) return null
+    if (bId != null && versions.some((v) => v.id === bId)) return bId
+    return versions[0].id
+  }, [versions, bId])
 
-  const versionA = useMemo(() => versions.find((v) => v.id === aId) ?? null, [versions, aId])
-  const versionB = useMemo(() => versions.find((v) => v.id === bId) ?? null, [versions, bId])
+  const versionA = useMemo(() => versions.find((v) => v.id === aIdEffectif) ?? null, [versions, aIdEffectif])
+  const versionB = useMemo(() => versions.find((v) => v.id === bIdEffectif) ?? null, [versions, bIdEffectif])
 
   const restaurer = useCallback(async (version) => {
     const ok = await confirm({
@@ -125,8 +134,8 @@ export function HistoriqueVersions({ calepinageId, onRestaure }) {
                   <td className="py-2 pr-3">
                     <Button
                       size="sm"
-                      variant={v.id === aId ? 'default' : 'outline'}
-                      aria-pressed={v.id === aId}
+                      variant={v.id === aIdEffectif ? 'default' : 'outline'}
+                      aria-pressed={v.id === aIdEffectif}
                       onClick={() => setAId(v.id)}
                       aria-label={`Référence A : ${v.libelle}`}
                     >
@@ -136,8 +145,8 @@ export function HistoriqueVersions({ calepinageId, onRestaure }) {
                   <td className="py-2 pr-3">
                     <Button
                       size="sm"
-                      variant={v.id === bId ? 'default' : 'outline'}
-                      aria-pressed={v.id === bId}
+                      variant={v.id === bIdEffectif ? 'default' : 'outline'}
+                      aria-pressed={v.id === bIdEffectif}
                       onClick={() => setBId(v.id)}
                       aria-label={`Comparée B : ${v.libelle}`}
                     >
