@@ -130,8 +130,12 @@ CAPACITE_DU_BATIMENT = AgentAction(
     description=(
         "Liste les variantes de calepinage d'une toiture avec leur rôle "
         "(retenue / alternative / sensibilité / marche d'échelle), leur "
+        # « écarts », pas « marges » : ce que la preuve porte, c'est la
+        # DIFFÉRENCE entre le compte retenu et le compte optimal. Employer
+        # « marge » dans le domaine AO fait lire de l'économie directeur là où
+        # il n'y en a pas — et le ratchet des mots d'argent le refuse, à raison.
         "compte de modules, leur puissance et leur PREUVE (total retenu vs "
-        "total optimal, marges). Lecture seule : l'agent ne publie ni ne "
+        "total optimal, écarts). Lecture seule : l'agent ne publie ni ne "
         "retient jamais une variante — publier, c'est engager un plan."
     ),
     endpoint='/api/django/ao/variantes-calepinage/?toiture={toiture_id}',
