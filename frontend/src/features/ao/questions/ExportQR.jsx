@@ -1,10 +1,11 @@
 import {
-  useEffect, useMemo, useRef, useState,
+  useMemo, useRef, useState,
 } from 'react'
 import { AlertTriangle, Check, Copy } from 'lucide-react'
 import { Badge, Button, Checkbox } from '../../../ui'
 import { svgVersPng, svgVersPngBlob, LARGEUR_EXPORT_DEFAUT } from '../studio/svgToPng'
 import { detecterSurChamps } from '../sanitisation'
+import { construireLignesExport, champsAControler } from './ExportQR.utils'
 
 /* ============================================================================
    AOF107 (2/3) — Export « prêt à coller » : image annotée + liste numérotée.
@@ -26,58 +27,18 @@ import { detecterSurChamps } from '../sanitisation'
    automatique et silencieuse du texte.
    ========================================================================== */
 
-export const MAX_CARACTERES_LIGNE = 78
 const HAUTEUR_LIGNE_PX = 26
 const MARGE_PX = 24
 const TAILLE_POLICE_PX = 20
-
-/** Retour à la ligne PUR, sans dépendance — coupe aux espaces. */
-export function envelopperTexte(texte, maxCaracteres = MAX_CARACTERES_LIGNE) {
-  const mots = String(texte ?? '').trim().split(/\s+/).filter(Boolean)
-  if (mots.length === 0) return ['']
-  const lignes = []
-  let courante = ''
-  for (const mot of mots) {
-    const essai = courante ? `${courante} ${mot}` : mot
-    if (essai.length > maxCaracteres && courante) {
-      lignes.push(courante)
-      courante = mot
-    } else {
-      courante = essai
-    }
-  }
-  if (courante) lignes.push(courante)
-  return lignes
-}
-
-/** Les lignes FINALES du bloc « liste numérotée », déjà enveloppées. */
-export function construireLignesExport(questions = [], maxCaracteres = MAX_CARACTERES_LIGNE) {
-  const lignes = []
-  questions.forEach((q, i) => {
-    const entete = `${i + 1}. Repère ${q.repere} — ${q.texte ?? ''}`
-    lignes.push(...envelopperTexte(entete, maxCaracteres))
-  })
-  return lignes
-}
-
-/** Champs RÉELLEMENT rendus dans l'export, nommés par repère — c'est ce que
- * le contrôle de vocabulaire interroge (jamais la réponse/décision interne,
- * qui ne sort pas dans cet export). */
-export function champsAControler(questions = []) {
-  const champs = {}
-  for (const q of questions) {
-    if (q.texte) champs[`Repère ${q.repere}`] = q.texte
-  }
-  return champs
-}
 
 function LigneAlerte({ repere, trouvailles }) {
   return (
     <li className="flex flex-col gap-0.5">
       <span className="font-medium text-foreground">{repere}</span>
-      {trouvailles.map((t, i) => (
-        // eslint-disable-next-line react/no-array-index-key -- alertes en lecture seule, append-only par détection
-        <span key={i} className="flex flex-wrap items-center gap-1 text-muted-foreground">
+      {trouvailles.map((t) => (
+        // Clé stable issue de la donnée : `code` (mot du registre) + `index`
+        // (position du match dans le texte) sont uniques par trouvaille.
+        <span key={`${t.code}-${t.index}`} className="flex flex-wrap items-center gap-1 text-muted-foreground">
           <span className="font-medium text-foreground">{t.libelle}</span>
           <span>
             {t.remplacement ? `→ « ${t.remplacement} »` : '→ à retirer (aucune formulation de remplacement)'}
@@ -99,7 +60,17 @@ export function ExportQR({
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState(null)
 
-  useEffect(() => { setConfirme(false); setResultat(null); setCopie(false) }, [imageSrc, questions])
+  // Réinitialise l'aperçu/confirmation quand la SOURCE change (nouvelle image
+  // ou nouvelle liste de questions) : ajustement pendant le rendu (pattern
+  // recommandé par React pour dériver un état depuis des props qui changent)
+  // plutôt qu'un `useEffect` qui provoquerait un rendu en cascade.
+  const [derniereSource, setDerniereSource] = useState({ imageSrc, questions })
+  if (derniereSource.imageSrc !== imageSrc || derniereSource.questions !== questions) {
+    setDerniereSource({ imageSrc, questions })
+    setConfirme(false)
+    setResultat(null)
+    setCopie(false)
+  }
 
   const alertesParChamp = useMemo(
     () => detecterSurChamps(champsAControler(questions), { date }),
@@ -242,8 +213,10 @@ export function ExportQR({
         <g transform={`translate(${MARGE_PX}, ${dimsImage.hauteur + MARGE_PX + TAILLE_POLICE_PX})`}>
           {lignes.map((ligne, i) => (
             <text
-              // eslint-disable-next-line react/no-array-index-key -- lignes déjà enveloppées, ordre stable, aucune clé métier disponible
-              key={i}
+              // Aucune clé métier disponible (lignes de texte déjà
+              // enveloppées) — la clé combine position ET contenu pour
+              // rester stable sans dépendre du seul index.
+              key={`${i}-${ligne}`}
               x={0}
               y={i * HAUTEUR_LIGNE_PX}
               fontSize={TAILLE_POLICE_PX}
