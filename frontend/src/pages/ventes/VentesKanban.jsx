@@ -1,10 +1,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Search, Plus, FilePlus2, PackageX, ShoppingCart } from 'lucide-react'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+// APX13 — la chaîne documentaire devis→BC→facture, visible ici aussi.
+import DocumentStageTrack from '../../ui/DocumentStageTrack'
+import { DOC_STATUT_TRACK, bonCommandeTrack } from '../../features/ventes/documentChain'
 import {
   fetchBonsCommande,
   createBonCommande,
@@ -256,7 +259,19 @@ export default function BonCommandeList() {
                     <tr key={bc.id}>
                       <td><strong>{bc.reference}</strong></td>
                       <td>{bc.client_nom ?? '—'}</td>
-                      <td>{bc.devis_reference ?? <span className="text-muted-foreground">—</span>}</td>
+                      {/* APX13 — l'AMONT du document devient cliquable :
+                          `?devis=<id>` est le paramètre que DevisList lit
+                          déjà (QX12) pour surligner + scroller. */}
+                      <td>
+                        {bc.devis_reference && bc.devis
+                          ? (
+                            <Link to={`/ventes/devis?devis=${encodeURIComponent(bc.devis)}`}
+                                  className="text-primary hover:underline">
+                              {bc.devis_reference}
+                            </Link>
+                          )
+                          : (bc.devis_reference ?? <span className="text-muted-foreground">—</span>)}
+                      </td>
                       <td className="ta-right tabular-nums">
                         {bc.total_ttc != null
                           ? formatMAD(bc.total_ttc)
@@ -269,6 +284,14 @@ export default function BonCommandeList() {
                       </td>
                       <td>
                         <StatusPill status={bc.statut} label={STATUT_DISPLAY[bc.statut] ?? STATUT_DISPLAY.en_attente} />
+                        {/* APX13 — la chaîne devis→BC→facture, visible à
+                            CETTE étape aussi (le stepper VX141 n'existait
+                            que sur la liste des devis). */}
+                        <DocumentStageTrack
+                          className="mt-1"
+                          stages={DOC_STATUT_TRACK}
+                          {...bonCommandeTrack(bc)}
+                        />
                       </td>
                       <td>
                         {/* XSAL12 — état dérivé de livraison partielle (lecture seule). */}

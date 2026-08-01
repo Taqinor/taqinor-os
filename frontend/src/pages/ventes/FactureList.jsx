@@ -37,6 +37,9 @@ import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+// APX13 — la chaîne documentaire devis→BC→facture, visible ici aussi.
+import DocumentStageTrack from '../../ui/DocumentStageTrack'
+import { DOC_STATUT_TRACK, factureTrack } from '../../features/ventes/documentChain'
 import PaiementDialog from './PaiementDialog'
 // WIR103/ZFAC4 — modale « Note de débit » (création + téléchargement PDF).
 import NoteDebitDialog from './NoteDebitDialog'
@@ -237,9 +240,14 @@ function FactureRow({ f, ctx }) {
               ? ` ${Math.round(toNumber(f.pourcentage))} %` : ''}
           </div>
         )}
+        {/* APX13 — l'AMONT du document, cliquable. Le lien pointait sur
+            `?ref=` — un paramètre que DevisList ne lit PAS (vérifié) : il
+            atterrissait sur la liste nue. Il pointe désormais sur `?devis=<id>`
+            (QX12), que la liste lit déjà pour surligner + scroller jusqu'au
+            devis d'origine. */}
         {f.devis_reference && f.devis && (
           <div className="mt-0.5 text-xs">
-            <Link to={`/ventes/devis?ref=${encodeURIComponent(f.devis_reference)}`}
+            <Link to={`/ventes/devis?devis=${encodeURIComponent(f.devis)}`}
                   className="text-primary hover:underline">
               Devis {f.devis_reference}
             </Link>
@@ -333,6 +341,14 @@ function FactureRow({ f, ctx }) {
       </td>
       <td data-label="Statut">
         <StatusPill status={statutKey} label={STATUT_DISPLAY[statutKey] ?? STATUT_DISPLAY.brouillon} />
+        {/* APX13 — la chaîne devis→BC→facture, visible à CETTE étape aussi
+            (le stepper VX141 n'existait que sur la liste des devis : il
+            disparaissait aux deux étapes suivantes du parcours). */}
+        <DocumentStageTrack
+          className="mt-1"
+          stages={DOC_STATUT_TRACK}
+          {...factureTrack(f)}
+        />
         {/* VX52 — le sens « télédéclaration DGI » ne vivait que dans `title`
             (survol) : sur mobile, un préfixe explicite le rend lisible. */}
         {['emise', 'payee', 'en_retard'].includes(f.statut) && f.statut_teledeclaration && (

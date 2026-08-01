@@ -61,6 +61,8 @@ import RoofViewer from './RoofViewer'
 import DevisSuiviPartagePanel from './DevisSuiviPartagePanel'
 import { StateBlock } from '../../components/StateBlock'
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
+// APX13 — la piste devis→BC→facture, définie UNE fois pour les 3 écrans.
+import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
 // APX11 — l'en-tête UNIQUE de l'app (VX28) remplace l'idiome legacy.
 import { PageHeader } from '../../ui/PageHeader'
 // APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
@@ -153,14 +155,8 @@ const STATUT_DISPLAY = {
 // uniquement — brouillon/envoyé/accepté puis BC/facturé/chantier. Jamais les
 // stages STAGES.py du funnel CRM (règle #2) : aucune clé de stage n'est
 // importée ici, les deux couches ne se mélangent jamais.
-const DOC_STATUT_TRACK = [
-  { key: 'brouillon', label: 'Brouillon' },
-  { key: 'envoye', label: 'Envoyé' },
-  { key: 'accepte', label: 'Accepté' },
-  { key: 'bc', label: 'BC' },
-  { key: 'facture', label: 'Facturé' },
-  { key: 'chantier', label: 'Chantier' },
-]
+// APX13 — la piste est désormais partagée avec FactureList et la liste des
+// bons de commande (`features/ventes/documentChain.js`) : UNE définition.
 
 // Filtres segmentés (statut) : « Tous » + les 5 statuts visibles.
 const STATUT_FILTERS = [
