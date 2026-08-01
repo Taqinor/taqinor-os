@@ -260,6 +260,23 @@
   --milestone-dossier-depot: #0891b2;
   --milestone-dossier-approbation: #15803d;
 
+  /* AOF9 — Tokens de PROVENANCE (Groupe AOF, app Appels d'offres). Miroir
+     ÉCRAN des 3 couleurs d'IMPRESSION figées par `dessin.py:16-19` (BLEU
+     mesuré #1d4ed8 / ORANGE à confirmer #d97706 / GRIS plan-ou-déduit
+     #64748b) + une 4ᵉ nuance « deviné » (violet, sans équivalent imprimé —
+     compteur AOF90 « X mesurés, Y à confirmer, Z deviné »). `mesure` est DÉJÀ
+     ≥ AA en clair à l'hex EXACT d'impression (aucun assombrissement) ;
+     `confirmer`/`deduit` sont des variantes ASSOMBRIES de la même teinte
+     d'impression (le hex brut échoue AA en texte sur fond clair — même
+     patron que `--warning-text` ci-dessus) — la planche imprimée et l'écran
+     restent « la même couleur » (même teinte, luminosité ajustée pour la
+     lisibilité). Paires clair/sombre vérifiées ≥ 4.5:1 par
+     `features/ao/provenance.test.jsx` (algorithme `contrast.test.mjs`). */
+  --ao-provenance-mesure: oklch(48.8% 0.2172 264.38);     /* #1d4ed8 — mesuré (= hex d'impression) */
+  --ao-provenance-confirmer: oklch(56% 0.1308 59.19);     /* #ab5e05 — à confirmer (impression #d97706) */
+  --ao-provenance-deduit: oklch(55.1% 0.0408 257.42);     /* #63738a — plan/déduit (impression #64748b) */
+  --ao-provenance-devine: oklch(54.1% 0.2466 293.01);     /* #7c3aed — deviné (pas d'équivalent imprimé) */
+
   /* Z-index — échelle unique */
   --z-base: 0;
   --z-dropdown: 1000;
@@ -351,6 +368,15 @@
   /* LB16 — vert WhatsApp en sombre (un peu plus lumineux sur fond navy). */
   --brand-whatsapp: #22b35c;
   --brand-whatsapp-foreground: #ffffff;
+
+  /* AOF9 — Tokens de provenance, variantes SOMBRES (voir le bloc `:root`
+     pour le contexte complet). `confirmer` : le hex d'impression brut
+     #d97706 est DÉJÀ ≥ AA sur le navy sombre (aucun ajustement nécessaire) ;
+     les 3 autres sont des variantes ÉCLAIRCIES de la même teinte. */
+  --ao-provenance-mesure: oklch(59.1% 0.18 266.22);      /* #4b74e7 */
+  --ao-provenance-confirmer: oklch(66.6% 0.1574 58.32);  /* #d97706 — hex d'impression inchangé */
+  --ao-provenance-deduit: oklch(57.8% 0.0422 257.01);    /* #6a7b93 */
+  --ao-provenance-devine: oklch(60.4% 0.2149 296.24);    /* #915af0 */
 
   --border: oklch(33% 0.03 270);          /* bordures relevées (≈ +3,6 L) */
   --input: oklch(37% 0.03 270);
