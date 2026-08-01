@@ -54,9 +54,14 @@ test('les actions non-CRUD nommées (calculer/suggestions/sensibilités/décompo
 
 test('affaires/pieces/dossiers pointent sur les ViewSets legacy ODX11 (appels-offres/pieces-soumission/dossiers-soumission)', () => {
   const body = aoApiBody()
-  assert.match(body, /affaires:\s*crud\('appels-offres'\)/)
+  assert.match(body, /affaires:\s*\{[\s\S]*?\.\.\.crud\('appels-offres'\)/)
   assert.match(body, /pieces:\s*crud\('pieces-soumission'\)/)
   assert.match(body, /\.\.\.crud\('dossiers-soumission'\)/)
+})
+
+test('AOF170 — affaires.dupliquer() existe (action de ligne « dupliquer », AOF130)', () => {
+  const body = aoApiBody()
+  assert.match(body, /dupliquer:\s*\(id\)\s*=>\s*api\.post\(`\/ao\/appels-offres\/\$\{id\}\/dupliquer\/`\)/)
 })
 
 test('ISOLEMENT — le corps de `aoApi` ne mentionne JAMAIS "rentabilite" (aucun chemin réseau mêlé)', () => {

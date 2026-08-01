@@ -30,7 +30,14 @@ const crud = makeResourceFactory(api, '/ao')
 
 const aoApi = {
   // ── Affaire (AppelOffre — ViewSet legacy ODX11 `appels-offres`) ──
-  affaires: crud('appels-offres'),
+  affaires: {
+    ...crud('appels-offres'),
+    // AOF170 — action de ligne « dupliquer » (AOF130 : gabarit d'affaire
+    // réutilisable, aucune variante/économie copiée). L'archivage LOGIQUE
+    // (jamais une suppression dure) réutilise le `update()` générique
+    // ci-dessus (`update(id, { archive: true })`) — pas d'action dédiée.
+    dupliquer: (id) => api.post(`/ao/appels-offres/${id}/dupliquer/`),
+  },
 
   // ── Toiture / relevé (portes 1-2-3 : plan fourni, from-scratch, carte) ──
   batiments: crud('batiments'),
