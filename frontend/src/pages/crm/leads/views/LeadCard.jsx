@@ -51,18 +51,32 @@ import PerduPopover from '../PerduPopover'
 // dépendance). Les liens tel:/wa.me sont révélés en GRAND (≥44px) par un
 // balayage vers la gauche, le geste iOS/Android attendu sur une liste de cartes.
 //
-// Seuil de distance anti-scroll : le geste ne s'engage QUE si le mouvement est
-// nettement plus horizontal que vertical (sinon un swipe raté couperait le
-// scroll vertical du kanban/de la liste). Fonctions pures locales (le test
-// node en garde une copie exacte — un fichier de composant n'exporte que des
-// composants, règle react-refresh).
+// VERROU D'AXE (physique tactile) — l'ancien seuil se RÉ-ÉVALUAIT à chaque
+// touchmove (`|dx| ≥ 5 && |dx| > |dy|`) : pendant un scroll vertical, le bruit
+// horizontal du pouce armait le geste dès qu'une frame passait sous ce seuil,
+// la carte suivait ce bruit, et le relâchement l'aimantait toute seule à
+// -96px. On décide donc l'axe UNE SEULE FOIS par geste, et la décision tient
+// jusqu'au touchend. Fonctions pures locales (le test node en garde une copie
+// exacte — un fichier de composant n'exporte que des composants, règle
+// react-refresh).
 const SWIPE_REVEAL_PX = 96 // largeur du panneau d'actions révélé
+const AXIS_LOCK_PX = 10 // distance à laquelle l'axe du geste se décide
+const SWIPE_ARM_PX = 12 // course horizontale FRANCHE exigée pour armer
+const SWIPE_ARM_RATIO = 1.5 // ... et nettement plus horizontale que verticale
 
-/** Le geste ne s'arme que si le mouvement est majoritairement horizontal
-    (anti-scroll vertical) et dépasse un petit seuil d'intention (5px). */
-function shouldArmSwipe(deltaX, deltaY) {
-  if (Math.abs(deltaX) < 5) return false
-  return Math.abs(deltaX) > Math.abs(deltaY)
+/** resolveAxisLock — verrou d'axe du geste, décidé UNE SEULE fois. Renvoie :
+      'pending'  — trop tôt pour trancher (aucun axe n'a parcouru 10px) ;
+      'rejected' — geste VERTICAL (|dy| ≥ |dx|) : le scroll de la colonne le
+                   possède, plus rien ne pourra armer le swipe de ce geste ;
+      'armed'    — geste franchement horizontal : le swipe prend la main.
+    Le bruit horizontal du pouce pendant un scroll vertical retombe donc
+    toujours sur 'rejected', et la carte ne bouge plus d'un pixel. */
+function resolveAxisLock(deltaX, deltaY) {
+  const dx = Math.abs(deltaX)
+  const dy = Math.abs(deltaY)
+  if (Math.max(dx, dy) < AXIS_LOCK_PX) return 'pending'
+  if (dy >= dx) return 'rejected'
+  return dx >= SWIPE_ARM_PX && dx > SWIPE_ARM_RATIO * dy ? 'armed' : 'pending'
 }
 
 /** Distance de traînée bornée à [-SWIPE_REVEAL_PX, 0] (on ne révèle que vers
@@ -81,40 +95,52 @@ function resolveSwipeSnap(offset, maxReveal = SWIPE_REVEAL_PX) {
     la carte. `enabled=false` (pas de tel/wa) désactive tout le geste. */
 function useSwipeReveal(enabled) {
   const [offset, setOffset] = useState(0)
+  // `snapping` : la transition 150ms n'existe QUE pendant l'aimantation (au
+  // relâchement, ou à la fermeture après un tap sur une action). Pendant la
+  // traîne du doigt elle est absente — sinon la carte arrive 150ms derrière
+  // le pouce, exactement la sensation de « traîne » constatée au toucher.
+  const [snapping, setSnapping] = useState(false)
   const start = useRef(null)
-  const armed = useRef(false)
+  // Verrou d'axe du geste EN COURS : 'pending' | 'rejected' | 'armed'.
+  const axis = useRef('pending')
 
   const onTouchStart = (e) => {
     if (!enabled) return
     const t = e.touches?.[0]
     if (!t) return
     start.current = { x: t.clientX, y: t.clientY }
-    armed.current = false
+    axis.current = 'pending'
+    setSnapping(false)
   }
   const onTouchMove = (e) => {
     if (!enabled || !start.current) return
+    // Verrou posé sur le vertical : le geste appartient au scroll jusqu'au
+    // bout — on ne ré-évalue plus rien, quel que soit le bruit du pouce.
+    if (axis.current === 'rejected') return
     const t = e.touches?.[0]
     if (!t) return
     const deltaX = t.clientX - start.current.x
     const deltaY = t.clientY - start.current.y
-    if (!armed.current) {
-      if (!shouldArmSwipe(deltaX, deltaY)) return
-      armed.current = true
+    if (axis.current !== 'armed') {
+      axis.current = resolveAxisLock(deltaX, deltaY)
+      if (axis.current !== 'armed') return
     }
     setOffset(clampSwipeOffset(deltaX))
   }
   const onTouchEnd = () => {
     if (!enabled) return
     start.current = null
-    if (armed.current) {
-      armed.current = false
+    if (axis.current === 'armed') {
+      axis.current = 'pending'
+      setSnapping(true)
       setOffset((prev) => resolveSwipeSnap(prev))
     }
   }
-  const close = () => setOffset(0)
+  const close = () => { setSnapping(true); setOffset(0) }
 
   return {
     offset,
+    snapping,
     close,
     handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchEnd },
   }
@@ -411,7 +437,9 @@ function LeadCard({
         {...swipe.handlers}
         style={{
           transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined,
-          transition: 'transform 150ms ease',
+          // Verrou d'axe : pendant la traîne du doigt, transform 1:1 SANS
+          // transition ; la transition n'habille QUE l'aimantation finale.
+          transition: swipe.snapping ? 'transform 150ms ease' : 'none',
           position: 'relative',
         }}
       >
