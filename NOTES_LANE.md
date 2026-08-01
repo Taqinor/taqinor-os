@@ -258,3 +258,12 @@ le dict de contexte.
   À noter pour le fold : l'idempotence par empreinte livrée en AOF153 règle le
   double-clic d'UN utilisateur, pas l'édition concurrente de DEUX — les deux
   mécanismes sont complémentaires, AOF153 ne dispense pas d'AOF155.
+- **AOF156 — approbation humaine avant dépôt : `[BLOCKED: attend AOF115 +
+  AOF150]`.** La tâche branche `core.models.WorkflowDefinition` sur la
+  transition `pret_a_deposer → depose` de `DossierAO` et fait porter à
+  l'approbation l'EMPREINTE DU PACK approuvé (AOF150) — deux objets absents de
+  la branche. Le noyau d'approbation existe déjà et sera CONSOMMÉ, jamais
+  recodé. Le mécanisme de péremption d'approbation est le même que celui déjà
+  livré et testé pour le rapport de contrôle (AOF148,
+  `rapport_controle.est_perime`) : approuver un pack puis le régénérer doit
+  invalider l'approbation, exactement comme cela périme le rapport.
