@@ -243,3 +243,115 @@ Quand la décision tombe, la matière est prête : `calepiner()` rend déjà
 enveloppe + obstacles + tables dans un repère métrique unique, donc l'export
 sera une pure traduction, sans recalcul de scène.
 
+## Écarts de fichiers assumés (co-activité `apps/ao`)
+
+Les `Files:` d'AOF60/61/62/71 désignent `services.py`, `views.py`,
+`serializers.py`, `tasks.py`. Deux autres lanes écrivant ces mêmes fichiers, le
+code a été logé dans des modules NEUFS, sans rien réécrire :
+
+| `Files:` déclaré | fichier réellement écrit |
+|---|---|
+| `apps/ao/services.py` (AOF60/62/71) | `apps/ao/calepinage_service.py`, `apps/ao/ingestion_service.py` |
+| `apps/ao/views.py` (AOF61/62) | `apps/ao/calepinage_views.py` |
+| `apps/ao/serializers.py` (AOF61) | `apps/ao/calepinage_serializers.py` |
+| `apps/ao/tasks.py` (AOF61/71) | `apps/ao/calepinage_tasks.py`, `apps/ao/ingestion_tasks.py` |
+| `apps/ao/urls.py` (AOF61) | `apps/ao/calepinage_urls.py` |
+
+Deux seules coutures dans des fichiers partagés, toutes deux en **fin de
+fichier** (append pur, conflit trivial) :
+
+- `apps/ao/urls.py` : `urlpatterns += [path('', include('apps.ao.calepinage_urls'))]` ;
+- `apps/ao/tasks.py` : deux `from .<module>_tasks import …` — obligatoires,
+  l'autodécouverte Celery n'importe QUE `<app>.tasks`.
+
+## À traiter au fold (orchestrateur)
+
+1. **`views.VarianteCalepinageViewSet.retenir` (fichier d'une autre lane) n'a
+   ni garde de péremption ni idempotence.** Il appelle directement
+   `services.retenir_variante`, donc une variante `PERIME` peut y devenir
+   retenue — exactement ce qu'AOF62 interdit. Correctif d'UNE ligne :
+   remplacer l'appel par `calepinage_service.retenir_variante(...)` (qui lève
+   `VariantePerimee`). Je ne l'ai pas fait : `views.py` est hors de mon
+   périmètre de co-activité.
+2. **`core/tests/test_action_permissions.py` est ROUGE sur `dev-aof`, avant et
+   indépendamment de cette lane.** Le scanner compte **17** `@action` sans
+   garde dans `apps/ao/views.py` alors que `UNGUARDED_ACTION_BASELINE` n'a
+   aucune entrée `"ao"` (absent = 0 toléré). Cause : les viewsets AO sont
+   gardés au niveau CLASSE par `AoBaseViewSet.get_permissions`, mais le
+   scanner ne crédite qu'un `get_permissions` déclaré dans le corps de la
+   classe elle-même — même situation que `accessreview`/`assurances`/`chat`,
+   qui portent une entrée de baseline commentée. Correctif : ajouter
+   `"ao": 17` au baseline avec le même commentaire de dette « coarse ».
+   Vérifié avec `python -c "from core import action_permission_scan as s;
+   print(len(s.unguarded_actions()['ao']))"`. **Mon viewset n'y ajoute rien**
+   (`CalepinageVarianteViewSet` déclare son propre `get_permissions`).
+
+## Manques de modèle relevés (aucun champ ajouté — chaîne de migrations mono-écrivain)
+
+- **Aucun modèle de ZONE dans `apps/ao`.** `core/calepinage/zones.py` sait
+  traiter 4 natures de contour (`ENVELOPPE`, `INTERDITE`, `RESERVEE`,
+  `PREFEREE`) et le contrat JSON porte `zones`, mais rien ne les persiste :
+  `calepinage_io.document_entree()` émet donc toujours `zones: []`. Une
+  `ZoneToiture(toiture, nature, sommets, retrait_m, hauteur_m)` débloquerait
+  les zones réservées (locaux techniques, cheminements) et le bonus de zone
+  préférée du départage.
+- **`PlanSource` ne stocke pas les dimensions du rendu.** Le contrôle de
+  vraisemblance d'AOF71 est bien plus fort avec `largeur_px`/`hauteur_px`
+  (« ce plan ferait 3 000 m de large ») ; faute de champ, le job les RETOURNE
+  mais elles ne sont pas rejouables, et `calibrer()` doit les recevoir en
+  argument. Deux champs `rendu_largeur_px` / `rendu_hauteur_px` suffiraient.
+- **`resultat['rangees']` porte `x0` ET `y0` avec la MÊME valeur.** Le contrat
+  d'AOF28 nomme `x0` la position d'une rangée ; le moteur, dans son repère
+  unifié, la nomme `y0` (`x` court le long de la rangée). Les deux clés sont
+  émises depuis la même variable, elles ne peuvent donc pas diverger — mais
+  c'est une dette de nommage à trancher une fois pour toutes.
+
+## Constat produit à remonter (vrai, mesuré, hors périmètre de cette lane)
+
+**Le plan DP-optimal est systématiquement « au ras », donc AOF28 refuse de le
+publier.** Mesuré sur les goldens FRDISI via `calepiner()` :
+
+| bâtiment | modules | marge tronçon | marge bande | publiable AOF28 ? |
+|---|---|---|---|---|
+| C — école | 314 (= témoin) | 0,022 m | **0,000 m** (obstacle `LOCAL`) | non (seuil 0,04 m) |
+| A — aile L | 148 (= témoin) | 0,010 m | **0,000 m** (obstacle `BAR3`) | non (2 seuils) |
+| B — arc | 120 (= témoin) | 0,050 m | 0,00028 m | non (seuil de bande) |
+
+Ce n'est pas un bug : le DP maximise le compte, donc il colle les rangées au
+dégagement des obstacles. `core/calepinage/robustesse.py` a déjà la réponse
+(`departager` choisit, à compte ÉGAL, le plan aux meilleures marges) mais
+`optimum.optimiser` ne rend qu'UN plan optimal, pas les candidats. Sans une
+tâche « énumérer les plans optimaux puis départager », **aucune variante ne
+deviendra jamais `publiable`** et la garde d'AOF28 se dévaluera. Deux détails
+de mise en œuvre déjà réglés de mon côté : une marge NON MESURÉE est persistée
+`null` et non `0` (sinon une toiture SANS obstacle serait refusée pour une
+marge de bande de zéro), et les marges de N surfaces sont cumulées axe par axe.
+
+## Vérifications faites (et ce qui n'a PAS pu l'être ici)
+
+Verts sur ce poste : `py_compile` + `flake8 --max-line-length=120` sur tous mes
+fichiers, `scripts/check_platform.py`, `scripts/check_tenant_isolation.py`,
+`scripts/check_celery_tasks.py`, `scripts/check_on_delete.py`,
+`scripts/check_company_fk.py`, le scanner de gardes d'`@action` (0 ajout), et
+un rejeu RÉEL des 3 goldens FRDISI par le service (`148 / 120 / 314`, hash
+d'entrée identiques aux goldens, `optimal=True`).
+
+Non exécutables ici, sans docker ni base : la suite Django (4 fichiers de
+tests ajoutés) et `scripts/check_openapi_schema.py` (WeasyPrint ne charge pas
+sur Windows, `libgobject-2.0-0` absent). Mitigation openapi : **toutes** mes
+vues sont des `GenericAPIView`/`GenericViewSet` avec `serializer_class` ET un
+`@extend_schema` explicite (`OpenApiTypes.OBJECT` là où la réponse est un dict
+libre) — c'est la forme qui ne produit aucun avertissement drf-spectacular,
+mais la baseline n'a pas pu être confrontée en local.
+
+## Le bâtiment B des goldens exige les DEUX kits
+
+`core/calepinage/golden/frdisi_2026_07_27/bat_B_arc.json` déclare deux kits
+dans `kits` mais **un seul** (`AO_PORTRAIT`) dans `parametres.kits`, alors que
+les segments S2 et S3 sont posés en PAYSAGE. Un service qui respecte le
+document rend donc 108, pas 120. En ouvrant les deux kits au DP, le total
+retombe **exactement** sur le témoin (48 + 34 + 38 = 120). C'est ce que fait
+`apps/ao/tests/test_orchestration_calepinage.py`, et c'est une remarque pour la
+lane `core-calepinage` : le `parametres.kits` de ce golden mérite d'être
+complété.
+
