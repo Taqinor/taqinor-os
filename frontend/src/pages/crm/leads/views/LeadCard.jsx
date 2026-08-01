@@ -14,7 +14,7 @@
 // VX187/LB6 — memo() : chaque frappe dans la recherche/un filtre re-rendait
 // TOUTES les cartes visibles. Ne tient que si les callbacks parents sont
 // stables (useCallback sur onOpenLead/onAutoQuote/changeStage/… dans LeadsPage).
-import { useRef, useState, memo } from 'react'
+import { useState, memo } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
 import { Zap, MapPin, FileText, MoreHorizontal, Lock } from 'lucide-react'
 import {
@@ -47,108 +47,14 @@ import {
 // LB15 — flux « Marquer perdu » partagé (fin de la triplication carte/liste).
 import PerduPopover from '../PerduPopover'
 
-// VX43 — Swipe-to-action horizontal maison (touchstart/move/end, zéro
-// dépendance). Les liens tel:/wa.me sont révélés en GRAND (≥44px) par un
-// balayage vers la gauche, le geste iOS/Android attendu sur une liste de cartes.
-//
-// VERROU D'AXE (physique tactile) — l'ancien seuil se RÉ-ÉVALUAIT à chaque
-// touchmove (`|dx| ≥ 5 && |dx| > |dy|`) : pendant un scroll vertical, le bruit
-// horizontal du pouce armait le geste dès qu'une frame passait sous ce seuil,
-// la carte suivait ce bruit, et le relâchement l'aimantait toute seule à
-// -96px. On décide donc l'axe UNE SEULE FOIS par geste, et la décision tient
-// jusqu'au touchend. Fonctions pures locales (le test node en garde une copie
-// exacte — un fichier de composant n'exporte que des composants, règle
-// react-refresh).
-const SWIPE_REVEAL_PX = 96 // largeur du panneau d'actions révélé
-const AXIS_LOCK_PX = 10 // distance à laquelle l'axe du geste se décide
-const SWIPE_ARM_PX = 12 // course horizontale FRANCHE exigée pour armer
-const SWIPE_ARM_RATIO = 1.5 // ... et nettement plus horizontale que verticale
-
-/** resolveAxisLock — verrou d'axe du geste, décidé UNE SEULE fois. Renvoie :
-      'pending'  — trop tôt pour trancher (aucun axe n'a parcouru 10px) ;
-      'rejected' — geste VERTICAL (|dy| ≥ |dx|) : le scroll de la colonne le
-                   possède, plus rien ne pourra armer le swipe de ce geste ;
-      'armed'    — geste franchement horizontal : le swipe prend la main.
-    Le bruit horizontal du pouce pendant un scroll vertical retombe donc
-    toujours sur 'rejected', et la carte ne bouge plus d'un pixel. */
-function resolveAxisLock(deltaX, deltaY) {
-  const dx = Math.abs(deltaX)
-  const dy = Math.abs(deltaY)
-  if (Math.max(dx, dy) < AXIS_LOCK_PX) return 'pending'
-  if (dy >= dx) return 'rejected'
-  return dx >= SWIPE_ARM_PX && dx > SWIPE_ARM_RATIO * dy ? 'armed' : 'pending'
-}
-
-/** Distance de traînée bornée à [-SWIPE_REVEAL_PX, 0] (on ne révèle que vers
-    la gauche ; un balayage vers la droite ne fait rien — pas d'action là). */
-function clampSwipeOffset(deltaX, maxReveal = SWIPE_REVEAL_PX) {
-  return Math.max(-maxReveal, Math.min(0, deltaX))
-}
-
-/** Lâcher au-delà de la moitié du panneau → reste ouvert (aimanté) ; sinon
-    referme (aimanté à 0). */
-function resolveSwipeSnap(offset, maxReveal = SWIPE_REVEAL_PX) {
-  return Math.abs(offset) >= maxReveal / 2 ? -maxReveal : 0
-}
-
-/** Hook local : expose `offset` (px, ≤0) + les handlers tactiles à poser sur
-    la carte. `enabled=false` (pas de tel/wa) désactive tout le geste. */
-function useSwipeReveal(enabled) {
-  const [offset, setOffset] = useState(0)
-  // `phase` — 'idle' (rien en cours) | 'dragging' (le doigt traîne la carte)
-  // | 'snapping' (aimantation au relâchement, ou fermeture après un tap sur
-  // une action révélée). La transition transform n'est RETIRÉE que pendant
-  // 'dragging' : sinon la carte arrive 150ms derrière le pouce, exactement la
-  // sensation de traîne constatée au toucher. 'idle' garde la valeur d'origine
-  // — le desktop, qui ne produit aucun touchevent et reste donc toujours en
-  // 'idle', est rigoureusement inchangé (y compris ses transitions de survol).
-  const [phase, setPhase] = useState('idle')
-  const start = useRef(null)
-  // Verrou d'axe du geste EN COURS : 'pending' | 'rejected' | 'armed'.
-  const axis = useRef('pending')
-
-  const onTouchStart = (e) => {
-    if (!enabled) return
-    const t = e.touches?.[0]
-    if (!t) return
-    start.current = { x: t.clientX, y: t.clientY }
-    axis.current = 'pending'
-    setPhase('idle')
-  }
-  const onTouchMove = (e) => {
-    if (!enabled || !start.current) return
-    // Verrou posé sur le vertical : le geste appartient au scroll jusqu'au
-    // bout — on ne ré-évalue plus rien, quel que soit le bruit du pouce.
-    if (axis.current === 'rejected') return
-    const t = e.touches?.[0]
-    if (!t) return
-    const deltaX = t.clientX - start.current.x
-    const deltaY = t.clientY - start.current.y
-    if (axis.current !== 'armed') {
-      axis.current = resolveAxisLock(deltaX, deltaY)
-      if (axis.current !== 'armed') return
-    }
-    setPhase('dragging')
-    setOffset(clampSwipeOffset(deltaX))
-  }
-  const onTouchEnd = () => {
-    if (!enabled) return
-    start.current = null
-    if (axis.current === 'armed') {
-      axis.current = 'pending'
-      setPhase('snapping')
-      setOffset((prev) => resolveSwipeSnap(prev))
-    }
-  }
-  const close = () => { setPhase('snapping'); setOffset(0) }
-
-  return {
-    offset,
-    phase,
-    close,
-    handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchEnd },
-  }
-}
+// GESTES PURS (retour fondateur 2026-08-01, « make the sweep the most pleasant
+// possible ») — le swipe-to-action VX43/LB17 est RETIRÉ : sa bande ☎/💬 était
+// devenue redondante (la rangée .kb-quick de la carte porte déjà ces boutons
+// en 44px, APX7) et son gestionnaire touchmove disputait le geste horizontal
+// au PAGER de colonnes — la cause du « leads collants ». La grammaire tactile
+// du board est désormais : vertical = scroll de colonne, horizontal = changer
+// de colonne, appui long en mode déplacement = drag. Aucun handler tactile ne
+// vit sur la carte.
 
 // VX223 — canal léger « focus au prochain ouvert », posé par le lien
 // « → Renseigner la facture » ci-dessous SANS ajouter de prop de navigation
@@ -372,7 +278,6 @@ function LeadCard({
 
   // VX43 — le geste ne s'active que si au moins une action est disponible
   // (sinon rien à révéler derrière la carte).
-  const swipe = useSwipeReveal(!!(tel || wa))
 
   // VX87 — nudge post-appel : armé juste avant d'ouvrir tel:, proposé au
   // retour dans l'onglet (visibilitychange).
@@ -385,69 +290,11 @@ function LeadCard({
   const [perduOpen, setPerduOpen] = useState(false)
 
   return (
-    <div className="kb-swipe-wrap" style={{ position: 'relative' }}>
-      {(tel || wa) && (
-        <div
-          className="kb-swipe-actions"
-          aria-hidden={swipe.offset === 0}
-          // LB17 — bande cachée réellement inerte : l'aria-hidden seul laissait
-          // les <a> tabbables (recon-05). `inert` (React 19) les sort du tab
-          // order ET de l'interaction tant que le panneau n'est pas révélé.
-          inert={swipe.offset === 0}
-          style={{
-            position: 'absolute', inset: 0, display: 'flex',
-            justifyContent: 'flex-end', alignItems: 'stretch',
-            overflow: 'hidden', borderRadius: 'var(--radius, 10px)',
-          }}
-        >
-          {tel && (
-            <a
-              href={tel}
-              aria-label="Appeler (glissement)"
-              title="Appeler"
-              onClick={(e) => { e.stopPropagation(); swipe.close(); armCallNudge() }}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
-                background: 'var(--success)', color: 'var(--success-foreground)',
-                fontSize: '18px', textDecoration: 'none',
-              }}
-            >
-              ☎
-            </a>
-          )}
-          {wa && (
-            <ExternalLink
-              href={wa}
-              aria-label="Ouvrir WhatsApp (glissement)"
-              title="Ouvrir WhatsApp"
-              onClick={(e) => { e.stopPropagation(); swipe.close() }}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
-                background: 'var(--brand-whatsapp)', color: 'var(--brand-whatsapp-foreground)',
-                fontSize: '18px', textDecoration: 'none',
-              }}
-            >
-              💬
-            </ExternalLink>
-          )}
-        </div>
-      )}
+    <>
       <article
         className={classes}
         data-rot={rot}
         onClick={onOpen ? () => onOpen(lead) : undefined}
-        {...swipe.handlers}
-        style={{
-          transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined,
-          // Verrou d'axe : pendant la traîne du doigt, transform 1:1 SANS
-          // transition ; la transition n'habille QUE l'aimantation finale.
-          // Hors geste tactile ('idle'), la valeur d'origine est conservée —
-          // le desktop ne change pas d'un pixel.
-          transition: swipe.phase === 'dragging' ? 'none' : 'transform 150ms ease',
-          position: 'relative',
-        }}
       >
         {/* ── L1 / TÊTE : checkbox (révélée) · nom · société · menu (révélé) ──
             APX2 : le ScoreBadge a quitté la tête pour le micro-badge de L2 (le
@@ -883,7 +730,7 @@ function LeadCard({
           </div>
         )}
       </article>
-    </div>
+    </>
   )
 }
 
