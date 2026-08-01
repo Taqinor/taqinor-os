@@ -47,6 +47,60 @@ function EnTetePhoto({ produit }) {
   )
 }
 
+/* ── APX20 — Onglet « Fiche technique » ────────────────────────────────────
+   Les champs `marque`, `garantie` (texte) et `description` alimentent depuis
+   toujours les fiches produits des PDF de devis, mais AUCUN écran ne les
+   MONTRAIT : on ne pouvait pas vérifier ce qui allait partir chez le client.
+   Ici, lecture seule et honnête — un champ vide dit « non renseigné » plutôt
+   que de disparaître, sinon on ne saurait pas qu'il manque.
+   Les caractéristiques de pompage (kW, tension) ne s'affichent QUE pour un
+   produit qui en porte : pas de ligne vide pour un panneau. */
+const CHAMP_VIDE = 'Non renseigné'
+
+function Ligne({ label, valeur }) {
+  const rempli = valeur !== null && valeur !== undefined && String(valeur).trim() !== ''
+  return (
+    <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
+      <span className="w-full shrink-0 text-xs uppercase tracking-wide text-muted-foreground sm:w-48">
+        {label}
+      </span>
+      <span className={rempli ? 'text-sm text-foreground' : 'text-sm italic text-muted-foreground'}>
+        {rempli ? String(valeur) : CHAMP_VIDE}
+      </span>
+    </div>
+  )
+}
+
+// Un produit est « de pompage » dès qu'il porte une caractéristique de pompe.
+export function estPompage(produit) {
+  return [produit?.pompe_kw, produit?.tension_v, produit?.pompe_cv, produit?.hmt_m]
+    .some((v) => v !== null && v !== undefined && v !== '')
+}
+
+function OngletFicheTechnique({ produit }) {
+  return (
+    <div className="flex flex-col gap-3" data-testid="pdet-fiche-technique">
+      <div className="rounded-lg border border-border">
+        <div className="px-3 py-1">
+          <Ligne label="Marque" valeur={produit.marque} />
+          <Ligne label="Garantie" valeur={produit.garantie} />
+          <Ligne label="Description" valeur={produit.description} />
+          {estPompage(produit) && (
+            <>
+              <Ligne label="Puissance pompe (kW)" valeur={produit.pompe_kw} />
+              <Ligne label="Tension (V)" valeur={produit.tension_v} />
+            </>
+          )}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Ces informations partent sur la fiche produit des devis. Elles se
+        modifient depuis l&apos;édition du produit (Stock → Catalogue).
+      </p>
+    </div>
+  )
+}
+
 // ── Onglet « En commande » — BCF sources contribuant à la quantité engagée ──
 function OngletEnCommande({ produit }) {
   const enCommande = produit.quantite_en_commande ?? 0
@@ -186,7 +240,8 @@ export function ProduitDetail({ produit, onClose }) {
             {produit.nom}{produit.sku ? ` (${produit.sku})` : ''}
           </DialogTitle>
           <DialogDescription>
-            Engagements d&apos;achat et rapport prévisionnel — donnée interne, lecture seule.
+            Engagements d&apos;achat, rapport prévisionnel et fiche technique —
+            donnée interne, lecture seule.
           </DialogDescription>
         </DialogHeader>
 
@@ -211,12 +266,17 @@ export function ProduitDetail({ produit, onClose }) {
           <TabsList>
             <TabsTrigger value="en-commande">En commande</TabsTrigger>
             <TabsTrigger value="previsionnel">Prévisionnel</TabsTrigger>
+            {/* APX20 — 3ᵉ onglet, à côté des deux onglets achats. */}
+            <TabsTrigger value="fiche">Fiche technique</TabsTrigger>
           </TabsList>
           <TabsContent value="en-commande">
             <OngletEnCommande produit={produit} />
           </TabsContent>
           <TabsContent value="previsionnel">
             <OngletPrevisionnel produitId={produit.id} />
+          </TabsContent>
+          <TabsContent value="fiche">
+            <OngletFicheTechnique produit={produit} />
           </TabsContent>
         </Tabs>
 

@@ -85,3 +85,68 @@ describe('ZSTK3 — onglet « Prévisionnel »', () => {
     expect(await screen.findByText(/indisponible/)).toBeInTheDocument()
   })
 })
+
+/* ============================================================================
+   APX20 — Onglet « Fiche technique ». `marque`, `garantie` (texte) et
+   `description` alimentaient déjà les fiches produits des PDF de devis, mais
+   aucun écran ne les MONTRAIT ni ne permettait de les saisir.
+   ========================================================================== */
+
+describe('APX20 — onglet « Fiche technique »', () => {
+  const ficheProduit = (over = {}) => ({
+    ...produit,
+    marque: 'JA Solar',
+    garantie: '12 ans produit, 25 ans performance',
+    description: 'Monocristallin demi-cellule, cadre alu anodisé.',
+    ...over,
+  })
+
+  it('rend marque, garantie et description — celles qui partent sur le devis', async () => {
+    render(<ProduitDetail produit={ficheProduit()} onClose={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    expect(await screen.findByText('JA Solar')).toBeInTheDocument()
+    expect(screen.getByText('12 ans produit, 25 ans performance')).toBeInTheDocument()
+    expect(screen.getByText(/Monocristallin demi-cellule/)).toBeInTheDocument()
+  })
+
+  it('un champ vide dit « Non renseigné » au lieu de disparaître', async () => {
+    render(
+      <ProduitDetail produit={ficheProduit({ marque: null, garantie: '' })} onClose={() => {}} />,
+      { wrapper },
+    )
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    // Marque ET garantie manquantes : deux mentions, pas un silence.
+    expect((await screen.findAllByText('Non renseigné')).length).toBe(2)
+  })
+
+  it('les caractéristiques de pompage n\'apparaissent que sur une pompe', async () => {
+    render(<ProduitDetail produit={ficheProduit()} onClose={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    await screen.findByTestId('pdet-fiche-technique')
+    expect(screen.queryByText('Puissance pompe (kW)')).toBeNull()
+    expect(screen.queryByText('Tension (V)')).toBeNull()
+  })
+
+  it('une pompe affiche sa puissance et sa tension', async () => {
+    render(
+      <ProduitDetail
+        produit={ficheProduit({ nom: 'Pompe OSP 30-15', pompe_kw: '4.00', tension_v: 380 })}
+        onClose={() => {}}
+      />, { wrapper },
+    )
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    expect(await screen.findByText('Puissance pompe (kW)')).toBeInTheDocument()
+    expect(screen.getByText('4.00')).toBeInTheDocument()
+    expect(screen.getByText('380')).toBeInTheDocument()
+  })
+
+  it('n\'expose jamais le prix d\'achat (loi fondateur)', async () => {
+    const { container } = render(
+      <ProduitDetail produit={ficheProduit({ prix_achat: '742.50' })} onClose={() => {}} />,
+      { wrapper },
+    )
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    await screen.findByTestId('pdet-fiche-technique')
+    expect(container.textContent).not.toMatch(/742[.,]50/)
+  })
+})

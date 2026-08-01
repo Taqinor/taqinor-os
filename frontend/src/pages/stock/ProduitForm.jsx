@@ -324,6 +324,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const initialFields = {
     nom:            produit?.nom            ?? '',
     sku:            produit?.sku            ?? '',
+    // APX20 — `marque` et `garantie` (TEXTE) existaient au modèle et
+    // alimentaient déjà les fiches produits des PDF de devis, mais AUCUN écran
+    // ne permettait de les saisir : la création rapide promettait « vous
+    // pourrez compléter (catégorie, marque, garantie…) plus tard depuis
+    // Stock » et Stock ne le permettait pas. Promesse tenue ici.
+    marque:         produit?.marque         ?? '',
+    garantie:       produit?.garantie       ?? '',
     description:    produit?.description    ?? '',
     prix_vente:     String(produit?.prix_vente  ?? ''),
     prix_achat:     String(produit?.prix_achat  ?? '0'),
@@ -472,6 +479,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
       const payload = {
         nom:            fields.nom.trim(),
         sku:            fields.sku.trim() || null,
+        // APX20 — vidés → null (le modèle est nullable) : effacer une marque
+        // doit vraiment l'effacer, pas y laisser une chaîne vide.
+        marque:         fields.marque.trim() || null,
+        garantie:       fields.garantie.trim() || null,
         description:    fields.description.trim() || null,
         prix_vente:     fields.prix_vente,
         prix_achat:     fields.prix_achat,
@@ -568,6 +579,15 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             <FormField label="SKU / Référence" htmlFor="pf-sku" error={errors.sku}>
               <Input id="pf-sku" invalid={!!errors.sku} value={fields.sku}
                      onChange={e => setField('sku', e.target.value)} placeholder="REF-001" />
+            </FormField>
+
+            {/* APX20 — marque : consommée par la fiche produit des PDF de devis
+                (et par le groupement CATÉGORIE → MARQUE du catalogue). */}
+            <FormField label="Marque" htmlFor="pf-marque" error={errors.marque}
+                       hint="Apparaît sur la fiche produit des devis.">
+              <Input id="pf-marque" invalid={!!errors.marque} value={fields.marque}
+                     onChange={e => setField('marque', e.target.value)}
+                     placeholder="JA Solar, Deye, VEICHI…" />
             </FormField>
 
             {/* Catégorie (avec création inline) */}
@@ -782,9 +802,18 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
           </FormSection>
 
           <FormSection
-            title="Garantie structurée"
-            description="Alimente les horloges de garantie du parc d'équipements. Optionnel."
+            title="Garantie"
+            description="Le texte part sur la fiche produit des devis ; les durées en mois alimentent les horloges de garantie du parc d'équipements. Tout est optionnel."
           >
+            {/* APX20 — garantie TEXTE, distincte des durées numériques
+                ci-dessous : c'est elle que lisent les fiches produits des PDF
+                de devis, et aucun écran ne permettait de la saisir. */}
+            <FormField label="Texte de garantie" htmlFor="pf-gar-txt" fullWidth
+                       hint="Phrase constructeur telle qu'elle doit apparaître sur le devis.">
+              <Input id="pf-gar-txt" value={fields.garantie}
+                     onChange={e => setField('garantie', e.target.value)}
+                     placeholder="ex : 12 ans produit, 25 ans performance" />
+            </FormField>
             <FormField label="Garantie équipement (mois)" htmlFor="pf-gar"
                        hint="Laisser vide si non renseignée.">
               <Input id="pf-gar" type="number" min="0" step="1" inputMode="numeric"
