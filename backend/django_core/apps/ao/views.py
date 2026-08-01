@@ -20,9 +20,13 @@ héritée de ``_ComptaBaseViewSet`` est ABANDONNÉE : elle ouvrait tout le dossi
 d'appel d'offres au palier Responsable (cf. AOF2).
 """
 
-from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.exceptions import (
+    FieldDoesNotExist, ValidationError as DjangoValidationError,
+)
+from django.db import models
 from rest_framework import filters, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
@@ -82,6 +86,38 @@ from .serializers import (
 from .viewsets import AoBaseViewSet
 
 
+#: Écritures admises d'un booléen dans une URL. Un filtre de liste est tapé à
+#: la main ou posé par un client JS : ``?a_reverifier=true`` est la forme
+#: NATURELLE, et c'est justement celle que Django refuse.
+_URL_VRAI = frozenset({'1', 't', 'true', 'vrai', 'oui', 'yes', 'y', 'on'})
+_URL_FAUX = frozenset({'0', 'f', 'false', 'faux', 'non', 'no', 'n', 'off'})
+
+
+def _valeur_de_filtre(queryset, champ, valeur):
+    """Convertit la valeur reçue de l'URL selon le TYPE du champ visé.
+
+    ``BooleanField.to_python`` de Django n'accepte QUE ``'True'``/``'1'`` (et
+    leurs faux) : ``?a_reverifier=true`` levait une ``ValidationError`` DANS
+    ``get_queryset``, que DRF ne rattrape pas — la liste répondait 500 sur une
+    URL parfaitement légitime. La conversion est faite ici, et une valeur
+    vraiment ininterprétable devient un 400 MOTIVÉ, jamais un 500 muet.
+    """
+    try:
+        interne = queryset.model._meta.get_field(champ)
+    except FieldDoesNotExist:  # champ dérivé : laissé tel quel
+        return valeur
+    if isinstance(interne, models.BooleanField):
+        texte = str(valeur).strip().lower()
+        if texte in _URL_VRAI:
+            return True
+        if texte in _URL_FAUX:
+            return False
+        raise DrfValidationError({champ: (
+            f'Valeur « {valeur} » incomprise : attendu vrai/faux '
+            '(true, false, 1, 0, oui, non).')})
+    return valeur
+
+
 def _filtres_exacts(queryset, params, champs):
     """Applique les filtres d'égalité ``?champ=valeur`` présents dans l'URL.
 
@@ -93,7 +129,14 @@ def _filtres_exacts(queryset, params, champs):
         valeur = params.get(champ)
         if valeur in (None, ''):
             continue
-        queryset = queryset.filter(**{champ: valeur})
+        valeur = _valeur_de_filtre(queryset, champ, valeur)
+        try:
+            queryset = queryset.filter(**{champ: valeur})
+        except (DjangoValidationError, ValueError) as exc:
+            # Un identifiant non numérique, une date mal écrite… : c'est la
+            # REQUÊTE qui est fautive, pas le serveur.
+            raise DrfValidationError({champ: (
+                f'Valeur « {valeur} » invalide pour ce filtre.')}) from exc
     return queryset
 
 

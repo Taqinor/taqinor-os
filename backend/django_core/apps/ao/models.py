@@ -28,7 +28,7 @@ existantes et reste le champ d'ordonnancement.
 """
 import math
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -2479,12 +2479,32 @@ class ResultatAO(TenantModel):
     def __str__(self):
         return f'{self.appel_offre.reference} — {self.issue}'
 
+    @staticmethod
+    def _montant(valeur):
+        """Le montant en ``Decimal``, quelle que soit sa forme en mémoire.
+
+        Une instance qui vient d'être écrite depuis un corps JSON porte encore
+        les CHAÎNES reçues : Django ne relit pas la base après un ``create``.
+        Soustraire deux chaînes lève un ``TypeError`` — autrement dit un 500
+        sur la simple lecture d'un écart, alors que la même donnée relue de la
+        base se calcule très bien. Pire, la chaîne ``'0.00'`` est VRAIE en
+        Python : un prix gagnant nul passait pour un prix réel. La conversion
+        est donc faite ici, une fois, pour tous les appelants.
+        """
+        if valeur is None or valeur == '':
+            return None
+        try:
+            return Decimal(str(valeur))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
     @property
     def ecart_prix(self):
         """Écart entre notre prix et le prix gagnant (MAD)."""
-        if not self.prix_gagnant:
+        gagnant = self._montant(self.prix_gagnant)
+        if not gagnant:
             return None
-        return (self.notre_prix or Decimal('0.00')) - self.prix_gagnant
+        return (self._montant(self.notre_prix) or Decimal('0.00')) - gagnant
 
     @property
     def ecart_prix_pct(self):
@@ -2493,13 +2513,13 @@ class ResultatAO(TenantModel):
         C'est la forme comparable d'un dossier à l'autre : « 180 000 MAD de
         trop » ne veut rien dire sans le montant du marché.
         """
-        if not self.prix_gagnant:
+        gagnant = self._montant(self.prix_gagnant)
+        if not gagnant:
             return None
         ecart = self.ecart_prix
         if ecart is None:
             return None
-        return (ecart / Decimal(self.prix_gagnant) * Decimal('100')).quantize(
-            Decimal('0.01'))
+        return (ecart / gagnant * Decimal('100')).quantize(Decimal('0.01'))
 
 
 # ══════════════════════════════════════════════════════════════════════════
