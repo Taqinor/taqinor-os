@@ -235,6 +235,32 @@ class AppelOffre(TenantModel):
         return f'{self.reference} — {self.objet}'
 
     @property
+    def surface_toitures_m2(self):
+        """AOF18 — surface totale des toitures du projet, CALCULÉE.
+
+        Jamais recopiée dans une colonne : une valeur figée deviendrait fausse
+        dès la première toiture ajoutée, et la note de synthèse la plus lue
+        serait alors la plus fausse.
+        """
+        total = Decimal('0.000')
+        for batiment in self.batiments.all():
+            total += batiment.surface_toitures_m2
+        return total
+
+    @property
+    def engagement_modules_batiments(self):
+        """AOF18 — somme des engagements en modules DÉCLARÉS par bâtiment.
+
+        À distinguer de ``engagement_modules``, qui porte l'engagement GLOBAL
+        annoncé par l'avis : les comparer est précisément l'intérêt (un écart
+        signale un bâtiment oublié).
+        """
+        total = 0
+        for batiment in self.batiments.all():
+            total += batiment.engagement_modules or 0
+        return total
+
+    @property
     def date_fin_validite_offre(self):
         """AOF12 — fin de validité de l'offre, DÉRIVÉE (jamais stockée).
 
@@ -414,6 +440,262 @@ CLAUSES_REFERENCE_CPS = (
         'bloquant': True,
     },
 )
+
+
+# ── AOF18 — Bâtiments et toitures du projet ────────────────────────────────
+
+def polygone_est_simple(contour):
+    """Vrai si ``contour`` (liste de ``[x, y]`` en MÈTRES) est un polygone simple.
+
+    « Simple » = au moins 3 sommets DISTINCTS et aucun croisement d'arêtes non
+    adjacentes. Une enveloppe qui se croise produirait des rangées de modules
+    hors du bâtiment : c'est un refus de saisie, pas un avertissement.
+
+    Fonction PURE (aucune I/O, aucun accès base) — AOF19 la relogera dans
+    ``apps/ao/geometrie.py``, le module canonique du repère local métrique.
+    """
+    points = [tuple(p) for p in (contour or [])]
+    if len(points) > 1 and points[0] == points[-1]:
+        points = points[:-1]
+    if len(points) < 3:
+        return False
+    if len(set(points)) != len(points):
+        return False
+    n = len(points)
+    for i in range(n):
+        a1, a2 = points[i], points[(i + 1) % n]
+        for j in range(i + 1, n):
+            if j == i or (j + 1) % n == i or j == (i + 1) % n:
+                continue
+            b1, b2 = points[j], points[(j + 1) % n]
+            if _segments_se_croisent(a1, a2, b1, b2):
+                return False
+    return True
+
+
+def _orientation(p, q, r):
+    val = ((q[1] - p[1]) * (r[0] - q[0])) - ((q[0] - p[0]) * (r[1] - q[1]))
+    if abs(val) < 1e-12:
+        return 0
+    return 1 if val > 0 else 2
+
+
+def _sur_segment(p, q, r):
+    return (min(p[0], r[0]) <= q[0] <= max(p[0], r[0])
+            and min(p[1], r[1]) <= q[1] <= max(p[1], r[1]))
+
+
+def _segments_se_croisent(p1, q1, p2, q2):
+    o1, o2 = _orientation(p1, q1, p2), _orientation(p1, q1, q2)
+    o3, o4 = _orientation(p2, q2, p1), _orientation(p2, q2, q1)
+    if o1 != o2 and o3 != o4:
+        return True
+    if o1 == 0 and _sur_segment(p1, p2, q1):
+        return True
+    if o2 == 0 and _sur_segment(p1, q2, q1):
+        return True
+    if o3 == 0 and _sur_segment(p2, p1, q2):
+        return True
+    if o4 == 0 and _sur_segment(p2, q1, q2):
+        return True
+    return False
+
+
+def aire_polygone_m2(contour):
+    """Aire (m²) d'un contour en repère LOCAL MÉTRIQUE (formule du lacet).
+
+    Fonction PURE. Renvoie ``0.0`` pour moins de 3 sommets.
+    """
+    points = [tuple(float(c) for c in p) for p in (contour or [])]
+    if len(points) > 1 and points[0] == points[-1]:
+        points = points[:-1]
+    if len(points) < 3:
+        return 0.0
+    total = 0.0
+    n = len(points)
+    for i in range(n):
+        x1, y1 = points[i]
+        x2, y2 = points[(i + 1) % n]
+        total += (x1 * y2) - (x2 * y1)
+    return abs(total) / 2.0
+
+
+class BatimentAO(TenantModel):
+    """Un bâtiment du projet (AOF18).
+
+    Un site d'appel d'offres se découpe en bâtiments (A, B, C…), chacun portant
+    une ou plusieurs toitures. L'engagement en modules du PROJET n'est jamais
+    recopié : il s'agrège depuis les bâtiments et les toitures.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les batiments suivent la societe
+        related_name='batiments_ao',
+        verbose_name='Société',
+    )
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: batiment fille d'un AO : aucune existence hors de son appel d'offres
+        related_name='batiments',
+        verbose_name="Appel d'offres",
+    )
+    code = models.CharField(max_length=30, verbose_name='Code du bâtiment')
+    designation = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Désignation')
+    ordre = models.PositiveIntegerField(default=1, verbose_name='Ordre')
+    engagement_modules = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Engagement (modules)')
+    notes = models.TextField(blank=True, default='', verbose_name='Notes')
+
+    class Meta:
+        verbose_name = 'Bâtiment (AO)'
+        verbose_name_plural = 'Bâtiments (AO)'
+        db_table = 'ao_batiment'
+        ordering = ['appel_offre', 'ordre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'appel_offre', 'code'],
+                name='uniq_batiment_ao_code',
+            ),
+        ]
+        indexes = [models.Index(fields=['company', 'appel_offre'])]
+
+    def __str__(self):
+        return f'{self.code} — {self.designation}' if self.designation \
+            else self.code
+
+    @property
+    def surface_toitures_m2(self):
+        """Somme des surfaces des toitures — CALCULÉE, jamais recopiée."""
+        total = Decimal('0.000')
+        for toiture in self.toitures.all():
+            total += toiture.surface_m2 or Decimal('0.000')
+        return total
+
+
+class ToitureAO(TenantModel):
+    """Une toiture d'un bâtiment, en repère LOCAL MÉTRIQUE (AOF18).
+
+    **Ordre des axes.** ``contour_local_m`` est une liste de ``[x, y]`` en
+    MÈTRES dans le repère local de la toiture — jamais des degrés. Le nom du
+    champ porte l'unité ET l'ordre : un champ nommé ``coordonnees`` rendrait
+    indétectable l'inversion lat/lng déjà repérée entre l'outil de tracé
+    (``[lng, lat]``) et le lead CRM (``[lat, lng]``). La conversion depuis/vers
+    les degrés vit à la FRONTIÈRE (AOF19, ``apps/ao/geometrie.py``) ; le moteur
+    de calepinage ne voit JAMAIS de degrés.
+    """
+
+    class Forme(models.TextChoices):
+        RECTANGLE = 'rectangle', 'Rectangle'
+        POLYGONE = 'polygone', 'Polygone'
+        FORME_L = 'forme_l', 'Forme en L'
+        ARC = 'arc', 'Arc / aile courbe'
+
+    class TypeCouverture(models.TextChoices):
+        BAC_ACIER = 'bac_acier', 'Bac acier'
+        DALLE_BETON = 'dalle_beton', 'Dalle béton'
+        TUILE = 'tuile', 'Tuile'
+        MEMBRANE = 'membrane', 'Membrane / étanchéité'
+        FIBROCIMENT = 'fibrociment', 'Fibrociment'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les toitures suivent la societe
+        related_name='toitures_ao',
+        verbose_name='Société',
+    )
+    batiment = models.ForeignKey(
+        BatimentAO,
+        on_delete=models.CASCADE,  # on_delete: toiture fille d'un batiment : aucune existence hors de lui
+        related_name='toitures',
+        verbose_name='Bâtiment',
+    )
+    code_document = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Code de la planche (05H, 06H, 06I…)')
+    designation = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Désignation')
+    forme = models.CharField(
+        max_length=12, choices=Forme.choices, default=Forme.RECTANGLE,
+        verbose_name='Forme')
+    #: Enveloppe : liste de ``[x, y]`` en MÈTRES, repère local (jamais degrés).
+    contour_local_m = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Contour local [x, y] en mètres')
+    angle_nord_deg = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Azimut du repère local vs Nord (°)')
+
+    # ── Paramètres d'ARC (aile courbe) ─────────────────────────────────────
+    rayon_ext_m = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Rayon extérieur (m)')
+    largeur_m = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Largeur de la bande (m)')
+    arc_segments = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Segments de l\'arc (découpage)')
+    murets = models.JSONField(
+        default=list, blank=True, verbose_name='Murets / refends')
+
+    niveau = models.IntegerField(default=0, verbose_name='Niveau')
+    altitude_m = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True,
+        verbose_name='Altitude / hauteur du plan (m)')
+    type_couverture = models.CharField(
+        max_length=14, choices=TypeCouverture.choices,
+        default=TypeCouverture.AUTRE, verbose_name='Type de couverture')
+    contraintes_structure = models.TextField(
+        blank=True, default='', verbose_name='Contraintes de structure')
+    #: Surface CALCULÉE depuis le contour (jamais saisie à la main).
+    surface_m2 = models.DecimalField(
+        max_digits=12, decimal_places=3, default=Decimal('0.000'),
+        verbose_name='Surface calculée (m²)')
+
+    class Meta:
+        verbose_name = 'Toiture (AO)'
+        verbose_name_plural = 'Toitures (AO)'
+        db_table = 'ao_toiture'
+        ordering = ['batiment', 'code_document', 'id']
+        indexes = [models.Index(fields=['company', 'batiment'])]
+
+    def __str__(self):
+        etiquette = self.code_document or self.designation or f'#{self.pk}'
+        return f'{self.batiment.code} · {etiquette}'
+
+    def clean(self):
+        """Refuse une enveloppe qui ne tient pas debout (AOF18).
+
+        Deux refus, tous deux constatés sur des relevés réels : un polygone
+        qui se croise (les rangées sortiraient du bâtiment) et un arc sans
+        rayon NI largeur (impossible à développer).
+        """
+        erreurs = {}
+        if self.forme == self.Forme.ARC:
+            if self.rayon_ext_m is None or self.largeur_m is None:
+                erreurs['rayon_ext_m'] = (
+                    "Une toiture en arc exige un rayon extérieur ET une "
+                    "largeur de bande : sans les deux, l'arc n'est pas "
+                    "développable."
+                )
+        elif self.contour_local_m:
+            if not polygone_est_simple(self.contour_local_m):
+                erreurs['contour_local_m'] = (
+                    "L'enveloppe doit être un polygone SIMPLE (au moins 3 "
+                    "sommets distincts, aucune arête qui en croise une autre)."
+                )
+        if erreurs:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(erreurs)
+
+    def recalculer_surface(self):
+        """Recalcule ``surface_m2`` depuis le contour (jamais une saisie)."""
+        self.surface_m2 = Decimal(
+            f'{aire_polygone_m2(self.contour_local_m):.3f}')
+        return self.surface_m2
 
 
 # ── FG223 — Bordereau des prix (BOQ) d'appel d'offres ──────────────────────

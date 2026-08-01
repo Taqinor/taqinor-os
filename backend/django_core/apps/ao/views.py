@@ -28,6 +28,7 @@ from rest_framework.response import Response
 from . import services
 from .models import (
     AppelOffre,
+    BatimentAO,
     BordereauPrix,
     CautionSoumission,
     DossierSoumission,
@@ -36,9 +37,11 @@ from .models import (
     LigneBordereau,
     PieceSoumission,
     ResultatAO,
+    ToitureAO,
 )
 from .serializers import (
     AppelOffreSerializer,
+    BatimentAOSerializer,
     BordereauPrixSerializer,
     CautionSoumissionSerializer,
     DossierSoumissionSerializer,
@@ -47,6 +50,7 @@ from .serializers import (
     LigneBordereauSerializer,
     PieceSoumissionSerializer,
     ResultatAOSerializer,
+    ToitureAOSerializer,
 )
 from .viewsets import AoBaseViewSet
 
@@ -173,6 +177,58 @@ class AppelOffreViewSet(AoBaseViewSet):
                 {'valeur': s, 'libelle': libelles[s]} for s in cibles
             ],
         })
+
+
+# ── AOF18 — Bâtiments et toitures ──────────────────────────────────────────
+
+class BatimentAOViewSet(AoBaseViewSet):
+    """Bâtiments d'un projet d'appel d'offres (AOF18)."""
+    queryset = BatimentAO.objects.prefetch_related('toitures').all()
+    serializer_class = BatimentAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'designation']
+    ordering_fields = ['ordre', 'code']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre',))
+
+
+class ToitureAOViewSet(AoBaseViewSet):
+    """Toitures d'un bâtiment, en repère LOCAL MÉTRIQUE (AOF18).
+
+    ``surface_m2`` est RECALCULÉE côté serveur à chaque écriture : une surface
+    saisie à la main diverge du contour dès la première correction de relevé.
+    """
+    queryset = ToitureAO.objects.all()
+    serializer_class = ToitureAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code_document', 'designation']
+    ordering_fields = ['code_document', 'niveau']
+
+    def get_queryset(self):
+        qs = _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('batiment', 'forme', 'type_couverture'))
+        appel_offre = self.request.query_params.get('appel_offre')
+        if appel_offre not in (None, ''):
+            qs = qs.filter(batiment__appel_offre_id=appel_offre) \
+                if str(appel_offre).isdigit() else qs.none()
+        return qs
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        self._recalculer(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        self._recalculer(serializer.instance)
+
+    @staticmethod
+    def _recalculer(toiture):
+        toiture.recalculer_surface()
+        toiture.save(update_fields=['surface_m2', 'updated_at'])
 
 
 # ── AOF14 — Exigences du CPS ───────────────────────────────────────────────

@@ -15,6 +15,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AppelOffreViewSet,
+    BatimentAOViewSet,
     BordereauPrixViewSet,
     CautionSoumissionViewSet,
     DossierSoumissionViewSet,
@@ -23,12 +24,15 @@ from .views import (
     LigneBordereauViewSet,
     PieceSoumissionViewSet,
     ResultatAOViewSet,
+    ToitureAOViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'appels-offres', AppelOffreViewSet, basename='ao-appel-offre')
 router.register(r'exigences-cps', ExigenceCPSViewSet,
                 basename='ao-exigence-cps')
+router.register(r'batiments', BatimentAOViewSet, basename='ao-batiment')
+router.register(r'toitures', ToitureAOViewSet, basename='ao-toiture')
 router.register(r'bordereaux-prix', BordereauPrixViewSet,
                 basename='ao-bordereau-prix')
 router.register(r'lignes-bordereau', LigneBordereauViewSet,

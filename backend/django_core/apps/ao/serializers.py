@@ -10,6 +10,7 @@ from rest_framework import serializers
 
 from .models import (
     AppelOffre,
+    BatimentAO,
     BordereauPrix,
     CautionSoumission,
     DossierSoumission,
@@ -18,6 +19,7 @@ from .models import (
     LigneBordereau,
     PieceSoumission,
     ResultatAO,
+    ToitureAO,
 )
 
 
@@ -39,6 +41,10 @@ class AppelOffreSerializer(serializers.ModelSerializer):
     mode_passation_display = serializers.CharField(
         source='get_mode_passation_display', read_only=True)
     date_fin_validite_offre = serializers.DateField(read_only=True)
+    # AOF18 — agrégats CALCULÉS (jamais des colonnes recopiées).
+    surface_toitures_m2 = serializers.DecimalField(
+        max_digits=12, decimal_places=3, read_only=True)
+    engagement_modules_batiments = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = AppelOffre
@@ -50,11 +56,67 @@ class AppelOffreSerializer(serializers.ModelSerializer):
             'reference_cps', 'type_marche', 'type_marche_display', 'lot',
             'date_limite', 'date_ouverture_plis', 'validite_offre_jours',
             'date_fin_validite_offre', 'delai_execution_jours',
-            'nombre_exemplaires', 'engagement_modules', 'montant_estime',
-            'montant_offre_ht', 'montant_offre_ttc', 'caution_provisoire',
-            'statut', 'statut_display', 'lead_id', 'date_creation',
+            'nombre_exemplaires', 'engagement_modules',
+            'engagement_modules_batiments', 'surface_toitures_m2',
+            'montant_estime', 'montant_offre_ht', 'montant_offre_ttc',
+            'caution_provisoire', 'statut', 'statut_display', 'lead_id',
+            'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+# ── AOF18 — Bâtiments et toitures ──────────────────────────────────────────
+
+class ToitureAOSerializer(serializers.ModelSerializer):
+    forme_display = serializers.CharField(
+        source='get_forme_display', read_only=True)
+    type_couverture_display = serializers.CharField(
+        source='get_type_couverture_display', read_only=True)
+    #: CALCULÉE depuis le contour — jamais saisie.
+    surface_m2 = serializers.DecimalField(
+        max_digits=12, decimal_places=3, read_only=True)
+
+    class Meta:
+        model = ToitureAO
+        fields = [
+            'id', 'batiment', 'code_document', 'designation', 'forme',
+            'forme_display', 'contour_local_m', 'angle_nord_deg',
+            'rayon_ext_m', 'largeur_m', 'arc_segments', 'murets', 'niveau',
+            'altitude_m', 'type_couverture', 'type_couverture_display',
+            'contraintes_structure', 'surface_m2',
+        ]
+
+    def validate(self, attrs):
+        """Applique les refus du modèle AVANT l'écriture.
+
+        DRF n'appelle PAS ``Model.clean()`` : sans ce pont, un polygone qui se
+        croise ou un arc sans rayon passerait par l'API alors que le modèle les
+        refuse — la garde ne vaudrait que pour l'admin Django.
+        """
+        instance = self.instance or ToitureAO()
+        donnees = {**{
+            champ: getattr(instance, champ)
+            for champ in ('forme', 'contour_local_m', 'rayon_ext_m',
+                          'largeur_m')
+        }, **{k: v for k, v in attrs.items() if k in (
+            'forme', 'contour_local_m', 'rayon_ext_m', 'largeur_m')}}
+        sonde = ToitureAO(**donnees)
+        sonde.clean()
+        return attrs
+
+
+class BatimentAOSerializer(serializers.ModelSerializer):
+    toitures = ToitureAOSerializer(many=True, read_only=True)
+    #: Agrégat CALCULÉ (somme des toitures), jamais une colonne recopiée.
+    surface_toitures_m2 = serializers.DecimalField(
+        max_digits=12, decimal_places=3, read_only=True)
+
+    class Meta:
+        model = BatimentAO
+        fields = [
+            'id', 'appel_offre', 'code', 'designation', 'ordre',
+            'engagement_modules', 'notes', 'toitures', 'surface_toitures_m2',
+        ]
 
 
 # ── AOF14 — Exigences du CPS ───────────────────────────────────────────────
