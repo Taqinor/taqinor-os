@@ -423,6 +423,10 @@ unmapped_ok:
   # directive fondateur 2026-08-01) : frontend pur sur socle ODX/ARC/VX déjà
   # livré, aucun prérequis de vague noyau -> floods.
   - ODY
+  # APX — intérieur des apps principales (Groupe APX de PLAN2, fondateur
+  # 2026-08-01) : beauté/densité par app sur acquis LB/LW/VX, frontend
+  # (1 seule tâche SCHEMA gatée), hors ordonnancement de vagues.
+  - APX
   - QW
   - QX      # UI round-6 backlog (PR #350, landed after the SCA1 inventory) —
   - QXG     # pure frontend waves outside the noyau->floods ordering.
