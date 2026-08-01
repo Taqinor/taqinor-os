@@ -44,6 +44,8 @@ import { DOC_STATUT_TRACK, factureTrack } from '../../features/ventes/documentCh
 import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
 // APX17 — confirmation maison (VX19/L152), jamais une popup du système.
 import { useConfirmDialog } from '../../ui/confirm'
+// EZ13 — confirmation À SÉVÉRITÉ (VX244) pour le marquage sec « payée ».
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import PaiementDialog from './PaiementDialog'
 // WIR103/ZFAC4 — modale « Note de débit » (création + téléchargement PDF).
 import NoteDebitDialog from './NoteDebitDialog'
@@ -203,6 +205,8 @@ function FactureRow({ f, ctx }) {
     openNoteDebit,
     // APX14 - ouvre l'apercu PDF inline de cette facture.
     openPreview,
+    // EZ13 - marquage sec, relegue au menu et explique.
+    openMarquerPayee,
     highlightFactureId,
   } = ctx
   const overdue = isOverdue(f)
@@ -418,16 +422,19 @@ function FactureRow({ f, ctx }) {
               Émettre
             </Button>
           )}
-          {(f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
-            <Button size="sm" variant="success" loading={busy}
-                    onClick={() => doAction(marquerPayeeFacture, f.id, `Marquer la facture ${f.reference} comme payée ?`)}>
-              <Check /> Payée
-            </Button>
-          )}
+          {/* EZ13 — « ✓ Payée » ÉTAIT ICI, en `variant="success"`, juste à
+              côté d'« ⚡ Encaisser ». C'est le bouton PAUVRE : marquage sec qui
+              DETRUIT mode, date et référence du règlement, alors qu'Encaisser
+              capture tout en 3 clics. Sur une liste chargée, le pauvre
+              gagnait. Il est désormais relégué au menu ⫰ (ci-dessous), derrière
+              un AlertDialog qui EXPLIQUE ce qu'on perd. « Encaisser » devient
+              l'unique action rapide — avec, DANS son dialogue, l'option
+              « paiement simple (sans détail) » pour qui veut vraiment aller
+              vite sans rien détruire. */}
           {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && nba !== 'encaisser' && (
-            <Button size="sm" variant="outline"
+            <Button size="sm" variant="default"
                     onClick={() => openPayModal(f)} title="Enregistrer un paiement">
-              Enregistrer paiement
+              <Zap className="size-3.5" aria-hidden="true" /> Encaisser
             </Button>
           )}
           {/* FG53/WR2b — lien « Payer en ligne » (copié au presse-papier). */}
@@ -465,6 +472,17 @@ function FactureRow({ f, ctx }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/* EZ13 — le marquage sec « Payée » vit ICI désormais, jamais
+                    plus à côté d'Encaisser. Il DETRUIT mode/date/référence du
+                    règlement : la confirmation l'explique au lieu de demander
+                    « êtes-vous sûr ? ». */}
+                {(f.statut === 'emise' || f.statut === 'en_retard' || overdue) && (
+                  <DropdownMenuItem
+                    data-testid="marquer-payee"
+                    onSelect={(e) => { e.preventDefault(); openMarquerPayee(f) }}>
+                    <Check /> Marquer payée (sans détail)
+                  </DropdownMenuItem>
+                )}
                 {/* APX14 — aperçu du PDF SANS quitter l'écran. */}
                 {f.fichier_pdf && (
                   <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openPreview(f) }}>
@@ -1039,6 +1057,12 @@ export default function FactureList() {
   // fraîchement encaissé n'y apparaît PAS tant que le relevé n'est pas importé.
   const [dernierEncaissement, setDernierEncaissement] = useState(null)
   const openPreview = (f) => setPreviewFacture(f)
+
+  // EZ13 — marquage sec « payée » : facture ciblée par la confirmation qui
+  // EXPLIQUE la perte (mode, date et référence du règlement ne seront pas
+  // enregistrés). Jamais une popup « êtes-vous sûr ? ».
+  const [payeeSecheTarget, setPayeeSecheTarget] = useState(null)
+  const openMarquerPayee = (f) => setPayeeSecheTarget(f)
   const fetchFacturePreviewBlob = useCallback(async () => {
     const f = previewFacture
     if (!f) return null
@@ -1229,6 +1253,8 @@ export default function FactureList() {
     openNoteDebit,
     // APX14 - ouvre l'apercu PDF inline de cette facture.
     openPreview,
+    // EZ13 - marquage sec, relegue au menu et explique.
+    openMarquerPayee,
     highlightFactureId,
   }
 
@@ -1453,6 +1479,22 @@ export default function FactureList() {
   return (
     <div className="page">
       {pageHeader}
+
+      {/* EZ13 — le marquage sec explique CE QU'ON PERD, et offre le chemin
+          riche en échappatoire (« Encaisser » capture mode/date/référence). */}
+      <ConfirmDialog
+        open={!!payeeSecheTarget}
+        onOpenChange={(o) => { if (!o) setPayeeSecheTarget(null) }}
+        severity="medium"
+        title={`Marquer ${payeeSecheTarget?.reference ?? ''} payée sans détail ?`}
+        description="Le MODE de règlement, la DATE et la RÉFÉRENCE ne seront pas enregistrés : la facture passera à « payée » sans trace d'encaissement. Préférez « Encaisser » si vous avez ces informations."
+        confirmLabel="Marquer payée quand même"
+        onConfirm={() => {
+          const f = payeeSecheTarget
+          setPayeeSecheTarget(null)
+          if (f) doAction(marquerPayeeFacture, f.id)
+        }}
+      />
 
       {/* EZ12 — après l'encaissement, l'action SUIVANTE est offerte : voir
           l'encaissement dans les Encaissements, filtré sur ce client

@@ -183,6 +183,14 @@ export default function PaiementDialog({ facture, onOpenChange, onSaved }) {
           <DialogTitle>Enregistrer un paiement — {facture?.reference}</DialogTitle>
           <DialogDescription>
             Payé {formatMAD(facture?.montant_paye)} / Dû {formatMAD(facture?.montant_du)}
+            {' — '}
+            {/* EZ13 — le « paiement simple (sans détail) » est déjà là : tout
+                est pré-rempli (reste dû, date du jour, dernier mode utilisé),
+                il suffit de valider. On le DIT, pour que personne n'aille
+                chercher le marquage sec qui, lui, détruit ces informations. */}
+            <span data-testid="paiement-simple-hint">
+              tout est pré-rempli : validez tel quel pour un paiement simple.
+            </span>
           </DialogDescription>
         </DialogHeader>
         <Form onSubmit={handleEnregistrerPaiement} className="gap-4">
