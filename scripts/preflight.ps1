@@ -110,9 +110,11 @@ step "flake8"          "flake8 backend --max-line-length=120 --extend-ignore=E50
 step "lint-imports"    "cd backend/django_core && lint-imports"
 # backend-tests-shard pre-step: model<->migration drift (the #1 CI-red class)
 step "makemigrations-check" "cd backend/django_core && python manage.py makemigrations --check --dry-run"
-# stage-names parity (all 10)
+# stage-names parity (all 11 — EZ16 a ajouté check_frontend_errors)
 step "check_stages"              "python scripts/check_stages.py"
 step "check_modules"             "python scripts/check_modules.py"
+step "check_frontend_errors"     "python scripts/check_frontend_errors.py"
+step "test_check_frontend_errors" "python -m unittest scripts.tests.test_check_frontend_errors"
 step "check_test_determinism"    "python scripts/check_test_determinism.py"
 step "check_test_tags"           "python scripts/check_test_tags.py"
 step "check_invariants"          "python scripts/check_invariants.py"

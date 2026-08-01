@@ -1,3 +1,5 @@
+// EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
+import { frenchError } from '../lib/frenchError'
 // FG350 — Logique PURE du Copilote in-app (CopilotPanel).
 //
 // Ce module ne dépend NI de React NI du DOM : il regroupe les petits utilitaires
@@ -38,9 +40,9 @@ export function displayMessageText(msg) {
 // en message FR affichable. Reconnaît aussi le cas « clé manquante ».
 export function formatAgentError(error) {
   if (error == null) return ''
-  const raw = typeof error === 'string'
-    ? error
-    : (error.detail || (() => { try { return JSON.stringify(error) } catch { return String(error) } })())
+  // EZ16 — le repli sérialisait l'objet d'erreur : du JSON brut jeté à
+  // l'utilisateur. Le contrat canonique en tire une phrase française.
+  const raw = typeof error === 'string' ? error : frenchError(error, 'Réponse indisponible.')
   if (isConfigMissing(raw)) return CONFIG_MISSING_FR
   return `Erreur : ${raw}`
 }

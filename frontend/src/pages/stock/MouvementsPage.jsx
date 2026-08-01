@@ -22,6 +22,8 @@ import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPer
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
+import { frenchError } from '../../lib/frenchError'
 
 // ZSTK7 — options du regroupement pivot (« Vue groupée »).
 const AGREGATION_GROUP_BY = [
@@ -419,7 +421,7 @@ export default function MouvementsPage() {
           data={filtered}
           columns={columns}
           loading={loading}
-          error={error ? `Erreur : ${JSON.stringify(error)}` : null}
+          error={error ? frenchError(error, 'Chargement des mouvements impossible.') : null}
           getRowId={(m) => m.id}
           searchPlaceholder="Produit, référence, note…"
           globalColumns={['produit_nom', 'reference', 'note']}
@@ -507,8 +509,10 @@ function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
       })).unwrap()
       onSaved()
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? JSON.stringify(err)
-      setErrors(prev => ({ ...prev, submit: msg }))
+      setErrors(prev => ({
+        ...prev,
+        submit: frenchError(err, 'Enregistrement du mouvement impossible.'),
+      }))
     } finally {
       setSaving(false)
     }

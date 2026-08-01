@@ -54,6 +54,8 @@ import { ModuleHero, ModuleDashboard } from '../../ui/module'
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
+import { frenchError } from '../../lib/frenchError'
 
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
 const SL_ECRAN = 'stock.produits'
@@ -919,7 +921,7 @@ export default function StockList() {
     return (
       <div className="ui-root px-4 py-5 sm:px-5">
         <EmptyState icon={AlertTriangle} title="Erreur de chargement"
-                    description={`Erreur : ${JSON.stringify(error)}`} className="border-destructive/40" />
+                    description={frenchError(error, 'Chargement du catalogue impossible.')} className="border-destructive/40" />
       </div>
     )
   }
