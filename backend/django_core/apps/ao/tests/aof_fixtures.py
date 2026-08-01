@@ -102,8 +102,10 @@ def bordereau_avant_deplacement():
                batiment='A'),
         _ligne('cof-ac-a', SECTION_A, 'Coffret AC', 'U', 1, 8500,
                batiment='A'),
-        _ligne('cab-a', SECTION_A, 'Câblage DC et AC bâtiment A', 'ENS',
-               1, 338700, batiment='A'),
+        # Le câblage est chiffré au mètre linéaire à 50 DH : comme tous les
+        # autres PU du dossier, il tombe sur son pas métier (AOF158).
+        _ligne('cab-a', SECTION_A, 'Câblage DC et AC bâtiment A', 'ml',
+               6774, 50, batiment='A'),
         # --- Bâtiment B : 354 000 + 156 000 (les câbles sont ailleurs)
         _ligne('mod-b', SECTION_B, 'Modules photovoltaïques 625 Wc', 'U',
                120, 2950, batiment='B', quantite_source='calepinage'),
@@ -115,8 +117,8 @@ def bordereau_avant_deplacement():
         _ligne('ond-c', SECTION_C, 'Onduleurs 110 kW', 'U', 5, 78000,
                batiment='C'),
         _ligne('tgpv-c', SECTION_C, 'TGPV', 'U', 1, 15000, batiment='C'),
-        _ligne('cab-c', SECTION_C, 'Câblage DC et AC bâtiment C', 'ENS',
-               1, 256700, batiment='C'),
+        _ligne('cab-c', SECTION_C, 'Câblage DC et AC bâtiment C', 'ml',
+               5134, 50, batiment='C'),
         # --- Prestations communes (877 000 + les 234 200 à déplacer)
         _ligne('meteo', SECTION_COMMUNES, 'Station météorologique', 'U',
                1, 50000),
@@ -130,10 +132,10 @@ def bordereau_avant_deplacement():
                1, 120000),
         _ligne('essais', SECTION_COMMUNES, 'Essais, mise en service et DOE',
                'ENS', 1, 70000),
-        _ligne('cab-ac-com', SECTION_COMMUNES, 'Câblage AC commun', 'ENS',
-               1, 135500),
-        _ligne(CLE_CABLES_B, SECTION_COMMUNES, 'Câbles DC Bâtiment B', 'ENS',
-               1, 234200, batiment='B'),
+        _ligne('cab-ac-com', SECTION_COMMUNES, 'Câblage AC commun', 'ml',
+               2710, 50),
+        _ligne(CLE_CABLES_B, SECTION_COMMUNES, 'Câbles DC Bâtiment B', 'ml',
+               4684, 50, batiment='B'),
     ]
 
 
