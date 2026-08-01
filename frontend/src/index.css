@@ -6496,14 +6496,89 @@ textarea.form-control {
   margin-bottom: 0.85rem;
 }
 
-.lw-rail-actions {
+/* LWC2 — bande « Faits clés » : l'information que la pile de boutons occupait
+   sans la donner (montant du dernier devis, canal, dernier échange). Tokens
+   sémantiques uniquement → lisible en clair comme en sombre. */
+.lw-facts {
   display: flex;
   flex-direction: column;
+  gap: 0.3rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.lw-facts-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.lw-facts-label {
+  flex: 0 0 auto;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.lw-facts-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--foreground);
+  text-align: right;
+}
+.lw-facts-amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lw-facts-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+}
+
+/* LWC2 — 2 CTA côte à côte + menu « ⋯ » (au lieu de 6 boutons empilés). */
+.lw-rail-actions {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
 }
 .lw-rail-actions > * {
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
   justify-content: center;
+}
+.lw-rail-actions-more {
+  flex: 0 0 auto;
+  width: 44px;
+  min-width: 44px;
+  font-size: var(--text-body);
+  line-height: 1;
+}
+.lw-rail-actions-menu [role="menuitem"] {
+  min-height: 44px;
+}
+/* Sous 768 px, la barre-pouce (.lw-thumbbar) porte déjà WhatsApp : ce bouton
+   serait un doublon dans le rail. */
+@media (max-width: 767px) {
+  .lw-rail-actions-wa {
+    display: none;
+  }
 }
 
 /* ── LW15 : triade (responsable · prochaine action · relance) ──────────────── */
