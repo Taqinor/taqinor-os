@@ -193,7 +193,18 @@ class TestTacheGeneration(TestCase):
             date_limite=datetime.date(2026, 4, 1))
         premier = generer_echeancier(ao.id)
         second = generer_echeancier(ao.id)
-        self.assertEqual(premier['creees'], 1)
+        # Une date de remise implique DEUX échéances, pas une : la remise des
+        # plis, et la fin de validité de l'offre — DÉRIVÉE de la durée portée
+        # par le projet (75 j par défaut au Maroc) à partir de cette même
+        # date réelle. Rien n'est inventé, et compter « 1 » ici revenait à
+        # ignorer une date sur laquelle un dossier se perd.
+        types = set(EcheanceAO.objects.filter(appel_offre=ao).values_list(
+            'type_echeance', flat=True))
+        self.assertEqual(types, {EcheanceAO.TypeEcheance.REMISE_PLIS,
+                                 EcheanceAO.TypeEcheance.VALIDITE})
+        self.assertEqual(premier['creees'], len(types))
+        # Le vrai sujet du test : rejouer ne duplique RIEN.
         self.assertEqual(second['creees'], 0)
+        self.assertEqual(second['inchangees'], len(types))
         self.assertEqual(generer_echeancier(999999),
                          {'creees': 0, 'mises_a_jour': 0, 'inchangees': 0})
