@@ -66,9 +66,16 @@ UNGUARDED_ACTION_BASELINE = {
     # apps/marketing/views.py, ODX10) with per-class get_permissions() reusing
     # the existing COMPTA40 codes (compta_saisir/compta_valider), purely
     # additive tightening — zero behaviour change for default roles (Directeur/
-    # Administrateur/Responsable already hold both codes). Remaining 115 =
-    # dette restante, follow-up possible.
-    "compta": 115,
+    # Administrateur/Responsable already hold both codes).
+    # AOF1 — 115->113 : le corps des 8 ViewSets AO a QUITTÉ compta pour
+    # ``apps/ao`` (compta n'en garde qu'un shim de re-export, sans ``@action``
+    # dans son corps de classe), emportant avec lui les 2 dernières @action
+    # coarse de ce lot (``EcheanceAOViewSet.dues`` et ``ResultatAOViewSet.stats``).
+    # La dette n'est pas résorbée, elle est comptée sous ``ao`` ci-dessus : le
+    # baseline de compta doit donc DÉCROÎTRE d'autant, sinon il laisse 2 crans
+    # de mou où une nouvelle @action non gardée passerait sans être vue.
+    # Remaining 113 = dette restante, follow-up possible.
+    "compta": 113,
     "contrats": 56,
     # NTADM1/28/43 — EntiteViewSet : 3 @action coarse (deplacer/tree/desactiver)
     # gardées au niveau CLASSE par ``permission_classes = [IsAdministrateur]``
