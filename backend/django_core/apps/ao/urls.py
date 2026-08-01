@@ -22,16 +22,19 @@ from .views import (
     DossierSoumissionViewSet,
     EcheanceAOViewSet,
     ExigenceCPSViewSet,
+    KitCalepinageViewSet,
     LigneBordereauViewSet,
     ObstacleAOViewSet,
     PieceConsultationViewSet,
     PieceSoumissionViewSet,
     PlanSourceViewSet,
+    PresetCalepinageViewSet,
     ReleveAOViewSet,
     QuestionAOViewSet,
     ResultatAOViewSet,
     SerieQuestionsViewSet,
     ToitureAOViewSet,
+    VarianteCalepinageViewSet,
 )
 
 router = DefaultRouter()
@@ -53,6 +56,12 @@ router.register(r'series-questions', SerieQuestionsViewSet,
                 basename='ao-serie-questions')
 router.register(r'questions', QuestionAOViewSet,
                 basename='ao-question')
+router.register(r'kits-calepinage', KitCalepinageViewSet,
+                basename='ao-kit-calepinage')
+router.register(r'presets-calepinage', PresetCalepinageViewSet,
+                basename='ao-preset-calepinage')
+router.register(r'variantes-calepinage', VarianteCalepinageViewSet,
+                basename='ao-variante-calepinage')
 router.register(r'bordereaux-prix', BordereauPrixViewSet,
                 basename='ao-bordereau-prix')
 router.register(r'lignes-bordereau', LigneBordereauViewSet,

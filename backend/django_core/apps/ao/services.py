@@ -403,6 +403,101 @@ def cautions_expirant_avant_ouverture(appel_offre):
     ]
 
 
+# ── AOF28 — Publier une variante exige une PREUVE ──────────────────────────
+
+def publier_variante(variante):
+    """Fait passer une variante à ``publiable`` — ou REFUSE avec les motifs.
+
+    C'est la seule façon d'écrire « capacité prouvée optimale » à un maître
+    d'ouvrage sans risque : la donnée doit le démontrer.
+
+    Raises:
+        ValidationError: la preuve ne tient pas (motifs en français).
+    """
+    raisons = variante.raisons_de_non_publiabilite()
+    if raisons:
+        raise ValidationError({'preuve': raisons})
+    variante.statut = variante.Statut.PUBLIABLE
+    variante.save(update_fields=['statut', 'updated_at'])
+    return variante
+
+
+def retenir_variante(variante):
+    """Désigne LA variante retenue d'une toiture (une seule à la fois)."""
+    from .models import VarianteCalepinage
+
+    VarianteCalepinage.objects.filter(
+        toiture_id=variante.toiture_id, est_retenue=True,
+    ).exclude(pk=variante.pk).update(est_retenue=False)
+    variante.est_retenue = True
+    variante.save(update_fields=['est_retenue', 'updated_at'])
+    return variante
+
+
+# ── AOF26/AOF27 — Kits et presets ──────────────────────────────────────────
+
+def appliquer_preset(preset, toiture, *, user=None):
+    """Applique un preset à une toiture EN UN APPEL, et TRACE l'application.
+
+    On écrit à la fois le lien (``preset_applique``) et un INSTANTANÉ des
+    paramètres (``parametres_calepinage``) : sans l'instantané, éditer un
+    preset six mois plus tard réécrirait l'histoire d'un calepinage déjà
+    publié — et le plan remis au maître d'ouvrage ne serait plus reproductible.
+    """
+    toiture.preset_applique = preset
+    toiture.parametres_calepinage = dict(preset.parametres or {})
+    toiture.save(update_fields=[
+        'preset_applique', 'parametres_calepinage', 'updated_at'])
+
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        toiture.batiment.appel_offre, Activity.Kind.MODIFICATION, user=user,
+        field='preset_applique',
+        field_label=f'Toiture {toiture.code_document or toiture.pk}',
+        old_value='', new_value=preset.nom,
+        body='Preset de calepinage appliqué.', company=toiture.company)
+    return toiture
+
+
+def preset_par_defaut(company, portee):
+    """Le preset par défaut d'une portée, ou ``None``."""
+    from .models import PresetCalepinage
+
+    return PresetCalepinage.objects.filter(
+        company=company, portee=portee, par_defaut=True).first()
+
+
+def seeder_presets(company):
+    """Crée les presets de référence manquants. ADDITIF et rejouable."""
+    from .models import (
+        PRESET_CONSERVATEUR_NOM, PRESET_CONSERVATEUR_PARAMETRES,
+        PRESET_REFERENCE_NOM, PRESET_REFERENCE_PARAMETRES, PresetCalepinage,
+    )
+
+    gabarits = (
+        (PRESET_REFERENCE_NOM, PRESET_REFERENCE_PARAMETRES, True,
+         'Jeu de référence relevé sur un chantier réel (07/2026) : rives '
+         '0,35 m, allée minimale 0,60 m, dégagements 0,30/0,50 m.'),
+        (PRESET_CONSERVATEUR_NOM, PRESET_CONSERVATEUR_PARAMETRES, False,
+         "Anciens défauts conservateurs (1,50/0,50/0,50), conservés à titre "
+         "d'information."),
+    )
+    crees = 0
+    for nom, parametres, par_defaut, description in gabarits:
+        _, cree = PresetCalepinage.objects.get_or_create(
+            company=company, nom=nom,
+            defaults={
+                'portee': PresetCalepinage.Portee.AO,
+                'parametres': dict(parametres),
+                'par_defaut': par_defaut,
+                'description': description,
+            })
+        crees += int(cree)
+    return crees
+
+
 # ── AOF25 — Trancher une question APPLIQUE la décision ─────────────────────
 #
 # Une question tranchée qui ne modifie rien ne sert à rien : la décision doit

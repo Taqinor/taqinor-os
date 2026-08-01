@@ -474,7 +474,7 @@ class ExigenceCPS(TenantModel):
 
 #: AOF14 — jeu de clauses de RÉFÉRENCE relevé sur un CPS réel (session du
 #: 27/07/2026). Sert de fixture reproductible aux tests et d'amorce à la
-#: saisie ; ce n'est PAS une norme (aucun texte normatif marocain n'est présent
+#: saisie ; ce n'est PAS réglementaire (aucun texte normatif marocain n'est
 #: dans le dépôt — cf. la règle de nommage d'AOF27).
 CLAUSES_REFERENCE_CPS = (
     {
@@ -687,6 +687,15 @@ class ToitureAO(TenantModel):
     surface_m2 = models.DecimalField(
         max_digits=12, decimal_places=3, default=Decimal('0.000'),
         verbose_name='Surface calculée (m²)')
+    #: AOF27 — le preset APPLIQUÉ et l'instantané de ses paramètres. On garde
+    #: les DEUX : le lien dit d'où viennent les réglages, l'instantané
+    #: garantit qu'un preset modifié plus tard ne réécrit pas l'histoire d'un
+    #: calepinage déjà publié.
+    preset_applique = models.ForeignKey(
+        'PresetCalepinage', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='toitures', verbose_name='Preset appliqué')
+    parametres_calepinage = models.JSONField(
+        default=dict, blank=True, verbose_name='Paramètres de calepinage')
 
     class Meta:
         verbose_name = 'Toiture (AO)'
@@ -1461,6 +1470,399 @@ class PlanSource(TenantModel):
         if self.etat == self.Etat.BRUT:
             self.etat = self.Etat.CALIBRE
         return self.echelle_m_par_px
+
+
+# ── AOF26 — Catalogue des KITS de pose ─────────────────────────────────────
+
+class KitCalepinage(TenantModel):
+    """Un kit de pose : la brique élémentaire du calepinage (AOF26).
+
+    Le moteur est PARTAGÉ avec les villas : une villa est simplement un kit à
+    ``modules_par_kit = 1``, l'AO un kit table dos-à-dos à 2 modules. Modéliser
+    le kit — plutôt que de coder deux moteurs — est ce qui rend cette parité
+    possible.
+
+    **AUCUN PRIX ICI.** Le prix vient du ``Produit`` lié (string-FK
+    ``stock.Produit``, jamais un import cross-app) : figer un prix dans le kit
+    créerait une seconde vérité qui divergerait du catalogue au premier
+    réapprovisionnement.
+
+    Les emprises transversales se DÉRIVENT de la géométrie
+    (``2 × longueur_pente × cos(inclinaison) + faîtage``) mais une valeur
+    MESURÉE sur un kit réellement approvisionné peut être FIGÉE : elle prime
+    alors, et l'écart avec la dérivation reste tracé (``ecart_emprise_m``) —
+    c'est l'écart qui révèle une hypothèse fausse, pas la valeur seule.
+    """
+
+    class Mode(models.TextChoices):
+        TABLE_DOS_A_DOS = 'table_dos_a_dos', 'Table dos-à-dos'
+        PANNEAU_SIMPLE = 'panneau_simple', 'Panneau simple'
+
+    class Orientation(models.TextChoices):
+        PORTRAIT = 'portrait', 'Portrait'
+        PAYSAGE = 'paysage', 'Paysage'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — le catalogue de kits suit la societe
+        related_name='kits_calepinage',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=40, verbose_name='Code du kit')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    mode = models.CharField(
+        max_length=16, choices=Mode.choices, default=Mode.TABLE_DOS_A_DOS,
+        verbose_name='Mode de pose')
+    modules_par_kit = models.PositiveIntegerField(
+        default=2, verbose_name='Modules par kit')
+    #: Pas LE LONG de la rangée (m) — la dimension qui se répète.
+    pas_rangee_m = models.DecimalField(
+        max_digits=8, decimal_places=3, verbose_name='Pas le long de la rangée (m)')
+    #: Dimension du module DANS LA PENTE (m) — sert à dériver l'emprise.
+    longueur_pente_m = models.DecimalField(
+        max_digits=8, decimal_places=3,
+        verbose_name='Longueur du module dans la pente (m)')
+    faitage_m = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('0.000'),
+        verbose_name='Jeu de faîtage (m)')
+    #: Emprise transversale RETENUE (dérivée, ou mesurée si figée).
+    emprise_transversale_m = models.DecimalField(
+        max_digits=8, decimal_places=3, default=Decimal('0.000'),
+        verbose_name='Emprise transversale (m)')
+    emprise_mesuree_m = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True,
+        verbose_name='Emprise MESURÉE (m)')
+    emprise_figee = models.BooleanField(
+        default=False, verbose_name='Emprise mesurée figée (prime)')
+    ecart_emprise_m = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True,
+        verbose_name='Écart mesuré − dérivé (m)')
+    puissance_module_w = models.PositiveIntegerField(
+        default=625, verbose_name='Puissance unitaire du module (W)')
+    inclinaison_deg = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('15.00'),
+        verbose_name='Inclinaison (°)')
+    orientation_modules = models.CharField(
+        max_length=10, choices=Orientation.choices,
+        default=Orientation.PORTRAIT, verbose_name='Orientation des modules')
+    #: string-FK ``'stock.Produit'`` — ``apps.ao.models`` n'importe JAMAIS
+    #: ``apps.stock.models`` (contrat import-linter ``ao-models-decoupled``).
+    #: C'est LUI qui porte le prix ; le kit n'en fige aucun.
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='kits_calepinage_ao', verbose_name='Produit (prix)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Kit de calepinage (AO)'
+        verbose_name_plural = 'Kits de calepinage (AO)'
+        db_table = 'ao_kit_calepinage'
+        ordering = ['code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='uniq_kit_calepinage_code'),
+        ]
+        indexes = [models.Index(fields=['company', 'actif'])]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+    @property
+    def puissance_kwc(self):
+        """kWc d'UN kit = modules × puissance unitaire (jamais recopié)."""
+        return (Decimal(self.modules_par_kit)
+                * Decimal(self.puissance_module_w) / Decimal('1000'))
+
+    def emprise_derivee_m(self):
+        """``2 × longueur_pente × cos(inclinaison) + faîtage`` pour une table.
+
+        Un panneau simple n'a qu'un versant : la dérivation n'a alors qu'un
+        facteur 1. Renvoie un ``Decimal`` arrondi au millimètre.
+        """
+        facteur = 2 if self.mode == self.Mode.TABLE_DOS_A_DOS else 1
+        cosinus = math.cos(math.radians(float(self.inclinaison_deg)))
+        valeur = (facteur * float(self.longueur_pente_m) * cosinus
+                  + float(self.faitage_m))
+        return Decimal(f'{valeur:.3f}')
+
+    def appliquer_emprise(self):
+        """Fixe ``emprise_transversale_m`` et TRACE l'écart éventuel."""
+        derivee = self.emprise_derivee_m()
+        if self.emprise_figee and self.emprise_mesuree_m is not None:
+            self.emprise_transversale_m = self.emprise_mesuree_m
+            self.ecart_emprise_m = Decimal(self.emprise_mesuree_m) - derivee
+        else:
+            self.emprise_transversale_m = derivee
+            self.ecart_emprise_m = (
+                Decimal(self.emprise_mesuree_m) - derivee
+                if self.emprise_mesuree_m is not None else None)
+        return self.emprise_transversale_m
+
+
+# ── AOF27 — Jeux de paramètres NOMMÉS, réutilisables, réappliquables ───────
+
+class PresetCalepinage(TenantModel):
+    """Un jeu de paramètres de calepinage nommé (AOF27).
+
+    **Le jeu de référence s'appelle « FRDISI 2026-07 », JAMAIS autrement.**
+    Aucun texte réglementaire marocain (dégagement pompier, distance acrotère,
+    exutoire) n'est présent dans ce dépôt : présenter ces valeurs comme
+    réglementaires produirait un jour un plan non conforme, opposable à
+    l'entreprise. Ce sont des paramètres MAISON, issus d'un chantier réel — et
+    le nom du preset doit le dire.
+
+    Les anciens défauts conservateurs (1,50 / 0,50 / 0,50) restent disponibles
+    comme « variante conservatrice », à titre d'information.
+    """
+
+    class Portee(models.TextChoices):
+        VILLA = 'villa', 'Villa'
+        AO = 'ao', "Appel d'offres"
+        SOCIETE = 'societe', 'Société (tous usages)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les presets suivent la societe
+        related_name='presets_calepinage',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom du preset')
+    portee = models.CharField(
+        max_length=10, choices=Portee.choices, default=Portee.AO,
+        verbose_name='Portée')
+    #: Paramètres : rives, allée minimale, dégagements par provenance, kits
+    #: autorisés, orientation imposée, recherche d'allée gratuite, pas de
+    #: recherche. Un dict — jamais une colonne par réglage, sinon chaque
+    #: nouveau paramètre coûterait une migration.
+    parametres = models.JSONField(default=dict, blank=True,
+                                  verbose_name='Paramètres')
+    par_defaut = models.BooleanField(
+        default=False, verbose_name='Preset par défaut')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+
+    class Meta:
+        verbose_name = 'Preset de calepinage (AO)'
+        verbose_name_plural = 'Presets de calepinage (AO)'
+        db_table = 'ao_preset_calepinage'
+        ordering = ['portee', 'nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'], name='uniq_preset_calepinage_nom'),
+        ]
+        indexes = [models.Index(fields=['company', 'portee'])]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_portee_display()})'
+
+
+#: AOF27 — le jeu de RÉFÉRENCE, relevé sur un chantier réel (07/2026).
+#: Rives 0,35 m · allée minimale 0,60 m · dégagements 0,30 / 0,50 m.
+PRESET_REFERENCE_NOM = 'FRDISI 2026-07'
+PRESET_REFERENCE_PARAMETRES = {
+    'rive_laterale_m': 0.35,
+    'rive_extremite_m': 0.35,
+    'allee_min_m': 0.60,
+    'degagements_par_provenance_m': {
+        'MESURE': 0.30,
+        'MESURE_DOUTEUX': 0.50,
+        'PLAN': 0.50,
+        'DEVINE': 0.50,
+        'DECLARE_CLIENT': 0.30,
+    },
+    'kits_autorises': ['AO-TABLE-PORTRAIT', 'AO-TABLE-PAYSAGE'],
+    'orientation_imposee': None,
+    'recherche_allee_gratuite': True,
+    'pas_recherche_m': 0.01,
+}
+
+#: Les anciens défauts, conservés à titre d'INFORMATION (jamais le défaut).
+PRESET_CONSERVATEUR_NOM = 'Variante conservatrice'
+PRESET_CONSERVATEUR_PARAMETRES = {
+    'rive_laterale_m': 1.50,
+    'rive_extremite_m': 0.50,
+    'allee_min_m': 0.50,
+    'degagements_par_provenance_m': {
+        'MESURE': 0.50,
+        'MESURE_DOUTEUX': 0.50,
+        'PLAN': 0.50,
+        'DEVINE': 0.50,
+        'DECLARE_CLIENT': 0.50,
+    },
+    'kits_autorises': ['AO-TABLE-PORTRAIT'],
+    'orientation_imposee': None,
+    'recherche_allee_gratuite': False,
+    'pas_recherche_m': 0.05,
+}
+
+
+# ── AOF28 — Le modèle PIVOT des variantes (role + parent + preuve) ─────────
+
+class VarianteCalepinage(TenantModel):
+    """Un calepinage calculé, vu sous QUATRE angles (AOF28).
+
+    Variante retenue, alternative comparée, sensibilité défavorable et marche
+    de l'échelle de décomposition sont le MÊME objet : ``role`` + ``parent``
+    suffisent. Trois tables jumelles auraient triplé chaque évolution du moteur
+    et rendu l'écran de comparaison impossible à écrire en une requête.
+
+    **La PREUVE est un CHAMP, pas un commentaire.** On ne peut écrire
+    « capacité prouvée optimale » à un maître d'ouvrage que si la donnée le
+    démontre : la transition vers ``publiable`` est REFUSÉE quand le total
+    retenu est inférieur au total optimal, quand une marge de tronçon ou de
+    bande passe sous son seuil, ou quand un obstacle NON MESURÉ est encore
+    actif sur la toiture.
+    """
+
+    class Role(models.TextChoices):
+        RETENUE = 'RETENUE', 'Variante retenue'
+        ALTERNATIVE = 'ALTERNATIVE', 'Alternative comparée'
+        SENSIBILITE = 'SENSIBILITE', 'Sensibilité défavorable'
+        MARCHE = 'MARCHE', "Marche de l'échelle de décomposition"
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        CALCULEE = 'calculee', 'Calculée'
+        PUBLIABLE = 'publiable', 'Publiable'
+        PERIME = 'perime', 'Périmée'
+
+    #: Seuils de PREUVE — sous ces marges, un plan n'est pas publiable.
+    MARGE_TRONCON_MIN_M = Decimal('0.02')
+    MARGE_BANDE_MIN_M = Decimal('0.04')
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les variantes suivent la societe
+        related_name='variantes_calepinage',
+        verbose_name='Société',
+    )
+    toiture = models.ForeignKey(
+        ToitureAO,
+        on_delete=models.CASCADE,  # on_delete: variante fille d'une toiture : aucune existence hors d'elle
+        related_name='variantes',
+        verbose_name='Toiture',
+    )
+    #: Dénormalisé pour que l'écran projet soit UNE requête (jamais deux
+    #: sources de vérité : il est posé à la création depuis la toiture).
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: variante fille d'un AO : aucune existence hors de son appel d'offres
+        related_name='variantes_calepinage',
+        verbose_name="Appel d'offres",
+    )
+    role = models.CharField(
+        max_length=12, choices=Role.choices, default=Role.RETENUE,
+        verbose_name='Rôle')
+    parent = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='enfants', verbose_name='Variante parente')
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    params = models.JSONField(
+        default=dict, blank=True, verbose_name="Paramètres d'entrée")
+    #: Empreinte canonique de l'ENTRÉE (AOF29) — pilote la péremption.
+    entree_hash = models.CharField(
+        max_length=64, blank=True, default='', verbose_name="Empreinte d'entrée")
+    #: Rangées EXPLICITES : ``[{"x0": .., "kit": "..", "modules": n}, …]``.
+    resultat = models.JSONField(
+        default=dict, blank=True, verbose_name='Résultat')
+    #: Preuve : total_retenu, total_optimal, methode, pas_cm, nb_optima,
+    #: marge_troncon_min, marge_bande_min, controles.
+    preuve = models.JSONField(
+        default=dict, blank=True, verbose_name='Preuve du calcul')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    est_retenue = models.BooleanField(
+        default=False, verbose_name='Variante retenue de la toiture')
+    est_recommandee = models.BooleanField(
+        default=False, verbose_name='Recommandée')
+    score = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Score')
+    justification = models.TextField(
+        blank=True, default='', verbose_name='Justification')
+    version_moteur = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Version du moteur')
+    job = models.ForeignKey(
+        'core.BackgroundJob', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='variantes_calepinage_ao', verbose_name='Job de calcul')
+
+    class Meta:
+        verbose_name = 'Variante de calepinage (AO)'
+        verbose_name_plural = 'Variantes de calepinage (AO)'
+        db_table = 'ao_variante_calepinage'
+        ordering = ['toiture', 'role', '-score', 'id']
+        constraints = [
+            # UNE seule variante retenue par toiture — la contrainte est en
+            # base, pas dans une vue : deux « retenues » rendraient le dossier
+            # indéfendable.
+            models.UniqueConstraint(
+                fields=['toiture'], condition=models.Q(est_retenue=True),
+                name='uniq_variante_retenue_par_toiture'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'appel_offre']),
+            models.Index(fields=['company', 'toiture', 'role']),
+            models.Index(fields=['company', 'entree_hash']),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} [{self.get_role_display()}]'
+
+    @property
+    def total_modules(self):
+        return (self.resultat or {}).get('total_modules', 0)
+
+    @property
+    def puissance_kwc(self):
+        return (self.resultat or {}).get('kwc', 0)
+
+    def raisons_de_non_publiabilite(self):
+        """Les motifs, en clair, qui INTERDISENT de publier (AOF28).
+
+        Liste vide = publiable. Chaque motif est une phrase française : c'est
+        ce que l'utilisateur doit lire, pas un code d'erreur.
+        """
+        preuve = self.preuve or {}
+        raisons = []
+        retenu = preuve.get('total_retenu')
+        optimal = preuve.get('total_optimal')
+        if retenu is None or optimal is None:
+            raisons.append(
+                "La preuve est incomplète : sans total retenu ET total "
+                "optimal, la capacité ne peut pas être qualifiée d'optimale."
+            )
+        elif Decimal(str(retenu)) < Decimal(str(optimal)):
+            raisons.append(
+                f'Le calepinage retenu ({retenu} modules) est inférieur à '
+                f"l'optimum trouvé ({optimal} modules)."
+            )
+        marge_troncon = preuve.get('marge_troncon_min')
+        if marge_troncon is not None and \
+                Decimal(str(marge_troncon)) < self.MARGE_TRONCON_MIN_M:
+            raisons.append(
+                f'La marge minimale de tronçon ({marge_troncon} m) est sous '
+                f'le seuil de {self.MARGE_TRONCON_MIN_M} m.'
+            )
+        marge_bande = preuve.get('marge_bande_min')
+        if marge_bande is not None and \
+                Decimal(str(marge_bande)) < self.MARGE_BANDE_MIN_M:
+            raisons.append(
+                f'La marge minimale de bande ({marge_bande} m) est sous le '
+                f'seuil de {self.MARGE_BANDE_MIN_M} m.'
+            )
+        if self.pk and self.toiture_id:
+            non_mesures = self.toiture.obstacles.filter(actif=True).exclude(
+                provenance__in=list(ObstacleAO.PROVENANCES_ENGAGEABLES))
+            if non_mesures.exists():
+                reperes = ', '.join(
+                    o.repere or f'#{o.pk}' for o in non_mesures[:5])
+                raisons.append(
+                    "Des obstacles NON MESURÉS sont encore actifs sur la "
+                    f'toiture ({reperes}) : le plan ne peut pas être publié '
+                    'comme engageant.'
+                )
+        return raisons
 
 
 # ── FG223 — Bordereau des prix (BOQ) d'appel d'offres ──────────────────────

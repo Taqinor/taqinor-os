@@ -17,16 +17,19 @@ from .models import (
     DossierSoumission,
     EcheanceAO,
     ExigenceCPS,
+    KitCalepinage,
     LigneBordereau,
     ObstacleAO,
     PieceConsultation,
     PieceSoumission,
     PlanSource,
+    PresetCalepinage,
     ReleveAO,
     QuestionAO,
     ResultatAO,
     SerieQuestions,
     ToitureAO,
+    VarianteCalepinage,
 )
 
 
@@ -90,7 +93,8 @@ class ToitureAOSerializer(serializers.ModelSerializer):
             'forme_display', 'contour_local_m', 'angle_nord_deg',
             'rayon_ext_m', 'largeur_m', 'arc_segments', 'murets', 'niveau',
             'altitude_m', 'type_couverture', 'type_couverture_display',
-            'contraintes_structure', 'surface_m2',
+            'contraintes_structure', 'surface_m2', 'preset_applique',
+            'parametres_calepinage',
         ]
 
     def validate(self, attrs):
@@ -325,6 +329,72 @@ class ExigenceCPSSerializer(serializers.ModelSerializer):
             'est_intervalle', 'unite', 'valeur_texte', 'source_piece',
             'source_page', 'piece_consultation', 'a_reverifier', 'bloquant',
             'commentaire',
+        ]
+
+
+class VarianteCalepinageSerializer(serializers.ModelSerializer):
+    """AOF28 — le modèle PIVOT : role + parent + PREUVE."""
+    role_display = serializers.CharField(
+        source='get_role_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    total_modules = serializers.IntegerField(read_only=True)
+    puissance_kwc = serializers.FloatField(read_only=True)
+    #: Les motifs qui INTERDISENT de publier, en clair (liste vide = OK).
+    raisons_de_non_publiabilite = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VarianteCalepinage
+        fields = [
+            'id', 'toiture', 'appel_offre', 'role', 'role_display', 'parent',
+            'nom', 'params', 'entree_hash', 'resultat', 'preuve',
+            'total_modules', 'puissance_kwc', 'statut', 'statut_display',
+            'est_retenue', 'est_recommandee', 'score', 'justification',
+            'version_moteur', 'job', 'raisons_de_non_publiabilite',
+        ]
+        read_only_fields = ['entree_hash']
+
+    def get_raisons_de_non_publiabilite(self, obj):
+        return obj.raisons_de_non_publiabilite()
+
+
+class PresetCalepinageSerializer(serializers.ModelSerializer):
+    """AOF27 — jeux de paramètres nommés, réutilisables et réappliquables."""
+    portee_display = serializers.CharField(
+        source='get_portee_display', read_only=True)
+
+    class Meta:
+        model = PresetCalepinage
+        fields = [
+            'id', 'nom', 'portee', 'portee_display', 'parametres',
+            'par_defaut', 'description',
+        ]
+
+
+# ── AOF26 — Kits de calepinage ─────────────────────────────────────────────
+
+class KitCalepinageSerializer(serializers.ModelSerializer):
+    """AOF26 — le kit ne porte AUCUN prix : il vient du produit lié."""
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+    #: kWc = modules × puissance unitaire — CALCULÉ, jamais recopié.
+    puissance_kwc = serializers.DecimalField(
+        max_digits=10, decimal_places=3, read_only=True)
+    #: L'emprise RETENUE et l'écart avec la dérivation sont posés côté serveur.
+    emprise_transversale_m = serializers.DecimalField(
+        max_digits=8, decimal_places=3, read_only=True)
+    ecart_emprise_m = serializers.DecimalField(
+        max_digits=8, decimal_places=3, read_only=True, allow_null=True)
+
+    class Meta:
+        model = KitCalepinage
+        fields = [
+            'id', 'code', 'libelle', 'mode', 'mode_display',
+            'modules_par_kit', 'pas_rangee_m', 'longueur_pente_m',
+            'faitage_m', 'emprise_transversale_m', 'emprise_mesuree_m',
+            'emprise_figee', 'ecart_emprise_m', 'puissance_module_w',
+            'puissance_kwc', 'inclinaison_deg', 'orientation_modules',
+            'produit', 'actif',
         ]
 
 

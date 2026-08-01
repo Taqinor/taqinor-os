@@ -35,16 +35,19 @@ from .models import (
     DossierSoumission,
     EcheanceAO,
     ExigenceCPS,
+    KitCalepinage,
     LigneBordereau,
     ObstacleAO,
     PieceConsultation,
     PieceSoumission,
     PlanSource,
+    PresetCalepinage,
     ReleveAO,
     QuestionAO,
     ResultatAO,
     SerieQuestions,
     ToitureAO,
+    VarianteCalepinage,
 )
 from .serializers import (
     AppelOffreSerializer,
@@ -55,16 +58,19 @@ from .serializers import (
     DossierSoumissionSerializer,
     EcheanceAOSerializer,
     ExigenceCPSSerializer,
+    KitCalepinageSerializer,
     LigneBordereauSerializer,
     ObstacleAOSerializer,
     PieceConsultationSerializer,
     PieceSoumissionSerializer,
     PlanSourceSerializer,
+    PresetCalepinageSerializer,
     ReleveAOSerializer,
     QuestionAOSerializer,
     ResultatAOSerializer,
     SerieQuestionsSerializer,
     ToitureAOSerializer,
+    VarianteCalepinageSerializer,
 )
 from .viewsets import AoBaseViewSet
 
@@ -258,6 +264,20 @@ class ToitureAOViewSet(AoBaseViewSet):
     def _recalculer(toiture):
         toiture.recalculer_surface()
         toiture.save(update_fields=['surface_m2', 'updated_at'])
+
+    @action(detail=True, methods=['post'], url_path='appliquer-preset')
+    def appliquer_preset(self, request, pk=None):
+        """AOF27 — applique un preset à cette toiture EN UN APPEL."""
+        toiture = self.get_object()
+        preset = PresetCalepinage.objects.filter(
+            pk=request.data.get('preset'),
+            company=request.user.company).first()
+        if preset is None:
+            return Response(
+                {'preset': "Ce preset n'existe pas dans votre société."},
+                status=status.HTTP_400_BAD_REQUEST)
+        services.appliquer_preset(preset, toiture, user=request.user)
+        return Response(self.get_serializer(toiture).data)
 
 
 class SerieQuestionsViewSet(AoBaseViewSet):
@@ -531,6 +551,86 @@ class ExigenceCPSViewSet(AoBaseViewSet):
             super().get_queryset(), self.request.query_params,
             ('appel_offre', 'type_exigence', 'bloquant', 'a_reverifier',
              'piece_consultation'))
+
+
+class VarianteCalepinageViewSet(AoBaseViewSet):
+    """Variantes de calepinage (AOF28) — l'écran de comparaison est UNE requête.
+
+    ``publier`` refuse (400) tant que la PREUVE ne tient pas ; ``retenir``
+    désigne l'unique variante retenue de la toiture.
+    """
+    queryset = VarianteCalepinage.objects.all()
+    serializer_class = VarianteCalepinageSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'justification']
+    ordering_fields = ['role', 'score', 'statut']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'appel_offre', 'role', 'statut', 'est_retenue',
+             'est_recommandee', 'parent'))
+
+    @action(detail=True, methods=['post'], url_path='publier')
+    def publier(self, request, pk=None):
+        try:
+            variante = services.publier_variante(self.get_object())
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'preuve': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(variante).data)
+
+    @action(detail=True, methods=['post'], url_path='retenir')
+    def retenir(self, request, pk=None):
+        variante = services.retenir_variante(self.get_object())
+        return Response(self.get_serializer(variante).data)
+
+
+class PresetCalepinageViewSet(AoBaseViewSet):
+    """Presets de calepinage (AOF27) — jeux de paramètres NOMMÉS."""
+    queryset = PresetCalepinage.objects.all()
+    serializer_class = PresetCalepinageSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['nom', 'portee']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('portee', 'par_defaut'))
+
+
+# ── AOF26 — Kits de calepinage ─────────────────────────────────────────────
+
+class KitCalepinageViewSet(AoBaseViewSet):
+    """Catalogue des kits de pose (AOF26). L'emprise est TOUJOURS recalculée
+    côté serveur : dérivée par défaut, mesurée quand elle est figée, écart
+    tracé dans les deux cas."""
+    queryset = KitCalepinage.objects.all()
+    serializer_class = KitCalepinageSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['code', 'modules_par_kit']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('mode', 'actif', 'orientation_modules'))
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        self._appliquer(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        self._appliquer(serializer.instance)
+
+    @staticmethod
+    def _appliquer(kit):
+        kit.appliquer_emprise()
+        kit.save(update_fields=[
+            'emprise_transversale_m', 'ecart_emprise_m', 'updated_at'])
 
 
 # ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────
