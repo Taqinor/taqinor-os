@@ -1,10 +1,10 @@
-import { Fragment, useEffect, useState, useMemo } from 'react'
+import { Fragment, useCallback, useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
-  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer, Zap, Receipt,
+  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer, Zap, Receipt, Eye,
 } from 'lucide-react'
 import {
   fetchFactures,
@@ -40,6 +40,8 @@ import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 // APX13 — la chaîne documentaire devis→BC→facture, visible ici aussi.
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK, factureTrack } from '../../features/ventes/documentChain'
+// APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
+import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
 import PaiementDialog from './PaiementDialog'
 // WIR103/ZFAC4 — modale « Note de débit » (création + téléchargement PDF).
 import NoteDebitDialog from './NoteDebitDialog'
@@ -197,6 +199,8 @@ function FactureRow({ f, ctx }) {
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     openNoteDebit,
+    // APX14 - ouvre l'apercu PDF inline de cette facture.
+    openPreview,
     highlightFactureId,
   } = ctx
   const overdue = isOverdue(f)
@@ -459,6 +463,12 @@ function FactureRow({ f, ctx }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/* APX14 — aperçu du PDF SANS quitter l'écran. */}
+                {f.fichier_pdf && (
+                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openPreview(f) }}>
+                    <Eye /> Aperçu du PDF
+                  </DropdownMenuItem>
+                )}
                 {['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem
                     disabled={isWaBusy || !waPhoneOk}
@@ -1010,6 +1020,23 @@ export default function FactureList() {
     }
   }
 
+  // APX14 — aperçu INLINE de la facture : le PDF s'ouvre dans un panneau, plus
+  // dans un onglet qu'il faut quitter. La source reste le PDF LEGACY propre
+  // aux factures (règle #4 — seul le PDF de DEVIS passe par `/proposal` ;
+  // aucun chemin nouveau n'est créé ici).
+  const [previewFacture, setPreviewFacture] = useState(null)
+  const openPreview = (f) => setPreviewFacture(f)
+  const fetchFacturePreviewBlob = useCallback(async () => {
+    const f = previewFacture
+    if (!f) return null
+    try {
+      const res = await ventesApi.telechargerPdfFacture(f.id)
+      return res.data instanceof Blob ? res.data : new Blob([res.data], { type: 'application/pdf' })
+    } catch {
+      throw new Error('Fichier introuvable. Régénérez le PDF.')
+    }
+  }, [previewFacture])
+
   // Envoyer par WhatsApp : construit le message côté serveur (FR/Darija) puis
   // montre un aperçu (message + lien public) avant d'ouvrir wa.me ; le
   // commercial appuie lui-même sur Envoyer. Le POST consigne aussi l'action au
@@ -1187,6 +1214,8 @@ export default function FactureList() {
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     openNoteDebit,
+    // APX14 - ouvre l'apercu PDF inline de cette facture.
+    openPreview,
     highlightFactureId,
   }
 
@@ -1421,6 +1450,18 @@ export default function FactureList() {
         facture={payTarget}
         onOpenChange={(o) => { if (!o) setPayTarget(null) }}
         onSaved={() => dispatch(fetchFactures())}
+      />
+
+      {/* APX14 — aperçu du PDF de la facture, INLINE. Source = le PDF LEGACY
+          propre aux factures ; le moteur `/proposal` reste réservé au PDF de
+          DEVIS (règle #4), et aucun chemin nouveau n'est créé. */}
+      <PdfPreviewSheet
+        open={!!previewFacture}
+        onOpenChange={(o) => { if (!o) setPreviewFacture(null) }}
+        title={`Aperçu — ${previewFacture?.reference ?? ''}`}
+        description="Facture. Téléchargeable ou ouvrable dans un onglet."
+        filename={previewFacture ? `${previewFacture.reference}.pdf` : undefined}
+        fetchBlob={fetchFacturePreviewBlob}
       />
 
       {/* ── WIR103/ZFAC4 — Modale « Note de débit » (création + PDF) ── */}

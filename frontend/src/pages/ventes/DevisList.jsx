@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
@@ -38,7 +38,7 @@ import { toastMilestone } from '../../lib/toast'
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
-import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
+import { openPdfBlob } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
@@ -63,6 +63,8 @@ import { StateBlock } from '../../components/StateBlock'
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
 // APX13 — la piste devis→BC→facture, définie UNE fois pour les 3 écrans.
 import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
+// APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
+import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
 // APX11 — l'en-tête UNIQUE de l'app (VX28) remplace l'idiome legacy.
 import { PageHeader } from '../../ui/PageHeader'
 // APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
@@ -1138,7 +1140,11 @@ export default function DevisList() {
   const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
-  const [previewingId, setPreviewingId] = useState(null) // aperçu PDF en cours
+  // APX14 — le devis dont l'aperçu inline est ouvert (null = panneau fermé).
+  // `previewingId` en dérive pour que le libellé « Aperçu du PDF… » de la
+  // ligne reste exactement celui d'avant.
+  const [previewDevis, setPreviewDevis] = useState(null)
+  const previewingId = previewDevis?.id ?? null
   // Panneau « historique des versions » : id du devis dont la chaîne est ouverte.
   // QG10 — deep-link ?variantes=<id> ouvre directement la comparaison au montage.
   const [versionsOpenId, setVersionsOpenId] = useState(() => {
@@ -1666,9 +1672,19 @@ export default function DevisList() {
   // un nouvel onglet (mêmes params que la modale d'aperçu de la fiche lead).
   // VX48 — l'onglet est pré-ouvert SYNCHRONE dans le geste (avant l'await),
   // sinon Safari iOS bloque silencieusement le window.open post-await.
-  const handlePreview = async (d) => {
-    const pending = openPdfInGesture()
-    setPreviewingId(d.id)
+  // APX14 — « Aperçu » ne QUITTE plus l'écran : il ouvre le panneau inline
+  // (PdfCanvas, déjà consommé par 4 autres écrans, jamais par celui-ci).
+  // La SOURCE reste le moteur vendorisé `/proposal` — aucun chemin PDF
+  // nouveau, aucun changement de statut (règle #4). Télécharger et Ouvrir
+  // dans un onglet restent offerts DANS le panneau, en repli.
+  const handlePreview = (d) => { setPreviewDevis(d) }
+
+  // Récupère les octets du PDF de proposition du devis en aperçu. Passée au
+  // panneau, qui ne connaît aucune URL. Le message d'erreur reste celui,
+  // français, que la liste sait déjà produire (T11 — moteur sans onduleur).
+  const fetchDevisPreviewBlob = useCallback(async () => {
+    const d = previewDevis
+    if (!d) return null
     try {
       const params = proposalParams(
         'full',
@@ -1676,22 +1692,15 @@ export default function DevisList() {
           && !!(d.etude_params && Object.keys(d.etude_params).length > 0),
       )
       const res = await ventesApi.getProposalPdf(d.id, params)
-      const blob = pdfBlob(res.data)
-      if (!pending.deliver(blob, `${d.reference}.pdf`)) {
-        openPdfBlob(blob, `${d.reference}.pdf`)
-      }
+      return pdfBlob(res.data)
     } catch (err) {
-      // T11 — l'absence d'onduleur lève une ValueError côté moteur premium.
       const msg = frenchError(err, '')
       if (/onduleur|inverter/i.test(msg)) {
-        toast.error('Ce devis n\'a aucun onduleur — choisissez le format une page.')
-      } else {
-        toast.error(msg || 'Aperçu du PDF indisponible.')
+        throw new Error('Ce devis n\'a aucun onduleur — choisissez le format une page.')
       }
-    } finally {
-      setPreviewingId(null)
+      throw new Error(msg || 'Aperçu du PDF indisponible.')
     }
-  }
+  }, [previewDevis])
 
   const [chantierBusy, setChantierBusy] = useState(null)
   // « Créer le chantier » sur un devis accepté : crée (ou ouvre s'il existe
@@ -2333,6 +2342,18 @@ export default function DevisList() {
             )}
           </div>
       </ResponsiveDialog>
+
+      {/* APX14 — l'aperçu du PDF de proposition, INLINE. Même source
+          `/proposal` que le téléchargement (règle #4 : le moteur vendorisé
+          reste le SEUL chemin PDF devis client, et il ne fait que RENDRE). */}
+      <PdfPreviewSheet
+        open={!!previewDevis}
+        onOpenChange={(o) => { if (!o) setPreviewDevis(null) }}
+        title={`Aperçu — ${previewDevis?.reference ?? ''}`}
+        description="Proposition client. Téléchargeable ou ouvrable dans un onglet."
+        filename={previewDevis ? `${previewDevis.reference}.pdf` : undefined}
+        fetchBlob={fetchDevisPreviewBlob}
+      />
 
       {/* VX155 — carte de victoire posée sur l'acceptation inline (montant
           réel ; pas de kWc dans cette vue liste). */}
