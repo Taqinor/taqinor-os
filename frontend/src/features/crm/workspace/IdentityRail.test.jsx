@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { initState } from './draftCore'
 import IdentityRail from './IdentityRail'
 import crmApi from '../../../api/crmApi'
+import { CANAL_LABELS, formatMAD } from '../stages'
 
 // PUB53 — badge « Vient de la pub » gaté au rôle voyant /publicite. Comme
 // ViewsManagerPopover.test.jsx, on mocke le hook plutôt que de monter un vrai
@@ -51,6 +52,12 @@ vi.mock('../../../ui', async (importOriginal) => {
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+// LWC2 — les actions secondaires vivent dans le menu « ⋯ ». Radix ouvre au
+// clavier comme au pointeur ; le clavier est le chemin stable en jsdom.
+const ouvrirPlus = () => {
+  fireEvent.keyDown(screen.getByRole('button', { name: /Plus d'actions/ }), { key: 'Enter' })
+}
+
 const makeState = (over = {}) => initState({
   lead: {
     id: 7, nom: 'Karim', prenom: 'B.', societe: 'Ferme Atlas', ville: 'Agadir',
@@ -80,40 +87,65 @@ describe('LW14 — IdentityRail identité + actions', () => {
 
   it('WhatsApp armé sur un numéro valide, désactivé sur un numéro invalide', () => {
     const { rerender } = render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
-    expect(screen.getByRole('button', { name: /Envoyer WhatsApp/ })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /WhatsApp/ })).not.toBeDisabled()
     rerender(<IdentityRail state={makeState({ telephone: '123', whatsapp: '' })} onAction={onAction} users={[]} />)
-    expect(screen.getByRole('button', { name: /Envoyer WhatsApp/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeDisabled()
   })
 
-  it('Devis automatique verrouillé tant que devis_auto.pret est faux', () => {
+  it('Devis auto verrouillé tant que devis_auto.pret est faux', () => {
     render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
-    expect(screen.getByRole('button', { name: /Devis automatique/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /Devis auto/ })).toBeDisabled()
   })
 
-  it('Devis automatique déverrouillé appelle onAction(open-devis, auto)', () => {
+  it('Devis auto déverrouillé appelle onAction(open-devis, auto)', () => {
     render(<IdentityRail state={makeState({ devis_auto: { pret: true } })} onAction={onAction} users={[]} />)
-    fireEvent.click(screen.getByRole('button', { name: /Devis automatique/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Devis auto/ }))
     expect(onAction).toHaveBeenCalledWith('open-devis', 'auto')
   })
 
-  it('Toiture 3D, Convertir et Archiver routent par onAction', () => {
+  // LWC2 — les 4 actions secondaires ont quitté la pile pour le menu « ⋯ » ;
+  // les handlers, eux, sont les mêmes (mêmes clés onAction).
+  it('Toiture 3D route par onAction depuis le menu « ⋯ »', async () => {
     render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
-    fireEvent.click(screen.getByRole('button', { name: /Concevoir la toiture/ }))
+    ouvrirPlus()
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Concevoir la toiture/ }))
     expect(onAction).toHaveBeenCalledWith('toiture-3d')
-    fireEvent.click(screen.getByRole('button', { name: /Convertir en client/ }))
+  })
+
+  it('Convertir route par onAction depuis le menu « ⋯ »', async () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    ouvrirPlus()
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Convertir en client/ }))
     expect(onAction).toHaveBeenCalledWith('convert')
-    fireEvent.click(screen.getByRole('button', { name: /Archiver/ }))
+  })
+
+  it('Archiver route par onAction depuis le menu « ⋯ »', async () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    ouvrirPlus()
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Archiver/ }))
     expect(onAction).toHaveBeenCalledWith('archive')
   })
 
-  it('masque « Convertir » quand le lead est déjà rattaché à un client', () => {
-    render(<IdentityRail state={makeState({ client: 42 })} onAction={onAction} users={[]} />)
-    expect(screen.queryByRole('button', { name: /Convertir en client/ })).toBeNull()
+  it('Archiver reste inerte pendant archiveBusy (garde destructive conservée)', async () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} archiveBusy />)
+    ouvrirPlus()
+    const item = await screen.findByRole('menuitem', { name: /Archiver/ })
+    expect(item).toHaveAttribute('data-disabled')
+    fireEvent.click(item)
+    expect(onAction).not.toHaveBeenCalledWith('archive')
   })
 
-  it('affiche « Restaurer » pour un lead archivé', () => {
+  it('masque « Convertir » quand le lead est déjà rattaché à un client', async () => {
+    render(<IdentityRail state={makeState({ client: 42 })} onAction={onAction} users={[]} />)
+    ouvrirPlus()
+    await screen.findByRole('menuitem', { name: /Archiver/ })
+    expect(screen.queryByRole('menuitem', { name: /Convertir en client/ })).toBeNull()
+  })
+
+  it('affiche « Restaurer » pour un lead archivé', async () => {
     render(<IdentityRail state={makeState({ is_archived: true })} onAction={onAction} users={[]} />)
-    expect(screen.getByRole('button', { name: /Restaurer/ })).toBeInTheDocument()
+    ouvrirPlus()
+    expect(await screen.findByRole('menuitem', { name: /Restaurer/ })).toBeInTheDocument()
   })
 
   it('rend les chips QX28 selon les données prêtes', () => {
@@ -250,6 +282,87 @@ describe('LW18 — bannières intelligentes (doublons · client_match)', () => {
     resolveA({ data: [{ id: 99, nom: 'Doublon de A', telephone: '0600000000', ville: 'Casablanca' }] })
     await screen.findByText('Karim B.')
     expect(screen.queryByText(/doublon/)).toBeNull()
+  })
+})
+
+describe('LWC2 — bande « Faits clés » (remplace la pile de boutons)', () => {
+  let onAction
+  beforeEach(() => { onAction = vi.fn() })
+
+  const DEVIS = [{
+    id: 5, reference: 'DEV-2026-07-0003', statut: 'envoye',
+    total_ttc: '48500.00', date_creation: '2026-07-30T12:00:00Z',
+  }]
+
+  it('affiche le montant du dernier devis, son statut et sa référence', () => {
+    const { container } = render(<IdentityRail state={makeState({ devis: DEVIS })} onAction={onAction} users={[]} />)
+    expect(screen.getByText('Montant estimé')).toBeInTheDocument()
+    // `formatMAD` sépare les milliers par une espace fine insécable : on
+    // compare des textes NORMALISÉS (le matcher texte de RTL, lui, normalise
+    // le DOM mais pas la chaîne attendue — piège classique).
+    const norm = (s) => s.replace(/\s/g, ' ')
+    expect(norm(container.querySelector('.lw-facts-amount').textContent))
+      .toBe(norm(formatMAD(48500)))
+    expect(screen.getByText('Envoyé')).toBeInTheDocument()
+    expect(screen.getByText('DEV-2026-07-0003')).toBeInTheDocument()
+  })
+
+  it('n’affiche JAMAIS un prix d’achat ni une marge (total TTC client seulement)', () => {
+    const state = makeState({ devis: [{ ...DEVIS[0], prix_achat: '31000.00', marge: '17500.00' }] })
+    const { container } = render(<IdentityRail state={state} onAction={onAction} users={[]} />)
+    const facts = container.querySelector('.lw-facts')
+    expect(facts.textContent).not.toMatch(/31\s?000|17\s?500|marge/i)
+  })
+
+  it('affiche le canal via CANAL_LABELS (jamais la clé brute)', () => {
+    render(<IdentityRail state={makeState({ canal: 'meta_ads' })} onAction={onAction} users={[]} />)
+    expect(screen.getByText('Canal')).toBeInTheDocument()
+    expect(screen.getByText(CANAL_LABELS.meta_ads)).toBeInTheDocument()
+  })
+
+  // Le chatter embarqué (LW30) est trié ÉPINGLÉS D'ABORD : la 1re ligne n'est
+  // pas la plus récente, et un log automatique n'est pas un « échange ».
+  it('« Dernier échange » = touche humaine la PLUS RÉCENTE du chatter embarqué', () => {
+    const state = makeState({
+      chatter_recent: [
+        { id: 1, kind: 'note', body: 'épinglée', created_at: '2026-06-01T12:00:00Z' },
+        { id: 2, kind: 'modification', body: 'stage', created_at: '2026-07-31T12:00:00Z' },
+        { id: 3, kind: 'appel', body: 'rappel', created_at: '2026-07-28T12:00:00Z' },
+      ],
+    })
+    render(<IdentityRail state={state} onAction={onAction} users={[]} />)
+    expect(screen.getByText('Dernier échange')).toBeInTheDocument()
+    expect(screen.getByText('28/07/2026')).toBeInTheDocument()
+  })
+
+  it('omet « Dernier échange » quand le chatter embarqué ne porte aucune touche humaine', () => {
+    const state = makeState({
+      chatter_recent: [{ id: 2, kind: 'creation', body: 'créé', created_at: '2026-07-31T12:00:00Z' }],
+      canal: 'site_web',
+    })
+    render(<IdentityRail state={state} onAction={onAction} users={[]} />)
+    expect(screen.queryByText('Dernier échange')).toBeNull()
+  })
+
+  it('aucune bande du tout quand le lead ne porte aucun fait', () => {
+    const { container } = render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    expect(container.querySelector('.lw-facts')).toBeNull()
+  })
+
+  // La bande est un pur rendu du payload déjà chargé : elle ne doit RIEN
+  // déclencher de plus que les 2 GET des bannières LW18.
+  it('n’émet AUCUN appel réseau supplémentaire', async () => {
+    const state = makeState({
+      devis: DEVIS, canal: 'meta_ads',
+      chatter_recent: [{ id: 3, kind: 'appel', body: 'rappel', created_at: '2026-07-28T12:00:00Z' }],
+    })
+    render(<IdentityRail state={state} onAction={onAction} users={[]} />)
+    await screen.findByText('Montant estimé')
+    expect(crmApi.getLeadDuplicates).toHaveBeenCalledTimes(1)
+    expect(crmApi.getLeadClientMatch).toHaveBeenCalledTimes(1)
+    // `points-contact/` (l'autre source « dernier échange ») reste l'affaire de
+    // l'onglet Historique : le rail ne peut structurellement pas l'appeler.
+    expect(crmApi.getLeadPointsContact).toBeUndefined()
   })
 })
 

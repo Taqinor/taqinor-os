@@ -6528,14 +6528,89 @@ textarea.form-control {
   margin-bottom: 0.85rem;
 }
 
-.lw-rail-actions {
+/* LWC2 — bande « Faits clés » : l'information que la pile de boutons occupait
+   sans la donner (montant du dernier devis, canal, dernier échange). Tokens
+   sémantiques uniquement → lisible en clair comme en sombre. */
+.lw-facts {
   display: flex;
   flex-direction: column;
+  gap: 0.3rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.lw-facts-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.lw-facts-label {
+  flex: 0 0 auto;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.lw-facts-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--foreground);
+  text-align: right;
+}
+.lw-facts-amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lw-facts-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+}
+
+/* LWC2 — 2 CTA côte à côte + menu « ⋯ » (au lieu de 6 boutons empilés). */
+.lw-rail-actions {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
 }
 .lw-rail-actions > * {
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
   justify-content: center;
+}
+.lw-rail-actions-more {
+  flex: 0 0 auto;
+  width: 44px;
+  min-width: 44px;
+  font-size: var(--text-body);
+  line-height: 1;
+}
+.lw-rail-actions-menu [role="menuitem"] {
+  min-height: 44px;
+}
+/* Sous 768 px, la barre-pouce (.lw-thumbbar) porte déjà WhatsApp : ce bouton
+   serait un doublon dans le rail. */
+@media (max-width: 767px) {
+  .lw-rail-actions-wa {
+    display: none;
+  }
 }
 
 /* ── LW15 : triade (responsable · prochaine action · relance) ──────────────── */
@@ -6589,44 +6664,57 @@ textarea.form-control {
   text-decoration: underline;
 }
 
-/* ── LW16 : StageControl — rangée d'étapes + pourrissement (rotting) ───────── */
+/* ── LW16/LWC1 : StageControl — UNE pilule compacte + menu ▾ des autres ────── */
 
 .lw-stage {
-  margin-bottom: 0.85rem;
+  margin-bottom: 0.6rem;
 }
-.lw-stage-row {
+/* LWC1 — la rangée des 6 pastilles (90-120 px) devient une seule ligne de
+   ≤44 px : pilule de l'étape courante + « depuis X j » inline + chevron. Toute
+   la ligne est le déclencheur du menu (cible tactile pleine largeur). */
+.lw-stagepill {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.lw-stage-pill {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  line-height: 0;
-}
-.lw-stage-pill--ghost {
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  border-radius: 9999px;
-  opacity: 0.75;
-  transition: opacity var(--motion-fast) var(--ease-standard);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 @media (hover: hover) {
-  .lw-stage-pill--ghost:hover {
-    opacity: 1;
+  .lw-stagepill:hover {
+    background: color-mix(in oklch, var(--muted-foreground) 8%, transparent);
   }
 }
-.lw-stage-pill--current {
-  cursor: default;
+@media (prefers-reduced-motion: reduce) {
+  .lw-stagepill {
+    transition: none;
+  }
+}
+.lw-stagepill-chev {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: var(--text-small);
+  line-height: 1;
 }
 /* Ancienneté d'étape : neutre par défaut, chauffe avec la rampe rotting. Le
    compteur de jours passe par `.num` dans le JSX (StageControl.jsx, LW33) —
    ce `font-variant-numeric` reste pour le mot « depuis…j » hors du span.num. */
 .lw-stage-since {
-  margin: 0.35rem 0 0;
+  margin: 0;
+  min-width: 0;
   font-size: var(--text-small);
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .lw-stage-since--warning {
   display: inline-block;
@@ -6644,6 +6732,11 @@ textarea.form-control {
   border-radius: 9999px;
   color: var(--destructive);
   background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}
+/* Menu des AUTRES étapes : items ≥44 px (tactile), pastille de couleur gardée
+   pour que l'identité visuelle d'une étape survive au compactage. */
+.lw-stage-menu [role="menuitem"] {
+  min-height: 44px;
 }
 
 /* ── LW17 : score expliqué (popover des raisons) ──────────────────────────── */

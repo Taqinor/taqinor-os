@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Badge, badgeVariants, Button, Avatar, AvatarFallback, DatePicker, FieldSavedPulse,
+  Badge, badgeVariants, Button, IconButton, StatusPill,
+  Avatar, AvatarFallback, DatePicker, FieldSavedPulse,
   Popover, PopoverTrigger, PopoverContent,
   Dialog, DialogContent, DialogTitle,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator,
 } from '../../../ui'
 import { initials } from '../../../ui/Avatar'
-import { normalizeMaPhone } from '../../../lib/format'
+import { normalizeMaPhone, formatDate } from '../../../lib/format'
 import { useConfirmDialog, toast } from '../../../ui/confirm'
 import { useDuplicateCheck } from '../../../hooks/useDuplicateCheck'
 import { useIsAdminOrResponsable } from '../../../hooks/useHasPermission'
@@ -13,6 +16,8 @@ import crmApi from '../../../api/crmApi'
 import AssigneePicker from '../../../components/AssigneePicker'
 import ScoreBadge from '../ScoreBadge'
 import StageControl from './StageControl'
+import { STATUT_DEVIS } from './DevisTab'
+import { CANAL_LABELS, latestDevisTotal, formatMAD } from '../stages'
 import { getField } from './draftCore'
 
 // LW15 — Date locale « YYYY-MM-DD » depuis l'objet Date du DatePicker (jamais
@@ -25,6 +30,11 @@ function toIsoLocal(d) {
   const j = String(dt.getDate()).padStart(2, '0')
   return `${dt.getFullYear()}-${m}-${j}`
 }
+
+// LWC2 — « Dernier échange » : les seules touches HUMAINES du chatter (une
+// modification de champ ou une création automatique n'est pas un échange).
+// Vocabulaire de `kind` identique à `TimelineTab.matchesTimelineFilter`.
+const ECHANGE_KINDS = new Set(['note', 'appel', 'email'])
 
 // Rail identité (zone gauche, 288px) : tout ce qu'on regarde AVANT d'appeler.
 // Bannières intelligentes (LW18) · identité + contact cliquable (LW14) · étape
@@ -161,6 +171,31 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const metaAdId = server.meta_ad_id || null
   const canSeePublicite = useIsAdminOrResponsable()
   const showAdBadge = !!metaAdId && canSeePublicite
+
+  // ── Faits clés (LWC2) — bande d'INFO qui remplace 4 des 6 boutons ──────────
+  // ZÉRO nouvel appel réseau : tout sort du payload lead DÉJÀ chargé
+  // (`devis[]` et `chatter_recent` sont embarqués par le GET détail, LW30).
+  // Jamais `prix_achat` ni marge : le total TTC client, rien d'autre (règle #4).
+  const dernierDevis = (Array.isArray(server.devis) ? server.devis : [])[0] ?? null
+  const montantEstime = latestDevisTotal(server)
+  const canal = getField(state, 'canal')
+  const canalLabel = canal ? (CANAL_LABELS[canal] ?? canal) : null
+  // `chatter_recent` est trié ÉPINGLÉS D'ABORD (backend LW28) : `[0]` n'est donc
+  // pas la plus récente — on prend le max de `created_at`. Aucun fetch : si le
+  // payload ne porte pas le chatter, la ligne disparaît, point (les points de
+  // contact de l'onglet Historique, eux, coûtent une requête — hors sujet ici).
+  const dernierEchange = useMemo(() => {
+    const rows = Array.isArray(server.chatter_recent) ? server.chatter_recent : []
+    let best = null
+    for (const a of rows) {
+      if (!a || !ECHANGE_KINDS.has(a.kind)) continue
+      const t = Date.parse(a.created_at)
+      if (Number.isNaN(t)) continue
+      if (best == null || t > best) best = t
+    }
+    return best
+  }, [server.chatter_recent])
+  const hasFacts = !!(dernierDevis || canalLabel || dernierEchange != null)
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   const alreadyClient = !!server.client
@@ -373,25 +408,58 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         )}
       </div>
 
-      {/* Pile d'actions — WhatsApp et « Devis auto » sont les 2 CTA premiers. */}
+      {/* LWC2 — Faits clés : la pile de 6 boutons (260-300 px) rendait de la
+          PLACE sans information ; ces 2-3 lignes rendent l'information qu'on
+          cherchait en ouvrant la fiche. Aucune donnée nouvelle n'est chargée. */}
+      {hasFacts && (
+        <dl className="lw-facts">
+          {dernierDevis && (
+            <div className="lw-facts-line">
+              <dt className="lw-facts-label">Montant estimé</dt>
+              <dd className="lw-facts-value">
+                <span className="lw-facts-amount num">{formatMAD(montantEstime)}</span>
+                <StatusPill
+                  status={dernierDevis.statut}
+                  label={STATUT_DEVIS[dernierDevis.statut] ?? dernierDevis.statut}
+                  dot={false}
+                />
+                {dernierDevis.reference && (
+                  <span className="lw-facts-ref" title={`Devis ${dernierDevis.reference}`}>
+                    {dernierDevis.reference}
+                  </span>
+                )}
+              </dd>
+            </div>
+          )}
+          {canalLabel && (
+            <div className="lw-facts-line">
+              <dt className="lw-facts-label">Canal</dt>
+              <dd className="lw-facts-value">{canalLabel}</dd>
+            </div>
+          )}
+          {dernierEchange != null && (
+            <div className="lw-facts-line">
+              <dt className="lw-facts-label">Dernier échange</dt>
+              <dd className="lw-facts-value num">{formatDate(dernierEchange)}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+
+      {/* LWC2 — 2 actions primaires + un menu « ⋯ » pour le reste. « WhatsApp »
+          disparaît sous 768 px : la barre-pouce mobile (LeadWorkspace LW34) la
+          porte déjà — c'était un doublon, pas une commodité. Les handlers sont
+          EXACTEMENT ceux de l'ancienne pile (archiveBusy compris). */}
       <div className="lw-rail-actions">
         <Button
           type="button"
           variant="success"
+          className="lw-rail-actions-wa"
           disabled={!waPhone}
           onClick={openWhatsApp}
           title={waPhone ? 'Ouvrir WhatsApp avec ce contact' : 'Numéro de téléphone invalide'}
         >
-          🟢 Envoyer WhatsApp
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!callPhone}
-          onClick={call}
-          title={callPhone ? 'Appeler ce contact' : 'Aucun numéro de téléphone'}
-        >
-          ☎ Appeler
+          🟢 WhatsApp
         </Button>
         <Button
           type="button"
@@ -399,35 +467,52 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           onClick={() => onAction('open-devis', 'auto')}
           title={devisReady ? 'Créer le devis automatique (affiché ici)' : devisNotReadyMsg}
         >
-          ⚡ Devis automatique
+          ⚡ Devis auto
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => onAction('toiture-3d')}
-          title="Ouvrir l'outil de conception 3D avec ce lead déjà chargé"
-        >
-          Concevoir la toiture (3D){hasGps ? ' 📍' : ''}
-        </Button>
-        {!alreadyClient && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onAction('convert')}
-            title="Convertir ce lead en client (nouveau, existant, ou aucun)"
-          >
-            Convertir en client
-          </Button>
-        )}
-        <Button
-          type="button"
-          variant="outline"
-          disabled={archiveBusy}
-          onClick={() => onAction('archive')}
-          title={archived ? 'Restaurer ce lead' : 'Archiver ce lead'}
-        >
-          {archived ? 'Restaurer' : 'Archiver'}
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <IconButton
+              type="button"
+              variant="outline"
+              label="Plus d'actions"
+              className="lw-rail-actions-more"
+            >
+              <span aria-hidden="true">⋯</span>
+            </IconButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="lw-rail-actions-menu">
+            <DropdownMenuItem
+              disabled={!callPhone}
+              onSelect={call}
+              title={callPhone ? 'Appeler ce contact' : 'Aucun numéro de téléphone'}
+            >
+              ☎ Appeler
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => onAction('toiture-3d')}
+              title="Ouvrir l'outil de conception 3D avec ce lead déjà chargé"
+            >
+              Concevoir la toiture (3D){hasGps ? ' 📍' : ''}
+            </DropdownMenuItem>
+            {!alreadyClient && (
+              <DropdownMenuItem
+                onSelect={() => onAction('convert')}
+                title="Convertir ce lead en client (nouveau, existant, ou aucun)"
+              >
+                Convertir en client
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              destructive={!archived}
+              disabled={archiveBusy}
+              onSelect={() => onAction('archive')}
+              title={archived ? 'Restaurer ce lead' : 'Archiver ce lead'}
+            >
+              {archived ? 'Restaurer' : 'Archiver'}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </aside>
 

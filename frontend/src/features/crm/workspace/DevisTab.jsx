@@ -19,7 +19,8 @@ import { toastError, errorMessageFrom } from '../../../lib/toast'
 // langue/preview` vivant sur le MOTEUR (via ContextRail) — la sélection ne
 // peut plus structurellement survivre à un changement de lead (P1#2).
 
-const STATUT_DEVIS = {
+// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que DEVIS_MINI_TRACK
+export const STATUT_DEVIS = {
   brouillon: 'Brouillon', envoye: 'Envoyé', accepte: 'Accepté',
   refuse: 'Refusé', expire: 'Expiré',
 }
