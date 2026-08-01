@@ -29,9 +29,10 @@ vi.mock('../../../ui', async () => {
   return { ...actual, toast: { success: toastMocks.success, error: toastMocks.error } }
 })
 
-import AdministratifPage, {
+import AdministratifPage from './AdministratifPage'
+import {
   expireAvant, verificationsOuvertes, motifBlocageDepot, elementsExpires, VERIFICATIONS_LABELS,
-} from './AdministratifPage'
+} from './AdministratifPage.utils'
 
 const CAUTION_PROVISOIRE = {
   id: 1, type: 'provisoire', montant: 40000, banque: 'BMCE', reference: 'CAU-2026-014',
