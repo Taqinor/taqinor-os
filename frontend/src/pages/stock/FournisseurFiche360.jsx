@@ -17,6 +17,10 @@ import {
   DialogDescription, DialogFooter, Form, FormField, Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Badge,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // XPUR25 — Fiche fournisseur 360 : une page à onglets qui rassemble les
 // briques déjà existantes (performance FG59, factures/solde AP, retours/avoirs,
@@ -876,14 +880,16 @@ export default function FournisseurFiche360({
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header>
-        <h1 className="font-display text-xl font-semibold tracking-tight">
-          Fiche fournisseur 360{fournisseurNom ? ` — ${fournisseurNom}` : ''}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          <Wallet className="mr-1 inline size-3.5" aria-hidden="true" />
-          Vue d&apos;ensemble achats — donnée interne, jamais client-facing.
-        </p>
+      {/* APX24 — en-tête UNIQUE de l'app (VX28) + icône et accent de la
+          famille inventaire ; le niveau de titre (h1) est conservé. */}
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={Wallet}
+        title={`Fiche fournisseur 360${fournisseurNom ? ` — ${fournisseurNom}` : ''}`}
+        subtitle="Vue d'ensemble achats — donnée interne, jamais client-facing."
+      >
         {tel && (
           <p className="text-sm">
             <a href={tel} className="link-blue" title="Appeler">☎ {fournisseurTelephone}</a>
@@ -907,7 +913,7 @@ export default function FournisseurFiche360({
             ]}
           />
         )}
-      </header>
+      </PageHeader>
 
       <Card>
         <CardHeader>

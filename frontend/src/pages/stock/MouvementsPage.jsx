@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, ArrowDownUp, X, Download, LayoutGrid, List } from 'lucide-react'
+import { Plus, ArrowDownUp, X, Download, LayoutGrid, List, ArrowLeftRight,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
 import {
@@ -17,6 +18,10 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // ZSTK7 — options du regroupement pivot (« Vue groupée »).
 const AGREGATION_GROUP_BY = [
@@ -290,14 +295,22 @@ export default function MouvementsPage() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h2 className="font-display text-xl font-semibold tracking-tight">Mouvements de stock</h2>
-          {mouvements.length > 0 && (
-            <Badge tone="primary">{mouvements.length}</Badge>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      {/* APX24 — en-tête UNIQUE de l'app (VX28) + icône et accent de la
+          famille inventaire. */}
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        icon={ArrowLeftRight}
+        title={(
+          <>
+            Mouvements de stock
+            {mouvements.length > 0 && (
+              <Badge tone="primary">{mouvements.length}</Badge>
+            )}
+          </>
+        )}
+        actions={(
+          <>
           {/* ZSTK7 — bascule Vue liste / Vue groupée (pivot). */}
           {!isTransferts && (
             <Button variant="outline" size="sm"
@@ -324,8 +337,9 @@ export default function MouvementsPage() {
               <Plus /> Saisir mouvement
             </Button>
           )}
-        </div>
-      </header>
+          </>
+        )}
+      />
 
       {exportError && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

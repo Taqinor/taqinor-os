@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid, Tags, Archive } from 'lucide-react'
+import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid, Tags, Archive, Truck,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import ExcelImport from '../../components/ExcelImport'
@@ -14,6 +15,10 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Badge,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // XPUR4 — les 4 statuts fournisseur (miroir de `Fournisseur.Statut` côté
 // serveur — le blocage est déjà appliqué et testé serveur, cf.
@@ -498,13 +503,15 @@ export default function FournisseursStock() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold tracking-tight">Fournisseurs</h1>
-          <p className="text-sm text-muted-foreground">{items.length} fournisseur(s)</p>
-        </div>
-        {canWrite && (
-          <div className="flex items-center gap-2">
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={Truck}
+        title="Fournisseurs"
+        subtitle={`${items.length} fournisseur(s)`}
+        actions={canWrite ? (
+          <>
             {/* XPUR5/WIR108 — CRUD du référentiel catégories fournisseur. */}
             <Button variant="outline" onClick={() => setShowCategories(true)}>
               <Tags /> Catégories
@@ -515,9 +522,9 @@ export default function FournisseursStock() {
             <Button onClick={() => setSelected({})}>
               <Plus /> Nouveau fournisseur
             </Button>
-          </div>
-        )}
-      </header>
+          </>
+        ) : null}
+      />
 
       {showImport && (
         <ExcelImport target="fournisseurs" onClose={() => setShowImport(false)}

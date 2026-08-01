@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PackageCheck, Plus, ReceiptText, Tags } from 'lucide-react'
+import { PackageCheck, Plus, ReceiptText, Tags,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import { openPdfInGesture } from '../../utils/pdfBlob'
@@ -10,6 +11,10 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
 // La confirmation d'une réception incrémente le stock (MouvementStock ENTREE)
@@ -437,21 +442,22 @@ export default function ReceptionsFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <PackageCheck className="size-5 text-muted-foreground" aria-hidden="true" />
-          <div>
-            <h1 className="font-display text-xl font-semibold tracking-tight">Réceptions fournisseur</h1>
-            <p className="text-sm text-muted-foreground">{items.length} réception(s)</p>
-          </div>
-        </div>
-        <Button onClick={() => setCreating(true)} disabled={bonsRecevables.length === 0}
-                title={bonsRecevables.length === 0
-                  ? 'Aucun bon de commande envoyé à réceptionner'
-                  : undefined}>
-          <Plus /> Nouvelle réception
-        </Button>
-      </header>
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={PackageCheck}
+        title="Réceptions fournisseur"
+        subtitle={`${items.length} réception(s)`}
+        actions={(
+          <Button onClick={() => setCreating(true)} disabled={bonsRecevables.length === 0}
+                  title={bonsRecevables.length === 0
+                    ? 'Aucun bon de commande envoyé à réceptionner'
+                    : undefined}>
+            <Plus /> Nouvelle réception
+          </Button>
+        )}
+      />
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

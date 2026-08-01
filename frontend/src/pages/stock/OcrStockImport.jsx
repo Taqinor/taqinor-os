@@ -31,6 +31,10 @@ import {
 } from '../../features/stock/store/stockSlice'
 import stockApi from '../../api/stockApi'
 import { useCanCreateProduit, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 const DOC_LABELS = {
   bon_livraison: 'Bon de livraison',
@@ -542,13 +546,13 @@ const cp = produitsRef.current
 
   return (
     <div className="ui-root mx-auto max-w-3xl px-4 py-6 sm:px-5">
-      {/* Page header */}
-      <div className="mb-6">
-        <h2 className="font-display text-xl font-semibold tracking-tight">Import OCR — Stock</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Choisissez le type de document puis scannez-le pour mettre à jour le stock automatiquement.
-        </p>
-      </div>
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail"
+        icon={ScanLine}
+        title="Import OCR — Stock"
+        subtitle="Choisissez le type de document puis scannez-le pour mettre à jour le stock automatiquement."
+      />
 
       <Stepper step={step} />
 
