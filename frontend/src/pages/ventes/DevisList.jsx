@@ -19,6 +19,8 @@ import importApi from '../../api/importApi'
 import DevisForm from './DevisForm'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
+  // APX12 — le langage UNIQUE des KPI d'argent.
+  Stat,
   Skeleton, SkeletonTableRow,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
@@ -2171,19 +2173,24 @@ export default function DevisList() {
         <DevisForm devis={editDevis} onClose={closeForm} onSaved={onSaved} />
       )}
 
-      {/* ── T6 — Résumé par statut (nombre + total TTC des devis chargés) ── */}
+      {/* ── T6 — Résumé par statut (nombre + total TTC des devis chargés) ──
+          APX12 — les 5 cartes étaient des `<div>` nus : elles passent au
+          langage UNIQUE des KPI d'argent (`<Stat>`, chiffres `.num`
+          tabulaires), comme le cockpit trésorerie et le rail du générateur. */}
       {devis.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {Object.keys(STATUT_DISPLAY).map(key => (
-            <div key={key} className="rounded-lg border border-border bg-card p-3">
-              <div className="flex items-center justify-between">
-                <StatusPill status={key} label={STATUT_DISPLAY[key]} />
-                <span className="text-sm font-semibold tabular-nums">{summary[key]?.count ?? 0}</span>
-              </div>
-              <div className="mt-1.5 text-xs tabular-nums text-muted-foreground">
-                {formatMAD(summary[key]?.total ?? 0)}
-              </div>
-            </div>
+            <Stat
+              key={key}
+              className="p-3 sm:p-3"
+              label={(
+                // `normal-case` : le libellé de Stat est en majuscules, la
+                // pastille de statut garde sa casse d'origine (« Brouillon »).
+                <StatusPill status={key} label={STATUT_DISPLAY[key]} className="normal-case tracking-normal" />
+              )}
+              value={summary[key]?.count ?? 0}
+              hint={formatMAD(summary[key]?.total ?? 0)}
+            />
           ))}
         </div>
       )}

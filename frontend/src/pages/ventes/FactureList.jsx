@@ -21,6 +21,8 @@ import FactureForm from './FactureForm'
 import FactureKanbanBoard from './FactureKanbanBoard'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
+  // APX12 — le langage UNIQUE des KPI d'argent.
+  Stat,
   Skeleton, SkeletonTableRow,
   Tabs, TabsList, TabsTrigger,
   Input, Checkbox,
@@ -1506,43 +1508,44 @@ export default function FactureList() {
           (Stripe) — un directeur voit la santé de trésorerie d'un coup d'œil.
           Anatomie complète : valeur + delta (vs mois précédent où pertinent)
           + période. Dérivées des factures déjà chargées, aucun appel réseau. */}
+      {/* APX12 — UN seul langage de KPI d'argent : les 4 cartes passent par
+          `<Stat>` (chiffres `.num` tabulaires, delta en icône lucide). Le
+          glyphe de tendance en TEXTE posé ici régressait VX129 — c'était le
+          dernier site du dossier ventes à ne pas parler ce langage. */}
       {factures.length > 0 && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Card className="p-3 text-sm">
-            <div className="text-muted-foreground">Encaissé ce mois</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums">{formatMAD(encaisseMois)}</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {encaisseMoisPrecedent > 0 ? (
-                <span className={encaisseMois >= encaisseMoisPrecedent ? 'text-success' : 'text-destructive'}>
-                  {encaisseMois >= encaisseMoisPrecedent ? '▲' : '▼'}{' '}
-                  {formatMAD(Math.abs(encaisseMois - encaisseMoisPrecedent))} vs mois dernier
-                </span>
-              ) : 'Mois en cours'}
-            </div>
-          </Card>
-          <Card className="p-3 text-sm">
-            <div className="text-muted-foreground">Total dû</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums">{formatMAD(totalDu)}</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              Toutes factures non soldées
-            </div>
-          </Card>
-          <Card className="p-3 text-sm">
-            <div className="text-muted-foreground">En retard</div>
-            <div className={`mt-1 text-lg font-semibold tabular-nums ${countEnRetard > 0 ? 'text-destructive' : ''}`}>
-              {formatMAD(totalEnRetard)}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {countEnRetard} facture{countEnRetard > 1 ? 's' : ''} échue{countEnRetard > 1 ? 's' : ''}
-            </div>
-          </Card>
-          <Card className="p-3 text-sm">
-            <div className="text-muted-foreground">À échoir ≤ 7 j</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums">{formatMAD(totalAEcheoirSoon)}</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {aEcheoirSoon.length} facture{aEcheoirSoon.length > 1 ? 's' : ''} · 7 prochains jours
-            </div>
-          </Card>
+          <Stat
+            className="p-3 sm:p-3"
+            label="Encaissé ce mois"
+            value={formatMAD(encaisseMois)}
+            delta={encaisseMoisPrecedent > 0 ? {
+              direction: encaisseMois >= encaisseMoisPrecedent ? 'up' : 'down',
+              value: `${formatMAD(Math.abs(encaisseMois - encaisseMoisPrecedent))} vs mois dernier`,
+            } : undefined}
+            hint={encaisseMoisPrecedent > 0 ? undefined : 'Mois en cours'}
+          />
+          <Stat
+            className="p-3 sm:p-3"
+            label="Total dû"
+            value={formatMAD(totalDu)}
+            hint="Toutes factures non soldées"
+          />
+          <Stat
+            className="p-3 sm:p-3"
+            label="En retard"
+            value={(
+              <span className={countEnRetard > 0 ? 'text-destructive' : undefined}>
+                {formatMAD(totalEnRetard)}
+              </span>
+            )}
+            hint={`${countEnRetard} facture${countEnRetard > 1 ? 's' : ''} échue${countEnRetard > 1 ? 's' : ''}`}
+          />
+          <Stat
+            className="p-3 sm:p-3"
+            label="À échoir ≤ 7 j"
+            value={formatMAD(totalAEcheoirSoon)}
+            hint={`${aEcheoirSoon.length} facture${aEcheoirSoon.length > 1 ? 's' : ''} · 7 prochains jours`}
+          />
         </div>
       )}
 

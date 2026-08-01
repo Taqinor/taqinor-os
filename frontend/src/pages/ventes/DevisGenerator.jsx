@@ -28,6 +28,8 @@ import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
   Button, IconButton, Card, CardContent,
+  // APX12 — le langage UNIQUE des KPI d'argent (le total du rail).
+  Stat,
   Input, Textarea, Label, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -2925,18 +2927,24 @@ export default function DevisGenerator({
           Total TTC de l'option retenue + marge indicative (INTERNE, jamais dans
           le PDF/client) + résumé système (kWc/panneaux) + Annuler/Créer câblés
           sur le même formulaire (form="gen-form"). */}
-      <aside className="gen-summary-rail hidden lg:block lg:w-72 lg:shrink-0 lg:sticky"
+      <aside className="gen-summary-rail hidden lg:flex lg:w-72 lg:shrink-0 lg:sticky lg:flex-col lg:gap-3"
              style={{ top: 'var(--header-h, 64px)' }}>
+        {/* APX12 — le total du rail devient LE chiffre le plus soigné de
+            l'app : il passe par `<Stat>` comme les KPI d'argent des deux
+            autres surfaces (bandeau statuts DevisList, cockpit trésorerie
+            FactureList). Il n'avait jusqu'ici NI `.num` NI chiffres
+            tabulaires — le seul montant héros du dossier à ne pas les
+            porter. `tone="impact"` lui pose l'accent brass du module. */}
+        <Stat
+          tone="impact"
+          data-testid="gen-rail-total"
+          label={`Total ${scenario === 'Avec batterie' ? 'avec batterie'
+            : scenario === 'Sans batterie' ? 'sans batterie'
+              : (avecRec ? 'avec batterie' : 'sans batterie')} · TTC`}
+          value={formatMoney(kpiTotal)}
+        />
         <Card>
           <CardContent className="pt-4 flex flex-col gap-3">
-            <div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Total {scenario === 'Avec batterie' ? 'avec batterie'
-                  : scenario === 'Sans batterie' ? 'sans batterie'
-                    : (avecRec ? 'avec batterie' : 'sans batterie')} · TTC
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatMoney(kpiTotal)}</div>
-            </div>
             {marge != null && (
               <div>
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">
