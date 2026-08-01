@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 
 import { formatDate, formatMAD } from '../../../lib/format'
 import BordereauPage from './BordereauPage'
-import { quantiteVerrouillee, cadreAcheteur } from './LigneRow'
+import { quantiteVerrouillee, cadreAcheteur } from './LigneRow.utils'
 
 /* AOF179 — l'écran Bordereau.
    Cas réel de la session AO FRDISI : sur remarque du client, la ligne
