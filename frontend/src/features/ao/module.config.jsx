@@ -46,6 +46,11 @@ const DashboardPage = lazy(() => import('./DashboardPage'))
 const AffairesList = lazy(() => import('./AffairesList'))
 const AffaireDetail = lazy(() => import('./AffaireDetail'))
 const BibliothequePage = lazy(() => import('./bibliotheque/BibliothequePage'))
+// AOF190 — « Toitures & relevés » n'est plus un squelette : sur téléphone, une
+// entrée de nav qui ne mène à rien EST le bouton mort qu'AOF190 interdit. Cet
+// écran rend la lecture réelle des toitures et, sous 768 px, le mode MOBILE
+// (refus explicites AVEC leur raison + capture photo → repère conservée).
+const ToituresPage = lazy(() => import('./toiture/ToituresPage'))
 
 // Squelette générique RÉUTILISABLE pour toute destination de nav dont
 // l'écran réel appartient à une AUTRE lane, non encore livré dans CE commit.
@@ -108,7 +113,7 @@ const config = {
     // AOF171 (cette lane) — fiche affaire, deep-link (pas d'item de nav dédié,
     // même patron que `/publicite/ad/:id`).
     { path: '/ao/affaires/:id', component: AffaireDetail, roles: ROLES },
-    { path: '/ao/toitures', component: squelette('Toitures & relevés'), roles: ROLES },
+    { path: '/ao/toitures', component: ToituresPage, roles: ROLES },
     { path: '/ao/calepinages', component: squelette('Calepinages'), roles: ROLES },
     { path: '/ao/dossiers', component: squelette('Dossiers'), roles: ROLES },
     { path: '/ao/bibliotheque', component: BibliothequePage, roles: ROLES },

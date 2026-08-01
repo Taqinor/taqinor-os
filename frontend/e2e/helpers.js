@@ -202,6 +202,27 @@ export async function openAoDemoAffaire(page) {
   await affaire.click()
 }
 
+// Rejoint l'atelier « Toitures & relevés » DEPUIS LE POUCE (paradigme ODY6 :
+// sur mobile, la nav de l'app active EST la barre basse).
+//
+// Pourquoi pas un `getByRole('link', { name: /Toiture/ })` global : sous
+// 768 px la coquille rend DEUX destinations portant ce nom accessible — le
+// lien de la Sidebar (tiroir hors-champ par `transform: translateX(-105%)`,
+// donc toujours présent dans l'arbre d'accessibilité) ET l'onglet de
+// `nav.bottom-tabbar`. Un locator global viole le mode strict de Playwright ;
+// sur bureau il n'en voyait qu'un (`.bottom-tabbar { display: none }`), d'où
+// une ambiguïté qui n'apparaît QUE sur les projets mobiles.
+//
+// L'onglet direct existe toujours : `BottomTabBar.splitAppTabs` garde les 3
+// premières sections de l'app en accès direct dès qu'elle en a plus de 4, et
+// « Toitures & relevés » est la 3e entrée de nav du module AO.
+export async function ouvrirAoToituresMobile(page) {
+  const tabbar = page.locator('nav.bottom-tabbar')
+  await expect(tabbar, "la barre d'onglets de l'app AO est rendue au pouce").toBeVisible()
+  await tabbar.getByRole('link', { name: /Toiture/ }).click()
+  await expect(page).toHaveURL(/\/ao\/toitures/)
+}
+
 // Sélectionne un outil de l'atelier toiture/calepinage (`data-ao-outil="…"`).
 export async function selectAoOutil(page, outil) {
   await page.locator(`[data-ao-outil="${outil}"]`).click()
