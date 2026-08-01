@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { axe } from 'vitest-axe'
 import StudioShell from './StudioShell'
 
@@ -197,10 +198,13 @@ describe('StudioShell — réutilisabilité', () => {
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
-  it('change d’onglet d’inspecteur sans toucher au canvas', () => {
+  it('change d’onglet d’inspecteur sans toucher au canvas', async () => {
     renderShell()
     expect(screen.getByText('Sommets du contour')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('tab', { name: 'Obstacles' }))
+    // Onglet Radix : l'activation se joue au pointerdown/focus, pas au `click`
+    // nu — `fireEvent.click` ne bascule donc RIEN (même remarque que
+    // `features/contrats/wiring.test.jsx`). Il faut un vrai geste utilisateur.
+    await userEvent.click(screen.getByRole('tab', { name: 'Obstacles' }))
     expect(screen.getByText('Liste des obstacles')).toBeInTheDocument()
     expect(screen.getByTestId('surface')).toBeInTheDocument()
   })

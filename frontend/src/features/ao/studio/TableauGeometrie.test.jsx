@@ -95,18 +95,19 @@ describe('TableauGeometrie — sommets, SANS SOURIS', () => {
     const user = userEvent.setup()
     render(
       <TableauGeometrie
-        points={[{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }]}
+        points={[{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 5 }, { x: 0, y: 5 }]}
         onGeometrie={onGeometrie}
         onRefus={onRefus}
       />,
     )
-    // Envoie le sommet B (10,0) tout près de D (0,10) : le contour se recoupe.
-    const champX = screen.getByLabelText('x (m) — Sommet B')
-    await user.clear(champX)
-    await user.type(champX, '0')
+    // Remonte le sommet B (5,0) AU-DESSUS du côté CD : le segment AB traverse
+    // alors CD — nœud papillon. La cible tient en UNE frappe (« 9 »), sinon la
+    // frappe intermédiaire (« 1 » de « 10 ») décrirait un contour parfaitement
+    // valide que le composant a le devoir de publier : la fusion des frappes en
+    // un seul cran d'annulation est le contrat documenté du tableau.
     const champY = screen.getByLabelText('y (m) — Sommet B')
     await user.clear(champY)
-    await user.type(champY, '10')
+    await user.type(champY, '9')
 
     expect(onRefus).toHaveBeenCalled()
     expect(onRefus.mock.calls.at(-1)[0]).toMatch(/crois|intersection/i)
