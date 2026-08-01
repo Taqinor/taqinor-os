@@ -50,8 +50,22 @@ class AppelOffre(TenantModel):
         PRIVE = 'prive', 'Privé'
 
     class Statut(models.TextChoices):
+        """AOF13 — le cycle réel d'un dossier d'appel d'offres.
+
+        Les SIX valeurs historiques (``identifie``, ``en_preparation``,
+        ``depose``, ``gagne``, ``perdu``, ``abandonne``) sont CONSERVÉES à
+        l'identique : aucune migration de données, aucune ligne existante ne
+        devient invalide. ``en_preparation`` devient l'étape « fourre-tout »
+        historique que les six nouvelles valeurs détaillent.
+        """
         IDENTIFIE = 'identifie', 'Identifié'
-        EN_PREPARATION = 'en_preparation', 'En préparation'
+        ANALYSE_CPS = 'analyse_cps', 'Analyse du CPS'
+        RELEVE = 'releve', 'Relevé de la toiture'
+        ETUDE = 'etude', 'Étude / calepinage'
+        CHIFFRAGE = 'chiffrage', 'Chiffrage'
+        DOSSIER = 'dossier', 'Montage du dossier'
+        PRET_A_DEPOSER = 'pret_a_deposer', 'Prêt à déposer'
+        EN_PREPARATION = 'en_preparation', 'En préparation (historique)'
         DEPOSE = 'depose', 'Déposé'
         GAGNE = 'gagne', 'Gagné'
         PERDU = 'perdu', 'Perdu'
@@ -182,6 +196,40 @@ class AppelOffre(TenantModel):
                 name='uniq_appel_offre_reference',
             ),
         ]
+
+    #: AOF13 — drapeau d'instance posé par ``services.changer_statut_ao`` pour
+    #: autoriser la mutation du statut. Jamais posé ailleurs.
+    ATTR_STATUT_AUTORISE = '_statut_change_par_service'
+
+    def save(self, *args, **kwargs):
+        """AOF13 — le statut ne se mute QUE par ``services.changer_statut_ao``.
+
+        Sans cette garde, la table de transitions déclarative serait une
+        suggestion : n'importe quelle vue pourrait écrire ``ao.statut = 'gagne'``
+        et court-circuiter à la fois la validation et les deux événements M6.
+        La création reste libre (un dossier peut naître à n'importe quelle
+        étape, y compris à l'import d'un historique) ; seule la MODIFICATION
+        d'un statut existant est gardée. Un ``queryset.update()`` contourne
+        ``save()`` par construction — c'est documenté, jamais un chemin
+        applicatif.
+        """
+        update_fields = kwargs.get('update_fields')
+        touche_statut = update_fields is None or 'statut' in update_fields
+        autorise = getattr(self, self.ATTR_STATUT_AUTORISE, False)
+        if self.pk and touche_statut and not autorise:
+            ancien = type(self).objects.filter(pk=self.pk).values_list(
+                'statut', flat=True).first()
+            if ancien is not None and ancien != self.statut:
+                from django.core.exceptions import ValidationError
+                raise ValidationError({
+                    'statut': (
+                        "Le statut d'un appel d'offres ne se change que par le "
+                        "service dédié (changer_statut_ao) : la table des "
+                        "transitions et les événements de dépôt/attribution en "
+                        "dépendent."
+                    ),
+                })
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.reference} — {self.objet}'

@@ -20,7 +20,8 @@ héritée de ``_ComptaBaseViewSet`` est ABANDONNÉE : elle ouvrait tout le dossi
 d'appel d'offres au palier Responsable (cf. AOF2).
 """
 
-from rest_framework import filters
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -93,6 +94,38 @@ class AppelOffreViewSet(AoBaseViewSet):
             lambda reference: serializer.save(
                 company=societe, reference=reference),
         )
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """AOF13 — SEUL chemin HTTP de mutation du statut d'un AO.
+
+        Une transition interdite par ``services.TRANSITIONS_AO`` répond 400
+        avec un message en français listant les statuts atteignables.
+        """
+        appel_offre = self.get_object()
+        try:
+            services.changer_statut_ao(
+                appel_offre, request.data.get('statut'), user=request.user,
+                motif=(request.data.get('motif') or ''))
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'statut': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(appel_offre).data)
+
+    @action(detail=True, methods=['get'], url_path='transitions')
+    def transitions(self, request, pk=None):
+        """Statuts atteignables depuis l'état courant (pilote l'UI)."""
+        appel_offre = self.get_object()
+        libelles = dict(AppelOffre.Statut.choices)
+        cibles = services.transitions_possibles(appel_offre.statut)
+        return Response({
+            'statut': appel_offre.statut,
+            'statut_display': libelles.get(appel_offre.statut, ''),
+            'transitions': [
+                {'valeur': s, 'libelle': libelles[s]} for s in cibles
+            ],
+        })
 
 
 # ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────

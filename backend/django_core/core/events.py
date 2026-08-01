@@ -706,6 +706,24 @@ cycle_sterilisation_non_conforme = django.dispatch.Signal()
 # ``libelle`` (snapshot d'affichage — à défaut ``str(instance)``), ``donnees``
 # (dict best-effort, AFFICHAGE SEUL, jamais réinjecté à la restauration).
 record_soft_deleted = django.dispatch.Signal()
+# AOF13 — DEUX événements du domaine « appel d'offres » (``apps.ao``), et deux
+# seulement : on ne déclare pas ``ao_perdu``/``ao_dossier_pret`` « pour plus
+# tard » (un signal sans abonné réel fait rougir ``core.event_coverage``).
+# Émis EXCLUSIVEMENT par ``apps.ao.services.changer_statut_ao`` — jamais depuis
+# un modèle, jamais depuis une vue.
+#
+# ``ao_depose``
+#     Le dossier est DÉPOSÉ (transition ``pret_a_deposer`` → ``depose``).
+#     Abonné dans ce repo : ``crm`` (``apps/crm/receivers.py``) avance l'étape
+#     du lead lié vers QUOTE_SENT — une offre remise EST un devis envoyé au
+#     sens du funnel. Arguments : ``appel_offre``, ``company``, ``user`` (peut
+#     être None), ``ancien_statut``.
+ao_depose = django.dispatch.Signal()
+# ``ao_gagne``
+#     L'AO est ATTRIBUÉ (transition ``depose`` → ``gagne``). Abonné dans ce
+#     repo : ``crm`` (``apps/crm/receivers.py``) avance l'étape du lead lié
+#     vers SIGNED. Mêmes arguments que ``ao_depose``.
+ao_gagne = django.dispatch.Signal()
 
 
 # ===========================================================================

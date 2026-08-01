@@ -1,6 +1,6 @@
-# AOF5 + AOF12 — le PROJET d'appel d'offres au complet, en une seule migration
-# additive (le groupe AOF impose des migrations groupées : chaque migration
-# nouvelle force un cache-MISS du gate CI).
+# AOF5 + AOF12 + AOF13 — le PROJET d'appel d'offres au complet, en une seule
+# migration additive (le groupe AOF impose des migrations groupées : chaque
+# migration nouvelle force un cache-MISS du gate CI).
 #
 #   * AOF5  — ``reference_acheteur`` : la référence du marché CÔTÉ ACHETEUR,
 #     strictement distincte de NOTRE référence générée ``AO-YYYYMM-0001``.
@@ -8,9 +8,13 @@
 #     (adresse + point GPS), mode de passation, référence CPS, dates
 #     d'ouverture des plis et de validité (75 j), délai d'exécution, nombre
 #     d'exemplaires, engagement global en modules, montants d'offre HT/TTC.
+#   * AOF13 — statuts ÉLARGIS. L'``AlterField`` ne touche QUE la liste de
+#     ``choices`` (aucun changement de type ni de longueur : ``max_length``
+#     reste 16) : les SIX valeurs historiques sont conservées à l'identique,
+#     donc AUCUNE migration de données et aucune ligne existante invalidée.
 #
 # AUCUN champ de coût, de marge ni de bénéfice : l'économie de l'AO vit dans
-# des tables SÉPARÉES derrière ``ao_rentabilite_voir``. Purement additive, aucun
+# des tables SÉPARÉES derrière ``ao_rentabilite_voir``. Aucun
 # ``AlterModelTable`` (``db_table='compta_appeloffre'`` inchangée).
 
 import django.core.validators
@@ -109,5 +113,10 @@ class Migration(migrations.Migration):
             model_name='appeloffre',
             name='validite_offre_jours',
             field=models.PositiveIntegerField(default=75, verbose_name="Validité de l'offre (jours)"),
+        ),
+        migrations.AlterField(
+            model_name='appeloffre',
+            name='statut',
+            field=models.CharField(choices=[('identifie', 'Identifié'), ('analyse_cps', 'Analyse du CPS'), ('releve', 'Relevé de la toiture'), ('etude', 'Étude / calepinage'), ('chiffrage', 'Chiffrage'), ('dossier', 'Montage du dossier'), ('pret_a_deposer', 'Prêt à déposer'), ('en_preparation', 'En préparation (historique)'), ('depose', 'Déposé'), ('gagne', 'Gagné'), ('perdu', 'Perdu'), ('abandonne', 'Abandonné')], default='identifie', max_length=16, verbose_name='Statut'),
         ),
     ]
