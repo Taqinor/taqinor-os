@@ -218,4 +218,15 @@ touché (une autre lane y travaille en parallèle).
   * `automation_state_fields` — la « date limite » n'est volontairement PAS déclarée : ce
     n'est pas un champ d'ÉTAT (les couperets passent par `EcheanceAO` + le beat
     `ao.rappeler_echeances`). Un test l'interdit explicitement.
+- **AOF186 : `seed_ao_demo` sème le bordereau LEGACY.** AOF120 (bordereau v2 :
+  `SectionBordereau`, TVA, `quantite_source`, verrou de quantité) n'est pas construit dans
+  ce run — le seed crée donc `BordereauPrix` + 3 `LigneBordereau` (une par bâtiment,
+  quantité = engagement du golden). Quand AOF120 landera, ajouter les sections au seed est
+  additif : les quantités, elles, resteront lues dans les goldens. Le pack documentaire
+  (fabrique) n'est pas semé non plus, pour la même raison.
+- **AOF169 : le sas `apps/veille_ao` (Groupe VAO) n'existe pas encore.** La note du plan
+  demande de le consommer plutôt que de réécrire un parseur ; il n'y a rien à consommer, donc
+  l'import passe par la primitive plateforme `apps.dataimport.parsing.iter_rows` (jamais un
+  parseur maison) et `services.creer_appel_offre_depuis_avis` est le point de contact UNIQUE
+  que VAO30 trouvera déjà en place — à ne pas dupliquer.
 
