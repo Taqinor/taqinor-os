@@ -48,7 +48,7 @@
 // datatable-breakpoint.spec.js. Les 6 étapes ne sont JAMAIS écrites en dur :
 // leur nombre vient de `STAGE_LABELS` (miroir de STAGES.py, règle #2).
 import { test, expect } from '@playwright/test'
-import { STAGE_LABELS } from './helpers'
+import { STAGE_LABELS , boutonNouveauLead } from './helpers'
 
 // Tolérance sous-pixel (même valeur que LB33) : un layout borné rapporte 0-2 px
 // d'arrondi ; une vraie régression se compte en dizaines de px.
@@ -89,7 +89,7 @@ function noter(info, quoi, valeur) {
  */
 async function ouvrirLeads(page, vue) {
   await page.goto(`/crm/leads?view=${vue}`)
-  await expect(page.getByRole('button', { name: '+ Nouveau lead' })).toBeVisible()
+  await expect(boutonNouveauLead(page)).toBeVisible()
 }
 
 /**

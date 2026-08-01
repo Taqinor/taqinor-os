@@ -2,7 +2,7 @@
 // completes. We seed a fresh cluster (two identical leads) so a group always
 // exists, then merge it.
 import { test, expect } from '@playwright/test'
-import { gotoLeads, uniq } from './helpers'
+import { gotoLeads, uniq , boutonNouveauLead } from './helpers'
 
 test('E11: doublons view renders and merging a cluster completes', async ({ page }) => {
   await gotoLeads(page)
@@ -11,7 +11,7 @@ test('E11: doublons view renders and merging a cluster completes', async ({ page
 
   // Two identical leads → one duplicate cluster (matched on phone + name).
   for (let i = 0; i < 2; i += 1) {
-    await page.getByRole('button', { name: '+ Nouveau lead' }).click()
+    await boutonNouveauLead(page).click()
     const modal = page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
     await modal.locator('#lf-nom').fill(name)
     // LW39 (suite) — FormField du workspace ne rend plus `.form-group` : id stable.

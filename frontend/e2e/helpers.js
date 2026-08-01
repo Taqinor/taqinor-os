@@ -35,9 +35,20 @@ export async function uiLogin(page, { username, password } = ADMIN) {
 }
 
 // ── Leads ─────────────────────────────────────────────────────────────────
+// Le nom « + Nouveau lead » est porte par TROIS controles selon l'etat :
+// le bouton d'en-tete (desktop), le bouton flottant (mobile) et l'action
+// de coach de l'etat vide du kanban (quand la societe n'a AUCUN lead).
+// On vise donc explicitement celui de l'en-tete de page : sinon un run qui
+// tombe sur une base sans lead resout deux elements et Playwright echoue en
+// mode strict — ce qui n'a rien a voir avec ce que le test verifie.
+export function boutonNouveauLead(page) {
+  return page.locator('.lp-header-actions')
+    .getByRole('button', { name: '+ Nouveau lead' })
+}
+
 export async function gotoLeads(page) {
   await page.goto('/crm/leads')
-  await expect(page.getByRole('button', { name: '+ Nouveau lead' })).toBeVisible()
+  await expect(boutonNouveauLead(page)).toBeVisible()
 }
 
 // view: 'kanban' | 'liste'
@@ -56,7 +67,7 @@ const leadModal = (page) => page.locator('[role="dialog"]').filter({ has: page.l
 // `facture` (winter bill, MAD) makes the lead "devis-ready" for residential.
 export async function createLead(page, { nom, facture } = {}) {
   const name = nom || uniq('Lead E2E')
-  await page.getByRole('button', { name: '+ Nouveau lead' }).click()
+  await boutonNouveauLead(page).click()
   const modal = leadModal(page)
   await expect(modal.getByRole('heading', { name: 'Nouveau lead' })).toBeVisible()
   // Nom = the required Contact field. Target its stable id (#lf-nom) rather
