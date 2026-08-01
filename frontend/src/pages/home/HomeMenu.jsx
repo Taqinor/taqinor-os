@@ -392,19 +392,32 @@ export default function HomeMenu() {
   // cible. Si l'ordre changeait un jour, le repli resterait `<main>` — moins
   // fin, jamais cassé.
   const focusInitialFait = useRef(false)
+  // Focus initial UNE SEULE FOIS (garde par ref) : ni boucle, ni cascade —
+  // `focusTuile` pose l'index actif pour que le focus DOM et l'etat restent
+  // d'accord. La garde rend l'effet strictement non reentrant.
   useEffect(() => {
     if (focusInitialFait.current) return
     focusInitialFait.current = true
     if (tactile) return
     const index = ordre.findIndex((a) => a.key === derniereApp)
     if (index >= 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       focusTuile(index)
       return
     }
     inputRef.current?.focus()
   }, [tactile, ordre, derniereApp, focusTuile])
 
-  let position = -1
+  // Index de parcours clavier = position à plat, toutes sections confondues.
+  // Calculé une fois par section (décalage cumulé) plutôt qu'en incrémentant une
+  // variable PENDANT le rendu : une mutation au fil du JSX se rejoue faux si
+  // React re-rend partiellement (StrictMode, rendu concurrent).
+  const decalages = useMemo(() => {
+    const acc = []
+    let n = 0
+    for (const s of sections) { acc.push(n); n += s.apps.length }
+    return acc
+  }, [sections])
 
   return (
     <div
@@ -473,13 +486,12 @@ export default function HomeMenu() {
             accessibility={{ announcements, screenReaderInstructions: INSTRUCTIONS_LECTEUR }}
             onDragEnd={onDragEnd}
           >
-            {sections.map((section) => (
+            {sections.map((section, sectionIndex) => (
               <section key={section.id} className="home-menu-section">
                 <h3 className="home-menu-section-title">{section.titre}</h3>
                 <div className="home-menu-grid" role="list">
-                  {section.apps.map((app) => {
-                    position += 1
-                    const index = position
+                  {section.apps.map((app, appIndex) => {
+                    const index = decalages[sectionIndex] + appIndex
                     return (
                       <CelluleApp
                         key={app.key}

@@ -84,7 +84,11 @@ test('retirer une photo NON enregistrée ne déclenche pas un PATCH de suppressi
 test('la vignette catalogue a un repli d\'icône de catégorie (jamais de trou)', () => {
   assert.match(TABLE, /\bcategorieIcone\b[\s\S]{0,200}from '\.\.\/\.\.\/features\/stock\/catalogue'/)
   assert.match(TABLE, /produit\.image_url\s*\n?\s*\?\s*<img/)
-  assert.match(TABLE, /:\s*<Icone className="size-5" \/>/)
+  // L'icône de repli est résolue EN LIGNE via `createElement` : lier
+  // `categorieIcone(...)` à une variable PascalCase pendant le rendu déclenche
+  // « Cannot create components during render » (compilateur React). Ce que la
+  // sonde garde reste le même : pas de photo ⇒ icône de catégorie, jamais un trou.
+  assert.match(TABLE, /:\s*createElement\(categorieIcone\(produit\), \{ className: 'size-5' \}\)/)
 })
 
 test('la fiche produit ne rend RIEN quand il n\'y a pas de photo', () => {

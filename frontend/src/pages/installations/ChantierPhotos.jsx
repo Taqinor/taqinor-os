@@ -170,6 +170,9 @@ export default function ChantierPhotos({ installationId }) {
       })
       .catch(() => setInterventionPhotos([]))
   }
+  // Chargement des photos d'intervention au changement de chantier (motif de
+  // fetch standard : l'etat est pose dans les callbacks de la promesse).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadInterventionPhotos() }, [installationId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const upload = async (phase, file) => {

@@ -190,6 +190,9 @@ const ACTIVITE_SEAUX = [
 
 /** activiteSeau — seau d'activité d'un lead. `next_activity` absente = « sans
     activité » (le seau qui compte : c'est celui-là qu'un commercial doit vider). */
+// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
+// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
+// eslint-disable-next-line react-refresh/only-export-components
 export function activiteSeau(lead) {
   const state = lead?.next_activity?.state
   return ACTIVITE_SEAUX.some((s) => s.key === state) ? state : 'none'
@@ -197,6 +200,9 @@ export function activiteSeau(lead) {
 
 /** repartitionActivite — {overdue, today, upcoming, none} pour une colonne.
     Fonction PURE (testable sans React ni navigateur). */
+// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
+// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
+// eslint-disable-next-line react-refresh/only-export-components
 export function repartitionActivite(leads) {
   const acc = { overdue: 0, today: 0, upcoming: 0, none: 0 }
   for (const lead of leads ?? []) acc[activiteSeau(lead)] += 1

@@ -117,7 +117,7 @@ export async function mutateWithUndo({
     // APPLIQUÉ TOUT DE SUITE. Pas de setTimeout, pas de commit différé : quand
     // cette ligne est franchie, le serveur a répondu.
     await apply()
-  } catch (err) {
+  } catch {
     try { rollbackOptimistic?.() } catch { /* idem */ }
     toastError(errorMessage)
     return false

@@ -21,6 +21,9 @@ const MapView = lazy(() => import('../../components/MapView'))
 // Un arrêt géolocalisable ? (le GPS du chantier est nullable côté serveur)
 const aGps = (s) => s?.gps_lat != null && s?.gps_lng != null
 
+// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
+// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
+// eslint-disable-next-line react-refresh/only-export-components
 export const stopLabel = (stop, rang) => (
   `${rang}. ${stop?.client_nom || stop?.installation_reference || `#${stop?.id}`}`
 )
@@ -28,6 +31,9 @@ export const stopLabel = (stop, rang) => (
 // Marqueurs numérotés DANS L'ORDRE de la tournée (l'ordre serveur, plus proche
 // voisin) — les arrêts sans GPS sont simplement absents de la carte, jamais
 // posés à une position inventée ; ils restent visibles dans la liste.
+// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
+// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
+// eslint-disable-next-line react-refresh/only-export-components
 export function tourneeMarkers(stops) {
   return (stops ?? []).map((stop, i) => ({ stop, rang: i + 1 }))
     .filter(({ stop }) => aGps(stop))
@@ -41,6 +47,9 @@ export function tourneeMarkers(stops) {
     }))
 }
 
+// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
+// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
+// eslint-disable-next-line react-refresh/only-export-components
 export const tourneePath = (stops) => tourneeMarkers(stops).map((m) => [m.lat, m.lng])
 
 /**

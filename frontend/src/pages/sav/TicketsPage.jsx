@@ -239,6 +239,9 @@ function ymdLocal(d) {
  *   sinon `{ dueIso, jours, depasse, enPause, ouvert }` où `jours` est le
  *   nombre de jours restants (négatif = retard).
  */
+// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
+// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
+// eslint-disable-next-line react-refresh/only-export-components
 export function ticketSlaEcheance(ticket, now = new Date()) {
   const dueIso = ticket?.sla_due_at_effectif || ticket?.sla_due_at || null
   if (!dueIso) return null
@@ -264,6 +267,9 @@ export function ticketSlaEcheance(ticket, now = new Date()) {
  * Ordre voulu : les dépassements d'abord, puis l'échéance la plus proche, puis
  * les tickets sans SLA (jamais mélangés au milieu de ceux qui en ont un).
  */
+// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
+// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
+// eslint-disable-next-line react-refresh/only-export-components
 export function ticketSlaTri(ticket, now = new Date()) {
   const e = ticketSlaEcheance(ticket, now)
   if (!e) return Number.MAX_SAFE_INTEGER

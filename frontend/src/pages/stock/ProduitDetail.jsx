@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createElement, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { History, PackageSearch } from 'lucide-react'
 import {
@@ -319,13 +319,18 @@ export function ProduitDetail({ produit, onClose }) {
   const canViewJournal = useHasPermission('journal_activite_voir')
   // APX18 — icône de catégorie en titre (repli visuel construit d'office) ;
   // repli générique `PackageSearch` si le produit n'a pas de catégorie.
-  const IconeTitre = produit.categorie?.nom ? categorieIcone(produit) : PackageSearch
+  // Cf. CatalogueTable : resoudre l'icone en ligne via `createElement` plutot
+  // que de la lier a une variable PascalCase pendant le rendu (le compilateur
+  // React y voit une creation de composant au rendu).
+  const iconeTitre = produit.categorie?.nom ? categorieIcone(produit) : PackageSearch
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <IconeTitre className="size-4 text-muted-foreground" aria-hidden="true" />
+            {createElement(iconeTitre, {
+              className: 'size-4 text-muted-foreground', 'aria-hidden': 'true',
+            })}
             {produit.nom}{produit.sku ? ` (${produit.sku})` : ''}
           </DialogTitle>
           <DialogDescription>

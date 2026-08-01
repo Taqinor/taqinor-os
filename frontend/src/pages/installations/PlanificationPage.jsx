@@ -501,8 +501,13 @@ function CalendrierTab() {
   const debut = mode === 'jour' ? jour : range.debut
   const fin = mode === 'jour' ? jour : range.fin
 
+  // Fetch du calendrier au changement de plage : `setLoading(true)` ouvre le
+  // cycle et `finally` le referme — motif de chargement standard, borne par
+  // le drapeau `alive`, sans cascade possible.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     let alive = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     installationsApi.getCalendrierInterventions(debut, fin)
       .then((r) => { if (alive) { setData(r.data ?? []); setError(null) } })

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { createElement, useMemo } from 'react'
 import {
   AlertTriangle, History, Pencil, Trash2, PackageSearch, PackagePlus,
   TrendingDown,
@@ -48,12 +48,15 @@ const fmtNum2 = (n) => formatMAD(n, { withSymbol: false })
    La photo est INTERNE — cette vignette ne sort jamais vers un PDF ni vers un
    document client, et n'est jamais rendue à côté de `prix_achat`. */
 function VignetteProduit({ produit }) {
-  const Icone = categorieIcone(produit)
+  // `categorieIcone` renvoie un composant lucide STABLE issu d'une table de
+  // correspondance — mais le lier a une variable PascalCase pendant le rendu
+  // ressemble a « creer un composant au rendu » pour le compilateur React.
+  // `createElement` avec la resolution en ligne dit la meme chose sans l'ambiguite.
   return (
     <span className="pcat-vignette" data-testid="pcat-vignette" aria-hidden="true">
       {produit.image_url
         ? <img src={produit.image_url} alt="" loading="lazy" />
-        : <Icone className="size-5" />}
+        : createElement(categorieIcone(produit), { className: 'size-5' })}
     </span>
   )
 }
