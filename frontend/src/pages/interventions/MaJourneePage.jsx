@@ -24,6 +24,9 @@ import {
   Tabs, TabsList, TabsTrigger, TabsContent,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   toast, FloatingActionButton,
+  // APX26 — bandeau « Prochaine action » partagé avec la fiche chantier
+  // (la duplication était auto-documentée juste sous NEXT_ACTION).
+  NextActionBanner,
 } from '../../ui'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { usePullToRefresh } from '../../ui/usePullToRefresh'
@@ -447,14 +450,18 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
         {/* VX42 — bandeau « Prochaine action » : masqué si le statut n'a pas
             de suite mappée (ex. « validée », fin du flux). */}
         {next && (
-          <div className="flex items-center justify-between gap-2 border-b border-info/30 bg-info/10 px-4 py-2 text-[13px]"
-            data-testid="mj-next-action">
-            <span><strong className="text-info">Prochaine action&nbsp;:</strong> {next.text}</span>
-            <button type="button" onClick={() => changeTab(next.tab)}
-              className="shrink-0 font-medium text-info underline-offset-2 active:underline">
-              Y aller
-            </button>
-          </div>
+          <NextActionBanner
+            compact
+            data-testid="mj-next-action"
+            action={(
+              <button type="button" onClick={() => changeTab(next.tab)}
+                className="shrink-0 font-medium text-info underline-offset-2 active:underline">
+                Y aller
+              </button>
+            )}
+          >
+            {next.text}
+          </NextActionBanner>
         )}
 
         {/* VX105 — `forceMount` : chaque panneau se monte UNE fois et reste

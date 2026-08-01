@@ -14,9 +14,10 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'InstallationDetail.jsx'), 'utf8')
 
 // Matrice de référence : chaque section d'origine et l'onglet qui l'accueille.
+// APX26 — l'ex-section « Timeline » est fusionnée dans « Parcours & jalons ».
 const MATRICE = {
   apercu: ['Liens', 'Chantier', 'Dossier réglementaire (loi 82-21)'],
-  jalons: ['Timeline', 'Parcours du chantier', "Checklist d'exécution", 'Mise en service'],
+  jalons: ['Parcours & jalons', "Checklist d'exécution", 'Mise en service'],
   materiel: ['Besoin matériel', 'Équipements'],
   photos: ['Photos & fichiers'],
   interventions: ['Interventions', 'Tickets SAV', 'Suivi & maintenance'],
@@ -42,12 +43,12 @@ test('les 6 onglets existent, chacun avec son déclencheur', () => {
   assert.equal(panneaux.length, 6)
 })
 
-test('matrice section → onglet : les 15 sections sont placées, aucune perdue', () => {
+test('matrice section → onglet : toutes les sections sont placées, aucune perdue', () => {
   const titres = [...SRC.matchAll(/<Section\s[^>]*?title="([^"]+)"/gs)].map((m) => m[1])
     .concat([...SRC.matchAll(/\n\s*title="([^"]+)"/g)].map((m) => m[1]))
-  // 15 sections d'origine, toutes encore présentes dans le fichier.
+  // 14 sections (15 d'origine — APX26 fusionne « Timeline » dans le parcours).
   const attendues = Object.values(MATRICE).flat()
-  assert.equal(attendues.length, 15)
+  assert.equal(attendues.length, 14)
   for (const titre of attendues) {
     assert.ok(titres.includes(titre), `section « ${titre} » disparue de la fiche`)
   }

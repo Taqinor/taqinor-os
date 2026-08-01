@@ -17,6 +17,8 @@ export * from './Separator'
 export * from './Skeleton'
 export * from './FadeSwap'
 export * from './EmptyState'
+// APX26 — bandeau « Prochaine action » partagé (chantier + Ma journée).
+export * from './NextActionBanner'
 export * from './ErrorBoundary'
 export * from './NotFound'
 export * from './Forbidden'

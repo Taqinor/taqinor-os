@@ -34,7 +34,8 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import OwnerChain from '../../components/OwnerChain'
 import ChantierChecklist from './ChantierChecklist'
-import ChantierTimeline from './ChantierTimeline'
+// APX26 — `ChantierTimeline` n'est plus monté ici : il est rendu par
+// `ChantierGateTimeline` (une seule timeline dans la fiche).
 import ChantierGateTimeline from './ChantierGateTimeline'
 import ChantierPhotos from './ChantierPhotos'
 // NTMOB16 — signature client tracée sur le bon de livraison chantier.
@@ -873,7 +874,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
           {/* APX25 — onglets : la fiche ne déroule plus 15 sections d'un bloc.
               MATRICE section → onglet (aucun contenu perdu) :
                 apercu —               Liens · Chantier · Dossier réglementaire (loi 82-21)
-                jalons —               Timeline · Parcours du chantier · Checklist d'exécution · Mise en service
+                jalons —               Parcours & jalons (APX26 : ex-« Timeline » fusionnée dedans) · Checklist d'exécution · Mise en service
                 materiel —             Besoin matériel · Équipements
                 photos —               Photos & fichiers
                 interventions —        Interventions · Tickets SAV · Suivi & maintenance
@@ -1123,18 +1124,18 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             </TabsContent>
 
             <TabsContent value="jalons" className="flex flex-col gap-4">
-            {/* ── Timeline du chantier (N6) ── */}
-            <Section icon={History} title="Timeline">
-              <ChantierTimeline installation={current} />
-            </Section>
             {/* ── CH6 — parcours d'étapes/gates guidé (remplace le simple statut) :
                 chaque étape du cycle de vie configurable (CH1), l'état de son
                 gate (CH2, raisons de blocage en français), la prochaine action
                 explicite, et la recette de mise en service (CH3) + le pack de
                 remise client (CH4) mis en avant. Dégrade proprement (message
-                informatif) si la société n'a configuré aucune étape. ── */}
-            <Section icon={Milestone} title="Parcours du chantier">
-              <ChantierGateTimeline installationId={id} onAdvanced={refreshInstallation} />
+                informatif) si la société n'a configuré aucune étape. ──
+                APX26 — les jalons datés (N6, ex-section « Timeline ») sont
+                fusionnés DANS ce stepper (progression « 3/7 » en tête) : la
+                fiche n'empile plus deux timelines redondantes. ── */}
+            <Section icon={Milestone} title="Parcours & jalons">
+              <ChantierGateTimeline installationId={id} installation={current}
+                                    onAdvanced={refreshInstallation} />
             </Section>
             {/* ── Checklist d'exécution (N4/N9) ── */}
             <Section icon={ClipboardList} title="Checklist d'exécution">
