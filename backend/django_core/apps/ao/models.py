@@ -3732,3 +3732,109 @@ class ControleCoherence(TenantModel):
 
     def __str__(self):
         return f'[{self.severite}] {self.code_regle} — {self.objet}'
+
+
+# ── AOF150 — Archivage IMMUABLE + manifeste de pack ───────────────────────
+
+class ArtefactAO(TenantModel):
+    """Un artefact ARCHIVÉ, immuable, adressé par son empreinte (AOF150).
+
+    La clé est ``ao/<company>/<dossier>/<code>/<indice>-<empreinte8>.<ext>`` :
+    l'indice ET l'empreinte y figurent, donc **deux versions ne peuvent pas se
+    disputer la même clé** et rien ne s'écrase jamais. Le dépôt réel contient
+    encore aujourd'hui deux bordereaux homonymes divergents — même classe de
+    risque qu'un devis obsolète envoyé au client.
+
+    Les octets vivent dans MinIO via ``records.Attachment`` : **aucun nouveau
+    ``FileField``** (le garde plateforme gèle ce module).
+    """
+
+    dossier = models.ForeignKey(
+        DossierAO,
+        on_delete=models.CASCADE,  # on_delete: artefact fils d'un dossier : aucune existence hors de lui
+        related_name='artefacts',
+        verbose_name='Dossier',
+    )
+    code = models.CharField(max_length=20, verbose_name='Code de la pièce')
+    indice = models.CharField(max_length=4, default='A', verbose_name='Indice')
+    empreinte = models.CharField(
+        max_length=64, verbose_name='Empreinte du contexte produit')
+    cle = models.CharField(max_length=500, verbose_name='Clé objet (MinIO)')
+    taille = models.PositiveBigIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='artefacts_ao', verbose_name='Pièce jointe')
+
+    class Meta:
+        verbose_name = 'Artefact archivé (AO)'
+        verbose_name_plural = 'Artefacts archivés (AO)'
+        db_table = 'ao_artefact'
+        ordering = ['dossier', 'code', 'indice']
+        constraints = [
+            # La clé est UNIQUE : un artefact ne s'écrase jamais.
+            models.UniqueConstraint(
+                fields=['company', 'cle'], name='uniq_artefact_ao_cle'),
+            models.UniqueConstraint(
+                fields=['dossier', 'code', 'indice'],
+                name='uniq_artefact_ao_code_indice'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'dossier', 'empreinte']),
+        ]
+
+    def __str__(self):
+        return f'{self.code}{self.indice} — {self.cle}'
+
+
+class ManifestePack(TenantModel):
+    """Le « pack courant » : un MANIFESTE DE CLÉS, pas un répertoire (AOF150).
+
+    Un répertoire accumule les versions et laisse le dépôt choisir ; un
+    manifeste NOMME exactement ce qui part. Les indices antérieurs restent
+    consultables en historique mais **ne peuvent STRUCTURELLEMENT pas entrer
+    dans un pack de dépôt** : le manifeste porte une empreinte, et il n'accepte
+    que des artefacts produits sous CETTE empreinte (garde en service +
+    ``verifier``).
+    """
+
+    dossier = models.ForeignKey(
+        DossierAO,
+        on_delete=models.CASCADE,  # on_delete: manifeste fils d'un dossier : aucune existence hors de lui
+        related_name='manifestes',
+        verbose_name='Dossier',
+    )
+    empreinte = models.CharField(
+        max_length=64, verbose_name='Empreinte du contexte')
+    artefacts = models.ManyToManyField(
+        ArtefactAO, blank=True, related_name='manifestes',
+        verbose_name='Artefacts du pack')
+    courant = models.BooleanField(
+        default=True, verbose_name='Manifeste courant')
+
+    class Meta:
+        verbose_name = 'Manifeste de pack (AO)'
+        verbose_name_plural = 'Manifestes de pack (AO)'
+        db_table = 'ao_manifeste_pack'
+        ordering = ['-created_at', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dossier'], condition=models.Q(courant=True),
+                name='uniq_manifeste_courant_par_dossier'),
+        ]
+
+    def __str__(self):
+        return f'Manifeste {self.empreinte[:8]} — {self.dossier_id}'
+
+    def artefacts_perimes(self):
+        """Artefacts du manifeste produits sous une AUTRE empreinte.
+
+        Doit toujours être VIDE : le service refuse de les y mettre. La
+        méthode existe pour que l'invariant soit vérifiable, pas seulement
+        déclaré.
+        """
+        return [a for a in self.artefacts.all()
+                if a.empreinte != self.empreinte]
