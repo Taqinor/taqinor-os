@@ -14,7 +14,7 @@
    Mémoire : au démontage — et à chaque changement de fichier — le document
    pdf.js est détruit et le canvas peint est ramené à 0×0 (`libererFond`) ; un
    plan A0 laissé attaché pèse plusieurs dizaines de Mo. */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
 import {
@@ -54,22 +54,27 @@ export default function UnderlayPdf({
   const [etat, setEtat] = useState('vide') // vide | chargement | pret | erreur
   const [message, setMessage] = useState('')
 
+  // État dérivé directement du fichier reçu : 'vide' (aucun fichier) ou 'erreur'
+  // de format (fichier non-PDF) — jamais posé en state depuis l'effet, un PDF
+  // valide rend `null` et laisse l'effet piloter le chargement asynchrone.
+  const etatFichier = useMemo(() => {
+    if (!fichier) return 'vide'
+    if (!estPdf(fichier)) return 'erreur'
+    return null
+  }, [fichier])
+  const messageFichier = useMemo(
+    () => (fichier && !estPdf(fichier) ? messageFormatNonSupporte(fichier) : ''),
+    [fichier],
+  )
+
   // ── Ouverture du document (worker pdf.js) ───────────────────────────────────
   useEffect(() => {
-    if (!fichier) {
-      setEtat('vide')
-      return undefined
-    }
-    if (!estPdf(fichier)) {
-      setEtat('erreur')
-      setMessage(messageFormatNonSupporte(fichier))
-      return undefined
-    }
+    if (etatFichier) return undefined // 'vide' ou format invalide : rien à charger
     let annule = false
-    setEtat('chargement')
-    setMessage('')
 
     const run = async () => {
+      setEtat('chargement')
+      setMessage('')
       try {
         // Octets frais : pdf.js peut « détacher » le buffer transmis.
         const donnees = new Uint8Array(await fichier.arrayBuffer())
@@ -100,7 +105,12 @@ export default function UnderlayPdf({
       docRef.current = null
       fondRef.current = null
     }
-  }, [fichier, onErreur])
+  }, [fichier, etatFichier, onErreur])
+
+  // Combine l'état dérivé (prioritaire, synchrone) et l'état de chargement
+  // asynchrone posé par l'effet une fois un PDF valide en cours d'ouverture.
+  const etatAffiche = etatFichier ?? etat
+  const messageAffiche = etatFichier === 'erreur' ? messageFichier : message
 
   // ── Rastérisation de la page choisie (une seule à la fois) ──────────────────
   useEffect(() => {
@@ -159,10 +169,10 @@ export default function UnderlayPdf({
 
   const tourner = useCallback(() => setRotation((r) => normaliserRotation(r + 90)), [])
 
-  if (etat === 'erreur') {
+  if (etatAffiche === 'erreur') {
     return (
       <div className="ao-underlay ao-underlay-erreur" role="alert" data-ao-underlay-erreur>
-        <p>{message}</p>
+        <p>{messageAffiche}</p>
       </div>
     )
   }
@@ -211,7 +221,7 @@ export default function UnderlayPdf({
         </label>
       </div>
 
-      {etat === 'chargement' && <p className="ao-hint">⏳ Ouverture du plan…</p>}
+      {etatAffiche === 'chargement' && <p className="ao-hint">⏳ Ouverture du plan…</p>}
 
       <div
         className="ao-underlay-hote"

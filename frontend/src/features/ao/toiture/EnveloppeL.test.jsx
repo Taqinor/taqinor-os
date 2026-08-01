@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import EnveloppeL, {
+import EnveloppeL from './EnveloppeL'
+import {
   L_REFERENCE,
   validerL,
   contourL,
@@ -9,7 +10,7 @@ import EnveloppeL, {
   bandeL,
   modulesParBande,
   perteDuDecoupage,
-} from './EnveloppeL'
+} from './EnveloppeL.geometrie'
 import { aireM2, contourSeCroise } from './repere'
 
 /* AOF91 — le « L » se saisit d'un seul tenant. Ce qui est prouvé ici : un

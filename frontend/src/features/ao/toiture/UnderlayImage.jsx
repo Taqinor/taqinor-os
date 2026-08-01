@@ -11,7 +11,7 @@
 
    Mémoire : l'URL d'objet est révoquée et le canvas ramené à 0×0 au démontage
    comme au changement de fichier (`libererFond`). */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   estImageSupportee,
   messageFormatNonSupporte,
@@ -61,13 +61,16 @@ export default function UnderlayImage({ fichier, onFichier, onFond }) {
     [onFichier],
   )
 
+  // Format non supporté : dérivé directement du fichier reçu, jamais posé en
+  // state depuis l'effet (le refus n'a pas besoin d'attendre un rendu de plus).
+  const erreurFormat = useMemo(
+    () => (fichier && !estImageSupportee(fichier) ? messageFormatNonSupporte(fichier) : ''),
+    [fichier],
+  )
+
   useEffect(() => {
     const hote = hoteRef.current
-    if (!fichier || !hote) return undefined
-    if (!estImageSupportee(fichier)) {
-      setErreur(messageFormatNonSupporte(fichier))
-      return undefined
-    }
+    if (!fichier || !hote || !estImageSupportee(fichier)) return undefined
     let annule = false
 
     const run = async () => {
@@ -144,9 +147,9 @@ export default function UnderlayImage({ fichier, onFichier, onFond }) {
         </label>
       </div>
 
-      {erreur && (
+      {(erreurFormat || erreur) && (
         <p role="alert" className="ao-underlay-erreur" data-ao-underlay-erreur>
-          {erreur}
+          {erreurFormat || erreur}
         </p>
       )}
 

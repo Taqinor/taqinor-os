@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import EnveloppeArc, {
+import EnveloppeArc from './EnveloppeArc'
+import {
   ARC_REFERENCE,
   validerArc,
   decouperArc,
@@ -10,7 +11,7 @@ import EnveloppeArc, {
   rangeesProposees,
   rangeeACheval,
   cheminSecteur,
-} from './EnveloppeArc'
+} from './EnveloppeArc.geometrie'
 
 /* AOF91 — l'arc du relevé de référence : R_ext 274,00 · largeur 10,90 (R_int
    263,10) · trois segments 20,55 + 23,00 + 23,60 séparés par deux murets de
