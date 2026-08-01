@@ -530,7 +530,6 @@ export function PhotosPanel({ intervention, onChanged }) {
           envoyees += 1
         } catch (err) {
           if (!isNetworkFailure(err)) { photoUploadError(err); perdues += 1; continue }
-          // eslint-disable-next-line no-await-in-loop
           if (await filerPhoto(toSend, { intervention: id, slot: slot.cle })) filees += 1
           else perdues += 1
         }
