@@ -103,7 +103,7 @@ export default function ImportDxf({ analyserDxf, onImporter, onTracerAlaMain }) 
     [calques, enveloppe],
   )
 
-  const sommetsApercu = calqueEnveloppe?.sommets ?? []
+  const sommetsApercu = useMemo(() => calqueEnveloppe?.sommets ?? [], [calqueEnveloppe])
 
   const basculerObstacle = useCallback((nom) => {
     setObstacles((prec) => (prec.includes(nom) ? prec.filter((n) => n !== nom) : [...prec, nom]))
