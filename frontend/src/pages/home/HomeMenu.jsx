@@ -29,7 +29,7 @@ import { GripVertical, RotateCcw, Search, Star } from 'lucide-react'
 import useInstalledApps from '../../lib/apps/useInstalledApps'
 import {
   readPinned, writePinned, readRecent, pushRecent, readOrder, writeOrder, applyOrder,
-  resumeTarget,
+  resumeTarget, readLastApp,
 } from '../../lib/apps/appPrefs'
 // ODY29 — préférence « à l'ouverture d'une app » (proposer / toujours
 // reprendre / toujours le cockpit), rangée avec les autres réglages VX46.
@@ -190,6 +190,9 @@ export default function HomeMenu() {
   // Lues UNE fois au montage : la grille est justement l'écran où l'on revient
   // APRÈS avoir quitté une app, donc l'état du stockage y est déjà à jour.
   const [reprisePref] = useState(getAppResumePref)
+  // ODY32 — l'app d'où l'on ressort : c'est SA tuile qui doit récupérer le
+  // focus, pour que sortir et revenir ne perde jamais la place du clavier.
+  const [derniereApp] = useState(readLastApp)
   // ODY10 — badges vivants : UN appel agrégé (endpoint fédéré ARC40), cache
   // court, JAMAIS bloquant — `{}` au premier rendu, la grille est peinte
   // d'abord et les compteurs arrivent ensuite.
@@ -378,14 +381,28 @@ export default function HomeMenu() {
     writeOrder(cles)
   }, [appsOrdonnees])
 
-  // Focus initial sur le champ : sur BUREAU la page EST le type-ahead. ODY6 —
-  // au pouce on s'en abstient (le clavier logiciel recouvrirait la grille dès
-  // l'ouverture). Le champ n'est jamais conditionnel → effet simple, pas de
-  // callback ref nécessaire.
+  // Focus initial, UNE fois par montage de l'écran :
+  //   • ODY32 — si l'on ressort d'une app, le focus revient sur SA tuile (le
+  //     voyage aller-retour ne perd pas la place du clavier) ;
+  //   • sinon, sur BUREAU, le champ : la page EST le type-ahead ;
+  //   • ODY6 — au pouce, ni l'un ni l'autre : donner le focus au champ ferait
+  //     surgir le clavier logiciel par-dessus la grille avant tout geste.
+  // `RouteFocus` (VX197) pose le focus sur `<main>` à chaque navigation ; cet
+  // effet, monté PLUS BAS dans l'arbre, s'exécute après lui et précise la
+  // cible. Si l'ordre changeait un jour, le repli resterait `<main>` — moins
+  // fin, jamais cassé.
+  const focusInitialFait = useRef(false)
   useEffect(() => {
+    if (focusInitialFait.current) return
+    focusInitialFait.current = true
     if (tactile) return
+    const index = ordre.findIndex((a) => a.key === derniereApp)
+    if (index >= 0) {
+      focusTuile(index)
+      return
+    }
     inputRef.current?.focus()
-  }, [tactile])
+  }, [tactile, ordre, derniereApp, focusTuile])
 
   let position = -1
 

@@ -72,7 +72,7 @@ vi.mock('react-router-dom', async () => {
 import HomeMenu from './HomeMenu'
 import { filtrerApps, grouperApps, normalise } from '../../lib/apps/appSearch'
 import {
-  PINNED_KEY, RECENT_KEY, ORDER_KEY, applyOrder, resumeKey, resumeTarget,
+  PINNED_KEY, RECENT_KEY, ORDER_KEY, applyOrder, resumeKey, resumeTarget, LAST_APP_KEY,
 } from '../../lib/apps/appPrefs'
 import { APP_RESUME_KEY, APP_RESUME_ALWAYS, APP_RESUME_NEVER } from '../preferences/prefs'
 import { _resetBadgeCache } from '../../lib/apps/useAppBadges'
@@ -442,5 +442,37 @@ describe('ODY29 — reprise par app', () => {
     renderHome()
     fireEvent.click(reprendreCrm())
     expect(JSON.parse(window.localStorage.getItem(RECENT_KEY))).toEqual(['crm'])
+  })
+})
+
+// ── ODY32 — le focus fait l'aller-retour ────────────────────────────────────
+describe('ODY32 — retour de focus sur la tuile d’origine', () => {
+  const champ = () => screen.getByRole('searchbox', { name: /Rechercher une application/ })
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    window.sessionStorage.clear()
+    navigateMock.mockClear()
+    badgesMock.mockClear()
+    _resetBadgeCache()
+  })
+
+  it('ressortir d’une app rend le focus à SA tuile, pas au champ', () => {
+    window.sessionStorage.setItem(LAST_APP_KEY, 'ventes')
+    renderHome()
+    expect(document.activeElement).toBe(ouvreur(celluleDe('Ventes')))
+  })
+
+  it('sans app quittée, le focus va au champ : la page EST le type-ahead', () => {
+    renderHome()
+    expect(document.activeElement).toBe(champ())
+  })
+
+  it('une app quittée qui n’est plus visible ne vole pas le focus', () => {
+    // Module désactivé entre-temps (ODX6) : sa tuile n'existe plus, on retombe
+    // proprement sur le champ au lieu de chercher un nœud absent.
+    window.sessionStorage.setItem(LAST_APP_KEY, 'ventes')
+    renderHome({ modulesDesactives: ['ventes'] })
+    expect(document.activeElement).toBe(champ())
   })
 })

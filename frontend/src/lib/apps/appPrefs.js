@@ -22,6 +22,11 @@ export const ORDER_KEY = 'taqinor.apps.order'
  *  étais » a du sens dans la session de travail en cours, pas trois jours plus
  *  tard sur un écran devenu périmé. */
 export const RESUME_PREFIX = 'taqinor.apps.resume'
+/** ODY32 — dernière app OUVERTE de la session : sert au retour de focus sur la
+ *  tuile d'origine quand on ressort au Menu d'accueil. Ce n'est PAS une donnée
+ *  métier (juste l'endroit où rendre le clavier), donc ni utilisateur ni
+ *  persistance longue — une clé de session suffit. */
+export const LAST_APP_KEY = 'taqinor.apps.derniere'
 
 /** Nombre de « Récents » affichés (contrat ODY2 : 3). */
 export const RECENT_MAX = 3
@@ -131,6 +136,25 @@ export function writeResume(appKey, userId, path) {
   try {
     s.setItem(resumeKey(appKey, userId), path)
   } catch { /* stockage indisponible : pas de reprise, jamais d'exception */ }
+}
+
+/** ODY32 — clé de la dernière app ouverte ('' si aucune dans cette session). */
+export function readLastApp() {
+  const s = sessionStore()
+  if (!s) return ''
+  try {
+    return s.getItem(LAST_APP_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function writeLastApp(appKey) {
+  const s = sessionStore()
+  if (!s || !appKey) return
+  try {
+    s.setItem(LAST_APP_KEY, appKey)
+  } catch { /* stockage indisponible : pas de retour de focus, jamais d'erreur */ }
 }
 
 /**

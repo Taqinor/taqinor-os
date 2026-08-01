@@ -27,9 +27,10 @@ import { useSelector } from 'react-redux'
 import { CalendarClock } from 'lucide-react'
 import { moduleConfigs } from '../../router/moduleRoutes'
 import useInstalledApps from './useInstalledApps'
-// ODY29 — mémoire de reprise par app+utilisateur (sessionStorage, source
-// UNIQUE dans `appPrefs.js` : ce fichier écrit, le Menu d'accueil lit).
-import { writeResume } from './appPrefs'
+// ODY29/ODY32 — mémoire de reprise par app+utilisateur et dernière app ouverte
+// (sessionStorage, source UNIQUE dans `appPrefs.js` : ce fichier écrit, le Menu
+// d'accueil lit).
+import { writeResume, writeLastApp } from './appPrefs'
 // ODY30 — kill-switch build-time de la bascule de coquille (défaut ON). Sa
 // DÉFINITION vit dans un module sans import (`appsShellFlag.js`) parce que ses
 // deux lecteurs — ce fichier et `Layout.jsx` — sont liés par la chaîne
@@ -166,6 +167,56 @@ export function appNavItems(config, role, permissions = EMPTY_PERMISSIONS) {
    le sessionStorage. */
 let derniereEmpreinteReprise = ''
 
+/* ODY32 — ANNONCE DE BASCULE D'APP.
+   ----------------------------------------------------------------------------
+   `RouteFocus.jsx` (VX197) annonce déjà le NOM D'ÉCRAN à chaque navigation et
+   déplace le focus sur `<main id="contenu">`. On ne double PAS ce canal : la
+   région ci-dessous n'énonce qu'un événement plus rare et d'une autre nature —
+   « vous venez de changer d'APPLICATION » — que le nom d'écran seul ne dit pas
+   (« Devis » ne dit pas qu'on a quitté le CRM). Elle ne parle donc JAMAIS sur
+   une navigation à l'intérieur d'une même app.
+   Région SINGLETON posée dans <body> (même motif que la feuille de style
+   singleton de `pages/preferences/prefs.js`) : ce module est un hook, il n'a
+   aucun point de montage à lui, et une région par consommateur de
+   `useActiveApp` serait justement le doublon interdit. */
+const ANNONCE_ID = 'taqinor-app-annonce'
+// `undefined` = aucune app encore RÉSOLUE dans cette page : un chargement direct
+// (deep-link, F5) ne doit rien annoncer, comme RouteFocus ignore son 1er rendu.
+let derniereAppAnnoncee
+
+function regionAnnonce() {
+  if (typeof document === 'undefined') return null
+  let node = document.getElementById(ANNONCE_ID)
+  if (!node) {
+    node = document.createElement('div')
+    node.id = ANNONCE_ID
+    node.setAttribute('aria-live', 'polite')
+    node.setAttribute('role', 'status')
+    node.className = 'sr-only'
+    document.body.appendChild(node)
+  }
+  return node
+}
+
+/** annoncerBascule — PURE côté décision, impérative côté DOM : n'énonce que les
+ *  vraies bascules d'app. Exportée pour être testable sans monter la coquille. */
+export function annoncerBascule(appKey, label) {
+  const precedente = derniereAppAnnoncee
+  derniereAppAnnoncee = appKey ?? null
+  // 1er rendu de la page, retour au Menu d'accueil (appKey null), ou simple
+  // navigation dans la MÊME app : rien à dire.
+  if (precedente === undefined || !appKey || precedente === appKey) return false
+  const node = regionAnnonce()
+  if (node) node.textContent = `Application ${label}`
+  return true
+}
+
+/** Remet l'annonceur à son état de première page (tests uniquement). */
+export function _resetAnnonceForTests() {
+  derniereAppAnnoncee = undefined
+  document.getElementById(ANNONCE_ID)?.remove()
+}
+
 /**
  * useActiveApp — l'app active déduite de la route, ou `null` (coquille neutre)
  * hors de toute app, quand l'app n'est pas installée/autorisée, ou quand le
@@ -201,13 +252,21 @@ export function useActiveApp() {
   }, [pathname, apps, role, permissions])
 
   const appKey = app?.key
+  const appLabel = app?.label
   useEffect(() => {
+    // ODY32 — la bascule d'app s'annonce même quand on RESSORT (appKey null) :
+    // c'est `annoncerBascule` qui décide de se taire, pas l'appelant, sinon
+    // l'état « app précédente » se désynchroniserait au retour à la grille.
+    annoncerBascule(appKey ?? null, appLabel ?? '')
     if (!appKey) return
+    // ODY32 — d'où l'on vient, pour rendre le focus à la bonne tuile.
+    writeLastApp(appKey)
+    // ODY29 — le point de reprise de CETTE app.
     const empreinte = `${userId ?? ''}|${appKey}|${pathname}`
     if (empreinte === derniereEmpreinteReprise) return
     derniereEmpreinteReprise = empreinte
     writeResume(appKey, userId, pathname)
-  }, [appKey, userId, pathname])
+  }, [appKey, appLabel, userId, pathname])
 
   return app
 }
