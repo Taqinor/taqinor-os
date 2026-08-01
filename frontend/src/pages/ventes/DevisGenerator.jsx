@@ -1594,6 +1594,16 @@ export default function DevisGenerator({
   const kpiTotal = avecRec && showAvec ? totals.totalAvec : totals.totalSans
   const kpiTotalBrut = avecRec && showAvec ? totals.totalAvecBrut : totals.totalSansBrut
 
+  // APX16 — écart entre les DEUX options, visible PENDANT la construction du
+  // devis (le rail n'affichait qu'un total, même en scénario double).
+  // Dérivé des totaux déjà calculés : aucun calcul nouveau.
+  const ecartOptions = (showSans && showAvec)
+    ? Math.round(totals.totalAvec - totals.totalSans)
+    : null
+  const ecartOptionsPct = (ecartOptions != null && totals.totalSans > 0)
+    ? Math.round((ecartOptions / totals.totalSans) * 100)
+    : null
+
   // Consommation industrielle : saisie directe, sinon dérivée des factures
   // (MAD / prix kWh ONEE). L'étude EXIGE une consommation réelle.
   const avgBill = monthly.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
@@ -2828,10 +2838,14 @@ export default function DevisGenerator({
         </Card>
 
         {/* VX18 — modèles de devis : appliquer un modèle remplace les lignes.
-            Disponible en édition (le panneau exige un devisId serveur). */}
-        {editDevis && (
-          <DevisPresetPanel devisId={editDevis.id} onApplied={handlePresetApplied} />
-        )}
+            APX16 — le panneau n'apparaissait QU'EN ÉDITION : on ne pouvait pas
+            partir d'un modèle pour créer un devis, ce qui est pourtant le
+            besoin le plus fréquent. Il est désormais là DÈS LA CRÉATION
+            (replié) ; sans devisId, l'application se fait localement depuis
+            l'instantané de lignes du modèle (aucun endpoint nouveau) et la
+            section « Enregistrer comme modèle » dit honnêtement qu'elle
+            attend que le devis existe. */}
+        <DevisPresetPanel devisId={editDevis?.id} onApplied={handlePresetApplied} />
 
         {/* ── Notes ── */}
         <Card>
@@ -2935,14 +2949,42 @@ export default function DevisGenerator({
             FactureList). Il n'avait jusqu'ici NI `.num` NI chiffres
             tabulaires — le seul montant héros du dossier à ne pas les
             porter. `tone="impact"` lui pose l'accent brass du module. */}
-        <Stat
-          tone="impact"
-          data-testid="gen-rail-total"
-          label={`Total ${scenario === 'Avec batterie' ? 'avec batterie'
-            : scenario === 'Sans batterie' ? 'sans batterie'
-              : (avecRec ? 'avec batterie' : 'sans batterie')} · TTC`}
-          value={formatMoney(kpiTotal)}
-        />
+        {/* APX16 — le scénario « Les deux (Sans + Avec) » construisait DEUX
+            options mais le rail n'en montrait qu'UNE : impossible de voir
+            l'écart pendant la construction. Les deux totaux sont désormais
+            côte à côte, avec l'écart en MAD ET en %. L'option recommandée
+            garde l'accent (`tone="impact"`). */}
+        {showSans && showAvec ? (
+          <>
+            <Stat
+              tone={!avecRec ? 'impact' : undefined}
+              data-testid={avecRec ? 'gen-rail-total-sans' : 'gen-rail-total'}
+              label="Total sans batterie · TTC"
+              value={formatMoney(totals.totalSans)}
+              hint={avecRec ? undefined : 'Option recommandée'}
+            />
+            <Stat
+              tone={avecRec ? 'impact' : undefined}
+              data-testid={avecRec ? 'gen-rail-total' : 'gen-rail-total-avec'}
+              label="Total avec batterie · TTC"
+              value={formatMoney(totals.totalAvec)}
+              hint={avecRec ? 'Option recommandée' : undefined}
+            />
+            {ecartOptions != null && (
+              <p className="num text-xs text-muted-foreground" data-testid="gen-rail-ecart">
+                Écart batterie : {formatMoney(ecartOptions)}
+                {ecartOptionsPct != null ? ` (${ecartOptionsPct > 0 ? '+' : ''}${ecartOptionsPct} %)` : ''}
+              </p>
+            )}
+          </>
+        ) : (
+          <Stat
+            tone="impact"
+            data-testid="gen-rail-total"
+            label={`Total ${scenario === 'Avec batterie' ? 'avec batterie' : 'sans batterie'} · TTC`}
+            value={formatMoney(kpiTotal)}
+          />
+        )}
         <Card>
           <CardContent className="pt-4 flex flex-col gap-3">
             {marge != null && (
