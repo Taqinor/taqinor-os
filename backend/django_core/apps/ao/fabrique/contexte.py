@@ -449,5 +449,9 @@ def litteraux_chiffres(texte, tolerances=()):
     # Les expressions de gabarit ({{ ... }}) NE sont pas du texte littéral :
     # elles référencent le contexte, ce qui est précisément l'objectif.
     reste = re.sub(r'\{\{.*?\}\}|\{%.*?%\}', ' ', reste, flags=re.DOTALL)
+    # Enfin les BALISES : le contrôle porte sur le texte LU par la commission,
+    # pas sur la structure. `colspan="7"` est de la mise en tableau, pas un
+    # montant — et une valeur affichée est forcément dans un nœud de texte.
+    reste = re.sub(r'<[^>]*>', ' ', reste)
     return tuple(m.group(0).strip() for m in _LITTERAL.finditer(reste)
                  if m.group(0).strip())

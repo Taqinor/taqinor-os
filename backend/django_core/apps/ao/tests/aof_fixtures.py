@@ -22,7 +22,10 @@ Le jeu est fourni dans son état AVANT le déplacement demandé par le client (l
 câbles DC du bâtiment B sont encore dans les prestations communes), pour que le
 test d'AOF123 rejoue le déplacement réel.
 """
+import pathlib
 from decimal import Decimal
+
+DOSSIER_GABARITS = pathlib.Path(__file__).resolve().parents[3] / 'templates'
 
 SECTION_A = 'A — Bâtiment A'
 SECTION_B = 'B — Bâtiment B'
@@ -46,6 +49,37 @@ TOTAL_TTC = Decimal('4999920')
 #: Arrêté officiel du dossier, tel qu'il doit s'imprimer.
 ARRETE_TTC = ('QUATRE MILLIONS NEUF CENT QUATRE-VINGT-DIX-NEUF MILLE NEUF '
               'CENT VINGT DIRHAMS')
+
+
+def moteur_de_gabarits():
+    """Moteur de gabarits Django AUTONOME — aucune base, aucun WeasyPrint.
+
+    Rendre un gabarit qui utilise `{% extends %}` touche la couche de
+    traduction, qui exige des réglages. On en configure le strict minimum
+    quand il n'y en a pas (exécution en `python -m unittest`) ; sous le
+    lanceur Django, les réglages existent déjà et on n'y touche pas.
+    """
+    import django
+    from django.conf import settings
+
+    if not settings.configured:
+        settings.configure(
+            DEBUG=False, USE_I18N=False, USE_TZ=False, INSTALLED_APPS=[],
+            DATABASES={},
+            TEMPLATES=[{'BACKEND':
+                        'django.template.backends.django.DjangoTemplates',
+                        'DIRS': [str(DOSSIER_GABARITS)], 'APP_DIRS': False,
+                        'OPTIONS': {}}])
+        django.setup()
+
+    from django.template import Engine
+    return Engine(dirs=[str(DOSSIER_GABARITS)])
+
+
+def rendre_gabarit(nom, donnees):
+    """Rend un gabarit de la fabrique et retourne le HTML."""
+    from django.template import Context
+    return moteur_de_gabarits().get_template(nom).render(Context(donnees))
 
 
 def _ligne(cle, section, designation, unite, quantite, prix, **extra):
