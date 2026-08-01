@@ -6,6 +6,7 @@ import PlanLayer from './PlanLayer'
 import VerdictBar from './VerdictBar'
 import TiroirKits from './TiroirKits'
 import TiroirAllees from './TiroirAllees'
+import TiroirRives from './TiroirRives'
 import useCalepinage from './useCalepinage'
 
 /* ============================================================================
@@ -135,6 +136,11 @@ export default function CalepinageStudio({ calepinageId }) {
             valeurs={parametres || {}}
             onChange={majParametres}
             perime={perime}
+          />
+          <TiroirRives
+            donnees={resultat?.tiroirs?.rives}
+            valeurs={parametres || {}}
+            onChange={majParametres}
           />
         </aside>
       </div>
