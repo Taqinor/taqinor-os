@@ -1,6 +1,8 @@
 import { useMemo } from 'react'
-import { MapPin, PackageCheck, ClipboardList, Boxes } from 'lucide-react'
-import { ModuleDashboard } from '../../ui/module'
+import { Link } from 'react-router-dom'
+import { MapPin, PackageCheck, ClipboardList, Boxes, Archive } from 'lucide-react'
+import { ModuleDashboard, ModuleHero } from '../../ui/module'
+import { Button } from '../../ui'
 import installationsApi from '../../api/installationsApi'
 import useMagasinResource from './useMagasinResource'
 
@@ -10,6 +12,8 @@ import useMagasinResource from './useMagasinResource'
    Bandeau de KPI de synthèse (casiers, put-away à faire, prélèvements en
    cours, colis en préparation) avec liens vers chaque écran. Purement
    informatif : aucune action ici, aucun coût/prix d'achat.
+   ODY17 — identité de cockpit VX15 (ModuleHero) + raccourcis vers les écrans
+   Magasin, en plus du bandeau KPI déjà existant (kpiSlot, inchangé).
    ========================================================================== */
 
 export default function MagasinCockpit() {
@@ -51,10 +55,33 @@ export default function MagasinCockpit() {
 
   return (
     <div className="page flex flex-col gap-4">
-      <h2 className="font-display text-xl font-semibold tracking-tight">Magasin</h2>
-      {/* VX15 — `accent` : pastille de couleur de module (token sémantique
-          existant en attendant le registre VX8 ; jamais une couleur inventée). */}
-      <ModuleDashboard stats={stats} loading={loading} error={error} accent="var(--info)" />
+      {/* ODY17 — ModuleHero VX15 : identité de cockpit + actions rapides vers
+          les 4 écrans Magasin (Casiers/Rangement/Prélèvements/Colisage).
+          `accent` : token VX8 du module (`nav.accent: 'success'` du
+          module.config — terrain/logistique), plus le même token que
+          `ModuleDashboard` ci-dessous (jamais une couleur inventée). */}
+      <ModuleHero
+        title="Magasin"
+        subtitle="Casiers, rangement, prélèvements et colisage d'entrepôt."
+        accent="var(--module-accent-success)"
+        actions={(
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/magasin/casiers"><MapPin /> Casiers</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/magasin/rangement"><PackageCheck /> Rangement</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/magasin/prelevements"><ClipboardList /> Prélèvements</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/magasin/entrepot"><Archive /> Entrepôt</Link>
+            </Button>
+          </>
+        )}
+      />
+      <ModuleDashboard stats={stats} loading={loading} error={error} accent="var(--module-accent-success)" />
     </div>
   )
 }
