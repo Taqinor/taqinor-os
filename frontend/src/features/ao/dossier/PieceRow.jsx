@@ -2,6 +2,7 @@ import { AlertTriangle, RefreshCw, ShieldOff } from 'lucide-react'
 import { Badge, Button } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
 import { StatutPiece } from '../statusAo'
+import { estHorsControle } from './PieceRow.utils'
 
 /* ============================================================================
    AOF174 — Une pièce du dossier de soumission (ligne de la colonne gauche).
@@ -22,13 +23,6 @@ import { StatutPiece } from '../statusAo'
 
    Aucun chiffre n'est dérivé ici (AOF94) : tout est lu tel quel du payload.
    ========================================================================== */
-
-// Le serveur peut exprimer « hors contrôle » de deux façons : par le statut
-// lui-même (`hors_controle`) ou par le drapeau `controlee=false` d'AOF149 sur
-// une pièce fournie à la main. Les deux valent « non vérifiée par la fabrique ».
-export function estHorsControle(piece) {
-  return piece?.statut === 'hors_controle' || piece?.controlee === false
-}
 
 export default function PieceRow({
   piece,
