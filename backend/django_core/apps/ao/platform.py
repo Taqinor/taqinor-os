@@ -48,8 +48,9 @@ raison n'est pas un oubli) :
   accepte la saisie et la jette en silence — pire qu'une surface vide.
   Débloquer = ajouter ``custom_data`` (+ sa migration additive) sur
   ``AppelOffre`` et ``BatimentAO``, puis déclarer ici DANS LE MÊME COMMIT.
-* ``agent_actions_module`` est rempli par AOF167, quand son module existe — pas
-  avant. (``kpi_providers`` l'a été par AOF166 : ``apps.ao.kpis.kpi_ao``.)
+(``kpi_providers`` a été rempli par AOF166 — ``apps.ao.kpis.kpi_ao`` ; et
+``agent_actions_module`` par AOF167 — ``apps.ao.agent_actions``, cinq LECTURES
+sur des routes AO existantes.)
 """
 from __future__ import annotations
 
@@ -70,7 +71,12 @@ PLATFORM = {
     # de ``FIELD_MAPS_AO`` — un test le vérifie, sinon la déclaration
     # promettrait une cible d'import qui n'existe pas.
     'import_specs': ['obstacles', 'chaines'],
-    'agent_actions_module': '',
+    # AOF167/ARC33 — actions agentiques du domaine AO, auto-découvertes.
+    # Réellement câblé (règle d'honnêteté ARC41) : le module existe, expose
+    # ``register_actions()`` et ne déclare QUE des LECTURES sur des routes AO
+    # existantes — aucune écriture de montant, aucun déclenchement de dépôt,
+    # aucun accès à l'économie directeur.
+    'agent_actions_module': 'apps.ao.agent_actions',
     # AOF15/ARC34 — le statut d'un AO est automatisable par une règle no-code
     # ``RECORD_STATE_CHANGE``. La surface est RÉELLEMENT câblée (règle
     # d'honnêteté ARC41) : ``apps.ao.services.changer_statut_ao`` — le SEUL
