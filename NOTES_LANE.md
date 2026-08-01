@@ -194,3 +194,37 @@ touché (une autre lane y travaille en parallèle).
   `docs/get-or-create-audit.md`, `docs/on-delete-financial-audit.md`,
   `docs/money-fields-audit.md`.
 
+
+---
+
+# NOTES — lane `backend/ao-fabrique B` (pièces, sanitisation, cohérence)
+
+Base réelle du worktree : `dev-aof` (34f21ad3). Le worktree avait été créé sur
+`main`, 138 commits en arrière — reset sur `dev-aof` avant la première tâche,
+sans quoi aucune fondation AO n'était présente.
+
+**Co-activité observée.** Au moment de ce run, `apps/ao/fabrique/` n'existait
+PAS sur `dev-aof` : la lane A (AOF111-131 — contexte, empreinte, gabarits,
+dérivations, bordereau, cascade, `DossierAO`, `EquipementAO`) tourne EN MÊME
+TEMPS et ses fichiers ne sont pas visibles d'ici. Conséquence de conception,
+assumée : **tous les modules de cette lane sont des fonctions PURES sur le
+`contexte` de dossier passé en argument** — aucun import des fichiers de la
+lane A, aucun fichier partagé avec elle. Le contrat consommé est documenté
+dans le docstring de chaque module ; au fold, les deux lanes se rejoignent par
+le dict de contexte.
+
+## Points à reprendre au fold
+
+- **AOF138 — `python-docx` NON inscrit dans `requirements.txt`.** La tâche
+  porte `@blocked: nouvelle dépendance python-docx — accord fondateur` : le
+  code est livré et testé sur ses DEUX voies (docx éditable + dégradation PDF
+  « pièce à fournir »), mais la ligne de dépendance n'a pas été ajoutée. Une
+  seule ligne à poser le jour de l'accord, aucune autre modification. Tant
+  qu'elle n'est pas posée c'est la voie dégradée qui s'exécute en CI et en
+  production — un état sain, pas une panne.
+- **Ratchet AOF129 (`apps/ao/tests/test_aof_etancheite_pack.py`)** appartient à
+  la lane A. Chaque pièce livrée ici porte SES propres assertions d'étanchéité
+  dans son propre fichier de test ; l'extension du ratchet commun est à faire
+  par la lane A au fold, sur les artefacts : note de calcul, checklist
+  docx/pdf, page de garde + sommaire, rapport de contrôle, ZIP de dépôt, PDF
+  « bon à tirer » (le classeur de rentabilité, lui, est directeur).
