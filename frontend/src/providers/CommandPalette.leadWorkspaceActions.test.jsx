@@ -6,6 +6,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 const navigateMock = vi.fn()
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -15,6 +17,9 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 vi.mock('../lib/search/entityRoutes', () => ({
   ROUTE: {}, TYPE_LABEL: {}, TYPE_ACCENT: {},
+  // ODY27 — chemin representatif d'un type d'entite : '' = type inconnu,
+  // donc jamais masque (le mock ne change aucune assertion existante).
+  pathForType: () => '',
   useEntitySearch: () => ({ groups: [], loading: false, failed: false }),
 }))
 
@@ -26,6 +31,23 @@ vi.mock('../features/uxviews/quickcreate/quickCreateEvents', async (importOrigin
 
 import { CommandPalette } from './CommandPalette'
 
+// ODY27 — la palette/la cloche interrogent desormais la source UNIQUE des
+// apps visibles (`useInstalledApps`, ODY1), qui lit le store : un Provider
+// Redux minimal est donc necessaire pour monter le composant. Role admin et
+// aucun module desactive = toutes les apps visibles, donc AUCUN filtrage :
+// les assertions de ce fichier restent celles d'avant ODY27.
+const ody27Store = configureStore({
+  reducer: { auth: (s = { role: 'admin', permissions: [], modulesDesactives: [], user: null }) => s },
+})
+function ShellWrapper({ children }) {
+  return (
+    <Provider store={ody27Store}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </Provider>
+  )
+}
+
+
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 // Monte le composant SANS l'ouvrir — le listener `taqinor:lead-workspace-actions`
@@ -33,7 +55,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks() })
 // doivent pouvoir arriver AVANT même que l'utilisateur appuie sur ⌘K (une
 // fiche peut s'ouvrir bien avant que la palette ne le soit).
 function mountPalette() {
-  return render(<CommandPalette />, { wrapper: MemoryRouter })
+  return render(<CommandPalette />, { wrapper: ShellWrapper })
 }
 
 function openPaletteEvent() {

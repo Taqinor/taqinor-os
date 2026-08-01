@@ -4,21 +4,29 @@
    router/moduleRoutes.jsx). */
 import { lazy } from 'react'
 import {
-  FileSignature, ShieldCheck, Tags, ScanLine, Trash2, ClipboardList,
+  FolderOpen, FileSignature, ShieldCheck, Tags, ScanLine, Trash2, ClipboardList,
 } from 'lucide-react'
 
 /* ============================================================================
-   UX45-UX47 - Config du module GED avancee (approbation, retention, tags).
+   UX45-UX47 - Config du module GED (base + avance).
    ----------------------------------------------------------------------------
    S'auto-enregistre via le glob des module.config du dossier features - SANS
-   toucher au routeur, a la Sidebar ni a routes.meta. Le navigateur de base
-   (/ged, DocumentsPage) reste intact : ce module N'AJOUTE que les ecrans
-   avances. VX153 - ces ecrans avances et la section DOCUMENTS de base (/ged)
-   forment UN seul espace conceptuel : la nav du module porte desormais le
-   libelle "DOCUMENTS - AVANCE" (au lieu de "GESTION DOCUMENTAIRE") pour se lire
-   comme la continuite de DOCUMENTS, sans toucher au routing /ged/*. On NE pose
-   toujours PAS de sectionLabels (le 1er segment "ged" est deja pris). Tout est
-   gate responsable/admin.
+   toucher au routeur, a la Sidebar ni a routes.meta. VX153 avait scinde ce
+   fichier ("DOCUMENTS - AVANCE") de la section DOCUMENTS codee en dur de
+   Sidebar.jsx (qui ne portait que /ged, DocumentsPage) faute de config pour
+   l'accueillir. ODY22 unifie : `key` reprend TEL QUEL la cle backend `ged`
+   (`apps/ged/apps.py` - avant : `ged_advanced` + un alias dans
+   scripts/check_modules.py, desormais inutile mais laisse en place) et
+   `nav.items` porte AUSSI /ged en tete - ce module est la porte COMPLETE de
+   l'app GED, prete a etre consommee par ODY4 quand la section en dur de
+   Sidebar.jsx sera retiree (les deux lanes se rejoignent au meme lot, pas
+   besoin d'attendre). /ged reste enregistree dans router/index.jsx
+   (DocumentsPage) : pas d'entree `routes` ici pour ce chemin, sous peine de le
+   declarer deux fois dans l'arbre du routeur - seuls nav/titles/sectionLabels
+   pointent dessus (meme patron que /messages dans
+   features/messaging/module.config.jsx). Les 6 ecrans avances restent gates
+   responsable/admin ; /ged reste ouvert a tous les roles (identique a la
+   route reelle : authLoader seul, aucune restriction de role).
 
    XGED12 - Ecran "Numeriser" (capture mobile photo -> PDF multi-pages classe
    en GED, cf. frontend/src/features/ged/NumeriserPage.jsx). Meme gating
@@ -36,14 +44,18 @@ const CorbeillePage = lazy(() => import('./advanced/CorbeillePage.jsx'))
 const ChecklistPage = lazy(() => import('./advanced/ChecklistPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
+const TOUS = ['normal', 'responsable', 'admin']
 
 export default {
-  key: 'ged_advanced',
+  key: 'ged',
   order: 80,
   nav: {
-    label: 'DOCUMENTS · AVANCÉ', // VX153 — continuité de la section DOCUMENTS (un seul espace)
+    label: 'DOCUMENTS',
     accent: 'lune', // VX8 — documentaire = accent lune (dérivé)
     items: [
+      // ODY22 — /ged (DocumentsPage) déjà routé ailleurs (router/index.jsx) :
+      // AUCUNE entrée `routes` correspondante ici (voir note d'en-tête).
+      { to: '/ged', label: 'Documents (GED)', icon: <FolderOpen size={17} strokeWidth={1.75} aria-hidden="true" />, roles: TOUS },
       { to: '/ged/numeriser', label: 'Numériser', icon: <ScanLine size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/checklist', label: 'Checklist & tampons', icon: <ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/approbation', label: 'Approbation & signature', icon: <FileSignature size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -59,8 +71,9 @@ export default {
     ['/ged/retention', 'Rétention & archivage'],
     ['/ged/tags', 'Tags & liens'],
     ['/ged/corbeille', 'Corbeille'],
+    ['/ged', 'Documents (GED)'],
   ],
-  sectionLabels: {},
+  sectionLabels: { ged: 'Documents (GED)' },
   routes: [
     { path: '/ged/numeriser', component: NumeriserPage, roles: ROLES },
     { path: '/ged/checklist', component: ChecklistPage, roles: ROLES },

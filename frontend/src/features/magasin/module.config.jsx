@@ -28,6 +28,19 @@ const ROLES = ['responsable', 'admin']
 const config = {
   key: 'magasin',
   order: 51,
+  // ODY17 — métadonnées d'app pour le futur registre unifié (ODY1
+  // `useInstalledApps()` / ODY9 `AppIcon.jsx`, aucun des deux livré ici).
+  // ATTENTION (à noter pour ODY1/ODY26) : `magasin` n'a AUCUN manifest
+  // backend (`module_manifest`, ODX2) — contrairement à `stock`/`installations`
+  // — donc pas de `ModuleToggle` propre : la clé n'est jamais désactivable
+  // aujourd'hui (`filterNavSections` ne masque que les clés présentes dans
+  // `modules_desactives`), Magasin est un monde opérationnel de l'app Stock
+  // (logistique d'entrepôt), gaté par rôle seulement. Si une future tâche en
+  // fait une tuile installable à part entière, il faudra D'ABORD lui donner
+  // un manifest backend (hors périmètre ODY17 : zéro nouveau modèle/app
+  // backend ici).
+  icon: Warehouse,
+  description: "Casiers, rangement, prélèvements et colisage d'entrepôt.",
   nav: {
     label: 'MAGASIN',
     accent: 'success', // VX8 — terrain/opérations = accent success (dérivé)

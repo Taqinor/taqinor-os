@@ -47,6 +47,9 @@ import {
 import { MoreHorizontal } from 'lucide-react'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
+// ODY17 — identité de cockpit VX15 (bandeau KPI d'app), posée AU-DESSUS de
+// l'en-tête de liste existant (inchangé — il porte déjà les actions rapides).
+import { ModuleHero, ModuleDashboard } from '../../ui/module'
 
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
 const SL_ECRAN = 'stock.produits'
@@ -919,6 +922,25 @@ export default function StockList() {
 
   const actifsCount = produits.filter(p => !p.is_archived).length
 
+  // ODY17 — bandeau KPI du cockpit Stock : réutilise les compteurs DÉJÀ
+  // calculés ci-dessus (actifsCount, lowCount, noPriceCount/pctAvecPrix,
+  // noSkuCount/pctAvecSku, VX33) — zéro appel réseau supplémentaire.
+  const heroStats = [
+    { label: 'Produits actifs', value: actifsCount, icon: Package },
+    {
+      label: 'Stock bas', value: lowCount, icon: AlertTriangle,
+      hint: "Rupture ou sous le seuil d'alerte",
+    },
+    {
+      label: 'Sans prix', value: noPriceCount, icon: Wallet,
+      hint: `${pctAvecPrix}% du catalogue avec prix`,
+    },
+    {
+      label: 'Sans SKU', value: noSkuCount, icon: QrCode,
+      hint: `${pctAvecSku}% du catalogue avec SKU`,
+    },
+  ]
+
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
       {confirmDelete && (
@@ -929,6 +951,18 @@ export default function StockList() {
           onConfirm={handleForceDelete}
         />
       )}
+
+      {/* ODY17 — ModuleHero VX15 : identité de cockpit + KPI de synthèse.
+          Les « actions rapides » (Nouveau produit, Importer, Exporter,
+          Scanner, Transférer, Valorisation, Inventaire, Pilotage, Archivés…)
+          restent dans l'en-tête de liste existant juste en dessous —
+          inchangé, déjà riche, jamais dupliqué ici. */}
+      <ModuleHero
+        title="Stock"
+        subtitle="Gestion des stocks, mouvements et fournisseurs."
+        accent="var(--module-accent-lune)"
+        kpiSlot={<ModuleDashboard stats={heroStats} accent="var(--module-accent-lune)" />}
+      />
 
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">

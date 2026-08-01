@@ -68,6 +68,11 @@ import {
 import { StateBlock } from '../components/StateBlock'
 import { cn } from '../lib/cn'
 import { formatMAD, formatNumber, formatPercent, formatDate } from '../lib/format'
+// ODY27 — le Dashboard est une surface TRANSVERSE : ses cartes, KPI et
+// segments pointent vers plusieurs apps. Ils sont filtrés par la source
+// UNIQUE des apps visibles (ODY1) — zéro liste locale — pour qu'un compteur
+// ne mène jamais à l'écran « App non activée ».
+import { useAppVisibility } from '../lib/apps/ActiveAppContext'
 
 /* K51 — Tableau de bord restylé sur le système de design (refonte UI).
    Cartes KPI (Stat), graphiques recharts thémés via les tokens sémantiques
@@ -462,6 +467,8 @@ function PriorityCard({
 export function Component() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  // ODY27 — source UNIQUE de la visibilité des apps (ODY1).
+  const { isPathVisible } = useAppVisibility()
   const { produits, loading: stockLoading, error: stockError } = useSelector((s) => s.stock)
   const { clients, leads, loading: crmLoading, error: crmError } = useSelector((s) => s.crm)
   const { devis, factures, loading: ventesLoading, error: ventesError } = useSelector((s) => s.ventes)
@@ -737,7 +744,7 @@ export function Component() {
         key: 'interventions',
         icon: Wrench,
         text: `${interventionsAujourdhui.length} intervention${interventionsAujourdhui.length > 1 ? 's' : ''} en cours`,
-        to: '/sav/tickets',
+        to: '/sav',
         tone: 'info',
       })
     }
@@ -764,12 +771,15 @@ export function Component() {
         key: 'sla',
         icon: Clock,
         text: `${slaEnRetard.length} SLA en retard`,
-        to: '/sav/tickets',
+        to: '/sav',
         tone: 'danger',
       })
     }
-    return segs
-  }, [interventionsAujourdhui, relancesEnRetard, devisExpirent, slaEnRetard])
+    // ODY27 — un segment visant une app non installée (ou interdite au rôle)
+    // disparaît du bandeau : un compteur cliquable ne doit jamais mener à un
+    // écran inaccessible.
+    return segs.filter((seg) => isPathVisible(seg.to))
+  }, [interventionsAujourdhui, relancesEnRetard, devisExpirent, slaEnRetard, isPathVisible])
 
   // Chaque KPI pointe vers la liste correspondante : un compteur n'est plus
   // un cul-de-sac, il ouvre les enregistrements (la facture en retard ouvre la
@@ -811,7 +821,9 @@ export function Component() {
         ? { value: new Intl.NumberFormat('fr-FR', { signDisplay: 'always' }).format(facturesEnRetard.length), direction: 'down' }
         : undefined,
     },
-  ]
+  // ODY27 — même règle que le bandeau ci-dessus : un KPI d'une app absente
+  // n'est pas affiché (il ne serait qu'un chiffre menant nulle part).
+  ].filter((k) => isPathVisible(k.to))
 
   // États globaux : on s'appuie sur les drapeaux loading/error déjà exposés par
   // les slices (aucun nouvel appel API). Loading uniquement tant qu'aucune
@@ -941,6 +953,9 @@ export function Component() {
           {profile === 'commercial' && (
             <ErrorBoundary>
             <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2" data-testid="cockpit-commercial">
+              {/* ODY27 — carte masquée si l'app CRM n'est pas installée pour la
+                  société, ou interdite au rôle : jamais un cul-de-sac. */}
+              {isPathVisible('/crm/leads') && (
               <PriorityCard
                 title="Mes leads à relancer"
                 icon={Phone}
@@ -964,6 +979,8 @@ export function Component() {
                   </li>
                 )}
               />
+              )}
+              {isPathVisible('/ventes/devis') && (
               <PriorityCard
                 title="Mes devis qui expirent ≤ 7 j"
                 icon={CalendarClock}
@@ -988,11 +1005,14 @@ export function Component() {
                   </li>
                 )}
               />
+              )}
             </div>
             </ErrorBoundary>
           )}
 
-          {profile === 'sav' && (
+          {/* ODY27 — les deux cartes de ce cockpit visent l'app SAV : le bloc
+              entier disparaît quand elle n'est pas installée/autorisée. */}
+          {profile === 'sav' && isPathVisible('/sav') && (
             <ErrorBoundary>
             <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2" data-testid="cockpit-sav">
               <PriorityCard
@@ -1002,11 +1022,11 @@ export function Component() {
                 mine
                 items={ticketsUrgentsList}
                 emptyLabel="Aucun ticket urgent ouvert."
-                toAll="/sav/tickets"
+                toAll="/sav"
                 navigate={navigate}
                 renderItem={(t) => (
                   <li key={t.id}>
-                    <button type="button" onClick={() => navigate('/sav/tickets')}
+                    <button type="button" onClick={() => navigate('/sav')}
                             className="flex w-full items-center justify-between gap-3 py-2 text-left first:pt-0 hover:underline">
                       <span className="min-w-0 truncate text-sm">
                         <span className="font-medium text-foreground">{t.reference}</span>
@@ -1025,11 +1045,11 @@ export function Component() {
                 tone="danger"
                 items={slaEnRetard}
                 emptyLabel="Aucun ticket au-delà de son SLA."
-                toAll="/sav/tickets"
+                toAll="/sav"
                 navigate={navigate}
                 renderItem={(t) => (
                   <li key={t.id}>
-                    <button type="button" onClick={() => navigate('/sav/tickets')}
+                    <button type="button" onClick={() => navigate('/sav')}
                             className="flex w-full items-center justify-between gap-3 py-2 text-left first:pt-0 hover:underline">
                       <span className="min-w-0 truncate text-sm">
                         <span className="font-medium text-foreground">{t.reference}</span>

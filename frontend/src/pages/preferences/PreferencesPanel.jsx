@@ -28,7 +28,7 @@ import { moduleConfigs } from '../../router/moduleRoutes'
 import api from '../../api/axios'
 import { fetchMe } from '../../features/auth/store/authSlice'
 import {
-  getLandingModule, setLandingModule,
+  getLandingModule, setLandingModule, LANDING_LAST_MODULE,
   getReducedMotionPref, setReducedMotionPref,
   getPhotoQualityPref, setPhotoQualityPref,
 } from './prefs'
@@ -154,7 +154,11 @@ export default function PreferencesPanel({ open, onOpenChange }) {
               onChange={handleLandingChange}
               className="h-9 w-full rounded-md border border-border bg-card px-2.5 text-sm text-foreground"
             >
-              <option value="">Dernier module visité (par défaut)</option>
+              {/* ODY3 — le Menu d'accueil est le défaut du paradigme
+                  (« j'ouvre → MES apps ») ; « dernier module visité » reste
+                  disponible, mais en choix explicite. */}
+              <option value="">Menu d'accueil — mes applications (par défaut)</option>
+              <option value={LANDING_LAST_MODULE}>Dernier module visité</option>
               {landingOptions.map((c) => (
                 <option key={c.key} value={c.key}>{c.nav.label}</option>
               ))}

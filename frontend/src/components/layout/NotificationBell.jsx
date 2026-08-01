@@ -10,12 +10,15 @@
 // no-op silencieux si `Notification` / `serviceWorker` / la clé VAPID manquent —
 // aucune erreur, aucun blocage. Le backend web-push n'existe pas encore : on ne
 // fait qu'enregistrer la PERMISSION ; l'abonnement réel sera ajouté ensuite.
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Bell, Clock, ShieldCheck, Banknote, X, BellRing, Check, Settings,
   CalendarClock, RefreshCw, Inbox, EyeOff,
 } from 'lucide-react'
+// ODY27/ODY7 — visibilité « app installée ∩ rôle » (source unique ODY1) et
+// bascule de coquille sur les liens inter-apps.
+import { useAppVisibility, useCrossAppNavigate } from '../../lib/apps/ActiveAppContext'
 import reportingApi from '../../api/reportingApi'
 import notificationsApi from '../../api/notificationsApi'
 import { toastInfo, toastWithUndo } from '../../lib/toast'
@@ -123,6 +126,26 @@ const STALL_THRESHOLD = 3
 // (utilisé pour router son propre rendu existant) + une fonction `count(ctx)`
 // qui lit l'état du panneau (feed/data/approbations) pour le compteur total
 // de l'onglet — aucune duplication du rendu de groupe lui-même.
+// ODY27 — chemin REPRÉSENTATIF de chaque groupe, servant uniquement à décider
+// à quelle app il appartient (`useAppVisibility().isPathVisible`) : un groupe
+// d'une app non installée pour la société — ou interdite au rôle — ne doit ni
+// s'afficher, ni compter dans le badge de son onglet. `null` = groupe
+// TRANSVERSE (le feed de notifications n'appartient à aucune app) : jamais
+// masqué. Chaque chemin est exactement celui vers lequel le groupe navigue
+// déjà au clic (aucune 2ᵉ convention).
+const NOTIF_GROUP_PATH = {
+  approbations: '/approbations',
+  feed: null,
+  activites_en_retard: '/crm/leads',
+  garanties_expirantes: '/equipements',
+  contrats_a_renouveler: '/sav/contrats',
+  visites_dues: '/sav/contrats',
+  factures_impayees: '/ventes/factures',
+}
+
+// ODY27 — `count(ctx, vis)` : `vis(groupId)` dit si le groupe est visible. Un
+// groupe masqué compte 0 — sans quoi un onglet afficherait un badge portant sur
+// des lignes que l'utilisateur ne peut pas voir.
 const NOTIF_TABS = [
   {
     id: 'activites',
@@ -130,25 +153,25 @@ const NOTIF_TABS = [
     groups: ['approbations', 'feed', 'activites_en_retard'],
     // VX208(b) — `feedActionsUnread` (jamais le `feedUnread` brut incluant
     // les digests) : le compteur d'onglet suit la même règle que le badge.
-    count: (ctx) =>
-      (ctx.showApprobationsRow ? ctx.approbationsTotal : 0) +
-      ctx.feedActionsUnread +
-      (ctx.data?.activites_en_retard?.length ?? 0),
+    count: (ctx, vis) =>
+      (vis('approbations') && ctx.showApprobationsRow ? ctx.approbationsTotal : 0) +
+      (vis('feed') ? ctx.feedActionsUnread : 0) +
+      (vis('activites_en_retard') ? (ctx.data?.activites_en_retard?.length ?? 0) : 0),
   },
   {
     id: 'echeances',
     label: 'Échéances',
     groups: ['garanties_expirantes', 'contrats_a_renouveler', 'visites_dues'],
-    count: (ctx) =>
-      (ctx.data?.garanties_expirantes?.length ?? 0) +
-      (ctx.data?.contrats_a_renouveler?.length ?? 0) +
-      (ctx.data?.visites_dues?.length ?? 0),
+    count: (ctx, vis) =>
+      (vis('garanties_expirantes') ? (ctx.data?.garanties_expirantes?.length ?? 0) : 0) +
+      (vis('contrats_a_renouveler') ? (ctx.data?.contrats_a_renouveler?.length ?? 0) : 0) +
+      (vis('visites_dues') ? (ctx.data?.visites_dues?.length ?? 0) : 0),
   },
   {
     id: 'financier',
     label: 'Financier',
     groups: ['factures_impayees'],
-    count: (ctx) => ctx.data?.factures_impayees?.length ?? 0,
+    count: (ctx, vis) => (vis('factures_impayees') ? (ctx.data?.factures_impayees?.length ?? 0) : 0),
   },
 ]
 
@@ -180,7 +203,27 @@ export default function NotificationBell() {
   // Dernier compteur non-lu connu : sert à détecter l'ARRIVÉE d'une nouvelle
   // notification (compteur en hausse) pour déclencher le bip + le toast.
   const prevUnreadRef = useRef(null)
-  const navigate = useNavigate()
+  // ODY7/ODY27 — ouvrir une notification d'une AUTRE app passe par le point
+  // d'entrée nommé, qui fait basculer proprement la coquille sur l'app cible.
+  const navigate = useCrossAppNavigate()
+  // ODY27 — source UNIQUE de la visibilité des apps (ODY1), zéro liste locale.
+  const { isPathVisible } = useAppVisibility()
+  const isGroupVisible = useCallback(
+    (id) => isPathVisible(NOTIF_GROUP_PATH[id]),
+    [isPathVisible],
+  )
+  // Un onglet dont TOUS les groupes appartiennent à des apps absentes n'a plus
+  // rien à montrer : il disparaît (jamais un onglet vide pour rien).
+  const visibleTabs = useMemo(
+    () => NOTIF_TABS.filter((t) => t.groups.some(isGroupVisible)),
+    [isGroupVisible],
+  )
+  // Onglet réellement affiché : si l'onglet sélectionné vient de disparaître
+  // (app désactivée), on retombe sur le premier visible — DÉRIVÉ en rendu,
+  // jamais un setState dans un effet.
+  const currentTab = visibleTabs.some((t) => t.id === activeTab)
+    ? activeTab
+    : (visibleTabs[0]?.id ?? activeTab)
   // VX82 — chaque changement de route peut poser un NOUVEAU titre de page
   // (`useDocumentTitle` dans la page elle-même) : on réapplique le préfixe
   // juste après pour qu'il survive à la navigation.
@@ -449,15 +492,18 @@ export default function NotificationBell() {
                   groupes empilés par domaine. Chaque onglet affiche son
                   compteur (somme des groupes qu'il contient). */}
               <div className="nb-tabs" role="tablist" aria-label="Catégories de notifications">
-                {NOTIF_TABS.map((tab) => {
-                  const n = tab.count({ data, feedActionsUnread, showApprobationsRow, approbationsTotal })
+                {visibleTabs.map((tab) => {
+                  const n = tab.count(
+                    { data, feedActionsUnread, showApprobationsRow, approbationsTotal },
+                    isGroupVisible,
+                  )
                   return (
                     <button
                       key={tab.id}
                       type="button"
                       role="tab"
-                      aria-selected={activeTab === tab.id}
-                      className={`nb-tab${activeTab === tab.id ? ' nb-tab-active' : ''}`}
+                      aria-selected={currentTab === tab.id}
+                      className={`nb-tab${currentTab === tab.id ? ' nb-tab-active' : ''}`}
                       onClick={() => setActiveTab(tab.id)}
                     >
                       {tab.label}
@@ -469,7 +515,7 @@ export default function NotificationBell() {
               {/* VX86 — rangée « N approbations », EN TÊTE (avant les autres
                   groupes) : l'inbox d'approbations dort sinon dans la section
                   ANALYSE de la sidebar sans jamais apparaître ici. */}
-              {activeTab === 'activites' && showApprobationsRow && (
+              {currentTab === 'activites' && isGroupVisible('approbations') && showApprobationsRow && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <Inbox size={13} aria-hidden="true" /> Approbations
@@ -492,7 +538,7 @@ export default function NotificationBell() {
               {/* VX208 — DIGEST est toujours une INFO pure (jamais une
                   action, jamais mêlé aux vraies notifications) : replié dans
                   son propre groupe, jamais compté dans le badge ACTIONS. */}
-              {activeTab === 'activites' && (() => {
+              {currentTab === 'activites' && isGroupVisible('feed') && (() => {
                 const digestFeed = feed.filter((n) => n.event_type === 'digest')
                 const otherFeed = dedupeByLink(
                   feed.filter((n) => n.event_type !== 'digest'))
@@ -625,7 +671,7 @@ export default function NotificationBell() {
                   </div>
                 )
               })()}
-              {activeTab === 'activites' && data && (data.activites_en_retard?.length ?? 0) > 0 && (
+              {currentTab === 'activites' && isGroupVisible('activites_en_retard') && data && (data.activites_en_retard?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     {/* VX84 — ce groupe est désormais borné à `assigned_to=
@@ -648,7 +694,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {activeTab === 'echeances' && data && (data.garanties_expirantes?.length ?? 0) > 0 && (
+              {currentTab === 'echeances' && isGroupVisible('garanties_expirantes') && data && (data.garanties_expirantes?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <ShieldCheck size={13} aria-hidden="true" /> Garanties (≤ 90 j)
@@ -666,7 +712,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {activeTab === 'financier' && data && (data.factures_impayees?.length ?? 0) > 0 && (
+              {currentTab === 'financier' && isGroupVisible('factures_impayees') && data && (data.factures_impayees?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <Banknote size={13} aria-hidden="true" /> Factures impayées
@@ -682,7 +728,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {activeTab === 'echeances' && data && (data.contrats_a_renouveler?.length ?? 0) > 0 && (
+              {currentTab === 'echeances' && isGroupVisible('contrats_a_renouveler') && data && (data.contrats_a_renouveler?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <RefreshCw size={13} aria-hidden="true" /> Contrats à renouveler (≤ 90 j)
@@ -698,7 +744,7 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
-              {activeTab === 'echeances' && data && (data.visites_dues?.length ?? 0) > 0 && (
+              {currentTab === 'echeances' && isGroupVisible('visites_dues') && data && (data.visites_dues?.length ?? 0) > 0 && (
                 <div className="nb-group">
                   <div className="nb-group-title">
                     <CalendarClock size={13} aria-hidden="true" /> Visites dues
@@ -716,8 +762,9 @@ export default function NotificationBell() {
               )}
               {/* VX14 — onglet actif sans le moindre élément : message dédié
                   plutôt qu'un panneau vide silencieux. */}
-              {NOTIF_TABS.find((t) => t.id === activeTab)?.count(
+              {visibleTabs.find((t) => t.id === currentTab)?.count(
                 { data, feedActionsUnread, showApprobationsRow, approbationsTotal },
+                isGroupVisible,
               ) === 0 && (
                 <div className="nb-empty">Rien à signaler ici</div>
               )}

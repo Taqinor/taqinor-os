@@ -53,8 +53,11 @@ function Crumb({ c, withSep }) {
   )
 }
 
-export default function Breadcrumbs({ pathname, crumbs: crumbsProp }) {
-  const crumbs = crumbsProp ?? breadcrumbsFor(pathname || '/')
+// ODY5 — `app` est une PROP (jamais un `useSelector` interne) : le fil d'Ariane
+// reste un composant sans dépendance au store, rendable isolément (ses tests le
+// montent sans Provider). C'est `Header.jsx` qui lit l'app active et la passe.
+export default function Breadcrumbs({ pathname, crumbs: crumbsProp, app }) {
+  const crumbs = crumbsProp ?? breadcrumbsFor(pathname || '/', app)
 
   // VX11 — persiste le dernier module à CHAQUE navigation (effet, jamais un
   // setState synchrone en phase de rendu) ; avant tout early return, comme
