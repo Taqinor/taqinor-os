@@ -53,8 +53,8 @@ FIELD_MAPS_AO = {
         'libelle': 'libelle', 'nom': 'libelle', 'chaine': 'libelle',
         'axe': 'axe',
         'segments': 'segments', 'cotes': 'segments',
-        'mesure': 'mesure_totale_m', 'mesure_totale': 'mesure_totale_m',
-        'total': 'mesure_totale_m',
+        'mesure': 'mesure_globale_m', 'mesure_totale': 'mesure_globale_m',
+        'total': 'mesure_globale_m',
         'tolerance': 'tolerance_m', 'tolerance_m': 'tolerance_m',
     },
 }
@@ -178,8 +178,8 @@ def _valider_chaine(donnees):
         'libelle': libelle,
         'axe': axe or ChaineCotes.Axe.X,
         'segments': _segments(donnees.get('segments'), erreurs),
-        'mesure_totale_m': _decimal(
-            donnees.get('mesure_totale_m'), 'mesure totale', erreurs),
+        'mesure_globale_m': _decimal(
+            donnees.get('mesure_globale_m'), 'mesure totale', erreurs),
     }
     tolerance = _decimal(donnees.get('tolerance_m'), 'tolérance', erreurs)
     if tolerance is not None:

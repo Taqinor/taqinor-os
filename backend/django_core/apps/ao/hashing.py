@@ -84,7 +84,7 @@ def entree_canonique(toiture, *, params=None, kits=None, version_moteur=''):
                     }
                     for s in (chaine.segments or [])
                 ],
-                'mesure_totale_m': _nombre(chaine.mesure_totale_m),
+                'mesure_globale_m': _nombre(chaine.mesure_globale_m),
             })
 
     parametres = params if params is not None else (

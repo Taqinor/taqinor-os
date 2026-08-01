@@ -122,7 +122,7 @@ class TestTrancherApplique(BaseQuestions):
     def test_requalifier_les_cotes_de_la_chaine_liee(self):
         chaine = ChaineCotes.objects.create(
             company=self.company, toiture=self.toiture, libelle='Pignon',
-            mesure_totale_m=Decimal('20.000'),
+            mesure_globale_m=Decimal('20.000'),
             segments=[
                 {'libelle': 'P1', 'valeur_m': 12.0, 'statut': 'A_CONFIRMER'},
                 {'libelle': 'P2', 'valeur_m': 8.0, 'statut': 'A_CONFIRMER'},

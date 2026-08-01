@@ -95,7 +95,7 @@ class TestTracabiliteDesSaisies(BaseReleve):
         chaine = ChaineCotes.objects.create(
             company=self.company, toiture=self.toiture, releve=self.releve,
             libelle='Façade sud', segments=[dict(s) for s in SEGMENTS],
-            mesure_totale_m=Decimal('51.100'))
+            mesure_globale_m=Decimal('51.100'))
         self.assertEqual(chaine.releve_id, self.releve.id)
         self.assertEqual(list(self.releve.chaines_cotes.all()), [chaine])
 
@@ -116,7 +116,7 @@ class TestPointsALever(BaseReleve):
         chaine = ChaineCotes.objects.create(
             company=self.company, toiture=self.toiture, releve=self.releve,
             libelle='Façade sud', segments=[dict(s) for s in SEGMENTS],
-            mesure_totale_m=Decimal('51.100'))
+            mesure_globale_m=Decimal('51.100'))
         services.recalculer_chaine(chaine)
         services.deduire_segment(chaine, 4)
         points = selectors.points_a_lever(self.ao)
@@ -130,7 +130,7 @@ class TestPointsALever(BaseReleve):
         """Le DÉFAUT que ce test attrape : une orange hors de la liste."""
         chaine = ChaineCotes.objects.create(
             company=self.company, toiture=self.toiture, releve=self.releve,
-            libelle='Pignon', mesure_totale_m=Decimal('20.000'),
+            libelle='Pignon', mesure_globale_m=Decimal('20.000'),
             segments=[
                 {'libelle': 'P1', 'valeur_m': 5.0, 'statut': 'A_CONFIRMER'},
                 {'libelle': 'P2', 'valeur_m': 7.0, 'statut': 'A_CONFIRMER'},

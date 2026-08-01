@@ -197,7 +197,7 @@ class ChaineCotesSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'toiture', 'releve', 'libelle', 'axe', 'axe_display',
             'segments',
-            'mesure_totale_m', 'tolerance_m', 'somme_segments_m', 'residu_m',
+            'mesure_globale_m', 'tolerance_m', 'somme_segments_m', 'residu_m',
             'residu_pct', 'verdict', 'verdict_display', 'cotes_a_confirmer',
         ]
 

@@ -691,8 +691,8 @@ def deduire_segment(chaine, index, *, user=None):
     Raises:
         ValidationError: sans mesure totale, aucune déduction n'est possible.
     """
-    if chaine.mesure_totale_m is None:
-        raise ValidationError({'mesure_totale_m': (
+    if chaine.mesure_globale_m is None:
+        raise ValidationError({'mesure_globale_m': (
             "Sans mesure totale, aucun segment ne peut être déduit d'une "
             'fermeture.'
         )})
@@ -707,7 +707,7 @@ def deduire_segment(chaine, index, *, user=None):
         valeur = segment.get('valeur_m')
         if valeur not in (None, ''):
             autres += Decimal(str(valeur))
-    deduit = (Decimal(chaine.mesure_totale_m) - autres).quantize(
+    deduit = (Decimal(chaine.mesure_globale_m) - autres).quantize(
         Decimal('0.001'))
 
     cible = segments[index]

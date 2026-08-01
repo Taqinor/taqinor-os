@@ -155,7 +155,7 @@ class Migration(migrations.Migration):
                 ('libelle', models.CharField(max_length=255, verbose_name='Libellé')),
                 ('axe', models.CharField(choices=[('x', 'Axe X (longueur)'), ('y', 'Axe Y (largeur)'), ('oblique', 'Oblique / diagonale')], default='x', max_length=8, verbose_name='Axe')),
                 ('segments', models.JSONField(blank=True, default=list, verbose_name='Segments')),
-                ('mesure_totale_m', models.DecimalField(blank=True, decimal_places=3, max_digits=10, null=True, verbose_name='Mesure totale (m)')),
+                ('mesure_globale_m', models.DecimalField(blank=True, decimal_places=3, max_digits=10, null=True, verbose_name="Mesure d'ensemble (m)")),
                 ('tolerance_m', models.DecimalField(decimal_places=3, default=Decimal('0.050'), max_digits=6, verbose_name='Tolérance (m)')),
                 ('residu_m', models.DecimalField(blank=True, decimal_places=3, max_digits=10, null=True, verbose_name='Résidu (m)')),
                 ('residu_pct', models.DecimalField(blank=True, decimal_places=3, max_digits=8, null=True, verbose_name='Résidu (%)')),

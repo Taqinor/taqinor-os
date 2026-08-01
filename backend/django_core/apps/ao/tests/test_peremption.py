@@ -165,7 +165,7 @@ class TestPeremptionEnCascade(BasePeremption):
             company=self.company, toiture=self.toiture_a, libelle='Sud',
             segments=[{'libelle': 'A→B', 'valeur_m': 10.0,
                        'statut': 'MESURE'}],
-            mesure_totale_m=Decimal('10.000'))
+            mesure_globale_m=Decimal('10.000'))
         variante = self._variante(self.toiture_a)
         chaine.segments = [{'libelle': 'A→B', 'valeur_m': 12.0,
                             'statut': 'MESURE'}]

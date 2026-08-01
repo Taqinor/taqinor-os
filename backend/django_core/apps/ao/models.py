@@ -866,9 +866,14 @@ class ChaineCotes(TenantModel):
     #:    "valeur_annoncee_m": 8.5, "deduit": true}, …]``
     segments = models.JSONField(
         default=list, blank=True, verbose_name='Segments')
-    mesure_totale_m = models.DecimalField(
+    #: Mesure d'ensemble de la chaîne, en MÈTRES au millimètre.
+    #: NE PAS renommer en ``mesure_totale_m`` : le garde YDATA7
+    #: (``check_money_fields --decimal-places``) traite tout champ contenant
+    #: « total » comme un MONTANT et exigerait ``decimal_places=2`` — on
+    #: perdrait le millimètre sur une LONGUEUR.
+    mesure_globale_m = models.DecimalField(
         max_digits=10, decimal_places=3, null=True, blank=True,
-        verbose_name='Mesure totale (m)')
+        verbose_name="Mesure d'ensemble (m)")
     #: Tolérance PROPRE à cette chaîne (0,02 à 0,30 m constatés).
     tolerance_m = models.DecimalField(
         max_digits=6, decimal_places=3, default=Decimal('0.050'),
@@ -914,14 +919,14 @@ class ChaineCotes(TenantModel):
 
     def recalculer_fermeture(self):
         """Recalcule résidu (m et %) + verdict. Valeurs PERSISTÉES à l'appel."""
-        if self.mesure_totale_m is None:
+        if self.mesure_globale_m is None:
             self.residu_m = None
             self.residu_pct = None
             self.verdict = self.Verdict.INCOMPLETE
             return self.verdict
-        residu = Decimal(self.mesure_totale_m) - self.somme_segments_m
+        residu = Decimal(self.mesure_globale_m) - self.somme_segments_m
         self.residu_m = residu.quantize(Decimal('0.001'))
-        total = Decimal(self.mesure_totale_m)
+        total = Decimal(self.mesure_globale_m)
         self.residu_pct = (
             (residu / total * Decimal('100')).quantize(Decimal('0.001'))
             if total else None)

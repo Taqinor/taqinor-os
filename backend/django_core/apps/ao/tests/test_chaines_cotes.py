@@ -64,7 +64,7 @@ class TestFermeture(TestCase):
         chaine = ChaineCotes.objects.create(
             company=self.company, toiture=self.toiture,
             libelle='Façade sud', segments=[dict(s) for s in segments],
-            mesure_totale_m=Decimal(totale),
+            mesure_globale_m=Decimal(totale),
             tolerance_m=Decimal(tolerance))
         chaine.recalculer_fermeture()
         chaine.save()
@@ -116,7 +116,7 @@ class TestDeductionPrimeSurAnnonce(TestCase):
         self.chaine = ChaineCotes.objects.create(
             company=self.company, toiture=self.toiture, libelle='Façade sud',
             segments=[dict(s) for s in SEGMENTS_ECOLE],
-            mesure_totale_m=Decimal('51.100'))
+            mesure_globale_m=Decimal('51.100'))
         services.recalculer_chaine(self.chaine)
 
     def test_valeur_deduite_882(self):
@@ -172,7 +172,7 @@ class TestDeductionPrimeSurAnnonce(TestCase):
             segments=[dict(s) for s in SEGMENTS_ECOLE])
         with self.assertRaises(ValidationError) as ctx:
             services.deduire_segment(nue, 0)
-        self.assertIn('mesure_totale_m', ctx.exception.message_dict)
+        self.assertIn('mesure_globale_m', ctx.exception.message_dict)
 
     def test_index_hors_bornes_refuse(self):
         with self.assertRaises(ValidationError):
@@ -191,7 +191,7 @@ class TestCompensationProposeeJamaisAppliquee(TestCase):
         self.chaine = ChaineCotes.objects.create(
             company=self.company, toiture=toiture, libelle='Façade sud',
             segments=[dict(s) for s in SEGMENTS_ECOLE],
-            mesure_totale_m=Decimal('51.100'))
+            mesure_globale_m=Decimal('51.100'))
         services.recalculer_chaine(self.chaine)
 
     def test_la_proposition_couvre_tous_les_segments(self):
@@ -244,7 +244,7 @@ class TestApiChaines(TestCase):
     def test_creation_calcule_la_fermeture(self):
         r = self.api.post(URL, {
             'toiture': self.toiture.id, 'libelle': 'Façade sud', 'axe': 'x',
-            'segments': SEGMENTS_ECOLE, 'mesure_totale_m': '51.100',
+            'segments': SEGMENTS_ECOLE, 'mesure_globale_m': '51.100',
         }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['residu_m'], '0.320')
@@ -253,7 +253,7 @@ class TestApiChaines(TestCase):
     def test_action_deduire(self):
         r = self.api.post(URL, {
             'toiture': self.toiture.id, 'libelle': 'Façade sud',
-            'segments': SEGMENTS_ECOLE, 'mesure_totale_m': '51.100',
+            'segments': SEGMENTS_ECOLE, 'mesure_globale_m': '51.100',
         }, format='json')
         chaine_id = r.data['id']
         r2 = self.api.post(f'{URL}{chaine_id}/deduire/', {'index': 4},
@@ -266,7 +266,7 @@ class TestApiChaines(TestCase):
     def test_action_compensation_ne_modifie_rien(self):
         r = self.api.post(URL, {
             'toiture': self.toiture.id, 'libelle': 'Façade sud',
-            'segments': SEGMENTS_ECOLE, 'mesure_totale_m': '51.100',
+            'segments': SEGMENTS_ECOLE, 'mesure_globale_m': '51.100',
         }, format='json')
         chaine_id = r.data['id']
         r2 = self.api.get(f'{URL}{chaine_id}/compensation/')
@@ -278,7 +278,7 @@ class TestApiChaines(TestCase):
     def test_deduire_sans_index_refuse(self):
         r = self.api.post(URL, {
             'toiture': self.toiture.id, 'libelle': 'X',
-            'segments': SEGMENTS_ECOLE, 'mesure_totale_m': '51.100',
+            'segments': SEGMENTS_ECOLE, 'mesure_globale_m': '51.100',
         }, format='json')
         r2 = self.api.post(f'{URL}{r.data["id"]}/deduire/', {}, format='json')
         self.assertEqual(r2.status_code, 400, r2.data)
