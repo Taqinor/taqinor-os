@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { ROUTE, LIST_ROUTE, TYPE_LABEL, TYPE_ACCENT, useEntitySearch } from './entityRoutes'
+import { ROUTE, LIST_ROUTE, TYPE_LABEL, TYPE_ACCENT, pathForType, useEntitySearch } from './entityRoutes'
 import reportingApi from '../../api/reportingApi'
 
 vi.mock('../../api/reportingApi', () => ({
@@ -92,5 +92,30 @@ describe('VX13 — entityRoutes (source unique GlobalSearch + CommandPalette)', 
       { timeout: 2000 },
     )
     expect(screen.getByTestId('groups').textContent).toBe('[]')
+  })
+})
+
+// ODY27 — `pathForType` : un chemin représentatif du type, servant UNIQUEMENT à
+// décider de quelle app il relève (filtrage « app installée » des surfaces
+// transverses). Dérivé des tables ci-dessus — jamais une 2ᵉ table type → module.
+describe('ODY27 — pathForType', () => {
+  it('renvoie la route d’ouverture du type quand elle existe', () => {
+    expect(pathForType('devis').startsWith('/ventes/devis')).toBe(true)
+    expect(pathForType('lead').startsWith('/crm/leads')).toBe(true)
+    expect(pathForType('produit')).toBe('/stock')
+  })
+
+  it('couvre TOUS les types connus de ROUTE et de LIST_ROUTE', () => {
+    // Aucun type ne doit retomber sur '' par inadvertance : un type sans
+    // chemin serait invisible au filtre et donc jamais masqué.
+    const types = new Set([...Object.keys(ROUTE), ...Object.keys(LIST_ROUTE)])
+    types.forEach((t) => {
+      expect(pathForType(t).startsWith('/'), `type « ${t} » sans chemin`).toBe(true)
+    })
+  })
+
+  it('un type INCONNU renvoie une chaîne vide (donc jamais masqué par erreur)', () => {
+    expect(pathForType('type-inexistant')).toBe('')
+    expect(pathForType(undefined)).toBe('')
   })
 })

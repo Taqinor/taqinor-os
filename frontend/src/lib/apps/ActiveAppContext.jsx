@@ -185,6 +185,30 @@ export function useActiveApp() {
 }
 
 /**
+ * useAppVisibility — ODY27 : LE prédicat « cette app / ce chemin est-il visible
+ * pour cette société et ce rôle ? », pour les surfaces TRANSVERSES qui échappent
+ * à l'immersion (palette ⌘K, recherche globale, cloche de notifications,
+ * Dashboard). Adossé à `useInstalledApps()` (ODY1) : ces surfaces n'ont AUCUNE
+ * liste d'apps locale, elles posent une question à la source unique.
+ *
+ * `isPathVisible` répond VRAI pour un chemin qui n'appartient à aucune app
+ * (Menu d'accueil, préférences, écrans transverses) : le filtre ne masque QUE
+ * ce qui appartient à une app absente — jamais par défaut.
+ */
+export function useAppVisibility() {
+  const apps = useInstalledApps()
+  const visibleKeys = useMemo(() => new Set(apps.map((a) => a.key)), [apps])
+  return useMemo(() => ({
+    isAppVisible: (key) => !key || visibleKeys.has(key),
+    isPathVisible: (to) => {
+      if (!to) return true
+      const key = resolveAppKey(ROUTE_INDEX, String(to).split('?')[0].split('#')[0])
+      return !key || visibleKeys.has(key)
+    },
+  }), [visibleKeys])
+}
+
+/**
  * crossAppTransition — description PURE d'une navigation : app de départ, app
  * d'arrivée, et si la coquille doit basculer. Utilisée par les tests ODY7 et
  * par `useCrossAppNavigate` ci-dessous.
