@@ -6,7 +6,7 @@ import {
   Badge, Button, Checkbox, DataTable, EditableCell,
 } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
-import { keySpec, prixTtc, sansPrix } from '../../features/stock/catalogue'
+import { categorieIcone, keySpec, prixTtc, sansPrix } from '../../features/stock/catalogue'
 import { formatMAD } from '../../lib/format'
 
 /* ============================================================================
@@ -28,6 +28,23 @@ import { formatMAD } from '../../lib/format'
    ========================================================================== */
 
 const fmtNum2 = (n) => formatMAD(n, { withSymbol: false })
+
+/* APX18 — Vignette 40 px de la 1re colonne : la photo si le produit en a une,
+   sinon l'ICÔNE de sa catégorie, teintée. La boîte fait exactement la même
+   taille dans les deux cas (`.pcat-vignette`, dimensions fixes en CSS) : la
+   hauteur de ligne ne dépend jamais de la présence d'une photo.
+   La photo est INTERNE — cette vignette ne sort jamais vers un PDF ni vers un
+   document client, et n'est jamais rendue à côté de `prix_achat`. */
+function VignetteProduit({ produit }) {
+  const Icone = categorieIcone(produit)
+  return (
+    <span className="pcat-vignette" data-testid="pcat-vignette" aria-hidden="true">
+      {produit.image_url
+        ? <img src={produit.image_url} alt="" loading="lazy" />
+        : <Icone className="size-5" />}
+    </span>
+  )
+}
 
 // Valeur de vente HT du catalogue affiché (somme prix_vente × quantité) — sert
 // à la ligne de sous-totaux du moteur.
@@ -98,16 +115,21 @@ export function CatalogueTable({
     {
       id: 'nom',
       header: 'Produit',
-      minWidth: 220,
-      // Titre mobile (1re colonne) — nom + SKU + marque.
+      // APX18 — +40 px de vignette + gouttière : la largeur mini suit, sinon
+      // le nom se tronque plus tôt qu'avant l'ajout du visuel.
+      minWidth: 272,
+      // Titre mobile (1re colonne) — vignette (APX18) + nom + SKU + marque.
       cell: (value, p) => (
-        <div className="min-w-0">
-          <div className="truncate font-medium text-foreground">{p.nom}</div>
-          <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-            {p.sku
-              ? <span className="font-mono">{p.sku}</span>
-              : <Badge tone="warning">SKU manquant</Badge>}
-            {(p.marque || '').trim() && <span>· {p.marque}</span>}
+        <div className="flex min-w-0 items-center gap-2.5">
+          <VignetteProduit produit={p} />
+          <div className="min-w-0">
+            <div className="truncate font-medium text-foreground">{p.nom}</div>
+            <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+              {p.sku
+                ? <span className="font-mono">{p.sku}</span>
+                : <Badge tone="warning">SKU manquant</Badge>}
+              {(p.marque || '').trim() && <span>· {p.marque}</span>}
+            </div>
           </div>
         </div>
       ),

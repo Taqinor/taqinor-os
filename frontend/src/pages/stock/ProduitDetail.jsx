@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { History, PackageSearch } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { categorieIcone } from '../../features/stock/catalogue'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import {
   Spinner, Badge, RelationCounters,
@@ -26,6 +27,23 @@ function Chargement() {
     <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
       <Spinner /> Chargement…
     </div>
+  )
+}
+
+/* APX18 — En-tête visuel de la fiche : la photo du produit quand il en a une.
+   Sans photo, AUCUNE boîte vide n'est rendue (l'icône de catégorie suffit déjà
+   dans le titre du dialogue) — on ne montre pas un cadre gris pour rien.
+   INTERNE : cette image ne part dans aucun PDF ni document client, et n'est
+   jamais rendue à côté d'une donnée d'achat. */
+function EnTetePhoto({ produit }) {
+  if (!produit.image_url) return null
+  return (
+    <img
+      className="pdet-photo mb-3"
+      data-testid="pdet-photo"
+      src={produit.image_url}
+      alt={`Photo de ${produit.nom}`}
+    />
   )
 }
 
@@ -156,18 +174,23 @@ export function ProduitDetail({ produit, onClose }) {
   // uniquement avec la permission journal_activite_voir (AuditLog couvre tous
   // les modèles ; le backend re-vérifie la permission).
   const canViewJournal = useHasPermission('journal_activite_voir')
+  // APX18 — icône de catégorie en titre (repli visuel construit d'office) ;
+  // repli générique `PackageSearch` si le produit n'a pas de catégorie.
+  const IconeTitre = produit.categorie?.nom ? categorieIcone(produit) : PackageSearch
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <PackageSearch className="size-4 text-muted-foreground" aria-hidden="true" />
+            <IconeTitre className="size-4 text-muted-foreground" aria-hidden="true" />
             {produit.nom}{produit.sku ? ` (${produit.sku})` : ''}
           </DialogTitle>
           <DialogDescription>
             Engagements d&apos;achat et rapport prévisionnel — donnée interne, lecture seule.
           </DialogDescription>
         </DialogHeader>
+
+        <EnTetePhoto produit={produit} />
 
         {/* VX159/VX250 — RelationCounters : réutilise `produit.bcf_sources_en_commande`
             déjà chargé (prop, ZÉRO appel réseau nouveau). Pas de filtre par

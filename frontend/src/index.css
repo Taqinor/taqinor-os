@@ -8892,3 +8892,74 @@ textarea.form-control {
 @media (max-width: 639px) {
   .header-app-pill { display: none; }
 }
+
+/* ============================================================================
+   APX18 — Photo produit (catalogue + fiche + formulaire).
+   Photo INTERNE : vignette du catalogue, en-tete de fiche produit, choix dans
+   le formulaire. Elle n'apparait dans aucun PDF ni sortie client-facing, et
+   n'est jamais rendue a cote du prix d'achat.
+   Regles APX : cible tactile >= 44 px meme dense, contraste AA en clair ET en
+   sombre (tout passe par les tokens, aucune couleur en dur), et
+   prefers-reduced-motion respecte (aucune animation ici).
+   ========================================================================== */
+
+/* Selecteur de fichier du formulaire produit : le bouton natif est habille
+   comme un bouton « outline » de l'ERP, hauteur 44 px (cible tactile APX). */
+.pf-photo-input {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+  max-width: 100%;
+}
+.pf-photo-input::file-selector-button {
+  min-height: 44px;
+  padding: 0 0.875rem;
+  margin-right: 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 0.5rem);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .pf-photo-input::file-selector-button:hover { background: var(--muted); }
+}
+.pf-photo-input:focus-visible::file-selector-button {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Vignette 40 px de la premiere colonne du catalogue. Taille FIXE : la hauteur
+   de ligne ne doit pas dependre de la presence d'une photo. Le repli (icone de
+   categorie teintee) occupe exactement la meme boite. */
+.pcat-vignette {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 0.5rem);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.pcat-vignette img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* En-tete de la fiche produit : photo large, ratio libre, jamais deformee. */
+.pdet-photo {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 0.75rem);
+  background: var(--muted);
+  display: block;
+}

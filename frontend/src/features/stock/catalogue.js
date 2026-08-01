@@ -4,10 +4,41 @@
 // La sélection auto-fill, elle, reste par mots-clés du nom (solar.js) : cette
 // couche est purement visuelle et ne peut pas casser le dimensionnement.
 import {
+  Sun, Zap, BatteryCharging, Wrench, ShieldCheck, Cable, Droplets, Cpu,
+  ClipboardList, Package,
+} from 'lucide-react'
+import {
   parseWatt, parseKw, parseKwh, parsePhaseIsTri, tauxTvaOf, ttcFromHt,
 } from '../ventes/solar.js'
 
 export const MARQUE_GENERIQUE = 'Génériques'
+
+// APX18 — icône de CATÉGORIE, repli de la vignette photo. Construite d'office
+// (APX19/APX36 s'appuient dessus) : elle fonctionne que le produit ait une
+// photo ou non, donc la 1ʳᵉ colonne du catalogue a TOUJOURS un visuel de la
+// même boîte 40 px — la hauteur de ligne ne dépend jamais des données.
+// Renvoie un COMPOSANT lucide (pas de JSX ici : ce module reste du .js pur).
+// Les libellés suivent la taxonomie du seeder (`seed_catalogue.TAXONOMIE`) ;
+// une catégorie libre ou absente retombe sur le carton générique.
+const ICONES_CATEGORIE = [
+  [/panneau/i, Sun],
+  [/onduleur/i, Zap],
+  [/batterie/i, BatteryCharging],
+  [/structure|fixation/i, Wrench],
+  [/protection|accessoire/i, ShieldCheck],
+  [/c[âa]ble/i, Cable],
+  [/pompe/i, Droplets],
+  [/variateur/i, Cpu],
+  [/service|prestation/i, ClipboardList],
+]
+
+export function categorieIcone(produit) {
+  const nom = produit?.categorie?.nom ?? ''
+  for (const [motif, Icone] of ICONES_CATEGORIE) {
+    if (motif.test(nom)) return Icone
+  }
+  return Package
+}
 
 // Spec CLÉ par catégorie — celle qui compte pour choisir l'article.
 export function keySpec(p) {
