@@ -1876,8 +1876,20 @@ class VarianteCalepinage(TenantModel):
 class BordereauPrix(TenantModel):
     """Bordereau des prix (BOQ) d'un AO (FG223), séparé du devis client.
 
-    Chiffrage interne ligne à ligne de l'AO. Distinct du devis : sert au
-    montage de l'offre de prix. ``total_ht`` agrège les lignes.
+    Chiffrage ligne à ligne de l'AO. Distinct du devis : sert au montage de
+    l'offre de prix.
+
+    AOF120 — bordereau v2. Le bordereau réel compte QUATRE sections
+    (une par bâtiment + les prestations communes) et une trentaine d'items ;
+    ses totaux sont RECALCULÉS côté serveur à chaque lecture — jamais des
+    colonnes recopiées qui divergeraient à la première remise. La **clause de
+    réserve** est OBLIGATOIRE sur un marché à prix unitaires : c'est elle qui
+    encadre l'écart entre les quantités engagées et les quantités constatées à
+    l'exécution.
+
+    **NTMAR22 est SUPERSEDED** : aucun modèle ``LigneBordereauPrix`` n'est créé
+    — ``LigneBordereau`` est ÉTENDU, sinon l'app porterait deux modèles de
+    ligne de bordereau (test d'introspection dans ``test_bordereau_v2``).
     """
     company = models.ForeignKey(
         'authentication.Company',
@@ -1896,6 +1908,26 @@ class BordereauPrix(TenantModel):
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
+    # ── AOF120 — révision, remise globale, TVA, clause de réserve ─────────
+    #: Indice de révision du bordereau (A, B, C…) — deux bordereaux d'indices
+    #: différents ne sont JAMAIS le même document.
+    indice_revision = models.CharField(
+        max_length=4, blank=True, default='A',
+        verbose_name='Indice de révision')
+    remise_globale_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Remise globale (%)')
+    taux_tva_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20.00'),
+        verbose_name='Taux de TVA par défaut (%)')
+    #: Un marché à prix unitaires engage des PRIX, pas des quantités fermes.
+    marche_prix_unitaires = models.BooleanField(
+        default=True, verbose_name='Marché à prix unitaires')
+    clause_reserve = models.TextField(
+        blank=True, default='',
+        verbose_name='Clause de réserve (obligatoire en prix unitaires)')
+
     class Meta:
         verbose_name = 'Bordereau des prix (BOQ)'
         verbose_name_plural = 'Bordereaux des prix (BOQ)'
@@ -1905,16 +1937,143 @@ class BordereauPrix(TenantModel):
     def __str__(self):
         return f'BOQ {self.intitule} ({self.appel_offre.reference})'
 
+    # ── Totaux RECALCULÉS côté serveur (jamais des colonnes recopiées) ────
+
     @property
-    def total_ht(self):
+    def sous_total_ht(self):
+        """Somme des lignes, remises de LIGNE déduites, avant remise globale."""
         total = Decimal('0.00')
         for ligne in self.lignes.all():
             total += ligne.montant_ht
-        return total
+        return total.quantize(Decimal('0.01'))
+
+    @property
+    def montant_remise_globale(self):
+        """Montant de la remise globale, DÉRIVÉ du sous-total."""
+        taux = self.remise_globale_pct or Decimal('0')
+        return (self.sous_total_ht * taux / Decimal('100')).quantize(
+            Decimal('0.01'))
+
+    @property
+    def total_ht(self):
+        """Sous-total HT moins la remise globale."""
+        return (self.sous_total_ht - self.montant_remise_globale).quantize(
+            Decimal('0.01'))
+
+    @property
+    def tva_par_taux(self):
+        """Panier de TVA ``{taux: montant}`` — la remise globale est répartie
+        au PRORATA de chaque ligne, sinon un bordereau à deux taux serait faux.
+        """
+        sous_total = self.sous_total_ht
+        if not sous_total:
+            return {}
+        facteur = Decimal('1') - (
+            self.remise_globale_pct or Decimal('0')) / Decimal('100')
+        panier = {}
+        for ligne in self.lignes.all():
+            taux = ligne.taux_tva_effectif
+            base = (ligne.montant_ht * facteur)
+            panier[taux] = panier.get(taux, Decimal('0.00')) + (
+                base * taux / Decimal('100'))
+        return {taux: montant.quantize(Decimal('0.01'))
+                for taux, montant in panier.items()}
+
+    @property
+    def total_tva(self):
+        return sum(self.tva_par_taux.values(), Decimal('0.00')).quantize(
+            Decimal('0.01'))
+
+    @property
+    def total_ttc(self):
+        return (self.total_ht + self.total_tva).quantize(Decimal('0.01'))
+
+    def raisons_de_non_conformite(self):
+        """Motifs, en français, qui rendent le bordereau non remettable."""
+        raisons = []
+        if self.marche_prix_unitaires and not (self.clause_reserve or '').strip():
+            raisons.append(
+                "Marché à prix unitaires : la clause de réserve est "
+                "obligatoire — sans elle, les quantités du bordereau sont "
+                "lues comme un engagement ferme."
+            )
+        return raisons
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        raisons = self.raisons_de_non_conformite()
+        if raisons:
+            raise ValidationError({'clause_reserve': raisons})
+
+
+class SectionBordereau(TenantModel):
+    """Une SECTION du bordereau des prix (AOF120).
+
+    Le bordereau réel se lit par section (une par bâtiment, plus les
+    prestations communes) : sans sections, un total par bâtiment n'est pas
+    vérifiable et la correspondance « quantités du bordereau = engagements des
+    planches » devient une lecture à l'œil.
+    """
+
+    bordereau = models.ForeignKey(
+        BordereauPrix,
+        on_delete=models.CASCADE,  # on_delete: section fille d'un bordereau : aucune existence hors de lui
+        related_name='sections',
+        verbose_name='Bordereau',
+    )
+    numero = models.CharField(max_length=8, verbose_name='Numéro (A, B, C…)')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    batiment = models.ForeignKey(
+        BatimentAO,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='sections_bordereau', verbose_name='Bâtiment',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Section de bordereau (AO)'
+        verbose_name_plural = 'Sections de bordereau (AO)'
+        db_table = 'ao_section_bordereau'
+        ordering = ['bordereau', 'ordre', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['bordereau', 'numero'],
+                name='uniq_section_bordereau_numero'),
+        ]
+
+    def __str__(self):
+        return f'{self.numero} — {self.libelle}'
+
+    @property
+    def total_ht(self):
+        """Total HT de la section (lignes de la section uniquement)."""
+        total = Decimal('0.00')
+        for ligne in self.lignes.all():
+            total += ligne.montant_ht
+        return total.quantize(Decimal('0.01'))
 
 
 class LigneBordereau(TenantModel):
-    """Une ligne chiffrée d'un BOQ (FG223)."""
+    """Une ligne chiffrée d'un BOQ (FG223), étendue par AOF120.
+
+    ``quantite_source`` + ``variante`` rendent VÉRIFIABLE EN MACHINE
+    l'invariant « quantités du bordereau = engagements portés sur les
+    planches » : une quantité issue du calepinage CITE la variante qui l'a
+    produite. ``quantite_verrouillee`` protège une quantité arbitrée à la main
+    d'un ré-alignement automatique.
+    """
+
+    class QuantiteSource(models.TextChoices):
+        CALEPINAGE = 'calepinage', 'Calepinage (variante)'
+        MANUELLE = 'manuelle', 'Saisie manuelle'
+        CATALOGUE = 'catalogue', 'Catalogue'
+        ACHETEUR = 'acheteur', "Imposée par l'acheteur"
+
+    class TauxTVA(models.TextChoices):
+        DIX = '10.00', '10 %'
+        VINGT = '20.00', '20 %'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
@@ -1927,6 +2086,11 @@ class LigneBordereau(TenantModel):
         related_name='lignes',
         verbose_name='Bordereau',
     )
+    section = models.ForeignKey(
+        SectionBordereau,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes', verbose_name='Section',
+    )
     numero = models.PositiveIntegerField(default=1, verbose_name='N° ligne')
     designation = models.CharField(max_length=255, verbose_name='Désignation')
     unite = models.CharField(
@@ -1938,6 +2102,41 @@ class LigneBordereau(TenantModel):
         max_digits=14, decimal_places=2, default=Decimal('0.00'),
         verbose_name='Prix unitaire HT (MAD)')
 
+    # ── AOF120 — TVA, remise, traçabilité de la quantité ─────────────────
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        choices=TauxTVA.choices,
+        verbose_name='Taux de TVA (%) — vide = taux du bordereau')
+    remise_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Remise de ligne (%)')
+    batiment = models.ForeignKey(
+        BatimentAO,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_bordereau', verbose_name='Bâtiment',
+    )
+    #: String-FK catalogue (même raison qu'AOF118 : le contrat interdit les
+    #: IMPORTS de ``apps.stock.models``, pas les FK par chaîne).
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_bordereau_ao', verbose_name='Produit',
+    )
+    quantite_source = models.CharField(
+        max_length=12, choices=QuantiteSource.choices,
+        default=QuantiteSource.MANUELLE,
+        verbose_name='Origine de la quantité')
+    #: La variante qui a PRODUIT cette quantité (obligatoire quand
+    #: ``quantite_source == calepinage`` — vérifié par le service).
+    variante = models.ForeignKey(
+        VarianteCalepinage,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_bordereau', verbose_name='Variante source',
+    )
+    quantite_verrouillee = models.BooleanField(
+        default=False, verbose_name='Quantité verrouillée')
+
     class Meta:
         verbose_name = 'Ligne de bordereau'
         verbose_name_plural = 'Lignes de bordereau'
@@ -1948,9 +2147,37 @@ class LigneBordereau(TenantModel):
         return f'{self.numero}. {self.designation}'
 
     @property
+    def taux_tva_effectif(self):
+        """Taux de la ligne, ou celui du bordereau en repli."""
+        if self.taux_tva is not None:
+            return Decimal(self.taux_tva)
+        return Decimal(self.bordereau.taux_tva_defaut or Decimal('20.00'))
+
+    @property
     def montant_ht(self):
-        return (self.quantite or Decimal('0')) * (
+        """``quantité × PU × (1 − remise/100)`` — remise de LIGNE incluse."""
+        brut = (self.quantite or Decimal('0')) * (
             self.prix_unitaire or Decimal('0'))
+        remise = self.remise_pct or Decimal('0')
+        return brut * (Decimal('1') - remise / Decimal('100'))
+
+    @property
+    def montant_tva(self):
+        return (self.montant_ht * self.taux_tva_effectif
+                / Decimal('100')).quantize(Decimal('0.01'))
+
+    def raisons_de_non_tracabilite(self):
+        """Motifs, en français, qui rendent la quantité non traçable."""
+        raisons = []
+        if self.quantite_source == self.QuantiteSource.CALEPINAGE \
+                and not self.variante_id:
+            raisons.append(
+                f'Ligne {self.numero} « {self.designation} » : quantité '
+                "annoncée issue du calepinage mais AUCUNE variante n'est "
+                'citée — la correspondance « bordereau = planches » ne peut '
+                'pas être vérifiée.'
+            )
+        return raisons
 
 
 # ── FG224 — Suivi des cautions & garanties de soumission ───────────────────

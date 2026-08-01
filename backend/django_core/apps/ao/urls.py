@@ -37,6 +37,7 @@ from .views import (
     PlanSourceViewSet,
     PresetCalepinageViewSet,
     ReleveAOViewSet,
+    SectionBordereauViewSet,
     QuestionAOViewSet,
     ResultatAOViewSet,
     SerieQuestionsViewSet,
@@ -74,6 +75,9 @@ router.register(r'bordereaux-prix', BordereauPrixViewSet,
                 basename='ao-bordereau-prix')
 router.register(r'lignes-bordereau', LigneBordereauViewSet,
                 basename='ao-ligne-bordereau')
+# AOF120 — sections du bordereau (une par bâtiment + prestations communes).
+router.register(r'sections-bordereau', SectionBordereauViewSet,
+                basename='ao-section-bordereau')
 router.register(r'cautions-soumission', CautionSoumissionViewSet,
                 basename='ao-caution-soumission')
 router.register(r'dossiers-soumission', DossierSoumissionViewSet,

@@ -1232,6 +1232,37 @@ def _journaliser_equipement(equipement, user):
         company=equipement.company)
 
 
+def totaux_bordereau(bordereau):
+    """AOF120 — les totaux du bordereau, RECALCULÉS côté serveur.
+
+    Aucun total n'est stocké : une colonne recopiée diverge dès la première
+    ligne modifiée, et c'est le total qui part chez le maître d'ouvrage.
+    """
+    return {
+        'sous_total_ht': bordereau.sous_total_ht,
+        'remise_globale_pct': bordereau.remise_globale_pct,
+        'montant_remise_globale': bordereau.montant_remise_globale,
+        'total_ht': bordereau.total_ht,
+        'tva_par_taux': {str(taux): montant
+                         for taux, montant in bordereau.tva_par_taux.items()},
+        'total_tva': bordereau.total_tva,
+        'total_ttc': bordereau.total_ttc,
+    }
+
+
+def raisons_bordereau_non_remettable(bordereau):
+    """Motifs, en français, qui interdisent de remettre ce bordereau (AOF120).
+
+    Liste vide = remettable. Deux familles : la clause de réserve manquante
+    sur un marché à prix unitaires, et une quantité annoncée « issue du
+    calepinage » sans variante citée.
+    """
+    raisons = list(bordereau.raisons_de_non_conformite())
+    for ligne in bordereau.lignes.all():
+        raisons.extend(ligne.raisons_de_non_tracabilite())
+    return raisons
+
+
 def aligner_quantite_modules(appel_offre, *, user=None):
     """Aligne la quantité de MODULES sur les variantes RETENUES (AOF118).
 

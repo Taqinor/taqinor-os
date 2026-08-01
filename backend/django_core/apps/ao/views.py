@@ -50,6 +50,7 @@ from .models import (
     ReleveAO,
     QuestionAO,
     ResultatAO,
+    SectionBordereau,
     SerieQuestions,
     ToitureAO,
     VarianteCalepinage,
@@ -73,6 +74,7 @@ from .serializers import (
     ReleveAOSerializer,
     QuestionAOSerializer,
     ResultatAOSerializer,
+    SectionBordereauSerializer,
     SerieQuestionsSerializer,
     ToitureAOSerializer,
     VarianteCalepinageSerializer,
@@ -690,19 +692,62 @@ class KitCalepinageViewSet(AoBaseViewSet):
 # ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────
 
 class BordereauPrixViewSet(AoBaseViewSet):
-    """Bordereaux des prix (BOQ) d'AO (FG223), séparés du devis client."""
-    queryset = BordereauPrix.objects.prefetch_related('lignes').all()
+    """Bordereaux des prix (BOQ) d'AO (FG223), séparés du devis client.
+
+    AOF120 — l'action ``totaux`` publie les agrégats RECALCULÉS côté serveur
+    (sous-total HT → remise → total HT → TVA → total TTC) et l'action
+    ``controles`` les motifs qui interdiraient de remettre le bordereau.
+    """
+    queryset = BordereauPrix.objects.prefetch_related(
+        'lignes', 'sections').all()
     serializer_class = BordereauPrixSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation']
 
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'indice_revision'))
+
+    @action(detail=True, methods=['get'])
+    def totaux(self, request, pk=None):
+        """Chaîne complète des totaux, dérivée à la lecture."""
+        totaux = services.totaux_bordereau(self.get_object())
+        return Response({cle: str(valeur) if not isinstance(valeur, dict)
+                         else {k: str(v) for k, v in valeur.items()}
+                         for cle, valeur in totaux.items()})
+
+    @action(detail=True, methods=['get'])
+    def controles(self, request, pk=None):
+        """Motifs de non-remettabilité (clause de réserve, traçabilité)."""
+        raisons = services.raisons_bordereau_non_remettable(self.get_object())
+        return Response({'remettable': not raisons, 'raisons': raisons})
+
+
+class SectionBordereauViewSet(AoBaseViewSet):
+    """Sections d'un bordereau des prix (AOF120)."""
+    queryset = SectionBordereau.objects.all()
+    serializer_class = SectionBordereauSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'numero']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('bordereau', 'batiment'))
+
 
 class LigneBordereauViewSet(AoBaseViewSet):
-    """Lignes chiffrées d'un BOQ (FG223)."""
+    """Lignes chiffrées d'un BOQ (FG223), étendues par AOF120."""
     queryset = LigneBordereau.objects.all()
     serializer_class = LigneBordereauSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['numero']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('bordereau', 'section', 'batiment', 'quantite_source'))
 
 
 # ── FG224 — Cautions & garanties de soumission ─────────────────────────────
