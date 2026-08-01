@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import {
+  render, screen, waitFor, fireEvent, act, within,
+} from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 /* AOF174 — l'écran « Dossier de soumission ».
@@ -63,6 +65,19 @@ const DOSSIER_V2 = {
 
 const renderScreen = (props) => render(<MemoryRouter><DossierPage {...props} /></MemoryRouter>)
 
+/* Le libellé d'une pièce apparaît DEUX fois à l'écran : dans sa ligne de la
+   colonne « Pièces du dossier » ET dans la colonne « Aperçu », qui nomme la
+   pièce sélectionnée (la première l'est d'office). Les assertions de LISTE
+   visent donc la ligne, repérée par le hook e2e figé `data-ao-piece`
+   (`../E2E_HOOKS.md`, AOF8) — plus précis qu'une recherche de texte sur toute
+   la page, et robuste au branchement de l'aperçu réel (AOF175). */
+const ligneP = async (code) => {
+  await waitFor(() => {
+    expect(document.querySelector(`[data-ao-piece="${code}"]`)).not.toBeNull()
+  })
+  return within(document.querySelector(`[data-ao-piece="${code}"]`))
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.get.mockResolvedValue({ data: DOSSIER_V1 })
@@ -72,7 +87,7 @@ beforeEach(() => {
 describe('DossierPage (AOF174)', () => {
   it('liste les pièces du gabarit avec leur pastille d’état (transitions rendues)', async () => {
     renderScreen()
-    expect(await screen.findByText('Mémoire technique')).toBeInTheDocument()
+    expect((await ligneP('memoire')).getByText('Mémoire technique')).toBeInTheDocument()
     // à produire / généré / à jour : les 3 transitions rendues par statusAo.
     expect(screen.getByText('À jour')).toBeInTheDocument()
     expect(screen.getByText('Généré')).toBeInTheDocument()
@@ -81,7 +96,7 @@ describe('DossierPage (AOF174)', () => {
 
   it('ne liste AUCUNE pièce de visibilité interne ou directeur', async () => {
     renderScreen()
-    await screen.findByText('Mémoire technique')
+    await ligneP('memoire')
     expect(screen.queryByText('Coût de revient')).not.toBeInTheDocument()
     expect(screen.queryByText('Note interne')).not.toBeInTheDocument()
     expect(document.querySelectorAll('[data-ao-piece]')).toHaveLength(4)
@@ -96,7 +111,7 @@ describe('DossierPage (AOF174)', () => {
 
   it('la péremption se déclenche SANS rafraîchir la page, avec le MOTIF et un bandeau « régénérer »', async () => {
     renderScreen()
-    await screen.findByText('Mémoire technique')
+    await ligneP('memoire')
     expect(screen.queryByText('Périmé')).not.toBeInTheDocument()
 
     // Le serveur a périmé la pièce ; l'écran resonde (aucun remontage).

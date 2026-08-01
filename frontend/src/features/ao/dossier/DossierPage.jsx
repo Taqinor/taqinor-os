@@ -81,7 +81,13 @@ export default function DossierPage({
 
   const { data: dossier, loading, error, refetch } = useResource(
     () => aoApi.dossiers.get(id), id,
-    { errorMessage: 'Impossible de charger le dossier de soumission.' },
+    {
+      // `aoApi.dossiers.get` est un appel axios brut : `select` déballe la
+      // réponse (convention ARC45 de `useResource`). Sans lui, `dossier`
+      // valait `{ data: {...} }` et l'écran restait vide.
+      select: (res) => res?.data ?? null,
+      errorMessage: 'Impossible de charger le dossier de soumission.',
+    },
   )
 
   // Le serveur périme, l'écran le VOIT : resondage sensible à la visibilité de
