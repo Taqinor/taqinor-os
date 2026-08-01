@@ -198,7 +198,7 @@ export async function openAoDemoAffaire(page) {
     affaire,
     `l'affaire de démonstration « ${AO_DEMO_MARKER} » est listée sur ${AO_ROUTES.affaires}`
     + ' (manage.py seed_ao_demo --confirmer)',
-  ).toBeVisible({ timeout: 30_000 })
+  ).toBeVisible()
   await affaire.click()
 }
 

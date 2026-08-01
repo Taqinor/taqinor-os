@@ -11,6 +11,11 @@ test.use({ viewport: { width: 375, height: 667 } })
 
 test('AOF190: aucun débordement horizontal sur les écrans AO à 375 px', async ({ page }) => {
   await openAoDemoAffaire(page)
+  // Mesurer PENDANT la navigation SPA relèverait une largeur transitoire :
+  // on laisse la fiche se peindre d'abord (même précaution que E16 dans
+  // `mobile.spec.js`, qui attend `networkidle` avant sa mesure).
+  await expect(page).toHaveURL(/\/ao\/affaires\/\d+/)
+  await page.waitForLoadState('networkidle').catch(() => {})
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - window.innerWidth,
   )
