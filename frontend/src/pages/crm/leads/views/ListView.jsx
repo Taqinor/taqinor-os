@@ -249,6 +249,13 @@ const ListRow = memo(function ListRow({
           />
         </td>
       )}
+      {/* APX5 — LA VUE LA PLUS DENSE : UNE ligne par lead. La cellule Lead
+          empilait jusqu'à 3 lignes (nom / société / icônes de contact, +1 si
+          archivé) → 33-65 px par ligne. Elle devient une rangée : nom · société
+          en clair, icônes tel/WhatsApp poussées à droite, « Archivé » condensé
+          en pastille (le détail « par X le Y » vit dans son infobulle, il n'est
+          pas perdu). La hauteur de ligne, elle, est pilotée par le MÊME système
+          de densité que le reste de l'ERP (`--row-py`, index.css). */}
       <td data-label="Lead" className="lv-sticky-name">
         <div className="lv-lead-cell">
           {/* LB21 — le nom devient un vrai élément interactif sémantique
@@ -264,14 +271,27 @@ const ListRow = memo(function ListRow({
             {perdu && <span className="lv-badge-perdu">Perdu</span>}
           </button>
           {lead.societe ? (
-            <span className="lv-lead-societe">{lead.societe}</span>
+            <span className="lv-lead-societe" title={lead.societe}>{lead.societe}</span>
           ) : null}
+          {/* VX243(a) — confiance au niveau du DOSSIER : QUI a archivé et QUAND
+              (archived_by/at étaient capturés serveur mais jamais rendus).
+              APX5 : condensé en pastille, le détail passe dans l'infobulle —
+              l'information reste, elle ne prend plus une ligne entière. */}
+          {lead.is_archived && (lead.archived_by_nom || lead.archived_at) && (
+            <span
+              className="lv-lead-archived-by"
+              title={`Archivé${lead.archived_by_nom ? ` par ${lead.archived_by_nom}` : ''}${lead.archived_at ? ` le ${formatDate(lead.archived_at)}` : ''}`}
+            >
+              Archivé
+            </span>
+          )}
           {/* QX25 — repli tap-to-call mobile : la colonne Téléphone
               (m-hide) disparaît sous 768px, ces icônes compactes
-              restent visibles dans la cellule Lead (jamais masquée). */}
+              restent visibles dans la cellule Lead (jamais masquée).
+              APX5 : poussées à DROITE de la cellule (marge auto par la
+              feuille de style), plus empilées sous le nom. */}
           {(telHref(lead.telephone) || waHref(lead.whatsapp)) && (
-            <span className="lv-lead-contact" style={{ display: 'inline-flex', gap: '8px', marginTop: '2px' }}
-                  onClick={(e) => e.stopPropagation()}>
+            <span className="lv-lead-contact" onClick={(e) => e.stopPropagation()}>
               {telHref(lead.telephone) && (
                 <a href={telHref(lead.telephone)} title="Appeler"
                    aria-label={`Appeler ${fullName(lead) || 'ce lead'}`}
@@ -287,15 +307,6 @@ const ListRow = memo(function ListRow({
                   <MessageCircle className="size-3.5" aria-hidden="true" />
                 </ExternalLink>
               )}
-            </span>
-          )}
-          {/* VX243(a) — confiance au niveau du DOSSIER : une ligne archivée
-              montre QUI l'a archivée et QUAND (archived_by/at étaient capturés
-              serveur mais jamais rendus). Silencieux sur un lead vivant. */}
-          {lead.is_archived && (lead.archived_by_nom || lead.archived_at) && (
-            <span className="lv-lead-archived-by text-xs text-muted-foreground">
-              Archivé{lead.archived_by_nom ? ` par ${lead.archived_by_nom}` : ''}
-              {lead.archived_at ? ` le ${formatDate(lead.archived_at)}` : ''}
             </span>
           )}
         </div>

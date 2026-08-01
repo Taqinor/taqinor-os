@@ -9292,3 +9292,93 @@ textarea.form-control {
   background: var(--background);
   overflow: hidden;
 }
+
+/* ===========================================================================
+   APX5 — LA VUE LISTE ASSUME « JE VOIS TOUT » : UNE ligne par lead.
+   ---------------------------------------------------------------------------
+   Etat verifie : `.lv-table td` padding 8/12 CODE EN DUR (:5279) et cellule
+   Lead empilee sur 3 lignes (nom / societe / icones de contact, +1 si
+   archive) -> 33-65 px par ligne selon le lead. Consequence : la hauteur de
+   ligne dependait du CONTENU, donc deux lignes voisines n'avaient pas la meme
+   hauteur et le tableau paraissait bancal en plus d'etre peu dense.
+
+   FIX EN DEUX TEMPS :
+   1. La cellule Lead devient UNE rangee (nom · societe · pastille archive ·
+      icones tel/WhatsApp poussees a droite) -> une seule hauteur possible.
+   2. Le padding vertical passe sur `--row-py`, le MEME jeton de densite que
+      le reste de l'ERP (design/tokens.css F20, pilote par `data-density` que
+      `theme.js` pose sur <html>). La liste obeit donc a la preference de
+      densite de l'utilisateur comme tous les autres tableaux, au lieu d'un
+      8 px fige.
+
+   FRONTIERES : on branche `--row-py` sur `.lv-table td/th` UNIQUEMENT.
+   `.data-table` (le moteur ui/datatable) appartient a APX34 — le contredire
+   ici creerait deux sources de densite pour un meme tableau. `densityOverride`
+   (NTUX17, densite PAR VUE) n'est pas touche : ce bloc ne fait que consommer
+   le jeton que ce systeme resout deja.
+   =========================================================================== */
+.lv-table td {
+  padding: var(--row-py) 12px;
+}
+.lv-table th {
+  padding: var(--row-py) 12px;
+}
+
+/* La cellule Lead : de la colonne a la RANGEE. */
+.lv-lead-cell {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+}
+.lv-lead-cell .lv-lead-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lv-lead-cell .lv-lead-societe {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lv-lead-cell .lv-lead-societe::before {
+  content: '\00b7';
+  margin-right: 0.3rem;
+}
+/* « Archive » : pastille au lieu d'une 4e ligne — le detail « par X le Y »
+   reste accessible dans l'infobulle (VX243a preserve, juste condense). */
+.lv-lead-archived-by {
+  flex: 0 0 auto;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+/* Icones tel/WhatsApp (QX25) : a DROITE de la cellule, plus sous le nom. */
+.lv-lead-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* Le repli MOBILE (cartes empilees, `.lv-lead-cell { align-items: flex-end }`
+   plus haut) garde sa mise en colonne : sur telephone le tableau n'est plus un
+   tableau, la contrainte « une ligne » n'y a pas de sens. */
+@media (max-width: 768px) {
+  .lv-lead-cell {
+    flex-direction: column;
+    flex-wrap: wrap;
+  }
+  .lv-lead-cell .lv-lead-societe::before { content: none; margin-right: 0; }
+  .lv-lead-contact { margin-left: 0; }
+}
