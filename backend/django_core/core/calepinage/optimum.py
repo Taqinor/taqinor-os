@@ -24,6 +24,7 @@ que « meilleur plan trouvé + borne supérieure » — le mot est structurellem
 hors de portée, pas laissé à la discipline du rédacteur.
 """
 
+from bisect import bisect_left
 from dataclasses import dataclass
 from typing import Tuple
 
@@ -82,23 +83,31 @@ def _pas_apres(politique, parametres, kit, y0):
     return politique.pas_apres_rangee(kit, y0)
 
 
-def optimiser(surface, parametres, obstacles=(), zones=(), politique=None):
-    """DP exact au pas de recherche, sur TOUS les kits déclarés.
+def optimiser(surface, parametres, obstacles=(), zones=(), politique=None,
+              positions=None):
+    """DP exact, sur TOUS les kits déclarés.
+
+    ``positions`` : jeu de positions de rangée candidates. Par DÉFAUT le
+    balayage au pas de recherche (1 cm), le domaine d'exactitude de référence.
+    ``perf.positions_utiles`` sait rendre un jeu STRICTEMENT ÉQUIVALENT et bien
+    plus petit (points de rupture fermés par chaînage) — les comptes sont
+    identiques, c'est le coût qui change, et un test le vérifie.
 
     Rend le meilleur plan ET sa preuve. Aucune heuristique, aucun repli
     silencieux : si l'entrée sort du domaine d'exactitude, c'est l'appelant
     (``pose_uniforme``) qui déclare une autre méthode.
     """
     ymin, ymax = surface.bornes_transversales_utiles()
-    grille = positions_grille(ymin, ymax, parametres.pas_recherche_m)
-    n = len(grille)
     pas = parametres.pas_recherche_m
+    if positions is None:
+        positions = positions_grille(ymin, ymax, pas)
+    grille = tuple(positions)
+    n = len(grille)
 
     def index_de(y):
-        if y >= ymax - TOL_LONGUEUR_M:
-            return n
-        brut = int((y - ymin) / pas + 1.0 - 1e-9)
-        return max(0, min(n, brut))
+        """Première position candidate ``>= y`` (bissection — jamais un calcul
+        d'indice arithmétique, qui n'a de sens que sur une grille régulière)."""
+        return bisect_left(grille, y - TOL_LONGUEUR_M)
 
     meilleur = [0] * (n + 1)
     choix = [None] * (n + 1)
