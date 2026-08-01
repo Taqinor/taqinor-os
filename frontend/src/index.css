@@ -1056,16 +1056,21 @@ button:active, [role="button"]:active, a.btn:active,
   flex-wrap: wrap;
 }
 .pageheader-heading { min-width: 0; }
+/* APX32 — LE bug transverse : ces deux couleurs étaient des hex NUS, sans
+   aucun override sombre. `ListShell` consomme ce PageHeader et compte 56
+   écrans : sur le fond nuit (oklch 15,7 %), le titre #0f172a et le sous-titre
+   #64748b étaient quasi invisibles. Tokens sémantiques désormais — clair ET
+   sombre suivent le thème, comme partout ailleurs. */
 .pageheader-title {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--foreground);
   margin: 0;
 }
 .pageheader-subtitle {
   margin: 0.2rem 0 0;
   font-size: 0.85rem;
-  color: #64748b;
+  color: var(--muted-foreground);
 }
 .pageheader-actions {
   display: flex;

@@ -113,6 +113,7 @@ function RetenuesGarantiePanel() {
         <Button size="sm" onClick={() => setDialog({ row: null })}><Plus /> Nouvelle RG</Button>
       </div>
       <ListShell
+        hideHeader
         title="Retenues de garantie"
         columns={columns}
         rows={list.rows}
@@ -186,6 +187,7 @@ function CautionsBancairesPanel() {
         <Button size="sm" onClick={() => setDialog({ row: null })}><Plus /> Nouvelle caution</Button>
       </div>
       <ListShell
+        hideHeader
         title="Cautions bancaires"
         columns={columns}
         rows={list.rows}
@@ -300,6 +302,7 @@ function AvancementPanel() {
         </Button>
       </div>
       <ListShell
+        hideHeader
         title={sub === 'contrats' ? 'Contrats à l’avancement' : 'Travaux en cours'}
         columns={columns}
         rows={list.rows}
@@ -367,6 +370,7 @@ function CommissionPayoutPanel() {
 
   return (
     <ListShell
+      hideHeader
       title="Campagnes de versement des commissions"
       columns={columns}
       rows={list.rows}
@@ -410,6 +414,7 @@ function CompensationsPanel() {
 
   return (
     <ListShell
+      hideHeader
       title="Compensations AR/AP"
       columns={columns}
       rows={list.rows}
@@ -525,6 +530,7 @@ function PisteAuditPanel() {
         </Card>
       )}
       <ListShell
+        hideHeader
         title="Maillons scellés"
         columns={columns}
         rows={list.rows}

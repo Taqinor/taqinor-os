@@ -71,7 +71,9 @@ export default function BalanceAgeePage() {
 
   return (
     <div className="ui-root page">
-      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
+      {/* APX32 — la marge était un style INLINE en rem codé à la main : classe
+          utilitaire (échelle d'espacement du thème) comme partout ailleurs. */}
+      <div className="page-header mb-5">
         <h2>Balance âgée</h2>
         <div className="flex flex-wrap items-center gap-2">
           {!loading && rows.length > 0 && (

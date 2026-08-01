@@ -534,6 +534,7 @@ export default function RapprochementsPage() {
       </div>
 
       <ListShell
+        hideHeader
         title={TABS.find((t) => t.value === tab).label}
         columns={columns}
         rows={list.rows}

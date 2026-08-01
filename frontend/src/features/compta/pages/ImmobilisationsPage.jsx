@@ -154,6 +154,7 @@ export default function ImmobilisationsPage() {
       </div>
 
       <ListShell
+        hideHeader
         title="Registre des immobilisations"
         columns={columns}
         rows={list.rows}

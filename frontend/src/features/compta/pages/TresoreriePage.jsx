@@ -384,6 +384,7 @@ export default function TresoreriePage() {
         <PositionPanel />
       ) : (
         <ListShell
+          hideHeader
           title={TABS.find((t) => t.value === tab).label}
           columns={COLUMNS[tab]}
           rows={list.rows}
