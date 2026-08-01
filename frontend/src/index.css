@@ -1214,9 +1214,18 @@ button:active, [role="button"]:active, a.btn:active,
   font-size: 0.875rem;
 }
 
+/* APX34 — les tables CSS legacy obéissent ENFIN à la préférence de densité.
+   `useDensity()` pilotait déjà les 56 écrans DataTable (32/40 px) et la densité
+   par vue est livrée (NTUX17) : le SEUL trou restant était ici, sur les ~66
+   écrans qui rendent encore une `<table className="data-table">` à la main —
+   basculer la préférence ne les changeait pas d'un pixel. Le padding vertical
+   dérive maintenant de `--row-py`, le token défini par `[data-density]` dans
+   tokens.css et qui n'avait JAMAIS eu de consommateur. Le padding horizontal
+   est inchangé (la densité ne joue que sur la hauteur de ligne). */
 .data-table th {
   background: var(--muted);
-  padding: 10px 14px;
+  padding-block: var(--row-py);
+  padding-inline: 14px;
   text-align: left;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1230,7 +1239,10 @@ button:active, [role="button"]:active, a.btn:active,
 }
 
 .data-table td {
-  padding: 11px 14px;
+  /* APX34 — même dérivation que `th` ci-dessus (les deux divergeaient de 1 px
+     sans raison : 10 vs 11). */
+  padding-block: var(--row-py);
+  padding-inline: 14px;
   border-bottom: 1px solid var(--border);
   color: var(--foreground);
   vertical-align: middle;
@@ -2673,6 +2685,12 @@ textarea.form-control {
     margin-bottom: 10px;
     padding: 8px 12px;
   }
+  /* APX34 — le MOBILE reste toujours au CONFORT : la préférence « compacte »
+     ne doit jamais rétrécir une cible tactile. La pile de cartes garde son
+     rythme propre (padding fixe ci-dessous, inchangé) et `--row-py` est réarmé
+     à la valeur confortable pour toute règle qui en dériverait sous ce
+     point de rupture. */
+  .data-table { --row-py: 0.625rem; }
   .data-table td {
     display: flex;
     justify-content: space-between;
