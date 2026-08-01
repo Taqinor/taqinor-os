@@ -1039,11 +1039,18 @@ export default function LeadsPage() {
           n'en rend plus) : il porte le nom accessible « + Nouveau lead »
           attendu par gotoLeads/MB6 (aria-label passé en prop, spread après
           le aria-label={label} interne → il gagne). */}
-      <FloatingActionButton
-        label="Nouveau lead"
-        aria-label="+ Nouveau lead"
-        icon={<Plus className="size-5" aria-hidden="true" />}
-        onClick={openNew} />
+      {/* Rendu UNIQUEMENT en mobile, symétriquement au bouton d'en-tête
+          (`{!isMobile && …}` plus haut) : sans cette garde les DEUX coexistent
+          dans le DOM pendant la fenêtre d'hydratation, ce qui donne deux
+          contrôles portant le MÊME nom accessible « + Nouveau lead » — un
+          défaut d'accessibilité, et la cause du échec e2e MB6 (strict mode). */}
+      {isMobile && (
+        <FloatingActionButton
+          label="Nouveau lead"
+          aria-label="+ Nouveau lead"
+          icon={<Plus className="size-5" aria-hidden="true" />}
+          onClick={openNew} />
+      )}
     </div>
   )
 }

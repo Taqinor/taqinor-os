@@ -20,11 +20,16 @@ beforeAll(() => {
 })
 
 // Forme de réponse agrégée mockée : les 4 sources company-scoped (XMKT30).
+// Les dates sont RELATIVES au mois courant : le calendrier s'ouvre sur le mois
+// d'aujourd'hui, donc des dates en dur (ex. juillet 2026) font échouer le test
+// à chaque changement de mois — ce qui est arrivé le 2026-08-01.
+const _now = new Date()
+const _jour = (n) => ymd(new Date(_now.getFullYear(), _now.getMonth(), n))
 const MOCK_EVENTS = [
-  { id: 'c1', obj_id: 1, source: 'campagne', date: '2026-07-10', title: 'Campagne rentrée', channel: 'email', editable: true, link_type: 'campagne' },
-  { id: 's1', obj_id: 2, source: 'etape_sequence', date: '2026-07-10', title: 'Étape J+3', channel: 'sms', editable: false, link_type: 'etape_sequence' },
-  { id: 'e1', obj_id: 3, source: 'evenement', date: '2026-07-15', title: 'Salon Casablanca', channel: 'autre', editable: false, link_type: 'evenement' },
-  { id: 'r1', obj_id: 4, source: 'relance', date: '2026-07-15', title: 'Relance devis #42', channel: 'appel', editable: false, link_type: 'relance' },
+  { id: 'c1', obj_id: 1, source: 'campagne', date: _jour(10), title: 'Campagne rentrée', channel: 'email', editable: true, link_type: 'campagne' },
+  { id: 's1', obj_id: 2, source: 'etape_sequence', date: _jour(10), title: 'Étape J+3', channel: 'sms', editable: false, link_type: 'etape_sequence' },
+  { id: 'e1', obj_id: 3, source: 'evenement', date: _jour(15), title: 'Salon Casablanca', channel: 'autre', editable: false, link_type: 'evenement' },
+  { id: 'r1', obj_id: 4, source: 'relance', date: _jour(15), title: 'Relance devis #42', channel: 'appel', editable: false, link_type: 'relance' },
 ]
 
 describe('monthGrid / ymd (miroir CalendarPage.jsx)', () => {
@@ -56,9 +61,9 @@ describe('groupByDay / filterEvents (agrégation des 4 sources + filtre canal)',
 
   it('groupByDay regroupe les 4 sources par jour sans filtre', () => {
     const byDay = groupByDay(MOCK_EVENTS, { hiddenSources: new Set(), channel: '' })
-    expect(Object.keys(byDay).sort()).toEqual(['2026-07-10', '2026-07-15'])
-    expect(byDay['2026-07-10']).toHaveLength(2)
-    expect(byDay['2026-07-15']).toHaveLength(2)
+    expect(Object.keys(byDay).sort()).toEqual([_jour(10), _jour(15)].sort())
+    expect(byDay[_jour(10)]).toHaveLength(2)
+    expect(byDay[_jour(15)]).toHaveLength(2)
   })
 
   it('groupByDay masque une source désactivée (toggle canal/source)', () => {
@@ -172,10 +177,10 @@ describe('MarketingCalendarScreen (smoke + interactions)', () => {
     const campaignEl = eventEl.find(el => el.textContent.includes('Campagne rentrée'))
     expect(campaignEl).toBeTruthy()
     fireEvent.dragStart(campaignEl)
-    const targetDay = screen.getByTestId('mkt-cal-day-2026-07-20')
+    const targetDay = screen.getByTestId(`mkt-cal-day-${_jour(20)}`)
     fireEvent.dragOver(targetDay)
     fireEvent.drop(targetDay)
     await waitFor(() => expect(comptaApi.calendrierMarketing.reschedule)
-      .toHaveBeenCalledWith({ source: 'campagne', id: 1, date: '2026-07-20' }))
+      .toHaveBeenCalledWith({ source: 'campagne', id: 1, date: _jour(20) }))
   })
 })
