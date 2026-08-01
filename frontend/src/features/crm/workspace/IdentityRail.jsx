@@ -466,6 +466,10 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           disabled={!devisReady}
           onClick={() => onAction('open-devis', 'auto')}
           title={devisReady ? 'Créer le devis automatique (affiché ici)' : devisNotReadyMsg}
+          // Nom accessible CANONIQUE — le libellé visuel est raccourci pour le
+          // rail de 288px, mais le contrat e2e/lecteur d'écran reste
+          // « Devis automatique » (classe de bug #29 : dérive de nom accessible).
+          aria-label="Devis automatique"
         >
           ⚡ Devis auto
         </Button>

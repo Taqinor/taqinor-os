@@ -53,7 +53,6 @@ export default function PortailClientFactures() {
     // synchrone, ce qui déclenche un rendu en cascade
     // (react-hooks/set-state-in-effect). Comportement inchangé.
     Promise.resolve().then(charger)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage
   }, [])
 
   const payer = async (facture) => {
