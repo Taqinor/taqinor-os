@@ -33,14 +33,25 @@ class AppelOffreSerializer(serializers.ModelSerializer):
     # d'un dossier historique).
     reference = serializers.CharField(
         max_length=120, required=False, allow_blank=True)
+    # AOF12 — le projet complet. ``date_fin_validite_offre`` est DÉRIVÉE
+    # (jamais stockée) ; ``mode_passation_display`` sert l'affichage FR.
+    mode_passation_display = serializers.CharField(
+        source='get_mode_passation_display', read_only=True)
+    date_fin_validite_offre = serializers.DateField(read_only=True)
 
     class Meta:
         model = AppelOffre
         fields = [
             'id', 'reference', 'reference_acheteur', 'objet', 'acheteur',
-            'type_marche', 'type_marche_display', 'lot', 'date_limite',
-            'montant_estime', 'caution_provisoire', 'statut', 'statut_display',
-            'lead_id', 'date_creation',
+            'maitre_ouvrage', 'soumissionnaire', 'groupement',
+            'groupement_membres', 'site_adresse', 'site_gps_lat',
+            'site_gps_lng', 'mode_passation', 'mode_passation_display',
+            'reference_cps', 'type_marche', 'type_marche_display', 'lot',
+            'date_limite', 'date_ouverture_plis', 'validite_offre_jours',
+            'date_fin_validite_offre', 'delai_execution_jours',
+            'nombre_exemplaires', 'engagement_modules', 'montant_estime',
+            'montant_offre_ht', 'montant_offre_ttc', 'caution_provisoire',
+            'statut', 'statut_display', 'lead_id', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 

@@ -56,8 +56,26 @@ class AppelOffreViewSet(AoBaseViewSet):
     serializer_class = AppelOffreSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'reference_acheteur', 'objet', 'acheteur',
+                     'maitre_ouvrage', 'soumissionnaire', 'reference_cps',
                      'lot']
-    ordering_fields = ['date_creation', 'date_limite', 'statut']
+    ordering_fields = ['date_creation', 'date_limite', 'date_ouverture_plis',
+                       'statut']
+    #: AOF12 — filtres d'égalité exposés en paramètres de requête.
+    #: ``DjangoFilterBackend`` n'est PAS monté dans ce projet : le filtrage se
+    #: fait explicitement ici (mêmes noms que les champs du modèle).
+    FILTRES_EXACTS = ('statut', 'type_marche', 'mode_passation', 'groupement')
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        for champ in self.FILTRES_EXACTS:
+            valeur = params.get(champ)
+            if valeur in (None, ''):
+                continue
+            if champ == 'groupement':
+                valeur = valeur.lower() in ('1', 'true', 'vrai', 'oui')
+            qs = qs.filter(**{champ: valeur})
+        return qs
 
     def perform_create(self, serializer):
         """AOF5 — référence auto ``AO-YYYYMM-0001`` quand elle n'est pas fournie.

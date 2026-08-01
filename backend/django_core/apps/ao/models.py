@@ -26,8 +26,10 @@ purement ADDITIVE (deux horodatages par table) et ne contient AUCUN
 ``date_creation`` (historique) est CONSERVÉ tel quel : il porte des données
 existantes et reste le champ d'ordonnancement.
 """
+from datetime import timedelta
 from decimal import Decimal
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from core.models import TenantModel
@@ -55,9 +57,18 @@ class AppelOffre(TenantModel):
         PERDU = 'perdu', 'Perdu'
         ABANDONNE = 'abandonne', 'Abandonné'
 
+    class ModePassation(models.TextChoices):
+        """AOF12 — mode de passation annoncé par l'avis (marchés publics)."""
+        APPEL_OUVERT = 'appel_ouvert', "Appel d'offres ouvert"
+        APPEL_RESTREINT = 'appel_restreint', "Appel d'offres restreint"
+        CONCOURS = 'concours', 'Concours'
+        NEGOCIE = 'negocie', 'Marché négocié'
+        CONSULTATION = 'consultation', 'Consultation / bon de commande'
+        AUTRE = 'autre', 'Autre'
+
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
         related_name='appels_offres',
         verbose_name='Société',
     )
@@ -95,6 +106,71 @@ class AppelOffre(TenantModel):
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
+    # ── AOF12 — le projet d'appel d'offres au complet ──────────────────────
+    #
+    # AUCUN champ de coût, de marge ou de bénéfice ici : l'économie de l'AO
+    # vit dans des tables SÉPARÉES derrière ``ao_rentabilite_voir`` (AOF2).
+    # Un test d'introspection (``test_projet_ao``) échoue si un tel champ
+    # apparaît un jour sur ce modèle — la « simulation de rentabilité » remise
+    # au maître d'ouvrage est une pièce CLIENT distincte, sans aucun coût.
+
+    #: Le maître d'ouvrage (celui POUR qui les travaux sont faits) n'est pas
+    #: toujours l'acheteur qui publie l'avis (centrale d'achat, délégataire).
+    maitre_ouvrage = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name="Maître d'ouvrage")
+    #: Raison sociale sous laquelle le dossier est DÉPOSÉ — peut différer de la
+    #: société de l'ERP (cas réel : dépôt sous une entité partenaire).
+    soumissionnaire = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Soumissionnaire (raison sociale déposante)')
+    groupement = models.BooleanField(
+        default=False, verbose_name='Dépôt en groupement')
+    groupement_membres = models.TextField(
+        blank=True, default='',
+        verbose_name='Membres du groupement (un par ligne)')
+
+    #: Site des travaux — adresse + point GPS (bornes géographiques validées).
+    site_adresse = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Adresse du site')
+    site_gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        validators=[MinValueValidator(-90), MaxValueValidator(90)],
+        verbose_name='Latitude du site')
+    site_gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        validators=[MinValueValidator(-180), MaxValueValidator(180)],
+        verbose_name='Longitude du site')
+
+    mode_passation = models.CharField(
+        max_length=20, choices=ModePassation.choices,
+        default=ModePassation.APPEL_OUVERT, verbose_name='Mode de passation')
+    reference_cps = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Référence du CPS')
+
+    date_ouverture_plis = models.DateField(
+        null=True, blank=True, verbose_name="Date d'ouverture des plis")
+    #: Durée de validité de l'offre annoncée par le règlement (75 j au Maroc).
+    validite_offre_jours = models.PositiveIntegerField(
+        default=75, verbose_name="Validité de l'offre (jours)")
+    delai_execution_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Délai d'exécution (jours)")
+    #: Nombre d'exemplaires du dossier à remettre (2 par défaut).
+    nombre_exemplaires = models.PositiveSmallIntegerField(
+        default=2, verbose_name="Nombre d'exemplaires à remettre")
+    #: Engagement GLOBAL du projet, en modules posés (somme des bâtiments).
+    engagement_modules = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Engagement global (modules)')
+
+    #: Montants de NOTRE offre, dérivés du bordereau (jamais un coût).
+    montant_offre_ht = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0.00'),
+        verbose_name="Montant de l'offre HT (MAD)")
+    montant_offre_ttc = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0.00'),
+        verbose_name="Montant de l'offre TTC (MAD)")
+
     class Meta:
         verbose_name = "Appel d'offres"
         verbose_name_plural = "Appels d'offres"
@@ -110,6 +186,19 @@ class AppelOffre(TenantModel):
     def __str__(self):
         return f'{self.reference} — {self.objet}'
 
+    @property
+    def date_fin_validite_offre(self):
+        """AOF12 — fin de validité de l'offre, DÉRIVÉE (jamais stockée).
+
+        Court à partir de l'ouverture des plis quand elle est connue, sinon de
+        la date limite de remise. ``None`` si aucune des deux n'est saisie —
+        une date inventée serait pire qu'une absence de date.
+        """
+        base = self.date_ouverture_plis or self.date_limite
+        if base is None or not self.validite_offre_jours:
+            return None
+        return base + timedelta(days=self.validite_offre_jours)
+
 
 # ── FG223 — Bordereau des prix (BOQ) d'appel d'offres ──────────────────────
 
@@ -121,13 +210,13 @@ class BordereauPrix(TenantModel):
     """
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
         related_name='bordereaux_prix',
         verbose_name='Société',
     )
     appel_offre = models.ForeignKey(
         AppelOffre,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: piece fille d'un AO : aucune existence hors de son appel d'offres
         related_name='bordereaux',
         verbose_name="Appel d'offres",
     )
@@ -157,13 +246,13 @@ class LigneBordereau(TenantModel):
     """Une ligne chiffrée d'un BOQ (FG223)."""
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
         related_name='lignes_bordereau',
         verbose_name='Société',
     )
     bordereau = models.ForeignKey(
         BordereauPrix,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: ligne de bordereau : aucune existence hors de son bordereau
         related_name='lignes',
         verbose_name='Bordereau',
     )
@@ -214,13 +303,13 @@ class CautionSoumission(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
         related_name='cautions_soumission',
         verbose_name='Société',
     )
     appel_offre = models.ForeignKey(
         AppelOffre,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: piece fille d'un AO : aucune existence hors de son appel d'offres
         related_name='cautions',
         verbose_name="Appel d'offres",
     )
@@ -265,13 +354,13 @@ class DossierSoumission(TenantModel):
     """
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
         related_name='dossiers_soumission',
         verbose_name='Société',
     )
     appel_offre = models.OneToOneField(
         AppelOffre,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: piece fille d'un AO : aucune existence hors de son appel d'offres
         related_name='dossier',
         verbose_name="Appel d'offres",
     )
@@ -300,13 +389,13 @@ class PieceSoumission(TenantModel):
     """Une pièce administrative d'un dossier de soumission (FG225)."""
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
         related_name='pieces_soumission',
         verbose_name='Société',
     )
     dossier = models.ForeignKey(
         DossierSoumission,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: piece administrative : aucune existence hors de son dossier
         related_name='pieces',
         verbose_name='Dossier',
     )
@@ -348,13 +437,13 @@ class EcheanceAO(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
         related_name='echeances_ao',
         verbose_name='Société',
     )
     appel_offre = models.ForeignKey(
         AppelOffre,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: piece fille d'un AO : aucune existence hors de son appel d'offres
         related_name='echeances',
         verbose_name="Appel d'offres",
     )
@@ -396,13 +485,13 @@ class ResultatAO(TenantModel):
 
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
         related_name='resultats_ao',
         verbose_name='Société',
     )
     appel_offre = models.OneToOneField(
         AppelOffre,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: piece fille d'un AO : aucune existence hors de son appel d'offres
         related_name='resultat',
         verbose_name="Appel d'offres",
     )
