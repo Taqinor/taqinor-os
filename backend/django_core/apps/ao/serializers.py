@@ -18,6 +18,7 @@ from .models import (
     ExigenceCPS,
     LigneBordereau,
     PieceSoumission,
+    PlanSource,
     ResultatAO,
     ToitureAO,
 )
@@ -102,6 +103,46 @@ class ToitureAOSerializer(serializers.ModelSerializer):
             'forme', 'contour_local_m', 'rayon_ext_m', 'largeur_m')}}
         sonde = ToitureAO(**donnees)
         sonde.clean()
+        return attrs
+
+
+class PlanSourceSerializer(serializers.ModelSerializer):
+    """AOF20 — les 3 portes d'entrée sont UN CHAMP (``origine``)."""
+    origine_display = serializers.CharField(
+        source='get_origine_display', read_only=True)
+    etat_display = serializers.CharField(
+        source='get_etat_display', read_only=True)
+    #: DÉRIVÉE des deux points de calibration — jamais saisie.
+    echelle_m_par_px = serializers.DecimalField(
+        max_digits=14, decimal_places=8, read_only=True)
+    distance_calibration_px = serializers.FloatField(
+        read_only=True, allow_null=True)
+
+    class Meta:
+        model = PlanSource
+        fields = [
+            'id', 'toiture', 'batiment', 'origine', 'origine_display',
+            'type_fichier', 'attachment', 'page', 'calib_point_a_px',
+            'calib_point_b_px', 'calib_distance_reelle_m',
+            'distance_calibration_px', 'echelle_m_par_px', 'origine_px',
+            'rotation_deg', 'miroir_x', 'miroir_y', 'empreinte_sha256',
+            'etat', 'etat_display', 'fourni_par',
+        ]
+        read_only_fields = ['empreinte_sha256']
+
+    def validate(self, attrs):
+        instance = self.instance or PlanSource()
+        donnees = {
+            'toiture_id': attrs.get(
+                'toiture', getattr(instance, 'toiture', None)),
+            'batiment_id': attrs.get(
+                'batiment', getattr(instance, 'batiment', None)),
+        }
+        if donnees['toiture_id'] is None and donnees['batiment_id'] is None:
+            raise serializers.ValidationError({'toiture': (
+                'Un support de plan se rattache à une toiture ou, à défaut, à '
+                'un bâtiment : sans rattachement, sa provenance est perdue.'
+            )})
         return attrs
 
 

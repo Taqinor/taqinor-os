@@ -36,6 +36,7 @@ from .models import (
     ExigenceCPS,
     LigneBordereau,
     PieceSoumission,
+    PlanSource,
     ResultatAO,
     ToitureAO,
 )
@@ -49,6 +50,7 @@ from .serializers import (
     ExigenceCPSSerializer,
     LigneBordereauSerializer,
     PieceSoumissionSerializer,
+    PlanSourceSerializer,
     ResultatAOSerializer,
     ToitureAOSerializer,
 )
@@ -229,6 +231,38 @@ class ToitureAOViewSet(AoBaseViewSet):
     def _recalculer(toiture):
         toiture.recalculer_surface()
         toiture.save(update_fields=['surface_m2', 'updated_at'])
+
+
+class PlanSourceViewSet(AoBaseViewSet):
+    """Supports de plan d'une toiture (AOF20) — les 3 portes d'entrée.
+
+    Un même toit peut cumuler PLUSIEURS supports : un plan fourni calibré ET
+    des tracés manuels additifs. L'échelle est TOUJOURS recalculée côté serveur
+    à chaque écriture d'un point de calibration.
+    """
+    queryset = PlanSource.objects.all()
+    serializer_class = PlanSourceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'etat']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'batiment', 'origine', 'etat', 'type_fichier'))
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        self._recalibrer(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        self._recalibrer(serializer.instance)
+
+    @staticmethod
+    def _recalibrer(plan_source):
+        plan_source.recalculer_echelle()
+        plan_source.save(update_fields=[
+            'echelle_m_par_px', 'etat', 'updated_at'])
 
 
 # ── AOF14 — Exigences du CPS ───────────────────────────────────────────────

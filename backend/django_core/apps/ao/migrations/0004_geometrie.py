@@ -1,16 +1,21 @@
-# AOF18 — GÉOMÉTRIE du projet : ``ao_batiment`` + ``ao_toiture``.
+# AOF18 + AOF20 — GÉOMÉTRIE du projet : ``ao_batiment``, ``ao_toiture`` et
+# ``ao_plan_source``.
 #
-# Deux tables NEUVES (aucun impact sur les tables ``compta_*`` héritées). La
-# toiture stocke son enveloppe en repère LOCAL MÉTRIQUE (``contour_local_m``,
-# liste de ``[x, y]`` en mètres) : le nom du champ porte l'unité ET l'ordre des
-# axes, précisément pour rendre DÉTECTABLE l'inversion lat/lng constatée entre
-# l'outil de tracé (``[lng, lat]``) et le lead CRM (``[lat, lng]``). La
-# conversion depuis/vers les degrés vit à la FRONTIÈRE (AOF19).
+# Trois tables NEUVES (aucun impact sur les tables ``compta_*`` héritées).
 #
-# ``surface_m2`` est une valeur CALCULÉE persistée (recalculée à chaque
-# écriture) et non une saisie ; les agrégats du projet (surface totale,
-# engagement par bâtiment) restent des propriétés calculées, jamais des
-# colonnes recopiées.
+#   * AOF18 — la toiture stocke son enveloppe en repère LOCAL MÉTRIQUE
+#     (``contour_local_m``, liste de ``[x, y]`` en mètres) : le nom du champ
+#     porte l'unité ET l'ordre des axes, précisément pour rendre DÉTECTABLE
+#     l'inversion lat/lng constatée entre l'outil de tracé (``[lng, lat]``) et
+#     le lead CRM (``[lat, lng]``). La conversion vit à la frontière (AOF19).
+#     ``surface_m2`` est une valeur CALCULÉE persistée, jamais une saisie ; les
+#     agrégats du projet restent des propriétés, jamais des colonnes recopiées.
+#   * AOF20 — ``PlanSource`` : les TROIS portes d'entrée du plan de toiture
+#     (plan fourni / tracé manuel / reprise de carte) sont UN CHAMP
+#     (``origine``), pas trois chemins de données. Le fichier passe par
+#     ``records.Attachment`` (FK nullable) — JAMAIS un ``FileField`` (garde
+#     ARC26). Plusieurs supports sont CUMULABLES sur une même toiture : c'est
+#     ce qui rend naturel le cas « plan fourni MAIS à compléter ».
 
 import django.db.models.deletion
 from decimal import Decimal
@@ -22,6 +27,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('ao', '0003_projet_ao'),
         ('authentication', '0026_ntmob6_customuser_mobile_home_route'),
+        ('records', '0013_vx210_snooze_trigger_event'),
     ]
 
     operations = [
@@ -76,6 +82,38 @@ class Migration(migrations.Migration):
                 'ordering': ['batiment', 'code_document', 'id'],
             },
         ),
+        migrations.CreateModel(
+            name='PlanSource',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('origine', models.CharField(choices=[('plan_fourni', 'Plan fourni (PDF/DXF/image)'), ('trace_manuel', 'Tracé manuel'), ('carte', 'Reprise depuis une carte')], default='plan_fourni', max_length=14, verbose_name="Porte d'entrée")),
+                ('type_fichier', models.CharField(choices=[('pdf', 'PDF'), ('dxf', 'DXF'), ('image', 'Image'), ('aucun', 'Aucun fichier')], default='aucun', max_length=8, verbose_name='Type de fichier')),
+                ('page', models.PositiveIntegerField(default=1, verbose_name='Page')),
+                ('calib_point_a_px', models.JSONField(blank=True, default=list, verbose_name='Point A [x, y] en pixels')),
+                ('calib_point_b_px', models.JSONField(blank=True, default=list, verbose_name='Point B [x, y] en pixels')),
+                ('calib_distance_reelle_m', models.DecimalField(blank=True, decimal_places=3, max_digits=10, null=True, verbose_name='Distance réelle A→B (m)')),
+                ('echelle_m_par_px', models.DecimalField(blank=True, decimal_places=8, max_digits=14, null=True, verbose_name='Échelle (m/px)')),
+                ('origine_px', models.JSONField(blank=True, default=list, verbose_name='Origine du repère [x, y] en pixels')),
+                ('rotation_deg', models.DecimalField(decimal_places=2, default=Decimal('0.00'), max_digits=6, verbose_name='Rotation (°)')),
+                ('miroir_x', models.BooleanField(default=False, verbose_name='Miroir X')),
+                ('miroir_y', models.BooleanField(default=False, verbose_name='Miroir Y')),
+                ('empreinte_sha256', models.CharField(blank=True, default='', max_length=64, verbose_name='Empreinte SHA-256 du fichier')),
+                ('etat', models.CharField(choices=[('brut', 'Brut (non calibré)'), ('calibre', 'Calibré'), ('vectorise', 'Vectorisé')], default='brut', max_length=10, verbose_name='État')),
+                ('fourni_par', models.CharField(blank=True, default='', max_length=255, verbose_name='Fourni par')),
+                ('attachment', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='plans_source_ao', to='records.attachment', verbose_name='Fichier (MinIO)')),
+                ('batiment', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='plans_source', to='ao.batimentao', verbose_name='Bâtiment')),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='plans_source_ao', to='authentication.company', verbose_name='Société')),
+                ('toiture', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='plans_source', to='ao.toitureao', verbose_name='Toiture')),
+            ],
+            options={
+                'verbose_name': 'Support de plan (AO)',
+                'verbose_name_plural': 'Supports de plan (AO)',
+                'db_table': 'ao_plan_source',
+                'ordering': ['toiture', 'batiment', 'id'],
+            },
+        ),
         migrations.AddIndex(
             model_name='batimentao',
             index=models.Index(fields=['company', 'appel_offre'], name='ao_batiment_company_974dc7_idx'),
@@ -87,5 +125,13 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name='toitureao',
             index=models.Index(fields=['company', 'batiment'], name='ao_toiture_company_128213_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='plansource',
+            index=models.Index(fields=['company', 'toiture'], name='ao_plan_sou_company_4981b3_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='plansource',
+            index=models.Index(fields=['company', 'empreinte_sha256'], name='ao_plan_sou_company_77f0d6_idx'),
         ),
     ]

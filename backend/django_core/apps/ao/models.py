@@ -26,6 +26,7 @@ purement ADDITIVE (deux horodatages par table) et ne contient AUCUN
 ``date_creation`` (historique) est CONSERVÉ tel quel : il porte des données
 existantes et reste le champ d'ordonnancement.
 """
+import math
 from datetime import timedelta
 from decimal import Decimal
 
@@ -635,6 +636,158 @@ class ToitureAO(TenantModel):
         self.surface_m2 = Decimal(
             f'{aire_polygone_m2(self.contour_local_m):.3f}')
         return self.surface_m2
+
+
+# ── AOF20 — Les 3 portes d'entrée sont UN CHAMP, pas 3 chemins de données ───
+
+class PlanSource(TenantModel):
+    """Un support de tracé rattaché à une toiture (AOF20).
+
+    Les TROIS portes d'entrée du plan de toiture — plan fourni (PDF/DXF/image
+    calibré à 2 points), tracé manuel, reprise depuis un lecteur de cartes —
+    sont un CHAMP (``origine``), pas trois chemins de données : elles
+    produisent toutes le même ``ToitureAO`` et ouvrent le même éditeur. Trois
+    chemins signifieraient trois éditeurs à maintenir.
+
+    Séparer ``PlanSource`` de ``ToitureAO`` est ce qui rend naturel le cas
+    « plan fourni MAIS à compléter » : une même toiture porte un plan calibré
+    ET des tracés manuels additifs, cumulables.
+
+    La pièce elle-même passe par ``records.Attachment`` (MinIO) — JAMAIS un
+    ``FileField`` : le garde ARC26 gèle ``apps/ao/models.py`` à l'unique
+    ``PieceSoumission.fichier`` historique.
+    """
+
+    class Origine(models.TextChoices):
+        PLAN_FOURNI = 'plan_fourni', 'Plan fourni (PDF/DXF/image)'
+        TRACE_MANUEL = 'trace_manuel', 'Tracé manuel'
+        CARTE = 'carte', 'Reprise depuis une carte'
+
+    class TypeFichier(models.TextChoices):
+        PDF = 'pdf', 'PDF'
+        DXF = 'dxf', 'DXF'
+        IMAGE = 'image', 'Image'
+        AUCUN = 'aucun', 'Aucun fichier'
+
+    class Etat(models.TextChoices):
+        BRUT = 'brut', 'Brut (non calibré)'
+        CALIBRE = 'calibre', 'Calibré'
+        VECTORISE = 'vectorise', 'Vectorisé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les plans suivent la societe
+        related_name='plans_source_ao',
+        verbose_name='Société',
+    )
+    toiture = models.ForeignKey(
+        ToitureAO,
+        on_delete=models.CASCADE,  # on_delete: support fille d'une toiture : aucune existence hors d'elle
+        related_name='plans_source', null=True, blank=True,
+        verbose_name='Toiture',
+    )
+    batiment = models.ForeignKey(
+        BatimentAO,
+        on_delete=models.CASCADE,  # on_delete: support fille d'un batiment : aucune existence hors de lui
+        related_name='plans_source', null=True, blank=True,
+        verbose_name='Bâtiment',
+    )
+    origine = models.CharField(
+        max_length=14, choices=Origine.choices, default=Origine.PLAN_FOURNI,
+        verbose_name="Porte d'entrée")
+    type_fichier = models.CharField(
+        max_length=8, choices=TypeFichier.choices, default=TypeFichier.AUCUN,
+        verbose_name='Type de fichier')
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='plans_source_ao', verbose_name='Fichier (MinIO)')
+    page = models.PositiveIntegerField(default=1, verbose_name='Page')
+
+    # ── Calibration à DEUX points ──────────────────────────────────────────
+    #: Les noms portent l'UNITÉ : ``_px`` = pixels de l'image/planche.
+    calib_point_a_px = models.JSONField(
+        default=list, blank=True, verbose_name='Point A [x, y] en pixels')
+    calib_point_b_px = models.JSONField(
+        default=list, blank=True, verbose_name='Point B [x, y] en pixels')
+    calib_distance_reelle_m = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Distance réelle A→B (m)')
+    #: DÉRIVÉE de la calibration — jamais saisie.
+    echelle_m_par_px = models.DecimalField(
+        max_digits=14, decimal_places=8, null=True, blank=True,
+        verbose_name='Échelle (m/px)')
+
+    # ── Transformation vers le repère local de la toiture ──────────────────
+    origine_px = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Origine du repère [x, y] en pixels')
+    rotation_deg = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Rotation (°)')
+    miroir_x = models.BooleanField(default=False, verbose_name='Miroir X')
+    miroir_y = models.BooleanField(default=False, verbose_name='Miroir Y')
+
+    empreinte_sha256 = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte SHA-256 du fichier')
+    etat = models.CharField(
+        max_length=10, choices=Etat.choices, default=Etat.BRUT,
+        verbose_name='État')
+    fourni_par = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Fourni par')
+
+    class Meta:
+        verbose_name = 'Support de plan (AO)'
+        verbose_name_plural = 'Supports de plan (AO)'
+        db_table = 'ao_plan_source'
+        ordering = ['toiture', 'batiment', 'id']
+        indexes = [
+            models.Index(fields=['company', 'toiture']),
+            models.Index(fields=['company', 'empreinte_sha256']),
+        ]
+
+    def __str__(self):
+        return f'{self.get_origine_display()} — {self.get_etat_display()}'
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.toiture_id is None and self.batiment_id is None:
+            raise ValidationError({'toiture': (
+                'Un support de plan se rattache à une toiture ou, à défaut, à '
+                'un bâtiment : sans rattachement, sa provenance est perdue.'
+            )})
+
+    @property
+    def distance_calibration_px(self):
+        """Distance A→B en pixels, ou ``None`` si la calibration est partielle."""
+        a, b = self.calib_point_a_px or [], self.calib_point_b_px or []
+        if len(a) < 2 or len(b) < 2:
+            return None
+        return math.hypot(float(b[0]) - float(a[0]),
+                          float(b[1]) - float(a[1]))
+
+    def recalculer_echelle(self):
+        """(Re)calcule ``echelle_m_par_px`` depuis les deux points (AOF20).
+
+        Toute modification d'un point de calibration doit repasser par ici :
+        une échelle figée après un déplacement de point ferait fausser TOUTES
+        les cotes déduites du plan. Renvoie l'échelle (ou ``None``) et met
+        l'état à jour.
+        """
+        distance_px = self.distance_calibration_px
+        if not distance_px or self.calib_distance_reelle_m in (None, ''):
+            self.echelle_m_par_px = None
+            if self.etat == self.Etat.CALIBRE:
+                self.etat = self.Etat.BRUT
+            return None
+        echelle = Decimal(self.calib_distance_reelle_m) / Decimal(
+            f'{distance_px:.8f}')
+        self.echelle_m_par_px = echelle.quantize(Decimal('0.00000001'))
+        if self.etat == self.Etat.BRUT:
+            self.etat = self.Etat.CALIBRE
+        return self.echelle_m_par_px
 
 
 # ── FG223 — Bordereau des prix (BOQ) d'appel d'offres ──────────────────────

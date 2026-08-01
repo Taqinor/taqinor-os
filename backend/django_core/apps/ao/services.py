@@ -8,6 +8,7 @@ dans ``apps.compta.services`` malgré la sortie ODX11 des modèles).
 ``ao`` ne lit crm/ventes QUE via leurs selectors/services ou par référence
 opaque — jamais leurs ``models`` (le lead reste un ``lead_id`` opaque).
 """
+import hashlib
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -17,7 +18,7 @@ from django.utils import timezone
 from core import events
 from core.numbering import create_with_reference
 
-from .models import AppelOffre, EcheanceAO, ResultatAO
+from .models import AppelOffre, EcheanceAO, PlanSource, ResultatAO
 
 #: AOF5 — préfixe de NOTRE numérotation d'appels d'offres (``AO-YYYYMM-0001``).
 #: La référence de l'acheteur vit dans ``AppelOffre.reference_acheteur`` et
@@ -398,6 +399,87 @@ def cautions_expirant_avant_ouverture(appel_offre):
         caution for caution in appel_offre.cautions.all()
         if caution.expire_avant_ouverture
     ]
+
+
+# ── AOF20 — Supports de plan : upload, calibration, empreinte ──────────────
+
+def empreinte_fichier(contenu):
+    """SHA-256 hexadécimal d'un contenu binaire (AOF20)."""
+    return hashlib.sha256(contenu).hexdigest()
+
+
+def attacher_fichier_plan_source(plan_source, fichier, *, user=None):
+    """Attache un fichier à un ``PlanSource`` VIA ``records.Attachment``.
+
+    Le binaire ne touche JAMAIS ``apps/ao`` : il part dans le stockage objet
+    par ``records.storage.store_attachment`` (clé préfixée par société), et
+    seul l'``Attachment`` est référencé — **jamais un** ``FileField`` (garde
+    ARC26).
+
+    L'empreinte SHA-256 sert à reconnaître un même plan reçu deux fois
+    (erratum, re-téléchargement du dossier) : le second ``PlanSource``
+    RÉUTILISE l'``Attachment`` déjà stocké de la même société au lieu d'en
+    téléverser un doublon.
+
+    Raises:
+        ValidationError: format refusé ou fichier trop volumineux (message du
+        stockage, en français).
+    """
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.records.models import Attachment
+    from apps.records.storage import store_attachment
+
+    contenu = fichier.read()
+    fichier.seek(0)
+    empreinte = empreinte_fichier(contenu)
+
+    jumeau = PlanSource.objects.filter(
+        company=plan_source.company, empreinte_sha256=empreinte,
+        attachment__isnull=False,
+    ).exclude(pk=plan_source.pk).first()
+    if jumeau is not None:
+        attachement = jumeau.attachment
+    else:
+        infos, erreur = store_attachment(
+            fichier, company=plan_source.company)
+        if erreur:
+            raise ValidationError({'fichier': erreur})
+        attachement = Attachment.objects.create(
+            company=plan_source.company,
+            content_type=ContentType.objects.get_for_model(PlanSource),
+            object_id=plan_source.pk,
+            uploaded_by=user, **infos)
+
+    plan_source.attachment = attachement
+    plan_source.empreinte_sha256 = empreinte
+    plan_source.save(update_fields=[
+        'attachment', 'empreinte_sha256', 'updated_at'])
+    return plan_source
+
+
+def recalibrer_plan_source(plan_source, *, point_a_px=None, point_b_px=None,
+                           distance_reelle_m=None):
+    """Met à jour la calibration ET recalcule l'échelle (AOF20).
+
+    C'est le SEUL chemin de modification d'un point de calibration : une
+    échelle laissée figée après un déplacement de point fausserait toutes les
+    cotes déduites du plan, silencieusement.
+    """
+    champs = []
+    if point_a_px is not None:
+        plan_source.calib_point_a_px = list(point_a_px)
+        champs.append('calib_point_a_px')
+    if point_b_px is not None:
+        plan_source.calib_point_b_px = list(point_b_px)
+        champs.append('calib_point_b_px')
+    if distance_reelle_m is not None:
+        plan_source.calib_distance_reelle_m = Decimal(str(distance_reelle_m))
+        champs.append('calib_distance_reelle_m')
+    plan_source.recalculer_echelle()
+    champs += ['echelle_m_par_px', 'etat', 'updated_at']
+    plan_source.save(update_fields=champs)
+    return plan_source
 
 
 # ── AOF17 — Lien CRM, sans couplage ────────────────────────────────────────
