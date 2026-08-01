@@ -554,6 +554,83 @@ function LeadCard({
               />
             )}
           </span>
+
+          {/* ── APX7 — ACTIONS RAPIDES, SUR LA LIGNE DU MONTANT.
+              Elles vivaient dans la zone révélée : au TOUCHER (`hover:none`)
+              cette zone est permanente, ce qui ajoutait ~36 px par carte et ne
+              laissait que ~3 cartes sur un 390×844. Elles remontent ici, sur
+              L2 : au toucher la ligne du montant DEVIENT la rangée d'actions
+              44×44 (téléphone ET tablette — jamais un seuil de largeur : c'est
+              `hover:none` qui décide, donc l'iPad WebKit hérite exactement de
+              l'anatomie du téléphone, VX68) ; en pointeur fin elles restent
+              révélées au survol / au focus. UN SEUL exemplaire des liens
+              tel/WhatsApp dans le DOM (contrat) — jamais un doublon tactile.
+              Le RESTE (texte d'action, type, canal/ville, readiness, tags en
+              clair) reste derrière le menu ••• et la fiche. ── */}
+          <div className="kb-quick" aria-label="Actions rapides">
+            {/* LB17 — PII masquée (le serializer nullifie tel/whatsapp sans la
+                permission client_pii_voir, `lead.pii_masked`) : à la place des
+                actions d'appel, un cadenas tooltipé — plus jamais un blanc muet. */}
+            {lead.pii_masked ? (
+              <span
+                className="kb-quick-lock"
+                title="Coordonnées masquées (permission PII)"
+                aria-label="Coordonnées masquées (permission PII)"
+              >
+                <Lock size={12} aria-hidden="true" />
+              </span>
+            ) : (
+              <>
+                {tel && (
+                  <a
+                    className="kb-quick-btn kb-quick-tel"
+                    href={tel}
+                    title="Appeler"
+                    aria-label={`Appeler ${nomComplet}`}
+                    onClick={(e) => { e.stopPropagation(); armCallNudge() }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                  >
+                    ☎
+                  </a>
+                )}
+                {wa && (
+                  <ExternalLink
+                    className="kb-quick-btn kb-quick-wa"
+                    href={wa}
+                    title="Ouvrir WhatsApp"
+                    aria-label={`Ouvrir WhatsApp pour ${nomComplet}`}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                  >
+                    💬
+                  </ExternalLink>
+                )}
+              </>
+            )}
+            {/* ⚡ Devis auto : révélé au survol en pointeur fin, mais MASQUÉ au
+                toucher — il double l'item « Devis auto » du menu •••, et la
+                ligne tactile ne garde que ce qui n'existe nulle part ailleurs
+                (appeler / WhatsApp). */}
+            <button
+              type="button"
+              className="kb-flash kb-quick-btn"
+              disabled={!lead.devis_auto?.pret}
+              title={lead.devis_auto?.pret
+                ? (roofReady ? 'Devis auto — repère toit disponible' : 'Devis auto')
+                : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
+              aria-label="Devis auto"
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (onAutoQuote) onAutoQuote(lead)
+              }}
+            >
+              <Zap size={14} aria-hidden="true" />
+            </button>
+          </div>
         </div>
 
         {/* ── L3 / PIED (APX2) : tags en POINTS (3 + n) · pill d'âge · avatar 16.
@@ -740,69 +817,6 @@ function LeadCard({
           )}
         </div>
 
-        {/* ── Actions rapides révélées au survol (permanentes sur (hover:none))
-            — tel / WhatsApp / ⚡ Devis auto. Les hrefs tel/wa restent toujours
-            présents dans le DOM (contrat). LB15 ajoute ici le menu •••. ── */}
-        <div className="kb-quick" aria-label="Actions rapides">
-          {/* LB17 — PII masquée (le serializer nullifie tel/whatsapp sans la
-              permission client_pii_voir, `lead.pii_masked`) : à la place des
-              actions d'appel, un cadenas tooltipé — plus jamais un blanc muet. */}
-          {lead.pii_masked ? (
-            <span
-              className="kb-quick-lock"
-              title="Coordonnées masquées (permission PII)"
-              aria-label="Coordonnées masquées (permission PII)"
-            >
-              <Lock size={12} aria-hidden="true" />
-            </span>
-          ) : (
-            <>
-              {tel && (
-                <a
-                  className="kb-quick-btn kb-quick-tel"
-                  href={tel}
-                  title="Appeler"
-                  aria-label={`Appeler ${nomComplet}`}
-                  onClick={(e) => { e.stopPropagation(); armCallNudge() }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
-                >
-                  ☎
-                </a>
-              )}
-              {wa && (
-                <ExternalLink
-                  className="kb-quick-btn kb-quick-wa"
-                  href={wa}
-                  title="Ouvrir WhatsApp"
-                  aria-label={`Ouvrir WhatsApp pour ${nomComplet}`}
-                  onClick={(e) => e.stopPropagation()}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onTouchStart={(e) => e.stopPropagation()}
-                >
-                  💬
-                </ExternalLink>
-              )}
-            </>
-          )}
-          <button
-            type="button"
-            className="kb-flash kb-quick-btn"
-            disabled={!lead.devis_auto?.pret}
-            title={lead.devis_auto?.pret
-              ? (roofReady ? 'Devis auto — repère toit disponible' : 'Devis auto')
-              : (lead.devis_auto?.message ?? 'Devis auto indisponible')}
-            aria-label="Devis auto"
-            onPointerDown={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (onAutoQuote) onAutoQuote(lead)
-            }}
-          >
-            <Zap size={14} aria-hidden="true" />
-          </button>
-        </div>
         </div>{/* /kb-card-reveal (APX2) */}
 
         {/* VX87 — nudge post-appel : proposé au retour dans l'onglet après un

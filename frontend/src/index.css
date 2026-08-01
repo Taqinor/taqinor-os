@@ -9452,3 +9452,86 @@ textarea.form-control {
 @media (hover: hover) {
   .lp-page[data-view] .kb-act-seg:hover { filter: brightness(1.15); }
 }
+
+/* ===========================================================================
+   APX7 — TELEPHONE ET TABLETTE : 5+ leads par etape, `hover:none` servi a
+   TOUTE largeur.
+   ---------------------------------------------------------------------------
+   Etat verifie : `.kb-quick` etait PERMANENT en `@media (hover: none)` (+36 px
+   par carte) et vivait dans la zone revelee, elle-meme depliee en permanence
+   au toucher depuis APX2 -> ~3 cartes sur un 390x844.
+
+   ANATOMIE TACTILE : la rangee d'actions remonte SUR LA LIGNE DU MONTANT (L2).
+   Au toucher, cette ligne DEVIENT la rangee d'actions 44x44 (appeler /
+   WhatsApp), tout le reste (texte d'action, chip de type, canal/ville,
+   readiness, tags en clair) reste derriere le menu ••• et la fiche. La carte
+   passe de ~125 px a ~90 px.
+
+   LA REGLE DURE : c'est `hover:none` qui decide, JAMAIS une largeur d'ecran.
+   Un iPad (projet Playwright `tablet`, WebKit `hover:none`) est large mais n'a
+   pas de survol : il herite donc exactement de l'anatomie du telephone, et ses
+   actions restent atteignables SANS survol (VX68). Aucune media query de
+   largeur dans ce bloc — c'est verifie par test.
+
+   INCHANGES : le snap LB42, la bande de swipe inerte LB17, le drag/clavier
+   LB12 et le contrat DOM e2e. Un SEUL exemplaire des liens tel/WhatsApp dans
+   le DOM — l'anatomie tactile ne duplique rien.
+   =========================================================================== */
+
+/* --- Pointeur FIN : les actions restent revelees (survol / focus). Dans une
+       rangee flex, `max-height: 0` ne suffit pas — il faut aussi annuler la
+       LARGEUR, sinon les boutons pousseraient le montant au repos. --- */
+@media (hover: hover) {
+  .kb-card--lead .kb-card-value > .kb-quick {
+    max-width: 0;
+    margin-top: 0;
+  }
+  .kb-card--lead:hover .kb-card-value > .kb-quick,
+  .kb-card--lead:focus-within .kb-card-value > .kb-quick {
+    max-width: none;
+    margin-top: 0;
+    margin-left: 0.35rem;
+  }
+}
+
+/* --- Pointeur GROSSIER (telephone ET tablette) : la ligne du montant EST la
+       rangee d'actions. --- */
+@media (hover: none) {
+  /* 1. La zone revelee se REFERME au toucher (APX2 la laissait ouverte, faute
+        de survol) : c'est elle qui coutait les ~36 px par carte. Le budget de
+        signaux de L2 garde l'etat lisible ; le menu ••• (permanent au toucher)
+        garde les actions. */
+  .kb-card--lead > .kb-card-reveal {
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+    overflow: hidden;
+  }
+  /* Le focus clavier DEPLIE toujours reellement — une tablette avec clavier
+     externe reste pilotable, et aucun controle n'est « tabbable invisible ». */
+  .kb-card--lead:focus-within > .kb-card-reveal {
+    max-height: 14rem;
+    margin-top: 0.28rem;
+    opacity: 1;
+    overflow: visible;
+  }
+  /* 2. Les actions vivent sur L2, collees a droite, en cibles 44x44. */
+  .kb-card--lead .kb-card-value > .kb-quick {
+    max-height: none;
+    max-width: none;
+    overflow: visible;
+    opacity: 1;
+    margin-top: 0;
+    margin-left: 0.35rem;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+  .kb-card--lead .kb-card-value {
+    min-height: 44px;
+  }
+  /* 3. « Devis auto » double l'item du menu ••• : la ligne tactile ne garde que
+        ce qui n'existe nulle part ailleurs (appeler / WhatsApp). */
+  .kb-card--lead .kb-card-value > .kb-quick > .kb-flash {
+    display: none;
+  }
+}

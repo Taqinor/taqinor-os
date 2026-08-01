@@ -103,7 +103,12 @@ test('APX2 : tout ce qui quitte le repos est CONDENSÉ dans la zone révélée, 
   assert.match(revealed, /className="kb-foot-meta"/)           // canal · ville
   assert.match(revealed, /className="kb-readi"/)               // readiness
   assert.match(revealed, /className="kb-tags"/)                // libellés de tags en clair
-  assert.match(revealed, /className="kb-quick"/)               // actions rapides
+  // APX7 — les actions rapides ont quitté la zone révélée pour la ligne du
+  // montant (L2) : au TOUCHER, la zone révélée est fermée, et c'est justement
+  // là que tel/WhatsApp doivent rester atteignables sans survol (VX68).
+  const valueStart = SRC.indexOf('<div className="kb-card-value">')
+  const valueEnd = SRC.indexOf('{/* ── L3 / PIED', valueStart)
+  assert.match(SRC.slice(valueStart, valueEnd), /className="kb-quick"/)
 })
 
 test('APX2 : la zone révélée est le DERNIER enfant en flux (elle ne pousse rien sous le curseur)', () => {
