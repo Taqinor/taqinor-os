@@ -34,6 +34,7 @@ from io import BytesIO
 
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
+from matplotlib.image import imread
 from matplotlib.patches import FancyArrowPatch, Polygon, Rectangle
 
 
@@ -294,6 +295,21 @@ class Feuille:
                          zorder=zorder)
         figure.add_artist(rect)
         return rect
+
+    def image_figure(self, octets_png, x, y, largeur, hauteur, zorder=52):
+        """Pose une image (OCTETS PNG) en coordonnées FIGURE — logo de cartouche.
+
+        L'image entre par des OCTETS, jamais par un chemin : c'est ce qui
+        permet à une marque blanche de fournir son logo depuis la base sans
+        qu'aucun chemin de poste de travail ne touche le rendu.
+        """
+        figure = self._exiger_ouverte()
+        tableau = imread(BytesIO(bytes(octets_png)), format="png")
+        axe = figure.add_axes((x, y, largeur, hauteur), zorder=zorder)
+        axe.imshow(tableau, aspect="equal")
+        axe.axis("off")
+        axe.set_frame_on(False)
+        return axe
 
     def fleche_double(self, p1, p2, couleur, lw=0.8, echelle=7, zorder=21):
         fleche = FancyArrowPatch(p1, p2, arrowstyle="<|-|>",
