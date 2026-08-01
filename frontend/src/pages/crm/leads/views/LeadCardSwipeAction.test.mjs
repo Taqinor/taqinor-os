@@ -109,17 +109,22 @@ test('verrou d\'axe : l\'axe est décidé UNE fois par geste (ref), plus ré-év
   // Un geste rejeté sort IMMÉDIATEMENT du touchmove : rien ne peut le réarmer.
   assert.match(SRC, /if \(axis\.current === 'rejected'\) return/)
   // Le verrou n'est (re)posé qu'au touchstart.
-  assert.match(SRC, /axis\.current = 'pending'\s*\n\s*setSnapping\(false\)/)
+  assert.match(SRC, /axis\.current = 'pending'\s*\n\s*setPhase\('idle'\)/)
 })
 
 test('verrou d\'axe : la transition 150ms n\'habille QUE l\'aimantation (jamais la traîne du doigt)', () => {
   // Pendant que le doigt traîne la carte, transform 1:1 sans transition —
-  // sinon la carte arrive 150ms derrière le pouce.
-  assert.match(SRC, /transition: swipe\.snapping \? 'transform 150ms ease' : 'none'/)
-  // `snapping` n'est armé qu'au relâchement d'un geste armé, et à la
+  // sinon la carte arrive 150ms derrière le pouce. Hors geste tactile
+  // ('idle'), la valeur d'origine est conservée : le desktop (aucun
+  // touchevent, donc jamais autre chose que 'idle') est inchangé, transitions
+  // de survol `.kb-card` comprises.
+  assert.match(SRC, /transition: swipe\.phase === 'dragging' \? 'none' : 'transform 150ms ease'/)
+  // 'dragging' n'est posé QUE sur un move déjà armé (jamais sur du bruit).
+  assert.match(SRC, /if \(axis\.current !== 'armed'\) return\s*\n\s*\}\s*\n\s*setPhase\('dragging'\)/)
+  // 'snapping' n'est posé qu'au relâchement d'un geste armé, et à la
   // fermeture après un tap sur une action révélée.
-  assert.match(SRC, /if \(axis\.current === 'armed'\) \{[\s\S]{0,140}?setSnapping\(true\)/)
-  assert.match(SRC, /const close = \(\) => \{ setSnapping\(true\); setOffset\(0\) \}/)
+  assert.match(SRC, /if \(axis\.current === 'armed'\) \{[\s\S]{0,140}?setPhase\('snapping'\)/)
+  assert.match(SRC, /const close = \(\) => \{ setPhase\('snapping'\); setOffset\(0\) \}/)
 })
 
 test('VX43 : les cibles Appeler/WhatsApp révélées font ≥44px (thumb-reachable)', () => {

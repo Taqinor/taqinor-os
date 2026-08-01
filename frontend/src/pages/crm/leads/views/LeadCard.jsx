@@ -95,11 +95,14 @@ function resolveSwipeSnap(offset, maxReveal = SWIPE_REVEAL_PX) {
     la carte. `enabled=false` (pas de tel/wa) désactive tout le geste. */
 function useSwipeReveal(enabled) {
   const [offset, setOffset] = useState(0)
-  // `snapping` : la transition 150ms n'existe QUE pendant l'aimantation (au
-  // relâchement, ou à la fermeture après un tap sur une action). Pendant la
-  // traîne du doigt elle est absente — sinon la carte arrive 150ms derrière
-  // le pouce, exactement la sensation de « traîne » constatée au toucher.
-  const [snapping, setSnapping] = useState(false)
+  // `phase` — 'idle' (rien en cours) | 'dragging' (le doigt traîne la carte)
+  // | 'snapping' (aimantation au relâchement, ou fermeture après un tap sur
+  // une action révélée). La transition transform n'est RETIRÉE que pendant
+  // 'dragging' : sinon la carte arrive 150ms derrière le pouce, exactement la
+  // sensation de traîne constatée au toucher. 'idle' garde la valeur d'origine
+  // — le desktop, qui ne produit aucun touchevent et reste donc toujours en
+  // 'idle', est rigoureusement inchangé (y compris ses transitions de survol).
+  const [phase, setPhase] = useState('idle')
   const start = useRef(null)
   // Verrou d'axe du geste EN COURS : 'pending' | 'rejected' | 'armed'.
   const axis = useRef('pending')
@@ -110,7 +113,7 @@ function useSwipeReveal(enabled) {
     if (!t) return
     start.current = { x: t.clientX, y: t.clientY }
     axis.current = 'pending'
-    setSnapping(false)
+    setPhase('idle')
   }
   const onTouchMove = (e) => {
     if (!enabled || !start.current) return
@@ -125,6 +128,7 @@ function useSwipeReveal(enabled) {
       axis.current = resolveAxisLock(deltaX, deltaY)
       if (axis.current !== 'armed') return
     }
+    setPhase('dragging')
     setOffset(clampSwipeOffset(deltaX))
   }
   const onTouchEnd = () => {
@@ -132,15 +136,15 @@ function useSwipeReveal(enabled) {
     start.current = null
     if (axis.current === 'armed') {
       axis.current = 'pending'
-      setSnapping(true)
+      setPhase('snapping')
       setOffset((prev) => resolveSwipeSnap(prev))
     }
   }
-  const close = () => { setSnapping(true); setOffset(0) }
+  const close = () => { setPhase('snapping'); setOffset(0) }
 
   return {
     offset,
-    snapping,
+    phase,
     close,
     handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchEnd },
   }
@@ -439,7 +443,9 @@ function LeadCard({
           transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined,
           // Verrou d'axe : pendant la traîne du doigt, transform 1:1 SANS
           // transition ; la transition n'habille QUE l'aimantation finale.
-          transition: swipe.snapping ? 'transform 150ms ease' : 'none',
+          // Hors geste tactile ('idle'), la valeur d'origine est conservée —
+          // le desktop ne change pas d'un pixel.
+          transition: swipe.phase === 'dragging' ? 'none' : 'transform 150ms ease',
           position: 'relative',
         }}
       >
