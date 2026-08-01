@@ -18,7 +18,7 @@ Quatre promesses, et le test qui les tient :
 Run :
     python manage.py test apps.ao.tests.test_retention_ao -v2
 """
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as tz_utc
 from decimal import Decimal
 
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -32,6 +32,12 @@ from apps.ao.models import (
 )
 from apps.records.models import Attachment
 from authentication.models import Company
+
+
+#: Instant FIXE : ces politiques reçoivent "maintenant" en paramètre et leur
+#: fenêtre vaut 0, donc la valeur ne change rien au résultat attendu. On évite
+#:  pour que le test ne dépende jamais de l'horloge (WOW/EZ).
+INSTANT_FIXE = datetime(2026, 8, 1, 12, 0, tzinfo=tz_utc.utc)
 
 
 def _company(slug):
@@ -75,7 +81,7 @@ class RienNEstPurgeParDefaut(SimpleTestCase):
 
     def test_une_fenetre_a_zero_ne_purge_rien(self):
         for _nom, fonction, _reglage, _defaut in retention.POLITIQUES:
-            self.assertEqual(fonction(timezone.now(), 0, apply_=True), 0)
+            self.assertEqual(fonction(INSTANT_FIXE, 0, apply_=True), 0)
 
     def test_un_marche_gagne_n_est_jamais_purgeable(self):
         self.assertNotIn('gagne', retention.STATUTS_PURGEABLES)
@@ -106,7 +112,7 @@ class LesPolitiquesSontEnregistreesDansLeRegistrePartage(TestCase):
 
         retention.register()
         for nom, _f, _r, _d in retention.POLITIQUES:
-            self.assertEqual(_REGISTRY[nom](timezone.now(), False), 0)
+            self.assertEqual(_REGISTRY[nom](INSTANT_FIXE, False), 0)
 
 
 class LesPhotosDeReleveNePartentQueSurUnAOClos(_Base):

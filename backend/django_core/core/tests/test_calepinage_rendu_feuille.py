@@ -24,6 +24,8 @@ import threading
 import unittest
 import weakref
 
+from django.test import tag
+
 from core.calepinage.rendu import feuille as F
 
 CHEMIN_MODULE = os.path.abspath(F.__file__)
@@ -97,6 +99,7 @@ def construire_feuille_temoin():
     return f
 
 
+@tag('slow')
 class GeometrieDeCote(unittest.TestCase):
     """Preuve 1 — le port est identique au trait près à ``dessin.dim``."""
 
@@ -148,6 +151,7 @@ class GeometrieDeCote(unittest.TestCase):
             self.assertEqual([t.get_text() for t in f.axe.texts], ["10,00"])
 
 
+@tag('slow')
 class FormatsDeFeuille(unittest.TestCase):
     def test_a3_paysage_par_defaut(self):
         with F.Feuille("T", "s", (0, 1), (0, 1)) as f:
@@ -170,6 +174,7 @@ class FormatsDeFeuille(unittest.TestCase):
             self.assertEqual(f.dpi, 300.0)
 
 
+@tag('slow')
 class SortiesEnOctets(unittest.TestCase):
     """Le rendu retourne des OCTETS — il n'écrit AUCUN fichier."""
 
@@ -199,6 +204,7 @@ class SortiesEnOctets(unittest.TestCase):
             f.png()
 
 
+@tag('slow')
 class AucunEtatGlobal(unittest.TestCase):
     """Preuves 2 et 3 — concurrence et fuite de figures."""
 
@@ -247,6 +253,7 @@ class AucunEtatGlobal(unittest.TestCase):
                           "durée fuirait une figure par planche")
 
 
+@tag('slow')
 class AucunCheminNiEtatDansLeCode(unittest.TestCase):
     """Les trois défauts NOMMÉS des scripts d'origine, interdits par test."""
 
