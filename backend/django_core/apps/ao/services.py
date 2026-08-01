@@ -1119,6 +1119,17 @@ def changer_statut_dossier(dossier, nouveau_statut, *, user=None, motif=''):
         raisons = dossier.raisons_de_non_depot()
         if raisons:
             raise ValidationError({'statut': raisons})
+        # AOF146 — le contrôleur de cohérence croisée est une PORTE : une
+        # passe FRAÎCHE est exécutée ici, et le refus CITE le code de règle
+        # fautif (un rapport qu'on lit après coup n'aurait rien empêché).
+        from .fabrique.coherence import passer_controle
+
+        passe = passer_controle(dossier)
+        if passe['bloquants']:
+            raise ValidationError({'controles': [
+                f'{item["code_regle"]} — {item["message"]}'
+                for item in passe['bloquants']
+            ]})
 
     ancien = dossier.statut
     changer_statut(dossier, nouveau_statut, user=user)

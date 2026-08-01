@@ -2762,6 +2762,13 @@ class PieceDossierAO(TenantModel):
     )
     motif = models.TextField(
         blank=True, default='', verbose_name='Motif / commentaire')
+    #: AOF146 — empreinte du CONTEXTE au moment où l'artefact a été produit.
+    #: Une pièce dont l'empreinte diverge de l'empreinte courante du dossier
+    #: est PÉRIMÉE : c'est le défaut réel du « LISEZ-MOI figé » resté dans le
+    #: dépôt alors que le pack avait été régénéré.
+    empreinte_source = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte du contexte à la production')
 
     class Meta:
         verbose_name = 'Pièce du dossier de dépôt (AO)'
@@ -3620,3 +3627,57 @@ class IdentiteAO(TenantModel):
 
     def __str__(self):
         return f'{self.get_role_display()} — {self.raison_sociale}'
+
+
+# ── AOF146 — Contrôleur de cohérence croisée : une PORTE, pas un rapport ──
+
+class ControleCoherence(TenantModel):
+    """Le RÉSULTAT d'une passe de contrôle de cohérence (AOF146).
+
+    Chaque anomalie est une LIGNE : code de règle, sévérité, message français,
+    objet visé, date. Une passe REMPLACE les lignes de la passe précédente —
+    un contrôle est une photographie d'un état, jamais un journal qui
+    s'allonge.
+
+    Le point capital : ce n'est pas un rapport à lire, c'est une PORTE. La
+    transition ``pret_a_deposer`` est REFUSÉE tant qu'un contrôle bloquant est
+    rouge, et le refus CITE le code de règle fautif.
+    """
+
+    class Severite(models.TextChoices):
+        BLOQUANT = 'bloquant', 'Bloquant'
+        AVERTISSEMENT = 'avertissement', 'Avertissement'
+        INFO = 'info', 'Information'
+
+    dossier = models.ForeignKey(
+        DossierAO,
+        on_delete=models.CASCADE,  # on_delete: controle fils d'un dossier : aucune existence hors de lui
+        related_name='controles',
+        verbose_name='Dossier',
+    )
+    code_regle = models.CharField(max_length=60, verbose_name='Code de règle')
+    severite = models.CharField(
+        max_length=14, choices=Severite.choices,
+        default=Severite.BLOQUANT, verbose_name='Sévérité')
+    message = models.TextField(verbose_name='Message (français)')
+    objet = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Objet visé')
+    #: Empreinte du contexte contrôlé : un contrôle vert ne prouve rien s'il
+    #: décrit un autre état du dossier.
+    empreinte = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte du contexte contrôlé')
+    date_controle = models.DateTimeField(
+        auto_now_add=True, verbose_name='Contrôlé le')
+
+    class Meta:
+        verbose_name = 'Contrôle de cohérence (AO)'
+        verbose_name_plural = 'Contrôles de cohérence (AO)'
+        db_table = 'ao_controle_coherence'
+        ordering = ['dossier', 'severite', 'code_regle', 'id']
+        indexes = [
+            models.Index(fields=['company', 'dossier', 'severite']),
+        ]
+
+    def __str__(self):
+        return f'[{self.severite}] {self.code_regle} — {self.objet}'

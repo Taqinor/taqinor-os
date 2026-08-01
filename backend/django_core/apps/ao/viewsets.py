@@ -147,6 +147,20 @@ class DossierAOViewSet(AoBaseViewSet):
         crees, existants = services.seeder_checklist_partenaire(dossier)
         return Response({'crees': crees, 'deja_presents': existants})
 
+    @action(detail=True, methods=['post'], url_path='controler')
+    def controler(self, request, pk=None):
+        """AOF146 — exécute la passe de cohérence croisée et la persiste."""
+        from .fabrique.coherence import passer_controle
+
+        dossier = self.get_object()
+        passe = passer_controle(dossier)
+        return Response({
+            'empreinte': passe['empreinte'],
+            'bloquant': bool(passe['bloquants']),
+            'bloquants': passe['bloquants'],
+            'avertissements': passe['avertissements'],
+        })
+
     @action(detail=True, methods=['get'], url_path='controle-administratif')
     def controle_administratif(self, request, pk=None):
         """AOF137 — péremption contrôlée à la DATE DE REMISE DES PLIS."""
