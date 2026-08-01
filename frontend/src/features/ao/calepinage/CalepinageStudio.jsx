@@ -1,9 +1,10 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Minus, Maximize2, Plus } from 'lucide-react'
-import aoApi from '../../../api/aoApi'
-import useResource from '../../../hooks/useResource'
-import { Button, EmptyState, Skeleton } from '../../../ui'
+import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
+import { cn } from '../../../lib/cn'
 import PlanLayer from './PlanLayer'
+import VerdictBar from './VerdictBar'
+import useCalepinage from './useCalepinage'
 
 /* ============================================================================
    AOF92 — `CalepinageStudio` : la coquille de l'atelier de calepinage.
@@ -12,12 +13,18 @@ import PlanLayer from './PlanLayer'
    posées, obstacles, zones, dégagements) et le confie à `PlanLayer`, qui le
    pose verbatim. La coquille ne possède que la FENÊTRE d'affichage (zoom,
    recadrage) — jamais une grandeur métier : les tiroirs de paramètres
-   (AOF95-99), la barre de verdict (AOF93), les suggestions (AOF100) et le
-   mode expert (AOF101) se greffent ensuite sur cette même coquille.
+   (AOF95-99), les suggestions (AOF100) et le mode expert (AOF101) se
+   greffent ensuite sur cette même coquille.
 
-   Zoom : la molette et les trois boutons agissent sur le viewBox SVG (aucun
-   re-rendu de la géométrie, aucune position recalculée) — c'est ce qui rend
-   le zoom fluide sur les 314 tables du bâtiment C du dossier FRDISI.
+   AOF93/AOF94 — la barre de verdict est permanente, et TOUT ce qui est dérivé
+   (barre + plan) est estompé pendant un recalcul en vol : on n'affiche jamais
+   un ancien chiffre comme s'il était courant. Les paramètres courants sont
+   initialisés depuis ceux que le SERVEUR renvoie (jamais des valeurs par
+   défaut inventées ici), ce qui évite un recalcul immédiat au montage.
+
+   Zoom : la molette (avec Ctrl/⌘) et les trois boutons agissent sur le viewBox
+   SVG — aucune position n'est recalculée, ce qui rend le zoom fluide sur les
+   314 tables du bâtiment C du dossier FRDISI.
    ========================================================================== */
 
 const ZOOM_MIN = 0.25
@@ -28,24 +35,24 @@ const borne = (valeur) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, valeur))
 
 export default function CalepinageStudio({ calepinageId }) {
   const [zoom, setZoom] = useState(1)
+  const [parametres, setParametres] = useState(null)
 
-  const { data: calepinage, loading, error } = useResource(
-    () => aoApi.calepinages.get(calepinageId),
-    calepinageId,
-    {
-      select: (res) => res.data,
-      enabled: Boolean(calepinageId),
-      errorMessage: 'Impossible de charger le calepinage.',
-    },
-  )
+  const {
+    plan, resultat, parametresServeur, perime, chargementInitial, erreur,
+  } = useCalepinage(calepinageId, parametres)
+
+  // Les paramètres d'atelier viennent du serveur — jamais d'un défaut local.
+  useEffect(() => {
+    if (parametresServeur && parametres === null) setParametres(parametresServeur)
+  }, [parametresServeur, parametres])
 
   const onWheel = useCallback((event) => {
-    if (!event.ctrlKey && !event.metaKey && !event.shiftKey) return
+    if (!event.ctrlKey && !event.metaKey) return
     event.preventDefault()
     setZoom((z) => borne(event.deltaY < 0 ? z * PAS_ZOOM : z / PAS_ZOOM))
   }, [])
 
-  if (loading) {
+  if (chargementInitial) {
     return (
       <div className="flex flex-col gap-3">
         <Skeleton className="h-8 w-48" />
@@ -54,11 +61,9 @@ export default function CalepinageStudio({ calepinageId }) {
     )
   }
 
-  if (error) {
-    return <EmptyState icon={AlertTriangle} title="Calepinage indisponible" description={error} />
+  if (erreur && !plan) {
+    return <EmptyState icon={AlertTriangle} title="Calepinage indisponible" description={erreur} />
   }
-
-  const plan = calepinage?.plan
 
   if (!plan?.cadre) {
     return (
@@ -76,7 +81,7 @@ export default function CalepinageStudio({ calepinageId }) {
         <div>
           <h1 className="font-display text-xl font-semibold tracking-tight">Atelier de calepinage</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {calepinage?.libelle || 'Plan calculé par le moteur — affiché tel quel, aucune position recalculée.'}
+            Plan calculé par le moteur — affiché tel quel, aucune position recalculée.
           </p>
         </div>
         <div className="flex items-center gap-1" role="group" aria-label="Zoom du plan">
@@ -92,8 +97,19 @@ export default function CalepinageStudio({ calepinageId }) {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col" onWheel={onWheel}>
-        <PlanLayer plan={plan} zoom={zoom} titre={calepinage?.libelle || 'Plan de calepinage'} />
+      <VerdictBar resultat={resultat} perime={perime} />
+
+      {erreur && (
+        <p className="text-sm text-destructive" role="alert">{erreur}</p>
+      )}
+
+      <div className="relative flex min-h-0 flex-1 flex-col" onWheel={onWheel}>
+        <div className={cn('flex min-h-0 flex-1 flex-col', perime && 'opacity-40')}>
+          <PlanLayer plan={plan} zoom={zoom} />
+        </div>
+        {perime && (
+          <Badge tone="neutral" className="absolute right-2 top-2">recalcul…</Badge>
+        )}
       </div>
     </div>
   )
