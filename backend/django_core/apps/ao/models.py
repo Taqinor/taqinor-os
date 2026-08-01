@@ -2514,3 +2514,128 @@ class PieceDossierAO(TenantModel):
         if self.piece_soumission_id:
             return 'legacy'
         return 'aucune'
+
+
+# ── AOF116 — Gabarits de pack + bibliothèque de sections ───────────────────
+
+class ModelePack(TenantModel):
+    """Gabarit de PACK : la liste ORDONNÉE des pièces d'un dossier (AOF116).
+
+    Le pack réel d'un dépôt solaire marocain compte neuf pièces (00 checklist
+    partenaire … 08 dossier administratif). Les décrire en DONNÉES plutôt qu'en
+    code fait qu'ajouter une pièce est une ligne de seed, pas une release :
+    c'est aussi la seule façon de rendre le sommaire (AOF139) cohérent avec le
+    manifeste RÉEL sans intervention.
+    """
+
+    code = models.CharField(max_length=40, verbose_name='Code du modèle')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Modèle de pack (AO)'
+        verbose_name_plural = 'Modèles de pack (AO)'
+        db_table = 'ao_modele_pack'
+        ordering = ['code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='uniq_modele_pack_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+
+class PieceModele(TenantModel):
+    """Une pièce DÉCLARÉE d'un gabarit de pack (AOF116).
+
+    ``generateur`` nomme la fabrique qui produit la pièce (jamais un chemin de
+    fichier ni un import) ; ``gabarit`` porte le corps à placeholders
+    ``{{ … }}`` rendu par ``core.templating.rendre`` — fondation SANS ``eval``,
+    déjà en production. **Aucun littéral chiffré n'est permis dans un
+    gabarit** : un nombre écrit à la main est un vestige qui survit à la
+    prochaine cascade de prix (le défaut « justification 2 800 contre bordereau
+    à 2 600 » de la session réelle). Le contrôle vit dans
+    ``apps.ao.fabrique.gabarits``.
+    """
+
+    class Format(models.TextChoices):
+        PDF = 'pdf', 'PDF'
+        PDF_A3 = 'pdf_a3', 'PDF A3 (planches)'
+        XLSX = 'xlsx', 'Classeur XLSX'
+        DOCX = 'docx', 'Document DOCX éditable'
+        ZIP = 'zip', 'Archive ZIP'
+
+    modele = models.ForeignKey(
+        ModelePack,
+        on_delete=models.CASCADE,  # on_delete: piece de gabarit : aucune existence hors de son modele
+        related_name='pieces',
+        verbose_name='Modèle de pack',
+    )
+    code = models.CharField(max_length=20, verbose_name='Code de la pièce')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    generateur = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Générateur (nom logique)')
+    format = models.CharField(
+        max_length=8, choices=Format.choices, default=Format.PDF,
+        verbose_name='Format')
+    obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    visibilite = models.CharField(
+        max_length=10, choices=PieceDossierAO.Visibilite.choices,
+        default=PieceDossierAO.Visibilite.CLIENT, verbose_name='Visibilité')
+    gabarit = models.TextField(
+        blank=True, default='',
+        verbose_name='Gabarit (placeholders {{ … }}, aucun chiffre littéral)')
+
+    class Meta:
+        verbose_name = 'Pièce de gabarit (AO)'
+        verbose_name_plural = 'Pièces de gabarit (AO)'
+        db_table = 'ao_piece_modele'
+        ordering = ['modele', 'ordre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['modele', 'code'], name='uniq_piece_modele_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} {self.libelle}'
+
+
+class SectionMemoire(TenantModel):
+    """Une section COMPOSABLE de mémoire technique (AOF116, rendue en AOF133).
+
+    Le mémoire n'est pas un texte libre : c'est une suite de sections dont le
+    corps porte des placeholders. Sans cela, une bascule d'équipement redevient
+    un chercher-remplacer sur ~90 paragraphes — les 12 remplacements de
+    désignation de la bascule batterie ne sont fiables que si la désignation
+    n'existe qu'à UN endroit.
+    """
+
+    code = models.CharField(max_length=40, verbose_name='Code')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    corps = models.TextField(
+        blank=True, default='',
+        verbose_name='Corps (placeholders {{ … }})')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    #: Conditions d'inclusion DÉCLARATIVES : ``{"variable": valeur_attendue}``
+    #: évaluées contre le contexte du dossier (jamais du code exécuté).
+    conditions_inclusion = models.JSONField(
+        default=dict, blank=True, verbose_name="Conditions d'inclusion")
+    actif = models.BooleanField(default=True, verbose_name='Active')
+
+    class Meta:
+        verbose_name = 'Section de mémoire (AO)'
+        verbose_name_plural = 'Sections de mémoire (AO)'
+        db_table = 'ao_section_memoire'
+        ordering = ['ordre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='uniq_section_memoire_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.titre}'
