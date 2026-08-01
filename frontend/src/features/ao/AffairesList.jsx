@@ -92,6 +92,24 @@ export default function AffairesList() {
       cell: (v) => <span className="font-mono text-xs">{v}</span>,
     },
     {
+      // AOF170 — la référence de l'ACHETEUR, à côté de la nôtre.
+      // `reference` est la référence PLATEFORME (`AO-YYYYMM-0001`, générée par
+      // `core.numbering`) ; celle que l'acheteur imprime sur son avis vit dans
+      // un champ distinct (`apps/ao/services.creer_appel_offre_depuis_avis` :
+      // « les confondre rendrait impossible de retrouver un dossier depuis
+      // l'avis publié »). Sans cette colonne, la liste n'affichait AUCUN moyen
+      // de retrouver une affaire depuis l'avis — et l'affaire de démonstration
+      // `seed_ao_demo` (repérée par sa référence acheteur) était introuvable à
+      // l'écran. Colonne cherchable : c'est le premier réflexe de saisie.
+      id: 'reference_acheteur',
+      header: 'Réf. acheteur',
+      width: 200,
+      accessor: (r) => r.reference_acheteur || '',
+      cell: (v) => (v
+        ? <span className="font-mono text-xs">{v}</span>
+        : <span className="text-muted-foreground">—</span>),
+    },
+    {
       id: 'objet',
       header: 'Objet',
       width: 240,

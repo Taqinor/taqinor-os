@@ -5,12 +5,17 @@
 // via `mobile\.spec\.js` mais est câblé à 390x844 — cf. AOF190 qui nomme
 // explicitement 375, la largeur historique la plus contraignante).
 import { test, expect } from '@playwright/test'
-import { openAoDemoAffaire } from './helpers'
+import { openAoDemoAffaire, ouvrirAoToituresMobile } from './helpers'
 
 test.use({ viewport: { width: 375, height: 667 } })
 
 test('AOF190: aucun débordement horizontal sur les écrans AO à 375 px', async ({ page }) => {
   await openAoDemoAffaire(page)
+  // Mesurer PENDANT la navigation SPA relèverait une largeur transitoire :
+  // on laisse la fiche se peindre d'abord (même précaution que E16 dans
+  // `mobile.spec.js`, qui attend `networkidle` avant sa mesure).
+  await expect(page).toHaveURL(/\/ao\/affaires\/\d+/)
+  await page.waitForLoadState('networkidle').catch(() => {})
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - window.innerWidth,
   )
@@ -19,9 +24,12 @@ test('AOF190: aucun débordement horizontal sur les écrans AO à 375 px', async
 
 test('AOF190: chaque édition lourde affiche son refus AVEC la raison (jamais un bouton mort)', async ({ page }) => {
   await openAoDemoAffaire(page)
-  await page.getByRole('link', { name: /Toiture/ }).click()
+  await ouvrirAoToituresMobile(page)
 
   const refus = page.locator('[data-ao-tiroir^="refus-mobile-"]')
+  // `count()` ne patiente pas : on attend que le mode mobile soit RÉELLEMENT
+  // monté avant de compter, sinon un comptage trop tôt renverrait 0.
+  await expect(refus.first()).toBeVisible()
   const total = await refus.count()
   expect(total, 'au moins un refus explicite est affiché sur mobile').toBeGreaterThan(0)
 
@@ -40,6 +48,6 @@ test('AOF190: chaque édition lourde affiche son refus AVEC la raison (jamais un
 
 test('AOF190: la capture (photo → repère) reste disponible sur mobile malgré le refus des éditions lourdes', async ({ page }) => {
   await openAoDemoAffaire(page)
-  await page.getByRole('link', { name: /Toiture/ }).click()
+  await ouvrirAoToituresMobile(page)
   await expect(page.getByText('Photo → repère')).toBeVisible()
 })

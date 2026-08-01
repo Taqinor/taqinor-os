@@ -174,9 +174,53 @@ export async function gotoAo(page, path) {
 
 // Ouvre l'affaire de démonstration plantée par `seed_ao_demo` depuis la liste
 // des affaires (recherche par sous-chaîne stable, jamais par position/index).
+//
+// `visible=true` n'est PAS de la ceinture-bretelles : le `DataTable` (M154)
+// monte DEUX arbres pour les mêmes lignes — la table bureau
+// (`hidden … dt-desktop:block`, donc `display:none` sous 768 px) PUIS, plus
+// bas dans le DOM, les cartes mobiles (`data-dt-cards`, `dt-desktop:hidden`).
+// `getByText(...)` matche indifféremment les deux (la visibilité n'est
+// évaluée qu'au moment de l'action), donc `.first()` désignait, en viewport
+// téléphone, la cellule MASQUÉE de la table bureau : un clic qui ne devient
+// jamais actionnable et expire au bout du timeout, sans jamais dire pourquoi.
+// On ne retient donc que l'occurrence réellement PEINTE — un seul et même
+// helper reste juste sur les deux viewports.
 export async function openAoDemoAffaire(page) {
   await gotoAo(page, AO_ROUTES.affaires)
-  await page.getByText(AO_DEMO_MARKER, { exact: false }).first().click()
+  const affaire = page
+    .getByText(AO_DEMO_MARKER, { exact: false })
+    .locator('visible=true')
+    .first()
+  // Assertion AVANT le clic : si le seed n'a pas tourné (ou si la liste
+  // n'imprime plus la référence acheteur), le rouge NOMME la cause au lieu de
+  // se présenter comme un « locator.click a expiré » muet.
+  await expect(
+    affaire,
+    `l'affaire de démonstration « ${AO_DEMO_MARKER} » est listée sur ${AO_ROUTES.affaires}`
+    + ' (manage.py seed_ao_demo --confirmer)',
+  ).toBeVisible()
+  await affaire.click()
+}
+
+// Rejoint l'atelier « Toitures & relevés » DEPUIS LE POUCE (paradigme ODY6 :
+// sur mobile, la nav de l'app active EST la barre basse).
+//
+// Pourquoi pas un `getByRole('link', { name: /Toiture/ })` global : sous
+// 768 px la coquille rend DEUX destinations portant ce nom accessible — le
+// lien de la Sidebar (tiroir hors-champ par `transform: translateX(-105%)`,
+// donc toujours présent dans l'arbre d'accessibilité) ET l'onglet de
+// `nav.bottom-tabbar`. Un locator global viole le mode strict de Playwright ;
+// sur bureau il n'en voyait qu'un (`.bottom-tabbar { display: none }`), d'où
+// une ambiguïté qui n'apparaît QUE sur les projets mobiles.
+//
+// L'onglet direct existe toujours : `BottomTabBar.splitAppTabs` garde les 3
+// premières sections de l'app en accès direct dès qu'elle en a plus de 4, et
+// « Toitures & relevés » est la 3e entrée de nav du module AO.
+export async function ouvrirAoToituresMobile(page) {
+  const tabbar = page.locator('nav.bottom-tabbar')
+  await expect(tabbar, "la barre d'onglets de l'app AO est rendue au pouce").toBeVisible()
+  await tabbar.getByRole('link', { name: /Toiture/ }).click()
+  await expect(page).toHaveURL(/\/ao\/toitures/)
 }
 
 // Sélectionne un outil de l'atelier toiture/calepinage (`data-ao-outil="…"`).
