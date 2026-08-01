@@ -81,10 +81,24 @@ class TestFermeture(TestCase):
         self.assertEqual(chaine.verdict, ChaineCotes.Verdict.ECART)
 
     def test_tolerance_par_chaine(self):
-        """0,05 m → écart ; 0,30 m → OK. La tolérance N'EST PAS globale."""
-        serree = self._chaine(SEGMENTS_ECOLE, tolerance='0.050')
+        """La MÊME fermeture bascule selon la tolérance DE LA CHAÎNE.
+
+        Résidu 0,220 m (51,000 − 50,780) : au-delà des 0,05 m d'une chaîne
+        serrée, en deçà des 0,30 m d'une chaîne large. Les deux bornes sont
+        celles CONSTATÉES sur le relevé — la tolérance n'est pas globale.
+
+        La version précédente gardait le total 51,100 du cas école, dont le
+        résidu vaut 0,320 m : AUCUNE tolérance de la plage constatée ne le
+        couvre, si bien que le « 0,30 → OK » annoncé était arithmétiquement
+        impossible. C'était l'exemple qui était faux, pas la règle.
+        """
+        serree = self._chaine(SEGMENTS_ECOLE, totale='51.000',
+                              tolerance='0.050')
+        self.assertEqual(serree.residu_m, Decimal('0.220'))
         self.assertEqual(serree.verdict, ChaineCotes.Verdict.ECART)
-        large = self._chaine(SEGMENTS_ECOLE, tolerance='0.300')
+        large = self._chaine(SEGMENTS_ECOLE, totale='51.000',
+                             tolerance='0.300')
+        self.assertEqual(large.residu_m, Decimal('0.220'))
         self.assertEqual(large.verdict, ChaineCotes.Verdict.OK)
 
     def test_chaine_sans_mesure_totale_est_incomplete(self):
