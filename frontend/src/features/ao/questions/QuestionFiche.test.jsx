@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import QuestionFiche, { deltaReel } from './QuestionFiche'
+import QuestionFiche from './QuestionFiche'
+import { deltaReel } from './QuestionFiche.utils'
 
 /* AOF107 (1/3) — le « Done = » exige :
    1. une question SANS impact chiffré est REFUSÉE avec le message qui

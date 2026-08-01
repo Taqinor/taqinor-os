@@ -64,7 +64,16 @@ export function Annotateur({
   const [reperes, setReperes] = useState(reperesInitiaux)
   const [selection, setSelection] = useState(null)
 
-  useEffect(() => { setImage(imageSrc) }, [imageSrc])
+  // `image` combine la prop `imageSrc` ET une éventuelle surcharge locale
+  // (fichier chargé via `chargerFichier`) : quand `imageSrc` change (nouvelle
+  // source injectée par un appelant), on resynchronise — ajustement pendant
+  // le rendu (pattern React recommandé) plutôt qu'un `useEffect`, qui
+  // provoquerait un rendu en cascade évitable.
+  const [derniereImageSrc, setDerniereImageSrc] = useState(imageSrc)
+  if (imageSrc !== derniereImageSrc) {
+    setDerniereImageSrc(imageSrc)
+    setImage(imageSrc)
+  }
 
   // `onChange` est notifié à chaque changement de la LISTE, jamais à chaque
   // rendu du parent : un appelant qui passe une lambda inline ne doit pas

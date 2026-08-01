@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import ExportQR, {
+import ExportQR from './ExportQR'
+import {
   champsAControler, construireLignesExport, envelopperTexte, MAX_CARACTERES_LIGNE,
-} from './ExportQR'
+} from './ExportQR.utils'
 
 /* AOF107 (2/3) — le « Done = » exige : l'export ne contient AUCUN mot de la
    liste sans confirmation explicite, rendu lisible à 1 000 px de large. Les
