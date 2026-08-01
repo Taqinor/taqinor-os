@@ -1,23 +1,24 @@
-# AOF18 + AOF20 + AOF21 + AOF22 + AOF23 — GÉOMÉTRIE, PIÈCES REÇUES du DCE,
-# OBSTACLES et CHAÎNES DE COTES : ``ao_batiment``, ``ao_toiture``,
+# AOF18 + AOF20 + AOF21 + AOF22 + AOF23 + AOF24 — GÉOMÉTRIE, PIÈCES REÇUES du
+# DCE, OBSTACLES, CHAÎNES DE COTES et RELEVÉS : ``ao_batiment``, ``ao_toiture``,
 # ``ao_plan_source``, ``ao_piece_consultation``, ``ao_obstacle``,
-# ``ao_chaine_cotes``.
+# ``ao_chaine_cotes``, ``ao_releve``.
 #
-# Six tables NEUVES (aucun impact sur les tables ``compta_*`` héritées).
+# Sept tables NEUVES (aucun impact sur les tables ``compta_*`` héritées).
 #
 #   * AOF18 — enveloppe en repère LOCAL MÉTRIQUE (``contour_local_m``) : le nom
 #     du champ porte l'unité ET l'ordre des axes, pour rendre DÉTECTABLE
 #     l'inversion lat/lng entre l'outil de tracé et le lead CRM (AOF19).
-#   * AOF20 — ``PlanSource`` : les TROIS portes d'entrée sont UN CHAMP. Le
+#   * AOF20 — ``PlanSource`` : les TROIS portes d'entrée sont UN CHAMP ; le
 #     fichier passe par ``records.Attachment``, JAMAIS un ``FileField``.
 #   * AOF21 — ``PieceConsultation`` : le DCE REÇU, additifs compris.
 #   * AOF22 — ``ObstacleAO`` : la PROVENANCE pilote le dégagement ET le
-#     caractère engageable ; un obstacle mesuré n'est jamais supprimé (ÉCARTÉ,
-#     géométrie CONSERVÉE).
-#   * AOF23 — ``ChaineCotes`` : fermeture, résidu en mètres ET en pourcentage,
-#     tolérance PAR CHAÎNE, et statut de fiabilité porté par la DONNÉE (jamais
-#     par un style) — c'est lui qui alimentera la section « À CONFIRMER À
-#     L'EXÉCUTION ».
+#     caractère engageable ; ÉCARTÉ conserve la géométrie.
+#   * AOF23 — ``ChaineCotes`` : fermeture, résidus (m et %), tolérance PAR
+#     chaîne, statut de fiabilité porté par la DONNÉE.
+#   * AOF24 — ``ReleveAO`` : la visite contradictoire devient un objet, et
+#     obstacles comme chaînes pointent LE relevé qui les a produits. Sans ce
+#     lien, un cartouche ne peut rien opposer et la liste « à confirmer à
+#     l'exécution » redeviendrait une saisie libre.
 
 import django.db.models.deletion
 from decimal import Decimal
@@ -119,6 +120,29 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
+            name='ReleveAO',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('date_visite', models.DateField(verbose_name='Date de la visite')),
+                ('participants', models.TextField(blank=True, default='', verbose_name='Participants (un par ligne)')),
+                ('contradictoire', models.BooleanField(default=False, verbose_name='Visite contradictoire')),
+                ('conditions', models.TextField(blank=True, default='', verbose_name='Conditions (météo, accès, sécurité)')),
+                ('notes', models.TextField(blank=True, default='', verbose_name='Notes')),
+                ('appel_offre', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='releves', to='ao.appeloffre', verbose_name="Appel d'offres")),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='releves_ao', to='authentication.company', verbose_name='Société')),
+                ('photos', models.ManyToManyField(blank=True, related_name='releves_ao', to='records.attachment', verbose_name='Photos')),
+                ('toitures', models.ManyToManyField(blank=True, related_name='releves', to='ao.toitureao', verbose_name='Toitures couvertes')),
+            ],
+            options={
+                'verbose_name': 'Relevé de toiture (AO)',
+                'verbose_name_plural': 'Relevés de toiture (AO)',
+                'db_table': 'ao_releve',
+                'ordering': ['-date_visite', 'id'],
+            },
+        ),
+        migrations.CreateModel(
             name='PlanSource',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
@@ -175,6 +199,7 @@ class Migration(migrations.Migration):
                 ('actif', models.BooleanField(default=True, verbose_name='Actif')),
                 ('decision', models.TextField(blank=True, default='', verbose_name='Décision (écart / confirmation)')),
                 ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='obstacles_ao', to='authentication.company', verbose_name='Société')),
+                ('releve', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='obstacles', to='ao.releveao', verbose_name='Relevé')),
                 ('toiture', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='obstacles', to='ao.toitureao', verbose_name='Toiture')),
             ],
             options={
@@ -199,6 +224,7 @@ class Migration(migrations.Migration):
                 ('residu_pct', models.DecimalField(blank=True, decimal_places=3, max_digits=8, null=True, verbose_name='Résidu (%)')),
                 ('verdict', models.CharField(choices=[('ok', 'Fermeture OK'), ('ecart', 'Écart de fermeture'), ('incomplete', 'Chaîne incomplète')], default='incomplete', max_length=12, verbose_name='Verdict')),
                 ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='chaines_cotes_ao', to='authentication.company', verbose_name='Société')),
+                ('releve', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='chaines_cotes', to='ao.releveao', verbose_name='Relevé')),
                 ('toiture', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='chaines_cotes', to='ao.toitureao', verbose_name='Toiture')),
             ],
             options={
@@ -227,6 +253,10 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name='toitureao',
             index=models.Index(fields=['company', 'batiment'], name='ao_toiture_company_128213_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='releveao',
+            index=models.Index(fields=['company', 'appel_offre'], name='ao_releve_company_32ba29_idx'),
         ),
         migrations.AddIndex(
             model_name='plansource',

@@ -27,6 +27,7 @@ from .views import (
     PieceConsultationViewSet,
     PieceSoumissionViewSet,
     PlanSourceViewSet,
+    ReleveAOViewSet,
     ResultatAOViewSet,
     ToitureAOViewSet,
 )
@@ -45,6 +46,7 @@ router.register(r'obstacles', ObstacleAOViewSet,
                 basename='ao-obstacle')
 router.register(r'chaines-cotes', ChaineCotesViewSet,
                 basename='ao-chaine-cotes')
+router.register(r'releves', ReleveAOViewSet, basename='ao-releve')
 router.register(r'bordereaux-prix', BordereauPrixViewSet,
                 basename='ao-bordereau-prix')
 router.register(r'lignes-bordereau', LigneBordereauViewSet,

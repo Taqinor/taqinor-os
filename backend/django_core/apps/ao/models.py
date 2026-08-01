@@ -731,6 +731,67 @@ class ToitureAO(TenantModel):
         return self.surface_m2
 
 
+# ── AOF24 — La visite contradictoire comme OBJET ───────────────────────────
+
+class ReleveAO(TenantModel):
+    """Une visite de relevé, contradictoire ou non (AOF24).
+
+    Pourquoi en faire un objet : sans lui, une cote ou un obstacle ne peut pas
+    dire D'OÙ il vient. Le cartouche d'une planche doit pouvoir écrire « base :
+    relevé contradictoire du 27/07/2026 » — c'est ce qui rend le plan opposable.
+
+    Les « points restant à lever » ne sont PAS une saisie libre : ils DÉRIVENT
+    des cotes ``A_CONFIRMER`` et des obstacles non engageables. Une cote orange
+    absente de la liste est un défaut, pas une omission acceptable — et un test
+    le détecte.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les releves suivent la societe
+        related_name='releves_ao',
+        verbose_name='Société',
+    )
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: releve fille d'un AO : aucune existence hors de son appel d'offres
+        related_name='releves',
+        verbose_name="Appel d'offres",
+    )
+    date_visite = models.DateField(verbose_name='Date de la visite')
+    participants = models.TextField(
+        blank=True, default='', verbose_name='Participants (un par ligne)')
+    contradictoire = models.BooleanField(
+        default=False, verbose_name='Visite contradictoire')
+    toitures = models.ManyToManyField(
+        ToitureAO, blank=True, related_name='releves',
+        verbose_name='Toitures couvertes')
+    conditions = models.TextField(
+        blank=True, default='',
+        verbose_name='Conditions (météo, accès, sécurité)')
+    photos = models.ManyToManyField(
+        'records.Attachment', blank=True, related_name='releves_ao',
+        verbose_name='Photos')
+    notes = models.TextField(blank=True, default='', verbose_name='Notes')
+
+    class Meta:
+        verbose_name = 'Relevé de toiture (AO)'
+        verbose_name_plural = 'Relevés de toiture (AO)'
+        db_table = 'ao_releve'
+        ordering = ['-date_visite', 'id']
+        indexes = [models.Index(fields=['company', 'appel_offre'])]
+
+    def __str__(self):
+        nature = 'contradictoire' if self.contradictoire else 'simple'
+        return f'Relevé {nature} du {self.date_visite:%d/%m/%Y}'
+
+    @property
+    def mention_cartouche(self):
+        """Mention prête à imprimer dans le cartouche d'une planche."""
+        nature = 'contradictoire' if self.contradictoire else 'simple'
+        return f'base : relevé {nature} du {self.date_visite:%d/%m/%Y}'
+
+
 # ── AOF23 — Chaînes de cotes : le STATUT est porté par la DONNÉE ───────────
 
 class StatutCote(models.TextChoices):
@@ -784,6 +845,11 @@ class ChaineCotes(TenantModel):
         related_name='chaines_cotes',
         verbose_name='Toiture',
     )
+    #: AOF24 — la visite qui a produit cette chaîne. Sans elle, une cote ne
+    #: peut pas dire d'où elle vient et le cartouche ne peut rien opposer.
+    releve = models.ForeignKey(
+        ReleveAO, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='chaines_cotes', verbose_name='Relevé')
     libelle = models.CharField(max_length=255, verbose_name='Libellé')
     axe = models.CharField(
         max_length=8, choices=Axe.choices, default=Axe.X, verbose_name='Axe')
@@ -946,6 +1012,11 @@ class ObstacleAO(TenantModel):
         related_name='obstacles',
         verbose_name='Toiture',
     )
+    #: AOF24 — la visite qui a produit cet obstacle (ou ``None`` s'il vient du
+    #: plan). C'est ce lien qui distingue « relevé le 27/07 » de « supposé ».
+    releve = models.ForeignKey(
+        ReleveAO, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='obstacles', verbose_name='Relevé')
     repere = models.CharField(
         max_length=8, blank=True, default='', verbose_name='Repère (A, B, C…)')
     designation = models.CharField(

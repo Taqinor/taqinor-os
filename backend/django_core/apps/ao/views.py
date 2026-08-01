@@ -40,6 +40,7 @@ from .models import (
     PieceConsultation,
     PieceSoumission,
     PlanSource,
+    ReleveAO,
     ResultatAO,
     ToitureAO,
 )
@@ -57,6 +58,7 @@ from .serializers import (
     PieceConsultationSerializer,
     PieceSoumissionSerializer,
     PlanSourceSerializer,
+    ReleveAOSerializer,
     ResultatAOSerializer,
     ToitureAOSerializer,
 )
@@ -172,6 +174,21 @@ class AppelOffreViewSet(AoBaseViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(appel_offre).data)
 
+    @action(detail=True, methods=['get'], url_path='points-a-lever')
+    def points_a_lever(self, request, pk=None):
+        """AOF24 — « à confirmer à l'exécution », DÉRIVÉ (jamais saisi).
+
+        La liste vient des cotes ``A_CONFIRMER`` et des obstacles non
+        engageables ; ``mention_cartouche`` donne la base opposable du dossier.
+        """
+        from . import selectors
+
+        appel_offre = self.get_object()
+        return Response({
+            'mention_cartouche': selectors.mention_cartouche(appel_offre),
+            'points': selectors.points_a_lever(appel_offre),
+        })
+
     @action(detail=True, methods=['get'], url_path='transitions')
     def transitions(self, request, pk=None):
         """Statuts atteignables depuis l'état courant (pilote l'UI)."""
@@ -237,6 +254,19 @@ class ToitureAOViewSet(AoBaseViewSet):
     def _recalculer(toiture):
         toiture.recalculer_surface()
         toiture.save(update_fields=['surface_m2', 'updated_at'])
+
+
+class ReleveAOViewSet(AoBaseViewSet):
+    """Visites de relevé (AOF24) — la base opposable du dossier."""
+    queryset = ReleveAO.objects.prefetch_related('toitures', 'photos').all()
+    serializer_class = ReleveAOSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_visite']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'contradictoire'))
 
 
 class ChaineCotesViewSet(AoBaseViewSet):

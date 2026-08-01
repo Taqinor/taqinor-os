@@ -39,6 +39,69 @@ def compte_ao_par_lead(company, lead_id):
     return ao_par_lead(company, lead_id).count()
 
 
+def points_a_lever(appel_offre):
+    """AOF24 — la liste « à confirmer à l'exécution », DÉRIVÉE de la donnée.
+
+    Deux sources, jamais une saisie libre :
+
+    * chaque cote au statut ``A_CONFIRMER`` d'une chaîne du dossier — une cote
+      orange qui n'apparaîtrait pas ici serait un DÉFAUT, pas une omission
+      acceptable (un test le vérifie) ;
+    * chaque obstacle ACTIF non engageable (lu sur plan, deviné, déclaré par le
+      client) — il entre dans le calcul mais n'engage pas.
+
+    Renvoie une liste de dicts ``{type, reference, libelle, detail}``, triée
+    de façon stable pour que deux rendus successifs soient comparables.
+    """
+    from .models import ChaineCotes, ObstacleAO
+
+    points = []
+    chaines = ChaineCotes.objects.filter(
+        company=appel_offre.company,
+        toiture__batiment__appel_offre=appel_offre,
+    ).select_related('toiture')
+    for chaine in chaines:
+        for segment in chaine.cotes_a_confirmer:
+            points.append({
+                'type': 'cote',
+                'reference': f'{chaine.libelle} · {segment.get("libelle", "")}',
+                'libelle': 'Cote à confirmer à l\'exécution',
+                'detail': (
+                    f'valeur retenue {segment.get("valeur_m")} m'
+                    + (f' (annoncée {segment["valeur_annoncee_m"]} m)'
+                       if segment.get('valeur_annoncee_m') is not None else '')
+                ),
+            })
+
+    obstacles = ObstacleAO.objects.filter(
+        company=appel_offre.company,
+        toiture__batiment__appel_offre=appel_offre,
+        actif=True,
+    ).select_related('toiture')
+    for obstacle in obstacles:
+        if obstacle.engageable:
+            continue
+        points.append({
+            'type': 'obstacle',
+            'reference': obstacle.repere or f'#{obstacle.pk}',
+            'libelle': 'Obstacle non relevé — à confirmer sur site',
+            'detail': (
+                f'{obstacle.get_nature_display()} · '
+                f'{obstacle.get_provenance_display()}'
+            ),
+        })
+    return sorted(points, key=lambda p: (p['type'], p['reference']))
+
+
+def mention_cartouche(appel_offre):
+    """AOF24 — mention de base du cartouche, ou ``None``.
+
+    Prend le relevé le plus RÉCENT du dossier : c'est celui qui fait foi.
+    """
+    releve = appel_offre.releves.order_by('-date_visite', '-id').first()
+    return releve.mention_cartouche if releve is not None else None
+
+
 def fiche_lead_de_l_ao(appel_offre):
     """Fiche-carte LECTURE SEULE du lead lié, ou ``None``.
 

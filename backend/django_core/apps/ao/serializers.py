@@ -22,6 +22,7 @@ from .models import (
     PieceConsultation,
     PieceSoumission,
     PlanSource,
+    ReleveAO,
     ResultatAO,
     ToitureAO,
 )
@@ -109,6 +110,19 @@ class ToitureAOSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class ReleveAOSerializer(serializers.ModelSerializer):
+    """AOF24 — la visite comme objet, avec sa mention de cartouche."""
+    mention_cartouche = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = ReleveAO
+        fields = [
+            'id', 'appel_offre', 'date_visite', 'participants',
+            'contradictoire', 'toitures', 'conditions', 'photos', 'notes',
+            'mention_cartouche',
+        ]
+
+
 class ChaineCotesSerializer(serializers.ModelSerializer):
     """AOF23 — la chaîne, sa fermeture et ses cotes à confirmer."""
     axe_display = serializers.CharField(
@@ -128,7 +142,8 @@ class ChaineCotesSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChaineCotes
         fields = [
-            'id', 'toiture', 'libelle', 'axe', 'axe_display', 'segments',
+            'id', 'toiture', 'releve', 'libelle', 'axe', 'axe_display',
+            'segments',
             'mesure_totale_m', 'tolerance_m', 'somme_segments_m', 'residu_m',
             'residu_pct', 'verdict', 'verdict_display', 'cotes_a_confirmer',
         ]
@@ -151,7 +166,7 @@ class ObstacleAOSerializer(serializers.ModelSerializer):
     class Meta:
         model = ObstacleAO
         fields = [
-            'id', 'toiture', 'repere', 'designation', 'nature',
+            'id', 'toiture', 'releve', 'repere', 'designation', 'nature',
             'nature_display', 'rect_x0_m', 'rect_x1_m', 'rect_y0_m',
             'rect_y1_m', 'polygone_local_m', 'hauteur_m', 'provenance',
             'provenance_display', 'degagement_m', 'degagement_surcharge',
