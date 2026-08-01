@@ -57,7 +57,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/ao/models.py:2329` | PieceSoumission.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ao/models.py:2377` | EcheanceAO.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ao/models.py:2425` | ResultatAO.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/ao/models.py:3040` | EquipementAO.produit | stock.Produit | PROTECT |
+| `backend/django_core/apps/ao/models.py:3060` | EquipementAO.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/assurances/models.py:30` | Assureur.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/assurances/models.py:57` | Courtier.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/assurances/models.py:106` | PoliceAssurance.company | authentication.Company | CASCADE |
