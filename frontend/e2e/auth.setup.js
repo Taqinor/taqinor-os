@@ -9,12 +9,18 @@ import { uiLogin, ADMIN, AUTH_FILE } from './helpers'
 setup('authenticate', async ({ page }) => {
   await mkdir(dirname(AUTH_FILE), { recursive: true })
   await uiLogin(page, ADMIN)
-  // The router redirects a successful login straight into the app.
-  await expect(page).toHaveURL(/\/dashboard/, { timeout: 30_000 })
-  // 30s to match the URL assert above: the dashboard fires its KPI requests on
-  // mount and a cold CI runner can take >15s (the default) to paint the heading
-  // — this exact flake failed a whole e2e run on 2026-07-09 (run 29044779596).
-  await expect(page.getByRole('heading', { name: 'Tableau de bord' })).toBeVisible({ timeout: 30_000 })
+  // ODY3 — a successful login lands on the HOME MENU (`/apps`), the grid of the
+  // apps this company has installed and this role may open. It used to be
+  // `/dashboard`; that route is still perfectly valid (the « Tableau de bord »
+  // app), it is simply no longer the front door. This admin sees many apps, so
+  // the mono-app shortcut (exactly one visible app enters it directly) does not
+  // apply here.
+  await expect(page).toHaveURL(/\/apps/, { timeout: 30_000 })
+  // 30s to match the URL assert above: a cold CI runner can take >15s (the
+  // default) to paint — this exact flake failed a whole e2e run on 2026-07-09
+  // (run 29044779596). The home menu itself fires NO blocking request (ODY2:
+  // everything comes from the bootstrap + the module registry).
+  await expect(page.getByRole('heading', { name: 'Mes applications' })).toBeVisible({ timeout: 30_000 })
   // La bannière d'installation PWA iOS (PwaPrompts.jsx `InstallBanner`) est un
   // encart promotionnel `position: fixed` collé en bas — PAS une partie de l'ERP
   // testé. Un utilisateur qui revient (ce que simule ce storageState partagé) l'a

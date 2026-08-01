@@ -24,6 +24,9 @@ import RouteErrorBoundary from '../components/RouteErrorBoundary'
 import { buildModuleRoutes } from './moduleRoutes'
 // ODX6 — source unique des modules désactivés (état /auth/me/ → store).
 import { isModuleDisabled } from './moduleGating'
+// ODY3 — résolution de l'atterrissage (préférence VX46 → dernier module VX11 →
+// mono-app → Menu d'accueil `/apps`), partagée avec Login.jsx.
+import { resolveLandingFromAuth } from '../lib/apps/landing'
 // NTPRT8/20/27 — portée d'un compte PORTAIL externe (source unique, pure).
 import {
   PORTEE_CLIENT, PORTEE_FOURNISSEUR, PORTEE_PARTENAIRE,
@@ -201,6 +204,22 @@ const roleLoader = (roles, perm) => async ({ request }) => {
   return allowed ? null : redirect('/403')
 }
 
+// ODY3 — Garde de l'ENTRÉE `/`. Jusqu'ici `/` rendait Login SANS aucun loader :
+// un utilisateur DÉJÀ connecté qui ouvre la racine (favori, PWA, retour
+// d'onglet) revoyait l'écran de connexion. Il atterrit désormais sur SES apps
+// (ou l'app d'atterrissage préférée VX46 / l'unique app en mono-app, cf.
+// `lib/apps/landing.js`). Un visiteur ANONYME voit toujours le Login, ici même,
+// sans redirection vers /login — comportement inchangé, et c'est pourquoi cette
+// garde ne réutilise pas `authLoader` (qui redirigerait).
+const rootLoader = async () => {
+  const user = await ensurePortalScope()
+  if (!user) return null // anonyme : Login rendu sur `/`, comme avant
+  // Un compte PORTAIL externe ne voit jamais la coquille interne.
+  const versPortail = redirectSiPortail(user)
+  if (versPortail) return versPortail
+  return redirect(resolveLandingFromAuth(store.getState().auth))
+}
+
 // ODX6 — Garde de MODULE. Enveloppe un loader de base (auth ou rôle) : une fois
 // la session/le rôle validés (le loader de base a renvoyé `null`), on redirige
 // vers /dashboard si le module `key` de la route est désactivé pour la société.
@@ -277,7 +296,8 @@ const router = createBrowserRouter([
   // vus par des clients externes (signature légale, portail, kiosque…). Chaque
   // élément est désormais enveloppé du même `RouteErrorBoundary` que WithLayout,
   // sans layout ERP autour.
-  { path: '/',      element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
+  // ODY3 — `/` authentifié → SES apps (`rootLoader`) ; `/` anonyme → Login.
+  { path: '/',      loader: rootLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
   { path: '/landing', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Landing /></Suspense></RouteErrorBoundary> },
   { path: '/login',  element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
   // Référence interne du design system (sans auth ni layout : page autonome).
