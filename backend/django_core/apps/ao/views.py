@@ -11,20 +11,18 @@ RETRAIT des shims transitoires — AOF1 en a seulement INVERSÉ le sens (compta 
 ao devient ao → compta), ce qui est à prendre en compte le jour de son
 déblocage.
 
-Socle : ``_AoBaseViewSet`` est un ``core.viewsets.CompanyScopedModelViewSet``
-(scoping ``request.user.company`` + ``company`` forcée côté serveur) qui
-CONSERVE explicitement la garde historique ``IsResponsableOrAdmin`` — le
-comportement d'accès est donc BYTE-IDENTIQUE à l'ancien ``_ComptaBaseViewSet``.
-AOF3 remplacera cette base par ``apps.ao.viewsets.AoBaseViewSet`` (chatter
-``records`` + permissions fines ``ao_voir``/``ao_gerer``).
+Socle (AOF3) : les 8 ViewSets héritent de ``apps.ao.viewsets.AoBaseViewSet`` =
+``core.viewsets.CompanyScopedModelViewSet`` (scoping ``request.user.company`` +
+``company`` forcée côté serveur, détection par le sweep d'isolation
+multi-tenant) + chatter générique ``records``, gardé par ``ao_voir`` (lecture)
+et ``ao_gerer`` (écriture). L'ancienne garde grossière ``IsResponsableOrAdmin``
+héritée de ``_ComptaBaseViewSet`` est ABANDONNÉE : elle ouvrait tout le dossier
+d'appel d'offres au palier Responsable (cf. AOF2).
 """
 
 from rest_framework import filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-
-from authentication.permissions import IsResponsableOrAdmin
-from core.viewsets import CompanyScopedModelViewSet
 
 from . import services
 from .models import (
@@ -47,22 +45,12 @@ from .serializers import (
     PieceSoumissionSerializer,
     ResultatAOSerializer,
 )
-
-
-class _AoBaseViewSet(CompanyScopedModelViewSet):
-    """Base transitoire : société scopée + accès Administrateur/Responsable.
-
-    Identique en comportement à l'ancien ``_ComptaBaseViewSet`` de compta
-    (``TenantMixin`` + ``ModelViewSet`` + ``IsResponsableOrAdmin``) ; seule la
-    base change (``CompanyScopedModelViewSet``, socle ARC2). AOF3 la remplace
-    par ``apps.ao.viewsets.AoBaseViewSet``.
-    """
-    permission_classes = [IsResponsableOrAdmin]
+from .viewsets import AoBaseViewSet
 
 
 # ── FG222 — Gestion des appels d'offres ────────────────────────────────────
 
-class AppelOffreViewSet(_AoBaseViewSet):
+class AppelOffreViewSet(AoBaseViewSet):
     """Objets appels d'offres public/privé (FG222)."""
     queryset = AppelOffre.objects.all()
     serializer_class = AppelOffreSerializer
@@ -73,7 +61,7 @@ class AppelOffreViewSet(_AoBaseViewSet):
 
 # ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────
 
-class BordereauPrixViewSet(_AoBaseViewSet):
+class BordereauPrixViewSet(AoBaseViewSet):
     """Bordereaux des prix (BOQ) d'AO (FG223), séparés du devis client."""
     queryset = BordereauPrix.objects.prefetch_related('lignes').all()
     serializer_class = BordereauPrixSerializer
@@ -81,7 +69,7 @@ class BordereauPrixViewSet(_AoBaseViewSet):
     ordering_fields = ['date_creation']
 
 
-class LigneBordereauViewSet(_AoBaseViewSet):
+class LigneBordereauViewSet(AoBaseViewSet):
     """Lignes chiffrées d'un BOQ (FG223)."""
     queryset = LigneBordereau.objects.all()
     serializer_class = LigneBordereauSerializer
@@ -91,7 +79,7 @@ class LigneBordereauViewSet(_AoBaseViewSet):
 
 # ── FG224 — Cautions & garanties de soumission ─────────────────────────────
 
-class CautionSoumissionViewSet(_AoBaseViewSet):
+class CautionSoumissionViewSet(AoBaseViewSet):
     """Cautions de soumission (provisoires/définitives) d'AO (FG224)."""
     queryset = CautionSoumission.objects.all()
     serializer_class = CautionSoumissionSerializer
@@ -101,7 +89,7 @@ class CautionSoumissionViewSet(_AoBaseViewSet):
 
 # ── FG225 — Dossier de soumission (pièces administratives) ─────────────────
 
-class DossierSoumissionViewSet(_AoBaseViewSet):
+class DossierSoumissionViewSet(AoBaseViewSet):
     """Dossiers de soumission d'AO (FG225) : checklist des pièces."""
     queryset = DossierSoumission.objects.prefetch_related('pieces').all()
     serializer_class = DossierSoumissionSerializer
@@ -109,7 +97,7 @@ class DossierSoumissionViewSet(_AoBaseViewSet):
     ordering_fields = ['date_creation']
 
 
-class PieceSoumissionViewSet(_AoBaseViewSet):
+class PieceSoumissionViewSet(AoBaseViewSet):
     """Pièces administratives d'un dossier de soumission (FG225)."""
     queryset = PieceSoumission.objects.all()
     serializer_class = PieceSoumissionSerializer
@@ -119,7 +107,7 @@ class PieceSoumissionViewSet(_AoBaseViewSet):
 
 # ── FG226 — Échéancier & alertes de deadline d'AO ──────────────────────────
 
-class EcheanceAOViewSet(_AoBaseViewSet):
+class EcheanceAOViewSet(AoBaseViewSet):
     """Dates clés d'un AO avec rappels (FG226). L'action ``dues`` liste les
     échéances dont le rappel est échu et non traité."""
     queryset = EcheanceAO.objects.all()
@@ -135,7 +123,7 @@ class EcheanceAOViewSet(_AoBaseViewSet):
 
 # ── FG227 — Analyse gagné/perdu des appels d'offres ────────────────────────
 
-class ResultatAOViewSet(_AoBaseViewSet):
+class ResultatAOViewSet(AoBaseViewSet):
     """Résultats d'AO pour l'analyse gagné/perdu (FG227). L'action ``stats``
     renvoie le taux de réussite consolidé."""
     queryset = ResultatAO.objects.all()
