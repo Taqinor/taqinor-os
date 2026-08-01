@@ -952,7 +952,14 @@ export default function LeadsPage() {
             {...viewProps}
             totalLeads={leads.length}
             onClearFilters={() => setFilters(EMPTY_FILTERS)}
-            onNewLead={openNew}
+            /* MB6 — en mobile le bouton flottant plus bas EST l'action de
+               creation canonique (fixe, toujours atteignable au-dessus de la
+               barre d'onglets). Laisser l'empty state du kanban en rendre un
+               second ferait DEUX controles portant le meme nom accessible
+               « + Nouveau lead » : ambigu pour un lecteur d'ecran, et le
+               lecteur ne saurait lequel des deux est le principal. KanbanView
+               masque proprement l'action quand la prop est absente. */
+            onNewLead={isMobile ? undefined : openNew}
             onImportLeads={() => setShowImport(true)}
           />
         )}
