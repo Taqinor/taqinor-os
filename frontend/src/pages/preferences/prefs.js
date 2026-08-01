@@ -34,6 +34,9 @@ export const APP_RESUME_ASK = ''
 export const APP_RESUME_ALWAYS = 'reprendre'
 /** Toujours entrer par le cockpit de l'app (aucune proposition). */
 export const APP_RESUME_NEVER = 'cockpit'
+// EZ9 — mode « Plein soleil » (terrain). Même patron de persistance que les
+// autres préférences : propre à CET appareil (le téléphone du technicien).
+export const SUNLIGHT_KEY = 'taqinor.sunlight'
 
 function storage() {
   try {
@@ -227,6 +230,37 @@ export function setReducedMotionPref(enabled) {
   applyReducedMotion(enabled)
 }
 
+// ── EZ9 — Mode « Plein soleil » (terrain) ──────────────────────────────────
+// Aucune feuille de style injectée ici : tout le mode est UN attribut sur
+// <html> et un bloc de tokens (`design/tokens.css`, patron `[data-density]`).
+
+export function getSunlightPref() {
+  const s = storage()
+  if (!s) return false
+  try {
+    return s.getItem(SUNLIGHT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Pose (ou retire) l'attribut qui active le bloc de tokens « plein soleil ». */
+export function applySunlight(enabled) {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  if (enabled) root.setAttribute('data-sunlight', '1')
+  else root.removeAttribute('data-sunlight')
+}
+
+export function setSunlightPref(enabled) {
+  const s = storage()
+  try {
+    s?.setItem(SUNLIGHT_KEY, enabled ? '1' : '0')
+  } catch { /* stockage indisponible : appliqué quand même pour la session */ }
+  applySunlight(enabled)
+  return enabled
+}
+
 /**
  * initPreferences — à appeler UNE fois au démarrage de la coquille (Header,
  * monté sur tout écran authentifié) : applique la préférence de réduction de
@@ -236,4 +270,7 @@ export function setReducedMotionPref(enabled) {
  */
 export function initPreferences() {
   applyReducedMotion(getReducedMotionPref())
+  // EZ9 — le mode terrain survit au rechargement (un technicien qui rouvre
+  // l'app au soleil ne doit pas le ré-activer à chaque fois).
+  applySunlight(getSunlightPref())
 }

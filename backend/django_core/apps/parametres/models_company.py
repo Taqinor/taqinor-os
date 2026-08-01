@@ -641,6 +641,20 @@ class CompanyProfile(models.Model):
                   "Désactivé par défaut : aucune écriture n'est générée tant que "
                   "ce réglage n'est pas activé.")
 
+    # ── EZ7 — « Signature client obligatoire pour clôturer » ────────────────
+    # La signature terrain (FG69) était l'onglet 9/10 de « Ma journée », absent
+    # de la prochaine action et de la garde « Terminée » : une intervention
+    # pouvait être clôturée sans preuve signée. Ce drapeau ajoute la signature
+    # à la garde EXISTANTE `transition_block_reason` (F8/ZFSM1) pour CETTE
+    # société. Défaut False = comportement historique byte-identique (rien ne
+    # bloque tant que le réglage n'est pas activé).
+    signature_client_obligatoire = models.BooleanField(
+        default=False,
+        verbose_name='Signature client obligatoire pour clôturer',
+        help_text="Exige la signature du client sur l'intervention avant de "
+                  "passer au statut « Terminée ». Désactivé par défaut : la "
+                  'signature reste possible mais facultative.')
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

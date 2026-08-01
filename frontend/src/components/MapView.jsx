@@ -25,12 +25,20 @@ const DEFAULT_ZOOM = 6
 
 // Marqueur coloré en SVG (divIcon) — évite de dépendre des images d'icône
 // Leaflet (chemins cassés par les bundlers) et permet une couleur par type.
-function coloredIcon(color = '#2563eb') {
+// APX29 — `badge` (optionnel) : le RANG de l'arrêt écrit dans la pastille du
+// pin, pour lire une tournée « 1 → 2 → 3 » sur la carte. Sans badge, le rendu
+// est byte-identique à l'existant (cercle plein).
+function coloredIcon(color = '#2563eb', badge = null) {
+  const centre = badge == null
+    ? '<circle cx="13" cy="13" r="5" fill="#ffffff"/>'
+    : '<circle cx="13" cy="13" r="8" fill="#ffffff"/>'
+      + `<text x="13" y="17" text-anchor="middle" font-size="11" font-weight="700"
+             font-family="system-ui, sans-serif" fill="${color}">${escapeHtml(badge)}</text>`
   const html = `
     <svg width="26" height="38" viewBox="0 0 26 38" xmlns="http://www.w3.org/2000/svg">
       <path d="M13 0C5.82 0 0 5.82 0 13c0 9.25 13 25 13 25s13-15.75 13-25C26 5.82 20.18 0 13 0z"
             fill="${color}" stroke="#ffffff" stroke-width="2"/>
-      <circle cx="13" cy="13" r="5" fill="#ffffff"/>
+      ${centre}
     </svg>`
   return L.divIcon({
     html,
@@ -63,6 +71,10 @@ export default function MapView({
   zoom = DEFAULT_ZOOM,
   height = '70vh',
   fitToMarkers = true,
+  // APX29 — tracé simple facultatif ([[lat, lng], …]) : relie les arrêts d'une
+  // tournée dans l'ordre. Aucun service de routage (aucune clé, aucun appel) —
+  // c'est une polyligne entre les points, jamais un itinéraire routier simulé.
+  path = null,
 }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
@@ -113,9 +125,17 @@ export default function MapView({
     if (!map || !layer) return
     layer.clearLayers()
     const latlngs = []
+    // APX29 — le tracé est dessiné SOUS les marqueurs.
+    const trace = (path ?? []).filter((p) => Array.isArray(p) && p[0] != null && p[1] != null)
+    if (trace.length > 1) {
+      L.polyline(trace, {
+        color: '#2563eb', weight: 3, opacity: 0.6, dashArray: '6 6',
+      }).addTo(layer)
+      trace.forEach((p) => latlngs.push(p))
+    }
     markers.forEach((m) => {
       if (m.lat == null || m.lng == null) return
-      const marker = L.marker([m.lat, m.lng], { icon: coloredIcon(m.color) })
+      const marker = L.marker([m.lat, m.lng], { icon: coloredIcon(m.color, m.badge ?? null) })
       const title = escapeHtml(m.label)
       const extra = m.popupHtml || ''
       // VX32 — bouton « Ouvrir la fiche » dans le popup (même appel que le clic
@@ -146,7 +166,7 @@ export default function MapView({
         padding: [40, 40], maxZoom: 13,
       })
     }
-  }, [markers, fitToMarkers, onMarkerClick])
+  }, [markers, fitToMarkers, onMarkerClick, path])
 
   // VX195 — la carte Leaflet est manipulée en impératif (pas de rôle/focus
   // natif sur les marqueurs) : un technicien au clavier ou avec un lecteur

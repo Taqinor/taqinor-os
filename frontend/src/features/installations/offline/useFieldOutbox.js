@@ -7,13 +7,15 @@
 //     en ligne avec une file non vide) ;
 //   * expose `flush()` pour un déclenchement manuel (bouton « Synchroniser »).
 import { useCallback, useEffect, useState } from 'react'
-import { fieldOutbox } from './fieldOutbox'
+import { fieldOutbox, binaryOutbox } from './fieldOutbox'
 
 export function useFieldOutbox() {
   const [online, setOnline] = useState(
     typeof navigator === 'undefined' ? true : navigator.onLine !== false,
   )
   const [pending, setPending] = useState(0)
+  // EZ8 — photos en attente : MÊME file, MÊME badge (jamais un 2ᵉ indicateur).
+  const [pendingPhotos, setPendingPhotos] = useState(0)
   const [failed, setFailed] = useState([])
   const [flushing, setFlushing] = useState(false)
 
@@ -21,8 +23,11 @@ export function useFieldOutbox() {
     try {
       const all = await fieldOutbox.pending()
       const fail = all.filter((op) => !!op.serverError)
+      const bin = await binaryOutbox.pending()
+      const binFail = bin.filter((op) => !!op.serverError)
       setPending(all.length - fail.length)
-      setFailed(fail)
+      setPendingPhotos(bin.length - binFail.length)
+      setFailed([...fail, ...binFail])
     } catch { /* défensif */ }
   }, [])
 
@@ -30,8 +35,10 @@ export function useFieldOutbox() {
     setFlushing(true)
     try {
       const res = await fieldOutbox.flush()
+      // EZ8 — les photos partent dans le même geste (« Synchroniser » vide TOUT).
+      const bin = await binaryOutbox.flush().catch(() => null)
       await refreshCount()
-      return res
+      return bin ? { ...res, photos: bin } : res
     } finally {
       setFlushing(false)
     }
@@ -41,6 +48,9 @@ export function useFieldOutbox() {
   // disparaître (jamais un effet de bord du flush automatique).
   const discard = useCallback(async (clientOpId) => {
     await fieldOutbox.discard(clientOpId)
+    // EZ8 — l'abandon explicite vaut aussi pour une photo refusée par le
+    // serveur (l'id n'existe que dans une des deux files).
+    await binaryOutbox.discard(clientOpId)
     await refreshCount()
   }, [refreshCount])
 
@@ -76,5 +86,8 @@ export function useFieldOutbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return { online, pending, failed, flushing, flush, refreshCount, discard }
+  return {
+    online, pending, pendingPhotos, failed, flushing, flush, refreshCount,
+    discard, persistentPhotos: binaryOutbox.persistent,
+  }
 }

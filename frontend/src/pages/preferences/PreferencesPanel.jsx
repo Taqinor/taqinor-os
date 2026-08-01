@@ -32,6 +32,8 @@ import {
   getReducedMotionPref, setReducedMotionPref,
   getPhotoQualityPref, setPhotoQualityPref,
   getAppResumePref, setAppResumePref, APP_RESUME_ALWAYS, APP_RESUME_NEVER,
+  // EZ9 — mode « Plein soleil » (terrain).
+  getSunlightPref, setSunlightPref,
 } from './prefs'
 
 // NTMOB6 — sélecteur de démarrage par rôle : « revenir au dashboard classique
@@ -105,6 +107,9 @@ export default function PreferencesPanel({ open, onOpenChange }) {
     setAppResume(value)
     setAppResumePref(value)
   }
+  // EZ9 — le réglage vit aussi en tête des deux écrans terrain ; ici c'est le
+  // même état persisté, pas une seconde source.
+  const [sunlight, setSunlight] = useState(getSunlightPref)
 
   const handleLandingChange = (e) => {
     const value = e.target.value
@@ -115,6 +120,11 @@ export default function PreferencesPanel({ open, onOpenChange }) {
   const handleReducedMotionChange = (checked) => {
     setReducedMotion(checked)
     setReducedMotionPref(checked)
+  }
+
+  const handleSunlightChange = (checked) => {
+    setSunlight(checked)
+    setSunlightPref(checked)
   }
 
   const handlePhotoQualityChange = (value) => {
@@ -213,6 +223,24 @@ export default function PreferencesPanel({ open, onOpenChange }) {
               id="pref-reduced-motion"
               checked={reducedMotion}
               onCheckedChange={handleReducedMotionChange}
+            />
+          </div>
+
+          {/* EZ9 — mode terrain : contraste extrême pour la lumière directe. */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <label htmlFor="pref-sunlight" className="text-sm font-semibold text-foreground">
+                Mode « Plein soleil »
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Blanc pur, encre noire, bordures franches, ombres coupées — pour
+                travailler écran en plein soleil. La taille du texte ne change pas.
+              </p>
+            </div>
+            <Switch
+              id="pref-sunlight"
+              checked={sunlight}
+              onCheckedChange={handleSunlightChange}
             />
           </div>
 

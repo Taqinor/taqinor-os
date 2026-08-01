@@ -17,6 +17,10 @@ export * from './Separator'
 export * from './Skeleton'
 export * from './FadeSwap'
 export * from './EmptyState'
+// APX26 — bandeau « Prochaine action » partagé (chantier + Ma journée).
+export * from './NextActionBanner'
+// EZ9 — bascule « Plein soleil » (écrans terrain).
+export * from './SunlightToggle'
 export * from './ErrorBoundary'
 export * from './NotFound'
 export * from './Forbidden'
