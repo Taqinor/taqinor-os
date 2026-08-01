@@ -150,6 +150,10 @@ class AppelOffre(TenantModel):
     soumissionnaire = models.CharField(
         max_length=255, blank=True, default='',
         verbose_name='Soumissionnaire (raison sociale déposante)')
+    #: AOF144 — marque blanche de PREMIER RANG : quand elle est active, aucun
+    #: artefact remis au maître d'ouvrage ne nomme le bureau d'exécution.
+    marque_blanche = models.BooleanField(
+        default=False, verbose_name='Marque blanche active')
     groupement = models.BooleanField(
         default=False, verbose_name='Dépôt en groupement')
     groupement_membres = models.TextField(
@@ -3545,3 +3549,74 @@ class CitationPlanche(TenantModel):
 
     def __str__(self):
         return f'{self.code_document}{self.indice_cite} ({self.emplacement})'
+
+
+# ── AOF144 — Marque blanche : soumissionnaire ≠ bureau d'exécution ────────
+
+class IdentiteAO(TenantModel):
+    """L'identité d'un RÔLE du dossier : soumissionnaire ou bureau (AOF144).
+
+    Cas réel : le dossier est DÉPOSÉ par une entité partenaire, alors que
+    l'étude et l'exécution sont faites par le bureau. Ce sont deux rôles, deux
+    identités légales, et **les rendus client n'utilisent QUE le
+    soumissionnaire** : quand la marque blanche est active, la société
+    propriétaire de l'ERP n'apparaît NULLE PART dans un artefact remis.
+
+    **Aucun champ d'identité n'est dupliqué avec ``authentication.Company``**
+    (qui ne porte que ``nom``/``slug``) ni avec ``parametres.CompanyProfile``
+    (l'identité de NOTRE société) : ce modèle porte l'identité du PARTENAIRE,
+    qui n'existe nulle part ailleurs. Le rôle ``bureau_execution`` sans
+    enregistrement retombe sur ``parametres.selectors.company_identity`` — une
+    lecture cross-app par selector, jamais un import de modèles.
+    """
+
+    class Role(models.TextChoices):
+        SOUMISSIONNAIRE = 'soumissionnaire', 'Soumissionnaire (déposant)'
+        BUREAU_EXECUTION = 'bureau_execution', "Bureau d'exécution"
+
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: identite fille d'un AO : aucune existence hors de lui
+        related_name='identites',
+        verbose_name="Appel d'offres",
+    )
+    role = models.CharField(
+        max_length=20, choices=Role.choices, verbose_name='Rôle')
+    raison_sociale = models.CharField(
+        max_length=255, verbose_name='Raison sociale')
+    ice = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='ICE')
+    identifiant_fiscal = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Identifiant fiscal')
+    registre_commerce = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Registre de commerce')
+    adresse = models.TextField(blank=True, default='', verbose_name='Adresse')
+    #: Logo — via ``records.Attachment`` (aucun nouveau ``FileField``).
+    logo = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='identites_ao', verbose_name='Logo')
+    signataire_nom = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Signataire')
+    signataire_qualite = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Qualité du signataire')
+    rib = models.CharField(
+        max_length=60, blank=True, default='', verbose_name='RIB')
+    mentions_legales = models.TextField(
+        blank=True, default='', verbose_name='Mentions légales')
+
+    class Meta:
+        verbose_name = "Identité d'appel d'offres (AO)"
+        verbose_name_plural = "Identités d'appel d'offres (AO)"
+        db_table = 'ao_identite'
+        ordering = ['appel_offre', 'role']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['appel_offre', 'role'], name='uniq_identite_ao_role'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_role_display()} — {self.raison_sociale}'

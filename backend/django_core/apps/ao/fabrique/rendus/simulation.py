@@ -23,6 +23,8 @@ from __future__ import annotations
 import hashlib
 import json
 
+from ..identite import identite_client
+
 __all__ = [
     'classeur_xlsx',
     'contexte_simulation',
@@ -91,8 +93,9 @@ def contexte_simulation(simulation):
             'maitre_ouvrage': simulation.appel_offre.maitre_ouvrage
             or simulation.appel_offre.acheteur,
         },
-        'soumissionnaire': simulation.appel_offre.soumissionnaire
-        or simulation.appel_offre.company.nom,
+        # AOF144 — pièce CLIENT : seul le soumissionnaire y figure.
+        'soumissionnaire': identite_client(
+            simulation.appel_offre)['raison_sociale'],
         'duree_annees': int(simulation.duree_annees or 0),
         'puissance_kwc': _texte(simulation.puissance_kwc),
         'productible_kwh_an': _texte(simulation.productible_kwh_an),

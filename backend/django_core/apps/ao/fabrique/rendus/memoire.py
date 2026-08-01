@@ -24,6 +24,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from ..gabarits import rendre_gabarit, valider_gabarit
+from ..identite import identite_client
 
 __all__ = [
     'CODE_SECTION_GEOMETRIES',
@@ -134,10 +135,9 @@ def contexte_memoire(appel_offre):
             'nombre_exemplaires': appel_offre.nombre_exemplaires,
             'date_limite': appel_offre.date_limite or '',
         },
-        'soumissionnaire': {
-            'raison_sociale': appel_offre.soumissionnaire
-            or appel_offre.company.nom,
-        },
+        # AOF144 — un rendu CLIENT n'utilise QUE le soumissionnaire : le
+        # bureau d'exécution n'entre jamais dans ce contexte.
+        'soumissionnaire': identite_client(appel_offre),
         'equipements': equipements,
         'geometries': geometries,
         'etude': {

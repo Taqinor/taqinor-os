@@ -1523,14 +1523,19 @@ def generer_indice_planche(appel_offre, code_document, *, empreinte,
 
 
 def donnees_cartouche(appel_offre, code_document, indice):
-    """Le cartouche comme DONNÉES — jamais écrit à la main sur le dessin."""
+    """Le cartouche comme DONNÉES — jamais écrit à la main sur le dessin.
+
+    AOF144 — une planche est une pièce CLIENT : son cartouche ne porte que le
+    SOUMISSIONNAIRE, jamais le bureau d'exécution.
+    """
+    from .fabrique.identite import identite_client
+
     return {
         'code_document': code_document,
         'indice': indice,
         'objet': appel_offre.objet,
         'maitre_ouvrage': appel_offre.maitre_ouvrage or appel_offre.acheteur,
-        'soumissionnaire': appel_offre.soumissionnaire
-        or appel_offre.company.nom,
+        'soumissionnaire': identite_client(appel_offre)['raison_sociale'],
         'reference_marche': appel_offre.reference_acheteur
         or appel_offre.reference,
     }
