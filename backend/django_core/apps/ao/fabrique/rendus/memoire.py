@@ -226,8 +226,14 @@ def assembler_memoire(appel_offre, *, contexte=None):
             'corps': rendre_gabarit(section.corps, contexte, valider=False),
         })
     blocs.append({
+        # Apostrophe TYPOGRAPHIQUE (U+2019), pas l'apostrophe droite : le
+        # gabarit ``ao/memoire.html`` échappe automatiquement le contexte, et
+        # une apostrophe droite y ressort en ``&#x27;`` — le titre devient
+        # alors introuvable pour toute relecture du texte rendu. C'est aussi
+        # la typographie française attendue dans une pièce remise au maître
+        # d'ouvrage. Ne JAMAIS désactiver l'auto-échappement pour contourner.
         'code': CODE_SECTION_GEOMETRIES,
-        'titre': 'Géométries d\'implantation retenues',
+        'titre': 'Géométries d’implantation retenues',
         'corps': _corps_geometries(contexte['geometries']),
     })
     return blocs
