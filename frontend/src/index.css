@@ -8892,3 +8892,17 @@ textarea.form-control {
 @media (max-width: 639px) {
   .header-app-pill { display: none; }
 }
+
+/* ==========================================================================
+   APX11 — Liseré d'accent de module (identité par app).
+   La teinte vient de --module-accent, déjà posée par la coquille (Header,
+   Sidebar, HomeMenu) ou par le conteneur local (features/ventes/accent.js).
+   Repli sur --border : jamais de couleur en dur, donc lisible clair ET sombre.
+   ========================================================================== */
+.app-accent-rail {
+  border-left: 3px solid var(--module-accent, var(--border));
+  padding-left: 0.75rem;
+}
+.app-accent-card {
+  border-left: 3px solid var(--module-accent, var(--border));
+}

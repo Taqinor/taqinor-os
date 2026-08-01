@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import {
   Search, Plus, Download, BookText, ListChecks, FileWarning,
   MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal,
-  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer, Zap,
+  CreditCard, ShieldCheck, X, LayoutList, LayoutGrid, Printer, Zap, Receipt,
 } from 'lucide-react'
 import {
   fetchFactures,
@@ -32,6 +32,9 @@ import {
   toast,
 } from '../../ui'
 import { formatMAD, toNumber, normalizeMaPhone, formatDateTime } from '../../lib/format'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import PaiementDialog from './PaiementDialog'
 // WIR103/ZFAC4 — modale « Note de débit » (création + téléchargement PDF).
 import NoteDebitDialog from './NoteDebitDialog'
@@ -826,6 +829,13 @@ export default function FactureList() {
     () => factures.reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
     [factures])
 
+  // APX11 — sous-titre utile de l'en-tête : combien de factures restent à
+  // encaisser (dérivé des factures DÉJÀ chargées, aucun appel réseau).
+  const impayeesCount = useMemo(
+    () => factures.filter(f => f.statut !== 'annulee' && f.statut !== 'brouillon'
+      && (toNumber(f.montant_du) || 0) > 0).length,
+    [factures])
+
   const totalEnRetard = useMemo(
     () => factures.filter(isOverdue)
       .reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
@@ -1165,15 +1175,28 @@ export default function FactureList() {
   // VX21 — l'en-tête de page reste TOUJOURS visible (chargement, erreur,
   // données), parité DevisList/J141 : la mise en page ne saute plus au retour
   // des données (plus de spinner plein écran qui remplace toute la page).
+  // APX11 — en-tête unique VX28 + icône/accent du module (le `<h2>` et son
+  // badge sont conservés tels quels : ancres e2e inchangées).
   const pageHeader = (
-    <div className="page-header">
-      <h2>
-        Factures
-        {factures.length > 0 && (
-          <Badge tone="primary" className="ml-2 align-middle">{factures.length}</Badge>
-        )}
-      </h2>
-      <div className="flex flex-wrap items-center gap-2">
+    <PageHeader
+      style={VENTES_ACCENT_STYLE}
+      className="app-accent-rail"
+      icon={Receipt}
+      title={(
+        <>
+          Factures
+          {factures.length > 0 && (
+            <Badge tone="primary" className="ml-2 align-middle">{factures.length}</Badge>
+          )}
+        </>
+      )}
+      subtitle={
+        impayeesCount > 0
+          ? `${impayeesCount} facture${impayeesCount > 1 ? 's' : ''} à encaisser`
+          : 'Facturation, encaissements et avoirs'
+      }
+      actions={(
+        <>
         <Input
           type="search"
           className="w-full sm:w-56"
@@ -1251,7 +1274,9 @@ export default function FactureList() {
           ))}
         </div>
         <Button onClick={openNew}><Plus /> Nouvelle facture</Button>
-      </div>
+        </>
+      )}
+    >
       {/* VX142(a) — Journal comptable : Dialog mois/trimestre (remplace le
           window.prompt() texte libre). */}
       <Dialog open={journalOpen} onOpenChange={setJournalOpen}>
@@ -1325,7 +1350,7 @@ export default function FactureList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageHeader>
   )
 
   if (loading) {

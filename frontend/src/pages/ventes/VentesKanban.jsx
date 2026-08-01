@@ -1,7 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { Search, Plus, FilePlus2, PackageX } from 'lucide-react'
+import { Search, Plus, FilePlus2, PackageX, ShoppingCart } from 'lucide-react'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import {
   fetchBonsCommande,
   createBonCommande,
@@ -152,25 +155,34 @@ export default function BonCommandeList() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h2>
-          Bons de commande
-          {bonsCommande.length > 0 && (
-            <Badge tone="primary" className="ml-2 align-middle">{bonsCommande.length}</Badge>
-          )}
-        </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            type="search"
-            className="w-full sm:w-64"
-            leading={<Search />}
-            placeholder="Référence, client…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <Button onClick={openNew}><Plus /> Nouveau BC</Button>
-        </div>
-      </div>
+      {/* APX11 — en-tête unique VX28 + accent Ventes. */}
+      <PageHeader
+        style={VENTES_ACCENT_STYLE}
+        className="app-accent-rail"
+        icon={ShoppingCart}
+        title={(
+          <>
+            Bons de commande
+            {bonsCommande.length > 0 && (
+              <Badge tone="primary" className="ml-2 align-middle">{bonsCommande.length}</Badge>
+            )}
+          </>
+        )}
+        subtitle="Le maillon devis → bon de commande → facture"
+        actions={(
+          <>
+            <Input
+              type="search"
+              className="w-full sm:w-64"
+              leading={<Search />}
+              placeholder="Référence, client…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            <Button onClick={openNew}><Plus /> Nouveau BC</Button>
+          </>
+        )}
+      />
 
       {actionError && (
         <div role="alert" className="mt-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">

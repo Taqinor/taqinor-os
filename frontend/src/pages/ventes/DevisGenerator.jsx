@@ -22,6 +22,9 @@ import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisPresetPanel from './DevisPresetPanel'
 import DevisLineRow from './DevisLineRow'
 import { Combobox } from '../../ui/Combobox'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
   Button, IconButton, Card, CardContent,
@@ -1678,13 +1681,21 @@ export default function DevisGenerator({
           réellement (`.layout-content` en page pleine, le Sheet englobant
           quand `embedded` dans LeadDevisPanel). */}
       <ScrollProgress />
+      {/* APX11 — en-tête unique VX28 + accent Ventes (le `<h2>` est conservé :
+          les ancres e2e `getByRole('heading')` ne bougent pas). */}
       {!embedded && (
-        <div className="page-header">
-          <h2>Générateur de Devis Solaire</h2>
-          <Button variant="outline" onClick={() => navigate('/ventes/devis')}>
-            <ArrowLeft /> Retour aux devis
-          </Button>
-        </div>
+        <PageHeader
+          style={VENTES_ACCENT_STYLE}
+          className="app-accent-rail"
+          icon={FileText}
+          title="Générateur de Devis Solaire"
+          subtitle={editDevis ? `Édition — ${editDevis.reference ?? 'devis existant'}` : 'Nouveau devis · tout est en TTC'}
+          actions={(
+            <Button variant="outline" onClick={() => navigate('/ventes/devis')}>
+              <ArrowLeft /> Retour aux devis
+            </Button>
+          )}
+        />
       )}
 
       {/* VX16 — mise en page à deux colonnes sur lg+ : le formulaire à gauche,

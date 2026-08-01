@@ -59,6 +59,10 @@ import RoofViewer from './RoofViewer'
 import DevisSuiviPartagePanel from './DevisSuiviPartagePanel'
 import { StateBlock } from '../../components/StateBlock'
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
+// APX11 — l'en-tête UNIQUE de l'app (VX28) remplace l'idiome legacy.
+import { PageHeader } from '../../ui/PageHeader'
+// APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -2074,29 +2078,42 @@ export default function DevisList() {
 
   // J141 — l'en-tête de page reste TOUJOURS visible (chargement, erreur, données)
   // pour éviter le saut de mise en page. Le contenu interne varie selon l'état.
+  // APX11 — l'en-tête unique de l'app (VX28, `<h2>` conservé donc les ancres
+  // e2e `getByRole('heading')` sont inchangées) + icône et accent du module :
+  // l'œil doit dire « je suis dans Ventes » sans lire le fil d'Ariane.
   const pageHeader = (
-    <div className="page-header">
-      <h2>Devis</h2>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={loading || !!error || xlsxBusy}
-                onClick={() => {
-                  const pending = downloadBlobInGesture()
-                  setXlsxBusy(true)
-                  importApi.exportList('devis', devis.map(d => d.id))
-                    .then(r => pending.deliver(r.data, 'devis.xlsx'))
-                    .catch(() => {})
-                    .finally(() => setXlsxBusy(false))
-                }}>
-          {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
-        </Button>
-        {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
-            noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
-        <Button size="sm" variant="outline" onClick={() => window.print()}>
-          <Printer /> Imprimer
-        </Button>
-        <Button onClick={openNew}><Plus /> Nouveau devis</Button>
-      </div>
-    </div>
+    <PageHeader
+      style={VENTES_ACCENT_STYLE}
+      className="app-accent-rail"
+      icon={FileText}
+      title="Devis"
+      subtitle={
+        expiringSoon.length > 0
+          ? `${devis.length} devis · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
+          : `${devis.length} devis`
+      }
+      actions={(
+        <>
+          <Button size="sm" variant="outline" disabled={loading || !!error || xlsxBusy}
+                  onClick={() => {
+                    const pending = downloadBlobInGesture()
+                    setXlsxBusy(true)
+                    importApi.exportList('devis', devis.map(d => d.id))
+                      .then(r => pending.deliver(r.data, 'devis.xlsx'))
+                      .catch(() => {})
+                      .finally(() => setXlsxBusy(false))
+                  }}>
+            {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
+          </Button>
+          {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
+              noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
+          <Button size="sm" variant="outline" onClick={() => window.print()}>
+            <Printer /> Imprimer
+          </Button>
+          <Button onClick={openNew}><Plus /> Nouveau devis</Button>
+        </>
+      )}
+    />
   )
 
   if (loading) {

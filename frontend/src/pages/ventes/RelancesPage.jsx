@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText, MoreHorizontal,
+  CalendarClock,
 } from 'lucide-react'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import ventesApi from '../../api/ventesApi'
 import PaiementDialog from './PaiementDialog'
 import { openPdfBlob } from '../../utils/pdfBlob'
@@ -273,16 +277,21 @@ export default function RelancesPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h2>
-          Relances / Impayés
-          <Badge tone="warning" className="ml-2 align-middle">{rows.length}</Badge>
-        </h2>
-      </div>
-      <p className="mb-3 text-sm text-muted-foreground">
-        Vue de recouvrement — consigner et imprimer uniquement. Aucun envoi
-        automatique (email/SMS) n'est effectué.
-      </p>
+      {/* APX11 — en-tête unique VX28 + accent Ventes ; la phrase de cadrage
+          (consigner/imprimer, aucun envoi automatique) devient le sous-titre,
+          elle n'a plus à flotter sous l'en-tête. */}
+      <PageHeader
+        style={VENTES_ACCENT_STYLE}
+        className="app-accent-rail"
+        icon={CalendarClock}
+        title={(
+          <>
+            Relances / Impayés
+            <Badge tone="warning" className="ml-2 align-middle">{rows.length}</Badge>
+          </>
+        )}
+        subtitle="Vue de recouvrement — consigner et imprimer uniquement. Aucun envoi automatique (email/SMS) n'est effectué."
+      />
 
       {clientFilter && (
         <div className="mb-3">

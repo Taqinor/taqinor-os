@@ -13,6 +13,9 @@ import { useParams } from 'react-router-dom'
 import ventesApi from '../../api/ventesApi'
 import { Spinner, EmptyState } from '../../ui'
 import { FileStack } from 'lucide-react'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import RoofViewer from './RoofViewer'
 
 export default function RoofViewerPage() {
@@ -53,9 +56,13 @@ export default function RoofViewerPage() {
 
   return (
     <div className="page" data-testid="roof-viewer-page">
-      <div className="page-header">
-        <h2>Design 3D — {devis.reference}</h2>
-      </div>
+      {/* APX11 — en-tête unique VX28 + accent Ventes. */}
+      <PageHeader
+        style={VENTES_ACCENT_STYLE}
+        className="app-accent-rail"
+        icon={FileStack}
+        title={`Design 3D — ${devis.reference}`}
+      />
       <div className="mt-4">
         <RoofViewer layout={devis.roof_layout} />
       </div>
