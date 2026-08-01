@@ -34,6 +34,9 @@ import {
 const Landing = lazy(() => import('../pages/Landing'))
 const Login = lazy(() => import('../pages/Login'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
+// ODY2 — Menu d'accueil plein écran (`/apps`) : la porte d'entrée du paradigme
+// « j'ouvre → MES apps ». Grille des apps installées ∩ autorisées (ODY1).
+const HomeMenu = lazy(() => import('../pages/home/HomeMenu'))
 const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
 const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -336,6 +339,9 @@ const router = createBrowserRouter([
     element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireAccueil /></WithPortal>,
   },
 
+  // ODY2 — Menu d'accueil : la grille de MES apps. `/dashboard` reste une route
+  // valide (l'app « Tableau de bord »), ce n'est plus la porte d'entrée.
+  { path: '/apps', loader: authLoader, element: <WithLayout><HomeMenu /></WithLayout> },
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
   // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).

@@ -8369,3 +8369,203 @@ textarea.form-control {
     );
   }
 }
+
+/* ==========================================================================
+   ODY2 — Menu d'accueil plein ecran « MES apps » (route /apps).
+   Bloc APPEND-ONLY : aucune regle existante n'est modifiee.
+   Fond signature « Lumiere sur Nuit » — un halo brass DISCRET (8 % au plus)
+   pose en couche purement decorative SOUS le contenu. Aucun texte ne repose
+   dessus : les libelles gardent `--foreground` / `--muted-foreground`, donc
+   le contraste AA reste celui du theme, en clair comme en sombre.
+   ========================================================================== */
+.home-menu {
+  position: relative;
+  min-height: 100%;
+}
+
+.home-menu-glow {
+  position: absolute;
+  inset: -1rem -1rem auto -1rem;
+  height: 22rem;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(
+      120% 70% at 50% -12%,
+      color-mix(in srgb, var(--primary) 8%, transparent) 0%,
+      transparent 62%
+    );
+}
+
+.home-menu-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.home-menu-head {
+  margin-bottom: 1rem;
+}
+
+.home-menu-title {
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.home-menu-subtitle {
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  color: var(--muted-foreground);
+}
+
+.home-menu-searchbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 26rem;
+  margin-bottom: 1.35rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted-foreground);
+}
+
+.home-menu-searchbar:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.home-menu-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 0.88rem;
+  color: var(--foreground);
+}
+
+.home-menu-section + .home-menu-section {
+  margin-top: 1.5rem;
+}
+
+.home-menu-section-title {
+  margin-bottom: 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.home-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.25rem, 1fr));
+  gap: 0.6rem;
+}
+
+.home-menu-cell {
+  position: relative;
+  display: flex;
+}
+
+.home-menu-tile {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 1rem 0.6rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.home-menu-tile:hover {
+  border-color: var(--module-accent, var(--primary));
+  box-shadow: 0 6px 18px -12px color-mix(in srgb, var(--foreground) 55%, transparent);
+  transform: translateY(-1px);
+}
+
+.home-menu-tile:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 2px;
+}
+
+.home-menu-tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--module-accent, var(--primary)) 12%, transparent);
+  color: var(--module-accent, var(--primary));
+}
+
+.home-menu-tile-label {
+  font-size: 0.8rem;
+  font-weight: 550;
+  line-height: 1.2;
+  color: var(--foreground);
+}
+
+.home-menu-tile-pin {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.35rem;
+  display: inline-flex;
+  padding: 0.15rem;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.home-menu-cell:hover .home-menu-tile-pin,
+.home-menu-cell:focus-within .home-menu-tile-pin,
+.home-menu-tile-pin:hover,
+.home-menu-tile-pin:focus-visible {
+  opacity: 1;
+}
+
+.home-menu-vide {
+  padding: 1.5rem 0;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+
+@media (max-width: 768px) {
+  /* ODY2 — au pouce : 3-4 colonnes, tuiles plus compactes, favoris toujours
+     accessibles (l'etoile reste visible faute de survol sur tactile). */
+  .home-menu-grid {
+    grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+    gap: 0.5rem;
+  }
+  .home-menu-tile {
+    padding: 0.8rem 0.35rem 0.65rem;
+  }
+  .home-menu-tile-pin {
+    opacity: 0.55;
+  }
+  .home-menu-searchbar {
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-menu-tile,
+  .home-menu-tile-pin {
+    transition: none;
+  }
+  .home-menu-tile:hover {
+    transform: none;
+  }
+}
