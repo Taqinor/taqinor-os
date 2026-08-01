@@ -194,3 +194,28 @@ touché (une autre lane y travaille en parallèle).
   `docs/get-or-create-audit.md`, `docs/on-delete-financial-audit.md`,
   `docs/money-fields-audit.md`.
 
+---
+
+## NOTES — lane `intégrations + gouvernance` (AOF163-169, 186, 193, 194)
+
+- **AOF165 livrée PARTIELLEMENT (blocage réel, pas un raccourci).** `import_specs`
+  (`obstacles`, `chaines`) est déclaré ET prouvé câblé (AOF30 + ARC32). Trois surfaces
+  restent VIDES **à dessein**, chacune avec sa raison écrite dans `apps/ao/platform.py`
+  et verrouillée par un test de `test_platform_ao.py` :
+  * `searchable_models` — `apps/reporting/search.py` n'itère que les clés présentes À LA
+    FOIS dans le manifeste ET dans son registre local `_SEARCH_SPECS` ; aucune spec AO n'y
+    existe. Déclarer rendrait une recherche VIDE tout en périmant l'entrée de baseline
+    `('ao.appeloffre','chatter_sans_recherche')` de `core/platform_coverage.py` → CI rouge
+    des deux côtés. Le câblage manquant est dans une app transverse, que la tâche interdit
+    explicitement de toucher (« sans toucher aux surfaces transverses »).
+  * `record_targets` — ne peut pas s'étendre sans la précédente : une cible chatter non
+    cherchable et hors baseline est une dérive NOUVELLE, donc rouge.
+  * `customfield_models` — les valeurs sont stockées dans un champ `custom_data`
+    (`JSONField`) porté par le MODÈLE CIBLE (patron `contrats.Contrat`, `flotte.Vehicule`).
+    Aucun modèle d'`apps/ao/models.py` ne le porte, et ce fichier appartient à une autre
+    lane de ce run. Débloquer = `custom_data` + migration additive sur `AppelOffre` et
+    `BatimentAO`, puis déclarer DANS LE MÊME COMMIT.
+  * `automation_state_fields` — la « date limite » n'est volontairement PAS déclarée : ce
+    n'est pas un champ d'ÉTAT (les couperets passent par `EcheanceAO` + le beat
+    `ao.rappeler_echeances`). Un test l'interdit explicitement.
+
