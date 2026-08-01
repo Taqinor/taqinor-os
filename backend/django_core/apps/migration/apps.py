@@ -26,5 +26,7 @@ class MigrationConfig(AppConfig):
             'Projets de migration ERP sortants (Odoo/Sage/Excel) avec '
             'rapport de réconciliation obligatoire : comptages et totaux '
             'source vs cible avant toute clôture.'),
-        'categorie': 'Administration',
+        # Vocabulaire FERMÉ de `core.modules.CATEGORIES` : pas de catégorie
+        # « Administration » (l'app sœur `adminops` est elle aussi 'Technique').
+        'categorie': 'Technique',
     }

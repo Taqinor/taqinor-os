@@ -46,7 +46,13 @@ def _fmt(valeur, suffixe=''):
 
 
 def _lignes_matieres_html(matieres):
-    if not matieres:
+    # `matieres` liste les matières CONFIGURÉES sur la classe, notées ou non :
+    # une classe a presque toujours des matières, donc `if not matieres` ne se
+    # déclenchait jamais et un élève sans aucune note obtenait un tableau de
+    # lignes toutes à « — » au lieu de l'état vide. L'état vide dépend des
+    # NOTES, pas de la présence de matières au programme.
+    if not matieres or all(
+            ligne.get('moyenne') is None for ligne in matieres):
         return (
             '<tr><td colspan="4">Aucune note saisie sur la période.</td></tr>')
     lignes = []

@@ -241,9 +241,11 @@ class PurgeTests(CorbeilleBase):
         self.assertTrue(Lead.objects.filter(pk=self.lead.pk).exists())
 
     def test_commande_purger_corbeille(self):
+        # `purger_corbeille_transverse` : `purger_corbeille` tout court est déjà
+        # pris par GED25 et Django résoudrait le doublon vers `apps.ged`.
         archiver(self.lead)
         self._perimer(ElementSupprime.objects.get())
-        call_command('purger_corbeille', '--dry-run')
+        call_command('purger_corbeille_transverse', '--dry-run')
         self.assertEqual(ElementSupprime.objects.count(), 1)
-        call_command('purger_corbeille')
+        call_command('purger_corbeille_transverse')
         self.assertEqual(ElementSupprime.objects.count(), 0)
