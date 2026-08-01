@@ -455,12 +455,23 @@ export default function RapprochementsPage() {
   }, [tab])
 
   // ── Actions par ligne / onglet ──
+  // EZ12 — rapprochement dont on veut les suggestions, depuis la LISTE.
+  const [suggestionsFor, setSuggestionsFor] = useState(null)
+
   const rowActions = (row) => {
     switch (tab) {
       case 'bancaires':
         return [
           { id: 'ouvrir', label: 'Ouvrir le détail', icon: Link2,
             onClick: () => setDetailFor(row) },
+          // EZ12 — « Suggestions » et « Accepter les non-ambiguës » étaient
+          // ENFERMÉS dans la modale de détail : il fallait ENTRER dans un
+          // rapprochement pour découvrir le chemin le plus court (3 clics).
+          // Ils deviennent des actions de PREMIER NIVEAU de la liste.
+          ...(row.statut !== 'rapproche' ? [{
+            id: 'suggestions', label: 'Suggestions d’appariement', icon: Wand2,
+            onClick: () => setSuggestionsFor(row),
+          }] : []),
           ...(row.statut !== 'rapproche' ? [{
             id: 'cloturer', label: 'Clôturer', icon: Lock,
             onClick: () => act(() => comptaApi.rapprochements.cloturer(row.id), 'Rapprochement clôturé.'),
@@ -555,6 +566,15 @@ export default function RapprochementsPage() {
           initial={dialog.row}
           onSubmit={submit}
           onSaved={list.reload}
+        />
+      )}
+
+      {/* EZ12 — le chemin 3-clics, atteignable SANS ouvrir une modale de
+          détail : c'est le MÊME `SuggestionsDialog`, jamais un second. */}
+      {suggestionsFor && (
+        <SuggestionsDialog
+          rapprochement={suggestionsFor}
+          onClose={() => { setSuggestionsFor(null); list.reload() }}
         />
       )}
 

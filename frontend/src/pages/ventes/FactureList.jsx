@@ -1031,6 +1031,13 @@ export default function FactureList() {
   // aux factures (règle #4 — seul le PDF de DEVIS passe par `/proposal` ;
   // aucun chemin nouveau n'est créé ici).
   const [previewFacture, setPreviewFacture] = useState(null)
+  // EZ12 — L'ENCAISSEMENT OFFRE SA SUITE. Le parcours d'encaissement est le
+  // meilleur de l'app (3 clics) mais il s'arrêtait sec : rien n'était offert
+  // après. La suite HONNÊTE est la page des Encaissements filtrée sur le
+  // client — PAS le rapprochement bancaire, qui est « strictement distinct
+  // de l'import de paiements clients » (compta/models.py) : un paiement
+  // fraîchement encaissé n'y apparaît PAS tant que le relevé n'est pas importé.
+  const [dernierEncaissement, setDernierEncaissement] = useState(null)
   const openPreview = (f) => setPreviewFacture(f)
   const fetchFacturePreviewBlob = useCallback(async () => {
     const f = previewFacture
@@ -1447,6 +1454,35 @@ export default function FactureList() {
     <div className="page">
       {pageHeader}
 
+      {/* EZ12 — après l'encaissement, l'action SUIVANTE est offerte : voir
+          l'encaissement dans les Encaissements, filtré sur ce client
+          (`PaiementsPage` lit déjà `?client=`). Un clic, aucune recherche. */}
+      {dernierEncaissement && (
+        <div
+          role="status"
+          data-testid="encaissement-suite"
+          className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
+        >
+          <span>
+            Paiement enregistré sur {dernierEncaissement.reference}
+            {dernierEncaissement.client_nom ? ` — ${dernierEncaissement.client_nom}` : ''}.
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild size="sm" variant="outline" data-testid="voir-encaissement">
+              <Link to={dernierEncaissement.client
+                ? `/ventes/paiements?client=${dernierEncaissement.client}`
+                : '/ventes/paiements'}
+              >
+                Voir l’encaissement
+              </Link>
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setDernierEncaissement(null)}>
+              Fermer
+            </Button>
+          </div>
+        </div>
+      )}
+
       {showForm && (
         <FactureForm facture={editFacture} onClose={closeForm} onSaved={onSaved} />
       )}
@@ -1455,7 +1491,7 @@ export default function FactureList() {
       <PaiementDialog
         facture={payTarget}
         onOpenChange={(o) => { if (!o) setPayTarget(null) }}
-        onSaved={() => dispatch(fetchFactures())}
+        onSaved={() => { dispatch(fetchFactures()); setDernierEncaissement(payTarget) }}
       />
 
       {/* APX14 — aperçu du PDF de la facture, INLINE. Source = le PDF LEGACY
