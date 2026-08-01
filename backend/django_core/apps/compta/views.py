@@ -59,8 +59,9 @@ from .models import (
     TimbreFiscal, TravauxEnCours, VirementInterne,
     DocumentProposition, SimulationPublique, SimulationFinancement,
     OffreFinancement, LigneIncitation, EcheancierPaiement, TranchePaiement,
-    AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
-    DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
+    # AOF1 — les 8 modèles AO ne sont plus référencés ici : leurs ViewSets
+    # vivent dans ``apps.ao.views`` (shim de ré-export inverse en bas de
+    # fichier).
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
@@ -144,10 +145,10 @@ from .serializers import (
     DocumentPropositionSerializer, SimulationPubliqueSerializer,
     SimulationFinancementSerializer, OffreFinancementSerializer,
     LigneIncitationSerializer, EcheancierPaiementSerializer,
-    TranchePaiementSerializer, AppelOffreSerializer, BordereauPrixSerializer,
-    LigneBordereauSerializer, CautionSoumissionSerializer,
-    DossierSoumissionSerializer, PieceSoumissionSerializer,
-    EcheanceAOSerializer, ResultatAOSerializer, ComptePortailClientSerializer,
+    TranchePaiementSerializer,
+    # AOF1 — les 8 serializers AO ne sont plus référencés ici (leurs ViewSets
+    # sont relogés dans ``apps.ao.views``).
+    ComptePortailClientSerializer,
     AcceptationDevisPortailSerializer, PaiementFacturePortailSerializer,
     DocumentClientPortailSerializer, JalonChantierPortailSerializer,
     DemandeTicketPortailSerializer,
@@ -7181,92 +7182,24 @@ class ComparateurCashFinancementViewSet(viewsets.ViewSet):
         return Response(resultat)
 
 
-# ── FG222 — Gestion des appels d'offres ────────────────────────────────────
-
-class AppelOffreViewSet(_ComptaBaseViewSet):
-    """Objets appels d'offres public/privé (FG222)."""
-    queryset = AppelOffre.objects.all()
-    serializer_class = AppelOffreSerializer
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['reference', 'objet', 'acheteur', 'lot']
-    ordering_fields = ['date_creation', 'date_limite', 'statut']
-
-
-# ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────
-
-class BordereauPrixViewSet(_ComptaBaseViewSet):
-    """Bordereaux des prix (BOQ) d'AO (FG223), séparés du devis client."""
-    queryset = BordereauPrix.objects.prefetch_related('lignes').all()
-    serializer_class = BordereauPrixSerializer
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['date_creation']
-
-
-class LigneBordereauViewSet(_ComptaBaseViewSet):
-    """Lignes chiffrées d'un BOQ (FG223)."""
-    queryset = LigneBordereau.objects.all()
-    serializer_class = LigneBordereauSerializer
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['numero']
-
-
-# ── FG224 — Cautions & garanties de soumission ─────────────────────────────
-
-class CautionSoumissionViewSet(_ComptaBaseViewSet):
-    """Cautions de soumission (provisoires/définitives) d'AO (FG224)."""
-    queryset = CautionSoumission.objects.all()
-    serializer_class = CautionSoumissionSerializer
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['date_creation', 'date_echeance', 'statut']
-
-
-# ── FG225 — Dossier de soumission (pièces administratives) ─────────────────
-
-class DossierSoumissionViewSet(_ComptaBaseViewSet):
-    """Dossiers de soumission d'AO (FG225) : checklist des pièces."""
-    queryset = DossierSoumission.objects.prefetch_related('pieces').all()
-    serializer_class = DossierSoumissionSerializer
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['date_creation']
-
-
-class PieceSoumissionViewSet(_ComptaBaseViewSet):
-    """Pièces administratives d'un dossier de soumission (FG225)."""
-    queryset = PieceSoumission.objects.all()
-    serializer_class = PieceSoumissionSerializer
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['libelle']
-
-
-# ── FG226 — Échéancier & alertes de deadline d'AO ──────────────────────────
-
-class EcheanceAOViewSet(_ComptaBaseViewSet):
-    """Dates clés d'un AO avec rappels (FG226). L'action ``dues`` liste les
-    échéances dont le rappel est échu et non traité."""
-    queryset = EcheanceAO.objects.all()
-    serializer_class = EcheanceAOSerializer
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['date_echeance', 'date_creation']
-
-    @action(detail=False, methods=['get'])
-    def dues(self, request):
-        dues = services.echeances_ao_dues(request.user.company)
-        return Response(EcheanceAOSerializer(dues, many=True).data)
-
-
-# ── FG227 — Analyse gagné/perdu des appels d'offres ────────────────────────
-
-class ResultatAOViewSet(_ComptaBaseViewSet):
-    """Résultats d'AO pour l'analyse gagné/perdu (FG227). L'action ``stats``
-    renvoie le taux de réussite consolidé."""
-    queryset = ResultatAO.objects.all()
-    serializer_class = ResultatAOSerializer
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['date_creation', 'date_resultat']
-
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        return Response(services.taux_reussite_ao(request.user.company))
+# ── FG222–FG227 — Appels d'offres : shim de ré-export INVERSE (AOF1) ───────
+#
+# Le CORPS des 8 ViewSets AO vit désormais dans ``apps.ao.views`` (AOF1 a
+# achevé le relogement annoncé par le docstring d'``apps/ao/views.py``). Ce
+# shim INVERSE (compta ← ao) garde intactes les routes historiques
+# ``/api/django/compta/…`` et tous les imports ``from apps.compta.views import
+# AppelOffreViewSet`` déjà écrits. ODX22 (RETRAIT des shims transitoires) reste
+# ouvert : il aura ce shim-ci à retirer, dans le sens inverse d'avant.
+from apps.ao.views import (  # noqa: E402,F401
+    AppelOffreViewSet,
+    BordereauPrixViewSet,
+    CautionSoumissionViewSet,
+    DossierSoumissionViewSet,
+    EcheanceAOViewSet,
+    LigneBordereauViewSet,
+    PieceSoumissionViewSet,
+    ResultatAOViewSet,
+)
 
 
 # ── FG228 — Portail self-service client ────────────────────────────────────
