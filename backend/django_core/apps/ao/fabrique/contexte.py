@@ -440,6 +440,12 @@ def litteraux_chiffres(texte, tolerances=()):
     for tolere in tolerances:
         reste = reste.replace(str(tolere), ' ')
     reste = _TOLERES.sub(' ', reste)
+    # Un COMMENTAIRE n'est pas du texte lu par la commission : ni le
+    # commentaire Django ({# … #}), ni le commentaire HTML, ni un bloc CSS
+    # (les valeurs métriques d'une feuille de style ne sont pas des montants).
+    reste = re.sub(r'\{#.*?#\}|<!--.*?-->', ' ', reste, flags=re.DOTALL)
+    reste = re.sub(r'<style\b.*?</style>|<script\b.*?</script>', ' ', reste,
+                   flags=re.DOTALL | re.IGNORECASE)
     # Les expressions de gabarit ({{ ... }}) NE sont pas du texte littéral :
     # elles référencent le contexte, ce qui est précisément l'objectif.
     reste = re.sub(r'\{\{.*?\}\}|\{%.*?%\}', ' ', reste, flags=re.DOTALL)
