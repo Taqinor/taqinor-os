@@ -1,11 +1,15 @@
-// EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
-import { frenchError } from '../lib/frenchError'
 // FG350 — Logique PURE du Copilote in-app (CopilotPanel).
 //
 // Ce module ne dépend NI de React NI du DOM : il regroupe les petits utilitaires
 // d'affichage du tiroir conversationnel global pour qu'ils soient testables en
 // `node:test`. Le panneau (CopilotPanel.jsx) câble Redux/axios par-dessus en
 // réutilisant la slice `ia` existante (`queryAgent` → /sql-agent/query).
+//
+// EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut. L'extension `.js`
+// est EXPLICITE : ce module est testé en `node --test` (sans bundler), qui
+// n'invente pas les extensions — sa chaîne d'imports doit rester résolvable
+// par Node comme par Vite.
+import { frenchError } from '../../lib/frenchError.js'
 
 // Message FR clair quand la fonctionnalité est key-gated (GROQ_API_KEY absente
 // côté service IA). Le backend renvoie alors un texte d'erreur de configuration
