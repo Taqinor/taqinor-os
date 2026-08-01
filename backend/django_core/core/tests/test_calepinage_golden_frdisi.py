@@ -30,19 +30,35 @@ TEMOINS = os.path.join(RACINE, "docs", "ao-frdisi", "releve-2026-07-27")
 COMPTES = (("bat_A_aile_L.json", 148), ("bat_C_ecole.json", 314),
            ("bat_B_arc.json", 120))
 
-#: empreintes des scripts témoins — ``docs/ao-frdisi/`` est GELÉ
+#: empreintes des scripts témoins — ``docs/ao-frdisi/`` est GELÉ.
+#: Empreintes prises sur le contenu NORMALISÉ en fins de ligne LF, c'est-à-dire
+#: sur les octets tels que git les stocke : un poste Windows avec
+#: ``core.autocrlf=true`` reçoit les mêmes fichiers en CRLF, ce qui changerait
+#: l'empreinte brute sans qu'une seule ligne de code ait bougé. Le gel porte sur
+#: le CONTENU des témoins, pas sur la convention de fin de ligne du poste.
 EMPREINTES_TEMOINS = (
     ("vue_bat_A_v2.py",
-     "67d58c58aece0613e6decf7acb00513c9375c1614378fd3d501182e5595e8f9a"),
+     "ae7aad9f7937be4cf977b4e38e0d19e261c59df89bb466a4767fafcc901977bc"),
     ("vue_bat_B_v2.py",
-     "1fdac754478b787ba030d0dc7ab1467979c1840bc724827cb46947b221168292"),
+     "f0821f0a36b275156708785fae330bb1a819a3a00b247db18476f35ec9ef19fb"),
     ("vue_bat_C.py",
-     "d38f43aa2c2656a188f5185beb5d27868b904e56f78872c698b2b5608d776e21"),
+     "086df93782dcb3bed5dd9d0415b3deecf07db58ce2adb5d655078fc1ef63c68d"),
     ("calepinage.py",
-     "50e8d588a4aea2aab6ba3123b156a668506404aaad0c4984653391747e77d546"),
+     "56e4ff98292e924b1d4337409dd7049c5105bce2b5098b633503e7d559ef7484"),
     ("solveur.py",
-     "887cb1187ccbbace867ed6d240f09e292c6317704bc0a90f4c8a3ae4149baf1a"),
+     "57e108fcee7908153dc1a6770d3fbfbbecc31077ca1ab9ab6a80c2637dab0ae4"),
 )
+
+
+def _empreinte_temoin(chemin):
+    """SHA-256 du témoin, fins de ligne normalisées en LF.
+
+    Reproduit exactement la normalisation de git : seul ``\\r\\n`` devient
+    ``\\n``. L'empreinte est donc la même sous Linux (CI) et sous Windows.
+    """
+    with io.open(chemin, "rb") as fh:
+        contenu = fh.read()
+    return hashlib.sha256(contenu.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _document(nom):
@@ -171,8 +187,7 @@ class LesTemoinsSontGeles(unittest.TestCase):
         for nom, empreinte in EMPREINTES_TEMOINS:
             chemin = os.path.join(TEMOINS, nom)
             self.assertTrue(os.path.exists(chemin), "témoin absent : %s" % nom)
-            with io.open(chemin, "rb") as fh:
-                obtenue = hashlib.sha256(fh.read()).hexdigest()
+            obtenue = _empreinte_temoin(chemin)
             self.assertEqual(obtenue, empreinte,
                              "docs/ao-frdisi/ est GELÉ : %s a été modifié"
                              % nom)
