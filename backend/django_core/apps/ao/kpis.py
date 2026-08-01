@@ -24,6 +24,7 @@ Trois règles gravées dans ce module
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
@@ -95,6 +96,20 @@ class TableauMarchesPermission(BasePermission):
         return _user_has_or_legacy(user, AO_VOIR)
 
 
+@extend_schema(
+    # Vue de fonction : drf-spectacular ne peut pas deviner de sérialiseur.
+    # Le tableau est un agrégat calculé (aucun modèle ne lui correspond), on
+    # décrit donc sa forme explicitement plutôt que de laisser un trou.
+    # PAS d'operation_id explicite : la vue est montée sous DEUX
+    # préfixes d'URL (/api/django/ et /api/v#/), un identifiant figé
+    # entrerait donc en collision avec lui-même.
+    summary="Tableau de bord des appels d'offres (un seul appel)",
+    responses={200: OpenApiResponse(
+        response=dict,
+        description="Compteurs par statut, échéances à venir et alertes de "
+                    "la société de l'utilisateur ; objet vide si l'utilisateur "
+                    "n'a pas de société.")},
+)
 @api_view(['GET'])
 @permission_classes([TableauMarchesPermission])
 def tableau_marches_view(request):

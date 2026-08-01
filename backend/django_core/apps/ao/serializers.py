@@ -6,6 +6,7 @@ aurait forcé la lane à écrire hors de son périmètre). ``company`` n'est JAM
 un champ exposé : elle est posée côté serveur par le socle
 ``CompanyScopedModelViewSet``.
 """
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -359,6 +360,7 @@ class VarianteCalepinageSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['entree_hash']
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_raisons_de_non_publiabilite(self, obj):
         return obj.raisons_de_non_publiabilite()
 

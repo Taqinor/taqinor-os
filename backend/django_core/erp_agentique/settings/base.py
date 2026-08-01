@@ -656,6 +656,12 @@ SPECTACULAR_SETTINGS = {
     # `unite`/`periodicite` ont les mêmes couples valeur/libellé), d'où un nom
     # neutre qui convient aux deux.
     'ENUM_NAME_OVERRIDES': {
+        # portrait / paysage — jeu IDENTIQUE porté par
+        # ventes.RoofLayout.Orientation (pose d'un panneau sur un
+        # toit) et ao.KitCalepinage.Orientation (orientation du kit
+        # de table). Un seul nom d'énumération pour les deux.
+        'OrientationPanneauEnum':
+            'apps.ventes.models.RoofLayout.Orientation',
         # neuf / bon / usage_normal / degrade
         'EtatGeneralPieceEnum':
             'apps.immobilier.models.PieceEtatLieux.EtatGeneral',
