@@ -401,6 +401,80 @@ def cautions_expirant_avant_ouverture(appel_offre):
     ]
 
 
+# ── AOF22 — Obstacles : provenance, dégagement dérivé, écartement ──────────
+
+def enregistrer_obstacle(obstacle):
+    """Applique la règle de dégagement PUIS écrit (AOF22).
+
+    Point de passage unique : tout changement de provenance ou de nature doit
+    repasser par ici, sinon un obstacle requalifié garderait le dégagement de
+    son ancienne provenance — l'erreur est silencieuse et coûte des modules.
+    """
+    obstacle.appliquer_degagement()
+    obstacle.save()
+    return obstacle
+
+
+def requalifier_provenance(obstacle, provenance, *, user=None, motif=''):
+    """Change la provenance d'un obstacle et RECALCULE son dégagement."""
+    ancienne = obstacle.provenance
+    if provenance == ancienne:
+        return obstacle
+    obstacle.provenance = provenance
+    obstacle.appliquer_degagement()
+    obstacle.save(update_fields=[
+        'provenance', 'degagement_m', 'regle_degagement', 'updated_at'])
+    _journaliser_obstacle(
+        obstacle, 'provenance', ancienne, provenance, user, motif)
+    return obstacle
+
+
+def ecarter_obstacle(obstacle, *, motif, user=None):
+    """Écarte un obstacle SANS le supprimer (AOF22).
+
+    La géométrie reste en base : le retour arrière est un one-liner et
+    l'échelle de décomposition peut chiffrer ce que la décision rapporte. Un
+    obstacle mesuré n'est JAMAIS supprimé.
+    """
+    ancienne = obstacle.provenance
+    obstacle.provenance = obstacle.Provenance.ECARTE
+    obstacle.actif = False
+    obstacle.decision = motif
+    obstacle.appliquer_degagement()
+    obstacle.save(update_fields=[
+        'provenance', 'actif', 'decision', 'degagement_m',
+        'regle_degagement', 'updated_at'])
+    _journaliser_obstacle(
+        obstacle, 'provenance', ancienne, obstacle.provenance, user, motif)
+    return obstacle
+
+
+def reintegrer_obstacle(obstacle, provenance, *, user=None, motif=''):
+    """Retour arrière : un obstacle écarté redevient actif (AOF22)."""
+    ancienne = obstacle.provenance
+    obstacle.provenance = provenance
+    obstacle.actif = True
+    obstacle.appliquer_degagement()
+    obstacle.save(update_fields=[
+        'provenance', 'actif', 'degagement_m', 'regle_degagement',
+        'updated_at'])
+    _journaliser_obstacle(
+        obstacle, 'provenance', ancienne, provenance, user, motif)
+    return obstacle
+
+
+def _journaliser_obstacle(obstacle, champ, ancien, nouveau, user, motif):
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        obstacle.toiture.batiment.appel_offre, Activity.Kind.MODIFICATION,
+        user=user, field=champ,
+        field_label=f'Obstacle {obstacle.repere or obstacle.pk} — {champ}',
+        old_value=str(ancien), new_value=str(nouveau), body=motif or '',
+        company=obstacle.company)
+
+
 # ── AOF21 — Pièces du DCE reçues : additifs et re-vérification ─────────────
 
 def enregistrer_additif(appel_offre, *, piece_modifiee, reference='',

@@ -22,6 +22,7 @@ from .views import (
     EcheanceAOViewSet,
     ExigenceCPSViewSet,
     LigneBordereauViewSet,
+    ObstacleAOViewSet,
     PieceConsultationViewSet,
     PieceSoumissionViewSet,
     PlanSourceViewSet,
@@ -39,6 +40,8 @@ router.register(r'batiments', BatimentAOViewSet, basename='ao-batiment')
 router.register(r'toitures', ToitureAOViewSet, basename='ao-toiture')
 router.register(r'plans-source', PlanSourceViewSet,
                 basename='ao-plan-source')
+router.register(r'obstacles', ObstacleAOViewSet,
+                basename='ao-obstacle')
 router.register(r'bordereaux-prix', BordereauPrixViewSet,
                 basename='ao-bordereau-prix')
 router.register(r'lignes-bordereau', LigneBordereauViewSet,

@@ -17,6 +17,7 @@ from .models import (
     EcheanceAO,
     ExigenceCPS,
     LigneBordereau,
+    ObstacleAO,
     PieceConsultation,
     PieceSoumission,
     PlanSource,
@@ -104,6 +105,47 @@ class ToitureAOSerializer(serializers.ModelSerializer):
             'forme', 'contour_local_m', 'rayon_ext_m', 'largeur_m')}}
         sonde = ToitureAO(**donnees)
         sonde.clean()
+        return attrs
+
+
+class ObstacleAOSerializer(serializers.ModelSerializer):
+    """AOF22 — l'obstacle, sa PROVENANCE et la règle de dégagement appliquée."""
+    nature_display = serializers.CharField(
+        source='get_nature_display', read_only=True)
+    provenance_display = serializers.CharField(
+        source='get_provenance_display', read_only=True)
+    #: Peut-on S'ENGAGER dessus ? Dérivé de la provenance, jamais saisi.
+    engageable = serializers.BooleanField(read_only=True)
+    est_ecarte = serializers.BooleanField(read_only=True)
+    #: La règle EFFECTIVEMENT appliquée, en clair — écrite dans le résultat.
+    regle_degagement = serializers.CharField(read_only=True)
+    degagement_m = serializers.DecimalField(
+        max_digits=6, decimal_places=2, required=False)
+
+    class Meta:
+        model = ObstacleAO
+        fields = [
+            'id', 'toiture', 'repere', 'designation', 'nature',
+            'nature_display', 'rect_x0_m', 'rect_x1_m', 'rect_y0_m',
+            'rect_y1_m', 'polygone_local_m', 'hauteur_m', 'provenance',
+            'provenance_display', 'degagement_m', 'degagement_surcharge',
+            'motif_surcharge', 'regle_degagement', 'engageable', 'est_ecarte',
+            'hors_zone_pv', 'actif', 'decision',
+        ]
+
+    def validate(self, attrs):
+        surcharge = attrs.get(
+            'degagement_surcharge',
+            getattr(self.instance, 'degagement_surcharge', False))
+        motif = attrs.get(
+            'motif_surcharge',
+            getattr(self.instance, 'motif_surcharge', ''))
+        if surcharge and not (motif or '').strip():
+            raise serializers.ValidationError({'motif_surcharge': (
+                'Une surcharge de dégagement exige un motif : une valeur '
+                "retouchée sans justification n'est pas défendable devant le "
+                "maître d'ouvrage."
+            )})
         return attrs
 
 

@@ -731,6 +731,226 @@ class ToitureAO(TenantModel):
         return self.surface_m2
 
 
+# ── AOF22 — L'obstacle est une ENTITÉ DE PREMIER RANG ──────────────────────
+
+class ObstacleAO(TenantModel):
+    """Un obstacle de toiture, avec sa PROVENANCE et son dégagement (AOF22).
+
+    Constat mesuré sur un relevé réel : deux emprises venues du PLAN et jamais
+    relevées coûtaient 12 modules sur la seule aile en L, et quatre « souches »
+    avaient été purement INVENTÉES faute de photo lisible. D'où la règle
+    centrale de ce modèle : **la provenance d'un obstacle est une donnée de
+    premier rang**, elle pilote son dégagement ET son caractère engageable.
+
+    **Un obstacle mesuré n'est JAMAIS supprimé.** Il passe ``ECARTE`` avec sa
+    décision, et sa GÉOMÉTRIE reste en base : le retour arrière devient un
+    one-liner, et l'échelle de décomposition peut CHIFFRER ce que la décision
+    rapporte. ``ECARTE`` reste filtrable et sérialisé de premier rang — sans
+    requête sur les écartés, la marche correspondante de l'échelle est
+    irreproductible.
+    """
+
+    class Nature(models.TextChoices):
+        CAISSON_TECHNIQUE = 'caisson_technique', 'Caisson technique'
+        CAGE_ESCALIER = 'cage_escalier', "Cage d'escalier"
+        EDICULE = 'edicule', 'Édicule'
+        SOUCHE = 'souche', 'Souche'
+        GROUPE_CLIM = 'groupe_clim', 'Groupe de climatisation'
+        ACROTERE = 'acrotere', 'Acrotère'
+        JOINT_DILATATION = 'joint_dilatation', 'Joint de dilatation'
+        MURET = 'muret', 'Muret'
+        DECROCHEMENT_NIVEAU = 'decrochement_niveau', 'Décrochement de niveau'
+        PAN_COUPE = 'pan_coupe', 'Pan coupé'
+        LANTERNEAU = 'lanterneau', 'Lanterneau'
+        EXUTOIRE_FUMEE = 'exutoire_fumee', 'Exutoire de fumée'
+        CHEMIN_CABLES = 'chemin_cables', 'Chemin de câbles'
+
+    class Provenance(models.TextChoices):
+        MESURE = 'MESURE', 'Mesuré sur site'
+        MESURE_DOUTEUX = 'MESURE_DOUTEUX', 'Mesuré, valeur douteuse'
+        PLAN = 'PLAN', 'Lu sur plan (non relevé)'
+        DEVINE = 'DEVINE', 'Deviné (photo illisible)'
+        DECLARE_CLIENT = 'DECLARE_CLIENT', 'Déclaré par le client'
+        ECARTE = 'ECARTE', 'Écarté (hors compte)'
+
+    #: Dégagement DÉRIVÉ de la provenance (m). Une donnée dont on n'est pas
+    #: sûr coûte plus de marge — c'est le prix de l'incertitude, pas une
+    #: punition.
+    DEGAGEMENT_PAR_PROVENANCE = {
+        Provenance.MESURE: Decimal('0.30'),
+        Provenance.MESURE_DOUTEUX: Decimal('0.50'),
+        Provenance.PLAN: Decimal('0.50'),
+        Provenance.DEVINE: Decimal('0.50'),
+        Provenance.DECLARE_CLIENT: Decimal('0.30'),
+        Provenance.ECARTE: Decimal('0.00'),
+    }
+
+    #: Une offre ne s'ENGAGE que sur ce qui a été RELEVÉ. Tout le reste est
+    #: informatif : il entre dans le calcul, jamais dans l'engagement.
+    PROVENANCES_ENGAGEABLES = frozenset({
+        Provenance.MESURE, Provenance.MESURE_DOUTEUX,
+    })
+
+    #: Dégagement MINIMAL par nature d'obstacle (m) — un exutoire de fumée
+    #: n'accepte pas le même voisinage qu'un simple chemin de câbles.
+    DEGAGEMENT_PAR_NATURE = {
+        Nature.CAISSON_TECHNIQUE: Decimal('0.50'),
+        Nature.CAGE_ESCALIER: Decimal('0.60'),
+        Nature.EDICULE: Decimal('0.60'),
+        Nature.SOUCHE: Decimal('0.50'),
+        Nature.GROUPE_CLIM: Decimal('0.60'),
+        Nature.ACROTERE: Decimal('0.30'),
+        Nature.JOINT_DILATATION: Decimal('0.30'),
+        Nature.MURET: Decimal('0.30'),
+        Nature.DECROCHEMENT_NIVEAU: Decimal('0.30'),
+        Nature.PAN_COUPE: Decimal('0.30'),
+        Nature.LANTERNEAU: Decimal('0.60'),
+        Nature.EXUTOIRE_FUMEE: Decimal('1.00'),
+        Nature.CHEMIN_CABLES: Decimal('0.30'),
+    }
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les obstacles suivent la societe
+        related_name='obstacles_ao',
+        verbose_name='Société',
+    )
+    toiture = models.ForeignKey(
+        ToitureAO,
+        on_delete=models.CASCADE,  # on_delete: obstacle fille d'une toiture : aucune existence hors d'elle
+        related_name='obstacles',
+        verbose_name='Toiture',
+    )
+    repere = models.CharField(
+        max_length=8, blank=True, default='', verbose_name='Repère (A, B, C…)')
+    designation = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Désignation')
+    nature = models.CharField(
+        max_length=22, choices=Nature.choices,
+        default=Nature.CAISSON_TECHNIQUE, verbose_name='Nature')
+
+    # ── Emprise : rectangle (le cas courant) OU polygone ───────────────────
+    #: Les noms portent l'unité : ``_m`` = mètres, repère LOCAL de la toiture.
+    rect_x0_m = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='x0 (m)')
+    rect_x1_m = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='x1 (m)')
+    rect_y0_m = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='y0 (m)')
+    rect_y1_m = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='y1 (m)')
+    polygone_local_m = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Polygone local [x, y] en mètres')
+    hauteur_m = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True,
+        verbose_name='Hauteur (m)')
+
+    provenance = models.CharField(
+        max_length=16, choices=Provenance.choices, default=Provenance.MESURE,
+        verbose_name='Provenance')
+    degagement_m = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0.30'),
+        verbose_name='Dégagement (m)')
+    #: Une surcharge est LÉGITIME mais doit être JUSTIFIÉE : sans motif, une
+    #: valeur retouchée devient indéfendable devant le maître d'ouvrage.
+    degagement_surcharge = models.BooleanField(
+        default=False, verbose_name='Dégagement surchargé')
+    motif_surcharge = models.TextField(
+        blank=True, default='', verbose_name='Motif de la surcharge')
+    #: La RÈGLE effectivement appliquée, en clair — pas un commentaire de code.
+    regle_degagement = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Règle de dégagement appliquée')
+
+    hors_zone_pv = models.BooleanField(
+        default=False, verbose_name='Hors zone photovoltaïque')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    decision = models.TextField(
+        blank=True, default='', verbose_name='Décision (écart / confirmation)')
+
+    class Meta:
+        verbose_name = 'Obstacle de toiture (AO)'
+        verbose_name_plural = 'Obstacles de toiture (AO)'
+        db_table = 'ao_obstacle'
+        ordering = ['toiture', 'repere', 'id']
+        indexes = [
+            models.Index(fields=['company', 'toiture']),
+            models.Index(fields=['company', 'provenance']),
+        ]
+
+    def __str__(self):
+        etiquette = self.repere or self.get_nature_display()
+        return f'{etiquette} — {self.get_provenance_display()}'
+
+    @property
+    def engageable(self):
+        """Peut-on S'ENGAGER sur cet obstacle devant le maître d'ouvrage ?
+
+        Seules les provenances RELEVÉES (mesurées, même douteuses) engagent.
+        Un obstacle lu sur plan, deviné ou déclaré par le client entre dans le
+        calcul mais JAMAIS dans l'engagement — c'est exactement la confusion
+        qui a coûté 12 modules sur un relevé réel. Un obstacle ÉCARTÉ ou
+        inactif n'engage rien non plus.
+        """
+        if not self.actif:
+            return False
+        return self.provenance in self.PROVENANCES_ENGAGEABLES
+
+    @property
+    def est_ecarte(self):
+        return self.provenance == self.Provenance.ECARTE
+
+    def degagement_derive(self):
+        """Dégagement RÉGLÉ = max(défaut de la nature, défaut de la provenance).
+
+        Renvoie ``(valeur, règle_en_clair)``. La règle est renvoyée pour être
+        ÉCRITE dans la donnée : « on a pris 0,60 m » sans dire pourquoi n'est
+        pas défendable trois mois plus tard.
+        """
+        par_nature = self.DEGAGEMENT_PAR_NATURE.get(
+            self.nature, Decimal('0.30'))
+        par_provenance = self.DEGAGEMENT_PAR_PROVENANCE.get(
+            self.provenance, Decimal('0.30'))
+        if self.provenance == self.Provenance.ECARTE:
+            return Decimal('0.00'), (
+                'écarté — hors compte (géométrie conservée)')
+        valeur = max(par_nature, par_provenance)
+        gagnant = 'nature' if par_nature >= par_provenance else 'provenance'
+        regle = (
+            f'max(nature {self.get_nature_display()} = {par_nature} m ; '
+            f'provenance {self.get_provenance_display()} = {par_provenance} m)'
+            f' → {valeur} m [{gagnant}]'
+        )
+        return valeur, regle
+
+    def appliquer_degagement(self):
+        """Recalcule ``degagement_m`` SAUF si une surcharge motivée l'a figé."""
+        if self.degagement_surcharge:
+            self.regle_degagement = (
+                f'surcharge manuelle ({self.degagement_m} m) — '
+                f'{self.motif_surcharge or "motif manquant"}')
+            return self.degagement_m
+        valeur, regle = self.degagement_derive()
+        self.degagement_m = valeur
+        self.regle_degagement = regle
+        return valeur
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.degagement_surcharge and not (self.motif_surcharge or '').strip():
+            raise ValidationError({'motif_surcharge': (
+                'Une surcharge de dégagement exige un motif : une valeur '
+                "retouchée sans justification n'est pas défendable devant le "
+                'maître d\'ouvrage.'
+            )})
+
+
 # ── AOF20 — Les 3 portes d'entrée sont UN CHAMP, pas 3 chemins de données ───
 
 class PlanSource(TenantModel):

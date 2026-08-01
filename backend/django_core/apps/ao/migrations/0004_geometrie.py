@@ -1,22 +1,24 @@
-# AOF18 + AOF20 + AOF21 — GÉOMÉTRIE du projet et PIÈCES REÇUES du DCE :
-# ``ao_batiment``, ``ao_toiture``, ``ao_plan_source``, ``ao_piece_consultation``.
+# AOF18 + AOF20 + AOF21 + AOF22 — GÉOMÉTRIE du projet, PIÈCES REÇUES du DCE et
+# OBSTACLES : ``ao_batiment``, ``ao_toiture``, ``ao_plan_source``,
+# ``ao_piece_consultation``, ``ao_obstacle``.
 #
-# Quatre tables NEUVES (aucun impact sur les tables ``compta_*`` héritées).
+# Cinq tables NEUVES (aucun impact sur les tables ``compta_*`` héritées).
 #
 #   * AOF18 — la toiture stocke son enveloppe en repère LOCAL MÉTRIQUE
-#     (``contour_local_m``, liste de ``[x, y]`` en mètres) : le nom du champ
-#     porte l'unité ET l'ordre des axes, précisément pour rendre DÉTECTABLE
-#     l'inversion lat/lng constatée entre l'outil de tracé (``[lng, lat]``) et
-#     le lead CRM (``[lat, lng]``). La conversion vit à la frontière (AOF19).
-#   * AOF20 — ``PlanSource`` : les TROIS portes d'entrée du plan de toiture
-#     (plan fourni / tracé manuel / reprise de carte) sont UN CHAMP
-#     (``origine``), pas trois chemins de données. Le fichier passe par
-#     ``records.Attachment`` — JAMAIS un ``FileField`` (garde ARC26).
-#   * AOF21 — ``PieceConsultation`` : le DCE REÇU de l'acheteur (CPS, règlement,
-#     plans d'architecte, cadres vierges, ADDITIFS). ``ExigenceCPS`` gagne le
-#     lien vers la pièce dont elle est extraite + le drapeau ``a_reverifier``
-#     qu'un additif lève ; ``PlanSource`` gagne la pièce dont il provient.
-#     Sans cette table, « page 33 du CPS » ne désignait aucun document existant.
+#     (``contour_local_m``) : le nom du champ porte l'unité ET l'ordre des axes,
+#     pour rendre DÉTECTABLE l'inversion lat/lng entre l'outil de tracé
+#     (``[lng, lat]``) et le lead CRM (``[lat, lng]``) — conversion en frontière
+#     (AOF19).
+#   * AOF20 — ``PlanSource`` : les TROIS portes d'entrée sont UN CHAMP
+#     (``origine``). Le fichier passe par ``records.Attachment`` — JAMAIS un
+#     ``FileField`` (garde ARC26).
+#   * AOF21 — ``PieceConsultation`` : le DCE REÇU de l'acheteur, additifs
+#     compris ; ``ExigenceCPS`` gagne son lien documentaire + ``a_reverifier``.
+#   * AOF22 — ``ObstacleAO`` : la PROVENANCE est une donnée de premier rang
+#     (elle pilote le dégagement ET le caractère engageable), et un obstacle
+#     mesuré n'est JAMAIS supprimé — il passe ``ECARTE`` en CONSERVANT sa
+#     géométrie, ce qui rend le retour arrière trivial et l'échelle de
+#     décomposition reproductible.
 
 import django.db.models.deletion
 from decimal import Decimal
@@ -150,6 +152,39 @@ class Migration(migrations.Migration):
                 'ordering': ['toiture', 'batiment', 'id'],
             },
         ),
+        migrations.CreateModel(
+            name='ObstacleAO',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('repere', models.CharField(blank=True, default='', max_length=8, verbose_name='Repère (A, B, C…)')),
+                ('designation', models.CharField(blank=True, default='', max_length=255, verbose_name='Désignation')),
+                ('nature', models.CharField(choices=[('caisson_technique', 'Caisson technique'), ('cage_escalier', "Cage d'escalier"), ('edicule', 'Édicule'), ('souche', 'Souche'), ('groupe_clim', 'Groupe de climatisation'), ('acrotere', 'Acrotère'), ('joint_dilatation', 'Joint de dilatation'), ('muret', 'Muret'), ('decrochement_niveau', 'Décrochement de niveau'), ('pan_coupe', 'Pan coupé'), ('lanterneau', 'Lanterneau'), ('exutoire_fumee', 'Exutoire de fumée'), ('chemin_cables', 'Chemin de câbles')], default='caisson_technique', max_length=22, verbose_name='Nature')),
+                ('rect_x0_m', models.DecimalField(blank=True, decimal_places=3, max_digits=10, null=True, verbose_name='x0 (m)')),
+                ('rect_x1_m', models.DecimalField(blank=True, decimal_places=3, max_digits=10, null=True, verbose_name='x1 (m)')),
+                ('rect_y0_m', models.DecimalField(blank=True, decimal_places=3, max_digits=10, null=True, verbose_name='y0 (m)')),
+                ('rect_y1_m', models.DecimalField(blank=True, decimal_places=3, max_digits=10, null=True, verbose_name='y1 (m)')),
+                ('polygone_local_m', models.JSONField(blank=True, default=list, verbose_name='Polygone local [x, y] en mètres')),
+                ('hauteur_m', models.DecimalField(blank=True, decimal_places=3, max_digits=8, null=True, verbose_name='Hauteur (m)')),
+                ('provenance', models.CharField(choices=[('MESURE', 'Mesuré sur site'), ('MESURE_DOUTEUX', 'Mesuré, valeur douteuse'), ('PLAN', 'Lu sur plan (non relevé)'), ('DEVINE', 'Deviné (photo illisible)'), ('DECLARE_CLIENT', 'Déclaré par le client'), ('ECARTE', 'Écarté (hors compte)')], default='MESURE', max_length=16, verbose_name='Provenance')),
+                ('degagement_m', models.DecimalField(decimal_places=2, default=Decimal('0.30'), max_digits=6, verbose_name='Dégagement (m)')),
+                ('degagement_surcharge', models.BooleanField(default=False, verbose_name='Dégagement surchargé')),
+                ('motif_surcharge', models.TextField(blank=True, default='', verbose_name='Motif de la surcharge')),
+                ('regle_degagement', models.CharField(blank=True, default='', max_length=255, verbose_name='Règle de dégagement appliquée')),
+                ('hors_zone_pv', models.BooleanField(default=False, verbose_name='Hors zone photovoltaïque')),
+                ('actif', models.BooleanField(default=True, verbose_name='Actif')),
+                ('decision', models.TextField(blank=True, default='', verbose_name='Décision (écart / confirmation)')),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='obstacles_ao', to='authentication.company', verbose_name='Société')),
+                ('toiture', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='obstacles', to='ao.toitureao', verbose_name='Toiture')),
+            ],
+            options={
+                'verbose_name': 'Obstacle de toiture (AO)',
+                'verbose_name_plural': 'Obstacles de toiture (AO)',
+                'db_table': 'ao_obstacle',
+                'ordering': ['toiture', 'repere', 'id'],
+            },
+        ),
         migrations.AddIndex(
             model_name='batimentao',
             index=models.Index(fields=['company', 'appel_offre'], name='ao_batiment_company_974dc7_idx'),
@@ -177,5 +212,13 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name='plansource',
             index=models.Index(fields=['company', 'empreinte_sha256'], name='ao_plan_sou_company_77f0d6_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='obstacleao',
+            index=models.Index(fields=['company', 'toiture'], name='ao_obstacle_company_cd2831_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='obstacleao',
+            index=models.Index(fields=['company', 'provenance'], name='ao_obstacle_company_aed528_idx'),
         ),
     ]

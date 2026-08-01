@@ -35,6 +35,7 @@ from .models import (
     EcheanceAO,
     ExigenceCPS,
     LigneBordereau,
+    ObstacleAO,
     PieceConsultation,
     PieceSoumission,
     PlanSource,
@@ -50,6 +51,7 @@ from .serializers import (
     EcheanceAOSerializer,
     ExigenceCPSSerializer,
     LigneBordereauSerializer,
+    ObstacleAOSerializer,
     PieceConsultationSerializer,
     PieceSoumissionSerializer,
     PlanSourceSerializer,
@@ -233,6 +235,72 @@ class ToitureAOViewSet(AoBaseViewSet):
     def _recalculer(toiture):
         toiture.recalculer_surface()
         toiture.save(update_fields=['surface_m2', 'updated_at'])
+
+
+class ObstacleAOViewSet(AoBaseViewSet):
+    """Obstacles de toiture (AOF22) — provenance de premier rang.
+
+    ``?provenance=ECARTE`` renvoie les obstacles ÉCARTÉS **avec leur
+    géométrie** : sans cette requête, la marche correspondante de l'échelle de
+    décomposition serait irreproductible. Le dégagement est recalculé côté
+    serveur à chaque écriture, sauf surcharge motivée.
+    """
+    queryset = ObstacleAO.objects.all()
+    serializer_class = ObstacleAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['repere', 'designation']
+    ordering_fields = ['repere', 'nature', 'provenance']
+
+    def get_queryset(self):
+        qs = _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'nature', 'provenance', 'actif', 'hors_zone_pv'))
+        appel_offre = self.request.query_params.get('appel_offre')
+        if appel_offre not in (None, ''):
+            qs = qs.filter(
+                toiture__batiment__appel_offre_id=appel_offre) \
+                if str(appel_offre).isdigit() else qs.none()
+        return qs
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        self._appliquer(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        self._appliquer(serializer.instance)
+
+    @staticmethod
+    def _appliquer(obstacle):
+        obstacle.appliquer_degagement()
+        obstacle.save(update_fields=[
+            'degagement_m', 'regle_degagement', 'updated_at'])
+
+    @action(detail=True, methods=['post'], url_path='ecarter')
+    def ecarter(self, request, pk=None):
+        """Écarte l'obstacle SANS le supprimer (géométrie conservée)."""
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response(
+                {'motif': "Écarter un obstacle exige un motif : c'est ce qui "
+                          'rend le retour arrière défendable.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        obstacle = services.ecarter_obstacle(
+            self.get_object(), motif=motif, user=request.user)
+        return Response(self.get_serializer(obstacle).data)
+
+    @action(detail=True, methods=['post'], url_path='reintegrer')
+    def reintegrer(self, request, pk=None):
+        """Retour arrière : l'obstacle écarté redevient actif."""
+        provenance = request.data.get('provenance') \
+            or ObstacleAO.Provenance.MESURE
+        if provenance not in dict(ObstacleAO.Provenance.choices):
+            return Response({'provenance': 'Provenance inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        obstacle = services.reintegrer_obstacle(
+            self.get_object(), provenance, user=request.user,
+            motif=(request.data.get('motif') or ''))
+        return Response(self.get_serializer(obstacle).data)
 
 
 class PlanSourceViewSet(AoBaseViewSet):
