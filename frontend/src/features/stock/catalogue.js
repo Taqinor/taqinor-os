@@ -76,6 +76,63 @@ export function keySpec(p) {
 export const prixTtc = (p) => ttcFromHt(p.prix_vente, tauxTvaOf(p))
 export const sansPrix = (p) => !(parseFloat(p.prix_vente) > 0)
 
+/* ── APX19 — Sévérité du niveau de stock ───────────────────────────────────
+   Avant, RUPTURE (0 en stock, on ne peut plus vendre) et SOUS SEUIL (il en
+   reste, il faut recommander) partageaient un unique badge « stock bas » :
+   deux urgences très différentes, un seul signal. Trois états distincts
+   désormais. `is_low_stock` (calculé serveur) fait autorité pour le
+   sous-seuil ; la rupture prime dessus. */
+export const SEV_RUPTURE = 'rupture'
+export const SEV_BAS = 'bas'
+export const SEV_OK = 'ok'
+
+export function severiteStock(p) {
+  const stock = Number(p?.quantite_stock) || 0
+  if (stock <= 0) return SEV_RUPTURE
+  const seuil = Number(p?.seuil_alerte) || 0
+  if (p?.is_low_stock || (seuil > 0 && stock <= seuil)) return SEV_BAS
+  return SEV_OK
+}
+
+/* Remplissage de la jauge, en %. La cible « saine » est 2× le seuil — la MÊME
+   cible que la suggestion de réassort déjà affichée, on n'invente pas un
+   second barème. Sans seuil renseigné, un stock non nul est plein (on ne peut
+   rien promettre d'autre honnêtement). */
+export function jaugeStock(p) {
+  const stock = Math.max(0, Number(p?.quantite_stock) || 0)
+  const seuil = Number(p?.seuil_alerte) || 0
+  if (seuil <= 0) return stock > 0 ? 100 : 0
+  return Math.round(Math.min(100, (stock / (seuil * 2)) * 100))
+}
+
+// APX20 — un produit est « de pompage » dès qu'il porte une caractéristique de
+// pompe : sa fiche technique gagne alors puissance et tension, et elles seules.
+export function estPompage(produit) {
+  return [produit?.pompe_kw, produit?.tension_v, produit?.pompe_cv, produit?.hmt_m]
+    .some((v) => v !== null && v !== undefined && v !== '')
+}
+
+/* ── APX21 — Points traçables de la courbe constructeur ────────────────────
+   Les 11 pompes OSP 30 embarquent leur courbe débit→HMT (`courbe_pompe`).
+   Elle servait UNIQUEMENT au dimensionnement (`solar.js debitAtHmt`) et
+   n'apparaissait à l'écran qu'en badge TEXTE : personne ne l'a jamais vue.
+   Renvoie les couples (débit m³/h, HMT m), ou `null` si la courbe est absente
+   ou malformée — l'écran ne rend alors RIEN, jamais une carte vide. Mêmes
+   garde-fous de forme que `debitAtHmt`, pour que le graphique ne puisse pas
+   montrer autre chose que ce qui dimensionne. */
+export function pointsCourbePompe(courbe) {
+  if (!courbe || !Array.isArray(courbe.debits_m3h) || !Array.isArray(courbe.hmt_m)) {
+    return null
+  }
+  const d = courbe.debits_m3h.map(Number)
+  const h = courbe.hmt_m.map(Number)
+  if (d.length < 2 || d.length !== h.length) return null
+  if (d.some((v) => !Number.isFinite(v)) || h.some((v) => !Number.isFinite(v))) {
+    return null
+  }
+  return d.map((debit, i) => ({ debit, hmt: h[i] }))
+}
+
 // CATÉGORIE → MARQUE → ARTICLES, ordres délibérés :
 // catégories par Categorie.ordre ; marques par nombre d'articles décroissant,
 // « Génériques » (sans marque) toujours en dernier.

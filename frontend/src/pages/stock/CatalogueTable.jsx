@@ -7,7 +7,10 @@ import {
   Badge, Checkbox, DataTable, EditableCell, Progress,
 } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
-import { categorieIcone, keySpec, prixTtc, sansPrix } from '../../features/stock/catalogue'
+import {
+  categorieIcone, jaugeStock, keySpec, prixTtc, sansPrix, severiteStock,
+  SEV_BAS, SEV_OK, SEV_RUPTURE,
+} from '../../features/stock/catalogue'
 import { formatMAD } from '../../lib/format'
 
 /* ============================================================================
@@ -68,43 +71,14 @@ const suggestionCommande = (p) => {
   return Math.max(seuil * 2 - stock, 0)
 }
 
-/* ── APX19 — Le niveau de stock devient LISIBLE ────────────────────────────
-   Avant : un chiffre nu passé en gras-rouge quand il était bas, et LE MÊME
-   badge « stock bas » pour une rupture (0 en stock, on ne peut plus vendre)
-   et pour un sous-seuil (il en reste, il faut recommander). Deux situations
-   d'urgence très différentes, un seul signal.
-
-   Maintenant : TROIS sévérités distinctes, lues sans lire — une jauge colorée
-   (vert / orange / rouge) et, pour les deux états à problème, un badge dont le
-   TON ET le libellé diffèrent. La sévérité vient de `is_low_stock` (calculé
-   serveur, seule autorité) ; la rupture prime dessus. */
-const SEV_RUPTURE = 'rupture'
-const SEV_BAS = 'bas'
-const SEV_OK = 'ok'
-
-export function severiteStock(p) {
-  const stock = Number(p?.quantite_stock) || 0
-  if (stock <= 0) return SEV_RUPTURE
-  const seuil = Number(p?.seuil_alerte) || 0
-  if (p?.is_low_stock || (seuil > 0 && stock <= seuil)) return SEV_BAS
-  return SEV_OK
-}
-
+/* APX19 — Ton de la jauge par sévérité. La logique de sévérité elle-même
+   (`severiteStock`) et le barème de la jauge (`jaugeStock`) vivent dans
+   `features/stock/catalogue.js` avec le reste des règles de catalogue : ce
+   fichier-ci ne contient que des composants (règle fast-refresh). */
 const TON_SEV = {
   [SEV_RUPTURE]: 'danger',
   [SEV_BAS]: 'warning',
   [SEV_OK]: 'success',
-}
-
-/* Remplissage de la jauge, en %. La cible « saine » est 2× le seuil — la MÊME
-   cible que la suggestion de réassort déjà affichée (`suggestionCommande`), on
-   n'invente pas un second barème. Sans seuil renseigné, un stock non nul est
-   plein (on ne peut rien promettre d'autre honnêtement). */
-export function jaugeStock(p) {
-  const stock = Math.max(0, Number(p?.quantite_stock) || 0)
-  const seuil = Number(p?.seuil_alerte) || 0
-  if (seuil <= 0) return stock > 0 ? 100 : 0
-  return Math.round(Math.min(100, (stock / (seuil * 2)) * 100))
 }
 
 // Ligne de détail du stock — TOUJOURS rendue (vide si rien à dire) : c'est ce

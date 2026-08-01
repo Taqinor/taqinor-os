@@ -20,6 +20,8 @@ vi.mock('../../api/stockApi', () => ({
 
 import stockApi from '../../api/stockApi'
 import { ProduitDetail } from './ProduitDetail.jsx'
+// APX21 — la lecture de la courbe vit avec les règles de catalogue.
+import { pointsCourbePompe } from '../../features/stock/catalogue'
 
 const store = configureStore({
   reducer: { auth: (s = { role: 'Directeur', role_nom: 'Directeur', permissions: [] }) => s },
@@ -148,5 +150,77 @@ describe('APX20 — onglet « Fiche technique »', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
     await screen.findByTestId('pdet-fiche-technique')
     expect(container.textContent).not.toMatch(/742[.,]50/)
+  })
+})
+
+/* ============================================================================
+   APX21 — La courbe constructeur est enfin TRACÉE. Les 11 pompes OSP 30
+   embarquent leur courbe débit→HMT : elle servait uniquement au
+   dimensionnement et n'apparaissait qu'en badge TEXTE « courbe constructeur ».
+   ========================================================================== */
+
+const COURBE = { debits_m3h: [0, 6, 12, 18], hmt_m: [91, 85, 70, 40] }
+
+describe('APX21 — lecture de la courbe (logique pure)', () => {
+  it('appaire débits et hauteurs dans l\'ordre du constructeur', () => {
+    expect(pointsCourbePompe(COURBE)).toEqual([
+      { debit: 0, hmt: 91 },
+      { debit: 6, hmt: 85 },
+      { debit: 12, hmt: 70 },
+      { debit: 18, hmt: 40 },
+    ])
+  })
+
+  it('refuse une courbe absente, incomplète ou incohérente', () => {
+    expect(pointsCourbePompe(null)).toBeNull()
+    expect(pointsCourbePompe({})).toBeNull()
+    // Un seul point : rien à tracer.
+    expect(pointsCourbePompe({ debits_m3h: [0], hmt_m: [91] })).toBeNull()
+    // Longueurs différentes : on ne devine pas un appariement.
+    expect(pointsCourbePompe({ debits_m3h: [0, 6], hmt_m: [91] })).toBeNull()
+    // Valeurs non numériques : jamais un NaN sur un axe.
+    expect(pointsCourbePompe({ debits_m3h: [0, 'x'], hmt_m: [91, 85] })).toBeNull()
+  })
+})
+
+describe('APX21 — rendu du graphe dans l\'onglet Fiche technique', () => {
+  const pompe = (over = {}) => ({
+    ...produit,
+    nom: 'Pompe OSP 30-15',
+    pompe_kw: '4.00',
+    tension_v: 380,
+    courbe_pompe: COURBE,
+    ...over,
+  })
+
+  it('une pompe à courbe affiche le graphe, en lecture seule', async () => {
+    render(<ProduitDetail produit={pompe()} onClose={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    expect(await screen.findByTestId('pdet-courbe-pompe')).toBeInTheDocument()
+    // ChartFrame donne au graphe un nom accessible + un repli tabulaire :
+    // la donnée chiffrée reste lisible sans voir les pixels.
+    expect(screen.getByRole('img', { name: /Courbe de pompe de Pompe OSP 30-15/ }))
+      .toBeInTheDocument()
+    // Lecture seule : aucun champ de saisie dans la carte de courbe.
+    expect(screen.getByTestId('pdet-courbe-pompe').querySelector('input')).toBeNull()
+  })
+
+  it('une pompe SANS courbe ne rend RIEN (jamais de carte vide)', async () => {
+    render(
+      <ProduitDetail produit={pompe({ courbe_pompe: null })} onClose={() => {}} />,
+      { wrapper },
+    )
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    await screen.findByTestId('pdet-fiche-technique')
+    expect(screen.queryByTestId('pdet-courbe-pompe')).toBeNull()
+    expect(screen.queryByText(/Courbe constructeur/)).toBeNull()
+  })
+
+  it('un produit qui n\'est pas une pompe n\'a pas de carte de courbe', async () => {
+    render(<ProduitDetail produit={{ ...produit, marque: 'JA Solar' }} onClose={() => {}} />,
+      { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    await screen.findByTestId('pdet-fiche-technique')
+    expect(screen.queryByTestId('pdet-courbe-pompe')).toBeNull()
   })
 })

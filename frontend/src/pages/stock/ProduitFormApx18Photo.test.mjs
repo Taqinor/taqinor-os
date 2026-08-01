@@ -82,7 +82,7 @@ test('retirer une photo NON enregistrée ne déclenche pas un PATCH de suppressi
 })
 
 test('la vignette catalogue a un repli d\'icône de catégorie (jamais de trou)', () => {
-  assert.match(TABLE, /import \{ categorieIcone, keySpec, prixTtc, sansPrix \}/)
+  assert.match(TABLE, /\bcategorieIcone\b[\s\S]{0,200}from '\.\.\/\.\.\/features\/stock\/catalogue'/)
   assert.match(TABLE, /produit\.image_url\s*\n?\s*\?\s*<img/)
   assert.match(TABLE, /:\s*<Icone className="size-5" \/>/)
 })

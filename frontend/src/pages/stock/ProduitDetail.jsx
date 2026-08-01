@@ -1,8 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { History, PackageSearch } from 'lucide-react'
+import {
+  CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts'
 import stockApi from '../../api/stockApi'
-import { categorieIcone } from '../../features/stock/catalogue'
+import {
+  ChartFrame, ChartTooltip, CHART_GRID_STYLE, CHART_TOKENS,
+  CHART_ANIM_EASING, animationDuration, resolveColor,
+} from '../../ui/charts'
+import {
+  categorieIcone, estPompage, pointsCourbePompe,
+} from '../../features/stock/catalogue'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import {
   Spinner, Badge, RelationCounters,
@@ -71,10 +80,88 @@ function Ligne({ label, valeur }) {
   )
 }
 
-// Un produit est « de pompage » dès qu'il porte une caractéristique de pompe.
-export function estPompage(produit) {
-  return [produit?.pompe_kw, produit?.tension_v, produit?.pompe_cv, produit?.hmt_m]
-    .some((v) => v !== null && v !== undefined && v !== '')
+/* ── APX21 — La courbe constructeur, enfin TRACÉE ───────────────────────────
+   Les 11 pompes OSP 30 embarquent leur courbe débit→HMT du constructeur
+   (`Produit.courbe_pompe`). Elle servait UNIQUEMENT au dimensionnement
+   (`solar.js debitAtHmt`) et n'apparaissait à l'écran que sous forme d'un
+   badge TEXTE « courbe constructeur » : personne ne l'a jamais vue.
+   La lecture de la courbe (`pointsCourbePompe`) vit avec les autres règles de
+   catalogue ; ce fichier-ci ne contient que des composants. */
+function CourbePompe({ produit }) {
+  const points = useMemo(
+    () => pointsCourbePompe(produit?.courbe_pompe), [produit?.courbe_pompe])
+  // Pas de courbe → RIEN. Une carte « aucune donnée » sur les dizaines de
+  // produits sans courbe serait du bruit pur.
+  if (!points) return null
+
+  const couleur = resolveColor('info')
+  const duree = animationDuration()   // 0 sous prefers-reduced-motion
+
+  return (
+    <div className="rounded-lg border border-border p-3" data-testid="pdet-courbe-pompe">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+        Courbe constructeur
+      </p>
+      <p className="mb-2 text-xs text-muted-foreground">
+        Débit délivré (m³/h) selon la hauteur manométrique totale (m).
+      </p>
+      <ChartFrame
+        label={`Courbe de pompe de ${produit.nom} : débit en m³/h selon la HMT en m`}
+        caption="Points de la courbe constructeur"
+        columns={[
+          { key: 'debit', header: 'Débit (m³/h)', align: 'right' },
+          { key: 'hmt', header: 'HMT (m)', align: 'right' },
+        ]}
+        rows={points}
+        getRowKey={(r, i) => i}
+      >
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={points} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+            <CartesianGrid {...CHART_GRID_STYLE} />
+            <XAxis
+              dataKey="debit"
+              type="number"
+              domain={[0, 'auto']}
+              tick={{ fontSize: 11, fill: CHART_TOKENS.axis }}
+              tickLine={false}
+              axisLine={false}
+              label={{ value: 'm³/h', position: 'insideBottomRight',
+                       offset: -2, fontSize: 10, fill: CHART_TOKENS.axis }}
+            />
+            <YAxis
+              dataKey="hmt"
+              type="number"
+              domain={[0, 'auto']}
+              width={38}
+              tick={{ fontSize: 11, fill: CHART_TOKENS.axis }}
+              tickLine={false}
+              axisLine={false}
+              label={{ value: 'm', position: 'insideTopLeft',
+                       offset: 0, fontSize: 10, fill: CHART_TOKENS.axis }}
+            />
+            <Tooltip
+              cursor={{ stroke: CHART_TOKENS.grid }}
+              content={<ChartTooltip
+                labelFormatter={(v) => `${v} m³/h`}
+                format={(v) => `${v} m`} />}
+            />
+            <Line
+              type="monotone"
+              dataKey="hmt"
+              name="HMT"
+              stroke={couleur}
+              strokeWidth={2}
+              dot={{ r: 2, strokeWidth: 0, fill: couleur }}
+              activeDot={{ r: 4, strokeWidth: 0 }}
+              isAnimationActive={duree > 0}
+              animationDuration={duree}
+              animationEasing={CHART_ANIM_EASING}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartFrame>
+    </div>
+  )
 }
 
 function OngletFicheTechnique({ produit }) {
@@ -93,6 +180,8 @@ function OngletFicheTechnique({ produit }) {
           )}
         </div>
       </div>
+      {/* APX21 — la courbe constructeur, quand le produit en porte une. */}
+      <CourbePompe produit={produit} />
       <p className="text-xs text-muted-foreground">
         Ces informations partent sur la fiche produit des devis. Elles se
         modifient depuis l&apos;édition du produit (Stock → Catalogue).

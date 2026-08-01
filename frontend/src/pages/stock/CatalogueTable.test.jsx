@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
-import { CatalogueTable, severiteStock, jaugeStock } from './CatalogueTable.jsx'
+import { CatalogueTable } from './CatalogueTable.jsx'
+// APX19 — la sévérité et le barème de jauge vivent avec les règles de
+// catalogue (`features/stock/catalogue.js`), pas dans le composant.
+import { severiteStock, jaugeStock } from '../../features/stock/catalogue'
 
 /* ============================================================================
    J142 - Stock refonte : le catalogue passe au moteur DataTable unifie.
