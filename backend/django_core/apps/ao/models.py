@@ -284,6 +284,88 @@ class AppelOffre(TenantModel):
         return base + timedelta(days=self.validite_offre_jours)
 
 
+# ── AOF21 — Le DCE REÇU de l'acheteur devient une pièce du dossier ─────────
+
+class PieceConsultation(TenantModel):
+    """Une pièce du dossier de consultation REÇUE de l'acheteur (AOF21).
+
+    Constat : ``ExigenceCPS.source_page`` référençait « la page du CPS » alors
+    qu'AUCUN modèle ne stockait le CPS lui-même, et un plan importé perdait
+    l'origine documentaire dont il provenait. Le dossier ne connaissait que NOS
+    pièces (``PieceSoumission``), jamais celles de l'acheteur.
+
+    Le cas qui coûte cher est l'ADDITIF (erratum) reçu APRÈS le téléchargement
+    du dossier : il change des clauses déjà relevées. Ici, enregistrer un
+    additif marque « à revérifier » les exigences qui en dérivent — au lieu de
+    les laisser silencieusement périmées.
+    """
+
+    class TypePiece(models.TextChoices):
+        CPS = 'cps', 'CPS (cahier des prescriptions spéciales)'
+        REGLEMENT = 'reglement', 'Règlement de consultation'
+        PLAN_ARCHITECTE = 'plan_architecte', "Plan d'architecte"
+        MODELE_ACTE = 'modele_acte', "Modèle d'acte d'engagement"
+        BORDEREAU_VIERGE = 'bordereau_vierge', 'Bordereau des prix vierge'
+        ADDITIF = 'additif', 'Additif / erratum'
+        AUTRE = 'autre', 'Autre pièce du DCE'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les pieces du DCE suivent la societe
+        related_name='pieces_consultation',
+        verbose_name='Société',
+    )
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: piece du DCE : aucune existence hors de son appel d'offres
+        related_name='pieces_consultation',
+        verbose_name="Appel d'offres",
+    )
+    type_piece = models.CharField(
+        max_length=20, choices=TypePiece.choices, default=TypePiece.AUTRE,
+        verbose_name='Type de pièce')
+    reference = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Référence')
+    version = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Version reçue')
+    date_reception = models.DateField(
+        null=True, blank=True, verbose_name='Date de réception')
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pieces_consultation_ao', verbose_name='Fichier (MinIO)')
+    #: Sommaire indexé : ``[{"page": 33, "titre": "Ratio DC/AC"}, …]``.
+    pages_indexees = models.JSONField(
+        default=list, blank=True, verbose_name='Pages indexées')
+    #: Empreinte du fichier reçu — reconnaît un même document reçu deux fois
+    #: et évite un doublon en stockage.
+    empreinte_sha256 = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte SHA-256')
+    #: Un ADDITIF pointe la pièce qu'il modifie.
+    modifie = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='additifs', verbose_name='Pièce modifiée')
+
+    class Meta:
+        verbose_name = 'Pièce du dossier de consultation'
+        verbose_name_plural = 'Pièces du dossier de consultation'
+        db_table = 'ao_piece_consultation'
+        ordering = ['appel_offre', 'type_piece', 'id']
+        indexes = [
+            models.Index(fields=['company', 'appel_offre']),
+            models.Index(fields=['company', 'empreinte_sha256']),
+        ]
+
+    def __str__(self):
+        etiquette = self.reference or self.get_type_piece_display()
+        return f'{etiquette} ({self.version})' if self.version else etiquette
+
+    @property
+    def est_additif(self):
+        return self.type_piece == self.TypePiece.ADDITIF
+
+
 # ── AOF14 — Les clauses du CPS deviennent des DONNÉES paramétrables ────────
 
 class ExigenceCPS(TenantModel):
@@ -354,6 +436,17 @@ class ExigenceCPS(TenantModel):
         verbose_name='Pièce du DCE')
     source_page = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Page')
+    #: AOF21 — la pièce RÉELLEMENT reçue dont cette clause est extraite.
+    #: Sans elle, « page 33 du CPS » ne désigne aucun document existant.
+    piece_consultation = models.ForeignKey(
+        PieceConsultation,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='exigences', verbose_name='Pièce du DCE (document)')
+    #: AOF21 — un ADDITIF reçu après coup lève ce drapeau sur les clauses qui
+    #: dérivent de la pièce modifiée : elles sont à RELIRE, pas silencieusement
+    #: périmées.
+    a_reverifier = models.BooleanField(
+        default=False, verbose_name='À revérifier (additif reçu)')
     bloquant = models.BooleanField(
         default=True, verbose_name='Clause bloquante')
     commentaire = models.TextField(
@@ -702,6 +795,13 @@ class PlanSource(TenantModel):
         'records.Attachment',
         on_delete=models.SET_NULL, null=True, blank=True,
         related_name='plans_source_ao', verbose_name='Fichier (MinIO)')
+    #: AOF21 — la pièce du DCE dont ce plan provient. Un plan importé par la
+    #: porte n°1 doit pouvoir CITER son origine documentaire, sinon la
+    #: provenance est perdue dès la deuxième version reçue.
+    piece_consultation = models.ForeignKey(
+        PieceConsultation,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='plans_source', verbose_name='Pièce du DCE')
     page = models.PositiveIntegerField(default=1, verbose_name='Page')
 
     # ── Calibration à DEUX points ──────────────────────────────────────────

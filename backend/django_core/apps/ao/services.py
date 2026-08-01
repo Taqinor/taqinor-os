@@ -401,6 +401,51 @@ def cautions_expirant_avant_ouverture(appel_offre):
     ]
 
 
+# ── AOF21 — Pièces du DCE reçues : additifs et re-vérification ─────────────
+
+def enregistrer_additif(appel_offre, *, piece_modifiee, reference='',
+                        version='', date_reception=None, user=None):
+    """Enregistre un ADDITIF et marque « à revérifier » ce qui en dérive.
+
+    Le cas coûteux est l'erratum reçu APRÈS le téléchargement du dossier : il
+    change des clauses DÉJÀ relevées. Sans ce marquage, l'équipe continue de
+    travailler sur des valeurs périmées et ne s'en aperçoit qu'à l'ouverture
+    des plis.
+
+    Renvoie le couple ``(additif, nombre_d_exigences_marquees)``.
+    """
+    from .models import PieceConsultation
+
+    additif = PieceConsultation.objects.create(
+        company=appel_offre.company, appel_offre=appel_offre,
+        type_piece=PieceConsultation.TypePiece.ADDITIF,
+        reference=reference, version=version,
+        date_reception=date_reception or timezone.now().date(),
+        modifie=piece_modifiee)
+
+    marquees = 0
+    if piece_modifiee is not None:
+        marquees = piece_modifiee.exigences.filter(
+            a_reverifier=False).update(a_reverifier=True)
+
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        appel_offre, Activity.Kind.NOTE, user=user,
+        body=(
+            f'Additif reçu ({reference or "sans référence"}) — '
+            f'{marquees} clause(s) du CPS marquée(s) « à revérifier ».'
+        ),
+        company=appel_offre.company)
+    return additif, marquees
+
+
+def exigences_a_reverifier(appel_offre):
+    """Clauses marquées à relire après un additif (AOF21)."""
+    return appel_offre.exigences_cps.filter(a_reverifier=True)
+
+
 # ── AOF20 — Supports de plan : upload, calibration, empreinte ──────────────
 
 def empreinte_fichier(contenu):

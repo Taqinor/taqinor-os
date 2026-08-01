@@ -22,6 +22,7 @@ from .views import (
     EcheanceAOViewSet,
     ExigenceCPSViewSet,
     LigneBordereauViewSet,
+    PieceConsultationViewSet,
     PieceSoumissionViewSet,
     PlanSourceViewSet,
     ResultatAOViewSet,
@@ -30,6 +31,8 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r'appels-offres', AppelOffreViewSet, basename='ao-appel-offre')
+router.register(r'pieces-consultation', PieceConsultationViewSet,
+                basename='ao-piece-consultation')
 router.register(r'exigences-cps', ExigenceCPSViewSet,
                 basename='ao-exigence-cps')
 router.register(r'batiments', BatimentAOViewSet, basename='ao-batiment')

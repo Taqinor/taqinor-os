@@ -17,6 +17,7 @@ from .models import (
     EcheanceAO,
     ExigenceCPS,
     LigneBordereau,
+    PieceConsultation,
     PieceSoumission,
     PlanSource,
     ResultatAO,
@@ -122,7 +123,8 @@ class PlanSourceSerializer(serializers.ModelSerializer):
         model = PlanSource
         fields = [
             'id', 'toiture', 'batiment', 'origine', 'origine_display',
-            'type_fichier', 'attachment', 'page', 'calib_point_a_px',
+            'type_fichier', 'attachment', 'piece_consultation', 'page',
+            'calib_point_a_px',
             'calib_point_b_px', 'calib_distance_reelle_m',
             'distance_calibration_px', 'echelle_m_par_px', 'origine_px',
             'rotation_deg', 'miroir_x', 'miroir_y', 'empreinte_sha256',
@@ -162,6 +164,22 @@ class BatimentAOSerializer(serializers.ModelSerializer):
 
 # ── AOF14 — Exigences du CPS ───────────────────────────────────────────────
 
+class PieceConsultationSerializer(serializers.ModelSerializer):
+    """AOF21 — le DCE REÇU de l'acheteur, pièce par pièce."""
+    type_piece_display = serializers.CharField(
+        source='get_type_piece_display', read_only=True)
+    est_additif = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PieceConsultation
+        fields = [
+            'id', 'appel_offre', 'type_piece', 'type_piece_display',
+            'est_additif', 'reference', 'version', 'date_reception',
+            'attachment', 'pages_indexees', 'empreinte_sha256', 'modifie',
+        ]
+        read_only_fields = ['empreinte_sha256']
+
+
 class ExigenceCPSSerializer(serializers.ModelSerializer):
     type_exigence_display = serializers.CharField(
         source='get_type_exigence_display', read_only=True)
@@ -173,7 +191,8 @@ class ExigenceCPSSerializer(serializers.ModelSerializer):
             'id', 'appel_offre', 'code', 'libelle', 'type_exigence',
             'type_exigence_display', 'valeur_num', 'valeur_max_num',
             'est_intervalle', 'unite', 'valeur_texte', 'source_piece',
-            'source_page', 'bloquant', 'commentaire',
+            'source_page', 'piece_consultation', 'a_reverifier', 'bloquant',
+            'commentaire',
         ]
 
 

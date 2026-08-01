@@ -35,6 +35,7 @@ from .models import (
     EcheanceAO,
     ExigenceCPS,
     LigneBordereau,
+    PieceConsultation,
     PieceSoumission,
     PlanSource,
     ResultatAO,
@@ -49,6 +50,7 @@ from .serializers import (
     EcheanceAOSerializer,
     ExigenceCPSSerializer,
     LigneBordereauSerializer,
+    PieceConsultationSerializer,
     PieceSoumissionSerializer,
     PlanSourceSerializer,
     ResultatAOSerializer,
@@ -265,6 +267,37 @@ class PlanSourceViewSet(AoBaseViewSet):
             'echelle_m_par_px', 'etat', 'updated_at'])
 
 
+# ── AOF21 — Pièces du dossier de consultation reçues ───────────────────────
+
+class PieceConsultationViewSet(AoBaseViewSet):
+    """Le DCE REÇU de l'acheteur (CPS, règlement, plans, cadres vierges).
+
+    L'action ``additif`` enregistre un erratum ET marque « à revérifier » les
+    clauses qui dérivent de la pièce modifiée.
+    """
+    queryset = PieceConsultation.objects.all()
+    serializer_class = PieceConsultationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'version']
+    ordering_fields = ['date_reception', 'type_piece']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'type_piece'))
+
+    @action(detail=True, methods=['post'], url_path='additif')
+    def additif(self, request, pk=None):
+        piece = self.get_object()
+        _, marquees = services.enregistrer_additif(
+            piece.appel_offre, piece_modifiee=piece,
+            reference=(request.data.get('reference') or ''),
+            version=(request.data.get('version') or ''),
+            user=request.user)
+        return Response({'exigences_a_reverifier': marquees},
+                        status=status.HTTP_201_CREATED)
+
+
 # ── AOF14 — Exigences du CPS ───────────────────────────────────────────────
 
 class ExigenceCPSViewSet(AoBaseViewSet):
@@ -280,7 +313,8 @@ class ExigenceCPSViewSet(AoBaseViewSet):
     def get_queryset(self):
         return _filtres_exacts(
             super().get_queryset(), self.request.query_params,
-            ('appel_offre', 'type_exigence', 'bloquant'))
+            ('appel_offre', 'type_exigence', 'bloquant', 'a_reverifier',
+             'piece_consultation'))
 
 
 # ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────
