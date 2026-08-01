@@ -7,7 +7,9 @@ import useResource from '../../../hooks/useResource'
 import useVisibilityAwarePolling from '../../../hooks/useVisibilityAwarePolling'
 import { Button, Card, Checkbox, EmptyState, Input, Label, Skeleton, toast } from '../../../ui'
 import PiecePreview from '../dossier/PiecePreview'
-import ConformiteTable, { motifBlocageDepot } from './ConformiteTable'
+import ConformiteTable from './ConformiteTable'
+import { motifBlocageDepot } from './ConformiteTable.utils'
+import { TYPES_CLAUSE, estIntervalle, payloadClause } from './ExigencesPage.utils'
 
 /* ============================================================================
    AOF181 — Écran « CPS & exigences » : l'analyse du cahier des charges.
@@ -46,15 +48,6 @@ const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const POLL_MS = 30000
 
-export const TYPES_CLAUSE = [
-  { value: 'intervalle', label: 'Intervalle (min – max)', intervalle: true },
-  { value: 'plafond', label: 'Plafond (maximum)' },
-  { value: 'plancher', label: 'Plancher (minimum)' },
-  { value: 'montant', label: 'Montant absolu' },
-  { value: 'duree', label: 'Durée (jours)' },
-  { value: 'texte', label: 'Exigence rédactionnelle' },
-]
-
 const FORM_VIDE = {
   libelle: '',
   type: 'plafond',
@@ -64,31 +57,6 @@ const FORM_VIDE = {
   sourcePiece: '',
   sourcePage: '',
   bloquant: true,
-}
-
-export function estIntervalle(type) {
-  return TYPES_CLAUSE.find((t) => t.value === type)?.intervalle === true
-}
-
-/** Corps de création d'une clause. Les valeurs partent TELLES QUE TAPÉES
-    (aucun `parseFloat`, aucune virgule convertie) : le serveur seul décide. */
-export function payloadClause(form, affaireId) {
-  const corps = {
-    affaire: affaireId,
-    libelle: form.libelle.trim(),
-    type: form.type,
-    bloquant: Boolean(form.bloquant),
-    source_piece: form.sourcePiece.trim(),
-    source_page: form.sourcePage.trim() || null,
-    unite: form.unite.trim() || null,
-  }
-  if (estIntervalle(form.type)) {
-    corps.valeur_min = form.valeur.trim()
-    corps.valeur_max = form.valeurMax.trim()
-  } else {
-    corps.valeur = form.valeur.trim()
-  }
-  return corps
 }
 
 function ClauseForm({ onCreer }) {

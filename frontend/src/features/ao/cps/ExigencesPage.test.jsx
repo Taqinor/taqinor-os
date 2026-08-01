@@ -38,10 +38,11 @@ vi.mock('../dossier/PiecePreview', () => ({
   default: ({ piece }) => <div data-testid="apercu-cps">{piece ? piece.libelle : 'aucune pièce'}</div>,
 }))
 
-import ExigencesPage, { payloadClause, estIntervalle } from './ExigencesPage'
+import ExigencesPage from './ExigencesPage'
+import { payloadClause, estIntervalle } from './ExigencesPage.utils'
 import {
   statutConformite, severiteAffichee, exigencesBloquantes, motifBlocageDepot, valeurExigee,
-} from './ConformiteTable'
+} from './ConformiteTable.utils'
 
 // Le jeu de clauses FRDISI, tel qu'il sera saisi par l'écran.
 const RATIO = {
