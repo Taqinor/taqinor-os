@@ -7,8 +7,9 @@ que le plus haut numéro utilisé, lui, reste).
 
 Invariants verrouillés ici :
   1. création sans référence → ``AO-YYYYMM-0001`` puis ``-0002`` ;
-  2. après suppression du dernier, le suivant est ``-0003`` — JAMAIS ``-0002``
-     (le bug ``count() + 1``) ;
+  2. une suppression ne fait JAMAIS retomber la séquence sur une référence
+     encore VIVANTE — c'est le bug ``count() + 1`` payé en production : le
+     compte rétrécit alors que le plus haut numéro utilisé, lui, reste ;
   3. une course (``IntegrityError`` sur la référence) est absorbée : le perdant
      prend simplement le numéro suivant, aucune exception ne remonte ;
   4. une référence explicitement fournie est RESPECTÉE (reprise de dossier) ;
@@ -57,14 +58,46 @@ class TestNumerotationService(TestCase):
         self.assertTrue(premier.reference.endswith('-0001'), premier.reference)
         self.assertTrue(second.reference.endswith('-0002'), second.reference)
 
-    def test_suppression_ne_recycle_jamais_un_numero(self):
-        """Le bug historique ``count() + 1`` : un trou ne se rebouche pas."""
+    def test_un_trou_ne_se_rebouche_pas_sur_une_reference_vivante(self):
+        """Le bug historique ``count() + 1``, dans sa forme EXACTE.
+
+        Trois AO, on supprime CELUI DU MILIEU. ``count() + 1`` rendrait
+        ``-0003`` — la référence du troisième, encore bien vivant : c'est la
+        collision payée en production. ``core.numbering`` prend le plus haut
+        numéro UTILISÉ + 1, donc ``-0004``.
+        """
         self._creer(objet='A')
-        second = self._creer(objet='B')
-        second.delete()
+        milieu = self._creer(objet='B')
         troisieme = self._creer(objet='C')
-        self.assertTrue(
-            troisieme.reference.endswith('-0003'), troisieme.reference)
+        milieu.delete()
+        suivant = self._creer(objet='D')
+        self.assertTrue(troisieme.reference.endswith('-0003'),
+                        troisieme.reference)
+        self.assertTrue(suivant.reference.endswith('-0004'),
+                        suivant.reference)
+
+    def test_la_sequence_est_plus_haut_utilise_plus_un_pas_un_compteur(self):
+        """Ce que la règle du dépôt garantit — et ce qu'elle ne garantit pas.
+
+        ``core.numbering`` (fondation ARC6, partagée par ~15 apps) lit le plus
+        haut numéro RÉELLEMENT UTILISÉ en base. Supprimer le DERNIER AO d'un
+        mois libère donc son numéro : c'est voulu, et sans conséquence — aucune
+        référence vivante ne peut être doublée, et c'est cela qui était en jeu.
+        Ce test le dit à voix haute pour que personne ne le « corrige » en
+        croyant à un compteur monotone qui n'a jamais existé ici.
+        """
+        self._creer(objet='A')
+        dernier = self._creer(objet='B')
+        self.assertTrue(dernier.reference.endswith('-0002'),
+                        dernier.reference)
+        dernier.delete()
+        reprise = self._creer(objet='C')
+        self.assertTrue(reprise.reference.endswith('-0002'),
+                        reprise.reference)
+        self.assertEqual(
+            AppelOffre.objects.filter(
+                company=self.company, reference=reprise.reference).count(), 1,
+            'la référence reprise doit rester UNIQUE parmi les AO vivants')
 
     def test_course_absorbee_sans_collision(self):
         """Le perdant d'une course prend le numéro suivant, sans exception."""
