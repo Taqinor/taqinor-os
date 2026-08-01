@@ -19,7 +19,7 @@
 //   • fond signature « Lumière sur Nuit » : halo brass ≤8 % sur la surface —
 //     seul écran autorisé au dégradé avec ModuleHero (contrainte VXD).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   DndContext, KeyboardSensor, PointerSensor, TouchSensor,
   closestCenter, useDraggable, useDroppable, useSensor, useSensors,
@@ -33,6 +33,12 @@ import { normalise, grouperApps } from '../../lib/apps/appSearch'
 import AppIcon from '../../ui/AppIcon'
 import { runAppTransition, marquerIconeSortante } from '../../lib/apps/appTransition'
 import { prefetchRoute } from '../../router/prefetchMap'
+// ODY14 — premier matin : état vide illustré (variante EmptyState VX40) et
+// bannière de prise en main (VX36) remontée sur le Menu d'accueil.
+import { EmptyState } from '../../ui/EmptyState'
+import { Button } from '../../ui/Button'
+import { useIsAdmin } from '../../hooks/useHasPermission'
+import OnboardingBanner from '../../components/OnboardingBanner'
 
 /* ODY13 — annonces FR du glisser-déposer (le défaut de dnd-kit est anglais).
    Un lecteur d'écran doit pouvoir suivre tout le trajet au clavier. */
@@ -154,7 +160,11 @@ export default function HomeMenu() {
 
   // Réordonner une grille FILTRÉE n'a pas de sens (l'utilisateur ne voit pas où
   // l'app atterrit) : le glisser n'est actif qu'au repos.
-  const reordonnable = !normalise(query)
+  const recherche = !!normalise(query)
+  const reordonnable = !recherche
+  // ODY14 — le CTA « Ouvrir Applications » n'a de sens que pour un admin : un
+  // non-admin n'y accéderait qu'à un refus (ODX5 est gaté Directeur).
+  const estAdmin = useIsAdmin()
 
   // La requête a changé : la première tuile redevient l'active (« Entrée ouvre
   // la première »). Ajustement en phase de rendu (patron React « ajuster l'état
@@ -316,12 +326,28 @@ export default function HomeMenu() {
           />
         </div>
 
+        {/* ODY14 — la bannière de prise en main (VX36) remonte ici tant que la
+            checklist n'est pas finie. Elle se rend elle-même invisible pendant
+            son chargement, quand tout est fait ou quand elle a été rejetée :
+            aucune société « normale » ne voit donc de flash. */}
+        <OnboardingBanner />
+
         {sections.length === 0 ? (
-          <p className="home-menu-vide" role="status">
-            {normalise(query)
+          <EmptyState
+            illustrated={!recherche}
+            className="home-menu-vide"
+            title={recherche ? 'Aucun résultat' : 'Aucune app activée'}
+            description={recherche
               ? 'Aucune application ne correspond à cette recherche.'
-              : 'Aucune application activée.'}
-          </p>
+              : (estAdmin
+                ? 'Aucune application n’est activée pour votre société. Activez-en dans Paramètres → Applications.'
+                : 'Aucune application n’est activée pour votre société, ou votre rôle n’en autorise aucune. Demandez à votre administrateur.')}
+            action={!recherche && estAdmin ? (
+              <Button asChild>
+                <Link to="/parametres">Ouvrir Applications</Link>
+              </Button>
+            ) : null}
+          />
         ) : (
           <DndContext
             sensors={sensors}

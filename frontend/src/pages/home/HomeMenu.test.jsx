@@ -52,6 +52,12 @@ vi.mock('../../router/prefetchMap', () => ({
   _resetPrefetchCacheForTests: () => {},
 }))
 
+// ODY14 — la bannière VX36 fait ses propres lectures réseau : on la remplace
+// par un espion inerte (on teste QU'ELLE est montée, pas son contenu, déjà
+// couvert par ses propres tests).
+const { bannerMock } = vi.hoisted(() => ({ bannerMock: vi.fn(() => null) }))
+vi.mock('../../components/OnboardingBanner', () => ({ default: bannerMock }))
+
 const navigateMock = vi.fn()
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom')
@@ -134,6 +140,7 @@ describe('ODY2 — HomeMenu (rendu)', () => {
     window.localStorage.clear()
     navigateMock.mockClear()
     prefetchMock.mockClear()
+    bannerMock.mockClear()
   })
 
   it('ODY12 — le survol d’une tuile précharge le chunk de son cockpit', () => {
@@ -272,9 +279,35 @@ describe('ODY2 — HomeMenu (rendu)', () => {
     expect(screen.getByText('Favoris')).toBeInTheDocument()
   })
 
-  it('aucune app visible : message d’accueil vide, pas de grille', () => {
+  // ODY14 — le premier matin : état vide illustré + onboarding.
+  it('aucune app visible : état vide dédié, pas de grille', () => {
     renderHome({ role: 'inconnu' })
     expect(screen.queryAllByRole('listitem')).toHaveLength(0)
-    expect(screen.getByText('Aucune application activée.')).toBeInTheDocument()
+    expect(screen.getByText('Aucune app activée')).toBeInTheDocument()
+  })
+
+  it('ODY14 — état vide ADMIN : CTA vers Applications', () => {
+    // Rôle admin mais toutes les apps désactivées pour la société.
+    renderHome({ role: 'admin', modulesDesactives: ['crm', 'ventes', 'rh'] })
+    expect(screen.getByText('Aucune app activée')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ouvrir Applications' }))
+      .toHaveAttribute('href', '/parametres')
+  })
+
+  it('ODY14 — état vide NON-ADMIN : aucun CTA, renvoi vers l’administrateur', () => {
+    renderHome({ role: 'normal', modulesDesactives: ['crm', 'ventes', 'rh'] })
+    expect(screen.queryByRole('link', { name: 'Ouvrir Applications' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Demandez à votre administrateur/)).toBeInTheDocument()
+  })
+
+  it('ODY14 — la bannière de prise en main (VX36) est montée sur le Menu d’accueil', () => {
+    renderHome()
+    expect(bannerMock).toHaveBeenCalled()
+  })
+
+  it('ODY14 — la grille normale ne rend AUCUN état vide (pas de flash)', () => {
+    renderHome()
+    expect(screen.queryByText('Aucune app activée')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('listitem').length).toBeGreaterThan(0)
   })
 })

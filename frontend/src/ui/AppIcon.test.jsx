@@ -14,6 +14,10 @@ import { MemoryRouter } from 'react-router-dom'
 // Sentinel TEXTUEL (pas de JSX dans une factory vi.mock, qui est hoistée).
 const SENTINEL = 'GLYPHE-CRM'
 
+// La bannière de prise en main (VX36, montée par HomeMenu depuis ODY14) fait
+// ses propres lectures réseau : inerte ici, ce test ne porte pas sur elle.
+vi.mock('../components/OnboardingBanner', () => ({ default: () => null }))
+
 vi.mock('../router/moduleRoutes', () => ({
   moduleConfigs: [
     {

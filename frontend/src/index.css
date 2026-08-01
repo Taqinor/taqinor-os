@@ -8536,10 +8536,13 @@ textarea.form-control {
   opacity: 1;
 }
 
+/* ODY14 — l'etat vide est un EmptyState (variante illustree VX40) : il porte
+   deja son fond, ses marges et sa typographie. Cette classe ne fait donc que
+   le centrer et le borner — jamais redefinir son padding, sinon elle ecrase
+   les utilitaires du composant. */
 .home-menu-vide {
-  padding: 1.5rem 0;
-  font-size: 0.85rem;
-  color: var(--muted-foreground);
+  max-width: 30rem;
+  margin-inline: auto;
 }
 
 @media (max-width: 768px) {
