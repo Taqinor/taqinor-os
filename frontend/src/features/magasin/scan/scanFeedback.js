@@ -1,3 +1,5 @@
+import { hapticTap } from '../../../lib/haptics.js'
+
 /* ============================================================================
    XSTK5 — Retour sonore (best-effort) pour un scan hors-liste. Même pattern
    que `components/layout/NotificationBell.jsx` (WebAudio, zéro dépendance) —
@@ -22,6 +24,19 @@ export function playRejectBeep() {
     osc.stop(ctx.currentTime + 0.35)
     osc.onended = () => { try { ctx.close() } catch { /* noop */ } }
   } catch { /* best-effort : pas de son si l'autoplay est bloqué */ }
+}
+
+/* ============================================================================
+   APX23 — Retour scan FORT, SANS bip de succès : le bip de rejet ci-dessus
+   reste le SEUL son du scan (« pas de son » = pas de son NOUVEAU). Le canal
+   haptique partagé (VX42, `lib/haptics.js`) confirme accepté ET refusé — le
+   flash visuel plein écran (accent réussite/échec, CSS pur, réduit à une
+   bordure statique sous `prefers-reduced-motion`) vit dans le composant
+   appelant car il doit suivre l'état React monté/démonté ; ce module reste
+   le point d'entrée unique du feedback scan (audio + haptique).
+   ========================================================================== */
+export function triggerScanHaptic() {
+  hapticTap(10)
 }
 
 export default playRejectBeep

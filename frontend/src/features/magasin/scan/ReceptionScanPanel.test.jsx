@@ -117,4 +117,56 @@ describe('ReceptionScanPanel', () => {
     await waitFor(() => expect(stockApi.resolveCode).toHaveBeenCalled())
     expect(stockApi.recevoirBcf).not.toHaveBeenCalled()
   })
+
+  // APX23 — le scan qui répond : accepté ≠ refusé à l'œil (flash + bordure
+  // de repli) ET au poignet (vibration défensive, canal VX42).
+  describe('feedback fort (APX23)', () => {
+    it('scan accepté déclenche le flash "accept" (overlay + bordure carte) et la vibration', async () => {
+      const user = userEvent.setup()
+      const vibrate = vi.fn(() => true)
+      Object.defineProperty(window.navigator, 'vibrate', { value: vibrate, configurable: true })
+      stockApi.resolveCode.mockResolvedValueOnce({ data: { id: 5, label: 'Onduleur 5kW' } })
+      const { container } = renderPanel()
+      await screen.findByText('Onduleur 5kW')
+
+      await scanManual(user, '1234567890123')
+
+      await waitFor(() => expect(vibrate).toHaveBeenCalledWith(10))
+      const overlay = container.querySelector('[data-testid="scan-flash-overlay"]')
+      expect(overlay).toHaveAttribute('data-tone', 'accept')
+      expect(container.querySelector('[data-flash="accept"]')).toBeInTheDocument()
+    })
+
+    it('scan refusé déclenche le flash "reject" — distinct du flash accepté', async () => {
+      const user = userEvent.setup()
+      const vibrate = vi.fn(() => true)
+      Object.defineProperty(window.navigator, 'vibrate', { value: vibrate, configurable: true })
+      stockApi.resolveCode.mockResolvedValueOnce({ data: { id: 999, label: 'Inconnu' } })
+      const { container } = renderPanel()
+      await screen.findByText('Onduleur 5kW')
+
+      await scanManual(user, 'EAN-INCONNU')
+
+      await waitFor(() => expect(vibrate).toHaveBeenCalledWith(10))
+      const overlay = container.querySelector('[data-testid="scan-flash-overlay"]')
+      expect(overlay).toHaveAttribute('data-tone', 'reject')
+      expect(container.querySelector('[data-flash="reject"]')).toBeInTheDocument()
+    })
+
+    it('le flash retombe après SCAN_FLASH_MS (overlay et bordure retirés)', async () => {
+      const user = userEvent.setup()
+      stockApi.resolveCode.mockResolvedValueOnce({ data: { id: 5, label: 'Onduleur 5kW' } })
+      const { container } = renderPanel()
+      await screen.findByText('Onduleur 5kW')
+
+      await scanManual(user, '1234567890123')
+      await waitFor(() => expect(container.querySelector('[data-testid="scan-flash-overlay"]')).toBeInTheDocument())
+
+      await waitFor(
+        () => expect(container.querySelector('[data-testid="scan-flash-overlay"]')).not.toBeInTheDocument(),
+        { timeout: 1000 },
+      )
+      expect(container.querySelector('[data-flash]')).not.toBeInTheDocument()
+    })
+  })
 })
