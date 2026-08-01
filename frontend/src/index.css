@@ -9031,3 +9031,72 @@ textarea.form-control {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ODY29 — « Reprendre » : la pastille qui rend son contexte à chaque app.
+   ───────────────────────────────────────────────────────────────────────────
+   Posée en bas de la tuile, TOUJOURS visible quand elle existe (contrairement
+   à l'étoile et à la poignée, qui n'apparaissent qu'au survol/focus) : c'est
+   une INFORMATION — « vous étiez quelque part » — autant qu'une action, et une
+   info qui se cache ne sert personne. Bloc APPEND-ONLY.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.home-menu-tile-resume {
+  position: absolute;
+  left: 50%;
+  bottom: 0.3rem;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: calc(100% - 0.7rem);
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--module-accent, var(--primary)) 14%, transparent);
+  color: var(--module-accent, var(--primary));
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.home-menu-tile-resume-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-menu-tile-resume:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 1px;
+}
+
+@media (hover: hover) {
+  .home-menu-tile-resume:hover {
+    background: color-mix(in srgb, var(--module-accent, var(--primary)) 24%, transparent);
+  }
+}
+
+/* La tuile réserve la place de la pastille pour que le libellé ne passe jamais
+   dessous (la pastille est en position absolue, donc hors flux). */
+.home-menu-cell:has(.home-menu-tile-resume) .home-menu-tile {
+  padding-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  /* Au pouce, la tuile est étroite : seule l'icône reste, le nom accessible
+     (aria-label) porte tout le sens pour les lecteurs d'écran. */
+  .home-menu-tile-resume-label {
+    display: none;
+  }
+
+  .home-menu-cell:has(.home-menu-tile-resume) .home-menu-tile {
+    padding-bottom: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-menu-tile-resume {
+    transition: none;
+  }
+}

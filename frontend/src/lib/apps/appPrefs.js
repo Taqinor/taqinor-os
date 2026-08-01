@@ -17,6 +17,11 @@ export const PINNED_KEY = 'taqinor.sidebar.pinned'
 export const RECENT_KEY = 'taqinor.launcher.recent'
 /** ODY13 — ordre personnel de la grille (liste de clés de module). */
 export const ORDER_KEY = 'taqinor.apps.order'
+/** ODY29 — préfixe des routes de REPRISE (une clé par app ET par utilisateur).
+ *  Volontairement en sessionStorage, pas en localStorage : « reprendre où j'en
+ *  étais » a du sens dans la session de travail en cours, pas trois jours plus
+ *  tard sur un écran devenu périmé. */
+export const RESUME_PREFIX = 'taqinor.apps.resume'
 
 /** Nombre de « Récents » affichés (contrat ODY2 : 3). */
 export const RECENT_MAX = 3
@@ -83,6 +88,59 @@ export function writeOrder(list) {
   try {
     window.dispatchEvent(new CustomEvent('taqinor:apps-order-changed'))
   } catch { /* environnement sans window : silencieux */ }
+}
+
+// ── ODY29 — mémoire de reprise, par app ET par utilisateur ─────────────────
+// Odoo perd l'endroit où vous étiez dès que vous changez d'app. Ici, chaque app
+// se souvient de sa dernière route DE LA SESSION ; la grille peut alors
+// proposer « Reprendre ». Deux comptes qui se succèdent sur le même poste ne
+// se marchent jamais dessus : l'identifiant utilisateur fait partie de la clé.
+// Accès défensifs identiques au reste du fichier (mode privé, quota, SSR).
+
+function sessionStore() {
+  try {
+    return typeof window !== 'undefined' ? window.sessionStorage : null
+  } catch {
+    return null
+  }
+}
+
+/** Clé de reprise d'une app pour un utilisateur donné (`anon` si non résolu). */
+export function resumeKey(appKey, userId) {
+  return `${RESUME_PREFIX}:${userId ?? 'anon'}:${appKey}`
+}
+
+/** Dernière route connue de `appKey` pour cet utilisateur, ou '' si aucune. */
+export function readResume(appKey, userId) {
+  const s = sessionStore()
+  if (!s || !appKey) return ''
+  try {
+    const value = s.getItem(resumeKey(appKey, userId))
+    // Une valeur qui n'est pas un chemin absolu est ignorée : on ne navigue
+    // jamais vers ce qu'on n'a pas écrit soi-même.
+    return typeof value === 'string' && value.startsWith('/') ? value : ''
+  } catch {
+    return ''
+  }
+}
+
+/** Mémorise `path` comme dernière route de `appKey`. */
+export function writeResume(appKey, userId, path) {
+  const s = sessionStore()
+  if (!s || !appKey || typeof path !== 'string' || !path.startsWith('/')) return
+  try {
+    s.setItem(resumeKey(appKey, userId), path)
+  } catch { /* stockage indisponible : pas de reprise, jamais d'exception */ }
+}
+
+/**
+ * resumeTarget — destination de reprise UTILISABLE : la route mémorisée, ou ''
+ * si elle est absente ou identique au cockpit (proposer « Reprendre » vers
+ * l'écran où le clic mène déjà serait un faux choix).
+ */
+export function resumeTarget(appKey, userId, cockpit) {
+  const memoire = readResume(appKey, userId)
+  return memoire && memoire !== cockpit ? memoire : ''
 }
 
 /**

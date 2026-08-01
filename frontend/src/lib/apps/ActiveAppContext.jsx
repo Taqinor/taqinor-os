@@ -21,12 +21,15 @@
 // respecter, aucun test à envelopper dans un provider de plus). Le nom de
 // fichier reste celui du plan ; l'ajout ultérieur d'un Provider (annonce
 // aria-live ODY32, mémoire de reprise ODY29) sera purement additif.
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { CalendarClock } from 'lucide-react'
 import { moduleConfigs } from '../../router/moduleRoutes'
 import useInstalledApps from './useInstalledApps'
+// ODY29 — mémoire de reprise par app+utilisateur (sessionStorage, source
+// UNIQUE dans `appPrefs.js` : ce fichier écrit, le Menu d'accueil lit).
+import { writeResume } from './appPrefs'
 // ODY30 — kill-switch build-time de la bascule de coquille (défaut ON). Sa
 // DÉFINITION vit dans un module sans import (`appsShellFlag.js`) parce que ses
 // deux lecteurs — ce fichier et `Layout.jsx` — sont liés par la chaîne
@@ -156,10 +159,21 @@ export function appNavItems(config, role, permissions = EMPTY_PERMISSIONS) {
   return [...declared, ...orphans].filter((it) => isItemVisible(it, role, permissions))
 }
 
+/* ODY29 — `useActiveApp` a plusieurs consommateurs montés en même temps
+   (Sidebar, Header, BottomTabBar) : sans garde, chaque navigation écrirait la
+   même route trois fois. Cette empreinte de module rend l'écriture EXACTEMENT
+   une par navigation. Elle ne porte aucun état fonctionnel — la vérité reste
+   le sessionStorage. */
+let derniereEmpreinteReprise = ''
+
 /**
  * useActiveApp — l'app active déduite de la route, ou `null` (coquille neutre)
  * hors de toute app, quand l'app n'est pas installée/autorisée, ou quand le
  * kill-switch ODY30 est OFF (chemin de secours legacy).
+ *
+ * Effet de bord (ODY29) : mémorise la route courante comme point de reprise de
+ * l'app active. C'est ici, et nulle part ailleurs, parce que c'est le seul
+ * endroit qui connaît DÉJÀ le couple (route → app) sans le recalculer.
  *
  * @returns {null | {key, label, icon, accent, to, description, items}}
  */
@@ -169,19 +183,33 @@ export function useActiveApp() {
   const apps = useInstalledApps()
   const role = useSelector((s) => s.auth.role) || 'normal'
   const permissions = useSelector((s) => s.auth.permissions) || EMPTY_PERMISSIONS
+  // ODY29 — la mémoire de reprise est propre à l'utilisateur : deux comptes qui
+  // se succèdent sur le même poste ne reprennent jamais la session de l'autre.
+  const userId = useSelector((s) => s.auth.user?.id)
 
-  return useMemo(() => {
+  const app = useMemo(() => {
     if (!APPS_SHELL_ENABLED) return null
     const key = resolveAppKey(ROUTE_INDEX, pathname)
     if (!key) return null
-    const app = apps.find((a) => a.key === key)
+    const trouvee = apps.find((a) => a.key === key)
     // App désactivée pour la société, ou aucun écran autorisé pour ce rôle :
     // on ne fabrique PAS une identité d'app à partir du registre brut (ce
     // serait la 2e source d'apps interdite) — coquille neutre.
-    if (!app) return null
+    if (!trouvee) return null
     const config = moduleConfigs.find((c) => c.key === key)
-    return { ...app, items: appNavItems(config, role, permissions) }
+    return { ...trouvee, items: appNavItems(config, role, permissions) }
   }, [pathname, apps, role, permissions])
+
+  const appKey = app?.key
+  useEffect(() => {
+    if (!appKey) return
+    const empreinte = `${userId ?? ''}|${appKey}|${pathname}`
+    if (empreinte === derniereEmpreinteReprise) return
+    derniereEmpreinteReprise = empreinte
+    writeResume(appKey, userId, pathname)
+  }, [appKey, userId, pathname])
+
+  return app
 }
 
 /**

@@ -1,11 +1,16 @@
 // ODY4 — tests des fonctions PURES de résolution « route → app active ».
 // (Le rendu de la coquille en immersion est couvert par
 // `components/layout/Sidebar.ody4.test.jsx`.)
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
+import { renderHook } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
+import { MemoryRouter } from 'react-router-dom'
 import {
   buildAppRouteIndex, resolveAppKey, appNavItems, crossAppTransition,
-  ORPHAN_NAV_ITEMS, HOME_MENU_PATH,
+  ORPHAN_NAV_ITEMS, HOME_MENU_PATH, useActiveApp,
 } from './ActiveAppContext'
+import { resumeKey, RESUME_PREFIX } from './appPrefs'
 import { moduleConfigs } from '../../router/moduleRoutes'
 
 const FIXTURE = [
@@ -130,5 +135,65 @@ describe('ODY4 — cohérence du registre réel', () => {
 
   it('le Menu d’accueil n’appartient à AUCUNE app (coquille neutre)', () => {
     expect(resolveAppKey(realIndex, HOME_MENU_PATH)).toBeNull()
+  })
+})
+
+// ── ODY29 — chaque app se souvient de l'endroit où on l'a quittée ───────────
+// L'écriture se fait dans `useActiveApp` : c'est le seul endroit qui connaît
+// déjà le couple (route → app). On l'observe donc en montant vraiment le hook.
+describe('ODY29 — useActiveApp mémorise la route de reprise', () => {
+  function monter(path, { user = null } = {}) {
+    const store = configureStore({
+      reducer: {
+        auth: (s = { role: 'admin', permissions: [], modulesDesactives: [], user }) => s,
+      },
+    })
+    return renderHook(() => useActiveApp(), {
+      wrapper: ({ children }) => (
+        <Provider store={store}>
+          <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
+        </Provider>
+      ),
+    })
+  }
+
+  beforeEach(() => {
+    window.sessionStorage.clear()
+  })
+
+  it('mémorise la route courante sous la clé de son app', () => {
+    monter('/crm/leads')
+    expect(window.sessionStorage.getItem(resumeKey('crm', null))).toBe('/crm/leads')
+  })
+
+  it('la clé porte l’utilisateur : une session n’écrase pas celle d’un autre', () => {
+    monter('/ventes/devis', { user: { id: 7 } })
+    expect(window.sessionStorage.getItem(resumeKey('ventes', 7))).toBe('/ventes/devis')
+    expect(window.sessionStorage.getItem(resumeKey('ventes', 8))).toBeNull()
+  })
+
+  it('un écran hors de toute app (Menu d’accueil) n’écrit RIEN', () => {
+    monter(HOME_MENU_PATH)
+    const clesDeReprise = Object.keys(window.sessionStorage)
+      .filter((k) => k.startsWith(RESUME_PREFIX))
+    expect(clesDeReprise).toEqual([])
+  })
+
+  it('une app désactivée pour la société n’écrit rien non plus', () => {
+    const store = configureStore({
+      reducer: {
+        auth: (s = {
+          role: 'admin', permissions: [], modulesDesactives: ['crm'], user: null,
+        }) => s,
+      },
+    })
+    renderHook(() => useActiveApp(), {
+      wrapper: ({ children }) => (
+        <Provider store={store}>
+          <MemoryRouter initialEntries={['/crm/leads']}>{children}</MemoryRouter>
+        </Provider>
+      ),
+    })
+    expect(window.sessionStorage.getItem(resumeKey('crm', null))).toBeNull()
   })
 })
