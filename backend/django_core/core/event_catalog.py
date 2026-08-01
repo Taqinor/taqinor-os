@@ -200,6 +200,20 @@ CATALOG = {
         "Une application est installée ou désinstallée pour une société "
         "(bascule d'un core.ModuleToggle).",
         ['toggle', 'company', 'module', 'actif', 'user', 'raison']),
+    # AOF13 — les DEUX seuls événements du domaine « appel d'offres »
+    # (``apps.ao``). Émis EXCLUSIVEMENT par ``apps.ao.services.changer_statut_ao``
+    # (jamais d'un modèle ni d'une vue), sur FRANCHISSEMENT de statut. Abonné
+    # réel : ``crm`` (``apps/crm/receivers.py``), qui avance l'étape du lead
+    # lié — d'où l'intérêt de les cataloguer : une intégration cliente branche
+    # son propre suivi d'offres dessus sans importer ``apps.ao``.
+    'ao_depose': _e(
+        "Un dossier d'appel d'offres est DÉPOSÉ (transition "
+        "« prêt à déposer » → « déposé ») : l'offre est remise.",
+        ['appel_offre', 'company', 'user', 'ancien_statut']),
+    'ao_gagne': _e(
+        "Un appel d'offres est ATTRIBUÉ (transition « déposé » → « gagné ») "
+        "à l'ouverture des plis.",
+        ['appel_offre', 'company', 'user', 'ancien_statut']),
 }
 
 
