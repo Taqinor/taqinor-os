@@ -325,7 +325,17 @@ describe('DevisList — QG1 : ouverture automatique du PDF après « Générer �
 })
 
 describe('DevisList — U8 : état du bon de commande + incohérence', () => {
-  it('affiche le statut du BC et avertit quand un devis accepté a un BC annulé', () => {
+  // APX17 — les signaux SECONDAIRES du statut (option acceptée, proposition
+  // signée, état du BC, incohérence, boucle « pris en charge ») ne sont plus
+  // EMPILÉS dans la cellule : ils vivent dans un Popover « Détails », ce qui
+  // rend la hauteur de ligne stable (et le scroll juste au-delà de ~100 devis,
+  // le moteur DataTable estimant une hauteur constante). L'anomalie de BC
+  // reste signalée SUR la ligne ; le détail s'ouvre au clic.
+  const ouvrirDetails = async (row) => {
+    await userEvent.click(within(row).getByRole('button', { name: /Détails du statut/ }))
+  }
+
+  it('affiche le statut du BC et avertit quand un devis accepté a un BC annulé', async () => {
     renderList({
       loading: false,
       devis: [{
@@ -335,11 +345,12 @@ describe('DevisList — U8 : état du bon de commande + incohérence', () => {
       }],
     })
     const row = screen.getByText('DEV-BC-ANN').closest('tr')
-    expect(within(row).getByText(/BC : Annulé/)).toBeVisible()
-    expect(within(row).getByText('Devis accepté mais BC annulé')).toBeVisible()
+    await ouvrirDetails(row)
+    expect(await screen.findByText(/BC : Annulé/)).toBeVisible()
+    expect(screen.getByText('Devis accepté mais BC annulé')).toBeVisible()
   })
 
-  it('avertit quand un devis accepté n\'a aucun bon de commande', () => {
+  it('avertit quand un devis accepté n\'a aucun bon de commande', async () => {
     renderList({
       loading: false,
       devis: [{
@@ -349,10 +360,11 @@ describe('DevisList — U8 : état du bon de commande + incohérence', () => {
       }],
     })
     const row = screen.getByText('DEV-BC-NONE').closest('tr')
-    expect(within(row).getByText('Devis accepté sans bon de commande')).toBeVisible()
+    await ouvrirDetails(row)
+    expect(await screen.findByText('Devis accepté sans bon de commande')).toBeVisible()
   })
 
-  it('n\'avertit pas quand le BC est confirmé sur un devis accepté', () => {
+  it('n\'avertit pas quand le BC est confirmé sur un devis accepté', async () => {
     renderList({
       loading: false,
       devis: [{
@@ -362,8 +374,9 @@ describe('DevisList — U8 : état du bon de commande + incohérence', () => {
       }],
     })
     const row = screen.getByText('DEV-BC-OK').closest('tr')
-    expect(within(row).getByText(/BC : Confirmé/)).toBeVisible()
-    expect(within(row).queryByText(/BC annulé|sans bon de commande/)).toBeNull()
+    await ouvrirDetails(row)
+    expect(await screen.findByText(/BC : Confirmé/)).toBeVisible()
+    expect(screen.queryByText(/BC annulé|sans bon de commande/)).toBeNull()
   })
 })
 

@@ -10,6 +10,8 @@
 import { moduleTitles, moduleSectionLabels } from '../../router/moduleRoutes'
 
 const BASE_PAGE_TITLES = [
+  // ODY2 — Menu d'accueil plein écran (grille des apps installées).
+  ['/apps', 'Mes applications'],
   ['/dashboard', 'Tableau de bord'],
 
   // Stock
@@ -30,6 +32,12 @@ const BASE_PAGE_TITLES = [
   ['/stock', 'Stock'],
 
   // CRM
+  // ODY5 — `/crm/cockpit` (ODY15) et `/crm/forecast` n'avaient AUCUN titre
+  // déclaré nulle part : ils héritaient donc du préfixe générique `/crm` et
+  // s'intitulaient « Clients » en en-tête. Les déclarer ici les rend visibles
+  // au `titleFor` le plus spécifique (cf. sa note sur le plus long préfixe).
+  ['/crm/cockpit', 'Cockpit CRM'],
+  ['/crm/forecast', 'Forecast'],
   ['/crm/leads', 'Leads'],
   ['/crm/parrainage', 'Parrainage'],
   ['/crm/profils-site', 'Profils site'],
@@ -59,6 +67,9 @@ const BASE_PAGE_TITLES = [
   ['/production', 'Production'],
 
   // Après-vente
+  // ODY5 — même correctif qu'au CRM ci-dessus : `/sav/cockpit` (ODY19) était
+  // titré « SAV » par héritage du préfixe générique.
+  ['/sav/cockpit', 'Cockpit SAV'],
   ['/sav/contrats', 'Contrats de maintenance'],
   ['/sav', 'SAV'],
   ['/equipements', 'Équipements'],
@@ -165,23 +176,33 @@ const TITLE_KEYS = {
 // inchangé (texte, non cliquable) pour les sections sans cockpit unique.
 const BASE_SECTION_LABELS = {
   stock: { label: 'Stock', to: '/stock' },
-  crm: { label: 'CRM', to: '/crm' },
+  // APX1 — la PORTE du CRM est `/crm/leads` (fondateur 2026-08-01) : le 1er
+  // segment du fil d'Ariane y renvoie, comme le lanceur/les épinglés/
+  // l'atterrissage (tous dérivés de `nav.items[0].to`). Pointait `/crm`
+  // (Clients) : le CRM avait deux « portes » contradictoires.
+  crm: { label: 'CRM', to: '/crm/leads' },
   ventes: { label: 'Ventes', to: '/ventes/devis' },
   chantiers: { label: 'Chantiers', to: '/chantiers' },
   parc: { label: 'Chantiers', to: '/chantiers' },
   production: { label: 'Chantiers', to: '/chantiers' },
   equipements: { label: 'Après-vente', to: '/sav' },
   sav: { label: 'Après-vente', to: '/sav' },
-  ia: { label: 'Intelligence', to: null },
+  // ODY23 — le cockpit /ia (features/ia/module.config.jsx) existe désormais :
+  // le 1er segment du fil d'Ariane devient cliquable, comme les autres apps.
+  ia: { label: 'Intelligence', to: '/ia' },
   reporting: { label: 'Analyse', to: '/reporting' },
   rapports: { label: 'Analyse', to: '/reporting' },
   approbations: { label: 'Analyse', to: '/reporting' },
   'dashboards-tv': { label: 'Analyse', to: '/reporting' },
   admin: { label: 'Administration', to: '/parametres' },
   parametres: { label: 'Administration', to: '/parametres' },
-  activites: { label: 'CRM', to: '/crm' },
-  calendrier: { label: 'CRM', to: '/crm' },
+  // APX1 — mêmes libellés « CRM » : même porte, sinon deux breadcrumbs
+  // « CRM » mèneraient à deux écrans différents.
+  activites: { label: 'CRM', to: '/crm/leads' },
+  calendrier: { label: 'CRM', to: '/crm/leads' },
   dashboard: { label: 'Tableau de bord', to: null },
+  // ODY2 — le Menu d'accueil est sa propre racine (pas un sous-écran).
+  apps: { label: 'Mes applications', to: '/apps' },
 }
 
 // UX1 — libellés de section des modules « coquille » : chaque
@@ -204,12 +225,26 @@ export const SECTION_LABELS = {
   ...NORMALIZED_MODULE_SECTION_LABELS,
 }
 
-// Titre de page : première entrée dont le pathname commence par la clé.
+// Titre de page : entrée dont le préfixe est le PLUS SPÉCIFIQUE (le plus long)
+// à correspondre au chemin.
+// ODY5 — c'était auparavant la PREMIÈRE entrée correspondante, ce qui marchait
+// tant que la liste restait triée du spécifique au général… mais faisait
+// SILENCIEUSEMENT masquer par un préfixe générique toute sous-route déclarée
+// APRÈS lui : un module ajoutant `['/crm/cockpit', 'Cockpit']` à ses `titles`
+// (ajoutés à la fin de PAGE_TITLES) voyait son titre écrasé par le `['/crm',
+// 'Clients']` de la liste de base — l'écran s'intitulait « Clients ». Même
+// travers pour `/crm/forecast`. Le plus long préfixe gagne désormais ; à
+// longueur ÉGALE la PREMIÈRE entrée l'emporte (précédence de la liste de base
+// sur les modules, inchangée).
 // N93 — `t` optionnel : si fourni ET qu'une clé i18n existe pour ce chemin, on
 // renvoie la traduction ; sinon on garde le libellé FR (repli). Appelé sans `t`,
 // le comportement est identique à avant (FR partout).
 export function titleFor(pathname, t) {
-  const hit = PAGE_TITLES.find(([path]) => pathname.startsWith(path))
+  let hit = null
+  for (const entry of PAGE_TITLES) {
+    if (!pathname.startsWith(entry[0])) continue
+    if (!hit || entry[0].length > hit[0].length) hit = entry
+  }
   if (!hit) return t ? t('title.fallback') : 'ERP Agentique'
   if (t) {
     const key = TITLE_KEYS[hit[0]]
@@ -229,19 +264,29 @@ export function titleFor(pathname, t) {
 // contexte, non cliquable) pour les sections sans cockpit unique. On ne navigue
 // jamais vers un segment intermédiaire inexistant : seul le dernier élément (la
 // page courante) porte le titre complet et n'est jamais un lien (`current`).
-export function breadcrumbsFor(pathname) {
+// ODY5 — `app` OPTIONNEL : `{label, to}` de l'app active (immersion). Quand il
+// est fourni, le 1er segment devient l'APP et pointe vers SON cockpit — le fil
+// reste la HIÉRARCHIE lisible « app › section › fiche » (jamais la pile
+// d'historique d'Odoo, dont les tickets #46616/#41891 documentent la confusion :
+// un fil qui empile les écrans visités ne dit plus OÙ l'on est). Le libellé de
+// section reste préféré quand il existe (« Ventes », « Après-vente » : plus
+// lisible que le nom d'app en capitales) ; le nom d'app sert de repli pour les
+// segments sans libellé déclaré. Appelée SANS `app`, la fonction est identique
+// à avant (aucune régression pour ses appelants existants).
+export function breadcrumbsFor(pathname, app) {
   const title = titleFor(pathname)
   const seg = pathname.split('/').filter(Boolean)[0]
   const section = seg ? SECTION_LABELS[seg] : null
+  const label = section?.label ?? app?.label ?? null
+  const target = app?.to ?? section?.to ?? null
   const crumbs = []
   // La section n'est affichée que si elle diffère du titre de la page (évite
   // « Tableau de bord › Tableau de bord »).
-  if (section && section.label !== title) {
+  if (label && label !== title) {
     // Ne jamais poser `to` == pathname courant (éviterait un lien vers soi-même
-    // quand on est DÉJÀ sur le cockpit — cas déjà couvert par le test d'égalité
-    // ci-dessus dans la pratique, ceinture-bretelles ici).
-    const to = section.to && section.to !== pathname ? section.to : null
-    crumbs.push({ label: section.label, to })
+    // quand on est DÉJÀ sur le cockpit).
+    const to = target && target !== pathname ? target : null
+    crumbs.push({ label, to })
   }
   crumbs.push({ label: title, to: pathname, current: true })
   return crumbs

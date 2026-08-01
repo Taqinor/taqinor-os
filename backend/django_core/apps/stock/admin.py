@@ -206,7 +206,9 @@ class ProduitAdmin(admin.ModelAdmin):
     list_display = ('nom', 'sku', 'prix_vente', 'quantite_stock', 'categorie', 'fournisseur')
     list_filter = ('categorie', 'fournisseur')
     search_fields = ('nom', 'sku')
-    raw_id_fields = ('categorie', 'fournisseur')
+    # APX18 — `photo` en raw_id : le formulaire admin est en `fields='__all__'`,
+    # et un select déroulant chargerait TOUTES les pièces jointes de la base.
+    raw_id_fields = ('categorie', 'fournisseur', 'photo')
 
     # ── Garde anti-perte de données (voir SUPPRESSION_PRODUIT_INTERDITE) ────
     # Mêmes quatre verrous redondants que `CompanyAdmin` : la suppression d'un

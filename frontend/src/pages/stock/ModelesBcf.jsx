@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, LayoutTemplate, Trash2, PlayCircle } from 'lucide-react'
+import { Plus, LayoutTemplate, Trash2, PlayCircle,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import BcfProduitPicker from './BcfProduitPicker'
 import {
@@ -9,6 +10,10 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // ZPUR3 — Modèles de bon de commande fournisseur (« purchase templates ») :
 // un nom + fournisseur optionnel + lignes produit/quantité par défaut.
@@ -277,23 +282,24 @@ export default function ModelesBcf() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <LayoutTemplate className="size-5 text-muted-foreground" aria-hidden="true" />
-          <div>
-            <h1 className="font-display text-xl font-semibold tracking-tight">Modèles de bon de commande</h1>
-            <p className="text-sm text-muted-foreground">{items.length} modèle(s)</p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={LayoutTemplate}
+        title="Modèles de bon de commande"
+        subtitle={`${items.length} modèle(s)`}
+        actions={(
+          <>
           <Button variant="outline" onClick={() => navigate('/stock/bons-commande-fournisseur')}>
             Bons de commande
           </Button>
           <Button onClick={() => setSelected({})}>
             <Plus /> Nouveau modèle
           </Button>
-        </div>
-      </header>
+          </>
+        )}
+      />
 
       {info && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

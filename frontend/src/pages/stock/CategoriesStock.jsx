@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Trash2, Save } from 'lucide-react'
+import { Plus, Trash2, Save, Boxes,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
   Button, IconButton, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // L693/L694 — Écran de gestion des CATÉGORIES (renommer / ordre / type
 // d'équipement) et des MARQUES produit. Le free-text par société est préservé :
@@ -174,13 +179,14 @@ export default function CategoriesStock() {
 
   return (
     <div className="ui-root flex flex-col gap-5 px-4 py-5 sm:px-5">
-      <header>
-        <h1 className="font-display text-xl font-semibold tracking-tight">Catégories &amp; marques</h1>
-        <p className="text-sm text-muted-foreground">
-          Gérez les catégories du catalogue (nom, ordre d&apos;affichage, type d&apos;équipement)
-          et les marques produit.
-        </p>
-      </header>
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={Boxes}
+        title="Catégories & marques"
+        subtitle="Gérez les catégories du catalogue (nom, ordre d'affichage, type d'équipement) et les marques produit."
+      />
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

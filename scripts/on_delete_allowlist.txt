@@ -3,6 +3,13 @@
 # spec, so the guard does not block on ~1300 pre-existing FKs). One
 # 'path:lineno' per line. A NEW CASCADE must instead carry an inline
 # '# on_delete: <reason>' comment, or be added here after review.
+# Rebased 2026-08-01 (APX18, photo produit) : 29 entrées stock/models.py
+# décalées par l'ajout du champ `Produit.photo` (FK vers records.Attachment,
+# ARC26) et le retrait de la déclaration `description` en DOUBLON. MÊME jeu de
+# FK, aucun NOUVEAU CASCADE — le seul FK ajouté par APX18 est un SET_NULL
+# nullable vers une pièce jointe, jamais vers une identité de société. Les
+# anciennes lignes sont conservées : ce fichier est un ENSEMBLE, une entrée
+# qui ne matche plus est simplement inerte.
 # Rebased 2026-07-31 (protection des prix fournisseur) : 121 entrées
 # stock/models.py remappées (+12 à partir de la ligne 181) après l'ajout du
 # champ `Fournisseur.is_archived`. MÊME jeu de FK, aucun NOUVEAU CASCADE —
@@ -1491,7 +1498,7 @@ backend/django_core/apps/rh/models.py:944
 backend/django_core/apps/rh/models.py:946
 backend/django_core/apps/rh/models.py:96
 backend/django_core/apps/roles/models.py:382
-backend/django_core/apps/roles/models.py:419
+backend/django_core/apps/roles/models.py:485
 backend/django_core/apps/sante/models.py:154
 backend/django_core/apps/sante/models.py:157
 backend/django_core/apps/sante/models.py:212
@@ -2301,3 +2308,34 @@ backend/django_core/apps/installations/models_field.py:677
 backend/django_core/apps/installations/models_field.py:69
 backend/django_core/apps/installations/models_field.py:72
 backend/django_core/apps/installations/models_field.py:99
+backend/django_core/apps/stock/models.py:852
+backend/django_core/apps/stock/models.py:855
+backend/django_core/apps/stock/models.py:898
+backend/django_core/apps/stock/models.py:968
+backend/django_core/apps/stock/models.py:1021
+backend/django_core/apps/stock/models.py:1049
+backend/django_core/apps/stock/models.py:1054
+backend/django_core/apps/stock/models.py:1099
+backend/django_core/apps/stock/models.py:1102
+backend/django_core/apps/stock/models.py:1105
+backend/django_core/apps/stock/models.py:1164
+backend/django_core/apps/stock/models.py:1235
+backend/django_core/apps/stock/models.py:1238
+backend/django_core/apps/stock/models.py:1278
+backend/django_core/apps/stock/models.py:1281
+backend/django_core/apps/stock/models.py:1329
+backend/django_core/apps/stock/models.py:1381
+backend/django_core/apps/stock/models.py:1388
+backend/django_core/apps/stock/models.py:1421
+backend/django_core/apps/stock/models.py:1448
+backend/django_core/apps/stock/models.py:1481
+backend/django_core/apps/stock/models.py:1524
+backend/django_core/apps/stock/models.py:1575
+backend/django_core/apps/stock/models.py:1605
+backend/django_core/apps/stock/models.py:1653
+backend/django_core/apps/stock/models.py:1656
+backend/django_core/apps/stock/models.py:1703
+backend/django_core/apps/stock/models.py:1758
+backend/django_core/apps/stock/models.py:1786
+backend/django_core/apps/stock/models.py:1818
+backend/django_core/apps/stock/models.py:1851

@@ -6,21 +6,29 @@
 //     3 récents (localStorage propre à ce composant), puis le reste par ordre
 //     d'enregistrement.
 //   • Clic / Entrée = navigation vers le cockpit du module (1er item `nav`).
-//   • S'ouvre sur DEUX déclencheurs, comme la palette de commandes (I134) :
-//     l'événement window `taqinor:app-launcher` (bouton grille du Header) et
-//     le raccourci global « g a » (capté par ShortcutsProvider, cf. shortcuts.js
-//     GOTO_SHORTCUTS ne convient pas ici car « g a » doit OUVRIR, pas naviguer —
-//     câblé directement dans ce composant pour rester lane-disjoint).
-//   • Coordination ODX6 : quand le catalogue ODX3/ODX6 livrera le filtrage de
-//     modules actifs par société, cette grille consommera la MÊME source —
-//     aujourd'hui elle affiche tous les `moduleConfigs` enregistrés (pas de
-//     duplication de logique de filtrage).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+//   • S'ouvre sur UN SEUL déclencheur : l'événement window
+//     `taqinor:app-launcher`. ODY28 — le raccourci est « g o », câblé dans
+//     l'UNIQUE gestionnaire de séquences (`providers/ShortcutsProvider.jsx`,
+//     entrée `event` de GOTO_SHORTCUTS) : ce composant n'installe plus de
+//     listener `keydown` privé, qui entrait en collision avec « g a » →
+//     /approbations. ODY5 — le bouton grille du Header n'émet plus cet
+//     événement : il est devenu LA sortie canonique vers le Menu d'accueil.
+//   • ODY1 — la grille consomme désormais `useInstalledApps()` (source UNIQUE
+//     « mes apps » : registre ∩ modules actifs société ∩ rôle/permission) au
+//     lieu de lire `moduleConfigs` directement — une app désactivée en
+//     Paramètres ou hors rôle courant disparaît du lanceur.
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../ui/Dialog'
-import { moduleConfigs } from '../../router/moduleRoutes'
-import { isTypingTarget } from '../../providers/shortcuts'
+import useInstalledApps from '../../lib/apps/useInstalledApps'
+// ODY13 — l'ordre personnel de la grille (clé partagée `lib/apps/appPrefs.js`)
+// s'applique aussi ici : lanceur et Menu d'accueil affichent le MÊME ordre.
+import { readOrder, applyOrder } from '../../lib/apps/appPrefs'
+import AppIcon from '../../ui/AppIcon'
+import { prefetchRoute } from '../../router/prefetchMap'
+// ODY28 — plus d'import `isTypingTarget` ici : le listener clavier privé de ce
+// composant a été supprimé, `ShortcutsProvider` est le gestionnaire unique.
 
 // Même clé que VX10 (PinnedApps) — état d'épinglage PARTAGÉ entre la Sidebar et
 // le lanceur, posée ici en repli tolérant tant que VX10 n'est pas construit.
@@ -75,33 +83,20 @@ function readPinnedModules() {
   return readList(PINNED_KEY)
 }
 
-// buildEntries — dérive de `moduleConfigs` la liste affichable : une entrée
-// par module ayant une section `nav` (les modules routes-only comme `admin`/
-// `crm` n'en ont pas et n'apparaissent pas — ils vivent déjà dans la Sidebar
-// « coquille » historique, hors périmètre `moduleConfigs`).
-function buildEntries(configs) {
-  return configs
-    .filter((c) => c.nav && c.nav.items && c.nav.items.length > 0)
-    .map((c) => {
-      const first = c.nav.items[0]
-      return {
-        key: c.key,
-        label: c.nav.label,
-        to: first.to,
-        icon: first.icon,
-      }
-    })
-}
-
 export default function AppLauncher() {
   const [open, setOpen] = useState(false)
   const [pinned, setPinned] = useState([])
   const [recent, setRecent] = useState([])
+  // ODY13 — ordre personnel de la grille (relu à chaque ouverture, comme les
+  // favoris/récents : l'utilisateur a pu réordonner depuis le Menu d'accueil).
+  const [order, setOrder] = useState(readOrder)
   const navigate = useNavigate()
-  const gPendingRef = useRef(false)
-  const gTimerRef = useRef(null)
 
-  const entries = useMemo(() => buildEntries(moduleConfigs), [])
+  // ODY1 — source unique « mes apps » (registre ∩ modules actifs ∩ rôle).
+  // ODY13 — appliquée dans l'ORDRE PERSONNEL de la grille (même clé
+  // localStorage) : le lanceur et le Menu d'accueil ne divergent jamais.
+  const installees = useInstalledApps()
+  const entries = useMemo(() => applyOrder(installees, order), [installees, order])
   const entryByKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries])
 
   // Relit favoris/récents à CHAQUE ouverture (repli défensif — VX10 peut
@@ -113,49 +108,25 @@ export default function AppLauncher() {
     setWasOpen(true)
     setPinned(readPinnedModules())
     setRecent(readRecentModules())
+    setOrder(readOrder())
   } else if (!open && wasOpen) {
     setWasOpen(false)
   }
 
-  // Déclencheur (a) — événement window (bouton grille du Header), même patron
-  // que `taqinor:command-palette` (I134).
+  // Déclencheur — événement window (émis par le raccourci « g o », ODY28),
+  // même patron que `taqinor:command-palette` (I134).
   useEffect(() => {
     const onOpen = () => setOpen(true)
     window.addEventListener('taqinor:app-launcher', onOpen)
     return () => window.removeEventListener('taqinor:app-launcher', onOpen)
   }, [])
 
-  // Déclencheur (b) — raccourci « g a ». Séquence indépendante de celle de
-  // ShortcutsProvider (fichiers disjoints, lane-safe) : ignore la saisie et les
-  // combinaisons avec modificateur, comme I37.
-  useEffect(() => {
-    const clearPending = () => {
-      gPendingRef.current = false
-      if (gTimerRef.current) { clearTimeout(gTimerRef.current); gTimerRef.current = null }
-    }
-    const onKey = (e) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (isTypingTarget(e.target)) return
-      if (gPendingRef.current) {
-        const key = e.key.toLowerCase()
-        clearPending()
-        if (key === 'a') {
-          e.preventDefault()
-          setOpen(true)
-        }
-        return
-      }
-      if (e.key === 'g' || e.key === 'G') {
-        gPendingRef.current = true
-        gTimerRef.current = setTimeout(clearPending, 1200)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      clearPending()
-    }
-  }, [])
+  // ODY28 — le déclencheur (b) « g a » vivait ici, dans un SECOND listener
+  // `keydown` privé, pendant que `providers/shortcuts.js` faisait déjà naviguer
+  // « g a » vers /approbations : les DEUX tiraient sur la même frappe (collision
+  // réelle). Ce listener est supprimé ; le lanceur a désormais son binding
+  // propre (« g o ») dans l'UNIQUE gestionnaire de séquences
+  // (`ShortcutsProvider.jsx`), qui émet l'événement window ci-dessus.
 
   const goTo = useCallback((entry) => {
     pushRecentModule(entry.key)
@@ -233,8 +204,14 @@ function AppLauncherSection({ title, entries, pinned, onOpen, onTogglePin }) {
             role="listitem"
             className="app-launcher-tile"
             onClick={() => onOpen(entry)}
+            /* ODY12 — même préchargement que la grille du Menu d'accueil :
+               survol/focus charge le chunk du cockpit avant le clic. */
+            onMouseEnter={() => prefetchRoute(entry.to)}
+            onFocus={() => prefetchRoute(entry.to)}
           >
-            <span className="app-launcher-tile-icon">{entry.icon}</span>
+            {/* ODY9 — LE composant d'icône d'app (même pastille que le Menu
+                d'accueil, les épinglés et l'écran Applications). */}
+            <AppIcon icon={entry.icon} accent={entry.accent} size="sm" />
             <span className="app-launcher-tile-label">{entry.label}</span>
             <span
               className="app-launcher-tile-pin"

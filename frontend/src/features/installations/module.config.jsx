@@ -54,6 +54,27 @@ const OutillagePage = lazy(() => import('../../pages/outillage/OutillagePage'))
 const config = {
   key: 'installations',
   order: 60,
+  // ODY18 — métadonnées d'app pour le futur registre unifié (ODY1
+  // `useInstalledApps()` / ODY9 `AppIcon.jsx`, aucun des deux livré ici) :
+  // MIROIR EXACT du manifest backend (`apps/installations/apps.py::module_manifest`
+  // — icône 'hard-hat', description identique) pour que ce futur registre
+  // n'ait rien à réconcilier entre backend et frontend.
+  icon: HardHat,
+  description: 'Installations et interventions terrain.',
+  // ODY18 — cockpit (`/chantiers`, InstallationsPage.jsx) : ModuleHero VX15
+  // DÉLIBÉRÉMENT NON posé ici, contrairement à Stock (ODY17)/Magasin. Le
+  // <h2> existant PORTE le compteur + les raccourcis « pose(s) à venir »/
+  // « nouveau(x) chantier(s) » (VX218/N14) et son texte « Chantiers » est la
+  // cible EXACTE d'un test e2e LIVE (pas fixme) : `frontend/e2e/mobile.spec.js`
+  // MB6, `getByRole('heading', { name: 'Chantiers' })` — Playwright fait un
+  // match sous-chaîne/casse-insensible, donc SUPERPOSER un second heading
+  // contenant « Chantiers » (ModuleHero) casserait ce test en mode strict
+  // (2 correspondances). `mobile.spec.js` n'est pas dans les fichiers
+  // possédés par cette tâche (STAY IN YOUR FILES) : convertir proprement cet
+  // en-tête (déplacer les badges hors du <h2>, ajuster le test dans LE MÊME
+  // commit) est un lot pour une tâche future coordonnée avec ce fichier
+  // e2e — pas ODY18. La richesse existante (funnel N14, badges VX218, export,
+  // copier-lien, bascule de vue) reste « actions rapides + KPI » de fait.
   nav: {
     label: 'CHANTIERS', labelKey: 'nav.section.chantiers',
     accent: 'success',

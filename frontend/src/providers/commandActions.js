@@ -10,7 +10,11 @@ import { GOTO_SHORTCUTS, CREATE_SHORTCUTS } from './shortcuts.js'
 // Source UNIQUE de vérité : on dérive les actions de navigation des raccourcis
 // « g x » déjà définis (mêmes routes, mêmes libellés, même puce). Aucune route
 // inventée — chaque `to` existe déjà dans le routeur (cf. GlobalSearch/ROUTE).
-export const NAV_ACTIONS = GOTO_SHORTCUTS.map((s) => ({
+// ODY28 — une entrée de GOTO_SHORTCUTS peut porter `event` au lieu de `to`
+// (surface en OVERLAY sans URL, ex. le lanceur d'applications « g o ») : elle
+// n'est PAS une action de navigation et n'a rien à faire dans la palette, qui
+// ferait sinon `navigate(undefined)`. On ne garde que les entrées routables.
+export const NAV_ACTIONS = GOTO_SHORTCUTS.filter((s) => !!s.to).map((s) => ({
   id: s.keys.replace(/\s+/g, '-'), // ex. 'g-d'
   label: s.label, // ex. 'Aller au tableau de bord'
   to: s.to,

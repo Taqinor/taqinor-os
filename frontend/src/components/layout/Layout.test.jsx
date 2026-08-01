@@ -22,7 +22,7 @@ vi.mock('react-router-dom', async (orig) => ({
   useNavigation: () => ({ state: 'idle' }),
 }))
 
-import Layout from './Layout'
+import Layout, { APPS_SHELL_ENABLED } from './Layout'
 
 // Store minimal.
 function makeStore() {
@@ -84,5 +84,17 @@ describe('Layout — U2 scroll architecture', () => {
   it('les enfants sont rendus dans main.layout-content', () => {
     const { getByText } = renderLayout(<p>sentinel-u2</p>)
     expect(getByText('sentinel-u2')).toBeInTheDocument()
+  })
+})
+
+/* ──────────────────────────────────────────────────────────────────────
+   ODY30 — kill-switch build-time coquille "apps" (défaut ON), posé AVANT
+   la bascule ODY4. Sans override VITE_APPS_SHELL (cas de ce run de test,
+   comme en prod par défaut), le flag doit rester activé — et le rendu de
+   Layout reste inchangé (voir les tests U2 ci-dessus).
+   ────────────────────────────────────────────────────────────────────── */
+describe('Layout — ODY30 kill-switch coquille apps', () => {
+  it('APPS_SHELL_ENABLED est ON par défaut (aucun VITE_APPS_SHELL="0")', () => {
+    expect(APPS_SHELL_ENABLED).toBe(true)
   })
 })

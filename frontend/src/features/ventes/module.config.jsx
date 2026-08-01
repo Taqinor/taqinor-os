@@ -2,7 +2,10 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock, AlertTriangle, Tags } from 'lucide-react'
+import {
+  FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock, AlertTriangle, Tags,
+  LayoutDashboard,
+} from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Ventes vers le registre (phase 2, après
@@ -39,11 +42,16 @@ import { FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock, Aler
 const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" />
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
+// ODY16 — Cockpit Ventes : porte d'entrée de l'app (ModuleHero + actions + KPI).
+const VentesCockpit = lazy(() => import('../../pages/ventes/VentesCockpit'))
 const DevisList = lazy(() => import('../../pages/ventes/DevisList'))
 // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
 const DevisActionBoardPage = lazy(() => import('../../pages/ventes/DevisActionBoardPage'))
 const DevisGenerator = lazy(() => import('../../pages/ventes/DevisGenerator'))
-const VentesKanban = lazy(() => import('../../pages/ventes/VentesKanban'))
+// APX15 — le fichier portait un nom qui MENTAIT (« VentesKanban ») alors
+// qu'il rend la LISTE des bons de commande : renomme honnetement, URL
+// `/ventes/bons-commande` strictement inchangee.
+const BonCommandeList = lazy(() => import('../../pages/ventes/BonCommandeList'))
 const FactureList = lazy(() => import('../../pages/ventes/FactureList'))
 const AvoirsPage = lazy(() => import('../../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../../pages/ventes/RelancesPage'))
@@ -61,12 +69,21 @@ const config = {
     label: 'VENTES', labelKey: 'nav.section.ventes',
     accent: 'brass',
     items: [
+      // ODY16 — porte d'entrée de l'app : PREMIER item (convention
+      // `nav.items[0].to` déjà lue comme « cockpit du module » par
+      // AppLauncher/PinnedApps/la préférence d'atterrissage VX46).
+      { to: '/ventes/cockpit',       label: 'Cockpit',          k: 'nav.ventes_cockpit', icon: navIcon(LayoutDashboard), roles: ['normal','responsable','admin'] },
       { to: '/ventes/devis',         label: 'Devis',            k: 'nav.devis',      icon: navIcon(FileText),        roles: ['normal','responsable','admin'] },
       { to: '/ventes/bons-commande', label: 'Bons de commande', k: 'nav.bons_commande', icon: navIcon(ShoppingCart),  roles: ['normal','responsable','admin'] },
-      { to: '/ventes/factures',      label: 'Factures',         k: 'nav.factures',   icon: navIcon(Receipt),     roles: ['normal','responsable','admin'] },
-      { to: '/ventes/avoirs',        label: 'Avoirs',           k: 'nav.avoirs',     icon: navIcon(FileMinus),        roles: ['normal','responsable','admin'] },
-      { to: '/ventes/paiements',     label: 'Encaissements',    k: 'nav.encaissements', icon: navIcon(Wallet),    roles: ['normal','responsable','admin'] },
-      { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: navIcon(CalendarClock),      roles: ['responsable','admin'] },
+      // ODY16 — sous-groupe « Facturation » (Factures/Avoirs/Encaissements/
+      // Relances) : reste DANS Ventes tant qu'ODX18 n'a pas livré
+      // `features/facturation/module.config.jsx` — `navGroup` marque
+      // exactement le lot qu'ODX18 devra déplacer tel quel (Sidebar ignore ce
+      // champ aujourd'hui, purement préparatoire, aucun rendu ≠ actuel).
+      { to: '/ventes/factures',      label: 'Factures',         k: 'nav.factures',   icon: navIcon(Receipt),     roles: ['normal','responsable','admin'], navGroup: 'facturation' },
+      { to: '/ventes/avoirs',        label: 'Avoirs',           k: 'nav.avoirs',     icon: navIcon(FileMinus),        roles: ['normal','responsable','admin'], navGroup: 'facturation' },
+      { to: '/ventes/paiements',     label: 'Encaissements',    k: 'nav.encaissements', icon: navIcon(Wallet),    roles: ['normal','responsable','admin'], navGroup: 'facturation' },
+      { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: navIcon(CalendarClock),      roles: ['responsable','admin'], navGroup: 'facturation' },
       // WIR23 — miroir de `/sav/action-requise` (ZSAV6) : « quels devis
       // traiter aujourd'hui » (QX29/QX30), réservé responsable/admin.
       { to: '/ventes/devis/action-requise', label: 'Action requise', k: 'nav.devis_action_requise', icon: navIcon(AlertTriangle), roles: ['responsable','admin'] },
@@ -77,12 +94,21 @@ const config = {
       { to: '/ventes/dossiers-reglementaires', label: 'Dossiers réglementaires', k: 'nav.dossiers_reglementaires', icon: navIcon(FileText), roles: ['normal','responsable','admin'] },
     ],
   },
+  // ODY16 — `/ventes/cockpit` n'a pas de générique `/ventes` dans
+  // `routes.meta.js` (BASE_PAGE_TITLES) pour le masquer : ce `titles` est
+  // effectivement lu par `titleFor()` (contrairement à un sous-chemin de
+  // `/crm`, déjà shadowé par l'entrée générique `/crm`).
+  titles: [
+    ['/ventes/cockpit', 'Cockpit Ventes'],
+  ],
   routes: [
+    // ODY16 — cockpit Ventes (porte d'entrée de l'app).
+    { path: '/ventes/cockpit', component: VentesCockpit },
     { path: '/ventes/devis', component: DevisList },
     // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
     { path: '/ventes/devis/action-requise', component: DevisActionBoardPage },
     { path: '/ventes/devis/nouveau', component: DevisGenerator },
-    { path: '/ventes/bons-commande', component: VentesKanban },
+    { path: '/ventes/bons-commande', component: BonCommandeList },
     { path: '/ventes/factures', component: FactureList },
     { path: '/ventes/avoirs', component: AvoirsPage },
     { path: '/ventes/relances', component: RelancesPage },

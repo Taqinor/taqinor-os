@@ -424,6 +424,10 @@
   --control-h-lg: 2.75rem;
   --control-px: 0.875rem;
   --field-gap: 0.75rem;       /* espace vertical entre champs d'un formulaire */
+  /* APX34 — ce token existait sans AUCUN consommateur : il pilote désormais
+     le padding vertical des tables CSS legacy `.data-table` (index.css), les
+     ~66 écrans que la préférence de densité ne touchait pas. Les écrans
+     DataTable gardent leur propre dérivation (`useDensity()`, 32/40 px). */
   --row-py: 0.625rem;         /* padding vertical des lignes de tableau */
   --ui-text: 0.9375rem;       /* 15px */
 }
@@ -435,6 +439,83 @@
   --field-gap: 0.5rem;
   --row-py: 0.375rem;
   --ui-text: 0.875rem;        /* 14px */
+}
+
+/* ── EZ9 — Mode « Plein soleil » (terrain) ────────────────────────────────
+   Le technicien PV travaille littéralement au soleil : en lumière directe, le
+   contraste PERÇU s'effondre (reflets + iris fermé). On ne grossit PAS la
+   police (le vrai problème est le contraste, pas la taille) : on repousse les
+   tokens aux extrêmes — blanc pur / encre noire pure, bordures franches,
+   ombres et dégradés coupés (une ombre en plein soleil n'est plus qu'une
+   bouillie grise).
+
+   MÊME PATRON QUE `[data-density]` ci-dessus : un attribut sur <html> qui
+   redéclare des variables — ce N'EST PAS un troisième thème (aucune classe
+   `.dark` touchée, aucune palette nouvelle). Le mode s'applique par-dessus le
+   thème courant : il FORCE le clair, ce qui est le point (le sombre est
+   illisible au soleil).
+   Contraste : #000 sur #fff = 21:1, très au-delà de AA (4,5:1). Les couleurs
+   d'état sont assombries à des variantes déjà présentes dans la rampe pour
+   rester distinguables sans devenir des taches pâles. */
+:root[data-sunlight='1'] {
+  --background: #ffffff;
+  --foreground: #000000;
+  --surface: #ffffff;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+
+  --secondary: #ffffff;
+  --secondary-foreground: #000000;
+  --muted: #f2f2f2;
+  --muted-foreground: #1a1a1a;   /* ≈ 16:1 — plus jamais du gris pâle */
+  --accent: #f2f2f2;
+  --accent-foreground: #000000;
+
+  --border: #000000;
+  --input: #000000;
+  --ring: #000000;
+
+  /* États : versions FONCÉES (texte blanc dessus reste lisible au soleil). */
+  --primary: #7a5600;
+  --primary-foreground: #ffffff;
+  --primary-text: #6b4b00;
+  --destructive: #8f2a18;
+  --destructive-foreground: #ffffff;
+  --success: #14532d;
+  --success-foreground: #ffffff;
+  --warning: #7a5600;
+  --warning-foreground: #ffffff;
+  --warning-text: #6b4b00;
+  --info: #10307f;
+  --info-foreground: #ffffff;
+
+  /* Ombres et élévations coupées : au soleil elles ne portent plus aucune
+     information, elles ne font que salir les contours. La séparation passe
+     par les bordures franches ci-dessus. */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-primary-hover: none;
+  --elevation-card: 0 0 0 1px var(--border);
+  --elevation-card-hover: 0 0 0 2px var(--border);
+  --elevation-menu: 0 0 0 1px var(--border);
+  --elevation-modal: 0 0 0 2px var(--border);
+  --elevation-toast: 0 0 0 1px var(--border);
+}
+
+/* Le mode force le rendu CLAIR même si le thème sombre est actif (un écran
+   sombre au soleil est illisible) : le bloc ci-dessus est déclaré APRÈS `.dark`
+   et à spécificité égale, il gagne donc sur toutes ces variables.
+   On coupe aussi les ombres de texte (illisibles en lumière directe) — mais
+   JAMAIS `background-image` en universel : ce sont aussi de vraies images
+   (avatars, logos), pas seulement des dégradés décoratifs. */
+:root[data-sunlight='1'] {
+  color-scheme: light;
+}
+:root[data-sunlight='1'] * {
+  text-shadow: none !important;
 }
 
 /* ── Racine de l'interface refonte ────────────────────────────────────────

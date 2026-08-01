@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, PackagePlus,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
   Button, IconButton, DataTable, Spinner,
@@ -9,6 +10,10 @@ import {
   Form, FormField, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 /* WIR109 — XSTK15 : conditionnements d'ACHAT d'un produit (« Touret 100 m »,
    « Carton 50 ») avec leur facteur de conversion vers l'unité de stock. Le
@@ -177,19 +182,19 @@ export default function ConditionnementsProduit() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold tracking-tight">Conditionnements produit</h1>
-          <p className="text-sm text-muted-foreground">
-            Conditionnements d&apos;achat (touret, carton…) — le stock reste dans une seule unité.
-          </p>
-        </div>
-        {canWrite && (
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={PackagePlus}
+        title="Conditionnements produit"
+        subtitle="Conditionnements d'achat (touret, carton…) — le stock reste dans une seule unité."
+        actions={canWrite ? (
           <Button onClick={() => setSelected({})}>
             <Plus className="size-4" /> Nouveau conditionnement
           </Button>
-        )}
-      </header>
+        ) : null}
+      />
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

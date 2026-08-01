@@ -191,6 +191,15 @@ CATALOG = {
         "Un enregistrement métier est soft-supprimé (archivé/annulé) — "
         "alimente la corbeille transverse 30 jours.",
         ['instance', 'company', 'user', 'type_libelle', 'libelle', 'donnees']),
+    # ODY25 — émis par ``core.feature_flags`` aux DEUX seuls sites qui écrivent
+    # un ``ModuleToggle`` (activer_module / desactiver_module), sur
+    # FRANCHISSEMENT uniquement et une fois PAR module réellement basculé (donc
+    # autant d'événements que de modules touchés par une cascade). Abonné :
+    # ``core`` lui-même (journal de la boutique via le chatter ARC8).
+    'module_toggled': _e(
+        "Une application est installée ou désinstallée pour une société "
+        "(bascule d'un core.ModuleToggle).",
+        ['toggle', 'company', 'module', 'actif', 'user', 'raison']),
 }
 
 

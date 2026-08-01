@@ -102,6 +102,10 @@ function SaveSection({ devisId, onSaved }) {
 
 
 function ApplySection({ devisId, onApplied }) {
+  // APX16 — sur un devis VIERGE (création), il n'y a pas encore d'id serveur :
+  // l'endpoint `apply-preset` est inapplicable. Le modèle est alors appliqué
+  // LOCALEMENT depuis `lignes_snapshot`, que la liste des modèles sérialise
+  // déjà (`DevisPresetSerializer`) — zéro endpoint nouveau, zéro écriture.
   const [presets, setPresets] = useState([])
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(null)  // preset id being applied
@@ -122,6 +126,17 @@ function ApplySection({ devisId, onApplied }) {
     setApplying(preset.id)
     setStatus(null)
     try {
+      if (!devisId) {
+        // Devis VIERGE : application locale depuis l'instantané de lignes.
+        const lignes = preset.lignes_snapshot ?? []
+        if (!Array.isArray(lignes) || lignes.length === 0) {
+          setStatus({ ok: false, msg: 'Ce modèle ne contient aucune ligne.' })
+          return
+        }
+        setStatus({ ok: true, msg: `Modèle "${preset.nom}" appliqué.` })
+        if (onApplied) onApplied(lignes)
+        return
+      }
       const res = await ventesApi.applyPreset(devisId, { preset_id: preset.id })
       setStatus({ ok: true, msg: `Modèle "${preset.nom}" appliqué.` })
       if (onApplied) onApplied(res.data)
@@ -184,8 +199,11 @@ function ApplySection({ devisId, onApplied }) {
               disabled={applying === preset.id}
               title="Appliquer ce modèle au devis actuel"
             >
+              {/* APX16 — la coche portait un vert CODÉ EN DUR (le seul du
+                  fichier, hérité de Tailwind) : token de thème désormais,
+                  donc lisible en clair ET en sombre comme le reste du kit. */}
               {applying === preset.id
-                ? <Check className="size-3 text-green-600" aria-hidden="true" />
+                ? <Check className="size-3 text-success" aria-hidden="true" />
                 : 'Appliquer'}
             </Button>
             <button
@@ -210,7 +228,10 @@ function ApplySection({ devisId, onApplied }) {
 /**
  * DevisPresetPanel — collapsible panel with save + apply controls.
  *
- * @param {number}   devisId   - ID of the current Devis (required to call backend)
+ * @param {number}   devisId   - ID of the current Devis. OPTIONAL since APX16:
+ *                               absent = the quote is still being CREATED, so
+ *                               presets can be applied locally (from
+ *                               `lignes_snapshot`) but not saved yet.
  * @param {function} onApplied - Called with the apply-response data after a
  *                               preset is applied so the parent can refresh lines
  */
@@ -220,8 +241,6 @@ export default function DevisPresetPanel({ devisId, onApplied }) {
 
   // When a preset is saved, refresh the list
   const handleSaved = () => setRefreshKey(k => k + 1)
-
-  if (!devisId) return null
 
   return (
     <div className="rounded-lg border border-border bg-card text-card-foreground shadow-sm">
@@ -245,12 +264,20 @@ export default function DevisPresetPanel({ devisId, onApplied }) {
       {/* Collapsible body */}
       {open && (
         <div className="px-4 pb-4 space-y-5 border-t border-border">
-          {/* Save section */}
+          {/* Save section — impossible tant que le devis n'existe pas côté
+              serveur (le snapshot part d'un devis enregistré). On le DIT au
+              lieu de masquer le panneau entier (APX16). */}
           <div className="pt-4">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
               Enregistrer comme modèle
             </h3>
-            <SaveSection devisId={devisId} onSaved={handleSaved} />
+            {devisId ? (
+              <SaveSection devisId={devisId} onSaved={handleSaved} />
+            ) : (
+              <p className="text-sm italic text-muted-foreground">
+                Disponible une fois le devis créé.
+              </p>
+            )}
           </div>
 
           {/* Apply section */}

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Truck, ClipboardList, ArrowLeftRight } from 'lucide-react'
-import { ModuleDashboard } from '../../ui/module'
-import PageHeader from '../../components/layout/PageHeader'
+import { Link } from 'react-router-dom'
+import { Truck, ClipboardList, ArrowLeftRight, Undo2 } from 'lucide-react'
+import { ModuleDashboard, ModuleHero } from '../../ui/module'
+import { Button } from '../../ui'
 import installationsApi from '../../api/installationsApi'
+import { INVENTAIRE_ACCENT } from '../stock/inventaireAccent'
 
 /* ============================================================================
    XSTK2 — Cockpit Logistique (`/logistique`).
@@ -10,6 +12,14 @@ import installationsApi from '../../api/installationsApi'
    Synthèse : livraisons du jour, sessions de comptage ouvertes, demandes de
    transfert en attente. Chaque KPI ouvre l'écran correspondant. Lecture
    seule ; aucun coût de transport ni prix d'achat rendu ici.
+
+   APX22 — le cockpit affichait TROIS chiffres nus sous un en-tête legacy,
+   très en retrait de Pilotage Stock. Il devient une FILE D'OPÉRATIONS façon
+   Odoo Inventory : identité de module (ModuleHero + accent de la famille
+   inventaire), tuiles « N à traiter » qui mènent chacune à la liste FILTRÉE
+   existante, et le même conteneur `ui-root` que les autres écrans de la
+   famille (Magasin/Stock divergaient : `page` d'un côté, `ui-root` de
+   l'autre). Aucun endpoint nouveau : ce sont les trois appels déjà faits ici.
    ========================================================================== */
 
 function todayIso() {
@@ -46,40 +56,61 @@ export default function LogistiqueCockpit() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => load(), [load])
 
+  // APX22 — chaque tuile est une FILE D'ACTION : « N à traiter » + le lien vers
+  // la liste déjà filtrée sur le même statut que le compteur (aucun filtre
+  // inventé : `?statut=` est le paramètre que ces écrans lisent déjà).
   const stats = [
     {
-      label: 'Livraisons du jour',
+      label: 'Livraisons à traiter',
       value: String(counts.livraisons),
-      hint: 'Planifiées/en transit aujourd’hui',
+      hint: 'Planifiées ou en transit aujourd’hui',
       icon: Truck,
       to: '/logistique/livraisons',
     },
     {
-      label: 'Comptages en cours',
+      label: 'Comptages à traiter',
       value: String(counts.sessions),
       hint: 'Sessions de comptage cyclique ouvertes',
       icon: ClipboardList,
       to: '/logistique/comptages',
     },
     {
-      label: 'Transferts en attente',
+      label: 'Transferts à traiter',
       value: String(counts.transferts),
-      hint: 'Demandes à approuver',
+      hint: 'Demandes en attente d’approbation',
       icon: ArrowLeftRight,
       to: '/logistique/transferts',
     },
   ]
 
   return (
-    <div className="page flex flex-col gap-6">
-      <PageHeader
-        title="Cockpit logistique"
+    <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
+      <ModuleHero
+        title="Logistique"
         subtitle="Livraisons, comptages cycliques et transferts inter-emplacements."
+        accent={INVENTAIRE_ACCENT}
+        actions={(
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/logistique/livraisons"><Truck /> Livraisons</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/logistique/comptages"><ClipboardList /> Comptages</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/logistique/transferts"><ArrowLeftRight /> Transferts</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/logistique/retours"><Undo2 /> Retours</Link>
+            </Button>
+          </>
+        )}
       />
       <ModuleDashboard
         stats={stats}
         loading={loading}
         error={error}
+        accent={INVENTAIRE_ACCENT}
       />
     </div>
   )

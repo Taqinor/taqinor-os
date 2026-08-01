@@ -8,6 +8,8 @@ import {
 import {
   ArrowLeft, Target, ClipboardList, User, Zap, Sprout, BarChart3,
   ShoppingCart, StickyNote, FileText, RotateCcw, Sun, Plus, Trash2,
+  // EZ3 — actions du panneau de succès (envoyer / aperçu).
+  Send, Eye,
 } from 'lucide-react'
 // QX21 — la sauvegarde passe désormais par les endpoints ATOMIQUES de ventesApi
 // (createDevisAtomic / replaceLignesDevis) ; createDevis/addLigneDevis (1+N
@@ -22,9 +24,16 @@ import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisPresetPanel from './DevisPresetPanel'
 import DevisLineRow from './DevisLineRow'
 import { Combobox } from '../../ui/Combobox'
+// APX17 — confirmation maison + toasts (jamais une popup du système).
+import { useConfirmDialog, toast } from '../../ui/confirm'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
   Button, IconButton, Card, CardContent,
+  // APX12 — le langage UNIQUE des KPI d'argent (le total du rail).
+  Stat,
   Input, Textarea, Label, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -182,6 +191,8 @@ export default function DevisGenerator({
 } = {}) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
+  const { confirm } = useConfirmDialog()
 
   // QP2 — renommer la désignation d'une ligne est réservé à Directeur +
   // Commercial responsable (même gate que la création produit, QG4/QG5) ;
@@ -220,11 +231,21 @@ export default function DevisGenerator({
   const pompeAlimTouched = useRef(false)
   const nbPanneauxTouched = useRef(false)
 
-  // Fin de parcours : embarqué → callbacks (jamais de navigation) ; pleine
-  // page → retour à la liste des devis (comportement historique).
-  const finish = (devisId) => {
+  // EZ3 — L'ABANDON POST-CRÉATION. En pleine page, `finish()` renvoyait sur la
+  // liste NUE en JETANT l'id du devis qu'on venait de passer 20 minutes à
+  // construire : il fallait le retrouver à la main pour l'envoyer. Le mode
+  // embarqué, lui, recevait déjà `onDone(devisId)`.
+  // Désormais, la création en pleine page ouvre un PANNEAU DE SUCCÈS qui offre
+  // l'action suivante évidente (envoyer, aperçu) sans re-chercher quoi que ce
+  // soit. Le mode embarqué est INCHANGÉ.
+  const [succes, setSucces] = useState(null) // { id, reference, total }
+  const finish = (devisId, devisData) => {
     if (embedded) { onDone?.(devisId); return }
-    navigate('/ventes/devis')
+    setSucces({
+      id: devisId,
+      reference: devisData?.reference ?? editDevis?.reference ?? '',
+      total: devisData?.total_ttc ?? null,
+    })
   }
   const cancel = () => {
     if (embedded) { onCancel?.(); return }
@@ -299,6 +320,10 @@ export default function DevisGenerator({
 
   // ── Paramètres techniques ──
   const [nbPanneaux, setNbPanneaux] = useState('')
+  // EZ5 — puissance cible saisie par l'utilisateur (kWc). Miroir bidirectionnel
+  // de `nbPanneaux` ; jamais envoyée au serveur (le devis porte les lignes, pas
+  // une puissance cible) — c'est un champ de SAISIE, pas un champ de données.
+  const [kwcCible, setKwcCible] = useState('')
   const [panelW, setPanelW] = useState('710')
   const [structureType, setStructureType] = useState('acier')
   const [dayUsage, setDayUsage] = useState(DAY_USAGE_DEFAULTS['Résidentielle'])
@@ -433,11 +458,25 @@ export default function DevisGenerator({
   // (au moins un identifiant de cible OU une note OU des factures OU des
   // paramètres techniques). Tant que le formulaire est vierge, ni brouillon ni
   // garde ne s'activent (évite un bandeau/blocage sur un simple montage).
+  // EZ4 — L'ANGLE MORT DU BROUILLON : `dirty` ignorait `lines`, `discountPct`,
+  // `tauxTva` et `villaGroups` — or ces quatre champs sont DÉJÀ dans
+  // `draftSnapshot` ci-dessus. Un utilisateur qui n'avait fait qu'ajouter des
+  // LIGNES (le cœur du devis) n'était donc ni sauvegardé ni protégé par la
+  // garde de fermeture d'onglet. Seul ce prédicat était à corriger.
+  const lignesSaisies = lines.some(
+    (l) => l.produit || (l.designation || '').trim() || parseFloat(l.prix_unit_ttc) > 0,
+  )
+  const remiseSaisie = parseFloat(discountPct) > 0
+  const tvaModifiee = String(tauxTva ?? '') !== '' && parseFloat(tauxTva) !== TVA_STANDARD_DEFAUT
+  // `villaGroups` a des libellés PAR DÉFAUT : le signal utile est le mode
+  // multi-propriétés lui-même (défaut 'none'), pas la présence de libellés.
+  const villasSaisies = multiMode !== 'none'
   const dirty = Boolean(
     leadId || clientId || note || fHiver || fEte || nbPanneaux
-    || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa,
+    || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa
+    || lignesSaisies || remiseSaisie || tvaModifiee || villasSaisies,
   )
-  const { restored, restore, discard, clear } = useDraftAutosave(draftKey, draftSnapshot, {
+  const { restored, restore, discard, clear, savedAt } = useDraftAutosave(draftKey, draftSnapshot, {
     enabled: dirty,
   })
   useDirtyGuard(dirty)
@@ -518,6 +557,37 @@ export default function DevisGenerator({
   }, [produits])
 
   const kwp = (parseInt(nbPanneaux) || 0) * (parseFloat(panelW) || 0) / 1000
+
+  // EZ5 — dimensionner en kWc. Les deux champs sont BIDIRECTIONNELS : taper une
+  // puissance cible remplit les panneaux (via `panneauxPourKwc`, la conversion
+  // DÉJÀ utilisée par le pré-remplissage depuis le lead — rien de réécrit), et
+  // changer les panneaux remet la cible à jour. Aucune valeur n'est jamais
+  // rejetée ni « snappée » : le champ garde EXACTEMENT ce qui est tapé, la
+  // conversion ne s'applique qu'une fois le nombre lisible (garde `step="any"`
+  // + `noValidate` intactes).
+  const onKwcCibleChange = (v) => {
+    setKwcCible(v)
+    const n = panneauxPourKwc(v, panelW)
+    if (n > 0) {
+      nbPanneauxTouched.current = true
+      setNbPanneaux(String(n))
+    }
+  }
+  const onNbPanneauxChange = (v) => {
+    nbPanneauxTouched.current = true
+    setNbPanneaux(v)
+    const puissance = (parseFloat(v) || 0) * (parseFloat(panelW) || 0) / 1000
+    setKwcCible(puissance > 0 ? String(Math.round(puissance * 100) / 100) : '')
+  }
+  // Le nombre de panneaux peut aussi être posé SANS passer par le champ
+  // (pré-remplissage depuis un lead, dimensionnement pompage, reprise de
+  // brouillon) : on renseigne alors la cible si elle est encore vide — jamais
+  // par-dessus une valeur tapée par l'utilisateur.
+  useEffect(() => {
+    if (kwcCible !== '' || kwp <= 0) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- miroir d'un champ posé ailleurs
+    setKwcCible(String(Math.round(kwp * 100) / 100))
+  }, [kwp, kwcCible])
 
   const showSans = scenario !== 'Avec batterie'
   const showAvec = scenario !== 'Sans batterie'
@@ -611,20 +681,14 @@ export default function DevisGenerator({
   }
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
+  // APX17 — la confirmation QX23 vit maintenant dans `onModeChangeUi` (le SEUL
+  // chemin où l'utilisateur choisit lui-même un marché). `onModeChange` reste
+  // SYNCHRONE : les trois appels programmatiques (préremplissage lead/payload,
+  // rechargement d'un brouillon) doivent poser leur état dans le même tour —
+  // le rendre asynchrone ferait écraser `scenario` chargé par le défaut du
+  // mode.
   const onModeChange = (m) => {
     if (m === modeInstallation) return
-    // QX23 — changer de mode marché après saisie écrase l'étude/ROI et les
-    // lignes auto-remplies : on confirme AVANT (jamais de rejet silencieux de
-    // l'étude). Ne demande la confirmation que s'il y a réellement quelque
-    // chose à perdre (au moins une ligne avec produit, ou une étude calculée).
-    const hasWork = lines.some(l => l.produit && parseFloat(l.quantite) > 0)
-      || !!etudeIndustrielle || pompageAutoFilled
-    if (hasWork) {
-      const ok = window.confirm(
-        'Changer de marché va réinitialiser l\'étude et les lignes déjà '
-        + 'remplies pour ce devis. Continuer ?')
-      if (!ok) return
-    }
     setModeInstallation(m)
     if (m === 'industriel') {
       onInstTypeChange('Industrielle')
@@ -640,6 +704,24 @@ export default function DevisGenerator({
       onInstTypeChange('Résidentielle')
       setScenario('Les deux (Sans + Avec)')
     }
+  }
+
+  // QX23 — changer de marché après saisie écrase l'étude/ROI et les lignes
+  // auto-remplies : on confirme AVANT (jamais de rejet silencieux de l'étude).
+  // La confirmation n'apparaît que s'il y a réellement quelque chose à perdre.
+  const onModeChangeUi = async (m) => {
+    if (m === modeInstallation) return
+    const hasWork = lines.some(l => l.produit && parseFloat(l.quantite) > 0)
+      || !!etudeIndustrielle || pompageAutoFilled
+    if (hasWork) {
+      const ok = await confirm({
+        title: 'Changer de marché ?',
+        description: "L'étude et les lignes déjà remplies pour ce devis seront réinitialisées.",
+        confirmLabel: 'Changer de marché',
+      })
+      if (!ok) return
+    }
+    onModeChange(m)
   }
 
   // ── Scénario / recommandation : réinitialisation si incompatible ──
@@ -824,7 +906,9 @@ export default function DevisGenerator({
     editLoaded.current = true
     ventesApi.getDevisById(editId).then(({ data: d }) => {
       if (d.statut !== 'brouillon') {
-        window.alert('Ce devis n\'est plus un brouillon — il ne peut plus être modifié.')
+        // APX17 — plus de popup du système : un toast d'erreur français,
+        // dans le seul Toaster de l'app.
+        toast.error('Ce devis n\'est plus un brouillon — il ne peut plus être modifié.')
         cancel()
         return
       }
@@ -1489,6 +1573,7 @@ export default function DevisGenerator({
       })
 
       let devisId
+      let devisCree = null
       if (editDevis) {
         // QX21 — ÉDITION ATOMIQUE : le patch du devis PUIS le remplacement des
         // lignes en une transaction serveur. Un échec préserve les lignes
@@ -1496,6 +1581,7 @@ export default function DevisGenerator({
         await ventesApi.patchDevis(editDevis.id, payload)
         await ventesApi.replaceLignesDevis(editDevis.id, lignesPayload)
         devisId = editDevis.id
+        devisCree = { reference: editDevis.reference }
       } else {
         // QX21 — CRÉATION ATOMIQUE : devis + lignes en UN commit serveur → plus
         // de brouillon orphelin/partiel si la connexion est coupée en cours de
@@ -1506,10 +1592,11 @@ export default function DevisGenerator({
           ...payload, lignes: lignesPayload,
         })
         devisId = data.id
+        devisCree = data
       }
 
       clear() // VX62 — succès : purge le brouillon local.
-      finish(devisId)
+      finish(devisId, devisCree)
     } catch (err) {
       // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
       const raw = err?.response?.data ?? err
@@ -1589,6 +1676,16 @@ export default function DevisGenerator({
   const kpiTotal = avecRec && showAvec ? totals.totalAvec : totals.totalSans
   const kpiTotalBrut = avecRec && showAvec ? totals.totalAvecBrut : totals.totalSansBrut
 
+  // APX16 — écart entre les DEUX options, visible PENDANT la construction du
+  // devis (le rail n'affichait qu'un total, même en scénario double).
+  // Dérivé des totaux déjà calculés : aucun calcul nouveau.
+  const ecartOptions = (showSans && showAvec)
+    ? Math.round(totals.totalAvec - totals.totalSans)
+    : null
+  const ecartOptionsPct = (ecartOptions != null && totals.totalSans > 0)
+    ? Math.round((ecartOptions / totals.totalSans) * 100)
+    : null
+
   // Consommation industrielle : saisie directe, sinon dérivée des factures
   // (MAD / prix kWh ONEE). L'étude EXIGE une consommation réelle.
   const avgBill = monthly.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
@@ -1667,8 +1764,58 @@ export default function DevisGenerator({
   }
 
   // Réinitialiser : recharge la page, comme le bouton du simulateur
-  const handleReset = () => {
-    if (window.confirm('Réinitialiser le formulaire ?')) window.location.reload()
+  const handleReset = async () => {
+    const ok = await confirm({
+      title: 'Réinitialiser le formulaire ?',
+      description: 'Toutes les saisies en cours seront perdues.',
+      confirmLabel: 'Réinitialiser',
+    })
+    if (ok) window.location.reload()
+  }
+
+  // EZ3 — PANNEAU DE SUCCÈS : la création ne se termine plus par un renvoi sur
+  // la liste nue. Le devis fraîchement créé s'annonce (numéro + total) et
+  // propose l'action SUIVANTE évidente. « Envoyer par WhatsApp » ouvre la liste
+  // sur ce devis précis AVEC l'aperçu WhatsApp déjà ouvert (le flux existant de
+  // DevisList, jamais un second) — un clic ici, un clic « Ouvrir WhatsApp ».
+  if (succes && !embedded) {
+    return (
+      <div className="page gen-page">
+        <Card className="mx-auto max-w-xl" data-testid="devis-succes">
+          <CardContent className="flex flex-col gap-4 pt-6 text-center">
+            <div>
+              <p className="text-sm text-muted-foreground">Devis enregistré</p>
+              <p className="font-display text-xl font-bold">{succes.reference || '—'}</p>
+              {succes.total != null && (
+                <p className="num mt-1 text-2xl font-semibold">{formatMoney(succes.total)}</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <Button
+                onClick={() => navigate(`/ventes/devis?devis=${succes.id}&envoyer=1`)}
+                data-testid="succes-whatsapp"
+              >
+                <Send /> Envoyer par WhatsApp
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate(`/ventes/devis?devis=${succes.id}&apercu=1`)}
+                data-testid="succes-apercu"
+              >
+                <Eye /> Aperçu du PDF
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => navigate(`/ventes/devis?devis=${succes.id}`)}
+                data-testid="succes-liste"
+              >
+                Retour à la liste
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -1678,13 +1825,21 @@ export default function DevisGenerator({
           réellement (`.layout-content` en page pleine, le Sheet englobant
           quand `embedded` dans LeadDevisPanel). */}
       <ScrollProgress />
+      {/* APX11 — en-tête unique VX28 + accent Ventes (le `<h2>` est conservé :
+          les ancres e2e `getByRole('heading')` ne bougent pas). */}
       {!embedded && (
-        <div className="page-header">
-          <h2>Générateur de Devis Solaire</h2>
-          <Button variant="outline" onClick={() => navigate('/ventes/devis')}>
-            <ArrowLeft /> Retour aux devis
-          </Button>
-        </div>
+        <PageHeader
+          style={VENTES_ACCENT_STYLE}
+          className="app-accent-rail"
+          icon={FileText}
+          title="Générateur de Devis Solaire"
+          subtitle={editDevis ? `Édition — ${editDevis.reference ?? 'devis existant'}` : 'Nouveau devis · tout est en TTC'}
+          actions={(
+            <Button variant="outline" onClick={() => navigate('/ventes/devis')}>
+              <ArrowLeft /> Retour aux devis
+            </Button>
+          )}
+        />
       )}
 
       {/* VX16 — mise en page à deux colonnes sur lg+ : le formulaire à gauche,
@@ -1716,6 +1871,25 @@ export default function DevisGenerator({
               </Button>
             </div>
           </div>
+        )}
+        {/* EZ4 — la confiance vient de la CONTINUITÉ VISIBLE (patron
+            Docs/Notion) : tant qu'on ne voit rien, on ne sait pas si le travail
+            est à l'abri. Discret, jamais bloquant. */}
+        {savedAt && (
+          <p
+            data-testid="draft-saved-indicator"
+            className="text-xs text-muted-foreground"
+            role="status"
+          >
+            Brouillon enregistré à{' '}
+            {(() => {
+              try {
+                return new Date(savedAt).toLocaleTimeString('fr-FR', {
+                  hour: '2-digit', minute: '2-digit',
+                })
+              } catch { return 'l’instant' }
+            })()}
+          </p>
         )}
         {refsLoading && (
           <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
@@ -1755,7 +1929,7 @@ export default function DevisGenerator({
               className="flex-wrap"
               options={MODE_OPTIONS}
               value={modeInstallation}
-              onChange={(v) => { modeTouched.current = true; onModeChange(v) }}
+              onChange={(v) => { modeTouched.current = true; onModeChangeUi(v) }}
             />
             {modeInstallation === 'residentiel' && kwp > 36 && (
               <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
@@ -2354,11 +2528,25 @@ export default function DevisGenerator({
           <GenCardHeader icon={Zap} title="Paramètres Techniques" />
           <CardContent className="pt-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {/* EZ5 — on DIMENSIONNE en kWc, pas en nombre de panneaux : le
+                  client et le commercial disent « 3 kWc », jamais « 5 panneaux
+                  de 550 W ». Le champ est BIDIRECTIONNEL — taper une puissance
+                  cible remplit les panneaux, changer les panneaux remet la
+                  cible à jour. La conversion réutilise `panneauxPourKwc`
+                  (features/ventes/solar.js), déjà employée par le
+                  pré-remplissage depuis le lead : rien n'est réécrit. */}
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-kwc-cible">Puissance cible (kWc)</Label>
+                <Input id="gen-kwc-cible" type="number" min="0" step="any"
+                       placeholder="ex: 3" value={kwcCible}
+                       data-testid="gen-kwc-cible"
+                       onChange={e => onKwcCibleChange(e.target.value)} />
+              </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="gen-nbpanneaux" required>Nombre de panneaux</Label>
                 <Input id="gen-nbpanneaux" type="number" min="1" max="500" step="any"
                        placeholder="ex: 14" value={nbPanneaux}
-                       onChange={e => { nbPanneauxTouched.current = true; setNbPanneaux(e.target.value) }} />
+                       onChange={e => onNbPanneauxChange(e.target.value)} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="gen-panelw">Puissance Panneau (W)</Label>
@@ -2815,10 +3003,14 @@ export default function DevisGenerator({
         </Card>
 
         {/* VX18 — modèles de devis : appliquer un modèle remplace les lignes.
-            Disponible en édition (le panneau exige un devisId serveur). */}
-        {editDevis && (
-          <DevisPresetPanel devisId={editDevis.id} onApplied={handlePresetApplied} />
-        )}
+            APX16 — le panneau n'apparaissait QU'EN ÉDITION : on ne pouvait pas
+            partir d'un modèle pour créer un devis, ce qui est pourtant le
+            besoin le plus fréquent. Il est désormais là DÈS LA CRÉATION
+            (replié) ; sans devisId, l'application se fait localement depuis
+            l'instantané de lignes du modèle (aucun endpoint nouveau) et la
+            section « Enregistrer comme modèle » dit honnêtement qu'elle
+            attend que le devis existe. */}
+        <DevisPresetPanel devisId={editDevis?.id} onApplied={handlePresetApplied} />
 
         {/* ── Notes ── */}
         <Card>
@@ -2914,18 +3106,52 @@ export default function DevisGenerator({
           Total TTC de l'option retenue + marge indicative (INTERNE, jamais dans
           le PDF/client) + résumé système (kWc/panneaux) + Annuler/Créer câblés
           sur le même formulaire (form="gen-form"). */}
-      <aside className="gen-summary-rail hidden lg:block lg:w-72 lg:shrink-0 lg:sticky"
+      <aside className="gen-summary-rail hidden lg:flex lg:w-72 lg:shrink-0 lg:sticky lg:flex-col lg:gap-3"
              style={{ top: 'var(--header-h, 64px)' }}>
+        {/* APX12 — le total du rail devient LE chiffre le plus soigné de
+            l'app : il passe par `<Stat>` comme les KPI d'argent des deux
+            autres surfaces (bandeau statuts DevisList, cockpit trésorerie
+            FactureList). Il n'avait jusqu'ici NI `.num` NI chiffres
+            tabulaires — le seul montant héros du dossier à ne pas les
+            porter. `tone="impact"` lui pose l'accent brass du module. */}
+        {/* APX16 — le scénario « Les deux (Sans + Avec) » construisait DEUX
+            options mais le rail n'en montrait qu'UNE : impossible de voir
+            l'écart pendant la construction. Les deux totaux sont désormais
+            côte à côte, avec l'écart en MAD ET en %. L'option recommandée
+            garde l'accent (`tone="impact"`). */}
+        {showSans && showAvec ? (
+          <>
+            <Stat
+              tone={!avecRec ? 'impact' : undefined}
+              data-testid={avecRec ? 'gen-rail-total-sans' : 'gen-rail-total'}
+              label="Total sans batterie · TTC"
+              value={formatMoney(totals.totalSans)}
+              hint={avecRec ? undefined : 'Option recommandée'}
+            />
+            <Stat
+              tone={avecRec ? 'impact' : undefined}
+              data-testid={avecRec ? 'gen-rail-total' : 'gen-rail-total-avec'}
+              label="Total avec batterie · TTC"
+              value={formatMoney(totals.totalAvec)}
+              hint={avecRec ? 'Option recommandée' : undefined}
+            />
+            {ecartOptions != null && (
+              <p className="num text-xs text-muted-foreground" data-testid="gen-rail-ecart">
+                Écart batterie : {formatMoney(ecartOptions)}
+                {ecartOptionsPct != null ? ` (${ecartOptionsPct > 0 ? '+' : ''}${ecartOptionsPct} %)` : ''}
+              </p>
+            )}
+          </>
+        ) : (
+          <Stat
+            tone="impact"
+            data-testid="gen-rail-total"
+            label={`Total ${scenario === 'Avec batterie' ? 'avec batterie' : 'sans batterie'} · TTC`}
+            value={formatMoney(kpiTotal)}
+          />
+        )}
         <Card>
           <CardContent className="pt-4 flex flex-col gap-3">
-            <div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Total {scenario === 'Avec batterie' ? 'avec batterie'
-                  : scenario === 'Sans batterie' ? 'sans batterie'
-                    : (avecRec ? 'avec batterie' : 'sans batterie')} · TTC
-              </div>
-              <div className="text-2xl font-bold text-foreground">{formatMoney(kpiTotal)}</div>
-            </div>
             {marge != null && (
               <div>
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">

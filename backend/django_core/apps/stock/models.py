@@ -539,7 +539,13 @@ class Produit(models.Model):
         related_name='produits',
     )
     nom = models.CharField(max_length=255)
-    description = models.TextField(blank=True, null=True)
+    # APX18 — `description` était déclaré DEUX fois dans ce corps de classe
+    # (ici, puis plus bas dans le bloc « Fiche commerciale » avec son
+    # help_text). Python garde la DERNIÈRE affectation : la déclaration nue
+    # d'ici était morte depuis toujours (aucun effet base ni `_meta`, Django
+    # ordonne par `creation_counter` de l'objet réellement attaché). Elle est
+    # retirée — champ unique, déclaré une seule fois plus bas. Zéro migration :
+    # l'état du modèle est byte-identique.
     sku = models.CharField(max_length=50, blank=True, null=True)
     prix_achat = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     prix_vente = models.DecimalField(max_digits=10, decimal_places=2)
@@ -570,6 +576,29 @@ class Produit(models.Model):
     garantie = models.CharField(
         max_length=255, blank=True, null=True,
         help_text='Texte garantie constructeur / performance.')
+
+    # ── APX18 — Photo produit (fondateur 2026-08-01, « photos ok ») ──────────
+    # PAS de FileField/ImageField : ARC26 interdit toute NOUVELLE pièce jointe
+    # hors primitive plateforme. La photo EST une `records.Attachment` (bucket
+    # MinIO `erp-uploads`, `stock.produit` est déjà une cible autorisée du
+    # registre, cf. apps/stock/platform.py `record_targets`) ; ce champ est
+    # simplement le POINTEUR vers LA photo canonique — sans lui, n'importe
+    # quelle pièce jointe image d'un produit deviendrait « la » photo.
+    # `SET_NULL` : supprimer la pièce jointe ne supprime jamais le produit.
+    # Elle sert UNIQUEMENT aux écrans INTERNES (vignette catalogue, en-tête de
+    # fiche) : elle n'entre dans AUCUN PDF ni sortie client (règle #4 — le
+    # moteur de devis vendorisé ne la lit pas) et n'est jamais rendue à côté de
+    # `prix_achat`. Les octets sont servis par l'endpoint plateforme
+    # `GET /records/attachments/<id>/download/` (même origine, cookie httpOnly,
+    # scopé société) — jamais par une URL média publique.
+    photo = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Photo produit',
+        help_text='Pièce jointe MinIO servant de photo du produit — écrans '
+                  'internes uniquement. Jamais sur un document client.')
 
     # ── Durée de garantie structurée (alimente les horloges de garantie du
     #    parc d'équipements). Numérique, en MOIS, optionnelle : un produit sans

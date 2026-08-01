@@ -5,8 +5,8 @@
 // `useFieldOutbox` câble le flush automatique au retour du réseau.
 
 import installationsApi from '../../../api/installationsApi'
-import { Outbox } from './outbox'
-import { createFieldOutboxStore } from './idbStore'
+import { Outbox, BinaryOutbox, OutboxQuotaError } from './outbox'
+import { createFieldOutboxStore, createBinaryOutboxStore } from './idbStore'
 
 // Types d'opérations — DOIVENT correspondre aux clés de FIELD_OP_HANDLERS du
 // backend (apps/installations/field_sync.py). Centralisés ici pour éviter les
@@ -40,6 +40,66 @@ export const fieldOutbox = new Outbox({
 // jamais retirées silencieusement, voir `Outbox.flush()` (VX119).
 export async function failed() {
   return fieldOutbox.failed()
+}
+
+// ── EZ8 — file BINAIRE (photos) : MÊME outbox, MÊME badge ───────────────────
+// Types d'op binaires (une seule aujourd'hui : la photo d'intervention). Le
+// rejeu repasse par l'endpoint multipart EXISTANT `ajouterPhoto` — la file JSON
+// `/installations/sync/` ne transporte pas de binaire, et EZ8 n'ajoute AUCUN
+// endpoint.
+export const BINARY_OPS = {
+  PHOTO_INTERVENTION: 'intervention.photo',
+}
+
+const _binaryStore = createBinaryOutboxStore()
+
+async function binaryUploader(entry) {
+  if (entry.op_type !== BINARY_OPS.PHOTO_INTERVENTION) {
+    const err = new Error('Type de charge binaire inconnu.')
+    err.response = { data: { detail: 'Type de charge binaire inconnu.' } }
+    throw err
+  }
+  const file = new File([entry.bytes], entry.name || 'photo.jpg',
+    { type: entry.type || 'image/jpeg' })
+  return installationsApi.ajouterPhoto(
+    entry.meta.intervention, file, entry.meta.slot)
+}
+
+export const binaryOutbox = new BinaryOutbox({
+  store: _binaryStore.store,
+  persistent: _binaryStore.persistent,
+  uploader: binaryUploader,
+})
+
+/**
+ * EZ8 — met une photo COMPRESSÉE en file (ArrayBuffer). À n'appeler que sur un
+ * échec RÉSEAU : une erreur applicative doit rester visible, pas être filée.
+ * Relaie `OutboxQuotaError` (message français prêt à afficher).
+ */
+export async function queuePhoto(blob, { intervention, slot }) {
+  const bytes = await blob.arrayBuffer()
+  const id = await binaryOutbox.enqueue(
+    BINARY_OPS.PHOTO_INTERVENTION,
+    { intervention, slot },
+    { bytes, name: blob.name || 'photo.jpg', type: blob.type || 'image/jpeg' },
+  )
+  requestBackgroundSync()
+  return id
+}
+
+export { OutboxQuotaError }
+
+// LW45 — purge à la DÉCONNEXION : sur un terminal PARTAGÉ (atelier, camionnette),
+// les photos filées par le technicien A ne doivent pas partir sous le compte de
+// B. Même événement window générique que le cache de pré-chargement (le module
+// reste pur : aucun import Redux/React).
+export const LOGOUT_EVENT = 'taqinor:auth-logout'
+export function purgeOutboxes() {
+  fieldOutbox.clear().catch(() => undefined)
+  binaryOutbox.clear().catch(() => undefined)
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener(LOGOUT_EVENT, purgeOutboxes)
 }
 
 // Helper : tente l'appel ONLINE d'abord ; si le réseau échoue (pas de réponse

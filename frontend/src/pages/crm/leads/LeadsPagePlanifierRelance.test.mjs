@@ -22,14 +22,21 @@ const WORKSPACE_SRC = readFileSync(
 const SECTIONS_SRC = readFileSync(
   join(HERE, '..', '..', '..', 'features', 'crm', 'workspace', 'SectionsPane.jsx'), 'utf8')
 
-test('QX25 : LeadsPage définit onPlanifierRelance (setEditLead/setShowForm, comme les autres ouvertures de fiche)', () => {
+// EZ1 — « Planifier une relance » n'ouvre PLUS la fiche entière : il ouvre le
+// popover de planification (la surface unique — date libre + objet optionnel +
+// la relance existante affichée). Ouvrir toute la fiche pour poser une date
+// coûtait toute la fiche. Ce que QX25 protège reste intact : le bouton n'est
+// pas inerte, et la fonction reste mémoïsée pour memo(LeadCard).
+test('QX25/EZ1 : LeadsPage définit onPlanifierRelance (mémoïsée) et ouvre le popover de planification', () => {
   // LB6 — mémoïsée (useCallback) : passée à CHAQUE carte/ligne via viewProps,
   // une référence fraîche à chaque rendu cassait memo(LeadCard) (bug #4).
   assert.match(PAGE_SRC, /const onPlanifierRelance = useCallback\(\(lead\) => \{/)
   const start = PAGE_SRC.indexOf('const onPlanifierRelance = useCallback((lead) => {')
   const body = PAGE_SRC.slice(start, start + 250)
-  assert.match(body, /setEditLead\(lead\)/)
-  assert.match(body, /setShowForm\(true\)/)
+  assert.match(body, /setRelanceLead\(lead\)/)
+  assert.match(body, /\}, \[\]\)/)
+  // La surface ouverte est bien LE popover partagé, en mode planification.
+  assert.match(PAGE_SRC, /mode="planification"/)
 })
 
 test('QX25 : viewProps transmet désormais onPlanifierRelance (c\'était le trou verifié)', () => {

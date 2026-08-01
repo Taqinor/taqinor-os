@@ -24,6 +24,9 @@ import RouteErrorBoundary from '../components/RouteErrorBoundary'
 import { buildModuleRoutes } from './moduleRoutes'
 // ODX6 — source unique des modules désactivés (état /auth/me/ → store).
 import { isModuleDisabled } from './moduleGating'
+// ODY3 — résolution de l'atterrissage (préférence VX46 → dernier module VX11 →
+// mono-app → Menu d'accueil `/apps`), partagée avec Login.jsx.
+import { resolveLandingFromAuth } from '../lib/apps/landing'
 // NTPRT8/20/27 — portée d'un compte PORTAIL externe (source unique, pure).
 import {
   PORTEE_CLIENT, PORTEE_FOURNISSEUR, PORTEE_PARTENAIRE,
@@ -34,6 +37,12 @@ import {
 const Landing = lazy(() => import('../pages/Landing'))
 const Login = lazy(() => import('../pages/Login'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
+// ODY2 — Menu d'accueil plein écran (`/apps`) : la porte d'entrée du paradigme
+// « j'ouvre → MES apps ». Grille des apps installées ∩ autorisées (ODY1).
+const HomeMenu = lazy(() => import('../pages/home/HomeMenu'))
+// ODY8 — écran « App non activée » (module OFF pour la société), à la place du
+// renvoi muet vers /dashboard.
+const AppNotInstalled = lazy(() => import('../pages/home/AppNotInstalled'))
 const ToitureDesign = lazy(() => import('../pages/ventes/ToitureDesign'))
 const RoofViewerPage = lazy(() => import('../pages/ventes/RoofViewerPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -198,18 +207,48 @@ const roleLoader = (roles, perm) => async ({ request }) => {
   return allowed ? null : redirect('/403')
 }
 
+// ODY3 — Garde de l'ENTRÉE `/`. Jusqu'ici `/` rendait Login SANS aucun loader :
+// un utilisateur DÉJÀ connecté qui ouvre la racine (favori, PWA, retour
+// d'onglet) revoyait l'écran de connexion. Il atterrit désormais sur SES apps
+// (ou l'app d'atterrissage préférée VX46 / l'unique app en mono-app, cf.
+// `lib/apps/landing.js`). Un visiteur ANONYME voit toujours le Login, ici même,
+// sans redirection vers /login — comportement inchangé, et c'est pourquoi cette
+// garde ne réutilise pas `authLoader` (qui redirigerait).
+const rootLoader = async () => {
+  const user = await ensurePortalScope()
+  if (!user) return null // anonyme : Login rendu sur `/`, comme avant
+  // Un compte PORTAIL externe ne voit jamais la coquille interne.
+  const versPortail = redirectSiPortail(user)
+  if (versPortail) return versPortail
+  return redirect(resolveLandingFromAuth(store.getState().auth))
+}
+
 // ODX6 — Garde de MODULE. Enveloppe un loader de base (auth ou rôle) : une fois
-// la session/le rôle validés (le loader de base a renvoyé `null`), on redirige
-// vers /dashboard si le module `key` de la route est désactivé pour la société.
+// la session/le rôle validés (le loader de base a renvoyé `null`), on décide du
+// sort d'une route dont le module `key` est désactivé pour la société.
 // Défaut (aucun toggle → liste vide) ⇒ le module n'est jamais désactivé, donc
-// comportement byte-identique à aujourd'hui. La liste vient du store, alimentée
-// par /auth/me/ (déjà résolue par `ensureSession`).
+// comportement byte-identique. La liste vient du store, alimentée par /auth/me/
+// (déjà résolue par `ensureSession`).
+//
+// ODY8 — ce refus renvoyait EN SILENCE vers `/dashboard` : l'utilisateur
+// changeait d'écran sans savoir pourquoi ni comment obtenir l'app. Il atterrit
+// désormais sur l'écran dédié `/app-non-activee` (pages/home/AppNotInstalled),
+// qui NOMME l'app et donne la marche à suivre selon le rôle. Cette fonction est
+// l'UNIQUE implémentation du refus ; ses deux points d'appel (les routes du
+// registre, injectées dans `buildModuleRoutes`, et les routes déclarées
+// directement ici) en héritent automatiquement.
+//
+// L'ORDRE compte : `base(args)` s'exécute d'ABORD, donc un refus de RÔLE
+// (roleLoader → `/403`, VX131) l'emporte et l'utilisateur n'apprend même pas si
+// l'app est installée — aucune donnée révélée.
 const moduleLoader = (key, base) => async (args) => {
   const result = await base(args)
   // Le loader de base a redirigé (login / rôle insuffisant) → on respecte.
   if (result) return result
   const disabled = store.getState().auth.modulesDesactives || []
-  if (isModuleDisabled(disabled, key)) return redirect('/dashboard')
+  if (isModuleDisabled(disabled, key)) {
+    return redirect(`/app-non-activee?app=${encodeURIComponent(key)}`)
+  }
   return null
 }
 
@@ -274,7 +313,8 @@ const router = createBrowserRouter([
   // vus par des clients externes (signature légale, portail, kiosque…). Chaque
   // élément est désormais enveloppé du même `RouteErrorBoundary` que WithLayout,
   // sans layout ERP autour.
-  { path: '/',      element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
+  // ODY3 — `/` authentifié → SES apps (`rootLoader`) ; `/` anonyme → Login.
+  { path: '/',      loader: rootLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
   { path: '/landing', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Landing /></Suspense></RouteErrorBoundary> },
   { path: '/login',  element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
   // Référence interne du design system (sans auth ni layout : page autonome).
@@ -336,6 +376,12 @@ const router = createBrowserRouter([
     element: <WithPortal shell={PortalPartenaireLayout}><PortailPartenaireAccueil /></WithPortal>,
   },
 
+  // ODY2 — Menu d'accueil : la grille de MES apps. `/dashboard` reste une route
+  // valide (l'app « Tableau de bord »), ce n'est plus la porte d'entrée.
+  { path: '/apps', loader: authLoader, element: <WithLayout><HomeMenu /></WithLayout> },
+  // ODY8 — porte dédiée d'une app non activée pour la société (`?app=<clé>`),
+  // à la place du renvoi silencieux vers /dashboard.
+  { path: '/app-non-activee', loader: authLoader, element: <WithLayout><AppNotInstalled /></WithLayout> },
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
   // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).

@@ -19,6 +19,11 @@ export function ListShell({
   actions,
   filters,
   breadcrumbs,
+  // APX32 — la page porte parfois DÉJÀ son titre (et un Segmented qui nomme
+  // l'onglet juste au-dessus) : la coquille en ajoutait un SECOND. `hideHeader`
+  // supprime l'en-tête de la coquille sans rien changer au reste ; les actions
+  // et filtres éventuels restent rendus (ils n'ont pas de titre à eux).
+  hideHeader = false,
   columns,
   rows = [],
   loading,
@@ -43,13 +48,15 @@ export function ListShell({
 }) {
   return (
     <div className={cn('flex flex-col gap-4', className)}>
-      <PageHeader
-        title={title}
-        subtitle={subtitle}
-        actions={actions}
-        filters={filters}
-        breadcrumbs={breadcrumbs}
-      />
+      {(!hideHeader || actions || filters || breadcrumbs) && (
+        <PageHeader
+          title={hideHeader ? undefined : title}
+          subtitle={hideHeader ? undefined : subtitle}
+          actions={actions}
+          filters={filters}
+          breadcrumbs={breadcrumbs}
+        />
+      )}
       {children}
       <Card className="p-4 sm:p-5">
         <DataTable

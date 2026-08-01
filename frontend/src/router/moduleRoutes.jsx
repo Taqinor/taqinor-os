@@ -66,10 +66,14 @@ export const moduleSectionLabels = Object.assign(
 export function buildModuleRoutes(deps) {
   const { authLoader, roleLoader } = deps
   // ODX6 — garde de module : un loader qui, une fois la session/le rôle
-  // vérifiés, redirige vers /dashboard si le module de cette route est
-  // désactivé pour la société. `moduleLoader(key)` reçoit du routeur le loader
-  // de base (auth ou rôle) et l'enveloppe. Sans `key` (route sans module) ou
-  // sans `moduleLoader` fourni, le comportement est inchangé.
+  // vérifiés, refuse la route si le module de cette route est désactivé pour la
+  // société. `moduleLoader(key)` reçoit du routeur le loader de base (auth ou
+  // rôle) et l'enveloppe. Sans `key` (route sans module) ou sans `moduleLoader`
+  // fourni, le comportement est inchangé.
+  // ODY8 — ce refus n'est plus un renvoi muet vers /dashboard : l'UNIQUE
+  // implémentation (router/index.jsx) redirige vers l'écran dédié
+  // `/app-non-activee?app=<clé>`. Ce fichier n'a AUCUNE copie de cette règle —
+  // il ne fait que le point d'appel ci-dessous.
   const moduleLoader = deps.moduleLoader
   // Variable PascalCase (couverte par varsIgnorePattern '^[A-Z_]') plutôt qu'un
   // argument déstructuré : le lint local ne compte pas l'usage JSX seul.

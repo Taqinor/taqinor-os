@@ -2,7 +2,10 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { MapPin, ListChecks, LayoutList, Copy, Sparkles } from 'lucide-react'
+import {
+  MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
+  Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent,
+} from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Paramètres vers le registre (phase 2,
@@ -30,6 +33,25 @@ import { MapPin, ListChecks, LayoutList, Copy, Sparkles } from 'lucide-react'
    playbooks/étapes/tâches par stage STAGES.py) : construit/testé, monté nulle
    part. Deux liens dans la section `nav` ci-dessous ; les autres routes
    ci-dessus restent routes-only, comme documenté ci-dessus.
+
+   ODY23 — « admin/roles/users/paramètres → app Paramètres » (une seule app,
+   pas deux) : la section `nav` gagne ici (a) un item « Aperçu » vers le
+   cockpit `/parametres` lui-même (1er item = convention `nav.items[0]` du
+   cockpit, cf. `AppLauncher.jsx buildEntries`), (b) les 4 écrans réellement
+   « Administration » (Utilisateurs/Rôles/Sécurité & Identité/Gouvernance des
+   accès) dont la ROUTE reste déclarée dans `features/admin/module.config.jsx`
+   (inchangée — un item de nav peut pointer vers une route d'un AUTRE
+   module.config, même mécanisme que Journal dans `reporting`), et (c) les 3
+   écrans `/parametres/*` qui avaient une route mais aucune entrée de menu
+   (Export/Sauvegarde, Alertes KPI, Taxe de séjour). Gardes de rôle copiées à
+   l'IDENTIQUE du littéral ADMINISTRATION historique de `Sidebar.jsx:187-209`
+   (extrait par la lane ODY4, qui a besoin de cette `nav` complète pour
+   atterrir). DÉLIBÉRÉMENT absent : `/admin/tenants` (console fondateur
+   SCA22, superuser serveur — jamais eu d'entrée de menu, on ne l'invente pas
+   ici) ; `/parametres/notifications` (atteint depuis `NotificationBell.jsx`,
+   pas le menu app) ; `/parametres/marketing` (nav déjà dans
+   `features/marketing/module.config.jsx`) ; `/parametres/achats` (domaine
+   Stock/Achats, lane ODY17 — hors périmètre ODY23).
 
    Gating préservé à l'identique (index.jsx:153-160 `roleLoader`) :
    - `/parametres`, `/parametres/alertes-kpi` (XPLT6) :
@@ -91,6 +113,13 @@ const config = {
     label: 'PARAMÈTRES',
     accent: 'nuit',
     items: [
+      // ODY23(a) — cockpit de l'app (1er item = lien du cockpit).
+      { to: '/parametres', label: 'Aperçu', icon: <Settings size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // ODY23(b) — Administration (route déclarée dans features/admin/module.config.jsx).
+      { to: '/admin/users', label: 'Utilisateurs', icon: <UserCog size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      { to: '/admin/roles', label: 'Rôles', icon: <Shield size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      { to: '/admin/securite-identite', label: 'Sécurité & Identité', icon: <Key size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
+      { to: '/admin/gouvernance-acces', label: 'Gouvernance des accès', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/parametres/territoires', label: 'Territoires', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/parametres/playbooks', label: 'Playbooks', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       {
@@ -101,6 +130,10 @@ const config = {
       },
       { to: '/parametres/tiers-doublons', label: 'Doublons tiers', icon: <Copy size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/parametres/ia', label: 'IA (diagnostic)', icon: <Sparkles size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
+      // ODY23(c) — écrans /parametres/* qui avaient une route sans entrée de menu.
+      { to: '/parametres/export', label: 'Export / Sauvegarde', icon: <DownloadCloud size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
+      { to: '/parametres/alertes-kpi', label: 'Alertes KPI', icon: <AlertTriangle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      { to: '/parametres/hospitality/taxe-sejour', label: 'Taxe de séjour', icon: <Percent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [

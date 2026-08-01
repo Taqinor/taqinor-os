@@ -6,6 +6,8 @@ import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
   Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus,
 } from 'lucide-react'
+// APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
+import { INVENTAIRE_ACCENT_KEY } from './inventaireAccent'
 
 /* ============================================================================
    ARC48 — Migration des routes legacy Stock vers le registre de modules.
@@ -56,19 +58,38 @@ const ConditionnementsProduit = lazy(() => import('../../pages/stock/Conditionne
 const config = {
   key: 'stock',
   order: 20,
+  // ODY17 — métadonnées d'app pour le futur registre unifié (ODY1
+  // `useInstalledApps()` / ODY9 `AppIcon.jsx`, aucun des deux livré ici) :
+  // MIROIR EXACT du manifest backend (`apps/stock/apps.py::module_manifest`
+  // — icône 'package', description identique) pour que ce futur registre
+  // n'ait rien à réconcilier entre backend et frontend.
+  icon: Package,
+  description: 'Gestion des stocks, mouvements et fournisseurs.',
   nav: {
     label: 'STOCK', labelKey: 'nav.section.stock',
-    accent: 'lune',
+    // APX22 - accent de la FAMILLE INVENTAIRE : Stock, Magasin et
+    // Logistique portent desormais la MEME cle (celle-ci, inchangee cote
+    // Stock). Source unique : `features/stock/inventaireAccent.js`.
+    accent: INVENTAIRE_ACCENT_KEY,
     items: [
       { to: '/stock',                label: 'Produits',         k: 'nav.produits',   icon: navIcon(Package),     roles: ['normal','responsable','admin'] },
       { to: '/stock/categories',     label: 'Catégories & marques', k: 'nav.categories', icon: navIcon(Boxes), roles: ['responsable','admin'] },
       { to: '/stock/fournisseurs',   label: 'Fournisseurs',     k: 'nav.fournisseurs', icon: navIcon(Truck), roles: ['responsable','admin'] },
       { to: '/stock/mouvements',     label: 'Mouvements',       k: 'nav.mouvements', icon: navIcon(ArrowLeftRight),   roles: ['normal','responsable','admin'] },
-      { to: '/stock/bons-commande-fournisseur', label: 'Commandes fournisseur', k: 'nav.commandes_fournisseur', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
-      { to: '/stock/modeles-bcf',    label: 'Modèles de commande', k: 'nav.modeles_bcf', icon: navIcon(ClipboardList),    roles: ['responsable','admin'] },
-      { to: '/stock/receptions-fournisseur', label: 'Réceptions fournisseur', k: 'nav.receptions_fournisseur', icon: navIcon(PackageCheck), roles: ['responsable','admin'] },
-      { to: '/stock/factures-fournisseur', label: 'Factures fournisseur', k: 'nav.factures_fournisseur', icon: navIcon(Receipt), roles: ['responsable','admin'] },
-      { to: '/stock/retours-fournisseur', label: 'Retours fournisseur', k: 'nav.retours_fournisseur', icon: navIcon(Undo2), roles: ['responsable','admin'] },
+      // ── ACHATS — sous-groupe prêt à déplacer (ODX20 pas livré : `apps/achats`
+      // existe déjà côté backend — manifest `key:'achats'`, `depends:['stock']`
+      // — mais sa vue/frontend n'a pas atterri ; en attendant, ces 5 écrans
+      // restent ici). `group: 'achats'` marque EXACTEMENT le lot que ODX20
+      // devra extraire vers `features/achats/module.config.jsx` (nav ET
+      // routes ci-dessous portent le même tag — grep `group: 'achats'`) : la
+      // « Fournisseurs » (répertoire fournisseur lui-même, PrixFournisseur
+      // exclu) et l'Import OCR restent des écrans Stock, hors de ce lot.
+      { to: '/stock/bons-commande-fournisseur', label: 'Commandes fournisseur', k: 'nav.commandes_fournisseur', icon: navIcon(ClipboardList), roles: ['responsable','admin'], group: 'achats' },
+      { to: '/stock/modeles-bcf',    label: 'Modèles de commande', k: 'nav.modeles_bcf', icon: navIcon(ClipboardList),    roles: ['responsable','admin'], group: 'achats' },
+      { to: '/stock/receptions-fournisseur', label: 'Réceptions fournisseur', k: 'nav.receptions_fournisseur', icon: navIcon(PackageCheck), roles: ['responsable','admin'], group: 'achats' },
+      { to: '/stock/factures-fournisseur', label: 'Factures fournisseur', k: 'nav.factures_fournisseur', icon: navIcon(Receipt), roles: ['responsable','admin'], group: 'achats' },
+      { to: '/stock/retours-fournisseur', label: 'Retours fournisseur', k: 'nav.retours_fournisseur', icon: navIcon(Undo2), roles: ['responsable','admin'], group: 'achats' },
+      // ── fin du sous-groupe ACHATS ──
       { to: '/stock/ocr-import',     label: 'Import OCR',       k: 'nav.import_ocr', icon: navIcon(ScanLine),   roles: ['responsable','admin'] },
       // WIR109 — lots FEFO, inventaire annuel, revalorisations, conditionnements.
       { to: '/stock/lots-entrepot',  label: 'Lots (FEFO)',      k: 'nav.lots_entrepot', icon: navIcon(Layers), roles: ['responsable','admin'] },
@@ -83,11 +104,13 @@ const config = {
     { path: '/stock/categories', component: CategoriesStock },
     { path: '/stock/fournisseurs', component: FournisseursStock },
     { path: '/stock/fournisseurs/:id/360', component: FournisseurFiche360 },
-    { path: '/stock/bons-commande-fournisseur', component: BonsCommandeFournisseur },
-    { path: '/stock/modeles-bcf', component: ModelesBcf },
-    { path: '/stock/receptions-fournisseur', component: ReceptionsFournisseur },
-    { path: '/stock/factures-fournisseur', component: FacturesFournisseur },
-    { path: '/stock/retours-fournisseur', component: RetoursFournisseur },
+    // ── ACHATS — même sous-groupe que la nav ci-dessus (miroir `group`). ──
+    { path: '/stock/bons-commande-fournisseur', component: BonsCommandeFournisseur, group: 'achats' },
+    { path: '/stock/modeles-bcf', component: ModelesBcf, group: 'achats' },
+    { path: '/stock/receptions-fournisseur', component: ReceptionsFournisseur, group: 'achats' },
+    { path: '/stock/factures-fournisseur', component: FacturesFournisseur, group: 'achats' },
+    { path: '/stock/retours-fournisseur', component: RetoursFournisseur, group: 'achats' },
+    // ── fin du sous-groupe ACHATS ──
     { path: '/stock/ocr-import', component: OcrStockImport },
     // WIR109 — lots FEFO, inventaire annuel, revalorisations, conditionnements.
     { path: '/stock/lots-entrepot', component: LotsEntrepot },

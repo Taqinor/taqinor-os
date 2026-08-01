@@ -8,6 +8,9 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { Table } from '../reporting/Table'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -77,9 +80,14 @@ export default function PaiementsPage() {
 
   return (
     <div className="ui-root page">
-      <div className="page-header" style={{ marginBottom: '1.25rem' }}>
-        <h2>Encaissements</h2>
-      </div>
+      {/* APX11 — en-tête unique VX28 + accent Ventes. */}
+      <PageHeader
+        style={VENTES_ACCENT_STYLE}
+        className="app-accent-rail"
+        icon={Wallet}
+        title="Encaissements"
+        subtitle="Tous les paiements reçus, par facture et par mode"
+      />
 
       {/* VX231(b) — chip du filtre client actif (depuis un clic sur un nom). */}
       {clientFilter && (

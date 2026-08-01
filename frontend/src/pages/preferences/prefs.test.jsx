@@ -8,8 +8,11 @@ vi.mock('../../ui/file-utils', () => ({
 }))
 import {
   getLandingModule, setLandingModule, resolveLandingPath, getLastModuleSegment,
+  LANDING_LAST_MODULE,
   getReducedMotionPref, setReducedMotionPref, applyReducedMotion,
   getPhotoQualityPref, setPhotoQualityPref, compressPhotoForUpload,
+  getAppResumePref, setAppResumePref,
+  APP_RESUME_KEY, APP_RESUME_ASK, APP_RESUME_ALWAYS, APP_RESUME_NEVER,
 } from './prefs'
 import { compressImage } from '../../ui/file-utils'
 
@@ -30,6 +33,7 @@ describe('VX46 — prefs.js (logique pure, persistance localStorage)', () => {
     window.localStorage.removeItem(REDUCED_MOTION_KEY)
     window.localStorage.removeItem(LAST_MODULE_KEY)
     window.localStorage.removeItem(PHOTO_QUALITY_KEY)
+    window.localStorage.removeItem(APP_RESUME_KEY)
     document.documentElement.removeAttribute('data-reduced-motion')
     document.getElementById('taqinor-reduced-motion-override')?.remove()
     compressImage.mockClear()
@@ -48,17 +52,60 @@ describe('VX46 — prefs.js (logique pure, persistance localStorage)', () => {
     expect(resolveLandingPath(CONFIGS, '')).toBe('/rh')
   })
 
-  it('resolveLandingPath : préférence vide → dernier module visité (VX11)', () => {
+  it('resolveLandingPath : préférence explicite « dernier module » → ce module (VX11)', () => {
+    setLandingModule(LANDING_LAST_MODULE)
     expect(resolveLandingPath(CONFIGS, 'compta')).toBe('/comptabilite')
   })
 
-  it('resolveLandingPath : repli /dashboard quand rien n’est connu', () => {
-    expect(resolveLandingPath(CONFIGS, '')).toBe('/dashboard')
+  // ODY3 — le repli n'est plus `/dashboard` mais le Menu d'accueil `/apps` :
+  // ouvrir l'ERP, c'est voir SES apps. `/dashboard` reste une route valide.
+  it('resolveLandingPath : repli /apps quand rien n’est connu (ODY3)', () => {
+    expect(resolveLandingPath(CONFIGS, '')).toBe('/apps')
   })
 
-  it('resolveLandingPath : repli /dashboard si le module choisi a disparu de moduleConfigs', () => {
+  it('resolveLandingPath : repli /apps si le module choisi a disparu de moduleConfigs', () => {
     setLandingModule('module-supprime')
-    expect(resolveLandingPath(CONFIGS, '')).toBe('/dashboard')
+    expect(resolveLandingPath(CONFIGS, '')).toBe('/apps')
+  })
+
+  it('resolveLandingPath : mono-app → on entre directement dans l’unique app (ODY3)', () => {
+    const apps = [{ key: 'rh', to: '/rh' }]
+    expect(resolveLandingPath(CONFIGS, '', { apps })).toBe('/rh')
+  })
+
+  it('resolveLandingPath : deux apps ou plus → Menu d’accueil (jamais un choix arbitraire)', () => {
+    const apps = [{ key: 'rh', to: '/rh' }, { key: 'compta', to: '/comptabilite' }]
+    expect(resolveLandingPath(CONFIGS, '', { apps })).toBe('/apps')
+  })
+
+  it('resolveLandingPath : la préférence VX46 reste PRIORITAIRE sur le mono-app', () => {
+    setLandingModule('compta')
+    const apps = [{ key: 'rh', to: '/rh' }]
+    expect(resolveLandingPath(CONFIGS, '', { apps })).toBe('/comptabilite')
+  })
+
+  // ODY3 — « dernier module visité » n'est PLUS le défaut implicite : sans
+  // préférence explicite, on atterrit sur le Menu d'accueil (ou dans l'unique
+  // app en mono-app). Sinon le paradigme « j'ouvre → MES apps » n'aurait jamais
+  // été vu par un utilisateur de retour.
+  it('resolveLandingPath : sans préférence, le dernier module visité est IGNORÉ (ODY3)', () => {
+    expect(resolveLandingPath(CONFIGS, 'compta')).toBe('/apps')
+  })
+
+  it('resolveLandingPath : sans préférence, le mono-app prime sur le dernier module visité', () => {
+    const apps = [{ key: 'rh', to: '/rh' }]
+    expect(resolveLandingPath(CONFIGS, 'compta', { apps })).toBe('/rh')
+  })
+
+  it('resolveLandingPath : « dernier module visité » CHOISI explicitement est honoré (VX11)', () => {
+    setLandingModule(LANDING_LAST_MODULE)
+    const apps = [{ key: 'rh', to: '/rh' }]
+    expect(resolveLandingPath(CONFIGS, 'compta', { apps })).toBe('/comptabilite')
+  })
+
+  it('resolveLandingPath : « dernier module visité » choisi mais aucun module connu → Menu d’accueil', () => {
+    setLandingModule(LANDING_LAST_MODULE)
+    expect(resolveLandingPath(CONFIGS, '')).toBe('/apps')
   })
 
   it('getLastModuleSegment lit taqinor.lastModule (VX11)', () => {
@@ -80,6 +127,32 @@ describe('VX46 — prefs.js (logique pure, persistance localStorage)', () => {
     applyReducedMotion(true)
     const tags = document.querySelectorAll('#taqinor-reduced-motion-override')
     expect(tags.length).toBe(1)
+  })
+
+  describe('ODY29 — à l’ouverture d’une app (proposer / toujours / jamais)', () => {
+    it('défaut = proposer (aucune clé écrite)', () => {
+      expect(getAppResumePref()).toBe(APP_RESUME_ASK)
+      expect(window.localStorage.getItem(APP_RESUME_KEY)).toBeNull()
+    })
+
+    it('persiste « toujours reprendre » puis « toujours le cockpit »', () => {
+      setAppResumePref(APP_RESUME_ALWAYS)
+      expect(getAppResumePref()).toBe(APP_RESUME_ALWAYS)
+      setAppResumePref(APP_RESUME_NEVER)
+      expect(getAppResumePref()).toBe(APP_RESUME_NEVER)
+    })
+
+    it('revenir au défaut efface la clé', () => {
+      setAppResumePref(APP_RESUME_ALWAYS)
+      setAppResumePref(APP_RESUME_ASK)
+      expect(getAppResumePref()).toBe(APP_RESUME_ASK)
+      expect(window.localStorage.getItem(APP_RESUME_KEY)).toBeNull()
+    })
+
+    it('une valeur inconnue en stockage retombe sur le défaut', () => {
+      window.localStorage.setItem(APP_RESUME_KEY, 'n’importe quoi')
+      expect(getAppResumePref()).toBe(APP_RESUME_ASK)
+    })
   })
 
   describe('NTMOB12 — qualité photo (Standard compressé / Original)', () => {

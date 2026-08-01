@@ -540,7 +540,10 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
         from . import feature_flags
         company = request.user.company
         try:
-            actives = feature_flags.activer_module(company, pk)
+            # ODY25 — l'auteur de la bascule est posé CÔTÉ SERVEUR (jamais lu
+            # du corps) : il ne sert qu'à journaliser « qui a activé quoi ».
+            actives = feature_flags.activer_module(
+                company, pk, user=request.user)
         except feature_flags.DependencyError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -553,12 +556,26 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
         cascade = str(request.query_params.get('cascade', '')) in ('1', 'true')
         try:
             desactives = feature_flags.desactiver_module(
-                company, pk, cascade=cascade)
+                company, pk, cascade=cascade, user=request.user)
         except feature_flags.DependencyError as exc:
             return Response(
                 {'detail': str(exc), 'dependants': exc.dependents},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response({'desactives': desactives})
+
+    @action(detail=False, methods=['get'], url_path='journal')
+    def journal(self, request):
+        """ODY25 — journal d'installation de la société de l'appelant.
+
+        Dernière bascule par module (« Désactivée le 03/08 par Reda — raison :
+        … »). Scopé société côté serveur : ``company`` vient de l'utilisateur
+        authentifié, jamais d'un paramètre. Réservé au palier admin/responsable
+        comme les autres écritures de cet écran (le `get_permissions` ci-dessus
+        n'ouvre que ``list`` à tout authentifié).
+        """
+        from . import feature_flags
+        return Response(
+            feature_flags.journal_modules(request.user.company))
 
 
 class TenantThemeViewSet(TenantMixin, viewsets.GenericViewSet):

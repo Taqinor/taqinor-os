@@ -616,7 +616,7 @@ module per backend area. The **design system** (refonte UI) lives in `design/`
 | `/crm/parrainage` | ParrainagePage (referrals) |
 | `/ventes/devis` | DevisList |
 | `/ventes/devis/nouveau` | DevisGenerator (quote creation) |
-| `/ventes/bons-commande` | VentesKanban |
+| `/ventes/bons-commande` | BonCommandeList |
 | `/ventes/factures` | FactureList |
 | `/ventes/avoirs` | AvoirsPage |
 | `/ventes/relances` | RelancesPage |
@@ -660,7 +660,7 @@ module per backend area. The **design system** (refonte UI) lives in `design/`
 
 ### Pages (`frontend/src/pages`)
 - **crm/** — ClientList, LeadsPage, ParrainagePage + `leads/` (LeadDetailPage → `features/crm/workspace/LeadWorkspace`, ViewSwitcher, FilterBar, BulkActionBar, DoublonsPanel, SigneDialog, views/Kanban|List|Calendar|Charts). The lead cockpit itself lives in `features/crm/workspace/` (ex-`LeadForm.jsx`, removed LW40).
-- **ventes/** — DevisList, DevisGenerator, DevisForm, FactureList, FactureForm, AvoirsPage, RelancesPage, VentesKanban.
+- **ventes/** — DevisList, DevisGenerator, DevisForm, FactureList, FactureForm, AvoirsPage, RelancesPage, BonCommandeList.
 - **stock/** — StockList, ProduitForm, MouvementsPage, BonsCommandeFournisseur, OcrStockImport.
 - **installations/** — InstallationsPage, ParcInstallePage, InstallationDetail, ChantierChecklist/Photos/Timeline.
 - **sav/** — EquipementsPage, TicketsPage, ContratsMaintenance.
