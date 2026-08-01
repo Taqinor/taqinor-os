@@ -1,0 +1,503 @@
+"""AOF60 — la COUTURE entre ``apps.ao`` (persistance) et ``core.calepinage``
+(moteur pur) : traduction, et RIEN d'autre.
+
+Ce module ne contient **aucune géométrie**. Il ne compte rien, ne pose rien,
+ne décide rien : il transforme des lignes de l'ORM en un DOCUMENT conforme au
+contrat JSON versionné d'AOF57 (``core.calepinage.serialisation``), et
+retransforme la sortie du moteur en JSON persistable pour
+``VarianteCalepinage.resultat`` / ``.preuve``.
+
+Pourquoi une couche à part
+--------------------------
+Sans elle, le service d'orchestration accumulerait des ``if forme == 'arc'`` et
+finirait par porter une deuxième géométrie — exactement le défaut que le paquet
+pur supprime. Ici la règle est mécanique : **l'ORM entre, un dict sort**. Le
+moteur ne voit jamais un modèle Django, l'ORM ne voit jamais une dataclass du
+moteur.
+
+Repère et unités
+----------------
+Le moteur a UN repère unifié (``core/calepinage/surfaces/base.py``) : ``x``
+court LE LONG de la rangée, ``y`` est l'axe TRANSVERSAL sur lequel les rangées
+se rangent. ``ToitureAO.contour_local_m`` est déjà en mètres dans le repère
+local (AOF19) — aucune conversion d'unité n'a lieu ici, seulement un
+changement de représentation.
+
+Affectation des obstacles en multi-surfaces
+-------------------------------------------
+Une toiture en arc est découpée en SEGMENTS (murets au ras) : chaque segment a
+son propre plan de pose et sa propre abscisse locale, si bien qu'un obstacle ne
+peut pas être rattaché à un segment par sa seule géométrie (les segments se
+recouvrent en coordonnées locales). Le document porte donc une clé
+``affectations`` — ``{repère de surface: [repères d'obstacles]}`` — que le
+contrat pur IGNORE (``EntreeCalepinage.depuis_dict`` ne lit que ses clés). En
+son absence et à plusieurs surfaces, on REFUSE avec un motif nommé : deviner
+une affectation produirait un compte faux que personne ne verrait.
+"""
+from __future__ import annotations
+
+from decimal import Decimal
+
+from core.calepinage.version import SCHEMA_VERSION, VERSION_MOTEUR
+
+__all__ = [
+    'EntreeInvalide', 'NATURE_VERS_TYPE_MOTEUR', 'PROVENANCE_VERS_MOTEUR',
+    'document_entree', 'affectations_du_document', 'kits_vers_document',
+    'parametres_vers_document', 'surface_vers_document',
+    'obstacles_vers_document', 'resultat_vers_json', 'preuve_vers_json',
+]
+
+
+class EntreeInvalide(ValueError):
+    """L'entrée persistée ne peut pas produire un document de calepinage.
+
+    Toujours porteuse d'un motif en FRANÇAIS : c'est ce que l'utilisateur lit
+    dans un 400, pas un code d'erreur.
+    """
+
+
+#: ``ObstacleAO.Nature`` (13 valeurs métier AO) -> ``TypeObstacle`` du moteur
+#: (13 valeurs). Les natures AO sans équivalent exact tombent sur
+#: ``NATURE_INCONNUE`` — sans conséquence sur le calcul : le dégagement
+#: RÉELLEMENT appliqué est toujours celui que l'ORM a dérivé (AOF22), transmis
+#: en surcharge explicite, jamais redevine par le moteur.
+NATURE_VERS_TYPE_MOTEUR = {
+    'caisson_technique': 'CAISSON_BETON',
+    'cage_escalier': 'CAGE_ESCALIER',
+    'edicule': 'EDICULE',
+    'souche': 'SOUCHE',
+    'groupe_clim': 'CLIMATISEUR',
+    'acrotere': 'ACROTERE',
+    'joint_dilatation': 'JOINT_DILATATION',
+    'muret': 'MURET',
+    'decrochement_niveau': 'MURET',
+    'pan_coupe': 'NATURE_INCONNUE',
+    'lanterneau': 'LANTERNEAU',
+    'exutoire_fumee': 'NATURE_INCONNUE',
+    'chemin_cables': 'NATURE_INCONNUE',
+}
+
+#: ``ObstacleAO.Provenance`` -> ``Provenance`` du moteur. Le vocabulaire AO est
+#: le format CANONIQUE (en-tête du groupe) ; le moteur nomme ``RELEVE`` ce que
+#: l'AO nomme ``MESURE``.
+PROVENANCE_VERS_MOTEUR = {
+    'MESURE': 'RELEVE',
+    'MESURE_DOUTEUX': 'RELEVE_DOUTEUX',
+    'PLAN': 'PLAN',
+    'DEVINE': 'DEVINE',
+    'DECLARE_CLIENT': 'DECLARE_CLIENT',
+    'ECARTE': 'ECARTE',
+}
+
+
+def _f(valeur, defaut=None):
+    """``Decimal``/``str``/``None`` -> ``float`` (ou ``defaut``)."""
+    if valeur is None or valeur == '':
+        return defaut
+    if isinstance(valeur, Decimal):
+        return float(valeur)
+    return float(valeur)
+
+
+def _contour(points):
+    return [[_f(p[0], 0.0), _f(p[1], 0.0)] for p in (points or [])]
+
+
+# ─────────────────────────────────────────────────────── surfaces
+def surface_vers_document(toiture, *, rives, axe_rangee):
+    """La ou les surfaces d'une ``ToitureAO``, en forme de contrat.
+
+    * ``arc`` -> une surface ``arc`` par segment déclaré dans
+      ``arc_segments`` (les murets au ras SÉPARENT : aucune rangée n'est à
+      cheval, chaque segment a ses propres rives d'extrémité) ; à défaut de
+      segments, un arc unique de développé ``developpe_m``.
+    * toute autre forme -> un ``polygone`` bâti sur ``contour_local_m``. Le
+      polygone couvre le rectangle et le L sans cas particulier : c'est le
+      contour lui-même qui répond, et il porte son décalage d'origine (un
+      ``rectangle`` du contrat est implicitement calé en (0, 0), ce qui
+      décalerait tous les obstacles d'une enveloppe relevée ailleurs).
+    """
+    commun = {
+        'rives': dict(rives),
+        'axe_rangee': axe_rangee,
+        'niveau': int(toiture.niveau or 0),
+        'azimut_deg': _f(toiture.angle_nord_deg, 180.0),
+        'origine': [0.0, 0.0],
+        'coupures': [],
+    }
+    repere_base = toiture.code_document or f'TOITURE_{toiture.pk}'
+
+    if toiture.forme == toiture.Forme.ARC:
+        rayon = _f(toiture.rayon_ext_m)
+        largeur = _f(toiture.largeur_m)
+        if rayon is None or largeur is None:
+            raise EntreeInvalide(
+                "Une toiture en arc exige un rayon extérieur ET une largeur "
+                "de bande : sans les deux, l'arc n'est pas développable.")
+        segments = [_f(s, 0.0) for s in (toiture.arc_segments or [])
+                    if _f(s, 0.0)]
+        if not segments:
+            raise EntreeInvalide(
+                "Une toiture en arc exige au moins un segment de développé "
+                "(`arc_segments`) : le développé muret-à-muret n'est pas "
+                "déductible du rayon seul.")
+        surfaces = []
+        for index, developpe in enumerate(segments, start=1):
+            surfaces.append(dict(
+                commun, type='arc', repere=f'{repere_base}_S{index}',
+                rayon_ext_m=rayon, largeur_m=largeur, developpe_m=developpe))
+        return surfaces
+
+    contour = _contour(toiture.contour_local_m)
+    if len(contour) < 3:
+        raise EntreeInvalide(
+            "L'enveloppe de la toiture est vide : au moins 3 sommets sont "
+            "nécessaires pour calepiner.")
+    return [dict(commun, type='polygone', repere=repere_base,
+                 contour=contour, trous=[])]
+
+
+# ─────────────────────────────────────────────────────── obstacles
+def obstacles_vers_document(toiture):
+    """Les obstacles ACTIFS d'une toiture, en forme de contrat.
+
+    Trois règles, toutes trois portées par la donnée et non par le moteur :
+
+    * seuls les obstacles ``actif=True`` sortent — un obstacle désactivé n'est
+      pas une géométrie du site ;
+    * un obstacle ``hors_zone_pv`` est EXCLU du document : il ne bloque rien
+      (série de questions FRDISI n°3 — « structure de rive hors zone PV », +6
+      modules) ; le conserver bloquerait une bande que le client a confirmée
+      libre ;
+    * le ``degagement_m`` de l'ORM (dérivé par AOF22 : ``max(nature,
+      provenance)``, ou surcharge motivée) est transmis TEL QUEL. Le moteur le
+      lit comme une surcharge explicite et ne redevine jamais un dégagement.
+    """
+    sortie = []
+    for obstacle in toiture.obstacles.filter(actif=True).order_by(
+            'repere', 'id'):
+        if obstacle.hors_zone_pv:
+            continue
+        x0, x1 = _f(obstacle.rect_x0_m), _f(obstacle.rect_x1_m)
+        y0, y1 = _f(obstacle.rect_y0_m), _f(obstacle.rect_y1_m)
+        if None in (x0, x1, y0, y1):
+            polygone = _contour(obstacle.polygone_local_m)
+            if len(polygone) < 3:
+                raise EntreeInvalide(
+                    "L'obstacle « %s » n'a ni emprise rectangulaire complète "
+                    "ni polygone : sa géométrie est inexploitable."
+                    % (obstacle.repere or f'#{obstacle.pk}'))
+            xs = [p[0] for p in polygone]
+            ys = [p[1] for p in polygone]
+            x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+        sortie.append({
+            'repere': obstacle.repere or f'OBS{obstacle.pk}',
+            'x0': min(x0, x1), 'x1': max(x0, x1),
+            'y0': min(y0, y1), 'y1': max(y0, y1),
+            'type_obstacle': NATURE_VERS_TYPE_MOTEUR.get(
+                obstacle.nature, 'NATURE_INCONNUE'),
+            'provenance': PROVENANCE_VERS_MOTEUR.get(
+                obstacle.provenance, 'PLAN'),
+            'degagement_m': _f(obstacle.degagement_m, 0.30),
+            'hauteur_m': _f(obstacle.hauteur_m),
+            'regle_appliquee': obstacle.regle_degagement or '',
+        })
+    return sortie
+
+
+# ─────────────────────────────────────────────────────── kits
+def kits_vers_document(kits):
+    """``KitCalepinage`` -> kits du contrat, géométrie DÉ-DÉRIVÉE.
+
+    Le modèle AO porte ``pas_rangee_m`` (le long de la rangée) et
+    ``longueur_pente_m`` (dans la pente) ; le contrat porte le GRAND et le
+    PETIT côté du module. La correspondance dépend de l'orientation, et
+    l'inversion est exacte : en PORTRAIT le pas est le petit côté, en PAYSAGE
+    c'est le grand.
+    """
+    document = []
+    for kit in kits:
+        pas = _f(kit.pas_rangee_m)
+        pente = _f(kit.longueur_pente_m)
+        if not pas or not pente:
+            raise EntreeInvalide(
+                "Le kit « %s » n'a pas de géométrie exploitable (pas de "
+                "rangée et longueur dans la pente sont obligatoires)."
+                % kit.code)
+        if kit.orientation_modules == kit.Orientation.PORTRAIT:
+            module_long, module_court = pente, pas
+        else:
+            module_long, module_court = pas, pente
+        if module_long < module_court:
+            raise EntreeInvalide(
+                "Le kit « %s » déclare un grand côté (%.3f m) plus petit que "
+                "son petit côté (%.3f m) : l'orientation ou les dimensions "
+                "sont incohérentes." % (kit.code, module_long, module_court))
+        document.append({
+            'code': kit.code,
+            'libelle': kit.libelle,
+            'module_long_m': module_long,
+            'module_court_m': module_court,
+            'puissance_module_wc': float(kit.puissance_module_w),
+            'inclinaison_deg': _f(kit.inclinaison_deg, 15.0),
+            'orientation': ('PORTRAIT'
+                            if kit.orientation_modules
+                            == kit.Orientation.PORTRAIT else 'PAYSAGE'),
+            'modules_par_table': int(kit.modules_par_kit or 1),
+            'faitage_m': _f(kit.faitage_m, 0.0),
+        })
+    return document
+
+
+# ─────────────────────────────────────────────────────── paramètres
+def rives_du_preset(params):
+    """Les 4 rives NOMMÉES depuis un dict de preset (AOF27)."""
+    return {
+        'laterale_m': float(params.get('rive_laterale_m', 0.35)),
+        'extremite_m': float(params.get('rive_extremite_m', 0.35)),
+        'acrotere_m': float(params.get('acrotere_m', 0.0)),
+        'joint_m': float(params.get('joint_m', 0.0)),
+    }
+
+
+def parametres_vers_document(params, codes_kits):
+    """Paramètres du preset AO (AOF27) -> ``Parametres`` du contrat.
+
+    Les dégagements par provenance du preset servent de PLANCHER générique ;
+    le dégagement réellement appliqué reste celui de chaque obstacle.
+    """
+    degagements = params.get('degagements_par_provenance_m') or {}
+    return {
+        'kits': list(codes_kits),
+        'rives': rives_du_preset(params),
+        'axe_rangee': params.get('axe_rangee', 'NORD_SUD'),
+        'mode_pose': params.get('mode_pose', 'rangees_explicites_dp'),
+        'allee_m': float(params.get('allee_min_m', 0.60)),
+        'degagement_defaut_m': float(degagements.get('MESURE', 0.30)),
+        'degagement_nature_inconnue_m': float(degagements.get('DEVINE', 0.50)),
+        'pas_recherche_m': float(params.get('pas_recherche_m', 0.01)),
+        'engagement_modules': params.get('engagement_modules'),
+        'plafond_kwc': params.get('plafond_kwc'),
+        'marge_troncon_min_m': float(params.get('marge_troncon_min_m', 0.02)),
+        'marge_bande_min_m': float(params.get('marge_bande_min_m', 0.04)),
+        'graine': int(params.get('graine', 0)),
+    }
+
+
+# ─────────────────────────────────────────────────────── document complet
+def document_entree(toiture, *, params=None, kits=None):
+    """Le DOCUMENT d'entrée complet d'une toiture, conforme à AOF57.
+
+    ``params`` : dict de preset (défaut : l'instantané
+    ``toiture.parametres_calepinage``, posé par ``services.appliquer_preset``).
+    ``kits`` : itérable de ``KitCalepinage`` (défaut : ceux dont le code figure
+    dans ``params['kits_autorises']``, actifs et de la MÊME société — un kit
+    d'une autre société ne peut jamais entrer dans un calcul).
+    """
+    params = dict(params if params is not None
+                  else (toiture.parametres_calepinage or {}))
+    if kits is None:
+        codes = params.get('kits_autorises') or []
+        from .models import KitCalepinage
+
+        requete = KitCalepinage.objects.filter(
+            company=toiture.company, actif=True)
+        if codes:
+            requete = requete.filter(code__in=list(codes))
+        kits = list(requete.order_by('code'))
+    else:
+        kits = list(kits)
+    if not kits:
+        raise EntreeInvalide(
+            "Aucun kit de calepinage actif n'est disponible pour cette "
+            "toiture : le calcul n'a rien à poser.")
+
+    document_kits = kits_vers_document(kits)
+    codes_kits = [k['code'] for k in document_kits]
+    parametres = parametres_vers_document(params, codes_kits)
+    surfaces = surface_vers_document(
+        toiture, rives=parametres['rives'],
+        axe_rangee=parametres['axe_rangee'])
+    obstacles = obstacles_vers_document(toiture)
+
+    document = {
+        'schema_version': SCHEMA_VERSION,
+        'repere': toiture.code_document or f'TOITURE_{toiture.pk}',
+        'surfaces': surfaces,
+        'kits': document_kits,
+        'parametres': parametres,
+        'obstacles': obstacles,
+        'zones': [],
+        'engagements': [],
+    }
+    engagement = params.get('engagement_modules')
+    if engagement:
+        document['engagements'] = [[document['repere'], int(engagement)]]
+    if len(surfaces) > 1:
+        # Arc découpé en segments : les obstacles d'une toiture d'arc portent
+        # leur segment dans leur repère (``S1_…``). Sans affectation explicite
+        # le service REFUSE — on ne devine pas.
+        document['affectations'] = _affectations_par_prefixe(surfaces,
+                                                             obstacles)
+    return document
+
+
+def _affectations_par_prefixe(surfaces, obstacles):
+    """Affecte chaque obstacle au segment dont le repère porte le suffixe.
+
+    Convention de relevé (planches FRDISI) : un obstacle du segment ``S2``
+    s'appelle ``S2_cage``. On rattache par ce préfixe ; un obstacle qui ne
+    désigne AUCUN segment n'est pas affecté — le service refusera, plutôt que
+    de le compter partout (il bloquerait trois fois) ou nulle part (il
+    disparaîtrait du plan).
+    """
+    affectations = {}
+    for index, surface in enumerate(surfaces, start=1):
+        prefixe = 'S%d_' % index
+        affectations[surface['repere']] = [
+            o['repere'] for o in obstacles
+            if o['repere'].startswith(prefixe)
+            or o['repere'].startswith('%s_' % surface['repere'])
+        ]
+    return affectations
+
+
+def affectations_du_document(document, surfaces, obstacles):
+    """``{repère de surface: (obstacles du moteur, …)}`` — jamais deviné.
+
+    Une seule surface : tous les obstacles. Plusieurs surfaces : l'affectation
+    DOIT être déclarée et COMPLÈTE (chaque obstacle appartient à exactement une
+    surface). Toute lacune est un refus nommé, jamais un compte silencieux.
+    """
+    obstacles = tuple(obstacles)
+    if len(surfaces) == 1:
+        return {surfaces[0].repere: obstacles}
+
+    declarees = (document or {}).get('affectations')
+    if not declarees:
+        raise EntreeInvalide(
+            "Entrée à %d surfaces sans affectation des obstacles : préciser "
+            "`affectations` ({repère de surface: [repères d'obstacles]}). "
+            "Deviner l'affectation produirait un compte faux."
+            % len(surfaces))
+
+    par_repere = {o.repere: o for o in obstacles}
+    resultat = {}
+    affectes = set()
+    for surface in surfaces:
+        reperes = declarees.get(surface.repere)
+        if reperes is None:
+            raise EntreeInvalide(
+                "La surface « %s » n'a aucune affectation d'obstacles "
+                "déclarée." % surface.repere)
+        lot = []
+        for repere in reperes:
+            if repere not in par_repere:
+                raise EntreeInvalide(
+                    "La surface « %s » référence l'obstacle inconnu « %s »."
+                    % (surface.repere, repere))
+            lot.append(par_repere[repere])
+            affectes.add(repere)
+        resultat[surface.repere] = tuple(lot)
+
+    orphelins = sorted(set(par_repere) - affectes)
+    if orphelins:
+        raise EntreeInvalide(
+            "Obstacles non affectés à une surface : %s. Un obstacle sans "
+            "segment disparaîtrait du plan sans que personne le voie."
+            % ', '.join(orphelins))
+    return resultat
+
+
+# ─────────────────────────────────────────────────────── sortie
+def preuve_vers_json(preuve, marges, *, controles=(), pas_recherche_m=0.01):
+    """La PREUVE persistable d'AOF28, dans SON vocabulaire.
+
+    Les clés sont celles que ``VarianteCalepinage.raisons_de_non_publiabilite``
+    lit (``total_retenu``, ``total_optimal``, ``marge_troncon_min``,
+    ``marge_bande_min``) : c'est ce qui rend la garde de publication effective
+    au lieu d'être un commentaire.
+
+    **Une marge NON MESURÉE vaut ``None``, jamais 0.** ``Marges`` du moteur
+    rend ``0.0`` aussi bien pour « au ras » que pour « aucune marge de ce type
+    n'existe dans ce plan » (une toiture sans obstacle n'a aucune marge de
+    bande). Persister ce ``0.0`` refuserait la publication d'un plan sans
+    obstacle : la garde d'AOF28 se dévaluerait, et l'utilisateur apprendrait à
+    l'ignorer. Le critère de mesure est le repère fautif : ``marges_du_plan``
+    ne nomme une rangée ou un obstacle QUE lorsqu'il a réellement mesuré
+    quelque chose.
+    """
+    troncon = bande = None
+    if marges is not None:
+        if marges.rangee_critique:
+            troncon = round(marges.troncon_min_m, 6)
+        if marges.obstacle_critique:
+            bande = round(marges.bande_min_m, 6)
+    return {
+        'total_retenu': preuve.compte_retenu,
+        'total_optimal': preuve.compte_optimal,
+        'methode': preuve.methode.value,
+        'methode_exacte': bool(preuve.methode.exacte),
+        'optimal': bool(preuve.optimal),
+        'libelle': preuve.libelle,
+        'pas_cm': round(pas_recherche_m * 100.0, 3),
+        'nb_optima': preuve.nb_plans_optimaux,
+        'borne_superieure': preuve.borne_superieure,
+        'marge_troncon_min': troncon,
+        'marge_bande_min': bande,
+        'rangee_critique': marges.rangee_critique if marges else '',
+        'obstacle_critique': marges.obstacle_critique if marges else '',
+        'controles': list(controles),
+        'version_moteur': VERSION_MOTEUR,
+    }
+
+
+def resultat_vers_json(*, repere, hash_entree, modules, kwc, plans,
+                       engageable=True, motifs_non_engageable=()):
+    """Le RÉSULTAT persistable d'AOF28 : rangées explicites + tables + totaux.
+
+    **Sur la clé ``x0``.** Le contrat d'AOF28 nomme ``x0`` la position d'une
+    rangée ; le moteur, dans son repère unifié, la nomme ``y0`` (``x`` court le
+    long de la rangée, ``y`` en travers). Les deux clés sont émises avec la
+    MÊME valeur — elles ne peuvent donc pas diverger — pour honorer le contrat
+    déjà publié sans inscrire un axe faux dans la donnée.
+    """
+    return {
+        'repere': repere,
+        'hash_entree': hash_entree,
+        'version_moteur': VERSION_MOTEUR,
+        'schema_version': SCHEMA_VERSION,
+        'total_modules': int(modules),
+        'kwc': round(float(kwc), 3),
+        'engageable': bool(engageable),
+        'motifs_non_engageable': list(motifs_non_engageable),
+        'plans': list(plans),
+        'rangees': [rangee for plan in plans for rangee in plan['rangees']],
+    }
+
+
+def plan_vers_json(surface_repere, resultat_optimum, tables=()):
+    """Un plan de pose (une surface) : rangées explicites + tables posées."""
+    rangees = []
+    for rangee in resultat_optimum.plan.rangees:
+        rangees.append({
+            'surface': surface_repere,
+            # même valeur sous les deux noms — voir ``resultat_vers_json``
+            'x0': round(rangee.y0, 4),
+            'y0': round(rangee.y0, 4),
+            'kit': rangee.kit_code,
+            'modules': int(rangee.modules),
+            'emprise_m': round(rangee.emprise_m, 4),
+            'troncons': [[round(a, 4), round(b, 4)]
+                         for a, b in rangee.troncons],
+        })
+    return {
+        'surface': surface_repere,
+        'modules': int(resultat_optimum.plan.modules),
+        'ecart_a_l_optimum': int(resultat_optimum.ecart_a_l_optimum),
+        'rangees': rangees,
+        'tables': [{'x0': round(t.x0, 4), 'x1': round(t.x1, 4),
+                    'y0': round(t.y0, 4), 'y1': round(t.y1, 4),
+                    'kit': t.kit_code}
+                   for t in tables],
+    }
