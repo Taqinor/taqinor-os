@@ -64,14 +64,33 @@ function parseAppelOffreStatutChoices() {
     if (lines[i].includes('class Statut(models.TextChoices):')) { statutLineIdx = i; break }
   }
   expect(statutLineIdx, 'AppelOffre.Statut introuvable').toBeGreaterThan(-1)
-  // Les membres du choix sont les lignes indentées qui suivent IMMÉDIATEMENT
-  // (`NOM = 'valeur', 'Libellé'`) — on s'arrête à la première ligne qui ne
-  // correspond plus à ce patron (le champ `company` qui suit la classe).
+  // Les membres du choix sont les lignes indentées `NOM = 'valeur', 'Libellé'`.
+  // Elles ne suivent PAS forcément la ligne `class Statut(...)` immédiatement :
+  // la classe peut porter un DOCSTRING (AOF13 en a ajouté un). On saute donc
+  // tout ce qui précède le premier membre — docstring compris, en suivant les
+  // `"""` pour ne jamais confondre une phrase du docstring avec un membre — et
+  // on ne s'arrête qu'une fois au moins un membre lu, à la première ligne qui
+  // ne correspond plus au patron (la classe `ModePassation` qui suit).
   const values = []
+  let inDocstring = false
   for (let i = statutLineIdx + 1; i < lines.length; i += 1) {
-    const m = lines[i].match(/^\s+[A-Z][A-Z0-9_]*\s*=\s*'([a-z_]+)'/)
-    if (!m) break
-    values.push(m[1])
+    const line = lines[i]
+    if (inDocstring) {
+      if (line.includes('"""')) inDocstring = false
+      continue
+    }
+    const trimmed = line.trim()
+    if (trimmed.startsWith('"""')) {
+      // Docstring d'une seule ligne (`"""…"""`) → rien à ouvrir.
+      if (!(trimmed.length > 6 && trimmed.endsWith('"""'))) inDocstring = true
+      continue
+    }
+    const m = line.match(/^\s+[A-Z][A-Z0-9_]*\s*=\s*'([a-z_]+)'/)
+    if (m) { values.push(m[1]); continue }
+    if (values.length) break
+    // Avant le premier membre on tolère les lignes vides et les commentaires
+    // uniquement — toute autre ligne signifie que le parseur a divergé.
+    if (trimmed !== '' && !trimmed.startsWith('#')) break
   }
   expect(values.length, 'aucune valeur de choix extraite — le parseur a divergé du format réel').toBeGreaterThan(0)
   return values

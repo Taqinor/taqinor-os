@@ -23,9 +23,20 @@ import { statusPill } from '../../ui/module'
    ========================================================================== */
 
 // ── Affaire (AppelOffre.statut) ─────────────────────────────────────────────
+// AOF13 a DÉTAILLÉ le cycle : `en_preparation` reste une valeur historique
+// valide (aucune migration de données), les six étapes qui l'encadrent la
+// remplacent pour toute nouvelle affaire. L'ordre ci-dessous EST l'ordre du
+// cycle réel — la garde anti-drift de `statusAo.test.jsx` exige que ces clés
+// couvrent EXACTEMENT `AppelOffre.Statut`.
 export const STATUT_AFFAIRE = {
   identifie: { label: 'Identifié', tone: 'neutral' },
-  en_preparation: { label: 'En préparation', tone: 'info' },
+  analyse_cps: { label: 'Analyse du CPS', tone: 'info' },
+  releve: { label: 'Relevé de la toiture', tone: 'info' },
+  etude: { label: 'Étude / calepinage', tone: 'info' },
+  chiffrage: { label: 'Chiffrage', tone: 'info' },
+  dossier: { label: 'Montage du dossier', tone: 'info' },
+  pret_a_deposer: { label: 'Prêt à déposer', tone: 'info' },
+  en_preparation: { label: 'En préparation (historique)', tone: 'info' },
   depose: { label: 'Déposé', tone: 'warning' },
   gagne: { label: 'Gagné', tone: 'success' },
   perdu: { label: 'Perdu', tone: 'danger' },
