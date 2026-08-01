@@ -27,6 +27,12 @@ import { Button } from '../../../ui'
    }
    ========================================================================== */
 
+// Nom accessible du graphe. Il reste STABLE : le résumé du plateau est une
+// légende VISIBLE (le `<p data-plateau-resume>` sous le graphe), il ne doit pas
+// être répété comme nom de l'image — sinon un lecteur d'écran l'énonce deux
+// fois, et le même texte apparaît en double dans le document.
+const NOM_GRAPHE = "Compte de modules selon la largeur d'allée"
+
 const L = 320
 const H = 140
 const MARGE_G = 8
@@ -71,10 +77,10 @@ export default function AlleeGratuiteChart({ graphe, onAppliquer, perime = false
       <svg
         viewBox={`0 0 ${L} ${H}`}
         role="img"
-        aria-label={plateau?.resume || "Compte de modules selon la largeur d'allée"}
+        aria-label={NOM_GRAPHE}
         className="w-full rounded-md border border-border bg-card"
       >
-        <title>{plateau?.resume || "Compte de modules selon la largeur d'allée"}</title>
+        <title>{NOM_GRAPHE}</title>
 
         {/* Plateau GRATUIT : la bande où le compte ne bouge pas. */}
         {plateau && (
