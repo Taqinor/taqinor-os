@@ -59,6 +59,11 @@ export function Selection({
   const [focus, setFocus] = useState(null)
   const [marquee, setMarquee] = useState(null)
   const geste = useRef(null)
+  // Compteur de geste — remplace un horodatage : suffit à distinguer deux
+  // rotations qui se suivraient sans `finGeste()` intermédiaire, sans appeler
+  // d'API impure (`Date.now`) depuis un gestionnaire (lu/écrit ici, jamais
+  // pendant le rendu).
+  const compteurGeste = useRef(0)
 
   const m = (px) => px * metresParPixel
   const boite = bboxDePoints(points)
@@ -151,12 +156,13 @@ export function Selection({
     e.stopPropagation()
     if (!centre || !versMonde) return
     const pt = versMonde(e)
+    compteurGeste.current += 1
     geste.current = {
       type: 'rotation',
       centre,
       depart: points,
       angle0: Math.atan2(pt.y - centre.y, pt.x - centre.x),
-      cle: `rotation-${Date.now()}`,
+      cle: `rotation-${compteurGeste.current}`,
     }
     e.currentTarget.setPointerCapture?.(e.pointerId)
   }

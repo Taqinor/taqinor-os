@@ -2,8 +2,9 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import ModeChantier, {
   BarreGabarits, PaveNumeriqueCote, CapturePhotoRepere, CalepinageLectureSeule,
-  DEFAULT_GABARITS, TOUCH_TARGET_CLASS, RAISON_CALEPINAGE_LECTURE_CHANTIER,
+  TOUCH_TARGET_CLASS, RAISON_CALEPINAGE_LECTURE_CHANTIER,
 } from './ModeChantier'
+import { DEFAULT_GABARITS } from './ModeChantier.constantes'
 
 /* AOF189 — Mode CHANTIER (tablette 768-1024). Trois garanties du Done= :
    1) relevé réalisable au doigt (les gabarits/pavé/photo répondent à un tap,

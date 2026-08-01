@@ -85,6 +85,11 @@ const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 export function VariantesCompare({ affaireId, exporterImage = null }) {
   const peutVoirEconomie = useHasPermission('ao_rentabilite_voir')
   const [selection, setSelection] = useState([])
+  // Dernier tableau de variantes pour lequel `selection` a été ajustée — pas
+  // un `useEffect` : on compare pendant le RENDU (patron documenté « adjusting
+  // state when a prop changes ») pour éviter le rendu intermédiaire
+  // sélection-vide/cascade que produirait un effet.
+  const [variantesAjustees, setVariantesAjustees] = useState(null)
   const [miniatures, setMiniatures] = useState({})
   const [enCours, setEnCours] = useState(false)
 
@@ -108,15 +113,19 @@ export function VariantesCompare({ affaireId, exporterImage = null }) {
     [brut, peutVoirEconomie],
   )
 
-  // Sélection par défaut : les 4 premières (bornée à MAX_COLONNES).
-  useEffect(() => {
+  // Sélection par défaut : les 4 premières (bornée à MAX_COLONNES). Ajustée
+  // PENDANT LE RENDU quand `variantes` change de référence (nouveau fetch) —
+  // jamais dans un effet : React ré-exécute ce rendu avant peinture, sans le
+  // flash « sélection vide » d'un ajustement post-commit.
+  if (variantes !== variantesAjustees) {
+    setVariantesAjustees(variantes)
     setSelection((prev) => {
       const connus = new Set(variantes.map((v) => v.id))
       const gardees = prev.filter((id) => connus.has(id))
       if (gardees.length) return gardees
       return variantes.slice(0, MAX_COLONNES).map((v) => v.id)
     })
-  }, [variantes])
+  }
 
   const colonnes = useMemo(
     () => variantes.filter((v) => selection.includes(v.id)).slice(0, MAX_COLONNES),
