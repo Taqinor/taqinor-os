@@ -52,7 +52,8 @@ test('EZ14 : les adoptions sont REELLEMENT cablees dans les deux vues', () => {
   assert.match(KANBAN, /kind: 'lead_owner'/)
   assert.match(KANBAN, /kind: 'lead_stage'/)
   assert.match(KANBAN, /onReassign=\{reassignAvecUndo\}/)
-  assert.match(KANBAN, /onInlineSave=\{inlineSaveAvecUndo\}/)
+  // Round 3 (balayage) : au doigt le StageMover n'est plus monté — l'undo reste câblé souris+clavier.
+  assert.match(KANBAN, /onInlineSave=\{pointerCoarse \? undefined : inlineSaveAvecUndo\}/)
 })
 
 test('EZ14 : ZERO undo sur l\'argent — le grep du registre', () => {

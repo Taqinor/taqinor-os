@@ -54,4 +54,9 @@ test('le pager mobile claque net et le retour haptique de pose est défensif', (
   assert.match(KANBAN, /scrollend/)
   assert.match(KANBAN, /navigator\.vibrate\?\.\(5\)/)
   assert.match(KANBAN, /passive: true/)
+  // Classe de bug #43 (sens inverse) : usePanScroll renvoie une FONCTION
+  // callback-ref — lire `.current` dessus vaut undefined en silence et le
+  // haptique du round 2 etait mort-ne. Le noeud vit sur `.node.current`.
+  assert.match(KANBAN, /boardRef\.node\?\.current/)
+  assert.doesNotMatch(KANBAN, /boardRef\.current/)
 })

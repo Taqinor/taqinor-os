@@ -56,11 +56,23 @@ test('APX9 : le plafond kanban est 40 et borne le RENDU', () => {
 
 test('APX9 : ZERO appel reseau — « Charger plus » ne fait que decouper la memoire', () => {
   const chargerPlus = KANBAN.slice(KANBAN.indexOf('const chargerPlus = useCallback'))
-  const corps = chargerPlus.slice(0, chargerPlus.indexOf('}, [])'))
+  const corps = chargerPlus.slice(0, chargerPlus.indexOf('}, [capActif])'))
   assert.doesNotMatch(corps, /fetch|crmApi|dispatch|await/)
-  assert.match(corps, /\(prev\[stageKey\] \?\? RENDER_CAP\) \+ RENDER_CAP/)
+  // Audit balayage 2026-08-01 : la BASE depend du pointeur (capActif = 10 au
+  // doigt, 40 a la souris) ; le PAS d'extension reste RENDER_CAP.
+  assert.match(corps, /\(prev\[stageKey\] \?\? capActif\) \+ RENDER_CAP/)
   // Idem cote liste.
   assert.match(LISTE, /const chargerPlus = \(\) => setLimiteRendu\(\(n\) => n \+ LIST_RENDER_CAP\)/)
+})
+
+test('APX9-tactile (audit balayage) : 10 cartes par etape au pointeur grossier', () => {
+  // 6×40 cartes montees (~15 000 noeuds) etaient LE poids n°1 du geste : au
+  // doigt on monte 10 cartes/etape, et le StageMover (9 noeuds + <select>
+  // natif par carte, inatteignable au toucher) n'est plus monte du tout.
+  assert.match(KANBAN, /export const RENDER_CAP_TACTILE = 10/)
+  assert.match(KANBAN, /const capActif = pointerCoarse \? RENDER_CAP_TACTILE : RENDER_CAP/)
+  assert.match(KANBAN, /limiteParEtape\[col\.key\] \?\? capActif/)
+  assert.match(KANBAN, /onInlineSave=\{pointerCoarse \? undefined : inlineSaveAvecUndo\}/)
 })
 
 test('APX9 : les compteurs et sommes d\'en-tete restent les totaux REELS', () => {
