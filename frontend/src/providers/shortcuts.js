@@ -134,6 +134,17 @@ export const EDIT_SHORTCUTS = [
   { keys: 'Échap', label: 'Annuler l’édition de la cellule en cours' },
 ]
 
+// APX31 — parcours d'une LISTE au clavier (patron Gmail/Superhuman). Existait
+// déjà sur la file de leads (LW) ; les tickets SAV l'ont désormais aussi —
+// c'est l'agent qui en traite 40 par jour qui en a le plus besoin. Groupe
+// distinct d'« Édition » : on se DÉPLACE, on ne modifie rien.
+export const LIST_SHORTCUTS = [
+  { keys: 'J', label: 'Enregistrement suivant dans la liste' },
+  { keys: 'K', label: 'Enregistrement précédent dans la liste' },
+  { keys: 'Entrée', label: 'Ouvrir l’enregistrement' },
+  { keys: 'Échap', label: 'Fermer le panneau de détail' },
+]
+
 // NTUX18 — filtre la cheatsheet par un texte libre (recherche EN DIRECT dans
 // la cheatsheet elle-même) : ne garde, dans chaque groupe `{title, items}`,
 // que les raccourcis dont le LIBELLÉ contient la requête (insensible à la

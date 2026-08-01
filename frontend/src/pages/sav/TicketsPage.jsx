@@ -10,6 +10,9 @@ import {
   useSensor, useSensors,
 } from '@dnd-kit/core'
 import { Link, useSearchParams } from 'react-router-dom'
+// APX31 — MÊME garde champ-de-saisie que la file J/K des leads (LW) : une
+// seule définition dans tout l'ERP, jamais une copie locale.
+import { isTypingTarget } from '../../providers/shortcuts'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
@@ -1701,6 +1704,50 @@ export default function TicketsPage() {
 
   // L306/L314 — comptes par statut (ordre funnel) sur le jeu filtré.
   const counts = useMemo(() => statusCounts(rows), [rows])
+
+  /* APX31 — J/K + Entrée/Échap sur la liste des tickets.
+     -------------------------------------------------------------------------
+     Le patron existe déjà côté leads (LW, `LeadWorkspace.jsx`) mais AUCUNE
+     navigation clavier de liste n'existait côté SAV — or c'est l'agent qui en
+     traite 40 par jour qui en a le plus besoin. Mêmes gardes que LW :
+     `isTypingTarget` (on ne vole jamais une touche à un champ de saisie) et
+     aucun modificateur (⌘/Ctrl/Alt restent aux raccourcis du navigateur).
+       J = ticket suivant · K = précédent · Entrée = ouvrir · Échap = fermer.
+     J/K DÉPLACENT la sélection dans la liste FILTRÉE et TRIÉE affichée
+     (`rows`), donc ce que le clavier parcourt est exactement ce que l'œil voit.
+     Effet AVEC dep array (jamais un ré-abonnement à chaque rendu). */
+  const deplacerSelection = useCallback((pas) => {
+    if (!rows.length) return
+    const i = detailTicket ? rows.findIndex((r) => r.id === detailTicket.id) : -1
+    // Aucune sélection : J entre par le haut, K par le bas.
+    const cible = i < 0
+      ? (pas > 0 ? 0 : rows.length - 1)
+      : Math.min(Math.max(i + pas, 0), rows.length - 1)
+    setSelected(rows[cible])
+  }, [rows, detailTicket])
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (isTypingTarget(e.target)) return
+      if (e.key === 'j' || e.key === 'J') { e.preventDefault(); deplacerSelection(1) }
+      else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); deplacerSelection(-1) }
+      else if (e.key === 'Enter' && !detailTicket && rows.length) {
+        // Entrée ouvre le premier ticket quand rien n'est encore sélectionné ;
+        // avec une sélection, le panneau est DÉJÀ ouvert — on ne vole donc pas
+        // Entrée à un bouton ou un lien qui a le focus.
+        e.preventDefault()
+        setSelected(rows[0])
+      } else if (e.key === 'Escape' && detailTicket) {
+        closeDetail()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // `closeDetail` est recréé à chaque rendu (fermeture + nettoyage d'URL) :
+    // on dépend des valeurs qu'il lit, pas de son identité.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deplacerSelection, detailTicket, rows, searchParams])
 
   const hasFilters = filters.q || filters.statut || filters.type || filters.priorite
     || filters.technicien || filters.sous_garantie || filters.ouvert !== 'ouverts'

@@ -60,6 +60,10 @@ export * from './DefinitionList'
 export * from './Tabs'
 export * from './Accordion'
 export * from './Progress'
+// APX31 — avancement de checklist : UN composant, adopté par le panneau SAV ET
+// le panneau chantier (ils rendaient deux réponses différentes à la même
+// question « où en suis-je ? »).
+export * from './ChecklistProgress'
 export * from './FloatingActionButton'
 export * from './ScrollProgress'
 
