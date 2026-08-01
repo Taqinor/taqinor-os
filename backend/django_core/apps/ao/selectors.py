@@ -112,3 +112,37 @@ def fiche_lead_de_l_ao(appel_offre):
     from apps.crm.selectors import lead_card
 
     return lead_card(appel_offre.lead_id, appel_offre.company)
+
+
+# ── AOF163 — lecture cross-app du moteur PARTAGÉ, sans projet AO ───────────
+#
+# ``apps.ventes`` (villa / devis résidentiel) lit le moteur PAR ICI : c'est le
+# contrat de frontière du dépôt (les autres apps lisent ``ao`` via
+# ``apps.ao.selectors``, jamais via ``apps.ao.models`` ni ``apps.ao.services``
+# en direct). Le calcul reste sans effet de bord : aucune ligne AO n'est créée.
+
+def calepinage_sans_projet(*, surface, kits, parametres, obstacles=(),
+                           zones=(), politique=None, repere='SURFACE'):
+    """Calepine une enveloppe libre — LECTURE PURE, zéro écriture.
+
+    Point d'entrée nommé pour les consommateurs hors AO (villa). Il délègue au
+    service partagé d'AOF163 : un seul moteur, un seul format d'entrée.
+    """
+    from .services import calepiner_surface
+
+    return calepiner_surface(
+        surface=surface, kits=kits, parametres=parametres,
+        obstacles=obstacles, zones=zones, politique=politique, repere=repere)
+
+
+def calepinage_villa(area, *, ordre='lnglat', kit=None, retrait_m=None,
+                     pas_recherche_m=0.01):
+    """Calepine une toiture villa (``AreaRecord``) — LECTURE PURE.
+
+    ``ordre`` reste un argument EXPLICITE jusqu'ici : aucun appelant ne doit
+    pouvoir hériter d'un défaut deviné sur l'ordre lat/lng.
+    """
+    from .services import calepiner_villa
+
+    return calepiner_villa(area, ordre=ordre, kit=kit, retrait_m=retrait_m,
+                           pas_recherche_m=pas_recherche_m)

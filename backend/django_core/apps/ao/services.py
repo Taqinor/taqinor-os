@@ -1072,3 +1072,116 @@ def taux_reussite_ao(company):
         'total_resultats': resultats.count(),
         'taux_reussite_pct': taux,
     }
+
+
+# ── AOF163 — Point d'entrée VILLA du moteur PARTAGÉ, sans projet AO ────────
+#
+# Le moteur ``core/calepinage`` a DEUX consommateurs qui ne peuvent pas
+# s'importer l'un l'autre : ``apps.ao`` et ``apps.ventes``. Le format
+# d'obstacle AO (rectangle + dégagement PAR obstacle + PROVENANCE) est le
+# format CANONIQUE : la villa s'y adapte par
+# ``core.calepinage.adaptateurs.villa`` (AOF162), jamais l'inverse.
+#
+# Ces fonctions sont PURES au sens base de données : elles ne lisent et
+# n'écrivent AUCUNE ligne AO. Un appel villa ne doit laisser aucune trace dans
+# ``apps/ao`` — un ``AppelOffre`` fantôme par simulation de villa serait à la
+# fois une fuite de données et un compteur faux (test dédié).
+
+def _entree_calepinage_canonique(*, repere, surface, kits, parametres,
+                                 obstacles=(), zones=()):
+    """Assemble l'``EntreeCalepinage`` canonique (format AO) — sans ORM.
+
+    ``appliquer_regles`` DÉRIVE le dégagement de chaque obstacle depuis son
+    type et sa provenance : le moteur ne devine jamais un dégagement en
+    silence, et la villa hérite donc exactement de la même règle que l'AO.
+    """
+    from core.calepinage.obstacles import appliquer_regles
+    from core.calepinage.serialisation import EntreeCalepinage
+
+    return EntreeCalepinage(
+        repere=repere, surfaces=(surface,), kits=tuple(kits),
+        parametres=parametres,
+        obstacles=tuple(appliquer_regles(tuple(obstacles))),
+        zones=tuple(zones))
+
+
+def _preuve_publiable(resultat, politique):
+    """``ResultatOptimum`` -> preuve sérialisable (aucun coût, aucun prix)."""
+    return {
+        'methode': resultat.preuve.methode.value,
+        'pas_recherche_m': resultat.preuve.pas_recherche_m,
+        'compte_retenu': resultat.preuve.compte_retenu,
+        'compte_optimal': resultat.preuve.compte_optimal,
+        'borne_superieure': resultat.preuve.borne_superieure,
+        'nb_plans_optimaux': resultat.preuve.nb_plans_optimaux,
+        'ecart_a_l_optimum': resultat.ecart_a_l_optimum,
+        'politique_pas': getattr(politique, 'code', ''),
+    }
+
+
+def calepiner_surface(*, surface, kits, parametres, obstacles=(), zones=(),
+                      politique=None, repere='SURFACE'):
+    """Calepine UNE enveloppe et ses obstacles — SANS aucun projet AO.
+
+    C'est le point d'entrée PARTAGÉ : la villa (``apps.ventes``, qui lit via
+    ``apps.ao.selectors``) et l'AO passent par le MÊME moteur sur le MÊME
+    format d'entrée. Aucune ligne n'est créée, aucune n'est lue : la fonction
+    ne touche pas l'ORM (elle est appelable hors transaction, hors société).
+
+    Rend un dict ``{'entree', 'resultat', 'preuve', 'rangees', 'tables'}`` où
+    ``resultat`` est un ``ResultatCalepinage`` — le MÊME objet que le chemin
+    AO, porteur du couple ``(hash_entree, version_moteur)``.
+    """
+    from core.calepinage.perf import optimiser_economique
+    from core.calepinage.poseur import poser_plan
+    from core.calepinage.serialisation import ResultatCalepinage
+
+    entree = _entree_calepinage_canonique(
+        repere=repere, surface=surface, kits=kits, parametres=parametres,
+        obstacles=obstacles, zones=zones)
+    calcul = optimiser_economique(entree.surfaces[0], entree.parametres,
+                                  entree.obstacles, entree.zones, politique)
+    rangees = tuple((y0, entree.parametres.kit(code))
+                    for y0, code in calcul.rangees)
+    tables = poser_plan(entree.surfaces[0], rangees, entree.obstacles,
+                        entree.zones)
+    return {
+        'entree': entree,
+        'resultat': ResultatCalepinage.depuis_resultat(entree, calcul),
+        'preuve': _preuve_publiable(calcul, politique),
+        'rangees': calcul.rangees,
+        'tables': tuple(tables),
+    }
+
+
+def calepiner_villa(area, *, ordre='lnglat', kit=None, retrait_m=None,
+                    pas_recherche_m=0.01):
+    """Calepine une toiture VILLA (``AreaRecord`` du lecteur de cartes).
+
+    ``ordre`` est EXPLICITE et jamais deviné : le lecteur de cartes sérialise
+    en ``[lng, lat]`` (GeoJSON) tandis que le lead CRM stocke ``[lat, lng]`` —
+    une confusion produit une toiture retournée, plausible et fausse.
+
+    Aucune ligne AO n'est créée ni lue : une villa n'a pas de projet AO.
+    Rend le même dict que ``calepiner_surface`` + ``projection``,
+    ``politique`` et ``panneaux`` (structure compatible avec l'écran existant,
+    pour ne rien casser côté front).
+    """
+    from core.calepinage.adaptateurs.villa import (
+        RETRAIT_VILLA_M, vers_entree, vers_panneaux,
+    )
+    from core.calepinage.types import KIT_VILLA_720
+
+    kit = kit or KIT_VILLA_720
+    entree, projection, politique = vers_entree(
+        area, ordre=ordre, kit=kit,
+        retrait_m=RETRAIT_VILLA_M if retrait_m is None else retrait_m,
+        pas_recherche_m=pas_recherche_m)
+    sortie = calepiner_surface(
+        surface=entree.surfaces[0], kits=entree.kits,
+        parametres=entree.parametres, obstacles=entree.obstacles,
+        zones=entree.zones, politique=politique, repere=entree.repere)
+    sortie['projection'] = projection
+    sortie['politique'] = politique
+    sortie['panneaux'] = vers_panneaux(sortie['tables'], projection, kit)
+    return sortie
