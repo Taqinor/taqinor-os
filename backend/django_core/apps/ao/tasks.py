@@ -188,3 +188,49 @@ def produire_pack_task(job_id=None, company_id=None, dossier_id=None,
             job.marquer_termine()
     return {cle: rapport[cle] for cle in
             ('total', 'produites', 'reprises', 'echecs', 'complet')}
+
+
+@shared_task(name='ao.produire_rentabilite_xlsx')
+def produire_rentabilite_xlsx_task(job_id=None, company_id=None,
+                                   projet_id=None, **_ignores):
+    """AOF160 — produit le classeur DIRECTEUR de rentabilité en tâche de fond.
+
+    Passe en job dès que le classeur dépasse le seuil de confort d'une requête
+    HTTP (patron des exports lourds : ``core.jobs.submit`` + ``BackgroundJob``,
+    jamais une file maison). La tâche ne calcule RIEN elle-même : elle demande
+    au service directeur l'économie du projet, puis délègue l'écriture à
+    ``fabrique.rendus.rentabilite_xlsx``.
+
+    Le classeur porte ``visibilite='directeur'`` : il est exclu de tout
+    manifeste de dépôt PAR CONSTRUCTION (sommaire AOF139, ZIP AOF151 et bon à
+    tirer AOF152 filtrent sur la visibilité). Sa distribution se fait par URL
+    signée à durée courte — une clé d'objet devinée ou partagée contournerait
+    sinon toute la permission.
+    """
+    import io
+
+    from core.models import BackgroundJob
+
+    from .fabrique.rendus.rentabilite_xlsx import ecrire_classeur
+
+    job = BackgroundJob.objects.filter(pk=job_id).first() if job_id else None
+    try:
+        from .services_directeur import economie_du_projet
+    except ImportError:
+        economie_du_projet = None
+    if economie_du_projet is None:
+        message = ('ao.produire_rentabilite_xlsx : aucun fournisseur '
+                   "d'économie (services_directeur.economie_du_projet) — "
+                   'rien à produire.')
+        logger.info(message)
+        if job is not None:
+            job.marquer_termine()
+        return {'produit': False, 'motif': message}
+
+    economie, reference = economie_du_projet(projet_id)
+    tampon = io.BytesIO()
+    ecrire_classeur(economie, tampon, reference_dossier=reference)
+    octets = tampon.getvalue()
+    if job is not None:
+        job.marquer_termine()
+    return {'produit': True, 'octets': len(octets), 'visibilite': 'directeur'}

@@ -275,3 +275,15 @@ le dict de contexte.
   pas encore de `DossierAO` à interroger. `verifier_registre` est appelable
   telle quelle par le contrôleur de cohérence (AOF146) et par le test du
   gabarit de pack (AOF116).
+- **AOF160 — partiellement livrée.** Le classeur directeur est livré et testé :
+  coût de revient par poste avec TVA sur achats DIFFÉRENCIÉE (10 % panneaux /
+  20 % reste), TVA collectée, TVA nette à reverser, bénéfice net HT, cellule de
+  CONTRÔLE DE TRÉSORERIE, variante « panneaux facturés à 10 % », montants
+  écrits en NOMBRES (jamais en chaînes), plus la tâche de fond
+  `ao.produire_rentabilite_xlsx`. Les quatre chiffres de contrôle du dossier
+  réel tombent au dirham (2 666 600 · 1 500 000 · 349 280 · −165 200) et
+  l'identité `4 999 920 − 3 150 640 − 349 280 = 1 500 000` est vérifiée par un
+  test. L'exclusion du pack est prouvée sur les TROIS assembleurs (sommaire,
+  ZIP, bon à tirer). En attente : `views_directeur.py` + `CanViewAoRentabilite`
+  + l'URL signée à durée courte, qui appartiennent à AOF157 (`EconomieAO`,
+  permission `ao_rentabilite_voir`) — non présent sur la branche.
