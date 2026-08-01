@@ -31,3 +31,10 @@ def generer_echeancier(appel_offre_id):
                     appel_offre_id)
         return {'creees': 0, 'mises_a_jour': 0, 'inchangees': 0}
     return generer_echeancier_ao(appel_offre)
+
+
+# AOF61 — le calepinage lourd vit dans son propre module (``calepinage_tasks``)
+# pour ne pas grossir ce fichier partagé par trois lanes. L'autodécouverte
+# Celery n'importe QUE ``<app>.tasks`` : ce ré-export est ce qui enregistre la
+# tâche ``ao.calculer_calepinage`` auprès du worker.
+from .calepinage_tasks import calculer_calepinage  # noqa: E402,F401
