@@ -832,6 +832,9 @@ function LeadCard({
             <span className="kb-call-nudge-text">Appel terminé — noter le résultat ?</span>
             <CallLogPopover
               leadId={lead.id}
+              // EZ1 — la relance déjà posée est TRANSMISE : le popover
+              // l'affiche et exige un choix, il ne l'écrase plus en silence.
+              relanceActuelle={lead.relance_date ?? null}
               trigger={<button type="button" className="kb-call-nudge-log">Noter</button>}
               onLogged={dismissNudge}
             />

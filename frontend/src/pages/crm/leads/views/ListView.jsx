@@ -1021,6 +1021,9 @@ export default function ListView({
             </span>
             <CallLogPopover
               leadId={nudgeLead.id}
+              // EZ1 — relance déjà posée transmise : affichée, jamais écrasée
+              // en silence.
+              relanceActuelle={nudgeLead.relance_date ?? null}
               trigger={<button type="button" className="lv-call-nudge-log">Noter</button>}
               onLogged={dismissNudge}
             />

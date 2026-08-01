@@ -9609,3 +9609,51 @@ textarea.form-control {
 .crm-controlbar {
   margin-bottom: 0.75rem;
 }
+
+/* ===========================================================================
+   EZ1 — LE popover d'appel devient LE planificateur : date libre, objet
+   optionnel, et la relance existante AFFICHEE avec « Remplacer / Garder ».
+   ---------------------------------------------------------------------------
+   Etat verifie : le popover n'ecrivait qu'un `relance_date` via 4 offsets
+   figes, et ECRASAIT en silence une relance existante — jamais lue, jamais
+   affichee. Trois mecanismes rivaux se disputaient « planifier la suite » ;
+   il n'en reste qu'un pour la planification RAPIDE (le gabarit multi-etapes de
+   PlanActiviteDialog reste, c'est autre chose).
+   =========================================================================== */
+.clp-free-date,
+.clp-objet {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+}
+/* Le bloc de conflit est le seul endroit « attention » du popover : teinte
+   d'avertissement legere, jamais une alerte rouge (rien n'est casse — on
+   demande simplement une decision). */
+.clp-conflit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in srgb, var(--warning) 12%, var(--card));
+}
+.clp-conflit-texte {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--foreground);
+}
+.clp-conflit-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+/* EZ1 — ancre invisible du popover de planification ouvert depuis une carte
+   ou une ligne (il n'a pas de declencheur fixe a l'ecran). */
+.lp-relance-anchor {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+}

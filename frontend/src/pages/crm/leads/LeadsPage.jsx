@@ -39,6 +39,9 @@ import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { useEquipeMembreIds } from '../../../hooks/useEquipeMembreIds'
 import useDocumentTitle from '../../../hooks/useDocumentTitle'
 import LeadWorkspace from '../../../features/crm/workspace/LeadWorkspace'
+// EZ1 — LA surface unique de planification rapide (le même popover que le
+// journal d'appel, en mode planification).
+import CallLogPopover from '../../../features/crm/CallLogPopover'
 import ExcelImport from '../../../components/ExcelImport'
 // LB50 — le titre EST le sélecteur de vues (blueprint cockpit) ; la barre
 // SavedViewsBar reste le composant des AUTRES écrans (ClientList).
@@ -594,16 +597,18 @@ export default function LeadsPage() {
   }, [])
 
   // QX25 — « Planifier une relance » (bouton jusqu'ici inerte sur la carte
-  // kanban, LeadCard.jsx) : ouvre la fiche du lead directement sur la section
-  // « Suivi commercial » (relance_date), même machinerie que les autres
-  // ouvertures de fiche (setEditLead/setShowForm).
+  // kanban, LeadCard.jsx) : ouvrait la fiche du lead sur la section « Suivi
+  // commercial ».
+  // EZ1 — il ouvre désormais LE MÊME popover que le journal d'appel, en mode
+  // planification : une seule surface de planification rapide dans tout
+  // l'écran (fin des 3 mécanismes rivaux), avec date libre, objet optionnel et
+  // la relance existante AFFICHÉE. Ouvrir la fiche entière pour poser une date
+  // coûtait la fiche entière.
   // LB6 — useCallback : passée à CHAQUE carte/ligne via viewProps ; les
   // setters `useState` sont stables par définition, `[]` suffit (bug #4).
+  const [relanceLead, setRelanceLead] = useState(null)
   const onPlanifierRelance = useCallback((lead) => {
-    setEditLead(lead)
-    setFormDevisIntent(null)
-    setFormFocusSection('pipeline')
-    setShowForm(true)
+    setRelanceLead(lead)
   }, [])
 
   // (Ré)assignation rapide du responsable depuis la carte / la liste. Le PATCH
@@ -1066,6 +1071,25 @@ export default function LeadsPage() {
           // fiche), réutilisé tel quel plutôt que dupliqué.
           leadsQueue={showForm ? filtered : null}
           onNavigateLead={showForm ? onOpenLead : null}
+        />
+      )}
+
+      {/* EZ1 — LA surface unique de planification rapide. Le MÊME popover que
+          le journal d'appel, en mode planification : date libre + objet
+          optionnel, et la relance déjà posée affichée avec le choix
+          « Remplacer / Garder » (fin de l'écrasement silencieux). Ancré au
+          centre de l'écran : il est ouvert depuis une carte ou une ligne, pas
+          depuis un déclencheur fixe. */}
+      {relanceLead && (
+        <CallLogPopover
+          key={relanceLead.id}
+          leadId={relanceLead.id}
+          mode="planification"
+          relanceActuelle={relanceLead.relance_date ?? null}
+          open
+          onOpenChange={(o) => { if (!o) setRelanceLead(null) }}
+          onLogged={() => { setRelanceLead(null); refetch() }}
+          trigger={<span className="lp-relance-anchor" aria-hidden="true" />}
         />
       )}
 
