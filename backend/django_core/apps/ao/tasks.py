@@ -38,3 +38,8 @@ def generer_echeancier(appel_offre_id):
 # Celery n'importe QUE ``<app>.tasks`` : ce ré-export est ce qui enregistre la
 # tâche ``ao.calculer_calepinage`` auprès du worker.
 from .calepinage_tasks import calculer_calepinage  # noqa: E402,F401
+
+# AOF71 — même raison pour l'ingestion d'un support de plan (rastérisation PDF
+# / normalisation d'image) : le corps vit dans ``ingestion_tasks``, ce
+# ré-export enregistre ``ao.ingerer_plan`` auprès du worker.
+from .ingestion_tasks import ingerer_plan  # noqa: E402,F401
