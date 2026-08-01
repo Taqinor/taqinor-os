@@ -5,6 +5,7 @@ import {
   provenanceLabel, provenanceToken, provenanceDescription, provenancePrintHex,
 } from './provenance'
 import { ProvenanceBadge } from './components/ProvenanceBadge'
+import { TooltipProvider } from '../../ui/Tooltip'
 
 /* AOF9 — Tokens de provenance + `ProvenanceBadge`.
    ----------------------------------------------------------------------------
@@ -144,23 +145,34 @@ describe('correspondance token ↔ hex normatif d’impression', () => {
   })
 })
 
+// `ProvenanceBadge` porte une infobulle Radix : `SimpleTooltip` EXIGE un
+// `TooltipProvider` ancêtre (contrat écrit dans `ui/Tooltip.jsx` : « Envelopper
+// l'app (ou une zone) dans <TooltipProvider> »), sinon Radix jette
+// « `Tooltip` must be used within `TooltipProvider` ». C'est le patron réel du
+// dépôt — chaque écran enveloppe sa zone (`studio/StudioShell.jsx:257` pour
+// l'AO). Rendre le badge nu, c'est le tester dans un environnement qui
+// n'existe dans aucune page : on reproduit donc l'ancêtre ici.
+function renderBadge(ui) {
+  return render(<TooltipProvider>{ui}</TooltipProvider>)
+}
+
 describe('<ProvenanceBadge />', () => {
   it.each(PROVENANCE_ORDER)('rend le libellé et le hook data-ao-provenance="%s" (contrat AOF8)', (level) => {
-    render(<ProvenanceBadge level={level} />)
+    renderBadge(<ProvenanceBadge level={level} />)
     expect(screen.getByText(provenanceLabel(level))).toBeInTheDocument()
     const el = document.querySelector(`[data-ao-provenance="${level}"]`)
     expect(el).not.toBeNull()
   })
 
   it('pose la couleur via var(--ao-provenance-<niveau>) — jamais un hex en dur', () => {
-    render(<ProvenanceBadge level="confirmer" />)
+    renderBadge(<ProvenanceBadge level="confirmer" />)
     const dot = document.querySelector('[data-ao-provenance="confirmer"] > span')
     expect(dot).not.toBeNull()
     expect(dot.style.background).toBe('var(--ao-provenance-confirmer)')
   })
 
   it('accepte une description custom qui remplace la description normative', () => {
-    render(<ProvenanceBadge level="mesure" description="Dégagement dérivé de la fermeture Nord." />)
+    renderBadge(<ProvenanceBadge level="mesure" description="Dégagement dérivé de la fermeture Nord." />)
     // Le libellé reste celui du niveau ; la description custom pilote l'infobulle
     // (non assertée ici — Radix ne l'ouvre qu'au survol/focus, cf. setup.js).
     expect(screen.getByText('Mesuré')).toBeInTheDocument()

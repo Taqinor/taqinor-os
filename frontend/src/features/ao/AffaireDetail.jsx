@@ -86,9 +86,14 @@ export default function AffaireDetail() {
   const [note, setNote] = useState('')
   const [sending, setSending] = useState(false)
 
+  // `select` OBLIGATOIRE : `useResource` passe la valeur résolue TELLE QUELLE
+  // (cf. son contrat — « pour un axios brut, passez `select: (res) => res.data` »).
+  // Sans lui, `affaire` valait la réponse axios entière et TOUS les champs de
+  // la fiche étaient lus un cran trop haut : titre « #undefined », objet,
+  // statut et bandeau vides. Même convention que `DashboardPage.jsx`.
   const { data: affaire, loading, error } = useResource(
     () => aoApi.affaires.get(id), id,
-    { errorMessage: 'Affaire introuvable.' },
+    { select: (res) => res.data, errorMessage: 'Affaire introuvable.' },
   )
   const { data: comments, refetch: refetchComments } = useResource(
     () => recordsApi.getComments('ao.appeloffre', id), id,

@@ -30,8 +30,16 @@ vi.mock('../../api/aoApi', () => ({
 }))
 
 import AffairesList from './AffairesList'
+import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-const renderScreen = () => render(<MemoryRouter><AffairesList /></MemoryRouter>)
+// `ListShell` rend un `DataTable`, qui lit la densité via `useDensity()` →
+// `useTheme()` : sans `<ThemeProvider>` ancêtre, le hook JETTE (« useTheme doit
+// être utilisé dans <ThemeProvider> ») et l'écran ne rend rien. C'est le
+// patron de test de TOUT écran à DataTable dans ce dépôt (flotte, contrats,
+// assurances…) ; l'app le fournit à la racine.
+const renderScreen = () => render(
+  <MemoryRouter><ThemeProvider><AffairesList /></ThemeProvider></MemoryRouter>,
+)
 
 const ROWS = [
   {
@@ -57,35 +65,48 @@ beforeEach(() => {
   mocks.update.mockResolvedValue({ data: {} })
 })
 
+// `DataTable` rend SIMULTANÉMENT le tableau bureau et les cartes mobiles — le
+// repli est purement CSS, et jsdom n'applique aucune media query : chaque
+// libellé existe donc EN DOUBLE dans le DOM et tout `getByText` global est
+// ambigu. On attend le rendu, puis on porte chaque requête sur la ligne
+// `<tr>` du tableau bureau (les cartes mobiles ne sont pas des `<tr>`).
+async function findRow(reference) {
+  const cells = await screen.findAllByText(reference)
+  const row = cells.map((c) => c.closest('tr')).find(Boolean)
+  expect(row, `ligne ${reference} absente du tableau bureau`).toBeTruthy()
+  return row
+}
+
 describe('AffairesList', () => {
   it('charge les affaires via aoApi.affaires.list() (useResource, aucun fetch manuel)', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.list).toHaveBeenCalled())
-    expect(await screen.findByText('AO-2026-001')).toBeInTheDocument()
-    expect(screen.getByText('AO-2026-002')).toBeInTheDocument()
+    expect(await findRow('AO-2026-001')).toBeInTheDocument()
+    expect(await findRow('AO-2026-002')).toBeInTheDocument()
   })
 
   it('affiche objet, acheteur, montant estimé et la pastille de statut de chaque affaire', async () => {
     renderScreen()
-    await screen.findByText('AO-2026-001')
-    expect(screen.getByText('Centrale solaire école')).toBeInTheDocument()
-    expect(screen.getByText('Commune X')).toBeInTheDocument()
-    expect(screen.getByText('Déposé')).toBeInTheDocument()
-    expect(screen.getByText('Gagné')).toBeInTheDocument()
+    // Porté ligne par ligne : on vérifie non seulement que la valeur est là,
+    // mais qu'elle est sur la BONNE affaire.
+    const row1 = await findRow('AO-2026-001')
+    expect(within(row1).getByText('Centrale solaire école')).toBeInTheDocument()
+    expect(within(row1).getByText('Commune X')).toBeInTheDocument()
+    expect(within(row1).getByText('Déposé')).toBeInTheDocument()
+    const row2 = await findRow('AO-2026-002')
+    expect(within(row2).getByText('Pompage agricole')).toBeInTheDocument()
+    expect(within(row2).getByText('Gagné')).toBeInTheDocument()
   })
 
   it('capacité vs engagement et complétude du dossier : « — » quand le champ backend est absent (jamais un calcul de substitution)', async () => {
     renderScreen()
-    await screen.findByText('AO-2026-002')
-    const row2 = screen.getByText('AO-2026-002').closest('tr')
-    expect(row2).not.toBeNull()
+    const row2 = await findRow('AO-2026-002')
     expect(row2.textContent).toContain('—')
   })
 
   it('« Dupliquer » appelle aoApi.affaires.dupliquer() (AOF130, service réel) et navigue vers la copie', async () => {
     renderScreen()
-    await screen.findByText('AO-2026-001')
-    const row1 = screen.getByText('AO-2026-001').closest('tr')
+    const row1 = await findRow('AO-2026-001')
     // RowActions (DataTable) rend chaque action à la fois en icône rapide
     // (aria-label = label de l'action) ET dans le menu kebab persistant —
     // l'icône rapide suffit, pas besoin d'ouvrir le menu Radix dans le test.
@@ -96,8 +117,7 @@ describe('AffairesList', () => {
 
   it('« Archiver » appelle update(id, { archive: true }) — JAMAIS remove() (archivage logique)', async () => {
     renderScreen()
-    await screen.findByText('AO-2026-001')
-    const row1 = screen.getByText('AO-2026-001').closest('tr')
+    const row1 = await findRow('AO-2026-001')
     fireEvent.click(within(row1).getByLabelText('Archiver'))
     await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(1, { archive: true }))
     expect(mocks.remove).not.toHaveBeenCalled()
@@ -105,8 +125,7 @@ describe('AffairesList', () => {
 
   it('cliquer une ligne navigue vers la fiche affaire', async () => {
     renderScreen()
-    const cell = await screen.findByText('AO-2026-001')
-    fireEvent.click(cell.closest('tr'))
+    fireEvent.click(await findRow('AO-2026-001'))
     expect(mocks.navigate).toHaveBeenCalledWith('/ao/affaires/1')
   })
 })
@@ -117,8 +136,16 @@ describe('AffairesList.jsx — contrat de source', () => {
   const src = readFileSync(join(here, 'AffairesList.jsx'), 'utf8')
 
   it('n’importe ni useState ni useEffect de React (données 100% via useResource)', () => {
-    expect(src).not.toMatch(/\buseState\b/)
-    expect(src).not.toMatch(/\buseEffect\b/)
+    // La regex ne peut pas balayer la source BRUTE : l'en-tête du fichier
+    // DOCUMENTE justement « zéro `useState`/`useEffect` de fetch », donc elle
+    // se déclenchait sur le commentaire qui affirme l'invariant qu'elle
+    // vérifie. On vise le CODE — ce que le fichier importe réellement de
+    // React, et tout appel de l'un des deux hooks.
+    const reactImport = src.match(/^import\s+\{([^}]*)\}\s+from\s+'react'/m)?.[1] ?? ''
+    expect(reactImport).not.toMatch(/\buseState\b/)
+    expect(reactImport).not.toMatch(/\buseEffect\b/)
+    expect(src).not.toMatch(/\buseState\s*\(/)
+    expect(src).not.toMatch(/\buseEffect\s*\(/)
   })
 
   it('utilise useResource + aoApi, jamais un axios.get direct', () => {
