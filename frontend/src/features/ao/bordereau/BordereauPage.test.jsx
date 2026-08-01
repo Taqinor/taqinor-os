@@ -72,6 +72,14 @@ const renderPage = (props) => render(
   <BordereauPage bordereau={AVANT} {...services} {...props} />,
 )
 
+/* `formatMAD` s'appuie sur `Intl` fr-FR, qui sépare les milliers par une ESPACE
+   FINE INSÉCABLE (U+202F). Testing Library normalise les espaces du texte du
+   DOM mais PAS la chaîne attendue : `getByText(formatMAD(182000))` échouait donc
+   alors que l'écran affichait bien « 182 000,00 MAD ». On compare la chaîne
+   attendue normalisée de la même façon — le montant reste vérifié au caractère
+   près, seule la classe d'espace est neutralisée. */
+const mad = (valeur) => formatMAD(valeur).replace(/\s+/g, ' ')
+
 beforeEach(() => {
   vi.clearAllMocks()
   services.onDeplacerLigne.mockResolvedValue({ data: APRES })
@@ -83,7 +91,7 @@ beforeEach(() => {
 describe('BordereauPage (AOF179)', () => {
   it('déplacer une ligne appelle le service de renumérotation et affiche le total INCHANGÉ du serveur', async () => {
     renderPage()
-    expect(screen.getByText(formatMAD(TOTAUX.total_ttc))).toBeInTheDocument()
+    expect(screen.getByText(mad(TOTAUX.total_ttc))).toBeInTheDocument()
 
     await userEvent.click(
       screen.getByRole('combobox', { name: /Déplacer « Câbles DC Bâtiment B »/ }),
@@ -93,14 +101,14 @@ describe('BordereauPage (AOF179)', () => {
     await waitFor(() => expect(services.onDeplacerLigne).toHaveBeenCalledWith(L_MANUELLE, 2))
     // Renumérotation visible ET total STRICTEMENT identique (preuve serveur).
     await waitFor(() => expect(screen.getByText('16')).toBeInTheDocument())
-    expect(screen.getByText(formatMAD(TOTAUX.total_ttc))).toBeInTheDocument()
-    expect(screen.getByText(formatMAD(TOTAUX.total_ht))).toBeInTheDocument()
+    expect(screen.getByText(mad(TOTAUX.total_ttc))).toBeInTheDocument()
+    expect(screen.getByText(mad(TOTAUX.total_ht))).toBeInTheDocument()
   })
 
   it('AUCUN total n’est dérivé côté front : le total de ligne du serveur l’emporte sur quantité × PU', () => {
     renderPage()
-    expect(screen.getByText(formatMAD(182000))).toBeInTheDocument()
-    expect(screen.queryByText(formatMAD(182400))).not.toBeInTheDocument()
+    expect(screen.getByText(mad(182000))).toBeInTheDocument()
+    expect(screen.queryByText(mad(182400))).not.toBeInTheDocument()
   })
 
   it('affiche les trois régimes de quantité avec leur badge', () => {
