@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Pin, Plus, X } from 'lucide-react'
 import useInstalledApps from '../../lib/apps/useInstalledApps'
+import AppIcon from '../../ui/AppIcon'
 
 // Même clé que AppLauncher.jsx (VX9) — état d'épinglage PARTAGÉ.
 const PINNED_KEY = 'taqinor.sidebar.pinned'
@@ -103,7 +104,9 @@ export default function PinnedApps({ collapsed }) {
             title={entry.label}
             aria-label={entry.label}
           >
-            <span className="sidebar-pinned-icon">{entry.icon}</span>
+            {/* ODY9 — LE composant d'icône d'app, identique aux trois autres
+                surfaces (Menu d'accueil, lanceur VX9, écran Applications). */}
+            <AppIcon icon={entry.icon} accent={entry.accent} size="xs" className="sidebar-pinned-icon" />
           </NavLink>
         ))}
         <button

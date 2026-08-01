@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../ui/Dialog'
 import useInstalledApps from '../../lib/apps/useInstalledApps'
+import AppIcon from '../../ui/AppIcon'
 import { isTypingTarget } from '../../providers/shortcuts'
 
 // Même clé que VX10 (PinnedApps) — état d'épinglage PARTAGÉ entre la Sidebar et
@@ -217,7 +218,9 @@ function AppLauncherSection({ title, entries, pinned, onOpen, onTogglePin }) {
             className="app-launcher-tile"
             onClick={() => onOpen(entry)}
           >
-            <span className="app-launcher-tile-icon">{entry.icon}</span>
+            {/* ODY9 — LE composant d'icône d'app (même pastille que le Menu
+                d'accueil, les épinglés et l'écran Applications). */}
+            <AppIcon icon={entry.icon} accent={entry.accent} size="sm" />
             <span className="app-launcher-tile-label">{entry.label}</span>
             <span
               className="app-launcher-tile-pin"

@@ -21,6 +21,7 @@ import { Search, Star } from 'lucide-react'
 import useInstalledApps from '../../lib/apps/useInstalledApps'
 import { readPinned, writePinned, readRecent, pushRecent } from '../../lib/apps/appPrefs'
 import { normalise, grouperApps } from '../../lib/apps/appSearch'
+import AppIcon from '../../ui/AppIcon'
 
 export default function HomeMenu() {
   const navigate = useNavigate()
@@ -201,7 +202,10 @@ export default function HomeMenu() {
                         onClick={() => ouvrir(app)}
                         onKeyDown={(e) => onTileKeyDown(e, index)}
                       >
-                        <span className="home-menu-tile-icon" aria-hidden="true">{app.icon}</span>
+                        {/* ODY9 — LE composant d'icône d'app, partagé avec le
+                            lanceur VX9, les épinglés VX10 et l'écran
+                            Applications ODX5. */}
+                        <AppIcon icon={app.icon} accent={app.accent} size="sm" />
                         <span className="home-menu-tile-label">{app.label}</span>
                       </button>
                       <button
