@@ -6,7 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 // VX45 — ⚡/🔀 (emoji fonctionnels, rendu variable selon l'OS) remplacés par
 // Zap/GitMerge (GitMerge = même icône que la section « Doublons » de
 // LeadForm.jsx, features/crm/stages : un seul vocabulaire visuel).
-import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge, Maximize2, Minimize2 } from 'lucide-react'
+import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge, Maximize2, Minimize2, Move } from 'lucide-react'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import StateBlock from '../../../components/StateBlock'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
@@ -218,6 +218,18 @@ export default function LeadsPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [boardFullscreen])
+
+  /* (B1) — « MODE DÉPLACEMENT » du board au doigt. Le TouchSensor de dnd-kit
+     pose un `touchmove` NON PASSIF permanent sur `window` dès qu'il est monté,
+     ce qui alourdit TOUT le défilement au doigt de la page, drag ou pas. On ne
+     le monte donc, en pointeur grossier, que lorsque ce mode est actif —
+     allumé par l'entrée « Réorganiser par glisser » du menu ⋯ ci-dessous,
+     éteint par la chip du board. Volontairement NON persisté : il retombe OFF
+     à la navigation (ce n'est pas une préférence, c'est un geste). */
+  const [dragMode, setDragMode] = useState(false)
+  const exitDragMode = useCallback(() => setDragMode(false), [])
+  // L'entrée n'a de sens que sur le board : les autres vues n'ont pas de drag.
+  const dragModeOffert = view === 'kanban'
 
   // Filtres partagés par les quatre vues — persistés en localStorage (comme la
   // vue active) pour survivre à un rechargement de page.
@@ -882,6 +894,20 @@ export default function LeadsPage() {
                       </DropdownMenuItem>
                     )
                   })}
+                  {/* (B1) — le drag tactile du board coûte un écouteur
+                      `touchmove` non passif permanent : il s'allume à la
+                      demande, et seulement là où il sert. */}
+                  {dragModeOffert && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => setDragMode((v) => !v)}
+                        aria-current={dragMode ? 'true' : undefined}
+                      >
+                        <Move aria-hidden="true" /> Réorganiser par glisser{dragMode ? ' ✓' : ''}
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </>
               )}
             </DropdownMenuContent>
@@ -1027,6 +1053,9 @@ export default function LeadsPage() {
                masque proprement l'action quand la prop est absente. */
             onNewLead={isMobile ? undefined : openNew}
             onImportLeads={() => setShowImport(true)}
+            /* (B1) — mode déplacement au doigt (menu ⋯ ci-dessus). */
+            dragMode={dragMode}
+            onExitDragMode={exitDragMode}
           />
         )}
         {/* VX186 — Suspense autour des vues lazy uniquement (Kanban reste
