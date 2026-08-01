@@ -1,0 +1,218 @@
+{% comment %}
+AOF134 — Note de calcul. GABARIT SANS AUCUN CHIFFRE MÉTIER LITTÉRAL.
+
+Toute valeur imprimée vient de `note`, construit par
+apps/ao/fabrique/rendus/note_calcul.py à partir du seul contexte de dossier.
+Écrire ici un nombre en dur (une puissance, un rendement, un nombre de modules)
+recréerait la classe de défaut que tout le groupe AOF combat : une pièce qui
+survit à un changement d'équipement en affichant l'ancienne valeur.
+
+Le style est volontairement minimal et autonome. La feuille de style commune de
+la fabrique (AOF117, `apps/ao/fabrique/styles/base.css` + `templates/ao/_base.html`)
+prendra le relais quand elle sera posée ; ce gabarit s'y branchera alors par
+`{% templatetag openblock %} extends {% templatetag closeblock %}` sans qu'aucune
+valeur ne bouge.
+{% endcomment %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Note de calcul — {{ marche.objet|default:"" }}</title>
+  <style>
+    @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+    body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 9.5pt;
+           color: #1a1a1a; }
+    h1 { font-size: 15pt; margin: 0 0 2mm 0; }
+    h2 { font-size: 11pt; margin: 6mm 0 2mm 0;
+         border-bottom: 1px solid #999; padding-bottom: 1mm; }
+    table { width: 100%; border-collapse: collapse; margin-top: 2mm; }
+    th, td { border: 1px solid #b5b5b5; padding: 1.4mm 2mm;
+             text-align: left; vertical-align: top; }
+    th { background: #eee; font-weight: bold; }
+    td.n, th.n { text-align: right; }
+    tr.total td { font-weight: bold; background: #f4f4f4; }
+    .meta { font-size: 8pt; color: #555; }
+    .avertir { border: 1px solid #8a6d00; background: #fff8e1;
+               padding: 2mm 3mm; margin-top: 3mm; }
+    .empreinte { font-family: "DejaVu Sans Mono", monospace; font-size: 7pt;
+                 color: #666; word-break: break-all; }
+  </style>
+</head>
+<body>
+
+<h1>Note de calcul</h1>
+<p class="meta">
+  {{ identite.raison_sociale|default:"" }}
+  {% if marche.reference %} — marché {{ marche.reference }}{% endif %}
+  {% if marche.objet %} — {{ marche.objet }}{% endif %}
+</p>
+
+<h2>1. Hypothèse de productible</h2>
+<p>
+  Site&nbsp;: {{ note.productible.ville }}.
+  Productible retenu&nbsp;: {{ note.productible.valeur|floatformat:"-2" }}
+  {{ note.productible.unite }}.
+</p>
+<p class="meta">
+  Source&nbsp;: {{ note.productible.source }} (donnée du
+  {{ note.productible.date }}). Cette valeur est la SEULE utilisée par le
+  présent dossier&nbsp;; la simulation de rentabilité lit la même.
+</p>
+
+<h2>2. Puissance installée par bâtiment</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Bâtiment</th>
+      <th>Désignation</th>
+      <th class="n">Modules</th>
+      <th class="n">Puissance unitaire (Wc)</th>
+      <th class="n">Puissance crête (kWc)</th>
+      <th class="n">Production annuelle (kWh/an)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for ligne in note.batiments %}
+    <tr>
+      <td>{{ ligne.code }}</td>
+      <td>{{ ligne.libelle }}</td>
+      <td class="n">{{ ligne.modules }}</td>
+      <td class="n">{{ ligne.puissance_module_wc|floatformat:"-2" }}</td>
+      <td class="n">{{ ligne.kwc|floatformat:"-2" }}</td>
+      <td class="n">{{ ligne.production_annuelle_kwh|floatformat:"-0" }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="total">
+      <td colspan="2">Total</td>
+      <td class="n">{{ note.total.modules }}</td>
+      <td class="n"></td>
+      <td class="n">{{ note.total.kwc|floatformat:"-2" }}</td>
+      <td class="n">{{ note.total.production_annuelle_kwh|floatformat:"-0" }}</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>3. Chaînes photovoltaïques</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Bâtiment</th>
+      <th class="n">Modules par chaîne</th>
+      <th class="n">Nombre de chaînes</th>
+      <th>Observation</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for chaine in note.chaines %}
+    <tr>
+      <td>{{ chaine.batiment }}</td>
+      <td class="n">{{ chaine.modules_par_chaine }}</td>
+      <td class="n">{{ chaine.nombre }}</td>
+      <td>{{ chaine.observation|default:"" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>4. Dimensionnement et conformité des onduleurs</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Repère</th>
+      <th>Désignation</th>
+      <th class="n">Quantité</th>
+      <th class="n">Puissance AC (kW)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for unite in note.onduleurs.unites %}
+    <tr>
+      <td>{{ unite.repere }}</td>
+      <td>{{ unite.designation }}</td>
+      <td class="n">{{ unite.quantite }}</td>
+      <td class="n">{{ unite.puissance_ac_kw|floatformat:"-2" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p>
+  Puissance AC totale&nbsp;:
+  {{ note.onduleurs.puissance_ac_kw|floatformat:"-2" }} kW —
+  ratio DC/AC&nbsp;: {{ note.onduleurs.ratio_dc_ac|floatformat:"-3" }}.
+  Conformité au CPS&nbsp;:
+  {% if note.onduleurs.conforme_cps %}conforme{% else %}NON CONFORME{% endif %}.
+</p>
+{% if note.onduleurs.motifs %}
+<ul>
+  {% for motif in note.onduleurs.motifs %}<li>{{ motif }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+<h2>5. Bilan de stockage et couverture nocturne</h2>
+<table>
+  <tbody>
+    <tr>
+      <th>Énergie installée</th>
+      <td class="n">{{ note.stockage.kwh_installes|floatformat:"-2" }} kWh</td>
+    </tr>
+    <tr>
+      <th>Nombre de packs</th>
+      <td class="n">{{ note.stockage.nb_packs }}</td>
+    </tr>
+    <tr>
+      <th>Tension de banc</th>
+      <td class="n">{{ note.stockage.tension_banc_v|floatformat:"-1" }} V</td>
+    </tr>
+    <tr>
+      <th>Besoin nocturne</th>
+      <td class="n">{{ note.stockage.besoin_nocturne_kwh|floatformat:"-2" }} kWh</td>
+    </tr>
+    <tr>
+      <th>Couverture nocturne</th>
+      <td class="n">{{ note.stockage.couverture_nocturne_pct|floatformat:"-1" }} %</td>
+    </tr>
+    <tr>
+      <th>Marge disponible</th>
+      <td class="n">{{ note.stockage.marge_kwh|floatformat:"-2" }} kWh</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>6. Liaison inter-sites</h2>
+<table>
+  <tbody>
+    <tr>
+      <th>Nature</th>
+      <td>{{ note.liaison_inter_sites.nature }}</td>
+    </tr>
+    <tr>
+      <th>Longueur</th>
+      <td class="n">{{ note.liaison_inter_sites.longueur_m|floatformat:"-1" }} m</td>
+    </tr>
+    <tr>
+      <th>Section retenue</th>
+      <td class="n">{{ note.liaison_inter_sites.section_mm2|floatformat:"-1" }} mm²</td>
+    </tr>
+    <tr>
+      <th>Chute de tension calculée</th>
+      <td class="n">{{ note.liaison_inter_sites.chute_tension_pct|floatformat:"-2" }} %</td>
+    </tr>
+  </tbody>
+</table>
+
+{% if note.mention_a_confirmer %}
+<div class="avertir">
+  <strong>Hypothèses à confirmer à l'exécution.</strong>
+  Les cotes ci-dessous n'ont pas été relevées contradictoirement&nbsp;; les
+  bilans qui en dépendent seront revus lors de l'étude d'exécution.
+  <ul>
+    {% for cote in note.a_confirmer %}
+    <li>{{ cote.batiment }} — {{ cote.repere }}&nbsp;: {{ cote.libelle }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<p class="empreinte">Empreinte du contexte&nbsp;: {{ note.empreinte }}</p>
+
+</body>
+</html>

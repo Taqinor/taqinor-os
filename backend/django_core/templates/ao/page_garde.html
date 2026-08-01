@@ -1,0 +1,136 @@
+{% comment %}
+AOF139 — page de garde, sommaire et bordereau des pièces.
+
+AUCUN chiffre métier littéral, AUCUNE liste de pièces écrite ici : le sommaire
+est la projection du manifeste réel du pack. Ajouter une pièce au manifeste la
+fait apparaître ici sans qu'on touche à ce fichier — c'est tout l'intérêt.
+
+Les pièces `interne` et `directeur` sont écartées EN AMONT (construire_sommaire)
+et ne sont même pas transmises au gabarit : on ne peut pas divulguer par mégarde
+une variable qu'on n'a pas.
+{% endcomment %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>{{ marche.objet|default:"Dossier de soumission" }}</title>
+  <style>
+    @page { size: A4; margin: 20mm 18mm; }
+    body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 10pt;
+           color: #1a1a1a; }
+    .garde { text-align: center; padding-top: 30mm; }
+    .garde .societe { font-size: 20pt; font-weight: bold;
+                      letter-spacing: 0.5mm; }
+    .garde .legal { font-size: 8.5pt; color: #555; margin-top: 3mm; }
+    .garde .objet { font-size: 14pt; margin-top: 28mm; line-height: 1.5; }
+    .garde .marche { font-size: 11pt; margin-top: 6mm; }
+    .garde .depot { font-size: 9.5pt; color: #444; margin-top: 22mm; }
+    .saut { page-break-before: always; }
+    h2 { font-size: 12pt; margin: 0 0 3mm 0;
+         border-bottom: 1px solid #999; padding-bottom: 1mm; }
+    table { width: 100%; border-collapse: collapse; margin-top: 2mm; }
+    th, td { border: 1px solid #b5b5b5; padding: 1.4mm 2mm;
+             text-align: left; vertical-align: top; }
+    th { background: #eee; }
+    td.n, th.n { text-align: right; }
+    td.c, th.c { text-align: center; }
+    .manquante { color: #a00; font-weight: bold; }
+    .empreinte { font-family: "DejaVu Sans Mono", monospace; font-size: 7pt;
+                 color: #666; }
+    .pied { font-size: 8pt; color: #555; margin-top: 6mm; }
+  </style>
+</head>
+<body>
+
+<div class="garde">
+  <div class="societe">{{ identite.raison_sociale|default:"" }}</div>
+  <div class="legal">
+    {% if identite.ice %}ICE {{ identite.ice }}{% endif %}
+    {% if identite.identifiant_fiscal %} — IF {{ identite.identifiant_fiscal }}{% endif %}
+    {% if identite.rc %} — RC {{ identite.rc }}{% endif %}
+  </div>
+  <div class="legal">
+    {{ identite.adresse|default:"" }}
+    {% if identite.telephone %} — {{ identite.telephone }}{% endif %}
+  </div>
+
+  <div class="objet">
+    DOSSIER DE SOUMISSION<br>
+    {{ marche.objet|default:"" }}
+  </div>
+  <div class="marche">
+    {% if marche.reference %}Appel d'offres n° {{ marche.reference }}<br>{% endif %}
+    {% if marche.maitre_ouvrage %}Maître d'ouvrage : {{ marche.maitre_ouvrage }}{% endif %}
+  </div>
+  <div class="depot">
+    {% if marche.date_remise_plis %}
+      Date limite de remise des plis : {{ marche.date_remise_plis }}<br>
+    {% endif %}
+    Dossier remis en {{ exemplaires }} exemplaires —
+    corps du dossier au format {{ format_corps }},
+    planches au format {{ format_planche }}.
+  </div>
+</div>
+
+<div class="saut">
+  <h2>Sommaire</h2>
+  <table>
+    <thead>
+      <tr>
+        <th class="n">N°</th>
+        <th>Repère</th>
+        <th>Pièce</th>
+        <th class="c">Format</th>
+        <th class="c">Pages</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entree in sommaire %}
+      <tr>
+        <td class="n">{{ entree.numero }}</td>
+        <td>{{ entree.code }}</td>
+        <td>{{ entree.libelle }}</td>
+        <td class="c">{{ entree.format }}</td>
+        <td class="c">{{ entree.pages|default_if_none:"" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="saut">
+  <h2>Bordereau des pièces</h2>
+  <table>
+    <thead>
+      <tr>
+        <th class="n">N°</th>
+        <th>Repère</th>
+        <th>Pièce</th>
+        <th class="c">Obligatoire</th>
+        <th class="c">État</th>
+        <th>Empreinte</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for piece in pieces %}
+      <tr>
+        <td class="n">{{ piece.numero }}</td>
+        <td>{{ piece.code }}</td>
+        <td>{{ piece.libelle }}</td>
+        <td class="c">{% if piece.obligatoire %}oui{% else %}non{% endif %}</td>
+        <td class="c{% if piece.etat == 'MANQUANTE' %} manquante{% endif %}">
+          {{ piece.etat }}
+        </td>
+        <td class="empreinte">{{ piece.empreinte_courte }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="pied">
+    L'empreinte identifie la version exacte de chaque pièce remise&nbsp;; deux
+    versions d'une même pièce ne peuvent pas être confondues.
+  </p>
+  <p class="empreinte">Empreinte du dossier&nbsp;: {{ empreinte }}</p>
+</div>
+
+</body>
+</html>

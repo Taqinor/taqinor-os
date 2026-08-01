@@ -1,0 +1,124 @@
+{% comment %}
+AOF148 — rapport de contrôle. Pièce de PREUVE, pas de communication.
+
+Elle porte l'empreinte du pack contrôlé : sans elle, un rapport vert pourrait
+décrire un autre état du dossier que celui qu'on s'apprête à déposer.
+
+Aucun chiffre métier littéral : tout vient de `rapport`, composé par
+apps/ao/fabrique/rendus/rapport_controle.py.
+{% endcomment %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Rapport de contrôle — {{ rapport.reference_dossier }}</title>
+  <style>
+    @page { size: A4; margin: 18mm 16mm; }
+    body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 9.5pt;
+           color: #1a1a1a; }
+    h1 { font-size: 15pt; margin: 0 0 2mm 0; }
+    h2 { font-size: 11pt; margin: 6mm 0 2mm 0;
+         border-bottom: 1px solid #999; padding-bottom: 1mm; }
+    .verdict { display: inline-block; padding: 2mm 4mm; font-weight: bold;
+               font-size: 13pt; border: 2px solid #1a1a1a; margin: 3mm 0; }
+    .refuse { color: #a00; border-color: #a00; }
+    .conforme { color: #060; border-color: #060; }
+    table { width: 100%; border-collapse: collapse; margin-top: 2mm; }
+    th, td { border: 1px solid #b5b5b5; padding: 1.4mm 2mm;
+             text-align: left; vertical-align: top; }
+    th { background: #eee; }
+    td.c, th.c { text-align: center; }
+    .meta { font-size: 8pt; color: #555; }
+    .empreinte { font-family: "DejaVu Sans Mono", monospace; font-size: 7.5pt;
+                 color: #444; word-break: break-all; }
+    .cadre { border: 1px solid #666; padding: 2mm 3mm; margin-top: 4mm; }
+    .vide { color: #666; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<h1>Rapport de contrôle de cohérence</h1>
+<p class="meta">
+  Dossier {{ rapport.reference_dossier }} — contrôle établi le
+  {{ rapport.horodatage }}.
+</p>
+
+<div class="verdict {% if rapport.bloquants %}refuse{% else %}conforme{% endif %}">
+  {{ rapport.verdict }}
+</div>
+
+<div class="cadre">
+  <strong>Empreinte du pack contrôlé</strong>
+  <div class="empreinte">{{ rapport.empreinte_pack }}</div>
+  <p class="meta">
+    Ce rapport ne vaut que pour cette empreinte. Toute régénération du pack le
+    rend PÉRIMÉ&nbsp;: un rapport vert ne prouve rien s'il décrit un autre état
+    du dossier.
+  </p>
+</div>
+
+<h2>Synthèse</h2>
+<table>
+  <thead>
+    <tr><th>Sévérité</th><th class="c">Nombre</th></tr>
+  </thead>
+  <tbody>
+    {% for bloc in rapport.par_severite %}
+    <tr>
+      <td>{{ bloc.severite }}</td>
+      <td class="c">{{ bloc.nombre }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td><strong>Total des contrôles exécutés</strong></td>
+      <td class="c"><strong>{{ rapport.total }}</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+{% for bloc in rapport.par_severite %}
+  {% if bloc.lignes %}
+  <h2>{{ bloc.severite|capfirst }}</h2>
+  <table>
+    <thead>
+      <tr><th>Règle</th><th>Objet</th><th>Constat</th></tr>
+    </thead>
+    <tbody>
+      {% for ligne in bloc.lignes %}
+      <tr>
+        <td>{{ ligne.code }}</td>
+        <td>{{ ligne.objet|default:"" }}</td>
+        <td>{{ ligne.message }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+{% endfor %}
+
+<h2>Pièces hors contrôle</h2>
+{% if rapport.pieces_hors_controle %}
+<p>
+  {{ rapport.nombre_hors_controle }} pièce(s) fournie(s) à la main&nbsp;: elles
+  échappent aux invariants de la fabrique et ne sont donc PAS certifiées par
+  ce rapport.
+</p>
+<table>
+  <thead>
+    <tr><th>Pièce</th><th>Motif</th></tr>
+  </thead>
+  <tbody>
+    {% for piece in rapport.pieces_hors_controle %}
+    <tr>
+      <td>{{ piece.libelle|default:piece.code }}</td>
+      <td>{{ piece.motif|default:"" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="vide">Aucune&nbsp;: toutes les pièces du pack sont fabriquées et
+donc contrôlées.</p>
+{% endif %}
+
+</body>
+</html>

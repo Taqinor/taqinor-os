@@ -194,3 +194,104 @@ touché (une autre lane y travaille en parallèle).
   `docs/get-or-create-audit.md`, `docs/on-delete-financial-audit.md`,
   `docs/money-fields-audit.md`.
 
+
+---
+
+# NOTES — lane `backend/ao-fabrique B` (pièces, sanitisation, cohérence)
+
+Base réelle du worktree : `dev-aof` (34f21ad3). Le worktree avait été créé sur
+`main`, 138 commits en arrière — reset sur `dev-aof` avant la première tâche,
+sans quoi aucune fondation AO n'était présente.
+
+**Co-activité observée.** Au moment de ce run, `apps/ao/fabrique/` n'existait
+PAS sur `dev-aof` : la lane A (AOF111-131 — contexte, empreinte, gabarits,
+dérivations, bordereau, cascade, `DossierAO`, `EquipementAO`) tourne EN MÊME
+TEMPS et ses fichiers ne sont pas visibles d'ici. Conséquence de conception,
+assumée : **tous les modules de cette lane sont des fonctions PURES sur le
+`contexte` de dossier passé en argument** — aucun import des fichiers de la
+lane A, aucun fichier partagé avec elle. Le contrat consommé est documenté
+dans le docstring de chaque module ; au fold, les deux lanes se rejoignent par
+le dict de contexte.
+
+## Points à reprendre au fold
+
+- **AOF138 — `python-docx` NON inscrit dans `requirements.txt`.** La tâche
+  porte `@blocked: nouvelle dépendance python-docx — accord fondateur` : le
+  code est livré et testé sur ses DEUX voies (docx éditable + dégradation PDF
+  « pièce à fournir »), mais la ligne de dépendance n'a pas été ajoutée. Une
+  seule ligne à poser le jour de l'accord, aucune autre modification. Tant
+  qu'elle n'est pas posée c'est la voie dégradée qui s'exécute en CI et en
+  production — un état sain, pas une panne.
+- **Ratchet AOF129 (`apps/ao/tests/test_aof_etancheite_pack.py`)** appartient à
+  la lane A. Chaque pièce livrée ici porte SES propres assertions d'étanchéité
+  dans son propre fichier de test ; l'extension du ratchet commun est à faire
+  par la lane A au fold, sur les artefacts : note de calcul, checklist
+  docx/pdf, page de garde + sommaire, rapport de contrôle, ZIP de dépôt, PDF
+  « bon à tirer » (le classeur de rentabilité, lui, est directeur).
+
+### Tâches bloquées par la composition (jamais de substitut local)
+
+- **AOF141 — bascule d'équipement atomique : `[BLOCKED: attend AOF118]`.**
+  `basculer_equipement()` opère sur `EquipementAO` (rôle, snapshot catalogue,
+  fiche technique, `remplace` self-FK) — modèle livré par AOF118, absent de
+  `dev-aof` au moment de ce run. Recréer un équipement local pour « pouvoir
+  avancer » serait exactement le poste de dette n°1 du dépôt. Le PLAN de
+  bascule (quels emplacements doivent changer, quelles grandeurs dérivées se
+  recalculent, quelle fiche s'ajoute et laquelle se retire) est en revanche
+  livré et testé dans `apps/ao/fabrique/bascule_rapport.py` (AOF142) : le jour
+  où AOF118 est sur la branche, `basculer_equipement` n'a plus qu'à APPLIQUER
+  ce plan en une transaction et à journaliser via `records.services.log_activity`.
+- **AOF154 — endpoints de la fabrique : `[BLOCKED: attend AOF115]`.** Les six
+  routes (génération de pack, rendu d'une pièce, téléchargement du ZIP,
+  exécution du contrôle, historique de cascade, bascule) sont des actions SUR
+  `DossierAO` — modèle d'AOF115, absent de `dev-aof` au moment de ce run. Il
+  n'existe donc aucun queryset à scoper ni aucun `basename` à router. Écrire
+  des routes contre un modèle imaginaire aurait produit une matrice de
+  permissions non testable. Les briques que ces routes exposeront sont, elles,
+  livrées et testées (production du pack, ZIP, bon à tirer, contrôle,
+  sanitisation, cascade, propagation).
+- **AOF155 — verrou de dossier : `[BLOCKED: attend AOF115]`.** Le verrou est
+  un `select_for_update` sur la LIGNE `DossierAO` plus un drapeau persistant
+  « opération en cours par X depuis HH:MM » — donc des champs et une migration
+  sur un modèle qui n'existe pas encore. Recoder un verrou hors-base
+  (fichier, cache) serait un substitut local à une primitive de la plateforme.
+  À noter pour le fold : l'idempotence par empreinte livrée en AOF153 règle le
+  double-clic d'UN utilisateur, pas l'édition concurrente de DEUX — les deux
+  mécanismes sont complémentaires, AOF153 ne dispense pas d'AOF155.
+- **AOF156 — approbation humaine avant dépôt : `[BLOCKED: attend AOF115 +
+  AOF150]`.** La tâche branche `core.models.WorkflowDefinition` sur la
+  transition `pret_a_deposer → depose` de `DossierAO` et fait porter à
+  l'approbation l'EMPREINTE DU PACK approuvé (AOF150) — deux objets absents de
+  la branche. Le noyau d'approbation existe déjà et sera CONSOMMÉ, jamais
+  recodé. Le mécanisme de péremption d'approbation est le même que celui déjà
+  livré et testé pour le rapport de contrôle (AOF148,
+  `rapport_controle.est_perime`) : approuver un pack puis le régénérer doit
+  invalider l'approbation, exactement comme cela périme le rapport.
+- **AOF159 — partiellement livrée.** Le REGISTRE des six cibles, la péremption
+  en cascade, le refus de « prêt à déposer » et l'historique des deltas sont
+  livrés et testés (`apps/ao/fabrique/propagation.py`, deltas réels
+  5 413 680 → 5 219 280 → 4 999 920 reproduits). L'EXPOSITION HTTP de cet
+  historique (`views.py` + `selectors.py`) attend AOF115/AOF154 : il n'existe
+  pas encore de `DossierAO` à interroger. `verifier_registre` est appelable
+  telle quelle par le contrôleur de cohérence (AOF146) et par le test du
+  gabarit de pack (AOF116).
+- **AOF160 — partiellement livrée.** Le classeur directeur est livré et testé :
+  coût de revient par poste avec TVA sur achats DIFFÉRENCIÉE (10 % panneaux /
+  20 % reste), TVA collectée, TVA nette à reverser, bénéfice net HT, cellule de
+  CONTRÔLE DE TRÉSORERIE, variante « panneaux facturés à 10 % », montants
+  écrits en NOMBRES (jamais en chaînes), plus la tâche de fond
+  `ao.produire_rentabilite_xlsx`. Les quatre chiffres de contrôle du dossier
+  réel tombent au dirham (2 666 600 · 1 500 000 · 349 280 · −165 200) et
+  l'identité `4 999 920 − 3 150 640 − 349 280 = 1 500 000` est vérifiée par un
+  test. L'exclusion du pack est prouvée sur les TROIS assembleurs (sommaire,
+  ZIP, bon à tirer). En attente : `views_directeur.py` + `CanViewAoRentabilite`
+  + l'URL signée à durée courte, qui appartiennent à AOF157 (`EconomieAO`,
+  permission `ao_rentabilite_voir`) — non présent sur la branche.
+
+- **AOF158 livrée DEUX FOIS** (fabrique A hors-liste + fabrique B dans sa liste). Version
+  RETENUE : celle de fabrique A (324 lignes, 353 de tests), déjà foldée ET vérifiée par
+  l orchestrateur sur le cas réel FRDISI : 2 666 600 + 1 500 000 -> 4 166 600 HT /
+  4 999 920 TTC, invariant au centime, marge 36,0 %, residu 8 800 sur la ligne
+  d ajustement, aucun cout dans la vue publique. La version de fabrique B (262 lignes)
+  est ecartee ; si un apport lui est propre (seuil, residu non soldable), le rattraper
+  depuis worktree-wf_0144c3ae-0d5-1.
