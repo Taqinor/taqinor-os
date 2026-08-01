@@ -72,8 +72,10 @@ waves:
       RLS, outbox, keyset pagination, tenant cache, partitioning, purge,
       Celery fairness, load harness, pgbouncer, tenant export/clone/restore)
       and NTSEC (SSO/SCIM/identity) — gated on the ARC kernel being mostly
-      landed.
-    groups: [NTPLT, NTSEC]
+      landed. AOF (2026-08-01, app Appel d'offres : calepinage
+      prouvé + fabrique de dossier de dépôt) rides here too, gated on the ARC
+      kernel and the SCA DocumentMetier kit (both at 100 % — never blocking).
+    groups: [NTPLT, NTSEC, AOF]
   C:
     order: 4
     description: >-
@@ -379,6 +381,14 @@ edges:
 # never flagged orphaned by check_build_order.py. Inventoried by grep across
 # docs/PLAN.md, docs/PLAN2.md, docs/new_tasks_plan.md, docs/FRONTEND_GAP_PLAN.md
 # on 2026-07-09/10 (SCA1 build).
+  # AOF (2026-08-01) : app Appel d'offres — calepinage prouvé + dossier de
+  # dépôt (Groupe AOF, PLAN.md). Prérequis tous deux à 100 % au moment de
+  # l'insertion — gate déclaratif, jamais bloquant en pratique.
+  - group: AOF
+    wave: B
+    after:
+      ARC-noyau: 80
+      SCA-kit-document: 80
 unmapped_ok:
   # LB — Leads Board & Liste (refonte page pipeline, Groupe LB de PLAN2,
   # session 2026-07-19) : frontend pur, aucun prérequis de vague.
