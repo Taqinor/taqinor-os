@@ -1185,3 +1185,80 @@ def calepiner_villa(area, *, ordre='lnglat', kit=None, retrait_m=None,
     sortie['politique'] = politique
     sortie['panneaux'] = vers_panneaux(sortie['tables'], projection, kit)
     return sortie
+
+
+# ── AOF169 — l'AMONT du tunnel : créer une affaire depuis un AVIS publié ───
+#
+# **Aucun scraping, jamais** (règle #5 du dépôt). La source d'un avis est un
+# FICHIER importé ou une saisie manuelle : aucun appel réseau vers le portail
+# national des marchés publics — ni vers aucun autre portail — n'existe dans
+# ``apps/ao``, et un test de grep l'impose sur tout le paquet (le nom de
+# domaine est lui-même un motif interdit, il n'est donc écrit nulle part).
+# La collecte AUTOMATIQUE est traitée dans une app SÉPARÉE
+# (``apps/veille_ao``, Groupe VAO), sous gate intégral de la règle #5.
+#
+# Cette fonction est le POINT DE CONTACT UNIQUE de l'amont : l'import de
+# fichier, la saisie manuelle et — le jour où il existera — le sas de veille
+# passent tous par elle. C'est ce qui garantit qu'il n'y aura jamais deux
+# chemins de création d'affaire avec deux règles de déduplication différentes.
+
+#: Champs d'avis reportables sur un AO EXISTANT lors d'un ré-import.
+#: ``reference`` (NOTRE numérotation) et ``statut`` n'en sont PAS : un avis
+#: rectifié ne renumérote pas un dossier et ne le fait pas reculer d'étape.
+CHAMPS_AVIS = (
+    'objet', 'acheteur', 'maitre_ouvrage', 'lot', 'montant_estime',
+    'caution_provisoire', 'date_limite', 'date_ouverture_plis',
+    'mode_passation', 'type_marche',
+)
+
+
+def creer_appel_offre_depuis_avis(company, avis, *, user=None):
+    """Crée — ou met à jour — l'affaire correspondant à un avis publié.
+
+    Déduplication par ``reference_acheteur`` DANS LA SOCIÉTÉ : deux acheteurs
+    différents peuvent parfaitement publier la même référence, et deux sociétés
+    du même ERP ne partagent jamais leurs dossiers.
+
+    Rend ``(appel_offre, cree)``. La création passe par
+    ``creer_appel_offre_avec_reference`` (donc ``core.numbering``) : NOTRE
+    référence ``AO-YYYYMM-0001`` reste générée par la plateforme, jamais
+    recopiée depuis l'avis — la référence de l'acheteur vit dans son propre
+    champ, et les confondre rendrait impossible de retrouver un dossier depuis
+    l'avis publié.
+    """
+    reference_acheteur = (avis or {}).get('reference_acheteur') or ''
+    reference_acheteur = str(reference_acheteur).strip()
+    if not reference_acheteur:
+        raise ValidationError(
+            {'reference_acheteur': "La référence de l'acheteur est "
+                                   'obligatoire : elle déduplique les avis.'})
+
+    # Une valeur ABSENTE de l'avis laisse le défaut du modèle (``montant_estime``
+    # et ``caution_provisoire`` sont NON NULS) : on ne pousse jamais un ``None``
+    # dans un champ qui n'en accepte pas.
+    valeurs = {champ: avis[champ] for champ in CHAMPS_AVIS
+               if champ in avis and avis[champ] is not None}
+
+    existant = AppelOffre.objects.filter(
+        company=company, reference_acheteur=reference_acheteur).first()
+    if existant is not None:
+        modifies = []
+        for champ, valeur in valeurs.items():
+            # Un avis rectifié qui ne redit PAS une valeur ne doit pas
+            # l'effacer : seules les valeurs réellement portées écrasent.
+            if valeur in (None, ''):
+                continue
+            if getattr(existant, champ) != valeur:
+                setattr(existant, champ, valeur)
+                modifies.append(champ)
+        if modifies:
+            existant.save(update_fields=modifies)
+        return (existant, False)
+
+    def _creer(reference):
+        return AppelOffre.objects.create(
+            company=company, reference=reference,
+            reference_acheteur=reference_acheteur,
+            statut=AppelOffre.Statut.IDENTIFIE, **valeurs)
+
+    return (creer_appel_offre_avec_reference(company, _creer), True)

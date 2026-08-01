@@ -65,12 +65,13 @@ PLATFORM = {
     # Voir le docstring : VIDE À DESSEIN tant qu'aucun modèle AO ne porte le
     # champ ``custom_data`` par lequel les valeurs sont stockées.
     'customfield_models': [],
-    # AOF165/AOF30/ARC32 — les DEUX spécifications d'import réellement
-    # implémentées par ``apps/ao/imports.py`` (relevé de toiture saisi sur
-    # tableur) : obstacles et chaînes de cotes. Les clés sont EXACTEMENT celles
-    # de ``FIELD_MAPS_AO`` — un test le vérifie, sinon la déclaration
-    # promettrait une cible d'import qui n'existe pas.
-    'import_specs': ['obstacles', 'chaines'],
+    # AOF165/AOF30/AOF169/ARC32 — les TROIS spécifications d'import réellement
+    # implémentées par ``apps/ao/imports.py`` : le relevé de toiture saisi sur
+    # tableur (obstacles, chaînes de cotes) et les AVIS de marchés publiés
+    # (l'amont du tunnel). Les clés sont EXACTEMENT celles de
+    # ``FIELD_MAPS_AO`` — un test le vérifie, sinon la déclaration promettrait
+    # une cible d'import qui n'existe pas.
+    'import_specs': ['obstacles', 'chaines', 'avis'],
     # AOF167/ARC33 — actions agentiques du domaine AO, auto-découvertes.
     # Réellement câblé (règle d'honnêteté ARC41) : le module existe, expose
     # ``register_actions()`` et ne déclare QUE des LECTURES sur des routes AO
