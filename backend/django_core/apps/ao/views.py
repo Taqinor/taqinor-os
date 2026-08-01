@@ -82,14 +82,48 @@ class AppelOffreViewSet(AoBaseViewSet):
     FILTRES_EXACTS = ('statut', 'type_marche', 'mode_passation')
 
     def get_queryset(self):
+        params = self.request.query_params
         qs = _filtres_exacts(
-            super().get_queryset(), self.request.query_params,
-            self.FILTRES_EXACTS)
-        groupement = self.request.query_params.get('groupement')
+            super().get_queryset(), params, self.FILTRES_EXACTS)
+        groupement = params.get('groupement')
         if groupement not in (None, ''):
             qs = qs.filter(
                 groupement=groupement.lower() in ('1', 'true', 'vrai', 'oui'))
+        # AOF17 — ``?lead=<id>`` : les AO d'un lead. ``lead_id`` reste un
+        # ENTIER OPAQUE (jamais une FK vers crm.Lead — contrat import-linter
+        # ``ao-models-decoupled``), donc le filtre est une simple égalité.
+        lead = params.get('lead')
+        if lead not in (None, ''):
+            qs = qs.filter(lead_id=lead) if str(lead).isdigit() \
+                else qs.none()
         return qs
+
+    @action(detail=True, methods=['get'], url_path='lead')
+    def lead(self, request, pk=None):
+        """AOF17 — fiche-carte du lead lié (lecture seule), ou ``null``.
+
+        Passe par ``apps.crm.selectors`` — ``ao`` n'importe JAMAIS
+        ``apps.crm.models``.
+        """
+        from . import selectors
+
+        return Response({
+            'lead_id': self.get_object().lead_id,
+            'fiche': selectors.fiche_lead_de_l_ao(self.get_object()),
+        })
+
+    @action(detail=True, methods=['post'], url_path='rattacher-lead')
+    def rattacher_lead(self, request, pk=None):
+        """AOF17 — rattache/détache un lead, en validant l'appartenance."""
+        appel_offre = self.get_object()
+        try:
+            services.rattacher_ao_au_lead(
+                appel_offre, request.data.get('lead'), user=request.user)
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'lead': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(appel_offre).data)
 
     def perform_create(self, serializer):
         """AOF5 — référence auto ``AO-YYYYMM-0001`` quand elle n'est pas fournie.

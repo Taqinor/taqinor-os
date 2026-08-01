@@ -400,6 +400,62 @@ def cautions_expirant_avant_ouverture(appel_offre):
     ]
 
 
+# ── AOF17 — Lien CRM, sans couplage ────────────────────────────────────────
+#
+# ``AppelOffre.lead_id`` reste un ENTIER OPAQUE : c'est ce qui tient le contrat
+# import-linter ``ao-models-decoupled``. On lit le lead par les SELECTORS du
+# CRM (``apps.crm.selectors``) — jamais ``apps.crm.models``.
+
+def resoudre_lead(company, lead_id):
+    """Résout le lead d'une société par son id, ou ``None`` (AOF17).
+
+    Un id appartenant à une AUTRE société renvoie ``None`` : c'est la même
+    borne que ``crm.selectors.get_company_lead``, donc aucun accès
+    cross-tenant n'est possible par un id deviné.
+    """
+    if not lead_id:
+        return None
+    from apps.crm.selectors import get_company_lead
+
+    return get_company_lead(company, lead_id)
+
+
+def rattacher_ao_au_lead(appel_offre, lead_id, *, user=None):
+    """Rattache (ou détache) un AO à un lead, en VALIDANT l'appartenance.
+
+    ``lead_id`` vide ⇒ détachement. Un lead d'une autre société est refusé —
+    sinon un identifiant deviné suffirait à relier un dossier au CRM d'autrui.
+    Le changement est journalisé au chatter générique ``records``.
+
+    Raises:
+        ValidationError: le lead n'existe pas dans la société de l'AO.
+    """
+    ancien = appel_offre.lead_id
+    if not lead_id:
+        nouveau = None
+    else:
+        lead = resoudre_lead(appel_offre.company, lead_id)
+        if lead is None:
+            raise ValidationError({'lead': (
+                "Ce lead n'existe pas dans votre société."
+            )})
+        nouveau = lead.pk
+    if ancien == nouveau:
+        return appel_offre
+    appel_offre.lead_id = nouveau
+    appel_offre.save(update_fields=['lead_id', 'updated_at'])
+
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        appel_offre, Activity.Kind.MODIFICATION, user=user,
+        field='lead_id', field_label='Lead lié',
+        old_value=str(ancien or ''), new_value=str(nouveau or ''),
+        company=appel_offre.company)
+    return appel_offre
+
+
 # ── FG226 — Échéances d'AO dues (rappels) ──────────────────────────────────
 
 def echeances_ao_dues(company, *, a_la_date=None):
