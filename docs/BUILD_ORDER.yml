@@ -419,6 +419,10 @@ unmapped_ok:
   - ZSTK
   # docs/PLAN2.md — small remnants / not NT/ARC/SCA-scoped.
   - QC
+  # ODY — paradigme apps-shell « comme Odoo, en mieux » (Groupe ODY de PLAN2,
+  # directive fondateur 2026-08-01) : frontend pur sur socle ODX/ARC/VX déjà
+  # livré, aucun prérequis de vague noyau -> floods.
+  - ODY
   - QW
   - QX      # UI round-6 backlog (PR #350, landed after the SCA1 inventory) —
   - QXG     # pure frontend waves outside the noyau->floods ordering.
