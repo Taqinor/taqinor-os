@@ -4,6 +4,7 @@ import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
 import { cn } from '../../../lib/cn'
 import PlanLayer from './PlanLayer'
 import VerdictBar from './VerdictBar'
+import TiroirKits from './TiroirKits'
 import useCalepinage from './useCalepinage'
 
 /* ============================================================================
@@ -45,6 +46,12 @@ export default function CalepinageStudio({ calepinageId }) {
   useEffect(() => {
     if (parametresServeur && parametres === null) setParametres(parametresServeur)
   }, [parametresServeur, parametres])
+
+  // Un tiroir ne modifie JAMAIS un résultat : il remonte un patch de
+  // paramètres, et c'est le serveur qui recalcule (AOF94).
+  const majParametres = useCallback((patch) => {
+    setParametres((courants) => ({ ...(courants || {}), ...patch }))
+  }, [])
 
   const onWheel = useCallback((event) => {
     if (!event.ctrlKey && !event.metaKey) return
@@ -103,13 +110,26 @@ export default function CalepinageStudio({ calepinageId }) {
         <p className="text-sm text-destructive" role="alert">{erreur}</p>
       )}
 
-      <div className="relative flex min-h-0 flex-1 flex-col" onWheel={onWheel}>
-        <div className={cn('flex min-h-0 flex-1 flex-col', perime && 'opacity-40')}>
-          <PlanLayer plan={plan} zoom={zoom} />
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+        <div className="relative flex min-h-0 flex-1 flex-col" onWheel={onWheel}>
+          <div className={cn('flex min-h-0 flex-1 flex-col', perime && 'opacity-40')}>
+            <PlanLayer plan={plan} zoom={zoom} />
+          </div>
+          {perime && (
+            <Badge tone="neutral" className="absolute right-2 top-2">recalcul…</Badge>
+          )}
         </div>
-        {perime && (
-          <Badge tone="neutral" className="absolute right-2 top-2">recalcul…</Badge>
-        )}
+
+        {/* Inspecteur : tiroirs de paramètres. Chaque tiroir remonte un patch
+            de paramètres ; le recalcul appartient au serveur (AOF94). */}
+        <aside className="flex w-full flex-col gap-1 overflow-y-auto lg:w-96" aria-label="Tiroirs de paramètres">
+          <TiroirKits
+            donnees={resultat?.tiroirs?.kits}
+            valeurs={parametres || {}}
+            onChange={majParametres}
+            perime={perime}
+          />
+        </aside>
       </div>
     </div>
   )
