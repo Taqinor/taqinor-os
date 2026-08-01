@@ -9119,3 +9119,90 @@ textarea.form-control {
 @media (prefers-reduced-motion: reduce) {
   .kb-card--lead .kb-card-reveal { transition: none; }
 }
+
+/* ===========================================================================
+   APX3 — REPRENDRE LE CHROME VERTICAL DU BOARD : 286 -> <= 240 px.
+   ---------------------------------------------------------------------------
+   Postes verifies avant : `.layout-content` padding 2rem sur les 4 cotes
+   (:365), `.lp-view-area` marge 12 + padding 12 (:4190), `.kb-board` padding
+   12 (:4745), `.kb-col-header` ~48 (:4802).
+
+   METHODE IMPOSEE — le discriminant `[data-view]` n'existe QUE sur LeadsPage
+   (verifie : `.lp-page` est AUSSI porte par Installations / Planification /
+   Interventions, qui appartiennent a d'autres lanes). Chaque regle ci-dessous
+   est donc prefixee `.lp-page[data-view]`, et le padding du shell est repris
+   par le meme idiome `:has()` que LB2/LB33. Zero pixel ne bouge sur les trois
+   autres pages `.lp-page`, ni sur aucune page sans board.
+
+   INTOUCHABLE — la chaine `:has()` de HAUTEUR de LB33 (`index.css` ~:7117 :
+   `.layout-content > .route-fade:has(> .lp-page) { height: 100% }` +
+   `.lp-page > .lp-view-area { flex: 1 1 auto }`). On ne touche ici QUE des
+   paddings/marges : la chaine de hauteur reste litteralement la meme, donc
+   l'invariant LB33 (« la page ne grandit pas au contenu, le board est borne »)
+   est preserve par construction.
+
+   BUDGET : haut  16 (layout) + 8 (view-area) + 4 (board) + 10 (en-tete) = 46
+            bas    8 (view-area) + 4 (board) = 12
+   -> 286 - 58 = ~228 px. La MESURE est la gate APX8.
+   =========================================================================== */
+
+/* Shell : seul le padding HAUT est repris (le bas/gauche/droite du shell est
+   partage par tout l'ERP — consigne explicite « ne toucher que le TOP »). */
+.layout-content:has(> .route-fade > .lp-page[data-view]) {
+  padding-top: 1rem;
+}
+
+/* Zone de vue : 12 + 12 -> 4 + 4 en haut, 12 -> 4 en bas. */
+.lp-page[data-view] > .lp-view-area {
+  margin-top: 0.25rem;
+  padding: 0.25rem;
+}
+
+/* Board : 12 -> 8 (les deux axes ; le gap entre colonnes appartient a APX4). */
+.lp-page[data-view] .kb-board {
+  padding: 0.5rem;
+}
+
+/* En-tete de colonne : ~48 -> ~38. Deux rangees conservees (titre+compteur,
+   puis montants LB9) — on ne supprime aucune information, on la resserre.
+   APX6 y ajoutera la barre segmentee d'activite. */
+.lp-page[data-view] .kb-col-header {
+  padding: 0.3rem 0.55rem 0.25rem;
+}
+.lp-page[data-view] .kb-col-title-row {
+  gap: 0.35rem;
+  min-height: 1.1rem;
+}
+.lp-page[data-view] .kb-col-collapse-btn {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+/* La cible tactile reste >= 44 px : la boite RETRECIT, la zone de frappe non
+   (meme idiome que `.kb-check-hit` en LB17 — overlay ::before, aucun decalage
+   de mise en page). */
+@media (pointer: coarse) {
+  .lp-page[data-view] .kb-col-collapse-btn { position: relative; }
+  .lp-page[data-view] .kb-col-collapse-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+.lp-page[data-view] .kb-col-title {
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+.lp-page[data-view] .kb-col-count {
+  padding: 0 0.4rem;
+  font-size: 0.66rem;
+  line-height: 1.4;
+}
+.lp-page[data-view] .kb-col-money {
+  margin-top: 0.05rem;
+  font-size: 0.62rem;
+  line-height: 1.25;
+}
