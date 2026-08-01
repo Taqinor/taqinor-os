@@ -8,6 +8,7 @@ import { Card, EmptyState, Skeleton, toast } from '../../../ui'
 import { EcheanceCenter } from '../../../ui/module'
 import { formatDateTime } from '../../../lib/format'
 import PieceRow from './PieceRow'
+import { piecesVisibles } from './DossierPage.utils'
 
 /* ============================================================================
    AOF174 — Écran « Dossier de soumission » : pièces, états, péremption.
@@ -47,14 +48,7 @@ import PieceRow from './PieceRow'
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
-// Visibilités jamais listées dans le dossier de dépôt (économie directeur).
-const VISIBILITES_MASQUEES = new Set(['interne', 'directeur'])
-
 const POLL_MS = 15000
-
-export function piecesVisibles(pieces) {
-  return (pieces || []).filter((p) => !VISIBILITES_MASQUEES.has(p.visibilite))
-}
 
 function VerrouBandeau({ verrou }) {
   if (!verrou) return null
