@@ -1072,3 +1072,605 @@ def taux_reussite_ao(company):
         'total_resultats': resultats.count(),
         'taux_reussite_pct': taux,
     }
+
+
+# ── AOF115 — Dossier de dépôt : création numérotée + porte de transition ───
+
+def creer_dossier_ao(company, appel_offre=None, save_fn=None, **champs):
+    """Crée le ``DossierAO`` d'un appel d'offres avec sa référence ``AODOS``.
+
+    Délègue la numérotation à ``core.numbering.create_with_reference`` (plus
+    haut numéro utilisé + 1, savepoint + réessai) — JAMAIS ``count()+1``.
+    ``save_fn`` reçoit la référence générée et effectue la création réelle
+    (motif ``core.documents.document_viewset``) ; sans elle, l'instance est
+    créée ici à partir d'``appel_offre`` et des champs fournis.
+    """
+    from .models import DossierAO
+
+    def _save(reference):
+        if save_fn is not None:
+            return save_fn(reference)
+        return DossierAO.objects.create(
+            company=company, appel_offre=appel_offre, reference=reference,
+            **champs)
+
+    return create_with_reference(
+        DossierAO, DossierAO.PREFIXE_REFERENCE, company, _save)
+
+
+def changer_statut_dossier(dossier, nouveau_statut, *, user=None, motif=''):
+    """SEUL point de mutation du statut d'un ``DossierAO`` (AOF115).
+
+    Compose le kit ``core.documents.changer_statut`` (table ``TRANSITIONS``
+    déclarative + événement ``document_statut_change``) et y AJOUTE la porte
+    métier : ``pret_a_deposer`` est REFUSÉ tant qu'une pièce obligatoire
+    manque. La complétude est DÉRIVÉE des pièces, jamais d'un drapeau stocké.
+
+    Raises:
+        ValidationError: pièce obligatoire manquante (message FR listant les
+            pièces fautives), à traduire en 400 par l'appelant HTTP.
+        core.documents.TransitionRefusee: transition absente de la table.
+    """
+    from core.documents import changer_statut
+
+    from .models import DossierAO
+
+    if nouveau_statut == DossierAO.Statut.PRET_A_DEPOSER:
+        raisons = dossier.raisons_de_non_depot()
+        if raisons:
+            raise ValidationError({'statut': raisons})
+        # AOF146 — le contrôleur de cohérence croisée est une PORTE : une
+        # passe FRAÎCHE est exécutée ici, et le refus CITE le code de règle
+        # fautif (un rapport qu'on lit après coup n'aurait rien empêché).
+        from .fabrique.coherence import passer_controle
+
+        passe = passer_controle(dossier)
+        if passe['bloquants']:
+            raise ValidationError({'controles': [
+                f'{item["code_regle"]} — {item["message"]}'
+                for item in passe['bloquants']
+            ]})
+
+    ancien = dossier.statut
+    changer_statut(dossier, nouveau_statut, user=user)
+    _journaliser_dossier(dossier, ancien, nouveau_statut, user, motif)
+    return dossier
+
+
+def _journaliser_dossier(dossier, ancien, nouveau, user, motif):
+    """Trace le changement au chatter générique ``records`` (best-effort)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    from .models import DossierAO
+
+    libelles = dict(DossierAO.Statut.choices)
+    log_activity(
+        dossier, Activity.Kind.MODIFICATION, user=user,
+        field='statut', field_label='Statut',
+        old_value=libelles.get(ancien, ancien),
+        new_value=libelles.get(nouveau, nouveau),
+        body=motif or '', company=dossier.company)
+
+
+# ── AOF136 — Checklist partenaire : les 7 blocs en lignes d'état ──────────
+#
+# La checklist réelle de remise, telle que remplie par le co-traitant. Chaque
+# point devient une ligne SUIVIE (case + responsable + commentaire) ; un point
+# obligatoire ouvert ferme la porte du dépôt (``raisons_de_non_depot``).
+
+CHECKLIST_PARTENAIRE = (
+    # 1 — CPS
+    ('cps', 'CPS_BLANCS', 'Remplir tous les blancs du CPS'),
+    ('cps', 'CPS_PARAPHE', 'Parapher CHAQUE page du CPS'),
+    ('cps', 'CPS_MENTION',
+     'Porter la mention manuscrite « lu et accepté » et signer'),
+    # 2 — Acte d'engagement
+    ('acte_engagement', 'ACTE_CHIFFRES_LETTRES',
+     "Montant porté EN CHIFFRES ET EN LETTRES, identiques"),
+    ('acte_engagement', 'ACTE_RIB', 'RIB complet du soumissionnaire'),
+    ('acte_engagement', 'ACTE_VALIDITE',
+     "Durée de validité de l'offre conforme au règlement"),
+    # 3 — Bordereau des prix
+    ('bordereau', 'BORDEREAU_INTACT',
+     'NE MODIFIER AUCUN PRIX NI AUCUNE QUANTITÉ du bordereau transmis'),
+    ('bordereau', 'BORDEREAU_SIGNE',
+     'Bordereau paraphé et signé à la dernière page'),
+    # 4 — Lettre de soumission
+    ('lettre_soumission', 'LETTRE_MONTANTS',
+     'Montants de la lettre identiques à ceux du bordereau'),
+    ('lettre_soumission', 'LETTRE_CLAUSE_RESERVE',
+     'Reporter la clause de réserve à l\'identique'),
+    # 5 — Mémoire technique
+    ('memoire', 'MEMOIRE_SIGNATURE',
+     'Bloc signature du mémoire renseigné et signé'),
+    ('memoire', 'MEMOIRE_ATTESTATIONS',
+     'Attestations de bonne exécution jointes au mémoire'),
+    # 6 — Dossier administratif
+    ('administratif', 'ADM_DECLARATION',
+     "Déclaration sur l'honneur signée"),
+    ('administratif', 'ADM_POUVOIRS', 'Pouvoirs du signataire'),
+    ('administratif', 'ADM_FISCALE',
+     'Attestation fiscale de moins d\'un an'),
+    ('administratif', 'ADM_CNSS', 'Attestation CNSS de moins de trois mois'),
+    ('administratif', 'ADM_RC', 'Registre de commerce — modèle J'),
+    ('administratif', 'ADM_RIB', 'RIB de la société'),
+    ('administratif', 'ADM_ASSURANCE_RC',
+     'Assurance responsabilité civile en cours de validité'),
+    ('administratif', 'ADM_DECENNALE',
+     'Assurance décennale étanchéité en cours de validité'),
+    ('administratif', 'ADM_CAUTION', 'Caution provisoire constituée'),
+    # 7 — Vérifications téléphoniques avant dépôt
+    ('verifications', 'VERIF_PROROGATION',
+     'Prorogation éventuelle confirmée PAR ÉCRIT'),
+    ('verifications', 'VERIF_ATTESTATION_VISITE',
+     'Attestation de visite des lieux obtenue'),
+    ('verifications', 'VERIF_PLIS',
+     'Plis séparés ou pli unique : confirmé auprès de l\'acheteur'),
+)
+
+
+def seeder_checklist_partenaire(dossier):
+    """Crée les points de checklist manquants d'un dossier (idempotent).
+
+    ADDITIF : un point déjà pointé (case, responsable, commentaire) n'est
+    JAMAIS réécrit. Renvoie ``(crees, existants)``.
+    """
+    from .models import LigneChecklistPartenaire
+
+    crees = existants = 0
+    for ordre, (bloc, code, libelle) in enumerate(CHECKLIST_PARTENAIRE):
+        if LigneChecklistPartenaire.objects.filter(
+                dossier=dossier, code=code).exists():
+            existants += 1
+            continue
+        LigneChecklistPartenaire.objects.create(
+            company=dossier.company, dossier=dossier, bloc=bloc, code=code,
+            libelle=libelle, ordre=ordre)
+        crees += 1
+    return crees, existants
+
+
+def pointer_checklist(ligne, *, faite=True, responsable=None, commentaire=None,
+                      user=None):
+    """Pointe (ou dépointe) un point de checklist — le responsable est TRACÉ.
+
+    Le responsable est posé côté serveur : soit celui explicitement désigné,
+    soit l'utilisateur qui pointe. Un point sans responsable ne dit pas QUI
+    répond de lui, et c'est précisément ce qu'une checklist papier ne dit pas.
+    """
+    from django.utils import timezone
+
+    ligne.faite = bool(faite)
+    ligne.responsable_utilisateur = (
+        responsable or user or ligne.responsable_utilisateur)
+    if commentaire is not None:
+        ligne.commentaire = commentaire
+    ligne.date_faite = timezone.now() if ligne.faite else None
+    ligne.save(update_fields=[
+        'faite', 'responsable_utilisateur', 'commentaire', 'date_faite',
+        'updated_at'])
+    _journaliser_checklist(ligne, user)
+    return ligne
+
+
+def _journaliser_checklist(ligne, user):
+    """Trace le pointage au chatter générique ``records`` (best-effort)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        ligne.dossier, Activity.Kind.MODIFICATION, user=user,
+        field='checklist', field_label=f'Checklist — {ligne.libelle}',
+        old_value='', new_value='fait' if ligne.faite else 'ouvert',
+        body=ligne.commentaire or '', company=ligne.company)
+
+
+def points_checklist_ouverts(dossier):
+    """Les points OBLIGATOIRES encore ouverts (queryset)."""
+    return dossier.lignes_checklist.filter(obligatoire=True, faite=False)
+
+
+# ── AOF137 — Pièces administratives : péremption MÉCANISÉE ────────────────
+#
+# La date qui compte est celle de la REMISE DES PLIS, jamais celle du jour :
+# une attestation valable aujourd'hui mais expirée à l'ouverture fait rejeter
+# le pli. Contrôler « à aujourd'hui » produirait un dossier vert qui sera
+# rouge le jour J.
+
+#: Sévérité des contrôles de pièces administratives.
+SEVERITE_BLOQUANT = 'bloquant'
+SEVERITE_AVERTISSEMENT = 'avertissement'
+
+
+def controler_pieces_administratives(dossier, *, a_la_date=None):
+    """Contrôle les pièces d'un dossier À LA DATE DE REMISE DES PLIS.
+
+    Renvoie une liste de dicts ``{code, severite, message, piece_id}``.
+    ``a_la_date`` permet de rejouer un contrôle à une date donnée (tests,
+    simulation d'une prorogation) ; par défaut c'est la date de référence du
+    dossier (ouverture des plis, sinon date limite de remise).
+    """
+    reference = a_la_date or dossier.date_reference_controle
+    controles = []
+    if reference is None:
+        controles.append({
+            'code': 'AO_DATE_REFERENCE_ABSENTE',
+            'severite': SEVERITE_AVERTISSEMENT,
+            'message': (
+                "Ni date d'ouverture des plis ni date limite de remise : la "
+                'péremption des pièces administratives ne peut pas être '
+                'contrôlée.'),
+            'piece_id': None,
+        })
+        return controles
+    for piece in dossier.pieces_administratives.filter(actif=True):
+        if piece.est_expiree_a(reference):
+            controles.append({
+                'code': 'AO_PIECE_ADMIN_EXPIREE',
+                'severite': SEVERITE_BLOQUANT,
+                'message': (
+                    f'{piece.get_type_piece_display()} '
+                    f'« {piece.libelle} » : émise le {piece.date_emission}, '
+                    f'expirée le {piece.date_expiration} — donc EXPIRÉE à la '
+                    f'date de remise des plis ({reference}).'),
+                'piece_id': piece.pk,
+            })
+            continue
+        restants = piece.jours_restants_a(reference)
+        if restants is not None and restants <= (piece.rappel_jours or 0):
+            controles.append({
+                'code': 'AO_PIECE_ADMIN_BIENTOT_EXPIREE',
+                'severite': SEVERITE_AVERTISSEMENT,
+                'message': (
+                    f'{piece.get_type_piece_display()} '
+                    f'« {piece.libelle} » expire le {piece.date_expiration}, '
+                    f'soit {restants} jour(s) avant la remise des plis '
+                    f'({reference}) : à renouveler.'),
+                'piece_id': piece.pk,
+            })
+    return controles
+
+
+def pieces_administratives_a_renouveler(company, *, a_la_date=None):
+    """Pièces dont l'expiration tombe dans leur fenêtre de rappel (J-N)."""
+    from django.utils import timezone
+
+    from .models import PieceAdministrative
+
+    reference = a_la_date or timezone.localdate()
+    a_renouveler = []
+    for piece in PieceAdministrative.objects.filter(
+            company=company, actif=True):
+        restants = piece.jours_restants_a(reference)
+        if restants is None:
+            continue
+        if restants <= (piece.rappel_jours or 0):
+            a_renouveler.append(piece)
+    return a_renouveler
+
+
+def rattacher_piece_administrative(piece, dossier, *, user=None):
+    """Rattache une pièce EXISTANTE à un dossier — sans dupliquer le fichier.
+
+    C'est le point d'AOF137 : la même attestation fiscale sert deux appels
+    d'offres, en un seul octet stocké.
+    """
+    if piece.company_id != dossier.company_id:
+        raise ValidationError({'dossier': (
+            "Une pièce administrative ne se rattache qu'à un dossier de la "
+            'MÊME société.')})
+    piece.dossiers.add(dossier)
+    _journaliser_piece_administrative(piece, dossier, user)
+    return piece
+
+
+def _journaliser_piece_administrative(piece, dossier, user):
+    """Trace le rattachement au chatter générique ``records`` (best-effort)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        dossier, Activity.Kind.MODIFICATION, user=user,
+        field='piece_administrative',
+        field_label='Pièce administrative rattachée',
+        old_value='', new_value=str(piece), company=dossier.company)
+
+
+# ── AOF118 — Équipements engagés : SNAPSHOT figé du catalogue ──────────────
+#
+# Le catalogue est re-seedé régulièrement. Un dossier DÉPOSÉ ne doit jamais
+# voir sa désignation bouger sous lui : on COPIE ce que le catalogue disait au
+# moment de l'engagement, une fois, et on n'y revient plus.
+#
+# Les attributs du produit sont lus par ``apps.stock.selectors`` UNIQUEMENT —
+# jamais par un import de ``apps.stock.models`` (contrat import-linter
+# ``ao-models-decoupled`` + règle de frontière cross-app).
+
+#: Caractéristiques du catalogue reportées dans le snapshot. Le COÛT
+#: (``prix_achat``) en est DÉLIBÉRÉMENT absent : il ne sort jamais d'un
+#: équipement d'AO, qui alimente des pièces remises au maître d'ouvrage.
+CARACTERISTIQUES_SNAPSHOT = (
+    'garantie', 'garantie_mois', 'garantie_production_mois',
+    'pompe_cv', 'hmt_m', 'debit_m3j', 'tension_v', 'pompe_kw',
+)
+
+
+def snapshot_produit(company, produit_id):
+    """Instantané FIGÉ d'un produit du catalogue (lecture via selectors).
+
+    Renvoie un dict ``{designation, marque, reference_constructeur,
+    caracteristiques}``. Produit introuvable → dict vide (l'appelant garde ses
+    valeurs saisies à la main : un équipement hors catalogue reste légitime).
+    """
+    from apps.stock import selectors as stock_selectors
+
+    produit = stock_selectors.get_produit_scoped(company, produit_id)
+    if produit is None:
+        return {}
+    caracteristiques = {}
+    for champ in CARACTERISTIQUES_SNAPSHOT:
+        valeur = getattr(produit, champ, None)
+        if valeur in (None, ''):
+            continue
+        caracteristiques[champ] = str(valeur)
+    if getattr(produit, 'description', None):
+        caracteristiques['description'] = produit.description
+    return {
+        'designation': produit.nom,
+        'marque': produit.marque or '',
+        'reference_constructeur': produit.sku or '',
+        'caracteristiques': caracteristiques,
+    }
+
+
+def engager_equipement(appel_offre, *, role, produit_id=None, quantite=None,
+                       batiment=None, caracteristiques=None, user=None,
+                       **champs):
+    """Engage un équipement dans le dossier en FIGEANT son snapshot (AOF118).
+
+    Le snapshot est pris UNE fois, à l'engagement. Un re-seed du catalogue
+    (prix, archivage, fiche) ne le touche plus : c'est ce qui rend un dossier
+    déposé opposable.
+    """
+    from django.utils import timezone
+
+    from .models import EquipementAO
+
+    company = appel_offre.company
+    donnees = dict(champs)
+    if produit_id:
+        donnees.update(snapshot_produit(company, produit_id))
+    if caracteristiques:
+        fusion = dict(donnees.get('caracteristiques') or {})
+        fusion.update(caracteristiques)
+        donnees['caracteristiques'] = fusion
+    donnees.setdefault('designation', '')
+    equipement = EquipementAO.objects.create(
+        company=company, appel_offre=appel_offre, batiment=batiment,
+        role=role, produit_id=produit_id or None,
+        quantite=quantite if quantite is not None else Decimal('0.000'),
+        snapshot_le=timezone.now(), **donnees)
+    _journaliser_equipement(equipement, user)
+    return equipement
+
+
+def _journaliser_equipement(equipement, user):
+    """Trace l'engagement au chatter générique ``records`` (best-effort)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        equipement.appel_offre, Activity.Kind.MODIFICATION, user=user,
+        field='equipement', field_label='Équipement engagé',
+        old_value='', new_value=str(equipement),
+        company=equipement.company)
+
+
+# ── AOF140 — Planches : indices AUTOMATIQUES et citations vérifiables ─────
+#
+# L'indice n'est JAMAIS saisi : il s'incrémente sur CHANGEMENT D'EMPREINTE.
+# Générer un indice supérieur archive le précédent ; la base interdit deux
+# planches actives de même code (``uniq_planche_active_par_code``).
+
+def indice_suivant(indice):
+    """``A`` → ``B`` … ``Z`` → ``AA`` (numérotation bijective base 26)."""
+    if not indice:
+        return 'A'
+    lettres = list(indice.upper())
+    position = len(lettres) - 1
+    while position >= 0:
+        if lettres[position] != 'Z':
+            lettres[position] = chr(ord(lettres[position]) + 1)
+            return ''.join(lettres)
+        lettres[position] = 'A'
+        position -= 1
+    return 'A' + ''.join(lettres)
+
+
+def planche_active(appel_offre, code_document):
+    """La planche ACTIVE d'un code, ou None."""
+    from .models import PlancheAO
+
+    return PlancheAO.objects.filter(
+        company=appel_offre.company, appel_offre=appel_offre,
+        code_document=code_document,
+        statut=PlancheAO.Statut.ACTIVE).first()
+
+
+def generer_indice_planche(appel_offre, code_document, *, empreinte,
+                           motif='', variante=None, toiture=None,
+                           cartouche=None, bandeau_engagement=None,
+                           user=None):
+    """Produit l'indice COURANT d'une planche (AOF140).
+
+    * empreinte INCHANGÉE → la planche active est rendue telle quelle
+      (``creee=False``) : on ne fabrique pas un indice pour rien ;
+    * empreinte DIFFÉRENTE → la planche active est ARCHIVÉE et un indice
+      supérieur est créé.
+
+    Renvoie ``(planche, creee)``. L'indice n'est jamais lu d'un paramètre.
+    """
+    from django.db import transaction
+
+    from .models import PlancheAO
+
+    with transaction.atomic():
+        courante = planche_active(appel_offre, code_document)
+        if courante is not None and courante.empreinte == (empreinte or ''):
+            return courante, False
+        nouvel_indice = indice_suivant(courante.indice) if courante else 'A'
+        if courante is not None:
+            courante.statut = PlancheAO.Statut.ARCHIVEE
+            courante.save(update_fields=['statut', 'updated_at'])
+        planche = PlancheAO.objects.create(
+            company=appel_offre.company, appel_offre=appel_offre,
+            toiture=toiture, variante=variante,
+            code_document=code_document, indice=nouvel_indice,
+            empreinte=empreinte or '', motif_revision=motif or '',
+            cartouche=cartouche or donnees_cartouche(
+                appel_offre, code_document, nouvel_indice),
+            bandeau_engagement=bandeau_engagement or donnees_bandeau(variante))
+    _journaliser_planche(planche, courante, user)
+    return planche, True
+
+
+def donnees_cartouche(appel_offre, code_document, indice):
+    """Le cartouche comme DONNÉES — jamais écrit à la main sur le dessin.
+
+    AOF144 — une planche est une pièce CLIENT : son cartouche ne porte que le
+    SOUMISSIONNAIRE, jamais le bureau d'exécution.
+    """
+    from .fabrique.identite import identite_client
+
+    return {
+        'code_document': code_document,
+        'indice': indice,
+        'objet': appel_offre.objet,
+        'maitre_ouvrage': appel_offre.maitre_ouvrage or appel_offre.acheteur,
+        'soumissionnaire': identite_client(appel_offre)['raison_sociale'],
+        'reference_marche': appel_offre.reference_acheteur
+        or appel_offre.reference,
+    }
+
+
+def donnees_bandeau(variante):
+    """Le bandeau d'engagement comme DONNÉES (vide sans variante)."""
+    if variante is None:
+        return {}
+    return {
+        'modules_engages': variante.total_modules,
+        'puissance_kwc': str(variante.puissance_kwc or ''),
+        'variante': variante.nom,
+        'methode': (variante.preuve or {}).get('methode', ''),
+    }
+
+
+def _journaliser_planche(planche, precedente, user):
+    """Trace la révision au chatter générique ``records`` (best-effort)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        planche.appel_offre, Activity.Kind.MODIFICATION, user=user,
+        field='planche', field_label=f'Planche {planche.code_document}',
+        old_value=precedente.reference_complete if precedente else '',
+        new_value=planche.reference_complete,
+        body=planche.motif_revision or '', company=planche.company)
+
+
+def citations_perimees(appel_offre):
+    """Citations de planche pointant un indice qui n'est PLUS actif (AOF140).
+
+    Renvoie une liste de dicts ``{citation_id, code_document, indice_cite,
+    indice_actif, message}``. Liste vide = le mémoire cite juste.
+    """
+    from .models import CitationPlanche
+
+    perimees = []
+    for citation in CitationPlanche.objects.filter(
+            company=appel_offre.company, appel_offre=appel_offre):
+        active = planche_active(appel_offre, citation.code_document)
+        indice_actif = active.indice if active else None
+        if indice_actif is not None and citation.indice_cite == indice_actif:
+            continue
+        if indice_actif is None:
+            message = (
+                f'La planche « {citation.code_document} » citée '
+                f'({citation.emplacement or "mémoire"}) n\'existe pas ou '
+                f'n\'a plus de version active.')
+        else:
+            message = (
+                f'La planche « {citation.code_document} » est citée à '
+                f'l\'indice {citation.indice_cite or "(aucun)"} alors que '
+                f'l\'indice courant est {indice_actif} '
+                f'({citation.emplacement or "mémoire"}).')
+        perimees.append({
+            'citation_id': citation.pk,
+            'code_document': citation.code_document,
+            'indice_cite': citation.indice_cite,
+            'indice_actif': indice_actif,
+            'message': message,
+        })
+    return perimees
+
+
+def totaux_bordereau(bordereau):
+    """AOF120 — les totaux du bordereau, RECALCULÉS côté serveur.
+
+    Aucun total n'est stocké : une colonne recopiée diverge dès la première
+    ligne modifiée, et c'est le total qui part chez le maître d'ouvrage.
+    """
+    return {
+        'sous_total_ht': bordereau.sous_total_ht,
+        'remise_globale_pct': bordereau.remise_globale_pct,
+        'montant_remise_globale': bordereau.montant_remise_globale,
+        'total_ht': bordereau.total_ht,
+        'tva_par_taux': {str(taux): montant
+                         for taux, montant in bordereau.tva_par_taux.items()},
+        'total_tva': bordereau.total_tva,
+        'total_ttc': bordereau.total_ttc,
+    }
+
+
+def raisons_bordereau_non_remettable(bordereau):
+    """Motifs, en français, qui interdisent de remettre ce bordereau (AOF120).
+
+    Liste vide = remettable. Deux familles : la clause de réserve manquante
+    sur un marché à prix unitaires, et une quantité annoncée « issue du
+    calepinage » sans variante citée.
+    """
+    raisons = list(bordereau.raisons_de_non_conformite())
+    for ligne in bordereau.lignes.all():
+        raisons.extend(ligne.raisons_de_non_tracabilite())
+    return raisons
+
+
+def aligner_quantite_modules(appel_offre, *, user=None):
+    """Aligne la quantité de MODULES sur les variantes RETENUES (AOF118).
+
+    La quantité de modules du dossier n'est pas une saisie : c'est la somme
+    des engagements portés par les variantes retenues de chaque toiture. Un
+    écart entre les deux est précisément ce que le contrôleur de cohérence
+    (AOF146) doit voir.
+
+    Renvoie ``(quantite_alignee, equipements_touches)``.
+    """
+    from .models import EquipementAO, VarianteCalepinage
+
+    total = 0
+    retenues = VarianteCalepinage.objects.filter(
+        company=appel_offre.company, appel_offre=appel_offre,
+        est_retenue=True)
+    for variante in retenues:
+        total += int(variante.total_modules or 0)
+    touches = 0
+    for equipement in EquipementAO.objects.filter(
+            company=appel_offre.company, appel_offre=appel_offre,
+            role=EquipementAO.Role.MODULE, actif=True):
+        if equipement.quantite == Decimal(total):
+            continue
+        equipement.quantite = Decimal(total)
+        equipement.save(update_fields=['quantite', 'updated_at'])
+        touches += 1
+    return Decimal(total), touches

@@ -30,9 +30,11 @@ import math
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+from core.documents import DocumentMetier
 from core.models import TenantModel
 
 # AOF19 — géométrie PURE (repère local métrique, ordre des axes contractuel).
@@ -148,6 +150,10 @@ class AppelOffre(TenantModel):
     soumissionnaire = models.CharField(
         max_length=255, blank=True, default='',
         verbose_name='Soumissionnaire (raison sociale déposante)')
+    #: AOF144 — marque blanche de PREMIER RANG : quand elle est active, aucun
+    #: artefact remis au maître d'ouvrage ne nomme le bureau d'exécution.
+    marque_blanche = models.BooleanField(
+        default=False, verbose_name='Marque blanche active')
     groupement = models.BooleanField(
         default=False, verbose_name='Dépôt en groupement')
     groupement_membres = models.TextField(
@@ -1875,8 +1881,20 @@ class VarianteCalepinage(TenantModel):
 class BordereauPrix(TenantModel):
     """Bordereau des prix (BOQ) d'un AO (FG223), séparé du devis client.
 
-    Chiffrage interne ligne à ligne de l'AO. Distinct du devis : sert au
-    montage de l'offre de prix. ``total_ht`` agrège les lignes.
+    Chiffrage ligne à ligne de l'AO. Distinct du devis : sert au montage de
+    l'offre de prix.
+
+    AOF120 — bordereau v2. Le bordereau réel compte QUATRE sections
+    (une par bâtiment + les prestations communes) et une trentaine d'items ;
+    ses totaux sont RECALCULÉS côté serveur à chaque lecture — jamais des
+    colonnes recopiées qui divergeraient à la première remise. La **clause de
+    réserve** est OBLIGATOIRE sur un marché à prix unitaires : c'est elle qui
+    encadre l'écart entre les quantités engagées et les quantités constatées à
+    l'exécution.
+
+    **NTMAR22 est SUPERSEDED** : aucun modèle ``LigneBordereauPrix`` n'est créé
+    — ``LigneBordereau`` est ÉTENDU, sinon l'app porterait deux modèles de
+    ligne de bordereau (test d'introspection dans ``test_bordereau_v2``).
     """
     company = models.ForeignKey(
         'authentication.Company',
@@ -1895,6 +1913,26 @@ class BordereauPrix(TenantModel):
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
+    # ── AOF120 — révision, remise globale, TVA, clause de réserve ─────────
+    #: Indice de révision du bordereau (A, B, C…) — deux bordereaux d'indices
+    #: différents ne sont JAMAIS le même document.
+    indice_revision = models.CharField(
+        max_length=4, blank=True, default='A',
+        verbose_name='Indice de révision')
+    remise_globale_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Remise globale (%)')
+    taux_tva_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20.00'),
+        verbose_name='Taux de TVA par défaut (%)')
+    #: Un marché à prix unitaires engage des PRIX, pas des quantités fermes.
+    marche_prix_unitaires = models.BooleanField(
+        default=True, verbose_name='Marché à prix unitaires')
+    clause_reserve = models.TextField(
+        blank=True, default='',
+        verbose_name='Clause de réserve (obligatoire en prix unitaires)')
+
     class Meta:
         verbose_name = 'Bordereau des prix (BOQ)'
         verbose_name_plural = 'Bordereaux des prix (BOQ)'
@@ -1904,16 +1942,143 @@ class BordereauPrix(TenantModel):
     def __str__(self):
         return f'BOQ {self.intitule} ({self.appel_offre.reference})'
 
+    # ── Totaux RECALCULÉS côté serveur (jamais des colonnes recopiées) ────
+
     @property
-    def total_ht(self):
+    def sous_total_ht(self):
+        """Somme des lignes, remises de LIGNE déduites, avant remise globale."""
         total = Decimal('0.00')
         for ligne in self.lignes.all():
             total += ligne.montant_ht
-        return total
+        return total.quantize(Decimal('0.01'))
+
+    @property
+    def montant_remise_globale(self):
+        """Montant de la remise globale, DÉRIVÉ du sous-total."""
+        taux = self.remise_globale_pct or Decimal('0')
+        return (self.sous_total_ht * taux / Decimal('100')).quantize(
+            Decimal('0.01'))
+
+    @property
+    def total_ht(self):
+        """Sous-total HT moins la remise globale."""
+        return (self.sous_total_ht - self.montant_remise_globale).quantize(
+            Decimal('0.01'))
+
+    @property
+    def tva_par_taux(self):
+        """Panier de TVA ``{taux: montant}`` — la remise globale est répartie
+        au PRORATA de chaque ligne, sinon un bordereau à deux taux serait faux.
+        """
+        sous_total = self.sous_total_ht
+        if not sous_total:
+            return {}
+        facteur = Decimal('1') - (
+            self.remise_globale_pct or Decimal('0')) / Decimal('100')
+        panier = {}
+        for ligne in self.lignes.all():
+            taux = ligne.taux_tva_effectif
+            base = (ligne.montant_ht * facteur)
+            panier[taux] = panier.get(taux, Decimal('0.00')) + (
+                base * taux / Decimal('100'))
+        return {taux: montant.quantize(Decimal('0.01'))
+                for taux, montant in panier.items()}
+
+    @property
+    def total_tva(self):
+        return sum(self.tva_par_taux.values(), Decimal('0.00')).quantize(
+            Decimal('0.01'))
+
+    @property
+    def total_ttc(self):
+        return (self.total_ht + self.total_tva).quantize(Decimal('0.01'))
+
+    def raisons_de_non_conformite(self):
+        """Motifs, en français, qui rendent le bordereau non remettable."""
+        raisons = []
+        if self.marche_prix_unitaires and not (self.clause_reserve or '').strip():
+            raisons.append(
+                "Marché à prix unitaires : la clause de réserve est "
+                "obligatoire — sans elle, les quantités du bordereau sont "
+                "lues comme un engagement ferme."
+            )
+        return raisons
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        raisons = self.raisons_de_non_conformite()
+        if raisons:
+            raise ValidationError({'clause_reserve': raisons})
+
+
+class SectionBordereau(TenantModel):
+    """Une SECTION du bordereau des prix (AOF120).
+
+    Le bordereau réel se lit par section (une par bâtiment, plus les
+    prestations communes) : sans sections, un total par bâtiment n'est pas
+    vérifiable et la correspondance « quantités du bordereau = engagements des
+    planches » devient une lecture à l'œil.
+    """
+
+    bordereau = models.ForeignKey(
+        BordereauPrix,
+        on_delete=models.CASCADE,  # on_delete: section fille d'un bordereau : aucune existence hors de lui
+        related_name='sections',
+        verbose_name='Bordereau',
+    )
+    numero = models.CharField(max_length=8, verbose_name='Numéro (A, B, C…)')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    batiment = models.ForeignKey(
+        BatimentAO,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='sections_bordereau', verbose_name='Bâtiment',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Section de bordereau (AO)'
+        verbose_name_plural = 'Sections de bordereau (AO)'
+        db_table = 'ao_section_bordereau'
+        ordering = ['bordereau', 'ordre', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['bordereau', 'numero'],
+                name='uniq_section_bordereau_numero'),
+        ]
+
+    def __str__(self):
+        return f'{self.numero} — {self.libelle}'
+
+    @property
+    def total_ht(self):
+        """Total HT de la section (lignes de la section uniquement)."""
+        total = Decimal('0.00')
+        for ligne in self.lignes.all():
+            total += ligne.montant_ht
+        return total.quantize(Decimal('0.01'))
 
 
 class LigneBordereau(TenantModel):
-    """Une ligne chiffrée d'un BOQ (FG223)."""
+    """Une ligne chiffrée d'un BOQ (FG223), étendue par AOF120.
+
+    ``quantite_source`` + ``variante`` rendent VÉRIFIABLE EN MACHINE
+    l'invariant « quantités du bordereau = engagements portés sur les
+    planches » : une quantité issue du calepinage CITE la variante qui l'a
+    produite. ``quantite_verrouillee`` protège une quantité arbitrée à la main
+    d'un ré-alignement automatique.
+    """
+
+    class QuantiteSource(models.TextChoices):
+        CALEPINAGE = 'calepinage', 'Calepinage (variante)'
+        MANUELLE = 'manuelle', 'Saisie manuelle'
+        CATALOGUE = 'catalogue', 'Catalogue'
+        ACHETEUR = 'acheteur', "Imposée par l'acheteur"
+
+    class TauxTVA(models.TextChoices):
+        DIX = '10.00', '10 %'
+        VINGT = '20.00', '20 %'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,  # on_delete: purge multi-tenant — supprimer une societe retire ses dossiers d'AO
@@ -1926,6 +2091,11 @@ class LigneBordereau(TenantModel):
         related_name='lignes',
         verbose_name='Bordereau',
     )
+    section = models.ForeignKey(
+        SectionBordereau,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes', verbose_name='Section',
+    )
     numero = models.PositiveIntegerField(default=1, verbose_name='N° ligne')
     designation = models.CharField(max_length=255, verbose_name='Désignation')
     unite = models.CharField(
@@ -1937,6 +2107,47 @@ class LigneBordereau(TenantModel):
         max_digits=14, decimal_places=2, default=Decimal('0.00'),
         verbose_name='Prix unitaire HT (MAD)')
 
+    # ── AOF120 — TVA, remise, traçabilité de la quantité ─────────────────
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        choices=TauxTVA.choices,
+        verbose_name='Taux de TVA (%) — vide = taux du bordereau')
+    remise_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Remise de ligne (%)')
+    batiment = models.ForeignKey(
+        BatimentAO,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_bordereau', verbose_name='Bâtiment',
+    )
+    #: String-FK catalogue (même raison qu'AOF118 : le contrat interdit les
+    #: IMPORTS de ``apps.stock.models``, pas les FK par chaîne).
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_bordereau_ao', verbose_name='Produit',
+    )
+    quantite_source = models.CharField(
+        max_length=12, choices=QuantiteSource.choices,
+        default=QuantiteSource.MANUELLE,
+        verbose_name='Origine de la quantité')
+    #: La variante qui a PRODUIT cette quantité (obligatoire quand
+    #: ``quantite_source == calepinage`` — vérifié par le service).
+    variante = models.ForeignKey(
+        VarianteCalepinage,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_bordereau', verbose_name='Variante source',
+    )
+    quantite_verrouillee = models.BooleanField(
+        default=False, verbose_name='Quantité verrouillée')
+    #: AOF135 — le CAPEX « hors stockage » de la simulation client se DÉRIVE
+    #: du bordereau : il faut donc savoir quelle ligne EST du stockage. Un
+    #: booléen porté par la ligne évite de deviner sur la désignation (le
+    #: chercher-remplacer que tout ce groupe combat).
+    est_stockage = models.BooleanField(
+        default=False, verbose_name='Ligne de stockage (batteries)')
+
     class Meta:
         verbose_name = 'Ligne de bordereau'
         verbose_name_plural = 'Lignes de bordereau'
@@ -1947,9 +2158,37 @@ class LigneBordereau(TenantModel):
         return f'{self.numero}. {self.designation}'
 
     @property
+    def taux_tva_effectif(self):
+        """Taux de la ligne, ou celui du bordereau en repli."""
+        if self.taux_tva is not None:
+            return Decimal(self.taux_tva)
+        return Decimal(self.bordereau.taux_tva_defaut or Decimal('20.00'))
+
+    @property
     def montant_ht(self):
-        return (self.quantite or Decimal('0')) * (
+        """``quantité × PU × (1 − remise/100)`` — remise de LIGNE incluse."""
+        brut = (self.quantite or Decimal('0')) * (
             self.prix_unitaire or Decimal('0'))
+        remise = self.remise_pct or Decimal('0')
+        return brut * (Decimal('1') - remise / Decimal('100'))
+
+    @property
+    def montant_tva(self):
+        return (self.montant_ht * self.taux_tva_effectif
+                / Decimal('100')).quantize(Decimal('0.01'))
+
+    def raisons_de_non_tracabilite(self):
+        """Motifs, en français, qui rendent la quantité non traçable."""
+        raisons = []
+        if self.quantite_source == self.QuantiteSource.CALEPINAGE \
+                and not self.variante_id:
+            raisons.append(
+                f'Ligne {self.numero} « {self.designation} » : quantité '
+                "annoncée issue du calepinage mais AUCUNE variante n'est "
+                'citée — la correspondance « bordereau = planches » ne peut '
+                'pas être vérifiée.'
+            )
+        return raisons
 
 
 # ── FG224 — Suivi des cautions & garanties de soumission ───────────────────
@@ -2261,3 +2500,1624 @@ class ResultatAO(TenantModel):
             return None
         return (ecart / Decimal(self.prix_gagnant) * Decimal('100')).quantize(
             Decimal('0.01'))
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# W6 — FABRIQUE DOCUMENTAIRE : le dossier de dépôt et ses pièces
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── AOF115 — ``DossierAO`` sur le kit ``core/documents.py`` ────────────────
+
+class DossierAO(DocumentMetier):
+    """Le DOSSIER DE DÉPÔT d'un appel d'offres, sur le kit document (AOF115).
+
+    Le kit ``core/documents.py`` est explicitement « réservé aux NOUVEAUX
+    types de documents » : c'est le socle LÉGITIME ici. Aucun rétrofit
+    Devis/Facture/BonCommande/Avoir n'est fait ni permis (règle #4) — ceux-là
+    gardent leurs chemins propres. ``core/documents.py`` reste un MODULE (un
+    seul fichier), il n'est pas transformé en paquet.
+
+    Ce que le kit apporte SANS une ligne recopiée :
+
+    * ``statut`` propre à cette classe (injecté par ``DocumentMetierMeta``
+      depuis l'énumération ``Statut`` ci-dessous) ;
+    * ``TRANSITIONS`` DÉCLARATIVE — la seule description du cycle ; une
+      transition absente de la table est refusée par
+      ``core.documents.changer_statut`` ;
+    * le socle multi-société ``TenantModel`` (FK ``company`` + horodatage) ;
+    * la référence ``AODOS-YYYYMM-0001`` via ``core.numbering`` (jamais
+      ``count()+1``) ;
+    * le chatter générique ``records`` par le viewset (jamais une classe
+      ``*Activity`` maison) et le hook PDF
+      ``core.documents.render_document_pdf``.
+
+    À distinguer de ``DossierSoumission`` (FG225), la checklist administrative
+    HISTORIQUE : celle-ci porte les pièces déjà en base et n'est pas remplacée.
+    Une ``PieceDossierAO`` peut POINTER une ``PieceSoumission`` legacy plutôt
+    que d'en recréer un jumeau (cf. la contrainte d'exclusivité ci-dessous).
+    """
+
+    class Statut(models.TextChoices):
+        MONTAGE = 'montage', 'Montage'
+        EN_CONSTITUTION = 'en_constitution', 'En constitution'
+        CONTROLE = 'controle', 'Contrôle'
+        PRET_A_DEPOSER = 'pret_a_deposer', 'Prêt à déposer'
+        DEPOSE = 'depose', 'Déposé'
+        CLOS = 'clos', 'Clos'
+
+    STATUT_INITIAL = 'montage'
+
+    #: Le graphe d'états, DÉCLARATIF. Un retour en arrière reste possible tant
+    #: que le pli n'est pas déposé — un dossier réel repasse en constitution
+    #: dès qu'une pièce change. Après ``depose``, seul ``clos`` subsiste :
+    #: l'histoire d'un pli remis ne se réécrit pas.
+    TRANSITIONS = {
+        Statut.MONTAGE: {Statut.EN_CONSTITUTION, Statut.CLOS},
+        Statut.EN_CONSTITUTION: {
+            Statut.CONTROLE, Statut.MONTAGE, Statut.CLOS},
+        Statut.CONTROLE: {
+            Statut.PRET_A_DEPOSER, Statut.EN_CONSTITUTION, Statut.CLOS},
+        Statut.PRET_A_DEPOSER: {
+            Statut.DEPOSE, Statut.EN_CONSTITUTION, Statut.CLOS},
+        Statut.DEPOSE: {Statut.CLOS},
+        Statut.CLOS: set(),
+    }
+
+    #: Préfixe de numérotation ``core.numbering`` — ``AODOS-YYYYMM-0001``.
+    PREFIXE_REFERENCE = 'AODOS'
+
+    appel_offre = models.OneToOneField(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: dossier fils d'un AO : aucune existence hors de son appel d'offres
+        related_name='dossier_ao',
+        verbose_name="Appel d'offres",
+    )
+    reference = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Référence')
+    intitule = models.CharField(
+        max_length=200, default='Dossier de dépôt', verbose_name='Intitulé')
+    date_depot = models.DateField(
+        null=True, blank=True, verbose_name='Date de dépôt effectif')
+
+    class Meta:
+        verbose_name = 'Dossier de dépôt (AO)'
+        verbose_name_plural = 'Dossiers de dépôt (AO)'
+        db_table = 'ao_dossier'
+        ordering = ['-created_at', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=~models.Q(reference=''),
+                name='uniq_dossier_ao_reference'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut']),
+        ]
+
+    def __str__(self):
+        return (f'{self.reference or self.intitule} — '
+                f'{self.appel_offre.reference}')
+
+    # ── Complétude DÉRIVÉE des pièces obligatoires ────────────────────────
+
+    def pieces_obligatoires_manquantes(self):
+        """Les pièces obligatoires encore ABSENTES (queryset, jamais un drapeau).
+
+        La complétude d'un dossier ne se stocke pas : une colonne ``complet``
+        deviendrait fausse à la première pièce ajoutée, et c'est précisément
+        l'information la plus consultée avant un dépôt.
+        """
+        return self.pieces.filter(obligatoire=True, presente=False)
+
+    @property
+    def complet(self):
+        """Vrai si AUCUNE pièce obligatoire ne manque.
+
+        Un dossier SANS aucune pièce obligatoire n'est pas « complet » : il
+        n'est pas encore constitué (même sémantique que
+        ``DossierSoumission.complet``, FG225).
+        """
+        if not self.pieces.filter(obligatoire=True).exists():
+            return False
+        return not self.pieces_obligatoires_manquantes().exists()
+
+    @property
+    def taux_completude(self):
+        """Part des pièces obligatoires présentes, en % (0 si aucune)."""
+        obligatoires = self.pieces.filter(obligatoire=True).count()
+        if not obligatoires:
+            return Decimal('0.00')
+        presentes = self.pieces.filter(
+            obligatoire=True, presente=True).count()
+        return (Decimal(presentes) / Decimal(obligatoires)
+                * Decimal('100')).quantize(Decimal('0.01'))
+
+    def raisons_de_non_depot(self):
+        """Motifs, en français, qui INTERDISENT de passer « prêt à déposer ».
+
+        Liste vide = la porte s'ouvre. Chaque motif est une phrase lisible :
+        c'est ce que l'utilisateur doit lire, pas un code d'erreur.
+        """
+        raisons = []
+        manquantes = list(self.pieces_obligatoires_manquantes())
+        if manquantes:
+            libelles = ', '.join(
+                f'{p.code} {p.libelle}'.strip() for p in manquantes[:8])
+            raisons.append(
+                f'{len(manquantes)} pièce(s) obligatoire(s) manquante(s) : '
+                f'{libelles}.'
+            )
+        elif not self.pieces.filter(obligatoire=True).exists():
+            raisons.append(
+                "Le dossier ne porte aucune pièce obligatoire : il n'est pas "
+                'constitué.'
+            )
+        # AOF136 — une case obligatoire OUVERTE de la checklist partenaire
+        # bloque le dépôt : la checklist est un OBJET SUIVI, pas un document
+        # mort qu'on relit en diagonale la veille de la remise.
+        ouvertes = list(self.lignes_checklist.filter(
+            obligatoire=True, faite=False))
+        if ouvertes:
+            libelles = ', '.join(
+                f'{ligne.get_bloc_display()} — {ligne.libelle}'
+                for ligne in ouvertes[:8])
+            raisons.append(
+                f'{len(ouvertes)} point(s) obligatoire(s) de la checklist '
+                f'partenaire encore ouvert(s) : {libelles}.'
+            )
+        # AOF137 — une pièce administrative EXPIRÉE À LA DATE DE REMISE DES
+        # PLIS (jamais « à la date du jour ») est bloquante, et le motif CITE
+        # sa date : c'est ce que l'utilisateur doit pouvoir vérifier.
+        raisons.extend(self.raisons_pieces_administratives())
+        return raisons
+
+    @property
+    def date_reference_controle(self):
+        """La SEULE date qui compte : celle de la remise/ouverture des plis.
+
+        Ouverture des plis si connue, sinon date limite de remise. ``None``
+        quand aucune n'est saisie — on ne contrôle pas contre une date
+        inventée (une date fausse est pire qu'une absence de date).
+        """
+        ao = self.appel_offre
+        return ao.date_ouverture_plis or ao.date_limite
+
+    def raisons_pieces_administratives(self):
+        """Pièces administratives expirées à la date de remise (AOF137)."""
+        reference = self.date_reference_controle
+        if reference is None:
+            return []
+        raisons = []
+        for piece in self.pieces_administratives.filter(actif=True):
+            if piece.est_expiree_a(reference):
+                raisons.append(
+                    f'{piece.get_type_piece_display()} « {piece.libelle} » : '
+                    f'émise le {piece.date_emission}, expirée le '
+                    f'{piece.date_expiration} — donc EXPIRÉE à la date de '
+                    f'remise des plis ({reference}).'
+                )
+        return raisons
+
+
+class PieceDossierAO(TenantModel):
+    """Une pièce du dossier de dépôt (AOF115).
+
+    Une pièce pointe SOIT un artefact GÉNÉRÉ par la fabrique (stocké via
+    ``records.Attachment`` — aucun nouveau ``FileField``, le garde
+    ``apps/records/platform_guards.py`` gèle ``apps/ao/models.py`` à
+    ``{"fichier": 1}``), SOIT une ``PieceSoumission`` administrative LEGACY —
+    jamais les deux : un doublon ferait exister deux versions de la même pièce
+    dans le même dossier, exactement la classe de défaut « fichier frère
+    périmé » que ce groupe combat. La contrainte est en BASE, pas dans une vue.
+    """
+
+    class TypePiece(models.TextChoices):
+        GENEREE = 'generee', 'Générée par la fabrique'
+        FOURNIE = 'fournie', 'Fournie (partenaire / acheteur)'
+
+    class Visibilite(models.TextChoices):
+        CLIENT = 'client', "Client (remise au maître d'ouvrage)"
+        INTERNE = 'interne', 'Interne'
+        DIRECTEUR = 'directeur', 'Directeur'
+
+    dossier = models.ForeignKey(
+        DossierAO,
+        on_delete=models.CASCADE,  # on_delete: piece fille d'un dossier : aucune existence hors de lui
+        related_name='pieces',
+        verbose_name='Dossier',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    code = models.CharField(max_length=20, verbose_name='Code de la pièce')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    type_piece = models.CharField(
+        max_length=8, choices=TypePiece.choices, default=TypePiece.GENEREE,
+        verbose_name='Type de pièce')
+    obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
+    presente = models.BooleanField(default=False, verbose_name='Présente')
+    visibilite = models.CharField(
+        max_length=10, choices=Visibilite.choices, default=Visibilite.CLIENT,
+        verbose_name='Visibilité')
+    #: Artefact GÉNÉRÉ (MinIO via ``records.Attachment``).
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pieces_dossier_ao', verbose_name='Artefact (MinIO)')
+    #: Pièce administrative HISTORIQUE (FG225) réutilisée telle quelle.
+    piece_soumission = models.ForeignKey(
+        PieceSoumission,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pieces_dossier_ao',
+        verbose_name='Pièce administrative (legacy)')
+    signee = models.BooleanField(
+        default=False,
+        verbose_name='Signée / paraphée (pointage humain)',
+        help_text=(
+            "NON-OBJECTIF v1 ACTÉ : PAS de signature électronique. Le dépôt "
+            "marocain visé est PAPIER, en 2 exemplaires, avec paraphe "
+            "manuscrit — ce booléen est donc un POINTAGE HUMAIN, jamais un "
+            "état cryptographique. Le jour où la signature devient un besoin, "
+            "elle se branchera sur ged.ChampSignature (déjà en production) et "
+            "sur AUCUN mécanisme local."
+        ),
+    )
+    motif = models.TextField(
+        blank=True, default='', verbose_name='Motif / commentaire')
+    #: AOF149 — ce qui n'est pas FABRIQUÉ par la fabrique n'est jamais présumé
+    #: vert. Les invariants d'AOF146 ne s'appliquent qu'aux pièces produites
+    #: ici : dès qu'une pièce est fournie à la main (acte d'engagement au
+    #: modèle de l'acheteur, attestations, caution bancaire, checklist remplie
+    #: par le partenaire), elle échappe aux contrôles. Un dossier « tout vert »
+    #: dont un tiers n'a jamais été vérifié est plus dangereux qu'un dossier
+    #: orange : elle est donc marquée HORS CONTRÔLE, avec un motif OBLIGATOIRE.
+    controlee = models.CharField(
+        max_length=14, default='fabriquee',
+        choices=[
+            ('fabriquee', 'Fabriquée (contrôlée)'),
+            ('hors_controle', 'Fournie — HORS CONTRÔLE'),
+        ],
+        verbose_name='Régime de contrôle')
+    #: AOF146 — empreinte du CONTEXTE au moment où l'artefact a été produit.
+    #: Une pièce dont l'empreinte diverge de l'empreinte courante du dossier
+    #: est PÉRIMÉE : c'est le défaut réel du « LISEZ-MOI figé » resté dans le
+    #: dépôt alors que le pack avait été régénéré.
+    empreinte_source = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte du contexte à la production')
+
+    class Meta:
+        verbose_name = 'Pièce du dossier de dépôt (AO)'
+        verbose_name_plural = 'Pièces du dossier de dépôt (AO)'
+        db_table = 'ao_piece_dossier'
+        ordering = ['dossier', 'ordre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dossier', 'code'],
+                name='uniq_piece_dossier_ao_code'),
+            # JAMAIS un doublon : une pièce est générée OU legacy, pas les deux.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(attachment__isnull=True)
+                    | models.Q(piece_soumission__isnull=True)
+                ),
+                name='piece_dossier_ao_source_unique'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'dossier', 'visibilite']),
+        ]
+
+    def __str__(self):
+        etat = 'présente' if self.presente else 'manquante'
+        return f'{self.code} {self.libelle} ({etat})'
+
+    #: AOF149 — les deux régimes de contrôle, nommés une seule fois.
+    FABRIQUEE = 'fabriquee'
+    HORS_CONTROLE = 'hors_controle'
+
+    @property
+    def source(self):
+        """« generee » / « legacy » / « aucune » — d'où vient le fichier."""
+        if self.attachment_id:
+            return 'generee'
+        if self.piece_soumission_id:
+            return 'legacy'
+        return 'aucune'
+
+    @property
+    def etat_controle(self):
+        """« manquante » / « hors_controle » / « verte » (AOF149).
+
+        Une pièce FOURNIE n'apparaît JAMAIS « verte » : le vert veut dire
+        « vérifié par la fabrique », et une pièce qu'elle n'a pas produite n'a
+        pas été vérifiée. Elle est « hors contrôle », avec son motif.
+        """
+        if not self.presente:
+            return 'manquante'
+        if self.controlee == self.HORS_CONTROLE:
+            return 'hors_controle'
+        return 'verte'
+
+    def raisons_hors_controle(self):
+        """Motif manquant sur une pièce hors contrôle (liste, jamais None)."""
+        if self.controlee != self.HORS_CONTROLE:
+            return []
+        if (self.motif or '').strip():
+            return []
+        return [(
+            f'Pièce {self.code} « {self.libelle} » déclarée HORS CONTRÔLE '
+            f"sans motif : une pièce que la fabrique n'a pas produite doit "
+            f'dire POURQUOI elle échappe aux contrôles.'
+        )]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        raisons = self.raisons_hors_controle()
+        if raisons:
+            raise ValidationError({'motif': raisons})
+
+
+# ── AOF116 — Gabarits de pack + bibliothèque de sections ───────────────────
+
+class ModelePack(TenantModel):
+    """Gabarit de PACK : la liste ORDONNÉE des pièces d'un dossier (AOF116).
+
+    Le pack réel d'un dépôt solaire marocain compte neuf pièces (00 checklist
+    partenaire … 08 dossier administratif). Les décrire en DONNÉES plutôt qu'en
+    code fait qu'ajouter une pièce est une ligne de seed, pas une release :
+    c'est aussi la seule façon de rendre le sommaire (AOF139) cohérent avec le
+    manifeste RÉEL sans intervention.
+    """
+
+    code = models.CharField(max_length=40, verbose_name='Code du modèle')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Modèle de pack (AO)'
+        verbose_name_plural = 'Modèles de pack (AO)'
+        db_table = 'ao_modele_pack'
+        ordering = ['code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='uniq_modele_pack_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+
+class PieceModele(TenantModel):
+    """Une pièce DÉCLARÉE d'un gabarit de pack (AOF116).
+
+    ``generateur`` nomme la fabrique qui produit la pièce (jamais un chemin de
+    fichier ni un import) ; ``gabarit`` porte le corps à placeholders
+    ``{{ … }}`` rendu par ``core.templating.rendre`` — fondation SANS ``eval``,
+    déjà en production. **Aucun littéral chiffré n'est permis dans un
+    gabarit** : un nombre écrit à la main est un vestige qui survit à la
+    prochaine cascade de prix (le défaut « justification 2 800 contre bordereau
+    à 2 600 » de la session réelle). Le contrôle vit dans
+    ``apps.ao.fabrique.gabarits``.
+    """
+
+    class Format(models.TextChoices):
+        PDF = 'pdf', 'PDF'
+        PDF_A3 = 'pdf_a3', 'PDF A3 (planches)'
+        XLSX = 'xlsx', 'Classeur XLSX'
+        DOCX = 'docx', 'Document DOCX éditable'
+        ZIP = 'zip', 'Archive ZIP'
+
+    modele = models.ForeignKey(
+        ModelePack,
+        on_delete=models.CASCADE,  # on_delete: piece de gabarit : aucune existence hors de son modele
+        related_name='pieces',
+        verbose_name='Modèle de pack',
+    )
+    code = models.CharField(max_length=20, verbose_name='Code de la pièce')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    generateur = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Générateur (nom logique)')
+    format = models.CharField(
+        max_length=8, choices=Format.choices, default=Format.PDF,
+        verbose_name='Format')
+    obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    visibilite = models.CharField(
+        max_length=10, choices=PieceDossierAO.Visibilite.choices,
+        default=PieceDossierAO.Visibilite.CLIENT, verbose_name='Visibilité')
+    gabarit = models.TextField(
+        blank=True, default='',
+        verbose_name='Gabarit (placeholders {{ … }}, aucun chiffre littéral)')
+
+    class Meta:
+        verbose_name = 'Pièce de gabarit (AO)'
+        verbose_name_plural = 'Pièces de gabarit (AO)'
+        db_table = 'ao_piece_modele'
+        ordering = ['modele', 'ordre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['modele', 'code'], name='uniq_piece_modele_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} {self.libelle}'
+
+
+class SectionMemoire(TenantModel):
+    """Une section COMPOSABLE de mémoire technique (AOF116, rendue en AOF133).
+
+    Le mémoire n'est pas un texte libre : c'est une suite de sections dont le
+    corps porte des placeholders. Sans cela, une bascule d'équipement redevient
+    un chercher-remplacer sur ~90 paragraphes — les 12 remplacements de
+    désignation de la bascule batterie ne sont fiables que si la désignation
+    n'existe qu'à UN endroit.
+    """
+
+    code = models.CharField(max_length=40, verbose_name='Code')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    corps = models.TextField(
+        blank=True, default='',
+        verbose_name='Corps (placeholders {{ … }})')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    #: Conditions d'inclusion DÉCLARATIVES : ``{"variable": valeur_attendue}``
+    #: évaluées contre le contexte du dossier (jamais du code exécuté).
+    conditions_inclusion = models.JSONField(
+        default=dict, blank=True, verbose_name="Conditions d'inclusion")
+    actif = models.BooleanField(default=True, verbose_name='Active')
+
+    class Meta:
+        verbose_name = 'Section de mémoire (AO)'
+        verbose_name_plural = 'Sections de mémoire (AO)'
+        db_table = 'ao_section_memoire'
+        ordering = ['ordre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'], name='uniq_section_memoire_code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.titre}'
+
+
+# ── AOF118 — ``EquipementAO`` : string-FK catalogue + SNAPSHOT figé ────────
+
+class EquipementAO(TenantModel):
+    """Un équipement engagé par le dossier, avec son SNAPSHOT figé (AOF118).
+
+    Pourquoi un snapshot. Le catalogue produit est re-seedé régulièrement
+    (prix, archivage de placeholders, fiches). **Sans snapshot, un re-seed
+    ferait bouger la désignation d'un matériel dans un dossier DÉJÀ DÉPOSÉ** —
+    la version numérique du « fichier frère périmé », le défaut n°1 de la
+    session réelle. La désignation, la marque, la référence constructeur et les
+    caractéristiques sont donc COPIÉES au moment de l'engagement et ne bougent
+    plus jamais toutes seules ; seule une bascule d'équipement NOMMÉE (AOF141)
+    les change, en une transaction.
+
+    Pourquoi une string-FK. ``produit`` pointe ``'stock.Produit'`` par CHAÎNE :
+    le contrat import-linter ``ao-models-decoupled`` interdit les IMPORTS de
+    ``apps.stock.models``, pas les FK par chaîne — et une FK vaut mieux qu'un
+    entier opaque (intégrité référentielle, ``PROTECT`` contre la suppression
+    d'un produit encore engagé). Toute lecture d'ATTRIBUT du produit passe par
+    ``apps.stock.selectors``, jamais par un import de ses modèles.
+
+    Aucun champ de COÛT ici : ni ``prix_achat``, ni marge, ni bénéfice.
+    L'économie vit dans une table SÉPARÉE derrière ``ao_rentabilite_voir``.
+    """
+
+    class Role(models.TextChoices):
+        MODULE = 'module', 'Module photovoltaïque'
+        ONDULEUR = 'onduleur', 'Onduleur'
+        BATTERIE = 'batterie', 'Batterie / stockage'
+        COFFRET_DC = 'coffret_dc', 'Coffret DC'
+        COFFRET_AC = 'coffret_ac', 'Coffret AC'
+        TGPV = 'tgpv', 'TGPV'
+        CABLE = 'cable', 'Câble'
+        STRUCTURE = 'structure', 'Structure de pose'
+        EMS = 'ems', 'EMS / supervision'
+        STATION_METEO = 'station_meteo', 'Station météo'
+        AFFICHEUR = 'afficheur', 'Afficheur'
+        VARIATEUR = 'variateur', 'Variateur'
+
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: equipement fils d'un AO : aucune existence hors de son appel d'offres
+        related_name='equipements',
+        verbose_name="Appel d'offres",
+    )
+    batiment = models.ForeignKey(
+        BatimentAO,
+        on_delete=models.CASCADE,  # on_delete: equipement affecte a un batiment : suit sa suppression
+        null=True, blank=True,
+        related_name='equipements', verbose_name='Bâtiment',
+    )
+    role = models.CharField(
+        max_length=14, choices=Role.choices, verbose_name='Rôle')
+    #: String-FK vers le catalogue — AUTORISÉE (le contrat interdit les
+    #: IMPORTS de ``apps.stock.models``, pas les FK par chaîne). ``PROTECT`` :
+    #: un produit engagé dans un dossier ne se supprime pas en silence.
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.PROTECT,  # on_delete: un produit engage dans un dossier depose ne se supprime jamais
+        null=True, blank=True,
+        related_name='equipements_ao', verbose_name='Produit du catalogue',
+    )
+
+    # ── SNAPSHOT FIGÉ (copié à l'engagement, jamais recalculé) ────────────
+    designation = models.CharField(
+        max_length=255, verbose_name='Désignation (figée)')
+    marque = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Marque (figée)')
+    reference_constructeur = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Référence constructeur (figée)')
+    caracteristiques = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Caractéristiques (figées)')
+    quantite = models.DecimalField(
+        max_digits=12, decimal_places=3, default=Decimal('0.000'),
+        verbose_name='Quantité')
+    unite = models.CharField(
+        max_length=20, blank=True, default='U', verbose_name='Unité')
+    #: Fiche technique constructeur — via ``records.Attachment`` (aucun
+    #: nouveau ``FileField`` : le garde plateforme gèle ce fichier).
+    fiche_technique = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='equipements_ao', verbose_name='Fiche technique')
+    #: Traçabilité d'une bascule : le NOUVEL équipement pointe l'ANCIEN.
+    remplace = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='remplace_par', verbose_name='Remplace')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    #: Horodatage du gel du snapshot — ce que le dossier a VU du catalogue.
+    snapshot_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Snapshot figé le')
+
+    class Meta:
+        verbose_name = 'Équipement engagé (AO)'
+        verbose_name_plural = 'Équipements engagés (AO)'
+        db_table = 'ao_equipement'
+        ordering = ['appel_offre', 'role', 'id']
+        indexes = [
+            models.Index(fields=['company', 'appel_offre', 'role']),
+            models.Index(fields=['company', 'actif']),
+        ]
+
+    def __str__(self):
+        return f'{self.get_role_display()} — {self.designation}'
+
+    @property
+    def puissance_totale_w(self):
+        """Puissance cumulée, DÉRIVÉE du snapshot (None si non renseignée).
+
+        Lit ``caracteristiques['puissance_w']`` — une caractéristique FIGÉE :
+        un re-seed du catalogue ne peut donc pas déplacer la puissance d'un
+        dossier déjà déposé.
+        """
+        puissance = (self.caracteristiques or {}).get('puissance_w')
+        if puissance in (None, ''):
+            return None
+        return Decimal(str(puissance)) * (self.quantite or Decimal('0'))
+
+
+# ── AOF135 — Simulation de rentabilité : PIÈCE CLIENT, sans AUCUN coût ─────
+
+class SimulationRentabilite(TenantModel):
+    """Simulation de rentabilité remise au maître d'ouvrage (AOF135).
+
+    **Objet DISTINCT de l'économie directeur (AOF157).** Les fusionner « parce
+    que ça parle de rentabilité » est le chemin le plus court vers la fuite de
+    marge : cette pièce est CLIENT, elle ne porte donc AUCUN coût de revient,
+    AUCUNE marge, AUCUN bénéfice. Un test d'introspection le vérifie.
+
+    Rien n'est saisi deux fois : la puissance vient du CALEPINAGE (variantes
+    retenues), le CAPEX vient du BORDEREAU (total TTC, et total TTC hors
+    lignes de stockage). Ne restent en paramètres que ce qui ne se dérive pas :
+    le productible spécifique du site (avec sa provenance CITÉE), le tarif,
+    l'inflation, la dégradation annuelle et le taux d'actualisation.
+
+    ``source_hash`` fige l'empreinte des entrées : une simulation dont
+    l'empreinte ne correspond plus au dossier est PÉRIMÉE, jamais « à peu près
+    juste ».
+    """
+
+    appel_offre = models.OneToOneField(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: simulation fille d'un AO : aucune existence hors de lui
+        related_name='simulation_rentabilite',
+        verbose_name="Appel d'offres",
+    )
+    bordereau = models.ForeignKey(
+        BordereauPrix,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='simulations', verbose_name='Bordereau source du CAPEX',
+    )
+    duree_annees = models.PositiveSmallIntegerField(
+        default=25, verbose_name='Durée de la simulation (ans)')
+    #: Productible SPÉCIFIQUE du site, en kWh par kWc et par an. Sa provenance
+    #: est CITÉE (``productible_source``) : un productible sans source n'est
+    #: pas défendable devant un maître d'ouvrage.
+    productible_kwh_par_kwc_an = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Productible spécifique (kWh/kWc/an)')
+    productible_source = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Source du productible')
+    tarif_kwh = models.DecimalField(
+        max_digits=8, decimal_places=4, default=Decimal('0.0000'),
+        verbose_name='Tarif du kWh évité (MAD)')
+    inflation_tarif_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Inflation annuelle du tarif (%)')
+    degradation_annuelle_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.50'),
+        verbose_name='Dégradation annuelle des modules (%)')
+    taux_actualisation_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        verbose_name="Taux d'actualisation (%)")
+    part_autoconsommee_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('100.00'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        verbose_name='Part autoconsommée (%)')
+    source_hash = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte des entrées')
+
+    class Meta:
+        verbose_name = 'Simulation de rentabilité (AO)'
+        verbose_name_plural = 'Simulations de rentabilité (AO)'
+        db_table = 'ao_simulation_rentabilite'
+        ordering = ['appel_offre']
+
+    def __str__(self):
+        return f'Simulation {self.duree_annees} ans — {self.appel_offre.reference}'
+
+    # ── Grandeurs DÉRIVÉES (jamais saisies deux fois) ────────────────────
+
+    @property
+    def puissance_kwc(self):
+        """Puissance retenue, somme des variantes RETENUES (calepinage)."""
+        total = Decimal('0.000')
+        for variante in self.appel_offre.variantes_calepinage.filter(
+                est_retenue=True):
+            total += Decimal(str(variante.puissance_kwc or 0))
+        return total
+
+    @property
+    def productible_kwh_an(self):
+        """Productible de la première année — puissance × productible spécifique."""
+        return (self.puissance_kwc
+                * (self.productible_kwh_par_kwc_an or Decimal('0')))
+
+    @property
+    def economie_annuelle_initiale(self):
+        """Économie de la première année (MAD), part autoconsommée incluse."""
+        part = (self.part_autoconsommee_pct or Decimal('0')) / Decimal('100')
+        return (self.productible_kwh_an * (self.tarif_kwh or Decimal('0'))
+                * part).quantize(Decimal('0.01'))
+
+    @property
+    def capex_total(self):
+        """CAPEX TOTAL = montant TTC du bordereau (aucun coût de revient)."""
+        if self.bordereau_id is None:
+            return Decimal('0.00')
+        return self.bordereau.total_ttc
+
+    @property
+    def capex_hors_stockage(self):
+        """CAPEX hors stockage = TTC du bordereau moins les lignes stockage."""
+        if self.bordereau_id is None:
+            return Decimal('0.00')
+        facteur = Decimal('1') - (
+            self.bordereau.remise_globale_pct or Decimal('0')) / Decimal('100')
+        stockage_ttc = Decimal('0.00')
+        for ligne in self.bordereau.lignes.filter(est_stockage=True):
+            ht = ligne.montant_ht * facteur
+            stockage_ttc += ht * (
+                Decimal('1') + ligne.taux_tva_effectif / Decimal('100'))
+        return (self.capex_total - stockage_ttc).quantize(Decimal('0.01'))
+
+    def _annee(self, rang):
+        """Grandeurs de l'année ``rang`` (1-indexée), sans effet de bord."""
+        degradation = (Decimal('1') - (
+            self.degradation_annuelle_pct or Decimal('0')) / Decimal('100')
+        ) ** (rang - 1)
+        inflation = (Decimal('1') + (
+            self.inflation_tarif_pct or Decimal('0')) / Decimal('100')
+        ) ** (rang - 1)
+        economie = self.economie_annuelle_initiale * degradation * inflation
+        actualisation = (Decimal('1') + (
+            self.taux_actualisation_pct or Decimal('0')) / Decimal('100')
+        ) ** rang
+        return {
+            'annee': rang,
+            'productible_kwh': (self.productible_kwh_an * degradation
+                                ).quantize(Decimal('0.01')),
+            'economie': economie.quantize(Decimal('0.01')),
+            'economie_actualisee': (economie / actualisation).quantize(
+                Decimal('0.01')),
+        }
+
+    @property
+    def tableau_annuel(self):
+        """Le tableau année par année — la donnée du classeur et du PDF."""
+        lignes = []
+        cumul = Decimal('0.00')
+        cumul_actualise = Decimal('0.00')
+        for rang in range(1, int(self.duree_annees or 0) + 1):
+            annee = self._annee(rang)
+            cumul += annee['economie']
+            cumul_actualise += annee['economie_actualisee']
+            annee['economie_cumulee'] = cumul
+            annee['economie_cumulee_actualisee'] = cumul_actualise
+            lignes.append(annee)
+        return lignes
+
+    @property
+    def economies_cumulees(self):
+        """Économies cumulées sur toute la durée (MAD)."""
+        lignes = self.tableau_annuel
+        return lignes[-1]['economie_cumulee'] if lignes else Decimal('0.00')
+
+    def _annees_pour_atteindre(self, cible, cle):
+        """Années (interpolées) pour que le cumul ``cle`` atteigne ``cible``."""
+        if cible <= 0:
+            return None
+        precedent = Decimal('0.00')
+        for ligne in self.tableau_annuel:
+            cumul = ligne[cle]
+            if cumul >= cible:
+                flux = cumul - precedent
+                if flux <= 0:
+                    return Decimal(ligne['annee'])
+                reste = (cible - precedent) / flux
+                return (Decimal(ligne['annee'] - 1) + reste).quantize(
+                    Decimal('0.01'))
+            precedent = cumul
+        return None
+
+    @property
+    def payback_simple_ans(self):
+        """Retour SIMPLE sur le CAPEX hors stockage (années, None si jamais)."""
+        return self._annees_pour_atteindre(
+            self.capex_hors_stockage, 'economie_cumulee')
+
+    @property
+    def roi_sur_ttc_ans(self):
+        """Retour sur le montant TTC REMIS (années) — le ROI de l'offre."""
+        return self._annees_pour_atteindre(
+            self.capex_total, 'economie_cumulee')
+
+    @property
+    def payback_actualise_ans(self):
+        """Retour ACTUALISÉ sur le CAPEX hors stockage (années)."""
+        return self._annees_pour_atteindre(
+            self.capex_hors_stockage, 'economie_cumulee_actualisee')
+
+
+# ── AOF136 — Checklist partenaire : un OBJET SUIVI, pas un document mort ──
+
+class LigneChecklistPartenaire(TenantModel):
+    """Un point de la checklist de remise, en BASE et non sur un papier.
+
+    Les sept blocs de la checklist réelle deviennent des lignes d'état :
+    chaque point porte sa case, son RESPONSABLE et son commentaire, et un
+    point obligatoire encore ouvert BLOQUE la transition « prêt à déposer »
+    (``DossierAO.raisons_de_non_depot``). Un document mort se relit en
+    diagonale la veille de la remise ; un objet suivi ferme la porte.
+    """
+
+    class Bloc(models.TextChoices):
+        CPS = 'cps', 'CPS'
+        ACTE_ENGAGEMENT = 'acte_engagement', "Acte d'engagement"
+        BORDEREAU = 'bordereau', 'Bordereau des prix'
+        LETTRE_SOUMISSION = 'lettre_soumission', 'Lettre de soumission'
+        MEMOIRE = 'memoire', 'Mémoire technique'
+        ADMINISTRATIF = 'administratif', 'Dossier administratif'
+        VERIFICATIONS = 'verifications', 'Vérifications avant dépôt'
+
+    dossier = models.ForeignKey(
+        DossierAO,
+        on_delete=models.CASCADE,  # on_delete: ligne de checklist : aucune existence hors de son dossier
+        related_name='lignes_checklist',
+        verbose_name='Dossier',
+    )
+    bloc = models.CharField(
+        max_length=20, choices=Bloc.choices, verbose_name='Bloc')
+    code = models.CharField(max_length=40, verbose_name='Code du point')
+    libelle = models.CharField(max_length=255, verbose_name='Point à traiter')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
+    faite = models.BooleanField(default=False, verbose_name='Fait')
+    #: Nommé ``responsable_utilisateur`` et non ``responsable`` : le garde
+    #: YDATA3 (``scripts/check_on_delete.py``) traite un champ littéralement
+    #: nommé ``responsable`` comme un champ de PORTÉE (tenant/owner), où un
+    #: ``SET_NULL`` dé-scoperait silencieusement la ligne. Ici, c'est un
+    #: ASSIGNÉ : perdre l'assignation à la suppression d'un compte est le
+    #: comportement voulu (le point reste attaché à son dossier). Le libellé
+    #: métier reste « Responsable », et l'API expose bien ``responsable``.
+    responsable_utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_checklist_ao', verbose_name='Responsable')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    date_faite = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+
+    class Meta:
+        verbose_name = 'Point de checklist partenaire (AO)'
+        verbose_name_plural = 'Points de checklist partenaire (AO)'
+        db_table = 'ao_ligne_checklist'
+        ordering = ['dossier', 'ordre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dossier', 'code'],
+                name='uniq_ligne_checklist_code'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'dossier', 'bloc']),
+        ]
+
+    def __str__(self):
+        etat = 'fait' if self.faite else 'ouvert'
+        return f'[{self.get_bloc_display()}] {self.libelle} ({etat})'
+
+
+# ── AOF137 — ``PieceAdministrative`` : une attestation est une donnée DATÉE ─
+
+class PieceAdministrative(TenantModel):
+    """Une pièce administrative DATÉE, réutilisable d'un AO à l'autre (AOF137).
+
+    Constat. La checklist (AOF136) énumère déclaration sur l'honneur, pouvoirs,
+    attestation fiscale de moins d'un an, CNSS de moins de trois mois, registre
+    de commerce modèle J, RIB, assurances RC et décennale, caution provisoire —
+    en CASES cochées à la main. Or leur péremption est strictement
+    mécanisable, et les mêmes pièces se réutilisent d'un dossier à l'autre.
+
+    **La date qui compte est celle de la REMISE DES PLIS, pas celle du jour.**
+    Une attestation valable aujourd'hui mais expirée le jour de l'ouverture
+    fait rejeter le pli : contrôler « à la date du jour » donnerait un dossier
+    vert qui sera rouge à l'ouverture.
+
+    Aucun nouveau ``FileField`` : le fichier vit dans ``records.Attachment``
+    (ou ``ged.Document``), ce qui permet à la MÊME pièce d'être rattachée à
+    deux appels d'offres sans dupliquer un octet.
+    """
+
+    class TypePiece(models.TextChoices):
+        DECLARATION_HONNEUR = 'declaration_honneur', "Déclaration sur l'honneur"
+        POUVOIRS = 'pouvoirs', 'Pouvoirs du signataire'
+        ATTESTATION_FISCALE = 'attestation_fiscale', 'Attestation fiscale'
+        ATTESTATION_CNSS = 'attestation_cnss', 'Attestation CNSS'
+        REGISTRE_COMMERCE = 'registre_commerce', 'Registre de commerce (modèle J)'
+        RIB = 'rib', 'RIB'
+        ASSURANCE_RC = 'assurance_rc', 'Assurance responsabilité civile'
+        ASSURANCE_DECENNALE = 'assurance_decennale', 'Assurance décennale étanchéité'
+        CAUTION_PROVISOIRE = 'caution_provisoire', 'Caution provisoire'
+        AUTRE = 'autre', 'Autre pièce administrative'
+
+    #: Durées de validité RÉGLEMENTAIRES, en jours, par type de pièce.
+    #: Attestation fiscale : moins d'un an. CNSS : moins de trois mois.
+    #: Une pièce hors de cette table n'a pas de durée par défaut — on ne
+    #: présume jamais d'une péremption qu'aucun texte n'impose.
+    DUREES_PAR_DEFAUT = {
+        TypePiece.ATTESTATION_FISCALE: 365,
+        TypePiece.ATTESTATION_CNSS: 90,
+    }
+
+    type_piece = models.CharField(
+        max_length=24, choices=TypePiece.choices, verbose_name='Type de pièce')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    #: L'ORGANISME qui délivre (DGI, CNSS, tribunal de commerce, banque…).
+    emetteur = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Émetteur')
+    #: La société AU NOM DE laquelle la pièce est établie — en marque blanche,
+    #: c'est le soumissionnaire, pas forcément la société de l'ERP.
+    societe_emettrice = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Société titulaire de la pièce')
+    date_emission = models.DateField(
+        null=True, blank=True, verbose_name="Date d'émission")
+    duree_validite_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée de validité (jours)')
+    #: Fichier — via ``records.Attachment`` ou ``ged.Document``, JAMAIS un
+    #: nouveau ``FileField`` (le garde plateforme gèle ce module).
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pieces_administratives_ao', verbose_name='Fichier')
+    ged_document = models.ForeignKey(
+        'ged.Document',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pieces_administratives_ao', verbose_name='Document GED')
+    #: Rattachement MULTIPLE : la même pièce sert plusieurs dossiers sans
+    #: qu'un seul octet ne soit dupliqué.
+    dossiers = models.ManyToManyField(
+        DossierAO, blank=True, related_name='pieces_administratives',
+        verbose_name='Dossiers rattachés')
+    rappel_jours = models.PositiveIntegerField(
+        default=30, verbose_name='Rappel avant expiration (jours)')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+
+    class Meta:
+        verbose_name = 'Pièce administrative (AO)'
+        verbose_name_plural = 'Pièces administratives (AO)'
+        db_table = 'ao_piece_administrative'
+        ordering = ['type_piece', '-date_emission', 'id']
+        indexes = [
+            models.Index(fields=['company', 'type_piece']),
+            models.Index(fields=['company', 'actif']),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_piece_display()} — {self.libelle}'
+
+    def save(self, *args, **kwargs):
+        """Pose la durée RÉGLEMENTAIRE quand elle n'est pas renseignée."""
+        if self.duree_validite_jours is None:
+            defaut = self.DUREES_PAR_DEFAUT.get(self.type_piece)
+            if defaut is not None:
+                self.duree_validite_jours = defaut
+        super().save(*args, **kwargs)
+
+    @property
+    def date_expiration(self):
+        """Date d'expiration DÉRIVÉE (None = pièce sans péremption connue)."""
+        if not self.date_emission or not self.duree_validite_jours:
+            return None
+        return self.date_emission + timedelta(days=self.duree_validite_jours)
+
+    def est_expiree_a(self, date_reference):
+        """Vrai si la pièce est expirée À CETTE DATE (pas à la date du jour)."""
+        expiration = self.date_expiration
+        if expiration is None or date_reference is None:
+            return False
+        return expiration < date_reference
+
+    def jours_restants_a(self, date_reference):
+        """Jours de validité restants à ``date_reference`` (None si sans date)."""
+        expiration = self.date_expiration
+        if expiration is None or date_reference is None:
+            return None
+        return (expiration - date_reference).days
+
+
+# ── AOF140 — ``PlancheAO`` : indices AUTOMATIQUES + référence croisée ─────
+
+class PlancheAO(TenantModel):
+    """Une planche d'implantation, à indice AUTOMATIQUE (AOF140).
+
+    Constat : les codes ``05H`` / ``06H`` / ``06I`` du dossier réel SONT déjà
+    une numérotation d'indice faite à la main. L'automatiser supprime toute
+    une classe de défaut : « planche citée dans le mémoire à un indice qui
+    n'existe plus ».
+
+    Règle : **l'indice n'est jamais saisi**. Il s'incrémente SUR CHANGEMENT
+    D'EMPREINTE de la source (calepinage + paramètres de rendu) ; générer un
+    indice supérieur ARCHIVE le précédent, et la base interdit deux planches
+    ACTIVES de même code.
+
+    Le cartouche et le bandeau d'engagement sont portés ici comme DONNÉES —
+    le rendu de planche les consomme, il ne les rédige pas.
+    """
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        ARCHIVEE = 'archivee', 'Archivée'
+
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: planche fille d'un AO : aucune existence hors de son appel d'offres
+        related_name='planches',
+        verbose_name="Appel d'offres",
+    )
+    toiture = models.ForeignKey(
+        ToitureAO,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='planches', verbose_name='Toiture',
+    )
+    variante = models.ForeignKey(
+        VarianteCalepinage,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='planches', verbose_name='Variante représentée',
+    )
+    code_document = models.CharField(
+        max_length=20, verbose_name='Code document')
+    #: JAMAIS saisi : posé par ``services.generer_indice_planche``.
+    indice = models.CharField(
+        max_length=4, default='A', verbose_name='Indice')
+    empreinte = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte de la source')
+    motif_revision = models.TextField(
+        blank=True, default='', verbose_name='Motif de révision')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIVE,
+        verbose_name='Statut')
+    #: Données du cartouche et du bandeau d'engagement — CONSOMMÉES par le
+    #: rendu de planche, jamais écrites à la main sur le dessin.
+    cartouche = models.JSONField(
+        default=dict, blank=True, verbose_name='Données du cartouche')
+    bandeau_engagement = models.JSONField(
+        default=dict, blank=True, verbose_name="Bandeau d'engagement")
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='planches_ao', verbose_name='Planche rendue (MinIO)')
+
+    class Meta:
+        verbose_name = 'Planche (AO)'
+        verbose_name_plural = 'Planches (AO)'
+        db_table = 'ao_planche'
+        ordering = ['appel_offre', 'code_document', 'indice']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['appel_offre', 'code_document', 'indice'],
+                name='uniq_planche_code_indice'),
+            # Impossible d'avoir DEUX planches actives de même code : c'est la
+            # règle qui empêche le « fichier frère périmé » de coexister.
+            models.UniqueConstraint(
+                fields=['appel_offre', 'code_document'],
+                condition=models.Q(statut='active'),
+                name='uniq_planche_active_par_code'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'appel_offre', 'statut']),
+        ]
+
+    def __str__(self):
+        return f'{self.code_document}{self.indice} [{self.get_statut_display()}]'
+
+    @property
+    def reference_complete(self):
+        """``05H`` + indice — la référence telle que citée par le mémoire."""
+        return f'{self.code_document}{self.indice}'
+
+
+class CitationPlanche(TenantModel):
+    """Une CITATION de planche dans une section du mémoire (AOF140).
+
+    La référence croisée est une donnée, pas une relecture : c'est elle qui
+    permet de détecter qu'une planche est citée à un indice qui n'existe plus.
+    """
+
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: citation fille d'un AO : aucune existence hors de lui
+        related_name='citations_planches',
+        verbose_name="Appel d'offres",
+    )
+    section = models.ForeignKey(
+        SectionMemoire,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='citations_planches', verbose_name='Section du mémoire',
+    )
+    code_document = models.CharField(
+        max_length=20, verbose_name='Code de la planche citée')
+    indice_cite = models.CharField(
+        max_length=4, blank=True, default='', verbose_name='Indice cité')
+    emplacement = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Emplacement de la citation')
+
+    class Meta:
+        verbose_name = 'Citation de planche (AO)'
+        verbose_name_plural = 'Citations de planche (AO)'
+        db_table = 'ao_citation_planche'
+        ordering = ['appel_offre', 'code_document', 'indice_cite']
+        indexes = [
+            models.Index(fields=['company', 'appel_offre', 'code_document']),
+        ]
+
+    def __str__(self):
+        return f'{self.code_document}{self.indice_cite} ({self.emplacement})'
+
+
+# ── AOF144 — Marque blanche : soumissionnaire ≠ bureau d'exécution ────────
+
+class IdentiteAO(TenantModel):
+    """L'identité d'un RÔLE du dossier : soumissionnaire ou bureau (AOF144).
+
+    Cas réel : le dossier est DÉPOSÉ par une entité partenaire, alors que
+    l'étude et l'exécution sont faites par le bureau. Ce sont deux rôles, deux
+    identités légales, et **les rendus client n'utilisent QUE le
+    soumissionnaire** : quand la marque blanche est active, la société
+    propriétaire de l'ERP n'apparaît NULLE PART dans un artefact remis.
+
+    **Aucun champ d'identité n'est dupliqué avec ``authentication.Company``**
+    (qui ne porte que ``nom``/``slug``) ni avec ``parametres.CompanyProfile``
+    (l'identité de NOTRE société) : ce modèle porte l'identité du PARTENAIRE,
+    qui n'existe nulle part ailleurs. Le rôle ``bureau_execution`` sans
+    enregistrement retombe sur ``parametres.selectors.company_identity`` — une
+    lecture cross-app par selector, jamais un import de modèles.
+    """
+
+    class Role(models.TextChoices):
+        SOUMISSIONNAIRE = 'soumissionnaire', 'Soumissionnaire (déposant)'
+        BUREAU_EXECUTION = 'bureau_execution', "Bureau d'exécution"
+
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: identite fille d'un AO : aucune existence hors de lui
+        related_name='identites',
+        verbose_name="Appel d'offres",
+    )
+    role = models.CharField(
+        max_length=20, choices=Role.choices, verbose_name='Rôle')
+    raison_sociale = models.CharField(
+        max_length=255, verbose_name='Raison sociale')
+    ice = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='ICE')
+    identifiant_fiscal = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Identifiant fiscal')
+    registre_commerce = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Registre de commerce')
+    adresse = models.TextField(blank=True, default='', verbose_name='Adresse')
+    #: Logo — via ``records.Attachment`` (aucun nouveau ``FileField``).
+    logo = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='identites_ao', verbose_name='Logo')
+    signataire_nom = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Signataire')
+    signataire_qualite = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Qualité du signataire')
+    rib = models.CharField(
+        max_length=60, blank=True, default='', verbose_name='RIB')
+    mentions_legales = models.TextField(
+        blank=True, default='', verbose_name='Mentions légales')
+
+    class Meta:
+        verbose_name = "Identité d'appel d'offres (AO)"
+        verbose_name_plural = "Identités d'appel d'offres (AO)"
+        db_table = 'ao_identite'
+        ordering = ['appel_offre', 'role']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['appel_offre', 'role'], name='uniq_identite_ao_role'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_role_display()} — {self.raison_sociale}'
+
+
+# ── AOF146 — Contrôleur de cohérence croisée : une PORTE, pas un rapport ──
+
+class ControleCoherence(TenantModel):
+    """Le RÉSULTAT d'une passe de contrôle de cohérence (AOF146).
+
+    Chaque anomalie est une LIGNE : code de règle, sévérité, message français,
+    objet visé, date. Une passe REMPLACE les lignes de la passe précédente —
+    un contrôle est une photographie d'un état, jamais un journal qui
+    s'allonge.
+
+    Le point capital : ce n'est pas un rapport à lire, c'est une PORTE. La
+    transition ``pret_a_deposer`` est REFUSÉE tant qu'un contrôle bloquant est
+    rouge, et le refus CITE le code de règle fautif.
+    """
+
+    class Severite(models.TextChoices):
+        BLOQUANT = 'bloquant', 'Bloquant'
+        AVERTISSEMENT = 'avertissement', 'Avertissement'
+        INFO = 'info', 'Information'
+
+    dossier = models.ForeignKey(
+        DossierAO,
+        on_delete=models.CASCADE,  # on_delete: controle fils d'un dossier : aucune existence hors de lui
+        related_name='controles',
+        verbose_name='Dossier',
+    )
+    code_regle = models.CharField(max_length=60, verbose_name='Code de règle')
+    severite = models.CharField(
+        max_length=14, choices=Severite.choices,
+        default=Severite.BLOQUANT, verbose_name='Sévérité')
+    message = models.TextField(verbose_name='Message (français)')
+    objet = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Objet visé')
+    #: Empreinte du contexte contrôlé : un contrôle vert ne prouve rien s'il
+    #: décrit un autre état du dossier.
+    empreinte = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte du contexte contrôlé')
+    date_controle = models.DateTimeField(
+        auto_now_add=True, verbose_name='Contrôlé le')
+
+    class Meta:
+        verbose_name = 'Contrôle de cohérence (AO)'
+        verbose_name_plural = 'Contrôles de cohérence (AO)'
+        db_table = 'ao_controle_coherence'
+        ordering = ['dossier', 'severite', 'code_regle', 'id']
+        indexes = [
+            models.Index(fields=['company', 'dossier', 'severite']),
+        ]
+
+    def __str__(self):
+        return f'[{self.severite}] {self.code_regle} — {self.objet}'
+
+
+# ── AOF150 — Archivage IMMUABLE + manifeste de pack ───────────────────────
+
+class ArtefactAO(TenantModel):
+    """Un artefact ARCHIVÉ, immuable, adressé par son empreinte (AOF150).
+
+    La clé est ``ao/<company>/<dossier>/<code>/<indice>-<empreinte8>.<ext>`` :
+    l'indice ET l'empreinte y figurent, donc **deux versions ne peuvent pas se
+    disputer la même clé** et rien ne s'écrase jamais. Le dépôt réel contient
+    encore aujourd'hui deux bordereaux homonymes divergents — même classe de
+    risque qu'un devis obsolète envoyé au client.
+
+    Les octets vivent dans MinIO via ``records.Attachment`` : **aucun nouveau
+    ``FileField``** (le garde plateforme gèle ce module).
+    """
+
+    dossier = models.ForeignKey(
+        DossierAO,
+        on_delete=models.CASCADE,  # on_delete: artefact fils d'un dossier : aucune existence hors de lui
+        related_name='artefacts',
+        verbose_name='Dossier',
+    )
+    code = models.CharField(max_length=20, verbose_name='Code de la pièce')
+    indice = models.CharField(max_length=4, default='A', verbose_name='Indice')
+    empreinte = models.CharField(
+        max_length=64, verbose_name='Empreinte du contexte produit')
+    cle = models.CharField(max_length=500, verbose_name='Clé objet (MinIO)')
+    taille = models.PositiveBigIntegerField(
+        default=0, verbose_name='Taille (octets)')
+    mime = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Type MIME')
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='artefacts_ao', verbose_name='Pièce jointe')
+
+    class Meta:
+        verbose_name = 'Artefact archivé (AO)'
+        verbose_name_plural = 'Artefacts archivés (AO)'
+        db_table = 'ao_artefact'
+        ordering = ['dossier', 'code', 'indice']
+        constraints = [
+            # La clé est UNIQUE : un artefact ne s'écrase jamais.
+            models.UniqueConstraint(
+                fields=['company', 'cle'], name='uniq_artefact_ao_cle'),
+            models.UniqueConstraint(
+                fields=['dossier', 'code', 'indice'],
+                name='uniq_artefact_ao_code_indice'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'dossier', 'empreinte']),
+        ]
+
+    def __str__(self):
+        return f'{self.code}{self.indice} — {self.cle}'
+
+
+class ManifestePack(TenantModel):
+    """Le « pack courant » : un MANIFESTE DE CLÉS, pas un répertoire (AOF150).
+
+    Un répertoire accumule les versions et laisse le dépôt choisir ; un
+    manifeste NOMME exactement ce qui part. Les indices antérieurs restent
+    consultables en historique mais **ne peuvent STRUCTURELLEMENT pas entrer
+    dans un pack de dépôt** : le manifeste porte une empreinte, et il n'accepte
+    que des artefacts produits sous CETTE empreinte (garde en service +
+    ``verifier``).
+    """
+
+    dossier = models.ForeignKey(
+        DossierAO,
+        on_delete=models.CASCADE,  # on_delete: manifeste fils d'un dossier : aucune existence hors de lui
+        related_name='manifestes',
+        verbose_name='Dossier',
+    )
+    empreinte = models.CharField(
+        max_length=64, verbose_name='Empreinte du contexte')
+    artefacts = models.ManyToManyField(
+        ArtefactAO, blank=True, related_name='manifestes',
+        verbose_name='Artefacts du pack')
+    courant = models.BooleanField(
+        default=True, verbose_name='Manifeste courant')
+
+    class Meta:
+        verbose_name = 'Manifeste de pack (AO)'
+        verbose_name_plural = 'Manifestes de pack (AO)'
+        db_table = 'ao_manifeste_pack'
+        ordering = ['-created_at', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dossier'], condition=models.Q(courant=True),
+                name='uniq_manifeste_courant_par_dossier'),
+        ]
+
+    def __str__(self):
+        return f'Manifeste {self.empreinte[:8]} — {self.dossier_id}'
+
+    def artefacts_perimes(self):
+        """Artefacts du manifeste produits sous une AUTRE empreinte.
+
+        Doit toujours être VIDE : le service refuse de les y mettre. La
+        méthode existe pour que l'invariant soit vérifiable, pas seulement
+        déclaré.
+        """
+        return [a for a in self.artefacts.all()
+                if a.empreinte != self.empreinte]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# W7 — ÉCONOMIE DIRECTEUR : TABLES SÉPARÉES, PERMISSION ÉLEVÉE (AOF157)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# RÈGLE GRAVÉE. L'économie d'un appel d'offres vit dans des tables À PART,
+# derrière ``ao_rentabilite_voir`` (permission ÉLEVÉE, non octroyable par un
+# non-administrateur, mappée sur AUCUN rôle Responsable/Commercial/Technicien/
+# Utilisateur). **Aucun champ de coût ni de marge ne touche ``AppelOffre``, le
+# bordereau ou une variante** — un test d'introspection le vérifie.
+#
+# À NE PAS CONFONDRE avec la « simulation de rentabilité 25 ans » (AOF135) :
+# celle-là est une pièce CLIENT qui ne porte aucun coût. Les fusionner « parce
+# que ça parle de rentabilité » est le chemin le plus court vers la fuite de
+# marge.
+
+class EconomieAO(TenantModel):
+    """L'économie DIRECTEUR d'un appel d'offres (AOF157) — table séparée.
+
+    Porte les régimes de TVA et le verrou ; les COÛTS sont dans
+    ``LigneCoutRevient``, la CIBLE de bénéfice dans ``CibleFinanciere``
+    (versionnée). Tous les agrégats sont DÉRIVÉS : rien n'est recopié.
+
+    TVA sur ACHATS différenciée : 10 % sur les panneaux, 20 % sur le reste.
+    C'est ce qui rend la TVA nette à reverser calculable — et le contrôle de
+    trésorerie (encaissement TTC − décaissements TTC − TVA nette == bénéfice
+    HT) vérifiable au dirham. Un écart non nul, et le classeur est rouge.
+    """
+
+    appel_offre = models.OneToOneField(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: economie fille d'un AO : aucune existence hors de lui
+        related_name='economie',
+        verbose_name="Appel d'offres",
+    )
+    taux_tva_vente = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20.00'),
+        verbose_name='Taux de TVA de vente (%)')
+    taux_tva_achat_reduit = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('10.00'),
+        verbose_name='TVA sur achats — régime réduit panneaux (%)')
+    taux_tva_achat_standard = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20.00'),
+        verbose_name='TVA sur achats — régime standard (%)')
+    verrouillee = models.BooleanField(
+        default=False, verbose_name='Économie verrouillée')
+    note_comptable = models.TextField(
+        blank=True, default='', verbose_name='Point ouvert signalé au comptable')
+
+    class Meta:
+        verbose_name = "Économie d'appel d'offres (directeur)"
+        verbose_name_plural = "Économies d'appel d'offres (directeur)"
+        db_table = 'ao_economie'
+        ordering = ['appel_offre']
+
+    def __str__(self):
+        return f'Économie {self.appel_offre.reference}'
+
+    # ── Coûts (dérivés des lignes) ───────────────────────────────────────
+
+    @property
+    def cout_revient_ht(self):
+        total = Decimal('0.00')
+        for ligne in self.lignes.all():
+            total += ligne.montant_ht
+        return total.quantize(Decimal('0.01'))
+
+    @property
+    def cout_regime_reduit_ht(self):
+        """Part du coût de revient soumise au régime réduit (panneaux)."""
+        total = Decimal('0.00')
+        for ligne in self.lignes.filter(
+                regime_tva=LigneCoutRevient.RegimeTVA.REDUIT):
+            total += ligne.montant_ht
+        return total.quantize(Decimal('0.01'))
+
+    @property
+    def cout_regime_standard_ht(self):
+        return (self.cout_revient_ht - self.cout_regime_reduit_ht).quantize(
+            Decimal('0.01'))
+
+    @property
+    def tva_deductible(self):
+        """TVA sur achats DIFFÉRENCIÉE : 10 % panneaux, 20 % le reste."""
+        reduite = (self.cout_regime_reduit_ht
+                   * self.taux_tva_achat_reduit / Decimal('100'))
+        standard = (self.cout_regime_standard_ht
+                    * self.taux_tva_achat_standard / Decimal('100'))
+        return (reduite + standard).quantize(Decimal('0.01'))
+
+    # ── Cible et totaux (dérivés) ────────────────────────────────────────
+
+    @property
+    def cible(self):
+        """La cible financière ACTIVE (dernière version), ou None."""
+        return self.cibles.filter(active=True).first()
+
+    @property
+    def benefice_net_cible_ht(self):
+        cible = self.cible
+        return cible.benefice_net_cible_ht if cible else Decimal('0.00')
+
+    @property
+    def total_ht(self):
+        """Coût de revient + bénéfice net visé — la cascade part de LÀ."""
+        return (self.cout_revient_ht
+                + self.benefice_net_cible_ht).quantize(Decimal('0.01'))
+
+    @property
+    def tva_collectee(self):
+        return (self.total_ht * self.taux_tva_vente
+                / Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def total_ttc(self):
+        return (self.total_ht + self.tva_collectee).quantize(Decimal('0.01'))
+
+    @property
+    def tva_nette_a_reverser(self):
+        """TVA collectée − TVA déductible : ce qui sort réellement."""
+        return (self.tva_collectee - self.tva_deductible).quantize(
+            Decimal('0.01'))
+
+    @property
+    def marge_pct(self):
+        """Bénéfice net visé rapporté au total HT (%)."""
+        total = self.total_ht
+        if not total:
+            return Decimal('0.00')
+        return (self.benefice_net_cible_ht / total
+                * Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def controle_tresorerie(self):
+        """Encaissement TTC − décaissements TTC − TVA nette (doit == bénéfice).
+
+        C'est LE contrôle du classeur : un écart non nul et le classeur est
+        rouge. Il n'y a pas de « presque juste » en trésorerie.
+        """
+        decaissements = self.cout_revient_ht + self.tva_deductible
+        return (self.total_ttc - decaissements
+                - self.tva_nette_a_reverser).quantize(Decimal('0.01'))
+
+    @property
+    def ecart_tresorerie(self):
+        """Écart entre le contrôle de trésorerie et le bénéfice visé."""
+        return (self.controle_tresorerie
+                - self.benefice_net_cible_ht).quantize(Decimal('0.01'))
+
+    @property
+    def sous_seuil_psychologique(self):
+        """Vrai si le TTC reste sous le seuil visé (ex. la barre des 5 M)."""
+        cible = self.cible
+        if cible is None or not cible.seuil_psychologique:
+            return True
+        return self.total_ttc < cible.seuil_psychologique
+
+
+class LigneCoutRevient(TenantModel):
+    """Un POSTE du coût de revient (AOF157) — directeur seulement.
+
+    ``regime_tva`` porte la différenciation 10 % panneaux / 20 % reste : sans
+    elle, la TVA nette à reverser serait fausse de plusieurs dizaines de
+    milliers de dirhams sur un dossier de cette taille.
+    """
+
+    class RegimeTVA(models.TextChoices):
+        REDUIT = 'reduit', 'Réduit (panneaux, 10 %)'
+        STANDARD = 'standard', 'Standard (20 %)'
+
+    class Poste(models.TextChoices):
+        PANNEAUX = 'panneaux', 'Panneaux'
+        STRUCTURE = 'structure', 'Structure'
+        ONDULEURS = 'onduleurs', 'Onduleurs et équipements'
+        GARANTIE_ONDULEURS = 'garantie_onduleurs', 'Extension de garantie onduleurs'
+        CABLE_SOLAIRE = 'cable_solaire', 'Câble solaire'
+        CABLE_AC = 'cable_ac', 'Câble AC'
+        MAIN_OEUVRE = 'main_oeuvre', "Main d'œuvre"
+        ALEAS = 'aleas', 'Aléas'
+        AUTRE = 'autre', 'Autre poste'
+
+    economie = models.ForeignKey(
+        EconomieAO,
+        on_delete=models.CASCADE,  # on_delete: ligne de cout : aucune existence hors de son economie
+        related_name='lignes',
+        verbose_name='Économie',
+    )
+    poste = models.CharField(
+        max_length=20, choices=Poste.choices, default=Poste.AUTRE,
+        verbose_name='Poste')
+    designation = models.CharField(max_length=255, verbose_name='Désignation')
+    quantite = models.DecimalField(
+        max_digits=12, decimal_places=3, default=Decimal('1.000'),
+        verbose_name='Quantité')
+    unite = models.CharField(
+        max_length=20, blank=True, default='U', verbose_name='Unité')
+    prix_unitaire_ht = models.DecimalField(
+        max_digits=14, decimal_places=4, default=Decimal('0.0000'),
+        verbose_name='Coût unitaire HT (MAD)')
+    regime_tva = models.CharField(
+        max_length=10, choices=RegimeTVA.choices, default=RegimeTVA.STANDARD,
+        verbose_name='Régime de TVA sur achat')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Ligne de coût de revient (directeur)'
+        verbose_name_plural = 'Lignes de coût de revient (directeur)'
+        db_table = 'ao_ligne_cout_revient'
+        ordering = ['economie', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.get_poste_display()} — {self.designation}'
+
+    @property
+    def montant_ht(self):
+        return ((self.quantite or Decimal('0'))
+                * (self.prix_unitaire_ht or Decimal('0')))
+
+
+class CibleFinanciere(TenantModel):
+    """La CIBLE de bénéfice, VERSIONNÉE (AOF157) — directeur seulement.
+
+    Un mouvement de prix se justifie : chaque version porte son auteur, sa
+    date et son motif. La ligne d'AJUSTEMENT désignée reçoit le résidu de la
+    répartition (AOF158) — la désigner ici évite qu'un solveur choisisse tout
+    seul quelle ligne encaisse l'arrondi.
+    """
+
+    economie = models.ForeignKey(
+        EconomieAO,
+        on_delete=models.CASCADE,  # on_delete: cible fille d'une economie : aucune existence hors d'elle
+        related_name='cibles',
+        verbose_name='Économie',
+    )
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    benefice_net_cible_ht = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Bénéfice net visé HT (MAD)')
+    #: Pas d'arrondi métier appliqué aux prix unitaires (50/100/500/1 000 DH).
+    arrondi_psychologique = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Pas d\'arrondi des prix unitaires (MAD)')
+    #: Barre à ne pas franchir en TTC (cas réel : les 5 000 000 MAD).
+    seuil_psychologique = models.DecimalField(
+        max_digits=16, decimal_places=2, null=True, blank=True,
+        verbose_name='Seuil psychologique TTC (MAD)')
+    ligne_ajustement = models.ForeignKey(
+        LigneBordereau,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cibles_financieres',
+        verbose_name="Ligne d'ajustement du résidu")
+    active = models.BooleanField(default=True, verbose_name='Version active')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cibles_financieres_ao', verbose_name='Auteur')
+    motif = models.TextField(
+        blank=True, default='', verbose_name='Motif de la version')
+
+    class Meta:
+        verbose_name = 'Cible financière (directeur)'
+        verbose_name_plural = 'Cibles financières (directeur)'
+        db_table = 'ao_cible_financiere'
+        ordering = ['economie', '-version']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['economie', 'version'],
+                name='uniq_cible_financiere_version'),
+            models.UniqueConstraint(
+                fields=['economie'], condition=models.Q(active=True),
+                name='uniq_cible_financiere_active'),
+        ]
+
+    def __str__(self):
+        return f'v{self.version} — {self.benefice_net_cible_ht} MAD HT'

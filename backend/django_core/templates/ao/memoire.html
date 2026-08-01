@@ -1,0 +1,49 @@
+{% comment %}
+AOF133 — mémoire technique assemblé par SECTIONS COMPOSABLES.
+
+Ce gabarit ne contient AUCUNE désignation d'équipement et AUCUN chiffre : tout
+vient du contexte calculé (``apps.ao.fabrique.rendus.memoire``). C'est la
+condition pour qu'une bascule d'équipement ne redevienne pas un
+chercher-remplacer sur ~90 paragraphes.
+{% endcomment %}
+<article class="ao-memoire">
+  <header>
+    <h1>Mémoire technique</h1>
+    <p class="ao-memoire__objet">{{ contexte.appel_offre.objet }}</p>
+    <dl class="ao-memoire__entete">
+      <dt>Référence du marché</dt>
+      <dd>{{ contexte.appel_offre.reference_acheteur|default:contexte.appel_offre.reference }}</dd>
+      <dt>Maître d'ouvrage</dt>
+      <dd>{{ contexte.appel_offre.maitre_ouvrage|default:contexte.appel_offre.acheteur }}</dd>
+      <dt>Soumissionnaire</dt>
+      <dd>{{ contexte.soumissionnaire.raison_sociale }}</dd>
+    </dl>
+  </header>
+
+  {% for section in sections %}
+    <section class="ao-memoire__section" id="section-{{ section.code|lower }}">
+      <h2>{{ section.titre }}</h2>
+      <p>{{ section.corps }}</p>
+    </section>
+  {% endfor %}
+
+  {% if contexte.references.tableau %}
+    <section class="ao-memoire__section" id="section-references">
+      <h2>Références</h2>
+      <table>
+        <thead>
+          <tr><th>Objet</th><th>Maître d'ouvrage</th><th>Année</th></tr>
+        </thead>
+        <tbody>
+          {% for reference in contexte.references.tableau %}
+            <tr>
+              <td>{{ reference.objet }}</td>
+              <td>{{ reference.maitre_ouvrage }}</td>
+              <td>{{ reference.annee }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+  {% endif %}
+</article>

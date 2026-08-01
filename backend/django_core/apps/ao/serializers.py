@@ -14,8 +14,12 @@ from .models import (
     BordereauPrix,
     CautionSoumission,
     ChaineCotes,
+    DossierAO,
     DossierSoumission,
     EcheanceAO,
+    LigneChecklistPartenaire,
+    PieceAdministrative,
+    PieceDossierAO,
     ExigenceCPS,
     KitCalepinage,
     LigneBordereau,
@@ -27,6 +31,7 @@ from .models import (
     ReleveAO,
     QuestionAO,
     ResultatAO,
+    SectionBordereau,
     SerieQuestions,
     ToitureAO,
     VarianteCalepinage,
@@ -401,20 +406,68 @@ class KitCalepinageSerializer(serializers.ModelSerializer):
 # ── FG223 — Bordereaux des prix (BOQ) ──────────────────────────────────────
 
 class LigneBordereauSerializer(serializers.ModelSerializer):
+    # AOF120 — montants RECALCULÉS côté serveur, jamais acceptés du client.
     montant_ht = serializers.DecimalField(
         max_digits=16, decimal_places=2, read_only=True)
+    montant_tva = serializers.DecimalField(
+        max_digits=16, decimal_places=2, read_only=True)
+    taux_tva_effectif = serializers.DecimalField(
+        max_digits=5, decimal_places=2, read_only=True)
+    quantite_source_display = serializers.CharField(
+        source='get_quantite_source_display', read_only=True)
 
     class Meta:
         model = LigneBordereau
         fields = [
-            'id', 'bordereau', 'numero', 'designation', 'unite', 'quantite',
-            'prix_unitaire', 'montant_ht',
+            'id', 'bordereau', 'section', 'numero', 'designation', 'unite',
+            'quantite', 'prix_unitaire', 'montant_ht', 'taux_tva',
+            'taux_tva_effectif', 'montant_tva', 'remise_pct', 'batiment',
+            'produit', 'quantite_source', 'quantite_source_display',
+            'variante', 'quantite_verrouillee',
+        ]
+
+    def validate(self, attrs):
+        """Une quantité « calepinage » DOIT citer la variante qui l'a produite."""
+        instance = getattr(self, 'instance', None)
+        source = attrs.get(
+            'quantite_source',
+            getattr(instance, 'quantite_source', None))
+        variante = attrs.get(
+            'variante', getattr(instance, 'variante', None))
+        if source == LigneBordereau.QuantiteSource.CALEPINAGE and not variante:
+            raise serializers.ValidationError({'variante': (
+                "Une quantité issue du calepinage doit CITER la variante qui "
+                "l'a produite : c'est ce qui rend vérifiable l'égalité entre "
+                "les quantités du bordereau et les engagements des planches."
+            )})
+        return attrs
+
+
+class SectionBordereauSerializer(serializers.ModelSerializer):
+    total_ht = serializers.DecimalField(
+        max_digits=18, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = SectionBordereau
+        fields = [
+            'id', 'bordereau', 'numero', 'libelle', 'batiment', 'ordre',
+            'total_ht',
         ]
 
 
 class BordereauPrixSerializer(serializers.ModelSerializer):
     lignes = LigneBordereauSerializer(many=True, read_only=True)
+    sections = SectionBordereauSerializer(many=True, read_only=True)
+    # AOF120 — TOUS les totaux sont dérivés côté serveur.
+    sous_total_ht = serializers.DecimalField(
+        max_digits=18, decimal_places=2, read_only=True)
+    montant_remise_globale = serializers.DecimalField(
+        max_digits=18, decimal_places=2, read_only=True)
     total_ht = serializers.DecimalField(
+        max_digits=18, decimal_places=2, read_only=True)
+    total_tva = serializers.DecimalField(
+        max_digits=18, decimal_places=2, read_only=True)
+    total_ttc = serializers.DecimalField(
         max_digits=18, decimal_places=2, read_only=True)
     appel_offre_reference = serializers.CharField(
         source='appel_offre.reference', read_only=True)
@@ -423,9 +476,28 @@ class BordereauPrixSerializer(serializers.ModelSerializer):
         model = BordereauPrix
         fields = [
             'id', 'appel_offre', 'appel_offre_reference', 'intitule',
-            'lignes', 'total_ht', 'date_creation',
+            'indice_revision', 'remise_globale_pct', 'taux_tva_defaut',
+            'marche_prix_unitaires', 'clause_reserve', 'sections', 'lignes',
+            'sous_total_ht', 'montant_remise_globale', 'total_ht',
+            'total_tva', 'total_ttc', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def validate(self, attrs):
+        """La clause de réserve est OBLIGATOIRE sur un marché à prix unitaires."""
+        instance = getattr(self, 'instance', None)
+        prix_unitaires = attrs.get(
+            'marche_prix_unitaires',
+            getattr(instance, 'marche_prix_unitaires', True))
+        clause = attrs.get(
+            'clause_reserve', getattr(instance, 'clause_reserve', '') or '')
+        if prix_unitaires and not clause.strip():
+            raise serializers.ValidationError({'clause_reserve': (
+                "Marché à prix unitaires : la clause de réserve est "
+                "obligatoire — sans elle, les quantités du bordereau sont "
+                "lues comme un engagement ferme."
+            )})
+        return attrs
 
 
 # ── FG224 — Cautions de soumission ─────────────────────────────────────────
@@ -517,3 +589,106 @@ class ResultatAOSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+# ── AOF115 — Dossier de dépôt (kit ``core/documents.py``) ──────────────────
+
+class PieceDossierAOSerializer(serializers.ModelSerializer):
+    type_piece_display = serializers.CharField(
+        source='get_type_piece_display', read_only=True)
+    visibilite_display = serializers.CharField(
+        source='get_visibilite_display', read_only=True)
+    source = serializers.CharField(read_only=True)
+    # AOF149 — l'état de contrôle est AFFICHÉ distinctement : une pièce
+    # fournie n'apparaît jamais « verte », mais « hors contrôle ».
+    etat_controle = serializers.CharField(read_only=True)
+    controlee_display = serializers.CharField(
+        source='get_controlee_display', read_only=True)
+
+    class Meta:
+        model = PieceDossierAO
+        fields = [
+            'id', 'dossier', 'ordre', 'code', 'libelle', 'type_piece',
+            'type_piece_display', 'obligatoire', 'presente', 'visibilite',
+            'visibilite_display', 'attachment', 'piece_soumission', 'signee',
+            'motif', 'source', 'controlee', 'controlee_display',
+            'etat_controle', 'empreinte_source',
+        ]
+        read_only_fields = ['empreinte_source']
+
+    def validate(self, attrs):
+        """Une pièce HORS CONTRÔLE doit dire POURQUOI elle y échappe."""
+        instance = getattr(self, 'instance', None)
+        controlee = attrs.get(
+            'controlee', getattr(instance, 'controlee', 'fabriquee'))
+        motif = attrs.get('motif', getattr(instance, 'motif', '') or '')
+        if controlee == PieceDossierAO.HORS_CONTROLE and not motif.strip():
+            raise serializers.ValidationError({'motif': (
+                "Une pièce que la fabrique n'a pas produite doit dire "
+                'POURQUOI elle échappe aux contrôles : sans motif, elle '
+                'passerait silencieusement pour conforme.'
+            )})
+        return attrs
+
+
+class PieceAdministrativeSerializer(serializers.ModelSerializer):
+    type_piece_display = serializers.CharField(
+        source='get_type_piece_display', read_only=True)
+    #: Dérivée de la date d'émission + la durée réglementaire — jamais saisie.
+    date_expiration = serializers.DateField(read_only=True, allow_null=True)
+
+    class Meta:
+        model = PieceAdministrative
+        fields = [
+            'id', 'type_piece', 'type_piece_display', 'libelle', 'emetteur',
+            'societe_emettrice', 'date_emission', 'duree_validite_jours',
+            'date_expiration', 'attachment', 'ged_document', 'dossiers',
+            'rappel_jours', 'actif',
+        ]
+
+
+class LigneChecklistPartenaireSerializer(serializers.ModelSerializer):
+    bloc_display = serializers.CharField(
+        source='get_bloc_display', read_only=True)
+    # Le champ modèle s'appelle ``responsable_utilisateur`` (garde YDATA3) ;
+    # l'API garde le nom métier ``responsable``.
+    responsable = serializers.PrimaryKeyRelatedField(
+        source='responsable_utilisateur', read_only=True)
+    responsable_nom = serializers.CharField(
+        source='responsable_utilisateur.username', read_only=True, default='')
+
+    class Meta:
+        model = LigneChecklistPartenaire
+        fields = [
+            'id', 'dossier', 'bloc', 'bloc_display', 'code', 'libelle',
+            'ordre', 'obligatoire', 'faite', 'responsable',
+            'responsable_nom', 'commentaire', 'date_faite',
+        ]
+        read_only_fields = ['date_faite']
+
+
+class DossierAOSerializer(serializers.ModelSerializer):
+    pieces = PieceDossierAOSerializer(many=True, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    complet = serializers.BooleanField(read_only=True)
+    taux_completude = serializers.DecimalField(
+        max_digits=6, decimal_places=2, read_only=True)
+    raisons_de_non_depot = serializers.ListField(
+        child=serializers.CharField(), read_only=True)
+    appel_offre_reference = serializers.CharField(
+        source='appel_offre.reference', read_only=True)
+    # La référence est GÉNÉRÉE côté serveur (``AODOS-YYYYMM-0001``) : jamais
+    # exigée du client, jamais lue d'un corps de requête.
+    reference = serializers.CharField(
+        max_length=40, required=False, allow_blank=True, read_only=True)
+
+    class Meta:
+        model = DossierAO
+        fields = [
+            'id', 'appel_offre', 'appel_offre_reference', 'reference',
+            'intitule', 'statut', 'statut_display', 'date_depot', 'pieces',
+            'complet', 'taux_completude', 'raisons_de_non_depot',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['statut', 'created_at', 'updated_at']

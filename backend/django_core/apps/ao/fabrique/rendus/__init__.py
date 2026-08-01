@@ -1,7 +1,9 @@
 """Rendus de la fabrique documentaire AO (XLSX, PDF, fiches de report).
 
-Chaque module de ce paquet PRODUIT un artefact ou le contexte de gabarit qui
-servira à le produire. Aucun n'écrit en base, aucun ne téléverse : la couche
+Un rendu ne DÉCIDE rien : il met en forme un contexte déjà calculé. Aucune
+valeur n'y est saisie, aucun chiffre n'y est écrit en dur — c'est la condition
+pour qu'un changement d'équipement ou de calepinage se propage sans
+chercher-remplacer. Aucun module n'écrit en base ni ne téléverse : la couche
 Django appelle `core.pdf.render_pdf` (ARC11) et `records.Attachment`, un seul
 point d'appel pour tout le dépôt.
 

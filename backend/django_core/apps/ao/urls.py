@@ -37,11 +37,22 @@ from .views import (
     PlanSourceViewSet,
     PresetCalepinageViewSet,
     ReleveAOViewSet,
+    SectionBordereauViewSet,
     QuestionAOViewSet,
     ResultatAOViewSet,
     SerieQuestionsViewSet,
     ToitureAOViewSet,
     VarianteCalepinageViewSet,
+)
+from .viewsets import (
+    DossierAOViewSet, LigneChecklistPartenaireViewSet,
+    PieceAdministrativeViewSet, PieceDossierAOViewSet,
+)
+# AOF157 — l'économie DIRECTEUR vit dans des vues SÉPARÉES, gardées par
+# ``ao_rentabilite_voir`` (permission ÉLEVÉE) : jamais mêlée aux vues AO
+# générales, sinon la marge suivrait toutes leurs surfaces.
+from .views_directeur import (
+    CibleFinanciereViewSet, EconomieAOViewSet, LigneCoutRevientViewSet,
 )
 
 router = DefaultRouter()
@@ -73,6 +84,9 @@ router.register(r'bordereaux-prix', BordereauPrixViewSet,
                 basename='ao-bordereau-prix')
 router.register(r'lignes-bordereau', LigneBordereauViewSet,
                 basename='ao-ligne-bordereau')
+# AOF120 — sections du bordereau (une par bâtiment + prestations communes).
+router.register(r'sections-bordereau', SectionBordereauViewSet,
+                basename='ao-section-bordereau')
 router.register(r'cautions-soumission', CautionSoumissionViewSet,
                 basename='ao-caution-soumission')
 router.register(r'dossiers-soumission', DossierSoumissionViewSet,
@@ -81,6 +95,22 @@ router.register(r'pieces-soumission', PieceSoumissionViewSet,
                 basename='ao-piece-soumission')
 router.register(r'echeances-ao', EcheanceAOViewSet, basename='ao-echeance')
 router.register(r'resultats-ao', ResultatAOViewSet, basename='ao-resultat')
+# AOF115 — dossier de dépôt (kit ``core/documents.py``) et ses pièces.
+router.register(r'dossiers-ao', DossierAOViewSet, basename='ao-dossier-ao')
+router.register(r'pieces-dossier-ao', PieceDossierAOViewSet,
+                basename='ao-piece-dossier-ao')
+# AOF136 — checklist partenaire suivie point par point.
+router.register(r'checklist-partenaire', LigneChecklistPartenaireViewSet,
+                basename='ao-checklist-partenaire')
+# AOF137 — pièces administratives DATÉES, réutilisables d'un AO à l'autre.
+router.register(r'pieces-administratives', PieceAdministrativeViewSet,
+                basename='ao-piece-administrative')
+# AOF157 — ÉCONOMIE DIRECTEUR : routes séparées, garde ``ao_rentabilite_voir``.
+router.register(r'economie', EconomieAOViewSet, basename='ao-economie')
+router.register(r'lignes-cout-revient', LigneCoutRevientViewSet,
+                basename='ao-ligne-cout-revient')
+router.register(r'cibles-financieres', CibleFinanciereViewSet,
+                basename='ao-cible-financiere')
 
 urlpatterns = [
     # AOF31 — contrat d'API publié, dérivé du routeur ci-dessus.
