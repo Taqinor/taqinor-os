@@ -33,6 +33,7 @@ from decimal import Decimal
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+from core.documents import DocumentMetier
 from core.models import TenantModel
 
 # AOF19 — géométrie PURE (repère local métrique, ordre des axes contractuel).
@@ -2261,3 +2262,255 @@ class ResultatAO(TenantModel):
             return None
         return (ecart / Decimal(self.prix_gagnant) * Decimal('100')).quantize(
             Decimal('0.01'))
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# W6 — FABRIQUE DOCUMENTAIRE : le dossier de dépôt et ses pièces
+# ══════════════════════════════════════════════════════════════════════════
+
+# ── AOF115 — ``DossierAO`` sur le kit ``core/documents.py`` ────────────────
+
+class DossierAO(DocumentMetier):
+    """Le DOSSIER DE DÉPÔT d'un appel d'offres, sur le kit document (AOF115).
+
+    Le kit ``core/documents.py`` est explicitement « réservé aux NOUVEAUX
+    types de documents » : c'est le socle LÉGITIME ici. Aucun rétrofit
+    Devis/Facture/BonCommande/Avoir n'est fait ni permis (règle #4) — ceux-là
+    gardent leurs chemins propres. ``core/documents.py`` reste un MODULE (un
+    seul fichier), il n'est pas transformé en paquet.
+
+    Ce que le kit apporte SANS une ligne recopiée :
+
+    * ``statut`` propre à cette classe (injecté par ``DocumentMetierMeta``
+      depuis l'énumération ``Statut`` ci-dessous) ;
+    * ``TRANSITIONS`` DÉCLARATIVE — la seule description du cycle ; une
+      transition absente de la table est refusée par
+      ``core.documents.changer_statut`` ;
+    * le socle multi-société ``TenantModel`` (FK ``company`` + horodatage) ;
+    * la référence ``AODOS-YYYYMM-0001`` via ``core.numbering`` (jamais
+      ``count()+1``) ;
+    * le chatter générique ``records`` par le viewset (jamais une classe
+      ``*Activity`` maison) et le hook PDF
+      ``core.documents.render_document_pdf``.
+
+    À distinguer de ``DossierSoumission`` (FG225), la checklist administrative
+    HISTORIQUE : celle-ci porte les pièces déjà en base et n'est pas remplacée.
+    Une ``PieceDossierAO`` peut POINTER une ``PieceSoumission`` legacy plutôt
+    que d'en recréer un jumeau (cf. la contrainte d'exclusivité ci-dessous).
+    """
+
+    class Statut(models.TextChoices):
+        MONTAGE = 'montage', 'Montage'
+        EN_CONSTITUTION = 'en_constitution', 'En constitution'
+        CONTROLE = 'controle', 'Contrôle'
+        PRET_A_DEPOSER = 'pret_a_deposer', 'Prêt à déposer'
+        DEPOSE = 'depose', 'Déposé'
+        CLOS = 'clos', 'Clos'
+
+    STATUT_INITIAL = 'montage'
+
+    #: Le graphe d'états, DÉCLARATIF. Un retour en arrière reste possible tant
+    #: que le pli n'est pas déposé — un dossier réel repasse en constitution
+    #: dès qu'une pièce change. Après ``depose``, seul ``clos`` subsiste :
+    #: l'histoire d'un pli remis ne se réécrit pas.
+    TRANSITIONS = {
+        Statut.MONTAGE: {Statut.EN_CONSTITUTION, Statut.CLOS},
+        Statut.EN_CONSTITUTION: {
+            Statut.CONTROLE, Statut.MONTAGE, Statut.CLOS},
+        Statut.CONTROLE: {
+            Statut.PRET_A_DEPOSER, Statut.EN_CONSTITUTION, Statut.CLOS},
+        Statut.PRET_A_DEPOSER: {
+            Statut.DEPOSE, Statut.EN_CONSTITUTION, Statut.CLOS},
+        Statut.DEPOSE: {Statut.CLOS},
+        Statut.CLOS: set(),
+    }
+
+    #: Préfixe de numérotation ``core.numbering`` — ``AODOS-YYYYMM-0001``.
+    PREFIXE_REFERENCE = 'AODOS'
+
+    appel_offre = models.OneToOneField(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: dossier fils d'un AO : aucune existence hors de son appel d'offres
+        related_name='dossier_ao',
+        verbose_name="Appel d'offres",
+    )
+    reference = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Référence')
+    intitule = models.CharField(
+        max_length=200, default='Dossier de dépôt', verbose_name='Intitulé')
+    date_depot = models.DateField(
+        null=True, blank=True, verbose_name='Date de dépôt effectif')
+
+    class Meta:
+        verbose_name = 'Dossier de dépôt (AO)'
+        verbose_name_plural = 'Dossiers de dépôt (AO)'
+        db_table = 'ao_dossier'
+        ordering = ['-created_at', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=~models.Q(reference=''),
+                name='uniq_dossier_ao_reference'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut']),
+        ]
+
+    def __str__(self):
+        return (f'{self.reference or self.intitule} — '
+                f'{self.appel_offre.reference}')
+
+    # ── Complétude DÉRIVÉE des pièces obligatoires ────────────────────────
+
+    def pieces_obligatoires_manquantes(self):
+        """Les pièces obligatoires encore ABSENTES (queryset, jamais un drapeau).
+
+        La complétude d'un dossier ne se stocke pas : une colonne ``complet``
+        deviendrait fausse à la première pièce ajoutée, et c'est précisément
+        l'information la plus consultée avant un dépôt.
+        """
+        return self.pieces.filter(obligatoire=True, presente=False)
+
+    @property
+    def complet(self):
+        """Vrai si AUCUNE pièce obligatoire ne manque.
+
+        Un dossier SANS aucune pièce obligatoire n'est pas « complet » : il
+        n'est pas encore constitué (même sémantique que
+        ``DossierSoumission.complet``, FG225).
+        """
+        if not self.pieces.filter(obligatoire=True).exists():
+            return False
+        return not self.pieces_obligatoires_manquantes().exists()
+
+    @property
+    def taux_completude(self):
+        """Part des pièces obligatoires présentes, en % (0 si aucune)."""
+        obligatoires = self.pieces.filter(obligatoire=True).count()
+        if not obligatoires:
+            return Decimal('0.00')
+        presentes = self.pieces.filter(
+            obligatoire=True, presente=True).count()
+        return (Decimal(presentes) / Decimal(obligatoires)
+                * Decimal('100')).quantize(Decimal('0.01'))
+
+    def raisons_de_non_depot(self):
+        """Motifs, en français, qui INTERDISENT de passer « prêt à déposer ».
+
+        Liste vide = la porte s'ouvre. Chaque motif est une phrase lisible :
+        c'est ce que l'utilisateur doit lire, pas un code d'erreur.
+        """
+        raisons = []
+        manquantes = list(self.pieces_obligatoires_manquantes())
+        if manquantes:
+            libelles = ', '.join(
+                f'{p.code} {p.libelle}'.strip() for p in manquantes[:8])
+            raisons.append(
+                f'{len(manquantes)} pièce(s) obligatoire(s) manquante(s) : '
+                f'{libelles}.'
+            )
+        elif not self.pieces.filter(obligatoire=True).exists():
+            raisons.append(
+                "Le dossier ne porte aucune pièce obligatoire : il n'est pas "
+                'constitué.'
+            )
+        return raisons
+
+
+class PieceDossierAO(TenantModel):
+    """Une pièce du dossier de dépôt (AOF115).
+
+    Une pièce pointe SOIT un artefact GÉNÉRÉ par la fabrique (stocké via
+    ``records.Attachment`` — aucun nouveau ``FileField``, le garde
+    ``apps/records/platform_guards.py`` gèle ``apps/ao/models.py`` à
+    ``{"fichier": 1}``), SOIT une ``PieceSoumission`` administrative LEGACY —
+    jamais les deux : un doublon ferait exister deux versions de la même pièce
+    dans le même dossier, exactement la classe de défaut « fichier frère
+    périmé » que ce groupe combat. La contrainte est en BASE, pas dans une vue.
+    """
+
+    class TypePiece(models.TextChoices):
+        GENEREE = 'generee', 'Générée par la fabrique'
+        FOURNIE = 'fournie', 'Fournie (partenaire / acheteur)'
+
+    class Visibilite(models.TextChoices):
+        CLIENT = 'client', "Client (remise au maître d'ouvrage)"
+        INTERNE = 'interne', 'Interne'
+        DIRECTEUR = 'directeur', 'Directeur'
+
+    dossier = models.ForeignKey(
+        DossierAO,
+        on_delete=models.CASCADE,  # on_delete: piece fille d'un dossier : aucune existence hors de lui
+        related_name='pieces',
+        verbose_name='Dossier',
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    code = models.CharField(max_length=20, verbose_name='Code de la pièce')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    type_piece = models.CharField(
+        max_length=8, choices=TypePiece.choices, default=TypePiece.GENEREE,
+        verbose_name='Type de pièce')
+    obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
+    presente = models.BooleanField(default=False, verbose_name='Présente')
+    visibilite = models.CharField(
+        max_length=10, choices=Visibilite.choices, default=Visibilite.CLIENT,
+        verbose_name='Visibilité')
+    #: Artefact GÉNÉRÉ (MinIO via ``records.Attachment``).
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pieces_dossier_ao', verbose_name='Artefact (MinIO)')
+    #: Pièce administrative HISTORIQUE (FG225) réutilisée telle quelle.
+    piece_soumission = models.ForeignKey(
+        PieceSoumission,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pieces_dossier_ao',
+        verbose_name='Pièce administrative (legacy)')
+    signee = models.BooleanField(
+        default=False,
+        verbose_name='Signée / paraphée (pointage humain)',
+        help_text=(
+            "NON-OBJECTIF v1 ACTÉ : PAS de signature électronique. Le dépôt "
+            "marocain visé est PAPIER, en 2 exemplaires, avec paraphe "
+            "manuscrit — ce booléen est donc un POINTAGE HUMAIN, jamais un "
+            "état cryptographique. Le jour où la signature devient un besoin, "
+            "elle se branchera sur ged.ChampSignature (déjà en production) et "
+            "sur AUCUN mécanisme local."
+        ),
+    )
+    motif = models.TextField(
+        blank=True, default='', verbose_name='Motif / commentaire')
+
+    class Meta:
+        verbose_name = 'Pièce du dossier de dépôt (AO)'
+        verbose_name_plural = 'Pièces du dossier de dépôt (AO)'
+        db_table = 'ao_piece_dossier'
+        ordering = ['dossier', 'ordre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dossier', 'code'],
+                name='uniq_piece_dossier_ao_code'),
+            # JAMAIS un doublon : une pièce est générée OU legacy, pas les deux.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(attachment__isnull=True)
+                    | models.Q(piece_soumission__isnull=True)
+                ),
+                name='piece_dossier_ao_source_unique'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'dossier', 'visibilite']),
+        ]
+
+    def __str__(self):
+        etat = 'présente' if self.presente else 'manquante'
+        return f'{self.code} {self.libelle} ({etat})'
+
+    @property
+    def source(self):
+        """« generee » / « legacy » / « aucune » — d'où vient le fichier."""
+        if self.attachment_id:
+            return 'generee'
+        if self.piece_soumission_id:
+            return 'legacy'
+        return 'aucune'

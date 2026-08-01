@@ -43,6 +43,7 @@ from .views import (
     ToitureAOViewSet,
     VarianteCalepinageViewSet,
 )
+from .viewsets import DossierAOViewSet, PieceDossierAOViewSet
 
 router = DefaultRouter()
 router.register(r'appels-offres', AppelOffreViewSet, basename='ao-appel-offre')
@@ -81,6 +82,10 @@ router.register(r'pieces-soumission', PieceSoumissionViewSet,
                 basename='ao-piece-soumission')
 router.register(r'echeances-ao', EcheanceAOViewSet, basename='ao-echeance')
 router.register(r'resultats-ao', ResultatAOViewSet, basename='ao-resultat')
+# AOF115 — dossier de dépôt (kit ``core/documents.py``) et ses pièces.
+router.register(r'dossiers-ao', DossierAOViewSet, basename='ao-dossier-ao')
+router.register(r'pieces-dossier-ao', PieceDossierAOViewSet,
+                basename='ao-piece-dossier-ao')
 
 urlpatterns = [
     # AOF31 — contrat d'API publié, dérivé du routeur ci-dessus.

@@ -1072,3 +1072,71 @@ def taux_reussite_ao(company):
         'total_resultats': resultats.count(),
         'taux_reussite_pct': taux,
     }
+
+
+# ── AOF115 — Dossier de dépôt : création numérotée + porte de transition ───
+
+def creer_dossier_ao(company, appel_offre=None, save_fn=None, **champs):
+    """Crée le ``DossierAO`` d'un appel d'offres avec sa référence ``AODOS``.
+
+    Délègue la numérotation à ``core.numbering.create_with_reference`` (plus
+    haut numéro utilisé + 1, savepoint + réessai) — JAMAIS ``count()+1``.
+    ``save_fn`` reçoit la référence générée et effectue la création réelle
+    (motif ``core.documents.document_viewset``) ; sans elle, l'instance est
+    créée ici à partir d'``appel_offre`` et des champs fournis.
+    """
+    from .models import DossierAO
+
+    def _save(reference):
+        if save_fn is not None:
+            return save_fn(reference)
+        return DossierAO.objects.create(
+            company=company, appel_offre=appel_offre, reference=reference,
+            **champs)
+
+    return create_with_reference(
+        DossierAO, DossierAO.PREFIXE_REFERENCE, company, _save)
+
+
+def changer_statut_dossier(dossier, nouveau_statut, *, user=None, motif=''):
+    """SEUL point de mutation du statut d'un ``DossierAO`` (AOF115).
+
+    Compose le kit ``core.documents.changer_statut`` (table ``TRANSITIONS``
+    déclarative + événement ``document_statut_change``) et y AJOUTE la porte
+    métier : ``pret_a_deposer`` est REFUSÉ tant qu'une pièce obligatoire
+    manque. La complétude est DÉRIVÉE des pièces, jamais d'un drapeau stocké.
+
+    Raises:
+        ValidationError: pièce obligatoire manquante (message FR listant les
+            pièces fautives), à traduire en 400 par l'appelant HTTP.
+        core.documents.TransitionRefusee: transition absente de la table.
+    """
+    from core.documents import changer_statut
+
+    from .models import DossierAO
+
+    if nouveau_statut == DossierAO.Statut.PRET_A_DEPOSER:
+        raisons = dossier.raisons_de_non_depot()
+        if raisons:
+            raise ValidationError({'statut': raisons})
+
+    ancien = dossier.statut
+    changer_statut(dossier, nouveau_statut, user=user)
+    _journaliser_dossier(dossier, ancien, nouveau_statut, user, motif)
+    return dossier
+
+
+def _journaliser_dossier(dossier, ancien, nouveau, user, motif):
+    """Trace le changement au chatter générique ``records`` (best-effort)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    from .models import DossierAO
+
+    libelles = dict(DossierAO.Statut.choices)
+    log_activity(
+        dossier, Activity.Kind.MODIFICATION, user=user,
+        field='statut', field_label='Statut',
+        old_value=libelles.get(ancien, ancien),
+        new_value=libelles.get(nouveau, nouveau),
+        body=motif or '', company=dossier.company)

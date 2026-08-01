@@ -14,8 +14,10 @@ from .models import (
     BordereauPrix,
     CautionSoumission,
     ChaineCotes,
+    DossierAO,
     DossierSoumission,
     EcheanceAO,
+    PieceDossierAO,
     ExigenceCPS,
     KitCalepinage,
     LigneBordereau,
@@ -517,3 +519,49 @@ class ResultatAOSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+# ── AOF115 — Dossier de dépôt (kit ``core/documents.py``) ──────────────────
+
+class PieceDossierAOSerializer(serializers.ModelSerializer):
+    type_piece_display = serializers.CharField(
+        source='get_type_piece_display', read_only=True)
+    visibilite_display = serializers.CharField(
+        source='get_visibilite_display', read_only=True)
+    source = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = PieceDossierAO
+        fields = [
+            'id', 'dossier', 'ordre', 'code', 'libelle', 'type_piece',
+            'type_piece_display', 'obligatoire', 'presente', 'visibilite',
+            'visibilite_display', 'attachment', 'piece_soumission', 'signee',
+            'motif', 'source',
+        ]
+
+
+class DossierAOSerializer(serializers.ModelSerializer):
+    pieces = PieceDossierAOSerializer(many=True, read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    complet = serializers.BooleanField(read_only=True)
+    taux_completude = serializers.DecimalField(
+        max_digits=6, decimal_places=2, read_only=True)
+    raisons_de_non_depot = serializers.ListField(
+        child=serializers.CharField(), read_only=True)
+    appel_offre_reference = serializers.CharField(
+        source='appel_offre.reference', read_only=True)
+    # La référence est GÉNÉRÉE côté serveur (``AODOS-YYYYMM-0001``) : jamais
+    # exigée du client, jamais lue d'un corps de requête.
+    reference = serializers.CharField(
+        max_length=40, required=False, allow_blank=True, read_only=True)
+
+    class Meta:
+        model = DossierAO
+        fields = [
+            'id', 'appel_offre', 'appel_offre_reference', 'reference',
+            'intitule', 'statut', 'statut_display', 'date_depot', 'pieces',
+            'complet', 'taux_completude', 'raisons_de_non_depot',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['statut', 'created_at', 'updated_at']
