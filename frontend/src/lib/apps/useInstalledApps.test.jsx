@@ -37,7 +37,10 @@ vi.mock('../../router/moduleRoutes', () => ({
   ],
 }))
 
-import useInstalledApps, { buildInstalledApps } from './useInstalledApps'
+import useInstalledApps, {
+  buildInstalledApps, allowedAppKeys, appVisibilityPermission,
+  isAppVisibilityPermission,
+} from './useInstalledApps'
 
 const iconClients = <span data-testid="icon-clients" />
 const iconLeads = <span data-testid="icon-leads" />
@@ -188,5 +191,78 @@ describe('useInstalledApps (ODY1) — câblage Redux', () => {
   it('module CRM désactivé (modulesDesactives) : disparaît même pour un admin', () => {
     const { result } = renderInstalledApps({ role: 'admin', modulesDesactives: ['crm'] })
     expect(result.current.map((a) => a.key)).toEqual(['admin-only-app'])
+  })
+})
+
+/* ODY26 — axe « App visible » par rôle, porté par `Role.permissions` (décision
+   documentée : aucun nouveau champ backend). Le filtre vit DANS ce hook, donc
+   les trois surfaces qui le consomment — grille d'accueil (ODY2), navigation
+   et lanceur (VX9/épinglés VX10), plus les surfaces transverses ODY27 — sont
+   couvertes par construction : aucune ne tient sa propre liste. */
+describe('allowedAppKeys / isAppVisibilityPermission (ODY26)', () => {
+  it('fabrique et reconnaît un code app_<clé>_voir', () => {
+    expect(appVisibilityPermission('crm')).toBe('app_crm_voir')
+    expect(appVisibilityPermission('gestion_projet')).toBe('app_gestion_projet_voir')
+    expect(isAppVisibilityPermission('app_gestion_projet_voir')).toBe(true)
+  })
+
+  it('ne confond JAMAIS un code métier existant avec un marqueur d’app', () => {
+    ;['crm_voir', 'sav_voir', 'journal_activite_voir', 'app_voir', 'roles_gerer']
+      .forEach((code) => expect(isAppVisibilityPermission(code)).toBe(false))
+  })
+
+  it('aucun marqueur → `null` (pas de restriction), jamais un ensemble vide', () => {
+    expect(allowedAppKeys([])).toBeNull()
+    expect(allowedAppKeys(['crm_voir', 'ventes_creer'])).toBeNull()
+    expect(allowedAppKeys(undefined)).toBeNull()
+  })
+
+  it('au moins un marqueur → liste blanche des clés portées', () => {
+    const keys = allowedAppKeys(['crm_voir', 'app_crm_voir', 'app_gestion_projet_voir'])
+    expect([...keys].sort()).toEqual(['crm', 'gestion_projet'])
+  })
+})
+
+describe('buildInstalledApps (ODY26) — un rôle privé d’une app ne la voit plus', () => {
+  const base = { disabledModules: [], role: 'admin' }
+
+  it('sans marqueur, la visibilité historique est préservée à l’identique', () => {
+    const apps = buildInstalledApps(makeConfigs(), { ...base, permissions: ['crm_voir'] })
+    expect(apps.map((a) => a.key)).toEqual(['crm', 'ventes', 'admin-only-app'])
+  })
+
+  it('avec des marqueurs, seules les apps de la liste blanche restent', () => {
+    const apps = buildInstalledApps(makeConfigs(), {
+      ...base,
+      permissions: ['crm_voir', appVisibilityPermission('crm'), appVisibilityPermission('ventes')],
+    })
+    expect(apps.map((a) => a.key)).toEqual(['crm', 'ventes'])
+  })
+
+  it('le marqueur ne RESSUSCITE jamais une app désactivée pour la société (ODX6 reste prioritaire)', () => {
+    const apps = buildInstalledApps(makeConfigs(), {
+      ...base,
+      disabledModules: ['crm'],
+      permissions: [appVisibilityPermission('crm'), appVisibilityPermission('ventes')],
+    })
+    expect(apps.map((a) => a.key)).toEqual(['ventes'])
+  })
+
+  it('le marqueur ne CONTOURNE jamais le gating de rôle (ARC47 reste prioritaire)', () => {
+    const apps = buildInstalledApps(makeConfigs(), {
+      disabledModules: [],
+      role: 'normal',
+      permissions: [appVisibilityPermission('admin-only-app'), appVisibilityPermission('crm')],
+    })
+    expect(apps.map((a) => a.key)).toEqual(['crm'])
+  })
+})
+
+describe('useInstalledApps (ODY26) — câblage Redux de la liste blanche', () => {
+  it('un rôle restreint à CRM ne voit plus l’app admin-only', () => {
+    const { result } = renderInstalledApps({
+      role: 'admin', permissions: [appVisibilityPermission('crm')],
+    })
+    expect(result.current.map((a) => a.key)).toEqual(['crm'])
   })
 })
