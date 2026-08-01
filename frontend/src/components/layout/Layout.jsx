@@ -14,6 +14,19 @@ import PresentationModeBanner from './PresentationModeBanner'
 import coreApi from '../../api/coreApi'
 import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
 
+// ODY30 — kill-switch build-time AVANT la bascule de coquille (ODY4 la
+// consomme pour basculer Sidebar/Header en immersion). Défaut ON PARTOUT :
+// ce flag ne gate QUE le paradigme de coquille (Menu d'accueil + immersion),
+// JAMAIS une différence de fonctionnalité — avec le flag ON (le défaut),
+// Layout rend EXACTEMENT comme avant cette tâche. Flag BUILD-TIME (Vite
+// l'inline au bundle à la compilation) : changer sa valeur exige un rebuild
+// d'image frontend (docker compose up -d --build frontend), jamais un
+// simple redémarrage ou `.env` reload à chaud. Le chemin OFF est un SMOKE
+// D'URGENCE UNIQUEMENT (repli legacy) — les tests unitaires réécrits par
+// ODY4 couvrent le mode Apps seul, jamais ce repli. Retrait planifié en
+// ODY33 une fois le paradigme validé par le fondateur en prod.
+export const APPS_SHELL_ENABLED = import.meta.env.VITE_APPS_SHELL !== '0'
+
 // I34 — État réduit de la sidebar persisté en localStorage. Défaut = false
 // (comportement actuel : sidebar dépliée). Lecture défensive : tout accès au
 // stockage est protégé pour ne jamais casser le rendu (mode privé, SSR…).
