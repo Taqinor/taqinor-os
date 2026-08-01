@@ -30,6 +30,7 @@ import math
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -2647,6 +2648,19 @@ class DossierAO(DocumentMetier):
                 "Le dossier ne porte aucune pièce obligatoire : il n'est pas "
                 'constitué.'
             )
+        # AOF136 — une case obligatoire OUVERTE de la checklist partenaire
+        # bloque le dépôt : la checklist est un OBJET SUIVI, pas un document
+        # mort qu'on relit en diagonale la veille de la remise.
+        ouvertes = list(self.lignes_checklist.filter(
+            obligatoire=True, faite=False))
+        if ouvertes:
+            libelles = ', '.join(
+                f'{ligne.get_bloc_display()} — {ligne.libelle}'
+                for ligne in ouvertes[:8])
+            raisons.append(
+                f'{len(ouvertes)} point(s) obligatoire(s) de la checklist '
+                f'partenaire encore ouvert(s) : {libelles}.'
+            )
         return raisons
 
 
@@ -3188,3 +3202,65 @@ class SimulationRentabilite(TenantModel):
         """Retour ACTUALISÉ sur le CAPEX hors stockage (années)."""
         return self._annees_pour_atteindre(
             self.capex_hors_stockage, 'economie_cumulee_actualisee')
+
+
+# ── AOF136 — Checklist partenaire : un OBJET SUIVI, pas un document mort ──
+
+class LigneChecklistPartenaire(TenantModel):
+    """Un point de la checklist de remise, en BASE et non sur un papier.
+
+    Les sept blocs de la checklist réelle deviennent des lignes d'état :
+    chaque point porte sa case, son RESPONSABLE et son commentaire, et un
+    point obligatoire encore ouvert BLOQUE la transition « prêt à déposer »
+    (``DossierAO.raisons_de_non_depot``). Un document mort se relit en
+    diagonale la veille de la remise ; un objet suivi ferme la porte.
+    """
+
+    class Bloc(models.TextChoices):
+        CPS = 'cps', 'CPS'
+        ACTE_ENGAGEMENT = 'acte_engagement', "Acte d'engagement"
+        BORDEREAU = 'bordereau', 'Bordereau des prix'
+        LETTRE_SOUMISSION = 'lettre_soumission', 'Lettre de soumission'
+        MEMOIRE = 'memoire', 'Mémoire technique'
+        ADMINISTRATIF = 'administratif', 'Dossier administratif'
+        VERIFICATIONS = 'verifications', 'Vérifications avant dépôt'
+
+    dossier = models.ForeignKey(
+        DossierAO,
+        on_delete=models.CASCADE,  # on_delete: ligne de checklist : aucune existence hors de son dossier
+        related_name='lignes_checklist',
+        verbose_name='Dossier',
+    )
+    bloc = models.CharField(
+        max_length=20, choices=Bloc.choices, verbose_name='Bloc')
+    code = models.CharField(max_length=40, verbose_name='Code du point')
+    libelle = models.CharField(max_length=255, verbose_name='Point à traiter')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
+    faite = models.BooleanField(default=False, verbose_name='Fait')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_checklist_ao', verbose_name='Responsable')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    date_faite = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fait le')
+
+    class Meta:
+        verbose_name = 'Point de checklist partenaire (AO)'
+        verbose_name_plural = 'Points de checklist partenaire (AO)'
+        db_table = 'ao_ligne_checklist'
+        ordering = ['dossier', 'ordre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['dossier', 'code'],
+                name='uniq_ligne_checklist_code'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'dossier', 'bloc']),
+        ]
+
+    def __str__(self):
+        etat = 'fait' if self.faite else 'ouvert'
+        return f'[{self.get_bloc_display()}] {self.libelle} ({etat})'

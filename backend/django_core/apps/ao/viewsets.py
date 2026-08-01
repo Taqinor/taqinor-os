@@ -39,11 +39,19 @@ from core.permissions import ScopedPermission, declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import services
-from .models import DossierAO, PieceDossierAO
+from .models import DossierAO, LigneChecklistPartenaire, PieceDossierAO
 from .permissions import AO_GERER, AO_VOIR
-from .serializers import DossierAOSerializer, PieceDossierAOSerializer
+from .serializers import (
+    DossierAOSerializer, LigneChecklistPartenaireSerializer,
+    PieceDossierAOSerializer,
+)
 
-__all__ = ['AoBaseViewSet', 'DossierAOViewSet', 'PieceDossierAOViewSet']
+__all__ = [
+    'AoBaseViewSet',
+    'DossierAOViewSet',
+    'LigneChecklistPartenaireViewSet',
+    'PieceDossierAOViewSet',
+]
 
 
 class AoBaseViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
@@ -129,6 +137,13 @@ class DossierAOViewSet(AoBaseViewSet):
             'raisons_de_non_depot': dossier.raisons_de_non_depot(),
         })
 
+    @action(detail=True, methods=['post'], url_path='initialiser-checklist')
+    def initialiser_checklist(self, request, pk=None):
+        """AOF136 — crée les points de checklist manquants (idempotent)."""
+        dossier = self.get_object()
+        crees, existants = services.seeder_checklist_partenaire(dossier)
+        return Response({'crees': crees, 'deja_presents': existants})
+
 
 class PieceDossierAOViewSet(AoBaseViewSet):
     """Pièces d'un dossier de dépôt (AOF115)."""
@@ -144,3 +159,35 @@ class PieceDossierAOViewSet(AoBaseViewSet):
             if valeur not in (None, ''):
                 qs = qs.filter(**{champ: valeur})
         return qs
+
+
+class LigneChecklistPartenaireViewSet(AoBaseViewSet):
+    """Points de la checklist partenaire (AOF136) — consultables et éditables.
+
+    L'action ``pointer`` trace TOUJOURS le responsable côté serveur : une
+    checklist qui ne dit pas qui répond d'un point est un document mort.
+    """
+    queryset = LigneChecklistPartenaire.objects.all()
+    serializer_class = LigneChecklistPartenaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'bloc', 'code']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        for champ in ('dossier', 'bloc', 'faite', 'obligatoire'):
+            valeur = self.request.query_params.get(champ)
+            if valeur not in (None, ''):
+                qs = qs.filter(**{champ: valeur})
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def pointer(self, request, pk=None):
+        """Pointe (ou dépointe) le point — responsable posé côté serveur."""
+        ligne = self.get_object()
+        faite = request.data.get('faite', True)
+        if isinstance(faite, str):
+            faite = faite.strip().lower() not in ('false', '0', 'non', '')
+        services.pointer_checklist(
+            ligne, faite=bool(faite), user=request.user,
+            commentaire=request.data.get('commentaire'))
+        return Response(self.get_serializer(ligne).data)

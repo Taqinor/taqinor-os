@@ -1142,6 +1142,122 @@ def _journaliser_dossier(dossier, ancien, nouveau, user, motif):
         body=motif or '', company=dossier.company)
 
 
+# ── AOF136 — Checklist partenaire : les 7 blocs en lignes d'état ──────────
+#
+# La checklist réelle de remise, telle que remplie par le co-traitant. Chaque
+# point devient une ligne SUIVIE (case + responsable + commentaire) ; un point
+# obligatoire ouvert ferme la porte du dépôt (``raisons_de_non_depot``).
+
+CHECKLIST_PARTENAIRE = (
+    # 1 — CPS
+    ('cps', 'CPS_BLANCS', 'Remplir tous les blancs du CPS'),
+    ('cps', 'CPS_PARAPHE', 'Parapher CHAQUE page du CPS'),
+    ('cps', 'CPS_MENTION',
+     'Porter la mention manuscrite « lu et accepté » et signer'),
+    # 2 — Acte d'engagement
+    ('acte_engagement', 'ACTE_CHIFFRES_LETTRES',
+     "Montant porté EN CHIFFRES ET EN LETTRES, identiques"),
+    ('acte_engagement', 'ACTE_RIB', 'RIB complet du soumissionnaire'),
+    ('acte_engagement', 'ACTE_VALIDITE',
+     "Durée de validité de l'offre conforme au règlement"),
+    # 3 — Bordereau des prix
+    ('bordereau', 'BORDEREAU_INTACT',
+     'NE MODIFIER AUCUN PRIX NI AUCUNE QUANTITÉ du bordereau transmis'),
+    ('bordereau', 'BORDEREAU_SIGNE',
+     'Bordereau paraphé et signé à la dernière page'),
+    # 4 — Lettre de soumission
+    ('lettre_soumission', 'LETTRE_MONTANTS',
+     'Montants de la lettre identiques à ceux du bordereau'),
+    ('lettre_soumission', 'LETTRE_CLAUSE_RESERVE',
+     'Reporter la clause de réserve à l\'identique'),
+    # 5 — Mémoire technique
+    ('memoire', 'MEMOIRE_SIGNATURE',
+     'Bloc signature du mémoire renseigné et signé'),
+    ('memoire', 'MEMOIRE_ATTESTATIONS',
+     'Attestations de bonne exécution jointes au mémoire'),
+    # 6 — Dossier administratif
+    ('administratif', 'ADM_DECLARATION',
+     "Déclaration sur l'honneur signée"),
+    ('administratif', 'ADM_POUVOIRS', 'Pouvoirs du signataire'),
+    ('administratif', 'ADM_FISCALE',
+     'Attestation fiscale de moins d\'un an'),
+    ('administratif', 'ADM_CNSS', 'Attestation CNSS de moins de trois mois'),
+    ('administratif', 'ADM_RC', 'Registre de commerce — modèle J'),
+    ('administratif', 'ADM_RIB', 'RIB de la société'),
+    ('administratif', 'ADM_ASSURANCE_RC',
+     'Assurance responsabilité civile en cours de validité'),
+    ('administratif', 'ADM_DECENNALE',
+     'Assurance décennale étanchéité en cours de validité'),
+    ('administratif', 'ADM_CAUTION', 'Caution provisoire constituée'),
+    # 7 — Vérifications téléphoniques avant dépôt
+    ('verifications', 'VERIF_PROROGATION',
+     'Prorogation éventuelle confirmée PAR ÉCRIT'),
+    ('verifications', 'VERIF_ATTESTATION_VISITE',
+     'Attestation de visite des lieux obtenue'),
+    ('verifications', 'VERIF_PLIS',
+     'Plis séparés ou pli unique : confirmé auprès de l\'acheteur'),
+)
+
+
+def seeder_checklist_partenaire(dossier):
+    """Crée les points de checklist manquants d'un dossier (idempotent).
+
+    ADDITIF : un point déjà pointé (case, responsable, commentaire) n'est
+    JAMAIS réécrit. Renvoie ``(crees, existants)``.
+    """
+    from .models import LigneChecklistPartenaire
+
+    crees = existants = 0
+    for ordre, (bloc, code, libelle) in enumerate(CHECKLIST_PARTENAIRE):
+        if LigneChecklistPartenaire.objects.filter(
+                dossier=dossier, code=code).exists():
+            existants += 1
+            continue
+        LigneChecklistPartenaire.objects.create(
+            company=dossier.company, dossier=dossier, bloc=bloc, code=code,
+            libelle=libelle, ordre=ordre)
+        crees += 1
+    return crees, existants
+
+
+def pointer_checklist(ligne, *, faite=True, responsable=None, commentaire=None,
+                      user=None):
+    """Pointe (ou dépointe) un point de checklist — le responsable est TRACÉ.
+
+    Le responsable est posé côté serveur : soit celui explicitement désigné,
+    soit l'utilisateur qui pointe. Un point sans responsable ne dit pas QUI
+    répond de lui, et c'est précisément ce qu'une checklist papier ne dit pas.
+    """
+    from django.utils import timezone
+
+    ligne.faite = bool(faite)
+    ligne.responsable = responsable or user or ligne.responsable
+    if commentaire is not None:
+        ligne.commentaire = commentaire
+    ligne.date_faite = timezone.now() if ligne.faite else None
+    ligne.save(update_fields=[
+        'faite', 'responsable', 'commentaire', 'date_faite', 'updated_at'])
+    _journaliser_checklist(ligne, user)
+    return ligne
+
+
+def _journaliser_checklist(ligne, user):
+    """Trace le pointage au chatter générique ``records`` (best-effort)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        ligne.dossier, Activity.Kind.MODIFICATION, user=user,
+        field='checklist', field_label=f'Checklist — {ligne.libelle}',
+        old_value='', new_value='fait' if ligne.faite else 'ouvert',
+        body=ligne.commentaire or '', company=ligne.company)
+
+
+def points_checklist_ouverts(dossier):
+    """Les points OBLIGATOIRES encore ouverts (queryset)."""
+    return dossier.lignes_checklist.filter(obligatoire=True, faite=False)
+
+
 # ── AOF118 — Équipements engagés : SNAPSHOT figé du catalogue ──────────────
 #
 # Le catalogue est re-seedé régulièrement. Un dossier DÉPOSÉ ne doit jamais

@@ -44,7 +44,9 @@ from .views import (
     ToitureAOViewSet,
     VarianteCalepinageViewSet,
 )
-from .viewsets import DossierAOViewSet, PieceDossierAOViewSet
+from .viewsets import (
+    DossierAOViewSet, LigneChecklistPartenaireViewSet, PieceDossierAOViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'appels-offres', AppelOffreViewSet, basename='ao-appel-offre')
@@ -90,6 +92,9 @@ router.register(r'resultats-ao', ResultatAOViewSet, basename='ao-resultat')
 router.register(r'dossiers-ao', DossierAOViewSet, basename='ao-dossier-ao')
 router.register(r'pieces-dossier-ao', PieceDossierAOViewSet,
                 basename='ao-piece-dossier-ao')
+# AOF136 — checklist partenaire suivie point par point.
+router.register(r'checklist-partenaire', LigneChecklistPartenaireViewSet,
+                basename='ao-checklist-partenaire')
 
 urlpatterns = [
     # AOF31 — contrat d'API publié, dérivé du routeur ci-dessus.

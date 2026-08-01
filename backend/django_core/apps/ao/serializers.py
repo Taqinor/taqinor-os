@@ -17,6 +17,7 @@ from .models import (
     DossierAO,
     DossierSoumission,
     EcheanceAO,
+    LigneChecklistPartenaire,
     PieceDossierAO,
     ExigenceCPS,
     KitCalepinage,
@@ -606,6 +607,22 @@ class PieceDossierAOSerializer(serializers.ModelSerializer):
             'visibilite_display', 'attachment', 'piece_soumission', 'signee',
             'motif', 'source',
         ]
+
+
+class LigneChecklistPartenaireSerializer(serializers.ModelSerializer):
+    bloc_display = serializers.CharField(
+        source='get_bloc_display', read_only=True)
+    responsable_nom = serializers.CharField(
+        source='responsable.username', read_only=True, default='')
+
+    class Meta:
+        model = LigneChecklistPartenaire
+        fields = [
+            'id', 'dossier', 'bloc', 'bloc_display', 'code', 'libelle',
+            'ordre', 'obligatoire', 'faite', 'responsable',
+            'responsable_nom', 'commentaire', 'date_faite',
+        ]
+        read_only_fields = ['date_faite']
 
 
 class DossierAOSerializer(serializers.ModelSerializer):
