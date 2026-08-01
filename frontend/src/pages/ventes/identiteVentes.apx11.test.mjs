@@ -21,7 +21,7 @@ const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
 // la clause « zéro en-tête legacy dans pages/ventes/ » vaut pour tout le dossier.
 const FLUX = [
   'DevisList.jsx', 'DevisGenerator.jsx', 'FactureList.jsx',
-  'RelancesPage.jsx', 'VentesKanban.jsx',
+  'RelancesPage.jsx', 'BonCommandeList.jsx',
 ]
 
 test('plus aucun en-tête legacy dans pages/ventes/', () => {

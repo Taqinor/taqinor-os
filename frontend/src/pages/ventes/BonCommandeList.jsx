@@ -31,6 +31,8 @@ import {
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { ouvrirPdfBlob } from '../../utils/pdfBlob'
+// APX15(d) — plus jamais de JSON brut dans un message d'erreur.
+import { frenchError } from '../../lib/frenchError'
 
 const STATUT_DISPLAY = {
   en_attente: 'En attente',
@@ -417,8 +419,9 @@ function BCForm({ bc = null, onClose, onSaved }) {
       }
       onSaved()
     } catch (err) {
-      const msg = err?.detail ?? err?.non_field_errors?.[0] ?? JSON.stringify(err)
-      setErrors(prev => ({ ...prev, submit: msg }))
+      // APX15(d) — le repli jetait du JSON BRUT à l'écran (« {"client":["Ce
+      // champ est obligatoire."]} ») : message français, jamais de jargon.
+      setErrors(prev => ({ ...prev, submit: frenchError(err, 'Enregistrement impossible. Réessayez.') }))
     } finally {
       setSaving(false)
     }

@@ -47,7 +47,7 @@ test('un bon de commande annulé marque la puce BC en anomalie', () => {
 })
 
 test('la piste est réellement rendue sur les factures ET les bons de commande', () => {
-  for (const [file, helper] of [['FactureList.jsx', 'factureTrack'], ['VentesKanban.jsx', 'bonCommandeTrack']]) {
+  for (const [file, helper] of [['FactureList.jsx', 'factureTrack'], ['BonCommandeList.jsx', 'bonCommandeTrack']]) {
     const src = page(file)
     assert.match(src, /import DocumentStageTrack from '\.\.\/\.\.\/ui\/DocumentStageTrack'/, `${file}`)
     assert.match(src, new RegExp(`\\{\\.\\.\\.${helper}\\(`), `${file} : piste non dérivée`)
@@ -57,7 +57,7 @@ test('la piste est réellement rendue sur les factures ET les bons de commande',
 test('l’amont est cliquable et pointe sur le paramètre que DevisList lit vraiment', () => {
   // `?ref=` n'est lu nulle part (vérifié) : le lien atterrissait sur la liste
   // nue. `?devis=<id>` est le deep-link QX12 qui surligne et scrolle.
-  for (const file of ['FactureList.jsx', 'VentesKanban.jsx']) {
+  for (const file of ['FactureList.jsx', 'BonCommandeList.jsx']) {
     const src = page(file)
     assert.match(src, /\/ventes\/devis\?devis=\$\{encodeURIComponent\(/, `${file} : lien amont absent`)
     assert.doesNotMatch(src, /\/ventes\/devis\?ref=/, `${file} : lien mort ?ref= encore présent`)

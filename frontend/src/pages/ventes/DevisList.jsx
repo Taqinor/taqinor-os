@@ -5,6 +5,7 @@ import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
   Copy, Send, X, Eye, Search, AlertTriangle, Box, ExternalLink,
   Link2, FolderKanban, MoreHorizontal, Printer, Bell, Share2,
+  LayoutList, LayoutGrid,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -65,6 +66,8 @@ import DocumentStageTrack from '../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
 // APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
 import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
+// APX15 — le VRAI board Ventes : les devis par statut DOCUMENT (règle #4).
+import DevisKanbanBoard from './DevisKanbanBoard'
 // APX11 — l'en-tête UNIQUE de l'app (VX28) remplace l'idiome legacy.
 import { PageHeader } from '../../ui/PageHeader'
 // APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
@@ -1145,6 +1148,9 @@ export default function DevisList() {
   // ligne reste exactement celui d'avant.
   const [previewDevis, setPreviewDevis] = useState(null)
   const previewingId = previewDevis?.id ?? null
+  // APX15(b) — mode d'affichage de la liste : tableau ou board par statut
+  // DOCUMENT. Parité exacte avec la bascule Liste/Kanban des factures.
+  const [viewMode, setViewMode] = useState('liste')
   // Panneau « historique des versions » : id du devis dont la chaîne est ouverte.
   // QG10 — deep-link ?variantes=<id> ouvre directement la comparaison au montage.
   const [versionsOpenId, setVersionsOpenId] = useState(() => {
@@ -2257,6 +2263,28 @@ export default function DevisList() {
                 : `Voir les versions remplacées (${supersededCount})`}
             </Button>
           )}
+          {/* APX15(b) — bascule Liste/Board, parité exacte avec celle des
+              factures (ZFAC9). Le board consomme `filteredDevis`, déjà en
+              mémoire : aucune donnée nouvelle, aucun appel réseau. */}
+          <div className="ml-auto flex items-center gap-1 rounded-md border border-border p-0.5"
+               role="group" aria-label="Mode d’affichage">
+            <Button
+              type="button" size="sm"
+              variant={viewMode === 'liste' ? 'secondary' : 'ghost'}
+              aria-pressed={viewMode === 'liste'}
+              onClick={() => setViewMode('liste')}
+            >
+              <LayoutList className="size-4" aria-hidden="true" /> Liste
+            </Button>
+            <Button
+              type="button" size="sm"
+              variant={viewMode === 'board' ? 'secondary' : 'ghost'}
+              aria-pressed={viewMode === 'board'}
+              onClick={() => setViewMode('board')}
+            >
+              <LayoutGrid className="size-4" aria-hidden="true" /> Board
+            </Button>
+          </div>
         </div>
       )}
 
@@ -2563,6 +2591,13 @@ export default function DevisList() {
           action={<Button onClick={openNew}><Plus /> Nouveau devis</Button>}
           className="mt-4"
         />
+      ) : viewMode === 'board' ? (
+        /* APX15(b) — LE board Ventes : colonnes = statuts DOCUMENT (règle #4),
+           montant en héros, et AUCUNE action d'état par glisser-déposer —
+           accepter/refuser restent des actions explicites de la vue liste. */
+        <div className="mt-4">
+          <DevisKanbanBoard devis={filteredDevis} onOpenDevis={openEdit} />
+        </div>
       ) : (
         <Card className="mt-4 overflow-hidden">
           <div className="overflow-x-auto">

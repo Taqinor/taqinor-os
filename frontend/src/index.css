@@ -8927,3 +8927,65 @@ textarea.form-control {
     height: min(60vh, 34rem);
   }
 }
+
+/* ==========================================================================
+   APX15 — Boards VENTES au langage kb- du board leads, SANS glisser-déposer.
+   Un devis ne se signe pas en le faisant glisser : accepter/refuser restent
+   des actions explicites. `.kb-board-static` neutralise donc l'affordance de
+   glissé posée sur .kb-card (curseur grab + poignée) sans toucher AUCUNE
+   règle existante du board leads.
+   ========================================================================== */
+.kb-board-static {
+  max-height: min(70vh, 46rem);
+}
+.kb-board-static .kb-card {
+  cursor: pointer;
+  user-select: auto;
+  -webkit-user-select: auto;
+}
+.kb-board-static .kb-card::before {
+  content: none;
+}
+
+/* Carte de board VENTES : le MONTANT est le heros (app de l'argent). */
+.dkb-card-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--foreground);
+}
+.dkb-card-ref {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.dkb-card-client,
+.fkb-card-client {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fkb-card-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--foreground);
+}
+.fkb-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.fkb-card-ref {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.fkb-card-meta {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
