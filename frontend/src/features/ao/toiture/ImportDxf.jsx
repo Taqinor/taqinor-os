@@ -50,8 +50,10 @@ function viewBoxDe(sommets) {
   const minY = Math.min(...ys)
   const largeur = Math.max(...xs) - minX || 1
   const hauteur = Math.max(...ys) - minY || 1
-  const marge = Math.max(largeur, hauteur) * 0.08
-  return `${minX - marge} ${minY - marge} ${largeur + marge * 2} ${hauteur + marge * 2}`
+  // `bordure` : respiration du viewBox (8 % du plus grand côté). Ce n'est PAS
+  // une marge métier — la nommer autrement garde la garde AOF94 lisible.
+  const bordure = Math.max(largeur, hauteur) * 0.08
+  return `${minX - bordure} ${minY - bordure} ${largeur + bordure * 2} ${hauteur + bordure * 2}`
 }
 
 export default function ImportDxf({ analyserDxf, onImporter, onTracerAlaMain }) {

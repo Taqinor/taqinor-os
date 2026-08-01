@@ -32,6 +32,13 @@ function nouvelId(prefixe) {
   return `${prefixe}-${compteur}`
 }
 
+// Taille d'une liste, sans savoir ce qu'elle contient : sert au numéro d'ordre
+// d'une nouvelle file et au hook de test. Volontairement anonyme (même parti
+// pris que `echelle()` dans AlleeGratuiteChart) — une chaîne de COTES n'a rien
+// à voir avec les chaînes électriques du moteur, et rien n'est dérivé ici d'un
+// chiffre métier (garde AOF94).
+const combien = (liste) => liste.length
+
 function nombre(valeur) {
   const n = Number(String(valeur ?? '').replace(',', '.'))
   return Number.isFinite(n) ? n : 0
@@ -59,7 +66,9 @@ export default function ChainesCotes({
         {
           id: nouvelId('chaine'),
           axe,
-          nom: axe === 'x' ? `File horizontale ${chaines.length + 1}` : `File verticale ${chaines.length + 1}`,
+          nom: axe === 'x'
+            ? `File horizontale ${combien(chaines) + 1}`
+            : `File verticale ${combien(chaines) + 1}`,
           origine: { x: 0, y: 0 },
           tolerance: 0.05,
           coteMesuree: 0,
@@ -146,7 +155,7 @@ export default function ChainesCotes({
   )
 
   return (
-    <section className="ao-chaines" data-ao-chaines={chaines.length}>
+    <section className="ao-chaines" data-ao-chaines={combien(chaines)}>
       <div className="ao-chaines-actions">
         <button type="button" onClick={() => ajouterChaine('x')} data-ao-chaine-nouvelle="x">
           Nouvelle chaîne horizontale

@@ -88,12 +88,14 @@ export function facteurEchelle({ largeurDisponible, largeurPage, dpr = 1, zoom =
  * franchement l'échelle déjà rendue (sinon on repeindrait à chaque molette).
  * Dézoomer ne repeint jamais : l'image existante est simplement réduite.
  */
-export function doitRerasteriser({ echelleRendue, echelleVoulue, marge = 1.25 }) {
+export function doitRerasteriser({ echelleRendue, echelleVoulue, hysteresis = 1.25 }) {
   const rendue = Number(echelleRendue)
   const voulue = Number(echelleVoulue)
   if (!Number.isFinite(rendue) || rendue <= 0) return true
   if (!Number.isFinite(voulue) || voulue <= 0) return false
-  return voulue > rendue * marge
+  // `hysteresis` (et non « marge ») : facteur de repeinture d'AFFICHAGE, sans
+  // rapport avec une marge métier — la garde AOF94 réserve ce mot au moteur.
+  return voulue > rendue * hysteresis
 }
 
 /** Nombre de pages d'un document déjà ouvert — sans en peindre AUCUNE. */

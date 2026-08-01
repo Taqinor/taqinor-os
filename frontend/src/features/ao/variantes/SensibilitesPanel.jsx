@@ -138,7 +138,7 @@ export function SensibilitesPanel({ calepinageId }) {
               <th scope="col" className="py-2 pr-3 font-medium">Scénario</th>
               <th scope="col" className="py-2 pr-3 text-right font-medium">Modules</th>
               <th scope="col" className="py-2 pr-3 text-right font-medium">Puissance</th>
-              <th scope="col" className="py-2 pr-3 text-right font-medium">Écart / engagement</th>
+              <th scope="col" className="py-2 pr-3 text-right font-medium">Écart à l’engagement</th>
               <th scope="col" className="py-2 font-medium">Verdict</th>
             </tr>
           </thead>

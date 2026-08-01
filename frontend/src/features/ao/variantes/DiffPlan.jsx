@@ -55,13 +55,16 @@ export function deltaCompte(planA, planB) {
 }
 
 // Cadre englobant les DEUX plans (pour que la superposition soit à l'échelle).
-function cadre(rangees) {
-  if (!rangees.length) return { x0: 0, x1: 10, y0: 0, y1: 10 }
+// Paramètre volontairement ANONYME (`formes`) : cette fonction ne sait pas ce
+// qu'elle cadre, elle ne lit que des coordonnées et ne dérive donc aucune
+// grandeur métier (garde AOF94) — c'est de la géométrie d'affichage.
+function cadre(formes) {
+  if (formes.length === 0) return { x0: 0, x1: 10, y0: 0, y1: 10 }
   return {
-    x0: Math.min(...rangees.map((r) => r.x0 ?? 0)),
-    x1: Math.max(...rangees.map((r) => r.x1 ?? 0)),
-    y0: Math.min(...rangees.map((r) => r.y ?? 0)),
-    y1: Math.max(...rangees.map((r) => r.y ?? 0)),
+    x0: Math.min(...formes.map((f) => f.x0 ?? 0)),
+    x1: Math.max(...formes.map((f) => f.x1 ?? 0)),
+    y0: Math.min(...formes.map((f) => f.y ?? 0)),
+    y1: Math.max(...formes.map((f) => f.y ?? 0)),
   }
 }
 
