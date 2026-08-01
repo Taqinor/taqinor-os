@@ -6,16 +6,18 @@
 //     3 récents (localStorage propre à ce composant), puis le reste par ordre
 //     d'enregistrement.
 //   • Clic / Entrée = navigation vers le cockpit du module (1er item `nav`).
-//   • S'ouvre sur DEUX déclencheurs, comme la palette de commandes (I134) :
-//     l'événement window `taqinor:app-launcher` (bouton grille du Header) et
-//     le raccourci global « g a » (capté par ShortcutsProvider, cf. shortcuts.js
-//     GOTO_SHORTCUTS ne convient pas ici car « g a » doit OUVRIR, pas naviguer —
-//     câblé directement dans ce composant pour rester lane-disjoint).
+//   • S'ouvre sur UN SEUL déclencheur : l'événement window
+//     `taqinor:app-launcher`. ODY28 — le raccourci est « g o », câblé dans
+//     l'UNIQUE gestionnaire de séquences (`providers/ShortcutsProvider.jsx`,
+//     entrée `event` de GOTO_SHORTCUTS) : ce composant n'installe plus de
+//     listener `keydown` privé, qui entrait en collision avec « g a » →
+//     /approbations. ODY5 — le bouton grille du Header n'émet plus cet
+//     événement : il est devenu LA sortie canonique vers le Menu d'accueil.
 //   • ODY1 — la grille consomme désormais `useInstalledApps()` (source UNIQUE
 //     « mes apps » : registre ∩ modules actifs société ∩ rôle/permission) au
 //     lieu de lire `moduleConfigs` directement — une app désactivée en
 //     Paramètres ou hors rôle courant disparaît du lanceur.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../ui/Dialog'
@@ -25,7 +27,8 @@ import useInstalledApps from '../../lib/apps/useInstalledApps'
 import { readOrder, applyOrder } from '../../lib/apps/appPrefs'
 import AppIcon from '../../ui/AppIcon'
 import { prefetchRoute } from '../../router/prefetchMap'
-import { isTypingTarget } from '../../providers/shortcuts'
+// ODY28 — plus d'import `isTypingTarget` ici : le listener clavier privé de ce
+// composant a été supprimé, `ShortcutsProvider` est le gestionnaire unique.
 
 // Même clé que VX10 (PinnedApps) — état d'épinglage PARTAGÉ entre la Sidebar et
 // le lanceur, posée ici en repli tolérant tant que VX10 n'est pas construit.
@@ -88,8 +91,6 @@ export default function AppLauncher() {
   // favoris/récents : l'utilisateur a pu réordonner depuis le Menu d'accueil).
   const [order, setOrder] = useState(readOrder)
   const navigate = useNavigate()
-  const gPendingRef = useRef(false)
-  const gTimerRef = useRef(null)
 
   // ODY1 — source unique « mes apps » (registre ∩ modules actifs ∩ rôle).
   // ODY13 — appliquée dans l'ORDRE PERSONNEL de la grille (même clé
@@ -112,45 +113,20 @@ export default function AppLauncher() {
     setWasOpen(false)
   }
 
-  // Déclencheur (a) — événement window (bouton grille du Header), même patron
-  // que `taqinor:command-palette` (I134).
+  // Déclencheur — événement window (émis par le raccourci « g o », ODY28),
+  // même patron que `taqinor:command-palette` (I134).
   useEffect(() => {
     const onOpen = () => setOpen(true)
     window.addEventListener('taqinor:app-launcher', onOpen)
     return () => window.removeEventListener('taqinor:app-launcher', onOpen)
   }, [])
 
-  // Déclencheur (b) — raccourci « g a ». Séquence indépendante de celle de
-  // ShortcutsProvider (fichiers disjoints, lane-safe) : ignore la saisie et les
-  // combinaisons avec modificateur, comme I37.
-  useEffect(() => {
-    const clearPending = () => {
-      gPendingRef.current = false
-      if (gTimerRef.current) { clearTimeout(gTimerRef.current); gTimerRef.current = null }
-    }
-    const onKey = (e) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (isTypingTarget(e.target)) return
-      if (gPendingRef.current) {
-        const key = e.key.toLowerCase()
-        clearPending()
-        if (key === 'a') {
-          e.preventDefault()
-          setOpen(true)
-        }
-        return
-      }
-      if (e.key === 'g' || e.key === 'G') {
-        gPendingRef.current = true
-        gTimerRef.current = setTimeout(clearPending, 1200)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      clearPending()
-    }
-  }, [])
+  // ODY28 — le déclencheur (b) « g a » vivait ici, dans un SECOND listener
+  // `keydown` privé, pendant que `providers/shortcuts.js` faisait déjà naviguer
+  // « g a » vers /approbations : les DEUX tiraient sur la même frappe (collision
+  // réelle). Ce listener est supprimé ; le lanceur a désormais son binding
+  // propre (« g o ») dans l'UNIQUE gestionnaire de séquences
+  // (`ShortcutsProvider.jsx`), qui émet l'événement window ci-dessus.
 
   const goTo = useCallback((entry) => {
     pushRecentModule(entry.key)

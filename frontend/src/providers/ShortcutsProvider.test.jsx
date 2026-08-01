@@ -14,6 +14,14 @@ vi.mock('react-redux', () => ({
   useSelector: (sel) => sel({ auth: mockAuth }),
 }))
 
+// ODY28 — on observe la navigation réelle du gestionnaire de séquences (le
+// reste du module react-router-dom, dont MemoryRouter, est conservé).
+const navigateMock = vi.fn()
+vi.mock('react-router-dom', async (orig) => ({
+  ...(await orig()),
+  useNavigate: () => navigateMock,
+}))
+
 import ShortcutsProvider from './ShortcutsProvider'
 import { useFocusedRecordShortcuts } from './focusedRecordShortcuts'
 
@@ -123,5 +131,71 @@ describe('ShortcutsProvider — cheatsheet « ? » enrichie (NTUX18)', () => {
     dialog = screen.getByLabelText('Aide des raccourcis clavier')
     expect(within(dialog).getByLabelText('Rechercher un raccourci')).toHaveValue('')
     expect(within(dialog).getByText('Général')).toBeInTheDocument()
+  })
+})
+
+/* ================= ODY28 — UN SEUL gestionnaire de séquences ================= */
+
+// Tape une séquence « <préfixe> puis lettre » sur le gestionnaire global.
+function typeSequence(prefix, letter) {
+  fireEvent.keyDown(document, { key: prefix })
+  fireEvent.keyDown(document, { key: letter })
+}
+
+describe('ShortcutsProvider — ODY28 : séquences « g + lettre » unifiées', () => {
+  it('« g g » ramène au Menu d’accueil (sortie clavier de l’immersion)', () => {
+    navigateMock.mockClear()
+    renderWithProvider()
+    typeSequence('g', 'g')
+    expect(navigateMock).toHaveBeenCalledWith('/apps')
+  })
+
+  it('« g o » OUVRE le lanceur (événement window) sans naviguer', () => {
+    navigateMock.mockClear()
+    const listener = vi.fn()
+    window.addEventListener('taqinor:app-launcher', listener)
+    renderWithProvider()
+    typeSequence('g', 'o')
+    expect(listener).toHaveBeenCalled()
+    expect(navigateMock).not.toHaveBeenCalled()
+    window.removeEventListener('taqinor:app-launcher', listener)
+  })
+
+  it('« g a » navigue vers les approbations et n’ouvre PLUS le lanceur (fin de la collision)', () => {
+    navigateMock.mockClear()
+    const listener = vi.fn()
+    window.addEventListener('taqinor:app-launcher', listener)
+    renderWithProvider()
+    typeSequence('g', 'a')
+    expect(navigateMock).toHaveBeenCalledWith('/approbations')
+    // C'était LE bug : les deux gestionnaires tiraient sur la même frappe.
+    expect(listener).not.toHaveBeenCalled()
+    window.removeEventListener('taqinor:app-launcher', listener)
+  })
+
+  it('une séquence inconnue ne fait rien', () => {
+    navigateMock.mockClear()
+    renderWithProvider()
+    typeSequence('g', 'q')
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it('la frappe est ignorée dans un champ de saisie', () => {
+    navigateMock.mockClear()
+    renderWithProvider()
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    fireEvent.keyDown(input, { key: 'g' })
+    fireEvent.keyDown(input, { key: 'g' })
+    expect(navigateMock).not.toHaveBeenCalled()
+    input.remove()
+  })
+
+  it('l’aide « ? » documente la sortie « g g » et le lanceur « g o »', () => {
+    renderWithProvider()
+    fireEvent.keyDown(document, { key: '?' })
+    const dialog = screen.getByLabelText('Aide des raccourcis clavier')
+    expect(within(dialog).getByText(/Menu d’accueil/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Ouvrir le lanceur d’applications/)).toBeInTheDocument()
   })
 })

@@ -32,6 +32,12 @@ const BASE_PAGE_TITLES = [
   ['/stock', 'Stock'],
 
   // CRM
+  // ODY5 — `/crm/cockpit` (ODY15) et `/crm/forecast` n'avaient AUCUN titre
+  // déclaré nulle part : ils héritaient donc du préfixe générique `/crm` et
+  // s'intitulaient « Clients » en en-tête. Les déclarer ici les rend visibles
+  // au `titleFor` le plus spécifique (cf. sa note sur le plus long préfixe).
+  ['/crm/cockpit', 'Cockpit CRM'],
+  ['/crm/forecast', 'Forecast'],
   ['/crm/leads', 'Leads'],
   ['/crm/parrainage', 'Parrainage'],
   ['/crm/profils-site', 'Profils site'],
@@ -61,6 +67,9 @@ const BASE_PAGE_TITLES = [
   ['/production', 'Production'],
 
   // Après-vente
+  // ODY5 — même correctif qu'au CRM ci-dessus : `/sav/cockpit` (ODY19) était
+  // titré « SAV » par héritage du préfixe générique.
+  ['/sav/cockpit', 'Cockpit SAV'],
   ['/sav/contrats', 'Contrats de maintenance'],
   ['/sav', 'SAV'],
   ['/equipements', 'Équipements'],
@@ -210,12 +219,26 @@ export const SECTION_LABELS = {
   ...NORMALIZED_MODULE_SECTION_LABELS,
 }
 
-// Titre de page : première entrée dont le pathname commence par la clé.
+// Titre de page : entrée dont le préfixe est le PLUS SPÉCIFIQUE (le plus long)
+// à correspondre au chemin.
+// ODY5 — c'était auparavant la PREMIÈRE entrée correspondante, ce qui marchait
+// tant que la liste restait triée du spécifique au général… mais faisait
+// SILENCIEUSEMENT masquer par un préfixe générique toute sous-route déclarée
+// APRÈS lui : un module ajoutant `['/crm/cockpit', 'Cockpit']` à ses `titles`
+// (ajoutés à la fin de PAGE_TITLES) voyait son titre écrasé par le `['/crm',
+// 'Clients']` de la liste de base — l'écran s'intitulait « Clients ». Même
+// travers pour `/crm/forecast`. Le plus long préfixe gagne désormais ; à
+// longueur ÉGALE la PREMIÈRE entrée l'emporte (précédence de la liste de base
+// sur les modules, inchangée).
 // N93 — `t` optionnel : si fourni ET qu'une clé i18n existe pour ce chemin, on
 // renvoie la traduction ; sinon on garde le libellé FR (repli). Appelé sans `t`,
 // le comportement est identique à avant (FR partout).
 export function titleFor(pathname, t) {
-  const hit = PAGE_TITLES.find(([path]) => pathname.startsWith(path))
+  let hit = null
+  for (const entry of PAGE_TITLES) {
+    if (!pathname.startsWith(entry[0])) continue
+    if (!hit || entry[0].length > hit[0].length) hit = entry
+  }
   if (!hit) return t ? t('title.fallback') : 'ERP Agentique'
   if (t) {
     const key = TITLE_KEYS[hit[0]]
@@ -235,19 +258,29 @@ export function titleFor(pathname, t) {
 // contexte, non cliquable) pour les sections sans cockpit unique. On ne navigue
 // jamais vers un segment intermédiaire inexistant : seul le dernier élément (la
 // page courante) porte le titre complet et n'est jamais un lien (`current`).
-export function breadcrumbsFor(pathname) {
+// ODY5 — `app` OPTIONNEL : `{label, to}` de l'app active (immersion). Quand il
+// est fourni, le 1er segment devient l'APP et pointe vers SON cockpit — le fil
+// reste la HIÉRARCHIE lisible « app › section › fiche » (jamais la pile
+// d'historique d'Odoo, dont les tickets #46616/#41891 documentent la confusion :
+// un fil qui empile les écrans visités ne dit plus OÙ l'on est). Le libellé de
+// section reste préféré quand il existe (« Ventes », « Après-vente » : plus
+// lisible que le nom d'app en capitales) ; le nom d'app sert de repli pour les
+// segments sans libellé déclaré. Appelée SANS `app`, la fonction est identique
+// à avant (aucune régression pour ses appelants existants).
+export function breadcrumbsFor(pathname, app) {
   const title = titleFor(pathname)
   const seg = pathname.split('/').filter(Boolean)[0]
   const section = seg ? SECTION_LABELS[seg] : null
+  const label = section?.label ?? app?.label ?? null
+  const target = app?.to ?? section?.to ?? null
   const crumbs = []
   // La section n'est affichée que si elle diffère du titre de la page (évite
   // « Tableau de bord › Tableau de bord »).
-  if (section && section.label !== title) {
+  if (label && label !== title) {
     // Ne jamais poser `to` == pathname courant (éviterait un lien vers soi-même
-    // quand on est DÉJÀ sur le cockpit — cas déjà couvert par le test d'égalité
-    // ci-dessus dans la pratique, ceinture-bretelles ici).
-    const to = section.to && section.to !== pathname ? section.to : null
-    crumbs.push({ label: section.label, to })
+    // quand on est DÉJÀ sur le cockpit).
+    const to = target && target !== pathname ? target : null
+    crumbs.push({ label, to })
   }
   crumbs.push({ label: title, to: pathname, current: true })
   return crumbs

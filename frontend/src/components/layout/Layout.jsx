@@ -14,18 +14,22 @@ import PresentationModeBanner from './PresentationModeBanner'
 import coreApi from '../../api/coreApi'
 import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
 
-// ODY30 — kill-switch build-time AVANT la bascule de coquille (ODY4 la
-// consomme pour basculer Sidebar/Header en immersion). Défaut ON PARTOUT :
-// ce flag ne gate QUE le paradigme de coquille (Menu d'accueil + immersion),
-// JAMAIS une différence de fonctionnalité — avec le flag ON (le défaut),
-// Layout rend EXACTEMENT comme avant cette tâche. Flag BUILD-TIME (Vite
-// l'inline au bundle à la compilation) : changer sa valeur exige un rebuild
-// d'image frontend (docker compose up -d --build frontend), jamais un
-// simple redémarrage ou `.env` reload à chaud. Le chemin OFF est un SMOKE
-// D'URGENCE UNIQUEMENT (repli legacy) — les tests unitaires réécrits par
-// ODY4 couvrent le mode Apps seul, jamais ce repli. Retrait planifié en
-// ODY33 une fois le paradigme validé par le fondateur en prod.
-export const APPS_SHELL_ENABLED = import.meta.env.VITE_APPS_SHELL !== '0'
+// ODY30 — kill-switch build-time de la bascule de coquille (ODY4 le consomme
+// pour basculer Sidebar/Header en immersion). Défaut ON PARTOUT : ce flag ne
+// gate QUE le paradigme de coquille (Menu d'accueil + immersion), JAMAIS une
+// différence de fonctionnalité. Flag BUILD-TIME (Vite l'inline au bundle à la
+// compilation) : changer sa valeur exige un rebuild d'image frontend
+// (docker compose up -d --build frontend), jamais un simple redémarrage ou un
+// `.env` rechargé à chaud. Le chemin OFF est un SMOKE D'URGENCE UNIQUEMENT
+// (repli legacy) — les tests unitaires réécrits par ODY4 couvrent le mode Apps
+// seul, jamais ce repli. Retrait planifié en ODY33.
+//
+// ODY4 — la DÉFINITION du flag a migré dans `lib/apps/appsShellFlag.js` (un
+// module sans aucun import) et n'est plus que RÉ-EXPORTÉE ici : Layout importe
+// Sidebar, qui importe ActiveAppContext, qui lit le même flag — le définir dans
+// l'un de ces fichiers créerait un cycle d'import. Le contrat ODY30 est intact
+// (« flag lu par Layout.jsx ») : UNE définition, deux lecteurs.
+export { APPS_SHELL_ENABLED } from '../../lib/apps/appsShellFlag'
 
 // I34 — État réduit de la sidebar persisté en localStorage. Défaut = false
 // (comportement actuel : sidebar dépliée). Lecture défensive : tout accès au
