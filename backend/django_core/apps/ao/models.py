@@ -4062,8 +4062,11 @@ class LigneCoutRevient(TenantModel):
         verbose_name='Quantité')
     unite = models.CharField(
         max_length=20, blank=True, default='U', verbose_name='Unité')
+    #: MAD, 2 décimales — discipline mono-devise du dépôt (YDATA7). Le
+    #: dirham n'a pas de sous-centime : un coût unitaire à 4 décimales
+    #: donnait une précision que la comptabilité ne sait pas restituer.
     prix_unitaire_ht = models.DecimalField(
-        max_digits=14, decimal_places=4, default=Decimal('0.0000'),
+        max_digits=12, decimal_places=2, default=Decimal('0.00'),
         verbose_name='Coût unitaire HT (MAD)')
     regime_tva = models.CharField(
         max_length=10, choices=RegimeTVA.choices, default=RegimeTVA.STANDARD,
