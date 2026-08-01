@@ -11,15 +11,15 @@
 //     le raccourci global « g a » (capté par ShortcutsProvider, cf. shortcuts.js
 //     GOTO_SHORTCUTS ne convient pas ici car « g a » doit OUVRIR, pas naviguer —
 //     câblé directement dans ce composant pour rester lane-disjoint).
-//   • Coordination ODX6 : quand le catalogue ODX3/ODX6 livrera le filtrage de
-//     modules actifs par société, cette grille consommera la MÊME source —
-//     aujourd'hui elle affiche tous les `moduleConfigs` enregistrés (pas de
-//     duplication de logique de filtrage).
+//   • ODY1 — la grille consomme désormais `useInstalledApps()` (source UNIQUE
+//     « mes apps » : registre ∩ modules actifs société ∩ rôle/permission) au
+//     lieu de lire `moduleConfigs` directement — une app désactivée en
+//     Paramètres ou hors rôle courant disparaît du lanceur.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../ui/Dialog'
-import { moduleConfigs } from '../../router/moduleRoutes'
+import useInstalledApps from '../../lib/apps/useInstalledApps'
 import { isTypingTarget } from '../../providers/shortcuts'
 
 // Même clé que VX10 (PinnedApps) — état d'épinglage PARTAGÉ entre la Sidebar et
@@ -75,24 +75,6 @@ function readPinnedModules() {
   return readList(PINNED_KEY)
 }
 
-// buildEntries — dérive de `moduleConfigs` la liste affichable : une entrée
-// par module ayant une section `nav` (les modules routes-only comme `admin`/
-// `crm` n'en ont pas et n'apparaissent pas — ils vivent déjà dans la Sidebar
-// « coquille » historique, hors périmètre `moduleConfigs`).
-function buildEntries(configs) {
-  return configs
-    .filter((c) => c.nav && c.nav.items && c.nav.items.length > 0)
-    .map((c) => {
-      const first = c.nav.items[0]
-      return {
-        key: c.key,
-        label: c.nav.label,
-        to: first.to,
-        icon: first.icon,
-      }
-    })
-}
-
 export default function AppLauncher() {
   const [open, setOpen] = useState(false)
   const [pinned, setPinned] = useState([])
@@ -101,7 +83,8 @@ export default function AppLauncher() {
   const gPendingRef = useRef(false)
   const gTimerRef = useRef(null)
 
-  const entries = useMemo(() => buildEntries(moduleConfigs), [])
+  // ODY1 — source unique « mes apps » (registre ∩ modules actifs ∩ rôle).
+  const entries = useInstalledApps()
   const entryByKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries])
 
   // Relit favoris/récents à CHAQUE ouverture (repli défensif — VX10 peut
