@@ -45,7 +45,8 @@ from .views import (
     VarianteCalepinageViewSet,
 )
 from .viewsets import (
-    DossierAOViewSet, LigneChecklistPartenaireViewSet, PieceDossierAOViewSet,
+    DossierAOViewSet, LigneChecklistPartenaireViewSet,
+    PieceAdministrativeViewSet, PieceDossierAOViewSet,
 )
 
 router = DefaultRouter()
@@ -95,6 +96,9 @@ router.register(r'pieces-dossier-ao', PieceDossierAOViewSet,
 # AOF136 — checklist partenaire suivie point par point.
 router.register(r'checklist-partenaire', LigneChecklistPartenaireViewSet,
                 basename='ao-checklist-partenaire')
+# AOF137 — pièces administratives DATÉES, réutilisables d'un AO à l'autre.
+router.register(r'pieces-administratives', PieceAdministrativeViewSet,
+                basename='ao-piece-administrative')
 
 urlpatterns = [
     # AOF31 — contrat d'API publié, dérivé du routeur ci-dessus.

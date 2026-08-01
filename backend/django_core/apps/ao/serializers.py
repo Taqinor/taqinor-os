@@ -18,6 +18,7 @@ from .models import (
     DossierSoumission,
     EcheanceAO,
     LigneChecklistPartenaire,
+    PieceAdministrative,
     PieceDossierAO,
     ExigenceCPS,
     KitCalepinage,
@@ -606,6 +607,22 @@ class PieceDossierAOSerializer(serializers.ModelSerializer):
             'type_piece_display', 'obligatoire', 'presente', 'visibilite',
             'visibilite_display', 'attachment', 'piece_soumission', 'signee',
             'motif', 'source',
+        ]
+
+
+class PieceAdministrativeSerializer(serializers.ModelSerializer):
+    type_piece_display = serializers.CharField(
+        source='get_type_piece_display', read_only=True)
+    #: Dérivée de la date d'émission + la durée réglementaire — jamais saisie.
+    date_expiration = serializers.DateField(read_only=True, allow_null=True)
+
+    class Meta:
+        model = PieceAdministrative
+        fields = [
+            'id', 'type_piece', 'type_piece_display', 'libelle', 'emetteur',
+            'societe_emettrice', 'date_emission', 'duree_validite_jours',
+            'date_expiration', 'attachment', 'ged_document', 'dossiers',
+            'rappel_jours', 'actif',
         ]
 
 

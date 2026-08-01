@@ -39,17 +39,20 @@ from core.permissions import ScopedPermission, declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import services
-from .models import DossierAO, LigneChecklistPartenaire, PieceDossierAO
+from .models import (
+    DossierAO, LigneChecklistPartenaire, PieceAdministrative, PieceDossierAO,
+)
 from .permissions import AO_GERER, AO_VOIR
 from .serializers import (
     DossierAOSerializer, LigneChecklistPartenaireSerializer,
-    PieceDossierAOSerializer,
+    PieceAdministrativeSerializer, PieceDossierAOSerializer,
 )
 
 __all__ = [
     'AoBaseViewSet',
     'DossierAOViewSet',
     'LigneChecklistPartenaireViewSet',
+    'PieceAdministrativeViewSet',
     'PieceDossierAOViewSet',
 ]
 
@@ -144,6 +147,19 @@ class DossierAOViewSet(AoBaseViewSet):
         crees, existants = services.seeder_checklist_partenaire(dossier)
         return Response({'crees': crees, 'deja_presents': existants})
 
+    @action(detail=True, methods=['get'], url_path='controle-administratif')
+    def controle_administratif(self, request, pk=None):
+        """AOF137 — péremption contrôlée à la DATE DE REMISE DES PLIS."""
+        dossier = self.get_object()
+        controles = services.controler_pieces_administratives(dossier)
+        bloquants = [c for c in controles
+                     if c['severite'] == services.SEVERITE_BLOQUANT]
+        return Response({
+            'date_reference': dossier.date_reference_controle,
+            'bloquant': bool(bloquants),
+            'controles': controles,
+        })
+
 
 class PieceDossierAOViewSet(AoBaseViewSet):
     """Pièces d'un dossier de dépôt (AOF115)."""
@@ -191,3 +207,53 @@ class LigneChecklistPartenaireViewSet(AoBaseViewSet):
             ligne, faite=bool(faite), user=request.user,
             commentaire=request.data.get('commentaire'))
         return Response(self.get_serializer(ligne).data)
+
+
+class PieceAdministrativeViewSet(AoBaseViewSet):
+    """Pièces administratives DATÉES, réutilisables d'un AO à l'autre (AOF137).
+
+    ``rattacher`` ajoute la pièce à un dossier SANS dupliquer le fichier —
+    c'est tout l'intérêt d'une pièce scopée société plutôt que scopée dossier.
+    """
+    queryset = PieceAdministrative.objects.all()
+    serializer_class = PieceAdministrativeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['type_piece', 'date_emission']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        for champ in ('type_piece', 'actif'):
+            valeur = self.request.query_params.get(champ)
+            if valeur not in (None, ''):
+                qs = qs.filter(**{champ: valeur})
+        dossier = self.request.query_params.get('dossier')
+        if dossier not in (None, ''):
+            qs = qs.filter(dossiers=dossier)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def rattacher(self, request, pk=None):
+        """Rattache la pièce à un dossier — un seul octet stocké."""
+        piece = self.get_object()
+        dossier_id = request.data.get('dossier')
+        dossier = DossierAO.objects.filter(
+            pk=dossier_id, company=request.user.company).first()
+        if dossier is None:
+            return Response(
+                {'dossier': 'Dossier introuvable pour cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            services.rattacher_piece_administrative(
+                piece, dossier, user=request.user)
+        except DjangoValidationError as exc:
+            donnees = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(donnees, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(piece).data)
+
+    @action(detail=False, methods=['get'], url_path='a-renouveler')
+    def a_renouveler(self, request):
+        """Pièces entrant dans leur fenêtre de rappel (J-N)."""
+        pieces = services.pieces_administratives_a_renouveler(
+            request.user.company)
+        return Response(self.get_serializer(pieces, many=True).data)

@@ -1258,6 +1258,112 @@ def points_checklist_ouverts(dossier):
     return dossier.lignes_checklist.filter(obligatoire=True, faite=False)
 
 
+# ── AOF137 — Pièces administratives : péremption MÉCANISÉE ────────────────
+#
+# La date qui compte est celle de la REMISE DES PLIS, jamais celle du jour :
+# une attestation valable aujourd'hui mais expirée à l'ouverture fait rejeter
+# le pli. Contrôler « à aujourd'hui » produirait un dossier vert qui sera
+# rouge le jour J.
+
+#: Sévérité des contrôles de pièces administratives.
+SEVERITE_BLOQUANT = 'bloquant'
+SEVERITE_AVERTISSEMENT = 'avertissement'
+
+
+def controler_pieces_administratives(dossier, *, a_la_date=None):
+    """Contrôle les pièces d'un dossier À LA DATE DE REMISE DES PLIS.
+
+    Renvoie une liste de dicts ``{code, severite, message, piece_id}``.
+    ``a_la_date`` permet de rejouer un contrôle à une date donnée (tests,
+    simulation d'une prorogation) ; par défaut c'est la date de référence du
+    dossier (ouverture des plis, sinon date limite de remise).
+    """
+    reference = a_la_date or dossier.date_reference_controle
+    controles = []
+    if reference is None:
+        controles.append({
+            'code': 'AO_DATE_REFERENCE_ABSENTE',
+            'severite': SEVERITE_AVERTISSEMENT,
+            'message': (
+                "Ni date d'ouverture des plis ni date limite de remise : la "
+                'péremption des pièces administratives ne peut pas être '
+                'contrôlée.'),
+            'piece_id': None,
+        })
+        return controles
+    for piece in dossier.pieces_administratives.filter(actif=True):
+        if piece.est_expiree_a(reference):
+            controles.append({
+                'code': 'AO_PIECE_ADMIN_EXPIREE',
+                'severite': SEVERITE_BLOQUANT,
+                'message': (
+                    f'{piece.get_type_piece_display()} '
+                    f'« {piece.libelle} » : émise le {piece.date_emission}, '
+                    f'expirée le {piece.date_expiration} — donc EXPIRÉE à la '
+                    f'date de remise des plis ({reference}).'),
+                'piece_id': piece.pk,
+            })
+            continue
+        restants = piece.jours_restants_a(reference)
+        if restants is not None and restants <= (piece.rappel_jours or 0):
+            controles.append({
+                'code': 'AO_PIECE_ADMIN_BIENTOT_EXPIREE',
+                'severite': SEVERITE_AVERTISSEMENT,
+                'message': (
+                    f'{piece.get_type_piece_display()} '
+                    f'« {piece.libelle} » expire le {piece.date_expiration}, '
+                    f'soit {restants} jour(s) avant la remise des plis '
+                    f'({reference}) : à renouveler.'),
+                'piece_id': piece.pk,
+            })
+    return controles
+
+
+def pieces_administratives_a_renouveler(company, *, a_la_date=None):
+    """Pièces dont l'expiration tombe dans leur fenêtre de rappel (J-N)."""
+    from django.utils import timezone
+
+    from .models import PieceAdministrative
+
+    reference = a_la_date or timezone.localdate()
+    a_renouveler = []
+    for piece in PieceAdministrative.objects.filter(
+            company=company, actif=True):
+        restants = piece.jours_restants_a(reference)
+        if restants is None:
+            continue
+        if restants <= (piece.rappel_jours or 0):
+            a_renouveler.append(piece)
+    return a_renouveler
+
+
+def rattacher_piece_administrative(piece, dossier, *, user=None):
+    """Rattache une pièce EXISTANTE à un dossier — sans dupliquer le fichier.
+
+    C'est le point d'AOF137 : la même attestation fiscale sert deux appels
+    d'offres, en un seul octet stocké.
+    """
+    if piece.company_id != dossier.company_id:
+        raise ValidationError({'dossier': (
+            "Une pièce administrative ne se rattache qu'à un dossier de la "
+            'MÊME société.')})
+    piece.dossiers.add(dossier)
+    _journaliser_piece_administrative(piece, dossier, user)
+    return piece
+
+
+def _journaliser_piece_administrative(piece, dossier, user):
+    """Trace le rattachement au chatter générique ``records`` (best-effort)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        dossier, Activity.Kind.MODIFICATION, user=user,
+        field='piece_administrative',
+        field_label='Pièce administrative rattachée',
+        old_value='', new_value=str(piece), company=dossier.company)
+
+
 # ── AOF118 — Équipements engagés : SNAPSHOT figé du catalogue ──────────────
 #
 # Le catalogue est re-seedé régulièrement. Un dossier DÉPOSÉ ne doit jamais

@@ -2661,6 +2661,37 @@ class DossierAO(DocumentMetier):
                 f'{len(ouvertes)} point(s) obligatoire(s) de la checklist '
                 f'partenaire encore ouvert(s) : {libelles}.'
             )
+        # AOF137 — une pièce administrative EXPIRÉE À LA DATE DE REMISE DES
+        # PLIS (jamais « à la date du jour ») est bloquante, et le motif CITE
+        # sa date : c'est ce que l'utilisateur doit pouvoir vérifier.
+        raisons.extend(self.raisons_pieces_administratives())
+        return raisons
+
+    @property
+    def date_reference_controle(self):
+        """La SEULE date qui compte : celle de la remise/ouverture des plis.
+
+        Ouverture des plis si connue, sinon date limite de remise. ``None``
+        quand aucune n'est saisie — on ne contrôle pas contre une date
+        inventée (une date fausse est pire qu'une absence de date).
+        """
+        ao = self.appel_offre
+        return ao.date_ouverture_plis or ao.date_limite
+
+    def raisons_pieces_administratives(self):
+        """Pièces administratives expirées à la date de remise (AOF137)."""
+        reference = self.date_reference_controle
+        if reference is None:
+            return []
+        raisons = []
+        for piece in self.pieces_administratives.filter(actif=True):
+            if piece.est_expiree_a(reference):
+                raisons.append(
+                    f'{piece.get_type_piece_display()} « {piece.libelle} » : '
+                    f'émise le {piece.date_emission}, expirée le '
+                    f'{piece.date_expiration} — donc EXPIRÉE à la date de '
+                    f'remise des plis ({reference}).'
+                )
         return raisons
 
 
@@ -3264,3 +3295,122 @@ class LigneChecklistPartenaire(TenantModel):
     def __str__(self):
         etat = 'fait' if self.faite else 'ouvert'
         return f'[{self.get_bloc_display()}] {self.libelle} ({etat})'
+
+
+# ── AOF137 — ``PieceAdministrative`` : une attestation est une donnée DATÉE ─
+
+class PieceAdministrative(TenantModel):
+    """Une pièce administrative DATÉE, réutilisable d'un AO à l'autre (AOF137).
+
+    Constat. La checklist (AOF136) énumère déclaration sur l'honneur, pouvoirs,
+    attestation fiscale de moins d'un an, CNSS de moins de trois mois, registre
+    de commerce modèle J, RIB, assurances RC et décennale, caution provisoire —
+    en CASES cochées à la main. Or leur péremption est strictement
+    mécanisable, et les mêmes pièces se réutilisent d'un dossier à l'autre.
+
+    **La date qui compte est celle de la REMISE DES PLIS, pas celle du jour.**
+    Une attestation valable aujourd'hui mais expirée le jour de l'ouverture
+    fait rejeter le pli : contrôler « à la date du jour » donnerait un dossier
+    vert qui sera rouge à l'ouverture.
+
+    Aucun nouveau ``FileField`` : le fichier vit dans ``records.Attachment``
+    (ou ``ged.Document``), ce qui permet à la MÊME pièce d'être rattachée à
+    deux appels d'offres sans dupliquer un octet.
+    """
+
+    class TypePiece(models.TextChoices):
+        DECLARATION_HONNEUR = 'declaration_honneur', "Déclaration sur l'honneur"
+        POUVOIRS = 'pouvoirs', 'Pouvoirs du signataire'
+        ATTESTATION_FISCALE = 'attestation_fiscale', 'Attestation fiscale'
+        ATTESTATION_CNSS = 'attestation_cnss', 'Attestation CNSS'
+        REGISTRE_COMMERCE = 'registre_commerce', 'Registre de commerce (modèle J)'
+        RIB = 'rib', 'RIB'
+        ASSURANCE_RC = 'assurance_rc', 'Assurance responsabilité civile'
+        ASSURANCE_DECENNALE = 'assurance_decennale', 'Assurance décennale étanchéité'
+        CAUTION_PROVISOIRE = 'caution_provisoire', 'Caution provisoire'
+        AUTRE = 'autre', 'Autre pièce administrative'
+
+    #: Durées de validité RÉGLEMENTAIRES, en jours, par type de pièce.
+    #: Attestation fiscale : moins d'un an. CNSS : moins de trois mois.
+    #: Une pièce hors de cette table n'a pas de durée par défaut — on ne
+    #: présume jamais d'une péremption qu'aucun texte n'impose.
+    DUREES_PAR_DEFAUT = {
+        TypePiece.ATTESTATION_FISCALE: 365,
+        TypePiece.ATTESTATION_CNSS: 90,
+    }
+
+    type_piece = models.CharField(
+        max_length=24, choices=TypePiece.choices, verbose_name='Type de pièce')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    #: L'ORGANISME qui délivre (DGI, CNSS, tribunal de commerce, banque…).
+    emetteur = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Émetteur')
+    #: La société AU NOM DE laquelle la pièce est établie — en marque blanche,
+    #: c'est le soumissionnaire, pas forcément la société de l'ERP.
+    societe_emettrice = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Société titulaire de la pièce')
+    date_emission = models.DateField(
+        null=True, blank=True, verbose_name="Date d'émission")
+    duree_validite_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée de validité (jours)')
+    #: Fichier — via ``records.Attachment`` ou ``ged.Document``, JAMAIS un
+    #: nouveau ``FileField`` (le garde plateforme gèle ce module).
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pieces_administratives_ao', verbose_name='Fichier')
+    ged_document = models.ForeignKey(
+        'ged.Document',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pieces_administratives_ao', verbose_name='Document GED')
+    #: Rattachement MULTIPLE : la même pièce sert plusieurs dossiers sans
+    #: qu'un seul octet ne soit dupliqué.
+    dossiers = models.ManyToManyField(
+        DossierAO, blank=True, related_name='pieces_administratives',
+        verbose_name='Dossiers rattachés')
+    rappel_jours = models.PositiveIntegerField(
+        default=30, verbose_name='Rappel avant expiration (jours)')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+
+    class Meta:
+        verbose_name = 'Pièce administrative (AO)'
+        verbose_name_plural = 'Pièces administratives (AO)'
+        db_table = 'ao_piece_administrative'
+        ordering = ['type_piece', '-date_emission', 'id']
+        indexes = [
+            models.Index(fields=['company', 'type_piece']),
+            models.Index(fields=['company', 'actif']),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_piece_display()} — {self.libelle}'
+
+    def save(self, *args, **kwargs):
+        """Pose la durée RÉGLEMENTAIRE quand elle n'est pas renseignée."""
+        if self.duree_validite_jours is None:
+            defaut = self.DUREES_PAR_DEFAUT.get(self.type_piece)
+            if defaut is not None:
+                self.duree_validite_jours = defaut
+        super().save(*args, **kwargs)
+
+    @property
+    def date_expiration(self):
+        """Date d'expiration DÉRIVÉE (None = pièce sans péremption connue)."""
+        if not self.date_emission or not self.duree_validite_jours:
+            return None
+        return self.date_emission + timedelta(days=self.duree_validite_jours)
+
+    def est_expiree_a(self, date_reference):
+        """Vrai si la pièce est expirée À CETTE DATE (pas à la date du jour)."""
+        expiration = self.date_expiration
+        if expiration is None or date_reference is None:
+            return False
+        return expiration < date_reference
+
+    def jours_restants_a(self, date_reference):
+        """Jours de validité restants à ``date_reference`` (None si sans date)."""
+        expiration = self.date_expiration
+        if expiration is None or date_reference is None:
+            return None
+        return (expiration - date_reference).days
