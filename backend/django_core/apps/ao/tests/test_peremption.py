@@ -45,10 +45,15 @@ class BasePeremption(TestCase):
             contour_local_m=CARRE)
 
     def _variante(self, toiture, **kwargs):
+        # ``nom`` et ``statut`` sont des DÉFAUTS, pas des valeurs imposées :
+        # figés en arguments nommés, un appelant qui passait son propre
+        # ``statut=`` faisait exploser l'appel (« got multiple values for
+        # keyword argument »).
+        kwargs.setdefault('nom', f'Retenue {toiture.code_document}')
+        kwargs.setdefault('statut', VarianteCalepinage.Statut.CALCULEE)
         variante = VarianteCalepinage(
             company=self.company, toiture=toiture, appel_offre=self.ao,
-            nom=f'Retenue {toiture.code_document}',
-            statut=VarianteCalepinage.Statut.CALCULEE, **kwargs)
+            **kwargs)
         variante.entree_hash = empreinte_entree(toiture)
         variante.save()
         return variante
