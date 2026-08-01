@@ -7,6 +7,7 @@ import VerdictBar from './VerdictBar'
 import TiroirKits from './TiroirKits'
 import TiroirAllees from './TiroirAllees'
 import TiroirRives from './TiroirRives'
+import TiroirOrientation from './TiroirOrientation'
 import useCalepinage from './useCalepinage'
 
 /* ============================================================================
@@ -139,6 +140,11 @@ export default function CalepinageStudio({ calepinageId }) {
           />
           <TiroirRives
             donnees={resultat?.tiroirs?.rives}
+            valeurs={parametres || {}}
+            onChange={majParametres}
+          />
+          <TiroirOrientation
+            donnees={resultat?.tiroirs?.orientation}
             valeurs={parametres || {}}
             onChange={majParametres}
           />
