@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import { AlertTriangle, FileText, GitCompare, Loader2, Minus, Plus, Square, X } from 'lucide-react'
 import { Button, EmptyState } from '../../../ui'
+import { ensureWorkerPartage } from './PiecePreview.utils'
 
 /* ============================================================================
    AOF175 — Prévisualisation d'une pièce + comparaison de versions.
@@ -28,26 +29,6 @@ import { Button, EmptyState } from '../../../ui'
    `replaceChildren()` avant tout nouveau rendu.
    ========================================================================== */
 
-// Promesse mémoïsée : un worker au plus pour toute la durée de vie de l'onglet.
-let workerPromise = null
-
-/** Garantit UN worker pdfjs partagé. Renvoie `true` si CE module l'a posé,
-    `false` s'il était déjà posé ailleurs (cas nominal quand l'underlay ou
-    `PdfCanvas` a été monté avant). Servi depuis NOTRE origine (Vite `?worker`),
-    jamais un CDN blocable. */
-export function ensureWorkerPartage(lib = pdfjsLib) {
-  const opts = lib.GlobalWorkerOptions
-  if (opts.workerPort || opts.workerSrc) return Promise.resolve(false)
-  if (!workerPromise) {
-    workerPromise = import('pdfjs-dist/build/pdf.worker.min.mjs?worker')
-      .then(({ default: PdfWorker }) => {
-        if (!opts.workerPort && !opts.workerSrc) opts.workerPort = new PdfWorker()
-        return true
-      })
-  }
-  return workerPromise
-}
-
 const ZOOM_MIN = 0.5
 const ZOOM_MAX = 4
 const ZOOM_STEP = 0.25
@@ -59,16 +40,21 @@ const clampZoom = (z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 10
    ses octets. */
 function PdfVolet({ blob, zoom, label, onError }) {
   const hostRef = useRef(null)
-  const [rendering, setRendering] = useState(true)
-  const [failed, setFailed] = useState(null)
+  // Le rendu redémarre dès que le blob, le zoom ou le callback d'erreur
+  // changent : on ajuste l'état PENDANT le rendu — patron officiel React
+  // « ajuster l'état au rendu » — plutôt que d'appeler setState()
+  // synchroniquement au démarrage de l'effet.
+  const [renderState, setRenderState] = useState({ blob, zoom, onError, rendering: true, failed: null })
+  if (renderState.blob !== blob || renderState.zoom !== zoom || renderState.onError !== onError) {
+    setRenderState({ blob, zoom, onError, rendering: true, failed: null })
+  }
+  const { rendering, failed } = renderState
 
   useEffect(() => {
     if (!blob) return undefined
     let cancelled = false
     let pdf = null
     const host = hostRef.current
-    setRendering(true)
-    setFailed(null)
 
     const run = async () => {
       try {
@@ -106,11 +92,10 @@ function PdfVolet({ blob, zoom, label, onError }) {
           await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise
           if (cancelled) return
         }
-        if (!cancelled) setRendering(false)
+        if (!cancelled) setRenderState((prev) => ({ ...prev, rendering: false }))
       } catch (err) {
         if (cancelled) return
-        setRendering(false)
-        setFailed(err?.message || 'Rendu impossible.')
+        setRenderState((prev) => ({ ...prev, rendering: false, failed: err?.message || 'Rendu impossible.' }))
         onError?.(err)
       }
     }
