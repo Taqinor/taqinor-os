@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { FileText, Send, CheckCircle2, Download } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import reportingApi from '../../api/reportingApi'
@@ -17,6 +17,10 @@ const dh = (v) => formatMAD(v, { decimals: 2 })
 // appel API supplémentaire ; la balance complète reste récupérée en une fois).
 const SEGMENTS = [
   { value: 'all', label: 'Tout', key: null },
+  // APX35 — la tranche 0–30 j manquait : le cockpit financier pointe désormais
+  // les QUATRE buckets, celui-ci compris (sinon son lien n'aurait résolu sur
+  // rien).
+  { value: '0_30', label: '0–30 j', key: 'b0_30' },
   { value: '31_60', label: '31–60 j', key: 'b31_60' },
   { value: '61_90', label: '61–90 j', key: 'b61_90' },
   { value: '90_plus', label: '90+ j', key: 'b90_plus' },
@@ -29,7 +33,24 @@ export default function BalanceAgeePage() {
   // échec de chargement affiche un état d'erreur + bouton Réessayer au lieu
   // d'un tableau vide trompeur.
   const [loadError, setLoadError] = useState(false)
-  const [segment, setSegment] = useState('all')
+  // APX35 — la tranche n'avait AUCUN paramètre d'URL : la page était un
+  // cul-de-sac non adressable. `?bucket=` la rend deep-linkable (le cockpit
+  // financier y pointe ses 4 buckets) ; le filtrage reste purement un filtre
+  // d'AFFICHAGE sur les lignes déjà chargées — aucun appel API nouveau.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [segment, setSegmentState] = useState(() => {
+    const b = searchParams.get('bucket')
+    return SEGMENTS.some((s) => s.value === b) ? b : 'all'
+  })
+  const setSegment = (value) => {
+    setSegmentState(value)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (value && value !== 'all') next.set('bucket', value)
+      else next.delete('bucket')
+      return next
+    }, { replace: true })
+  }
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
 
