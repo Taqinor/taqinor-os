@@ -2,7 +2,9 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { CalendarDays, Users, Target, Map, UserPlus, TrendingUp } from 'lucide-react'
+import {
+  CalendarDays, Users, Target, Map, UserPlus, TrendingUp, LayoutDashboard, Globe,
+} from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy CRM vers le registre (phase 2, après les
@@ -25,6 +27,8 @@ import { CalendarDays, Users, Target, Map, UserPlus, TrendingUp } from 'lucide-r
 const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" />
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
+// ODY15 — Cockpit CRM : porte d'entrée de l'app (ModuleHero + actions + KPI).
+const CrmCockpit = lazy(() => import('../../pages/crm/CrmCockpit'))
 const ClientList = lazy(() => import('../../pages/crm/ClientList'))
 const LeadsPage = lazy(() => import('../../pages/crm/leads/LeadsPage'))
 // VX22 — fiche lead adressable (deep-link, F5, ctrl-clic nouvel onglet).
@@ -52,9 +56,16 @@ const config = {
     label: 'CRM', labelKey: 'nav.section.crm',
     accent: 'azur',
     items: [
+      // ODY15 — porte d'entrée de l'app : PREMIER item (convention
+      // `nav.items[0].to` déjà lue comme « cockpit du module » par
+      // AppLauncher/PinnedApps/la préférence d'atterrissage VX46).
+      { to: '/crm/cockpit',          label: 'Cockpit',          k: 'nav.crm_cockpit', icon: navIcon(LayoutDashboard), roles: ['normal','responsable','admin'] },
       { to: '/calendrier',           label: 'Calendrier',       k: 'nav.calendrier', icon: navIcon(CalendarDays),   roles: ['normal','responsable','admin'] },
       { to: '/crm',                  label: 'Clients',          k: 'nav.clients',    icon: navIcon(Users),      roles: ['normal','responsable','admin'] },
       { to: '/crm/leads',            label: 'Leads',            k: 'nav.leads',      icon: navIcon(Target),        roles: ['normal','responsable','admin'] },
+      // ODY15 — fermait un trou réel (module.config.test.jsx le documentait
+      // comme sans entrée de nav) : QX16, rejeu des leads site web en échec.
+      { to: '/crm/payloads-site-web', label: 'Leads site web',  k: 'nav.leads_site_web', icon: navIcon(Globe), roles: ['responsable','admin'] },
       { to: '/crm/forecast',         label: 'Forecast',         k: 'nav.forecast',   icon: navIcon(TrendingUp),    roles: ['normal','responsable','admin'] },
       { to: '/carte',                label: 'Carte',            k: 'nav.carte',      icon: navIcon(Map),           roles: ['normal','responsable','admin'] },
       { to: '/crm/parrainage',       label: 'Parrainage',       k: 'nav.parrainage', icon: navIcon(UserPlus),   roles: ['normal','responsable','admin'] },
@@ -63,6 +74,8 @@ const config = {
     ],
   },
   routes: [
+    // ODY15 — cockpit CRM (porte d'entrée de l'app).
+    { path: '/crm/cockpit', component: CrmCockpit },
     { path: '/crm', component: ClientList },
     { path: '/crm/leads', component: LeadsPage },
     // VX22 — page dédiée : deep-link partageable, F5 recharge via crmApi.getLead.

@@ -417,6 +417,17 @@ def kpi_federes(request):
     introuvable est ignoré silencieusement (jamais un 500 pour une
     déclaration cassée). Company-scopé : un superuser sans société reçoit une
     liste vide (mêmes conventions que les autres rapports).
+
+    ODY10 — « badges vivants » du Menu d'accueil. La réponse porte désormais
+    AUSSI une clé ``badges`` : au plus UN compteur par app, DÉRIVÉ des tuiles
+    déjà collectées ci-dessus — aucune requête supplémentaire, aucune
+    ré-agrégation à la main, aucune migration. ``?format=badges`` renvoie les
+    badges SEULS (charge utile légère pour une grille qui ne veut pas des
+    tuiles détaillées). Un module désactivé pour la société disparaît du
+    registre plateforme, donc de ses tuiles, donc de son badge : le gating
+    ModuleToggle s'applique sans une ligne de plus. Le scope société vient de
+    ``request.user.company`` : la société A ne peut structurellement pas voir
+    les compteurs de B.
     """
     import importlib
 
@@ -424,7 +435,7 @@ def kpi_federes(request):
 
     company = request.user.company
     if company is None:
-        return Response({'count': 0, 'tuiles': []})
+        return Response({'count': 0, 'tuiles': [], 'badges': []})
 
     tuiles = []
     for dotted in sorted(core_platform.kpi_providers(company)):
@@ -451,4 +462,69 @@ def kpi_federes(request):
                 normalisee['unite'] = tuile['unite']
             tuiles.append(normalisee)
 
-    return Response({'count': len(tuiles), 'tuiles': tuiles})
+    badges = _badges_depuis_tuiles(tuiles)
+    if request.query_params.get('format') == 'badges':
+        return Response({'count': len(badges), 'badges': badges})
+    return Response({'count': len(tuiles), 'tuiles': tuiles, 'badges': badges})
+
+
+# ── ODY10 — dérivation des badges d'app (aucune requête, aucun modèle) ───────
+
+def _cle_app_depuis_provider(dotted):
+    """``apps.rh.selectors.kpi_x`` → ``'rh'`` (la clé de module du manifest).
+
+    Par convention le label d'app Django et la clé ``module`` déclarée dans
+    ``apps/<x>/platform.py`` coïncident — c'est déjà l'invariant que
+    ``scripts/check_modules.py`` fait respecter côté frontend. Un dotted qui
+    ne suit pas la forme ``apps.<label>....`` (provider hors app métier)
+    renvoie ``None`` et n'a donc pas de badge : jamais une clé inventée.
+    """
+    parties = dotted.split('.')
+    if len(parties) >= 3 and parties[0] == 'apps' and parties[1]:
+        return parties[1]
+    return None
+
+
+def _valeur_de_badge(valeur):
+    """Un badge n'affiche qu'un COMPTEUR strictement positif.
+
+    Un « 0 » n'est pas une information sur une grille d'accueil, c'est du
+    bruit (même choix qu'Odoo, qui masque ses compteurs nuls) ; une valeur
+    textuelle (ex. le titre de la meilleure idée) n'est pas un compteur.
+    ``bool`` est exclu explicitement — en Python ``isinstance(True, int)``
+    est vrai, et ``True`` deviendrait un badge « 1 ».
+    """
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    return valeur if valeur > 0 else None
+
+
+def _badges_depuis_tuiles(tuiles):
+    """Au plus UN badge par app, dérivé des tuiles DÉJÀ collectées.
+
+    Sélection déterministe : la PREMIÈRE tuile de l'app (les providers sont
+    itérés triés, et chaque provider rend ses tuiles dans un ordre stable)
+    dont la valeur est un compteur strictement positif. Une app dont aucune
+    tuile n'est un compteur positif n'a simplement pas de badge — on n'invente
+    jamais un chiffre pour remplir la grille.
+    """
+    badges = []
+    vues = set()
+    for tuile in tuiles:
+        app = _cle_app_depuis_provider(tuile.get('provider', ''))
+        if not app or app in vues:
+            continue
+        valeur = _valeur_de_badge(tuile.get('valeur'))
+        if valeur is None:
+            continue
+        vues.add(app)
+        badge = {
+            'app': app,
+            'valeur': valeur,
+            'label': tuile['label'],
+            'tuile': tuile['id'],
+        }
+        if tuile.get('unite'):
+            badge['unite'] = tuile['unite']
+        badges.append(badge)
+    return badges

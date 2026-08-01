@@ -189,6 +189,9 @@ services:
         VITE_IA_API_URL: ${VITE_IA_API_URL}
         # Public contact form parked by default (0). Set to 1 + rebuild to show it.
         VITE_CONTACT_FORM_ENABLED: ${VITE_CONTACT_FORM_ENABLED:-0}
+        # ODY30 — kill-switch coquille "apps" (défaut ON = 1). OFF (0) = repli
+        # legacy, smoke d'urgence uniquement ; retrait planifié en ODY33.
+        VITE_APPS_SHELL: ${VITE_APPS_SHELL:-1}
     expose:
       - "80"
     depends_on:

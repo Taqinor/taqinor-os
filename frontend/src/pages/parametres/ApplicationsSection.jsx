@@ -28,6 +28,8 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
+import AppIcon from '../../ui/AppIcon'
+import { iconNodeForApp, accentForApp } from '../../lib/apps/appIcon'
 import { SectionTitle } from './peComponents'
 
 // Résolution icône par manifest (`module_manifest.icone`, kebab-case côté
@@ -53,6 +55,20 @@ const MODULE_ICONS = {
   lock: Key,
 }
 const iconFor = (icone) => MODULE_ICONS[icone] ?? Package
+
+/* ODY9 — L'ÉCRAN APPLICATIONS EST LA 4ᵉ SURFACE. Il résolvait son icône depuis
+   le manifest backend (`MODULE_ICONS` ci-dessus) tandis que le Menu d'accueil,
+   le lanceur VX9 et les épinglés VX10 la lisaient du `module.config` frontend :
+   deux glyphes possibles pour la MÊME app. On préfère donc désormais l'icône du
+   registre frontend (source unique, `lib/apps/appIcon.js`) et on ne retombe sur
+   le manifest que pour un module SANS écran frontend — que le registre ne
+   connaît pas et que les trois autres surfaces n'affichent donc jamais. */
+function glypheModule(mod) {
+  const duRegistre = iconNodeForApp(mod.key)
+  if (duRegistre) return duRegistre
+  const Repli = iconFor(mod.icone)
+  return <Repli aria-hidden="true" />
+}
 
 export default function ApplicationsSection() {
   // Admin-gated (Directeur) : plus strict que le défaut admin/responsable
@@ -192,13 +208,17 @@ export default function ApplicationsSection() {
             <SectionTitle label={group.categorie} />
             <div className="flex flex-col gap-2">
               {group.items.map((mod) => {
-                const Icon = iconFor(mod.icone)
                 const raison = !mod.actif ? raisons[mod.key] : null
                 return (
                   <div key={mod.key} className="rounded-lg border border-border p-3"
                     data-testid={`module-row-${mod.key}`}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <AppIcon
+                        icon={glypheModule(mod)}
+                        accent={accentForApp(mod.key)}
+                        size="xs"
+                        className="shrink-0"
+                      />
                       <span className={[
                         'min-w-[140px] flex-[1_1_140px] font-medium text-sm',
                         mod.actif ? '' : 'opacity-60',

@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + pages lazy), pas un module de
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
-import { BarChart3, Inbox, Tv } from 'lucide-react'
+import { BarChart3, Inbox, Tv, ScrollText } from 'lucide-react'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Reporting vers le registre (phase 2,
@@ -28,6 +28,15 @@ import { BarChart3, Inbox, Tv } from 'lucide-react'
    d'approbations en attente géré par Sidebar sur `to === '/approbations'`).
    Sidebar lit désormais cette section par clé (`navFor('reporting')`), à la
    même place dans l'ordre d'affichage.
+
+   ODY23 — « Reporting/Rapports/Journal → app Rapports » : ajoute l'entrée de
+   menu Journal d'activité (route ET gating INCHANGÉS, `roles`+`perm` copiés
+   à l'identique) — elle vivait jusqu'ici UNIQUEMENT dans la section
+   ADMINISTRATION codée en dur de `Sidebar.jsx` (extraite par la lane ODY4).
+   La ROUTE elle-même reste déclarée dans `features/parametres/module.config.jsx`
+   (`Journal`, inchangé) : un item de nav peut pointer vers une route déclarée
+   par un AUTRE module.config, exactement comme `navFor('reporting')` pointe
+   déjà vers `/approbations` géré ailleurs — aucune duplication de route ici.
    ========================================================================== */
 
 // eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
@@ -93,6 +102,11 @@ const config = {
       { to: '/dashboards-tv',        label: 'Dashboards TV',    k: 'nav.dashboards_tv', icon: navIcon(Tv), roles: ['responsable','admin'] },
       // XPLT10 — gestion des liens de partage (créer/révoquer).
       { to: '/reporting/dashboards/partage', label: 'Partage de dashboards', k: 'nav.dashboards_partage', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
+      // ODY23 — Journal d'activité rejoint l'app Rapports (route inchangée,
+      // déclarée dans features/parametres/module.config.jsx). Gating IDENTIQUE
+      // au littéral ADMINISTRATION historique de Sidebar.jsx : ouvert à tout
+      // rôle, réservé par la permission dédiée (Directeur par défaut).
+      { to: '/journal', label: "Journal d'activité", k: 'nav.journal', icon: navIcon(ScrollText), roles: ['normal','responsable','admin'], perm: 'journal_activite_voir' },
     ],
   },
   routes: [

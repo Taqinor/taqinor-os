@@ -24,3 +24,23 @@ describe('reporting — module.config (WIR17 Cohortes)', () => {
     expect(navItem.icon).toBeTruthy()
   })
 })
+
+/* ODY23 — « Reporting/Rapports/Journal → app Rapports ». Le Journal
+   d'activité gagne une entrée dans le menu ANALYSE ; sa ROUTE reste déclarée
+   dans features/parametres/module.config.jsx (inchangée) — on vérifie donc
+   ici seulement l'entrée de nav, pas de parité route/nav dans CE fichier. */
+describe('reporting — module.config (ODY23 Journal)', () => {
+  it('déclare /journal en entrée du menu ANALYSE, gatée normal/responsable/admin + permission dédiée', async () => {
+    const { default: config } = await import('./module.config.jsx')
+
+    const navItem = config.nav.items.find((i) => i.to === '/journal')
+    expect(navItem).toBeTruthy()
+    expect(navItem.label).toBe("Journal d'activité")
+    expect(navItem.roles).toEqual(['normal', 'responsable', 'admin'])
+    expect(navItem.perm).toBe('journal_activite_voir')
+    expect(navItem.icon).toBeTruthy()
+
+    // La route /journal n'est PAS redéclarée ici (elle vit dans parametres).
+    expect(config.routes.find((r) => r.path === '/journal')).toBeFalsy()
+  })
+})

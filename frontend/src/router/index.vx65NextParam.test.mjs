@@ -42,5 +42,8 @@ test("Login.jsx lit '?next=' via useSearchParams et le suit seulement s'il est s
   assert.match(loginSrc, /!next\.startsWith\('\/'\)\s*\|\|\s*next\.startsWith\('\/\/'\)/)
   // VX46 a introduit le module d'atterrissage préféré : `?next=` reste PRIORITAIRE
   // (garde intacte), le repli n'est plus le `/dashboard` codé en dur.
-  assert.match(loginSrc, /navigate\(next \|\| resolveLandingPath\(/)
+  // ODY3 — la résolution est passée dans `lib/apps/landing.js` (préférence VX46
+  // → dernier module VX11 → mono-app → Menu d'accueil `/apps`), partagée avec la
+  // garde `/` du routeur ; `?next=` garde exactement la même priorité.
+  assert.match(loginSrc, /navigate\(next \|\| resolveLandingFromAuth\(/)
 })

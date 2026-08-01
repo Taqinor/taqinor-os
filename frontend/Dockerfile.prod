@@ -15,9 +15,14 @@ COPY frontend/ ./
 ARG VITE_API_URL=http://localhost/api/django
 ARG VITE_IA_API_URL=http://localhost/api/fastapi
 ARG VITE_CONTACT_FORM_ENABLED=0
+# ODY30 — kill-switch coquille "apps" (defaut ON = 1). Flag build-time :
+# changer sa valeur exige un rebuild d'image (docker compose build frontend).
+# OFF (0) = repli legacy, smoke d'urgence uniquement ; retrait planifie ODY33.
+ARG VITE_APPS_SHELL=1
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_IA_API_URL=$VITE_IA_API_URL
 ENV VITE_CONTACT_FORM_ENABLED=$VITE_CONTACT_FORM_ENABLED
+ENV VITE_APPS_SHELL=$VITE_APPS_SHELL
 
 RUN npm run build
 
