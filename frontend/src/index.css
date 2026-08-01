@@ -8892,3 +8892,142 @@ textarea.form-control {
 @media (max-width: 639px) {
   .header-app-pill { display: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ODY6 — LE MÊME PARADIGME AU POUCE (fondateur 2026-08-01)
+   ───────────────────────────────────────────────────────────────────────────
+   Trois choses, et rien d'autre :
+     1. le Menu d'accueil EST l'accueil mobile — grille 3 puis 4 colonnes,
+        zone sûre respectée, champ de recherche TACTILE (≥16px : iOS ne zoome
+        plus au focus) ;
+     2. la barre d'onglets basse, désormais SCOPÉE à l'app active (5 créneaux
+        au maximum, libellés FR parfois longs — « Approvisionnement », « Bons
+        de commande ») ne doit JAMAIS provoquer de débordement horizontal :
+        min-width:0 + ellipsis, garde MB6 ;
+     3. variantes SOMBRES de la barre et du tiroir d'app : leurs règles
+        historiques posent des couleurs claires en dur ; on les surcharge ici
+        par les tokens de thème plutôt que d'y toucher.
+   Bloc APPEND-ONLY : aucune règle existante n'est modifiée.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* ── 1. Menu d'accueil au pouce ───────────────────────────────────────── */
+  /* `minmax(0, 1fr)` (et non `auto`) : une piste de grille ne peut jamais
+     dépasser sa part de largeur, même avec un libellé d'app très long — c'est
+     ce qui garantit zéro débordement horizontal sur iPhone. */
+  .home-menu-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .home-menu-inner {
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  }
+
+  /* (le compactage des tuiles au pouce est déjà posé par le bloc ODY2 plus
+     haut — on ne le rejoue pas ici, seule la troncature du libellé manquait) */
+  .home-menu-tile-label {
+    font-size: 0.72rem;
+    overflow-wrap: anywhere;
+  }
+
+  /* Le type-ahead bureau cède la place à un vrai champ de recherche : cible
+     tactile confortable, texte ≥ 16px (sinon Safari iOS zoome la page au focus
+     et casse la mise en page). La pleine largeur vient déjà d'ODY2. */
+  .home-menu--tactile .home-menu-searchbar {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .home-menu--tactile .home-menu-search-input {
+    font-size: 1rem;
+  }
+
+  /* ── 2. Barre d'onglets scopée à l'app ────────────────────────────────── */
+  /* Un onglet doit pouvoir rétrécir SOUS la largeur de son texte (min-width:0
+     lève le minimum de contenu implicite des éléments flex) ; le libellé est
+     alors tronqué proprement, jamais poussé hors de l'écran. */
+  .bottom-tabbar--app .bottom-tab {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .bottom-tabbar--app .bottom-tab-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Les icônes des sections viennent des `module.config` (taille 17) alors que
+     celle de l'onglet « Apps » est posée ici (taille 20) : on les normalise
+     pour que la rangée reste optiquement alignée. */
+  .bottom-tab-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+  }
+
+  .bottom-tab-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* ── 3. Thème sombre de la barre et du tiroir d'app ───────────────────── */
+  .dark .bottom-tabbar {
+    background: var(--card);
+    border-top-color: var(--border);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.38);
+  }
+
+  .dark .bottom-tab {
+    color: var(--muted-foreground);
+  }
+
+  /* Le laiton foncé (#b8860b) de l'état actif descend sous 4,5:1 sur une
+     surface sombre : on reprend le jaune de la pastille, largement AA. */
+  .dark .bottom-tab.active {
+    color: #f5c100;
+  }
+
+  .dark .app-grid-panel {
+    background: var(--card);
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.5);
+  }
+
+  .dark .app-grid-header {
+    border-bottom-color: var(--border);
+  }
+
+  .dark .app-grid-title,
+  .dark .app-grid-back,
+  .dark .app-grid-tile,
+  .dark .app-grid-item {
+    color: var(--foreground);
+  }
+
+  .dark .app-grid-close {
+    background: var(--muted);
+    color: var(--muted-foreground);
+  }
+
+  .dark .app-grid-tile-icon {
+    background: var(--muted);
+  }
+
+  .dark .app-grid-item-icon {
+    color: var(--muted-foreground);
+  }
+
+  .dark .app-grid-tile:active,
+  .dark .app-grid-item:active {
+    background: var(--muted);
+  }
+}
+
+@media (min-width: 480px) and (max-width: 768px) {
+  .home-menu-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
