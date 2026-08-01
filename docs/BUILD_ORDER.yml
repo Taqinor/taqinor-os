@@ -441,6 +441,13 @@ unmapped_ok:
   # 5 trajets quotidiens au budget de clics + undo/dictée/gardes, frontend
   # (2 SCHEMA additifs), hors ordonnancement de vagues.
   - EZ
+  # VAO — Veille appels d'offres (Groupe VAO de PLAN2, fondateur 2026-08-01) :
+  # app satellite NEUVE apps/veille_ao (collecte des avis publics + porte
+  # manuelle), ne compose que des primitives plateforme livrées à 100 % et
+  # n'écrit dans apps/ao que par UNE fonction de services.py — aucun prérequis
+  # de vague noyau -> floods. La collecte automatique est gatée par la règle #5
+  # (tos_risk/ + accord fondateur), pas par l'ordre des vagues.
+  - VAO
   - QW
   - QX      # UI round-6 backlog (PR #350, landed after the SCA1 inventory) —
   - QXG     # pure frontend waves outside the noyau->floods ordering.
