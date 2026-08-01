@@ -301,7 +301,14 @@ class IdempotentActionMixin:
                 company=company, endpoint=endpoint, key=cle,
                 defaults={'request_fingerprint': empreinte,
                           'response_status': reponse.status_code,
-                          'response_body': reponse.data})
+                          # NORMALISÉ avant écriture : un ``Decimal`` ou un
+                          # ``datetime`` resté dans le corps ferait échouer le
+                          # ``json.dumps`` du JSONField, et l'except ci-dessous
+                          # avalerait l'échec — l'idempotence deviendrait un
+                          # no-op silencieux, ce qui est pire que pas
+                          # d'idempotence du tout.
+                          'response_body': json.loads(
+                              json.dumps(reponse.data, default=str))})
         except Exception:  # noqa: BLE001 — l'idempotence est un CONFORT : elle
             # ne doit jamais faire échouer une action qui a déjà réussi.
             pass
