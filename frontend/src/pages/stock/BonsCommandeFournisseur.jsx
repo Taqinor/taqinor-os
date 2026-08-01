@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-  Plus, FileText, Undo2, Package, Trash2, Copy, RotateCcw, Receipt, LayoutTemplate,
+  Plus, FileText, Undo2, Package, Trash2, Copy, RotateCcw, Receipt, LayoutTemplate, ClipboardList,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import messagesApi from '../../api/messagesApi'
@@ -29,6 +29,10 @@ import {
   aLignePrixZero,
   nbEnvoyesNonRecus,
 } from '../../features/stock/procurement'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // Page de gestion des bons de commande FOURNISSEUR (achats — N11).
 // Le prix d'ACHAT est INTERNE : cette page n'est jamais un document client.
@@ -1001,12 +1005,15 @@ export default function BonsCommandeFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold tracking-tight">Bons de commande fournisseur</h1>
-          <p className="text-sm text-muted-foreground">{rows.length} bon(s) de commande</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={ClipboardList}
+        title="Bons de commande fournisseur"
+        subtitle={`${rows.length} bon(s) de commande`}
+        actions={(
+          <>
           {/* ZPUR3 — modèles de BCF réutilisables (purchase templates). */}
           <Button variant="outline" onClick={() => navigate('/stock/modeles-bcf')}>
             <LayoutTemplate /> Modèles
@@ -1014,8 +1021,9 @@ export default function BonsCommandeFournisseur() {
           <Button onClick={() => setSelected({})}>
             <Plus /> Nouveau bon de commande
           </Button>
-        </div>
-      </header>
+          </>
+        )}
+      />
 
       {fusionError && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

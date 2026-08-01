@@ -1,4 +1,70 @@
+import re
+
 from django.db import models
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# ODY26 — Axe « App visible » par rôle. DÉCISION : on RÉUTILISE
+# ``Role.permissions``, sans nouveau champ ni migration.
+#
+# Vérifié avant de trancher : la visibilité d'une app ne dépendait jusqu'ici
+# QUE du palier codé en dur dans les ``module.config.jsx`` (2 items de nav sur
+# 44 modules portent un ``perm``) — rien d'administrable. ``Role.permissions``
+# est le SEUL magasin par rôle, scopé société, éditable dans la matrice VX38 et
+# déjà acheminé au front (``state.auth.permissions``, lu par
+# ``useInstalledApps()``). Un champ dédié n'aurait rien apporté de plus et
+# aurait coûté une migration + un 2ᵉ système à garder synchrone.
+#
+# Convention : un code ``app_<clé>_voir`` par app (préfixe ``app_`` : aucune
+# collision avec les codes métier ``crm_voir``/``sav_voir``…).
+#
+# Sémantique : NARROWING OPT-IN, le patron déjà utilisé plus bas pour
+# ``records_scope_equipe``/``records_scope_sous_arbre`` — un rôle SANS aucun
+# marqueur voit tout (comportement historique préservé) ; dès qu'il en porte
+# un, la liste devient une LISTE BLANCHE.
+#
+# Ces codes ne sont VOLONTAIREMENT pas dans ``ALL_PERMISSIONS`` (ci-dessous),
+# pour deux raisons : (1) ``DIRECTEUR_PERMISSIONS``/``ADMIN_PERMISSIONS`` en
+# dérivent — les y mettre restreindrait mécaniquement le Directeur à la liste
+# gelée du jour ; (2) énumérer les 44 clés d'apps côté backend créerait un 2ᵉ
+# REGISTRE de la liste d'apps, ce que le Groupe ODY interdit (l'unique registre
+# reste ``moduleConfigs`` côté front, consommé par ``useInstalledApps()``). La
+# validation se fait donc par FORME (``EST_PERMISSION_APP``) — ces codes ne
+# donnent aucun droit, ils en RETIRENT : un code inconnu de trop n'ouvre rien.
+#
+# PORTÉE : restriction d'INTERFACE (quelles apps le porteur voit), jamais une
+# frontière de sécurité — le gating serveur par viewset reste seul juge.
+# ───────────────────────────────────────────────────────────────────────────
+APP_VISIBILITY_PREFIX = 'app_'
+APP_VISIBILITY_SUFFIX = '_voir'
+EST_PERMISSION_APP = re.compile(r'^app_[a-z0-9][a-z0-9_]*_voir$')
+
+
+def est_permission_app(code):
+    """Vrai si ``code`` appartient à la famille ODY26 « app visible »."""
+    return bool(EST_PERMISSION_APP.match(code or ''))
+
+
+def permission_app(cle):
+    """Code de permission « app visible » pour la clé de module ``cle``."""
+    return f'{APP_VISIBILITY_PREFIX}{cle}{APP_VISIBILITY_SUFFIX}'
+
+
+def cles_apps_autorisees(permissions):
+    """Liste blanche d'apps portée par ``permissions``, ou ``None``.
+
+    ``None`` (et non un ensemble vide) quand le rôle ne porte AUCUN marqueur :
+    « pas de restriction » et « restreint à rien » sont deux états distincts,
+    et seul le premier existe côté données (miroir exact de
+    ``allowedAppKeys()`` dans ``frontend/src/lib/apps/useInstalledApps.js``).
+    """
+    codes = [c for c in (permissions or []) if est_permission_app(c)]
+    if not codes:
+        return None
+    return {
+        c[len(APP_VISIBILITY_PREFIX):-len(APP_VISIBILITY_SUFFIX)]
+        for c in codes
+    }
 
 
 ALL_PERMISSIONS = [
@@ -441,6 +507,9 @@ CANONICAL_SYSTEM_ROLES = [
 class Role(models.Model):
     company = models.ForeignKey(
         'authentication.Company',  # app_label.ModelName
+        # on_delete: un rôle n'existe que dans SA société — supprimer la
+        # société supprime ses rôles (aucun rôle orphelin ne doit survivre,
+        # sans quoi il resterait porteur de permissions sans locataire).
         on_delete=models.CASCADE,
         related_name='roles',
     )

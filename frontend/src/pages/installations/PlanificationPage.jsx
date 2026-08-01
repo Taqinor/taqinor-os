@@ -18,7 +18,7 @@ import {
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
   CalendarRange, Navigation, Users, AlertTriangle, Scale, Truck,
-  Wrench, Gauge, ExternalLink, GripVertical,
+  Wrench, Gauge, GripVertical,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -26,7 +26,14 @@ import {
   Badge, Spinner, EmptyState, Select, SelectTrigger, SelectValue,
   SelectContent, SelectItem, Tabs, TabsList, TabsTrigger, TabsContent,
   Input, Button, toast,
+  // APX28 — confirmation avant d'écrire un créneau (fenêtre de RDV client).
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
+// APX28 — mobile = grille en lecture seule (aucun glisser-déposer au pouce).
+import { useIsMobile } from '../../ui/ResponsiveDialog'
+// APX29 — carte + liste des arrêts, partagée avec « Ma journée ».
+import TourneeStops from '../../features/installations/TourneeStops'
 import { toastWithUndo } from '../../lib/toast'
 import { timelineBounds, barGeometry, markerGeometry } from '../../features/gestion_projet/gantt'
 import { formatDate } from '../../lib/format'
@@ -156,6 +163,101 @@ const NON_ASSIGNE = '__non_assigne__'
 // Clé droppable stable d'une colonne technicien (id numérique ou sentinelle).
 const colKey = (grp) => String(grp?.technicien?.id ?? NON_ASSIGNE)
 
+// ── APX28 — VRAIE grille horaire (jour) × techniciens ────────────────────────
+// CHAMPS RÉELLEMENT SERVIS (vérifiés dans `apps/installations/models_intervention.py`
+// + `InterventionSerializer(fields='__all__')`) : `date_prevue` est un DateField
+// (AUCUNE heure), il n'existe AUCUN champ de durée, et la seule information
+// horaire est la fenêtre de RDV XFSM5 `fenetre_debut`/`fenetre_fin` (TimeField,
+// nullable, écrivable par le PATCH générique).
+// CONSÉQUENCE ASSUMÉE : une intervention SANS fenêtre n'est JAMAIS placée à une
+// heure inventée — elle va dans la bande « Sans créneau » de sa colonne, en
+// blocs séquencés à hauteur fixe. Poser/déplacer une intervention sur la grille
+// ÉCRIT la fenêtre choisie (action explicite de l'utilisateur, confirmée).
+const HEURE_DEBUT = 7
+const HEURE_FIN = 19
+const SLOT_PX = 44 // 1 h = 44 px (une cible de dépôt tactile ≥ 44 px)
+const HEURES = Array.from(
+  { length: HEURE_FIN - HEURE_DEBUT }, (_, i) => HEURE_DEBUT + i)
+// Hauteurs FIXES de l'en-tête de colonne et de la bande « Sans créneau » : la
+// gouttière des heures se cale dessus, sinon les libellés dérivent dès qu'une
+// colonne a plus d'interventions sans horaire qu'une autre.
+const ENTETE_PX = 68
+const BANDE_PX = 88
+const GUTTER_TOP_PX = ENTETE_PX + BANDE_PX + 2 // + les 2 bordures 1 px
+
+// 'HH:MM' / 'HH:MM:SS' → minutes depuis minuit ; null si absent/illisible.
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé
+export function minutesDeHeure(t) {
+  if (typeof t !== 'string') return null
+  const m = /^(\d{1,2}):(\d{2})/.exec(t.trim())
+  if (!m) return null
+  const h = Number(m[1]), min = Number(m[2])
+  if (h > 23 || min > 59) return null
+  return h * 60 + min
+}
+
+const deuxChiffres = (n) => String(n).padStart(2, '0')
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé
+export const heureEnTime = (h, min = 0) => `${deuxChiffres(h)}:${deuxChiffres(min)}:00`
+
+// Géométrie d'un bloc sur l'axe des heures. `null` = pas de fenêtre servie
+// (l'intervention n'a rien à faire sur l'axe : elle ira en « Sans créneau »).
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé
+export function blocGeometry(iv) {
+  const debut = minutesDeHeure(iv?.fenetre_debut)
+  if (debut == null) return null
+  const finBrute = minutesDeHeure(iv?.fenetre_fin)
+  // Fenêtre sans fin servie : on ne DEVINE pas une durée — un créneau d'une
+  // graduation, la hauteur minimale de la grille.
+  const fin = finBrute != null && finBrute > debut ? finBrute : debut + 60
+  const min0 = HEURE_DEBUT * 60, min1 = HEURE_FIN * 60
+  const d = Math.max(debut, min0)
+  const f = Math.min(fin, min1)
+  if (f <= min0 || d >= min1) return null // entièrement hors de la plage rendue
+  return {
+    topPx: ((d - min0) / 60) * SLOT_PX,
+    heightPx: Math.max(((f - d) / 60) * SLOT_PX, 22),
+    debutMin: debut,
+    finMin: fin,
+    horsPlage: debut < min0 || fin > min1,
+  }
+}
+
+// Corps EXACT du PATCH d'un dépôt (endpoint EXISTANT `updateIntervention`) :
+// technicien + jour, et la fenêtre UNIQUEMENT quand un créneau a été visé.
+// Aucune durée n'est inventée : un créneau vaut la graduation de la grille (1 h).
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé
+export function payloadDeplacement(toKey, jourCible, heure) {
+  return {
+    technicien: String(toKey) === NON_ASSIGNE ? null : Number(toKey),
+    date_prevue: jourCible,
+    ...(heure != null
+      ? { fenetre_debut: heureEnTime(heure), fenetre_fin: heureEnTime(heure + 1) }
+      : {}),
+  }
+}
+
+// Chevauchements RÉELS au sein d'une même colonne (même technicien, même jour) :
+// renvoie l'ensemble des ids en conflit. Deux interventions sans fenêtre ne
+// sont PAS un conflit (aucune heure n'est connue — on n'invente rien).
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé
+export function chevauchements(interventions) {
+  const avecHeure = (interventions ?? [])
+    .map((iv) => ({ id: iv.id, geo: blocGeometry(iv) }))
+    .filter((x) => x.geo)
+  const enConflit = new Set()
+  for (let i = 0; i < avecHeure.length; i += 1) {
+    for (let j = i + 1; j < avecHeure.length; j += 1) {
+      const a = avecHeure[i].geo, b = avecHeure[j].geo
+      if (a.debutMin < b.finMin && b.debutMin < a.finMin) {
+        enConflit.add(avecHeure[i].id)
+        enConflit.add(avecHeure[j].id)
+      }
+    }
+  }
+  return enConflit
+}
+
 // VX251 — déplacement PUR (testable) d'une intervention entre colonnes
 // technicien de l'état du calendrier. Renvoie un nouvel état (jamais de
 // mutation) ; renvoie l'entrée inchangée si l'intervention est introuvable
@@ -179,65 +281,256 @@ export function moveInterventionLocal(list, ivId, fromKey, toKey) {
 
 // Carte intervention draggable — l'original reste en place (fantôme) pendant
 // que le DragOverlay suit le pointeur.
-function DispatchCard({ iv, technicienId }) {
+function DispatchCard({ iv, technicienId, conflit = false, compact = false, style, draggable = true }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `iv-${iv.id}`,
     data: { iv, fromTechnicien: technicienId },
+    disabled: !draggable,
   })
+  const titre = iv.installation_reference ?? `#${iv.id}`
+  const fenetre = iv.fenetre_debut
+    ? `${String(iv.fenetre_debut).slice(0, 5)}${iv.fenetre_fin ? `–${String(iv.fenetre_fin).slice(0, 5)}` : ''}`
+    : null
   return (
-    <div ref={setNodeRef}
-      className={`flex items-center gap-2 rounded border border-border px-2 py-1.5 text-sm${isDragging ? ' opacity-40' : ''}`}>
-      <button type="button" {...listeners} {...attributes}
-        className="shrink-0 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
-        aria-label={`Déplacer l'intervention ${iv.installation_reference ?? `#${iv.id}`}`}>
-        <GripVertical className="size-4" aria-hidden="true" />
-      </button>
+    <div ref={setNodeRef} style={style}
+      data-testid={`iv-${iv.id}`}
+      data-conflit={conflit ? 'true' : undefined}
+      className={[
+        'flex items-center gap-2 overflow-hidden rounded border px-2 py-1.5 text-sm',
+        conflit
+          ? 'border-destructive bg-destructive/10 text-destructive-foreground'
+          : 'border-border bg-card',
+        isDragging ? 'opacity-40' : '',
+        compact ? 'text-xs' : '',
+      ].join(' ')}
+      title={conflit ? `${titre} — chevauchement de créneau` : titre}>
+      {draggable && (
+        <button type="button" {...listeners} {...attributes}
+          className="shrink-0 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+          aria-label={`Déplacer l'intervention ${titre}`}>
+          <GripVertical className="size-4" aria-hidden="true" />
+        </button>
+      )}
       <span className="min-w-0 flex-1 truncate">
-        {iv.installation_reference ?? `#${iv.id}`} — {iv.client_nom ?? '—'}
+        {titre} — {iv.client_nom ?? '—'}
       </span>
-      <span className="shrink-0 text-xs text-muted-foreground">{formatDate(iv.date_prevue)}</span>
+      {conflit && <AlertTriangle className="size-3.5 shrink-0 text-destructive" aria-label="Conflit" />}
+      <span className="shrink-0 text-xs text-muted-foreground">
+        {fenetre ?? formatDate(iv.date_prevue)}
+      </span>
     </div>
   )
 }
 
-// Colonne-technicien droppable. Le ref droppable est posé sur un div wrapper
-// (Card est un composant sans forwardRef).
-function TechnicienColumn({ grp, children }) {
-  const { setNodeRef, isOver } = useDroppable({ id: colKey(grp) })
+// APX28 — l'ancienne colonne-technicien en kanban (VX251) est remplacée par les
+// colonnes de la grille horaire ci-dessous : même cible de dépôt « technicien
+// seul » (bande « Sans créneau »), plus les cases d'heure.
+
+// APX28 — une case d'heure de la grille : c'est ELLE la cible de dépôt qui
+// donne un CRÉNEAU (et pas seulement un technicien).
+function CaseHoraire({ techKey, heure }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `slot:${techKey}:${heure}` })
   return (
-    <div ref={setNodeRef} data-testid={`col-${colKey(grp)}`}>
-      <Card className={isOver ? 'ring-2 ring-primary' : undefined}>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Users className="size-4 text-muted-foreground" aria-hidden="true" />
-            {grp.technicien.nom}
-            <Badge tone="primary">{grp.interventions.length}</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-1.5 pt-0">
-          {grp.interventions.length === 0
-            ? <span className="text-xs text-muted-foreground">Déposez une intervention ici.</span>
-            : children}
-        </CardContent>
-      </Card>
+    <div ref={setNodeRef}
+      data-testid={`slot-${techKey}-${heure}`}
+      style={{ height: `${SLOT_PX}px` }}
+      className={`border-t border-border/60 ${isOver ? 'bg-primary/15' : ''}`} />
+  )
+}
+
+// APX28 — bande « Sans créneau » : les interventions dont l'heure n'est PAS
+// connue (aucune fenêtre XFSM5 servie). Blocs séquencés à hauteur fixe — on ne
+// les pose jamais sur l'axe à une heure inventée. Déposer ici = affectation au
+// technicien seule (comportement VX251 d'origine, conservé).
+function BandeSansCreneau({ techKey, interventions, draggable, children }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `col:${techKey}` })
+  return (
+    <div ref={setNodeRef} data-testid={`sans-creneau-${techKey}`}
+      style={{ height: `${BANDE_PX}px` }}
+      className={`flex flex-col gap-1 overflow-y-auto border-b border-dashed border-border p-1 ${isOver ? 'bg-primary/10' : ''}`}>
+      {interventions.length === 0 ? (
+        <span className="px-1 py-2 text-[11px] text-muted-foreground">
+          {draggable ? 'Déposez ici (sans créneau)' : 'Aucune intervention sans créneau'}
+        </span>
+      ) : children}
+    </div>
+  )
+}
+
+// APX28 — la grille du JOUR : axe 7 h → 19 h × colonnes techniciens.
+function GrilleJour({ data, jour, estAujourdhui, draggable }) {
+  const maintenant = new Date()
+  const minutesMaintenant = maintenant.getHours() * 60 + maintenant.getMinutes()
+  const ligneNow = estAujourdhui
+    && minutesMaintenant >= HEURE_DEBUT * 60 && minutesMaintenant <= HEURE_FIN * 60
+    ? ((minutesMaintenant - HEURE_DEBUT * 60) / 60) * SLOT_PX
+    : null
+
+  return (
+    <div className="overflow-x-auto" data-testid="grille-jour" data-jour={jour}>
+      <div className="flex min-w-max gap-2">
+        {/* Gouttière des heures */}
+        <div className="shrink-0" style={{ paddingTop: `${GUTTER_TOP_PX}px` }} aria-hidden="true">
+          {HEURES.map((h) => (
+            <div key={h} style={{ height: `${SLOT_PX}px` }}
+              className="w-12 border-t border-transparent pr-2 text-right text-[11px] tabular-nums text-muted-foreground">
+              {deuxChiffres(h)}:00
+            </div>
+          ))}
+        </div>
+
+        {(data ?? []).map((grp) => {
+          const key = colKey(grp)
+          const enConflit = chevauchements(grp.interventions)
+          const surAxe = grp.interventions.filter((iv) => blocGeometry(iv))
+          const sansCreneau = grp.interventions.filter((iv) => !blocGeometry(iv))
+          return (
+            <div key={key} className="w-56 shrink-0" data-testid={`col-${key}`}>
+              <div style={{ height: `${ENTETE_PX}px` }}
+                className="flex flex-col justify-center gap-1 rounded-t-lg border border-b-0 border-border bg-muted/40 px-2">
+                <span className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                  <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  {grp.technicien.nom}
+                  <Badge tone="primary">{grp.interventions.length}</Badge>
+                </span>
+                {enConflit.size > 0 && (
+                  <Badge tone="danger">
+                    <AlertTriangle className="size-3" aria-hidden="true" />
+                    {enConflit.size} en conflit
+                  </Badge>
+                )}
+              </div>
+              <div className="border-x border-border">
+                <BandeSansCreneau techKey={key} interventions={sansCreneau} draggable={draggable}>
+                  {sansCreneau.map((iv) => (
+                    <DispatchCard key={iv.id} iv={iv} technicienId={key} compact
+                      draggable={draggable} />
+                  ))}
+                </BandeSansCreneau>
+              </div>
+              <div className="relative border-x border-b border-border">
+                {HEURES.map((h) => <CaseHoraire key={h} techKey={key} heure={h} />)}
+                {ligneNow != null && (
+                  <div className="pointer-events-none absolute inset-x-0 h-0.5 bg-destructive"
+                    style={{ top: `${ligneNow}px` }} data-testid="ligne-maintenant" aria-hidden="true" />
+                )}
+                {surAxe.map((iv) => {
+                  const geo = blocGeometry(iv)
+                  return (
+                    <div key={iv.id} className="absolute inset-x-1"
+                      style={{ top: `${geo.topPx}px`, height: `${geo.heightPx}px` }}>
+                      <DispatchCard iv={iv} technicienId={key} compact
+                        draggable={draggable}
+                        conflit={enConflit.has(iv.id)}
+                        style={{ height: '100%' }} />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// APX28 — semaine CONDENSÉE : lignes = techniciens, colonnes = les 7 jours.
+// Déposer une carte dans une case = changer de technicien ET/OU de jour.
+function SemaineCondensee({ data, jours, draggable }) {
+  return (
+    <div className="overflow-x-auto" data-testid="grille-semaine">
+      <div className="min-w-max">
+        <div className="flex gap-2 pl-40">
+          {jours.map((j) => (
+            <div key={j.iso} className={`w-40 shrink-0 px-1 pb-1 text-center text-xs font-semibold ${j.aujourdhui ? 'text-primary' : 'text-muted-foreground'}`}>
+              {j.label}{j.aujourdhui ? ' · aujourd’hui' : ''}
+            </div>
+          ))}
+        </div>
+        {(data ?? []).map((grp) => {
+          const key = colKey(grp)
+          return (
+            <div key={key} className="flex gap-2 border-t border-border py-1">
+              <div className="flex w-40 shrink-0 items-center gap-1.5 px-1 text-sm font-medium">
+                <Users className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="truncate">{grp.technicien.nom}</span>
+                <Badge tone="primary">{grp.interventions.length}</Badge>
+              </div>
+              {jours.map((j) => (
+                <CaseJour key={j.iso} techKey={key} jour={j.iso}
+                  interventions={grp.interventions.filter((iv) => iv.date_prevue === j.iso)}
+                  draggable={draggable} />
+              ))}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function CaseJour({ techKey, jour, interventions, draggable }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `day:${techKey}:${jour}` })
+  return (
+    <div ref={setNodeRef} data-testid={`day-${techKey}-${jour}`}
+      className={`flex min-h-11 w-40 shrink-0 flex-col gap-1 rounded border border-dashed border-border p-1 ${isOver ? 'bg-primary/15' : ''}`}>
+      {interventions.map((iv) => (
+        <DispatchCard key={iv.id} iv={iv} technicienId={techKey} compact draggable={draggable} />
+      ))}
     </div>
   )
 }
 
 function CalendrierTab() {
+  // APX28 — deux vues : Jour (grille horaire) et Semaine condensée.
+  const [mode, setMode] = useState('jour')
+  const [jour, setJour] = useState(todayISO)
   const [range, setRange] = useState(defaultWeek)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [activeIv, setActiveIv] = useState(null)
+  // APX28 — dépôt sur un créneau : confirmé avant d'écrire (le PATCH pose une
+  // fenêtre de RDV, une donnée que le client voit).
+  const [pendingDrop, setPendingDrop] = useState(null)
+  // Mobile = lecture seule (pas de glisser-déposer au pouce sur une grille).
+  const isMobile = useIsMobile()
+  const draggable = !isMobile
 
+  const debut = mode === 'jour' ? jour : range.debut
+  const fin = mode === 'jour' ? jour : range.fin
+
+  // Fetch du calendrier au changement de plage : `setLoading(true)` ouvre le
+  // cycle et `finally` le referme — motif de chargement standard, borne par
+  // le drapeau `alive`, sans cascade possible.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     let alive = true
-    installationsApi.getCalendrierInterventions(range.debut, range.fin)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true)
+    installationsApi.getCalendrierInterventions(debut, fin)
       .then((r) => { if (alive) { setData(r.data ?? []); setError(null) } })
       .catch(() => { if (alive) setError('Impossible de charger le calendrier.') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
+  }, [debut, fin])
+
+  const jours = useMemo(() => {
+    const out = []
+    const d = new Date(range.debut)
+    const aujourdhui = todayISO()
+    for (let i = 0; i < 7 && !Number.isNaN(d.getTime()); i += 1) {
+      const iso = isoOf(d)
+      if (iso > range.fin) break
+      out.push({
+        iso,
+        label: d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' }),
+        aujourdhui: iso === aujourdhui,
+      })
+      d.setDate(d.getDate() + 1)
+    }
+    return out
   }, [range.debut, range.fin])
 
   // distance 6px : un clic simple n'entraîne pas de drag ; sur mobile appui
@@ -252,29 +545,16 @@ function CalendrierTab() {
     setActiveIv(active.data.current?.iv ?? null)
   }
 
-  const handleDragEnd = ({ active, over }) => {
-    setActiveIv(null)
-    const iv = active.data.current?.iv
-    const fromKey = String(active.data.current?.fromTechnicien ?? NON_ASSIGNE)
-    if (!iv || !over) return
-    const toKey = String(over.id)
-    if (toKey === fromKey) return // déposé dans la même colonne : aucun effet
-
-    // Réaffectation OPTIMISTE : on déplace la carte tout de suite…
+  // VX251 — réaffectation TECHNICIEN seule (dépôt hors grille horaire) :
+  // optimiste + undo 6 s, comportement d'origine inchangé.
+  const reaffecter = (iv, fromKey, toKey) => {
     setData((prev) => moveInterventionLocal(prev, iv.id, fromKey, toKey))
     const nouveauTechnicien = toKey === NON_ASSIGNE ? null : Number(toKey)
-
-    // …on PATCH le serveur (endpoint EXISTANT — zéro backend nouveau ; la notif
-    // au nouveau technicien part côté serveur)…
     installationsApi.updateIntervention(iv.id, { technicien: nouveauTechnicien })
       .catch(() => {
-        // Échec serveur : on remet la carte dans sa colonne d'origine.
         setData((prev) => moveInterventionLocal(prev, iv.id, toKey, fromKey))
         toast.error('Réaffectation impossible — réessayez.')
       })
-
-    // …et on offre « Annuler » 6 s : restaure l'affectation d'origine (UI +
-    // serveur). onUndo seul — l'effet a déjà eu lieu (VX95, jamais 2ᵉ primitif).
     const ancienTechnicien = fromKey === NON_ASSIGNE ? null : Number(fromKey)
     const cibleNom = data?.find((g) => colKey(g) === toKey)?.technicien?.nom ?? 'non assigné'
     toastWithUndo({
@@ -287,14 +567,121 @@ function CalendrierTab() {
     })
   }
 
+  const handleDragEnd = ({ active, over }) => {
+    setActiveIv(null)
+    const iv = active.data.current?.iv
+    const fromKey = String(active.data.current?.fromTechnicien ?? NON_ASSIGNE)
+    if (!iv || !over) return
+    const overId = String(over.id)
+
+    // APX28 — dépôt sur une case d'heure : on demande confirmation (le PATCH
+    // écrit une fenêtre de RDV) avant d'écrire quoi que ce soit.
+    if (overId.startsWith('slot:')) {
+      const [, toKey, heureStr] = overId.split(':')
+      setPendingDrop({ iv, fromKey, toKey, heure: Number(heureStr), jour: debut })
+      return
+    }
+    // APX28 — dépôt sur une case de la semaine condensée : technicien + jour.
+    if (overId.startsWith('day:')) {
+      const [, toKey, jourIso] = overId.split(':')
+      if (toKey === fromKey && jourIso === iv.date_prevue) return
+      setPendingDrop({ iv, fromKey, toKey, jour: jourIso, heure: null })
+      return
+    }
+    const toKey = overId.startsWith('col:') ? overId.slice(4) : overId
+    if (toKey === fromKey) return // déposé dans la même colonne : aucun effet
+    reaffecter(iv, fromKey, toKey)
+  }
+
+  // APX28 — application du dépôt confirmé : UN SEUL PATCH sur l'endpoint
+  // EXISTANT (`updateIntervention`) — aucune écriture serveur nouvelle.
+  const confirmerDrop = () => {
+    const drop = pendingDrop
+    setPendingDrop(null)
+    if (!drop) return
+    const { iv, fromKey, toKey, heure, jour: jourCible } = drop
+    const avant = {
+      technicien: fromKey === NON_ASSIGNE ? null : Number(fromKey),
+      date_prevue: iv.date_prevue ?? null,
+      fenetre_debut: iv.fenetre_debut ?? null,
+      fenetre_fin: iv.fenetre_fin ?? null,
+    }
+    const apres = payloadDeplacement(toKey, jourCible, heure)
+    // Optimiste : la carte change de colonne ET porte tout de suite son créneau.
+    setData((prev) => {
+      const deplacee = toKey === fromKey ? prev : moveInterventionLocal(prev, iv.id, fromKey, toKey)
+      return (deplacee ?? []).map((grp) => ({
+        ...grp,
+        interventions: grp.interventions.map((x) => (
+          String(x.id) === String(iv.id) ? { ...x, ...apres } : x)),
+      }))
+    })
+    installationsApi.updateIntervention(iv.id, apres)
+      .catch(() => {
+        setData((prev) => {
+          const remise = toKey === fromKey ? prev : moveInterventionLocal(prev, iv.id, toKey, fromKey)
+          return (remise ?? []).map((grp) => ({
+            ...grp,
+            interventions: grp.interventions.map((x) => (
+              String(x.id) === String(iv.id) ? { ...x, ...avant } : x)),
+          }))
+        })
+        toast.error('Placement impossible — réessayez.')
+      })
+    toastWithUndo({
+      message: heure != null
+        ? `Intervention placée à ${deuxChiffres(heure)}:00.`
+        : `Intervention déplacée au ${formatDate(jourCible)}.`,
+      onUndo: () => {
+        setData((prev) => {
+          const remise = toKey === fromKey ? prev : moveInterventionLocal(prev, iv.id, toKey, fromKey)
+          return (remise ?? []).map((grp) => ({
+            ...grp,
+            interventions: grp.interventions.map((x) => (
+              String(x.id) === String(iv.id) ? { ...x, ...avant } : x)),
+          }))
+        })
+        installationsApi.updateIntervention(iv.id, avant)
+          .catch(() => toast.error('Annulation impossible — réessayez.'))
+      },
+    })
+  }
+
+  const estAujourdhui = jour === todayISO()
+  const contenu = mode === 'jour'
+    ? <GrilleJour data={data} jour={jour} estAujourdhui={estAujourdhui} draggable={draggable} />
+    : <SemaineCondensee data={data} jours={jours} draggable={draggable} />
+
   return (
     <div className="flex flex-col gap-3" data-testid="calendrier-techniciens">
       <div className="flex flex-wrap items-center gap-2">
-        <Input type="date" value={range.debut} aria-label="Du"
-          onChange={(e) => setRange((r) => ({ ...r, debut: e.target.value }))} className="w-40" />
-        <span className="text-muted-foreground">→</span>
-        <Input type="date" value={range.fin} aria-label="Au"
-          onChange={(e) => setRange((r) => ({ ...r, fin: e.target.value }))} className="w-40" />
+        <div className="flex overflow-hidden rounded-lg border border-border" role="group" aria-label="Vue du calendrier">
+          <button type="button" onClick={() => setMode('jour')}
+            aria-pressed={mode === 'jour'}
+            className={`min-h-11 px-3 text-sm ${mode === 'jour' ? 'bg-primary text-primary-foreground' : 'bg-card'}`}>
+            Jour
+          </button>
+          <button type="button" onClick={() => setMode('semaine')}
+            aria-pressed={mode === 'semaine'}
+            className={`min-h-11 px-3 text-sm ${mode === 'semaine' ? 'bg-primary text-primary-foreground' : 'bg-card'}`}>
+            Semaine
+          </button>
+        </div>
+        {mode === 'jour' ? (
+          <>
+            <Input type="date" value={jour} aria-label="Jour"
+              onChange={(e) => setJour(e.target.value)} className="w-40" />
+            {estAujourdhui && <Badge tone="primary">Aujourd’hui</Badge>}
+          </>
+        ) : (
+          <>
+            <Input type="date" value={range.debut} aria-label="Du"
+              onChange={(e) => setRange((r) => ({ ...r, debut: e.target.value }))} className="w-40" />
+            <span className="text-muted-foreground">→</span>
+            <Input type="date" value={range.fin} aria-label="Au"
+              onChange={(e) => setRange((r) => ({ ...r, fin: e.target.value }))} className="w-40" />
+          </>
+        )}
       </div>
       {loading ? (
         <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Spinner className="size-4" /> Chargement…</p>
@@ -302,21 +689,22 @@ function CalendrierTab() {
         <EmptyState icon={AlertTriangle} title="Calendrier indisponible" description={error} />
       ) : (data ?? []).length === 0 ? (
         <EmptyState icon={CalendarRange} title="Aucune intervention sur la période" />
+      ) : !draggable ? (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Lecture seule sur mobile — la replanification se fait au bureau.
+          </p>
+          {contenu}
+        </>
       ) : (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}
           onDragCancel={() => setActiveIv(null)}>
           <p className="text-xs text-muted-foreground">
-            Glissez une intervention vers un autre technicien pour la réaffecter.
+            Glissez une intervention vers un autre technicien, ou sur une case d’heure
+            pour lui poser un créneau. Les interventions sans horaire connu restent
+            dans la bande « Sans créneau ».
           </p>
-          <div className="flex flex-col gap-3">
-            {data.map((grp) => (
-              <TechnicienColumn key={colKey(grp)} grp={grp}>
-                {grp.interventions.map((iv) => (
-                  <DispatchCard key={iv.id} iv={iv} technicienId={colKey(grp)} />
-                ))}
-              </TechnicienColumn>
-            ))}
-          </div>
+          {contenu}
           <DragOverlay>
             {activeIv ? (
               <div className="rounded border border-primary bg-background px-2 py-1.5 text-sm shadow-lg">
@@ -326,6 +714,28 @@ function CalendrierTab() {
           </DragOverlay>
         </DndContext>
       )}
+
+      {/* APX28 — confirmation avant écriture (le créneau posé est une donnée
+          client : fenêtre de RDV XFSM5). */}
+      <AlertDialog open={!!pendingDrop} onOpenChange={(o) => { if (!o) setPendingDrop(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la replanification</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDrop && (pendingDrop.heure != null
+                ? `Placer l'intervention ${pendingDrop.iv.installation_reference ?? `#${pendingDrop.iv.id}`} `
+                  + `le ${formatDate(pendingDrop.jour)} de ${deuxChiffres(pendingDrop.heure)}:00 `
+                  + `à ${deuxChiffres(pendingDrop.heure + 1)}:00 (fenêtre de RDV) ?`
+                : `Déplacer l'intervention ${pendingDrop.iv.installation_reference ?? `#${pendingDrop.iv.id}`} `
+                  + `au ${formatDate(pendingDrop.jour)} ?`)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmerDrop}>Confirmer</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -357,29 +767,9 @@ function MaTourneeTab() {
       ) : (data?.stops ?? []).length === 0 ? (
         <EmptyState icon={Navigation} title="Aucun arrêt ce jour" description="Vos interventions du jour, ordonnées géographiquement, apparaîtront ici." />
       ) : (
-        <ol className="flex flex-col gap-2">
-          {data.stops.map((stop, i) => (
-            <li key={stop.id}>
-              <Card>
-                <CardContent className="flex items-center gap-3 p-3">
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{stop.client_nom ?? stop.installation_reference ?? `#${stop.id}`}</div>
-                    <div className="text-xs text-muted-foreground">{stop.site_ville ?? '—'}</div>
-                  </div>
-                  {stop.itineraire_url && (
-                    <a href={stop.itineraire_url} target="_blank" rel="noreferrer"
-                      className="flex shrink-0 items-center gap-1 text-xs text-primary hover:underline">
-                      Itinéraire <ExternalLink className="size-3.5" aria-hidden="true" />
-                    </a>
-                  )}
-                </CardContent>
-              </Card>
-            </li>
-          ))}
-        </ol>
+        // APX29 — carte + liste, composant PARTAGÉ avec « Ma journée » (la
+        // liste numérotée était dupliquée entre les deux écrans).
+        <TourneeStops stops={data.stops} />
       )}
     </div>
   )

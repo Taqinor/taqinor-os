@@ -193,6 +193,10 @@ export default function LeadWorkspace({
   // ── Satellites (dialogues) ────────────────────────────────────────────────
   const [devisPanel, setDevisPanel] = useState(null)
   const [panelDevisId, setPanelDevisId] = useState(null)
+  // EZ5 — puissance cible (kWc) portée par l'intention « Devis automatique »
+  // quand le commercial en a tapé une. Vit à côté du mode (et non DANS lui)
+  // pour que `devisPanel` reste la chaîne que tout le reste compare.
+  const [devisKwc, setDevisKwc] = useState(null)
   const [signeOpen, setSigneOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
   const [convertOpen, setConvertOpen] = useState(false)
@@ -232,7 +236,15 @@ export default function LeadWorkspace({
       case 'signe': return setSigneOpen(true)
       case 'toiture-3d':
         return leaveGuard(() => { if (leadId) navigate(`/devis-design/${leadId}`) })
-      case 'open-devis': return setDevisPanel(payload || 'auto')
+      // EZ5 — le payload reste la CHAÎNE de mode historique ('auto', 'remise',
+      // 'onepage', 'premium', 'edit' — IdentityRail, palette, DevisTab sans
+      // cible) ; il accepte EN PLUS un objet { mode, targetKwc } quand une
+      // puissance cible a été saisie. Aucun appelant existant ne change.
+      case 'open-devis': {
+        const intent = (payload && typeof payload === 'object') ? payload : { mode: payload }
+        setDevisKwc(intent.targetKwc || null)
+        return setDevisPanel(intent.mode || 'auto')
+      }
       case 'view-devis': setPanelDevisId(payload); return setDevisPanel('view')
       // LW16-wire — édition rapide du rail (responsable/relance) : un simple
       // SET_FIELD, débouncé/flushé par le moteur comme toute autre frappe.
@@ -692,8 +704,9 @@ export default function LeadWorkspace({
           lead={state.server}
           mode={devisPanel}
           existingDevisId={devisPanel === 'view' ? panelDevisId : null}
+          targetKwc={devisKwc}
           onDevisChanged={draft.refreshServer}
-          onClose={() => { setDevisPanel(null); setPanelDevisId(null); draft.refreshServer() }}
+          onClose={() => { setDevisPanel(null); setPanelDevisId(null); setDevisKwc(null); draft.refreshServer() }}
         />
       )}
       {signeOpen && (

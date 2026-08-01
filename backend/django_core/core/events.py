@@ -413,6 +413,43 @@ importe ``apps.audit``.
     documenté ici plutôt que migré, conformément à la consigne ARC38
     (« vérifier puis migrer si valeur cross-app, sinon documenter le choix
     local »).
+
+``module_toggled``
+    ODY25 — Émis à CHAQUE bascule RÉELLE d'un ``core.ModuleToggle`` (une app
+    installée ou désinstallée pour une société), aux DEUX seuls sites qui
+    écrivent cet état : ``core.feature_flags.activer_module`` et
+    ``core.feature_flags.desactiver_module``. Émis UNIQUEMENT sur un
+    FRANCHISSEMENT — ré-activer une app déjà active, ou désactiver une app déjà
+    désactivée, n'émet RIEN (le journal de la boutique ne doit pas se remplir de
+    lignes « rien n'a changé »). Une bascule en CASCADE émet un événement PAR
+    module réellement basculé : le journal montre l'effet complet, pas seulement
+    le module cliqué. Arguments du signal :
+
+    * ``toggle`` — l'instance ``core.ModuleToggle`` après écriture ;
+    * ``company`` — la société (posée côté serveur, jamais du corps) ;
+    * ``module`` — la clé de module (chaîne LIBRE : ``core`` ne connaît aucun
+      module métier, contrat import-linter) ;
+    * ``actif`` — le NOUVEL état (``True`` = installée) ;
+    * ``user`` — l'utilisateur qui bascule (peut être ``None`` : bascule
+      système, commande de gestion, provisioning) ;
+    * ``raison`` — le motif éventuel porté par le toggle.
+
+    Abonné dans ce repo : ``records`` (``apps/records/receivers.py``, câblé
+    dans son ``apps.py`` ``ready()``). Il historise la bascule dans le CHATTER
+    GÉNÉRIQUE ``records.Activity`` (ARC8) plutôt que dans un 14ᵉ modèle de
+    journal maison — c'est exactement la convergence qu'ARC8 existe pour
+    obtenir. La cible du chatter est le ``ModuleToggle`` lui-même : la société
+    du journal est donc CELLE du toggle, et l'isolation multi-tenant est
+    STRUCTURELLE (pas un filtre qu'on peut oublier).
+
+    L'abonné n'est PAS dans ``core`` (patron émetteur=abonné de
+    ``contrat_signe``/``incident_declared``) pour une raison de contrat :
+    ``records.services`` — seul point d'écriture autorisé du chatter — importe
+    les ``selectors`` de crm/ventes/stock (VX210(c)), donc un
+    ``core → records.services`` créerait la chaîne ``core → apps.crm``
+    interdite par ``core-foundation-is-a-base-layer``. ``core`` ne lit du
+    journal que ``records.models`` (module sans dépendance métier), via
+    ``core.feature_flags.journal_modules``.
 """
 import django.dispatch
 
@@ -724,6 +761,13 @@ ao_depose = django.dispatch.Signal()
 #     repo : ``crm`` (``apps/crm/receivers.py``) avance l'étape du lead lié
 #     vers SIGNED. Mêmes arguments que ``ao_depose``.
 ao_gagne = django.dispatch.Signal()
+
+# ODY25 — une app est INSTALLÉE ou DÉSINSTALLÉE pour une société (bascule réelle
+# d'un ``core.ModuleToggle``, franchissement uniquement). Arguments : toggle,
+# company, module, actif, user (peut être None), raison. Abonné dans ce repo :
+# ``records`` (``apps/records/receivers.py`` → chatter générique ARC8 sur le
+# toggle) — voir la docstring du module ci-dessus.
+module_toggled = django.dispatch.Signal()
 
 
 # ===========================================================================

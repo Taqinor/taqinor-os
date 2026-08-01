@@ -11,7 +11,6 @@
 //   (a) l'événement window `taqinor:command-palette` (clic du bouton ⌘K du Header)
 //   (b) un raccourci global ⌘K / Ctrl+K.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
@@ -21,7 +20,13 @@ import {
 } from './commandActions'
 // VX13 — ROUTE/TYPE_LABEL + recherche débouncée mutualisés avec GlobalSearch
 // (barre du haut) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
-import { ROUTE, TYPE_LABEL, TYPE_ACCENT, useEntitySearch } from '../lib/search/entityRoutes'
+import { ROUTE, TYPE_LABEL, TYPE_ACCENT, pathForType, useEntitySearch } from '../lib/search/entityRoutes'
+// ODY27 — la palette listait des routes STATIQUES (dérivées des raccourcis
+// « g x ») sans savoir si l'app existe pour cette société / ce rôle : commandes,
+// quick-create, récents et résultats sont désormais filtrés par la source
+// UNIQUE des apps visibles (ODY1) — zéro liste locale. ODY7 — ouvrir une cible
+// d'une AUTRE app passe par le point d'entrée nommé, qui bascule la coquille.
+import { useAppVisibility, useCrossAppNavigate } from '../lib/apps/ActiveAppContext'
 // NTUX10 — quick-create universel : Lead/Client/Ticket SAV/Produit s'ouvrent
 // en MODAL par-dessus l'écran courant (jamais une navigation) — remplace, dans
 // la section « Créer » de la palette UNIQUEMENT, les entrées nav lead/client
@@ -40,7 +45,9 @@ export function CommandPalette() {
   const [active, setActive] = useState(0)
   const inputRef = useRef(null)
   const listRef = useRef(null)
-  const navigate = useNavigate()
+  const navigate = useCrossAppNavigate()
+  // ODY27 — source UNIQUE de la visibilité des apps (ODY1), zéro liste locale.
+  const { isPathVisible } = useAppVisibility()
 
   // LW26 — actions contextuelles d'un LeadWorkspace ouvert (posées/retirées au
   // mount/unmount via `taqinor:lead-workspace-actions`, cf.
@@ -62,16 +69,35 @@ export function CommandPalette() {
   // LW26 — actions contextuelles de la fiche ouverte, filtrées comme les
   // autres sections d'actions (libellé, insensible à la casse — pas de puce).
   const contextRows = useMemo(() => filterContextActions(contextActions, term), [contextActions, term])
-  const actions = useMemo(() => filterActions(term), [term])
+  // ODY27 — une commande de navigation vers une app absente est RETIRÉE (pas
+  // grisée) : la palette ne propose jamais une destination qui répondrait
+  // « App non activée ». Un chemin transverse (hors app) reste toujours offert.
+  const actions = useMemo(
+    () => filterActions(term).filter((a) => isPathVisible(a.to)),
+    [term, isPathVisible],
+  )
   // VX220(b) — actions de CRÉATION, section dédiée « Créer » (jamais mélangée
   // à la navigation « Actions » ci-dessus).
-  const createActions = useMemo(() => filterCreateActions(term), [term])
+  const createActions = useMemo(
+    () => filterCreateActions(term).filter((a) => isPathVisible(a.to)),
+    [term, isPathVisible],
+  )
   // NTUX10 — quick-create MODAL (lead/client/ticket/produit), fusionné dans la
   // MÊME section « Créer » que `createActions` — jamais une section dupliquée.
-  const quickCreateTypes = useMemo(() => filterQuickCreateTypes(term), [term])
+  // ODY27 — un quick-create dont l'entité appartient à une app absente
+  // disparaît aussi (créer un ticket SAV n'a aucun sens si l'app SAV est OFF).
+  const quickCreateTypes = useMemo(
+    () => filterQuickCreateTypes(term).filter((t) => isPathVisible(pathForType(t.id))),
+    [term, isPathVisible],
+  )
   // Récents (entités ouvertes via la palette) relus à chaque ouverture — DÉRIVÉS
   // via useMemo, donc aucun setState synchrone dans un effet (règle lint).
-  const recent = useMemo(() => (open ? readRecentEntities() : []), [open])
+  // ODY27 — un récent d'une app désactivée depuis (ou d'une app hors rôle) est
+  // masqué : l'historique local ne doit pas rouvrir une porte fermée.
+  const recent = useMemo(
+    () => (open ? readRecentEntities().filter((e) => isPathVisible(pathForType(e.type))) : []),
+    [open, isPathVisible],
+  )
 
   // Sections de rendu + liste APLATIE (indexable clavier) construites en une
   // passe, dans l'ordre d'affichage : Fiche ouverte (LW26) → Actions →
@@ -128,7 +154,9 @@ export function CommandPalette() {
       }
     } else {
       // Résultats serveur groupés par entité.
-      for (const g of groups) {
+      // ODY27 — un groupe d'une app non installée / hors rôle est retiré avant
+      // l'aplatissement (ni affiché, ni atteignable au clavier).
+      for (const g of groups.filter((x) => isPathVisible(pathForType(x.type)))) {
         const rows = (g.results || []).map((r) => {
           const index = f.length
           f.push({ kind: 'result', type: g.type, item: r })
@@ -138,7 +166,7 @@ export function CommandPalette() {
       }
     }
     return { sections: secs, flat: f }
-  }, [contextRows, actions, createActions, quickCreateTypes, recent, groups, term])
+  }, [contextRows, actions, createActions, quickCreateTypes, recent, groups, term, isPathVisible])
 
   const close = useCallback(() => {
     setOpen(false)

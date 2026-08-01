@@ -14,7 +14,9 @@ import { Camera } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import recordsApi from '../../api/recordsApi'
 import ProduitPicker from '../../components/ProduitPicker'
-import { Progress, Checkbox, Input, Spinner, Button, toast } from '../../ui'
+// APX31 — `Progress` n'est plus consommé directement ici : l'avancement passe
+// par le composant partagé `ChecklistProgress` (le même que le panneau SAV).
+import { ChecklistProgress, Checkbox, Input, Spinner, Button, toast } from '../../ui'
 import { cn } from '../../lib/cn'
 import { formatDate } from '../../lib/format'
 import { compressPhotoForUpload } from '../preferences/prefs'
@@ -116,20 +118,12 @@ export default function ChantierChecklist({
 
   return (
     <div className="flex flex-col gap-3">
+      {/* APX31 — la barre + le pourcentage sont désormais le composant PARTAGÉ
+          `ui/ChecklistProgress`, adopté aussi par le panneau checklist SAV (qui
+          n'avait qu'un texte plat). Rendu identique : le pourcentage reste
+          celui calculé par le SERVEUR (`completion`), passé tel quel. */}
       {completion != null && (
-        <div className="flex items-center gap-3">
-          <Progress
-            value={completion}
-            tone={completion === 100 ? 'success' : 'primary'}
-            className="flex-1"
-          />
-          <span className={cn(
-            'text-sm font-semibold tabular-nums',
-            completion === 100 ? 'text-success' : 'text-muted-foreground',
-          )}>
-            {completion}%
-          </span>
-        </div>
+        <ChecklistProgress percent={completion} show="percent" />
       )}
       {loading ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner /> Chargement…</p>

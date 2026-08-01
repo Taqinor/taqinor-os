@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useStore } from 'react-redux'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { setCredentials, fetchMe } from '../features/auth/store/authSlice'
@@ -9,10 +9,12 @@ import identityApi from '../api/identityApi'
 import portailApi from '../api/portailApi'
 import { normalizeTenantTheme } from '../design/tenantTheme'
 // VX46 — module d'atterrissage au login (« Mes préférences »), résolu depuis
-// `moduleConfigs` (UX1) + le dernier module visité (VX11) ; repli `/dashboard`
-// inchangé quand aucune préférence n'est choisie.
-import { moduleConfigs } from '../router/moduleRoutes'
-import { resolveLandingPath, getLastModuleSegment } from './preferences/prefs'
+// `moduleConfigs` (UX1) + le dernier module visité (VX11).
+// ODY3 — le repli n'est plus `/dashboard` mais le Menu d'accueil `/apps` (« on
+// ouvre l'ERP, on voit SES apps »), avec l'exception mono-app ; toute la
+// résolution passe par `lib/apps/landing.js`, partagé avec la garde `/` du
+// routeur pour que les deux ne divergent jamais.
+import { resolveLandingFromAuth } from '../lib/apps/landing'
 
 // VX34 — Login = premier pixel de la marque. On garde EXACTEMENT les teintes de
 // marque (#1863DC azur, #F5C100 laiton, #050e1f nuit) mais on les fait entrer
@@ -118,6 +120,10 @@ const safeNextPath = (next) => {
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function Login() {
   const dispatch = useDispatch()
+  // ODY3 — accès au store pour relire rôle/permissions JUSTE APRÈS
+  // `setCredentials` (une valeur de `useSelector` serait celle du rendu
+  // précédent, donc pré-connexion).
+  const store = useStore()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
@@ -182,9 +188,12 @@ export default function Login() {
       // page n'intervient. Fire-and-forget : ne bloque jamais la navigation.
       dispatch(fetchMe())
       // VX65 : un lien profond `?next=` interne est prioritaire ; sinon VX46
-      // route vers le module d'atterrissage préféré (repli /dashboard inchangé).
+      // route vers le module d'atterrissage préféré, puis (ODY3) mono-app,
+      // puis le Menu d'accueil `/apps`. L'état d'auth est relu à L'INSTANT de
+      // la décision (`store.getState()`), pas capturé au rendu précédent : le
+      // `setCredentials` ci-dessus vient d'y poser rôle et permissions.
       const next = safeNextPath(searchParams.get('next'))
-      navigate(next || resolveLandingPath(moduleConfigs, getLastModuleSegment()))
+      navigate(next || resolveLandingFromAuth(store.getState().auth))
     } catch (err) {
       const data = err.response?.data || {}
       // 2FA requise : on déverrouille le champ code et on demande le code.

@@ -432,6 +432,10 @@ jobs:
         run: python scripts/check_stages.py
       - name: Check module registry <-> frontend consistency (ODX21)
         run: python scripts/check_modules.py
+      - name: Check no raw JSON / bare error object is shown to the user (EZ16)
+        run: python scripts/check_frontend_errors.py
+      - name: Test the anti-jargon checker itself (EZ16)
+        run: python -m unittest scripts.tests.test_check_frontend_errors -v
       - name: Check test determinism (no sleeps / unfrozen live-clock assertions)
         run: python scripts/check_test_determinism.py
       - name: Check tenant distinctness (a "second tenant" in a test must be a real second row)

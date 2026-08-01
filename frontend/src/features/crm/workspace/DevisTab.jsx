@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Zap, FileText } from 'lucide-react'
 import {
-  Button, Checkbox, StatusPill,
+  Button, Checkbox, Input, StatusPill,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../../ui'
@@ -70,6 +70,19 @@ export function waArmed(phone, selectedCount) {
   return !!normalizeMaPhone(phone) && selectedCount > 0
 }
 
+// EZ5 — intention d'ouverture du panneau devis. Sans puissance cible saisie on
+// renvoie la CHAÎNE de mode historique (aucun appelant existant ne bouge :
+// IdentityRail, palette de commandes, tests) ; avec une cible on renvoie
+// l'objet { mode, targetKwc } que LeadWorkspace sait aussi lire. La cible ne
+// concerne que les modes qui DIMENSIONNENT (auto/remise/onepage/premium) —
+// « edit » ouvre le générateur, qui a son propre champ kWc (EZ5, 1ʳᵉ moitié).
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
+export function devisIntent(mode, kwcCible) {
+  const cible = String(kwcCible ?? '').trim()
+  if (!cible || mode === 'edit') return mode
+  return { mode, targetKwc: cible }
+}
+
 // Saute au champ manquant dans le centre et le focus ; si la section est
 // repliée (le champ n'est alors pas dans le DOM — SectionsPane.jsx est hors
 // périmètre de cette lane, aucun canal de dépli-à-distance n'existe encore),
@@ -98,6 +111,11 @@ export default function DevisTab({
 
   const [busyAction, setBusyAction] = useState(null) // `f-<id>` | `c-<id>` | null
   const [actionMsg, setActionMsg] = useState(null)
+  // EZ5 — puissance cible (kWc) FACULTATIVE du devis automatique : le client
+  // dit « je veux 3 kWc », pas « je veux 4 panneaux ». Vide = dimensionnement
+  // historique (taille souhaitée du lead, sinon facture d'hiver) : le trajet
+  // à 1 clic du commercial est INCHANGÉ.
+  const [kwcCible, setKwcCible] = useState('')
   const [waBusy, setWaBusy] = useState(false)
 
   const genererFacture = (d) => {
@@ -149,7 +167,11 @@ export default function DevisTab({
     <div className="lw-context-devis">
       {devisAuto.pret ? (
         <div className="lw-context-devis-cta">
-          <Button type="button" variant="default" onClick={() => onAction?.('open-devis', 'auto')}>
+          <Button
+            type="button"
+            variant="default"
+            onClick={() => onAction?.('open-devis', devisIntent('auto', kwcCible))}
+          >
             <Zap size={14} aria-hidden="true" /> Devis automatique
           </Button>
           <DropdownMenu>
@@ -159,12 +181,32 @@ export default function DevisTab({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuItem onSelect={() => onAction?.('open-devis', 'remise')}>Remise %…</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onAction?.('open-devis', 'onepage')}>Devis 1 page</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onAction?.('open-devis', 'premium')}>Devis premium</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('remise', kwcCible))}>Remise %…</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('onepage', kwcCible))}>Devis 1 page</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('premium', kwcCible))}>Devis premium</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onAction?.('open-devis', 'edit')}>Édition complète…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          {/* EZ5 — cible kWc facultative. `step="any"` + aucune validation
+              bloquante : ce champ ne rejette ni n'arrondit jamais une saisie
+              (même garde que le générateur). */}
+          <div className="lw-devis-kwc">
+            <label htmlFor="lw-devis-kwc" className="lw-devis-kwc-label">
+              Puissance cible (kWc)
+            </label>
+            <Input
+              id="lw-devis-kwc"
+              data-testid="lw-devis-kwc"
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              placeholder="auto"
+              className="lw-devis-kwc-input"
+              value={kwcCible}
+              onChange={(e) => setKwcCible(e.target.value)}
+            />
+          </div>
         </div>
       ) : (
         <div className="lw-context-devis-missing">

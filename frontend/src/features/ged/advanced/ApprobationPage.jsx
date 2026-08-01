@@ -521,13 +521,13 @@ function MultiSignataireDialog({ documents, roles, onClose, onDone }) {
               <Label>Destinataires (dans l’ordre)</Label>
               {destinataires.map((d, i) => (
                 <div key={i} className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-muted-foreground" style={{ width: 20 }}>{i + 1}.</span>
+                  <span className="w-5 text-sm text-muted-foreground">{i + 1}.</span>
                   <Input
-                    placeholder="Nom" value={d.nom} style={{ flex: '1 1 120px' }}
+                    placeholder="Nom" value={d.nom} className="min-w-[120px] flex-1"
                     onChange={(e) => majDest(i, { nom: e.target.value })}
                   />
                   <Input
-                    placeholder="Email" type="email" value={d.email} style={{ flex: '1 1 140px' }}
+                    placeholder="Email" type="email" value={d.email} className="min-w-[140px] flex-1"
                     onChange={(e) => majDest(i, { email: e.target.value })}
                   />
                   {roles.length > 0 ? (
@@ -535,7 +535,7 @@ function MultiSignataireDialog({ documents, roles, onClose, onDone }) {
                       value={d.role_signataire}
                       onValueChange={(v) => majDest(i, { role_signataire: v })}
                     >
-                      <SelectTrigger style={{ width: 130 }}><SelectValue placeholder="Rôle" /></SelectTrigger>
+                      <SelectTrigger className="w-[130px]"><SelectValue placeholder="Rôle" /></SelectTrigger>
                       <SelectContent>
                         {roles.map((rr) => (
                           <SelectItem key={rr.id} value={String(rr.id)}>{rr.nom}</SelectItem>
@@ -544,7 +544,7 @@ function MultiSignataireDialog({ documents, roles, onClose, onDone }) {
                     </Select>
                   ) : (
                     <Input
-                      placeholder="Rôle" value={d.role} style={{ width: 120 }}
+                      placeholder="Rôle" value={d.role} className="w-[120px]"
                       onChange={(e) => majDest(i, { role: e.target.value })}
                     />
                   )}
@@ -630,7 +630,7 @@ function ChampsSignatureEditor({ demande }) {
         <div>
           <Label>Type</Label>
           <Select value={type} onValueChange={setType}>
-            <SelectTrigger style={{ width: 150 }}><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               {TYPE_CHAMP_OPTIONS.map((o) => (
                 <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
@@ -640,15 +640,15 @@ function ChampsSignatureEditor({ demande }) {
         </div>
         <div>
           <Label>Page</Label>
-          <Input type="number" min="1" value={page} style={{ width: 80 }}
+          <Input type="number" min="1" value={page} className="w-20"
             onChange={(e) => setPage(e.target.value)} />
         </div>
         <div>
           <Label>Rôle (optionnel)</Label>
-          <Input value={role} style={{ width: 120 }}
+          <Input value={role} className="w-[120px]"
             onChange={(e) => setRole(e.target.value)} />
         </div>
-        <label className="flex items-center gap-1 text-sm" style={{ marginBottom: 6 }}>
+        <label className="mb-1.5 flex items-center gap-1 text-sm">
           <input type="checkbox" checked={requis} onChange={(e) => setRequis(e.target.checked)} />
           Requis
         </label>

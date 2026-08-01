@@ -75,6 +75,81 @@ for (const { name, path, ready } of SCREENS) {
   })
 }
 
+// ── APX36 — TROIS goldens qui prouvent « le plus beau » (pas trente) ─────────
+// La taxe de baselines est une décision livrée : on étend la régression
+// visuelle de TROIS écrans, pas d'un de plus — exactement les trois signatures
+// d'app que le groupe APX a construites, chacune clair + sombre :
+//   • le board leads COMPACT (APX2/3/4/7) — le seul écran dont la beauté EST
+//     la densité ; le `leads-kanban` déjà capturé plus haut est en densité
+//     confortable et vue par défaut, celui-ci force la densité compacte et la
+//     vue kanban par l'URL, donc les deux goldens ne font pas doublon ;
+//   • le catalogue Stock (APX18/19) — jauges de niveau + vignettes produit ;
+//   • le cockpit finance (APX35) — le chiffre héros et les buckets d'aging.
+//
+// LA DENSITÉ, ELLE, N'EST PAS PROUVÉE ICI : elle l'est par les assertions
+// MESURÉES de `leads-density.spec.js` (APX8), qui sont robustes. Un golden ne
+// sait dire que « ça a changé » ; il n'a jamais su dire « 7 cartes tiennent ».
+//
+// MASQUES — tout ce qui dérive de l'HORLOGE est masqué (âge d'un lead,
+// pastille de stagnation) : sans cela le golden se mettrait à diverger tout
+// seul d'un jour à l'autre, et une baseline qui rougit sans raison est une
+// baseline qu'on finit par ignorer. Un masque dont le sélecteur ne matche rien
+// est inerte — aucun de ces masques ne peut faire échouer la capture.
+const APX_SCREENS = [
+  {
+    name: 'apx-leads-board',
+    path: '/crm/leads?view=kanban',
+    compact: true,
+    ready: async (page) => {
+      await expect(page.locator('.kb-board')).toBeVisible()
+      await page.waitForLoadState('networkidle').catch(() => {})
+    },
+    mask: (page) => [page.locator('.kb-age-pill'), page.locator('.kb-rot-dot')],
+  },
+  {
+    name: 'apx-stock-catalogue',
+    path: '/stock',
+    ready: async (page) => {
+      await expect(page.locator('.header-title')).toBeVisible()
+      await page.waitForLoadState('networkidle').catch(() => {})
+    },
+    mask: () => [],
+  },
+  {
+    name: 'apx-compta-cockpit',
+    path: '/comptabilite',
+    ready: async (page) => {
+      await expect(page.getByRole('heading', { name: 'Cockpit financier' })).toBeVisible()
+      await page.waitForLoadState('networkidle').catch(() => {})
+    },
+    mask: () => [],
+  },
+]
+
+for (const { name, path, ready, mask, compact } of APX_SCREENS) {
+  for (const theme of ['light', 'dark']) {
+    test(`${name} — capture ${theme}`, { tag: '@visual' }, async ({ page }) => {
+      // Préférences posées AVANT le boot (design/theme.js les lit au montage).
+      if (theme === 'dark') {
+        await page.addInitScript(() => {
+          try { localStorage.setItem('taqinor-theme', 'dark') } catch { /* mode privé */ }
+        })
+      }
+      if (compact) {
+        await page.addInitScript(() => {
+          try { localStorage.setItem('taqinor-density', 'compact') } catch { /* mode privé */ }
+        })
+      }
+      await page.goto(path)
+      await ready(page)
+      await expect(page).toHaveScreenshot(
+        `${name}-${theme}.png`,
+        { ...SHOT, mask: mask(page) },
+      )
+    })
+  }
+}
+
 // Login : écran public, capturé cold (sans état d'authentification), clair + sombre.
 test.describe('login — capture (clair + sombre)', () => {
   test.use({ storageState: { cookies: [], origins: [] } })

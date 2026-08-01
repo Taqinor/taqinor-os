@@ -26,9 +26,14 @@ import ChatBell from './ChatBell'
 import BackgroundJobsBell from './BackgroundJobsBell'
 import Breadcrumbs from './Breadcrumbs'
 import LanguageSwitcher from './LanguageSwitcher'
-// VX9 — Lanceur d'applications (overlay grille), déclenché par le bouton
-// grille ci-dessous ou le raccourci « g a » (câblé dans le composant lui-même).
+// VX9 — Lanceur d'applications (overlay grille). ODY5 — il n'est PLUS branché
+// sur le bouton ⊞ de l'en-tête : ce bouton est devenu LA sortie canonique vers
+// le Menu d'accueil. Le lanceur reste un RACCOURCI power-user par-dessus le
+// paradigme (déclenché par l'événement window `taqinor:app-launcher`, dont
+// ODY28 câble le binding clavier unique) — jamais un substitut à la sortie.
 import AppLauncher from './AppLauncher'
+// ODY4/ODY5 — app active (identité + sections) et chemin du Menu d'accueil.
+import { useActiveApp, HOME_MENU_PATH } from '../../lib/apps/ActiveAppContext'
 import { titleFor } from './routes.meta'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useTheme } from '../../design/theme-context'
@@ -47,14 +52,6 @@ const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'ERP'
 function fireCommandPalette() {
   try {
     window.dispatchEvent(new CustomEvent('taqinor:command-palette'))
-  } catch { /* environnement sans window : silencieux */ }
-}
-
-// VX9 — même patron que fireCommandPalette, pour le lanceur d'applications
-// (AppLauncher.jsx écoute exactement cet événement).
-function fireAppLauncher() {
-  try {
-    window.dispatchEvent(new CustomEvent('taqinor:app-launcher'))
   } catch { /* environnement sans window : silencieux */ }
 }
 
@@ -85,6 +82,9 @@ export default function Header({ onMenu }) {
   // le traducteur et retombe sur le libellé FR pour tout titre non couvert).
   const title = titleFor(location.pathname, t)
   const username = user?.username ?? 'Utilisateur'
+  // ODY4/ODY5 — app active : identité affichée à gauche (pastille) et 1er
+  // segment du fil d'Ariane. `null` hors immersion ⇒ en-tête neutre inchangé.
+  const activeApp = useActiveApp()
 
   // Le raccourci clavier global ⌘K / Ctrl+K est capté dans GlobalSearch (monté
   // juste à côté) ; ici on fournit le déclencheur VISIBLE de la palette.
@@ -102,11 +102,14 @@ export default function Header({ onMenu }) {
                 aria-label="Ouvrir le menu">
           <Menu size={22} aria-hidden="true" />
         </button>
-        {/* I136 — repère de marque cliquable : pastille « éclair » qui ramène au
-            tableau de bord (affordance d'accueil cohérente avec la sidebar).
+        {/* I136 — repère de marque cliquable. ODY5 — il ramène désormais au
+            MENU D'ACCUEIL (`/apps`) et non plus à `/dashboard` : dans le
+            paradigme ERP-Apps, « accueil » = mes apps, et le tableau de bord
+            n'est qu'une app parmi elles (sa route reste valide et sa tuile
+            existe dans la grille).
             SCA24 — si la société a un logo white-label (TenantTheme), il
             remplace la pastille ; sinon repli neutre (icône éclair). */}
-        <button type="button" className="header-brand" onClick={() => navigate('/dashboard')}
+        <button type="button" className="header-brand" onClick={() => navigate(HOME_MENU_PATH)}
                 aria-label={`Accueil — ${brandName}`} title="Accueil">
           {brandLogoUrl ? (
             <img src={brandLogoUrl} alt={brandName} className="header-brand-logo" />
@@ -116,8 +119,40 @@ export default function Header({ onMenu }) {
             </span>
           )}
         </button>
+        {/* ODY5 — pastille d'app : l'utilisateur sait TOUJOURS dans quelle app
+            il se trouve (icône + nom + liseré accent VX8). Cliquable = menu
+            rapide des sections de CETTE app (jamais des autres). */}
+        {activeApp && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="header-app-pill"
+                style={activeApp.accent
+                  ? { '--module-accent': `var(--module-accent-${activeApp.accent})` }
+                  : undefined}
+                aria-label={`Application ${activeApp.label} — ouvrir le menu de ses sections`}
+                title={activeApp.label}
+              >
+                <span className="header-app-pill-icon" aria-hidden="true">{activeApp.icon}</span>
+                <span className="header-app-pill-name">{activeApp.label}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="header-app-menu">
+              <DropdownMenuLabel>{activeApp.label}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {activeApp.items.map((item) => (
+                <DropdownMenuItem key={item.to} onSelect={() => navigate(item.to)}>
+                  {item.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <div className="header-heading">
-          <Breadcrumbs pathname={location.pathname} />
+          {/* ODY5 — en immersion, le 1er segment est l'APP et pointe vers son
+              cockpit (VX11) ; le fil reste une hiérarchie app › section › fiche. */}
+          <Breadcrumbs pathname={location.pathname} app={activeApp} />
           {/* Titre de page en élément non-heading : évite la collision de rôle
               `heading` avec le <h2> de chaque page (les tests e2e ciblent le
               titre de page par getByRole('heading')). La classe .header-title
@@ -139,10 +174,15 @@ export default function Header({ onMenu }) {
             <Search size={16} aria-hidden="true" />
             <kbd className="header-cmdk-kbd">⌘K</kbd>
           </button>
-          {/* VX9 — bouton grille : ouvre le lanceur d'applications (overlay léger,
-              toutes les apps par catégorie). Raccourci clavier « g a ». */}
-          <button type="button" className="nb-btn" onClick={fireAppLauncher}
-                  aria-label="Toutes les applications (g a)" title="Toutes les applications (g a)">
+          {/* ODY5 — LA SORTIE CANONIQUE du mode immersion : le bouton ⊞ ramène
+              au Menu d'accueil (`/apps`). C'est cette sortie que teste la gate
+              e2e du paradigme (ODY31) et celle qui restaure le focus (ODY32) —
+              une seule sortie, jamais deux comportements concurrents. Le
+              lanceur overlay VX9 (monté juste après, à l'écoute de
+              `taqinor:app-launcher`) reste un RACCOURCI power-user par-dessus,
+              dont ODY28 câble le binding clavier unique. */}
+          <button type="button" className="nb-btn" onClick={() => navigate(HOME_MENU_PATH)}
+                  aria-label="Toutes les apps" title="Toutes les apps">
             <LayoutGrid size={18} aria-hidden="true" />
           </button>
           <AppLauncher />

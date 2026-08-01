@@ -391,7 +391,10 @@ def transition_block_reason(intervention, new_statut):
     F5 : quitter « À préparer » exige la confirmation « Tout est chargé ».
     F8 : passer à « Terminée » exige une photo par créneau obligatoire.
     ZFSM1 : passer à « Terminée » exige une valeur pour chaque champ
-    obligatoire du gabarit de fiche d'intervention (si un gabarit s'applique)."""
+    obligatoire du gabarit de fiche d'intervention (si un gabarit s'applique).
+    EZ7 : passer à « Terminée » exige la signature du client SI la société a
+    activé « Signature client obligatoire pour clôturer » (défaut OFF —
+    comportement historique byte-identique)."""
     if new_statut == intervention.statut:
         return None
     order = list(Intervention.STATUT_ORDER)
@@ -426,7 +429,30 @@ def transition_block_reason(intervention, new_statut):
             noms = ', '.join(c.libelle for c in missing_champs)
             return ("Champs obligatoires de la fiche d'intervention manquants "
                     f"avant « Terminée » : {noms}.")
+        # EZ7 — signature client, UNIQUEMENT si la société l'exige.
+        if signature_client_requise(intervention) and not (
+                intervention.signature_client or '').strip():
+            return ("Signature du client manquante avant « Terminée » "
+                    "(réglage société « Signature client obligatoire »).")
     return None
+
+
+def signature_client_requise(intervention):
+    """EZ7 — la société exige-t-elle la signature client pour clôturer ?
+
+    Lit le drapeau ADDITIF ``CompanyProfile.signature_client_obligatoire``
+    (défaut False). Toute indisponibilité (pas de company, profil absent, champ
+    absent d'une base pas encore migrée) retombe sur False : la garde reste
+    exactement celle d'avant EZ7."""
+    company = getattr(intervention, 'company', None)
+    if company is None:
+        return False
+    try:
+        from apps.parametres.models import CompanyProfile
+        prof = CompanyProfile.get(company)
+        return bool(getattr(prof, 'signature_client_obligatoire', False))
+    except Exception:
+        return False
 
 
 def confirm_charge(prep, user):

@@ -6,7 +6,10 @@
 // première ouverture (jamais à chaque montage — un kanban a des dizaines de
 // cartes / une liste des dizaines de lignes).
 import { useEffect, useState } from 'react'
-import { Button, Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '../../../ui'
+import { Button, HelpTip, Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '../../../ui'
+// EZ15 — dictée INLINE navigateur (surface BUREAU ; le terrain appartient à
+// NTMOB30). Jamais deux boutons micro sur un même champ.
+import { DictationButton, DICTATION_PRIVACY_FR } from '../../../ui/DictationButton'
 import crmApi from '../../../api/crmApi'
 
 /**
@@ -96,14 +99,25 @@ export default function PerduPopover({
       >
         <div className="kb-perdu-form">
           <p className="kb-perdu-title">Marquer perdu</p>
-          <input
-            className="form-control"
-            list={listId}
-            placeholder="Motif de perte"
-            value={motif}
-            onChange={(e) => setMotif(e.target.value)}
-            autoFocus
-          />
+          {/* EZ15 — 3ᵉ surface BUREAU de la dictée : expliquer une perte se
+              raconte plus vite qu'il ne se tape. Le bouton n'existe pas sans
+              Web Speech (Firefox) — le champ est alors strictement celui
+              d'avant. */}
+          <div className="flex items-center gap-2">
+            <input
+              className="form-control flex-1"
+              list={listId}
+              placeholder="Motif de perte"
+              value={motif}
+              onChange={(e) => setMotif(e.target.value)}
+              autoFocus
+            />
+            <DictationButton
+              label="Dicter le motif de perte"
+              onText={(txt) => setMotif((cur) => (cur ? `${cur} ${txt}` : txt))}
+            />
+            <HelpTip label="Confidentialité de la dictée">{DICTATION_PRIVACY_FR}</HelpTip>
+          </div>
           <datalist id={listId}>
             {(motifs ?? []).map((m) => <option key={m.id} value={m.nom} />)}
           </datalist>

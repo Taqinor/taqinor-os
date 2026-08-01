@@ -47,6 +47,15 @@ import {
 import { MoreHorizontal } from 'lucide-react'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
+// ODY17 — identité de cockpit VX15 (bandeau KPI d'app), posée AU-DESSUS de
+// l'en-tête de liste existant (inchangé — il porte déjà les actions rapides).
+import { ModuleHero, ModuleDashboard } from '../../ui/module'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
+import { frenchError } from '../../lib/frenchError'
 
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
 const SL_ECRAN = 'stock.produits'
@@ -912,12 +921,31 @@ export default function StockList() {
     return (
       <div className="ui-root px-4 py-5 sm:px-5">
         <EmptyState icon={AlertTriangle} title="Erreur de chargement"
-                    description={`Erreur : ${JSON.stringify(error)}`} className="border-destructive/40" />
+                    description={frenchError(error, 'Chargement du catalogue impossible.')} className="border-destructive/40" />
       </div>
     )
   }
 
   const actifsCount = produits.filter(p => !p.is_archived).length
+
+  // ODY17 — bandeau KPI du cockpit Stock : réutilise les compteurs DÉJÀ
+  // calculés ci-dessus (actifsCount, lowCount, noPriceCount/pctAvecPrix,
+  // noSkuCount/pctAvecSku, VX33) — zéro appel réseau supplémentaire.
+  const heroStats = [
+    { label: 'Produits actifs', value: actifsCount, icon: Package },
+    {
+      label: 'Stock bas', value: lowCount, icon: AlertTriangle,
+      hint: "Rupture ou sous le seuil d'alerte",
+    },
+    {
+      label: 'Sans prix', value: noPriceCount, icon: Wallet,
+      hint: `${pctAvecPrix}% du catalogue avec prix`,
+    },
+    {
+      label: 'Sans SKU', value: noSkuCount, icon: QrCode,
+      hint: `${pctAvecSku}% du catalogue avec SKU`,
+    },
+  ]
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
@@ -930,12 +958,32 @@ export default function StockList() {
         />
       )}
 
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h2 className="font-display text-xl font-semibold tracking-tight">Produits en stock</h2>
-          {actifsCount > 0 && <Badge tone="primary">{actifsCount}</Badge>}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      {/* ODY17 — ModuleHero VX15 : identité de cockpit + KPI de synthèse.
+          Les « actions rapides » (Nouveau produit, Importer, Exporter,
+          Scanner, Transférer, Valorisation, Inventaire, Pilotage, Archivés…)
+          restent dans l'en-tête de liste existant juste en dessous —
+          inchangé, déjà riche, jamais dupliqué ici. */}
+      <ModuleHero
+        title="Stock"
+        subtitle="Gestion des stocks, mouvements et fournisseurs."
+        accent={INVENTAIRE_ACCENT}
+        kpiSlot={<ModuleDashboard stats={heroStats} accent={INVENTAIRE_ACCENT} />}
+      />
+
+      {/* APX24 — en-tête UNIQUE de l'app (VX28) + icône et accent de la
+          famille inventaire (le ModuleHero ci-dessus reste le titre d'app). */}
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        icon={Package}
+        title={(
+          <>
+            Produits en stock
+            {actifsCount > 0 && <Badge tone="primary">{actifsCount}</Badge>}
+          </>
+        )}
+        actions={(
+          <>
           {lowCount > 0 && (
             <Button
               variant={filterLow ? 'destructive' : 'outline'} size="sm"
@@ -1042,8 +1090,9 @@ export default function StockList() {
               <Plus /> Nouveau produit
             </Button>
           )}
-        </div>
-      </header>
+          </>
+        )}
+      />
 
       {scanOpen && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3">

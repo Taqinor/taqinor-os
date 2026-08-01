@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Wallet, TrendingUp, Landmark, Clock, Percent, Users,
@@ -9,6 +9,9 @@ import { BarArrondie } from '../../../ui/charts'
 import { toast, Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../../ui'
 import { formatMAD, formatNumber, formatPercent } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
+// APX35 — les tranches d'ancienneté viennent de la balance âgée DÉJÀ exposée :
+// aucun endpoint nouveau, aucun champ serveur ajouté.
+import ventesApi from '../../../api/ventesApi'
 import api from '../../../api/axios'
 
 // VX115 — les 4 destinations où le comptable externe va chercher son export
@@ -102,7 +105,34 @@ export default function CockpitPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => load(), [load])
 
+  // APX35 — tranches d'ancienneté de la créance client, dérivées de la balance
+  // âgée DÉJÀ exposée (`getBalanceAgee`, bornée société côté serveur) : aucun
+  // endpoint nouveau, aucun champ serveur ajouté. Un échec est silencieux —
+  // la rangée disparaît simplement (jamais un zéro trompeur).
+  const [aging, setAging] = useState(null)
+  useEffect(() => {
+    let alive = true
+    ventesApi.getBalanceAgee()
+      .then((res) => { if (alive) setAging(Array.isArray(res.data) ? res.data : []) })
+      .catch(() => { if (alive) setAging([]) })
+    return () => { alive = false }
+  }, [])
+
+  const agingBuckets = useMemo(() => {
+    const rows = aging || []
+    const somme = (k) => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0)
+    return [
+      { value: '0_30', label: '0–30 j', total: somme('b0_30'), className: 'border-border' },
+      { value: '31_60', label: '31–60 j', total: somme('b31_60'), className: 'border-warning/40 bg-warning/10 text-warning' },
+      { value: '61_90', label: '61–90 j', total: somme('b61_90'), className: 'border-warning/60 bg-warning/15 text-warning' },
+      { value: '90_plus', label: '90+ j', total: somme('b90_plus'), className: 'border-destructive/50 bg-destructive/10 text-destructive' },
+    ]
+  }, [aging])
+
   const d = data || {}
+  // APX35 — le cockpit était propre mais PLAT : huit KPI de même poids, aucune
+  // hiérarchie. La trésorerie nette (champ déjà servi par le selector) devient
+  // LE chiffre héros ; les autres restent des `<Stat>` secondaires.
   const stats = [
     {
       label: 'Résultat de la période',
@@ -110,13 +140,6 @@ export default function CockpitPage() {
       hint: "Produits − charges (CPC) de l'exercice en cours",
       icon: TrendingUp,
       to: '/comptabilite/etats',
-    },
-    {
-      label: 'Trésorerie nette',
-      value: formatMAD(d.tresorerie),
-      hint: 'Solde net des comptes de classe 5',
-      icon: Wallet,
-      to: '/comptabilite/tresorerie',
     },
     {
       label: 'Marge brute',
@@ -185,6 +208,55 @@ export default function CockpitPage() {
       <div className="page-header">
         <h2>Cockpit financier</h2>
       </div>
+
+      {/* APX35 — UN chiffre héros (patron Stripe) : la trésorerie nette, en
+          échelle display et en data typography `.num`. C'est le chiffre que le
+          dirigeant vient chercher ; il ne se noie plus dans huit cartes de
+          même poids. */}
+      <Link
+        to="/comptabilite/tresorerie"
+        className="mb-4 block rounded-xl transition-shadow hover:ring-2 hover:ring-ring/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Card className="border-primary/40 bg-primary/[0.06]">
+          <CardContent className="pt-5">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Trésorerie nette
+            </span>
+            <div
+              className="num text-display font-display font-bold leading-none"
+              data-testid="cockpit-hero"
+            >
+              {loading ? '—' : formatMAD(d.tresorerie)}
+            </div>
+            <span className="mt-2 block text-sm text-muted-foreground">
+              Position consolidée et prévisionnel →
+            </span>
+          </CardContent>
+        </Card>
+      </Link>
+
+      {/* APX35 — l'AGING en buckets colorés, cliquables. Les tranches sont
+          calculées depuis la balance âgée DÉJÀ exposée (`getBalanceAgee`,
+          bornée société côté serveur) : aucun endpoint nouveau, aucun champ
+          serveur ajouté. Chaque bucket ouvre la balance âgée pré-filtrée. */}
+      {agingBuckets.some((b) => b.total > 0) && (
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="cockpit-aging">
+          {agingBuckets.map((b) => (
+            <Link
+              key={b.value}
+              to={`/reporting/balance-agee?bucket=${b.value}`}
+              className={`rounded-lg border p-3 transition-shadow hover:ring-2 hover:ring-ring/40 ${b.className}`}
+              data-testid={`cockpit-aging-${b.value}`}
+            >
+              <span className="block text-xs font-medium uppercase tracking-wide">{b.label}</span>
+              <span className="num mt-1 block text-lg font-semibold leading-none">
+                {formatMAD(b.total)}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+
       <ModuleDashboard
         stats={stats}
         charts={charts}

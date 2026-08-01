@@ -86,7 +86,11 @@ export default function PlanComptePage({ clientId, planId }) {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Plan de compte</h2>
         <div className="flex gap-3 text-sm">
-          <a href={`/crm/clients/${clientId}?tab=organigramme`} className="underline">
+          {/* APX1 — `/crm/clients/:id` était un 404 (aucune route de ce nom) ;
+              le lien profond réel est `?id=` (VX220, lu par ClientList). Le
+              paramètre `tab=organigramme` n'a jamais été lu par aucun écran :
+              il est retiré plutôt que porté sur une URL qui l'ignore. */}
+          <a href={`/crm?id=${clientId}`} className="underline">
             Organigramme
           </a>
           <a href={`/ventes/devis?client=${clientId}`} className="underline">Devis</a>

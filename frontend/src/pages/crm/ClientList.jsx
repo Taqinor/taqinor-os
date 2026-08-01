@@ -348,14 +348,22 @@ export default function ClientList() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h2>
+      {/* APX10 — identité CRM + ligne de contrôle alignée sur celle des Leads.
+          État vérifié avant : un `page-header` générique (h2 nu + boutons), le
+          seul écran CRM sans aucune identité de module, alors que ModuleHero
+          (VX15) n'était consommé par AUCUN écran crm. La ligne reprend la
+          grammaire LB43 (`lp-controlbar` : titre+compteur à gauche, actions
+          poussées à droite, repli en 2 lignes minces sous 768px) — la MÊME
+          que le board des leads, jamais une seconde mise en page. */}
+      <div className="page-header lp-controlbar crm-controlbar">
+        <h2 className="lp-cb-title">
+          <span className="crm-accent-dot" aria-hidden="true" />
           Clients
           {clients.length > 0 && (
             <span className="count-badge">{clients.length}</span>
           )}
         </h2>
-        <div className="page-header-actions">
+        <div className="page-header-actions lp-header-actions">
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <Upload /> Importer
           </Button>

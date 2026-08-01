@@ -3,12 +3,18 @@
 // mise en service IEC 62446-1 (CH3) et le pack de remise client (CH4) mis en
 // avant comme des gates de premier plan. Field/mobile-friendly : une seule
 // colonne, gros boutons, raisons de blocage explicites en français.
+// APX26 — la fiche chantier n'a plus DEUX timelines empilées : les jalons datés
+// (ex-`ChantierTimeline`, rendu dans une section « Timeline » à part) sont
+// fusionnés DANS ce stepper, sous une progression « 3/7 » en tête, et le
+// bandeau « Prochaine action » passe sur `ui/NextActionBanner` (partagé avec
+// « Ma journée »).
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Circle, Lock, ClipboardCheck, PackageCheck } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
-  Button, Badge, HelpTip, Spinner,
+  Button, Badge, HelpTip, Spinner, Progress, NextActionBanner,
 } from '../../ui'
+import ChantierTimeline from './ChantierTimeline'
 
 function StageIcon({ satisfait, courante, bloquant }) {
   if (satisfait && !courante) {
@@ -60,7 +66,22 @@ function StageRow({ etape, isLast }) {
   )
 }
 
-export default function ChantierGateTimeline({ installationId, onAdvanced }) {
+// APX26 — bande des jalons datés : rendue UNIQUEMENT quand l'appelant fournit
+// le chantier (la fiche le fait). Les surfaces qui ne passent que
+// `installationId` gardent le rendu d'origine, au pixel près.
+function JalonsBand({ installation }) {
+  if (!installation) return null
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-3" data-testid="ch6-jalons">
+      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Jalons datés
+      </span>
+      <ChantierTimeline installation={installation} />
+    </div>
+  )
+}
+
+export default function ChantierGateTimeline({ installationId, installation, onAdvanced }) {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(null) // { etape_courante, etapes: [] }
   const [error, setError] = useState(null)
@@ -156,15 +177,38 @@ export default function ChantierGateTimeline({ installationId, onAdvanced }) {
   // historique) — aucun parcours à afficher, le statut reste le seul pilote.
   if (stages.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Aucune étape de cycle de vie configurée pour cette société
-        (Paramètres → Chantiers). Le statut classique reste utilisé.
-      </p>
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          Aucune étape de cycle de vie configurée pour cette société
+          (Paramètres → Chantiers). Le statut classique reste utilisé.
+        </p>
+        {/* APX26 — même sans parcours configuré, les jalons datés restent
+            visibles : la fusion ne supprime aucun contenu. */}
+        <JalonsBand installation={installation} />
+      </div>
     )
   }
 
+  // APX26 — progression du parcours en tête : « Étape 2/3 » + barre. Le rang de
+  // l'étape courante (1-indexé) ; sans étape courante, on compte les satisfaites.
+  const rang = idx >= 0 ? idx + 1 : stages.filter((s) => s.satisfait).length
+  const pct = Math.round((rang / stages.length) * 100)
+
   return (
     <div className="flex flex-col gap-4" data-testid="ch6-gate-timeline">
+      {/* APX26 — la progression manquait ici alors que la checklist en avait
+          une : le parcours ne disait pas « où on en est » d'un coup d'œil. */}
+      <div className="flex items-center gap-3" data-testid="ch6-progress">
+        <Progress
+          value={pct}
+          tone={rang === stages.length ? 'success' : 'primary'}
+          className="flex-1"
+          aria-label="Progression du parcours de chantier"
+        />
+        <span className="text-sm font-semibold tabular-nums text-muted-foreground">
+          {rang}/{stages.length}
+        </span>
+      </div>
       {/* VX47 — aide contextuelle : la distinction bloquant/consultatif n'est
           pas évidente pour un nouvel employé (un cadenas rouge n'est pas
           auto-explicatif). Une seule pose pour toute la liste, pas de
@@ -185,14 +229,12 @@ export default function ChantierGateTimeline({ installationId, onAdvanced }) {
         ))}
       </ol>
 
-      {/* ── Prochaine action explicite ── */}
-      <div className="flex flex-col gap-2 rounded-lg border border-info/30 bg-info/10 p-3" data-testid="ch6-next-action">
-        {suivante ? (
-          <>
-            <p className="text-sm">
-              <strong className="text-info">Prochaine action&nbsp;:</strong>{' '}
-              faire avancer le chantier vers « {suivante.libelle} ».
-            </p>
+      {/* ── Prochaine action explicite (APX26 — `ui/NextActionBanner` partagé
+          avec « Ma journée » ; `data-testid` d'origine conservé) ── */}
+      {suivante ? (
+        <NextActionBanner
+          data-testid="ch6-next-action"
+          action={(
             <Button
               size="sm"
               className="self-start"
@@ -202,27 +244,35 @@ export default function ChantierGateTimeline({ installationId, onAdvanced }) {
             >
               Avancer vers « {suivante.libelle} »
             </Button>
-          </>
-        ) : courante ? (
+          )}
+        >
+          faire avancer le chantier vers « {suivante.libelle} ».
+        </NextActionBanner>
+      ) : (
+        <div className="flex flex-col gap-2 rounded-lg border border-border p-3" data-testid="ch6-next-action">
           <p className="text-sm text-muted-foreground">
-            Dernière étape déjà atteinte ({courante.libelle}).
+            {courante
+              ? `Dernière étape déjà atteinte (${courante.libelle}).`
+              : 'Aucune étape courante.'}
           </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">Aucune étape courante.</p>
-        )}
-        {blockedReasons && (
-          <div
-            role="alert"
-            className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive"
-            data-testid="ch6-blocked-reasons"
-          >
-            <strong>Étape bloquée par un gate&nbsp;:</strong>
-            <ul className="flex flex-col gap-0.5">
-              {blockedReasons.map((r) => <li key={r}>• {r}</li>)}
-            </ul>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
+      {blockedReasons && (
+        <div
+          role="alert"
+          className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive"
+          data-testid="ch6-blocked-reasons"
+        >
+          <strong>Étape bloquée par un gate&nbsp;:</strong>
+          <ul className="flex flex-col gap-0.5">
+            {blockedReasons.map((r) => <li key={r}>• {r}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* APX26 — les jalons datés (ex-section « Timeline ») vivent maintenant
+          dans CE stepper : une seule timeline dans la fiche. */}
+      <JalonsBand installation={installation} />
 
       {/* ── CH3 — recette de mise en service (IEC 62446-1), gate mis en avant ── */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3" data-testid="ch6-recette">

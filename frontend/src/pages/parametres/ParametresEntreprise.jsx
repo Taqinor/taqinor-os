@@ -57,6 +57,8 @@ import ApplicationsSection from './ApplicationsSection'
 import MarketplaceSection from './MarketplaceSection'
 import ReferentielsSection from './ReferentielsSection'
 import ChatRetentionSection from './ChatRetentionSection'
+// EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
+import { frenchError } from '../../lib/frenchError'
 
 // N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
 // Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
@@ -872,7 +874,7 @@ export default function ParametresEntreprise() {
         {error && !saved && (
           <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5">
             <AlertCircle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
-            <span className="text-sm text-destructive">{typeof error === 'string' ? error : JSON.stringify(error)}</span>
+            <span className="text-sm text-destructive">{frenchError(error, 'Enregistrement impossible. Réessayez.')}</span>
           </div>
         )}
 

@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 import {
   gotoLeads, setLeadsView, createLead, openLead, closeLeadModal,
   generateAutoDevis, uniq, ADMIN, SECOND_USER,
-  assertNoSeriousA11yViolations,
+  assertNoSeriousA11yViolations, boutonNouveauLead,
 } from './helpers'
 
 const modalXl = (page) => page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
@@ -131,7 +131,7 @@ test('E7: move a lead between stages, including into Signé', async ({ page }) =
 // la validation « Nom requis » est gérée côté React (LeadForm.jsx).
 test('VX71: lead form validation error state has no serious/critical a11y violation', async ({ page }) => {
   await gotoLeads(page)
-  await page.getByRole('button', { name: '+ Nouveau lead' }).click()
+  await boutonNouveauLead(page).click()
   const modal = page.locator('[role="dialog"]').filter({ has: page.locator('.modal-title') })
   await expect(modal.getByRole('heading', { name: 'Nouveau lead' })).toBeVisible()
 

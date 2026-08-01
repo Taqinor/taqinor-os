@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { PackageMinus, Search } from 'lucide-react'
+import { PackageMinus, Search, Layers,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
   Button, DataTable, Spinner, Badge, Input, Checkbox,
@@ -9,6 +10,10 @@ import {
   Form, FormField, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 /* WIR109 — XSTK6 : registre de lots en entrepôt (FEFO — péremption la plus
    proche d'abord). LECTURE SEULE côté modèle (alimenté à la confirmation
@@ -229,12 +234,14 @@ export default function LotsEntrepot() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header>
-        <h1 className="font-display text-xl font-semibold tracking-tight">Lots en entrepôt (FEFO)</h1>
-        <p className="text-sm text-muted-foreground">
-          Traçabilité par lot (batteries, produits d&apos;étanchéité…) — péremption la plus proche d&apos;abord.
-        </p>
-      </header>
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={Layers}
+        title="Lots en entrepôt (FEFO)"
+        subtitle="Traçabilité par lot (batteries, produits d'étanchéité…) — péremption la plus proche d'abord."
+      />
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

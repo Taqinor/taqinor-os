@@ -26,11 +26,23 @@ test('shouldSkipPrefetch : false sur connexion normale ou API absente (Safari)',
   assert.equal(shouldSkipPrefetch(undefined), false)
 })
 
-test('PREFETCH_MAP couvre 5 à 8 destinations chaudes, mêmes chemins que Sidebar/router', () => {
+// ODY12 — la table couvre désormais AUSSI les cockpits d'app survolés depuis la
+// grille du Menu d'accueil et le lanceur VX9 (elle plafonnait à 8 quand seule la
+// Sidebar la consommait). Le plafond reste volontairement bas : chaque entrée
+// est une COPIE d'un import lazy, donc un coût de maintenance — la table n'a
+// jamais vocation à lister les ~41 apps.
+test('PREFETCH_MAP couvre 8 à 24 destinations chaudes, mêmes chemins que Sidebar/grille/router', () => {
   const keys = Object.keys(PREFETCH_MAP)
-  assert.ok(keys.length >= 5 && keys.length <= 8, `attendu 5-8 entrées, trouvé ${keys.length}`)
+  assert.ok(keys.length >= 8 && keys.length <= 24, `attendu 8-24 entrées, trouvé ${keys.length}`)
   for (const k of keys) {
     assert.equal(typeof PREFETCH_MAP[k], 'function', `${k} doit être un chargeur () => import(...)`)
+    assert.ok(k.startsWith('/'), `${k} doit être un chemin interne`)
+  }
+})
+
+test('ODY12 — les cockpits d’app de la grille sont préchargeables', () => {
+  for (const to of ['/crm', '/ventes/devis', '/stock', '/chantiers', '/sav', '/rh', '/comptabilite', '/reporting']) {
+    assert.equal(typeof PREFETCH_MAP[to], 'function', `${to} devrait être préchargeable`)
   }
 })
 

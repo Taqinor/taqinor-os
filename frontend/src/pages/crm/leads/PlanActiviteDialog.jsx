@@ -3,6 +3,14 @@
 // clic au lead ouvert. Le serveur crée toutes les étapes (échéances relatives
 // résolues côté serveur) et est idempotent (ré-appliquer ne duplique rien) —
 // voir apps.crm.services.appliquer_plan_activite.
+//
+// EZ1 — RÔLE DOCUMENTÉ, pour qu'il ne redevienne pas un mécanisme rival.
+// Ce dialogue applique un GABARIT multi-étapes préconfiguré ; il ne pose pas
+// une date. La planification RAPIDE d'une seule relance (date libre + objet
+// optionnel, avec la relance existante affichée) appartient à UNE seule
+// surface : `features/crm/CallLogPopover.jsx`, atteinte par « Planifier une
+// relance » sur la carte comme sur la ligne. Les deux ne se recouvrent pas :
+// un gabarit crée N étapes d'un coup, ce popover en pose une, précise.
 import { useEffect, useState } from 'react'
 import crmApi from '../../../api/crmApi'
 import { Button, Spinner } from '../../../ui'

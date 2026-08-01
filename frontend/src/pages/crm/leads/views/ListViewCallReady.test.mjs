@@ -12,6 +12,17 @@ import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'ListView.jsx'), 'utf8')
 
+// APX5 — la cellule Lead a change de forme (une RANGEE au lieu de 3 lignes
+// empilees, + la pastille « Archive ») : la fenetre de 2 000 caracteres qui
+// bornait ces assertions ne la couvrait plus. On borne desormais la cellule
+// par sa VRAIE fin (l'ouverture du <td> suivant), donc ce probe ne se
+// re-cassera plus a chaque ligne ajoutee ou retiree dans la cellule.
+function celluleLeadFin(start) {
+  const fin = SRC.indexOf('<td data-label="Stade"', start)
+  assert.ok(fin > start, 'fin de la cellule Lead introuvable')
+  return fin
+}
+
 test('QX25 : telHref/waHref helpers ajoutés', () => {
   assert.match(SRC, /const telHref = /)
   assert.match(SRC, /const waHref = /)
@@ -23,7 +34,7 @@ test('QX25 : la cellule "Lead" (jamais masquée) porte les icônes tel/wa, contr
   // à l'ajout d'attributs (className…) sur ce même <td>.
   const start = SRC.indexOf('<td data-label="Lead"')
   assert.ok(start > 0)
-  const block = SRC.slice(start, start + 2000)
+  const block = SRC.slice(start, celluleLeadFin(start))
   assert.match(block, /telHref\(lead\.telephone\)/)
   assert.match(block, /waHref\(lead\.whatsapp\)/)
   assert.match(block, /PhoneCall/)
@@ -32,6 +43,6 @@ test('QX25 : la cellule "Lead" (jamais masquée) porte les icônes tel/wa, contr
 
 test('QX25 : le clic sur les icônes de contact n\'ouvre pas la fiche (stopPropagation)', () => {
   const start = SRC.indexOf('<td data-label="Lead"')
-  const block = SRC.slice(start, start + 2000)
+  const block = SRC.slice(start, celluleLeadFin(start))
   assert.match(block, /onClick=\{\(e\) => e\.stopPropagation\(\)\}/)
 })

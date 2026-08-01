@@ -28,9 +28,12 @@ import { moduleConfigs } from '../../router/moduleRoutes'
 import api from '../../api/axios'
 import { fetchMe } from '../../features/auth/store/authSlice'
 import {
-  getLandingModule, setLandingModule,
+  getLandingModule, setLandingModule, LANDING_LAST_MODULE,
   getReducedMotionPref, setReducedMotionPref,
   getPhotoQualityPref, setPhotoQualityPref,
+  getAppResumePref, setAppResumePref, APP_RESUME_ALWAYS, APP_RESUME_NEVER,
+  // EZ9 — mode « Plein soleil » (terrain).
+  getSunlightPref, setSunlightPref,
 } from './prefs'
 
 // NTMOB6 — sélecteur de démarrage par rôle : « revenir au dashboard classique
@@ -96,6 +99,17 @@ export default function PreferencesPanel({ open, onOpenChange }) {
   const [landing, setLanding] = useState(getLandingModule)
   const [reducedMotion, setReducedMotion] = useState(getReducedMotionPref)
   const [photoQuality, setPhotoQuality] = useState(getPhotoQualityPref)
+  const [appResume, setAppResume] = useState(getAppResumePref)
+
+  // ODY29 — que faire de la route mémorisée quand on rouvre une app.
+  const handleAppResumeChange = (e) => {
+    const value = e.target.value
+    setAppResume(value)
+    setAppResumePref(value)
+  }
+  // EZ9 — le réglage vit aussi en tête des deux écrans terrain ; ici c'est le
+  // même état persisté, pas une seconde source.
+  const [sunlight, setSunlight] = useState(getSunlightPref)
 
   const handleLandingChange = (e) => {
     const value = e.target.value
@@ -106,6 +120,11 @@ export default function PreferencesPanel({ open, onOpenChange }) {
   const handleReducedMotionChange = (checked) => {
     setReducedMotion(checked)
     setReducedMotionPref(checked)
+  }
+
+  const handleSunlightChange = (checked) => {
+    setSunlight(checked)
+    setSunlightPref(checked)
   }
 
   const handlePhotoQualityChange = (value) => {
@@ -154,13 +173,40 @@ export default function PreferencesPanel({ open, onOpenChange }) {
               onChange={handleLandingChange}
               className="h-9 w-full rounded-md border border-border bg-card px-2.5 text-sm text-foreground"
             >
-              <option value="">Dernier module visité (par défaut)</option>
+              {/* ODY3 — le Menu d'accueil est le défaut du paradigme
+                  (« j'ouvre → MES apps ») ; « dernier module visité » reste
+                  disponible, mais en choix explicite. */}
+              <option value="">Menu d'accueil — mes applications (par défaut)</option>
+              <option value={LANDING_LAST_MODULE}>Dernier module visité</option>
               {landingOptions.map((c) => (
                 <option key={c.key} value={c.key}>{c.nav.label}</option>
               ))}
             </select>
             <p className="mt-1 text-xs text-muted-foreground">
               L'écran ouvert automatiquement après la connexion.
+            </p>
+          </div>
+
+          {/* ODY29 — chaque app se souvient de l'endroit où vous l'avez
+              quittée (le temps de la session). Ce réglage dit quoi en faire :
+              le proposer, y aller tout de suite, ou l'ignorer. */}
+          <div>
+            <label htmlFor="pref-app-resume" className="mb-1.5 block text-sm font-semibold text-foreground">
+              À l'ouverture d'une app
+            </label>
+            <select
+              id="pref-app-resume"
+              value={appResume}
+              onChange={handleAppResumeChange}
+              className="h-9 w-full rounded-md border border-border bg-card px-2.5 text-sm text-foreground"
+            >
+              <option value="">Proposer de reprendre (par défaut)</option>
+              <option value={APP_RESUME_ALWAYS}>Toujours reprendre où j'en étais</option>
+              <option value={APP_RESUME_NEVER}>Toujours ouvrir le cockpit de l'app</option>
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Chaque app retient votre dernier écran pendant la session ; les
+              filtres et tris des tableaux, eux, restent enregistrés comme avant.
             </p>
           </div>
 
@@ -177,6 +223,24 @@ export default function PreferencesPanel({ open, onOpenChange }) {
               id="pref-reduced-motion"
               checked={reducedMotion}
               onCheckedChange={handleReducedMotionChange}
+            />
+          </div>
+
+          {/* EZ9 — mode terrain : contraste extrême pour la lumière directe. */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <label htmlFor="pref-sunlight" className="text-sm font-semibold text-foreground">
+                Mode « Plein soleil »
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Blanc pur, encre noire, bordures franches, ombres coupées — pour
+                travailler écran en plein soleil. La taille du texte ne change pas.
+              </p>
+            </div>
+            <Switch
+              id="pref-sunlight"
+              checked={sunlight}
+              onCheckedChange={handleSunlightChange}
             />
           </div>
 

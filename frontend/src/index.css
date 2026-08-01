@@ -1056,16 +1056,21 @@ button:active, [role="button"]:active, a.btn:active,
   flex-wrap: wrap;
 }
 .pageheader-heading { min-width: 0; }
+/* APX32 — LE bug transverse : ces deux couleurs étaient des hex NUS, sans
+   aucun override sombre. `ListShell` consomme ce PageHeader et compte 56
+   écrans : sur le fond nuit (oklch 15,7 %), le titre #0f172a et le sous-titre
+   #64748b étaient quasi invisibles. Tokens sémantiques désormais — clair ET
+   sombre suivent le thème, comme partout ailleurs. */
 .pageheader-title {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--foreground);
   margin: 0;
 }
 .pageheader-subtitle {
   margin: 0.2rem 0 0;
   font-size: 0.85rem;
-  color: #64748b;
+  color: var(--muted-foreground);
 }
 .pageheader-actions {
   display: flex;
@@ -1209,9 +1214,18 @@ button:active, [role="button"]:active, a.btn:active,
   font-size: 0.875rem;
 }
 
+/* APX34 — les tables CSS legacy obéissent ENFIN à la préférence de densité.
+   `useDensity()` pilotait déjà les 56 écrans DataTable (32/40 px) et la densité
+   par vue est livrée (NTUX17) : le SEUL trou restant était ici, sur les ~66
+   écrans qui rendent encore une `<table className="data-table">` à la main —
+   basculer la préférence ne les changeait pas d'un pixel. Le padding vertical
+   dérive maintenant de `--row-py`, le token défini par `[data-density]` dans
+   tokens.css et qui n'avait JAMAIS eu de consommateur. Le padding horizontal
+   est inchangé (la densité ne joue que sur la hauteur de ligne). */
 .data-table th {
   background: var(--muted);
-  padding: 10px 14px;
+  padding-block: var(--row-py);
+  padding-inline: 14px;
   text-align: left;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1225,7 +1239,10 @@ button:active, [role="button"]:active, a.btn:active,
 }
 
 .data-table td {
-  padding: 11px 14px;
+  /* APX34 — même dérivation que `th` ci-dessus (les deux divergeaient de 1 px
+     sans raison : 10 vs 11). */
+  padding-block: var(--row-py);
+  padding-inline: 14px;
   border-bottom: 1px solid var(--border);
   color: var(--foreground);
   vertical-align: middle;
@@ -2668,6 +2685,12 @@ textarea.form-control {
     margin-bottom: 10px;
     padding: 8px 12px;
   }
+  /* APX34 — le MOBILE reste toujours au CONFORT : la préférence « compacte »
+     ne doit jamais rétrécir une cible tactile. La pile de cartes garde son
+     rythme propre (padding fixe ci-dessous, inchangé) et `--row-py` est réarmé
+     à la valeur confortable pour toute règle qui en dériverait sous ce
+     point de rupture. */
+  .data-table { --row-py: 0.625rem; }
   .data-table td {
     display: flex;
     justify-content: space-between;
@@ -8368,4 +8391,1893 @@ textarea.form-control {
       + var(--kb-scrollbar-h) + var(--lp-bulk-float-gap)
     );
   }
+}
+
+/* ==========================================================================
+   ODY2 — Menu d'accueil plein ecran « MES apps » (route /apps).
+   Bloc APPEND-ONLY : aucune regle existante n'est modifiee.
+   Fond signature « Lumiere sur Nuit » — un halo brass DISCRET (8 % au plus)
+   pose en couche purement decorative SOUS le contenu. Aucun texte ne repose
+   dessus : les libelles gardent `--foreground` / `--muted-foreground`, donc
+   le contraste AA reste celui du theme, en clair comme en sombre.
+   ========================================================================== */
+.home-menu {
+  position: relative;
+  min-height: 100%;
+}
+
+.home-menu-glow {
+  position: absolute;
+  inset: -1rem -1rem auto -1rem;
+  height: 22rem;
+  pointer-events: none;
+  /* Pas de z-index : la couche reste sous `.home-menu-inner` (z-index: 1) par
+     l'ordre d'empilement naturel — MB3 interdit tout z-index hors token. */
+  background:
+    radial-gradient(
+      120% 70% at 50% -12%,
+      color-mix(in srgb, var(--primary) 8%, transparent) 0%,
+      transparent 62%
+    );
+}
+
+.home-menu-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.home-menu-head {
+  margin-bottom: 1rem;
+}
+
+.home-menu-title {
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.home-menu-subtitle {
+  margin-top: 0.15rem;
+  font-size: 0.82rem;
+  color: var(--muted-foreground);
+}
+
+.home-menu-searchbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 26rem;
+  margin-bottom: 1.35rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted-foreground);
+}
+
+.home-menu-searchbar:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.home-menu-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 0.88rem;
+  color: var(--foreground);
+}
+
+.home-menu-section + .home-menu-section {
+  margin-top: 1.5rem;
+}
+
+.home-menu-section-title {
+  margin-bottom: 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.home-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.25rem, 1fr));
+  gap: 0.6rem;
+}
+
+.home-menu-cell {
+  position: relative;
+  display: flex;
+}
+
+.home-menu-tile {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 1rem 0.6rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+@media (hover: hover) {
+  .home-menu-tile:hover {
+    border-color: var(--module-accent, var(--primary));
+    box-shadow: 0 6px 18px -12px color-mix(in srgb, var(--foreground) 55%, transparent);
+    transform: translateY(-1px);
+  }
+}
+
+.home-menu-tile:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 2px;
+}
+
+.home-menu-tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--module-accent, var(--primary)) 12%, transparent);
+  color: var(--module-accent, var(--primary));
+}
+
+.home-menu-tile-label {
+  font-size: 0.8rem;
+  font-weight: 550;
+  line-height: 1.2;
+  color: var(--foreground);
+}
+
+.home-menu-tile-pin {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.35rem;
+  display: inline-flex;
+  padding: 0.15rem;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.home-menu-cell:focus-within .home-menu-tile-pin,
+.home-menu-tile-pin:focus-visible {
+  opacity: 1;
+}
+@media (hover: hover) {
+  .home-menu-cell:hover .home-menu-tile-pin,
+  .home-menu-tile-pin:hover {
+    opacity: 1;
+  }
+}
+
+/* ODY14 — l'etat vide est un EmptyState (variante illustree VX40) : il porte
+   deja son fond, ses marges et sa typographie. Cette classe ne fait donc que
+   le centrer et le borner — jamais redefinir son padding, sinon elle ecrase
+   les utilitaires du composant. */
+.home-menu-vide {
+  max-width: 30rem;
+  margin-inline: auto;
+}
+
+@media (max-width: 768px) {
+  /* ODY2 — au pouce : 3-4 colonnes, tuiles plus compactes, favoris toujours
+     accessibles (l'etoile reste visible faute de survol sur tactile). */
+  .home-menu-grid {
+    grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+    gap: 0.5rem;
+  }
+  .home-menu-tile {
+    padding: 0.8rem 0.35rem 0.65rem;
+  }
+  .home-menu-tile-pin {
+    opacity: 0.55;
+  }
+  .home-menu-searchbar {
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-menu-tile,
+  .home-menu-tile-pin {
+    transition: none;
+  }
+  .home-menu-tile:hover {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   ODY9 — AppIcon : UNE pastille d'app, QUATRE surfaces (Menu d'accueil,
+   lanceur VX9, epingles VX10, ecran Applications ODX5). Bloc APPEND-ONLY.
+   Arrondi « superellipse » derive de `--radius` (jamais un rayon en dur),
+   fond = teinte de l'accent module (VX8) a 12 %, glyphe a l'accent plein :
+   contraste AA en clair comme en sombre puisque l'accent est une couleur de
+   premier plan du theme.
+   ========================================================================== */
+.app-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--app-icon-size, 56px);
+  height: var(--app-icon-size, 56px);
+  /* Superellipse : le rayon suit l'echelle du kit et grandit avec la taille. */
+  border-radius: calc(var(--radius) + var(--app-icon-size, 56px) * 0.14);
+  background: color-mix(in srgb, var(--module-accent, var(--primary)) 12%, transparent);
+  color: var(--module-accent, var(--primary));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--module-accent, var(--primary)) 22%, transparent);
+  transition: box-shadow 140ms ease, transform 140ms ease;
+}
+
+.app-icon-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Le glyphe suit la taille de la pastille (les icones lucide portent un
+   `size` en px : on le neutralise pour que les 4 surfaces soient identiques). */
+.app-icon-glyph > svg {
+  width: calc(var(--app-icon-size, 56px) * 0.42);
+  height: calc(var(--app-icon-size, 56px) * 0.42);
+}
+
+@media (hover: hover) {
+  .app-icon--interactive:hover {
+    box-shadow:
+      inset 0 0 0 2px var(--module-accent, var(--primary)),
+      0 6px 16px -12px color-mix(in srgb, var(--foreground) 60%, transparent);
+    transform: translateY(-1px);
+  }
+}
+
+/* Le survol de la TUILE hote allume aussi la pastille : une seule intention
+   visuelle, quel que soit l'element reellement survole. */
+.home-menu-tile:focus-visible .app-icon,
+.app-launcher-tile:focus-visible .app-icon {
+  box-shadow: inset 0 0 0 2px var(--module-accent, var(--primary));
+}
+@media (hover: hover) {
+  .home-menu-tile:hover .app-icon,
+  .app-launcher-tile:hover .app-icon {
+    box-shadow: inset 0 0 0 2px var(--module-accent, var(--primary));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-icon {
+    transition: none;
+  }
+  .app-icon--interactive:hover {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   ODY11 — Transition signature app <-> accueil. Bloc APPEND-ONLY.
+   Le JS (lib/apps/appTransition.js) ne DEMARRE meme pas de transition sous
+   `prefers-reduced-motion` ni sous la preference app `data-reduced-motion` :
+   ces regles sont donc la ceinture-bretelles, et elles vivent deja sous
+   `no-preference`. Sans View Transitions API, le fondu de route existant
+   (`.route-fade`, VX134(c)) reste le repli — rien a ajouter ici.
+   ========================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: taqinor-app-sortie 180ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1)) both;
+  }
+  ::view-transition-new(root) {
+    animation: taqinor-app-entree 180ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1)) both;
+  }
+  /* La pastille cliquee est nommee le temps de la transition (ODY11) : elle
+     est donc animee A PART du reste de la page, ce qui donne la sensation
+     « l'icone s'ouvre vers l'app ». */
+  ::view-transition-old(taqinor-app-icon),
+  ::view-transition-new(taqinor-app-icon) {
+    animation-duration: 180ms;
+    animation-timing-function: var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
+  }
+}
+
+@keyframes taqinor-app-entree {
+  from { opacity: 0; transform: scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes taqinor-app-sortie {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: scale(1.008); }
+}
+
+/* ==========================================================================
+   ODY13 — La grille est a MOI : poignee de deplacement + retours visuels du
+   glisser-deposer (@dnd-kit/core seul). Bloc APPEND-ONLY.
+   La poignee est un bouton FRERE de la tuile — jamais imbrique — parce que le
+   capteur clavier de dnd-kit s'active sur Entree/Espace, deja l'activation
+   native du bouton d'ouverture.
+   ========================================================================== */
+.home-menu-tile-grip {
+  position: absolute;
+  top: 0.3rem;
+  left: 0.35rem;
+  display: inline-flex;
+  padding: 0.15rem;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  cursor: grab;
+  transition: opacity 120ms ease;
+}
+
+.home-menu-cell:focus-within .home-menu-tile-grip,
+.home-menu-tile-grip:focus-visible {
+  opacity: 1;
+}
+@media (hover: hover) {
+  .home-menu-cell:hover .home-menu-tile-grip,
+  .home-menu-tile-grip:hover {
+    opacity: 1;
+  }
+}
+
+.home-menu-tile-grip:active {
+  cursor: grabbing;
+}
+
+.home-menu-cell--drag {
+  opacity: 0.4;
+}
+
+.home-menu-cell--over .home-menu-tile {
+  border-color: var(--module-accent, var(--primary));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--module-accent, var(--primary)) 45%, transparent);
+}
+
+@media (max-width: 768px) {
+  /* Au pouce : la poignee reste visible (aucun survol sur tactile). */
+  .home-menu-tile-grip {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-menu-tile-grip {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   ODY10 — Badges vivants sur la grille. Bloc APPEND-ONLY.
+   Le badge est POSITIONNE sur la pastille (conteneur dedie) : il arrive apres
+   la grille (reponse federee asynchrone) et ne doit donc RIEN decaler quand
+   il apparait — d'ou un positionnement absolu, hors flux.
+   ========================================================================== */
+.home-menu-tile-iconwrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.home-menu-tile-badge {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1;
+  /* Detache le badge de la pastille quel que soit le fond (clair/sombre). */
+  box-shadow: 0 0 0 2px var(--card);
+}
+
+/* ── ODY4 — Coquille d'APP (mode immersion) ────────────────────────────────
+   Bloc APPEND-ONLY : aucune regle existante n'est modifiee. En immersion, la
+   sidebar porte l'identite de l'app active (icone + nom + accent VX8) en tete
+   et la sortie « Toutes les apps » en pied. Les couleurs reprennent les tokens
+   deja utilises par la sidebar (nuit / lune / encre), donc le contraste AA vaut
+   en clair comme en sombre sans aucune couleur nouvelle. Les transitions
+   reutilisent --motion-fast, deja neutralise sous prefers-reduced-motion par le
+   bloc de mouvement global existant. */
+.sidebar-app {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--color-nuit-700);
+  border-left: 3px solid var(--module-accent, var(--color-nuit-700));
+  color: var(--color-lune);
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .sidebar-app:hover { background: var(--color-nuit-700); }
+}
+.sidebar-app-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 8px;
+  color: var(--color-lune);
+  background: color-mix(in oklch, var(--module-accent, var(--color-lune)) 18%, transparent);
+  flex-shrink: 0;
+}
+.sidebar-app-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-lune);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar--collapsed .sidebar-app {
+  justify-content: center;
+  padding: 0.6rem 0.4rem;
+}
+
+.sidebar-neutral-hint {
+  margin: 0;
+  padding: 0.85rem 0.9rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--color-lune-soft);
+}
+
+.sidebar-apps-exit {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0 0.6rem 0.4rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-nuit-700);
+  border-radius: var(--radius-md);
+  color: var(--color-lune-soft);
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 500;
+  flex-shrink: 0;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .sidebar-apps-exit:hover { background: var(--color-nuit-700); color: var(--color-lune); }
+}
+.sidebar-apps-exit-icon { display: flex; flex-shrink: 0; }
+.sidebar-apps-exit-label { white-space: nowrap; }
+.sidebar--collapsed .sidebar-apps-exit {
+  justify-content: center;
+  padding: 0.5rem;
+  margin: 0 0.4rem 0.4rem;
+}
+
+/* ── ODY5 — Pastille d'app dans l'en-tete ──────────────────────────────────
+   Bloc APPEND-ONLY. L'en-tete porte l'identite de l'app active a gauche : le
+   liseré prend l'accent de module (VX8), le texte reste sur les tokens de
+   premier plan de l'en-tete, donc AA en clair comme en sombre. La pastille
+   disparait sous 640px : la sidebar et le fil d'Ariane portent deja
+   l'identite, et `.header-left` n'a aucune garde de largeur a cette taille
+   (regression VX181 deja constatee sur 320-375px). */
+.header-app-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 11rem;
+  padding: 0.24rem 0.55rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--module-accent, var(--border));
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--foreground);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .header-app-pill:hover { background: var(--muted); }
+}
+.header-app-pill-icon { display: inline-flex; flex-shrink: 0; }
+.header-app-pill-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 639px) {
+  .header-app-pill { display: none; }
+}
+
+/* ==========================================================================
+   APX11 — Liseré d'accent de module (identité par app).
+   La teinte vient de --module-accent, déjà posée par la coquille (Header,
+   Sidebar, HomeMenu) ou par le conteneur local (features/ventes/accent.js).
+   Repli sur --border : jamais de couleur en dur, donc lisible clair ET sombre.
+   ========================================================================== */
+.app-accent-rail {
+  border-left: 3px solid var(--module-accent, var(--border));
+  padding-left: 0.75rem;
+}
+.app-accent-card {
+  border-left: 3px solid var(--module-accent, var(--border));
+}
+
+/* ==========================================================================
+   APX14 — Aperçu PDF inline (panneau latéral / tiroir bas).
+   `.ldp-pdfjs-wrap` est en position absolue (inset 0) : il lui faut un parent
+   positionné ET une hauteur explicite, sinon le canvas ne se voit pas.
+   ========================================================================== */
+.apx-pdf-preview-dialog {
+  max-width: min(56rem, 96vw);
+}
+.apx-pdf-preview {
+  position: relative;
+  height: min(70vh, 46rem);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+}
+@media (max-width: 767px) {
+  .apx-pdf-preview {
+    height: min(60vh, 34rem);
+  }
+}
+
+/* ==========================================================================
+   APX15 — Boards VENTES au langage kb- du board leads, SANS glisser-déposer.
+   Un devis ne se signe pas en le faisant glisser : accepter/refuser restent
+   des actions explicites. `.kb-board-static` neutralise donc l'affordance de
+   glissé posée sur .kb-card (curseur grab + poignée) sans toucher AUCUNE
+   règle existante du board leads.
+   ========================================================================== */
+.kb-board-static {
+  max-height: min(70vh, 46rem);
+}
+.kb-board-static .kb-card {
+  cursor: pointer;
+  user-select: auto;
+  -webkit-user-select: auto;
+}
+.kb-board-static .kb-card::before {
+  content: none;
+}
+
+/* Carte de board VENTES : le MONTANT est le heros (app de l'argent). */
+.dkb-card-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--foreground);
+}
+.dkb-card-ref {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.dkb-card-client,
+.fkb-card-client {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fkb-card-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--foreground);
+}
+.fkb-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.fkb-card-ref {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.fkb-card-meta {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
+
+/* ==========================================================================
+   ODY24 — La boutique « Applications » (Parametres). Bloc APPEND-ONLY.
+   Meme langage que le Menu d'accueil ODY2 : une carte par app, la pastille
+   ODY9 a gauche, survol discret qui allume le lisere accent. Contraste AA en
+   clair comme en sombre : la carte n'invente aucune couleur, elle reprend
+   `--card` / `--border` / `--muted-foreground` du theme.
+   ========================================================================== */
+.module-store-grid {
+  display: grid;
+  gap: 0.625rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+}
+
+.module-store-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: 0.75rem;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+@media (hover: hover) {
+  .module-store-card:hover {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+    box-shadow: 0 6px 18px -14px color-mix(in srgb, var(--foreground) 70%, transparent);
+  }
+}
+
+.module-store-card:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-store-card {
+    transition: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ODY6 — LE MÊME PARADIGME AU POUCE (fondateur 2026-08-01)
+   ───────────────────────────────────────────────────────────────────────────
+   Trois choses, et rien d'autre :
+     1. le Menu d'accueil EST l'accueil mobile — grille 3 puis 4 colonnes,
+        zone sûre respectée, champ de recherche TACTILE (≥16px : iOS ne zoome
+        plus au focus) ;
+     2. la barre d'onglets basse, désormais SCOPÉE à l'app active (5 créneaux
+        au maximum, libellés FR parfois longs — « Approvisionnement », « Bons
+        de commande ») ne doit JAMAIS provoquer de débordement horizontal :
+        min-width:0 + ellipsis, garde MB6 ;
+     3. variantes SOMBRES de la barre et du tiroir d'app : leurs règles
+        historiques posent des couleurs claires en dur ; on les surcharge ici
+        par les tokens de thème plutôt que d'y toucher.
+   Bloc APPEND-ONLY : aucune règle existante n'est modifiée.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* ── 1. Menu d'accueil au pouce ───────────────────────────────────────── */
+  /* `minmax(0, 1fr)` (et non `auto`) : une piste de grille ne peut jamais
+     dépasser sa part de largeur, même avec un libellé d'app très long — c'est
+     ce qui garantit zéro débordement horizontal sur iPhone. */
+  .home-menu-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .home-menu-inner {
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+  }
+
+  /* (le compactage des tuiles au pouce est déjà posé par le bloc ODY2 plus
+     haut — on ne le rejoue pas ici, seule la troncature du libellé manquait) */
+  .home-menu-tile-label {
+    font-size: 0.72rem;
+    overflow-wrap: anywhere;
+  }
+
+  /* Le type-ahead bureau cède la place à un vrai champ de recherche : cible
+     tactile confortable, texte ≥ 16px (sinon Safari iOS zoome la page au focus
+     et casse la mise en page). La pleine largeur vient déjà d'ODY2. */
+  .home-menu--tactile .home-menu-searchbar {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .home-menu--tactile .home-menu-search-input {
+    font-size: 1rem;
+  }
+
+  /* ── 2. Barre d'onglets scopée à l'app ────────────────────────────────── */
+  /* Un onglet doit pouvoir rétrécir SOUS la largeur de son texte (min-width:0
+     lève le minimum de contenu implicite des éléments flex) ; le libellé est
+     alors tronqué proprement, jamais poussé hors de l'écran. */
+  .bottom-tabbar--app .bottom-tab {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .bottom-tabbar--app .bottom-tab-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Les icônes des sections viennent des `module.config` (taille 17) alors que
+     celle de l'onglet « Apps » est posée ici (taille 20) : on les normalise
+     pour que la rangée reste optiquement alignée. */
+  .bottom-tab-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+  }
+
+  .bottom-tab-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* ── 3. Thème sombre de la barre et du tiroir d'app ───────────────────── */
+  .dark .bottom-tabbar {
+    background: var(--card);
+    border-top-color: var(--border);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.38);
+  }
+
+  .dark .bottom-tab {
+    color: var(--muted-foreground);
+  }
+
+  /* Le laiton foncé (#b8860b) de l'état actif descend sous 4,5:1 sur une
+     surface sombre : on reprend le jaune de la pastille, largement AA. */
+  .dark .bottom-tab.active {
+    color: #f5c100;
+  }
+
+  .dark .app-grid-panel {
+    background: var(--card);
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.5);
+  }
+
+  .dark .app-grid-header {
+    border-bottom-color: var(--border);
+  }
+
+  .dark .app-grid-title,
+  .dark .app-grid-back,
+  .dark .app-grid-tile,
+  .dark .app-grid-item {
+    color: var(--foreground);
+  }
+
+  .dark .app-grid-close {
+    background: var(--muted);
+    color: var(--muted-foreground);
+  }
+
+  .dark .app-grid-tile-icon {
+    background: var(--muted);
+  }
+
+  .dark .app-grid-item-icon {
+    color: var(--muted-foreground);
+  }
+
+  .dark .app-grid-tile:active,
+  .dark .app-grid-item:active {
+    background: var(--muted);
+  }
+}
+
+@media (min-width: 480px) and (max-width: 768px) {
+  .home-menu-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ODY29 — « Reprendre » : la pastille qui rend son contexte à chaque app.
+   ───────────────────────────────────────────────────────────────────────────
+   Posée en bas de la tuile, TOUJOURS visible quand elle existe (contrairement
+   à l'étoile et à la poignée, qui n'apparaissent qu'au survol/focus) : c'est
+   une INFORMATION — « vous étiez quelque part » — autant qu'une action, et une
+   info qui se cache ne sert personne. Bloc APPEND-ONLY.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.home-menu-tile-resume {
+  position: absolute;
+  left: 50%;
+  bottom: 0.3rem;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: calc(100% - 0.7rem);
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--module-accent, var(--primary)) 14%, transparent);
+  color: var(--module-accent, var(--primary));
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.home-menu-tile-resume-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-menu-tile-resume:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 1px;
+}
+
+@media (hover: hover) {
+  .home-menu-tile-resume:hover {
+    background: color-mix(in srgb, var(--module-accent, var(--primary)) 24%, transparent);
+  }
+}
+
+/* La tuile réserve la place de la pastille pour que le libellé ne passe jamais
+   dessous (la pastille est en position absolue, donc hors flux). */
+.home-menu-cell:has(.home-menu-tile-resume) .home-menu-tile {
+  padding-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  /* Au pouce, la tuile est étroite : seule l'icône reste, le nom accessible
+     (aria-label) porte tout le sens pour les lecteurs d'écran. */
+  .home-menu-tile-resume-label {
+    display: none;
+  }
+
+  .home-menu-cell:has(.home-menu-tile-resume) .home-menu-tile {
+    padding-bottom: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-menu-tile-resume {
+    transition: none;
+  }
+}
+
+/* ── APX23 — Le scan qui repond (feedback fort, sans son nouveau) ─────────
+   Bloc APPEND-ONLY. Flash plein ecran 150 ms accepte (succes)/refuse
+   (destructive) sur ReceptionScanPanel, pointer-events: none (jamais un
+   obstacle au prochain scan). Sous prefers-reduced-motion, le mouvement
+   n'a pas de version "figee" credible : on SUPPRIME le flash plein ecran
+   et on bascule sur une bordure statique (memes tokens de couleur) posee
+   sur la carte du panneau via `.apx23-scan-flash-border--*`, deja rendue
+   par le composant a chaque scan (transparente hors reduced-motion, donc
+   invisible et sans effet de bord tant que la preference est absente). */
+.apx23-scan-flash {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-toast);
+  pointer-events: none;
+  opacity: 0.5;
+  animation: apx23-scan-flash-fade 150ms ease-out forwards;
+}
+.apx23-scan-flash--accept { background: var(--success); }
+.apx23-scan-flash--reject { background: var(--destructive); }
+@keyframes apx23-scan-flash-fade {
+  from { opacity: 0.5; }
+  to { opacity: 0; }
+}
+.apx23-scan-flash-border { border-color: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  .apx23-scan-flash { display: none; }
+  .apx23-scan-flash-border { border-width: 3px; }
+  .apx23-scan-flash-border--accept { border-color: var(--success); }
+  .apx23-scan-flash-border--reject { border-color: var(--destructive); }
+}
+
+/* ── APX27 — Avant/Après appariés (ChantierPhotos, vue "Comparer") ────────
+   Bloc APPEND-ONLY. Carte de comparaison : deux photos empilées, la photo
+   "avant" recadree par clip-path a la position du curseur (variable CSS
+   --apx27-pos posee en style inline par le composant). Le curseur natif
+   (input[type=range]) est etire sur toute la carte et rendu invisible
+   (opacity: 0) : c'est LUI que l'utilisateur glisse, la ligne separatrice
+   n'est qu'un repere visuel decoratif (pointer-events: none). Aucune
+   transition/animation ici (suivi 1:1 du curseur) : rien a neutraliser sous
+   prefers-reduced-motion, la contrainte est satisfaite par construction. */
+.apx27-compare-card { margin: 0; }
+.apx27-compare {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+.apx27-compare-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.apx27-compare-img--before {
+  clip-path: inset(0 calc(100% - var(--apx27-pos, 50%)) 0 0);
+}
+.apx27-compare-tag {
+  position: absolute;
+  top: 0.5rem;
+  z-index: 1;
+  border-radius: var(--radius-sm);
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  pointer-events: none;
+}
+.apx27-compare-tag--before { left: 0.5rem; }
+.apx27-compare-tag--after { right: 0.5rem; }
+.apx27-compare-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--apx27-pos, 50%);
+  width: 2px;
+  background: var(--background);
+  box-shadow: 0 0 0 1px var(--border);
+  pointer-events: none;
+  transform: translateX(-1px);
+}
+.apx27-compare-slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* ============================================================================
+   APX18 — Photo produit (catalogue + fiche + formulaire).
+   Photo INTERNE : vignette du catalogue, en-tete de fiche produit, choix dans
+   le formulaire. Elle n'apparait dans aucun PDF ni sortie client-facing, et
+   n'est jamais rendue a cote du prix d'achat.
+   Regles APX : cible tactile >= 44 px meme dense, contraste AA en clair ET en
+   sombre (tout passe par les tokens, aucune couleur en dur), et
+   prefers-reduced-motion respecte (aucune animation ici).
+   ========================================================================== */
+
+/* Selecteur de fichier du formulaire produit : le bouton natif est habille
+   comme un bouton « outline » de l'ERP, hauteur 44 px (cible tactile APX). */
+.pf-photo-input {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+  max-width: 100%;
+}
+.pf-photo-input::file-selector-button {
+  min-height: 44px;
+  padding: 0 0.875rem;
+  margin-right: 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 0.5rem);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .pf-photo-input::file-selector-button:hover { background: var(--muted); }
+}
+.pf-photo-input:focus-visible::file-selector-button {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Vignette 40 px de la premiere colonne du catalogue. Taille FIXE : la hauteur
+   de ligne ne doit pas dependre de la presence d'une photo. Le repli (icone de
+   categorie teintee) occupe exactement la meme boite. */
+.pcat-vignette {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 0.5rem);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.pcat-vignette img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ============================================================================
+   APX19 — Niveau de stock LISIBLE : jauge coloree, severite distincte, et
+   surtout UNE SEULE hauteur de ligne dans le catalogue.
+   La regle qui tient tout : chaque zone d'une cellule a une hauteur FIXE, y
+   compris quand elle est vide (ligne de detail, emplacement de badge). C'est
+   ce qui empeche la hauteur de ligne de dependre des donnees du produit.
+   Contraste AA clair ET sombre : tout passe par les tokens de ton (success /
+   warning / destructive), aucune couleur en dur.
+   ========================================================================== */
+
+.pcat-stock,
+.pcat-seuil {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  width: 100%;
+}
+
+/* Le chiffre : hauteur fixe, que la cellule soit editable ou non (l'editeur
+   inline est plus haut que le simple texte — sans ce plancher, une liste en
+   lecture seule et une liste editable n'auraient pas la meme hauteur). */
+.pcat-stock-val,
+.pcat-seuil-val {
+  min-height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+/* Jauge fine : la severite se lit a la couleur AVANT de lire le chiffre. */
+.pcat-jauge {
+  height: 0.375rem;
+  width: 100%;
+  max-width: 96px;
+}
+
+/* Ligne de detail (reserve/dispo, ventilation par emplacement) : TOUJOURS
+   presente, vide quand il n'y a rien a dire — c'est un reserve de hauteur,
+   pas un texte invente. Tronquee : un produit reparti sur cinq emplacements
+   ne fait pas grandir sa ligne. */
+.pcat-stock-detail {
+  display: block;
+  min-height: 0.875rem;
+  max-width: 100%;
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Emplacement de badge de severite : occupe (rupture / sous seuil) ou vide,
+   toujours la meme hauteur. */
+.pcat-sev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 1.25rem;
+}
+
+/* En-tete de la fiche produit : photo large, ratio libre, jamais deformee. */
+.pdet-photo {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 0.75rem);
+  background: var(--muted);
+  display: block;
+}
+
+/* ===========================================================================
+   APX2 — LA CARTE LEAD AU REPOS : 3 lignes, <= 76 px, BUDGET DE SIGNAUX FERME.
+   (fondateur 2026-08-01 : « lead view really nice like in Odoo — we see a lot
+   of leads at once, phone and computer ».)
+   ---------------------------------------------------------------------------
+   Mesure d'etat avant : ~120-150 px par carte au repos (5 zones empilees),
+   soit 3-4 cartes visibles par colonne en 1366x768 contre ~60-70 px chez Odoo.
+   Ce bloc REMPLACE le contrat LB13 « 4 zones » par un contrat a 3 lignes :
+
+     L1  nom + societe (tronques)          .kb-card-head
+     L2  montant .num + budget de signaux  .kb-card-value
+     L3  points de tags + age + avatar 16  .kb-card-foot
+
+   RIEN NE DISPARAIT, TOUT SE CONDENSE : le texte de la ligne d'action, le chip
+   de type, canal/ville, les micro-icones de readiness, les libelles de tags en
+   clair et les actions rapides vivent dans `.kb-card-reveal`, depliee au
+   survol (hover:hover) ou au focus clavier (:focus-within, a TOUTE largeur).
+   Le budget de signaux garde AU REPOS ce qui doit rester distinguable sans
+   survol : icone coloree de la ligne d'action, micro-badge de score (VX221),
+   pastille de rotting (rampe LB14).
+
+   SCOPE : tout est sous `.kb-card--lead`. `.kb-card` est partage avec le
+   kanban Installations et `ui/StatusAccentCard` (autres lanes) — pas un pixel
+   n'y bouge.
+   =========================================================================== */
+
+.kb-card--lead {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.36rem 0.5rem;
+}
+
+/* ---- L1 — nom + societe sur UNE ligne tronquee ---- */
+.kb-card--lead .kb-card-head {
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.kb-card--lead .kb-card-name {
+  flex: 0 1 auto;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}
+.kb-card--lead .kb-card-societe {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-card--lead .kb-card-societe::before {
+  content: '\00b7';
+  margin-right: 0.25rem;
+}
+
+/* ---- L2 — montant + BUDGET DE SIGNAUX (jamais supprime au repos) ---- */
+.kb-card--lead .kb-card-value {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  margin-top: 0;
+  min-height: 1.05rem;
+}
+.kb-card--lead .kb-card-montant {
+  font-size: 0.82rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.kb-card--lead .kb-card-signals {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* L'ICONE D'ACTION — la seule chose qui remplace un texte au repos. Les
+   tonalites reutilisent EXACTEMENT les tokens de `.kb-actionline-*` : le
+   contraste AA clair/sombre est donc celui, deja valide, de la ligne d'action. */
+.kb-card-signal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0.95rem;
+  font-size: 0.78rem;
+  line-height: 1;
+  font-weight: 700;
+}
+.kb-signal-perdu,
+.kb-signal-danger { color: var(--destructive); }
+.kb-signal-warning { color: var(--warning-text); }
+.kb-signal-info { color: var(--info); }
+.kb-signal-success { color: var(--success); }
+.kb-signal-muted { color: var(--muted-foreground); }
+
+/* Micro-badge de score (VX221) — le composant partage ScoreBadge est intact,
+   seule son enveloppe porte la taille. */
+.kb-card--lead .kb-card-score-micro { display: inline-flex; }
+.kb-card--lead .kb-card-score-micro .lv-score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35em;
+  padding: 0 0.24rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+/* Pastille de rotting (rampe LB14) — lisible au repos meme sans pill d'age. */
+.kb-rot-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+}
+.kb-card--lead[data-rot='warning'] .kb-rot-dot { background: var(--warning-text); }
+.kb-card--lead[data-rot='danger'] .kb-rot-dot { background: var(--destructive); }
+
+/* ---- L3 — points de tags + age + avatar 16 ---- */
+.kb-card--lead .kb-card-foot {
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  margin-top: 0;
+  min-height: 1rem;
+}
+.kb-tag-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.kb-tag-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+.kb-tag-dots-more {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+.kb-card--lead .kb-age-pill {
+  margin-left: auto;
+  font-size: 0.6rem;
+  padding: 0 0.35rem;
+  line-height: 1.5;
+}
+.kb-card--lead .kb-card-assignee {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+/* ---- ZONE REVELEE — depliee au survol (hover:hover) ET au focus clavier ----
+   Elle est le DERNIER enfant en flux : la carte grandit vers le BAS, donc un
+   controle revele n'apparait jamais sous la position de repos du curseur.
+   Pas de `visibility: hidden` : elle empecherait le focus d'entrer, donc
+   `:focus-within` ne pourrait JAMAIS deplier (impasse). Le depliage reel au
+   focus est ce qui garantit une bounding box non nulle a chaque controle
+   revele — l'anti-pattern « tabbable invisible » (LB17) ne revient pas. */
+.kb-card--lead .kb-card-reveal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  max-height: 0;
+  margin-top: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height var(--motion-base) ease, opacity var(--motion-base) ease,
+    margin-top var(--motion-base) ease;
+}
+@media (hover: hover) {
+  .kb-card--lead:hover > .kb-card-reveal {
+    max-height: 14rem;
+    margin-top: 0.28rem;
+    opacity: 1;
+    overflow: visible;
+  }
+}
+.kb-card--lead:focus-within > .kb-card-reveal {
+  max-height: 14rem;
+  margin-top: 0.28rem;
+  opacity: 1;
+  overflow: visible;
+}
+/* Pointeur grossier (telephone ET tablette — jamais un seuil de largeur) : la
+   zone reste depliee, faute de survol. APX7 y posera l'anatomie tactile. */
+@media (hover: none) {
+  .kb-card--lead > .kb-card-reveal {
+    max-height: none;
+    margin-top: 0.28rem;
+    opacity: 1;
+    overflow: visible;
+  }
+}
+.kb-card--lead .kb-card-reveal .kb-tags,
+.kb-card--lead .kb-card-reveal .kb-card-actionline {
+  margin-top: 0;
+}
+.kb-card--lead .kb-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* Mouvement reduit : le depliage devient instantane (jamais supprime — le
+   contenu doit rester atteignable). */
+@media (prefers-reduced-motion: reduce) {
+  .kb-card--lead .kb-card-reveal { transition: none; }
+}
+
+/* ===========================================================================
+   APX3 — REPRENDRE LE CHROME VERTICAL DU BOARD : 286 -> <= 240 px.
+   ---------------------------------------------------------------------------
+   Postes verifies avant : `.layout-content` padding 2rem sur les 4 cotes
+   (:365), `.lp-view-area` marge 12 + padding 12 (:4190), `.kb-board` padding
+   12 (:4745), `.kb-col-header` ~48 (:4802).
+
+   METHODE IMPOSEE — le discriminant `[data-view]` n'existe QUE sur LeadsPage
+   (verifie : `.lp-page` est AUSSI porte par Installations / Planification /
+   Interventions, qui appartiennent a d'autres lanes). Chaque regle ci-dessous
+   est donc prefixee `.lp-page[data-view]`, et le padding du shell est repris
+   par le meme idiome `:has()` que LB2/LB33. Zero pixel ne bouge sur les trois
+   autres pages `.lp-page`, ni sur aucune page sans board.
+
+   INTOUCHABLE — la chaine `:has()` de HAUTEUR de LB33 (`index.css` ~:7117 :
+   `.layout-content > .route-fade:has(> .lp-page) { height: 100% }` +
+   `.lp-page > .lp-view-area { flex: 1 1 auto }`). On ne touche ici QUE des
+   paddings/marges : la chaine de hauteur reste litteralement la meme, donc
+   l'invariant LB33 (« la page ne grandit pas au contenu, le board est borne »)
+   est preserve par construction.
+
+   BUDGET : haut  16 (layout) + 8 (view-area) + 4 (board) + 10 (en-tete) = 46
+            bas    8 (view-area) + 4 (board) = 12
+   -> 286 - 58 = ~228 px. La MESURE est la gate APX8.
+   =========================================================================== */
+
+/* Shell : seul le padding HAUT est repris (le bas/gauche/droite du shell est
+   partage par tout l'ERP — consigne explicite « ne toucher que le TOP »). */
+.layout-content:has(> .route-fade > .lp-page[data-view]) {
+  padding-top: 1rem;
+}
+
+/* Zone de vue : 12 + 12 -> 4 + 4 en haut, 12 -> 4 en bas. */
+.lp-page[data-view] > .lp-view-area {
+  margin-top: 0.25rem;
+  padding: 0.25rem;
+}
+
+/* Board : 12 -> 8 (les deux axes ; le gap entre colonnes appartient a APX4). */
+.lp-page[data-view] .kb-board {
+  padding: 0.5rem;
+}
+
+/* En-tete de colonne : ~48 -> ~38. Deux rangees conservees (titre+compteur,
+   puis montants LB9) — on ne supprime aucune information, on la resserre.
+   APX6 y ajoutera la barre segmentee d'activite. */
+.lp-page[data-view] .kb-col-header {
+  padding: 0.3rem 0.55rem 0.25rem;
+}
+.lp-page[data-view] .kb-col-title-row {
+  gap: 0.35rem;
+  min-height: 1.1rem;
+}
+.lp-page[data-view] .kb-col-collapse-btn {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+/* La cible tactile reste >= 44 px : la boite RETRECIT, la zone de frappe non
+   (meme idiome que `.kb-check-hit` en LB17 — overlay ::before, aucun decalage
+   de mise en page). */
+@media (pointer: coarse) {
+  .lp-page[data-view] .kb-col-collapse-btn { position: relative; }
+  .lp-page[data-view] .kb-col-collapse-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+.lp-page[data-view] .kb-col-title {
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+.lp-page[data-view] .kb-col-count {
+  padding: 0 0.4rem;
+  font-size: 0.66rem;
+  line-height: 1.4;
+}
+.lp-page[data-view] .kb-col-money {
+  margin-top: 0.05rem;
+  font-size: 0.62rem;
+  line-height: 1.25;
+}
+
+/* ===========================================================================
+   APX4 — LES 6 ETAPES DU FUNNEL VISIBLES : colonnes fluides 204 px + plein
+   ecran board.
+   ---------------------------------------------------------------------------
+   Etat verifie : `.kb-col { flex: 0 0 272px }` (:4763) + gap 12 (:4742). A
+   272 px fixes, 6 colonnes + 5 gouttieres reclament 1692 px de zone utile :
+   la 6e etape (COLD) tombait hors champ presque partout.
+
+   FIX = l'equivalent flex EXACT de `minmax(204px, 1fr)` :
+     flex: 1 1 204px + min-width: 204px, sur un board `nowrap`.
+   Au-dessus du seuil (6x204 + 5x12 = 1284 px utiles) les 6 colonnes se
+   PARTAGENT la largeur ; en dessous elles s'arretent a 204 px et le board
+   reprend EXACTEMENT son comportement actuel (scroll horizontal + drag-to-pan
+   LB11), rien d'autre ne change.
+
+   Arithmetique honnete : 1440 sidebar repliee -> ~1288 utiles -> 6/6 ok ;
+   1920 sidebar depliee -> 6/6 ok ; 1366 depliee reste a 4-5 colonnes (assume,
+   d'ou le pan LB11 et le bouton plein ecran ci-dessous).
+
+   Scope `.lp-page[data-view]` : `.kb-col` est partage avec Installations et
+   Interventions. `:not(.kb-col-collapsed)` : une colonne repliee reste le
+   rail de 44 px de LB10.
+   =========================================================================== */
+.lp-page[data-view] .kb-col:not(.kb-col-collapsed) {
+  flex: 1 1 204px;
+  min-width: 204px;
+}
+/* Palier iPad paysage de VX183(a) (900-1024px, colonnes a 150px) : conserve —
+   en dessous du seuil, l'ancien comportement prime. */
+@media (max-width: 1024px) and (min-width: 900px) {
+  .lp-page[data-view] .kb-col:not(.kb-col-collapsed) {
+    flex: 1 1 150px;
+    min-width: 150px;
+  }
+}
+
+/* ---- Bouton « plein ecran » de la zone de vue ---- */
+.lp-fullscreen-btn {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  /* Doit passer AU-DESSUS des en-tetes de colonne collants (`.kb-col-head`,
+     z-index 1) : le bouton est rendu AVANT le board, il perdrait l'egalite.
+     Reste sous `--z-sticky` pour ne jamais recouvrir l'en-tete de page. */
+  z-index: var(--z-dropdown);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--card);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.lp-page[data-view] > .lp-view-area { position: relative; }
+@media (hover: hover) {
+  .lp-fullscreen-btn:hover { opacity: 1; color: var(--foreground); }
+}
+.lp-fullscreen-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  opacity: 1;
+}
+.lp-fullscreen-btn[aria-pressed='true'] {
+  opacity: 1;
+  color: var(--foreground);
+  border-color: color-mix(in srgb, var(--module-accent-azur) 45%, transparent);
+}
+
+/* ---- Le mode plein ecran lui-meme ----
+   La page devient un calque qui couvre le shell : toute la largeur de la
+   sidebar ET du header revient au board. On ne touche PAS a la preference
+   globale de sidebar (`taqinor.sidebar.collapsed`, propriete de Layout.jsx) —
+   ce mode est local a l'ecran leads et reversible (bouton ou Echap). */
+.lp-page--fullscreen {
+  position: fixed;
+  inset: 0;
+  /* `.header` est collant a `--z-sticky` (1100) : a 60 ce calque « plein
+     ecran » passait DESSOUS et ne couvrait pas l'en-tete. `--z-overlay` (1200)
+     le couvre tout en restant sous les modales (1300) et les toasts (1500),
+     pour qu'une boite de dialogue ouverte depuis le board reste au-dessus. */
+  z-index: var(--z-overlay);
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--background);
+  overflow: hidden;
+}
+
+/* ===========================================================================
+   APX5 — LA VUE LISTE ASSUME « JE VOIS TOUT » : UNE ligne par lead.
+   ---------------------------------------------------------------------------
+   Etat verifie : `.lv-table td` padding 8/12 CODE EN DUR (:5279) et cellule
+   Lead empilee sur 3 lignes (nom / societe / icones de contact, +1 si
+   archive) -> 33-65 px par ligne selon le lead. Consequence : la hauteur de
+   ligne dependait du CONTENU, donc deux lignes voisines n'avaient pas la meme
+   hauteur et le tableau paraissait bancal en plus d'etre peu dense.
+
+   FIX EN DEUX TEMPS :
+   1. La cellule Lead devient UNE rangee (nom · societe · pastille archive ·
+      icones tel/WhatsApp poussees a droite) -> une seule hauteur possible.
+   2. Le padding vertical passe sur `--row-py`, le MEME jeton de densite que
+      le reste de l'ERP (design/tokens.css F20, pilote par `data-density` que
+      `theme.js` pose sur <html>). La liste obeit donc a la preference de
+      densite de l'utilisateur comme tous les autres tableaux, au lieu d'un
+      8 px fige.
+
+   FRONTIERES : on branche `--row-py` sur `.lv-table td/th` UNIQUEMENT.
+   `.data-table` (le moteur ui/datatable) appartient a APX34 — le contredire
+   ici creerait deux sources de densite pour un meme tableau. `densityOverride`
+   (NTUX17, densite PAR VUE) n'est pas touche : ce bloc ne fait que consommer
+   le jeton que ce systeme resout deja.
+   =========================================================================== */
+.lv-table td {
+  padding: var(--row-py) 12px;
+}
+.lv-table th {
+  padding: var(--row-py) 12px;
+}
+
+/* La cellule Lead : de la colonne a la RANGEE. */
+.lv-lead-cell {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+}
+.lv-lead-cell .lv-lead-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lv-lead-cell .lv-lead-societe {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lv-lead-cell .lv-lead-societe::before {
+  content: '\00b7';
+  margin-right: 0.3rem;
+}
+/* « Archive » : pastille au lieu d'une 4e ligne — le detail « par X le Y »
+   reste accessible dans l'infobulle (VX243a preserve, juste condense). */
+.lv-lead-archived-by {
+  flex: 0 0 auto;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+/* Icones tel/WhatsApp (QX25) : a DROITE de la cellule, plus sous le nom. */
+.lv-lead-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* Le repli MOBILE (cartes empilees, `.lv-lead-cell { align-items: flex-end }`
+   plus haut) garde sa mise en colonne : sur telephone le tableau n'est plus un
+   tableau, la contrainte « une ligne » n'y a pas de sens. */
+@media (max-width: 768px) {
+  .lv-lead-cell {
+    flex-direction: column;
+    flex-wrap: wrap;
+  }
+  .lv-lead-cell .lv-lead-societe::before { content: none; margin-right: 0; }
+  .lv-lead-contact { margin-left: 0; }
+}
+
+/* ===========================================================================
+   APX6 — EN-TETES DE COLONNE : la barre segmentee d'activite (signature Odoo)
+   + la somme des montants a droite.
+   ---------------------------------------------------------------------------
+   VERIFIE D'ABORD : l'en-tete LB9 portait DEJA le compteur et la somme
+   (« total MAD · Prev. ponderee », UNE seule rangee — invariant conserve).
+   Ce qui manquait : lire d'un coup d'oeil l'ETAT D'ACTIVITE de l'etape.
+
+   La barre est une rangee flex de segments dont le `flex-grow` vaut le NOMBRE
+   de leads du seau : les largeurs sont donc exactement proportionnelles, sans
+   aucun calcul de pourcentage en JS. Un seau vide n'est pas rendu du tout
+   (jamais un segment de largeur nulle, ni un bouton tabbable invisible).
+
+   Tonalites = les memes jetons semantiques que la ligne d'action de la carte
+   (`.kb-actionline-*`) et la rampe LB14 : un « en retard » a la MEME couleur
+   partout dans l'ecran, en clair comme en sombre.
+   =========================================================================== */
+.lp-page[data-view] .kb-col-money {
+  text-align: right;
+}
+.lp-page[data-view] .kb-col-activite {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  margin-top: 0.2rem;
+  height: 4px;
+}
+.lp-page[data-view] .kb-act-seg {
+  flex-shrink: 1;
+  min-width: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  /* La cible visuelle fait 4 px de haut ; la zone de FRAPPE en fait 14 grace a
+     l'overlay ci-dessous — la barre reste fine sans devenir intouchable. */
+  position: relative;
+}
+.lp-page[data-view] .kb-act-seg::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 14px;
+  transform: translateY(-50%);
+}
+.lp-page[data-view] .kb-act-seg--danger { background: var(--destructive); }
+.lp-page[data-view] .kb-act-seg--warning { background: var(--warning-text); }
+.lp-page[data-view] .kb-act-seg--success { background: var(--success); }
+.lp-page[data-view] .kb-act-seg--muted {
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+}
+/* Segment actif : le seul a garder son opacite pleine, les autres s'estompent
+   — l'etat du filtre se LIT sans lire un libelle. */
+.lp-page[data-view] .kb-col-activite:has(.kb-act-seg--on) .kb-act-seg:not(.kb-act-seg--on) {
+  opacity: 0.35;
+}
+.lp-page[data-view] .kb-act-seg--on {
+  outline: 1px solid var(--foreground);
+  outline-offset: 1px;
+}
+.lp-page[data-view] .kb-act-seg:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .lp-page[data-view] .kb-act-seg:hover { filter: brightness(1.15); }
+}
+
+/* ===========================================================================
+   APX7 — TELEPHONE ET TABLETTE : 5+ leads par etape, `hover:none` servi a
+   TOUTE largeur.
+   ---------------------------------------------------------------------------
+   Etat verifie : `.kb-quick` etait PERMANENT en `@media (hover: none)` (+36 px
+   par carte) et vivait dans la zone revelee, elle-meme depliee en permanence
+   au toucher depuis APX2 -> ~3 cartes sur un 390x844.
+
+   ANATOMIE TACTILE : la rangee d'actions remonte SUR LA LIGNE DU MONTANT (L2).
+   Au toucher, cette ligne DEVIENT la rangee d'actions 44x44 (appeler /
+   WhatsApp), tout le reste (texte d'action, chip de type, canal/ville,
+   readiness, tags en clair) reste derriere le menu ••• et la fiche. La carte
+   passe de ~125 px a ~90 px.
+
+   LA REGLE DURE : c'est `hover:none` qui decide, JAMAIS une largeur d'ecran.
+   Un iPad (projet Playwright `tablet`, WebKit `hover:none`) est large mais n'a
+   pas de survol : il herite donc exactement de l'anatomie du telephone, et ses
+   actions restent atteignables SANS survol (VX68). Aucune media query de
+   largeur dans ce bloc — c'est verifie par test.
+
+   INCHANGES : le snap LB42, la bande de swipe inerte LB17, le drag/clavier
+   LB12 et le contrat DOM e2e. Un SEUL exemplaire des liens tel/WhatsApp dans
+   le DOM — l'anatomie tactile ne duplique rien.
+   =========================================================================== */
+
+/* --- Pointeur FIN : les actions restent revelees (survol / focus). Dans une
+       rangee flex, `max-height: 0` ne suffit pas — il faut aussi annuler la
+       LARGEUR, sinon les boutons pousseraient le montant au repos. --- */
+@media (hover: hover) {
+  .kb-card--lead .kb-card-value > .kb-quick {
+    max-width: 0;
+    margin-top: 0;
+  }
+  .kb-card--lead:hover .kb-card-value > .kb-quick,
+  .kb-card--lead:focus-within .kb-card-value > .kb-quick {
+    max-width: none;
+    margin-top: 0;
+    margin-left: 0.35rem;
+  }
+}
+
+/* --- Pointeur GROSSIER (telephone ET tablette) : la ligne du montant EST la
+       rangee d'actions. --- */
+@media (hover: none) {
+  /* 1. La zone revelee se REFERME au toucher (APX2 la laissait ouverte, faute
+        de survol) : c'est elle qui coutait les ~36 px par carte. Le budget de
+        signaux de L2 garde l'etat lisible ; le menu ••• (permanent au toucher)
+        garde les actions. */
+  .kb-card--lead > .kb-card-reveal {
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+    overflow: hidden;
+  }
+  /* Le focus clavier DEPLIE toujours reellement — une tablette avec clavier
+     externe reste pilotable, et aucun controle n'est « tabbable invisible ». */
+  .kb-card--lead:focus-within > .kb-card-reveal {
+    max-height: 14rem;
+    margin-top: 0.28rem;
+    opacity: 1;
+    overflow: visible;
+  }
+  /* 2. Les actions vivent sur L2, collees a droite, en cibles 44x44. */
+  .kb-card--lead .kb-card-value > .kb-quick {
+    max-height: none;
+    max-width: none;
+    overflow: visible;
+    opacity: 1;
+    margin-top: 0;
+    margin-left: 0.35rem;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+  .kb-card--lead .kb-card-value {
+    min-height: 44px;
+  }
+  /* 3. « Devis auto » double l'item du menu ••• : la ligne tactile ne garde que
+        ce qui n'existe nulle part ailleurs (appeler / WhatsApp). */
+  .kb-card--lead .kb-card-value > .kb-quick > .kb-flash {
+    display: none;
+  }
+}
+
+/* ===========================================================================
+   APX9 — « CHARGER PLUS » : plafond de RENDU, jamais de chargement.
+   ---------------------------------------------------------------------------
+   Les leads sont deja TOUS en memoire (`fetchAllPages`) : ce bouton ne fait
+   que decouper plus loin dans le tableau. Il est donc volontairement discret —
+   ce n'est pas une action metier, c'est un « voir la suite ». Cible >= 32 px,
+   pleine largeur de colonne (facile a viser au pouce comme a la souris).
+   =========================================================================== */
+.kb-charger-plus,
+.lv-charger-plus {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 0.35rem 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .kb-charger-plus:hover,
+  .lv-charger-plus:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+.kb-charger-plus:focus-visible,
+.lv-charger-plus:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.lv-charger-plus-row td {
+  text-align: center;
+}
+@media (pointer: coarse) {
+  .kb-charger-plus,
+  .lv-charger-plus { min-height: 44px; }
+}
+
+/* ===========================================================================
+   APX10 — LE RESTE DU CRM REJOINT LE NIVEAU DES LEADS.
+   ---------------------------------------------------------------------------
+   Etat verifie : ClientList, Forecast et Ma file ouvraient sur un `<h2>` nu
+   dans un `page-header` generique, et `ModuleHero` (VX15) n'etait consomme par
+   AUCUN ecran crm — l'app la plus travaillee de l'ERP n'avait d'identite que
+   sur son board.
+
+   Deux grammaires, JAMAIS une troisieme :
+     - ModuleHero (VX15) pour les ecrans qui sont une DESTINATION (Forecast,
+       Ma file), comme le cockpit ODY15 ;
+     - la ligne de controle LB43 (`lp-controlbar`) pour les ecrans de LISTE
+       (Clients, Parrainage, Payloads), exactement comme le board des leads.
+
+   La pastille d'accent est le meme jeton azur que la nav CRM, le cockpit et
+   les heros : une seule couleur de module dans tout l'ecran.
+   =========================================================================== */
+.crm-controlbar .crm-accent-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.5rem;
+  border-radius: 999px;
+  background: var(--module-accent-azur);
+  vertical-align: middle;
+}
+/* La ligne de controle hors du board leads a besoin d'un peu d'air en bas
+   (sur `.lp-page` c'est la zone de vue qui le fournit). */
+.crm-controlbar {
+  margin-bottom: 0.75rem;
+}
+
+/* ===========================================================================
+   EZ1 — LE popover d'appel devient LE planificateur : date libre, objet
+   optionnel, et la relance existante AFFICHEE avec « Remplacer / Garder ».
+   ---------------------------------------------------------------------------
+   Etat verifie : le popover n'ecrivait qu'un `relance_date` via 4 offsets
+   figes, et ECRASAIT en silence une relance existante — jamais lue, jamais
+   affichee. Trois mecanismes rivaux se disputaient « planifier la suite » ;
+   il n'en reste qu'un pour la planification RAPIDE (le gabarit multi-etapes de
+   PlanActiviteDialog reste, c'est autre chose).
+   =========================================================================== */
+.clp-free-date,
+.clp-objet {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+}
+/* Le bloc de conflit est le seul endroit « attention » du popover : teinte
+   d'avertissement legere, jamais une alerte rouge (rien n'est casse — on
+   demande simplement une decision). */
+.clp-conflit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in srgb, var(--warning) 12%, var(--card));
+}
+.clp-conflit-texte {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--foreground);
+}
+.clp-conflit-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+/* EZ1 — ancre invisible du popover de planification ouvert depuis une carte
+   ou une ligne (il n'a pas de declencheur fixe a l'ecran). */
+.lp-relance-anchor {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+}
+
+/* ── EZ5 — Puissance cible (kWc) facultative du « Devis automatique » ──────
+   Champ compact pose dans la rangee CTA de l'onglet Devis de la fiche lead
+   (`.lw-context-devis-cta`, deja en flex wrap). Volontairement etroit : il ne
+   pousse pas les deux boutons a la ligne sur un ecran large, et il passe
+   dessous tout seul quand la place manque. */
+.lw-devis-kwc {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.lw-devis-kwc-label {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.lw-devis-kwc-input.lw-devis-kwc-input {
+  width: 5.5rem;
 }

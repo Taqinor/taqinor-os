@@ -20,15 +20,27 @@ test('VX24 : LeadCard importe ScoreBadge depuis features/crm', () => {
   assert.match(SRC, /import ScoreBadge from '\.\.\/\.\.\/\.\.\/\.\.\/features\/crm\/ScoreBadge'/)
 })
 
-test('VX24 : ScoreBadge est rendu à côté du nom dans la tête de carte', () => {
+// APX2 — le ScoreBadge a QUITTÉ la tête : le budget de signaux de la carte au
+// repos tient sur L2 (montant + icône d'action + micro-badge de score +
+// pastille de rotting). La tête ne porte plus que « nom · société ».
+test('VX24/APX2 : la tête ne porte que le nom (+ société) ; le score est sur L2', () => {
   const headStart = SRC.indexOf('<div className="kb-card-head">')
   assert.ok(headStart > -1, 'kb-card-head introuvable')
   // Fin de la tête : ouverture de la zone VALEUR juste après.
-  const headEnd = SRC.indexOf('{/* ── VALEUR', headStart)
+  const headEnd = SRC.indexOf('{/* ── L2 / VALEUR', headStart)
   assert.ok(headEnd > headStart, 'fin de tête introuvable')
   const head = SRC.slice(headStart, headEnd)
   assert.match(head, /<span className="kb-card-name">\{nomComplet\}<\/span>/)
-  assert.match(head, /<ScoreBadge lead=\{lead\} \/>/)
+  assert.match(head, /className="kb-card-societe"/)
+  assert.doesNotMatch(head, /<ScoreBadge/)
+
+  // Le score est bien rendu, en micro-badge, dans la ligne VALEUR.
+  const valueStart = SRC.indexOf('<div className="kb-card-value">')
+  const valueEnd = SRC.indexOf('{/* ── L3 / PIED', valueStart)
+  assert.ok(valueEnd > valueStart, 'fin de zone valeur introuvable')
+  const value = SRC.slice(valueStart, valueEnd)
+  assert.match(value, /className="kb-card-score-micro"/)
+  assert.match(value, /<ScoreBadge lead=\{lead\} \/>/)
 })
 
 test('VX24 : UNE seule ligne d\'action à précédence (kb-card-actionline), pas 3 pilules empilées', () => {
@@ -42,10 +54,11 @@ test('VX24 : UNE seule ligne d\'action à précédence (kb-card-actionline), pas
   assert.doesNotMatch(SRC, /kb-badge-rappel/)
 })
 
-test('VX24 : la pill d\'âge est rendue dans le pied de carte (kb-card-foot), et « Inactif N j »+horloge ont quitté la face', () => {
+test('VX24/APX2 : la pill d\'âge est rendue dans le pied (L3), et « Inactif N j »+horloge ont quitté la face', () => {
   const footStart = SRC.indexOf('<div className="kb-card-foot">')
   assert.ok(footStart > -1, 'kb-card-foot introuvable')
-  const footEnd = SRC.indexOf('{/* ── Actions rapides', footStart)
+  // APX2 — le pied (L3) s'arrête à l'ouverture de la ZONE RÉVÉLÉE.
+  const footEnd = SRC.indexOf('{/* ── ZONE RÉVÉLÉE', footStart)
   assert.ok(footEnd > footStart, 'fin de pied introuvable')
   const foot = SRC.slice(footStart, footEnd)
   assert.match(foot, /className="kb-age-pill"/)

@@ -17,6 +17,8 @@ import {
   Trash2, Info, Link2,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
+// APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
+import { PageHeader } from '../../ui/PageHeader'
 import { formatDate } from '../../lib/format'
 import {
   Card, CardContent, Button, EmptyState, Skeleton, Badge,
@@ -258,13 +260,15 @@ export default function GedNavigator() {
 
   return (
     <div className="page">
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="mr-auto">
-          <h1 className="text-xl font-semibold">Documents (GED)</h1>
-          <p className="text-[12.5px] text-muted-foreground">
-            Arborescence documentaire — créez une armoire et un dossier, puis téléversez vos documents.
-          </p>
-        </div>
+      {/* APX32 (e) — 4ᵉ idiome d'en-tête du repo (`<h1>` nu + `<p>` en taille
+          arbitraire) : l'en-tête UNIQUE de l'app (VX28). */}
+      <PageHeader
+        className="mb-4"
+        icon={Folder}
+        title="Documents (GED)"
+        subtitle="Arborescence documentaire — créez une armoire et un dossier, puis téléversez vos documents."
+        actions={(
+          <>
         {cabinets.length > 1 && (
           <div className="w-[220px]">
             <Select value={cabinetId != null ? String(cabinetId) : ''}
@@ -284,7 +288,9 @@ export default function GedNavigator() {
         <Button variant="secondary" onClick={() => loadFolders(cabinetId)} disabled={!hasCabinet}>
           <RefreshCw className="size-4" aria-hidden="true" /> Actualiser
         </Button>
-      </div>
+          </>
+        )}
+      />
 
       {/* GED13 — Filtres & recherche avancée (plein-texte/sémantique + tags). */}
       <div className="mb-4">

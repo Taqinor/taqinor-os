@@ -202,6 +202,7 @@ function EcheancesPanel() {
         <EmptyState title="Aucune échéance" description="Générez le calendrier fiscal d’un exercice pour commencer." />
       ) : (
         <ListShell
+          hideHeader
           title="Échéances fiscales"
           columns={[
             { id: 'type', header: 'Obligation', accessor: (r) => r.type_display || r.type || '—' },
@@ -354,6 +355,7 @@ export default function FiscalitePage() {
         <EcheancesPanel />
       ) : (
         <ListShell
+          hideHeader
           title={TABS.find((t) => t.value === tab).label}
           columns={COLUMNS[tab]}
           rows={list.rows}

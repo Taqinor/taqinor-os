@@ -10,12 +10,15 @@ test('E2: invalid login is rejected', async ({ page }) => {
   // The login error box (⚠️ + the server's message) appears; the exact text is
   // the backend `detail`, so assert on the box, not a specific wording.
   await expect(page.getByText('⚠️')).toBeVisible()
-  // Stayed on the login screen — never reached the app.
-  await expect(page).not.toHaveURL(/\/dashboard/)
+  // Stayed on the login screen — never reached the app (ODY3: the app now
+  // opens on the home menu `/apps`, not `/dashboard`).
+  await expect(page).toHaveURL(/\/login/)
+  await expect(page).not.toHaveURL(/\/apps/)
 })
 
 test('E2: valid login lands in the app', async ({ page }) => {
   await uiLogin(page, ADMIN)
-  await expect(page).toHaveURL(/\/dashboard/)
-  await expect(page.getByRole('heading', { name: 'Tableau de bord' })).toBeVisible()
+  // ODY3 — the front door is the home menu: the grid of MY apps.
+  await expect(page).toHaveURL(/\/apps/)
+  await expect(page.getByRole('heading', { name: 'Mes applications' })).toBeVisible()
 })

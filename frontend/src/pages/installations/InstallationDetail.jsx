@@ -34,7 +34,8 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import OwnerChain from '../../components/OwnerChain'
 import ChantierChecklist from './ChantierChecklist'
-import ChantierTimeline from './ChantierTimeline'
+// APX26 — `ChantierTimeline` n'est plus monté ici : il est rendu par
+// `ChantierGateTimeline` (une seule timeline dans la fiche).
 import ChantierGateTimeline from './ChantierGateTimeline'
 import ChantierPhotos from './ChantierPhotos'
 // NTMOB16 — signature client tracée sur le bon de livraison chantier.
@@ -60,6 +61,10 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
   Spinner, EmptyState,
+  // APX25 — la fiche passe du mur de 15 sections à 6 onglets, et les 5 bannières
+  // empilées à UNE synthèse hiérarchisée (le reste dans un popover).
+  Tabs, TabsList, TabsTrigger, TabsContent,
+  Popover, PopoverTrigger, PopoverContent,
 } from '../../ui'
 
 // L4 — l'aperçu PDF (canvas PDF.js) est chargé à la demande (gros module) : il
@@ -117,6 +122,61 @@ function MiniTable({ head, children }) {
 
 const Hint = ({ children }) => <p className="text-sm text-muted-foreground">{children}</p>
 
+// APX25 — bannière de synthèse : la plus grave est rendue en clair, les autres
+// restent accessibles (compteur + popover). `alerts` arrive déjà triée par
+// gravité (danger → warning → info).
+const ALERT_TONE = {
+  danger: 'border-destructive/30 bg-destructive/10 text-destructive',
+  warning: 'border-warning/30 bg-warning/10 text-warning-foreground',
+  info: 'border-info/30 bg-info/10 text-info',
+}
+
+function ChantierAlerts({ alerts, onClearError }) {
+  if (!alerts.length) return null
+  const [first, ...rest] = alerts
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm ${ALERT_TONE[first.tone]}`}
+      role={first.tone === 'danger' ? 'alert' : 'status'}
+    >
+      <strong>{first.title}</strong>
+      {first.body ? <span className="text-foreground">{first.body}</span> : null}
+      <div className="ml-auto flex items-center gap-2">
+        {rest.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button size="sm" variant="ghost">
+                <TriangleAlert className="size-4" aria-hidden="true" />
+                {rest.length === 1 ? '+1 alerte' : `+${rest.length} alertes`}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80">
+              <ul className="flex flex-col gap-2 text-sm">
+                {rest.map((a) => (
+                  <li key={a.key} className="flex flex-col gap-1">
+                    <strong className={ALERT_TONE[a.tone].split(' ').pop()}>{a.title}</strong>
+                    {a.body ? <span className="text-muted-foreground">{a.body}</span> : null}
+                    {a.action}
+                    {a.clearable && onClearError && (
+                      <Button size="sm" variant="ghost" className="self-start" onClick={onClearError}>
+                        Fermer
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        )}
+        {first.action}
+        {first.clearable && onClearError && (
+          <Button size="sm" variant="ghost" onClick={onClearError}>Fermer</Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const ALL_NONE = '__none__'
 
 // N5 — statuts d'un équipement du parc (miroir de sav.Equipement.Statut).
@@ -142,6 +202,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [current, setCurrent] = useState(installation)
   // NTMOB16 — dialog de signature client (bon de livraison).
   const [signatureOpen, setSignatureOpen] = useState(false)
+  // APX25 — onglet actif de la fiche (Aperçu par défaut).
+  const [tab, setTab] = useState('apercu')
   const F = (k, d = '') => current?.[k] ?? d
   const initialFields = {
     statut: F('statut', 'a_planifier'),
@@ -749,6 +811,48 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const pvTooltip = pvReady ? undefined
     : 'Disponible une fois le chantier installé et la checklist quasi-complète.'
 
+  // APX25 — les 5 bannières empilées deviennent UNE liste triée par gravité
+  // (danger → warning → info) : la première est rendue, les suivantes sont
+  // comptées dans un popover. Aucun message ni action n'est perdu.
+  const alerts = [
+    current.annule && {
+      key: 'annule',
+      tone: 'danger',
+      title: 'Chantier annulé.',
+      body: current.motif_annulation ? `Motif : ${current.motif_annulation}` : null,
+      action: (
+        <Button size="sm" variant="outline" onClick={reactiver}>Réactiver</Button>
+      ),
+    },
+    actionError && {
+      key: 'action-error',
+      tone: 'danger',
+      title: 'Action impossible :',
+      body: actionError,
+      clearable: true,
+    },
+    !current.annule && devisDivergent && {
+      key: 'devis-divergent',
+      tone: 'warning',
+      title: 'Devis modifié :',
+      body: 'le devis a changé depuis la création du chantier (la nomenclature '
+        + 'gelée diffère des lignes actuelles).',
+    },
+    !current.annule && Array.isArray(current.bom) && current.bom.length === 0 && {
+      key: 'bom-absente',
+      tone: 'warning',
+      title: 'Nomenclature absente :',
+      body: "ce chantier n'a pas de nomenclature gelée (créé sans devis).",
+    },
+    // N1 — prochaine action recommandée (le message le moins grave).
+    !current.annule && nextBestAction(current) && {
+      key: 'next-action',
+      tone: 'info',
+      title: 'Prochaine action :',
+      body: nextBestAction(current),
+    },
+  ].filter(Boolean)
+
   return (
     <Sheet open onOpenChange={(o) => { if (!o && confirmLeaveIfDirty(dirty)) onClose?.() }}>
       <SheetContent side="right" className="w-[min(64rem,calc(100%-1.5rem))] sm:max-w-none">
@@ -760,751 +864,753 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         </SheetHeader>
 
         <div className="flex flex-col gap-4">
-          {current.annule && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm" role="alert">
-              <strong className="text-destructive">Chantier annulé.</strong>
-              {current.motif_annulation ? <span>Motif : {current.motif_annulation}</span> : null}
-              <Button size="sm" variant="outline" className="ml-auto" onClick={reactiver}>
-                Réactiver
-              </Button>
-            </div>
-          )}
+          {/* APX25 — UNE bannière de synthèse : la plus grave est rendue, les
+              autres se comptent dans « +N alertes » (popover). Les 5 messages
+              d'origine (annulation, action impossible, devis modifié,
+              nomenclature absente, prochaine action N1) sont tous conservés. */}
+          <ChantierAlerts alerts={alerts} onClearError={() => setActionError(null)} />
 
-          {/* ── Prochaine action recommandée (N1) — bannière sous l'en-tête ── */}
-          {!current.annule && nextBestAction(current) && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-info/30 bg-info/10 p-3 text-sm" role="status">
-              <strong className="text-info">Prochaine action&nbsp;:</strong>
-              <span>{nextBestAction(current)}</span>
-            </div>
-          )}
 
-          {/* N15 — le devis lié a changé depuis la création du chantier. */}
-          {!current.annule && devisDivergent && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm" role="status">
-              <strong className="text-warning-foreground">Devis modifié&nbsp;:</strong>
-              <span>
-                le devis a changé depuis la création du chantier (la nomenclature
-                gelée diffère des lignes actuelles).
-              </span>
-            </div>
-          )}
+          {/* APX25 — onglets : la fiche ne déroule plus 15 sections d'un bloc.
+              MATRICE section → onglet (aucun contenu perdu) :
+                apercu —               Liens · Chantier · Dossier réglementaire (loi 82-21)
+                jalons —               Parcours & jalons (APX26 : ex-« Timeline » fusionnée dedans) · Checklist d'exécution · Mise en service
+                materiel —             Besoin matériel · Équipements
+                photos —               Photos & fichiers
+                interventions —        Interventions · Tickets SAV · Suivi & maintenance
+                documents —            Documents après-vente · Historique
+              Radix démonte le panneau inactif : le scroll d'un onglet vaut ~1/3
+              du mur précédent, et chaque sous-écran ne charge que ses données. */}
+          <Tabs value={tab} onValueChange={setTab} className="flex flex-col gap-2">
+            <TabsList className="flex w-full max-w-full justify-start overflow-x-auto">
+              <TabsTrigger value="apercu" className="min-h-11 shrink-0">
+                <Hammer className="size-4" aria-hidden="true" />
+                Aperçu
+              </TabsTrigger>
+              <TabsTrigger value="jalons" className="min-h-11 shrink-0">
+                <Milestone className="size-4" aria-hidden="true" />
+                Jalons & gates
+              </TabsTrigger>
+              <TabsTrigger value="materiel" className="min-h-11 shrink-0">
+                <Package className="size-4" aria-hidden="true" />
+                Matériel & BC
+              </TabsTrigger>
+              <TabsTrigger value="photos" className="min-h-11 shrink-0">
+                <Camera className="size-4" aria-hidden="true" />
+                Photos
+              </TabsTrigger>
+              <TabsTrigger value="interventions" className="min-h-11 shrink-0">
+                <Wrench className="size-4" aria-hidden="true" />
+                Interventions
+              </TabsTrigger>
+              <TabsTrigger value="documents" className="min-h-11 shrink-0">
+                <FileText className="size-4" aria-hidden="true" />
+                Documents & historique
+              </TabsTrigger>
+            </TabsList>
 
-          {/* N15 — chantier sans nomenclature gelée (créé sans devis). */}
-          {!current.annule && Array.isArray(current.bom) && current.bom.length === 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm" role="status">
-              <strong className="text-warning-foreground">Nomenclature absente&nbsp;:</strong>
-              <span>ce chantier n&apos;a pas de nomenclature gelée (créé sans devis).</span>
-            </div>
-          )}
-
-          {/* Retour FR des actions secondaires (échecs auparavant silencieux). */}
-          {actionError && (
-            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-              <span>{actionError}</span>
-              <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setActionError(null)}>
-                Fermer
-              </Button>
-            </div>
-          )}
-
-          {/* ── Liens ── */}
-          <Section icon={Link2} title="Liens">
-            {/* VX216(c) — chaîne de responsabilité cliquable : personne ne
-                voyait « Lead : A · Devis : B · Chantier : C · SAV : D » d'un
-                coup d'œil quand le client rappelle. Maillons = deep-links
-                RÉELS existants (VX79 ?id=/?lead=/?devis=) ; un maillon sans
-                id connu est simplement absent. */}
-            <OwnerChain
-              className="mb-2"
-              lead={current.lead ? { id: current.lead, nom: current.lead_nom } : null}
-              devis={current.devis ? { id: current.devis, nom: current.devis_reference } : null}
-              chantier={{ id: current.id, nom: current.reference }}
-              sav={latestTicket ? { id: latestTicket.id, nom: latestTicket.reference } : null}
-            />
-            <div className="flex flex-wrap gap-2">
-              {current.devis && (
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/ventes/devis?devis=${current.devis}`)}>
-                  Voir le devis{current.devis_reference ? ` (${current.devis_reference})` : ''}
-                </Button>
-              )}
-              {current.client && (
-                <Button size="sm" variant="outline" onClick={() => navigate('/crm')}>
-                  Voir le client
-                </Button>
-              )}
-              {current.lead && (
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/crm/leads?lead=${current.lead}`)}>
-                  Voir le lead
-                </Button>
-              )}
-            </div>
-          </Section>
-
-          {/* ── Timeline du chantier (N6) ── */}
-          <Section icon={History} title="Timeline">
-            <ChantierTimeline installation={current} />
-          </Section>
-
-          {/* ── CH6 — parcours d'étapes/gates guidé (remplace le simple statut) :
-              chaque étape du cycle de vie configurable (CH1), l'état de son
-              gate (CH2, raisons de blocage en français), la prochaine action
-              explicite, et la recette de mise en service (CH3) + le pack de
-              remise client (CH4) mis en avant. Dégrade proprement (message
-              informatif) si la société n'a configuré aucune étape. ── */}
-          <Section icon={Milestone} title="Parcours du chantier">
-            <ChantierGateTimeline installationId={id} onAdvanced={refreshInstallation} />
-          </Section>
-
-          {/* ── Documents après-vente (PDF régénérés à la demande) ── */}
-          <Section icon={FileText} title="Documents après-vente">
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
-                      onClick={() => openDocument('pvReception', `pv-reception-${current.reference}.pdf`, 'PV de réception')}>
-                PV de réception
-              </Button>
-              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
-                      onClick={() => openDocument('bonLivraison', `bon-livraison-${current.reference}.pdf`, 'Bon de livraison')}>
-                Bon de livraison
-              </Button>
-              {/* NTMOB16 — signature client tracée, jointe au PDF ci-dessus. */}
-              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
-                      onClick={() => setSignatureOpen(true)}>
-                <PenLine className="size-4" aria-hidden="true" />
-                {current.signe_le ? 'Signature de réception (signé)' : 'Signer la réception'}
-              </Button>
-              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
-                      onClick={() => openDocument('dossierRemise', `dossier-remise-${current.reference}.pdf`, 'Dossier de remise')}>
-                Dossier de remise
-              </Button>
-              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
-                      onClick={openFicheRemise}>
-                Fiche de remise / garantie
-              </Button>
-              {!pvReady && (
-                <span className="w-full text-xs text-muted-foreground">{pvTooltip}</span>
-              )}
-              <Button size="sm" variant="outline"
-                      onClick={() => openDocument('attestation', `attestation-${current.reference}.pdf`, 'Attestation')}>
-                Attestation
-              </Button>
-              <Button size="sm" variant="outline"
-                      onClick={() => navigate(`/reporting/archive/chantier/${current.id}`)}>
-                Archive documentaire
-              </Button>
-            </div>
-          </Section>
-
-          {/* ── Besoin matériel vs stock (N13) ── */}
-          <Section
-            icon={Package}
-            title="Besoin matériel"
-            action={(
-              <Button size="sm" variant="outline" onClick={chargerBesoin} loading={besoinLoading}>
-                {besoinLoading ? 'Calcul…' : 'Calculer le besoin'}
-              </Button>
-            )}
-          >
-            {besoin && (
-              besoin.error ? (
-                <Hint>Besoin indisponible (ce chantier a-t-il un devis ?).</Hint>
-              ) : besoin.items.length === 0 ? (
-                <Hint>Aucune ligne produit sur le devis source.</Hint>
-              ) : (
-                <>
-                  <MiniTable head={['Article', 'Requis', 'Réservé', 'Dispo', 'Manque', 'Fournisseur']}>
-                    {besoin.items.map((it) => (
-                      <tr key={it.produit_id} className={`border-t border-border ${it.manque > 0 ? 'bg-destructive/5' : ''}`}>
-                        <td className="px-3 py-2">{it.designation}</td>
-                        <td className="px-3 py-2">{it.requis}</td>
-                        <td className="px-3 py-2">{it.reserve > 0 ? it.reserve : '—'}</td>
-                        <td className="px-3 py-2">{it.disponible}</td>
-                        <td className="px-3 py-2">{it.manque > 0 ? <strong className="text-destructive">{it.manque}</strong> : '—'}</td>
-                        <td className="px-3 py-2">{it.fournisseur_nom || '—'}</td>
-                      </tr>
-                    ))}
-                  </MiniTable>
-                  {besoin.nb_manques > 0 && (
-                    <Button size="sm" onClick={commanderBesoin} className="self-start">
-                      Créer un bon de commande fournisseur ({besoin.nb_manques})
-                    </Button>
-                  )}
-                </>
-              )
-            )}
-          </Section>
-
-          {/* ── Infos & édition ── */}
-          <Section icon={Hammer} title="Chantier">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <FormField label="Référence" htmlFor="ch-ref">
-                <Input id="ch-ref" value={current.reference ?? '—'} readOnly />
-              </FormField>
-              <FormField label="Raccordement" htmlFor="ch-rac">
-                <Input id="ch-rac" value={current.raccordement_display ?? '—'} readOnly />
-              </FormField>
-              <FormField label="Type" htmlFor="ch-type">
-                <Input id="ch-type" value={current.type_installation_display ?? '—'} readOnly />
-              </FormField>
-              <FormField label="Client" htmlFor="ch-cli">
-                <Input id="ch-cli" value={current.client_nom ?? '—'} readOnly />
-              </FormField>
-              <FormField label="Devis" htmlFor="ch-dev">
-                <Input id="ch-dev" value={current.devis_reference ?? '—'} readOnly />
-              </FormField>
-              <FormField label="Technicien" htmlFor="ch-tec">
-                <Input id="ch-tec" value={current.technicien_nom ?? '—'} readOnly />
-              </FormField>
-              <FormField label="Statut" htmlFor="ch-statut">
-                <Select
-                  value={fields.statut ?? ''}
-                  onValueChange={(v) => {
-                    // Garde de transition côté client : on n'accepte qu'un pas
-                    // (avant/arrière) depuis le statut STOCKÉ du chantier, ou la
-                    // valeur déjà sélectionnée. Un saut non-adjacent est empêché.
-                    if (v === fields.statut
-                        || canMoveStatus(current.statut, v)
-                        || v === current.statut) {
-                      set('statut', v)
-                    }
-                  }}
-                >
-                  <SelectTrigger id="ch-statut"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {/* Statut hérité éventuel conservé en tête pour ne pas le perdre. */}
-                    {fields.statut && !INSTALLATION_STATUSES.includes(fields.statut) && (
-                      <SelectItem value={fields.statut}>
-                        {STATUS_LABELS[fields.statut] ?? fields.statut} (ancien)
-                      </SelectItem>
-                    )}
-                    {/* Seuls le statut courant et ses voisins (±1) sont offerts. */}
-                    {adjacentStatuses(current.statut).map((k) => (
-                      <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Le statut n&apos;avance ou ne recule que d&apos;une étape à la fois.
-                </p>
-              </FormField>
-              <FormField label="Adresse du site" htmlFor="ch-adr" className="sm:col-span-2">
-                <Input id="ch-adr" value={fields.site_adresse ?? ''}
-                       onChange={(e) => set('site_adresse', e.target.value)} />
-              </FormField>
-              <FormField label="Ville" htmlFor="ch-ville">
-                <Input id="ch-ville" value={fields.site_ville ?? ''}
-                       onChange={(e) => set('site_ville', e.target.value)} />
-              </FormField>
-              <FormField label="Pose prévue le" htmlFor="ch-pp">
-                <Input id="ch-pp" type="date" value={fields.date_pose_prevue ?? ''}
-                       onChange={(e) => set('date_pose_prevue', e.target.value)} />
-              </FormField>
-              <FormField label="Pose réelle le" htmlFor="ch-pr">
-                <Input id="ch-pr" type="date" value={fields.date_pose_reelle ?? ''}
-                       onChange={(e) => set('date_pose_reelle', e.target.value)} />
-              </FormField>
-              <FormField label="Puissance installée (kWc)" htmlFor="ch-kwc">
-                <Input id="ch-kwc" type="number" step="any" value={fields.puissance_installee_kwc ?? ''}
-                       onChange={(e) => set('puissance_installee_kwc', e.target.value)} />
-              </FormField>
-              <FormField label="Jours-homme estimés" htmlFor="ch-je">
-                <Input id="ch-je" type="number" step="any" value={fields.labour_jours_estimes ?? ''}
-                       onChange={(e) => set('labour_jours_estimes', e.target.value)} />
-              </FormField>
-              <FormField label="Jours-homme réels" htmlFor="ch-jr">
-                <Input id="ch-jr" type="number" step="any" value={fields.labour_jours_reels ?? ''}
-                       onChange={(e) => set('labour_jours_reels', e.target.value)} />
-              </FormField>
-              <FormField label="Contact sur site" htmlFor="ch-contact-nom">
-                <Input id="ch-contact-nom" value={fields.contact_site_nom ?? ''}
-                       onChange={(e) => set('contact_site_nom', e.target.value)} />
-              </FormField>
-              <FormField label="Téléphone du contact" htmlFor="ch-contact-tel">
-                <div className="flex items-center gap-2">
-                  <Input id="ch-contact-tel" value={fields.contact_site_telephone ?? ''}
-                         onChange={(e) => set('contact_site_telephone', e.target.value)} />
-                  {telHref(fields.contact_site_telephone) && (
-                    <a href={telHref(fields.contact_site_telephone)} title="Appeler"
-                       className="link-blue whitespace-nowrap">☎</a>
-                  )}
-                </div>
-              </FormField>
-              <FormField label="Horaires d'accès" htmlFor="ch-horaires" className="sm:col-span-2">
-                <Input id="ch-horaires" value={fields.horaires_acces ?? ''}
-                       onChange={(e) => set('horaires_acces', e.target.value)} />
-              </FormField>
-            </div>
-            <FormField label="Consignes d'accès (clé/badge/gardien, animal, etc.)" htmlFor="ch-acces">
-              <Textarea id="ch-acces" rows={2} value={fields.acces_instructions ?? ''}
-                        onChange={(e) => set('acces_instructions', e.target.value)} />
-            </FormField>
-            <FormField label="Notes" htmlFor="ch-notes">
-              <Textarea id="ch-notes" rows={2} value={fields.notes ?? ''}
-                        onChange={(e) => set('notes', e.target.value)} />
-            </FormField>
-            {saveError && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-                {saveError}
-              </div>
-            )}
-          </Section>
-
-          {/* ── Dossier réglementaire loi 82-21 / Article 33 (N40/N42) ── */}
-          <Section icon={ScrollText} title="Dossier réglementaire (loi 82-21)">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <FormField label="Régime" htmlFor="ch-regime">
-                <Select value={fields.regime_8221 ?? 'non_concerne'} onValueChange={(v) => set('regime_8221', v)}>
-                  <SelectTrigger id="ch-regime"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="non_concerne">Non concerné</SelectItem>
-                    <SelectItem value="declaration_bt">Déclaration (&lt; 11 kW, BT)</SelectItem>
-                    <SelectItem value="accord_raccordement">Accord de raccordement</SelectItem>
-                    <SelectItem value="autorisation_anre">Autorisation ANRE (&gt; 1 MW)</SelectItem>
-                  </SelectContent>
-                </Select>
-                {current?.regime_suggere?.code
-                  && current.regime_suggere.code !== 'non_concerne'
-                  && current.regime_suggere.code !== fields.regime_8221 && (
-                  <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                    Suggéré : <strong>{current.regime_suggere.label}</strong>
-                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
-                            onClick={() => set('regime_8221', current.regime_suggere.code)}>
-                      Appliquer
-                    </Button>
-                  </div>
+            <TabsContent value="apercu" className="flex flex-col gap-4">
+            {/* ── Liens ── */}
+            <Section icon={Link2} title="Liens">
+              {/* VX216(c) — chaîne de responsabilité cliquable : personne ne
+                  voyait « Lead : A · Devis : B · Chantier : C · SAV : D » d'un
+                  coup d'œil quand le client rappelle. Maillons = deep-links
+                  RÉELS existants (VX79 ?id=/?lead=/?devis=) ; un maillon sans
+                  id connu est simplement absent. */}
+              <OwnerChain
+                className="mb-2"
+                lead={current.lead ? { id: current.lead, nom: current.lead_nom } : null}
+                devis={current.devis ? { id: current.devis, nom: current.devis_reference } : null}
+                chantier={{ id: current.id, nom: current.reference }}
+                sav={latestTicket ? { id: latestTicket.id, nom: latestTicket.reference } : null}
+              />
+              <div className="flex flex-wrap gap-2">
+                {current.devis && (
+                  <Button size="sm" variant="outline"
+                          onClick={() => navigate(`/ventes/devis?devis=${current.devis}`)}>
+                    Voir le devis{current.devis_reference ? ` (${current.devis_reference})` : ''}
+                  </Button>
                 )}
-              </FormField>
-              <FormField label="Statut du dossier" htmlFor="ch-dstatut">
-                <Select value={fields.dossier_statut ?? 'non_concerne'} onValueChange={(v) => set('dossier_statut', v)}>
-                  <SelectTrigger id="ch-dstatut"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="non_concerne">Non concerné</SelectItem>
-                    <SelectItem value="a_deposer">À déposer</SelectItem>
-                    <SelectItem value="depose">Déposé</SelectItem>
-                    <SelectItem value="approuve">Approuvé</SelectItem>
-                    <SelectItem value="compteur_pose">Compteur posé</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 pb-2 text-sm">
-                  <Checkbox checked={!!fields.art33_regularisation}
-                            onCheckedChange={(c) => set('art33_regularisation', c === true)} />
-                  Régularisation Article 33
-                </label>
+                {current.client && (
+                  <Button size="sm" variant="outline" onClick={() => navigate('/crm')}>
+                    Voir le client
+                  </Button>
+                )}
+                {current.lead && (
+                  <Button size="sm" variant="outline"
+                          onClick={() => navigate(`/crm/leads?lead=${current.lead}`)}>
+                    Voir le lead
+                  </Button>
+                )}
               </div>
-              <FormField label="Référence / N° de dossier" htmlFor="ch-dref">
-                <Input id="ch-dref" value={fields.dossier_reference ?? ''}
-                       onChange={(e) => set('dossier_reference', e.target.value)} />
+            </Section>
+            {/* ── Infos & édition ── */}
+            <Section icon={Hammer} title="Chantier">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <FormField label="Référence" htmlFor="ch-ref">
+                  <Input id="ch-ref" value={current.reference ?? '—'} readOnly />
+                </FormField>
+                <FormField label="Raccordement" htmlFor="ch-rac">
+                  <Input id="ch-rac" value={current.raccordement_display ?? '—'} readOnly />
+                </FormField>
+                <FormField label="Type" htmlFor="ch-type">
+                  <Input id="ch-type" value={current.type_installation_display ?? '—'} readOnly />
+                </FormField>
+                <FormField label="Client" htmlFor="ch-cli">
+                  <Input id="ch-cli" value={current.client_nom ?? '—'} readOnly />
+                </FormField>
+                <FormField label="Devis" htmlFor="ch-dev">
+                  <Input id="ch-dev" value={current.devis_reference ?? '—'} readOnly />
+                </FormField>
+                <FormField label="Technicien" htmlFor="ch-tec">
+                  <Input id="ch-tec" value={current.technicien_nom ?? '—'} readOnly />
+                </FormField>
+                <FormField label="Statut" htmlFor="ch-statut">
+                  <Select
+                    value={fields.statut ?? ''}
+                    onValueChange={(v) => {
+                      // Garde de transition côté client : on n'accepte qu'un pas
+                      // (avant/arrière) depuis le statut STOCKÉ du chantier, ou la
+                      // valeur déjà sélectionnée. Un saut non-adjacent est empêché.
+                      if (v === fields.statut
+                          || canMoveStatus(current.statut, v)
+                          || v === current.statut) {
+                        set('statut', v)
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="ch-statut"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {/* Statut hérité éventuel conservé en tête pour ne pas le perdre. */}
+                      {fields.statut && !INSTALLATION_STATUSES.includes(fields.statut) && (
+                        <SelectItem value={fields.statut}>
+                          {STATUS_LABELS[fields.statut] ?? fields.statut} (ancien)
+                        </SelectItem>
+                      )}
+                      {/* Seuls le statut courant et ses voisins (±1) sont offerts. */}
+                      {adjacentStatuses(current.statut).map((k) => (
+                        <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Le statut n&apos;avance ou ne recule que d&apos;une étape à la fois.
+                  </p>
+                </FormField>
+                <FormField label="Adresse du site" htmlFor="ch-adr" className="sm:col-span-2">
+                  <Input id="ch-adr" value={fields.site_adresse ?? ''}
+                         onChange={(e) => set('site_adresse', e.target.value)} />
+                </FormField>
+                <FormField label="Ville" htmlFor="ch-ville">
+                  <Input id="ch-ville" value={fields.site_ville ?? ''}
+                         onChange={(e) => set('site_ville', e.target.value)} />
+                </FormField>
+                <FormField label="Pose prévue le" htmlFor="ch-pp">
+                  <Input id="ch-pp" type="date" value={fields.date_pose_prevue ?? ''}
+                         onChange={(e) => set('date_pose_prevue', e.target.value)} />
+                </FormField>
+                <FormField label="Pose réelle le" htmlFor="ch-pr">
+                  <Input id="ch-pr" type="date" value={fields.date_pose_reelle ?? ''}
+                         onChange={(e) => set('date_pose_reelle', e.target.value)} />
+                </FormField>
+                <FormField label="Puissance installée (kWc)" htmlFor="ch-kwc">
+                  <Input id="ch-kwc" type="number" step="any" value={fields.puissance_installee_kwc ?? ''}
+                         onChange={(e) => set('puissance_installee_kwc', e.target.value)} />
+                </FormField>
+                <FormField label="Jours-homme estimés" htmlFor="ch-je">
+                  <Input id="ch-je" type="number" step="any" value={fields.labour_jours_estimes ?? ''}
+                         onChange={(e) => set('labour_jours_estimes', e.target.value)} />
+                </FormField>
+                <FormField label="Jours-homme réels" htmlFor="ch-jr">
+                  <Input id="ch-jr" type="number" step="any" value={fields.labour_jours_reels ?? ''}
+                         onChange={(e) => set('labour_jours_reels', e.target.value)} />
+                </FormField>
+                <FormField label="Contact sur site" htmlFor="ch-contact-nom">
+                  <Input id="ch-contact-nom" value={fields.contact_site_nom ?? ''}
+                         onChange={(e) => set('contact_site_nom', e.target.value)} />
+                </FormField>
+                <FormField label="Téléphone du contact" htmlFor="ch-contact-tel">
+                  <div className="flex items-center gap-2">
+                    <Input id="ch-contact-tel" value={fields.contact_site_telephone ?? ''}
+                           onChange={(e) => set('contact_site_telephone', e.target.value)} />
+                    {telHref(fields.contact_site_telephone) && (
+                      <a href={telHref(fields.contact_site_telephone)} title="Appeler"
+                         className="link-blue whitespace-nowrap">☎</a>
+                    )}
+                  </div>
+                </FormField>
+                <FormField label="Horaires d'accès" htmlFor="ch-horaires" className="sm:col-span-2">
+                  <Input id="ch-horaires" value={fields.horaires_acces ?? ''}
+                         onChange={(e) => set('horaires_acces', e.target.value)} />
+                </FormField>
+              </div>
+              <FormField label="Consignes d'accès (clé/badge/gardien, animal, etc.)" htmlFor="ch-acces">
+                <Textarea id="ch-acces" rows={2} value={fields.acces_instructions ?? ''}
+                          onChange={(e) => set('acces_instructions', e.target.value)} />
               </FormField>
-              <FormField label="Opérateur / interlocuteur" htmlFor="ch-dop">
-                <Input id="ch-dop" value={fields.dossier_operateur ?? ''}
-                       onChange={(e) => set('dossier_operateur', e.target.value)} />
+              <FormField label="Notes" htmlFor="ch-notes">
+                <Textarea id="ch-notes" rows={2} value={fields.notes ?? ''}
+                          onChange={(e) => set('notes', e.target.value)} />
               </FormField>
-              <FormField label="Date de dépôt" htmlFor="ch-ddep">
-                <Input id="ch-ddep" type="date" value={fields.dossier_date_depot ?? ''}
-                       onChange={(e) => set('dossier_date_depot', e.target.value)} />
-              </FormField>
-              <FormField label="Date d'approbation" htmlFor="ch-dapp">
-                <Input id="ch-dapp" type="date" value={fields.dossier_date_approbation ?? ''}
-                       onChange={(e) => set('dossier_date_approbation', e.target.value)} />
-              </FormField>
-            </div>
-            <Hint>Joignez les pièces du dossier dans « Photos &amp; fichiers » ci-dessous.</Hint>
-          </Section>
+              {saveError && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+                  {saveError}
+                </div>
+              )}
+            </Section>
+            {/* ── Dossier réglementaire loi 82-21 / Article 33 (N40/N42) ── */}
+            <Section icon={ScrollText} title="Dossier réglementaire (loi 82-21)">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <FormField label="Régime" htmlFor="ch-regime">
+                  <Select value={fields.regime_8221 ?? 'non_concerne'} onValueChange={(v) => set('regime_8221', v)}>
+                    <SelectTrigger id="ch-regime"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="non_concerne">Non concerné</SelectItem>
+                      <SelectItem value="declaration_bt">Déclaration (&lt; 11 kW, BT)</SelectItem>
+                      <SelectItem value="accord_raccordement">Accord de raccordement</SelectItem>
+                      <SelectItem value="autorisation_anre">Autorisation ANRE (&gt; 1 MW)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {current?.regime_suggere?.code
+                    && current.regime_suggere.code !== 'non_concerne'
+                    && current.regime_suggere.code !== fields.regime_8221 && (
+                    <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      Suggéré : <strong>{current.regime_suggere.label}</strong>
+                      <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+                              onClick={() => set('regime_8221', current.regime_suggere.code)}>
+                        Appliquer
+                      </Button>
+                    </div>
+                  )}
+                </FormField>
+                <FormField label="Statut du dossier" htmlFor="ch-dstatut">
+                  <Select value={fields.dossier_statut ?? 'non_concerne'} onValueChange={(v) => set('dossier_statut', v)}>
+                    <SelectTrigger id="ch-dstatut"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="non_concerne">Non concerné</SelectItem>
+                      <SelectItem value="a_deposer">À déposer</SelectItem>
+                      <SelectItem value="depose">Déposé</SelectItem>
+                      <SelectItem value="approuve">Approuvé</SelectItem>
+                      <SelectItem value="compteur_pose">Compteur posé</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 pb-2 text-sm">
+                    <Checkbox checked={!!fields.art33_regularisation}
+                              onCheckedChange={(c) => set('art33_regularisation', c === true)} />
+                    Régularisation Article 33
+                  </label>
+                </div>
+                <FormField label="Référence / N° de dossier" htmlFor="ch-dref">
+                  <Input id="ch-dref" value={fields.dossier_reference ?? ''}
+                         onChange={(e) => set('dossier_reference', e.target.value)} />
+                </FormField>
+                <FormField label="Opérateur / interlocuteur" htmlFor="ch-dop">
+                  <Input id="ch-dop" value={fields.dossier_operateur ?? ''}
+                         onChange={(e) => set('dossier_operateur', e.target.value)} />
+                </FormField>
+                <FormField label="Date de dépôt" htmlFor="ch-ddep">
+                  <Input id="ch-ddep" type="date" value={fields.dossier_date_depot ?? ''}
+                         onChange={(e) => set('dossier_date_depot', e.target.value)} />
+                </FormField>
+                <FormField label="Date d'approbation" htmlFor="ch-dapp">
+                  <Input id="ch-dapp" type="date" value={fields.dossier_date_approbation ?? ''}
+                         onChange={(e) => set('dossier_date_approbation', e.target.value)} />
+                </FormField>
+              </div>
+              <Hint>Joignez les pièces du dossier dans « Photos &amp; fichiers » ci-dessous.</Hint>
+            </Section>
+            </TabsContent>
 
-          {/* ── Checklist d'exécution (N4/N9) ── */}
-          <Section icon={ClipboardList} title="Checklist d'exécution">
-            {/* VX80 — impression de la checklist chantier (feuille print.css :
-                chrome masqué, noir-sur-blanc, contenu complet). Distinct des PDF
-                WeasyPrint. */}
-            <div className="mb-3">
-              <Button size="sm" variant="outline" onClick={() => window.print()}>
-                <Printer /> Imprimer la checklist
+            <TabsContent value="jalons" className="flex flex-col gap-4">
+            {/* ── CH6 — parcours d'étapes/gates guidé (remplace le simple statut) :
+                chaque étape du cycle de vie configurable (CH1), l'état de son
+                gate (CH2, raisons de blocage en français), la prochaine action
+                explicite, et la recette de mise en service (CH3) + le pack de
+                remise client (CH4) mis en avant. Dégrade proprement (message
+                informatif) si la société n'a configuré aucune étape. ──
+                APX26 — les jalons datés (N6, ex-section « Timeline ») sont
+                fusionnés DANS ce stepper (progression « 3/7 » en tête) : la
+                fiche n'empile plus deux timelines redondantes. ── */}
+            <Section icon={Milestone} title="Parcours & jalons">
+              <ChantierGateTimeline installationId={id} installation={current}
+                                    onAdvanced={refreshInstallation} />
+            </Section>
+            {/* ── Checklist d'exécution (N4/N9) ── */}
+            <Section icon={ClipboardList} title="Checklist d'exécution">
+              {/* VX80 — impression de la checklist chantier (feuille print.css :
+                  chrome masqué, noir-sur-blanc, contenu complet). Distinct des PDF
+                  WeasyPrint. */}
+              <div className="mb-3">
+                <Button size="sm" variant="outline" onClick={() => window.print()}>
+                  <Printer /> Imprimer la checklist
+                </Button>
+              </div>
+              {/* FG386/N91/F21 — état de la synchro terrain hors-ligne (silencieux
+                  si en ligne et file vide). */}
+              <OfflineSyncIndicator />
+              <ChantierChecklist installationId={id} produits={produits}
+                                 series={equipements.map((eq) => eq.numero_serie).filter(Boolean)}
+                                 onChanged={() => { refreshInstallation(); loadEquipements() }} />
+            </Section>
+            {/* ── Mise en service ── */}
+            <Section icon={Zap} title="Mise en service">
+              {current.date_mise_en_service && (
+                <Hint>Mise en service enregistrée le {formatDate(current.date_mise_en_service)}.</Hint>
+              )}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <FormField label="Date de mise en service" htmlFor="mes-date">
+                  <Input id="mes-date" type="date" value={mes.date_mise_en_service ?? ''}
+                         onChange={(e) => setMes(s => ({ ...s, date_mise_en_service: e.target.value }))} />
+                </FormField>
+                <FormField label="Production test" htmlFor="mes-prod">
+                  <Input id="mes-prod" type="number" step="any" value={mes.mes_production_test ?? ''}
+                         onChange={(e) => setMes(s => ({ ...s, mes_production_test: e.target.value }))} />
+                </FormField>
+                <FormField label="Tension" htmlFor="mes-tension">
+                  <Input id="mes-tension" type="number" step="any" value={mes.mes_tension ?? ''}
+                         onChange={(e) => setMes(s => ({ ...s, mes_tension: e.target.value }))} />
+                </FormField>
+              </div>
+              <FormField label="Notes / PV" htmlFor="mes-notes">
+                <Textarea id="mes-notes" rows={2} value={mes.mes_pv_notes ?? ''}
+                          onChange={(e) => setMes(s => ({ ...s, mes_pv_notes: e.target.value }))} />
+              </FormField>
+              <Button variant="success" loading={mesBusy} onClick={saveMes} className="self-start">
+                Enregistrer la mise en service
               </Button>
-            </div>
-            {/* FG386/N91/F21 — état de la synchro terrain hors-ligne (silencieux
-                si en ligne et file vide). */}
-            <OfflineSyncIndicator />
-            <ChantierChecklist installationId={id} produits={produits}
-                               series={equipements.map((eq) => eq.numero_serie).filter(Boolean)}
-                               onChanged={() => { refreshInstallation(); loadEquipements() }} />
-          </Section>
+            </Section>
+            </TabsContent>
 
-          {/* ── Photos & fichiers avant/pendant/après (N5) ── */}
-          <Section icon={Camera} title="Photos & fichiers">
-            <ChantierPhotos installationId={id} />
-          </Section>
-
-          {/* ── Interventions ── */}
-          <Section icon={Wrench} title="Interventions">
-            {interventions.length === 0 ? (
-              <Hint>Aucune intervention.</Hint>
-            ) : (
-              <MiniTable head={['Type', 'Prévue', 'Réalisée', 'Technicien', 'Compte rendu', '']}>
-                {interventions.map((iv) => {
-                  const editing = editInterv?.id === iv.id
-                  return (
-                    <tr key={iv.id} className="border-t border-border">
-                      <td className="px-3 py-2">{iv.type_intervention_display ?? iv.type_intervention}</td>
-                      <td className="px-3 py-2">{formatDate(iv.date_prevue)}</td>
-                      <td className="px-3 py-2">
-                        {editing ? (
-                          <Input type="date" value={editInterv.date_realisee}
-                                 onChange={(e) => setEditInterv(s => ({ ...s, date_realisee: e.target.value }))} />
-                        ) : formatDate(iv.date_realisee)}
-                      </td>
-                      <td className="px-3 py-2">
-                        {editing ? (
-                          <Select value={editInterv.technicien || ALL_NONE}
-                                  onValueChange={(v) => setEditInterv(s => ({ ...s, technicien: v === ALL_NONE ? '' : v }))}>
-                            <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value={ALL_NONE}>—</SelectItem>
-                              {users.map((u) => (
-                                <SelectItem key={u.id} value={String(u.id)}>
-                                  {u.username ?? u.nom ?? `#${u.id}`}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (iv.technicien_nom ?? '—')}
-                      </td>
-                      <td className="px-3 py-2">
-                        {editing ? (
-                          <Input value={editInterv.compte_rendu}
-                                 onChange={(e) => setEditInterv(s => ({ ...s, compte_rendu: e.target.value }))} />
-                        ) : (iv.compte_rendu ?? '—')}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {editing ? (
-                          <span className="flex gap-1">
-                            <Button size="sm" loading={editIntervBusy} onClick={saveEditInterv}>
-                              Enregistrer
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setEditInterv(null)}>
-                              Annuler
-                            </Button>
-                          </span>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => startEditInterv(iv)}>
-                            Éditer
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </MiniTable>
-            )}
-            <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
-              <FormField label="Type" htmlFor="iv-type">
-                <Select value={interv.type_intervention || ALL_NONE}
-                        onValueChange={(v) => onChangeIntervType(v === ALL_NONE ? '' : v)}>
-                  <SelectTrigger id="iv-type"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL_NONE}>—</SelectItem>
-                    {typeOptions.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField label="Date prévue" htmlFor="iv-date">
-                <Input id="iv-date" type="date" value={interv.date_prevue}
-                       onChange={(e) => setInterv(s => ({ ...s, date_prevue: e.target.value }))} />
-              </FormField>
-              <FormField label="Compte rendu" htmlFor="iv-cr">
-                <Input id="iv-cr" value={interv.compte_rendu}
-                       onChange={(e) => setInterv(s => ({ ...s, compte_rendu: e.target.value }))} />
-              </FormField>
-              <Button variant="outline" loading={intervBusy} disabled={!interv.type_intervention}
-                      onClick={addIntervention}>
-                Ajouter
-              </Button>
-            </div>
-          </Section>
-
-          {/* ── Équipements (parc) ── */}
-          <Section icon={Package} title="Équipements">
-            {/* N8 — réconciliation nomenclature gelée vs séries capturées. */}
-            {bomReconciliation.length > 0 && (
-              <div className="rounded-lg border border-border p-2">
-                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Nomenclature vs séries capturées
-                </p>
-                <MiniTable head={['Composant', 'Attendu', 'Capturés']}>
-                  {bomReconciliation.map((b) => {
-                    const manque = b.captured === 0
+            <TabsContent value="materiel" className="flex flex-col gap-4">
+            {/* ── Besoin matériel vs stock (N13) ── */}
+            <Section
+              icon={Package}
+              title="Besoin matériel"
+              action={(
+                <Button size="sm" variant="outline" onClick={chargerBesoin} loading={besoinLoading}>
+                  {besoinLoading ? 'Calcul…' : 'Calculer le besoin'}
+                </Button>
+              )}
+            >
+              {besoin && (
+                besoin.error ? (
+                  <Hint>Besoin indisponible (ce chantier a-t-il un devis ?).</Hint>
+                ) : besoin.items.length === 0 ? (
+                  <Hint>Aucune ligne produit sur le devis source.</Hint>
+                ) : (
+                  <>
+                    <MiniTable head={['Article', 'Requis', 'Réservé', 'Dispo', 'Manque', 'Fournisseur']}>
+                      {besoin.items.map((it) => (
+                        <tr key={it.produit_id} className={`border-t border-border ${it.manque > 0 ? 'bg-destructive/5' : ''}`}>
+                          <td className="px-3 py-2">{it.designation}</td>
+                          <td className="px-3 py-2">{it.requis}</td>
+                          <td className="px-3 py-2">{it.reserve > 0 ? it.reserve : '—'}</td>
+                          <td className="px-3 py-2">{it.disponible}</td>
+                          <td className="px-3 py-2">{it.manque > 0 ? <strong className="text-destructive">{it.manque}</strong> : '—'}</td>
+                          <td className="px-3 py-2">{it.fournisseur_nom || '—'}</td>
+                        </tr>
+                      ))}
+                    </MiniTable>
+                    {besoin.nb_manques > 0 && (
+                      <Button size="sm" onClick={commanderBesoin} className="self-start">
+                        Créer un bon de commande fournisseur ({besoin.nb_manques})
+                      </Button>
+                    )}
+                  </>
+                )
+              )}
+            </Section>
+            {/* ── Équipements (parc) ── */}
+            <Section icon={Package} title="Équipements">
+              {/* N8 — réconciliation nomenclature gelée vs séries capturées. */}
+              {bomReconciliation.length > 0 && (
+                <div className="rounded-lg border border-border p-2">
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Nomenclature vs séries capturées
+                  </p>
+                  <MiniTable head={['Composant', 'Attendu', 'Capturés']}>
+                    {bomReconciliation.map((b) => {
+                      const manque = b.captured === 0
+                      return (
+                        <tr key={b.produit_id ?? b.designation}
+                            className={`border-t border-border ${manque ? 'bg-warning/10' : ''}`}>
+                          <td className="px-3 py-2">{b.designation}</td>
+                          <td className="px-3 py-2">{b.attendu ?? '—'}</td>
+                          <td className="px-3 py-2">
+                            {manque
+                              ? <strong className="text-warning-foreground">0</strong>
+                              : b.captured}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </MiniTable>
+                </div>
+              )}
+              {equipements.length === 0 ? (
+                <Hint>Aucun équipement enregistré sur ce chantier.</Hint>
+              ) : (
+                <MiniTable head={['Produit', 'N° série', 'Posé le', 'Statut', 'Garantie', '']}>
+                  {equipements.map((eq) => {
+                    const editing = editEquip?.id === eq.id
                     return (
-                      <tr key={b.produit_id ?? b.designation}
-                          className={`border-t border-border ${manque ? 'bg-warning/10' : ''}`}>
-                        <td className="px-3 py-2">{b.designation}</td>
-                        <td className="px-3 py-2">{b.attendu ?? '—'}</td>
+                      <tr key={eq.id} className="border-t border-border">
+                        <td className="px-3 py-2">{eq.produit_nom ?? '—'}{eq.produit_marque ? ` (${eq.produit_marque})` : ''}</td>
                         <td className="px-3 py-2">
-                          {manque
-                            ? <strong className="text-warning-foreground">0</strong>
-                            : b.captured}
+                          {editing ? (
+                            <Input value={editEquip.numero_serie}
+                                   onChange={(e) => setEditEquip(s => ({ ...s, numero_serie: e.target.value }))} />
+                          ) : (eq.numero_serie ?? '—')}
+                        </td>
+                        <td className="px-3 py-2">{formatDate(eq.date_pose)}</td>
+                        <td className="px-3 py-2">
+                          {editing ? (
+                            <Select value={editEquip.statut}
+                                    onValueChange={(v) => setEditEquip(s => ({ ...s, statut: v }))}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {EQUIP_STATUTS.map((s) => (
+                                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (eq.statut_display ?? equipStatutLabel(eq.statut))}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className="text-xs font-semibold" style={{ color: garantieColor(eq) }}>
+                            {garantieLabel(eq)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {editing ? (
+                            <span className="flex gap-1">
+                              <Button size="sm" loading={editEquipBusy} onClick={saveEditEquip}>
+                                Enregistrer
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditEquip(null)}>
+                                Annuler
+                              </Button>
+                            </span>
+                          ) : (
+                            <span className="flex gap-1">
+                              <Button size="sm" variant="outline" onClick={() => startEditEquip(eq)}>
+                                Éditer
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => deleteEquip(eq)}>
+                                Supprimer
+                              </Button>
+                            </span>
+                          )}
                         </td>
                       </tr>
                     )
                   })}
                 </MiniTable>
+              )}
+              {/* L578 — filtre de slot par TYPE (n'apparaît que si des catégories
+                  du BOM sont typées). Choisir un type restreint le picker. */}
+              {equipTypes.length > 0 && (
+                <FormField label="Type d'équipement" htmlFor="eq-slot">
+                  <Select value={equipSlot || ALL_NONE}
+                          onValueChange={(v) => {
+                            const next = v === ALL_NONE ? '' : v
+                            setEquipSlot(next)
+                            // Vide le produit choisi s'il ne correspond plus au slot.
+                            if (next && equip.produit) {
+                              const sel = produits.find((p) => String(p.id) === String(equip.produit))
+                              if (typeOf(sel) !== next) setEquip(s => ({ ...s, produit: '' }))
+                            }
+                          }}>
+                    <SelectTrigger id="eq-slot"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_NONE}>Tous</SelectItem>
+                      {equipTypes.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              )}
+              <div className="grid items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
+                <FormField label="Produit" htmlFor="eq-prod">
+                  <ProduitPicker produits={equipProduits}
+                                 value={equip.produit ?? ''}
+                                 onChange={(v) => setEquip(s => ({ ...s, produit: v ?? '' }))} />
+                </FormField>
+                <FormField label="N° de série" htmlFor="eq-ns">
+                  <Input id="eq-ns" value={equip.numero_serie}
+                         onChange={(e) => setEquip(s => ({ ...s, numero_serie: e.target.value }))} />
+                </FormField>
+                <FormField label="Date de pose" htmlFor="eq-dp">
+                  <Input id="eq-dp" type="date" value={equip.date_pose}
+                         onChange={(e) => setEquip(s => ({ ...s, date_pose: e.target.value }))} />
+                </FormField>
+                <Button variant="outline" loading={equipBusy} disabled={!equip.produit} onClick={addEquipement}>
+                  Ajouter
+                </Button>
               </div>
-            )}
-            {equipements.length === 0 ? (
-              <Hint>Aucun équipement enregistré sur ce chantier.</Hint>
-            ) : (
-              <MiniTable head={['Produit', 'N° série', 'Posé le', 'Statut', 'Garantie', '']}>
-                {equipements.map((eq) => {
-                  const editing = editEquip?.id === eq.id
-                  return (
-                    <tr key={eq.id} className="border-t border-border">
-                      <td className="px-3 py-2">{eq.produit_nom ?? '—'}{eq.produit_marque ? ` (${eq.produit_marque})` : ''}</td>
-                      <td className="px-3 py-2">
-                        {editing ? (
-                          <Input value={editEquip.numero_serie}
-                                 onChange={(e) => setEditEquip(s => ({ ...s, numero_serie: e.target.value }))} />
-                        ) : (eq.numero_serie ?? '—')}
-                      </td>
-                      <td className="px-3 py-2">{formatDate(eq.date_pose)}</td>
-                      <td className="px-3 py-2">
-                        {editing ? (
-                          <Select value={editEquip.statut}
-                                  onValueChange={(v) => setEditEquip(s => ({ ...s, statut: v }))}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {EQUIP_STATUTS.map((s) => (
-                                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (eq.statut_display ?? equipStatutLabel(eq.statut))}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className="text-xs font-semibold" style={{ color: garantieColor(eq) }}>
-                          {garantieLabel(eq)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {editing ? (
-                          <span className="flex gap-1">
-                            <Button size="sm" loading={editEquipBusy} onClick={saveEditEquip}>
-                              Enregistrer
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setEditEquip(null)}>
-                              Annuler
-                            </Button>
-                          </span>
-                        ) : (
-                          <span className="flex gap-1">
-                            <Button size="sm" variant="outline" onClick={() => startEditEquip(eq)}>
+              {garantieManquante && (
+                <p className="text-xs text-warning-foreground">
+                  Garantie non renseignée pour ce produit — l&apos;horloge de garantie
+                  restera vide.
+                </p>
+              )}
+              {serieDoublon && (
+                <p className="text-xs text-destructive">
+                  Ce numéro de série existe déjà sur un équipement de ce chantier.
+                </p>
+              )}
+            </Section>
+            </TabsContent>
+
+            <TabsContent value="photos" className="flex flex-col gap-4">
+            {/* ── Photos & fichiers avant/pendant/après (N5) ── */}
+            <Section icon={Camera} title="Photos & fichiers">
+              <ChantierPhotos installationId={id} />
+            </Section>
+            </TabsContent>
+
+            <TabsContent value="interventions" className="flex flex-col gap-4">
+            {/* ── Interventions ── */}
+            <Section icon={Wrench} title="Interventions">
+              {interventions.length === 0 ? (
+                <Hint>Aucune intervention.</Hint>
+              ) : (
+                <MiniTable head={['Type', 'Prévue', 'Réalisée', 'Technicien', 'Compte rendu', '']}>
+                  {interventions.map((iv) => {
+                    const editing = editInterv?.id === iv.id
+                    return (
+                      <tr key={iv.id} className="border-t border-border">
+                        <td className="px-3 py-2">{iv.type_intervention_display ?? iv.type_intervention}</td>
+                        <td className="px-3 py-2">{formatDate(iv.date_prevue)}</td>
+                        <td className="px-3 py-2">
+                          {editing ? (
+                            <Input type="date" value={editInterv.date_realisee}
+                                   onChange={(e) => setEditInterv(s => ({ ...s, date_realisee: e.target.value }))} />
+                          ) : formatDate(iv.date_realisee)}
+                        </td>
+                        <td className="px-3 py-2">
+                          {editing ? (
+                            <Select value={editInterv.technicien || ALL_NONE}
+                                    onValueChange={(v) => setEditInterv(s => ({ ...s, technicien: v === ALL_NONE ? '' : v }))}>
+                              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={ALL_NONE}>—</SelectItem>
+                                {users.map((u) => (
+                                  <SelectItem key={u.id} value={String(u.id)}>
+                                    {u.username ?? u.nom ?? `#${u.id}`}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (iv.technicien_nom ?? '—')}
+                        </td>
+                        <td className="px-3 py-2">
+                          {editing ? (
+                            <Input value={editInterv.compte_rendu}
+                                   onChange={(e) => setEditInterv(s => ({ ...s, compte_rendu: e.target.value }))} />
+                          ) : (iv.compte_rendu ?? '—')}
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          {editing ? (
+                            <span className="flex gap-1">
+                              <Button size="sm" loading={editIntervBusy} onClick={saveEditInterv}>
+                                Enregistrer
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditInterv(null)}>
+                                Annuler
+                              </Button>
+                            </span>
+                          ) : (
+                            <Button size="sm" variant="outline" onClick={() => startEditInterv(iv)}>
                               Éditer
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => deleteEquip(eq)}>
-                              Supprimer
-                            </Button>
-                          </span>
-                        )}
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </MiniTable>
+              )}
+              <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
+                <FormField label="Type" htmlFor="iv-type">
+                  <Select value={interv.type_intervention || ALL_NONE}
+                          onValueChange={(v) => onChangeIntervType(v === ALL_NONE ? '' : v)}>
+                    <SelectTrigger id="iv-type"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_NONE}>—</SelectItem>
+                      {typeOptions.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="Date prévue" htmlFor="iv-date">
+                  <Input id="iv-date" type="date" value={interv.date_prevue}
+                         onChange={(e) => setInterv(s => ({ ...s, date_prevue: e.target.value }))} />
+                </FormField>
+                <FormField label="Compte rendu" htmlFor="iv-cr">
+                  <Input id="iv-cr" value={interv.compte_rendu}
+                         onChange={(e) => setInterv(s => ({ ...s, compte_rendu: e.target.value }))} />
+                </FormField>
+                <Button variant="outline" loading={intervBusy} disabled={!interv.type_intervention}
+                        onClick={addIntervention}>
+                  Ajouter
+                </Button>
+              </div>
+            </Section>
+            {/* ── Tickets SAV ── */}
+            <Section icon={Wrench} title="Tickets SAV">
+              {tickets.length === 0 ? (
+                <Hint>Aucun ticket SAV sur ce chantier.</Hint>
+              ) : (
+                <MiniTable head={['Référence', 'Statut', 'Type', 'Garantie']}>
+                  {tickets.map((t) => (
+                    <tr key={t.id} className="border-t border-border">
+                      <td className="px-3 py-2">{t.reference}{t.annule ? ' (annulé)' : ''}</td>
+                      <td className="px-3 py-2">
+                        <StatusPill status={t.statut} label={TICKET_STATUS_LABELS[t.statut] ?? t.statut} />
                       </td>
+                      <td className="px-3 py-2">{t.type_display ?? t.type}</td>
+                      <td className="px-3 py-2">{SOUS_GARANTIE_LABELS[t.sous_garantie_effectif] ?? '—'}</td>
                     </tr>
-                  )
-                })}
-              </MiniTable>
-            )}
-            {/* L578 — filtre de slot par TYPE (n'apparaît que si des catégories
-                du BOM sont typées). Choisir un type restreint le picker. */}
-            {equipTypes.length > 0 && (
-              <FormField label="Type d'équipement" htmlFor="eq-slot">
-                <Select value={equipSlot || ALL_NONE}
-                        onValueChange={(v) => {
-                          const next = v === ALL_NONE ? '' : v
-                          setEquipSlot(next)
-                          // Vide le produit choisi s'il ne correspond plus au slot.
-                          if (next && equip.produit) {
-                            const sel = produits.find((p) => String(p.id) === String(equip.produit))
-                            if (typeOf(sel) !== next) setEquip(s => ({ ...s, produit: '' }))
-                          }
-                        }}>
-                  <SelectTrigger id="eq-slot"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL_NONE}>Tous</SelectItem>
-                    {equipTypes.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-            )}
-            <div className="grid items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_auto]">
-              <FormField label="Produit" htmlFor="eq-prod">
-                <ProduitPicker produits={equipProduits}
-                               value={equip.produit ?? ''}
-                               onChange={(v) => setEquip(s => ({ ...s, produit: v ?? '' }))} />
-              </FormField>
-              <FormField label="N° de série" htmlFor="eq-ns">
-                <Input id="eq-ns" value={equip.numero_serie}
-                       onChange={(e) => setEquip(s => ({ ...s, numero_serie: e.target.value }))} />
-              </FormField>
-              <FormField label="Date de pose" htmlFor="eq-dp">
-                <Input id="eq-dp" type="date" value={equip.date_pose}
-                       onChange={(e) => setEquip(s => ({ ...s, date_pose: e.target.value }))} />
-              </FormField>
-              <Button variant="outline" loading={equipBusy} disabled={!equip.produit} onClick={addEquipement}>
-                Ajouter
-              </Button>
-            </div>
-            {garantieManquante && (
-              <p className="text-xs text-warning-foreground">
-                Garantie non renseignée pour ce produit — l&apos;horloge de garantie
-                restera vide.
-              </p>
-            )}
-            {serieDoublon && (
-              <p className="text-xs text-destructive">
-                Ce numéro de série existe déjà sur un équipement de ce chantier.
-              </p>
-            )}
-          </Section>
+                  ))}
+                </MiniTable>
+              )}
+              <Hint>Le suivi détaillé (interventions, historique) se fait dans l&apos;écran « Tickets SAV ».</Hint>
+              <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
+                <FormField label="Type" htmlFor="tk-type">
+                  <Select value={newTicket.type} onValueChange={(v) => setNewTicket(s => ({ ...s, type: v }))}>
+                    <SelectTrigger id="tk-type"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="Équipement concerné" htmlFor="tk-eq">
+                  <Select value={newTicket.equipement || ALL_NONE}
+                          onValueChange={(v) => setNewTicket(s => ({ ...s, equipement: v === ALL_NONE ? '' : v }))}>
+                    <SelectTrigger id="tk-eq"><SelectValue placeholder="Aucun" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_NONE}>— Aucun —</SelectItem>
+                      {equipements.map((eq) => (
+                        <SelectItem key={eq.id} value={String(eq.id)}>
+                          {(eq.produit_nom ?? 'Produit')} — {eq.numero_serie ?? 'sans n° série'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="Description" htmlFor="tk-desc">
+                  <Input id="tk-desc" value={newTicket.description}
+                         onChange={(e) => setNewTicket(s => ({ ...s, description: e.target.value }))}
+                         placeholder="Symptôme / demande" />
+                </FormField>
+                <Button variant="outline" loading={ticketBusy} onClick={openTicket}>
+                  Ouvrir un ticket
+                </Button>
+              </div>
+            </Section>
+            {/* ── Suivi & maintenance (N10 — hub système installé) ── */}
+            <Section
+              icon={Wrench}
+              title="Suivi & maintenance"
+              action={(
+                <Button size="sm" variant="outline" onClick={() => navigate('/sav/contrats')}>
+                  Contrats
+                </Button>
+              )}
+            >
+              {contrats.length === 0 ? (
+                <Hint>Aucun contrat de maintenance pour ce client.</Hint>
+              ) : (
+                <MiniTable head={['Périodicité', 'Début', 'Prochaine visite', 'Statut']}>
+                  {contrats.map((c) => (
+                    <tr key={c.id} className="border-t border-border">
+                      <td className="px-3 py-2">{c.periodicite_display ?? c.periodicite}</td>
+                      <td className="px-3 py-2">{formatDate(c.date_debut)}</td>
+                      <td className="px-3 py-2">{formatDate(c.prochaine_visite)}</td>
+                      <td className="px-3 py-2">{c.actif ? (c.due ? 'Visite due' : 'Actif') : 'Inactif'}</td>
+                    </tr>
+                  ))}
+                </MiniTable>
+              )}
+              <Hint>Supervision : non configurée (connecteur de monitoring à venir).</Hint>
+            </Section>
+            </TabsContent>
 
-          {/* ── Tickets SAV ── */}
-          <Section icon={Wrench} title="Tickets SAV">
-            {tickets.length === 0 ? (
-              <Hint>Aucun ticket SAV sur ce chantier.</Hint>
-            ) : (
-              <MiniTable head={['Référence', 'Statut', 'Type', 'Garantie']}>
-                {tickets.map((t) => (
-                  <tr key={t.id} className="border-t border-border">
-                    <td className="px-3 py-2">{t.reference}{t.annule ? ' (annulé)' : ''}</td>
-                    <td className="px-3 py-2">
-                      <StatusPill status={t.statut} label={TICKET_STATUS_LABELS[t.statut] ?? t.statut} />
-                    </td>
-                    <td className="px-3 py-2">{t.type_display ?? t.type}</td>
-                    <td className="px-3 py-2">{SOUS_GARANTIE_LABELS[t.sous_garantie_effectif] ?? '—'}</td>
-                  </tr>
-                ))}
-              </MiniTable>
-            )}
-            <Hint>Le suivi détaillé (interventions, historique) se fait dans l&apos;écran « Tickets SAV ».</Hint>
-            <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
-              <FormField label="Type" htmlFor="tk-type">
-                <Select value={newTicket.type} onValueChange={(v) => setNewTicket(s => ({ ...s, type: v }))}>
-                  <SelectTrigger id="tk-type"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {TICKET_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField label="Équipement concerné" htmlFor="tk-eq">
-                <Select value={newTicket.equipement || ALL_NONE}
-                        onValueChange={(v) => setNewTicket(s => ({ ...s, equipement: v === ALL_NONE ? '' : v }))}>
-                  <SelectTrigger id="tk-eq"><SelectValue placeholder="Aucun" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL_NONE}>— Aucun —</SelectItem>
-                    {equipements.map((eq) => (
-                      <SelectItem key={eq.id} value={String(eq.id)}>
-                        {(eq.produit_nom ?? 'Produit')} — {eq.numero_serie ?? 'sans n° série'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField label="Description" htmlFor="tk-desc">
-                <Input id="tk-desc" value={newTicket.description}
-                       onChange={(e) => setNewTicket(s => ({ ...s, description: e.target.value }))}
-                       placeholder="Symptôme / demande" />
-              </FormField>
-              <Button variant="outline" loading={ticketBusy} onClick={openTicket}>
-                Ouvrir un ticket
-              </Button>
-            </div>
-          </Section>
-
-          {/* ── Suivi & maintenance (N10 — hub système installé) ── */}
-          <Section
-            icon={Wrench}
-            title="Suivi & maintenance"
-            action={(
-              <Button size="sm" variant="outline" onClick={() => navigate('/sav/contrats')}>
-                Contrats
-              </Button>
-            )}
-          >
-            {contrats.length === 0 ? (
-              <Hint>Aucun contrat de maintenance pour ce client.</Hint>
-            ) : (
-              <MiniTable head={['Périodicité', 'Début', 'Prochaine visite', 'Statut']}>
-                {contrats.map((c) => (
-                  <tr key={c.id} className="border-t border-border">
-                    <td className="px-3 py-2">{c.periodicite_display ?? c.periodicite}</td>
-                    <td className="px-3 py-2">{formatDate(c.date_debut)}</td>
-                    <td className="px-3 py-2">{formatDate(c.prochaine_visite)}</td>
-                    <td className="px-3 py-2">{c.actif ? (c.due ? 'Visite due' : 'Actif') : 'Inactif'}</td>
-                  </tr>
-                ))}
-              </MiniTable>
-            )}
-            <Hint>Supervision : non configurée (connecteur de monitoring à venir).</Hint>
-          </Section>
-
-          {/* ── Mise en service ── */}
-          <Section icon={Zap} title="Mise en service">
-            {current.date_mise_en_service && (
-              <Hint>Mise en service enregistrée le {formatDate(current.date_mise_en_service)}.</Hint>
-            )}
-            <div className="grid gap-3 sm:grid-cols-3">
-              <FormField label="Date de mise en service" htmlFor="mes-date">
-                <Input id="mes-date" type="date" value={mes.date_mise_en_service ?? ''}
-                       onChange={(e) => setMes(s => ({ ...s, date_mise_en_service: e.target.value }))} />
-              </FormField>
-              <FormField label="Production test" htmlFor="mes-prod">
-                <Input id="mes-prod" type="number" step="any" value={mes.mes_production_test ?? ''}
-                       onChange={(e) => setMes(s => ({ ...s, mes_production_test: e.target.value }))} />
-              </FormField>
-              <FormField label="Tension" htmlFor="mes-tension">
-                <Input id="mes-tension" type="number" step="any" value={mes.mes_tension ?? ''}
-                       onChange={(e) => setMes(s => ({ ...s, mes_tension: e.target.value }))} />
-              </FormField>
-            </div>
-            <FormField label="Notes / PV" htmlFor="mes-notes">
-              <Textarea id="mes-notes" rows={2} value={mes.mes_pv_notes ?? ''}
-                        onChange={(e) => setMes(s => ({ ...s, mes_pv_notes: e.target.value }))} />
-            </FormField>
-            <Button variant="success" loading={mesBusy} onClick={saveMes} className="self-start">
-              Enregistrer la mise en service
-            </Button>
-          </Section>
-
-          {/* ── Historique (chatter) ── */}
-          <Section icon={History} title="Historique">
-            <div className="flex gap-2">
-              <Input placeholder="Écrire une note…"
-                     value={noteBody} onChange={(e) => setNoteBody(e.target.value)}
-                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
-              <Button variant="outline" onClick={postNote}><Send /> Noter</Button>
-            </div>
-            <div className="flex flex-col gap-2">
-              {historique.length === 0 && <Hint>Aucune activité pour le moment.</Hint>}
-              {historique.map((a) => (
-                <div key={a.id} className="border-b border-border pb-2 text-sm last:border-0">
-                  {a.kind === 'note' && (
-                    <span>📝 <strong>Note&nbsp;:</strong> {a.body}</span>
-                  )}
-                  {a.kind === 'creation' && <span>✨ {a.body}</span>}
-                  {a.kind === 'modification' && (
-                    <span>
-                      ✏️ <strong>{a.field_label}&nbsp;:</strong>{' '}
-                      {a.old_value} → <strong>{a.new_value}</strong>
+            <TabsContent value="documents" className="flex flex-col gap-4">
+            {/* ── Documents après-vente (PDF régénérés à la demande) ── */}
+            <Section icon={FileText} title="Documents après-vente">
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                        onClick={() => openDocument('pvReception', `pv-reception-${current.reference}.pdf`, 'PV de réception')}>
+                  PV de réception
+                </Button>
+                <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                        onClick={() => openDocument('bonLivraison', `bon-livraison-${current.reference}.pdf`, 'Bon de livraison')}>
+                  Bon de livraison
+                </Button>
+                {/* NTMOB16 — signature client tracée, jointe au PDF ci-dessus. */}
+                <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                        onClick={() => setSignatureOpen(true)}>
+                  <PenLine className="size-4" aria-hidden="true" />
+                  {current.signe_le ? 'Signature de réception (signé)' : 'Signer la réception'}
+                </Button>
+                <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                        onClick={() => openDocument('dossierRemise', `dossier-remise-${current.reference}.pdf`, 'Dossier de remise')}>
+                  Dossier de remise
+                </Button>
+                <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                        onClick={openFicheRemise}>
+                  Fiche de remise / garantie
+                </Button>
+                {!pvReady && (
+                  <span className="w-full text-xs text-muted-foreground">{pvTooltip}</span>
+                )}
+                <Button size="sm" variant="outline"
+                        onClick={() => openDocument('attestation', `attestation-${current.reference}.pdf`, 'Attestation')}>
+                  Attestation
+                </Button>
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate(`/reporting/archive/chantier/${current.id}`)}>
+                  Archive documentaire
+                </Button>
+              </div>
+            </Section>
+            {/* ── Historique (chatter) ── */}
+            <Section icon={History} title="Historique">
+              <div className="flex gap-2">
+                <Input placeholder="Écrire une note…"
+                       value={noteBody} onChange={(e) => setNoteBody(e.target.value)}
+                       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
+                <Button variant="outline" onClick={postNote}><Send /> Noter</Button>
+              </div>
+              <div className="flex flex-col gap-2">
+                {historique.length === 0 && <Hint>Aucune activité pour le moment.</Hint>}
+                {historique.map((a) => (
+                  <div key={a.id} className="border-b border-border pb-2 text-sm last:border-0">
+                    {a.kind === 'note' && (
+                      <span>📝 <strong>Note&nbsp;:</strong> {a.body}</span>
+                    )}
+                    {a.kind === 'creation' && <span>✨ {a.body}</span>}
+                    {a.kind === 'modification' && (
+                      <span>
+                        ✏️ <strong>{a.field_label}&nbsp;:</strong>{' '}
+                        {a.old_value} → <strong>{a.new_value}</strong>
+                      </span>
+                    )}
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      — par {a.user_nom ?? '?'} · {timeAgo(a.created_at)}
                     </span>
-                  )}
-                  <span className="ml-1 text-xs text-muted-foreground">
-                    — par {a.user_nom ?? '?'} · {timeAgo(a.created_at)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Section>
+                  </div>
+                ))}
+              </div>
+            </Section>
+            </TabsContent>
+          </Tabs>
         </div>
 
         <FormActions>

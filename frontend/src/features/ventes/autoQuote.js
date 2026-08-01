@@ -69,9 +69,14 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
  * @param {function} onEtude      Rappel facultatif recevant les chiffres clés de
  *                                l'étude industrielle (autoconso/éco/payback)
  *                                AVANT enregistrement — pour les afficher
+ * @param {string|number} targetKwc  EZ5 — puissance cible (kWc) demandée POUR
+ *                                CE devis-là, sans toucher la fiche du lead.
+ *                                Vide/absent = comportement historique (la
+ *                                taille souhaitée du lead, sinon la facture).
  */
 export async function createAutoQuote({ lead, produits, discountStr, dispatch,
-                                        quoteLogic, pumpHours, onEtude }) {
+                                        quoteLogic, pumpHours, onEtude,
+                                        targetKwc }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
   const efficiency = (Number(quoteLogic?.efficiency) > 0) ? Number(quoteLogic.efficiency) : EFFICIENCY
@@ -106,7 +111,12 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     const hiver = parseFloat(lead.facture_hiver) || 0
     // QX19 — priorité à la taille souhaitée par le lead (kWc) quand elle est
     // renseignée ; sinon dérivation historique depuis la facture d'hiver.
-    const tailleKwc = parseFloat(lead.taille_souhaitee_kwc) || 0
+    // EZ5 — une cible saisie POUR CE DEVIS (« Devis automatique » de la fiche
+    // lead) passe devant les deux : c'est un choix ponctuel du commercial, il
+    // ne réécrit jamais `taille_souhaitee_kwc` sur le lead. Même conversion
+    // partagée `panneauxPourKwc` — aucune formule recopiée.
+    const cibleKwc = parseFloat(targetKwc) || 0
+    const tailleKwc = cibleKwc > 0 ? cibleKwc : (parseFloat(lead.taille_souhaitee_kwc) || 0)
     const panels = tailleKwc > 0
       ? panneauxPourKwc(tailleKwc, 710)
       : (estimerPanneaux(hiver, perTranche) || 8)

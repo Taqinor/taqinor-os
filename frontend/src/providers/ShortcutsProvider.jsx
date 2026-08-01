@@ -19,17 +19,41 @@ import {
 } from '../ui/Dialog'
 import { Input } from '../ui/Input'
 import {
-  GOTO_SHORTCUTS, CREATE_SHORTCUTS, GLOBAL_SHORTCUTS, EDIT_SHORTCUTS,
-  filterShortcutGroups, isTypingTarget,
+  GOTO_SHORTCUTS, CREATE_SHORTCUTS, GLOBAL_SHORTCUTS, EDIT_SHORTCUTS, LIST_SHORTCUTS,
+  buildAppShortcuts, filterShortcutGroups, isTypingTarget,
 } from './shortcuts'
 import {
   FOCUSED_RECORD_SHORTCUTS, ActiveScreenProvider, useActiveScreen,
 } from './focusedRecordShortcuts'
+import { moduleConfigs } from '../router/moduleRoutes'
+
+// ODY28 — bindings « g + lettre » déclarés par les apps (champ optionnel
+// `shortcut` d'un module.config), fusionnés ICI avec ceux du noyau. Calculé une
+// seule fois au chargement du module : `moduleConfigs` est statique
+// (`import.meta.glob(..., { eager: true })`).
+const APP_SHORTCUTS = buildAppShortcuts(moduleConfigs, GOTO_SHORTCUTS)
 
 // VX220(b) — une séquence « <préfixe> puis lettre » par table : 'g' = aller à,
 // 'c' = créer. Généralisé ici (au lieu de dupliquer le handler « g ») pour que
 // l'ajout d'un futur préfixe reste une ligne, jamais un deuxième bloc copié.
-const SEQUENCE_TABLES = { g: GOTO_SHORTCUTS, c: CREATE_SHORTCUTS }
+// ODY28 — c'est désormais l'UNIQUE gestionnaire de séquences de l'application :
+// `AppLauncher.jsx` installait un 2ᵉ listener `keydown` privé qui capturait
+// « g a » pour ouvrir le lanceur PENDANT que cette table naviguait vers
+// /approbations — les deux tiraient sur la même frappe. Le listener privé est
+// supprimé et le lanceur est déclenché depuis ici (entrée `event`).
+const SEQUENCE_TABLES = { g: [...GOTO_SHORTCUTS, ...APP_SHORTCUTS.bindings], c: CREATE_SHORTCUTS }
+
+// Exécute une entrée de séquence : navigation (`to`) ou événement window
+// (`event`, pour les surfaces en overlay qui n'ont pas d'URL propre).
+function runShortcut(match, navigate) {
+  if (match.event) {
+    try {
+      window.dispatchEvent(new CustomEvent(match.event))
+    } catch { /* environnement sans window : silencieux */ }
+    return
+  }
+  if (match.to) navigate(match.to)
+}
 
 // Fenêtre (ms) pour taper la 2e touche d'une séquence « g x ».
 const SEQUENCE_MS = 1200
@@ -82,7 +106,7 @@ export function ShortcutsProvider({ children }) {
         clearPending()
         if (match) {
           e.preventDefault()
-          navigate(match.to)
+          runShortcut(match, navigate)
         }
         return
       }
@@ -141,9 +165,25 @@ function ShortcutsCheatsheet({ open, onOpenChange, profile }) {
       ? [{ title: `${focusedEntry.title} — pour votre rôle`, items: focusedItems }]
       : []),
     { title: 'Général', items: GLOBAL_SHORTCUTS },
-    { title: 'Navigation rapide', items: GOTO_SHORTCUTS },
+    // ODY28 — une SEULE liste « Navigation rapide » : noyau + bindings déclarés
+    // par les apps, exactement ce que le gestionnaire de séquences exécute.
+    { title: 'Navigation rapide', items: SEQUENCE_TABLES.g },
     { title: 'Créer', items: CREATE_SHORTCUTS },
     { title: 'Édition', items: EDIT_SHORTCUTS },
+    // APX31 — parcourir une liste au clavier (leads LW, tickets SAV).
+    { title: 'Listes', items: LIST_SHORTCUTS },
+    // ODY28 — une collision (deux apps réclamant la même lettre, ou une app
+    // réclamant une lettre du noyau) est AFFICHÉE plutôt qu'avalée : un
+    // raccourci qui ne marche pas doit être visible, jamais mystérieux.
+    ...(APP_SHORTCUTS.conflicts.length > 0
+      ? [{
+          title: 'Raccourcis en conflit (inactifs)',
+          items: APP_SHORTCUTS.conflicts.map((c) => ({
+            keys: c.keys,
+            label: `« ${c.app} » : lettre déjà prise par « ${c.wins} »`,
+          })),
+        }]
+      : []),
     ...(focusedEntry && !roleMatches
       ? [{ title: `${focusedEntry.title} (autres rôles)`, items: focusedItems }]
       : []),

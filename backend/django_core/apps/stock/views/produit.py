@@ -97,11 +97,16 @@ class ProduitViewSet(CompanyScopedModelViewSet):
             # `get_permissions` prime sur le `permission_classes` de l'action,
             # donc la garde DOIT être posée ici (sinon repli IsAdminRole).
             return [PRODUIT_CREATE_PERMISSION()]
-        elif self.action in WRITE_ACTIONS + ['bulk', 'rebuter', 'decoupes']:
+        elif self.action in WRITE_ACTIONS + [
+                'bulk', 'rebuter', 'decoupes', 'photo']:
             # XSTK16 — la découpe/reconditionnement modifie le stock, même
             # garde que les autres écritures Stock (`get_permissions` prime
             # sur le `permission_classes` de l'@action, d'où ce cas explicite
             # — sinon repli IsAdminRole).
+            # APX18 — `photo` (poser/retirer la photo produit) EST une
+            # écriture catalogue : même garde `stock_modifier`. Sans ce cas
+            # explicite, elle retomberait sur IsAdminRole — un responsable
+            # stock ne pourrait plus photographier son catalogue.
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
             return [IsAdminRole()]
@@ -314,6 +319,71 @@ class ProduitViewSet(CompanyScopedModelViewSet):
         from ..services import stock_breakdown
         produit = self.get_object()
         return Response(stock_breakdown(produit))
+
+    @action(detail=True, methods=['post', 'delete'], url_path='photo')
+    def photo(self, request, *args, **kwargs):
+        """APX18 — pose (POST multipart `file`) ou retire (DELETE) LA photo.
+
+        ARC26 : le fichier n'est JAMAIS un FileField de plus — il part dans
+        MinIO par la primitive plateforme `records.Attachment` (validation par
+        octets magiques + plafond 10 Mo assurés par `records.storage`), et le
+        produit ne garde qu'un POINTEUR vers la pièce jointe canonique.
+
+        Un seul aller-retour client : téléverser ET rattacher se font ici, dans
+        la même transaction — pas de pièce jointe orpheline si le client coupe
+        entre deux appels. `get_object()` passe par le queryset scopé
+        (TenantMixin) : on ne pose jamais de photo sur le produit d'une autre
+        société.
+
+        La réponse ne contient AUCUNE donnée d'achat : elle se limite à
+        `image_url`. La photo n'entre dans aucun PDF ni sortie client.
+        """
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        # Import LOCAL : le module est résolu à l'appel, donc un test qui
+        # patche `apps.records.storage.store_attachment` est bien pris en
+        # compte (et aucun cycle d'import au chargement).
+        from apps.records.storage import delete_attachment, store_attachment
+
+        produit = self.get_object()
+        company = getattr(request.user, 'company', None)
+        ancienne = produit.photo
+
+        if request.method == 'DELETE':
+            if ancienne is None:
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            produit.photo = None
+            produit.save(update_fields=['photo'])
+            delete_attachment(ancienne.file_key)
+            ancienne.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        fichier = request.FILES.get('file')
+        if not fichier:
+            return Response({'detail': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        meta, err = store_attachment(fichier, company=company)
+        if err:
+            # Message déjà en français, issu de la primitive plateforme.
+            return Response({'detail': err},
+                            status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            piece = Attachment.objects.create(
+                company=company,
+                content_type=ContentType.objects.get_for_model(Produit),
+                object_id=produit.pk,
+                uploaded_by=request.user,
+                **meta)
+            produit.photo = piece
+            produit.save(update_fields=['photo'])
+        # Remplacer une photo ne laisse pas l'ancienne traîner dans MinIO.
+        if ancienne is not None:
+            delete_attachment(ancienne.file_key)
+            ancienne.delete()
+        return Response(
+            {'image_url':
+                f'/api/django/records/attachments/{piece.pk}/download/'},
+            status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='etiquettes',
             permission_classes=[IsAnyRole])

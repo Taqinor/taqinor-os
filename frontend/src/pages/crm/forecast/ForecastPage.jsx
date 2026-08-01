@@ -6,7 +6,12 @@
 // le total de sa ligne sans rechargement de page.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import api from '../../../api/axios'
-import { Spinner, EmptyState, Card, Button } from '../../../ui'
+import { Spinner, EmptyState, Button } from '../../../ui'
+// APX10 — l'écran rejoint le niveau des Leads : identité de module (ModuleHero
+// VX15, jusqu'ici consommé par AUCUN écran crm) et cartes à accent (VX149,
+// StatusAccentCard) au lieu de `Card` nues.
+import { ModuleHero } from '../../../ui/module'
+import StatusAccentCard from '../../../ui/StatusAccentCard'
 import { toast } from '../../../ui/confirm'
 
 const CATEGORIES = [
@@ -56,24 +61,40 @@ export default function ForecastPage() {
 
   return (
     <div className="space-y-6" data-testid="forecast-screen">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Forecast</h2>
-        <div className="flex gap-2">
+      {/* APX10 — identité CRM : un `<h2>` nu devient le hero de module, avec
+          l'accent azur du CRM (le MÊME que le cockpit et la sidebar). */}
+      <ModuleHero
+        title="Forecast"
+        subtitle="Commit, Best case et Pipeline par commercial — et le sous-total de chaque équipe"
+        accent="var(--module-accent-azur)"
+        headingAs="h2"
+        actions={(
           <input
             className="form-input"
             type="month"
+            aria-label="Période du forecast"
             value={periode}
             onChange={(e) => setPeriode(e.target.value)}
             placeholder="Période"
           />
-        </div>
-      </div>
+        )}
+      />
 
       {equipes.length === 0 ? (
         <EmptyState title="Aucune donnée de forecast" description="Aucune équipe/forecast trouvé pour ce filtre." />
       ) : (
         equipes.map((equipe) => (
-          <Card key={equipe.equipe_id} className="p-4 space-y-3" data-testid={`equipe-${equipe.equipe_id}`}>
+          // APX10 — grammaire VX149 : chaque équipe est une carte à ACCENT
+          // (liseré de couleur piloté par `--kb-accent`), plus une boîte grise
+          // de plus. `variant="compact"` : pas de curseur « grab » — ces
+          // cartes ne se glissent pas.
+          <StatusAccentCard
+            key={equipe.equipe_id}
+            accent="var(--module-accent-azur)"
+            variant="compact"
+            className="p-4 space-y-3"
+            data-testid={`equipe-${equipe.equipe_id}`}
+          >
             <div className="flex items-center justify-between">
               <h3 className="font-medium">{equipe.nom}</h3>
               {equipe.ecart_vs_objectif != null && (
@@ -112,7 +133,7 @@ export default function ForecastPage() {
               </tbody>
             </table>
             <RecategoriserInline onSubmit={recategoriser} />
-          </Card>
+          </StatusAccentCard>
         ))
       )}
     </div>

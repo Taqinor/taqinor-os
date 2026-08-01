@@ -1,5 +1,7 @@
 from rest_framework import serializers
-from .models import Role, ALL_PERMISSIONS, ELEVATED_PERMISSIONS
+from .models import (
+    ALL_PERMISSIONS, ELEVATED_PERMISSIONS, Role, est_permission_app,
+)
 
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -28,7 +30,15 @@ class RoleSerializer(serializers.ModelSerializer):
         return getattr(request, 'user', None)
 
     def validate_permissions(self, value):
-        invalid = [p for p in value if p not in ALL_PERMISSIONS]
+        # ODY26 — les codes « app visible » (``app_<clé>_voir``) sont acceptés
+        # PAR FORME et non par énumération : les lister dans ALL_PERMISSIONS
+        # les injecterait dans DIRECTEUR/ADMIN_PERMISSIONS (qui en dérivent) et
+        # y figer la liste d'apps du jour ; les énumérer ici recréerait un 2ᵉ
+        # registre d'apps côté backend, interdit par le Groupe ODY (registre
+        # unique = ``moduleConfigs`` côté front). Aucun risque d'escalade : ces
+        # codes ne donnent AUCUN droit, ils RESTREIGNENT ce que le rôle voit.
+        invalid = [p for p in value
+                   if p not in ALL_PERMISSIONS and not est_permission_app(p)]
         if invalid:
             raise serializers.ValidationError(
                 f"Permissions invalides : {invalid}"

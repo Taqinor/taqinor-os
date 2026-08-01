@@ -54,7 +54,11 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, existingDevisId = null }) {
+// EZ5 — `targetKwc` : puissance cible (kWc) demandée pour CE devis depuis la
+// fiche lead (« Devis automatique »). Optionnelle ; vide = comportement
+// historique (taille souhaitée du lead, sinon facture d'hiver). Elle n'écrit
+// RIEN sur le lead — c'est un paramètre de dimensionnement ponctuel.
+export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, existingDevisId = null, targetKwc = null }) {
   const dispatch = useDispatch()
 
   // phase: 'remise-input' | 'creating' | 'edit' | 'preview' | 'error'
@@ -149,7 +153,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
         produitsRef.current = r.data.results ?? r.data
       }
       const id = await createAutoQuote({
-        lead, produits: produitsRef.current, discountStr, dispatch,
+        lead, produits: produitsRef.current, discountStr, dispatch, targetKwc,
       })
       setDevisId(id)
       onDevisChanged?.()

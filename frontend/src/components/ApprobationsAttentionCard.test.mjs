@@ -47,7 +47,10 @@ test('Dashboard : monte la carte en lazy + Suspense, en tête (avant l’état l
 
 test('Sidebar : badge numérique sur l’item /approbations, masqué à 0/erreur/chargement', () => {
   assert.match(SIDEBAR_SRC, /import { useApprobationsCount } from '\.\.\/\.\.\/hooks\/useApprobationsCount'/)
-  assert.match(SIDEBAR_SRC, /item\.to === '\/approbations' && showApprobationsBadge/)
+  // ODY4 — la Sidebar passe désormais ses compteurs par un objet `badges`
+  // (mode immersion). Le badge VX86 est toujours câblé sur le MÊME item ;
+  // seule la forme du porteur a changé.
+  assert.match(SIDEBAR_SRC, /item\.to === '\/approbations' && badges\.showApprobationsBadge/)
   assert.match(SIDEBAR_SRC, /showApprobationsBadge = !approbationsLoading && !approbationsError && approbationsTotal > 0/)
 })
 

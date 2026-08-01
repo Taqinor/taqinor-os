@@ -2,12 +2,15 @@
 // résultats groupés par type, clic → ouvre l'enregistrement via sa route. La
 // règle métier et le périmètre société vivent côté serveur ; ici, UI seulement.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 // VX13 — ROUTE/LIST_ROUTE + recherche débouncée mutualisés avec CommandPalette
 // (⌘K) : plus aucune table dupliquée (cf. lib/search/entityRoutes.js).
-import { ROUTE, LIST_ROUTE, TYPE_ACCENT, useEntitySearch } from '../../lib/search/entityRoutes'
+import { ROUTE, LIST_ROUTE, TYPE_ACCENT, pathForType, useEntitySearch } from '../../lib/search/entityRoutes'
 import { useActiveDescendant } from '../../hooks/useActiveDescendant'
+// ODY27 — ne proposer que les types d'entités appartenant à une app INSTALLÉE
+// pour la société et AUTORISÉE pour le rôle ; ODY7 — ouvrir un résultat d'une
+// AUTRE app passe par le point d'entrée nommé, qui fait basculer la coquille.
+import { useAppVisibility, useCrossAppNavigate } from '../../lib/apps/ActiveAppContext'
 
 // Mémoire des recherches récentes (localStorage, effacée à la déconnexion).
 const RECENT_KEY = 'taqinor.search.recent'
@@ -40,7 +43,9 @@ export default function GlobalSearch() {
   const [expanded, setExpanded] = useState(false)
   const boxRef = useRef(null)
   const inputRef = useRef(null)
-  const navigate = useNavigate()
+  const navigate = useCrossAppNavigate()
+  // ODY27 — source UNIQUE de la visibilité des apps (ODY1), zéro liste locale.
+  const { isPathVisible } = useAppVisibility()
   // VX191 — `aria-activedescendant` : flécher au clavier annonçait déjà le
   // style visuel (`gs-result-active`) mais rien au lecteur d'écran.
   const { getOptionId, activeId } = useActiveDescendant(activeIndex)
@@ -64,7 +69,12 @@ export default function GlobalSearch() {
       }
     }
     const flatList = []
-    const grows = groups.map((g) => {
+    // ODY27 — un groupe dont le type appartient à une app non installée (ou
+    // interdite au rôle) est retiré AVANT l'aplatissement : il ne figure ni à
+    // l'écran, ni dans la navigation clavier, ni dans le compte de résultats.
+    // Le backend gate déjà la recherche (ARC29) ; ce filtre est la ceinture
+    // côté client, et le seul qui connaisse le rôle courant.
+    const grows = groups.filter((g) => isPathVisible(pathForType(g.type))).map((g) => {
       const results = g.results.map((r) => {
         const index = flatList.length
         flatList.push({ kind: 'result', type: g.type, id: r.id })
@@ -82,7 +92,7 @@ export default function GlobalSearch() {
       return { type: g.type, label: g.label, results, moreRow }
     })
     return { flat: flatList, recentRows: [], groupRows: grows }
-  }, [term, recent, groups])
+  }, [term, recent, groups, isPathVisible])
 
   // VX13 — la recherche elle-même vit dans useEntitySearch (débounce ~250 ms,
   // cf. lib/search/entityRoutes.js) ; ici on garde SEULEMENT les effets propres

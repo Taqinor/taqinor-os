@@ -44,6 +44,10 @@ const coreApi = {
     toggles: {
       list: () => api.get('/core/module-toggles/'),
     },
+    // ODY25 — journal d'installation : dernière bascule PAR module de la
+    // société (qui / quoi / quand / motif). Scopé société côté serveur
+    // (`request.user.company`), palier admin/responsable comme les écritures.
+    journal: () => api.get('/core/modules/journal/'),
   },
 
   // FG368 — jobs planifiés (Celery Beat), lecture + exécution manuelle admin.

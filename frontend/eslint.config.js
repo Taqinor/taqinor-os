@@ -50,6 +50,17 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  // ODY4 — `src/lib/**` est la couche LOGIQUE (hooks, contextes, helpers purs) :
+  // elle n'exporte AUCUN composant (vérifié), donc la règle fast-refresh (HMR de
+  // dev uniquement) n'a rien à y protéger. Même exception, même raison, que
+  // `src/ui/**` ci-dessus. Un composant n'a pas sa place ici : s'il en apparaît
+  // un, il doit aller dans `src/ui/` ou `src/components/`, pas désactiver plus.
+  {
+    files: ['src/lib/**/*.{js,jsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
   // Config Vitest + setup RTL : contexte Node/Vitest (pas l'app navigateur).
   {
     files: ['vitest.config.js', 'src/test/**/*.js'],

@@ -9,6 +9,9 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { Table } from '../reporting/Table'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -53,12 +56,19 @@ export default function ListesPrixPage() {
 
   return (
     <div className="ui-root page">
-      <div className="page-header flex items-center justify-between" style={{ marginBottom: '1.25rem' }}>
-        <h2>Listes de prix</h2>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="size-4" /> Nouvelle liste
-        </Button>
-      </div>
+      {/* APX11 — en-tête unique VX28 + accent Ventes. */}
+      <PageHeader
+        style={VENTES_ACCENT_STYLE}
+        className="app-accent-rail"
+        icon={Tags}
+        title="Listes de prix"
+        subtitle="Tarifs négociés par client"
+        actions={(
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" /> Nouvelle liste
+          </Button>
+        )}
+      />
 
       {error && (
         <div className="mb-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
