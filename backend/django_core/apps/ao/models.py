@@ -708,6 +708,16 @@ class ToitureAO(TenantModel):
         verbose_name_plural = 'Toitures (AO)'
         db_table = 'ao_toiture'
         ordering = ['batiment', 'code_document', 'id']
+        constraints = [
+            # Le code de planche identifie la toiture DANS son bâtiment : deux
+            # « 05H » sur le même bâtiment rendraient le cartouche et le report
+            # des quantités indécidables. Partielle, car le code reste
+            # facultatif : les toitures encore sans code ne se gênent pas.
+            models.UniqueConstraint(
+                fields=['batiment', 'code_document'],
+                condition=~models.Q(code_document=''),
+                name='uniq_toiture_code_document'),
+        ]
         indexes = [models.Index(fields=['company', 'batiment'])]
 
     def __str__(self):
@@ -1098,6 +1108,17 @@ class ObstacleAO(TenantModel):
         verbose_name_plural = 'Obstacles de toiture (AO)'
         db_table = 'ao_obstacle'
         ordering = ['toiture', 'repere', 'id']
+        constraints = [
+            # Le repère EST la clé naturelle d'un obstacle sur sa toiture :
+            # l'import de relevé s'en sert déjà pour être idempotent (AOF30,
+            # ``imports.importer_obstacles``). Sans contrainte, deux imports
+            # concurrents créaient deux « A » jumeaux sur la même toiture.
+            # Partielle : un obstacle sans repère reste permis en nombre.
+            models.UniqueConstraint(
+                fields=['toiture', 'repere'],
+                condition=~models.Q(repere=''),
+                name='uniq_obstacle_repere_par_toiture'),
+        ]
         indexes = [
             models.Index(fields=['company', 'toiture']),
             models.Index(fields=['company', 'provenance']),
@@ -1938,6 +1959,16 @@ class BordereauPrix(TenantModel):
         verbose_name_plural = 'Bordereaux des prix (BOQ)'
         db_table = 'compta_bordereauprix'
         ordering = ['-date_creation']
+        constraints = [
+            # « Deux bordereaux d'indices différents ne sont JAMAIS le même
+            # document » — l'inverse est vrai aussi : même intitulé + même
+            # indice = le MÊME document. Deux jumeaux sous le même indice sont
+            # exactement le « fichier frère périmé » que le contrôle de
+            # cohérence traque déjà.
+            models.UniqueConstraint(
+                fields=['appel_offre', 'intitule', 'indice_revision'],
+                name='uniq_bordereau_intitule_indice'),
+        ]
 
     def __str__(self):
         return f'BOQ {self.intitule} ({self.appel_offre.reference})'
@@ -2153,6 +2184,15 @@ class LigneBordereau(TenantModel):
         verbose_name_plural = 'Lignes de bordereau'
         db_table = 'compta_lignebordereau'
         ordering = ['bordereau', 'numero']
+        constraints = [
+            # Le n° de ligne EST la clé métier d'une ligne dans son bordereau :
+            # le contrôle AO_NUMEROTATION_BORDEREAU exige déjà une numérotation
+            # contiguë 1..N, qu'un doublon rendrait impossible. Même forme que
+            # ``uniq_section_bordereau_numero`` un cran au-dessus.
+            models.UniqueConstraint(
+                fields=['bordereau', 'numero'],
+                name='uniq_ligne_bordereau_numero'),
+        ]
 
     def __str__(self):
         return f'{self.numero}. {self.designation}'

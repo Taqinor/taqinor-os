@@ -332,13 +332,17 @@ def semer(company):
                 })
             compteurs['obstacles'] += 1
 
+        # La clé métier d'une variante N'EST PAS son nom (le moteur nomme
+        # « Calepinage 05H » toutes les variantes d'une même toiture) : c'est
+        # « LA retenue de cette toiture », l'unique déjà gravé en base par
+        # ``uniq_variante_retenue_par_toiture``.
         VarianteCalepinage.objects.update_or_create(
-            company=company, toiture=toiture, nom='Variante retenue (démo)',
+            company=company, toiture=toiture, est_retenue=True,
             defaults={
+                'nom': 'Variante retenue (démo)',
                 'appel_offre': appel_offre,
                 'role': VarianteCalepinage.Role.RETENUE,
                 'statut': VarianteCalepinage.Statut.CALCULEE,
-                'est_retenue': True,
                 'resultat': {'total_modules': golden['compte_temoin']},
                 'preuve': {
                     'total_retenu': golden['compte_temoin'],
@@ -361,16 +365,21 @@ def _semer_bordereau(company, appel_offre, documents):
     à un maître d'ouvrage n'a jamais porté autre chose. Aucun ``prix_achat``,
     aucune marge, aucun bénéfice n'entre ici (règle produit gravée).
     """
+    # L'indice de révision FAIT partie de la clé : un bordereau se cherche par
+    # « intitulé + indice », jamais par le seul intitulé (deux indices ne sont
+    # jamais le même document) — c'est l'unique gravé en base.
     bordereau, _ = BordereauPrix.objects.get_or_create(
         company=company, appel_offre=appel_offre,
-        intitule='Bordereau des prix — DÉMONSTRATION')
+        intitule='Bordereau des prix — DÉMONSTRATION', indice_revision='A')
     for numero, (_f, code, _d, _forme, document) in enumerate(documents, 1):
+        # La clé d'une ligne est son N° dans le bordereau (numérotation
+        # contiguë exigée par AO_NUMEROTATION_BORDEREAU), pas sa désignation :
+        # deux postes peuvent légitimement porter le même libellé.
         LigneBordereau.objects.update_or_create(
-            company=company, bordereau=bordereau,
-            designation='Bâtiment %s — fourniture et pose de modules PV'
-                        % code,
+            company=company, bordereau=bordereau, numero=numero,
             defaults={
-                'numero': numero,
+                'designation': 'Bâtiment %s — fourniture et pose de modules PV'
+                               % code,
                 # La quantité EST l'engagement du golden — jamais un chiffre
                 # tapé ici : c'est l'invariant « quantités du bordereau =
                 # engagements portés sur les planches ».
