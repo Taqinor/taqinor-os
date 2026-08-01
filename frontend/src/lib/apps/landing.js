@@ -38,4 +38,30 @@ export function resolveLandingFromAuth(auth) {
   return resolveLandingPath(moduleConfigs, getLastModuleSegment(), { apps })
 }
 
+/**
+ * ODY34 — landingApresBasculeSociete : où atterrir APRÈS un changement de
+ * société active. On ne peut pas encore connaître les apps de la nouvelle
+ * société (ses `modules_desactives` n'arriveront qu'au prochain `/auth/me/`),
+ * donc pas d'exception mono-app ici ; et le « dernier module visité » (VX11)
+ * est DÉLIBÉRÉMENT ignoré — il appartient à la société qu'on vient de quitter.
+ * Reste : la préférence d'atterrissage VX46 si elle est renseignée, sinon le
+ * Menu d'accueil.
+ */
+export function landingApresBasculeSociete() {
+  return resolveLandingPath(moduleConfigs, '')
+}
+
+/**
+ * rechargerVers — navigation par CHARGEMENT COMPLET du document (pas une
+ * navigation react-router) : après une bascule de société il faut re-amorcer
+ * toute l'application pour que plus AUCUNE donnée de l'ancienne entité ne
+ * subsiste à l'écran. Isolé ici pour rester testable (jsdom interdit de
+ * remplacer `window.location`).
+ */
+export function rechargerVers(path) {
+  try {
+    window.location.assign(path)
+  } catch { /* environnement sans navigation (tests, SSR) : sans effet */ }
+}
+
 export default resolveLandingFromAuth
