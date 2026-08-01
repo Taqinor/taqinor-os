@@ -2639,3 +2639,124 @@ class SectionMemoire(TenantModel):
 
     def __str__(self):
         return f'{self.code} — {self.titre}'
+
+
+# ── AOF118 — ``EquipementAO`` : string-FK catalogue + SNAPSHOT figé ────────
+
+class EquipementAO(TenantModel):
+    """Un équipement engagé par le dossier, avec son SNAPSHOT figé (AOF118).
+
+    Pourquoi un snapshot. Le catalogue produit est re-seedé régulièrement
+    (prix, archivage de placeholders, fiches). **Sans snapshot, un re-seed
+    ferait bouger la désignation d'un matériel dans un dossier DÉJÀ DÉPOSÉ** —
+    la version numérique du « fichier frère périmé », le défaut n°1 de la
+    session réelle. La désignation, la marque, la référence constructeur et les
+    caractéristiques sont donc COPIÉES au moment de l'engagement et ne bougent
+    plus jamais toutes seules ; seule une bascule d'équipement NOMMÉE (AOF141)
+    les change, en une transaction.
+
+    Pourquoi une string-FK. ``produit`` pointe ``'stock.Produit'`` par CHAÎNE :
+    le contrat import-linter ``ao-models-decoupled`` interdit les IMPORTS de
+    ``apps.stock.models``, pas les FK par chaîne — et une FK vaut mieux qu'un
+    entier opaque (intégrité référentielle, ``PROTECT`` contre la suppression
+    d'un produit encore engagé). Toute lecture d'ATTRIBUT du produit passe par
+    ``apps.stock.selectors``, jamais par un import de ses modèles.
+
+    Aucun champ de COÛT ici : ni ``prix_achat``, ni marge, ni bénéfice.
+    L'économie vit dans une table SÉPARÉE derrière ``ao_rentabilite_voir``.
+    """
+
+    class Role(models.TextChoices):
+        MODULE = 'module', 'Module photovoltaïque'
+        ONDULEUR = 'onduleur', 'Onduleur'
+        BATTERIE = 'batterie', 'Batterie / stockage'
+        COFFRET_DC = 'coffret_dc', 'Coffret DC'
+        COFFRET_AC = 'coffret_ac', 'Coffret AC'
+        TGPV = 'tgpv', 'TGPV'
+        CABLE = 'cable', 'Câble'
+        STRUCTURE = 'structure', 'Structure de pose'
+        EMS = 'ems', 'EMS / supervision'
+        STATION_METEO = 'station_meteo', 'Station météo'
+        AFFICHEUR = 'afficheur', 'Afficheur'
+        VARIATEUR = 'variateur', 'Variateur'
+
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: equipement fils d'un AO : aucune existence hors de son appel d'offres
+        related_name='equipements',
+        verbose_name="Appel d'offres",
+    )
+    batiment = models.ForeignKey(
+        BatimentAO,
+        on_delete=models.CASCADE,  # on_delete: equipement affecte a un batiment : suit sa suppression
+        null=True, blank=True,
+        related_name='equipements', verbose_name='Bâtiment',
+    )
+    role = models.CharField(
+        max_length=14, choices=Role.choices, verbose_name='Rôle')
+    #: String-FK vers le catalogue — AUTORISÉE (le contrat interdit les
+    #: IMPORTS de ``apps.stock.models``, pas les FK par chaîne). ``PROTECT`` :
+    #: un produit engagé dans un dossier ne se supprime pas en silence.
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.PROTECT,  # on_delete: un produit engage dans un dossier depose ne se supprime jamais
+        null=True, blank=True,
+        related_name='equipements_ao', verbose_name='Produit du catalogue',
+    )
+
+    # ── SNAPSHOT FIGÉ (copié à l'engagement, jamais recalculé) ────────────
+    designation = models.CharField(
+        max_length=255, verbose_name='Désignation (figée)')
+    marque = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Marque (figée)')
+    reference_constructeur = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Référence constructeur (figée)')
+    caracteristiques = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Caractéristiques (figées)')
+    quantite = models.DecimalField(
+        max_digits=12, decimal_places=3, default=Decimal('0.000'),
+        verbose_name='Quantité')
+    unite = models.CharField(
+        max_length=20, blank=True, default='U', verbose_name='Unité')
+    #: Fiche technique constructeur — via ``records.Attachment`` (aucun
+    #: nouveau ``FileField`` : le garde plateforme gèle ce fichier).
+    fiche_technique = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='equipements_ao', verbose_name='Fiche technique')
+    #: Traçabilité d'une bascule : le NOUVEL équipement pointe l'ANCIEN.
+    remplace = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='remplace_par', verbose_name='Remplace')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    #: Horodatage du gel du snapshot — ce que le dossier a VU du catalogue.
+    snapshot_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Snapshot figé le')
+
+    class Meta:
+        verbose_name = 'Équipement engagé (AO)'
+        verbose_name_plural = 'Équipements engagés (AO)'
+        db_table = 'ao_equipement'
+        ordering = ['appel_offre', 'role', 'id']
+        indexes = [
+            models.Index(fields=['company', 'appel_offre', 'role']),
+            models.Index(fields=['company', 'actif']),
+        ]
+
+    def __str__(self):
+        return f'{self.get_role_display()} — {self.designation}'
+
+    @property
+    def puissance_totale_w(self):
+        """Puissance cumulée, DÉRIVÉE du snapshot (None si non renseignée).
+
+        Lit ``caracteristiques['puissance_w']`` — une caractéristique FIGÉE :
+        un re-seed du catalogue ne peut donc pas déplacer la puissance d'un
+        dossier déjà déposé.
+        """
+        puissance = (self.caracteristiques or {}).get('puissance_w')
+        if puissance in (None, ''):
+            return None
+        return Decimal(str(puissance)) * (self.quantite or Decimal('0'))

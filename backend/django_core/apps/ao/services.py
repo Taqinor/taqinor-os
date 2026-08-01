@@ -1140,3 +1140,123 @@ def _journaliser_dossier(dossier, ancien, nouveau, user, motif):
         old_value=libelles.get(ancien, ancien),
         new_value=libelles.get(nouveau, nouveau),
         body=motif or '', company=dossier.company)
+
+
+# ── AOF118 — Équipements engagés : SNAPSHOT figé du catalogue ──────────────
+#
+# Le catalogue est re-seedé régulièrement. Un dossier DÉPOSÉ ne doit jamais
+# voir sa désignation bouger sous lui : on COPIE ce que le catalogue disait au
+# moment de l'engagement, une fois, et on n'y revient plus.
+#
+# Les attributs du produit sont lus par ``apps.stock.selectors`` UNIQUEMENT —
+# jamais par un import de ``apps.stock.models`` (contrat import-linter
+# ``ao-models-decoupled`` + règle de frontière cross-app).
+
+#: Caractéristiques du catalogue reportées dans le snapshot. Le COÛT
+#: (``prix_achat``) en est DÉLIBÉRÉMENT absent : il ne sort jamais d'un
+#: équipement d'AO, qui alimente des pièces remises au maître d'ouvrage.
+CARACTERISTIQUES_SNAPSHOT = (
+    'garantie', 'garantie_mois', 'garantie_production_mois',
+    'pompe_cv', 'hmt_m', 'debit_m3j', 'tension_v', 'pompe_kw',
+)
+
+
+def snapshot_produit(company, produit_id):
+    """Instantané FIGÉ d'un produit du catalogue (lecture via selectors).
+
+    Renvoie un dict ``{designation, marque, reference_constructeur,
+    caracteristiques}``. Produit introuvable → dict vide (l'appelant garde ses
+    valeurs saisies à la main : un équipement hors catalogue reste légitime).
+    """
+    from apps.stock import selectors as stock_selectors
+
+    produit = stock_selectors.get_produit_scoped(company, produit_id)
+    if produit is None:
+        return {}
+    caracteristiques = {}
+    for champ in CARACTERISTIQUES_SNAPSHOT:
+        valeur = getattr(produit, champ, None)
+        if valeur in (None, ''):
+            continue
+        caracteristiques[champ] = str(valeur)
+    if getattr(produit, 'description', None):
+        caracteristiques['description'] = produit.description
+    return {
+        'designation': produit.nom,
+        'marque': produit.marque or '',
+        'reference_constructeur': produit.sku or '',
+        'caracteristiques': caracteristiques,
+    }
+
+
+def engager_equipement(appel_offre, *, role, produit_id=None, quantite=None,
+                       batiment=None, caracteristiques=None, user=None,
+                       **champs):
+    """Engage un équipement dans le dossier en FIGEANT son snapshot (AOF118).
+
+    Le snapshot est pris UNE fois, à l'engagement. Un re-seed du catalogue
+    (prix, archivage, fiche) ne le touche plus : c'est ce qui rend un dossier
+    déposé opposable.
+    """
+    from django.utils import timezone
+
+    from .models import EquipementAO
+
+    company = appel_offre.company
+    donnees = dict(champs)
+    if produit_id:
+        donnees.update(snapshot_produit(company, produit_id))
+    if caracteristiques:
+        fusion = dict(donnees.get('caracteristiques') or {})
+        fusion.update(caracteristiques)
+        donnees['caracteristiques'] = fusion
+    donnees.setdefault('designation', '')
+    equipement = EquipementAO.objects.create(
+        company=company, appel_offre=appel_offre, batiment=batiment,
+        role=role, produit_id=produit_id or None,
+        quantite=quantite if quantite is not None else Decimal('0.000'),
+        snapshot_le=timezone.now(), **donnees)
+    _journaliser_equipement(equipement, user)
+    return equipement
+
+
+def _journaliser_equipement(equipement, user):
+    """Trace l'engagement au chatter générique ``records`` (best-effort)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        equipement.appel_offre, Activity.Kind.MODIFICATION, user=user,
+        field='equipement', field_label='Équipement engagé',
+        old_value='', new_value=str(equipement),
+        company=equipement.company)
+
+
+def aligner_quantite_modules(appel_offre, *, user=None):
+    """Aligne la quantité de MODULES sur les variantes RETENUES (AOF118).
+
+    La quantité de modules du dossier n'est pas une saisie : c'est la somme
+    des engagements portés par les variantes retenues de chaque toiture. Un
+    écart entre les deux est précisément ce que le contrôleur de cohérence
+    (AOF146) doit voir.
+
+    Renvoie ``(quantite_alignee, equipements_touches)``.
+    """
+    from .models import EquipementAO, VarianteCalepinage
+
+    total = 0
+    retenues = VarianteCalepinage.objects.filter(
+        company=appel_offre.company, appel_offre=appel_offre,
+        est_retenue=True)
+    for variante in retenues:
+        total += int(variante.total_modules or 0)
+    touches = 0
+    for equipement in EquipementAO.objects.filter(
+            company=appel_offre.company, appel_offre=appel_offre,
+            role=EquipementAO.Role.MODULE, actif=True):
+        if equipement.quantite == Decimal(total):
+            continue
+        equipement.quantite = Decimal(total)
+        equipement.save(update_fields=['quantite', 'updated_at'])
+        touches += 1
+    return Decimal(total), touches
