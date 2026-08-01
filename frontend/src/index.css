@@ -9206,3 +9206,89 @@ textarea.form-control {
   font-size: 0.62rem;
   line-height: 1.25;
 }
+
+/* ===========================================================================
+   APX4 — LES 6 ETAPES DU FUNNEL VISIBLES : colonnes fluides 204 px + plein
+   ecran board.
+   ---------------------------------------------------------------------------
+   Etat verifie : `.kb-col { flex: 0 0 272px }` (:4763) + gap 12 (:4742). A
+   272 px fixes, 6 colonnes + 5 gouttieres reclament 1692 px de zone utile :
+   la 6e etape (COLD) tombait hors champ presque partout.
+
+   FIX = l'equivalent flex EXACT de `minmax(204px, 1fr)` :
+     flex: 1 1 204px + min-width: 204px, sur un board `nowrap`.
+   Au-dessus du seuil (6x204 + 5x12 = 1284 px utiles) les 6 colonnes se
+   PARTAGENT la largeur ; en dessous elles s'arretent a 204 px et le board
+   reprend EXACTEMENT son comportement actuel (scroll horizontal + drag-to-pan
+   LB11), rien d'autre ne change.
+
+   Arithmetique honnete : 1440 sidebar repliee -> ~1288 utiles -> 6/6 ok ;
+   1920 sidebar depliee -> 6/6 ok ; 1366 depliee reste a 4-5 colonnes (assume,
+   d'ou le pan LB11 et le bouton plein ecran ci-dessous).
+
+   Scope `.lp-page[data-view]` : `.kb-col` est partage avec Installations et
+   Interventions. `:not(.kb-col-collapsed)` : une colonne repliee reste le
+   rail de 44 px de LB10.
+   =========================================================================== */
+.lp-page[data-view] .kb-col:not(.kb-col-collapsed) {
+  flex: 1 1 204px;
+  min-width: 204px;
+}
+/* Palier iPad paysage de VX183(a) (900-1024px, colonnes a 150px) : conserve —
+   en dessous du seuil, l'ancien comportement prime. */
+@media (max-width: 1024px) and (min-width: 900px) {
+  .lp-page[data-view] .kb-col:not(.kb-col-collapsed) {
+    flex: 1 1 150px;
+    min-width: 150px;
+  }
+}
+
+/* ---- Bouton « plein ecran » de la zone de vue ---- */
+.lp-fullscreen-btn {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--card);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.lp-page[data-view] > .lp-view-area { position: relative; }
+@media (hover: hover) {
+  .lp-fullscreen-btn:hover { opacity: 1; color: var(--foreground); }
+}
+.lp-fullscreen-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  opacity: 1;
+}
+.lp-fullscreen-btn[aria-pressed='true'] {
+  opacity: 1;
+  color: var(--foreground);
+  border-color: color-mix(in srgb, var(--module-accent-azur) 45%, transparent);
+}
+
+/* ---- Le mode plein ecran lui-meme ----
+   La page devient un calque qui couvre le shell : toute la largeur de la
+   sidebar ET du header revient au board. On ne touche PAS a la preference
+   globale de sidebar (`taqinor.sidebar.collapsed`, propriete de Layout.jsx) —
+   ce mode est local a l'ecran leads et reversible (bouton ou Echap). */
+.lp-page--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--background);
+  overflow: hidden;
+}

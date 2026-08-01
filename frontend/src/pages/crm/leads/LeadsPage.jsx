@@ -6,7 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 // VX45 — ⚡/🔀 (emoji fonctionnels, rendu variable selon l'OS) remplacés par
 // Zap/GitMerge (GitMerge = même icône que la section « Doublons » de
 // LeadForm.jsx, features/crm/stages : un seul vocabulaire visuel).
-import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge } from 'lucide-react'
+import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge, Maximize2, Minimize2 } from 'lucide-react'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import StateBlock from '../../../components/StateBlock'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
@@ -74,6 +74,9 @@ const ForecastView = lazy(() => import('./views/ForecastView'))  // XSAL15
 
 const VIEW_KEY = 'taqinor.leads.view'
 const FILTERS_KEY = 'taqinor.leads.filters'
+// APX4 — « plein écran board » : préférence PROPRE à l'écran leads (jamais la
+// préférence globale de sidebar, qui appartient au shell).
+const BOARD_FULLSCREEN_KEY = 'taqinor.leads.boardFullscreen'
 
 // LB49 — filtres persistés en SESSIONSTORAGE (plus localStorage) : l'état
 // survit aux allers-retours vers d'autres modules DANS la session ; une
@@ -175,6 +178,43 @@ export default function LeadsPage() {
   useEffect(() => {
     try { sessionStorage.setItem(VIEW_KEY, view) } catch { /* stockage indisponible */ }
   }, [view])
+
+  /* APX4 — « ⛶ Plein écran board ».
+     -------------------------------------------------------------------------
+     Objectif : rendre les 6 étapes du funnel (STAGES.py) visibles d'un regard
+     en donnant TOUTE la largeur utile au board. L'intention du plan était de
+     replier la sidebar via `COLLAPSE_KEY` ; ce n'est PAS atteignable depuis
+     cet écran : `collapsed` est un `useState` LOCAL de `Layout.jsx` (lu une
+     seule fois au montage) et `Layout.jsx` appartient à une autre lane — y
+     écrire la clé en douce ne rafraîchirait rien ET écraserait la préférence
+     GLOBALE de sidebar de l'utilisateur pour tout l'ERP. On obtient donc le
+     même résultat, en mieux et sans couplage : la page passe en calque plein
+     écran (`.lp-page--fullscreen`), ce qui libère la largeur de la sidebar ET
+     celle du header. Préférence propre à l'écran leads, réversible, jamais
+     globale. */
+  const [boardFullscreen, setBoardFullscreen] = useState(() => {
+    try { return localStorage.getItem(BOARD_FULLSCREEN_KEY) === '1' } catch { return false }
+  })
+  const toggleBoardFullscreen = useCallback(() => {
+    setBoardFullscreen((v) => {
+      const next = !v
+      try { localStorage.setItem(BOARD_FULLSCREEN_KEY, next ? '1' : '0') } catch { /* no-op */ }
+      return next
+    })
+  }, [])
+  // Échap sort du plein écran (attente universelle d'un mode plein écran) —
+  // écouteur monté UNIQUEMENT quand le mode est actif.
+  useEffect(() => {
+    if (!boardFullscreen) return undefined
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        setBoardFullscreen(false)
+        try { localStorage.setItem(BOARD_FULLSCREEN_KEY, '0') } catch { /* no-op */ }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [boardFullscreen])
 
   // Filtres partagés par les quatre vues — persistés en localStorage (comme la
   // vue active) pour survivre à un rechargement de page.
@@ -728,7 +768,10 @@ export default function LeadsPage() {
     // LB2 — `data-view` pilote le contrat CSS de hauteur (index.css) : le
     // scrolleur change de propriétaire selon la vue active (board/liste vs
     // page-grow), sans dupliquer la logique en JS.
-    <div className="page lp-page" data-view={view}>
+    <div
+      className={`page lp-page${boardFullscreen ? ' lp-page--fullscreen' : ''}`}
+      data-view={view}
+    >
       {/* LB43 (retour fondateur) — UNE ligne de contrôle façon Odoo (anatomie
           vérifiée à la source : boutons d'action → titre → recherche+facettes
           → navigation) : titre+compteur, la barre recherche/facettes/Filtres
@@ -926,6 +969,24 @@ export default function LeadsPage() {
       {/* VX187 — atténuation discrète pendant que React rattrape le filtre
           différé (jamais sur l'input lui-même, seulement la liste rendue). */}
       <div className="lp-view-area" style={isFiltersStale ? { opacity: 0.6 } : undefined}>
+        {/* APX4 — « ⛶ Plein écran » : libère la largeur de la sidebar ET du
+            header pour que les 6 étapes du funnel (STAGES.py) tiennent d'un
+            regard. Masqué au téléphone (le plein écran y est déjà l'état
+            naturel et la place est trop précieuse pour un bouton de plus). */}
+        {!isMobile && (
+          <button
+            type="button"
+            className="lp-fullscreen-btn"
+            aria-pressed={boardFullscreen}
+            title={boardFullscreen ? 'Quitter le plein écran (Échap)' : 'Plein écran — tout le funnel d’un regard'}
+            aria-label={boardFullscreen ? 'Quitter le plein écran' : 'Plein écran'}
+            onClick={toggleBoardFullscreen}
+          >
+            {boardFullscreen
+              ? <Minimize2 size={15} aria-hidden="true" />
+              : <Maximize2 size={15} aria-hidden="true" />}
+          </button>
+        )}
         {/* LB27 — trois paliers, jamais deux affichés ensemble (blueprint
             I9) : 0-300ms rien (le contenu réel, encore vide, ne flashe pas
             à cette échelle) ; 300-500ms un spinner discret ; ≥500ms le

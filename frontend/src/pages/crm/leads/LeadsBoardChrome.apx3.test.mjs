@@ -32,7 +32,12 @@ const blocApx3 = () => {
   // On repart de l'OUVERTURE du commentaire d'en-tete : sinon le stripper de
   // commentaires ci-dessous verrait un `*/` orphelin et laisserait passer la
   // prose (qui CITE les regles LB33 qu'on affirme ne pas redefinir).
-  return CSS.slice(CSS.lastIndexOf('/*', i))
+  const debut = CSS.lastIndexOf('/*', i)
+  // ... et on s'ARRETE au bandeau du bloc suivant : sinon ce fichier auditerait
+  // le CSS des taches d'apres (APX4 et suivantes), qui ont leurs propres
+  // regles de scope.
+  const suivant = CSS.indexOf('/* ====', i)
+  return suivant > -1 ? CSS.slice(debut, suivant) : CSS.slice(debut)
 }
 /** Le bloc APX3 SANS ses commentaires — les assertions « ne redefinit pas X »
     doivent porter sur les declarations, pas sur la prose qui cite LB33. */
@@ -40,7 +45,7 @@ const declarationsApx3 = () => blocApx3().replace(/\/\*[\s\S]*?\*\//g, '')
 
 test('APX3 : le discriminant [data-view] n\'existe QUE sur LeadsPage', () => {
   // C'est CE fait qui rend le scoping sur, et il doit rester vrai.
-  assert.match(LEADS, /className="page lp-page" data-view=\{view\}/)
+  assert.match(LEADS, /className=\{`page lp-page\$\{[^`]*\}`\}\s*\n?\s*data-view=\{view\}/)
 })
 
 test('APX3 : toute regle du bloc est scopee au board LEADS (jamais aux 3 autres .lp-page)', () => {
