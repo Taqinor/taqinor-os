@@ -60,7 +60,7 @@ vi.mock('react-router-dom', async () => {
 
 import HomeMenu from './HomeMenu'
 import { filtrerApps, grouperApps, normalise } from '../../lib/apps/appSearch'
-import { PINNED_KEY, RECENT_KEY } from '../../lib/apps/appPrefs'
+import { PINNED_KEY, RECENT_KEY, ORDER_KEY, applyOrder } from '../../lib/apps/appPrefs'
 
 function renderHome({ role = 'admin', permissions = [], modulesDesactives = [] } = {}) {
   const store = configureStore({
@@ -118,6 +118,14 @@ describe('ODY2 — HomeMenu (fonctions pures)', () => {
     expect(sections).toHaveLength(1)
     expect(sections[0].id).toBe('resultats')
     expect(sections[0].apps.map((a) => a.key)).toEqual(['ventes'])
+  })
+
+  // ODY13 — l'ordre personnel : jamais une app perdue parce qu'elle manque à
+  // un ordre enregistré il y a six mois.
+  it('applyOrder : réordonne, et met les apps inconnues de l’ordre à la fin', () => {
+    expect(applyOrder(APPS, ['rh', 'crm']).map((a) => a.key)).toEqual(['rh', 'crm', 'ventes'])
+    expect(applyOrder(APPS, []).map((a) => a.key)).toEqual(['crm', 'ventes', 'rh'])
+    expect(applyOrder(APPS, ['inconnue']).map((a) => a.key)).toEqual(['crm', 'ventes', 'rh'])
   })
 })
 
@@ -211,12 +219,45 @@ describe('ODY2 — HomeMenu (rendu)', () => {
     expect(JSON.parse(window.localStorage.getItem(RECENT_KEY))).toEqual(['crm'])
   })
 
-  it('l’étoile et la tuile sont des boutons FRÈRES (aucun contrôle imbriqué)', () => {
+  it('tuile, étoile et poignée sont des boutons FRÈRES (aucun contrôle imbriqué)', () => {
     renderHome()
     const cellule = celluleDe('CRM')
     const boutons = within(cellule).getAllByRole('button')
-    expect(boutons).toHaveLength(2)
-    expect(boutons[0].contains(boutons[1])).toBe(false)
+    // ODY13 — trois contrôles : ouvrir, favori, déplacer.
+    expect(boutons).toHaveLength(3)
+    boutons.forEach((a) => boutons.forEach((b) => {
+      if (a !== b) expect(a.contains(b)).toBe(false)
+    }))
+  })
+
+  it('ODY13 — chaque cellule porte une poignée de déplacement nommée', () => {
+    renderHome()
+    expect(screen.getByRole('button', { name: 'Déplacer CRM' })).toBeInTheDocument()
+  })
+
+  it('ODY13 — en recherche, plus de poignée : on ne réordonne pas une vue filtrée', () => {
+    renderHome()
+    fireEvent.change(
+      screen.getByRole('searchbox', { name: /Rechercher une application/ }),
+      { target: { value: 'vent' } },
+    )
+    expect(screen.queryByRole('button', { name: /^Déplacer/ })).not.toBeInTheDocument()
+  })
+
+  it('ODY13 — un ordre personnel enregistré gouverne la grille', () => {
+    window.localStorage.setItem(ORDER_KEY, JSON.stringify(['ventes', 'crm']))
+    renderHome()
+    const labels = screen.getAllByRole('listitem').map((n) => n.textContent)
+    expect(labels[0]).toContain('Ventes')
+    expect(labels[1]).toContain('CRM')
+  })
+
+  it('ODY13 — une app absente de l’ordre enregistré reste visible, à la fin', () => {
+    window.localStorage.setItem(ORDER_KEY, JSON.stringify(['ventes']))
+    renderHome()
+    const labels = screen.getAllByRole('listitem').map((n) => n.textContent)
+    expect(labels[0]).toContain('Ventes')
+    expect(labels.join('|')).toContain('CRM')
   })
 
   it('favoris : l’étoile écrit LA clé partagée VX9/VX10, jamais une seconde', () => {

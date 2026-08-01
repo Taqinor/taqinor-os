@@ -20,6 +20,9 @@ import { useNavigate } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../../ui/Dialog'
 import useInstalledApps from '../../lib/apps/useInstalledApps'
+// ODY13 — l'ordre personnel de la grille (clé partagée `lib/apps/appPrefs.js`)
+// s'applique aussi ici : lanceur et Menu d'accueil affichent le MÊME ordre.
+import { readOrder, applyOrder } from '../../lib/apps/appPrefs'
 import AppIcon from '../../ui/AppIcon'
 import { prefetchRoute } from '../../router/prefetchMap'
 import { isTypingTarget } from '../../providers/shortcuts'
@@ -81,12 +84,18 @@ export default function AppLauncher() {
   const [open, setOpen] = useState(false)
   const [pinned, setPinned] = useState([])
   const [recent, setRecent] = useState([])
+  // ODY13 — ordre personnel de la grille (relu à chaque ouverture, comme les
+  // favoris/récents : l'utilisateur a pu réordonner depuis le Menu d'accueil).
+  const [order, setOrder] = useState(readOrder)
   const navigate = useNavigate()
   const gPendingRef = useRef(false)
   const gTimerRef = useRef(null)
 
   // ODY1 — source unique « mes apps » (registre ∩ modules actifs ∩ rôle).
-  const entries = useInstalledApps()
+  // ODY13 — appliquée dans l'ORDRE PERSONNEL de la grille (même clé
+  // localStorage) : le lanceur et le Menu d'accueil ne divergent jamais.
+  const installees = useInstalledApps()
+  const entries = useMemo(() => applyOrder(installees, order), [installees, order])
   const entryByKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries])
 
   // Relit favoris/récents à CHAQUE ouverture (repli défensif — VX10 peut
@@ -98,6 +107,7 @@ export default function AppLauncher() {
     setWasOpen(true)
     setPinned(readPinnedModules())
     setRecent(readRecentModules())
+    setOrder(readOrder())
   } else if (!open && wasOpen) {
     setWasOpen(false)
   }

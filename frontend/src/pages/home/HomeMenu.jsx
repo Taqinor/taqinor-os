@@ -9,21 +9,122 @@
 //     un 2ᵉ registre, jamais un filtrage recopié ;
 //   • favoris = LA clé partagée VX9/VX10 (`lib/apps/appPrefs.js`), jamais une
 //     2ᵉ clé localStorage ; récents = 3 max, même clé que le lanceur VX9 ;
-//   • AUCUN fetch bloquant : tout vient du bootstrap `/auth/me/` + du registre
-//     (les badges vivants ODY10 se posent PAR-DESSUS, sans retarder la grille) ;
+//   • AUCUN fetch bloquant : tout vient du bootstrap `/auth/me/` + du registre ;
 //   • type-ahead à la Odoo : taper filtre, Entrée ouvre la première, ↑↓←→
-//     naviguent, Échap efface (et rend le focus au champ) ;
+//     naviguent, Échap efface (ODY2) ;
+//   • préchargement au survol/focus via la table EXISTANTE `prefetchMap.js`
+//     (ODY12) et transition de vue à l'entrée (ODY11) ;
+//   • réordonnancement au glisser avec `@dnd-kit/core` SEUL, poignée dédiée
+//     donc accessible au clavier (ODY13) ;
 //   • fond signature « Lumière sur Nuit » : halo brass ≤8 % sur la surface —
 //     seul écran autorisé au dégradé avec ModuleHero (contrainte VXD).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Star } from 'lucide-react'
+import {
+  DndContext, KeyboardSensor, PointerSensor, TouchSensor,
+  closestCenter, useDraggable, useDroppable, useSensor, useSensors,
+} from '@dnd-kit/core'
+import { GripVertical, Search, Star } from 'lucide-react'
 import useInstalledApps from '../../lib/apps/useInstalledApps'
-import { readPinned, writePinned, readRecent, pushRecent } from '../../lib/apps/appPrefs'
+import {
+  readPinned, writePinned, readRecent, pushRecent, readOrder, writeOrder, applyOrder,
+} from '../../lib/apps/appPrefs'
 import { normalise, grouperApps } from '../../lib/apps/appSearch'
 import AppIcon from '../../ui/AppIcon'
 import { runAppTransition, marquerIconeSortante } from '../../lib/apps/appTransition'
 import { prefetchRoute } from '../../router/prefetchMap'
+
+/* ODY13 — annonces FR du glisser-déposer (le défaut de dnd-kit est anglais).
+   Un lecteur d'écran doit pouvoir suivre tout le trajet au clavier. */
+function construireAnnonces(nomPour) {
+  return {
+    onDragStart: ({ active }) => `Déplacement de ${nomPour(active.id)} commencé.`,
+    onDragOver: ({ active, over }) => (over
+      ? `${nomPour(active.id)} sera placée à la position de ${nomPour(over.id)}.`
+      : `${nomPour(active.id)} n’est au-dessus d’aucune position valide.`),
+    onDragEnd: ({ active, over }) => (over
+      ? `${nomPour(active.id)} déposée à la position de ${nomPour(over.id)}.`
+      : `${nomPour(active.id)} reposée à sa place.`),
+    onDragCancel: ({ active }) => `Déplacement de ${nomPour(active.id)} annulé.`,
+  }
+}
+
+const INSTRUCTIONS_LECTEUR = {
+  draggable:
+    'Appuyez sur Entrée ou Espace sur la poignée pour commencer à déplacer une '
+    + 'application. Utilisez les flèches pour choisir sa nouvelle position, '
+    + 'Entrée ou Espace pour déposer, Échap pour annuler.',
+}
+
+/* CelluleApp — une app de la grille. Trois contrôles FRÈRES, jamais imbriqués
+   (un contrôle dans un contrôle est une violation axe `nested-interactive`) :
+     1. la tuile (ouvre l'app) — c'est elle qui porte la navigation clavier ;
+     2. l'étoile (favori) ;
+     3. la poignée de déplacement (ODY13) — SÉPARÉE de la tuile exprès : le
+        capteur clavier de dnd-kit s'active sur Entrée/Espace, qui sont déjà
+        l'activation native du bouton d'ouverture. Les deux sur le même
+        élément se voleraient la touche. */
+function CelluleApp({
+  app, index, actif, estFavori, reordonnable,
+  onOuvrir, onBasculerFavori, onFocusTuile, onKeyDownTuile, registerRef,
+}) {
+  const { attributes, listeners, setNodeRef: setDrag, isDragging } = useDraggable({
+    id: app.key, disabled: !reordonnable,
+  })
+  const { setNodeRef: setDrop, isOver } = useDroppable({
+    id: app.key, disabled: !reordonnable,
+  })
+  const setRefs = useCallback((node) => { setDrag(node); setDrop(node) }, [setDrag, setDrop])
+
+  return (
+    <div
+      ref={setRefs}
+      role="listitem"
+      className={[
+        'home-menu-cell',
+        isDragging ? 'home-menu-cell--drag' : '',
+        isOver ? 'home-menu-cell--over' : '',
+      ].filter(Boolean).join(' ')}
+      style={app.accent ? { '--module-accent': `var(--module-accent-${app.accent})` } : undefined}
+    >
+      <button
+        type="button"
+        ref={(node) => { registerRef(index, node) }}
+        className="home-menu-tile"
+        tabIndex={actif ? 0 : -1}
+        onMouseEnter={() => prefetchRoute(app.to)}
+        onFocus={() => { onFocusTuile(index); prefetchRoute(app.to) }}
+        onClick={(e) => onOuvrir(app, e.currentTarget.closest('.home-menu-cell'))}
+        onKeyDown={(e) => onKeyDownTuile(e, index)}
+      >
+        <AppIcon icon={app.icon} accent={app.accent} size="sm" />
+        <span className="home-menu-tile-label">{app.label}</span>
+      </button>
+      <button
+        type="button"
+        className="home-menu-tile-pin"
+        tabIndex={-1}
+        aria-label={estFavori
+          ? `Retirer ${app.label} des favoris`
+          : `Ajouter ${app.label} aux favoris`}
+        onClick={(e) => onBasculerFavori(e, app.key)}
+      >
+        <Star size={13} strokeWidth={1.75} aria-hidden="true" fill={estFavori ? 'currentColor' : 'none'} />
+      </button>
+      {reordonnable && (
+        <button
+          type="button"
+          className="home-menu-tile-grip"
+          aria-label={`Déplacer ${app.label}`}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical size={13} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  )
+}
 
 export default function HomeMenu() {
   const navigate = useNavigate()
@@ -31,18 +132,29 @@ export default function HomeMenu() {
   const [query, setQuery] = useState('')
   const [pinned, setPinned] = useState(readPinned)
   const [recent] = useState(readRecent)
+  const [ordrePerso, setOrdrePerso] = useState(readOrder)
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef(null)
-  // Refs des tuiles, indexées par POSITION dans l'ordre de parcours : on y
-  // rend le focus impérativement (jamais via un effet sur un nœud conditionnel).
+  // Refs des tuiles, indexées par POSITION dans l'ordre de parcours : on y rend
+  // le focus impérativement (jamais via un effet sur un nœud conditionnel).
   const tileRefs = useRef([])
+  const registerRef = useCallback((index, node) => { tileRefs.current[index] = node }, [])
+
+  // ODY13 — l'ordre PERSONNEL s'applique à la liste issue de la source unique ;
+  // une app absente de l'ordre enregistré (nouvellement installée) reste
+  // visible, à la fin — jamais perdue.
+  const appsOrdonnees = useMemo(() => applyOrder(apps, ordrePerso), [apps, ordrePerso])
 
   const sections = useMemo(
-    () => grouperApps(apps, { query, pinned, recent }),
-    [apps, query, pinned, recent],
+    () => grouperApps(appsOrdonnees, { query, pinned, recent }),
+    [appsOrdonnees, query, pinned, recent],
   )
   // Ordre de parcours clavier = concaténation des sections dans l'ordre affiché.
   const ordre = useMemo(() => sections.flatMap((s) => s.apps), [sections])
+
+  // Réordonner une grille FILTRÉE n'a pas de sens (l'utilisateur ne voit pas où
+  // l'app atterrit) : le glisser n'est actif qu'au repos.
+  const reordonnable = !normalise(query)
 
   // La requête a changé : la première tuile redevient l'active (« Entrée ouvre
   // la première »). Ajustement en phase de rendu (patron React « ajuster l'état
@@ -105,9 +217,10 @@ export default function HomeMenu() {
   }, [ordre, ouvrir, focusTuile])
 
   // Clavier des TUILES : flèches (grille linéarisée — l'ordre visuel suit
-  // l'ordre du DOM), Home/Fin, Entrée/Espace ouvre, Échap efface et rend le
-  // focus au champ. Toute autre touche imprimable renvoie la frappe dans le
-  // champ de recherche : le type-ahead reste vrai même le focus dans la grille.
+  // l'ordre du DOM), Home/Fin, Entrée/Espace ouvre (sémantique native du
+  // bouton), Échap efface et rend le focus au champ. Toute autre touche
+  // imprimable renvoie la frappe dans le champ : le type-ahead reste vrai même
+  // le focus dans la grille.
   const onTileKeyDown = useCallback((event, index) => {
     const { key } = event
     if (key === 'ArrowRight' || key === 'ArrowDown') {
@@ -132,16 +245,43 @@ export default function HomeMenu() {
     // Espace est EXCLU : sur un <button>, il active (sémantique native), il ne
     // se tape pas dans la recherche.
     if (key.length === 1 && key !== ' ' && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      // Frappe imprimable : on rebascule dans le champ, la lettre y est ajoutée.
       event.preventDefault()
       setQuery((q) => q + key)
       inputRef.current?.focus()
     }
   }, [ordre.length, focusTuile])
 
-  // Focus initial sur le champ : la page EST le type-ahead. Effet vide → nœud
-  // toujours monté (le champ n'est pas conditionnel), pas de callback ref
-  // nécessaire.
+  // ODY13 — capteurs : souris/tactile avec seuil d'activation (un clic ne doit
+  // jamais démarrer un glisser) + capteur CLAVIER natif de @dnd-kit/core.
+  // `@dnd-kit/sortable` n'est PAS installé et reste interdit (NE PAS FAIRE VX).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  )
+
+  const nomPour = useCallback(
+    (key) => appsOrdonnees.find((a) => a.key === key)?.label ?? String(key),
+    [appsOrdonnees],
+  )
+  const announcements = useMemo(() => construireAnnonces(nomPour), [nomPour])
+
+  const onDragEnd = useCallback(({ active, over }) => {
+    if (!over || over.id === active.id) return
+    const cles = appsOrdonnees.map((a) => a.key)
+    const depuis = cles.indexOf(active.id)
+    const vers = cles.indexOf(over.id)
+    if (depuis < 0 || vers < 0) return
+    const [deplacee] = cles.splice(depuis, 1)
+    cles.splice(vers, 0, deplacee)
+    setOrdrePerso(cles)
+    // Persistance par utilisateur (localStorage) + notification : le lanceur
+    // VX9 lit la MÊME clé, donc grille et lanceur restent dans le même ordre.
+    writeOrder(cles)
+  }, [appsOrdonnees])
+
+  // Focus initial sur le champ : la page EST le type-ahead. Le champ n'est
+  // jamais conditionnel → effet simple, pas de callback ref nécessaire.
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
@@ -183,70 +323,39 @@ export default function HomeMenu() {
               : 'Aucune application activée.'}
           </p>
         ) : (
-          sections.map((section) => (
-            <section key={section.id} className="home-menu-section">
-              <h3 className="home-menu-section-title">{section.titre}</h3>
-              <div className="home-menu-grid" role="list">
-                {section.apps.map((app) => {
-                  position += 1
-                  const index = position
-                  const estFavori = pinned.includes(app.key)
-                  return (
-                    /* Cellule = conteneur de la tuile ET de l'étoile. Les deux
-                       sont des <button> FRÈRES, jamais imbriqués : un contrôle
-                       dans un contrôle est une violation axe (nested-interactive)
-                       et casse la sémantique au lecteur d'écran. */
-                    <div
-                      key={app.key}
-                      role="listitem"
-                      className="home-menu-cell"
-                      style={app.accent
-                        ? { '--module-accent': `var(--module-accent-${app.accent})` }
-                        : undefined}
-                    >
-                      <button
-                        type="button"
-                        ref={(node) => { tileRefs.current[index] = node }}
-                        className="home-menu-tile"
-                        tabIndex={index === activeIndex ? 0 : -1}
-                        /* ODY12 — vitesse perçue : le survol/focus précharge le
-                           chunk du cockpit (table EXISTANTE prefetchMap.js), si
-                           bien qu'au clic il est déjà en cache. Aucun écran
-                           blanc à l'entrée : `WithLayout` monte déjà un
-                           `<Suspense>` à repli SQUELETTE (RouteFallback, O65). */
-                        onMouseEnter={() => prefetchRoute(app.to)}
-                        onFocus={() => { setActiveIndex(index); prefetchRoute(app.to) }}
-                        onClick={(e) => ouvrir(app, e.currentTarget.closest('.home-menu-cell'))}
-                        onKeyDown={(e) => onTileKeyDown(e, index)}
-                      >
-                        {/* ODY9 — LE composant d'icône d'app, partagé avec le
-                            lanceur VX9, les épinglés VX10 et l'écran
-                            Applications ODX5. */}
-                        <AppIcon icon={app.icon} accent={app.accent} size="sm" />
-                        <span className="home-menu-tile-label">{app.label}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="home-menu-tile-pin"
-                        tabIndex={-1}
-                        aria-label={estFavori
-                          ? `Retirer ${app.label} des favoris`
-                          : `Ajouter ${app.label} aux favoris`}
-                        onClick={(e) => basculerFavori(e, app.key)}
-                      >
-                        <Star
-                          size={13}
-                          strokeWidth={1.75}
-                          aria-hidden="true"
-                          fill={estFavori ? 'currentColor' : 'none'}
-                        />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
-          ))
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            accessibility={{ announcements, screenReaderInstructions: INSTRUCTIONS_LECTEUR }}
+            onDragEnd={onDragEnd}
+          >
+            {sections.map((section) => (
+              <section key={section.id} className="home-menu-section">
+                <h3 className="home-menu-section-title">{section.titre}</h3>
+                <div className="home-menu-grid" role="list">
+                  {section.apps.map((app) => {
+                    position += 1
+                    const index = position
+                    return (
+                      <CelluleApp
+                        key={app.key}
+                        app={app}
+                        index={index}
+                        actif={index === activeIndex}
+                        estFavori={pinned.includes(app.key)}
+                        reordonnable={reordonnable}
+                        onOuvrir={ouvrir}
+                        onBasculerFavori={basculerFavori}
+                        onFocusTuile={setActiveIndex}
+                        onKeyDownTuile={onTileKeyDown}
+                        registerRef={registerRef}
+                      />
+                    )
+                  })}
+                </div>
+              </section>
+            ))}
+          </DndContext>
         )}
       </div>
     </div>
