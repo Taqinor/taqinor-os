@@ -59,18 +59,34 @@ describe('DashboardPage', () => {
 
 // ── Garde de source : seuils d'urgence via ui/module/urgency.js, jamais une
 //    constante locale (Done AOF172). ────────────────────────────────────────
+/* Une garde « la source ne contient PAS X » ne peut pas balayer le fichier
+   brut : l'en-tête de `DashboardPage.jsx` DOCUMENTE justement que
+   `EcheanceCenter` porte les seuils (« daysUntil/urgencyLevel/urgencyTone/
+   urgencyLabel… »), donc la garde se déclenchait sur le commentaire qui
+   affirme l'invariant qu'elle vérifie. On retire commentaires de bloc et de
+   ligne avant d'assertionner — les littéraux de chaîne sont alternés EN
+   PREMIER pour qu'une URL contenant `//` ne soit jamais prise pour un
+   commentaire. */
+function stripComments(source) {
+  return source.replace(
+    /(['"`])(?:\\.|(?!\1)[^\\])*\1|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g,
+    (match) => (/^['"`]/.test(match) ? match : ' '),
+  )
+}
+
 describe('DashboardPage.jsx — contrat de source', () => {
   const here = dirname(fileURLToPath(import.meta.url))
   const src = readFileSync(join(here, 'DashboardPage.jsx'), 'utf8')
+  const code = stripComments(src)
 
   it('utilise EcheanceCenter (qui porte lui-même urgency.js) — aucun seuil de jours codé en dur ici', () => {
-    expect(src).toMatch(/EcheanceCenter/)
-    expect(src).not.toMatch(/urgencyLevel|urgencyTone|urgencyLabel|daysUntil/)
-    expect(src).not.toMatch(/\bJ-\d/)
+    expect(code).toMatch(/EcheanceCenter/)
+    expect(code).not.toMatch(/urgencyLevel|urgencyTone|urgencyLabel|daysUntil/)
+    expect(code).not.toMatch(/\bJ-\d/)
   })
 
   it('un seul appel réseau agrégé (aoApi.tableauMarches), jamais un axios.get direct', () => {
-    expect(src).toMatch(/aoApi\.tableauMarches\(\)/)
-    expect(src).not.toMatch(/axios\.get/)
+    expect(code).toMatch(/aoApi\.tableauMarches\(\)/)
+    expect(code).not.toMatch(/axios\.get/)
   })
 })
