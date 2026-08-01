@@ -37,7 +37,10 @@ export function filtrerApps(apps, query) {
 export function grouperApps(apps, { query = '', pinned = [], recent = [] } = {}) {
   const filtrees = filtrerApps(apps, query)
   if (normalise(query)) {
-    return [{ id: 'resultats', titre: 'Résultats', apps: filtrees }]
+    // Une recherche sans résultat ne renvoie AUCUNE section (et surtout pas une
+    // section vide) : c'est ce qui laisse l'appelant afficher son état vide
+    // « Aucun résultat » au lieu d'une grille blanche sans explication.
+    return filtrees.length ? [{ id: 'resultats', titre: 'Résultats', apps: filtrees }] : []
   }
   const byKey = new Map(filtrees.map((a) => [a.key, a]))
   const favoris = pinned.map((k) => byKey.get(k)).filter(Boolean)

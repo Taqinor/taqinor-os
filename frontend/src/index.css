@@ -8388,7 +8388,8 @@ textarea.form-control {
   inset: -1rem -1rem auto -1rem;
   height: 22rem;
   pointer-events: none;
-  z-index: 0;
+  /* Pas de z-index : la couche reste sous `.home-menu-inner` (z-index: 1) par
+     l'ordre d'empilement naturel — MB3 interdit tout z-index hors token. */
   background:
     radial-gradient(
       120% 70% at 50% -12%,
@@ -8487,10 +8488,12 @@ textarea.form-control {
   transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 
-.home-menu-tile:hover {
-  border-color: var(--module-accent, var(--primary));
-  box-shadow: 0 6px 18px -12px color-mix(in srgb, var(--foreground) 55%, transparent);
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .home-menu-tile:hover {
+    border-color: var(--module-accent, var(--primary));
+    box-shadow: 0 6px 18px -12px color-mix(in srgb, var(--foreground) 55%, transparent);
+    transform: translateY(-1px);
+  }
 }
 
 .home-menu-tile:focus-visible {
@@ -8529,11 +8532,15 @@ textarea.form-control {
   transition: opacity 120ms ease;
 }
 
-.home-menu-cell:hover .home-menu-tile-pin,
 .home-menu-cell:focus-within .home-menu-tile-pin,
-.home-menu-tile-pin:hover,
 .home-menu-tile-pin:focus-visible {
   opacity: 1;
+}
+@media (hover: hover) {
+  .home-menu-cell:hover .home-menu-tile-pin,
+  .home-menu-tile-pin:hover {
+    opacity: 1;
+  }
 }
 
 /* ODY14 — l'etat vide est un EmptyState (variante illustree VX40) : il porte
@@ -8609,20 +8616,26 @@ textarea.form-control {
   height: calc(var(--app-icon-size, 56px) * 0.42);
 }
 
-.app-icon--interactive:hover {
-  box-shadow:
-    inset 0 0 0 2px var(--module-accent, var(--primary)),
-    0 6px 16px -12px color-mix(in srgb, var(--foreground) 60%, transparent);
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .app-icon--interactive:hover {
+    box-shadow:
+      inset 0 0 0 2px var(--module-accent, var(--primary)),
+      0 6px 16px -12px color-mix(in srgb, var(--foreground) 60%, transparent);
+    transform: translateY(-1px);
+  }
 }
 
 /* Le survol de la TUILE hote allume aussi la pastille : une seule intention
    visuelle, quel que soit l'element reellement survole. */
-.home-menu-tile:hover .app-icon,
 .home-menu-tile:focus-visible .app-icon,
-.app-launcher-tile:hover .app-icon,
 .app-launcher-tile:focus-visible .app-icon {
   box-shadow: inset 0 0 0 2px var(--module-accent, var(--primary));
+}
+@media (hover: hover) {
+  .home-menu-tile:hover .app-icon,
+  .app-launcher-tile:hover .app-icon {
+    box-shadow: inset 0 0 0 2px var(--module-accent, var(--primary));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -8689,11 +8702,15 @@ textarea.form-control {
   transition: opacity 120ms ease;
 }
 
-.home-menu-cell:hover .home-menu-tile-grip,
 .home-menu-cell:focus-within .home-menu-tile-grip,
-.home-menu-tile-grip:hover,
 .home-menu-tile-grip:focus-visible {
   opacity: 1;
+}
+@media (hover: hover) {
+  .home-menu-cell:hover .home-menu-tile-grip,
+  .home-menu-tile-grip:hover {
+    opacity: 1;
+  }
 }
 
 .home-menu-tile-grip:active {
