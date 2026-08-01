@@ -223,3 +223,23 @@ Deux points pour le jour du déblocage :
   `apps/ao/calepinage_io.plan_vers_json()` rend enveloppe, rangées et tables
   posées, et `core/calepinage/rendu/` porte déjà les calques logiques.
 
+## AOF59 — `[BLOCKED: décision fondateur — portée v1 de l'export bancable]`
+
+Export de la géométrie vers PVsyst (`.SHD` / scène DAE). La tâche n'offre que
+deux issues et **les deux sont hors de portée d'un agent** :
+
+1. *livrer l'export* — invérifiable ici : « ouvrable dans PVsyst avec la scène
+   attendue » ne peut être prouvé sans PVsyst, et publier un exporteur qui
+   AFFIRME une compatibilité jamais constatée est précisément le genre de
+   déclaration non vérifiée que ce dépôt refuse (le `.SHD` n'est pas un format
+   publiquement spécifié ; une scène DAE resterait une hypothèse) ;
+2. *acter le non-objectif v1* — c'est une **décision de portée produit**, donc
+   du fondateur, pas de l'agent ; et son support (`docs/moteur-calepinage.md`,
+   AOF194) **n'existe pas encore** sur cette base : l'écrire ici créerait le
+   fichier d'une autre tâche.
+
+La tâche reste `[ ]`. Rien n'a été écrit dans `core/calepinage/export/`.
+Quand la décision tombe, la matière est prête : `calepiner()` rend déjà
+enveloppe + obstacles + tables dans un repère métrique unique, donc l'export
+sera une pure traduction, sans recalcul de scène.
+
