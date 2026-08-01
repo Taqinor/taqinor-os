@@ -16,9 +16,14 @@ const loginSrc = readFileSync(
   'utf8',
 )
 
+// NTPRT8 — `authLoader`/`roleLoader` résolvent désormais la PORTÉE du compte
+// (`ensurePortalScope`, qui enveloppe `ensureSession`) avant de décider : la
+// session absente renvoie `null`, et c'est ce cas qui déclenche
+// `buildLoginRedirect(request)`. L'invariant VX65 (capture du `Request` →
+// /login?next=…) est INCHANGÉ ; seule la forme de la garde a bougé.
 test('authLoader capture le Request et construit une redirection /login?next=... via buildLoginRedirect', () => {
   assert.match(routerSrc, /const authLoader = async \(\{\s*request\s*\}\)\s*=>/)
-  assert.match(routerSrc, /return ok \? null : buildLoginRedirect\(request\)/)
+  assert.match(routerSrc, /if \(!user\) return buildLoginRedirect\(request\)/)
   assert.match(routerSrc, /redirect\(`\/login\?next=\$\{encodeURIComponent\(next\)\}`\)/)
 })
 
@@ -27,7 +32,7 @@ test('roleLoader capture aussi le Request pour rediriger via buildLoginRedirect'
     routerSrc,
     /const roleLoader = \(roles, perm\) => async \(\{\s*request\s*\}\)\s*=>/,
   )
-  assert.match(routerSrc, /if \(!ok\) return buildLoginRedirect\(request\)/)
+  assert.match(routerSrc, /if \(!user\) return buildLoginRedirect\(request\)/)
 })
 
 test("Login.jsx lit '?next=' via useSearchParams et le suit seulement s'il est sûr", () => {

@@ -113,6 +113,14 @@ export default function CampagnesInnovationSettings() {
               placeholder="Nous cherchons vos idées sur…"
             />
           </Field>
+          {/* NTIDE48 — « boîte à idées publique » (gated, OFF par défaut) :
+              une idée client est stockée dans la même table, masquée des
+              équipes (visible uniquement au palier admin). */}
+          <label className="sm:col-span-2 flex items-center gap-2.5 text-sm text-foreground">
+            <Switch checked={!!form.idees_clients_actif}
+                    onCheckedChange={(v) => set({ idees_clients_actif: !!v })} />
+            Permettre aux clients d&apos;envoyer des idées
+          </label>
         </div>
         <div className="mt-3 flex items-center gap-2">
           <Button type="button" onClick={save} disabled={saving}>

@@ -239,3 +239,28 @@ class DocumentHtmlContentTest(TestCase):
         self.assertIn('Attestation d', html)
         self.assertIn('installation', html)
         self.assertIn(self.company.nom, html)
+
+    # ── NTMOB16 — signature client tracée sur le bon de livraison ──────────
+    def test_bon_livraison_without_signature_keeps_fallback_mention(self, mock_pdf, _dl):
+        # Chantier SANS signature (comportement historique inchangé).
+        mock_pdf.return_value = b'%PDF-fake'
+        self.builders.generate_bon_livraison(self.chantier)
+        html = self._captured_html(mock_pdf)
+        self.assertIn('Reçu en bon état', html)
+        # La règle CSS `.signature-trace` vit dans le <style>, donc elle est
+        # TOUJOURS émise : on vérifie l'absence de l'ÉLÉMENT qui porte la
+        # classe, pas celle du nom de classe (sinon on teste la feuille de
+        # style, pas le rendu).
+        self.assertNotIn('class="signature-trace"', html)
+
+    def test_bon_livraison_embeds_signature_data_url_when_present(self, mock_pdf, _dl):
+        mock_pdf.return_value = b'%PDF-fake'
+        self.chantier.signature_client = 'data:image/png;base64,AAAA'
+        self.chantier.signataire_nom = 'Karim Bennani'
+        self.chantier.save(update_fields=['signature_client', 'signataire_nom'])
+        self.builders.generate_bon_livraison(self.chantier)
+        html = self._captured_html(mock_pdf)
+        self.assertIn('data:image/png;base64,AAAA', html)
+        self.assertIn('Karim Bennani', html)
+        # Le repli texte disparaît au profit du trait — jamais les deux.
+        self.assertNotIn('Reçu en bon état', html)

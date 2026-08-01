@@ -9,7 +9,7 @@ aucune nouvelle table n'est créée pour les porter.
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
-from .models import Idee, VoteIdee
+from .models import EMAIL_IDEE_DEFAULTS, Idee, VoteIdee
 
 # ── Machine à états (NTIDE5) ────────────────────────────────────────────────
 
@@ -65,6 +65,17 @@ def transitionner(idee, *, target, user, note=''):
         idee, Activity.Kind.MODIFICATION, user=user, field='statut',
         field_label='Statut', old_value=old, new_value=target,
         body=note or '', company=idee.company)
+
+    # NTIDE52 — gabarit e-mail personnalisable « idée retenue »/« idée
+    # réalisée », déclenché exactement une fois par transition (``bulk_set_
+    # statut`` réutilise cette même fonction — même déclencheur, pas de
+    # doublon de logique à maintenir en synchro).
+    if target == Idee.Statut.RETENUE:
+        from apps.notifications.models import EventType
+        notifier_email_idee(idee, 'retenue', EventType.IDEA_RETAINED)
+    elif target == Idee.Statut.REALISEE:
+        from apps.notifications.models import EventType
+        notifier_email_idee(idee, 'realisee', EventType.IDEA_REALIZED)
     return idee
 
 
@@ -148,6 +159,50 @@ def _maybe_notify_seuil_votes(idee):
         idee.auteur, EventType.IDEA_VOTE,
         f'Votre idée « {idee.titre} » a atteint {seuil} votes',
         body=f'Elle totalise maintenant {idee.votes_count} vote(s).',
+        link=f'/innovation/idees/{idee.id}', company=idee.company)
+
+
+# ── Gabarits e-mail du cycle de vie d'une idée (NTIDE52) ────────────────────
+
+
+def template_email_idee(company, cle):
+    """NTIDE52 — sujet/corps résolus pour (``company``, ``cle`` in
+    ``recue``/``retenue``/``realisee``) : la ligne personnalisée de
+    ``InnovationSettings`` si elle est renseignée, sinon le gabarit par
+    défaut (``models.EMAIL_IDEE_DEFAULTS``) — même repli tolérant que
+    ``apps.parametres.models_email.EmailTemplate.get_template``."""
+    from .models import InnovationSettings
+
+    default = EMAIL_IDEE_DEFAULTS[cle]
+    reglages, _ = InnovationSettings.objects.get_or_create(company=company)
+    sujet = (getattr(reglages, f'email_{cle}_sujet') or '').strip()
+    corps = (getattr(reglages, f'email_{cle}_corps') or '').strip()
+    return {
+        'sujet': sujet or default['sujet'],
+        'corps': corps or default['corps'],
+    }
+
+
+def notifier_email_idee(idee, cle, event_type):
+    """NTIDE52 — notifie l'AUTEUR de ``idee`` (in-app + email, préférences
+    respectées par ``notify()``) avec le gabarit personnalisable de l'étape
+    ``cle`` (``recue``/``retenue``/``realisee``). No-op silencieux si l'idée
+    n'a pas d'auteur (idée importée/créée en admin, même garde que
+    ``_maybe_notify_seuil_votes``, NTIDE16).
+
+    Substitution TOLÉRANTE du seul jeton ``{titre}`` par simple remplacement
+    (jamais ``str.format`` — un gabarit personnalisé par l'admin pourrait
+    contenir d'autres accolades littérales sans lever d'exception)."""
+    if not idee.auteur_id:
+        return
+    tpl = template_email_idee(idee.company, cle)
+    sujet = tpl['sujet'].replace('{titre}', idee.titre)
+    corps = tpl['corps'].replace('{titre}', idee.titre)
+
+    from apps.notifications.services import notify
+
+    notify(
+        idee.auteur, event_type, sujet, body=corps,
         link=f'/innovation/idees/{idee.id}', company=idee.company)
 
 
@@ -363,6 +418,68 @@ def fermer_feedback_via_annonce(feedback, *, annonce_id=None, annonce_data=None,
     feedback.save(update_fields=[
         'annonce', 'statut', 'message_fermeture', 'updated_at'])
     return feedback
+
+
+# ── Webhook idée-création (NTIDE51, gated) ──────────────────────────────────
+
+
+def post_webhook_idee_creation(idee):
+    """NTIDE51 — POST un webhook sortant à chaque création d'idée, SI
+    ``INNOVATION_WEBHOOK_URL`` est configurée (variable d'environnement,
+    gated/optionnelle) : NO-OP silencieux si vide (comportement par
+    défaut). Payload : titre/description/auteur/contexte + horodatage ISO.
+
+    DÉFENSIF : une erreur réseau/timeout/HTTP n'interrompt JAMAIS la
+    création de l'idée (même convention que les notifications best-effort
+    de ce module) — jamais d'exception remontée à l'appelant."""
+    import logging
+    import os
+
+    url = os.environ.get('INNOVATION_WEBHOOK_URL', '') or ''
+    if not url:
+        return False
+
+    from django.utils import timezone
+
+    payload = {
+        'titre': idee.titre,
+        'description': idee.description,
+        'auteur': getattr(idee.auteur, 'username', None),
+        'context': idee.contexte,
+        'timestamp': timezone.now().isoformat(),
+    }
+    try:
+        import requests
+        requests.post(url, json=payload, timeout=5)
+        return True
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        logging.getLogger(__name__).warning(
+            "innovation: échec de l'envoi du webhook idée-création",
+            exc_info=True)
+        return False
+
+
+# ── Feedback « étoilé » (NTIDE45) ────────────────────────────────────────────
+
+
+def notifier_feedback_etoile(feedback):
+    """NTIDE45 — notifie les admins/gérants de la société (« founder », si
+    déployé — même patron de destinataires que ``CustomUser.
+    admins_actifs_qs``, réutilisé sans réinvention) quand un feedback est
+    marqué « étoilé » (important). Dégrade en silence si personne n'est
+    admin/propriétaire actif pour cette société (``notify_many`` sur un
+    queryset vide, aucune erreur)."""
+    from authentication.models import CustomUser
+
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify_many
+
+    destinataires = CustomUser.admins_actifs_qs(feedback.company)
+    notify_many(
+        destinataires, EventType.FEEDBACK_STARRED,
+        f'Feedback marqué important : {feedback.titre}',
+        body=feedback.description,
+        link='/innovation/retours-produit', company=feedback.company)
 
 
 BULK_ACTIONS = frozenset({'set_statut', 'add_tag', 'remove_tag'})

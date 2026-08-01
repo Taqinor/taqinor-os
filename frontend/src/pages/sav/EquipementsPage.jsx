@@ -1,9 +1,14 @@
+/* eslint-disable react-refresh/only-export-components --
+   `resolveScanTarget` est un helper PUR importé par EquipementsPage.test.jsx :
+   l'exporter est volontaire (même précédent que ProductionPage/buildProductionChartData).
+   La règle ne concerne que le confort de fast-refresh, jamais la correction. */
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Upload, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
   Wrench, Pencil, ShieldCheck, Trash2, ChevronRight, Activity, QrCode,
+  ScanLine,
 } from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
@@ -14,6 +19,9 @@ import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import ExcelImport from '../../components/ExcelImport'
 import RegistreGarantiesDialog from './RegistreGarantiesDialog'
 import EquipementFiabilitePanel from './EquipementFiabilitePanel'
+// NTMOB15 — scan QR/code-barres natif : ouvre directement la fiche
+// équipement au lieu d'une recherche manuelle par n° de série.
+import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import {
   EMPTY_EQUIP_FILTERS,
   EQUIP_STATUTS,
@@ -61,6 +69,24 @@ const GARANTIE_TONES = {
 export function GarantiePill({ eq }) {
   const etat = eq?.garantie_etat ?? 'non_renseignee'
   return <StatusPill tone={GARANTIE_TONES[etat] ?? 'neutral'} label={garantieLabel(eq)} />
+}
+
+// NTMOB15 — décision PURE post-résolution d'un code scanné (stock/produits/
+// resolve/, N20) : que faire de la réponse `{type, id, ...}` compte tenu du
+// parc déjà chargé (`items`, non filtré). Extraite du composant pour rester
+// testable sans monter toute la page (même patron que cockpitProfile/
+// mobileHomeAction ailleurs dans le repo).
+//   * `{action:'error', message}` — le code ne désigne pas un équipement.
+//   * `{action:'select', equipement}` — déjà chargé localement, ouverture directe.
+//   * `{action:'fetch', id}` — appelant doit charger la fiche complète
+//     (savApi.getEquipement) avant de l'ouvrir.
+export function resolveScanTarget(resolveData, items) {
+  if (!resolveData || resolveData.type !== 'equipement') {
+    return { action: 'error', message: 'Ce code ne correspond pas à un équipement.' }
+  }
+  const found = (items ?? []).find((it) => it.id === resolveData.id)
+  if (found) return { action: 'select', equipement: found }
+  return { action: 'fetch', id: resolveData.id }
 }
 
 // L611/L11 — message d'erreur FR lisible mappé au champ (jamais de JSON brut).
@@ -449,6 +475,13 @@ export default function EquipementsPage() {
   const [showImport, setShowImport] = useState(false)
   // WIR116 — génération des étiquettes QR (lien public /e/<token>).
   const [labelsBusy, setLabelsBusy] = useState(false)
+  // FG85/NTMOB15 — étiquettes QR INTERNES (EQUIP:<id>, scan staff), distinctes
+  // du lien public XSAV19 ci-dessus.
+  const [internalLabelsBusy, setInternalLabelsBusy] = useState(false)
+  // NTMOB15 — scanner QR/code-barres natif (même hook useBarcodeScanner que
+  // le reste du parc PWA) : ouvre directement la fiche au lieu d'une
+  // recherche manuelle par n° de série.
+  const [scannerOpen, setScannerOpen] = useState(false)
 
   const reload = () => dispatch(fetchEquipements())
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -485,15 +518,17 @@ export default function EquipementsPage() {
   // L625 — clic sur un badge de ligne : pose le filtre garantie à cet état.
   const filterByGarantie = (etat) => setF('garantie', filters.garantie === etat ? '' : etat)
 
-  // WIR116/FG85/XSAV19 — imprime les étiquettes QR du parc filtré. Le QR encode
-  // le lien public « Signaler un problème » (/e/<token>) ; le scan interne
-  // EQUIP:<id> reste inchangé côté serveur. Onglet ouvert dans le geste (Safari).
-  const printLabels = async () => {
+  // WIR116/FG85/XSAV19 — imprime les étiquettes QR du parc filtré. `pub=true`
+  // encode le lien public « Signaler un problème » (/e/<token>) ; `pub=false`
+  // (NTMOB15) encode le jeton interne EQUIP:<id> — celui que le scanner
+  // ci-dessous consomme pour ouvrir directement la fiche équipement. Onglet
+  // ouvert dans le geste (Safari), même patron pour les deux variantes.
+  const printLabels = async (pub, setBusy) => {
     if (!rows.length) return
     const win = window.open('', '_blank', 'noopener')
-    setLabelsBusy(true)
+    setBusy(true)
     try {
-      const res = await savApi.etiquettesEquipements(rows.map((r) => r.id), { public: true })
+      const res = await savApi.etiquettesEquipements(rows.map((r) => r.id), { public: pub })
       const blob = new Blob([res.data], { type: 'text/html' })
       const url = URL.createObjectURL(blob)
       if (win && !win.closed) win.location = url
@@ -503,7 +538,28 @@ export default function EquipementsPage() {
       if (win && !win.closed) win.close()
       toast.error('Génération des étiquettes indisponible.')
     } finally {
-      setLabelsBusy(false)
+      setBusy(false)
+    }
+  }
+
+  // NTMOB15 — résout la valeur scannée (EQUIP:<id> via stock/produits/resolve/,
+  // même endpoint que le reste du parc PWA, N20) et ouvre directement la
+  // fiche équipement. `items` (parc complet, non filtré) est consulté en
+  // premier pour éviter un aller-retour réseau ; repli sur un fetch ciblé si
+  // l'équipement scanné n'est pas encore chargé localement.
+  const handleScanned = async (value) => {
+    setScannerOpen(false)
+    try {
+      const res = await stockApi.resolveCode(value)
+      const decision = resolveScanTarget(res.data, items)
+      if (decision.action === 'error') { toast.error(decision.message); return }
+      if (decision.action === 'select') { setSelected(decision.equipement); return }
+      const full = await savApi.getEquipement(decision.id)
+      setSelected(full.data)
+    } catch (err) {
+      toast.error(err?.response?.status === 404
+        ? 'Équipement introuvable pour ce code.'
+        : 'Lecture du code impossible.')
     }
   }
 
@@ -574,14 +630,24 @@ export default function EquipementsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* NTMOB15 — scan QR/code-barres natif : ouvre la fiche directement. */}
+            <Button variant="outline" size="sm" onClick={() => setScannerOpen(true)}>
+              <ScanLine /> Scanner un équipement
+            </Button>
             {/* WR11/FG290 — échéancier des garanties par parc. */}
             <Button variant="outline" size="sm" onClick={() => setShowRegistre(true)}>
               <ShieldCheck /> Registre des garanties
             </Button>
             {/* WIR116 — étiquettes QR (lien public /e/<token>). */}
             <Button variant="outline" size="sm" disabled={labelsBusy || rows.length === 0}
-                    onClick={printLabels}>
+                    onClick={() => printLabels(true, setLabelsBusy)}>
               {labelsBusy ? <Spinner /> : <QrCode />} Imprimer étiquettes QR
+            </Button>
+            {/* FG85/NTMOB15 — étiquettes QR INTERNES (EQUIP:<id>), à coller sur le
+                matériel pour le scan staff (distinct du lien public ci-dessus). */}
+            <Button variant="outline" size="sm" disabled={internalLabelsBusy || rows.length === 0}
+                    onClick={() => printLabels(false, setInternalLabelsBusy)}>
+              {internalLabelsBusy ? <Spinner /> : <QrCode />} Étiquettes QR internes
             </Button>
             <Button variant="outline" size="sm" onClick={() => setShowImport(true)}>
               <Upload /> Importer
@@ -603,6 +669,23 @@ export default function EquipementsPage() {
         {showImport && (
           <ExcelImport target="equipements" onClose={() => setShowImport(false)}
                        onDone={reload} />
+        )}
+
+        {/* NTMOB15 — scan QR/code-barres natif : ouvre directement la fiche
+            équipement au lieu d'une recherche manuelle par n° de série. */}
+        {scannerOpen && (
+          <div
+            className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-black/60 p-4"
+            role="dialog" aria-modal="true"
+          >
+            <div className="w-full max-w-md">
+              <BarcodeScanner
+                formats={['qr_code']}
+                onDetected={handleScanned}
+                onClose={() => setScannerOpen(false)}
+              />
+            </div>
+          </div>
         )}
 
         {/* ── Filtres ── */}

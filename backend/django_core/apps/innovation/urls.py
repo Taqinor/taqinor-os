@@ -2,9 +2,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    AnnonceProduitViewSet, CampagneInnovationViewSet, FeedbackProduitViewSet,
-    FeedbackResumeView, IdeeViewSet, InnovationSettingsView, TimelineView,
-    VoteIdeeViewSet,
+    AnnonceProduitViewSet, CampagneInnovationViewSet, FeedbackHotspotView,
+    FeedbackProduitViewSet, FeedbackResumeView, IdeeViewSet,
+    InnovationSettingsView, TimelineView, VoteIdeeViewSet,
 )
 
 router = DefaultRouter()
@@ -24,5 +24,8 @@ urlpatterns = [
     # NTIDE38 — agrégation feedback produit par thème (admin).
     path('feedback-resume/', FeedbackResumeView.as_view(),
          name='innovation-feedback-resume'),
+    # NTIDE46 — pages les plus commentées (admin).
+    path('feedback-hotspot/', FeedbackHotspotView.as_view(),
+         name='innovation-feedback-hotspot'),
     path('', include(router.urls)),
 ]

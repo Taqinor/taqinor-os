@@ -415,3 +415,158 @@ def verifier_prise_en_charge(prise_en_charge, *, user=None):
         )
         touches.append(acte_realise)
     return touches
+
+
+# =============================================================================
+# NTSAN14 — Feuille de soins (FSE-like) IMPRIMABLE.
+#
+# Périmètre v1 assumé : un IMPRIMÉ récapitulatif, jamais une télétransmission
+# certifiée CNOPS/CNSS. Le rendu vit dans ``feuille_soins_pdf.py`` (moteur PDF
+# partagé ``core.pdf``, JAMAIS le quote engine ventes — règle #4).
+# =============================================================================
+
+def _entete_feuille_soins(company, contexte):
+    """Titre + introduction de l'imprimé, surchargeables PAR SOCIÉTÉ via le
+    ``core.BrandedTemplate`` existant (``kind='pdf'``, ``code='feuille_soins'``)
+    rendu par le moteur de placeholders SÛR ``core.templating``.
+
+    Sans modèle actif, on retombe sur les libellés par défaut — aucun appelant
+    n'est obligé d'en créer un."""
+    from core.models import BrandedTemplate
+    from core.templating import rendre_modele
+
+    from .feuille_soins_pdf import (
+        BRANDED_TEMPLATE_CODE, INTRODUCTION_DEFAUT, TITRE_DEFAUT)
+
+    modele = BrandedTemplate.objects.filter(
+        company=company, kind=BrandedTemplate.KIND_PDF,
+        code=BRANDED_TEMPLATE_CODE, actif=True).first()
+    if modele is None:
+        return TITRE_DEFAUT, INTRODUCTION_DEFAUT
+    titre, introduction = rendre_modele(modele, contexte)
+    return (titre or TITRE_DEFAUT), (introduction or INTRODUCTION_DEFAUT)
+
+
+def contexte_feuille_soins(facture):
+    """NTSAN14 — contexte de la feuille de soins d'une ``FactureSante``.
+
+    UN ITEM PAR ACTE RÉALISÉ rattaché à la facture, avec son code de
+    nomenclature (critère d'acceptation) — jamais une ligne libre, jamais un
+    regroupement qui masquerait un acte."""
+    actes = []
+    lignes = (facture.lignes_actes
+              .select_related('acte', 'praticien')
+              .order_by('date_realisation', 'id'))
+    for ligne in lignes:
+        quantite = ligne.quantite or 1
+        actes.append({
+            'code': ligne.acte.code_ngap or ligne.acte.cotation_lettre_cle,
+            'libelle': ligne.acte.libelle,
+            'praticien': ligne.praticien.nom if ligne.praticien else '',
+            'date': (ligne.date_realisation.date().isoformat()
+                     if ligne.date_realisation else ''),
+            'quantite': quantite,
+            'montant_ttc': (ligne.tarif_applique_ttc or 0) * quantite,
+        })
+
+    patient = facture.patient
+    convention = facture.convention or patient.convention
+    contexte = {
+        'facture_id': facture.id,
+        'statut': facture.get_statut_display(),
+        'patient': f'{patient.prenom} {patient.nom}'.strip(),
+        'numero_dossier': patient.numero_dossier,
+        'cin': patient.cin,
+        'convention': convention.nom if convention is not None else '',
+        'numero_affiliation': patient.numero_affiliation,
+        'actes': actes,
+        'sous_total_ttc': facture.sous_total_ttc,
+        'remise_ttc': facture.remise_ttc,
+        'total_ttc': facture.total_ttc,
+        'part_tiers_payant_ttc': facture.part_tiers_payant_ttc,
+        'part_patient_ttc': facture.part_patient_ttc,
+    }
+    titre, introduction = _entete_feuille_soins(facture.company, contexte)
+    contexte['titre'] = titre
+    contexte['introduction'] = introduction
+    return contexte
+
+
+def imprimer_feuille_soins(facture_sante_id, *, company=None):
+    """NTSAN14 — feuille de soins imprimable d'une facture santé.
+
+    Renvoie ``(facture, pdf_bytes)``. ``company`` (optionnelle) RESTREINT la
+    recherche à cette société : l'appelant HTTP la passe TOUJOURS depuis
+    ``request.user.company``, jamais depuis le corps de la requête. Lève
+    ``FactureSante.DoesNotExist`` si la facture n'existe pas dans ce périmètre.
+    """
+    from .feuille_soins_pdf import render_feuille_soins_pdf
+    from .models import FactureSante
+
+    qs = FactureSante.objects.select_related('patient', 'convention')
+    if company is not None:
+        qs = qs.filter(company=company)
+    facture = qs.get(pk=facture_sante_id)
+    contexte = contexte_feuille_soins(facture)
+    return facture, render_feuille_soins_pdf(contexte)
+
+
+def exporter_feuilles_soins_lot(company, *, date_debut=None, date_fin=None):
+    """NTSAN40 — export PAR LOT (fin de journée/mois) des feuilles de soins
+    de toutes les ``FactureSante`` d'une période, pour la comptabilité/
+    l'archivage.
+
+    RÉUTILISE ``imprimer_feuille_soins`` (NTSAN14) EN BOUCLE — jamais un
+    moteur PDF alternatif. Le queryset est itéré UNE SEULE FOIS (``order_by
+    id``, aucun doublon possible) : EXACTEMENT une feuille par facture de la
+    période. Renvoie les octets d'un ZIP (stdlib ``zipfile``, même patron que
+    ``apps.ged.services.zipper_documents``) — un fichier
+    ``feuille_soins_<id>.pdf`` par facture."""
+    import io
+    import zipfile
+
+    from .models import FactureSante
+
+    qs = FactureSante.objects.filter(company=company).order_by('id')
+    if date_debut:
+        qs = qs.filter(date_emission__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_emission__date__lte=date_fin)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for facture in qs:
+            _, pdf_bytes = imprimer_feuille_soins(facture.id, company=company)
+            zf.writestr(f'feuille_soins_{facture.id}.pdf', pdf_bytes)
+    return buf.getvalue()
+
+
+# =============================================================================
+# NTSAN23 — Stérilisation : émission de l'événement « cycle non conforme ».
+#
+# ``sante`` n'importe JAMAIS ``qhse.models`` : il émet sur le bus
+# ``core.events`` et c'est ``qhse`` qui s'abonne (``apps/qhse/receivers.py``)
+# pour ouvrir la NonConformite liée.
+# =============================================================================
+
+def appliquer_statut_cycle_sterilisation(cycle, *, ancien_statut=None,
+                                         user=None):
+    """NTSAN23 — émet ``cycle_sterilisation_non_conforme`` sur une VRAIE
+    transition vers « non conforme ».
+
+    Renvoie ``True`` si l'événement a été émis. Un ``save()`` qui laisse le
+    cycle déjà non conforme ne réémet pas (sinon chaque édition rouvrirait une
+    NCR) ; un cycle CRÉÉ directement non conforme émet bien (``ancien_statut``
+    vaut alors ``None``)."""
+    from core.events import cycle_sterilisation_non_conforme
+
+    from .models import CycleSterilisation
+
+    if cycle.statut != CycleSterilisation.Statut.NON_CONFORME:
+        return False
+    if ancien_statut == CycleSterilisation.Statut.NON_CONFORME:
+        return False
+    cycle_sterilisation_non_conforme.send(
+        sender='sante.CycleSterilisation', cycle=cycle,
+        company=cycle.company, user=user)
+    return True

@@ -23,6 +23,7 @@ function renderPage(ui) {
 
 const {
   listFeedback, resume, listAnnonces, createAnnonce, lierAnnonce,
+  hotspot, etoiler, masquer,
 } = vi.hoisted(() => ({
   listFeedback: vi.fn(() => Promise.resolve({
     data: [{
@@ -36,11 +37,17 @@ const {
   listAnnonces: vi.fn(() => Promise.resolve({ data: [{ id: 8, titre: 'PDF v2 déployé' }] })),
   createAnnonce: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
   lierAnnonce: vi.fn(() => Promise.resolve({ data: {} })),
+  // NTIDE46 — pages les plus commentées : tirée au montage (dans le
+  // `Promise.all` de l'écran), donc obligatoire dans le stub.
+  hotspot: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+  // NTIDE45/NTIDE47 — étoiler / masquer : appelées depuis les actions de ligne.
+  etoiler: vi.fn(() => Promise.resolve({ data: {} })),
+  masquer: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 
 vi.mock('../../api/innovationApi', () => ({
   default: {
-    feedback: { list: listFeedback, resume, lierAnnonce },
+    feedback: { list: listFeedback, resume, lierAnnonce, hotspot, etoiler, masquer },
     annonces: { list: listAnnonces, create: createAnnonce },
   },
 }))

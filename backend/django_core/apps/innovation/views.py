@@ -23,7 +23,8 @@ from .models import (
     InnovationSettings, VoteIdee,
 )
 from .permissions import (
-    IdeasChangeStatus, IdeasModerate, IdeasSeeAll, IdeasVote,
+    FeedbackModerate, IdeasAggregateRead, IdeasChangeStatus, IdeasModerate,
+    IdeasSeeAll, IdeasVote,
 )
 from .serializers import (
     AnnonceProduitSerializer, CampagneInnovationDetailSerializer,
@@ -80,6 +81,12 @@ class IdeeViewSet(CompanyScopedModelViewSet):
             and getattr(self.request.user, 'is_responsable', False))
         if not include_archived:
             qs = qs.exclude(archived=True)
+        # NTIDE48 — une idée client (boîte à idées publique, ``client_id``
+        # renseigné) est masquée des équipes : seul le palier admin
+        # (``IdeasSeeAll``) la voit, sans param supplémentaire (contrairement
+        # à ``include_archived`` — « masqués des équipes SAUF admin »).
+        if not IdeasSeeAll().has_permission(self.request, self):
+            qs = qs.filter(client_id__isnull=True)
         statut = params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
@@ -110,6 +117,15 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         # NTIDE28 — tag auto-appliqué si l'auteur matche le segment d'une
         # campagne active portant un ``tag_auto`` (no-op silencieux sinon).
         services.maybe_apply_campagne_tag(idee, self.request.user)
+        # NTIDE51 — webhook sortant gated (NO-OP si INNOVATION_WEBHOOK_URL
+        # est vide, comportement par défaut).
+        services.post_webhook_idee_creation(idee)
+        # NTIDE52 — gabarit e-mail personnalisable « idée reçue » (bienvenue),
+        # jamais pour un brouillon (NTIDE18 — pas encore vraiment « reçue » du
+        # point de vue de l'équipe tant qu'elle reste interne à l'auteur).
+        if not draft:
+            from apps.notifications.models import EventType
+            services.notifier_email_idee(idee, 'recue', EventType.IDEA_RECEIVED)
 
     # ── NTIDE10 — autocomplétion du contexte ────────────────────────────────
     @action(detail=False, methods=['get'], url_path='contextes',
@@ -130,11 +146,34 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         return Response({'results': data})
 
     # ── NTIDE6 — tableau de bord admin ──────────────────────────────────────
+    # NTIDE49 — ``IdeasAggregateRead`` (pas ``IdeasSeeAll`` seul) : le rôle
+    # « Viewer » lit aussi cet agrégat, en plus du palier Directeur/Admin/
+    # Responsable habituel.
     @action(detail=False, methods=['get'], url_path='tableau-bord',
-            permission_classes=[IdeasSeeAll])
+            permission_classes=[IdeasAggregateRead])
     def tableau_bord(self, request):
         """KPI par statut, top votes, plus récentes, heat-chart contexte."""
         return Response(selectors.tableau_bord_idees(request.user.company))
+
+    # ── NTIDE54 — autocomplétion auteur (formulaires admin, création en masse) ─
+    @action(detail=False, methods=['get'], url_path='auteurs',
+            permission_classes=[IdeasSeeAll])
+    def auteurs(self, request):
+        """Utilisateurs de la société (``?q=`` filtre sur le username) —
+        réservé au palier admin/responsable, surface d'administration comme
+        le tableau de bord."""
+        q = request.query_params.get('q', '')
+        data = selectors.auteurs_autocomplete(request.user.company, q)
+        return Response({'results': data})
+
+    # ── NTIDE55 — géolocalisation des idées liées à un chantier (carte admin) ─
+    @action(detail=False, methods=['get'], url_path='geolocalisation',
+            permission_classes=[IdeasSeeAll])
+    def geolocalisation(self, request):
+        """Idées liées à un chantier AVEC un GPS exploitable, pour affichage
+        sur carte (« Affichage admin seul », NTIDE55)."""
+        data = selectors.idees_geolocalisees(request.user.company)
+        return Response({'results': data})
 
     # ── NTIDE5 — machine à états + chatter ──────────────────────────────────
     def _transition(self, request, target):
@@ -287,6 +326,16 @@ class IdeeViewSet(CompanyScopedModelViewSet):
         from apps.records.services import chatter_qs
         qs = chatter_qs(idee, company=idee.company)
         return Response(ChatterActivitySerializer(qs, many=True).data)
+
+    # ── NTIDE53 — timeline des changements de statut (minigraph détail) ──────
+    @action(detail=True, methods=['get'], url_path='timeline',
+            permission_classes=[IdeasVote])
+    def timeline(self, request, pk=None):
+        """Un point par transition de statut, avec le nombre de jours écoulés
+        depuis la création (``selectors.timeline_idee``) — même palier que le
+        détail/l'historique (tout utilisateur connecté ayant accès à l'idée)."""
+        idee = self.get_object()
+        return Response({'results': selectors.timeline_idee(idee)})
 
     # ── NTIDE12 — export .xlsx (paramètres → campagnes innovation) ──────────
     @action(detail=False, methods=['get'], url_path='export-xlsx',
@@ -449,7 +498,10 @@ class CampagneInnovationViewSet(CompanyScopedModelViewSet):
         return Response({'campagne': None, 'fermee': False})
 
     # ── NTIDE34 — dashboard admin « Nos campagnes innovation » ──────────────
-    @action(detail=False, methods=['get'], url_path='tableau-bord')
+    # NTIDE49 — ``IdeasAggregateRead`` (au lieu du défaut classe ``IdeasSeeAll``) :
+    # le rôle « Viewer » lit aussi cet agrégat.
+    @action(detail=False, methods=['get'], url_path='tableau-bord',
+            permission_classes=[IdeasAggregateRead])
     def tableau_bord(self, request):
         return Response(selectors.tableau_bord_campagnes(request.user.company))
 
@@ -547,6 +599,14 @@ class InnovationSettingsView(APIView):
             'seuil_votes_notification': 'Seuil de votes pour notifier l\'auteur',
             'feedback_digest_actif': 'Digest feedback produit activé',
             'feedback_digest_frequence': 'Fréquence du digest feedback produit',
+            'idees_clients_actif': "Permettre aux clients d'envoyer des idées",
+            # NTIDE52 — gabarits e-mail du cycle de vie d'une idée.
+            'email_recue_sujet': 'Sujet e-mail — idée reçue',
+            'email_recue_corps': 'Corps e-mail — idée reçue',
+            'email_retenue_sujet': 'Sujet e-mail — idée retenue',
+            'email_retenue_corps': 'Corps e-mail — idée retenue',
+            'email_realisee_sujet': 'Sujet e-mail — idée réalisée',
+            'email_realisee_corps': 'Corps e-mail — idée réalisée',
         }
         anciennes = {f: getattr(instance, f) for f in champs_label}
         serializer.save()
@@ -603,9 +663,28 @@ class FeedbackProduitViewSet(CompanyScopedModelViewSet):
             return [IdeasVote()]
         return super().get_permissions()
 
+    def get_queryset(self):
+        # NTIDE47 — un feedback masqué (modération, palier Directeur STRICT)
+        # disparaît des listes admin normales ; reste consultable via
+        # ``?include_archived=1`` réservé au même palier (même convention que
+        # ``IdeeViewSet.get_queryset``/NTIDE19).
+        qs = super().get_queryset()
+        include_archived = (
+            self.request.query_params.get('include_archived') == '1'
+            and FeedbackModerate().has_permission(self.request, self))
+        if not include_archived:
+            qs = qs.exclude(archived=True)
+        return qs
+
     def perform_create(self, serializer):
+        # NTIDE44 — ``user_agent`` capturé CÔTÉ SERVEUR depuis l'en-tête HTTP
+        # (jamais lu du corps de requête, un client ne peut pas le falsifier).
+        # ``source_page`` reste écrit par le client (chemin de la page
+        # ouverte, cf. serializer) : c'est une donnée UN-PII, jamais une
+        # donnée personnelle.
         serializer.save(
-            company=self.request.user.company, auteur=self.request.user)
+            company=self.request.user.company, auteur=self.request.user,
+            user_agent=self.request.META.get('HTTP_USER_AGENT', '')[:500])
 
     def retrieve(self, request, *args, **kwargs):
         """NTIDE36/38 — ouvrir un feedback ``envoye`` le bascule ``lu``
@@ -615,6 +694,42 @@ class FeedbackProduitViewSet(CompanyScopedModelViewSet):
             instance.statut = FeedbackProduit.Statut.LU
             instance.save(update_fields=['statut', 'updated_at'])
         return Response(self.get_serializer(instance).data)
+
+    # ── NTIDE45 — marquer/démarquer « étoilé » (important) ──────────────────
+    @action(detail=True, methods=['post'], url_path='etoiler')
+    def etoiler(self, request, pk=None):
+        """Bascule ``starred``. Notifie les admins/gérants UNE SEULE fois, à
+        la transition False → True (jamais répétée, jamais à la
+        dé-marquation)."""
+        feedback = self.get_object()
+        if not feedback.starred:
+            feedback.starred = True
+            feedback.save(update_fields=['starred', 'updated_at'])
+            services.notifier_feedback_etoile(feedback)
+        else:
+            feedback.starred = False
+            feedback.save(update_fields=['starred', 'updated_at'])
+        return Response(FeedbackProduitSerializer(feedback).data)
+
+    # ── NTIDE47 — modération : masquer sans supprimer (Directeur STRICT) ────
+    @action(detail=True, methods=['post'], url_path='masquer',
+            permission_classes=[FeedbackModerate])
+    def masquer(self, request, pk=None):
+        """Ne supprime jamais le feedback : il disparaît des listes admin
+        normales (``get_queryset``) mais reste consultable via
+        ``?include_archived=1`` (même palier). Journalise dans le chatter
+        générique (ARC8), comme la modération des idées (NTIDE19)."""
+        feedback = self.get_object()
+        if not feedback.archived:
+            feedback.archived = True
+            feedback.save(update_fields=['archived', 'updated_at'])
+            from apps.records.models import Activity
+            from apps.records.services import log_activity
+            log_activity(
+                feedback, Activity.Kind.MODIFICATION, user=request.user,
+                field='archived', field_label='Masqué', old_value='False',
+                new_value='True', company=feedback.company)
+        return Response(FeedbackProduitSerializer(feedback).data)
 
     # ── NTIDE39 — fermeture via annonce produit (« vous l'aviez demandé,
     #    c'est livré ») ────────────────────────────────────────────────────
@@ -651,11 +766,25 @@ class AnnonceProduitViewSet(CompanyScopedModelViewSet):
 class FeedbackResumeView(APIView):
     """NTIDE38 — agrégation admin du feedback produit par thème (counts +
     citations d'exemple). Même palier que le tableau de bord d'idées
-    (``IdeasSeeAll``) : surface d'administration, jamais ouverte à tous."""
+    (``IdeasAggregateRead``, NTIDE49 — Directeur/Admin/Responsable OU rôle
+    « Viewer ») : surface d'administration, jamais ouverte à tous."""
+
+    permission_classes = [IdeasAggregateRead]
+
+    def get(self, request):
+        return Response({
+            'results': selectors.feedback_by_theme(request.user.company),
+        })
+
+
+class FeedbackHotspotView(APIView):
+    """NTIDE46 — « Pages les plus commentées » : pages ayant reçu au moins
+    10 feedbacks/semaine (``source_page``, NTIDE44). Même palier que le
+    tableau de bord d'idées (``IdeasSeeAll``) : surface d'administration."""
 
     permission_classes = [IdeasSeeAll]
 
     def get(self, request):
         return Response({
-            'results': selectors.feedback_by_theme(request.user.company),
+            'results': selectors.hotspot_feedback(request.user.company),
         })

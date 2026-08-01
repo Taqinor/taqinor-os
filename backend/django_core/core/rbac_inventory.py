@@ -100,6 +100,21 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/marketing/enquetes-publiques/",  # enquête/NPS publique tokenisée
     "api/django/marketing/reponses-enquete/",  # certificat PDF d'une réponse d'enquête
     "api/django/marketing/evenements-marketing/",  # inscription publique à un événement
+    # NTPRT20 — candidature fournisseur publique (formulaire « devenir
+    # fournisseur » de la page vitrine) : POST AllowAny DÉLIBÉRÉ (le candidat
+    # n'a par définition pas encore de compte), société résolue depuis l'en-tête
+    # Host (jamais du corps), champs strictement whitelistés, throttlé 10/h par
+    # IP (CandidatureFournisseurThrottle) et dédupliqué côté service sur
+    # (société, nom, statut en_attente). Ne crée qu'un fournisseur EN ATTENTE de
+    # validation : aucun effet métier avant une validation authentifiée.
+    "api/django/portail/fournisseurs/candidature",
+    # NTMOB7 — décision d'approbation depuis une notification push : POST
+    # AllowAny DÉLIBÉRÉ car un push est tapé sur un appareil dont la session JWT
+    # a pu expirer. La preuve d'identité ET la décision sont scellées dans un
+    # jeton signé HMAC (TimestampSigner, 24 h, une décision fixe par jeton) —
+    # rien n'est lu du corps hormis ce jeton ; jeton invalide/expiré ⇒ 401 sans
+    # fuite. Endpoint MUTANT, donc throttlé 60/h par IP (DecisionPushThrottle).
+    "api/django/reporting/approbations-en-attente/decider-push",
     # Kiosque pointage : le motif routeur capture une ancre ^ dans le chemin :
     "api/django/rh/^pointages/kiosque",
     "api/schema",                             # OpenAPI (si activé plus tard)

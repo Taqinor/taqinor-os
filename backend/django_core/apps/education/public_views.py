@@ -1,4 +1,4 @@
-"""Endpoints PUBLICS (sans login) du portail parents — NTEDU31/32/34.
+"""Endpoints PUBLICS (sans login) du portail parents — NTEDU31/32/33/34.
 
 Le parent s'identifie par le ``token_acces`` de son ``CompteParent``
 (NTEDU31, MÊME PATRON que ``apps.portail.ComptePortailClient``/FG228,
@@ -196,3 +196,120 @@ def portail_liste_attente(request, token):
         'count': qs.count(),
         'results': [_serialize_liste_attente(i) for i in qs],
     }))
+
+
+def _serialize_presence(presence):
+    return {
+        'id': presence.id,
+        'eleve': f'{presence.eleve.prenom} {presence.eleve.nom}',
+        'date': presence.seance.date.isoformat(),
+        'matiere': presence.seance.matiere,
+        'statut': presence.statut,
+        'statut_display': presence.get_statut_display(),
+    }
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([EducationPortailThrottle])
+def portail_presences(request, token):
+    """NTEDU33 — historique de présence (lecture seule, NTEDU12) de chaque
+    enfant de la famille. GET /api/django/public/education/portail/<token>/presences/
+
+    Filtrage STRICT par ``compte.famille_id``, même politique que les autres
+    vues de ce module : un compte parent ne voit jamais les présences d'un
+    élève d'une autre famille."""
+    compte = _resoudre_compte(token)
+    if compte is None:
+        return _not_found()
+
+    from .models import Presence
+
+    presences = (Presence.objects
+                 .filter(eleve__famille=compte.famille)
+                 .select_related('eleve', 'seance')
+                 .order_by('-seance__date'))
+    return _noindex(Response({
+        'count': presences.count(),
+        'results': [_serialize_presence(p) for p in presences],
+    }))
+
+
+def _serialize_bulletin(bulletin):
+    return {
+        'id': bulletin.id,
+        'eleve': f'{bulletin.eleve.prenom} {bulletin.eleve.nom}',
+        'periode': bulletin.periode.libelle,
+        'date_publication': (
+            bulletin.date_publication.isoformat()
+            if bulletin.date_publication else None),
+    }
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([EducationPortailThrottle])
+def portail_bulletins(request, token):
+    """NTEDU33 — bulletins PUBLIÉS (lecture seule, NTEDU17) de chaque enfant
+    de la famille. GET /api/django/public/education/portail/<token>/bulletins/
+
+    Un bulletin ``publie=False`` (brouillon de l'enseignant, notes peut-être
+    déjà saisies) reste INVISIBLE ici — filtrage serveur strict, jamais un
+    flag laissé au client."""
+    compte = _resoudre_compte(token)
+    if compte is None:
+        return _not_found()
+
+    from .models import Bulletin
+
+    bulletins = (Bulletin.objects
+                 .filter(eleve__famille=compte.famille, publie=True)
+                 .select_related('eleve', 'periode')
+                 .order_by('-periode__ordre', 'eleve'))
+    return _noindex(Response({
+        'count': bulletins.count(),
+        'results': [_serialize_bulletin(b) for b in bulletins],
+    }))
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([EducationPortailThrottle])
+def portail_bulletin_pdf(request, token, bulletin_id):
+    """NTEDU33 — PDF d'un bulletin PUBLIÉ. GET /api/django/public/education/
+    portail/<token>/bulletins/<bulletin_id>/pdf/
+
+    RÈGLE #4 : même renderer DÉDIÉ que NTEDU17 (``education/bulletin_pdf.py``,
+    moteur PDF partagé ``core.pdf``) — un bulletin scolaire n'est pas un
+    devis client, ce chemin ne touche JAMAIS ``apps/ventes/quote_engine/``.
+    404 (jamais de distinction observable) si le bulletin n'existe pas,
+    n'appartient pas à la famille du token, ou n'est pas encore publié."""
+    compte = _resoudre_compte(token)
+    if compte is None:
+        return _not_found()
+
+    from django.http import HttpResponse
+
+    from .bulletin_pdf import render_bulletin_pdf
+    from .models import Bulletin
+    from .services import donnees_bulletin
+
+    bulletin = (Bulletin.objects
+                .filter(id=bulletin_id, eleve__famille=compte.famille,
+                        publie=True)
+                .select_related('eleve', 'periode').first())
+    if bulletin is None:
+        return _not_found()
+
+    contexte = donnees_bulletin(bulletin.eleve, bulletin.periode)
+    try:
+        pdf_bytes = render_bulletin_pdf(contexte)
+    except RuntimeError as exc:
+        return _noindex(Response(
+            {'detail': str(exc)},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE))
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = (
+        f'attachment; filename="bulletin_{bulletin.eleve_id}_'
+        f'{bulletin.periode_id}.pdf"')
+    return _noindex(resp)

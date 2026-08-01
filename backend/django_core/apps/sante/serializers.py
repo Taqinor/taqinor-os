@@ -7,10 +7,11 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
-    ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
-    MotifConsultation, PaiementSante, Patient, Praticien, PraticienSite,
-    PriseEnCharge, RendezVous, Salle)
+    ActeMedical, ActeRealise, Admission, Convention, CycleSterilisation,
+    FactureSante, GrilleTarifaire, HoraireOuverturePraticien,
+    IndisponibilitePraticien, InstrumentSterilise, MotifConsultation,
+    PaiementSante, Patient, Praticien, PraticienSite, PriseEnCharge,
+    RendezVous, Salle)
 
 
 def _meme_societe(serializer, value, label):
@@ -156,11 +157,24 @@ class ActeRealiseSerializer(serializers.ModelSerializer):
             'id', 'admission', 'patient', 'praticien', 'acte',
             'date_realisation', 'quantite', 'tarif_applique_ttc',
             'facturable', 'prise_en_charge', 'facture_sante',
+            'instruments_utilises',
         ]
         read_only_fields = ['tarif_applique_ttc', 'facture_sante']
 
     def validate_admission(self, value):
         return _meme_societe(self, value, 'Admission')
+
+    def validate_instruments_utilises(self, value):
+        # NTSAN24 — M2M léger, jamais un instrument d'une autre société
+        # (même garde-fou tenant que les FK simples, appliqué élément par
+        # élément).
+        request = self.context.get('request')
+        if request is not None:
+            for instrument in value:
+                if instrument.company_id != request.user.company_id:
+                    raise serializers.ValidationError(
+                        'Instrument stérilisé inconnu.')
+        return value
 
     def validate_patient(self, value):
         return _meme_societe(self, value, 'Patient')
@@ -301,3 +315,29 @@ class ActeMedicalSerializer(serializers.ModelSerializer):
             'cotation_lettre_cle', 'actif',
         ]
         read_only_fields = ['actif']
+
+
+# =============================================================================
+# NTSAN23 — Stérilisation et traçabilité des instruments.
+# =============================================================================
+
+class CycleSterilisationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CycleSterilisation
+        fields = [
+            'id', 'numero_cycle', 'date_cycle', 'autoclave_ref', 'statut',
+            'operateur',
+        ]
+        # ``operateur`` est posé côté serveur (utilisateur authentifié) —
+        # jamais lu du corps de requête.
+        read_only_fields = ['id', 'operateur']
+
+
+class InstrumentSteriliseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InstrumentSterilise
+        fields = ['id', 'cycle', 'instrument_ref', 'kit_ref']
+        read_only_fields = ['id']
+
+    def validate_cycle(self, value):
+        return _meme_societe(self, value, 'Cycle de stérilisation')

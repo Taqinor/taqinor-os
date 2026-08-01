@@ -16,12 +16,15 @@ const PAGE_SRC = readFileSync(join(HERE, 'LeadsPage.jsx'), 'utf8')
 test('LB9-wire : KanbanView reçoit totalLeads/onClearFilters/onNewLead/onImportLeads', () => {
   const idx = PAGE_SRC.indexOf("{view === 'kanban' && (")
   assert.ok(idx > 0)
-  const block = PAGE_SRC.slice(idx, idx + 400)
+  const block = PAGE_SRC.slice(idx, idx + 900)
   assert.match(block, /<KanbanView/)
   assert.match(block, /\{\.\.\.viewProps\}/)
   assert.match(block, /totalLeads=\{leads\.length\}/)
   assert.match(block, /onClearFilters=\{\(\) => setFilters\(EMPTY_FILTERS\)\}/)
-  assert.match(block, /onNewLead=\{openNew\}/)
+  // MB6 — l'action de coach est desormais reservee au desktop : en mobile le
+  // bouton flottant porte deja le nom accessible « + Nouveau lead », et deux
+  // controles homonymes rendaient la page ambigue (lecteur d'ecran + e2e).
+  assert.match(block, /onNewLead=\{isMobile \? undefined : openNew\}/)
   assert.match(block, /onImportLeads=\{\(\) => setShowImport\(true\)\}/)
 })
 

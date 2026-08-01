@@ -83,7 +83,10 @@ def idees_similaires(company, texte, limit=3):
     ``icontains`` titre+description (même patron que ``apps.kb.selectors``),
     top N par votes (plus de votes = plus consolidée), plus récente d'abord
     en cas d'égalité. Exclut les brouillons d'autrui (invisibles/hors sujet
-    pour la dédup) et les idées masquées (modération, NTIDE19)."""
+    pour la dédup), les idées masquées (modération, NTIDE19) et les idées
+    client (boîte à idées publique, NTIDE48 — « masquées des équipes sauf
+    admin » : cette route reste ouverte à tout utilisateur interne connecté,
+    IdeasVote, donc jamais un idée client dans ses suggestions)."""
     from django.db.models import Q
 
     from .models import Idee
@@ -91,7 +94,8 @@ def idees_similaires(company, texte, limit=3):
     texte = (texte or '').strip()
     if not texte:
         return []
-    qs = (Idee.objects.filter(company=company, draft=False, archived=False)
+    qs = (Idee.objects.filter(
+            company=company, draft=False, archived=False, client_id__isnull=True)
           .filter(Q(titre__icontains=texte) | Q(description__icontains=texte))
           .order_by('-votes_count', '-created_at')[:limit])
     return list(qs.values('id', 'titre', 'contexte', 'votes_count', 'statut'))
@@ -267,6 +271,47 @@ def timeline(company, statut=None, contexte=None):
             for row in qs if row['jour'] is not None]
 
 
+def timeline_idee(idee):
+    """NTIDE53 — timeline des changements de STATUT d'UNE idée (minigraph
+    affiché sur son détail), depuis le chatter générique (``records.
+    Activity``, filtré ``field == 'statut'``, ARC8 — même journal que
+    ``transitionner``/``reouvrir``). Un point par transition, dans l'ordre
+    chronologique, en plus du point de départ implicite (création, toujours
+    ``ouvert``) : ``{statut, statut_display, date, jours_depuis_creation}``.
+
+    ``jours_depuis_creation`` est un entier (jours pleins écoulés depuis
+    ``idee.created_at``, jamais négatif pour un point réel) — exactement la
+    forme attendue par l'exemple du critère d'acceptation (« créée→examinée
+    J+2→retenue J+5→réalisée J+60 »)."""
+    from apps.records.services import chatter_qs
+
+    from .models import Idee as IdeeModel
+
+    points = [{
+        'statut': IdeeModel.Statut.OUVERT.value,
+        'statut_display': IdeeModel.Statut.OUVERT.label,
+        'date': idee.created_at.isoformat(),
+        'jours_depuis_creation': 0,
+    }]
+    qs = (chatter_qs(idee, company=idee.company)
+          .filter(field='statut')
+          .order_by('created_at', 'id'))
+    for activite in qs:
+        statut = activite.new_value or ''
+        try:
+            statut_display = IdeeModel.Statut(statut).label
+        except ValueError:
+            statut_display = statut
+        points.append({
+            'statut': statut,
+            'statut_display': statut_display,
+            'date': activite.created_at.isoformat(),
+            'jours_depuis_creation':
+                (activite.created_at.date() - idee.created_at.date()).days,
+        })
+    return points
+
+
 def tableau_bord_campagnes(company):
     """NTIDE34 — agrégat admin « Nos campagnes innovation » : cartes
     actives/fermées/brouillons, top 5 campagnes par nb d'idées reçues
@@ -331,17 +376,139 @@ def segments_disponibles(company):
     return segments
 
 
+def hotspot_feedback(company, seuil=10):
+    """NTIDE46 — pages ayant reçu au moins ``seuil`` feedbacks (défaut 10)
+    sur les 7 DERNIERS jours (``FeedbackProduit.source_page``, NTIDE44),
+    triées par nombre décroissant. Les feedbacks sans ``source_page``
+    renseigné sont ignorés (rien à rattacher à une page). NTIDE47 — un
+    feedback masqué (modération) n'est plus compté (même exclusion que
+    ``feedback_by_theme``)."""
+    from datetime import timedelta
+
+    from django.db.models import Count
+    from django.utils import timezone
+
+    from .models import FeedbackProduit
+
+    depuis = timezone.now() - timedelta(days=7)
+    qs = (FeedbackProduit.objects.filter(
+            company=company, created_at__gte=depuis, archived=False)
+          .exclude(source_page='')
+          .values('source_page')
+          .annotate(nombre=Count('id'))
+          .filter(nombre__gte=seuil)
+          .order_by('-nombre', 'source_page'))
+    return [{'source_page': r['source_page'], 'nombre': r['nombre']}
+            for r in qs]
+
+
+def kpi_innovation(company):
+    """NTIDE50 — tuiles KPI innovation FÉDÉRÉES pour l'endpoint reporting
+    fédéré (ARC40, ``apps/reporting/reports.py::kpi_federes``). Déclaré dans
+    ``apps/innovation/platform.py`` (``kpi_providers``) — le reporting
+    n'importe AUCUN modèle de cette app, ce sélecteur est le SEUL point de
+    contact. Chaque tuile : ``{id, label, valeur}``.
+
+    - ``innovation_idees_semaine`` : nombre d'idées PROPOSÉES sur les 7
+      derniers jours (mêmes exclusions que le tableau de bord — brouillons/
+      masquées, NTIDE6/18/19).
+    - ``innovation_top_idee_semaine`` : l'idée la plus votée de la semaine
+      (titre dans le libellé, nombre de votes en valeur) — absente si
+      aucune idée cette semaine (jamais une tuile vide/à zéro inventée).
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import Idee
+
+    depuis = timezone.now() - timedelta(days=7)
+    qs = Idee.objects.filter(
+        company=company, draft=False, archived=False, created_at__gte=depuis)
+    total = qs.count()
+    tuiles = [{
+        'id': 'innovation_idees_semaine',
+        'label': 'Idées cette semaine',
+        'valeur': total,
+    }]
+    top = qs.order_by('-votes_count', '-created_at').first()
+    if top is not None:
+        tuiles.append({
+            'id': 'innovation_top_idee_semaine',
+            'label': f'Top idée (semaine) : {top.titre}',
+            'valeur': top.votes_count,
+        })
+    return tuiles
+
+
+def auteurs_autocomplete(company, q='', limit=10):
+    """NTIDE54 — autocomplétion utilisateurs de ``company`` pour les
+    formulaires admin de création d'idée en masse (import/gestion, cf.
+    ``manage.py import_ideas``, NTIDE24) : filtre optionnel ``?q=`` sur le
+    ``username`` (``icontains``), triés par nom, limité à ``limit``. Jamais
+    un utilisateur d'une autre société (scopé, comme tout le reste du
+    module)."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    qs = User.objects.filter(company=company)
+    q = (q or '').strip()
+    if q:
+        qs = qs.filter(username__icontains=q)
+    qs = qs.order_by('username')[:limit]
+    return list(qs.values('id', 'username'))
+
+
+def idees_geolocalisees(company):
+    """NTIDE55 — idées liées à un CHANTIER (``linked_type == 'chantier'``,
+    NTIDE14) avec un GPS exploitable, pour affichage sur carte (admin seul).
+
+    Le GPS est lu via ``apps.installations.selectors.installation_gps_map``
+    — JAMAIS un import direct d'``Installation`` (règle de frontière
+    cross-app : ``linked_id`` reste par ailleurs une référence opaque, comme
+    partout ailleurs dans ce module). Une idée liée à un chantier SANS GPS
+    est simplement absente (jamais une coordonnée fabriquée) ; brouillons/
+    masquées exclues (même règle que le tableau de bord, NTIDE6)."""
+    from apps.installations.selectors import installation_gps_map
+
+    from .models import Idee
+
+    qs = (Idee.objects.filter(
+        company=company, linked_type=Idee.LinkedType.CHANTIER,
+        draft=False, archived=False)
+        .exclude(linked_id__isnull=True))
+    gps_map = installation_gps_map(list(qs.values_list('linked_id', flat=True)))
+
+    resultat = []
+    for idee in qs:
+        coords = gps_map.get(idee.linked_id)
+        if not coords or coords[0] is None or coords[1] is None:
+            continue
+        resultat.append({
+            'id': idee.id, 'titre': idee.titre, 'statut': idee.statut,
+            'statut_display': idee.get_statut_display(),
+            'linked_id': idee.linked_id,
+            'gps_lat': coords[0], 'gps_lng': coords[1],
+        })
+    return resultat
+
+
 def feedback_by_theme(company):
     """NTIDE38 — agrégation admin du feedback produit (NTIDE36), PAR THÈME :
     total, nombre NON-LU (``statut == envoye``, jamais encore ouvert par
-    l'admin) et jusqu'à 3 citations (titres) les plus récentes. Un thème
-    sans aucun feedback n'apparaît pas (liste courte, adaptée à un
-    affichage direct)."""
+    l'admin), jusqu'à 3 citations (titres) les plus récentes, et
+    ``par_sentiment`` (NTIDE42 — répartition « +1/Neutre/-1 », clés absentes
+    si aucun feedback de ce sentiment ; ``non_renseigne`` regroupe les
+    feedbacks sans sentiment saisi, omis s'il vaut 0). Un thème sans aucun
+    feedback n'apparaît pas (liste courte, adaptée à un affichage direct).
+    NTIDE47 — un feedback masqué (modération) n'est plus compté (même
+    exclusion que la boîte à idées, NTIDE19/NTIDE6)."""
     from .models import FeedbackProduit
 
     resultat = []
     for value, label in FeedbackProduit.Theme.choices:
-        qs = FeedbackProduit.objects.filter(company=company, theme=value)
+        qs = FeedbackProduit.objects.filter(
+            company=company, theme=value, archived=False)
         total = qs.count()
         if total == 0:
             continue
@@ -349,8 +516,17 @@ def feedback_by_theme(company):
         exemples = list(
             qs.order_by('-created_at', '-id')
             .values_list('titre', flat=True)[:3])
+        par_sentiment = {}
+        for s_value, _ in FeedbackProduit.Sentiment.choices:
+            n = qs.filter(sentiment=s_value).count()
+            if n:
+                par_sentiment[s_value] = n
+        non_renseigne = qs.filter(sentiment='').count()
+        if non_renseigne:
+            par_sentiment['non_renseigne'] = non_renseigne
         resultat.append({
             'theme': value, 'theme_display': label, 'total': total,
             'non_lus': non_lus, 'exemples': exemples,
+            'par_sentiment': par_sentiment,
         })
     return resultat

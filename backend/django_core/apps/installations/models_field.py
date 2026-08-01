@@ -16,6 +16,7 @@ Cet enum est une liste FERMÉE, en ordre d'entonnoir. « annulé » n'est PAS un
 """
 from django.conf import settings
 from django.db import models
+from core.models import TenantModel
 from .models_installation import Installation  # noqa: F401
 from .models_intervention import Intervention
 
@@ -197,6 +198,58 @@ class PhotoAnnotation(models.Model):
 
     def __str__(self):
         return f'Annotation · pièce {self.attachment_id}'
+
+
+class PhotoChecklistMeta(TenantModel):
+    """NTMOB11 — horodatage SERVEUR + géolocalisation d'une photo prise pour
+    une ÉTAPE DE CHECKLIST chantier précise (capture multi-photos terrain,
+    même hors-ligne). ADJACENTE à `PhotoAnnotation` ci-dessus : même patron
+    (liée à ``records.Attachment`` en OneToOne, company-scopée, additive) —
+    l'attachement lui-même reste dans la galerie générique du chantier
+    (``apps.records``, cible ``installations.installation``), cette table
+    n'ajoute QUE le contexte checklist + géoloc.
+
+    ``checklist_item`` est NULLABLE et ``SET_NULL`` : une photo prise hors
+    contexte de checklist (générique) n'a simplement pas de lien ; supprimer
+    l'étape ne supprime jamais la photo déjà prise.
+
+    ARC1 — hérite de ``core.models.TenantModel`` (FK ``company`` +
+    ``created_at``/``updated_at``) ; ``company`` est REDÉCLARÉE ci-dessous
+    pour poser un ``related_name`` explicite ET conserver la nullabilité
+    déjà posée par la migration 0098 (PLAYBOOK ARC1 — jamais d'AlterField
+    superflue sur un champ inchangé).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: tenant (societe)
+        null=True, blank=True, related_name='photo_checklist_metas')
+    attachment = models.OneToOneField(
+        'records.Attachment', on_delete=models.CASCADE,  # on_delete: composition (piece jointe)
+        related_name='checklist_meta')
+    checklist_item = models.ForeignKey(
+        'installations.ChantierChecklistItem', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='photos')
+    # Géolocalisation BEST-EFFORT (navigator.geolocation.getCurrentPosition,
+    # côté client — JAMAIS bloquante si l'utilisateur refuse) : nullable, une
+    # photo sans position reste pleinement utilisable.
+    latitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True)
+    precision_m = models.FloatField(null=True, blank=True)
+    # Horodatage SERVEUR au moment de l'UPLOAD (jamais l'horloge de
+    # l'appareil client, falsifiable/décalée) — posé une seule fois.
+    horodatage_capture = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Métadonnées photo checklist'
+        verbose_name_plural = 'Métadonnées photos checklist'
+        ordering = ['-horodatage_capture']
+        indexes = [
+            models.Index(fields=['checklist_item']),
+        ]
+
+    def __str__(self):
+        return f'Photo checklist · pièce {self.attachment_id}'
 
 
 # ── F11/F12 — Réconciliation du matériel consommé ────────────────────────────

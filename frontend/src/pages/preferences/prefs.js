@@ -13,9 +13,16 @@
 //   • réduction de mouvement — override APP du media query OS
 //     (`prefers-reduced-motion`), pour l'utilisateur qui veut le confort de
 //     mouvement réduit sans changer son réglage système.
+//   • NTMOB12 — qualité photo (Standard compressé / Original), propre à CET
+//     APPAREIL (comme les autres réglages de ce fichier) : gouverne si les
+//     écrans de capture terrain (checklist NTMOB11, GED NumeriserPage, SAV)
+//     recompressent une photo avant envoi.
+
+import { compressImage } from '../../ui/file-utils'
 
 export const LANDING_KEY = 'taqinor.landingModule'
 export const REDUCED_MOTION_KEY = 'taqinor.reducedMotion'
+export const PHOTO_QUALITY_KEY = 'taqinor.photoQuality'
 
 function storage() {
   try {
@@ -79,6 +86,42 @@ export function getLastModuleSegment() {
   } catch {
     return ''
   }
+}
+
+// ── NTMOB12 — Qualité photo (Standard compressé / Original) ─────────────────
+
+/** 'compressed' (défaut) ou 'original'. */
+export function getPhotoQualityPref() {
+  const s = storage()
+  if (!s) return 'compressed'
+  try {
+    return s.getItem(PHOTO_QUALITY_KEY) === 'original' ? 'original' : 'compressed'
+  } catch {
+    return 'compressed'
+  }
+}
+
+export function setPhotoQualityPref(value) {
+  const s = storage()
+  if (!s) return
+  try {
+    if (value === 'original') s.setItem(PHOTO_QUALITY_KEY, 'original')
+    else s.removeItem(PHOTO_QUALITY_KEY)
+  } catch { /* stockage indisponible : réglage non persisté sur cet appareil */ }
+}
+
+/**
+ * compressPhotoForUpload — point d'entrée UNIQUE pour compresser une photo
+ * avant envoi en respectant la préférence « Qualité photo ». Passthrough total
+ * si l'utilisateur a choisi « Original » ; sinon délègue à `compressImage`
+ * (bord long 1600px, JPEG q0.75 — déjà passthrough-safe pour un non-image).
+ * Tous les écrans de capture terrain (checklist NTMOB11, GED NumeriserPage,
+ * SAV) doivent passer par CE wrapper plutôt qu'appeler `compressImage`
+ * directement, pour que le réglage utilisateur s'applique uniformément.
+ */
+export async function compressPhotoForUpload(file) {
+  if (getPhotoQualityPref() === 'original') return file
+  return compressImage(file)
 }
 
 // ── Réduction de mouvement (override app) ───────────────────────────────────

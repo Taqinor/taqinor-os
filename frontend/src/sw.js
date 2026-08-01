@@ -124,8 +124,20 @@ self.addEventListener('push', (event) => {
     // remplace la précédente, mais re-sonne/re-vibre (renotify).
     tag: data.link || 'taqinor-notif',
     renotify: true,
-    // Conserve le lien interne pour la navigation au clic.
-    data: { link: data.link || '/' },
+    // Conserve le lien interne pour la navigation au clic, et — NTMOB7 —
+    // les jetons d'approbation en un geste (si cette notification en porte).
+    // `renotify: true` remplace tag identique SANS perdre `data` (chaque
+    // `showNotification` reçoit son propre `data`, jamais fusionné).
+    data: { link: data.link || '/', approval: data.approval || null },
+  }
+  // NTMOB7 — actions natives « Approuver »/« Refuser » (Notification API
+  // `actions`), UNIQUEMENT quand le serveur en a posé (catégorie approbation
+  // avec jetons signés déjà attachés ci-dessus). Un navigateur qui ne
+  // supporte pas les actions natives (repli documenté : Safari ancien)
+  // ignore silencieusement ce champ — `notificationclick` retombe alors sur
+  // l'ouverture normale de l'app (comportement N92 inchangé).
+  if (Array.isArray(data.actions) && data.actions.length) {
+    options.actions = data.actions
   }
   event.waitUntil(self.registration.showNotification(title, options))
 })
@@ -154,7 +166,33 @@ self.addEventListener('sync', (event) => {
   }
 })
 
+// NTMOB7 — POST direct du jeton d'approbation en un geste (aucune nouvelle
+// UI : la notification EST l'action). Best-effort : un échec réseau ne fait
+// jamais planter le service worker — au pire l'utilisateur rouvre l'app et
+// décide normalement depuis l'écran d'approbations.
+function postApprovalToken(token) {
+  return fetch('/api/django/reporting/approbations-en-attente/decider-push/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  }).catch(() => undefined)
+}
+
 self.addEventListener('notificationclick', (event) => {
+  const approval = event.notification.data && event.notification.data.approval
+  // NTMOB7 — action native tapée directement SUR la notification : on POSTe
+  // le jeton scellé correspondant et on referme, sans ouvrir l'app (pas de
+  // nouvelle UI, la notification EST l'action). `event.action` est '' pour
+  // un tap sur le corps de la notification (repli — comportement N92
+  // ci-dessous, inchangé) ou sur un navigateur sans actions natives.
+  if (approval && (event.action === 'approve' || event.action === 'reject')) {
+    event.notification.close()
+    const token = event.action === 'approve'
+      ? approval.approveToken : approval.rejectToken
+    if (token) event.waitUntil(postApprovalToken(token))
+    return
+  }
+
   event.notification.close()
   const link = (event.notification.data && event.notification.data.link) || '/'
   event.waitUntil(

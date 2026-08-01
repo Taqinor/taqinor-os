@@ -105,3 +105,41 @@ def comptes_dormants(company, seuil_jours):
             Q(derniere_activite__lt=cutoff)
             | Q(derniere_activite__isnull=True))
     )
+
+
+# NTMOB6 — accueil mobile PAR DÉFAUT selon le rôle métier (nom du Role fin).
+# Rôles composés (« Commercial responsable », « Technicien responsable »)
+# retombent sur l'accueil de base de leur famille via un préfixe — aucun
+# accueil mobile dédié n'existe encore pour ces variantes « responsable ».
+_MOBILE_HOME_EXACT = {
+    'Directeur': '/mobile/cockpit',
+    'Administrateur': '/mobile/cockpit',
+}
+_MOBILE_HOME_PREFIX = (
+    ('Technicien', '/ma-journee'),
+    ('Commercial', '/mobile/commercial'),
+)
+
+
+def default_mobile_home_route(user):
+    """Route d'accueil mobile suggérée pour ``user`` (fonction PURE, ne
+    persiste rien) : Technicien → ``/ma-journee`` (déjà existant), Commercial
+    → NTMOB4, Directeur/Administrateur → NTMOB5, tout autre rôle → ``''``
+    (dashboard générique, comportement inchangé). Un compte HÉRITÉ sans Role
+    fin retombe sur ``role_legacy``/``is_admin_role`` (même repli que
+    ``menu_tier``)."""
+    role_nom = user.role.nom if getattr(user, 'role', None) else ''
+    if role_nom in _MOBILE_HOME_EXACT:
+        return _MOBILE_HOME_EXACT[role_nom]
+    for prefix, route in _MOBILE_HOME_PREFIX:
+        if role_nom.startswith(prefix):
+            return route
+    if not role_nom and getattr(user, 'is_admin_role', False):
+        return '/mobile/cockpit'
+    return ''
+
+
+# Whitelist stricte des routes mobile persistables (défense en profondeur :
+# jamais une route arbitraire écrite depuis le corps de requête).
+MOBILE_HOME_ALLOWED_ROUTES = frozenset(
+    {'', '/ma-journee', '/mobile/commercial', '/mobile/cockpit'})

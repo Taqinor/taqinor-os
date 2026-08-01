@@ -4,9 +4,17 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 
-// Login ne fait pas de requête réseau au montage (seulement au submit) —
-// on neutralise quand même le module axios pour ne dépendre d'aucun réseau.
-vi.mock('../api/axios', () => ({ default: { post: vi.fn(), get: vi.fn() } }))
+// On neutralise le module axios pour ne dépendre d'aucun réseau. Le stub doit
+// se COMPORTER comme axios (renvoyer une promesse) : Login monte désormais
+// `portailApi.themePublic()` (NTPRT19, marque white-label résolue par domaine),
+// un vrai client bâti sur ce module — un `vi.fn()` nu renverrait `undefined` et
+// ferait planter le `.then()` de l'effet au montage.
+vi.mock('../api/axios', () => ({
+  default: {
+    post: vi.fn(() => Promise.resolve({ data: {} })),
+    get: vi.fn(() => Promise.resolve({ data: {} })),
+  },
+}))
 // WIR134 — bannière légale résolue par identityApi (pré-auth) : stub par défaut
 // sans bannière (surchargé dans le test dédié).
 const { bannerGet, bannerAck } = vi.hoisted(() => ({

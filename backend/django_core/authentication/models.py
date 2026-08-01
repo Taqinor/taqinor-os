@@ -223,6 +223,18 @@ class CustomUser(AbstractUser):
         related_name='subordinates',
     )
 
+    # NTMOB6 — accueil mobile CHOISI/mémorisé par l'utilisateur (sélecteur de
+    # démarrage par rôle). Tri-état intentionnel : NULL = « pas encore décidé »
+    # (calculé au premier atterrissage mobile puis persisté ici) ; '' = opt-out
+    # explicite (« revenir au dashboard classique via le menu », plus jamais
+    # recalculé) ; une valeur = route stockée (`/ma-journee`,
+    # `/mobile/commercial`, `/mobile/cockpit`). Additif, nullable : un compte
+    # existant démarre à NULL (comportement desktop actuel inchangé tant qu'il
+    # ne se connecte pas d'un mobile).
+    mobile_home_route = models.CharField(
+        max_length=32, null=True, blank=True, default=None,
+    )
+
     # ── Double authentification (2FA TOTP) — strictement OPT-IN (N96) ──────
     # Le secret TOTP partagé (base32). Posé dès la phase de configuration mais
     # le 2FA n'est ACTIF qu'une fois ``totp_enabled`` passé à True (après

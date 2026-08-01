@@ -25,7 +25,7 @@ import { telHref } from '../../lib/contactLinks'
 import { downloadVCard } from '../../lib/vcard'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
 import CameraCapture from '../pwa/CameraCapture'
-import { compressImage } from '../../ui/file-utils'
+import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import {
   makeCapturedPage, rotatePageInList, removePageFromList, rotateImageBlob,
 } from '../ged/capture'
@@ -498,7 +498,7 @@ export function PhotosPanel({ intervention, onChanged }) {
     try {
       for (const p of rafale) {
         const oriented = p.rotation === 0 ? p.file : await rotateImageBlob(p.file, p.rotation)
-        const toSend = await compressImage(oriented)
+        const toSend = await compressPhotoForUpload(oriented)
         await installationsApi.ajouterPhoto(id, toSend, slot.cle)
       }
       toast.success(`${rafale.length} photo${rafale.length > 1 ? 's' : ''} ajoutée${rafale.length > 1 ? 's' : ''}.`)
@@ -516,7 +516,8 @@ export function PhotosPanel({ intervention, onChanged }) {
       // VX77 — compresse AVANT envoi (bord long ≤1600px, JPEG q0.75) : la
       // photo brute d'un appareil moderne (4-8 Mo) fait caler/timeout la 3G
       // rurale. Les PDF/SVG passent intouchés (compressImage() no-op).
-      const toSend = await compressImage(file)
+      // NTMOB12 — respecte la préférence « Qualité photo » (Mes préférences).
+      const toSend = await compressPhotoForUpload(file)
       await installationsApi.ajouterPhoto(id, toSend, slot)
       toast.success('Photo ajoutée.')
       await load(); onChanged?.()

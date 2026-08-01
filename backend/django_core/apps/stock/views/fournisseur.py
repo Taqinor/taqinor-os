@@ -72,6 +72,16 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
             # `performance` ci-dessus — get_permissions prime sur le
             # permission_classes de l'@action, d'où ce cas explicite).
             return [HasPermissionOrLegacy('stock_voir')()]
+        elif self.action == 'decider_candidature':
+            # NTPRT25 — valider/rejeter une candidature d'auto-inscription au
+            # portail fournisseur. RÉSERVÉ À L'ADMINISTRATEUR : faire entrer un
+            # tiers externe dans le référentiel (donc dans les listes de
+            # sourcing) est une décision d'administration, pas une écriture
+            # stock ordinaire — lecture volontairement plus STRICTE que
+            # `stock_modifier`. `get_permissions` prime sur le
+            # `permission_classes` de l'@action, d'où ce cas explicite (les
+            # deux déclarent la même garde).
+            return [IsAdminRole()]
         elif self.action in WRITE_ACTIONS:
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):
@@ -220,6 +230,32 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
                     f'« {dup.nom} ».')
         except Exception:  # noqa: BLE001 — le warning ne casse jamais
             pass
+
+    @action(detail=True, methods=['post'], url_path='decider-candidature',
+            permission_classes=[IsAdminRole])
+    def decider_candidature(self, request, *args, **kwargs):
+        """NTPRT25 — valide ou rejette une candidature d'auto-inscription.
+
+        Corps : ``{"valider": true|false}`` — le paramètre est OBLIGATOIRE et
+        n'a AUCUN défaut : un corps vide ne doit jamais faire entrer par
+        accident un tiers externe dans le référentiel. Idempotent (un
+        fournisseur qui n'est pas « en attente » n'est pas modifié) et sans
+        effet sur ``statut`` (blocage commercial XPUR4, axe indépendant).
+        """
+        from ..services import decider_candidature_fournisseur
+        fournisseur = self.get_object()
+        brut = request.data.get('valider')
+        if brut is None:
+            return Response(
+                {'detail': 'Le champ « valider » (true/false) est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        valider = brut in (True, 'true', 'True', '1', 1, 'on')
+        decider_candidature_fournisseur(fournisseur, valider=valider)
+        fournisseur.refresh_from_db(fields=['statut_validation'])
+        return Response({
+            'id': fournisseur.id,
+            'statut_validation': fournisseur.statut_validation,
+        })
 
     @action(detail=True, methods=['get'], url_path='performance',
             permission_classes=[HasPermissionOrLegacy('stock_voir')])

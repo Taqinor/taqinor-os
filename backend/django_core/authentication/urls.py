@@ -6,6 +6,7 @@ from .views import (
     UserViewSet,
     CompanyViewSet,
     MeView,
+    MobileHomeRouteView,
     LogoutView,
     CookieTokenRefreshView,
     TwoFactorSetupView,
@@ -35,6 +36,10 @@ urlpatterns = [
         name='auth_register_company',
     ),
     path('auth/me/', MeView.as_view(), name='auth_me'),
+    # NTMOB6 — sélecteur de démarrage par rôle : réglage d'accueil mobile
+    # mémorisé par l'utilisateur courant.
+    path('auth/mobile-home-route/', MobileHomeRouteView.as_view(),
+         name='auth_mobile_home_route'),
     # XPLT19 — bascule de société active (utilisateur multi-sociétés).
     path('auth/switch-company/', SwitchCompanyView.as_view(),
          name='auth_switch_company'),

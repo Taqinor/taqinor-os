@@ -129,6 +129,8 @@ _APP_URLS = [
     path('credit/', include('apps.credit.urls')),
     # Groupe NTFPA — FP&A (budgets, prévisions glissantes, scénarios).
     path('fpa/', include('apps.fpa.urls')),
+    # Groupe NTMIG — Migration ERP sortante (Odoo/Sage/Excel) + réconciliation.
+    path('migration/', include('apps.migration.urls')),
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
     path('assurances/', include('apps.assurances.urls')),
     # Groupe NTADM — Administration enterprise.
@@ -138,10 +140,15 @@ _APP_URLS = [
     path('education/', include('apps.education.urls')),
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
     path('uxviews/', include('apps.uxviews.urls')),
+    # NTUX7 — Corbeille transverse 30 jours (écran /parametres/corbeille).
+    path('trash/', include('apps.trash.urls')),
     # Groupe NTMAR — Facturation électronique DGI (gated, EINVOICE_ENABLED).
     path('einvoice/', include('apps.einvoice.urls')),
     # Groupe NTMAR — Calendrier fiscal marocain, attestations, UBO, veille.
     path('fiscal/', include('apps.fiscal.urls')),
+    # Groupe NTAI — copilotes IA (brouillons proposés, jamais d'écriture
+    # implicite ; 503 douce sans clé LLM/STT configurée).
+    path('ai/', include('apps.ai_governance.urls')),
 ]
 
 urlpatterns = [
@@ -203,6 +210,9 @@ urlpatterns = [
     # NTEDU31/32/34 — Portail parents (établissement scolaire), sans login.
     path('api/django/public/education/',
          include('apps.education.public_urls')),
+    # NTPRT19 — Branding white-label de la page de login portail (sans login).
+    path('api/django/public/portail/',
+         include('apps.portail.public_urls')),
     # WIR136 — `apps.identity.urls` et `apps.accessreview.urls` étaient montés
     # ICI en autonome : identity en DOUBLE (il est déjà dans `_APP_URLS`, donc
     # déjà servi sous `api/django/identity/`) et accessreview en SIMPLE (donc

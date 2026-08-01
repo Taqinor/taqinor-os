@@ -266,6 +266,14 @@ def generate_bon_livraison(chantier):
         _as_date(chantier.date_pose_reelle)
         or _as_date(chantier.date_mise_en_service)
     )
+    # NTMOB16 — trait de signature client (data-URL PNG, SignaturePad.jsx),
+    # capturé via l'action `signer-client`. N'ajoute les clés QUE si une
+    # signature existe réellement : un chantier sans signature garde un
+    # contexte STRICTEMENT identique à avant cette tâche (byte-identique,
+    # XSTK18 test_fr_client_renders_existing_template_byte_identical).
+    if chantier.signature_client:
+        ctx['signature_client'] = chantier.signature_client
+        ctx['signataire_nom'] = chantier.signataire_nom or None
     langue = document_langue(chantier.client)
     if langue == 'ar':
         ctx['L'] = lambda cle: _bl_libelle(cle, langue)

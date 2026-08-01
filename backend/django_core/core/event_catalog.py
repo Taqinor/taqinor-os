@@ -172,6 +172,10 @@ CATALOG = {
     'appointment_effectue': _e(
         "Un rendez-vous CRM (Appointment) bascule vers « effectué ».",
         ['appointment', 'company', 'user', 'ancien_statut']),
+    'cycle_sterilisation_non_conforme': _e(
+        'Un cycle de stérilisation (NTSAN23) est déclaré non conforme — '
+        'QHSE ouvre une non-conformité liée.',
+        ['cycle', 'company', 'user']),
     # WIR85 / XACC6 — émis par ``stock.services.record_stock_movement`` (le
     # SEUL point de création d'un ``MouvementStock``), synchroniquement et en
     # best-effort juste après l'écriture du mouvement. Abonné : compta
@@ -181,6 +185,12 @@ CATALOG = {
         "Un mouvement de stock (stock.MouvementStock) vient d'être "
         "enregistré — entrée, sortie ou ajustement.",
         ['instance', 'company']),
+    # NTUX7 — alimente la corbeille transverse 30 jours (``apps.trash``) sans
+    # qu'aucune app émettrice ne connaisse la corbeille.
+    'record_soft_deleted': _e(
+        "Un enregistrement métier est soft-supprimé (archivé/annulé) — "
+        "alimente la corbeille transverse 30 jours.",
+        ['instance', 'company', 'user', 'type_libelle', 'libelle', 'donnees']),
 }
 
 

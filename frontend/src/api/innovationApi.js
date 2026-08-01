@@ -37,6 +37,15 @@ const innovationApi = {
   // ── Chatter (historique, NTIDE5) ──
   historique: (id) => api.get(`/innovation/idees/${id}/historique/`),
 
+  // ── Timeline des changements de statut d'UNE idée (NTIDE53, minigraph détail) ──
+  timelineIdee: (id) => api.get(`/innovation/idees/${id}/timeline/`),
+
+  // ── Autocomplétion auteur (NTIDE54, formulaires admin de création en masse) ──
+  auteurs: (q) => api.get('/innovation/idees/auteurs/', { params: { q } }),
+
+  // ── Géolocalisation des idées liées à un chantier (NTIDE55, carte admin) ──
+  geolocalisation: () => api.get('/innovation/idees/geolocalisation/'),
+
   // ── Lier à un devis/ticket/chantier (NTIDE14, opaque string-FK) ──
   lier: (id, linkedType, linkedId) =>
     api.post(`/innovation/idees/${id}/lier/`,
@@ -104,9 +113,15 @@ const innovationApi = {
     get: (id) => api.get(`/innovation/feedback-produit/${id}/`),
     // NTIDE38 — agrégation par thème (counts + citations).
     resume: () => api.get('/innovation/feedback-resume/'),
+    // NTIDE46 — pages ayant reçu 10+ feedbacks sur les 7 derniers jours.
+    hotspot: () => api.get('/innovation/feedback-hotspot/'),
     // NTIDE39 — fermeture via annonce produit (« c'est livré »).
     lierAnnonce: (id, data) =>
       api.post(`/innovation/feedback-produit/${id}/lier-annonce/`, data),
+    // NTIDE45 — marquer/démarquer « étoilé » (important), notifie les admins.
+    etoiler: (id) => api.post(`/innovation/feedback-produit/${id}/etoiler/`),
+    // NTIDE47 — modération : masquer sans supprimer (palier Directeur strict).
+    masquer: (id) => api.post(`/innovation/feedback-produit/${id}/masquer/`),
   },
 
   // ── WIR150 — annonces produit (repli local NTIDE39, palier admin) ──

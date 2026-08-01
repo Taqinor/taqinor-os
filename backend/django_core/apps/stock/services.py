@@ -6252,3 +6252,104 @@ def ecrire_identite_fournisseur(fournisseur) -> bool:
             })
     except Exception:
         return False
+
+
+# ── NTPRT25 — Auto-inscription d'un fournisseur (candidature portail) ────────
+#
+# Point d'entrée UNIQUE des candidatures : ``apps.portail`` appelle CE service
+# (jamais ``apps.stock.models``). Le fournisseur naît
+# ``statut_validation='en_attente_validation'`` — donc invisible de toute liste
+# de sourcing automatique (cf. ``selectors.search_fournisseurs`` /
+# ``sous_traitants_qs``) tant qu'un admin interne n'a pas tranché.
+
+#: Champs qu'un CANDIDAT anonyme a le droit de renseigner. Volontairement
+#: minimal : ni ``statut``, ni ``statut_validation``, ni ``company``, ni aucun
+#: champ commercial — un formulaire public ne pose jamais son propre statut.
+CHAMPS_CANDIDATURE_FOURNISSEUR = (
+    'nom', 'contact_personne', 'email', 'telephone', 'adresse',
+    'ice', 'identifiant_fiscal', 'rc',
+)
+
+
+def enregistrer_candidature_fournisseur(company, donnees):
+    """Crée un fournisseur CANDIDAT pour ``company``. Renvoie le fournisseur.
+
+    ``donnees`` est filtré à ``CHAMPS_CANDIDATURE_FOURNISSEUR`` : tout autre
+    champ du corps de la requête est IGNORÉ (jamais lu d'un appelant anonyme).
+    Renvoie ``None`` si la société est absente ou le nom vide.
+
+    Idempotence raisonnable : une candidature au MÊME nom déjà EN ATTENTE dans
+    la même société est renvoyée telle quelle plutôt que dupliquée (un double
+    envoi de formulaire ne pollue pas le référentiel).
+    """
+    from .models import Fournisseur
+
+    if company is None:
+        return None
+    nettoyees = {
+        champ: (donnees.get(champ) or '')
+        for champ in CHAMPS_CANDIDATURE_FOURNISSEUR
+        if donnees.get(champ)
+    }
+    nom = (nettoyees.get('nom') or '').strip()
+    if not nom:
+        return None
+    nettoyees['nom'] = nom[:255]
+
+    existant = (Fournisseur.objects
+                .filter(company=company, nom__iexact=nom,
+                        statut_validation=(
+                            Fournisseur.StatutValidation.EN_ATTENTE))
+                .first())
+    if existant is not None:
+        return existant
+
+    fournisseur = Fournisseur.objects.create(
+        company=company,
+        statut_validation=Fournisseur.StatutValidation.EN_ATTENTE,
+        **nettoyees,
+    )
+    _notifier_candidature_fournisseur(fournisseur)
+    return fournisseur
+
+
+def _notifier_candidature_fournisseur(fournisseur):
+    """Prévient les administrateurs internes. Best-effort, jamais fatal."""
+    try:
+        from apps.notifications.services import notify_many
+        from authentication.models import CustomUser
+
+        admins = CustomUser.admins_actifs_qs(fournisseur.company)
+        notify_many(
+            list(admins),
+            'fournisseur_candidature',
+            'Nouvelle candidature fournisseur',
+            body=f'{fournisseur.nom} a demandé un accès au portail '
+                 f'fournisseur.',
+            link='/stock/fournisseurs',
+            company=fournisseur.company,
+        )
+    except Exception:  # noqa: BLE001 - une notification KO ne fait jamais
+        # perdre la candidature (elle reste visible dans /stock/fournisseurs).
+        pass
+
+
+def decider_candidature_fournisseur(fournisseur, *, valider):
+    """Valide (ou rejette) une candidature. Idempotent. Renvoie le fournisseur.
+
+    Ne touche JAMAIS ``statut`` (blocage commercial XPUR4) : les deux axes
+    restent indépendants. Un fournisseur qui n'était pas en attente n'est pas
+    modifié — on ne « re-valide » pas un fournisseur historique, et on ne
+    rejette pas rétroactivement un fournisseur déjà en production.
+    """
+    from .models import Fournisseur
+
+    if fournisseur is None:
+        return None
+    if fournisseur.statut_validation != Fournisseur.StatutValidation.EN_ATTENTE:
+        return fournisseur
+    fournisseur.statut_validation = (
+        Fournisseur.StatutValidation.VALIDE if valider
+        else Fournisseur.StatutValidation.REJETE)
+    fournisseur.save(update_fields=['statut_validation'])
+    return fournisseur

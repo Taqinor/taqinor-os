@@ -5,8 +5,16 @@ import { pressCurve } from './interaction'
 
 /* G25 — Curseur (mono ou multi-poignées), clavier géré par Radix.
    VX126 — le thumb gagne un halo (ring) + léger scale-up au grab (`active:`,
-   réservé au pointeur fin), courbe alignée sur Button via `pressCurve`. */
-export const Slider = forwardRef(function Slider({ className, ...props }, ref) {
+   réservé au pointeur fin), courbe alignée sur Button via `pressCurve`.
+
+   Accessibilité : c'est le THUMB qui porte `role="slider"`, pas la racine. Un
+   `aria-label` laissé sur la racine (un `<span>` sans rôle) est donc ignoré par
+   les technologies d'assistance : le curseur était annoncé SANS NOM. On
+   redirige `aria-label`/`aria-labelledby` vers chaque poignée, seule porteuse
+   du rôle. */
+export const Slider = forwardRef(function Slider(
+  { className, 'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledBy, ...props }, ref,
+) {
   const count = Array.isArray(props.value)
     ? props.value.length
     : Array.isArray(props.defaultValue)
@@ -24,6 +32,8 @@ export const Slider = forwardRef(function Slider({ className, ...props }, ref) {
       {Array.from({ length: count }).map((unused, i) => (
         <SliderPrimitive.Thumb
           key={i}
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabelledBy}
           className={cn(
             'block size-4 rounded-full border border-primary bg-card shadow-ui-sm',
             'transition-[colors,transform,box-shadow] focus-ring',

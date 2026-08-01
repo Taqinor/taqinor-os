@@ -218,6 +218,18 @@ def _mark_sent(company, event_key, event_name):
         pass
 
 
+def _sans_jeton(valeur):
+    """Rend `valeur` journalisable en caviardant l'access_token qu'elle peut
+    contenir (les messages d'erreur urllib recopient l'URL appelée, jeton
+    compris). Best-effort : sans effet quand aucun jeton n'est configuré."""
+    texte = str(valeur)
+    try:
+        jeton = _token()
+    except Exception:  # noqa: BLE001 — journaliser prime sur la config
+        return texte
+    return texte.replace(jeton, '***') if jeton else texte
+
+
 def _send_event(event, *, transport=None):
     """POST un événement au CRM Dataset. True si envoyé, False sinon (best-effort,
     ne lève JAMAIS). ``transport`` (``(url, payload)->(status, body)``) injectable
@@ -232,8 +244,13 @@ def _send_event(event, *, transport=None):
                     event['event_id'], status)
         return True
     except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        # L'access_token voyage dans la query string de l'URL (imposé par
+        # l'API Graph) : une exception de transport (HTTPError & co.) recopie
+        # cette URL dans son message, ce qui déversait le jeton EN CLAIR dans
+        # les logs applicatifs — quiconque lit les logs pouvait alors publier
+        # au nom du compte. On caviarde le jeton avant toute journalisation.
         logger.warning('ADSDEEP27/28: CAPI event %s échoué : %s',
-                       event['event_id'], exc)
+                       event['event_id'], _sans_jeton(exc))
         return False
 
 

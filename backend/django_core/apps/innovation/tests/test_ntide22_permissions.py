@@ -17,7 +17,7 @@ from authentication.models import Company
 
 from apps.innovation.models import Idee
 from apps.innovation.permissions import (
-    IdeasChangeStatus, IdeasSeeAll, IdeasVote,
+    IdeasAggregateRead, IdeasChangeStatus, IdeasSeeAll, IdeasVote,
 )
 from apps.innovation.views import IdeeViewSet, VoteIdeeViewSet
 
@@ -50,9 +50,12 @@ class NamedPermissionClassesWiredTests(TestCase):
     def test_voteideeviewset_default_is_ideas_vote(self):
         self.assertIn(IdeasVote, VoteIdeeViewSet.permission_classes)
 
-    def test_tableau_bord_uses_ideas_see_all(self):
+    def test_tableau_bord_uses_ideas_aggregate_read(self):
+        # NTIDE49 — élargi de IdeasSeeAll à IdeasAggregateRead (le rôle
+        # Viewer lit aussi cet agrégat ; IdeasAggregateRead couvre TOUJOURS
+        # le palier IdeasSeeAll en interne, cf. permissions.py).
         view = IdeeViewSet.tableau_bord
-        self.assertIn(IdeasSeeAll, view.kwargs['permission_classes'])
+        self.assertIn(IdeasAggregateRead, view.kwargs['permission_classes'])
 
     def test_export_xlsx_uses_ideas_see_all(self):
         view = IdeeViewSet.export_xlsx

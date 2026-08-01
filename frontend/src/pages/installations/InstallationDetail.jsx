@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Link2, FileText, Package, Hammer, ClipboardList, Camera, Wrench, Zap,
   History, Send, ScrollText, Download, ExternalLink, WifiOff, TriangleAlert,
-  RotateCw, Milestone, Printer,
+  RotateCw, Milestone, Printer, PenLine,
 } from 'lucide-react'
 import { updateInstallation } from '../../features/installations/store/installationsSlice'
 import { fetchProduits } from '../../features/stock/store/stockSlice'
@@ -37,6 +37,8 @@ import ChantierChecklist from './ChantierChecklist'
 import ChantierTimeline from './ChantierTimeline'
 import ChantierGateTimeline from './ChantierGateTimeline'
 import ChantierPhotos from './ChantierPhotos'
+// NTMOB16 — signature client tracée sur le bon de livraison chantier.
+import SignatureLivraisonDialog from './SignatureLivraisonDialog'
 // FG386 — même bandeau d'état de synchro terrain que la page Interventions
 // (N91/F21) : la checklist chantier file déjà ses cochages hors-ligne via
 // `withOfflineFallback`, il ne restait qu'à rendre l'état visible ici aussi.
@@ -138,6 +140,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
   // État local éditable + version courante (rafraîchie après interventions).
   const [current, setCurrent] = useState(installation)
+  // NTMOB16 — dialog de signature client (bon de livraison).
+  const [signatureOpen, setSignatureOpen] = useState(false)
   const F = (k, d = '') => current?.[k] ?? d
   const initialFields = {
     statut: F('statut', 'a_planifier'),
@@ -864,6 +868,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                       onClick={() => openDocument('bonLivraison', `bon-livraison-${current.reference}.pdf`, 'Bon de livraison')}>
                 Bon de livraison
               </Button>
+              {/* NTMOB16 — signature client tracée, jointe au PDF ci-dessus. */}
+              <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
+                      onClick={() => setSignatureOpen(true)}>
+                <PenLine className="size-4" aria-hidden="true" />
+                {current.signe_le ? 'Signature de réception (signé)' : 'Signer la réception'}
+              </Button>
               <Button size="sm" variant="outline" disabled={!pvReady} title={pvTooltip}
                       onClick={() => openDocument('dossierRemise', `dossier-remise-${current.reference}.pdf`, 'Dossier de remise')}>
                 Dossier de remise
@@ -1556,6 +1566,14 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* NTMOB16 — signature client tracée sur le bon de livraison chantier. */}
+      <SignatureLivraisonDialog
+        open={signatureOpen}
+        onOpenChange={setSignatureOpen}
+        installation={current}
+        onSigned={refreshInstallation}
+      />
 
       {/* ── Aperçu in-app d'un document après-vente AVANT téléchargement (L4) ──
           Panneau plein écran réutilisant l'aperçu PDF.js (canvas) du devis :

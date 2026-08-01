@@ -685,6 +685,28 @@ entite_deactivated = django.dispatch.Signal()
 # utilisateur explicite), ``ancien_statut`` (str|None).
 appointment_effectue = django.dispatch.Signal()
 
+# NTSAN23 — Émis quand un ``sante.CycleSterilisation`` est enregistré (ou
+# basculé) NON CONFORME. Événement INTER-app véritable : l'émetteur est
+# ``sante``, l'abonné est ``qhse`` (``apps/qhse/receivers.py``, câblé dans son
+# ``apps.py ready()``), qui ouvre une ``NonConformite`` liée au cycle. C'est
+# précisément ce qui permet à ``sante`` de ne JAMAIS importer ``qhse.models``
+# (et réciproquement — le lien est une FK à chaîne côté QHSE). Émis sur une
+# VRAIE transition seulement : un ``save()`` qui laisse le cycle non conforme
+# ne réémet pas. Arguments : ``cycle`` (instance ``CycleSterilisation``),
+# ``company``, ``user`` (peut être None).
+cycle_sterilisation_non_conforme = django.dispatch.Signal()
+# NTUX7 — Émis par TOUTE app qui soft-supprime (archive/annule) un
+# enregistrement, pour alimenter la corbeille transverse 30 jours SANS créer un
+# modèle « éléments supprimés » par app. Abonné dans ce repo : ``trash``
+# (``apps/trash/receivers.py`` → ``ElementSupprime``). L'émetteur ne connaît pas
+# la corbeille, et ``apps.trash`` n'importe aucune app métier (la cible est
+# pointée par ``contenttypes``). Arguments : ``instance`` (l'objet
+# soft-supprimé), ``company``, ``user`` (peut être None), ``type_libelle``
+# (libellé de type lisible, ex. « Devis » — à défaut le nom du ContentType),
+# ``libelle`` (snapshot d'affichage — à défaut ``str(instance)``), ``donnees``
+# (dict best-effort, AFFICHAGE SEUL, jamais réinjecté à la restauration).
+record_soft_deleted = django.dispatch.Signal()
+
 
 # ===========================================================================
 # NTPLT9/10 — Outbox transactionnel FIABLE (façade au-dessus des signaux M6).
