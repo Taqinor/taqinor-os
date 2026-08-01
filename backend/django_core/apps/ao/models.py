@@ -3331,7 +3331,14 @@ class LigneChecklistPartenaire(TenantModel):
     ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
     obligatoire = models.BooleanField(default=True, verbose_name='Obligatoire')
     faite = models.BooleanField(default=False, verbose_name='Fait')
-    responsable = models.ForeignKey(
+    #: Nommé ``responsable_utilisateur`` et non ``responsable`` : le garde
+    #: YDATA3 (``scripts/check_on_delete.py``) traite un champ littéralement
+    #: nommé ``responsable`` comme un champ de PORTÉE (tenant/owner), où un
+    #: ``SET_NULL`` dé-scoperait silencieusement la ligne. Ici, c'est un
+    #: ASSIGNÉ : perdre l'assignation à la suppression d'un compte est le
+    #: comportement voulu (le point reste attaché à son dossier). Le libellé
+    #: métier reste « Responsable », et l'API expose bien ``responsable``.
+    responsable_utilisateur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_checklist_ao', verbose_name='Responsable')
@@ -3838,3 +3845,279 @@ class ManifestePack(TenantModel):
         """
         return [a for a in self.artefacts.all()
                 if a.empreinte != self.empreinte]
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# W7 — ÉCONOMIE DIRECTEUR : TABLES SÉPARÉES, PERMISSION ÉLEVÉE (AOF157)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# RÈGLE GRAVÉE. L'économie d'un appel d'offres vit dans des tables À PART,
+# derrière ``ao_rentabilite_voir`` (permission ÉLEVÉE, non octroyable par un
+# non-administrateur, mappée sur AUCUN rôle Responsable/Commercial/Technicien/
+# Utilisateur). **Aucun champ de coût ni de marge ne touche ``AppelOffre``, le
+# bordereau ou une variante** — un test d'introspection le vérifie.
+#
+# À NE PAS CONFONDRE avec la « simulation de rentabilité 25 ans » (AOF135) :
+# celle-là est une pièce CLIENT qui ne porte aucun coût. Les fusionner « parce
+# que ça parle de rentabilité » est le chemin le plus court vers la fuite de
+# marge.
+
+class EconomieAO(TenantModel):
+    """L'économie DIRECTEUR d'un appel d'offres (AOF157) — table séparée.
+
+    Porte les régimes de TVA et le verrou ; les COÛTS sont dans
+    ``LigneCoutRevient``, la CIBLE de bénéfice dans ``CibleFinanciere``
+    (versionnée). Tous les agrégats sont DÉRIVÉS : rien n'est recopié.
+
+    TVA sur ACHATS différenciée : 10 % sur les panneaux, 20 % sur le reste.
+    C'est ce qui rend la TVA nette à reverser calculable — et le contrôle de
+    trésorerie (encaissement TTC − décaissements TTC − TVA nette == bénéfice
+    HT) vérifiable au dirham. Un écart non nul, et le classeur est rouge.
+    """
+
+    appel_offre = models.OneToOneField(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: economie fille d'un AO : aucune existence hors de lui
+        related_name='economie',
+        verbose_name="Appel d'offres",
+    )
+    taux_tva_vente = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20.00'),
+        verbose_name='Taux de TVA de vente (%)')
+    taux_tva_achat_reduit = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('10.00'),
+        verbose_name='TVA sur achats — régime réduit panneaux (%)')
+    taux_tva_achat_standard = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20.00'),
+        verbose_name='TVA sur achats — régime standard (%)')
+    verrouillee = models.BooleanField(
+        default=False, verbose_name='Économie verrouillée')
+    note_comptable = models.TextField(
+        blank=True, default='', verbose_name='Point ouvert signalé au comptable')
+
+    class Meta:
+        verbose_name = "Économie d'appel d'offres (directeur)"
+        verbose_name_plural = "Économies d'appel d'offres (directeur)"
+        db_table = 'ao_economie'
+        ordering = ['appel_offre']
+
+    def __str__(self):
+        return f'Économie {self.appel_offre.reference}'
+
+    # ── Coûts (dérivés des lignes) ───────────────────────────────────────
+
+    @property
+    def cout_revient_ht(self):
+        total = Decimal('0.00')
+        for ligne in self.lignes.all():
+            total += ligne.montant_ht
+        return total.quantize(Decimal('0.01'))
+
+    @property
+    def cout_regime_reduit_ht(self):
+        """Part du coût de revient soumise au régime réduit (panneaux)."""
+        total = Decimal('0.00')
+        for ligne in self.lignes.filter(
+                regime_tva=LigneCoutRevient.RegimeTVA.REDUIT):
+            total += ligne.montant_ht
+        return total.quantize(Decimal('0.01'))
+
+    @property
+    def cout_regime_standard_ht(self):
+        return (self.cout_revient_ht - self.cout_regime_reduit_ht).quantize(
+            Decimal('0.01'))
+
+    @property
+    def tva_deductible(self):
+        """TVA sur achats DIFFÉRENCIÉE : 10 % panneaux, 20 % le reste."""
+        reduite = (self.cout_regime_reduit_ht
+                   * self.taux_tva_achat_reduit / Decimal('100'))
+        standard = (self.cout_regime_standard_ht
+                    * self.taux_tva_achat_standard / Decimal('100'))
+        return (reduite + standard).quantize(Decimal('0.01'))
+
+    # ── Cible et totaux (dérivés) ────────────────────────────────────────
+
+    @property
+    def cible(self):
+        """La cible financière ACTIVE (dernière version), ou None."""
+        return self.cibles.filter(active=True).first()
+
+    @property
+    def benefice_net_cible_ht(self):
+        cible = self.cible
+        return cible.benefice_net_cible_ht if cible else Decimal('0.00')
+
+    @property
+    def total_ht(self):
+        """Coût de revient + bénéfice net visé — la cascade part de LÀ."""
+        return (self.cout_revient_ht
+                + self.benefice_net_cible_ht).quantize(Decimal('0.01'))
+
+    @property
+    def tva_collectee(self):
+        return (self.total_ht * self.taux_tva_vente
+                / Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def total_ttc(self):
+        return (self.total_ht + self.tva_collectee).quantize(Decimal('0.01'))
+
+    @property
+    def tva_nette_a_reverser(self):
+        """TVA collectée − TVA déductible : ce qui sort réellement."""
+        return (self.tva_collectee - self.tva_deductible).quantize(
+            Decimal('0.01'))
+
+    @property
+    def marge_pct(self):
+        """Bénéfice net visé rapporté au total HT (%)."""
+        total = self.total_ht
+        if not total:
+            return Decimal('0.00')
+        return (self.benefice_net_cible_ht / total
+                * Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def controle_tresorerie(self):
+        """Encaissement TTC − décaissements TTC − TVA nette (doit == bénéfice).
+
+        C'est LE contrôle du classeur : un écart non nul et le classeur est
+        rouge. Il n'y a pas de « presque juste » en trésorerie.
+        """
+        decaissements = self.cout_revient_ht + self.tva_deductible
+        return (self.total_ttc - decaissements
+                - self.tva_nette_a_reverser).quantize(Decimal('0.01'))
+
+    @property
+    def ecart_tresorerie(self):
+        """Écart entre le contrôle de trésorerie et le bénéfice visé."""
+        return (self.controle_tresorerie
+                - self.benefice_net_cible_ht).quantize(Decimal('0.01'))
+
+    @property
+    def sous_seuil_psychologique(self):
+        """Vrai si le TTC reste sous le seuil visé (ex. la barre des 5 M)."""
+        cible = self.cible
+        if cible is None or not cible.seuil_psychologique:
+            return True
+        return self.total_ttc < cible.seuil_psychologique
+
+
+class LigneCoutRevient(TenantModel):
+    """Un POSTE du coût de revient (AOF157) — directeur seulement.
+
+    ``regime_tva`` porte la différenciation 10 % panneaux / 20 % reste : sans
+    elle, la TVA nette à reverser serait fausse de plusieurs dizaines de
+    milliers de dirhams sur un dossier de cette taille.
+    """
+
+    class RegimeTVA(models.TextChoices):
+        REDUIT = 'reduit', 'Réduit (panneaux, 10 %)'
+        STANDARD = 'standard', 'Standard (20 %)'
+
+    class Poste(models.TextChoices):
+        PANNEAUX = 'panneaux', 'Panneaux'
+        STRUCTURE = 'structure', 'Structure'
+        ONDULEURS = 'onduleurs', 'Onduleurs et équipements'
+        GARANTIE_ONDULEURS = 'garantie_onduleurs', 'Extension de garantie onduleurs'
+        CABLE_SOLAIRE = 'cable_solaire', 'Câble solaire'
+        CABLE_AC = 'cable_ac', 'Câble AC'
+        MAIN_OEUVRE = 'main_oeuvre', "Main d'œuvre"
+        ALEAS = 'aleas', 'Aléas'
+        AUTRE = 'autre', 'Autre poste'
+
+    economie = models.ForeignKey(
+        EconomieAO,
+        on_delete=models.CASCADE,  # on_delete: ligne de cout : aucune existence hors de son economie
+        related_name='lignes',
+        verbose_name='Économie',
+    )
+    poste = models.CharField(
+        max_length=20, choices=Poste.choices, default=Poste.AUTRE,
+        verbose_name='Poste')
+    designation = models.CharField(max_length=255, verbose_name='Désignation')
+    quantite = models.DecimalField(
+        max_digits=12, decimal_places=3, default=Decimal('1.000'),
+        verbose_name='Quantité')
+    unite = models.CharField(
+        max_length=20, blank=True, default='U', verbose_name='Unité')
+    prix_unitaire_ht = models.DecimalField(
+        max_digits=14, decimal_places=4, default=Decimal('0.0000'),
+        verbose_name='Coût unitaire HT (MAD)')
+    regime_tva = models.CharField(
+        max_length=10, choices=RegimeTVA.choices, default=RegimeTVA.STANDARD,
+        verbose_name='Régime de TVA sur achat')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Ligne de coût de revient (directeur)'
+        verbose_name_plural = 'Lignes de coût de revient (directeur)'
+        db_table = 'ao_ligne_cout_revient'
+        ordering = ['economie', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.get_poste_display()} — {self.designation}'
+
+    @property
+    def montant_ht(self):
+        return ((self.quantite or Decimal('0'))
+                * (self.prix_unitaire_ht or Decimal('0')))
+
+
+class CibleFinanciere(TenantModel):
+    """La CIBLE de bénéfice, VERSIONNÉE (AOF157) — directeur seulement.
+
+    Un mouvement de prix se justifie : chaque version porte son auteur, sa
+    date et son motif. La ligne d'AJUSTEMENT désignée reçoit le résidu de la
+    répartition (AOF158) — la désigner ici évite qu'un solveur choisisse tout
+    seul quelle ligne encaisse l'arrondi.
+    """
+
+    economie = models.ForeignKey(
+        EconomieAO,
+        on_delete=models.CASCADE,  # on_delete: cible fille d'une economie : aucune existence hors d'elle
+        related_name='cibles',
+        verbose_name='Économie',
+    )
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    benefice_net_cible_ht = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Bénéfice net visé HT (MAD)')
+    #: Pas d'arrondi métier appliqué aux prix unitaires (50/100/500/1 000 DH).
+    arrondi_psychologique = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Pas d\'arrondi des prix unitaires (MAD)')
+    #: Barre à ne pas franchir en TTC (cas réel : les 5 000 000 MAD).
+    seuil_psychologique = models.DecimalField(
+        max_digits=16, decimal_places=2, null=True, blank=True,
+        verbose_name='Seuil psychologique TTC (MAD)')
+    ligne_ajustement = models.ForeignKey(
+        LigneBordereau,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cibles_financieres',
+        verbose_name="Ligne d'ajustement du résidu")
+    active = models.BooleanField(default=True, verbose_name='Version active')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cibles_financieres_ao', verbose_name='Auteur')
+    motif = models.TextField(
+        blank=True, default='', verbose_name='Motif de la version')
+
+    class Meta:
+        verbose_name = 'Cible financière (directeur)'
+        verbose_name_plural = 'Cibles financières (directeur)'
+        db_table = 'ao_cible_financiere'
+        ordering = ['economie', '-version']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['economie', 'version'],
+                name='uniq_cible_financiere_version'),
+            models.UniqueConstraint(
+                fields=['economie'], condition=models.Q(active=True),
+                name='uniq_cible_financiere_active'),
+        ]
+
+    def __str__(self):
+        return f'v{self.version} — {self.benefice_net_cible_ht} MAD HT'

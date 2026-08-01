@@ -1242,12 +1242,14 @@ def pointer_checklist(ligne, *, faite=True, responsable=None, commentaire=None,
     from django.utils import timezone
 
     ligne.faite = bool(faite)
-    ligne.responsable = responsable or user or ligne.responsable
+    ligne.responsable_utilisateur = (
+        responsable or user or ligne.responsable_utilisateur)
     if commentaire is not None:
         ligne.commentaire = commentaire
     ligne.date_faite = timezone.now() if ligne.faite else None
     ligne.save(update_fields=[
-        'faite', 'responsable', 'commentaire', 'date_faite', 'updated_at'])
+        'faite', 'responsable_utilisateur', 'commentaire', 'date_faite',
+        'updated_at'])
     _journaliser_checklist(ligne, user)
     return ligne
 

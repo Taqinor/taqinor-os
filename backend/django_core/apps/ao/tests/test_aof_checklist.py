@@ -159,7 +159,7 @@ class TestResponsableTrace(BaseChecklist):
         ligne = self.dossier.lignes_checklist.get(code='ADM_RIB')
         services.pointer_checklist(ligne, user=self.user)
         ligne.refresh_from_db()
-        self.assertEqual(ligne.responsable_id, self.user.id)
+        self.assertEqual(ligne.responsable_utilisateur_id, self.user.id)
         self.assertIsNotNone(ligne.date_faite)
 
     def test_un_responsable_explicite_prime(self):
@@ -170,7 +170,7 @@ class TestResponsableTrace(BaseChecklist):
         services.pointer_checklist(
             ligne, responsable=autre, user=self.user)
         ligne.refresh_from_db()
-        self.assertEqual(ligne.responsable_id, autre.id)
+        self.assertEqual(ligne.responsable_utilisateur_id, autre.id)
 
     def test_depointer_efface_la_date(self):
         services.seeder_checklist_partenaire(self.dossier)

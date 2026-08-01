@@ -650,8 +650,12 @@ class PieceAdministrativeSerializer(serializers.ModelSerializer):
 class LigneChecklistPartenaireSerializer(serializers.ModelSerializer):
     bloc_display = serializers.CharField(
         source='get_bloc_display', read_only=True)
+    # Le champ modèle s'appelle ``responsable_utilisateur`` (garde YDATA3) ;
+    # l'API garde le nom métier ``responsable``.
+    responsable = serializers.PrimaryKeyRelatedField(
+        source='responsable_utilisateur', read_only=True)
     responsable_nom = serializers.CharField(
-        source='responsable.username', read_only=True, default='')
+        source='responsable_utilisateur.username', read_only=True, default='')
 
     class Meta:
         model = LigneChecklistPartenaire

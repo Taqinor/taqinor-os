@@ -30,7 +30,7 @@ class Migration(migrations.Migration):
                 ('date_faite', models.DateTimeField(blank=True, null=True, verbose_name='Fait le')),
                 ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='%(app_label)s_%(class)s_set', to='authentication.company', verbose_name='Société')),
                 ('dossier', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='lignes_checklist', to='ao.dossierao', verbose_name='Dossier')),
-                ('responsable', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='lignes_checklist_ao', to=settings.AUTH_USER_MODEL, verbose_name='Responsable')),
+                ('responsable_utilisateur', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='lignes_checklist_ao', to=settings.AUTH_USER_MODEL, verbose_name='Responsable')),
             ],
             options={
                 'verbose_name': 'Point de checklist partenaire (AO)',
