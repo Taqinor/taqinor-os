@@ -4911,6 +4911,19 @@ textarea.form-control {
   outline-offset: 2px;
 }
 
+/* (E) — la carte ne « pop » plus au contact du doigt. `useDraggable` (dnd-kit)
+   pose `role="button"` sur l'enveloppe de la carte : la règle M155
+   `[role="button"]:active { transform: scale(0.985) }` — écrite pour de vrais
+   boutons — s'y appliquait donc, et `:active` remontant aussi la chaîne des
+   ancêtres, le moindre tap SUR un contrôle interne faisait sauter la carte
+   entière. Règle ajoutée (jamais une modification de M155, qui reste juste
+   pour les boutons) ; sa spécificité (0,3,0) l'emporte sur (0,2,0), donc
+   l'ordre dans le fichier n'y change rien. Les vrais <button> de la carte
+   gardent leur retour tactile via le sélecteur `button:active` de M155. */
+.kb-drag-wrap [role="button"]:active {
+  transform: none;
+}
+
 /* VX192 — carte chantier ouvrable au clavier : un <button> transparent qui
    enveloppe la carte sans altérer sa mise en page (reset complet des styles
    par défaut du bouton), focalisable au clavier avec un anneau visible. */
@@ -5230,19 +5243,38 @@ textarea.form-control {
      horizontal aimanté par scroll-snap natif ; la COLONNE redevient le
      scrolleur vertical (axes imbriqués : board = X aimanté, colonne = Y) —
      l'en-tête sticky se re-résout tout seul contre la colonne. */
+  /* (C) — `x mandatory` + `scroll-snap-align: center` VOLAIENT le geste
+     diagonal : le navigateur DOIT se poser sur un point d'ancrage, donc le
+     moindre composant horizontal d'un scroll vertical réaimantait la colonne
+     et coupait le geste. `proximity` n'aimante que si le doigt s'arrête déjà
+     près d'un point (l'affordance LB42 « une étape à la fois » est conservée,
+     elle cesse simplement d'être un péage), et `start` aligne le bord GAUCHE
+     de la colonne plutôt que son centre — un ancrage centré rejouait un décalage
+     à chaque micro-mouvement. */
   .kb-board {
     gap: 0.6rem;
     padding: 0.5rem;
     -webkit-overflow-scrolling: touch;
     overflow: scroll hidden;
-    scroll-snap-type: x mandatory;
+    scroll-snap-type: x proximity;
   }
 
   .kb-col {
     flex: 0 0 90%;
-    scroll-snap-align: center;
+    scroll-snap-align: start;
     min-height: 0;
     overflow-y: auto;
+    /* (D) — la règle VX175(b) plus haut couvre `.kb-board` (l'axe X) mais PAS
+       `.kb-col`, qui est pourtant LE scrolleur vertical au téléphone : sans
+       `-webkit-overflow-scrolling: touch` le défilement de la colonne saccade
+       « pas à pas » sur Safari iOS (aucune inertie), et sans
+       `overscroll-behavior-y` il CHAÎNE — arrivé en bas de la colonne, la
+       poussée continue dans la page puis dans le pull-to-refresh. `contain`
+       (et non `none`) coupe uniquement le chaînage : le rebond élastique
+       LOCAL de la colonne, lui, reste — c'est l'accusé de réception « tu es
+       au bout », on ne le supprime pas. */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     /* La colonne est ICI le scrolleur : même règle que .kb-board — un
        scrollIntoView n'enterre jamais le haut d'une carte sous l'en-tête
        sticky (cause du rouge MB6 mobile-safari en CI). */
@@ -10112,9 +10144,16 @@ textarea.form-control {
     opacity: 0;
     overflow: hidden;
   }
-  /* Le focus clavier DEPLIE toujours reellement — une tablette avec clavier
-     externe reste pilotable, et aucun controle n'est « tabbable invisible ». */
-  .kb-card--lead:focus-within > .kb-card-reveal {
+  /* Le focus CLAVIER DEPLIE toujours reellement — une tablette avec clavier
+     externe reste pilotable, et aucun controle n'est « tabbable invisible ».
+     (F) — mais `:focus-within` ne distingue pas le clavier du DOIGT : sur iOS,
+     taper un controle interne (case, menu, ☎) lui donne le focus, et la carte
+     depliait ses 14rem animees sous le pouce a chaque tap. `:has(:focus-visible)`
+     porte exactement l'intention ecrite ci-dessus — `:focus-visible` est
+     precisement le focus que le navigateur juge devoir MONTRER, c'est-a-dire le
+     clavier externe et pas le tap. Le depliage reste un vrai depliage
+     (max-height + opacity, jamais visibility: hidden). */
+  .kb-card--lead:has(:focus-visible) > .kb-card-reveal {
     max-height: 14rem;
     margin-top: 0.28rem;
     opacity: 1;
