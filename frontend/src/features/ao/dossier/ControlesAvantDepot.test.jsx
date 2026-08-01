@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import {
+  render, screen, waitFor, fireEvent, within,
+} from '@testing-library/react'
 
 /* AOF176 — la porte de cohérence croisée devient VISIBLE.
    Les 4 classes de défaut testées ici sont celles RÉELLEMENT observées pendant
@@ -63,11 +65,26 @@ beforeEach(() => {
   mocks.controlesAvantDepot.mockResolvedValue({ data: PAYLOAD })
 })
 
+/* Le message du PREMIER contrôle bloquant apparaît DEUX fois, et c'est la règle
+   produit de cette tâche : dans sa ligne de contrôle ET sur le bouton
+   « ZIP bloqué — … » (jamais un bouton grisé sans explication — c'est ce
+   qu'affirme le test « le bouton ZIP est désactivé AVEC le motif écrit dessus »).
+   Les assertions de LISTE visent donc la ligne, repérée par le hook e2e figé
+   `data-ao-controle`. */
+const ligneC = async (code) => {
+  await waitFor(() => {
+    expect(document.querySelector(`[data-ao-controle="${code}"]`)).not.toBeNull()
+  })
+  return within(document.querySelector(`[data-ao-controle="${code}"]`))
+}
+
 describe('ControlesAvantDepot (AOF176)', () => {
   it('affiche les 4 classes de défaut réellement observées, chacune avec sa gravité', async () => {
     render(<ControlesAvantDepot dossierId={7} />)
-    expect(await screen.findByText(/2 800 DH HT\/kWh alors que le bordereau final est à 2 600/))
-      .toBeInTheDocument()
+    expect(
+      (await ligneC('justification_prix_coherente'))
+        .getByText(/2 800 DH HT\/kWh alors que le bordereau final est à 2 600/),
+    ).toBeInTheDocument()
     expect(screen.getByText(/bordereau frère périmé subsiste \(total 5 219 280\)/)).toBeInTheDocument()
     expect(screen.getByText(/LISEZ-MOI est figé/)).toBeInTheDocument()
     expect(screen.getByText(/contredit par son propre addendum/)).toBeInTheDocument()
@@ -117,7 +134,9 @@ describe('ControlesAvantDepot (AOF176)', () => {
   it('accepte un tableau nu de contrôles (enveloppe serveur non figée)', async () => {
     mocks.controlesAvantDepot.mockResolvedValue({ data: [FRERE_PERIME] })
     render(<ControlesAvantDepot dossierId={7} />)
-    expect(await screen.findByText(/bordereau frère périmé subsiste/)).toBeInTheDocument()
+    expect(
+      (await ligneC('aucun_artefact_perime')).getByText(/bordereau frère périmé subsiste/),
+    ).toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('button', { name: /^ZIP bloqué —/ })).toBeDisabled())
   })
 
