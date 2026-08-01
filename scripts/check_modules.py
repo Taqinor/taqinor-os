@@ -46,6 +46,10 @@ FRONTEND_KEY_ALIASES = {
     # depuis index.jsx vers features/admin/module.config.jsx ; pas de nouvelle app
     # backend, la surface d'administration RBAC vit dans `roles`.
     'admin': 'roles',
+    # ODY23 — app frontend "Intelligence" (IA/OCR/agent, features/ia/module.config.jsx,
+    # nouveau) par-dessus l'app backend existante `apps.agent` (key 'agent',
+    # pas de nouvelle app Django — même mécanisme que 'admin' → 'roles').
+    'ia': 'agent',
     # NTMOB4/5 — regroupement nav mobile (accueil commercial + cockpit) : écrans
     # PWA read-only par-dessus des endpoints existants (reporting dashboard/
     # pipeline/agenda/approbations en premier), pas de nouvelle app backend.

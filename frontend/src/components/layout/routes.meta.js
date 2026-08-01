@@ -172,7 +172,9 @@ const BASE_SECTION_LABELS = {
   production: { label: 'Chantiers', to: '/chantiers' },
   equipements: { label: 'Après-vente', to: '/sav' },
   sav: { label: 'Après-vente', to: '/sav' },
-  ia: { label: 'Intelligence', to: null },
+  // ODY23 — le cockpit /ia (features/ia/module.config.jsx) existe désormais :
+  // le 1er segment du fil d'Ariane devient cliquable, comme les autres apps.
+  ia: { label: 'Intelligence', to: '/ia' },
   reporting: { label: 'Analyse', to: '/reporting' },
   rapports: { label: 'Analyse', to: '/reporting' },
   approbations: { label: 'Analyse', to: '/reporting' },
