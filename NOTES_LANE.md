@@ -267,3 +267,11 @@ le dict de contexte.
   livré et testé pour le rapport de contrôle (AOF148,
   `rapport_controle.est_perime`) : approuver un pack puis le régénérer doit
   invalider l'approbation, exactement comme cela périme le rapport.
+- **AOF159 — partiellement livrée.** Le REGISTRE des six cibles, la péremption
+  en cascade, le refus de « prêt à déposer » et l'historique des deltas sont
+  livrés et testés (`apps/ao/fabrique/propagation.py`, deltas réels
+  5 413 680 → 5 219 280 → 4 999 920 reproduits). L'EXPOSITION HTTP de cet
+  historique (`views.py` + `selectors.py`) attend AOF115/AOF154 : il n'existe
+  pas encore de `DossierAO` à interroger. `verifier_registre` est appelable
+  telle quelle par le contrôleur de cohérence (AOF146) et par le test du
+  gabarit de pack (AOF116).
