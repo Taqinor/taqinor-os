@@ -126,6 +126,25 @@ ALL_PERMISSIONS = [
     'litige_gerer',
     'kb_voir',
     'kb_gerer',
+    # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
+    # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
+    # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable
+    # voyait l'intégralité d'un dossier d'appel d'offres, et il n'existait
+    # AUCUNE permission ``ao_*``. Trois codes DISJOINTS :
+    #   * ``ao_voir``   — lecture du dossier AO (GET/HEAD/OPTIONS) ;
+    #   * ``ao_gerer``  — écriture (POST/PUT/PATCH/DELETE + actions métier) ;
+    #   * ``ao_rentabilite_voir`` — voir l'ÉCONOMIE d'un AO (coût de revient,
+    #     marge, bénéfice). Donnée financière interne, jamais client-facing —
+    #     même palier que ``prix_achat_voir``/``marge_voir``, donc ÉLEVÉE (cf.
+    #     ELEVATED_PERMISSIONS) et mappée dans AUCUNE liste de rôle ci-dessous :
+    #     seuls Directeur et Administrateur la portent, par héritage
+    #     d'ALL_PERMISSIONS.
+    # ``ao_voir``/``ao_gerer`` ne sont eux non plus mappés sur aucun rôle
+    # Responsable/Commercial/Technicien/Utilisateur : l'accès AO se RESSERRE
+    # sur la direction, et reste INCHANGÉ pour Directeur/Administrateur.
+    'ao_voir',
+    'ao_gerer',
+    'ao_rentabilite_voir',
 ]
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
@@ -151,6 +170,10 @@ ELEVATED_PERMISSIONS = frozenset({
     'marge_voir',
     # XQHS22 — coût de la non-qualité : même palier que marge/prix d'achat.
     'cout_non_qualite_voir',
+    # AOF2 — économie d'un appel d'offres (coût de revient, marge, bénéfice
+    # net visé). Même palier que marge/prix d'achat : un non-administrateur ne
+    # peut jamais l'octroyer, et aucun rôle non-direction ne la porte.
+    'ao_rentabilite_voir',
 })
 
 RESPONSABLE_PERMISSIONS = [
