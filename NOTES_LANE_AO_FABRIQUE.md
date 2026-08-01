@@ -60,3 +60,9 @@ reste qu'à l'appeler depuis la couche Django, qui appartient à l'autre lane.
 - **Productible lu en AST, pas importé (AOF113).** Seule voie qui satisfasse à
   la fois « une seule source de vérité » et « aucun import de quote_engine ».
 - **Aucune valeur de repli inventée.** Table illisible → exception explicite.
+- **AOF114, écart assumé de 1,9 Wh sur le banc.** Le dossier écrit « 96,48 kWh
+  par banc » ; c'est 6 × 16,08, donc un arrondi d'affichage réutilisé comme
+  donnée de calcul. Le pack réel (51,2 V × 314 Ah) fait 16,0768 kWh et le banc
+  96,4608 kWh. Le registre calcule en pleine précision — les deux s'affichent
+  « 96,5 kWh » et « 289,4 kWh installés ». C'est le défaut même que le groupe
+  supprime, documenté par un test.
