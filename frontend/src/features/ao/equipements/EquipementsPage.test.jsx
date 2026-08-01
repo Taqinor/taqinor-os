@@ -14,7 +14,7 @@ vi.mock('../../../api/aoApi', () => ({
 vi.mock('../../../api/stockApi', () => ({ default: { getProduits: mocks.getProduits } }))
 
 import EquipementsPage from './EquipementsPage'
-import { payloadBascule } from './BasculeAssistant'
+import { payloadBascule } from './BasculeAssistant.utils'
 
 const EQUIPEMENTS = [
   {

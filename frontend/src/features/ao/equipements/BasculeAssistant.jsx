@@ -7,6 +7,7 @@ import {
   Badge, Button, Input, Skeleton, Textarea,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../../ui'
+import { payloadBascule } from './BasculeAssistant.utils'
 
 /* ============================================================================
    AOF180 — Assistant de bascule d'équipement (ancien → nouveau).
@@ -28,14 +29,6 @@ import {
    une ALLOWLIST explicite (`payloadBascule`) — jamais par diffusion d'un objet
    produit, qui embarquerait `prix_achat` sans que personne le voie.
    ========================================================================== */
-
-/** Corps de la requête de bascule — allowlist STRICTE. Toute clé absente de
-    cette fonction ne peut pas partir sur le réseau. */
-export function payloadBascule({ produitId, motif, quantite }) {
-  const corps = { nouveau_produit: produitId, motif: String(motif ?? '').trim() }
-  if (quantite != null && quantite !== '') corps.quantite = quantite
-  return corps
-}
 
 function CatalogueItem({ produit, onChoisir }) {
   const sansPrix = produit.prix_vente == null || produit.prix_vente === ''

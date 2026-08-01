@@ -69,13 +69,29 @@ export function etatDeJob(job) {
   return 'en_cours'
 }
 
+// État initial (ou réinitialisé) de suivi pour une clé de stockage donnée —
+// `jobId` reprend la mémoire locale, tout le reste repart à zéro.
+function etatInitial(cle) {
+  return { cle, jobId: lire(cle) || null, job: null, erreur: null, verrou: null }
+}
+
 export default function useGenerationJob(dossierId, options = {}) {
   const { intervalMs = 3000, onSucces, onEchec, onAnnulerServeur } = options
 
-  const [jobId, setJobId] = useState(null)
-  const [job, setJob] = useState(null)
-  const [erreur, setErreur] = useState(null)
-  const [verrou, setVerrou] = useState(null)
+  const cle = useMemo(() => cleStockage(dossierId), [dossierId])
+
+  // Reprise : l'utilisateur est parti puis revenu — on REPREND le suivi du job
+  // en cours au lieu d'en lancer un second. `jobId`/`job`/`erreur`/`verrou`
+  // vivent dans UN seul état (clé = `cle`) et sont réinitialisés PENDANT le
+  // rendu dès que la clé de stockage change (patron officiel React « adjust
+  // state during render »), jamais via un setState() synchrone en tête
+  // d'effet.
+  const [etat, setEtat] = useState(() => etatInitial(cle))
+  if (etat.cle !== cle) {
+    setEtat(etatInitial(cle))
+  }
+  const { jobId, job, erreur, verrou } = etat
+
   const [lancement, setLancement] = useState(false)
 
   // Callbacks lus par référence : le sondage ne redémarre pas quand l'écran
@@ -84,27 +100,14 @@ export default function useGenerationJob(dossierId, options = {}) {
   useEffect(() => { cbRef.current = { onSucces, onEchec } })
   // Un job n'est notifié qu'UNE fois, même si un dernier sondage repasse.
   const notifieRef = useRef(null)
+  useEffect(() => { notifieRef.current = null }, [cle])
   // Job réellement suivi À CET INSTANT : une réponse de sondage arrivée APRÈS
   // une annulation (ou après un relancement) est jetée, jamais appliquée.
   const jobIdRef = useRef(null)
   useEffect(() => { jobIdRef.current = jobId }, [jobId])
 
-  const cle = useMemo(() => cleStockage(dossierId), [dossierId])
-
-  // Reprise : l'utilisateur est parti puis revenu — on REPREND le suivi du job
-  // en cours au lieu d'en lancer un second.
-  useEffect(() => {
-    const memorise = lire(cle)
-    jobIdRef.current = memorise || null
-    setJobId(memorise || null)
-    setJob(null)
-    setErreur(null)
-    setVerrou(null)
-    notifieRef.current = null
-  }, [cle])
-
-  const etat = etatDeJob(job)
-  const actif = Boolean(jobId) && (job == null || etat === 'en_cours')
+  const etatJob = etatDeJob(job)
+  const actif = Boolean(jobId) && (job == null || etatJob === 'en_cours')
 
   const sonder = useCallback(async () => {
     if (!jobId) return
@@ -113,7 +116,7 @@ export default function useGenerationJob(dossierId, options = {}) {
       // Réponse périmée (annulation ou relancement pendant le vol) : on jette.
       if (jobIdRef.current !== jobId) return
       const j = res?.data
-      setJob(j)
+      setEtat((prev) => ({ ...prev, job: j }))
       const e = etatDeJob(j)
       if ((e === 'succes' || e === 'echec') && notifieRef.current !== jobId) {
         notifieRef.current = jobId
@@ -122,7 +125,7 @@ export default function useGenerationJob(dossierId, options = {}) {
         else cbRef.current.onEchec?.(j)
       }
     } catch (e) {
-      setErreur(e?.response?.data?.detail || 'Suivi de la génération interrompu.')
+      setEtat((prev) => ({ ...prev, erreur: e?.response?.data?.detail || 'Suivi de la génération interrompu.' }))
     }
   }, [cle, dossierId, jobId])
 
@@ -132,22 +135,22 @@ export default function useGenerationJob(dossierId, options = {}) {
   )
 
   const lancer = useCallback(async () => {
-    setErreur(null)
-    setVerrou(null)
-    setJob(null)
     notifieRef.current = null
+    setEtat((prev) => ({ ...prev, erreur: null, verrou: null, job: null }))
     setLancement(true)
     try {
       const res = await aoApi.dossiers.zip(dossierId)
       const id = res?.data?.job_id ?? res?.data?.id ?? null
-      jobIdRef.current = id
-      setJobId(id)
+      setEtat((prev) => ({ ...prev, jobId: id }))
       ecrire(cle, id)
       return id
     } catch (e) {
       const v = lireVerrou(e)
-      if (v) setVerrou(v)
-      setErreur(e?.response?.data?.detail || 'Génération du pack impossible.')
+      setEtat((prev) => ({
+        ...prev,
+        verrou: v || prev.verrou,
+        erreur: e?.response?.data?.detail || 'Génération du pack impossible.',
+      }))
       return null
     } finally {
       setLancement(false)
@@ -157,8 +160,7 @@ export default function useGenerationJob(dossierId, options = {}) {
   const annuler = useCallback(async () => {
     const id = jobId
     jobIdRef.current = null
-    setJobId(null)
-    setJob(null)
+    setEtat((prev) => ({ ...prev, jobId: null, job: null }))
     ecrire(cle, null)
     notifieRef.current = null
     if (id && onAnnulerServeur) {
@@ -171,7 +173,7 @@ export default function useGenerationJob(dossierId, options = {}) {
   let statut = 'idle'
   if (lancement) statut = 'en_cours'
   else if (!jobId) statut = 'idle'
-  else if (job) statut = etat
+  else if (job) statut = etatJob
   else statut = 'en_cours'
 
   return {

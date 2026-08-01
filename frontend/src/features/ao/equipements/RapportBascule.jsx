@@ -19,7 +19,8 @@ import { Badge, Card, EmptyState } from '../../../ui'
    « voir plus » reproduit exactement le défaut qu'il sert à attraper.
    ========================================================================== */
 
-function Groupe({ titre, icone: Icone, tone, entrees, vide }) {
+function Groupe({ titre, icone, tone, entrees, vide }) {
+  const Icone = icone
   return (
     <div className="flex flex-col gap-1.5">
       <p className="flex items-center gap-1.5 text-sm font-medium">

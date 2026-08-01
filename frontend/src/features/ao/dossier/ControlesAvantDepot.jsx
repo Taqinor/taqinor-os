@@ -4,6 +4,7 @@ import aoApi from '../../../api/aoApi'
 import useResource from '../../../hooks/useResource'
 import { Button, Card, EmptyState, Skeleton } from '../../../ui'
 import { StatutControle } from '../statusAo'
+import { BLOQUANT, motifBlocage, severiteDe } from './ControlesAvantDepot.utils'
 
 /* ============================================================================
    AOF176 — Panneau « Contrôles avant dépôt » et blocage VISIBLE du ZIP.
@@ -27,22 +28,6 @@ import { StatutControle } from '../statusAo'
    Aucun verdict n'est calculé ici (AOF94) : sévérité, message et code de règle
    viennent du serveur ; l'écran ne fait que TRIER et AFFICHER.
    ========================================================================== */
-
-const BLOQUANT = 'bloquant'
-
-// Sévérité normalisée : le serveur peut la porter sur `severite` (AOF146) ou
-// sur `statut` — les deux valent la même chose, on n'en invente pas une 3e.
-export function severiteDe(controle) {
-  return controle?.severite || controle?.statut || 'ok'
-}
-
-/** Motif AFFICHABLE du blocage : le message du premier contrôle bloquant
-    (ou son code de règle à défaut). `null` quand rien ne bloque. */
-export function motifBlocage(controles) {
-  const bloquant = (controles || []).find((c) => severiteDe(c) === BLOQUANT)
-  if (!bloquant) return null
-  return bloquant.message || bloquant.libelle || bloquant.code || 'contrôle bloquant'
-}
 
 // Le serveur peut renvoyer un tableau nu ou une enveloppe {controles, ...}.
 function lireControles(res) {
@@ -113,7 +98,7 @@ export default function ControlesAvantDepot({
     },
   )
 
-  const controles = data?.controles ?? []
+  const controles = useMemo(() => data?.controles ?? [], [data])
   const horsControle = data?.horsControle ?? []
   const motif = useMemo(() => motifBlocage(controles), [controles])
   const bloque = Boolean(motif)

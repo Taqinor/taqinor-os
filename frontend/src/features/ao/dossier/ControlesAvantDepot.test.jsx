@@ -16,7 +16,8 @@ vi.mock('../../../api/aoApi', () => ({
   default: { dossiers: { controlesAvantDepot: mocks.controlesAvantDepot } },
 }))
 
-import ControlesAvantDepot, { motifBlocage, severiteDe } from './ControlesAvantDepot'
+import ControlesAvantDepot from './ControlesAvantDepot'
+import { motifBlocage, severiteDe } from './ControlesAvantDepot.utils'
 
 const JUSTIFICATION = {
   id: 1, code: 'justification_prix_coherente',

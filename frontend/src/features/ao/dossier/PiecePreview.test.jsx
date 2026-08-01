@@ -38,7 +38,8 @@ vi.mock('pdfjs-dist', () => ({
   },
 }))
 
-import PiecePreview, { ensureWorkerPartage } from './PiecePreview'
+import PiecePreview from './PiecePreview'
+import { ensureWorkerPartage } from './PiecePreview.utils'
 
 const PIECE = {
   id: 5, code: 'planche_05H', libelle: 'Planche 05H — bâtiment C',
