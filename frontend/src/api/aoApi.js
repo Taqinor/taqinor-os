@@ -91,6 +91,12 @@ const aoApi = {
 
   // ── Bibliothèque : kits, presets, gabarits, textes normalisés ──
   bibliotheque: crud('bibliotheque'),
+
+  // AOF172/AOF166 — appel agrégé UNIQUE du tableau de bord (nom d'endpoint +
+  // selector repris nominativement de NTMAR27 par AOF166, pour éviter deux
+  // tableaux de bord AO concurrents) : AO en cours, taux de réussite, cautions
+  // immobilisées, marchés en exécution, capacité vs engagement, échéances dues.
+  tableauMarches: () => api.get('/ao/tableau-marches/'),
 }
 
 /* ============================================================================

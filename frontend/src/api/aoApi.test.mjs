@@ -64,6 +64,11 @@ test('AOF170 — affaires.dupliquer() existe (action de ligne « dupliquer », A
   assert.match(body, /dupliquer:\s*\(id\)\s*=>\s*api\.post\(`\/ao\/appels-offres\/\$\{id\}\/dupliquer\/`\)/)
 })
 
+test('AOF172 — tableauMarches() appelle GET /ao/tableau-marches/ (endpoint AOF166, un seul appel agrégé)', () => {
+  const body = aoApiBody()
+  assert.match(body, /tableauMarches:\s*\(\)\s*=>\s*api\.get\('\/ao\/tableau-marches\/'\)/)
+})
+
 test('ISOLEMENT — le corps de `aoApi` ne mentionne JAMAIS "rentabilite" (aucun chemin réseau mêlé)', () => {
   const body = aoApiBody()
   assert.doesNotMatch(body, /rentabilite/i)
