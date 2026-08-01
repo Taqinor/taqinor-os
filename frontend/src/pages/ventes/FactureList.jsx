@@ -42,6 +42,8 @@ import DocumentStageTrack from '../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK, factureTrack } from '../../features/ventes/documentChain'
 // APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
 import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
+// APX17 — confirmation maison (VX19/L152), jamais une popup du système.
+import { useConfirmDialog } from '../../ui/confirm'
 import PaiementDialog from './PaiementDialog'
 // WIR103/ZFAC4 — modale « Note de débit » (création + téléchargement PDF).
 import NoteDebitDialog from './NoteDebitDialog'
@@ -573,6 +575,8 @@ export default function FactureList() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
   useDocumentTitle('Factures')
   const dispatch = useDispatch()
+  // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
+  const { confirm } = useConfirmDialog()
   const [searchParams, setSearchParams] = useSearchParams()
   const { factures, loading, error } = useSelector(s => s.ventes)
   const isAdmin = useSelector(s => s.auth.role) === 'admin'
@@ -955,8 +959,10 @@ export default function FactureList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, loading, factures])
 
+  // APX17 — confirmation maison (AlertDialog Radix), jamais la popup du
+  // système.
   const doAction = async (thunk, id, confirmMsg) => {
-    if (confirmMsg && !window.confirm(confirmMsg)) return
+    if (confirmMsg && !(await confirm({ title: confirmMsg }))) return
     setActionId(id)
     try {
       await dispatch(thunk(id)).unwrap()

@@ -33,6 +33,8 @@ import { formatMAD } from '../../lib/format'
 import { ouvrirPdfBlob } from '../../utils/pdfBlob'
 // APX15(d) — plus jamais de JSON brut dans un message d'erreur.
 import { frenchError } from '../../lib/frenchError'
+// APX17 — confirmation maison (VX19/L152), jamais une popup du système.
+import { useConfirmDialog } from '../../ui/confirm'
 
 const STATUT_DISPLAY = {
   en_attente: 'En attente',
@@ -53,6 +55,9 @@ export default function BonCommandeList() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { bonsCommande, loading, error } = useSelector(s => s.ventes)
+
+  // APX17 — confirmation maison (Radix), jamais la popup du système.
+  const { confirm } = useConfirmDialog()
 
   const [activeTab, setActiveTab] = useState('tous')
   const [search, setSearch]       = useState('')
@@ -87,14 +92,16 @@ export default function BonCommandeList() {
     annule:     bonsCommande.filter(b => b.statut === 'annule').length,
   }), [bonsCommande])
 
+  // APX17 — plus une seule popup du système : la confirmation passe par le
+  // dialogue maison (VX19/L152, monté une seule fois à la racine).
   const doAction = async (thunk, id, confirmMsg) => {
-    if (confirmMsg && !window.confirm(confirmMsg)) return
+    if (confirmMsg && !(await confirm({ title: confirmMsg }))) return
     setActionId(id)
     setActionError('')
     try {
       await dispatch(thunk(id)).unwrap()
     } catch (err) {
-      setActionError(err?.detail ?? "L'action a échoué. Réessayez.")
+      setActionError(frenchError(err, "L'action a échoué. Réessayez."))
     } finally {
       setActionId(null)
     }
@@ -103,7 +110,12 @@ export default function BonCommandeList() {
   // Création de facture depuis un BC : message FR clair quand une facture
   // existe déjà (le backend renvoie un 400), avec un raccourci vers les factures.
   const handleCreerFacture = async (bc) => {
-    if (!window.confirm(`Créer une facture pour ${bc.reference} ?`)) return
+    const ok = await confirm({
+      title: `Créer une facture pour ${bc.reference} ?`,
+      confirmLabel: 'Créer la facture',
+      destructive: false,
+    })
+    if (!ok) return
     setActionId(bc.id)
     setActionError('')
     try {
@@ -113,9 +125,13 @@ export default function BonCommandeList() {
       const detail = err?.detail ?? ''
       if (/existe déjà/i.test(detail)) {
         setActionError(`Une facture existe déjà pour le BC ${bc.reference}.`)
-        if (window.confirm('Une facture existe déjà pour ce BC. Ouvrir la liste des factures ?')) {
-          navigate('/ventes/factures')
-        }
+        const go = await confirm({
+          title: 'Une facture existe déjà pour ce BC.',
+          description: 'Ouvrir la liste des factures ?',
+          confirmLabel: 'Ouvrir les factures',
+          destructive: false,
+        })
+        if (go) navigate('/ventes/factures')
       } else {
         setActionError(detail || 'Création de la facture impossible. Réessayez.')
       }

@@ -29,6 +29,8 @@ import {
   Textarea,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel,
+  // APX17 — les signaux secondaires du statut passent dans un Popover.
+  Popover, PopoverTrigger, PopoverContent,
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
 // VX156 — le devis envoyé porte la voix Taqinor (moment « devis envoyé »).
@@ -68,6 +70,8 @@ import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
 import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
 // APX15 — le VRAI board Ventes : les devis par statut DOCUMENT (règle #4).
 import DevisKanbanBoard from './DevisKanbanBoard'
+// APX17 — confirmation maison (VX19/L152), jamais une popup du système.
+import { useConfirmDialog } from '../../ui/confirm'
 // APX11 — l'en-tête UNIQUE de l'app (VX28) remplace l'idiome legacy.
 import { PageHeader } from '../../ui/PageHeader'
 // APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
@@ -389,6 +393,54 @@ function DevisRow({ d, ctx }) {
             : d.bon_commande_etat?.exists ? 'bc'
               : 'accepte'
   const docTrackBlocked = d.bon_commande_etat?.mismatch ? ['bc'] : []
+
+  // APX17 — les signaux SECONDAIRES du statut, rassemblés au lieu d'être
+  // empilés dans la cellule (hauteur de ligne stable + scroll juste au-delà
+  // de ~100 devis). Aucun signal n'est perdu : ils sont tous dans le Popover
+  // « Détails », et l'anomalie de BC reste visible sur la ligne elle-même.
+  const statutDetails = [
+    d.statut === 'accepte' && d.option_acceptee ? (
+      <span className="text-success">
+        Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
+      </span>
+    ) : null,
+    /* QJ22 — « Proposition signée » : un DevisSignature (loi 53-05) existe. */
+    d.est_signe ? (
+      <span className="inline-flex items-center gap-1 font-medium text-success">
+        <Check className="size-3" aria-hidden="true" />
+        Proposition signée
+        {d.signature_info?.signataire_nom ? ` — ${d.signature_info.signataire_nom}` : ''}
+        {d.signature_info?.signed_at ? ` le ${formatDateTime(d.signature_info.signed_at)}` : ''}
+      </span>
+    ) : null,
+    /* U8 — état du bon de commande lié (lecture seule, OneToOne existant). */
+    d.bon_commande_etat?.exists ? (
+      <span className="text-muted-foreground">BC : {d.bon_commande_etat.statut_display}</span>
+    ) : null,
+    d.bon_commande_etat?.mismatch ? (
+      <span className="inline-flex items-start gap-1 font-medium text-warning">
+        <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+        {d.bon_commande_etat.exists
+          ? 'Devis accepté mais BC annulé'
+          : 'Devis accepté sans bon de commande'}
+      </span>
+    ) : null,
+    /* VX215 — boucle « pris en charge » après « Contacter mon supérieur ». */
+    superieurStatus[d.id]?.requested ? (
+      <span
+        data-testid={`superieur-status-${d.id}`}
+        className={`inline-flex items-center gap-1 font-medium ${
+          superieurStatus[d.id].seen ? 'text-success' : 'text-muted-foreground'
+        }`}
+      >
+        {superieurStatus[d.id].seen ? <Check className="size-3 shrink-0" aria-hidden="true" /> : null}
+        {superieurStatus[d.id].seen
+          ? `Pris en charge${superieurStatus[d.id].seen_by?.[0] ? ' par ' + superieurStatus[d.id].seen_by[0] : ''}`
+          : 'Avis demandé — en attente'}
+      </span>
+    ) : null,
+  ].filter(Boolean)
+
   const isGenerating = pdfGenerating[d.id]
   // VX132 — chargement long conscient : libellés honnêtes qui tournent
   // pendant la génération du PDF premium (jamais de fausse barre de progression).
@@ -596,6 +648,15 @@ function DevisRow({ d, ctx }) {
           </div>
         )}
       </td>
+      {/* APX17 — la cellule Statut empilait jusqu'à SIX blocs (pastille,
+          piste, option acceptée, proposition signée, état du BC, incohérence
+          BC, boucle « pris en charge ») : la hauteur de ligne variait du
+          simple au triple. Comme la liste tourne sur le moteur `ui/datatable`,
+          qui ESTIME une hauteur constante au-delà de ~100 lignes, cette
+          variabilité décalait aussi le scroll. La cellule est désormais
+          PLAFONNÉE à StatusPill + piste documentaire ; tout le reste vit dans
+          un Popover « Détails » — aucun CSS `<td>` artisanal, le contenu est
+          simplement borné. */}
       <td data-label="Statut">
         <StatusPill status={effStatut} label={STATUT_DISPLAY[effStatut] ?? STATUT_DISPLAY.brouillon} />
         {/* VX141 — le StatusPill est un fait isolé ; la piste ci-dessous
@@ -607,72 +668,23 @@ function DevisRow({ d, ctx }) {
           current={docTrackCurrent}
           blocked={docTrackBlocked}
         />
-        {d.statut === 'accepte' && d.option_acceptee && (
-          <div className="mt-1 text-xs text-success">
-            Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
-          </div>
-        )}
-        {/* QJ22 — Badge « Proposition signée » : affiché quand un
-            DevisSignature (loi 53-05) existe pour ce devis accepté.
-            Indique que la signature électronique légale a été
-            enregistrée + le PDF de proposition signé est disponible. */}
-        {d.est_signe && (
-          <div
-            className="mt-1 inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success"
-            title={
-              d.signature_info
-                ? [
-                    `Signé par : ${d.signature_info.signataire_nom || '—'}`,
-                    d.signature_info.signed_at
-                      ? `le ${formatDateTime(d.signature_info.signed_at)}`
-                      : null,
-                    d.signature_info.has_pdf
-                      ? 'PDF signé disponible'
-                      : null,
-                  ].filter(Boolean).join(' ')
-                : 'Proposition signée (loi 53-05)'
-            }
-          >
-            <Check className="size-3" aria-hidden="true" />
-            Proposition signée
-          </div>
-        )}
-        {/* U8 — état du bon de commande lié (lecture seule, depuis
-            le OneToOne existant) + avertissement d'incohérence
-            quand un devis accepté n'a pas de BC actif. */}
-        {d.bon_commande_etat?.exists && (
-          <div className="mt-1 text-xs text-muted-foreground">
-            BC : {d.bon_commande_etat.statut_display}
-          </div>
-        )}
-        {d.bon_commande_etat?.mismatch && (
-          <div className="mt-1 flex items-start gap-1 text-xs font-medium text-warning"
-               title="Devis accepté mais le bon de commande est annulé ou absent">
-            <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-            <span>
-              {d.bon_commande_etat.exists
-                ? 'Devis accepté mais BC annulé'
-                : 'Devis accepté sans bon de commande'}
-            </span>
-          </div>
-        )}
-        {/* VX215 — boucle de retour « pris en charge » : après « Contacter
-            mon supérieur », le vendeur voit si sa demande a été VUE (sondage
-            léger tant qu'elle ne l'est pas — voir superieurStatus). */}
-        {superieurStatus[d.id]?.requested && (
-          <div
-            data-testid={`superieur-status-${d.id}`}
-            className={`mt-1 flex items-center gap-1 text-xs font-medium ${
-              superieurStatus[d.id].seen ? 'text-success' : 'text-muted-foreground'
-            }`}
-          >
-            {superieurStatus[d.id].seen
-              ? <Check className="size-3 shrink-0" aria-hidden="true" />
-              : null}
-            {superieurStatus[d.id].seen
-              ? `Pris en charge${superieurStatus[d.id].seen_by?.[0] ? ' par ' + superieurStatus[d.id].seen_by[0] : ''}`
-              : 'Avis demandé — en attente'}
-          </div>
+        {statutDetails.length > 0 && (
+          <Popover>
+            <PopoverTrigger
+              className="mt-1 inline-flex cursor-pointer items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground"
+              aria-label={`Détails du statut — ${statutDetails.length} information(s)`}
+            >
+              Détails ({statutDetails.length})
+              {/* L'anomalie ne se cache JAMAIS : elle reste signalée sur la
+                  ligne, même repliée. */}
+              {d.bon_commande_etat?.mismatch && (
+                <AlertTriangle className="size-3 text-warning" aria-hidden="true" />
+              )}
+            </PopoverTrigger>
+            <PopoverContent className="max-w-xs space-y-1.5 text-xs">
+              {statutDetails.map((node, i) => <div key={i}>{node}</div>)}
+            </PopoverContent>
+          </Popover>
         )}
       </td>
       <td>
@@ -960,14 +972,7 @@ function DevisRow({ d, ctx }) {
                 <DropdownMenuItem
                   destructive
                   disabled={deletingId === d.id}
-                  onSelect={(e) => {
-                    e.preventDefault()
-                    if (window.confirm(
-                      `Supprimer le devis ${d.reference} ? Cette action est définitive et irréversible.`,
-                    )) {
-                      handleDelete(d)
-                    }
-                  }}
+                  onSelect={(e) => { e.preventDefault(); handleDelete(d) }}
                 >
                   Supprimer
                 </DropdownMenuItem>
@@ -1111,6 +1116,8 @@ export default function DevisList() {
   useDocumentTitle('Devis')
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
+  const { confirm, confirmDelete } = useConfirmDialog()
   const [searchParams, setSearchParams] = useSearchParams()
   const { devis, loading, error } = useSelector(s => s.ventes)
   const role = useSelector(s => s.auth.role)
@@ -1483,7 +1490,15 @@ export default function DevisList() {
   const onSaved  = () => dispatch(fetchDevis())
 
   const [deletingId, setDeletingId] = useState(null)
+  // APX17 — la confirmation de suppression passe par le dialogue maison
+  // (AlertDialog Radix), plus par la popup du système. Elle vit ICI plutôt
+  // que dans la ligne : une seule définition, un seul libellé.
   const handleDelete = async (d) => {
+    const ok = await confirmDelete({
+      title: `Supprimer le devis ${d.reference} ?`,
+      description: 'Cette action est définitive et irréversible.',
+    })
+    if (!ok) return
     setDeletingId(d.id)
     try {
       await ventesApi.deleteDevis(d.id)
@@ -1744,7 +1759,12 @@ export default function DevisList() {
   }
 
   const handleConvertBC = async (d) => {
-    if (!window.confirm(`Convertir « ${d.reference} » en bon de commande ?`)) return
+    const ok = await confirm({
+      title: `Convertir « ${d.reference} » en bon de commande ?`,
+      confirmLabel: 'Convertir',
+      destructive: false,
+    })
+    if (!ok) return
     setConvertingId(d.id)
     try {
       await dispatch(convertirDevisEnBC(d.id)).unwrap()
@@ -2618,7 +2638,7 @@ export default function DevisList() {
               /* ── ARC49 — Tableau sur le frame `ui/datatable` (mode ligne custom).
                   L'écran garde 100 % de son DOM : `table.data-table`, son en-tête
                   8 colonnes, `<DevisRow>` verbatim (boutons à état, menu « Plus »
-                  VX20, confirmation window.confirm à la suppression,
+                  VX20, confirmation maison à la suppression (APX17),
                   panneaux versions/3D pilotés par l'état de page + deep-links), sa
                   sélection propre (`selectedIds`) et son flux PDF (règle #4). Le
                   moteur ne fait que dérouler le pipeline de lignes ; il n'ajoute

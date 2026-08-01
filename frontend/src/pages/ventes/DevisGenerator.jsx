@@ -22,6 +22,8 @@ import ClientQuickCreateModal from './ClientQuickCreateModal'
 import DevisPresetPanel from './DevisPresetPanel'
 import DevisLineRow from './DevisLineRow'
 import { Combobox } from '../../ui/Combobox'
+// APX17 — confirmation maison + toasts (jamais une popup du système).
+import { useConfirmDialog, toast } from '../../ui/confirm'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
@@ -187,6 +189,8 @@ export default function DevisGenerator({
 } = {}) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
+  const { confirm } = useConfirmDialog()
 
   // QP2 — renommer la désignation d'une ligne est réservé à Directeur +
   // Commercial responsable (même gate que la création produit, QG4/QG5) ;
@@ -616,20 +620,14 @@ export default function DevisGenerator({
   }
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
+  // APX17 — la confirmation QX23 vit maintenant dans `onModeChangeUi` (le SEUL
+  // chemin où l'utilisateur choisit lui-même un marché). `onModeChange` reste
+  // SYNCHRONE : les trois appels programmatiques (préremplissage lead/payload,
+  // rechargement d'un brouillon) doivent poser leur état dans le même tour —
+  // le rendre asynchrone ferait écraser `scenario` chargé par le défaut du
+  // mode.
   const onModeChange = (m) => {
     if (m === modeInstallation) return
-    // QX23 — changer de mode marché après saisie écrase l'étude/ROI et les
-    // lignes auto-remplies : on confirme AVANT (jamais de rejet silencieux de
-    // l'étude). Ne demande la confirmation que s'il y a réellement quelque
-    // chose à perdre (au moins une ligne avec produit, ou une étude calculée).
-    const hasWork = lines.some(l => l.produit && parseFloat(l.quantite) > 0)
-      || !!etudeIndustrielle || pompageAutoFilled
-    if (hasWork) {
-      const ok = window.confirm(
-        'Changer de marché va réinitialiser l\'étude et les lignes déjà '
-        + 'remplies pour ce devis. Continuer ?')
-      if (!ok) return
-    }
     setModeInstallation(m)
     if (m === 'industriel') {
       onInstTypeChange('Industrielle')
@@ -645,6 +643,24 @@ export default function DevisGenerator({
       onInstTypeChange('Résidentielle')
       setScenario('Les deux (Sans + Avec)')
     }
+  }
+
+  // QX23 — changer de marché après saisie écrase l'étude/ROI et les lignes
+  // auto-remplies : on confirme AVANT (jamais de rejet silencieux de l'étude).
+  // La confirmation n'apparaît que s'il y a réellement quelque chose à perdre.
+  const onModeChangeUi = async (m) => {
+    if (m === modeInstallation) return
+    const hasWork = lines.some(l => l.produit && parseFloat(l.quantite) > 0)
+      || !!etudeIndustrielle || pompageAutoFilled
+    if (hasWork) {
+      const ok = await confirm({
+        title: 'Changer de marché ?',
+        description: "L'étude et les lignes déjà remplies pour ce devis seront réinitialisées.",
+        confirmLabel: 'Changer de marché',
+      })
+      if (!ok) return
+    }
+    onModeChange(m)
   }
 
   // ── Scénario / recommandation : réinitialisation si incompatible ──
@@ -829,7 +845,9 @@ export default function DevisGenerator({
     editLoaded.current = true
     ventesApi.getDevisById(editId).then(({ data: d }) => {
       if (d.statut !== 'brouillon') {
-        window.alert('Ce devis n\'est plus un brouillon — il ne peut plus être modifié.')
+        // APX17 — plus de popup du système : un toast d'erreur français,
+        // dans le seul Toaster de l'app.
+        toast.error('Ce devis n\'est plus un brouillon — il ne peut plus être modifié.')
         cancel()
         return
       }
@@ -1682,8 +1700,13 @@ export default function DevisGenerator({
   }
 
   // Réinitialiser : recharge la page, comme le bouton du simulateur
-  const handleReset = () => {
-    if (window.confirm('Réinitialiser le formulaire ?')) window.location.reload()
+  const handleReset = async () => {
+    const ok = await confirm({
+      title: 'Réinitialiser le formulaire ?',
+      description: 'Toutes les saisies en cours seront perdues.',
+      confirmLabel: 'Réinitialiser',
+    })
+    if (ok) window.location.reload()
   }
 
   return (
@@ -1778,7 +1801,7 @@ export default function DevisGenerator({
               className="flex-wrap"
               options={MODE_OPTIONS}
               value={modeInstallation}
-              onChange={(v) => { modeTouched.current = true; onModeChange(v) }}
+              onChange={(v) => { modeTouched.current = true; onModeChangeUi(v) }}
             />
             {modeInstallation === 'residentiel' && kwp > 36 && (
               <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">

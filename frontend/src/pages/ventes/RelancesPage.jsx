@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText, MoreHorizontal,
-  CalendarClock,
+  CalendarClock, Download,
 } from 'lucide-react'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
@@ -19,7 +19,10 @@ import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../ui'
 import { formatMAD, formatDateTime, toNumber, normalizeMaPhone } from '../../lib/format'
-import { toast } from '../../ui/confirm'
+// APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
+import { toast, useConfirmDialog } from '../../ui/confirm'
+// APX17 — la table de recouvrement rejoint le tableau partagé (tri + export CSV).
+import { Table } from '../reporting/Table'
 
 // Ajoute n jours à aujourd'hui (date ISO AAAA-MM-JJ).
 function todayPlus(days) {
@@ -40,6 +43,8 @@ function ageBucket(joursRetard) {
 }
 
 export default function RelancesPage() {
+  // APX17 — confirmations maison (AlertDialog Radix), jamais la popup du système.
+  const { confirm } = useConfirmDialog()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [target, setTarget] = useState(null)  // facture being relancée
@@ -107,7 +112,13 @@ export default function RelancesPage() {
   const relancerSelection = async () => {
     const ids = Object.keys(selected).filter(id => selected[id])
     if (ids.length === 0) return
-    if (!window.confirm(`Consigner une relance pour ${ids.length} facture(s) ?`)) return
+    // APX17 - confirmation maison (AlertDialog), jamais la popup du systeme.
+    const ok = await confirm({
+      title: `Consigner une relance pour ${ids.length} facture(s) ?`,
+      confirmLabel: 'Consigner',
+      destructive: false,
+    })
+    if (!ok) return
     setBulkBusy(true)
     try {
       await doConsigner(ids)
@@ -155,8 +166,13 @@ export default function RelancesPage() {
   const relancerSelectionAvecWhatsapp = async () => {
     const ids = Object.keys(selected).filter(id => selected[id])
     if (ids.length === 0) return
-    if (!window.confirm(
-      `Consigner une relance pour ${ids.length} facture(s), puis prévisualiser un message WhatsApp pour chacune ?`)) return
+    const ok = await confirm({
+      title: `Consigner une relance pour ${ids.length} facture(s) ?`,
+      description: 'Un message WhatsApp sera ensuite prévisualisé pour chacune (aucun envoi automatique).',
+      confirmLabel: 'Consigner puis prévisualiser',
+      destructive: false,
+    })
+    if (!ok) return
     const facturesSel = ids
       .map(id => rows.find(x => String(x.id) === String(id)))
       .filter(Boolean)
@@ -190,7 +206,12 @@ export default function RelancesPage() {
 
   const toggleSel = (id) => setSelected(s => ({ ...s, [id]: !s[id] }))
   const exclure = async (r) => {
-    if (!window.confirm('Exclure cette facture des relances ?')) return
+    const ok = await confirm({
+      title: 'Exclure cette facture des relances ?',
+      description: "Elle ne remontera plus dans la file de recouvrement.",
+      confirmLabel: 'Exclure',
+    })
+    if (!ok) return
     try { await ventesApi.exclureRelance(r.id, true); load() } catch { /* */ }
   }
   const lettre = async (r) => {
@@ -275,6 +296,171 @@ export default function RelancesPage() {
     setSelected(next)
   }
 
+  // APX17 — export CSV de la file de recouvrement (les colonnes affichées, pas
+  // les actions). Construit dans le navigateur depuis les lignes DÉJÀ chargées :
+  // zéro endpoint nouveau.
+  const exporterCsv = () => {
+    const entetes = ['Facture', 'Client', 'Échéance', 'Dû', 'Retard (j)', 'Âge', 'Niveau', 'Relances']
+    const echapper = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const lignes = displayed.map(r => [
+      r.reference, r.client_nom, r.date_echeance || '',
+      toNumber(r.montant_du) || 0,
+      r.jours_retard > 0 ? r.jours_retard : 0,
+      ageBucket(r.jours_retard) || '',
+      r.niveau?.nom || '', r.nb_relances ?? 0,
+    ].map(echapper).join(';'))
+    // BOM : Excel FR ouvre l'UTF-8 sans casser les accents.
+    const blob = new Blob(['﻿' + [entetes.map(echapper).join(';'), ...lignes].join('\r\n')],
+      { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'relances-impayes.csv'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+  }
+
+  // APX17 — colonnes du tableau PARTAGÉ (`reporting/Table`). L'en-tête « Dû »
+  // reste le contrôle de tri existant ; les cellules sont celles d'avant.
+  const relancesColumns = [
+    {
+      key: 'sel',
+      header: <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Tout sélectionner" />,
+      headerClassName: 'w-8',
+      cell: (r) => (
+        <Checkbox checked={!!selected[r.id]}
+                  onCheckedChange={() => toggleSel(r.id)}
+                  aria-label={`Sélectionner ${r.reference}`} />
+      ),
+    },
+    { key: 'reference', header: 'Facture', cell: (r) => <strong>{r.reference}</strong> },
+    { key: 'client', header: 'Client', cell: (r) => r.client_nom },
+    {
+      key: 'echeance',
+      header: 'Échéance',
+      cell: (r) => (
+        <span className={r.jours_retard > 0 ? 'font-semibold text-destructive' : undefined}>
+          {r.date_echeance || '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'du',
+      align: 'right',
+      header: (
+        <button type="button"
+                className="select-none uppercase tracking-wide"
+                onClick={() => setSortByDu(v => !v)}
+                title="Trier par montant dû décroissant">
+          Dû{sortByDu ? ' ↓' : ''}
+        </button>
+      ),
+      cell: (r) => formatMAD(r.montant_du),
+    },
+    {
+      key: 'retard',
+      header: 'Retard',
+      cell: (r) => (
+        <span className={r.jours_retard > 0 ? 'text-destructive' : undefined}>
+          {r.jours_retard > 0
+            ? `${r.jours_retard} j`
+            : <span className="text-muted-foreground">À échoir</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'age',
+      header: 'Âge',
+      cellClassName: 'm-hide',
+      headerClassName: 'm-hide',
+      cell: (r) => (ageBucket(r.jours_retard)
+        ? <Badge tone="warning">{ageBucket(r.jours_retard)}</Badge>
+        : '—'),
+    },
+    {
+      key: 'niveau',
+      header: 'Niveau',
+      cell: (r) => (r.niveau ? <Badge tone="warning">{r.niveau.nom}</Badge> : '—'),
+    },
+    {
+      key: 'nb',
+      header: 'Relances',
+      cellClassName: 'm-hide',
+      headerClassName: 'm-hide',
+      cell: (r) => r.nb_relances,
+    },
+    {
+      key: 'actions',
+      header: '',
+      align: 'right',
+      cell: (r) => (
+        /* VX20 — « soupe d'actions » réduite : Relancer (action principale) +
+           WhatsApp (canal le plus fréquent) restent des boutons directs ; le
+           reste (Historique, Lettre, Relevé, Relance premium, Exclure) vit
+           dans un seul menu « Plus ». */
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button size="sm" onClick={() => openRelancer(r)}>Relancer</Button>
+          {/* VX230 — « Encaisser » : ouvre la MÊME modale de paiement que
+              FactureList, sur place. */}
+          <Button size="sm" variant="outline"
+                  onClick={() => setPayTarget(r)}
+                  title="Enregistrer un paiement sur cette facture">
+            <ReceiptText /> Encaisser
+          </Button>
+          <Button size="sm" variant="outline"
+                  loading={!!waBusy[r.id]}
+                  disabled={!!waBusy[r.id] || !normalizeMaPhone(r.client_telephone)}
+                  onClick={() => whatsapp(r)}
+                  title={!normalizeMaPhone(r.client_telephone)
+                    ? 'Numéro invalide'
+                    : 'Rappel de paiement par WhatsApp'}>
+            <MessageCircle /> {waBusy[r.id] ? 'Préparation…' : 'WhatsApp'}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" aria-label={`Plus d'actions — ${r.reference}`}>
+                <MoreHorizontal className="size-4" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Plus d'actions</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => openHistorique(r)}>
+                <History className="size-3.5" aria-hidden="true" />
+                Historique
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => lettre(r)}>
+                <FileText className="size-3.5" aria-hidden="true" />
+                Lettre
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => releve(r)}>
+                <ReceiptText className="size-3.5" aria-hidden="true" />
+                Relevé de compte client (PDF)
+              </DropdownMenuItem>
+              <DropdownMenuLabel>Relance premium</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => lettrePremium(r, 1)}>
+                <Mail className="size-3.5" aria-hidden="true" />
+                Niveau 1 — courtois
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => lettrePremium(r, 2)}>
+                <Mail className="size-3.5" aria-hidden="true" />
+                Niveau 2 — ferme
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => lettrePremium(r, 3)}>
+                <Mail className="size-3.5" aria-hidden="true" />
+                Niveau 3 — mise en demeure
+              </DropdownMenuItem>
+              <DropdownMenuItem destructive onSelect={() => exclure(r)}>
+                Exclure
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <div className="page">
       {/* APX11 — en-tête unique VX28 + accent Ventes ; la phrase de cadrage
@@ -330,6 +516,11 @@ export default function RelancesPage() {
               </SelectContent>
             </Select>
           </label>
+          {/* APX17 — la file de recouvrement devient exportable (CSV construit
+              dans le navigateur depuis les lignes déjà chargées). */}
+          <Button size="sm" variant="outline" onClick={exporterCsv}>
+            <Download /> Exporter CSV
+          </Button>
           {/* VX116 — la relance en lot propose « Consigner uniquement »
               (inchangé) ou « Consigner + aperçu WhatsApp pour chacun » (aperçu
               séquentiel par client, jamais d'auto-envoi). */}
@@ -380,123 +571,17 @@ export default function RelancesPage() {
         />
       ) : (
         <Card className="mt-1 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th className="w-8">
-                    <Checkbox checked={allSelected} onCheckedChange={toggleAll}
-                              aria-label="Tout sélectionner" />
-                  </th>
-                  <th>Facture</th><th>Client</th><th>Échéance</th>
-                  <th
-                    className="ta-right cursor-pointer select-none"
-                    onClick={() => setSortByDu(v => !v)}
-                    title="Trier par montant dû décroissant"
-                  >
-                    Dû{sortByDu ? ' ↓' : ''}
-                  </th>
-                  <th>Retard</th><th>Âge</th><th>Niveau</th>
-                  <th>Relances</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayed.map(r => (
-                  <tr key={r.id}>
-                    <td>
-                      <Checkbox checked={!!selected[r.id]}
-                                onCheckedChange={() => toggleSel(r.id)}
-                                aria-label={`Sélectionner ${r.reference}`} />
-                    </td>
-                    <td><strong>{r.reference}</strong></td>
-                    <td data-label="Client">{r.client_nom}</td>
-                    <td data-label="Échéance"
-                        className={r.jours_retard > 0 ? 'font-semibold text-destructive' : undefined}>
-                      {r.date_echeance || '—'}
-                    </td>
-                    <td className="ta-right tabular-nums" data-label="Dû">{formatMAD(r.montant_du)}</td>
-                    <td data-label="Retard"
-                        className={r.jours_retard > 0 ? 'text-destructive' : undefined}>
-                      {r.jours_retard > 0
-                        ? `${r.jours_retard} j`
-                        : <span className="text-muted-foreground">À échoir</span>}
-                    </td>
-                    <td className="m-hide">{ageBucket(r.jours_retard)
-                      ? <Badge tone="warning">{ageBucket(r.jours_retard)}</Badge>
-                      : '—'}</td>
-                    <td data-label="Niveau">{r.niveau ? <Badge tone="warning">{r.niveau.nom}</Badge> : '—'}</td>
-                    <td className="m-hide">{r.nb_relances}</td>
-                    <td className="ta-right">
-                      {/* VX20 — « soupe d'actions » réduite : Relancer (action
-                          principale) + WhatsApp (canal de communication le
-                          plus fréquent) restent des boutons directs ; le
-                          reste (Historique, Lettre, Relevé, Relance premium,
-                          Exclure) vit dans un seul menu « Plus ». */}
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <Button size="sm" onClick={() => openRelancer(r)}>Relancer</Button>
-                        {/* VX230 — « Encaisser » : ouvre la MÊME modale de
-                            paiement que FactureList, sur place. Le chèque
-                            décroché après la relance s'enregistre sans quitter
-                            la vue de recouvrement. */}
-                        <Button size="sm" variant="outline"
-                                onClick={() => setPayTarget(r)}
-                                title="Enregistrer un paiement sur cette facture">
-                          <ReceiptText /> Encaisser
-                        </Button>
-                        <Button size="sm" variant="outline"
-                                loading={!!waBusy[r.id]}
-                                disabled={!!waBusy[r.id] || !normalizeMaPhone(r.client_telephone)}
-                                onClick={() => whatsapp(r)}
-                                title={!normalizeMaPhone(r.client_telephone)
-                                  ? 'Numéro invalide'
-                                  : 'Rappel de paiement par WhatsApp'}>
-                          <MessageCircle /> {waBusy[r.id] ? 'Préparation…' : 'WhatsApp'}
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="ghost" aria-label={`Plus d'actions — ${r.reference}`}>
-                              <MoreHorizontal className="size-4" aria-hidden="true" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Plus d'actions</DropdownMenuLabel>
-                            <DropdownMenuItem onSelect={() => openHistorique(r)}>
-                              <History className="size-3.5" aria-hidden="true" />
-                              Historique
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => lettre(r)}>
-                              <FileText className="size-3.5" aria-hidden="true" />
-                              Lettre
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => releve(r)}>
-                              <ReceiptText className="size-3.5" aria-hidden="true" />
-                              Relevé de compte client (PDF)
-                            </DropdownMenuItem>
-                            <DropdownMenuLabel>Relance premium</DropdownMenuLabel>
-                            <DropdownMenuItem onSelect={() => lettrePremium(r, 1)}>
-                              <Mail className="size-3.5" aria-hidden="true" />
-                              Niveau 1 — courtois
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => lettrePremium(r, 2)}>
-                              <Mail className="size-3.5" aria-hidden="true" />
-                              Niveau 2 — ferme
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => lettrePremium(r, 3)}>
-                              <Mail className="size-3.5" aria-hidden="true" />
-                              Niveau 3 — mise en demeure
-                            </DropdownMenuItem>
-                            <DropdownMenuItem destructive onSelect={() => exclure(r)}>
-                              Exclure
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {/* APX17 — la dernière table écrite à la main du dossier ventes
+              rejoint le tableau PARTAGÉ du reporting : mêmes tokens, mêmes
+              `data-label` (repli en cartes sous 768 px), en-tête de tri
+              conservé, et un export CSV de la file de recouvrement. */}
+          <Table
+            aria-label="Factures à relancer"
+            caption="Factures impayées à relancer"
+            rows={displayed}
+            getRowKey={(r) => r.id}
+            columns={relancesColumns}
+          />
         </Card>
       )}
 
