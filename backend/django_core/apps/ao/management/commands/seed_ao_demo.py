@@ -49,11 +49,27 @@ from ...models import (
     ToitureAO, VarianteCalepinage,
 )
 
-#: Racine des goldens FRDISI (AOF183) — la SEULE source géométrique.
-GOLDEN = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))))),
-    'core', 'calepinage', 'golden', 'frdisi_2026_07_27')
+
+def _racine_goldens():
+    """Racine des goldens FRDISI (AOF183) — la SEULE source géométrique.
+
+    Le chemin est déduit du PAQUET ``core.calepinage`` lui-même, jamais d'une
+    remontée de répertoires depuis ce fichier : la version précédente remontait
+    quatre crans (``…/apps/ao/management/commands`` → ``…/apps``) puis ajoutait
+    ``core/``, et visait donc ``apps/core/calepinage/golden/`` — un dossier qui
+    n'existe pas. Le seed échouait alors sur « Golden introuvable » AVANT
+    d'écrire quoi que ce soit, ce qui laissait la base e2e sans affaire de
+    démonstration. Déduire le chemin du paquet rend l'erreur impossible à
+    reproduire, y compris si l'arborescence bouge.
+    """
+    import core.calepinage
+
+    return os.path.join(
+        os.path.dirname(os.path.abspath(core.calepinage.__file__)),
+        'golden', 'frdisi_2026_07_27')
+
+
+GOLDEN = _racine_goldens()
 
 #: Référence acheteur de l'affaire de démonstration — clé de déduplication.
 #: Le préfixe ``DEMO-`` la rend reconnaissable au premier coup d'œil dans une
