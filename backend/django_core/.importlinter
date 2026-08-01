@@ -347,3 +347,37 @@ ignore_imports =
     core.tests.test_documents_viewset -> apps.records.views
     core.tests.test_documents_status -> apps.installations.models_demande_achat
     core.tests.test_documents_status -> apps.installations.models_ordre_soustraitance
+
+# AOF33 — `core.calepinage` est le MOTEUR de calepinage, partagé par DEUX
+# consommateurs qui ne peuvent pas s'importer l'un l'autre (`apps.ao` pour la
+# réponse à appel d'offres, `apps.ventes` pour la villa). Le loger dans l'une
+# des deux apps obligerait l'autre à en dépendre — sémantiquement faux et déjà
+# bloqué par les contrats ci-dessus. Il vit donc en fondation, et sa PURETÉ est
+# la contrepartie : stdlib + numpy seulement, aucune dépendance Django. C'est ce
+# qui le rend testable SANS base de données, donc hors du gate migrations.
+# Django/DRF/celery ne sont pas des root_packages ici : ils sont couverts par le
+# second verrou `core/tests/test_calepinage_purete.py` (analyse AST).
+[importlinter:contract:calepinage-est-un-noyau-pur]
+name = Le moteur de calepinage reste un noyau pur (aucun modèle, vue, tâche ou app)
+type = forbidden
+source_modules =
+    core.calepinage
+forbidden_modules =
+    core.models
+    core.views
+    core.vues
+    core.serializers
+    core.viewsets
+    core.services
+    core.selectors
+    core.tasks
+    core.jobs
+    core.numbering
+    core.documents
+    core.pdf
+    core.permissions
+    core.events
+    core.workflow
+    core.middleware
+    core.mixins
+    authentication
