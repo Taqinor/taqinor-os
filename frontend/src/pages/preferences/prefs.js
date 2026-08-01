@@ -21,6 +21,9 @@
 import { compressImage } from '../../ui/file-utils'
 
 export const LANDING_KEY = 'taqinor.landingModule'
+/** ODY3 — valeur sentinelle du choix EXPLICITE « dernier module visité » (VX11).
+ *  Préférence absente ('') = Menu d'accueil `/apps`, le défaut du paradigme. */
+export const LANDING_LAST_MODULE = '__dernier__'
 export const REDUCED_MOTION_KEY = 'taqinor.reducedMotion'
 export const PHOTO_QUALITY_KEY = 'taqinor.photoQuality'
 
@@ -73,12 +76,18 @@ export function setLandingModule(value) {
  */
 export function resolveLandingPath(configs, lastModuleSegment, { apps } = {}) {
   const pref = getLandingModule()
+  // ODY3 — « dernier module visité » (VX11) est désormais un choix EXPLICITE,
+  // plus le défaut implicite. Avant, préférence vide == « dernier module », si
+  // bien que tout utilisateur de retour atterrissait dans son dernier module :
+  // le Menu d'accueil, cœur du paradigme ODY (« j'ouvre → MES apps »), n'aurait
+  // été vu que par un compte tout neuf.
+  if (pref === LANDING_LAST_MODULE) {
+    const found = (configs || []).find((c) => c.key === lastModuleSegment)
+    if (found?.nav?.items?.[0]?.to) return found.nav.items[0].to
+    return '/apps'
+  }
   if (pref) {
     const found = (configs || []).find((c) => c.key === pref)
-    if (found?.nav?.items?.[0]?.to) return found.nav.items[0].to
-  }
-  if (lastModuleSegment) {
-    const found = (configs || []).find((c) => c.key === lastModuleSegment)
     if (found?.nav?.items?.[0]?.to) return found.nav.items[0].to
   }
   if (apps?.length === 1 && apps[0]?.to) return apps[0].to

@@ -8,6 +8,7 @@ vi.mock('../../ui/file-utils', () => ({
 }))
 import {
   getLandingModule, setLandingModule, resolveLandingPath, getLastModuleSegment,
+  LANDING_LAST_MODULE,
   getReducedMotionPref, setReducedMotionPref, applyReducedMotion,
   getPhotoQualityPref, setPhotoQualityPref, compressPhotoForUpload,
 } from './prefs'
@@ -48,7 +49,8 @@ describe('VX46 — prefs.js (logique pure, persistance localStorage)', () => {
     expect(resolveLandingPath(CONFIGS, '')).toBe('/rh')
   })
 
-  it('resolveLandingPath : préférence vide → dernier module visité (VX11)', () => {
+  it('resolveLandingPath : préférence explicite « dernier module » → ce module (VX11)', () => {
+    setLandingModule(LANDING_LAST_MODULE)
     expect(resolveLandingPath(CONFIGS, 'compta')).toBe('/comptabilite')
   })
 
@@ -79,9 +81,28 @@ describe('VX46 — prefs.js (logique pure, persistance localStorage)', () => {
     expect(resolveLandingPath(CONFIGS, '', { apps })).toBe('/comptabilite')
   })
 
-  it('resolveLandingPath : le dernier module visité (VX11) reste prioritaire sur le mono-app', () => {
+  // ODY3 — « dernier module visité » n'est PLUS le défaut implicite : sans
+  // préférence explicite, on atterrit sur le Menu d'accueil (ou dans l'unique
+  // app en mono-app). Sinon le paradigme « j'ouvre → MES apps » n'aurait jamais
+  // été vu par un utilisateur de retour.
+  it('resolveLandingPath : sans préférence, le dernier module visité est IGNORÉ (ODY3)', () => {
+    expect(resolveLandingPath(CONFIGS, 'compta')).toBe('/apps')
+  })
+
+  it('resolveLandingPath : sans préférence, le mono-app prime sur le dernier module visité', () => {
+    const apps = [{ key: 'rh', to: '/rh' }]
+    expect(resolveLandingPath(CONFIGS, 'compta', { apps })).toBe('/rh')
+  })
+
+  it('resolveLandingPath : « dernier module visité » CHOISI explicitement est honoré (VX11)', () => {
+    setLandingModule(LANDING_LAST_MODULE)
     const apps = [{ key: 'rh', to: '/rh' }]
     expect(resolveLandingPath(CONFIGS, 'compta', { apps })).toBe('/comptabilite')
+  })
+
+  it('resolveLandingPath : « dernier module visité » choisi mais aucun module connu → Menu d’accueil', () => {
+    setLandingModule(LANDING_LAST_MODULE)
+    expect(resolveLandingPath(CONFIGS, '')).toBe('/apps')
   })
 
   it('getLastModuleSegment lit taqinor.lastModule (VX11)', () => {
