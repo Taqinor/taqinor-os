@@ -38,6 +38,8 @@ import {
   ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
 } from '../../features/installations/InterventionCapturePanels'
 import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
+// APX29 — carte des arrêts, partagée avec l'onglet « Ma tournée » (planification).
+import TourneeStops from '../../features/installations/TourneeStops'
 import {
   interventionStatusLabel, INTERVENTION_TYPES,
   INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
@@ -246,6 +248,14 @@ export default function MaJourneePage() {
           title="Aucune intervention aujourd'hui"
           description="Vos interventions du jour apparaîtront ici." />
       ) : (
+        <>
+        {/* APX29 — la tournée sur la CARTE (le GPS du chantier dormait) :
+            arrêts numérotés dans l'ordre + tracé simple, composant PARTAGÉ avec
+            l'onglet « Ma tournée » de la planification. Les données viennent de
+            l'endpoint tournée DÉJÀ appelé — zéro endpoint nouveau. Les cartes
+            terrain riches ci-dessous (VX42/VX226) restent inchangées. */}
+        <TourneeStops stops={rows} showList={false} mapHeight="220px"
+          onStopClick={(stop) => openInterv(stop, 'trajet')} />
         <ol className="flex flex-col gap-2">
           {rows.map((interv, i) => {
             const tel = telHref(interv.contact_site_telephone)
@@ -323,6 +333,7 @@ export default function MaJourneePage() {
             )
           })}
         </ol>
+        </>
       )}
 
       {/* ERR103 — dériver la fiche de l'état VIVANT (rows), pas du snapshot

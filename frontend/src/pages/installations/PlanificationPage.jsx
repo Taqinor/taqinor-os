@@ -18,7 +18,7 @@ import {
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
   CalendarRange, Navigation, Users, AlertTriangle, Scale, Truck,
-  Wrench, Gauge, ExternalLink, GripVertical,
+  Wrench, Gauge, GripVertical,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -32,6 +32,8 @@ import {
 } from '../../ui'
 // APX28 — mobile = grille en lecture seule (aucun glisser-déposer au pouce).
 import { useIsMobile } from '../../ui/ResponsiveDialog'
+// APX29 — carte + liste des arrêts, partagée avec « Ma journée ».
+import TourneeStops from '../../features/installations/TourneeStops'
 import { toastWithUndo } from '../../lib/toast'
 import { timelineBounds, barGeometry, markerGeometry } from '../../features/gestion_projet/gantt'
 import { formatDate } from '../../lib/format'
@@ -760,29 +762,9 @@ function MaTourneeTab() {
       ) : (data?.stops ?? []).length === 0 ? (
         <EmptyState icon={Navigation} title="Aucun arrêt ce jour" description="Vos interventions du jour, ordonnées géographiquement, apparaîtront ici." />
       ) : (
-        <ol className="flex flex-col gap-2">
-          {data.stops.map((stop, i) => (
-            <li key={stop.id}>
-              <Card>
-                <CardContent className="flex items-center gap-3 p-3">
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{stop.client_nom ?? stop.installation_reference ?? `#${stop.id}`}</div>
-                    <div className="text-xs text-muted-foreground">{stop.site_ville ?? '—'}</div>
-                  </div>
-                  {stop.itineraire_url && (
-                    <a href={stop.itineraire_url} target="_blank" rel="noreferrer"
-                      className="flex shrink-0 items-center gap-1 text-xs text-primary hover:underline">
-                      Itinéraire <ExternalLink className="size-3.5" aria-hidden="true" />
-                    </a>
-                  )}
-                </CardContent>
-              </Card>
-            </li>
-          ))}
-        </ol>
+        // APX29 — carte + liste, composant PARTAGÉ avec « Ma journée » (la
+        // liste numérotée était dupliquée entre les deux écrans).
+        <TourneeStops stops={data.stops} />
       )}
     </div>
   )
