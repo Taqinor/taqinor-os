@@ -241,3 +241,12 @@ le dict de contexte.
   livré et testé dans `apps/ao/fabrique/bascule_rapport.py` (AOF142) : le jour
   où AOF118 est sur la branche, `basculer_equipement` n'a plus qu'à APPLIQUER
   ce plan en une transaction et à journaliser via `records.services.log_activity`.
+- **AOF154 — endpoints de la fabrique : `[BLOCKED: attend AOF115]`.** Les six
+  routes (génération de pack, rendu d'une pièce, téléchargement du ZIP,
+  exécution du contrôle, historique de cascade, bascule) sont des actions SUR
+  `DossierAO` — modèle d'AOF115, absent de `dev-aof` au moment de ce run. Il
+  n'existe donc aucun queryset à scoper ni aucun `basename` à router. Écrire
+  des routes contre un modèle imaginaire aurait produit une matrice de
+  permissions non testable. Les briques que ces routes exposeront sont, elles,
+  livrées et testées (production du pack, ZIP, bon à tirer, contrôle,
+  sanitisation, cascade, propagation).
