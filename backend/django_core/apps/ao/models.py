@@ -2208,6 +2208,24 @@ class ResultatAO(TenantModel):
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
+    # ── AOF32 — L'ouverture des plis, enfin exploitée ──────────────────────
+    #
+    # Ce modèle existait et n'était JAMAIS écrit : l'app s'arrêtait au dépôt,
+    # alors que la valeur récurrente est en AVAL — classement, attributaire,
+    # prix du moins-disant, motif de perte. C'est cette donnée qui alimentera
+    # la bibliothèque de prix et le KPI de taux de réussite.
+    date_ouverture = models.DateField(
+        null=True, blank=True, verbose_name="Date d'ouverture des plis")
+    nombre_plis = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Nombre de plis reçus')
+    #: Classement complet : ``[{"rang": 1, "soumissionnaire": "…",
+    #: "montant": 4200000.00}, …]``. Un tableau, pas des colonnes : le nombre
+    #: de concurrents n'est pas connu à l'avance.
+    classement = models.JSONField(
+        default=list, blank=True, verbose_name='Classement des plis')
+    notre_rang = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Notre rang')
+
     class Meta:
         verbose_name = "Résultat d'AO"
         verbose_name_plural = "Résultats d'AO"
@@ -2223,3 +2241,18 @@ class ResultatAO(TenantModel):
         if not self.prix_gagnant:
             return None
         return (self.notre_prix or Decimal('0.00')) - self.prix_gagnant
+
+    @property
+    def ecart_prix_pct(self):
+        """AOF32 — écart en POURCENTAGE du prix retenu.
+
+        C'est la forme comparable d'un dossier à l'autre : « 180 000 MAD de
+        trop » ne veut rien dire sans le montant du marché.
+        """
+        if not self.prix_gagnant:
+            return None
+        ecart = self.ecart_prix
+        if ecart is None:
+            return None
+        return (ecart / Decimal(self.prix_gagnant) * Decimal('100')).quantize(
+            Decimal('0.01'))

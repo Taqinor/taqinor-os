@@ -403,6 +403,58 @@ def cautions_expirant_avant_ouverture(appel_offre):
     ]
 
 
+# ── AOF32 — Le résultat d'ouverture des plis ───────────────────────────────
+#
+# ``ResultatAO`` existait et n'était JAMAIS écrit : l'app s'arrêtait au dépôt
+# alors que la valeur récurrente est en AVAL. C'est cette donnée qui alimente
+# la bibliothèque de prix et le KPI de taux de réussite — lequel est CALCULÉ
+# (``taux_reussite_ao``), jamais saisi.
+
+#: Issue du résultat → statut d'AO correspondant. ``infructueux``/``annule``
+#: ne changent PAS le statut : le dossier n'est ni gagné ni perdu, il est sans
+#: suite du fait de l'acheteur.
+_ISSUE_VERS_STATUT = {
+    ResultatAO.Issue.GAGNE: AppelOffre.Statut.GAGNE,
+    ResultatAO.Issue.PERDU: AppelOffre.Statut.PERDU,
+}
+
+
+def enregistrer_resultat_ao(appel_offre, *, issue, user=None, **donnees):
+    """Enregistre le résultat d'ouverture des plis et FAIT SUIVRE le statut.
+
+    La transition ``depose → gagne|perdu`` passe par
+    ``changer_statut_ao`` — JAMAIS par une mutation directe : c'est lui qui
+    valide la transition, journalise au chatter et émet ``ao_gagne``.
+
+    IDEMPOTENT : un second appel met à jour le résultat existant (un AO n'a
+    qu'un résultat, contrainte ``OneToOne``).
+
+    Args:
+        issue: valeur de ``ResultatAO.Issue``.
+        **donnees: champs de ``ResultatAO`` (date_ouverture, nombre_plis,
+            classement, notre_rang, attributaire, notre_prix, prix_gagnant,
+            motif, date_resultat).
+
+    Raises:
+        ValidationError: issue inconnue, ou transition de statut interdite
+        depuis l'état courant du dossier.
+    """
+    valides = dict(ResultatAO.Issue.choices)
+    if issue not in valides:
+        raise ValidationError({'issue': f"Issue inconnue : « {issue} »."})
+
+    resultat, _ = ResultatAO.objects.update_or_create(
+        company=appel_offre.company, appel_offre=appel_offre,
+        defaults={'issue': issue, **donnees})
+
+    statut_cible = _ISSUE_VERS_STATUT.get(issue)
+    if statut_cible is not None and appel_offre.statut != statut_cible:
+        changer_statut_ao(
+            appel_offre, statut_cible, user=user,
+            motif=(donnees.get('motif') or "Résultat d'ouverture des plis"))
+    return resultat
+
+
 # ── AOF28 — Publier une variante exige une PREUVE ──────────────────────────
 
 def publier_variante(variante):

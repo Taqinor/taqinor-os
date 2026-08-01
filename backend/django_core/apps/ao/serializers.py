@@ -499,8 +499,11 @@ class EcheanceAOSerializer(serializers.ModelSerializer):
 class ResultatAOSerializer(serializers.ModelSerializer):
     issue_display = serializers.CharField(
         source='get_issue_display', read_only=True)
+    #: Écarts DÉRIVÉS (MAD et %) — jamais saisis.
     ecart_prix = serializers.DecimalField(
         max_digits=16, decimal_places=2, read_only=True, allow_null=True)
+    ecart_prix_pct = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, allow_null=True)
     appel_offre_reference = serializers.CharField(
         source='appel_offre.reference', read_only=True)
 
@@ -509,6 +512,8 @@ class ResultatAOSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'appel_offre', 'appel_offre_reference', 'issue',
             'issue_display', 'attributaire', 'notre_prix', 'prix_gagnant',
-            'ecart_prix', 'motif', 'date_resultat', 'date_creation',
+            'ecart_prix', 'ecart_prix_pct', 'date_ouverture', 'nombre_plis',
+            'classement', 'notre_rang', 'motif', 'date_resultat',
+            'date_creation',
         ]
         read_only_fields = ['date_creation']

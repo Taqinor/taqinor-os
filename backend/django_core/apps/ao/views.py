@@ -762,3 +762,42 @@ class ResultatAOViewSet(AoBaseViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         return Response(services.taux_reussite_ao(request.user.company))
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'issue'))
+
+    @action(detail=False, methods=['post'], url_path='enregistrer')
+    def enregistrer(self, request):
+        """AOF32 — saisie du résultat d'ouverture des plis.
+
+        Le statut du dossier suit PAR LE SERVICE de statut (jamais une
+        mutation directe) : la transition est validée, journalisée, et
+        ``ao_gagne`` est émis quand il le faut.
+        """
+        appel_offre = AppelOffre.objects.filter(
+            pk=request.data.get('appel_offre'),
+            company=request.user.company).first()
+        if appel_offre is None:
+            return Response(
+                {'appel_offre': "Cet appel d'offres n'existe pas dans votre "
+                                'société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        champs = {
+            cle: request.data[cle] for cle in (
+                'date_ouverture', 'nombre_plis', 'classement', 'notre_rang',
+                'attributaire', 'notre_prix', 'prix_gagnant', 'motif',
+                'date_resultat',
+            ) if cle in request.data
+        }
+        try:
+            resultat = services.enregistrer_resultat_ao(
+                appel_offre, issue=request.data.get('issue'),
+                user=request.user, **champs)
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'issue': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(resultat).data,
+                        status=status.HTTP_201_CREATED)
