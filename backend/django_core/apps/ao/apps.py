@@ -17,3 +17,10 @@ class AoConfig(AppConfig):
         ),
         'categorie': 'Commercial',
     }
+
+    def ready(self):
+        # AOF29 — péremption automatique EN CASCADE des variantes de
+        # calepinage : toute écriture d'obstacle, de cote ou d'enveloppe
+        # recalcule l'empreinte d'entrée et bascule ``PERIME`` ce qui diverge.
+        # Borné à LA toiture touchée (péremption GRANULAIRE).
+        from . import receivers  # noqa: F401
