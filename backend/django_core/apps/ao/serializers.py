@@ -14,6 +14,7 @@ from .models import (
     CautionSoumission,
     DossierSoumission,
     EcheanceAO,
+    ExigenceCPS,
     LigneBordereau,
     PieceSoumission,
     ResultatAO,
@@ -54,6 +55,23 @@ class AppelOffreSerializer(serializers.ModelSerializer):
             'statut', 'statut_display', 'lead_id', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+# ── AOF14 — Exigences du CPS ───────────────────────────────────────────────
+
+class ExigenceCPSSerializer(serializers.ModelSerializer):
+    type_exigence_display = serializers.CharField(
+        source='get_type_exigence_display', read_only=True)
+    est_intervalle = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ExigenceCPS
+        fields = [
+            'id', 'appel_offre', 'code', 'libelle', 'type_exigence',
+            'type_exigence_display', 'valeur_num', 'valeur_max_num',
+            'est_intervalle', 'unite', 'valeur_texte', 'source_piece',
+            'source_page', 'bloquant', 'commentaire',
+        ]
 
 
 # ── FG223 — Bordereaux des prix (BOQ) ──────────────────────────────────────

@@ -248,6 +248,174 @@ class AppelOffre(TenantModel):
         return base + timedelta(days=self.validite_offre_jours)
 
 
+# ── AOF14 — Les clauses du CPS deviennent des DONNÉES paramétrables ────────
+
+class ExigenceCPS(TenantModel):
+    """Une clause chiffrée du CPS, sous forme de donnée (AOF14).
+
+    Constat marché qui justifie le modèle : le cautionnement DÉFINITIF est un
+    TAUX du montant initial (3 % au Maroc) tandis que le PROVISOIRE est un
+    MONTANT ABSOLU fixé par le CPS (10 000 / 25 000 / 30 000 / 50 000 DH). Les
+    deux sont donc des clauses PARAMÉTRABLES, jamais des constantes du code, et
+    le provisoire n'est JAMAIS calculable depuis le montant de l'offre.
+
+    **Aucune exigence d'ASSURANCE ici.** ``NTASS19`` est déjà livré :
+    ``apps.assurances.ExigenceAssuranceMarche`` possède les exigences
+    d'assurance d'un marché et les rattache à l'AO par sa string-FK
+    ``marche_ref`` (l'``id`` de l'``AppelOffre``). On s'y RÉFÈRE, on ne les
+    duplique pas — un test d'introspection échoue si un champ d'assurance
+    apparaît sur ce modèle.
+    """
+
+    class TypeExigence(models.TextChoices):
+        RATIO_DC_AC = 'ratio_dc_ac', 'Ratio DC/AC (min–max)'
+        PUISSANCE_ONDULEUR_MAX = (
+            'puissance_onduleur_max', "Puissance unitaire max d'onduleur")
+        CAUTION_PROVISOIRE = (
+            'caution_provisoire', 'Caution provisoire (montant absolu)')
+        CAUTION_DEFINITIVE_TAUX = (
+            'caution_definitive_taux', 'Caution définitive (taux)')
+        VALIDITE_OFFRE = 'validite_offre', "Validité de l'offre"
+        PENALITE_RETARD = 'penalite_retard', 'Pénalité de retard'
+        PIECE_ADMINISTRATIVE = (
+            'piece_administrative', 'Pièce administrative exigée')
+        REFERENCE_NORMATIVE = 'reference_normative', 'Référence normative'
+        AUTRE = 'autre', 'Autre clause'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les clauses suivent la societe
+        related_name='exigences_cps',
+        verbose_name='Société',
+    )
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: clause fille d'un AO : aucune existence hors de son appel d'offres
+        related_name='exigences_cps',
+        verbose_name="Appel d'offres",
+    )
+    code = models.CharField(
+        max_length=60, verbose_name='Code de la clause')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    type_exigence = models.CharField(
+        max_length=24, choices=TypeExigence.choices,
+        default=TypeExigence.AUTRE, verbose_name="Type d'exigence")
+    #: Valeur principale. ``valeur_max_num`` n'est renseignée QUE pour une
+    #: clause d'intervalle (ratio DC/AC 0,75 → 1).
+    valeur_num = models.DecimalField(
+        max_digits=14, decimal_places=4, null=True, blank=True,
+        verbose_name='Valeur (numérique)')
+    valeur_max_num = models.DecimalField(
+        max_digits=14, decimal_places=4, null=True, blank=True,
+        verbose_name='Valeur maximale (intervalle)')
+    unite = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Unité')
+    valeur_texte = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Valeur (texte)')
+    #: Provenance documentaire : la PIÈCE du DCE et sa page.
+    source_piece = models.CharField(
+        max_length=120, blank=True, default='CPS',
+        verbose_name='Pièce du DCE')
+    source_page = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Page')
+    bloquant = models.BooleanField(
+        default=True, verbose_name='Clause bloquante')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+
+    class Meta:
+        verbose_name = 'Exigence du CPS'
+        verbose_name_plural = 'Exigences du CPS'
+        ordering = ['appel_offre', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'appel_offre', 'code'],
+                name='uniq_exigence_cps_code',
+            ),
+        ]
+        indexes = [models.Index(fields=['company', 'appel_offre'])]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+    @property
+    def est_intervalle(self):
+        return self.valeur_max_num is not None
+
+
+#: AOF14 — jeu de clauses de RÉFÉRENCE relevé sur un CPS réel (session du
+#: 27/07/2026). Sert de fixture reproductible aux tests et d'amorce à la
+#: saisie ; ce n'est PAS une norme (aucun texte normatif marocain n'est présent
+#: dans le dépôt — cf. la règle de nommage d'AOF27).
+CLAUSES_REFERENCE_CPS = (
+    {
+        'code': 'RATIO_DC_AC',
+        'libelle': 'Ratio DC/AC admissible',
+        'type_exigence': ExigenceCPS.TypeExigence.RATIO_DC_AC,
+        'valeur_num': '0.7500',
+        'valeur_max_num': '1.0000',
+        'unite': '',
+        'source_piece': 'CPS',
+        'source_page': 33,
+        'bloquant': True,
+    },
+    {
+        'code': 'ONDULEUR_KWC_MAX',
+        'libelle': "Puissance unitaire maximale d'un onduleur",
+        'type_exigence': ExigenceCPS.TypeExigence.PUISSANCE_ONDULEUR_MAX,
+        'valeur_num': '60.0000',
+        'unite': 'kWc',
+        'source_piece': 'CPS',
+        'source_page': 33,
+        'bloquant': True,
+    },
+    {
+        'code': 'CAUTION_PROVISOIRE',
+        'libelle': 'Caution provisoire (montant absolu fixé par le CPS)',
+        'type_exigence': ExigenceCPS.TypeExigence.CAUTION_PROVISOIRE,
+        'valeur_num': '30000.0000',
+        'unite': 'MAD',
+        'source_piece': 'Règlement de consultation',
+        'bloquant': True,
+    },
+    {
+        'code': 'CAUTION_DEFINITIVE_TAUX',
+        'libelle': 'Cautionnement définitif (taux du montant initial)',
+        'type_exigence': ExigenceCPS.TypeExigence.CAUTION_DEFINITIVE_TAUX,
+        'valeur_num': '3.0000',
+        'unite': '%',
+        'source_piece': 'CPS',
+        'bloquant': True,
+    },
+    {
+        'code': 'VALIDITE_OFFRE',
+        'libelle': "Durée de validité de l'offre",
+        'type_exigence': ExigenceCPS.TypeExigence.VALIDITE_OFFRE,
+        'valeur_num': '75.0000',
+        'unite': 'jours',
+        'source_piece': 'Règlement de consultation',
+        'bloquant': True,
+    },
+    {
+        'code': 'PENALITE_RETARD',
+        'libelle': 'Pénalité de retard journalière',
+        'type_exigence': ExigenceCPS.TypeExigence.PENALITE_RETARD,
+        'valeur_num': '1.0000',
+        'unite': '‰/jour',
+        'source_piece': 'CPS',
+        'bloquant': False,
+    },
+    {
+        'code': 'PIECE_ATTESTATION_FISCALE',
+        'libelle': 'Attestation fiscale de moins d\'un an',
+        'type_exigence': ExigenceCPS.TypeExigence.PIECE_ADMINISTRATIVE,
+        'valeur_texte': 'Attestation fiscale (< 1 an)',
+        'source_piece': 'Règlement de consultation',
+        'bloquant': True,
+    },
+)
+
+
 # ── FG223 — Bordereau des prix (BOQ) d'appel d'offres ──────────────────────
 
 class BordereauPrix(TenantModel):

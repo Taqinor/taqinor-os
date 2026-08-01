@@ -19,6 +19,7 @@ from .views import (
     CautionSoumissionViewSet,
     DossierSoumissionViewSet,
     EcheanceAOViewSet,
+    ExigenceCPSViewSet,
     LigneBordereauViewSet,
     PieceSoumissionViewSet,
     ResultatAOViewSet,
@@ -26,6 +27,8 @@ from .views import (
 
 router = DefaultRouter()
 router.register(r'appels-offres', AppelOffreViewSet, basename='ao-appel-offre')
+router.register(r'exigences-cps', ExigenceCPSViewSet,
+                basename='ao-exigence-cps')
 router.register(r'bordereaux-prix', BordereauPrixViewSet,
                 basename='ao-bordereau-prix')
 router.register(r'lignes-bordereau', LigneBordereauViewSet,

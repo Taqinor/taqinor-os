@@ -32,6 +32,7 @@ from .models import (
     CautionSoumission,
     DossierSoumission,
     EcheanceAO,
+    ExigenceCPS,
     LigneBordereau,
     PieceSoumission,
     ResultatAO,
@@ -42,11 +43,27 @@ from .serializers import (
     CautionSoumissionSerializer,
     DossierSoumissionSerializer,
     EcheanceAOSerializer,
+    ExigenceCPSSerializer,
     LigneBordereauSerializer,
     PieceSoumissionSerializer,
     ResultatAOSerializer,
 )
 from .viewsets import AoBaseViewSet
+
+
+def _filtres_exacts(queryset, params, champs):
+    """Applique les filtres d'égalité ``?champ=valeur`` présents dans l'URL.
+
+    ``DjangoFilterBackend`` n'est PAS monté dans ce projet : le filtrage des
+    listes AO se fait explicitement, avec les mêmes noms que les champs du
+    modèle (voir le contrat d'API publié par AOF31).
+    """
+    for champ in champs:
+        valeur = params.get(champ)
+        if valeur in (None, ''):
+            continue
+        queryset = queryset.filter(**{champ: valeur})
+    return queryset
 
 
 # ── FG222 — Gestion des appels d'offres ────────────────────────────────────
@@ -62,20 +79,16 @@ class AppelOffreViewSet(AoBaseViewSet):
     ordering_fields = ['date_creation', 'date_limite', 'date_ouverture_plis',
                        'statut']
     #: AOF12 — filtres d'égalité exposés en paramètres de requête.
-    #: ``DjangoFilterBackend`` n'est PAS monté dans ce projet : le filtrage se
-    #: fait explicitement ici (mêmes noms que les champs du modèle).
-    FILTRES_EXACTS = ('statut', 'type_marche', 'mode_passation', 'groupement')
+    FILTRES_EXACTS = ('statut', 'type_marche', 'mode_passation')
 
     def get_queryset(self):
-        qs = super().get_queryset()
-        params = self.request.query_params
-        for champ in self.FILTRES_EXACTS:
-            valeur = params.get(champ)
-            if valeur in (None, ''):
-                continue
-            if champ == 'groupement':
-                valeur = valeur.lower() in ('1', 'true', 'vrai', 'oui')
-            qs = qs.filter(**{champ: valeur})
+        qs = _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            self.FILTRES_EXACTS)
+        groupement = self.request.query_params.get('groupement')
+        if groupement not in (None, ''):
+            qs = qs.filter(
+                groupement=groupement.lower() in ('1', 'true', 'vrai', 'oui'))
         return qs
 
     def perform_create(self, serializer):
@@ -126,6 +139,24 @@ class AppelOffreViewSet(AoBaseViewSet):
                 {'valeur': s, 'libelle': libelles[s]} for s in cibles
             ],
         })
+
+
+# ── AOF14 — Exigences du CPS ───────────────────────────────────────────────
+
+class ExigenceCPSViewSet(AoBaseViewSet):
+    """Clauses chiffrées du CPS d'un AO (AOF14). Aucune exigence d'ASSURANCE
+    ici : elles vivent dans ``apps.assurances`` (``ExigenceAssuranceMarche``,
+    rattachée par sa string-FK ``marche_ref``)."""
+    queryset = ExigenceCPS.objects.all()
+    serializer_class = ExigenceCPSSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle', 'valeur_texte']
+    ordering_fields = ['code', 'type_exigence', 'bloquant']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'type_exigence', 'bloquant'))
 
 
 # ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────

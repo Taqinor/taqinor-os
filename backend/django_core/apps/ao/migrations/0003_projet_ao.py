@@ -1,6 +1,6 @@
-# AOF5 + AOF12 + AOF13 — le PROJET d'appel d'offres au complet, en une seule
-# migration additive (le groupe AOF impose des migrations groupées : chaque
-# migration nouvelle force un cache-MISS du gate CI).
+# AOF5 + AOF12 + AOF13 + AOF14 — le PROJET d'appel d'offres au complet, en une
+# seule migration additive (le groupe AOF impose des migrations groupées :
+# chaque migration nouvelle force un cache-MISS du gate CI).
 #
 #   * AOF5  — ``reference_acheteur`` : la référence du marché CÔTÉ ACHETEUR,
 #     strictement distincte de NOTRE référence générée ``AO-YYYYMM-0001``.
@@ -12,12 +12,16 @@
 #     ``choices`` (aucun changement de type ni de longueur : ``max_length``
 #     reste 16) : les SIX valeurs historiques sont conservées à l'identique,
 #     donc AUCUNE migration de données et aucune ligne existante invalidée.
+#   * AOF14 — ``ExigenceCPS`` : les clauses du CPS deviennent des données
+#     paramétrables (table NEUVE, aucune exigence d'assurance — celles-ci
+#     vivent dans ``apps.assurances``, NTASS19).
 #
 # AUCUN champ de coût, de marge ni de bénéfice : l'économie de l'AO vit dans
 # des tables SÉPARÉES derrière ``ao_rentabilite_voir``. Aucun
 # ``AlterModelTable`` (``db_table='compta_appeloffre'`` inchangée).
 
 import django.core.validators
+import django.db.models.deletion
 from decimal import Decimal
 from django.db import migrations, models
 
@@ -26,6 +30,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('ao', '0002_tenantmodel'),
+        ('authentication', '0026_ntmob6_customuser_mobile_home_route'),
     ]
 
     operations = [
@@ -118,5 +123,33 @@ class Migration(migrations.Migration):
             model_name='appeloffre',
             name='statut',
             field=models.CharField(choices=[('identifie', 'Identifié'), ('analyse_cps', 'Analyse du CPS'), ('releve', 'Relevé de la toiture'), ('etude', 'Étude / calepinage'), ('chiffrage', 'Chiffrage'), ('dossier', 'Montage du dossier'), ('pret_a_deposer', 'Prêt à déposer'), ('en_preparation', 'En préparation (historique)'), ('depose', 'Déposé'), ('gagne', 'Gagné'), ('perdu', 'Perdu'), ('abandonne', 'Abandonné')], default='identifie', max_length=16, verbose_name='Statut'),
+        ),
+        migrations.CreateModel(
+            name='ExigenceCPS',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('code', models.CharField(max_length=60, verbose_name='Code de la clause')),
+                ('libelle', models.CharField(max_length=255, verbose_name='Libellé')),
+                ('type_exigence', models.CharField(choices=[('ratio_dc_ac', 'Ratio DC/AC (min–max)'), ('puissance_onduleur_max', "Puissance unitaire max d'onduleur"), ('caution_provisoire', 'Caution provisoire (montant absolu)'), ('caution_definitive_taux', 'Caution définitive (taux)'), ('validite_offre', "Validité de l'offre"), ('penalite_retard', 'Pénalité de retard'), ('piece_administrative', 'Pièce administrative exigée'), ('reference_normative', 'Référence normative'), ('autre', 'Autre clause')], default='autre', max_length=24, verbose_name="Type d'exigence")),
+                ('valeur_num', models.DecimalField(blank=True, decimal_places=4, max_digits=14, null=True, verbose_name='Valeur (numérique)')),
+                ('valeur_max_num', models.DecimalField(blank=True, decimal_places=4, max_digits=14, null=True, verbose_name='Valeur maximale (intervalle)')),
+                ('unite', models.CharField(blank=True, default='', max_length=20, verbose_name='Unité')),
+                ('valeur_texte', models.CharField(blank=True, default='', max_length=255, verbose_name='Valeur (texte)')),
+                ('source_piece', models.CharField(blank=True, default='CPS', max_length=120, verbose_name='Pièce du DCE')),
+                ('source_page', models.PositiveIntegerField(blank=True, null=True, verbose_name='Page')),
+                ('bloquant', models.BooleanField(default=True, verbose_name='Clause bloquante')),
+                ('commentaire', models.TextField(blank=True, default='', verbose_name='Commentaire')),
+                ('appel_offre', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='exigences_cps', to='ao.appeloffre', verbose_name="Appel d'offres")),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='exigences_cps', to='authentication.company', verbose_name='Société')),
+            ],
+            options={
+                'verbose_name': 'Exigence du CPS',
+                'verbose_name_plural': 'Exigences du CPS',
+                'ordering': ['appel_offre', 'code'],
+                'indexes': [models.Index(fields=['company', 'appel_offre'], name='ao_exigence_company_a12f29_idx')],
+                'constraints': [models.UniqueConstraint(fields=('company', 'appel_offre', 'code'), name='uniq_exigence_cps_code')],
+            },
         ),
     ]
