@@ -22,6 +22,7 @@ import useInstalledApps from '../../lib/apps/useInstalledApps'
 import { readPinned, writePinned, readRecent, pushRecent } from '../../lib/apps/appPrefs'
 import { normalise, grouperApps } from '../../lib/apps/appSearch'
 import AppIcon from '../../ui/AppIcon'
+import { runAppTransition, marquerIconeSortante } from '../../lib/apps/appTransition'
 
 export default function HomeMenu() {
   const navigate = useNavigate()
@@ -51,10 +52,17 @@ export default function HomeMenu() {
     setActiveIndex(0)
   }
 
-  const ouvrir = useCallback((app) => {
+  // ODY11 — entrer dans une app : la pastille cliquée est animée à part (View
+  // Transitions quand dispo), sinon le fondu de route existant (VX134(c))
+  // suffit, et sous `prefers-reduced-motion` c'est INSTANTANÉ. La navigation
+  // n'est JAMAIS conditionnée à la réussite de l'effet (cf. appTransition.js).
+  const ouvrir = useCallback((app, node) => {
     if (!app) return
     pushRecent(app.key)
-    navigate(app.to)
+    const nettoyer = marquerIconeSortante(node)
+    const transition = runAppTransition(() => navigate(app.to))
+    if (transition?.finished?.then) transition.finished.then(nettoyer, nettoyer)
+    else nettoyer()
   }, [navigate])
 
   const basculerFavori = useCallback((event, key) => {
@@ -85,7 +93,7 @@ export default function HomeMenu() {
     }
     if (event.key === 'Enter') {
       event.preventDefault()
-      ouvrir(ordre[0])
+      ouvrir(ordre[0], tileRefs.current[0]?.closest?.('.home-menu-cell'))
       return
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
@@ -120,7 +128,9 @@ export default function HomeMenu() {
       inputRef.current?.focus()
       return
     }
-    if (key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    // Espace est EXCLU : sur un <button>, il active (sémantique native), il ne
+    // se tape pas dans la recherche.
+    if (key.length === 1 && key !== ' ' && !event.metaKey && !event.ctrlKey && !event.altKey) {
       // Frappe imprimable : on rebascule dans le champ, la lettre y est ajoutée.
       event.preventDefault()
       setQuery((q) => q + key)
@@ -199,7 +209,7 @@ export default function HomeMenu() {
                         className="home-menu-tile"
                         tabIndex={index === activeIndex ? 0 : -1}
                         onFocus={() => setActiveIndex(index)}
-                        onClick={() => ouvrir(app)}
+                        onClick={(e) => ouvrir(app, e.currentTarget.closest('.home-menu-cell'))}
                         onKeyDown={(e) => onTileKeyDown(e, index)}
                       >
                         {/* ODY9 — LE composant d'icône d'app, partagé avec le

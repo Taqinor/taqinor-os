@@ -8630,3 +8630,38 @@ textarea.form-control {
     transform: none;
   }
 }
+
+/* ==========================================================================
+   ODY11 — Transition signature app <-> accueil. Bloc APPEND-ONLY.
+   Le JS (lib/apps/appTransition.js) ne DEMARRE meme pas de transition sous
+   `prefers-reduced-motion` ni sous la preference app `data-reduced-motion` :
+   ces regles sont donc la ceinture-bretelles, et elles vivent deja sous
+   `no-preference`. Sans View Transitions API, le fondu de route existant
+   (`.route-fade`, VX134(c)) reste le repli — rien a ajouter ici.
+   ========================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root) {
+    animation: taqinor-app-sortie 180ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1)) both;
+  }
+  ::view-transition-new(root) {
+    animation: taqinor-app-entree 180ms var(--ease-out, cubic-bezier(0.2, 0, 0, 1)) both;
+  }
+  /* La pastille cliquee est nommee le temps de la transition (ODY11) : elle
+     est donc animee A PART du reste de la page, ce qui donne la sensation
+     « l'icone s'ouvre vers l'app ». */
+  ::view-transition-old(taqinor-app-icon),
+  ::view-transition-new(taqinor-app-icon) {
+    animation-duration: 180ms;
+    animation-timing-function: var(--ease-out, cubic-bezier(0.2, 0, 0, 1));
+  }
+}
+
+@keyframes taqinor-app-entree {
+  from { opacity: 0; transform: scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes taqinor-app-sortie {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: scale(1.008); }
+}
