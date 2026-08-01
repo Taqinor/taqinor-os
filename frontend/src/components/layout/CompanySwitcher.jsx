@@ -2,6 +2,10 @@ import { useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Building2 } from 'lucide-react'
 import api from '../../api/axios'
+// ODY34 — après une bascule de société, on repart de la GRILLE de la nouvelle
+// société (ou de l'app d'atterrissage préférée VX46 si l'utilisateur en a
+// choisi une) — jamais de l'URL courante, cf. le commentaire du handler.
+import { landingApresBasculeSociete, rechargerVers } from '../../lib/apps/landing'
 
 /**
  * XPLT19 — Sélecteur de société active (accès multi-sociétés).
@@ -31,7 +35,17 @@ export default function CompanySwitcher() {
       // Les nouveaux cookies (claim société active) sont posés : on recharge
       // pour que TOUTES les données affichées soient celles de la nouvelle
       // entité — jamais un mélange de deux sociétés à l'écran.
-      window.location.reload()
+      //
+      // ODY34 — mais on ne recharge PLUS l'URL courante : la société B a un
+      // autre jeu de ModuleToggle, si bien qu'un utilisateur multi-société
+      // qui basculait depuis un écran RH atterrissait sur « App non activée »
+      // (ODY8) au lieu de SES apps. On repart donc du Menu d'accueil — ou de
+      // l'app d'atterrissage préférée (VX46) si elle est renseignée. Le
+      // dernier module visité (VX11) est DÉLIBÉRÉMENT ignoré : il appartient
+      // à la société qu'on vient de quitter. `rechargerVers` fait bien un
+      // chargement COMPLET du document, donc la garantie de re-scoping est
+      // exactement celle du `reload()` d'avant.
+      rechargerVers(landingApresBasculeSociete())
     } catch {
       setBusy(false)
     }

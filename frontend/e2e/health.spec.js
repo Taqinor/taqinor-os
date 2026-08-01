@@ -3,6 +3,9 @@
 import { test, expect } from '@playwright/test'
 
 const PAGES = [
+  // ODY3 — the home menu is now the front door; `/dashboard` stays a valid
+  // route (deep links and F5 are never intercepted), so BOTH are checked.
+  '/apps',
   '/dashboard',
   '/crm/leads',
   '/ventes/devis',

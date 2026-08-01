@@ -7,9 +7,9 @@
 // design/theme.js — réutilisées telles quelles, PAS dupliquées ici) + les deux
 // préférences qui n'avaient encore aucune surface :
 //   • module d'atterrissage au login (`taqinor.landingModule`) — liste depuis
-//     `moduleConfigs` (UX1), lu par Login.jsx à la connexion ; repli `/dashboard`
-//     inchangé quand aucune préférence n'est choisie ou que le module choisi
-//     n'existe plus.
+//     `moduleConfigs` (UX1), lu par Login.jsx à la connexion ; depuis ODY3 le
+//     repli n'est plus `/dashboard` mais le Menu d'accueil `/apps` quand aucune
+//     préférence n'est choisie ou que le module choisi n'existe plus.
 //   • réduction de mouvement — override APP du media query OS
 //     (`prefers-reduced-motion`), pour l'utilisateur qui veut le confort de
 //     mouvement réduit sans changer son réglage système.
@@ -61,11 +61,17 @@ export function setLandingModule(value) {
  *   1. préférence explicite ('' = "dernier module visité") → cockpit du module
  *      choisi, si ce module existe TOUJOURS dans `moduleConfigs` ;
  *   2. préférence = '' (ou module disparu) + un dernier module visité connu ;
- *   3. repli historique inchangé : `/dashboard`.
- * `configs` est injecté (jamais importé ici) pour rester un module PUR,
- * testable sous `node --test` sans React ni bundler.
+ *   3. ODY3 — mono-app : si l'utilisateur ne voit QU'UNE app (`apps` injecté),
+ *      on y entre directement — antidote au piège Odoo « la grille ajoute un
+ *      clic » quand il n'y a rien à choisir ;
+ *   4. ODY3 — repli : le Menu d'accueil `/apps` (« j'ouvre → MES apps »).
+ *      C'était `/dashboard` avant le paradigme ODY ; `/dashboard` reste une
+ *      route parfaitement valide (l'app « Tableau de bord »), simplement plus
+ *      la porte d'entrée.
+ * `configs` et `apps` sont injectés (jamais importés ici) pour que ce module
+ * reste PUR, testable sans React ni bundler.
  */
-export function resolveLandingPath(configs, lastModuleSegment) {
+export function resolveLandingPath(configs, lastModuleSegment, { apps } = {}) {
   const pref = getLandingModule()
   if (pref) {
     const found = (configs || []).find((c) => c.key === pref)
@@ -75,7 +81,8 @@ export function resolveLandingPath(configs, lastModuleSegment) {
     const found = (configs || []).find((c) => c.key === lastModuleSegment)
     if (found?.nav?.items?.[0]?.to) return found.nav.items[0].to
   }
-  return '/dashboard'
+  if (apps?.length === 1 && apps[0]?.to) return apps[0].to
+  return '/apps'
 }
 
 export function getLastModuleSegment() {

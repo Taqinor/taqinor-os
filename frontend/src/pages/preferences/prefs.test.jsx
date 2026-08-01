@@ -52,13 +52,36 @@ describe('VX46 — prefs.js (logique pure, persistance localStorage)', () => {
     expect(resolveLandingPath(CONFIGS, 'compta')).toBe('/comptabilite')
   })
 
-  it('resolveLandingPath : repli /dashboard quand rien n’est connu', () => {
-    expect(resolveLandingPath(CONFIGS, '')).toBe('/dashboard')
+  // ODY3 — le repli n'est plus `/dashboard` mais le Menu d'accueil `/apps` :
+  // ouvrir l'ERP, c'est voir SES apps. `/dashboard` reste une route valide.
+  it('resolveLandingPath : repli /apps quand rien n’est connu (ODY3)', () => {
+    expect(resolveLandingPath(CONFIGS, '')).toBe('/apps')
   })
 
-  it('resolveLandingPath : repli /dashboard si le module choisi a disparu de moduleConfigs', () => {
+  it('resolveLandingPath : repli /apps si le module choisi a disparu de moduleConfigs', () => {
     setLandingModule('module-supprime')
-    expect(resolveLandingPath(CONFIGS, '')).toBe('/dashboard')
+    expect(resolveLandingPath(CONFIGS, '')).toBe('/apps')
+  })
+
+  it('resolveLandingPath : mono-app → on entre directement dans l’unique app (ODY3)', () => {
+    const apps = [{ key: 'rh', to: '/rh' }]
+    expect(resolveLandingPath(CONFIGS, '', { apps })).toBe('/rh')
+  })
+
+  it('resolveLandingPath : deux apps ou plus → Menu d’accueil (jamais un choix arbitraire)', () => {
+    const apps = [{ key: 'rh', to: '/rh' }, { key: 'compta', to: '/comptabilite' }]
+    expect(resolveLandingPath(CONFIGS, '', { apps })).toBe('/apps')
+  })
+
+  it('resolveLandingPath : la préférence VX46 reste PRIORITAIRE sur le mono-app', () => {
+    setLandingModule('compta')
+    const apps = [{ key: 'rh', to: '/rh' }]
+    expect(resolveLandingPath(CONFIGS, '', { apps })).toBe('/comptabilite')
+  })
+
+  it('resolveLandingPath : le dernier module visité (VX11) reste prioritaire sur le mono-app', () => {
+    const apps = [{ key: 'rh', to: '/rh' }]
+    expect(resolveLandingPath(CONFIGS, 'compta', { apps })).toBe('/comptabilite')
   })
 
   it('getLastModuleSegment lit taqinor.lastModule (VX11)', () => {

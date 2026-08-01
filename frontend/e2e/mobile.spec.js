@@ -254,7 +254,8 @@ test.describe('MB6: login (cold, no shared auth state)', () => {
     await expect(page.getByPlaceholder('Entrez votre identifiant')).toBeVisible()
     await assertNoHorizontalOverflow(page, '/login')
     await uiLogin(page, ADMIN)
-    await expect(page).toHaveURL(/\/dashboard/)
+    // ODY3 — login lands on the home menu (`/apps`), not `/dashboard`.
+    await expect(page).toHaveURL(/\/apps/)
   })
 })
 

@@ -10,6 +10,8 @@
 import { moduleTitles, moduleSectionLabels } from '../../router/moduleRoutes'
 
 const BASE_PAGE_TITLES = [
+  // ODY2 — Menu d'accueil plein écran (grille des apps installées).
+  ['/apps', 'Mes applications'],
   ['/dashboard', 'Tableau de bord'],
 
   // Stock
@@ -184,6 +186,8 @@ const BASE_SECTION_LABELS = {
   activites: { label: 'CRM', to: '/crm' },
   calendrier: { label: 'CRM', to: '/crm' },
   dashboard: { label: 'Tableau de bord', to: null },
+  // ODY2 — le Menu d'accueil est sa propre racine (pas un sous-écran).
+  apps: { label: 'Mes applications', to: '/apps' },
 }
 
 // UX1 — libellés de section des modules « coquille » : chaque
