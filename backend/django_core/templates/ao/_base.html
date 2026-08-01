@@ -1,0 +1,62 @@
+{# AOF117 — gabarit de base de TOUTES les pièces de la fabrique AO.
+
+   Deux invariants portés par ce fichier :
+
+   1. AUCUN CHIFFRE LITTÉRAL. Le gabarit ne connaît que des chemins du contexte
+      de dossier (AOF111) ; la feuille de style est injectée via
+      `css_fabrique`, ce qui garde toutes les valeurs métriques hors du texte.
+   2. AUCUN EMPRUNT au moteur de devis (règle #4) : ni gabarit parent, ni
+      inclusion, ni jeton visuel de `apps/ventes/quote_engine`.
+
+   L'empreinte du contexte est imprimée en pied : c'est ce qui permet, une
+   pièce en main, de savoir si elle décrit encore le dossier. #}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>{% block titre_document %}{{ piece_titre }}{% endblock %}</title>
+  <style>{{ css_fabrique }}</style>
+  {% block styles_supplementaires %}{% endblock %}
+</head>
+<body>
+<div class="ao-document">
+
+  {% block entete %}
+  <div class="ao-entete">
+    <div class="ao-soumissionnaire">{{ contexte.identite.raison_sociale }}</div>
+    <div class="ao-identifiants">
+      {% if contexte.identite.adresse %}{{ contexte.identite.adresse }}{% endif %}
+      {% if contexte.identite.ville %} — {{ contexte.identite.ville }}{% endif %}
+      {% if contexte.identite.ice %} — ICE {{ contexte.identite.ice }}{% endif %}
+      {% if contexte.identite.rc %} — RC {{ contexte.identite.rc }}{% endif %}
+      {% if contexte.identite.if_fiscal %} — IF {{ contexte.identite.if_fiscal }}{% endif %}
+    </div>
+  </div>
+  {% endblock %}
+
+  {% block titre %}
+  <div class="ao-titre-piece">{{ piece_titre }}</div>
+  {% if contexte.marche.objet %}
+  <div class="ao-sous-titre">
+    {{ contexte.marche.objet }}
+    {% if contexte.marche.reference_acheteur %}
+      <br />Référence de la consultation : {{ contexte.marche.reference_acheteur }}
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endblock %}
+
+  {% block corps %}{% endblock %}
+
+  {% block signature %}{% endblock %}
+
+  {% block pied %}
+  <div class="ao-pied">
+    {% if contexte.acheteur.nom %}Maître d'ouvrage : {{ contexte.acheteur.nom }}{% endif %}
+    <div class="ao-empreinte">Empreinte du dossier : {{ contexte.empreinte }}</div>
+  </div>
+  {% endblock %}
+
+</div>
+</body>
+</html>

@@ -1,0 +1,94 @@
+{# AOF132 — acte d'engagement, deux modes.
+
+   MODE REPORT : un acte fourni par l'acheteur est rattaché au DCE. On ne le
+   régénère PAS — on imprime la fiche de report, qui dit quelle valeur écrire
+   dans quel blanc, et sur quelle pièce du DCE.
+
+   MODE AUTONOME : aucun modèle acheteur ; on rend l'acte complet.
+
+   Aucun chiffre littéral : toutes les valeurs viennent de
+   `rendus/acte_engagement.contexte_gabarit`. #}
+{% extends "ao/_base.html" %}
+
+{% block corps %}
+{% if mode_report %}
+
+<div class="ao-section">
+  <p>
+    L'acte d'engagement de la présente consultation est FOURNI par le maître
+    d'ouvrage. Il doit être renseigné et signé sur l'exemplaire du dossier de
+    consultation, sans être reproduit ni reconstitué.
+  </p>
+  {% if modele_acheteur.libelle %}
+  <div class="ao-champ">
+    <span class="ao-etiquette">Pièce du DCE à remplir :</span>
+    <span class="ao-valeur">{{ modele_acheteur.libelle }}</span>
+    {% if reference_dce %} ({{ reference_dce }}){% endif %}
+  </div>
+  {% endif %}
+  <p>
+    La présente fiche récapitule les valeurs à y reporter. Elles sont issues du
+    bordereau des prix et de la lettre de soumission du même dossier.
+  </p>
+</div>
+
+<table class="ao-tableau">
+  <thead>
+    <tr>
+      <th>Rubrique de l'acte</th>
+      <th>Valeur à reporter</th>
+      <th>En toutes lettres</th>
+      <th>Pièce du DCE</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for blanc in blancs %}
+    <tr>
+      <td>{{ blanc.libelle }}{% if not blanc.obligatoire %} (le cas échéant)
+        {% endif %}</td>
+      <td class="ao-valeur">{{ blanc.valeur }}</td>
+      <td class="ao-lettres">{{ blanc.lettres }}</td>
+      <td class="ao-num">{{ blanc.reference_dce }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% else %}
+
+<div class="ao-section">
+  <p>
+    Je soussigné, dont les références figurent ci-dessous, m'engage à exécuter
+    les prestations objet de la présente consultation conformément au cahier
+    des prescriptions spéciales et aux pièces du marché.
+  </p>
+</div>
+
+<table class="ao-tableau">
+  <tbody>
+    {% for blanc in blancs %}
+    <tr>
+      <td>{{ blanc.libelle }}</td>
+      <td class="ao-valeur">{{ blanc.valeur }}</td>
+      <td class="ao-lettres">{{ blanc.lettres }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="ao-arrete">
+  Montant de l'engagement, toutes taxes comprises :
+  {{ total_ttc_lettres }}
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block signature %}
+{% if not mode_report %}
+<div class="ao-signature">
+  <div>(signature et cachet du soumissionnaire)</div>
+  <div class="ao-cadre"></div>
+</div>
+{% endif %}
+{% endblock %}
