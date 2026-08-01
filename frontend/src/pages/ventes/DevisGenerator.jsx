@@ -320,6 +320,10 @@ export default function DevisGenerator({
 
   // ── Paramètres techniques ──
   const [nbPanneaux, setNbPanneaux] = useState('')
+  // EZ5 — puissance cible saisie par l'utilisateur (kWc). Miroir bidirectionnel
+  // de `nbPanneaux` ; jamais envoyée au serveur (le devis porte les lignes, pas
+  // une puissance cible) — c'est un champ de SAISIE, pas un champ de données.
+  const [kwcCible, setKwcCible] = useState('')
   const [panelW, setPanelW] = useState('710')
   const [structureType, setStructureType] = useState('acier')
   const [dayUsage, setDayUsage] = useState(DAY_USAGE_DEFAULTS['Résidentielle'])
@@ -553,6 +557,37 @@ export default function DevisGenerator({
   }, [produits])
 
   const kwp = (parseInt(nbPanneaux) || 0) * (parseFloat(panelW) || 0) / 1000
+
+  // EZ5 — dimensionner en kWc. Les deux champs sont BIDIRECTIONNELS : taper une
+  // puissance cible remplit les panneaux (via `panneauxPourKwc`, la conversion
+  // DÉJÀ utilisée par le pré-remplissage depuis le lead — rien de réécrit), et
+  // changer les panneaux remet la cible à jour. Aucune valeur n'est jamais
+  // rejetée ni « snappée » : le champ garde EXACTEMENT ce qui est tapé, la
+  // conversion ne s'applique qu'une fois le nombre lisible (garde `step="any"`
+  // + `noValidate` intactes).
+  const onKwcCibleChange = (v) => {
+    setKwcCible(v)
+    const n = panneauxPourKwc(v, panelW)
+    if (n > 0) {
+      nbPanneauxTouched.current = true
+      setNbPanneaux(String(n))
+    }
+  }
+  const onNbPanneauxChange = (v) => {
+    nbPanneauxTouched.current = true
+    setNbPanneaux(v)
+    const puissance = (parseFloat(v) || 0) * (parseFloat(panelW) || 0) / 1000
+    setKwcCible(puissance > 0 ? String(Math.round(puissance * 100) / 100) : '')
+  }
+  // Le nombre de panneaux peut aussi être posé SANS passer par le champ
+  // (pré-remplissage depuis un lead, dimensionnement pompage, reprise de
+  // brouillon) : on renseigne alors la cible si elle est encore vide — jamais
+  // par-dessus une valeur tapée par l'utilisateur.
+  useEffect(() => {
+    if (kwcCible !== '' || kwp <= 0) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- miroir d'un champ posé ailleurs
+    setKwcCible(String(Math.round(kwp * 100) / 100))
+  }, [kwp, kwcCible])
 
   const showSans = scenario !== 'Avec batterie'
   const showAvec = scenario !== 'Sans batterie'
@@ -2493,11 +2528,25 @@ export default function DevisGenerator({
           <GenCardHeader icon={Zap} title="Paramètres Techniques" />
           <CardContent className="pt-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {/* EZ5 — on DIMENSIONNE en kWc, pas en nombre de panneaux : le
+                  client et le commercial disent « 3 kWc », jamais « 5 panneaux
+                  de 550 W ». Le champ est BIDIRECTIONNEL — taper une puissance
+                  cible remplit les panneaux, changer les panneaux remet la
+                  cible à jour. La conversion réutilise `panneauxPourKwc`
+                  (features/ventes/solar.js), déjà employée par le
+                  pré-remplissage depuis le lead : rien n'est réécrit. */}
+              <div className="grid gap-1.5">
+                <Label htmlFor="gen-kwc-cible">Puissance cible (kWc)</Label>
+                <Input id="gen-kwc-cible" type="number" min="0" step="any"
+                       placeholder="ex: 3" value={kwcCible}
+                       data-testid="gen-kwc-cible"
+                       onChange={e => onKwcCibleChange(e.target.value)} />
+              </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="gen-nbpanneaux" required>Nombre de panneaux</Label>
                 <Input id="gen-nbpanneaux" type="number" min="1" max="500" step="any"
                        placeholder="ex: 14" value={nbPanneaux}
-                       onChange={e => { nbPanneauxTouched.current = true; setNbPanneaux(e.target.value) }} />
+                       onChange={e => onNbPanneauxChange(e.target.value)} />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="gen-panelw">Puissance Panneau (W)</Label>
