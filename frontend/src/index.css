@@ -4881,6 +4881,19 @@ textarea.form-control {
   /* LB41 — le corps ne scrolle PLUS (le board est l'unique scrolleur) ;
      flex:1 le fait remplir la colonne étirée → colonne courte = zone de
      dépôt pleine hauteur quand même. */
+  /* HYGIÈNE D'AXE (round 4, même règle qu'au bloc mobile de `.kb-col`) :
+     ce corps est volontairement SANS `overflow` — il n'est donc pas un
+     conteneur de défilement et ne peut voler aucun geste. Si quelqu'un lui
+     rend un jour un `overflow-y: auto` (c'était son état d'avant LB41), il
+     DOIT écrire `overflow-x: clip` dans le même bloc : sinon l'axe X est
+     CALCULÉ en `auto` (spec Overflow niv. 3) et la première carte qui
+     déborde d'1 px rend la colonne balayable horizontalement — exactement
+     le bug « je balaie les leads au lieu des étapes ». Le seul scrolleur de
+     cartes du desktop est `.kb-board`, dont les DEUX axes sont déjà
+     explicites (`overflow: auto` desktop, `overflow: scroll hidden` mobile).
+     On ne pose pas `clip` ici : sans overflow il n'y a rien à corriger, et
+     un contexte de rognage raboterait l'ombre de survol et l'anneau de
+     focus des cartes (le padding latéral du corps est plus étroit qu'eux). */
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -5313,6 +5326,25 @@ textarea.form-control {
     scroll-snap-stop: always;
     min-height: 0;
     overflow-y: auto;
+    /* ┌───────────────────────────────────────────────────────────────────┐
+       │ NE RETIRE JAMAIS CETTE LIGNE. Règle CSS (spec Overflow niv. 3) :  │
+       │ dès qu'UN axe vaut autre chose que `visible`, l'AUTRE axe encore  │
+       │ à `visible` est CALCULÉ en `auto`. `overflow-y: auto` ci-dessus   │
+       │ transformait donc AUSSI `.kb-col` en scrolleur HORIZONTAL — et il │
+       │ suffisait qu'une carte déborde d'1 px en largeur (les cartes AVEC │
+       │ devis : rangée L2 montant + budget de signaux) pour que la        │
+       │ colonne AVALE le balayage gauche/droite destiné au pager du board.│
+       │ Symptôme fondateur (2026-08-01) : « dans Devis envoyé / Relance   │
+       │ je finis par balayer les LEADS dans l'étape » — Nouveau/Contacté  │
+       │ (cartes sans montant, donc sans débord) marchaient bien.          │
+       │ `clip` et non `hidden` : `hidden` crée un vrai conteneur de       │
+       │ défilement (scrollable par programme, et il redevient une cible   │
+       │ de geste sur certains moteurs) ; `clip` n'en crée AUCUN — l'axe X │
+       │ ne peut plus jamais devenir un scrolleur ici.                     │
+       │ Le débord lui-même est étranglé à la source sur `.kb-card-value`  │
+       │ / `.kb-card-foot` (bloc APX2) — ceinture ET bretelles.            │
+       └───────────────────────────────────────────────────────────────────┘ */
+    overflow-x: clip;
     /* (D) — la règle VX175(b) plus haut couvre `.kb-board` (l'axe X) mais PAS
        `.kb-col`, qui est pourtant LE scrolleur vertical au téléphone : sans
        `-webkit-overflow-scrolling: touch` le défilement de la colonne saccade
@@ -9728,7 +9760,19 @@ textarea.form-control {
   margin-right: 0.25rem;
 }
 
-/* ---- L2 — montant + BUDGET DE SIGNAUX (jamais supprime au repos) ---- */
+/* ---- L2 — montant + BUDGET DE SIGNAUX (jamais supprime au repos) ----
+   LA SOURCE DU DÉBORD (round 4). Cette rangee est `flex-wrap: nowrap` avec un
+   montant `white-space: nowrap` : un flex-item a `min-width: auto` par defaut,
+   c.-a-d. « jamais plus etroit que mon contenu » — un gros montant (ou une
+   locale qui ecrit `1 234 567 MAD`) POUSSAIT donc la rangee au-dela de la
+   carte. Ce debord de quelques px est ce qui, combine au `overflow-y: auto`
+   du bloc mobile de `.kb-col`, faisait de la colonne un scrolleur horizontal
+   qui volait le balayage d'etape (voir le pave encadre la-bas). On l'etrangle
+   ICI, a la source : `min-width: 0` rend le montant reellement compressible,
+   il s'ellipse au lieu de pousser ; le budget de signaux (`flex: 0 0 auto`)
+   reste intouchable — c'est lui la donnee non negociable au repos. Le `clip`
+   de la rangee est la ceinture : meme un enfant futur mal borne ne peut plus
+   elargir la carte (et `clip` n'ouvre AUCUN contexte de defilement). */
 .kb-card--lead .kb-card-value {
   display: flex;
   align-items: center;
@@ -9736,11 +9780,16 @@ textarea.form-control {
   gap: 0.35rem;
   margin-top: 0;
   min-height: 1.05rem;
+  min-width: 0;
+  overflow: clip;
 }
 .kb-card--lead .kb-card-montant {
   font-size: 0.82rem;
   line-height: 1.2;
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kb-card--lead .kb-card-signals {
   display: inline-flex;
@@ -9796,19 +9845,31 @@ textarea.form-control {
 .kb-card--lead[data-rot='warning'] .kb-rot-dot { background: var(--warning-text); }
 .kb-card--lead[data-rot='danger'] .kb-rot-dot { background: var(--destructive); }
 
-/* ---- L3 — points de tags + age + avatar 16 ---- */
+/* ---- L3 — points de tags + age + avatar 16 ----
+   Meme traitement qu'en L2 (round 4) : `nowrap` + une bande de points de tags
+   `flex: 0 0 auto` = une rangee qui POUSSE des qu'un lead porte beaucoup
+   d'etiquettes. On la borne au lieu de la laisser elargir la carte : les
+   points se compriment (`min-width: 0` + `overflow: clip` sur la bande, le
+   compteur `+N` reste lisible), la pilule d'age et l'avatar restent entiers. */
 .kb-card--lead .kb-card-foot {
   align-items: center;
   flex-wrap: nowrap;
   gap: 0.3rem;
   margin-top: 0;
   min-height: 1rem;
+  min-width: 0;
+  overflow: clip;
 }
 .kb-tag-dots {
   display: inline-flex;
   align-items: center;
   gap: 3px;
   flex: 0 0 auto;
+}
+.kb-card--lead .kb-tag-dots {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: clip;
 }
 .kb-tag-dot {
   display: inline-block;
