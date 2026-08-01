@@ -5230,17 +5230,25 @@ textarea.form-control {
      horizontal aimanté par scroll-snap natif ; la COLONNE redevient le
      scrolleur vertical (axes imbriqués : board = X aimanté, colonne = Y) —
      l'en-tête sticky se re-résout tout seul contre la colonne. */
+  /* (C) — `x mandatory` + `scroll-snap-align: center` VOLAIENT le geste
+     diagonal : le navigateur DOIT se poser sur un point d'ancrage, donc le
+     moindre composant horizontal d'un scroll vertical réaimantait la colonne
+     et coupait le geste. `proximity` n'aimante que si le doigt s'arrête déjà
+     près d'un point (l'affordance LB42 « une étape à la fois » est conservée,
+     elle cesse simplement d'être un péage), et `start` aligne le bord GAUCHE
+     de la colonne plutôt que son centre — un ancrage centré rejouait un décalage
+     à chaque micro-mouvement. */
   .kb-board {
     gap: 0.6rem;
     padding: 0.5rem;
     -webkit-overflow-scrolling: touch;
     overflow: scroll hidden;
-    scroll-snap-type: x mandatory;
+    scroll-snap-type: x proximity;
   }
 
   .kb-col {
     flex: 0 0 90%;
-    scroll-snap-align: center;
+    scroll-snap-align: start;
     min-height: 0;
     overflow-y: auto;
     /* La colonne est ICI le scrolleur : même règle que .kb-board — un
