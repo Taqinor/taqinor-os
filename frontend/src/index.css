@@ -8892,3 +8892,41 @@ textarea.form-control {
 @media (max-width: 639px) {
   .header-app-pill { display: none; }
 }
+
+/* ==========================================================================
+   ODY24 — La boutique « Applications » (Parametres). Bloc APPEND-ONLY.
+   Meme langage que le Menu d'accueil ODY2 : une carte par app, la pastille
+   ODY9 a gauche, survol discret qui allume le lisere accent. Contraste AA en
+   clair comme en sombre : la carte n'invente aucune couleur, elle reprend
+   `--card` / `--border` / `--muted-foreground` du theme.
+   ========================================================================== */
+.module-store-grid {
+  display: grid;
+  gap: 0.625rem;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+}
+
+.module-store-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  padding: 0.75rem;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+@media (hover: hover) {
+  .module-store-card:hover {
+    border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+    box-shadow: 0 6px 18px -14px color-mix(in srgb, var(--foreground) 70%, transparent);
+  }
+}
+
+.module-store-card:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-store-card {
+    transition: none;
+  }
+}

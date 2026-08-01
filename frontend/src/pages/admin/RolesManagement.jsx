@@ -14,6 +14,13 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { DataTable } from '../../ui/datatable'
+import AppIcon from '../../ui/AppIcon'
+// ODY26 — l'axe « App visible » se sert de LA source unique des apps (ODY1) :
+// jamais une liste locale. Les helpers de la famille `app_<clé>_voir` vivent
+// au même endroit que le filtre qui les applique.
+import useInstalledApps, {
+  appVisibilityPermission, isAppVisibilityPermission,
+} from '../../lib/apps/useInstalledApps'
 // VX132 — anti-scintillement propagé : ce Spinner + Skeleton s'affichaient
 // SIMULTANÉMENT (l'anti-pattern que useDelayedLoading existe pour éviter —
 // voir InstallationsPage.jsx, déjà migrée).
@@ -182,9 +189,54 @@ export default function RolesManagement() {
 
   const groups = useMemo(() => buildGroups(availableCodes), [availableCodes])
   const viewCodes = useMemo(
-    () => availableCodes.filter(c => c.endsWith('_voir')),
+    // ODY26 — le préréglage « Lecture seule » ne coche QUE des codes d'action
+    // métier : un code `app_<clé>_voir` finit aussi par `_voir` mais il
+    // RESTREINT (liste blanche d'apps), il n'accorde rien. L'inclure ferait
+    // basculer le rôle en visibilité restreinte à son insu.
+    () => availableCodes.filter(
+      c => c.endsWith('_voir') && !isAppVisibilityPermission(c)),
     [availableCodes],
   )
+
+  /* ── ODY26 — L'axe « App visible », dans la MÊME matrice que les actions ──
+     Les apps viennent de `useInstalledApps()` (ODY1) : l'admin ne peut donner
+     que ce que la société a réellement installé (ModuleToggle), et les deux
+     systèmes — « installée pour la société » et « visible pour ce rôle » — ont
+     enfin une surface commune. Sémantique NARROWING OPT-IN : aucun marqueur =
+     toutes les apps (état historique) ; décocher la première MATÉRIALISE la
+     liste blanche (toutes sauf celle-là) ; tout recocher la retire, pour
+     qu'une app ajoutée plus tard reste visible. */
+  const apps = useInstalledApps()
+  const appCodes = useMemo(
+    () => apps.map(a => appVisibilityPermission(a.key)), [apps])
+  const appsRestreintes = form.permissions.some(isAppVisibilityPermission)
+  const appEstVisible = (key) => !appsRestreintes
+    || form.permissions.includes(appVisibilityPermission(key))
+  const nbAppsVisibles = apps.filter(a => appEstVisible(a.key)).length
+
+  const toggleApp = (key) => {
+    const code = appVisibilityPermission(key)
+    setForm(f => {
+      const restreint = f.permissions.some(isAppVisibilityPermission)
+      // Sans restriction, décocher revient à figer « toutes » puis à retirer.
+      let base = restreint ? [...f.permissions] : [...f.permissions, ...appCodes]
+      base = base.includes(code)
+        ? base.filter(c => c !== code)
+        : [...base, code]
+      // Toutes cochées → on efface les marqueurs : le rôle redevient « pas de
+      // restriction » et héritera des apps installées plus tard.
+      const coches = appCodes.filter(c => base.includes(c))
+      if (coches.length === appCodes.length) {
+        base = base.filter(c => !isAppVisibilityPermission(c))
+      }
+      return { ...f, permissions: base }
+    })
+  }
+
+  const toutesLesApps = () => setForm(f => ({
+    ...f,
+    permissions: f.permissions.filter(c => !isAppVisibilityPermission(c)),
+  }))
 
   const load = async () => {
     setLoading(true)
@@ -535,6 +587,68 @@ export default function RolesManagement() {
                 })}
               </div>
             </div>
+
+            {/* ── ODY26 — Axe « App visible » (même écran que les actions) ── */}
+            {apps.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label>Applications visibles</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!appsRestreintes}
+                    onClick={toutesLesApps}
+                  >
+                    Toutes les applications
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {appsRestreintes
+                    ? `Ce rôle n'ouvre que ${nbAppsVisibles} application(s) : les autres disparaissent de son menu d'accueil, de sa navigation et de son lanceur.`
+                    : 'Aucune restriction : ce rôle voit toutes les applications installées pour la société, y compris celles activées plus tard.'}
+                </p>
+                <div
+                  className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3"
+                  data-testid="role-apps-axis"
+                >
+                  {apps.map(app => {
+                    const visible = appEstVisible(app.key)
+                    // Une liste blanche VIDE n'existe pas côté données (elle
+                    // se lirait « aucune restriction ») : on empêche donc de
+                    // décocher la dernière app plutôt que de laisser
+                    // l'utilisateur croire qu'il a tout masqué.
+                    const derniere = visible && nbAppsVisibles === 1
+                    return (
+                      <label
+                        key={app.key}
+                        className={[
+                          'flex items-center gap-2.5 rounded-md border border-border p-2 text-sm text-foreground',
+                          derniere ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
+                        ].join(' ')}
+                        title={derniere
+                          ? 'Un rôle doit conserver au moins une application.'
+                          : undefined}
+                      >
+                        <Checkbox
+                          checked={visible}
+                          disabled={derniere}
+                          onCheckedChange={() => toggleApp(app.key)}
+                          aria-label={`Application ${app.label} visible pour ce rôle`}
+                        />
+                        <AppIcon
+                          icon={app.icon}
+                          accent={app.accent}
+                          size="xs"
+                          className="shrink-0"
+                        />
+                        <span className="min-w-0 truncate">{app.label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {formError && (
               <p role="alert" className="text-sm text-destructive">{formError}</p>
