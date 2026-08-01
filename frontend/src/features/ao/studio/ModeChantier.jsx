@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Camera, Check, Delete } from 'lucide-react'
 import { Sheet, SheetContent } from '../../../ui/Sheet'
 import { cn } from '../../../lib/cn'
+import { DEFAULT_GABARITS } from './ModeChantier.constantes'
 
 /* ============================================================================
    AOF189 — Mode CHANTIER (tablette 768-1024 px) : l'éditeur de toiture/relevé
@@ -25,15 +26,6 @@ import { cn } from '../../../lib/cn'
 // Cible tactile minimale (44 px, recommandation WCAG 2.5.5 / iOS HIG) — Tailwind
 // `11` = 2.75rem = 44px à la racine par défaut, donc `h-11 w-11` EST 44 px.
 export const TOUCH_TARGET_CLASS = 'min-h-11 min-w-11'
-
-export const DEFAULT_GABARITS = [
-  { code: 'cheminee', label: 'Cheminée' },
-  { code: 'fenetre_toit', label: 'Fenêtre de toit' },
-  { code: 'climatiseur', label: 'Climatiseur' },
-  { code: 'antenne', label: 'Antenne / parabole' },
-  { code: 'ballon_eau_chaude', label: "Ballon d'eau chaude" },
-  { code: 'sortie_ventilation', label: 'Sortie de ventilation' },
-]
 
 export const RAISON_CALEPINAGE_LECTURE_CHANTIER =
   "Réglages de calepinage en lecture sur tablette chantier : les allées et l'implantation se règlent au bureau, jamais au soleil sur un toit."
