@@ -19,6 +19,7 @@ pas se désynchroniser de la réalité. La pagination est celle du projet
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .kpis import tableau_marches_view
 from .views import (
     AppelOffreViewSet,
     ContratApiAO,
@@ -85,5 +86,10 @@ router.register(r'resultats-ao', ResultatAOViewSet, basename='ao-resultat')
 urlpatterns = [
     # AOF31 — contrat d'API publié, dérivé du routeur ci-dessus.
     path('contrat/', ContratApiAO.as_view(), name='ao-contrat'),
+    # AOF166 — tableau de bord des marchés, en UN SEUL appel agrégé. Le NOM de
+    # cette route est REPRIS DE NTMAR27 (`docs/plans/PLAN_FINANCE.md`) à
+    # dessein : sans cette reprise nominative, l'ERP finirait avec deux
+    # tableaux de bord d'appels d'offres concurrents.
+    path('tableau-marches/', tableau_marches_view, name='ao-tableau-marches'),
     path('', include(router.urls)),
 ]

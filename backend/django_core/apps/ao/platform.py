@@ -48,8 +48,8 @@ raison n'est pas un oubli) :
   accepte la saisie et la jette en silence — pire qu'une surface vide.
   Débloquer = ajouter ``custom_data`` (+ sa migration additive) sur
   ``AppelOffre`` et ``BatimentAO``, puis déclarer ici DANS LE MÊME COMMIT.
-* ``agent_actions_module`` et ``kpi_providers`` sont remplis par AOF167 et
-  AOF166 respectivement, quand leur module existe — pas avant.
+* ``agent_actions_module`` est rempli par AOF167, quand son module existe — pas
+  avant. (``kpi_providers`` l'a été par AOF166 : ``apps.ao.kpis.kpi_ao``.)
 """
 from __future__ import annotations
 
@@ -87,5 +87,10 @@ PLATFORM = {
     'automation_state_fields': [
         {'model': 'ao.appeloffre', 'field': 'statut'},
     ],
-    'kpi_providers': [],
+    # AOF166/ARC40 — provider KPI du domaine AO : un CALLABLE dotted résolu à
+    # l'exécution par ``apps/reporting/reports.py::kpi_federes``, appelé
+    # ``provider(company)``. Réellement câblé (règle d'honnêteté ARC41) :
+    # ``apps.ao.kpis.kpi_ao`` existe et rend des tuiles normalisées
+    # ``{id, label, valeur, unite?}``. Aucun coût, aucune marge n'y transite.
+    'kpi_providers': ['apps.ao.kpis.kpi_ao'],
 }
