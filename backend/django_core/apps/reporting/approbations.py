@@ -31,9 +31,11 @@ directement (``core.workflow``)."""
 import datetime
 
 from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, permission_classes, throttle_classes)
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.permissions import IsAnyRole
 
@@ -503,8 +505,37 @@ def _decide_for_push(company, user, source, obj_id, decision):
     return _decider_approbation_core(company, user, source, obj_id, decision, motif)
 
 
+class DecisionPushThrottle(SimpleRateThrottle):
+    """Quota anonyme de la décision par jeton push, par IP.
+
+    DURCISSEMENT (YRBAC9). L'endpoint est `AllowAny` ET MUTANT : il approuve
+    des objets qui ENGAGENT DE L'ARGENT (demandes d'achat, notes de frais,
+    étapes de contrat). Sans quota, un anonyme pouvait marteler l'endpoint
+    indéfiniment — bourrage de jetons et charge gratuite sur la base à chaque
+    tentative. La signature HMAC rend la devinette d'un jeton irréaliste ; le
+    quota borne l'ABUS (volume) que la signature, elle, ne borne pas.
+
+    60/heure par IP : très large pour un humain qui tape des actions de
+    notification (même plusieurs collègues derrière un même NAT), dérisoire
+    pour un script.
+    """
+
+    scope = 'reporting_decision_push'
+    rate = '60/hour'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': self.get_ident(request),
+        }
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([DecisionPushThrottle])
 def decider_approbation_via_push(request):
     """NTMOB7 — ``POST reporting/approbations-en-attente/decider-push/``.
 
@@ -515,7 +546,8 @@ def decider_approbation_via_push(request):
     tapé sur un appareil dont la session (cookie JWT) a expiré entre-temps —
     la preuve d'identité + de décision est le jeton lui-même (signé,
     court-vécu 24 h, une décision fixe par jeton), pas la session HTTP.
-    Un jeton invalide/expiré/altéré ⇒ 401 sans aucune fuite d'information."""
+    Un jeton invalide/expiré/altéré ⇒ 401 sans aucune fuite d'information.
+    Débit BORNÉ par `DecisionPushThrottle` (endpoint public et mutant)."""
     from apps.notifications.approval_tokens import read_approval_token
     data = read_approval_token(request.data.get('token'))
     if data is None:

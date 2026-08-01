@@ -43,7 +43,17 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
         params = self.request.query_params
         # Par défaut : seules les entrées ENCORE dans la corbeille. Le journal
         # complet (audit de rétention, NTUX24) s'obtient avec `?restaures=1`.
-        if params.get('restaures') not in ('1', 'true', 'True'):
+        #
+        # UNIQUEMENT sur la LISTE : ce filtre est une commodité d'affichage, pas
+        # une règle de visibilité. Appliqué aussi au détail, il faisait
+        # DISPARAÎTRE une entrée déjà restaurée, si bien qu'un second
+        # `POST {id}/restaurer/` renvoyait 404 (« ça n'existe pas ») au lieu du
+        # 400 explicite « déjà restauré » — et que `GET {id}/` d'une entrée
+        # restaurée mentait de la même façon. La borne SOCIÉTÉ, elle, reste
+        # posée par `TenantMixin.get_queryset` en amont : rien n'est élargi
+        # côté multi-société.
+        if (getattr(self, 'action', None) == 'list'
+                and params.get('restaures') not in ('1', 'true', 'True')):
             qs = qs.filter(restaure_le__isnull=True)
         type_libelle = params.get('type')
         if type_libelle:

@@ -247,7 +247,11 @@ class DocumentHtmlContentTest(TestCase):
         self.builders.generate_bon_livraison(self.chantier)
         html = self._captured_html(mock_pdf)
         self.assertIn('Reçu en bon état', html)
-        self.assertNotIn('signature-trace', html)
+        # La règle CSS `.signature-trace` vit dans le <style>, donc elle est
+        # TOUJOURS émise : on vérifie l'absence de l'ÉLÉMENT qui porte la
+        # classe, pas celle du nom de classe (sinon on teste la feuille de
+        # style, pas le rendu).
+        self.assertNotIn('class="signature-trace"', html)
 
     def test_bon_livraison_embeds_signature_data_url_when_present(self, mock_pdf, _dl):
         mock_pdf.return_value = b'%PDF-fake'

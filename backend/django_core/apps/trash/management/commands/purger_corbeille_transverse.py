@@ -3,6 +3,14 @@
 Supprime DÉFINITIVEMENT les `ElementSupprime` dont `expire_le` est dépassé et
 journalise le nombre purgé par société. Idempotent ; `--dry-run` ne supprime
 rien. La planification Celery beat (quotidienne) est NTUX29.
+
+NOM DE LA COMMANDE — `purger_corbeille_transverse`, PAS `purger_corbeille` :
+GED25 possède déjà une commande `purger_corbeille` (corbeille documentaire, cf.
+`apps/ged/management/commands/purger_corbeille.py`). Django résout un doublon de
+nom en faveur de l'app la PLUS HAUTE dans `INSTALLED_APPS` (`apps.ged` y précède
+`apps.trash`), donc sous l'ancien nom cette commande-ci était INJOIGNABLE : un
+`manage.py purger_corbeille` — cron ou beat NTUX29 compris — exécutait la purge
+GED et ne purgeait JAMAIS la corbeille transverse.
 """
 from django.core.management.base import BaseCommand
 from django.utils import timezone

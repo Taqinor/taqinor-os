@@ -76,19 +76,34 @@ def _restauration_generique(element):
     obj = manager.filter(pk=element.object_id).first()
     if obj is None:
         return None
-    # `core.SoftDeleteModel` expose déjà `restore()` : on le préfère.
-    if hasattr(obj, 'restore'):
+
+    # Un modèle peut porter PLUSIEURS mécanismes de soft-delete indépendants :
+    # `crm.Lead` hérite `core.SoftDeleteModel` (donc `is_deleted` + `restore()`)
+    # ET possède son propre `is_archived`. Préférer `restore()` sur le seul
+    # critère `hasattr` était donc faux : archiver un lead pose `is_archived`,
+    # mais `restore()` ne regarde que `is_deleted`, sort immédiatement quand il
+    # est déjà `False`, et rendait la restauration SILENCIEUSEMENT INEFFICACE —
+    # l'API répondait `restaure: true`, l'entrée se fermait, et la cible restait
+    # archivée (donnée irrécupérable depuis la corbeille).
+    #
+    # On lève donc TOUS les drapeaux réellement posés, `restore()` gardant la
+    # main sur `is_deleted` (il gère aussi la fermeture de son propre journal).
+    connus = [d for d in DRAPEAUX_SOFT_DELETE if hasattr(obj, d)]
+    if not connus and not hasattr(obj, 'restore'):
+        raise RestaurationImpossible(
+            f"Aucun service de restauration pour « {element.cle_modele} » et "
+            f"aucun drapeau de soft-delete reconnu sur la cible."
+        )
+
+    if getattr(obj, 'is_deleted', False) and hasattr(obj, 'restore'):
         obj.restore()
-        return obj
-    for drapeau in DRAPEAUX_SOFT_DELETE:
-        if hasattr(obj, drapeau):
+
+    champs = [d for d in connus if d != 'is_deleted' and getattr(obj, d, False)]
+    if champs:
+        for drapeau in champs:
             setattr(obj, drapeau, False)
-            obj.save(update_fields=[drapeau])
-            return obj
-    raise RestaurationImpossible(
-        f"Aucun service de restauration pour « {element.cle_modele} » et aucun "
-        f"drapeau de soft-delete reconnu sur la cible."
-    )
+        obj.save(update_fields=champs)
+    return obj
 
 
 def restaurer(element, *, user=None, now=None):

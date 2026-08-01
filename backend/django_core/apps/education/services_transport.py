@@ -13,27 +13,44 @@ from decimal import Decimal
 from django.db.models import Q
 
 
-def affectation_transport_active(eleve, annee_scolaire):
-    """``AffectationTransport`` ACTIVE de ``eleve`` qui chevauche la période
-    de ``annee_scolaire`` — la plus récente si plusieurs (cas normalement
-    unique). ``date_fin`` vide = affectation en cours (même règle que
-    ``AffectationTransport.__doc__``)."""
+def affectation_transport_active(eleve, annee_scolaire, a_la_date=None):
+    """``AffectationTransport`` ACTIVE de ``eleve`` — la plus récente si
+    plusieurs (cas normalement unique). ``date_fin`` vide = affectation en
+    cours (même règle que ``AffectationTransport.__doc__``).
+
+    Sans ``a_la_date`` : chevauchement avec la période de ``annee_scolaire``
+    (règle de la GÉNÉRATION d'échéancier — inchangée).
+
+    Avec ``a_la_date`` : l'affectation doit couvrir CETTE date précise. C'est
+    la règle de la RESYNCHRONISATION, et elle ne peut pas se déduire du
+    chevauchement annuel : poser ``date_fin`` en cours d'année laisse toujours
+    l'affectation « chevauchante » (sa fin reste postérieure au 1er jour de
+    l'année scolaire), donc le chevauchement seul répondait « encore active »
+    pour TOUTE l'année et le transport continuait d'être facturé sur les mois
+    suivant le retrait.
+    """
     from .models import AffectationTransport
 
-    return AffectationTransport.objects.filter(
-        eleve=eleve, date_debut__lte=annee_scolaire.date_fin,
-    ).filter(
-        Q(date_fin__isnull=True) | Q(date_fin__gte=annee_scolaire.date_debut),
-    ).order_by('-date_debut').first()
+    qs = AffectationTransport.objects.filter(eleve=eleve)
+    if a_la_date is not None:
+        qs = qs.filter(date_debut__lte=a_la_date).filter(
+            Q(date_fin__isnull=True) | Q(date_fin__gte=a_la_date))
+    else:
+        qs = qs.filter(date_debut__lte=annee_scolaire.date_fin).filter(
+            Q(date_fin__isnull=True)
+            | Q(date_fin__gte=annee_scolaire.date_debut))
+    return qs.order_by('-date_debut').first()
 
 
-def montant_transport_mensuel(eleve, annee_scolaire):
+def montant_transport_mensuel(eleve, annee_scolaire, a_la_date=None):
     """NTEDU24 — montant mensuel transport (``GrilleTarifaire.
     transport_mensuel`` du niveau de l'élève) si ``eleve`` a une affectation
-    transport active pour cette année scolaire, sinon ``Decimal('0')``."""
+    transport active (cf. ``affectation_transport_active`` pour la sémantique
+    de ``a_la_date``), sinon ``Decimal('0')``."""
     from .models import GrilleTarifaire
 
-    affectation = affectation_transport_active(eleve, annee_scolaire)
+    affectation = affectation_transport_active(
+        eleve, annee_scolaire, a_la_date=a_la_date)
     if affectation is None or eleve.classe is None:
         return Decimal('0')
 
@@ -57,11 +74,16 @@ def resynchroniser_lignes_futures_transport(eleve):
     from .models import EcheancierScolarite, LigneEcheance
 
     for echeancier in EcheancierScolarite.objects.filter(eleve=eleve):
-        nouveau_transport = montant_transport_mensuel(
-            eleve, echeancier.annee_scolaire)
         lignes = echeancier.lignes.filter(statut=LigneEcheance.Statut.A_VENIR)
         montant_total_delta = Decimal('0')
         for ligne in lignes:
+            # Montant évalué À LA DATE DE LA LIGNE : une affectation close en
+            # cours d'année laisse intactes les mensualités qu'elle couvrait
+            # encore et remet à zéro celles d'après, au lieu d'appliquer un
+            # montant unique à tout le reste de l'année.
+            nouveau_transport = montant_transport_mensuel(
+                eleve, echeancier.annee_scolaire,
+                a_la_date=ligne.date_echeance)
             if ligne.transport_montant == nouveau_transport:
                 continue
             montant_total_delta += nouveau_transport - ligne.transport_montant

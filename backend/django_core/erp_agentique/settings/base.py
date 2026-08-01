@@ -982,6 +982,12 @@ CELERY_TASK_ROUTES = {
     # WIR148 (NTPRO6) — génération quotidienne des échéances de loyer des baux
     # actifs : job beat, donc queue `scheduled`.
     'immobilier.generer_echeances_loyer': {'queue': 'scheduled'},
+    # NTOBS/NTREP — envoi horaire des abonnements de rapports planifiés : job
+    # beat, donc queue `scheduled`.
+    'reporting.envoyer_rapports_planifies': {'queue': 'scheduled'},
+    # NTIAG — surveillance mensuelle du drift des modèles IA : job beat, donc
+    # queue `scheduled`.
+    'ai_governance.surveiller_drift_mensuel': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

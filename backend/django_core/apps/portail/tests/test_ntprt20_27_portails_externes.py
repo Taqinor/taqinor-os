@@ -72,7 +72,13 @@ def make_fournisseur(company, nom='Fournisseur'):
 
 def make_partenaire(company, nom='Partenaire'):
     n = next(_seq)
-    return Partenaire.objects.create(company=company, nom=f'{nom}-{n}')
+    # `Partenaire.token_acces` est UNIQUE et sans défaut : la production le pose
+    # côté serveur (`PartenaireViewSet.perform_create` →
+    # `secrets.token_urlsafe(32)`), donc une fixture qui l'omet insère deux fois
+    # la chaîne vide et viole la contrainte. Convention déjà suivie par toutes
+    # les autres fixtures `Partenaire` du repo : un jeton explicite et distinct.
+    return Partenaire.objects.create(
+        company=company, nom=f'{nom}-{n}', token_acces=f'tok-ntprt20-{n}')
 
 
 class TableauDeBordFournisseurTests(TestCase):
