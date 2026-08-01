@@ -85,6 +85,19 @@ const VENDOR_CHUNK_BUDGETS_KB = {
   // Outil toiture pro (canvas/3D lourd, isolé) : budget dédié comme les autres
   // vendors lourds — pré-existant à YHARD7 (nouveau gate), pas une régression.
   'roof-tool': 500,
+  // AOF192 — Atelier de calepinage AO (`features/ao/studio/`, canvas/
+  // géométrie/relevé), isolé par `manualChunks` dans vite.config.js sous le
+  // même patron que `roof-tool` (voir son commentaire, ligne au-dessus).
+  // Budget identique (500 Ko) par prudence tant que l'atelier complet
+  // (rendu SVG/canvas + calepinage) n'est pas encore livré par les lanes
+  // soeurs `frontend/ao-studio`/`backend/core-calepinage-rendu` — AUCUNE
+  // mesure avant/après n'a pu être prise ici : ce worktree isolé n'a ni
+  // `node_modules` ni build réel (règle de lane : « pas de npm »), et
+  // l'atelier réel n'existe pas encore dans ce worktree pour être mesuré.
+  // La lane/l'orchestrateur qui fold ce commit AVEC le studio complet doit
+  // lancer `npm run build && node scripts/check_bundle_budget.mjs` et ajuster
+  // ce budget si le réel dépasse 500 Ko, en documentant la mesure ici.
+  'ao-studio': 500,
 }
 
 // VX185 — YHARD7 mesure chaque chunk ISOLÉMENT, jamais ce que `index.html`
@@ -92,7 +105,10 @@ const VENDOR_CHUNK_BUDGETS_KB = {
 // toujours monté, importe un named export via le barrel `ui/index.js`) se
 // retrouvait en `<link rel="modulepreload">` sur TOUTE page, `/login` inclus
 // — ~350 Ko gzip avant même l'écran de connexion sur le 4G marocain.
-const HEAVY_VENDOR_CHUNK_NAMES = ['recharts', 'pdfjs-dist', 'datatable', 'roof-tool']
+// AOF192 — `ao-studio` ajouté (aucune entrée existante retirée/modifiée) :
+// l'atelier de calepinage AO doit, comme roof-tool, ne JAMAIS apparaître en
+// `<link rel="modulepreload">` sur une page qui ne l'ouvre pas.
+const HEAVY_VENDOR_CHUNK_NAMES = ['recharts', 'pdfjs-dist', 'datatable', 'roof-tool', 'ao-studio']
 
 // Allowlist COMMENTÉE : un chunk lourd n'y figure QUE si son préchargement au
 // boot est un choix délibéré et justifié (commentaire obligatoire). Vide par

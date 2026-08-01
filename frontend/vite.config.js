@@ -218,7 +218,10 @@ export default defineConfig({
     // boot. Ne change PAS le graphe de chunks, seulement la liste de preload.
     modulePreload: {
       resolveDependencies: (_filename, deps) => deps.filter(
-        (dep) => !/(?:^|\/)(?:datatable|recharts|pdfjs-dist|roof-tool)-[\w-]+\.js$/.test(dep),
+        // AOF192 — `ao-studio` AJOUTÉ à cette liste d'exclusion (aucune entrée
+        // existante modifiée) : même garde que roof-tool ci-dessus, jamais de
+        // <link rel="modulepreload"> pour l'atelier de calepinage au boot.
+        (dep) => !/(?:^|\/)(?:datatable|recharts|pdfjs-dist|roof-tool|ao-studio)-[\w-]+\.js$/.test(dep),
       ),
     },
     rollupOptions: {
@@ -237,6 +240,18 @@ export default defineConfig({
           // aussi le nom que `check_bundle_budget.mjs` cherche (VENDOR_CHUNK_
           // BUDGETS_KB['roof-tool']) pour lui donner son budget dédié.
           if (id.startsWith(RB_PREFIX)) return 'roof-tool'
+          // AOF192 — Atelier de calepinage AO (`features/ao/studio/`, canvas/
+          // géométrie/relevé) isolé dans son PROPRE chunk nommé, exactement
+          // comme `roof-tool` ci-dessus : il ne doit précharger au boot SUR
+          // AUCUNE page (règle VX185 déjà en place sur roof-tool/recharts/
+          // pdfjs-dist — cf. `modulePreload.resolveDependencies` et
+          // `HEAVY_VENDOR_CHUNK_NAMES` dans check_bundle_budget.mjs, où ce
+          // même nom porte son budget dédié `VENDOR_CHUNK_BUDGETS_KB['ao-studio']`).
+          // L'atelier n'est de toute façon monté que par la route qui l'ouvre
+          // (React.lazy) — ce chunk nommé ne fait que garantir qu'il reste
+          // TOUJOURS isolé du code applicatif partagé, même si un futur import
+          // partagé venait à le rattacher au graphe de boot par erreur.
+          if (/[\\/]features[\\/]ao[\\/]studio[\\/]/.test(id)) return 'ao-studio'
           if (!id.includes('node_modules')) return undefined
           // wave-3 CI fix (frontend-perf) — `recharts`/`pdfjs-dist` used to get a
           // FORCED single named chunk here (like `radix-ui`/`react-vendor` below),
