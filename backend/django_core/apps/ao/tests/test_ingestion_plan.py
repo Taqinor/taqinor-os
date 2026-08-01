@@ -225,9 +225,14 @@ class LaRasterisationEtLaNormalisation(SimpleTestCase):
         self.assertIn('page', str(capture.exception))
 
     def test_sans_pymupdf_l_echec_est_propre(self):
+        # Le PDF témoin est fabriqué AVANT de masquer ``fitz`` : construit à
+        # l'intérieur du ``patch.dict``, c'était la FIXTURE — et non la
+        # fonction sous test — qui échouait à importer PyMuPDF, si bien que
+        # le test ne prouvait plus rien de l'échec propre visé.
+        octets = _pdf()
         with patch.dict(sys.modules, {'fitz': None}):
             with self.assertRaises(IngestionImpossible) as capture:
-                rasteriser_pdf(_pdf())
+                rasteriser_pdf(octets)
         self.assertIn('PyMuPDF', str(capture.exception))
 
     def test_une_image_est_normalisee_en_png(self):

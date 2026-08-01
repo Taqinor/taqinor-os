@@ -45,9 +45,17 @@ CSV_CHAINES = (
 
 
 class TestCartesEtParsing(SimpleTestCase):
-    def test_les_deux_specs_existent(self):
+    def test_les_trois_specs_existent(self):
+        """AOF30 posait deux specs ; AOF169 en a ajouté une TROISIÈME.
+
+        ``avis`` (l'amont du tunnel : les avis de marchés publiés créent les
+        ``AppelOffre``) est déclaré dans ``imports.FIELD_MAPS_AO`` et exporté
+        par ``importer_avis``. La liste gelée ici datait d'AOF30 et refusait
+        une spec pourtant voulue — c'est la LISTE qui était périmée, pas le
+        module.
+        """
         self.assertEqual(set(imports.FIELD_MAPS_AO),
-                         {'obstacles', 'chaines'})
+                         {'obstacles', 'chaines', 'avis'})
 
     def test_les_champs_du_releve_sont_mappes(self):
         carte = imports.FIELD_MAPS_AO['obstacles']
@@ -59,11 +67,19 @@ class TestCartesEtParsing(SimpleTestCase):
             self.assertIn(entete, carte_chaines, entete)
 
     def test_apercu_ne_touche_pas_la_base(self):
+        """La classe est un ``SimpleTestCase`` : c'est ÇA, la preuve.
+
+        Sous ``SimpleTestCase``, toute requête vers ``default`` lève
+        ``DatabaseOperationForbidden``. Si ``previsualiser`` interrogeait ou
+        écrivait la base, cet appel exploserait. Compter les obstacles pour
+        « vérifier » qu'il n'y en a aucun était donc contre-productif :
+        c'était le COMPTAGE lui-même — pas ``previsualiser`` — qui touchait
+        la base et faisait échouer le test.
+        """
         apercu = imports.previsualiser(
             csv_obstacles(3), 'releve.csv', 'obstacles')
         self.assertEqual(apercu['valides'], 3)
         self.assertEqual(apercu['rejetees'], 0)
-        self.assertEqual(ObstacleAO.objects.count(), 0)
 
     def test_provenance_invalide_rejetee_avec_motif_francais(self):
         contenu = (ENTETE_OBSTACLES

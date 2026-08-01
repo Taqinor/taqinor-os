@@ -156,7 +156,9 @@ class TestRenduHtml(BaseMemoire):
         self.assertIn('Mémoire technique', html)
         self.assertIn('Centrale photovoltaïque en toiture', html)
         self.assertIn('PARTENAIRE SA', html)
-        self.assertIn("Géométries d'implantation retenues", html)
+        # Apostrophe typographique : le gabarit auto-échappe le contexte, une
+        # apostrophe droite ne ressort JAMAIS telle quelle du rendu.
+        self.assertIn('Géométries d’implantation retenues', html)
 
     def test_aucun_mot_de_cout_ne_sort_dans_le_rendu(self):
         """Garde local ; le ratchet AOF129 l'étend à tous les artefacts."""

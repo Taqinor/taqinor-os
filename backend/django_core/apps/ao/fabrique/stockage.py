@@ -60,7 +60,13 @@ def _televerser_en_flux(cle, morceaux, mime):
 
     from django.conf import settings
 
-    from apps.ventes.utils.minio_client import (
+    # Le client objet est pris sur la couche de stockage de ``records`` (app
+    # de FONDATION, déjà la porte des pièces jointes de la fabrique) et NON
+    # sur ``apps.ventes`` : la fabrique AO est un domaine séparé du moteur de
+    # devis — règle #4 — et un test de garde refuse tout import ``apps.ventes``
+    # ici. ``records.storage`` ré-exporte exactement ces deux fonctions, c'est
+    # d'ailleurs le chemin que le reste du dépôt patche dans ses tests.
+    from apps.records.storage import (
         ensure_uploads_bucket, get_minio_client,
     )
 

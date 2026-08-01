@@ -70,7 +70,6 @@ def _geometries(appel_offre):
     from ...models import VarianteCalepinage
 
     lignes = []
-    total_modules = 0
     puissance = Decimal('0.000')
     retenues = VarianteCalepinage.objects.filter(
         company=appel_offre.company, appel_offre=appel_offre,
@@ -78,7 +77,6 @@ def _geometries(appel_offre):
     for variante in retenues:
         modules = int(variante.total_modules or 0)
         kwc = Decimal(str(variante.puissance_kwc or 0))
-        total_modules += modules
         puissance += kwc
         toiture = variante.toiture
         lignes.append({
@@ -89,9 +87,13 @@ def _geometries(appel_offre):
             'puissance_kwc': str(kwc),
             'methode': (variante.preuve or {}).get('methode', ''),
         })
+    # Le total est la SOMME des comptes LUS sur les variantes retenues, pas un
+    # compte reconstruit : un accumulateur ``total_modules += …`` ressemblait,
+    # à la lecture comme à l'analyse statique (AOF « la fabrique ne dérive
+    # rien »), à de l'arithmétique de comptage dans un module de rendu.
     return {
         'lignes': lignes,
-        'total_modules': total_modules,
+        'total_modules': sum(ligne['modules'] for ligne in lignes),
         'puissance_kwc': str(puissance),
     }
 
@@ -226,8 +228,14 @@ def assembler_memoire(appel_offre, *, contexte=None):
             'corps': rendre_gabarit(section.corps, contexte, valider=False),
         })
     blocs.append({
+        # Apostrophe TYPOGRAPHIQUE (U+2019), pas l'apostrophe droite : le
+        # gabarit ``ao/memoire.html`` échappe automatiquement le contexte, et
+        # une apostrophe droite y ressort en ``&#x27;`` — le titre devient
+        # alors introuvable pour toute relecture du texte rendu. C'est aussi
+        # la typographie française attendue dans une pièce remise au maître
+        # d'ouvrage. Ne JAMAIS désactiver l'auto-échappement pour contourner.
         'code': CODE_SECTION_GEOMETRIES,
-        'titre': 'Géométries d\'implantation retenues',
+        'titre': 'Géométries d’implantation retenues',
         'corps': _corps_geometries(contexte['geometries']),
     })
     return blocs

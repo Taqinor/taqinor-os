@@ -157,7 +157,20 @@ def html_degrade(blocs, identite=None, marche=None):
     une pièce du pack, c'est un CONSTAT d'indisponibilité. Lui donner un
     gabarit propre inviterait à l'utiliser comme une pièce normale.
     """
-    from html import escape
+    from html import escape as _escape
+
+    def escape(valeur):
+        """Échappe pour un NŒUD DE TEXTE, pas pour un attribut.
+
+        Toutes les valeurs de ce repli sont insérées ENTRE des balises
+        (``<h2>``, ``<td>``, ``<p>``), jamais dans un attribut : seuls ``&``,
+        ``<`` et ``>`` doivent l'être. ``html.escape`` échappe en plus les
+        apostrophes (``'`` → ``&#x27;``), ce qui transformait « Acte
+        d'engagement » en « Acte d&#x27;engagement » — illisible dans la
+        source de la pièce, et introuvable pour tout contrôle qui relit le
+        texte rendu.
+        """
+        return _escape(valeur, quote=False)
 
     identite = identite or {}
     marche = marche or {}

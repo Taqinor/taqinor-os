@@ -21,7 +21,7 @@ from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.ao.permissions import AO_GERER, AO_VOIR
+from apps.ao.permissions import AO_GERER, AO_RENTABILITE_VOIR, AO_VOIR
 from apps.ao.urls import router as router_ao
 from apps.roles.models import COMMERCIAL_PERMISSIONS, Role
 from authentication.models import Company
@@ -30,15 +30,29 @@ User = get_user_model()
 
 BASE = '/api/django/ao/'
 
-#: Toutes les ressources attendues sous ``/api/django/ao/``.
-PREFIXES_ATTENDUS = {
+#: Ressources du DOMAINE AO : socle ``AoBaseViewSet``, gardées par
+#: ``ao_voir``/``ao_gerer``.
+PREFIXES_DOMAINE = {
     'appels-offres', 'pieces-consultation', 'exigences-cps', 'batiments',
     'toitures', 'plans-source', 'obstacles', 'chaines-cotes', 'releves',
     'series-questions', 'questions', 'kits-calepinage', 'presets-calepinage',
-    'variantes-calepinage', 'bordereaux-prix', 'lignes-bordereau',
-    'cautions-soumission', 'dossiers-soumission', 'pieces-soumission',
-    'echeances-ao', 'resultats-ao',
+    'variantes-calepinage', 'bordereaux-prix', 'sections-bordereau',
+    'lignes-bordereau', 'cautions-soumission', 'dossiers-soumission',
+    'pieces-soumission', 'echeances-ao', 'resultats-ao', 'dossiers-ao',
+    'pieces-dossier-ao', 'checklist-partenaire', 'pieces-administratives',
 }
+
+#: AOF157 — ressources de l'ÉCONOMIE DIRECTEUR. Elles sont DÉLIBÉRÉMENT hors du
+#: socle ``AoBaseViewSet`` : coût de revient, marge et bénéfice sont gardés par
+#: ``ao_rentabilite_voir`` (permission ÉLEVÉE), pas par ``ao_voir``. Les lister
+#: à part n'est pas une exemption de complaisance — ``TestGardeRentabilite``
+#: ci-dessous vérifie POSITIVEMENT qu'un lecteur ``ao_voir`` y est refusé.
+PREFIXES_DIRECTEUR = {
+    'economie', 'lignes-cout-revient', 'cibles-financieres',
+}
+
+#: Toutes les ressources attendues sous ``/api/django/ao/``.
+PREFIXES_ATTENDUS = PREFIXES_DOMAINE | PREFIXES_DIRECTEUR
 
 
 class TestRegistreDuRouteur(SimpleTestCase):
@@ -68,9 +82,24 @@ class TestRegistreDuRouteur(SimpleTestCase):
         from apps.ao.viewsets import AoBaseViewSet
 
         for prefixe, viewset, _ in router_ao.registry:
+            if prefixe in PREFIXES_DIRECTEUR:
+                continue  # garde PLUS haute — voir le test suivant
             self.assertTrue(issubclass(viewset, AoBaseViewSet), prefixe)
             self.assertEqual(viewset.read_permission, AO_VOIR, prefixe)
             self.assertEqual(viewset.write_permission, AO_GERER, prefixe)
+
+    def test_les_vues_directeur_portent_la_garde_de_rentabilite(self):
+        """AOF157 — l'économie n'est JAMAIS gardée par le simple ``ao_voir``."""
+        from apps.ao.permissions import CanViewAoRentabilite
+
+        vues = {p: v for p, v, _ in router_ao.registry
+                if p in PREFIXES_DIRECTEUR}
+        self.assertEqual(set(vues), PREFIXES_DIRECTEUR)
+        for prefixe, viewset in vues.items():
+            self.assertIn(CanViewAoRentabilite, viewset.permission_classes,
+                          prefixe)
+            self.assertNotEqual(getattr(viewset, 'read_permission', None),
+                                AO_VOIR, prefixe)
 
 
 class BaseRoutes(TestCase):
@@ -93,7 +122,7 @@ class BaseRoutes(TestCase):
 class TestMatriceDePermissions(BaseRoutes):
     def test_lecteur_ao_voir_lit_toutes_les_routes(self):
         api = self._api([AO_VOIR])
-        for prefixe in sorted(PREFIXES_ATTENDUS):
+        for prefixe in sorted(PREFIXES_DOMAINE):
             reponse = api.get(f'{BASE}{prefixe}/')
             self.assertEqual(reponse.status_code, 200, prefixe)
 
@@ -115,6 +144,22 @@ class TestMatriceDePermissions(BaseRoutes):
             self.assertIn(
                 anonyme.get(f'{BASE}{prefixe}/').status_code, (401, 403),
                 prefixe)
+
+
+class TestGardeRentabilite(BaseRoutes):
+    """AOF157 — la marge ne suit PAS la surface de lecture générale."""
+
+    def test_un_lecteur_ao_voir_est_refuse_sur_l_economie(self):
+        api = self._api([AO_VOIR, AO_GERER])
+        for prefixe in sorted(PREFIXES_DIRECTEUR):
+            self.assertEqual(
+                api.get(f'{BASE}{prefixe}/').status_code, 403, prefixe)
+
+    def test_la_permission_de_rentabilite_ouvre_l_economie(self):
+        api = self._api([AO_RENTABILITE_VOIR])
+        for prefixe in sorted(PREFIXES_DIRECTEUR):
+            self.assertEqual(
+                api.get(f'{BASE}{prefixe}/').status_code, 200, prefixe)
 
 
 class TestPaginationTransverse(BaseRoutes):
