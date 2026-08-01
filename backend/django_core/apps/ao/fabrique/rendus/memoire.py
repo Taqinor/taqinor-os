@@ -70,7 +70,6 @@ def _geometries(appel_offre):
     from ...models import VarianteCalepinage
 
     lignes = []
-    total_modules = 0
     puissance = Decimal('0.000')
     retenues = VarianteCalepinage.objects.filter(
         company=appel_offre.company, appel_offre=appel_offre,
@@ -78,7 +77,6 @@ def _geometries(appel_offre):
     for variante in retenues:
         modules = int(variante.total_modules or 0)
         kwc = Decimal(str(variante.puissance_kwc or 0))
-        total_modules += modules
         puissance += kwc
         toiture = variante.toiture
         lignes.append({
@@ -89,9 +87,13 @@ def _geometries(appel_offre):
             'puissance_kwc': str(kwc),
             'methode': (variante.preuve or {}).get('methode', ''),
         })
+    # Le total est la SOMME des comptes LUS sur les variantes retenues, pas un
+    # compte reconstruit : un accumulateur ``total_modules += …`` ressemblait,
+    # à la lecture comme à l'analyse statique (AOF « la fabrique ne dérive
+    # rien »), à de l'arithmétique de comptage dans un module de rendu.
     return {
         'lignes': lignes,
-        'total_modules': total_modules,
+        'total_modules': sum(ligne['modules'] for ligne in lignes),
         'puissance_kwc': str(puissance),
     }
 

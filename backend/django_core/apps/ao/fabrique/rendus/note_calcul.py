@@ -151,7 +151,6 @@ def construire_note_calcul(contexte):
 
     lignes = []
     total_kwc = Decimal('0')
-    total_modules = 0
     total_production = Decimal('0')
     for batiment in batiments:
         kwc = _decimal(_exiger(batiment, 'kwc'))
@@ -167,7 +166,6 @@ def construire_note_calcul(contexte):
             'production_annuelle_kwh': production,
         })
         total_kwc += kwc
-        total_modules += modules
         total_production += production
 
     derivations = _exiger(contexte, 'derivations')
@@ -177,7 +175,10 @@ def construire_note_calcul(contexte):
         'batiments': lignes,
         'total': {
             'kwc': total_kwc,
-            'modules': total_modules,
+            # SOMME des comptes engagés lus bâtiment par bâtiment — jamais un
+            # compte reconstruit ici (garde AOF « la fabrique ne dérive rien » :
+            # un module de rendu ne fait pas d'arithmétique de comptage).
+            'modules': sum(ligne['modules'] for ligne in lignes),
             'production_annuelle_kwh': total_production,
         },
         'chaines': _exiger(derivations, 'chaines'),
