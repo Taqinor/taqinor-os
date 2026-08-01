@@ -42,6 +42,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+import core.calepinage
 from authentication.models import Company
 
 from ...models import (
@@ -50,10 +51,13 @@ from ...models import (
 )
 
 #: Racine des goldens FRDISI (AOF183) — la SEULE source géométrique.
+#: Le chemin est DÉDUIT de l'emplacement du paquet ``core.calepinage``, jamais
+#: compté à la main depuis ce fichier : remonter des dossiers à la main visait
+#: ``apps/core/calepinage`` (un cran trop haut, un paquet qui n'existe pas) et
+#: rendait le seed injouable. Le paquet sait où il est ; nous le lui demandons.
 GOLDEN = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))))),
-    'core', 'calepinage', 'golden', 'frdisi_2026_07_27')
+    os.path.dirname(os.path.abspath(core.calepinage.__file__)),
+    'golden', 'frdisi_2026_07_27')
 
 #: Référence acheteur de l'affaire de démonstration — clé de déduplication.
 #: Le préfixe ``DEMO-`` la rend reconnaissable au premier coup d'œil dans une
