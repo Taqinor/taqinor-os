@@ -66,7 +66,8 @@ def _collision(rectangles, x0, x1, y0, y1, zones_polygonales):
     fin = None
     touche = ""
     for rx0, rx1, ry0, ry1, repere in rectangles:
-        if rectangles_se_croisent((x0, x1, y0, y1), (rx0, rx1, ry0, ry1)):
+        if rectangles_se_croisent((x0, x1, y0, y1), (rx0, rx1, ry0, ry1),
+                                  TOL_LONGUEUR_M):
             if fin is None or rx1 > fin:
                 fin, touche = rx1, repere
     for sommets, repere in zones_polygonales:

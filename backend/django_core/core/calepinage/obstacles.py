@@ -14,7 +14,7 @@ DEVINÉ n'est pas engageable — sur l'aile L ces deux emprises valent 12 module
 """
 
 from core.calepinage.types import Obstacle, Provenance, TypeObstacle
-from core.calepinage.units import TOL_FUSION_M
+from core.calepinage.units import TOL_FUSION_M, TOL_LONGUEUR_M
 
 __all__ = [
     "DEGAGEMENT_PAR_TYPE", "DEGAGEMENT_PAR_PROVENANCE", "PROVENANCES_ENGAGEABLES",
@@ -176,7 +176,12 @@ def intervalles_bloques(obstacles, y0, y1, borne_min, borne_max):
             raise ValueError(
                 "obstacle %s sans dégagement dérivé : appeler "
                 "obstacles.appliquer_regles() avant le comptage" % o.repere)
-        if o.y1 + c <= y0 or o.y0 - c >= y1:
+        # Tolérance de LONGUEUR obligatoire : ``20.35 + 0.30`` vaut
+        # 20.650000000000002 en binaire, si bien qu'un obstacle dont le
+        # dégagement AFFLEURE la rangée bloquerait une bande entière sans
+        # qu'aucune cote n'ait bougé. Le moteur historique portait déjà ce
+        # ``1e-9`` — l'oublier coûtait 36 modules sur l'aile L.
+        if o.y1 + c <= y0 + TOL_LONGUEUR_M or o.y0 - c >= y1 - TOL_LONGUEUR_M:
             continue
         bruts.append((max(borne_min, o.x0 - c), min(borne_max, o.x1 + c)))
     return fusionner(bruts)
