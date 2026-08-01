@@ -8892,3 +8892,230 @@ textarea.form-control {
 @media (max-width: 639px) {
   .header-app-pill { display: none; }
 }
+
+/* ===========================================================================
+   APX2 — LA CARTE LEAD AU REPOS : 3 lignes, <= 76 px, BUDGET DE SIGNAUX FERME.
+   (fondateur 2026-08-01 : « lead view really nice like in Odoo — we see a lot
+   of leads at once, phone and computer ».)
+   ---------------------------------------------------------------------------
+   Mesure d'etat avant : ~120-150 px par carte au repos (5 zones empilees),
+   soit 3-4 cartes visibles par colonne en 1366x768 contre ~60-70 px chez Odoo.
+   Ce bloc REMPLACE le contrat LB13 « 4 zones » par un contrat a 3 lignes :
+
+     L1  nom + societe (tronques)          .kb-card-head
+     L2  montant .num + budget de signaux  .kb-card-value
+     L3  points de tags + age + avatar 16  .kb-card-foot
+
+   RIEN NE DISPARAIT, TOUT SE CONDENSE : le texte de la ligne d'action, le chip
+   de type, canal/ville, les micro-icones de readiness, les libelles de tags en
+   clair et les actions rapides vivent dans `.kb-card-reveal`, depliee au
+   survol (hover:hover) ou au focus clavier (:focus-within, a TOUTE largeur).
+   Le budget de signaux garde AU REPOS ce qui doit rester distinguable sans
+   survol : icone coloree de la ligne d'action, micro-badge de score (VX221),
+   pastille de rotting (rampe LB14).
+
+   SCOPE : tout est sous `.kb-card--lead`. `.kb-card` est partage avec le
+   kanban Installations et `ui/StatusAccentCard` (autres lanes) — pas un pixel
+   n'y bouge.
+   =========================================================================== */
+
+.kb-card--lead {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.36rem 0.5rem;
+}
+
+/* ---- L1 — nom + societe sur UNE ligne tronquee ---- */
+.kb-card--lead .kb-card-head {
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.kb-card--lead .kb-card-name {
+  flex: 0 1 auto;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}
+.kb-card--lead .kb-card-societe {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-card--lead .kb-card-societe::before {
+  content: '\00b7';
+  margin-right: 0.25rem;
+}
+
+/* ---- L2 — montant + BUDGET DE SIGNAUX (jamais supprime au repos) ---- */
+.kb-card--lead .kb-card-value {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  margin-top: 0;
+  min-height: 1.05rem;
+}
+.kb-card--lead .kb-card-montant {
+  font-size: 0.82rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.kb-card--lead .kb-card-signals {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* L'ICONE D'ACTION — la seule chose qui remplace un texte au repos. Les
+   tonalites reutilisent EXACTEMENT les tokens de `.kb-actionline-*` : le
+   contraste AA clair/sombre est donc celui, deja valide, de la ligne d'action. */
+.kb-card-signal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0.95rem;
+  font-size: 0.78rem;
+  line-height: 1;
+  font-weight: 700;
+}
+.kb-signal-perdu,
+.kb-signal-danger { color: var(--destructive); }
+.kb-signal-warning { color: var(--warning-text); }
+.kb-signal-info { color: var(--info); }
+.kb-signal-success { color: var(--success); }
+.kb-signal-muted { color: var(--muted-foreground); }
+
+/* Micro-badge de score (VX221) — le composant partage ScoreBadge est intact,
+   seule son enveloppe porte la taille. */
+.kb-card--lead .kb-card-score-micro { display: inline-flex; }
+.kb-card--lead .kb-card-score-micro .lv-score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35em;
+  padding: 0 0.24rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+/* Pastille de rotting (rampe LB14) — lisible au repos meme sans pill d'age. */
+.kb-rot-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+}
+.kb-card--lead[data-rot='warning'] .kb-rot-dot { background: var(--warning-text); }
+.kb-card--lead[data-rot='danger'] .kb-rot-dot { background: var(--destructive); }
+
+/* ---- L3 — points de tags + age + avatar 16 ---- */
+.kb-card--lead .kb-card-foot {
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  margin-top: 0;
+  min-height: 1rem;
+}
+.kb-tag-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.kb-tag-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+.kb-tag-dots-more {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+.kb-card--lead .kb-age-pill {
+  margin-left: auto;
+  font-size: 0.6rem;
+  padding: 0 0.35rem;
+  line-height: 1.5;
+}
+.kb-card--lead .kb-card-assignee {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+/* ---- ZONE REVELEE — depliee au survol (hover:hover) ET au focus clavier ----
+   Elle est le DERNIER enfant en flux : la carte grandit vers le BAS, donc un
+   controle revele n'apparait jamais sous la position de repos du curseur.
+   Pas de `visibility: hidden` : elle empecherait le focus d'entrer, donc
+   `:focus-within` ne pourrait JAMAIS deplier (impasse). Le depliage reel au
+   focus est ce qui garantit une bounding box non nulle a chaque controle
+   revele — l'anti-pattern « tabbable invisible » (LB17) ne revient pas. */
+.kb-card--lead .kb-card-reveal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  max-height: 0;
+  margin-top: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height var(--motion-base) ease, opacity var(--motion-base) ease,
+    margin-top var(--motion-base) ease;
+}
+@media (hover: hover) {
+  .kb-card--lead:hover > .kb-card-reveal {
+    max-height: 14rem;
+    margin-top: 0.28rem;
+    opacity: 1;
+    overflow: visible;
+  }
+}
+.kb-card--lead:focus-within > .kb-card-reveal {
+  max-height: 14rem;
+  margin-top: 0.28rem;
+  opacity: 1;
+  overflow: visible;
+}
+/* Pointeur grossier (telephone ET tablette — jamais un seuil de largeur) : la
+   zone reste depliee, faute de survol. APX7 y posera l'anatomie tactile. */
+@media (hover: none) {
+  .kb-card--lead > .kb-card-reveal {
+    max-height: none;
+    margin-top: 0.28rem;
+    opacity: 1;
+    overflow: visible;
+  }
+}
+.kb-card--lead .kb-card-reveal .kb-tags,
+.kb-card--lead .kb-card-reveal .kb-card-actionline {
+  margin-top: 0;
+}
+.kb-card--lead .kb-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* Mouvement reduit : le depliage devient instantane (jamais supprime — le
+   contenu doit rester atteignable). */
+@media (prefers-reduced-motion: reduce) {
+  .kb-card--lead .kb-card-reveal { transition: none; }
+}

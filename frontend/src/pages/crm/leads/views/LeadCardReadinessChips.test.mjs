@@ -35,13 +35,22 @@ test('QX28 : aucune icône ne s\'affiche pour un signal absent (jamais de signal
   assert.match(SRC, /\{\(roofReady \|\| factureReady \|\| devisReady\) && \(/)
 })
 
-test('QX28 : les micro-icônes readiness vivent dans le pied de carte (kb-readi), pas en gros chips', () => {
+// APX2 — les micro-icônes restent des MICRO-ICÔNES (jamais des chips), mais
+// elles ont quitté la ligne de repos pour la zone révélée (`.kb-card-meta`
+// dans `.kb-card-reveal`) : la carte au repos tient en 3 lignes ≤76 px et la
+// readiness reste atteignable au survol ET au focus clavier.
+test('QX28/APX2 : les micro-icônes readiness vivent dans la zone révélée (kb-readi), pas en gros chips', () => {
+  const revealStart = SRC.indexOf('<div className="kb-card-reveal">')
+  assert.ok(revealStart > -1, 'kb-card-reveal introuvable')
+  const reveal = SRC.slice(revealStart)
+  assert.match(reveal, /className="kb-card-meta"/)
+  assert.match(reveal, /className="kb-readi"/)
+  assert.match(reveal, /kb-readi-icon/)
+  // Elles ne sont PLUS dans le pied de repos (L3 = points de tags + âge + avatar).
   const footStart = SRC.indexOf('<div className="kb-card-foot">')
-  assert.ok(footStart > -1, 'kb-card-foot introuvable')
-  const footEnd = SRC.indexOf('{/* ── Actions rapides', footStart)
-  const foot = SRC.slice(footStart, footEnd)
-  assert.match(foot, /className="kb-readi"/)
-  assert.match(foot, /kb-readi-icon/)
+  const footEnd = SRC.indexOf('{/* ── ZONE RÉVÉLÉE', footStart)
+  assert.ok(footEnd > footStart, 'fin de pied introuvable')
+  assert.doesNotMatch(SRC.slice(footStart, footEnd), /className="kb-readi"/)
   // Les anciens gros chips readiness ont disparu.
   assert.doesNotMatch(SRC, /kb-readiness-chips/)
   assert.doesNotMatch(SRC, /kb-flash-roof-badge/)
