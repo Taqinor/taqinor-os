@@ -105,7 +105,14 @@ export const Button = forwardRef(function Button(
     >
       {asChild ? children : (
         <>
-          {loading && <Spinner className="size-4" />}
+          {/* Le spinner est DÉCORATIF (`aria-hidden`, même convention que
+              VX127/EditableCell) : sans cela son `role="status"
+              aria-label="Chargement…"` s'ajoute au nom accessible du bouton,
+              qui devient « Chargement… Appliquer » le temps du chargement.
+              Un nom qui change sous l'état casse le pilotage vocal (WCAG
+              2.5.3) et empêche de retrouver le bouton par son propre libellé.
+              L'état occupé est déjà porté par `aria-busy` ci-dessus. */}
+          {loading && <Spinner className="size-4" aria-hidden="true" />}
           {children}
         </>
       )}
