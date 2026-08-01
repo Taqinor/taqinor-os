@@ -8923,3 +8923,69 @@ textarea.form-control {
   .apx23-scan-flash-border--accept { border-color: var(--success); }
   .apx23-scan-flash-border--reject { border-color: var(--destructive); }
 }
+
+/* ── APX27 — Avant/Après appariés (ChantierPhotos, vue "Comparer") ────────
+   Bloc APPEND-ONLY. Carte de comparaison : deux photos empilées, la photo
+   "avant" recadree par clip-path a la position du curseur (variable CSS
+   --apx27-pos posee en style inline par le composant). Le curseur natif
+   (input[type=range]) est etire sur toute la carte et rendu invisible
+   (opacity: 0) : c'est LUI que l'utilisateur glisse, la ligne separatrice
+   n'est qu'un repere visuel decoratif (pointer-events: none). Aucune
+   transition/animation ici (suivi 1:1 du curseur) : rien a neutraliser sous
+   prefers-reduced-motion, la contrainte est satisfaite par construction. */
+.apx27-compare-card { margin: 0; }
+.apx27-compare {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+.apx27-compare-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.apx27-compare-img--before {
+  clip-path: inset(0 calc(100% - var(--apx27-pos, 50%)) 0 0);
+}
+.apx27-compare-tag {
+  position: absolute;
+  top: 0.5rem;
+  z-index: 1;
+  border-radius: var(--radius-sm);
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  pointer-events: none;
+}
+.apx27-compare-tag--before { left: 0.5rem; }
+.apx27-compare-tag--after { right: 0.5rem; }
+.apx27-compare-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--apx27-pos, 50%);
+  width: 2px;
+  background: var(--background);
+  box-shadow: 0 0 0 1px var(--border);
+  pointer-events: none;
+  transform: translateX(-1px);
+}
+.apx27-compare-slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  appearance: none;
+  -webkit-appearance: none;
+}
