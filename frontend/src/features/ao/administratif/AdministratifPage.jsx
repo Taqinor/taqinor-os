@@ -221,9 +221,16 @@ export default function AdministratifPage({
   const id = affaireId ?? routeParams.id
   const [occupe, setOccupe] = useState(false)
 
+  // `aoApi.affaires.get` rend la réponse axios BRUTE (`resource.js` ne déballe
+  // rien) : sans `select`, `affaire` vaudrait `{ data: … }` et toutes les
+  // lectures ci-dessous (`affaire?.cautions`…) seraient muettes — l'écran
+  // restait vide avec un dossier pourtant chargé.
   const { data: affaire, loading, error, refetch } = useResource(
     () => aoApi.affaires.get(id), id,
-    { errorMessage: 'Impossible de charger le volet administratif.' },
+    {
+      select: (res) => res?.data ?? null,
+      errorMessage: 'Impossible de charger le volet administratif.',
+    },
   )
 
   const dateOuverture = affaire?.date_ouverture_plis || affaire?.date_remise_plis || null
@@ -317,7 +324,14 @@ export default function AdministratifPage({
             ne les porte.
           </p>
         </div>
-        <Verifications verifications={verifications} onCocher={cocher} occupe={occupe} />
+        {/* Sans service injecté la case doit être INERTE (cf. en-tête) : `cocher`
+            est toujours une fonction (elle sort en silence), donc la passer
+            telle quelle laissait des cases cliquables sans le moindre effet. */}
+        <Verifications
+          verifications={verifications}
+          onCocher={onCocherVerification ? cocher : null}
+          occupe={occupe}
+        />
         {!onCocherVerification && verifications.length > 0 && (
           <p className="text-xs text-muted-foreground">
             Consultation seule — la saisie se fait depuis le dossier de soumission.
