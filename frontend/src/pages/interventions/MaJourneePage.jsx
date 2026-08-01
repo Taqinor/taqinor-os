@@ -43,7 +43,11 @@ import TourneeStops from '../../features/installations/TourneeStops'
 import {
   interventionStatusLabel, INTERVENTION_TYPES,
   INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
+  // EZ6 — rang dans la machine à états (miroir de Intervention.STATUT_ORDER).
+  interventionStatusRank,
 } from '../../features/installations/statuses'
+// EZ6 — toast « Annuler » 6 s (VX95 : l'effet a déjà eu lieu, l'undo l'inverse).
+import { toastWithUndo } from '../../lib/toast'
 import { formatDate } from '../../lib/format'
 // VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -79,6 +83,49 @@ const typeAccent = (k) => TYPE_ACCENT[k] ?? '#64748b'
 const PRIORITE_BADGE = {
   urgente: { tone: 'danger', label: 'Urgente' },
   haute: { tone: 'warning', label: 'Haute' },
+}
+
+// ── EZ6 — dérivation du statut depuis les horodatages ────────────────────────
+// Les trois horodatages terrain (F6) et le statut (F3) qu'ils IMPLIQUENT.
+// L'ordre compte : si plusieurs sont posés d'un coup (retour de synchro
+// hors-ligne), c'est le plus avancé qui gagne.
+const HORODATAGE_STATUT = [
+  ['depart_depot_le', 'en_route'],
+  ['arrivee_site_le', 'sur_site'],
+  ['retour_depot_le', 'terminee'],
+]
+
+/**
+ * EZ6 — statut à appliquer après un horodatage, ou `null` s'il n'y a rien à
+ * faire. Pur (testable) et volontairement CONSERVATEUR :
+ *  - il faut un horodatage NOUVEAU (absent avant, présent après) ;
+ *  - jamais de RECUL automatique (un check-in retapé ne ramène pas « Sur site »
+ *    une intervention déjà « Terminée ») — reculer reste une action manuelle ;
+ *  - rien si le statut est déjà celui déduit.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé
+export function statutDerive(avant, apres) {
+  if (!avant || !apres) return null
+  let cible = null
+  for (const [champ, statut] of HORODATAGE_STATUT) {
+    if (!avant[champ] && apres[champ]) cible = statut
+  }
+  if (!cible || apres.statut === cible) return null
+  if (interventionStatusRank(apres.statut) > interventionStatusRank(cible)) return null
+  return cible
+}
+
+/**
+ * EZ6 — statuts PROPOSÉS par le Select manuel : les voisins immédiats dans
+ * `INTERVENTION_STATUSES` (miroir de `Intervention.STATUT_ORDER`, rang ±1) plus
+ * le statut courant. C'est un ordre de LISTE, pas une règle métier : la vraie
+ * garde reste `transition_block_reason` côté serveur (VX105).
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé
+export function statutsProposables(statut) {
+  const r = interventionStatusRank(statut)
+  return INTERVENTION_STATUSES.filter(
+    (s) => Math.abs(interventionStatusRank(s) - r) <= 1)
 }
 
 function todayISO() {
@@ -168,10 +215,56 @@ export default function MaJourneePage() {
           }
         } catch { /* stockage indisponible */ }
       }
+      // EZ6 — `load()` rend les arrêts frais : le dérivateur de statut compare
+      // l'avant/après sans re-lire un état React pas encore commis.
+      return stops
     })
-    .catch(() => setRows([]))
+    .catch(() => { setRows([]); return [] })
     .finally(() => setLoading(false)), [today])
   useEffect(() => { load() }, [load])
+
+  // ── EZ6 — les HORODATAGES font le statut ──────────────────────────────────
+  // Le technicien faisait jusqu'à 5 changements manuels de Select que l'app peut
+  // déduire : départ dépôt → En route, check-in → Sur site, retour dépôt →
+  // Terminée. La transition est appliquée AUTOMATIQUEMENT après l'horodatage,
+  // avec un toast-undo 6 s (le recul est explicitement autorisé côté serveur).
+  // Si le serveur refuse (photos obligatoires manquantes, « Tout est chargé »
+  // non confirmé…), c'est un NO-OP SILENCIEUX + un indice inline — JAMAIS un
+  // toast rouge : le technicien n'a rien demandé, il a juste horodaté.
+  // La garde `transition_block_reason` reste la SEULE autorité (VX105) : on ne
+  // duplique aucune règle ici, on affiche le message renvoyé.
+  const [indiceStatut, setIndiceStatut] = useState(null)
+
+  const onFieldChanged = useCallback(async (avant) => {
+    const stops = await load()
+    if (!avant) return
+    const apres = (stops ?? []).find((s) => String(s.id) === String(avant.id))
+    const cible = statutDerive(avant, apres)
+    if (!cible) return
+    const ancien = apres.statut
+    try {
+      await installationsApi.updateIntervention(apres.id, { statut: cible })
+      setIndiceStatut(null)
+      load()
+      toastWithUndo({
+        message: `Statut : ${interventionStatusLabel(cible)}.`,
+        onUndo: () => {
+          installationsApi.updateIntervention(apres.id, { statut: ancien })
+            .then(() => load())
+            .catch(() => setIndiceStatut(
+              "Annulation impossible — changez le statut à la main ci-dessus."))
+        },
+      })
+    } catch (err) {
+      // NO-OP silencieux : le statut reste ce qu'il est, l'horodatage est gardé.
+      const data = err?.response?.data
+      setIndiceStatut(
+        data?.transition_block_reason
+        ?? data?.detail
+        ?? (typeof data?.statut === 'string' ? data.statut : null)
+        ?? `Statut « ${interventionStatusLabel(cible)} » non appliqué automatiquement.`)
+    }
+  }, [load])
 
   // VX226(b) — `load()` n'était appelé qu'au montage : une réaffectation
   // dispatchée à 10 h restait invisible jusqu'au rechargement manuel de
@@ -344,8 +437,11 @@ export default function MaJourneePage() {
         interv={active ? (rows.find((r) => r.id === active.id) ?? active) : null}
         initialTab={initialTab}
         isMobile={isMobile}
-        onClose={closeInterv}
-        onChanged={load} />
+        onClose={() => { setIndiceStatut(null); closeInterv() }}
+        indiceStatut={indiceStatut}
+        onIndiceStatut={setIndiceStatut}
+        /* EZ6 — chaque action terrain repasse par le dérivateur de statut. */
+        onChanged={onFieldChanged} />
 
       {/* VX42 — FAB « Photo rapide » : ouvre directement la première
           intervention du jour sur l'onglet Photos (le pouce vit dans le
@@ -386,7 +482,10 @@ const NEXT_ACTION = {
   terminee: { tab: 'outils', text: 'confirmer le retour d’outillage.' },
 }
 
-function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChanged }) {
+function InterventionFlowSheet({
+  interv, initialTab, isMobile, onClose, onChanged,
+  indiceStatut, onIndiceStatut,
+}) {
   // Le tab initial est fixé au montage ; le parent remonte le composant
   // (via `key={id:initialTab}`) quand l'intervention ou l'onglet visé change,
   // ce qui ré-initialise `tab` sans effet-setState (règle no-setstate-in-effect).
@@ -398,6 +497,10 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
     setTab(t)
     try { sessionStorage.setItem(SS_TAB, t) } catch { /* stockage indisponible */ }
   }
+  // EZ6 — les panneaux terrain (F5-F19) appellent `onChanged()` sans argument :
+  // on leur passe l'intervention AVANT l'action pour que le parent puisse
+  // comparer les horodatages et en déduire le statut.
+  const panelChanged = () => onChanged?.(interv)
   // VX105 — changement de statut depuis la fiche terrain. La garde serveur
   // (`transition_block_reason`) n'est JAMAIS dupliquée côté client : on affiche
   // le message 400 renvoyé tel quel.
@@ -407,7 +510,10 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
     try {
       await installationsApi.updateIntervention(interv.id, { statut })
       toast.success('Statut mis à jour.')
-      onChanged?.()
+      onIndiceStatut?.(null)
+      // EZ6 — le changement MANUEL ne repasse pas par le dérivateur (aucun
+      // horodatage nouveau) : `onChanged(interv)` recharge, c'est tout.
+      onChanged?.(interv)
     } catch (err) {
       const data = err?.response?.data
       toast.error(
@@ -441,7 +547,10 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
           </div>
           {/* VX105 — changer le statut depuis « Ma journée » : un technicien
               qui finit peut marquer « Terminée » sans passer par l'écran
-              bureau. La garde de transition reste côté serveur. */}
+              bureau. La garde de transition reste côté serveur.
+              EZ6 — ce Select n'est plus le chemin NORMAL (les horodatages font
+              le statut) : il reste pour les cas manuels, réduit aux voisins
+              immédiats de la liste d'états (rang ±1). */}
           <div className="flex flex-col gap-1 pt-1">
             <span className="text-[12px] text-muted-foreground">Statut</span>
             <Select value={interv.statut} onValueChange={changeStatut} disabled={busy}>
@@ -449,11 +558,19 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {INTERVENTION_STATUSES.map((s) => (
+                {statutsProposables(interv.statut).map((s) => (
                   <SelectItem key={s} value={s}>{INTERVENTION_STATUS_LABELS[s]}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {/* EZ6 — refus serveur d'une transition AUTOMATIQUE : indice inline,
+                jamais un toast rouge (le technicien n'a pas demandé ce
+                changement, il a horodaté). */}
+            {indiceStatut && (
+              <p className="text-[12px] text-muted-foreground" data-testid="mj-indice-statut" role="status">
+                {indiceStatut}
+              </p>
+            )}
           </div>
           <div className="pt-1"><CompteRenduButton intervention={interv} /></div>
         </SheetHeader>
@@ -488,17 +605,17 @@ function InterventionFlowSheet({ interv, initialTab, isMobile, onClose, onChange
               </TabsTrigger>
             ))}
           </TabsList>
-          <TabsContent value="prep" forceMount hidden={tab !== 'prep'}><PreparationPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="trajet" forceMount hidden={tab !== 'trajet'}><TrajetPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="safety" forceMount hidden={tab !== 'safety'}><SafetyPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="photos" forceMount hidden={tab !== 'photos'}><PhotosPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="serials" forceMount hidden={tab !== 'serials'}><SerialsPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="conso" forceMount hidden={tab !== 'conso'}><ConsommationPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="memos" forceMount hidden={tab !== 'memos'}><MemosPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="reserves" forceMount hidden={tab !== 'reserves'}><ReservesPanel intervention={interv} onChanged={onChanged} /></TabsContent>
-          <TabsContent value="signature" forceMount hidden={tab !== 'signature'}><SignatureClientPanel intervention={interv} onChanged={onChanged} /></TabsContent>
+          <TabsContent value="prep" forceMount hidden={tab !== 'prep'}><PreparationPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
+          <TabsContent value="trajet" forceMount hidden={tab !== 'trajet'}><TrajetPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
+          <TabsContent value="safety" forceMount hidden={tab !== 'safety'}><SafetyPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
+          <TabsContent value="photos" forceMount hidden={tab !== 'photos'}><PhotosPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
+          <TabsContent value="serials" forceMount hidden={tab !== 'serials'}><SerialsPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
+          <TabsContent value="conso" forceMount hidden={tab !== 'conso'}><ConsommationPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
+          <TabsContent value="memos" forceMount hidden={tab !== 'memos'}><MemosPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
+          <TabsContent value="reserves" forceMount hidden={tab !== 'reserves'}><ReservesPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
+          <TabsContent value="signature" forceMount hidden={tab !== 'signature'}><SignatureClientPanel intervention={interv} onChanged={panelChanged} /></TabsContent>
           <TabsContent value="outils" forceMount hidden={tab !== 'outils'}>
-            <ToolReturnPanel intervention={interv} onChanged={onChanged} />
+            <ToolReturnPanel intervention={interv} onChanged={panelChanged} />
             <CodePanel intervention={interv} />
           </TabsContent>
         </Tabs>
