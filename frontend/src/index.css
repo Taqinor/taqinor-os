@@ -9382,3 +9382,73 @@ textarea.form-control {
   .lv-lead-cell .lv-lead-societe::before { content: none; margin-right: 0; }
   .lv-lead-contact { margin-left: 0; }
 }
+
+/* ===========================================================================
+   APX6 — EN-TETES DE COLONNE : la barre segmentee d'activite (signature Odoo)
+   + la somme des montants a droite.
+   ---------------------------------------------------------------------------
+   VERIFIE D'ABORD : l'en-tete LB9 portait DEJA le compteur et la somme
+   (« total MAD · Prev. ponderee », UNE seule rangee — invariant conserve).
+   Ce qui manquait : lire d'un coup d'oeil l'ETAT D'ACTIVITE de l'etape.
+
+   La barre est une rangee flex de segments dont le `flex-grow` vaut le NOMBRE
+   de leads du seau : les largeurs sont donc exactement proportionnelles, sans
+   aucun calcul de pourcentage en JS. Un seau vide n'est pas rendu du tout
+   (jamais un segment de largeur nulle, ni un bouton tabbable invisible).
+
+   Tonalites = les memes jetons semantiques que la ligne d'action de la carte
+   (`.kb-actionline-*`) et la rampe LB14 : un « en retard » a la MEME couleur
+   partout dans l'ecran, en clair comme en sombre.
+   =========================================================================== */
+.lp-page[data-view] .kb-col-money {
+  text-align: right;
+}
+.lp-page[data-view] .kb-col-activite {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  margin-top: 0.2rem;
+  height: 4px;
+}
+.lp-page[data-view] .kb-act-seg {
+  flex-shrink: 1;
+  min-width: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  /* La cible visuelle fait 4 px de haut ; la zone de FRAPPE en fait 14 grace a
+     l'overlay ci-dessous — la barre reste fine sans devenir intouchable. */
+  position: relative;
+}
+.lp-page[data-view] .kb-act-seg::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 14px;
+  transform: translateY(-50%);
+}
+.lp-page[data-view] .kb-act-seg--danger { background: var(--destructive); }
+.lp-page[data-view] .kb-act-seg--warning { background: var(--warning-text); }
+.lp-page[data-view] .kb-act-seg--success { background: var(--success); }
+.lp-page[data-view] .kb-act-seg--muted {
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+}
+/* Segment actif : le seul a garder son opacite pleine, les autres s'estompent
+   — l'etat du filtre se LIT sans lire un libelle. */
+.lp-page[data-view] .kb-col-activite:has(.kb-act-seg--on) .kb-act-seg:not(.kb-act-seg--on) {
+  opacity: 0.35;
+}
+.lp-page[data-view] .kb-act-seg--on {
+  outline: 1px solid var(--foreground);
+  outline-offset: 1px;
+}
+.lp-page[data-view] .kb-act-seg:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .lp-page[data-view] .kb-act-seg:hover { filter: brightness(1.15); }
+}

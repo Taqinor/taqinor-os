@@ -164,6 +164,42 @@ const DraggableCard = memo(function DraggableCard({
   )
 })
 
+/* APX6 — LA BARRE D'ACTIVITÉ SEGMENTÉE (la signature Odoo des en-têtes de
+   colonne).
+   ---------------------------------------------------------------------------
+   VÉRIFICATION D'ABORD (exigée par la tâche) : l'en-tête LB9 portait déjà le
+   compteur ET la somme (« total MAD · Prév. pondéré », UNE seule rangée). Ce
+   qui manquait, c'est la lecture d'un coup d'œil de l'ÉTAT D'ACTIVITÉ de
+   l'étape : combien de leads y sont en retard, dus aujourd'hui, planifiés, ou
+   sans aucune activité prévue.
+
+   Les quatre seaux dérivent de `lead.next_activity.state`, DÉJÀ présent dans
+   la charge utile lue par la carte (LeadCard `kb-act-${state}`) : zéro requête
+   nouvelle, zéro champ serveur nouveau. Les clés d'étape, elles, viennent
+   toujours de `stages.js` (miroir de STAGES.py, règle #2) — aucune liste
+   d'étapes n'apparaît ici. */
+const ACTIVITE_SEAUX = [
+  { key: 'overdue', label: 'en retard', tone: 'danger' },
+  { key: 'today', label: 'aujourd’hui', tone: 'warning' },
+  { key: 'upcoming', label: 'planifié', tone: 'success' },
+  { key: 'none', label: 'sans activité', tone: 'muted' },
+]
+
+/** activiteSeau — seau d'activité d'un lead. `next_activity` absente = « sans
+    activité » (le seau qui compte : c'est celui-là qu'un commercial doit vider). */
+export function activiteSeau(lead) {
+  const state = lead?.next_activity?.state
+  return ACTIVITE_SEAUX.some((s) => s.key === state) ? state : 'none'
+}
+
+/** repartitionActivite — {overdue, today, upcoming, none} pour une colonne.
+    Fonction PURE (testable sans React ni navigateur). */
+export function repartitionActivite(leads) {
+  const acc = { overdue: 0, today: 0, upcoming: 0, none: 0 }
+  for (const lead of leads ?? []) acc[activiteSeau(lead)] += 1
+  return acc
+}
+
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
 // LB9 — région nommée (axe/lecteur d'écran atteignent chaque colonne par son
 // libellé + compteur) ; en-têtes déjà épinglés hors du corps scrollant depuis
@@ -174,10 +210,13 @@ const DraggableCard = memo(function DraggableCard({
 // cartes (`children`) ne sont même pas montées — mais le `<section>` garde
 // EXACTEMENT le même `ref={setNodeRef}`/`id: col.key` qu'en dépliée : elle
 // reste une zone droppable à part entière (surbrillance `kb-over` incluse).
-function StageColumn({ col, collapsed, onToggleCollapse, children }) {
+function StageColumn({ col, collapsed, onToggleCollapse, children, activiteFiltre, onFiltrerActivite }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.key })
   // Prévisionnel pondéré : total devis × probabilité de l'étape.
   const forecast = col.totalDevis * (STAGE_PROBABILITY[col.key] ?? 0)
+  // APX6 — répartition d'activité de l'étape (mémoïsée : la colonne se rend à
+  // chaque frappe de recherche, VX187/LB6).
+  const repartition = useMemo(() => repartitionActivite(col.leads), [col.leads])
   const chevronLabel = collapsed
     ? `Déplier la colonne ${col.label}`
     : `Replier la colonne ${col.label}`
@@ -213,14 +252,45 @@ function StageColumn({ col, collapsed, onToggleCollapse, children }) {
         </div>
         {/* LB9 — une SEULE rangée « total MAD · Prév. pondéré » (au lieu de
             deux lignes empilées) ; le tooltip explique la pondération
-            STAGE_PROBABILITY importée de plus haut (jamais une seconde table). */}
+            STAGE_PROBABILITY importée de plus haut (jamais une seconde table).
+            APX6 — la somme porte explicitement `.num` (typographie de données)
+            et s'aligne à DROITE de l'en-tête. */}
         {!collapsed && col.totalDevis > 0 && (
           <span
-            className="kb-col-money"
+            className="kb-col-money num"
             title={`Prévisionnel pondéré à ${Math.round((STAGE_PROBABILITY[col.key] ?? 0) * 100)} % (probabilité de conversion à cette étape)`}
           >
             {formatMAD(col.totalDevis)} · Prév. {formatMAD(forecast)}
           </span>
+        )}
+        {/* APX6 — barre segmentée d'activité, proportionnelle au nombre de
+            leads de l'étape. Chaque segment est un BOUTON : il filtre la
+            colonne (et seulement elle) sur ce seau ; re-cliquer l'enlève. Un
+            seau vide n'est pas rendu (jamais un segment de largeur nulle et
+            tabbable). Le libellé accessible porte le compte : la couleur n'est
+            jamais le seul porteur de sens. */}
+        {!collapsed && col.count > 0 && (
+          <div
+            className="kb-col-activite"
+            role="group"
+            aria-label={`Activité de l’étape ${col.label}`}
+          >
+            {ACTIVITE_SEAUX.filter((s) => repartition[s.key] > 0).map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                className={`kb-act-seg kb-act-seg--${s.tone}${activiteFiltre === s.key ? ' kb-act-seg--on' : ''}`}
+                style={{ flexGrow: repartition[s.key] }}
+                aria-pressed={activiteFiltre === s.key}
+                title={`${repartition[s.key]} lead${repartition[s.key] > 1 ? 's' : ''} ${s.label} — cliquer pour filtrer cette étape`}
+                onClick={() => onFiltrerActivite?.(col.key, s.key)}
+              >
+                <span className="sr-only">
+                  {repartition[s.key]} lead{repartition[s.key] > 1 ? 's' : ''} {s.label}
+                </span>
+              </button>
+            ))}
+          </div>
         )}
       </header>
       {collapsed ? (
@@ -292,6 +362,21 @@ export default function KanbanView({
   // collapsedColumns.js) : lu UNE FOIS au montage (lazy useState — jamais de
   // repli par défaut, `readCollapsedStages()` renvoie `[]` tant que
   // l'utilisatrice n'a jamais replié une colonne), écrit à chaque bascule.
+  /* APX6 — filtre d'activité PAR COLONNE (`{ [stageKey]: seau }`). Volontairement
+     LOCAL et éphémère : c'est un coup de projecteur sur une étape (« montre-moi
+     les 7 en retard de Devis envoyé »), pas une 7ᵉ dimension du jeu de filtres
+     global — l'ajouter à `EMPTY_FILTERS` en ferait une chose à persister, à
+     mettre dans l'URL et à afficher en facette, pour un geste qui se défait
+     d'un second clic. Re-cliquer le même segment l'enlève. */
+  const [activiteParEtape, setActiviteParEtape] = useState({})
+  const filtrerActivite = useCallback((stageKey, seau) => {
+    setActiviteParEtape((prev) => (
+      prev[stageKey] === seau
+        ? (() => { const next = { ...prev }; delete next[stageKey]; return next })()
+        : { ...prev, [stageKey]: seau }
+    ))
+  }, [])
+
   const [collapsedStages, setCollapsedStages] = useState(() => new Set(readCollapsedStages()))
   const toggleCollapsed = useCallback((stageKey) => {
     setCollapsedStages((prev) => {
@@ -426,8 +511,17 @@ export default function KanbanView({
             col={col}
             collapsed={collapsedStages.has(col.key)}
             onToggleCollapse={() => toggleCollapsed(col.key)}
+            activiteFiltre={activiteParEtape[col.key] ?? null}
+            onFiltrerActivite={filtrerActivite}
           >
-            {col.leads.map((lead) => (
+            {/* APX6 — le filtre d'activité ne masque QUE des cartes : les
+                compteurs et la somme de l'en-tête restent les totaux RÉELS de
+                l'étape (sinon cliquer un segment redessinerait la barre qu'on
+                vient de cliquer). */}
+            {(activiteParEtape[col.key]
+              ? col.leads.filter((l) => activiteSeau(l) === activiteParEtape[col.key])
+              : col.leads
+            ).map((lead) => (
               <DraggableCard
                 key={lead.id}
                 lead={lead}

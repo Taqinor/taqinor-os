@@ -50,10 +50,14 @@ test('LB9 : colonne à 0 lead = zone de dépôt en pointillés, plus « Aucun le
   assert.doesNotMatch(block, />Aucun lead</)
 })
 
-test('LB9 : une SEULE rangée montant + prévisionnel pondéré, tooltip STAGE_PROBABILITY (jamais une 2e table)', () => {
+// APX6 — la somme porte désormais `.num` (typographie de données) en plus de
+// `.kb-col-money` : l'invariant LB9 « UNE seule rangée d'argent » est inchangé,
+// c'est la classe qui s'est enrichie.
+test('LB9/APX6 : une SEULE rangée montant + prévisionnel pondéré, tooltip STAGE_PROBABILITY (jamais une 2e table)', () => {
   const block = stageColumnBody()
   // Une seule occurrence de kb-col-money (fini les deux <span> empilés).
-  assert.equal((block.match(/className="kb-col-money"/g) || []).length, 1)
+  assert.equal((block.match(/className="kb-col-money num"/g) || []).length, 1)
+  assert.equal((block.match(/kb-col-money/g) || []).length, 1)
   assert.doesNotMatch(block, /kb-col-forecast/)
   assert.match(block, /STAGE_PROBABILITY\[col\.key\]/)
   assert.match(block, /Prév\. \{formatMAD\(forecast\)\}/)
