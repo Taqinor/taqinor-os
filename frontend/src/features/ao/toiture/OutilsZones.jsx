@@ -16,7 +16,7 @@
 
    La légende est GÉNÉRÉE depuis les natures réellement présentes — une légende
    figée finit toujours par annoncer une nature qui n'est pas sur la planche. */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useId, useMemo, useState } from 'react'
 import { aireM2, contourSeCroise } from './repere'
 
 const NATURES_ZONE = [
@@ -63,6 +63,10 @@ export default function OutilsZones({
   const [saisieX, setSaisieX] = useState('')
   const [saisieY, setSaisieY] = useState('')
   const [erreur, setErreur] = useState('')
+  // Identifiants UNIQUES par instance : deux OutilsZones montés côte à côte
+  // partageaient le même id, donc le htmlFor du second pointait sur le champ du
+  // premier — son propre <input> n'était plus étiqueté du tout.
+  const idSaisie = useId()
 
   const publier = useCallback(
     (suivantes) => {
@@ -183,10 +187,10 @@ export default function OutilsZones({
       </p>
 
       <div className="ao-zones-saisie">
-        <label className="ao-champ" htmlFor="ao-zone-x">
+        <label className="ao-champ" htmlFor={`${idSaisie}-x`}>
           <span>Point x (m)</span>
           <input
-            id="ao-zone-x"
+            id={`${idSaisie}-x`}
             className="form-control"
             type="text"
             inputMode="decimal"
@@ -194,10 +198,10 @@ export default function OutilsZones({
             onChange={(e) => setSaisieX(e.target.value)}
           />
         </label>
-        <label className="ao-champ" htmlFor="ao-zone-y">
+        <label className="ao-champ" htmlFor={`${idSaisie}-y`}>
           <span>Point y (m)</span>
           <input
-            id="ao-zone-y"
+            id={`${idSaisie}-y`}
             className="form-control"
             type="text"
             inputMode="decimal"
