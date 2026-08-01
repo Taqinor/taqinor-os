@@ -250,3 +250,11 @@ le dict de contexte.
   permissions non testable. Les briques que ces routes exposeront sont, elles,
   livrées et testées (production du pack, ZIP, bon à tirer, contrôle,
   sanitisation, cascade, propagation).
+- **AOF155 — verrou de dossier : `[BLOCKED: attend AOF115]`.** Le verrou est
+  un `select_for_update` sur la LIGNE `DossierAO` plus un drapeau persistant
+  « opération en cours par X depuis HH:MM » — donc des champs et une migration
+  sur un modèle qui n'existe pas encore. Recoder un verrou hors-base
+  (fichier, cache) serait un substitut local à une primitive de la plateforme.
+  À noter pour le fold : l'idempotence par empreinte livrée en AOF153 règle le
+  double-clic d'UN utilisateur, pas l'édition concurrente de DEUX — les deux
+  mécanismes sont complémentaires, AOF153 ne dispense pas d'AOF155.
