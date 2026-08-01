@@ -7,6 +7,7 @@ rôles ``secretaire_medicale``/``praticien``/``caissier_sante``) est posé par
 NTSAN17 — en attendant, le défaut « authentifié suffit » de
 ``CompanyScopedModelViewSet`` s'applique.
 """
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -17,14 +18,16 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ActeMedical, ActeRealise, Admission, Convention, FactureSante,
-    GrilleTarifaire, HoraireOuverturePraticien, IndisponibilitePraticien,
-    MotifConsultation, PaiementSante, Patient, Praticien, PraticienSite,
-    PriseEnCharge, RendezVous, Salle)
+    ActeMedical, ActeRealise, Admission, Convention, CycleSterilisation,
+    FactureSante, GrilleTarifaire, HoraireOuverturePraticien,
+    IndisponibilitePraticien, InstrumentSterilise, MotifConsultation,
+    PaiementSante, Patient, Praticien, PraticienSite, PriseEnCharge,
+    RendezVous, Salle)
 from .serializers import (
     ActeMedicalSerializer, ActeRealiseSerializer, AdmissionSerializer,
-    ConventionSerializer, FactureSanteSerializer, GrilleTarifaireSerializer,
-    HoraireOuverturePraticienSerializer, IndisponibilitePraticienSerializer,
+    ConventionSerializer, CycleSterilisationSerializer, FactureSanteSerializer,
+    GrilleTarifaireSerializer, HoraireOuverturePraticienSerializer,
+    IndisponibilitePraticienSerializer, InstrumentSteriliseSerializer,
     MotifConsultationSerializer, PaiementSanteSerializer, PatientSerializer,
     PraticienSerializer, PraticienSiteSerializer, PriseEnChargeSerializer,
     RendezVousSerializer, SalleSerializer)
@@ -298,6 +301,11 @@ class ActeRealiseViewSet(CompanyScopedModelViewSet):
             quantite=data.get('quantite', 1),
             facturable=data.get('facturable', True),
         )
+        # NTSAN24 — M2M posé APRÈS création (``realiser_acte`` ne le connaît
+        # pas) : jamais perdu si fourni à la création de l'acte.
+        instruments = data.get('instruments_utilises')
+        if instruments:
+            instance.instruments_utilises.set(instruments)
         serializer.instance = instance
 
 
@@ -360,6 +368,29 @@ class FactureSanteViewSet(CompanyScopedModelViewSet):
             FactureSanteSerializer(facture).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], url_path='feuille-soins')
+    def feuille_soins(self, request, pk=None):
+        """NTSAN14 — feuille de soins (FSE-like) IMPRIMABLE de cette facture :
+        un item par acte réalisé avec son code, montants et convention.
+
+        Imprimé uniquement — aucune télétransmission CNOPS/CNSS. Rendu par le
+        renderer dédié ``sante/feuille_soins_pdf.py`` (moteur PDF partagé
+        ``core.pdf``), JAMAIS ``apps/ventes/quote_engine/`` (règle #4)."""
+        from .services import imprimer_feuille_soins
+
+        facture = self.get_object()
+        try:
+            facture, pdf_bytes = imprimer_feuille_soins(
+                facture.pk, company=request.user.company)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="feuille_soins_{facture.pk}.pdf"')
+        return resp
+
     @action(detail=False, methods=['get'], url_path='statistiques')
     def statistiques(self, request):
         """NTSAN28 — actes les plus facturés (volume + CA) et répartition du
@@ -372,6 +403,24 @@ class FactureSanteViewSet(CompanyScopedModelViewSet):
             date_debut=request.query_params.get('date_debut'),
             date_fin=request.query_params.get('date_fin'))
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='export-lot')
+    def export_lot(self, request):
+        """NTSAN40 — export groupé (ZIP) des feuilles de soins PDF de toutes
+        les factures de la période `?date_debut=&date_fin=` (AAAA-MM-JJ,
+        toutes deux optionnelles). RÉUTILISE le générateur PDF de NTSAN14 EN
+        BOUCLE (``services.exporter_feuilles_soins_lot``) — jamais un moteur
+        PDF alternatif."""
+        from .services import exporter_feuilles_soins_lot
+
+        zip_bytes = exporter_feuilles_soins_lot(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'))
+        resp = HttpResponse(zip_bytes, content_type='application/zip')
+        resp['Content-Disposition'] = (
+            'attachment; filename="feuilles_soins.zip"')
+        return resp
 
 
 class DisponibilitesView(APIView):
@@ -436,3 +485,59 @@ class PaiementSanteViewSet(CompanyScopedModelViewSet):
             encaisse_par=self.request.user,
         )
         serializer.instance = instance
+
+
+class CycleSterilisationViewSet(CompanyScopedModelViewSet):
+    """NTSAN23 — cycles d'autoclave. Un cycle enregistré (ou basculé) NON
+    CONFORME émet ``core.events.cycle_sterilisation_non_conforme`` : ``qhse``
+    y est abonné et ouvre la ``NonConformite`` liée — ``sante`` n'importe
+    JAMAIS ``qhse.models``. L'``operateur`` est posé côté serveur."""
+
+    queryset = CycleSterilisation.objects.select_related('operateur').all()
+    serializer_class = CycleSterilisationSerializer
+
+    def perform_create(self, serializer):
+        from .services import appliquer_statut_cycle_sterilisation
+
+        serializer.save(
+            company=self.request.user.company, operateur=self.request.user)
+        appliquer_statut_cycle_sterilisation(
+            serializer.instance, user=self.request.user)
+
+    def perform_update(self, serializer):
+        from .services import appliquer_statut_cycle_sterilisation
+
+        # Statut AVANT écriture : l'instance du serializer porte encore les
+        # valeurs relues en base tant que ``save()`` n'a pas eu lieu.
+        ancien_statut = serializer.instance.statut
+        super().perform_update(serializer)
+        appliquer_statut_cycle_sterilisation(
+            serializer.instance, ancien_statut=ancien_statut,
+            user=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='patients-concernes')
+    def patients_concernes(self, request, pk=None):
+        """NTSAN24 — traçabilité instrument → patient : patients ayant reçu
+        un acte utilisant un instrument stérilisé de CE cycle (rappel
+        sanitaire), en une seule requête indexée
+        (``selectors.patients_par_cycle_sterilisation``)."""
+        from .selectors import patients_par_cycle_sterilisation
+
+        cycle = self.get_object()
+        patients = patients_par_cycle_sterilisation(
+            request.user.company, cycle)
+        return Response({
+            'count': len(patients),
+            'results': [
+                {'id': p.id, 'nom': p.nom, 'prenom': p.prenom}
+                for p in patients
+            ],
+        })
+
+
+class InstrumentSteriliseViewSet(CompanyScopedModelViewSet):
+    """NTSAN23 — instruments/kits passés dans un cycle (traçabilité de
+    rappel). NTSAN24 les rattachera aux actes réalisés."""
+
+    queryset = InstrumentSterilise.objects.select_related('cycle').all()
+    serializer_class = InstrumentSteriliseSerializer

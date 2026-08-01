@@ -2,10 +2,12 @@
 from rest_framework import serializers
 
 from .models import (
-    AnneeScolaire, Classe, CreneauEmploiDuTemps, EcheancierScolarite, Eleve,
-    Evaluation, Famille, GrilleTarifaire, IncidentDiscipline, Inscription,
-    InscriptionCantine, LigneEcheance, Matiere, MatiereClasse, MenuCantine,
-    Niveau, Note, ParametresEducation, Presence, Remise, Seance)
+    AffectationTransport, AnneeScolaire, ArretTransport, Bulletin,
+    CircuitTransport, Classe, CreneauEmploiDuTemps, EcheancierScolarite,
+    Eleve, Evaluation, Famille, GrilleTarifaire, IncidentDiscipline,
+    Inscription, InscriptionCantine, LigneEcheance, Matiere, MatiereClasse,
+    MenuCantine, Niveau, Note, ParametresEducation, PeriodeScolaire, Presence,
+    Remise, Seance)
 
 
 class AnneeScolaireSerializer(serializers.ModelSerializer):
@@ -230,3 +232,53 @@ class IncidentDisciplineSerializer(serializers.ModelSerializer):
             'id', 'eleve', 'date', 'type', 'gravite', 'description',
             'signale_par', 'statut']
         read_only_fields = ['id', 'signale_par', 'statut']
+
+
+# =============================================================================
+# NTEDU17 — Périodes scolaires et bulletins.
+# =============================================================================
+
+class PeriodeScolaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PeriodeScolaire
+        fields = [
+            'id', 'annee_scolaire', 'libelle', 'ordre', 'date_debut',
+            'date_fin']
+        read_only_fields = ['id']
+
+
+class BulletinSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Bulletin
+        fields = [
+            'id', 'eleve', 'periode', 'appreciation_generale', 'publie',
+            'date_publication']
+        # NTEDU33 — `publie`/`date_publication` basculent EXCLUSIVEMENT via
+        # BulletinViewSet.publier (jamais un PATCH direct, même politique que
+        # IncidentDiscipline.statut).
+        read_only_fields = ['id', 'publie', 'date_publication']
+
+
+# =============================================================================
+# NTEDU23 — Transport scolaire.
+# =============================================================================
+
+class CircuitTransportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CircuitTransport
+        fields = ['id', 'nom', 'vehicule', 'actif']
+        read_only_fields = ['id']
+
+
+class ArretTransportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ArretTransport
+        fields = ['id', 'circuit', 'nom', 'ordre', 'heure_passage_estimee']
+        read_only_fields = ['id']
+
+
+class AffectationTransportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AffectationTransport
+        fields = ['id', 'eleve', 'circuit', 'arret', 'date_debut', 'date_fin']
+        read_only_fields = ['id']

@@ -238,6 +238,10 @@ class UserSerializer(serializers.ModelSerializer):
             'poste', 'poste_ref', 'poste_ref_intitule',
             'avatar_key', 'avatar_url',
             'supervisor', 'supervisor_nom',
+            # NTMOB6 — lecture seule ici : l'écriture passe UNIQUEMENT par
+            # MobileHomeRouteView (whitelist stricte), jamais par ce PATCH
+            # générique (admin gérant un AUTRE compte via UserViewSet).
+            'mobile_home_route',
             'societes_operables', 'active_company_id',
             'is_active', 'is_superuser', 'is_protected',
             # Rotation forcée des identifiants (N96). ``must_change_password`` est
@@ -249,6 +253,13 @@ class UserSerializer(serializers.ModelSerializer):
             'password', 'date_joined', 'last_login',
             'company_id', 'company_nom',
             'company_est_demo', 'company_mode_presentation_actif',
+            # NTPRT8 — portée du compte (NTPRT1) + id de l'entité portail
+            # rattachée. Le shell frontend en a besoin pour router un compte
+            # PORTAIL vers `/portail/<scope>` et le tenir hors de l'ERP interne.
+            # STRICTEMENT en LECTURE SEULE (cf. `read_only_fields`) : personne
+            # ne se re-scope ni ne s'auto-rattache par un PATCH de son profil.
+            'portee', 'portail_client_id', 'portail_fournisseur_id',
+            'portail_partenaire_id',
         )
         read_only_fields = (
             'id', 'date_joined', 'last_login',
@@ -258,6 +269,12 @@ class UserSerializer(serializers.ModelSerializer):
             'password_changed_at',
             'role_nom', 'role_legacy', 'menu_tier', 'permissions',
             'modules_desactives',
+            # NTPRT8 — la portée portail et le rattachement d'entité sont posés
+            # UNIQUEMENT par le provisionnement côté serveur (NTPRT2/3/4) :
+            # jamais lus du corps d'une requête (ce serait une escalade de
+            # privilège / un franchissement de tenant en une ligne de PATCH).
+            'portee', 'portail_client_id', 'portail_fournisseur_id',
+            'portail_partenaire_id',
             # DC17 — le référentiel poste ne se pose PAS par un PATCH direct du
             # corps utilisateur (multi-tenant : jamais de Poste cross-société lu
             # de la requête). Il est rattaché par la migration de dédup puis géré
@@ -267,6 +284,9 @@ class UserSerializer(serializers.ModelSerializer):
             # avatar_key se pilote par l'endpoint d'upload dédié, jamais par
             # un PATCH direct du corps ; avatar_url est calculé (présigné).
             'avatar_key', 'avatar_url',
+            # NTMOB6 — se pilote UNIQUEMENT par MobileHomeRouteView (whitelist
+            # stricte de routes), jamais par ce PATCH générique.
+            'mobile_home_route',
             # is_protected ne se pilote PAS via l'API (pas de privilège qui
             # se donne tout seul) : seulement par le seed et la commande de
             # récupération serveur.

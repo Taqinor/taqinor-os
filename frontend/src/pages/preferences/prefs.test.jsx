@@ -1,12 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+// NTMOB12 — compressImage() dépend du décodage d'image (Image/canvas), non
+// fiable en jsdom : mocké pour vérifier que compressPhotoForUpload DÉLÈGUE
+// correctement, sans tester compressImage lui-même (hors périmètre ici).
+vi.mock('../../ui/file-utils', () => ({
+  compressImage: vi.fn((f) => Promise.resolve(
+    new File([f], 'compressed.jpg', { type: 'image/jpeg' }))),
+}))
 import {
   getLandingModule, setLandingModule, resolveLandingPath, getLastModuleSegment,
   getReducedMotionPref, setReducedMotionPref, applyReducedMotion,
+  getPhotoQualityPref, setPhotoQualityPref, compressPhotoForUpload,
 } from './prefs'
+import { compressImage } from '../../ui/file-utils'
 
 const LANDING_KEY = 'taqinor.landingModule'
 const REDUCED_MOTION_KEY = 'taqinor.reducedMotion'
 const LAST_MODULE_KEY = 'taqinor.lastModule'
+const PHOTO_QUALITY_KEY = 'taqinor.photoQuality'
 
 const CONFIGS = [
   { key: 'compta', nav: { label: 'COMPTABILITÉ', items: [{ to: '/comptabilite' }] } },
@@ -19,8 +29,10 @@ describe('VX46 — prefs.js (logique pure, persistance localStorage)', () => {
     window.localStorage.removeItem(LANDING_KEY)
     window.localStorage.removeItem(REDUCED_MOTION_KEY)
     window.localStorage.removeItem(LAST_MODULE_KEY)
+    window.localStorage.removeItem(PHOTO_QUALITY_KEY)
     document.documentElement.removeAttribute('data-reduced-motion')
     document.getElementById('taqinor-reduced-motion-override')?.remove()
+    compressImage.mockClear()
   })
 
   it('module d’atterrissage : persiste et se relit', () => {
@@ -68,5 +80,38 @@ describe('VX46 — prefs.js (logique pure, persistance localStorage)', () => {
     applyReducedMotion(true)
     const tags = document.querySelectorAll('#taqinor-reduced-motion-override')
     expect(tags.length).toBe(1)
+  })
+
+  describe('NTMOB12 — qualité photo (Standard compressé / Original)', () => {
+    it('défaut = compressed (comportement historique inchangé)', () => {
+      expect(getPhotoQualityPref()).toBe('compressed')
+    })
+
+    it('persiste "original" puis se relit', () => {
+      setPhotoQualityPref('original')
+      expect(getPhotoQualityPref()).toBe('original')
+    })
+
+    it('repasser à "compressed" efface la clé (repli défaut)', () => {
+      setPhotoQualityPref('original')
+      setPhotoQualityPref('compressed')
+      expect(getPhotoQualityPref()).toBe('compressed')
+      expect(window.localStorage.getItem(PHOTO_QUALITY_KEY)).toBeNull()
+    })
+
+    it('compressPhotoForUpload délègue à compressImage() par défaut', async () => {
+      const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' })
+      const out = await compressPhotoForUpload(file)
+      expect(compressImage).toHaveBeenCalledWith(file)
+      expect(out.name).toBe('compressed.jpg')
+    })
+
+    it('compressPhotoForUpload est un passthrough total quand "original"', async () => {
+      setPhotoQualityPref('original')
+      const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' })
+      const out = await compressPhotoForUpload(file)
+      expect(compressImage).not.toHaveBeenCalled()
+      expect(out).toBe(file)
+    })
   })
 })

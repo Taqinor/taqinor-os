@@ -212,12 +212,25 @@ class EventType(models.TextChoices):
     # FeedbackProduit) non-lu, par thème — notifie les gérants/staff de
     # chaque société (même patron de destinataires que N76 daily_digest).
     FEEDBACK_DIGEST = 'feedback_digest', 'Récapitulatif feedback produit'
+    # NTIDE45 — un feedback produit (apps.innovation.FeedbackProduit) est
+    # marqué « étoilé » (important) : notifie les admins/gérants de la
+    # société (« founder », si déployé — même patron de destinataires que
+    # ``FEEDBACK_DIGEST``), UNE SEULE fois, à la transition False → True.
+    FEEDBACK_STARRED = 'feedback_starred', 'Feedback marqué important'
     # NTEDU40 — un élève actif n'a aucune ``education.Inscription`` créée pour
     # l'année scolaire suivante après la date limite paramétrable
     # (``ParametresEducation.date_limite_reinscription``) : notifie
     # l'ADMINISTRATION (jamais les familles directement — contrôle humain).
     EDUCATION_REINSCRIPTION_RELANCE = (
         'education_reinscription_relance', 'Relance réinscription à traiter')
+    # NTIDE52 — gabarits e-mail personnalisables des 3 étapes clés du cycle de
+    # vie d'une idée (apps.innovation.Idee) : réception (bienvenue, à la
+    # création NON brouillon), retenue et réalisée (à la transition de
+    # statut) — notifie l'AUTEUR (in-app + email, sujet/corps personnalisables
+    # via InnovationSettings, préférences respectées par notify()).
+    IDEA_RECEIVED = 'idea_received', 'Idée reçue (bienvenue)'
+    IDEA_RETAINED = 'idea_retenue', 'Idée retenue'
+    IDEA_REALIZED = 'idea_realisee', 'Idée réalisée'
 
 
 class Channel(models.TextChoices):
@@ -307,6 +320,13 @@ class NotificationPreference(models.Model):
     in_app = models.BooleanField(default=True)
     whatsapp = models.BooleanField(default=False)
     email = models.BooleanField(default=False)
+    # NTMOB8 — opt-in PUSH par catégorie d'événement, sur CET appareil (au-delà
+    # de l'opt-in device global N92/PushSubscription qu'il ne duplique pas :
+    # le push n'est envoyé que si l'appareil a un abonnement ET que cette
+    # catégorie reste activée). Défaut True = comportement historique
+    # inchangé (le push partait déjà pour tout événement dès qu'un abonnement
+    # existait, sans distinction de catégorie).
+    push = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = 'Préférence de notification'

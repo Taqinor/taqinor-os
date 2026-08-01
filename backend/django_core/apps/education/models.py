@@ -465,6 +465,14 @@ class LigneEcheance(TenantModel):
     # lignes futures (statut a_venir) sans toucher les lignes déjà facturées
     # quand une InscriptionCantine change (services_cantine.resynchroniser_
     # lignes_futures_cantine — jamais rétroactif).
+    transport_montant = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant transport (inclus)')  # NTEDU24 — composante
+    # transport du montant total, ISOLÉE (même principe que cantine_montant)
+    # pour un recalcul propre des lignes futures (statut a_venir) sans
+    # toucher les lignes déjà facturées quand une AffectationTransport change
+    # (services_transport.resynchroniser_lignes_futures_transport — jamais
+    # rétroactif).
 
     class Meta:
         verbose_name = "Ligne d'échéance"
@@ -958,3 +966,160 @@ class CompteParent(TenantModel):
 
     def __str__(self):
         return f'Portail parent — {self.email}'
+
+
+# =============================================================================
+# NTEDU17 — Période scolaire + bulletin.
+# =============================================================================
+
+class PeriodeScolaire(TenantModel):
+    """NTEDU17 — période de notation d'une année scolaire (trimestre,
+    semestre…). C'est l'entité désignée par ``?periode=<id>`` sur le bulletin :
+    ses bornes ``date_debut``/``date_fin`` délimitent À LA FOIS les évaluations
+    prises en compte dans les moyennes ET les présences comptées sur la
+    période — jamais deux définitions divergentes."""
+
+    annee_scolaire = models.ForeignKey(
+        AnneeScolaire, on_delete=models.CASCADE, related_name='periodes',  # on_delete: composition (parent-enfant)
+        verbose_name='Année scolaire')
+    libelle = models.CharField(max_length=50, verbose_name='Libellé')
+    ordre = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Ordre dans l\'année')
+    date_debut = models.DateField(verbose_name='Date de début')
+    date_fin = models.DateField(verbose_name='Date de fin')
+
+    class Meta:
+        verbose_name = 'Période scolaire'
+        verbose_name_plural = 'Périodes scolaires'
+        ordering = ['annee_scolaire', 'ordre']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'annee_scolaire', 'ordre'],
+                name='education_periode_unique_par_annee_ordre'),
+        ]
+
+    def __str__(self):
+        return f"{self.libelle} ({self.annee_scolaire.libelle})"
+
+
+class Bulletin(TenantModel):
+    """NTEDU17 — bulletin d'un élève pour une période. Le modèle ne stocke QUE
+    ce qui n'est pas dérivable des notes : l'``appreciation_generale`` de
+    l'enseignant principal. Moyennes, rang, mention et présences sont
+    RECALCULÉS au rendu (``services.donnees_bulletin``) — jamais dénormalisés,
+    donc jamais faux après une correction de note.
+
+    Le PDF est rendu par ``education/bulletin_pdf.py`` (moteur partagé
+    ``core.pdf.render_pdf``) : un bulletin N'EST PAS un devis client, il ne
+    passe donc JAMAIS par ``apps/ventes/quote_engine/`` (règle #4)."""
+
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE, related_name='bulletins',  # on_delete: composition (parent-enfant)
+        verbose_name='Élève')
+    periode = models.ForeignKey(
+        PeriodeScolaire, on_delete=models.CASCADE, related_name='bulletins',  # on_delete: composition (parent-enfant)
+        verbose_name='Période')
+    appreciation_generale = models.TextField(
+        blank=True, default='', verbose_name='Appréciation générale')
+    publie = models.BooleanField(
+        default=False, verbose_name='Publié')  # NTEDU33 — visibilité portail
+    # parents : un bulletin en brouillon (``publie=False``) n'est JAMAIS
+    # exposé par ``public_views.portail_bulletins`` même si les notes sont
+    # déjà saisies — bascule EXCLUSIVEMENT via l'action dédiée
+    # ``BulletinViewSet.publier`` (jamais un PATCH direct, même politique que
+    # ``IncidentDiscipline.statut``).
+    date_publication = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de publication')
+
+    class Meta:
+        verbose_name = 'Bulletin'
+        verbose_name_plural = 'Bulletins'
+        ordering = ['-periode__ordre', 'eleve']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'eleve', 'periode'],
+                name='education_bulletin_unique_par_eleve_periode'),
+        ]
+
+    def __str__(self):
+        return f"Bulletin {self.eleve} — {self.periode}"
+
+
+# =============================================================================
+# NTEDU23 — Transport scolaire : circuits, arrêts, affectations.
+# =============================================================================
+
+class CircuitTransport(TenantModel):
+    """NTEDU23 — circuit de ramassage scolaire. ``vehicule`` référence
+    ``flotte.Vehicule`` PAR FK À CHAÎNE (jamais un import de
+    ``apps.flotte.models``) ; la DISPONIBILITÉ du véhicule est lue via
+    ``apps.flotte.selectors.vehicule_operationnel`` — frontière cross-app
+    respectée dans les deux sens (référence par chaîne, lecture par
+    sélecteur)."""
+
+    nom = models.CharField(max_length=100, verbose_name='Nom du circuit')
+    vehicule = models.ForeignKey(
+        'flotte.Vehicule', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='circuits_transport_education',
+        verbose_name='Véhicule (flotte)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Circuit de transport'
+        verbose_name_plural = 'Circuits de transport'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class ArretTransport(TenantModel):
+    """NTEDU23 — arrêt d'un circuit, ordonné le long du parcours."""
+
+    circuit = models.ForeignKey(
+        CircuitTransport, on_delete=models.CASCADE, related_name='arrets',  # on_delete: composition (parent-enfant)
+        verbose_name='Circuit')
+    nom = models.CharField(max_length=120, verbose_name='Nom de l\'arrêt')
+    ordre = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Ordre sur le circuit')
+    heure_passage_estimee = models.TimeField(
+        null=True, blank=True, verbose_name='Heure de passage estimée')
+
+    class Meta:
+        verbose_name = 'Arrêt de transport'
+        verbose_name_plural = 'Arrêts de transport'
+        ordering = ['circuit', 'ordre']
+
+    def __str__(self):
+        return f"{self.nom} ({self.circuit})"
+
+
+class AffectationTransport(TenantModel):
+    """NTEDU23 — affectation d'un élève à un circuit/arrêt sur une période.
+    ``date_fin`` vide = affectation en cours.
+
+    L'absence de véhicule DISPONIBLE sur le circuit est un AVERTISSEMENT
+    (« soft warning ») retourné par l'API : elle n'empêche JAMAIS
+    l'enregistrement — l'établissement affecte souvent les élèves avant
+    d'immobiliser un bus."""
+
+    eleve = models.ForeignKey(
+        Eleve, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='affectations_transport', verbose_name='Élève')
+    circuit = models.ForeignKey(
+        CircuitTransport, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='affectations', verbose_name='Circuit')
+    arret = models.ForeignKey(
+        ArretTransport, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='affectations', verbose_name='Arrêt')
+    date_debut = models.DateField(verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+
+    class Meta:
+        verbose_name = 'Affectation transport'
+        verbose_name_plural = 'Affectations transport'
+        ordering = ['-date_debut']
+
+    def __str__(self):
+        return f"{self.eleve} — {self.circuit}"

@@ -64,3 +64,29 @@ def rendre_modele(template, context=None, *, strict=False):
     """Rend un ``MessageTemplate`` : ``(sujet_rendu, corps_rendu)``."""
     return (rendre(template.sujet, context, strict=strict),
             rendre(template.corps, context, strict=strict))
+
+
+def rendre_html(texte, context=None, *, strict=False):
+    """Comme :func:`rendre`, mais pour un corps HTML : valeurs ÉCHAPPÉES.
+
+    NTEXT18 — un gabarit de document est du HTML rendu ensuite en PDF. Les
+    valeurs substituées viennent de données saisies par l'utilisateur : elles
+    sont échappées (``&``, ``<``, ``>``, guillemets) pour qu'un nom de client
+    contenant ``<`` ne puisse jamais casser la mise en page ni injecter du
+    balisage. Le HTML du GABARIT lui-même est conservé tel quel — c'est lui
+    qui porte la mise en forme voulue.
+
+    Toujours une substitution PUREMENT littérale : aucune exécution de code.
+    """
+    from django.utils.html import escape
+
+    context = dict(context or {})
+
+    def _sub(match):
+        name = match.group(1)
+        value = _resolve(name, context)
+        if value is None:
+            return match.group(0) if strict else ''
+        return escape(str(value))
+
+    return _PLACEHOLDER.sub(_sub, texte or '')

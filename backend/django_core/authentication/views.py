@@ -612,6 +612,35 @@ class MeView(generics.RetrieveAPIView):
         return self.request.user
 
 
+class MobileHomeRouteView(APIView):
+    """POST /api/django/auth/mobile-home-route/ — NTMOB6.
+
+    Persiste le réglage d'accueil mobile CHOISI par l'utilisateur COURANT
+    UNIQUEMENT (jamais un autre compte, jamais lu du corps que via ce champ).
+    Corps : ``{"route": <string|null>}``.
+      * ``null`` → remet l'état « pas encore décidé » (recalculé au prochain
+        atterrissage mobile — utilisé par « Automatique selon mon rôle »).
+      * une chaîne de la whitelist (``selectors.MOBILE_HOME_ALLOWED_ROUTES``,
+        `''` = dashboard classique inclus) → mémorisée telle quelle.
+    Toute autre valeur est rejetée (défense en profondeur : jamais une route
+    arbitraire écrite en base)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from authentication.selectors import MOBILE_HOME_ALLOWED_ROUTES
+        route = request.data.get('route', '')
+        if route is not None:
+            route = str(route)
+            if route not in MOBILE_HOME_ALLOWED_ROUTES:
+                return Response(
+                    {'detail': 'Route inconnue.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        request.user.mobile_home_route = route
+        request.user.save(update_fields=['mobile_home_route'])
+        return Response({'mobile_home_route': request.user.mobile_home_route})
+
+
 # ── Logout securise ────────────────────────────────────────────
 class LogoutView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]

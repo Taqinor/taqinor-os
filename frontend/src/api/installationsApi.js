@@ -19,6 +19,15 @@ const installationsApi = {
   getChecklist: (id) => api.get(`/installations/chantiers/${id}/checklist/`),
   cocherChecklist: (id, payload) =>
     api.post(`/installations/chantiers/${id}/cocher-checklist/`, payload),
+  // NTMOB11 — métadonnées (étape + géoloc/horodatage) d'une photo de
+  // checklist déjà uploadée via recordsApi.uploadAttachment.
+  ajouterChecklistPhotoMeta: (id, payload) =>
+    api.post(`/installations/chantiers/${id}/checklist-photo/`, payload),
+  // NTMOB16 — signature client tracée sur le bon de livraison chantier
+  // (distinct de installationsApi.signerClient, réservé aux interventions).
+  signerClientChantier: (id, { signature_client, signataire_nom }) =>
+    api.post(`/installations/chantiers/${id}/signer-client/`,
+      { signature_client, signataire_nom }),
   // N4 — étapes modèle de checklist (Paramètres → Chantiers).
   getChecklistEtapes: (templateId) =>
     api.get('/installations/checklist-etapes/',

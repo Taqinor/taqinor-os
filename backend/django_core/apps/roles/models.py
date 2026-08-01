@@ -379,10 +379,18 @@ PORTAIL_PARTENAIRE_PERMISSIONS = ['portail_partenaire_acces']
 # Les 3 rôles système du portail (nom → permissions). Créés/synchronisés par le
 # seeder ``init_roles`` (idempotent, additif) exactement comme les rôles
 # internes ci-dessus, avec ``est_systeme=True``.
+# NTPRT2 — noms CANONIQUES des 3 rôles système portail, extraits en constantes
+# pour que le provisionnement d'un compte portail (services de ``portail``/
+# ``stock``/``compta``) rattache le compte au MÊME rôle que celui semé par
+# ``init_roles`` — jamais une chaîne magique dupliquée qui divergerait.
+ROLE_PORTAIL_CLIENT = 'Portail client'
+ROLE_PORTAIL_FOURNISSEUR = 'Portail fournisseur'
+ROLE_PORTAIL_PARTENAIRE = 'Portail partenaire'
+
 CANONICAL_PORTAIL_ROLES = [
-    ('Portail client', PORTAIL_CLIENT_PERMISSIONS),
-    ('Portail fournisseur', PORTAIL_FOURNISSEUR_PERMISSIONS),
-    ('Portail partenaire', PORTAIL_PARTENAIRE_PERMISSIONS),
+    (ROLE_PORTAIL_CLIENT, PORTAIL_CLIENT_PERMISSIONS),
+    (ROLE_PORTAIL_FOURNISSEUR, PORTAIL_FOURNISSEUR_PERMISSIONS),
+    (ROLE_PORTAIL_PARTENAIRE, PORTAIL_PARTENAIRE_PERMISSIONS),
 ]
 
 

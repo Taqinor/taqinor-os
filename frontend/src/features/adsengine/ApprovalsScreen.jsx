@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Check, X, ClipboardCheck, AlertTriangle, PlusCircle, RefreshCw } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
@@ -80,6 +80,18 @@ export default function ApprovalsScreen() {
   const canApprove = has('adsengine_approve')
   const canManage = has('adsengine_manage')
   const [actions, setActions] = useState([])
+  // La liste vit AUSSI dans une ref, écrite au MÊME instant que l'état (jamais
+  // au rendu). Les raccourcis clavier la lisent : sans elle, le gestionnaire
+  // `keydown` ne voyait la nouvelle liste qu'une fois l'effet ré-abonné après
+  // le commit — donc, entre un tour de sondage et ce commit, `a`/`r` agissaient
+  // sur une liste PÉRIMÉE (ou vide). Elle permet aussi de n'abonner le
+  // gestionnaire qu'UNE fois, au lieu de le ré-abonner à chaque tour de
+  // sondage.
+  const actionsRef = useRef([])
+  const commitActions = useCallback((next) => {
+    actionsRef.current = next
+    setActions(next)
+  }, [])
   // PUB41 — `loading` ne couvre QUE le tout premier chargement : un sondage
   // en arrière-plan ne doit jamais faire clignoter l'écran-vaisseau-amiral
   // (« poll doux »). `loadError` distingue une PANNE (message dédié) d'une
@@ -102,12 +114,12 @@ export default function ApprovalsScreen() {
         // diff EDIT_COPY (adsengine.js) lisent `type`. On normalise ici (sans
         // écraser un `type` déjà présent) pour que la carte affiche le bon
         // libellé et le diff avant/après contre les vraies données.
-        setActions(raw.map(a => ({ ...a, type: a.type ?? a.kind })))
+        commitActions(raw.map(a => ({ ...a, type: a.type ?? a.kind })))
         setLoadError(false)
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
-  }, [])
+  }, [commitActions])
 
   // PUB41 — sondage doux : amorçage immédiat au montage (comme l'ancien
   // `useEffect(load)`), puis toutes les `APPROVALS_POLL_MS`, suspendu onglet
@@ -121,13 +133,13 @@ export default function ApprovalsScreen() {
   // rendu.
   const removeApplied = useCallback((ids) => {
     const set = new Set(ids)
-    setActions(list => list.filter(a => !set.has(a.id)))
+    commitActions(actionsRef.current.filter(a => !set.has(a.id)))
     setSelected(sel => {
       const next = new Set(sel)
       ids.forEach(id => next.delete(id))
       return next
     })
-  }, [])
+  }, [commitActions])
 
   const approve = useCallback(async (id) => {
     setBusy(true); setErr('')
@@ -147,13 +159,28 @@ export default function ApprovalsScreen() {
   }, [])
 
   // PUB51 — focus visuel pour les raccourcis clavier (jamais de souris requise).
+  //
+  // L'index vit AUSSI dans une ref, et c'est ELLE que lisent les raccourcis.
+  // Sans cela, `j` puis `a` frappés dans le même tick (avant que React ait
+  // commité le re-rendu et ré-abonné le gestionnaire) approuvaient la carte
+  // PRÉCÉDENTE : `j` utilisait bien un updater fonctionnel, mais `a` relisait
+  // `focusedIndex` figé dans la closure. Approuver la MAUVAISE action engage
+  // du budget publicitaire — la ref rend la lecture immédiate et exacte.
   const [focusedIndex, setFocusedIndex] = useState(0)
+  const focusedIndexRef = useRef(0)
+  const moveFocus = useCallback((next) => {
+    focusedIndexRef.current = next
+    setFocusedIndex(next)
+  }, [])
 
   // Le focus reste dans les bornes quand la liste change (approbation/rejet
   // retire une carte, chargement initial…).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-borne l'index de focus quand la liste change (retrait d'une carte)
-    setFocusedIndex(i => (actions.length === 0 ? 0 : Math.min(i, actions.length - 1)))
+    const borne = actions.length === 0
+      ? 0
+      : Math.min(focusedIndexRef.current, actions.length - 1)
+    focusedIndexRef.current = borne
+    setFocusedIndex(borne)
   }, [actions.length])
 
   useEffect(() => {
@@ -164,28 +191,33 @@ export default function ApprovalsScreen() {
       if (isTypingTarget(document.activeElement)) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       const key = e.key.toLowerCase()
+      // Liste et index lus dans leurs refs : le gestionnaire n'est abonné
+      // qu'une fois et voit TOUJOURS l'état courant, même si la frappe précède
+      // le commit du re-rendu (frappe rapide, tour de sondage en vol).
+      const liste = actionsRef.current
       if (key === 'j') {
         e.preventDefault()
-        setFocusedIndex(i => Math.min(i + 1, Math.max(actions.length - 1, 0)))
+        moveFocus(Math.min(
+          focusedIndexRef.current + 1, Math.max(liste.length - 1, 0)))
       } else if (key === 'k') {
         e.preventDefault()
-        setFocusedIndex(i => Math.max(i - 1, 0))
+        moveFocus(Math.max(focusedIndexRef.current - 1, 0))
       } else if (key === 'a') {
         // PUB10 — même garde que le bouton Approuver : sans adsengine_approve,
         // le raccourci clavier ne doit pas contourner la permission.
         if (!canApprove) return
-        const current = actions[focusedIndex]
+        const current = liste[focusedIndexRef.current]
         if (current) { e.preventDefault(); approve(current.id) }
       } else if (key === 'r') {
         // PUB10 — même garde que le bouton Rejeter.
         if (!canApprove) return
-        const current = actions[focusedIndex]
+        const current = liste[focusedIndexRef.current]
         if (current) { e.preventDefault(); openReject(current.id) }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [actions, focusedIndex, approve, openReject, canApprove])
+  }, [moveFocus, approve, openReject, canApprove])
 
   const confirmReject = async (id) => {
     setBusy(true); setErr('')

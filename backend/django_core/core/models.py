@@ -2422,6 +2422,66 @@ from core.idempotency import (  # noqa: E402,F401
     IdempotencyRecord, ProcessedWebhookEvent,
 )
 
+
+class VuePersonnalisee(TenantModel):
+    """NTEXT16 — Vue de liste personnalisée, partageable par équipe.
+
+    Mémorise COMMENT un utilisateur regarde une liste (``config`` : filtres,
+    tri, colonnes, groupement) et à qui cette vue est offerte.
+
+    ``core`` reste FONDATION — aucun import d'app métier :
+      * ``cible`` est une CHAÎNE d'identification de liste (``'crm.lead'``),
+        jamais une FK ni un import de modèle ;
+      * ``equipe`` est un IDENTIFIANT OPAQUE d'équipe (même patron que
+        ``SharingRule.principal_id``) : l'appartenance est résolue par un
+        fournisseur que l'app propriétaire de la notion d'équipe enregistre
+        (``core.vues.register_equipe_membres_provider``). Sans fournisseur, une
+        vue ``equipe`` n'est visible que de son propriétaire — défaut SÛR.
+
+    La visibilité se compose TOUJOURS après le filtre société
+    (``core.vues.filtre_visibilite``) : une vue ne franchit jamais la frontière
+    du tenant, quel que soit son partage.
+    """
+
+    class Partage(models.TextChoices):
+        PRIVE = 'prive', 'Privé'
+        EQUIPE = 'equipe', 'Équipe'
+        SOCIETE = 'societe', 'Société'
+
+    owner = models.ForeignKey(
+        'authentication.CustomUser',
+        on_delete=models.CASCADE,  # on_delete: même politique que core.SavedQuery — une vue PERSONNELLE disparaît avec son propriétaire ; jamais SET_NULL (dé-scoperait la ligne)
+        null=True, blank=True, related_name='vues_personnalisees',
+        verbose_name='Propriétaire')
+    cible = models.CharField(
+        'Cible', max_length=80,
+        help_text="Identifiant de liste, ex. « crm.lead » (chaîne, jamais un "
+                  "import de modèle).")
+    nom = models.CharField('Nom', max_length=160)
+    config = models.JSONField(
+        'Configuration', default=dict, blank=True,
+        help_text='Filtres / tri / colonnes / groupement (opaque pour core).')
+    partage = models.CharField(
+        'Partage', max_length=8, choices=Partage.choices,
+        default=Partage.PRIVE)
+    equipe = models.CharField(
+        'Équipe', max_length=64, blank=True, default='',
+        help_text="Identifiant d'équipe opaque — requis pour un partage "
+                  "« equipe », ignoré sinon.")
+
+    class Meta:
+        verbose_name = 'Vue personnalisée'
+        verbose_name_plural = 'Vues personnalisées'
+        ordering = ['cible', 'nom', 'id']
+        indexes = [
+            models.Index(fields=['company', 'cible', 'partage'],
+                         name='core_vueperso_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.cible} — {self.nom} ({self.partage})'
+
+
 # NTSEC21 — Partage niveau enregistrement : ``SharingRule`` défini dans
 # ``core/sharing.py`` (même pattern d'éclatement que ``core/idempotency.py``),
 # réexporté ici en tout dernier pour que la découverte Django (app_label 'core',

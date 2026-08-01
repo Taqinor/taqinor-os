@@ -34,3 +34,12 @@ try:
         run_controle_integrite_beat()
 except ImportError:  # pragma: no cover - celery absent en environnement de test
     pass
+
+
+# NTEXT12 — l'envoi planifié des abonnements vit dans son propre module ; on
+# l'importe ICI pour que ``app.autodiscover_tasks()`` (qui ne regarde que
+# ``tasks.py``) enregistre bien ``reporting.envoyer_rapports_planifies``.
+try:  # pragma: no cover - dépend de la présence de celery
+    from . import rapport_abonnements  # noqa: F401
+except ImportError:  # pragma: no cover
+    pass

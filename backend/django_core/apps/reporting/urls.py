@@ -23,9 +23,11 @@ from .dashboard_config_api import DashboardConfigViewSet
 from .sav_sla import sav_sla_insight
 from .approbations import (
     approbations_en_attente, decider_approbation, decider_en_masse,
+    decider_approbation_via_push,
 )
 from .kpi_alertes import KpiAlerteViewSet
 from .classeur import ClasseurViewSet
+from .rapport_builder import RapportDefinitionViewSet
 from .integrity_views import integrite_insight
 from .sav_pivot import sav_tickets_pivot, sav_tickets_cout_moyen, sav_taux_attache
 from .reports_field import field_service_report
@@ -42,6 +44,10 @@ router.register(r'dashboard-config', DashboardConfigViewSet,
 router.register(r'kpi-alertes', KpiAlerteViewSet, basename='kpi-alerte')
 # XPLT22 — classeur léger embarqué avec données live (mini-spreadsheet BI).
 router.register(r'classeurs', ClasseurViewSet, basename='classeur')
+# NTEXT10 — report-builder : définitions de rapport croisé sauvegardées
+# (+ POST <id>/executer/ qui rejoue la spec sur les données du jour).
+router.register(r'rapport-definitions', RapportDefinitionViewSet,
+                basename='rapport-definition')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -104,6 +110,12 @@ urlpatterns = [
          name='reporting-approbations-decider'),
     path('approbations-en-attente/decider-en-masse/', decider_en_masse,
          name='reporting-approbations-decider-masse'),
+    # NTMOB7 — approbation en un geste depuis l'action d'une notification
+    # push (service worker, sw.js) : décision scellée dans un jeton signé
+    # court-vécu, AllowAny délibéré (voir docstring de la vue).
+    path('approbations-en-attente/decider-push/',
+         decider_approbation_via_push,
+         name='reporting-approbations-decider-push'),
     # YSERV13 — contrôle d'intégrité inter-documents (états orphelins).
     path('insights/integrite/', integrite_insight, name='insights-integrite'),
     # ZSAV7 — pivot tickets SAV (dataset core.data_explorer sav_tickets).

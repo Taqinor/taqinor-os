@@ -147,6 +147,44 @@ def creer_ncr_depuis_controle_assemblage(*, company, ordre_id, titre,
     return ncr, True
 
 
+def creer_ncr_depuis_cycle_sterilisation(*, company, cycle_id,
+                                         numero_cycle='', autoclave_ref='',
+                                         signale_par=None):
+    """NTSAN23 — ouvre une NCR à partir d'un cycle de stérilisation déclaré
+    NON CONFORME (``sante``).
+
+    Écriture FINE, cross-app conforme : l'appelant (le récepteur d'événement
+    de cette app) ne passe que des données DÉJÀ résolues (id + libellés) —
+    jamais d'import de ``apps.sante.models`` ici ; le lien reste une FK-chaîne
+    ``cycle_sterilisation``. Gravité MAJEURE par défaut : un cycle raté
+    engage la sécurité patient (matériel potentiellement non stérile déjà
+    utilisé). Idempotent : une seule NCR ouverte par cycle ; ré-appeler
+    renvoie l'existante. Renvoie ``(ncr, created)``."""
+    existante = NonConformite.objects.filter(
+        company=company, cycle_sterilisation_id=cycle_id,
+        statut__in=[NonConformite.Statut.OUVERTE,
+                    NonConformite.Statut.EN_TRAITEMENT]).first()
+    if existante is not None:
+        return existante, False
+
+    libelle_cycle = numero_cycle or str(cycle_id)
+    description = (
+        f'Le cycle de stérilisation {libelle_cycle} a été déclaré non '
+        f'conforme. Autoclave : {autoclave_ref or "non renseigné"}. '
+        'Vérifier et re-traiter les instruments du cycle avant tout '
+        'nouvel usage.')
+    ncr = NonConformite.objects.create(
+        company=company,
+        titre=f'Cycle de stérilisation non conforme — {libelle_cycle}',
+        description=description,
+        origine='Stérilisation',
+        gravite=NonConformite.Gravite.MAJEURE,
+        cycle_sterilisation_id=cycle_id,
+        signale_par=signale_par,
+    )
+    return ncr, True
+
+
 # ── QHSE12 — Relances CAPA en retard (notifications / digest) ───────────────
 
 def relancer_capa_en_retard(company, today=None):

@@ -21,6 +21,13 @@ vi.mock('../../ui/Toaster', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
+// NTMOB12 — compression réelle dépend du décodage d'image (Image/canvas),
+// non fiable en jsdom (aucun vrai décodeur) : passthrough identité, hors
+// périmètre de ce test (couvert par prefs.test.jsx / CameraCapture.test.jsx).
+vi.mock('../../pages/preferences/prefs', () => ({
+  compressPhotoForUpload: vi.fn((f) => Promise.resolve(f)),
+}))
+
 // Simule la caméra : un clic sur « Prendre la photo » remet immédiatement un
 // faux fichier JPEG au parent via `onCapture` — aucune vraie caméra requise.
 vi.mock('../pwa/CameraCapture.jsx', () => ({

@@ -30,6 +30,11 @@ from authentication.permissions import (  # noqa: F401
     IsAdminRole,
     HasPermissionOrLegacy,
 )
+# NTPRT10 — garde du chemin canonique /proposal ouverte au client PROPRIÉTAIRE
+# depuis son portail (``apps.roles`` est une app FONDATION, pas un domaine).
+from apps.roles.permissions import (  # noqa: F401
+    IsInternalWriterOrPortalClientOwner, is_portal_user, portal_scope_id,
+)
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from core.idempotency import IdempotentCreateMixin  # noqa: F401  YAPIC9
 from ..utils.references import create_with_reference  # noqa: F401
@@ -99,6 +104,19 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = _company_qs(super().get_queryset(), self.request.user)
+        # NTPRT10 — un compte PORTAIL externe ne voit QUE les devis de SON
+        # client, sur TOUTE action. Appliqué AVANT la portée interne (qui
+        # raisonne sur `created_by`, notion sans objet pour un externe) : un
+        # devis d'autrui répond alors 404, jamais 403 — aucun oracle
+        # d'existence. Un compte portail sans rattachement, ou d'une portée
+        # autre que « client », ne voit RIEN (jamais tout).
+        user = self.request.user
+        if is_portal_user(user):
+            scope = portal_scope_id(user)
+            if (getattr(user, 'portee', None) != 'portail_client'
+                    or scope is None):
+                return qs.none()
+            return qs.filter(client_id=scope)
         # Portée de visibilité (Feature F) : un rôle restreint ne voit que les
         # devis qu'il a créés / son équipe. 'all' → inchangé.
         qs = scope_queryset(qs, self.request.user, ['created_by'])
@@ -131,8 +149,21 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
             # pour tout rôle portant une écriture). get_permissions PRIME sur le
             # permission_classes de l'@action, donc la garde fine doit être ICI.
             return [HasPermissionOrLegacy('ventes_valider')()]
+        elif self.action == 'proposal':
+            # NTPRT10 — ``/proposal`` reste l'UNIQUE chemin PDF client (règle
+            # #4) : plutôt qu'un second rendu pour le portail, on OUVRE ce
+            # chemin au client PROPRIÉTAIRE. La garde reste
+            # ``IsResponsableOrAdmin`` à l'identique côté INTERNE ; côté
+            # portail elle exige la portée ``portail_client``, une méthode SÛRE
+            # et — au niveau OBJET — ``devis.client_id == portail_client_id``
+            # (le queryset ci-dessus borne déjà à ce même client).
+            # NB : cette surcharge de ``get_permissions`` PRIME volontairement
+            # sur le ``permission_classes`` de l'@action (cf. ``accepter``/
+            # ``refuser``, VX199) — les deux déclarent donc la MÊME classe pour
+            # ne jamais mentir sur la garde effective.
+            return [IsInternalWriterOrPortalClientOwner()]
         elif self.action in WRITE_ACTIONS + [
-            'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
+            'generer_pdf', 'telecharger_pdf', 'convertir_en_bc',
             'generer_facture', 'reviser', 'noter',
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
             'envoyer_email', 'dupliquer_variante', 'variantes', 'dupliquer',
@@ -1630,7 +1661,10 @@ class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
         detail=True,
         methods=['get'],
         url_path='proposal',
-        permission_classes=[IsResponsableOrAdmin],
+        # NTPRT10 — MÊME classe que la branche `proposal` de get_permissions
+        # ci-dessus (qui prime) : la déclaration de l'@action ne doit jamais
+        # annoncer une garde différente de la garde effective.
+        permission_classes=[IsInternalWriterOrPortalClientOwner],
     )
     def proposal(self, request, pk=None):
         """Canonical client-facing quote PDF path (CLAUDE.md rule #4).

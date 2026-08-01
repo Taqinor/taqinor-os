@@ -293,6 +293,13 @@ NO_STATIC_EMITTER = {
     # CRM viendra dans une tâche ultérieure). Son entrée au catalogue reste
     # documentaire tant qu'un émetteur statique n'existe pas.
     "lead_erased",
+    # ``record_soft_deleted`` (NTUX7) : même forme — la corbeille transverse
+    # (`apps.trash`) pose le RÉCEPTEUR et le contrat de payload, mais aucune app
+    # métier n'émet encore le signal sur ses chemins de soft-delete (adoption
+    # app par app dans des tâches ultérieures). Réservation EXPLICITE plutôt
+    # qu'un catalogue qui prétend une parité invérifiable ; à retirer dès le
+    # premier émetteur réel, exactement comme ``document_produit`` ci-dessus.
+    "record_soft_deleted",
 }
 
 

@@ -213,3 +213,40 @@ def _audit_bus_on_incident_declared(sender, incident, company, user, gravite,
         logger.warning(
             'ARC38 : audit bus incident_declared échoué pour %s : %s',
             getattr(incident, 'pk', '?'), exc)
+
+
+# ── NTSAN23 — Stérilisation non conforme (émetteur = sante) ─────────────────
+#
+# Événement INTER-app véritable : il vit dans ``core.events`` (pas ici). qhse
+# s'y abonne pour ouvrir une ``NonConformite`` liée au cycle, sans jamais
+# importer ``apps.sante.models`` — et ``sante`` n'importe jamais
+# ``apps.qhse.models`` en retour (le lien est une FK-chaîne côté NCR).
+from core.events import cycle_sterilisation_non_conforme  # noqa: E402
+
+
+@receiver(
+    cycle_sterilisation_non_conforme,
+    dispatch_uid="qhse_ncr_on_cycle_sterilisation_non_conforme")
+def _ouvrir_ncr_cycle_sterilisation(sender, cycle, company, user=None,
+                                    **kwargs):
+    """NTSAN23 — ouvre une NCR MAJEURE quand un cycle d'autoclave est déclaré
+    non conforme (instruments potentiellement non stériles).
+
+    Best-effort et idempotent (une seule NCR ouverte par cycle) : une erreur
+    ici ne casse jamais l'enregistrement du cycle côté ``sante``."""
+    from apps.qhse.services import creer_ncr_depuis_cycle_sterilisation
+
+    try:
+        creer_ncr_depuis_cycle_sterilisation(
+            company=company,
+            cycle_id=getattr(cycle, 'pk', None),
+            numero_cycle=getattr(cycle, 'numero_cycle', '') or '',
+            autoclave_ref=getattr(cycle, 'autoclave_ref', '') or '',
+            signale_par=user if (
+                user is not None
+                and getattr(user, 'is_authenticated', False)) else None,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+        logger.warning(
+            'NTSAN23 : ouverture de la NCR échouée pour le cycle de '
+            'stérilisation #%s : %s', getattr(cycle, 'pk', '?'), exc)

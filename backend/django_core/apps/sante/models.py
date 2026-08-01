@@ -413,6 +413,15 @@ class ActeRealise(TenantModel):
     facture_sante = models.ForeignKey(
         'FactureSante', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_actes', verbose_name='Facture santé')
+    # NTSAN24 — traçabilité instrument → patient : M2M LÉGER (jamais un
+    # champ obligatoire — un acte peut ne mentionner aucun instrument
+    # stérilisé) vers les instruments/kits RÉELLEMENT utilisés pour cet
+    # acte. Permet, en cas de rappel sanitaire, de retrouver en une seule
+    # requête indexée tous les patients ayant reçu un instrument d'un cycle
+    # donné (``selectors.patients_par_cycle_sterilisation``).
+    instruments_utilises = models.ManyToManyField(
+        'InstrumentSterilise', blank=True, related_name='actes_realises',
+        verbose_name='Instruments stérilisés utilisés')
 
     class Meta:
         verbose_name = 'Acte réalisé'
@@ -718,3 +727,75 @@ class ParametragePenaliteAnnulation(TenantModel):
         défaut, DECISION founder)."""
         obj, _ = cls.objects.get_or_create(company=company)
         return obj
+
+
+# =============================================================================
+# NTSAN23 — Stérilisation et traçabilité des instruments.
+# =============================================================================
+
+class CycleSterilisation(TenantModel):
+    """NTSAN23 — cycle d'autoclave. Un cycle NON CONFORME émet
+    ``core.events.cycle_sterilisation_non_conforme`` ; ``qhse`` s'y abonne
+    (``apps/qhse/receivers.py``) pour ouvrir une ``NonConformite`` liée —
+    ``sante`` n'importe JAMAIS ``qhse.models``."""
+
+    class Statut(models.TextChoices):
+        CONFORME = 'conforme', 'Conforme'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+
+    numero_cycle = models.CharField(
+        max_length=50, verbose_name='Numéro de cycle')
+    date_cycle = models.DateTimeField(verbose_name='Date du cycle')
+    autoclave_ref = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name="Référence de l'autoclave")
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.CONFORME,
+        verbose_name='Statut')
+    operateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='cycles_sterilisation',
+        verbose_name='Opérateur')
+
+    class Meta:
+        verbose_name = 'Cycle de stérilisation'
+        verbose_name_plural = 'Cycles de stérilisation'
+        ordering = ['-date_cycle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'numero_cycle'],
+                name='sante_cycle_sterilisation_unique_par_societe'),
+        ]
+
+    def __str__(self):
+        return f'Cycle {self.numero_cycle}'
+
+
+class InstrumentSterilise(TenantModel):
+    """NTSAN23 — instrument (ou kit) passé dans un cycle. ``instrument_ref`` /
+    ``kit_ref`` restent des RÉFÉRENCES TEXTE : le parc d'instruments d'un
+    cabinet n'a pas de référentiel dédié en v1, et un rappel sanitaire se fait
+    par référence gravée. C'est aussi ce que NTSAN24 (traçabilité
+    instrument → patient) rattachera aux actes réalisés."""
+
+    cycle = models.ForeignKey(
+        CycleSterilisation, on_delete=models.CASCADE,  # on_delete: composition (parent-enfant)
+        related_name='instruments', verbose_name='Cycle')
+    instrument_ref = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name="Référence de l'instrument")
+    kit_ref = models.CharField(
+        max_length=100, blank=True, default='',
+        verbose_name='Référence du kit')
+
+    class Meta:
+        verbose_name = 'Instrument stérilisé'
+        verbose_name_plural = 'Instruments stérilisés'
+        ordering = ['cycle', 'id']
+        indexes = [
+            models.Index(fields=['company', 'instrument_ref'],
+                         name='sante_instr_ster_ref_idx'),
+        ]
+
+    def __str__(self):
+        return self.instrument_ref or self.kit_ref or f'Instrument {self.pk}'

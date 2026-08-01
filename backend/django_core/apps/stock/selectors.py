@@ -154,8 +154,14 @@ def search_fournisseurs(company, q, *, limit=12):
     q = (q or '').strip()
     if not q or company is None:
         return []
+    # NTPRT25 — une candidature d'auto-inscription NON VALIDÉE n'apparaît
+    # dans AUCUNE liste de sourcing automatique (autocomplete, sélection
+    # fournisseur) tant qu'un admin interne n'a pas tranché. Les fournisseurs
+    # historiques sont ``valide`` par défaut : comportement inchangé.
     return list(
-        Fournisseur.objects.filter(company=company, nom__icontains=q)
+        Fournisseur.objects
+        .filter(company=company, nom__icontains=q,
+                statut_validation=Fournisseur.StatutValidation.VALIDE)
         .order_by('nom')[:limit])
 
 
@@ -181,8 +187,11 @@ def sous_traitants_qs(company, *, metier=None, actif=None):
     société, filtrable par ``metier`` et ``actif`` (lus sur le profil satellite).
     Trié par nom. Lecture seule."""
     from .models import Fournisseur
+    # NTPRT25 — jamais un candidat non validé dans la sélection automatique
+    # d'un sous-traitant (défaut ``valide`` ⇒ historique inchangé).
     qs = (Fournisseur.objects
-          .filter(company=company, type=Fournisseur.Type.SERVICE)
+          .filter(company=company, type=Fournisseur.Type.SERVICE,
+                  statut_validation=Fournisseur.StatutValidation.VALIDE)
           .select_related('profil_sous_traitant')
           .order_by('nom'))
     if metier:
@@ -1098,4 +1107,68 @@ def disponibilite_potentielle_recursive(kit, company):
         'kits_assemblables': kits_assemblables,
         'composants': composants,
         'goulots': goulots,
+    }
+
+
+# ── NTPRT20 — Résumé self-service du PORTAIL FOURNISSEUR ────────────────────
+
+def resume_portail_fournisseur(company, fournisseur_id):
+    """NTPRT20 — Cartes résumé du tableau de bord fournisseur.
+
+    Point d'entrée cross-app UNIQUE de ``apps.portail`` (jamais un import de
+    ``apps.stock.models`` / ``apps.achats.models`` depuis portail). Lecture
+    SEULE, bornée au triplet (société, fournisseur) : un ``fournisseur_id``
+    absent renvoie des compteurs à zéro, JAMAIS les chiffres de la société
+    entière — c'est la différence entre un tableau de bord vide et une fuite.
+
+    Ne contient QUE ce qui existe réellement aujourd'hui : les livraisons
+    annoncées (ASN, NTPRT22) et les documents légaux à expiration (NTPRT24)
+    ne sont pas encore modélisés — on ne fabrique pas un chiffre pour remplir
+    une carte.
+    """
+    from decimal import Decimal
+
+    vide = {
+        'fournisseur_nom': '',
+        'bcf_a_confirmer': 0,
+        'bcf_en_cours': 0,
+        'receptions_recentes': 0,
+        'factures_a_payer': 0,
+        'montant_a_payer': '0',
+    }
+    if company is None or not fournisseur_id:
+        return vide
+
+    from .models import (
+        BonCommandeFournisseur, FactureFournisseur, Fournisseur,
+        ReceptionFournisseur,
+    )
+
+    fournisseur = (Fournisseur.objects
+                   .filter(company=company, pk=fournisseur_id).first())
+    if fournisseur is None:
+        return vide
+
+    bcf = (BonCommandeFournisseur.objects
+           .filter(company=company, fournisseur=fournisseur)
+           .exclude(statut=BonCommandeFournisseur.Statut.ANNULE))
+    factures = FactureFournisseur.objects.filter(
+        company=company, fournisseur=fournisseur).exclude(
+        statut=FactureFournisseur.Statut.PAYEE)
+    montant = sum((f.montant_ttc or Decimal('0') for f in factures),
+                  Decimal('0'))
+
+    return {
+        'fournisseur_nom': fournisseur.nom,
+        'bcf_a_confirmer': bcf.filter(
+            statut=BonCommandeFournisseur.Statut.ENVOYE,
+            date_confirmee_fournisseur__isnull=True).count(),
+        'bcf_en_cours': bcf.exclude(
+            statut=BonCommandeFournisseur.Statut.RECU).count(),
+        'receptions_recentes': (ReceptionFournisseur.objects
+                                .filter(company=company,
+                                        bon_commande__fournisseur=fournisseur)
+                                .count()),
+        'factures_a_payer': factures.count(),
+        'montant_a_payer': str(montant),
     }

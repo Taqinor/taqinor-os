@@ -260,24 +260,40 @@ def evaluate(trigger_type, instance, company, *, context=None, user=None):
                 rule, company, instance, AutomationRun.Status.FAILED, str(exc))
 
 
-def run_action(rule, instance, company, *, context=None, user=None):
-    """Exécute l'action d'une règle et journalise le résultat.
+class _StepView:
+    """NTEXT4 — vue « règle » d'une ÉTAPE, pour les handlers d'action.
 
-    Utilisée par ``evaluate`` (immédiat) et par l'approbation (différée).
+    ``actions.run`` et ses handlers ne lisent de la règle que
+    ``action_type`` / ``action_config`` / ``company`` / ``nom``. Cette vue
+    substitue le couple action de l'ÉTAPE et DÉLÈGUE tout le reste à la règle,
+    sans dupliquer un seul handler ni changer leur signature.
 
-    ODX23 — si le module visé (déclencheur ou action, voir
-    :func:`_rule_disabled_module`) est désactivé ``ModuleToggle`` pour
-    ``company``, l'action n'est PAS exécutée : un run ``SKIPPED`` est
-    journalisé (« module désactivé ») à la place. Couvre le chemin immédiat
-    ET l'approbation différée (``run_approved`` appelle cette même fonction),
-    y compris le cas où le module a été désactivé ENTRE la demande
-    d'approbation et sa décision.
+    Jamais persistée : le journal (``AutomationRun.rule``) reçoit toujours la
+    VRAIE règle.
     """
-    disabled_module = _rule_disabled_module(rule, instance, company)
-    if disabled_module:
-        message = f'Module désactivé ({disabled_module}) : automatisation ignorée.'
-        _log_run(rule, company, instance, AutomationRun.Status.SKIPPED, message)
-        return AutomationRun.Status.SKIPPED, message
+
+    __slots__ = ('_rule', 'step', 'action_type', 'action_config')
+
+    def __init__(self, rule, step):
+        self._rule = rule
+        self.step = step
+        self.action_type = step.action_type
+        self.action_config = step.action_config
+
+    def __getattr__(self, name):
+        return getattr(self._rule, name)
+
+
+def _rule_steps(rule):
+    """Étapes ORDONNÉES d'une règle (liste vide si aucune). Ne lève jamais."""
+    try:
+        return list(rule.steps.all())
+    except Exception:  # pragma: no cover - défensif (règle détachée)
+        return []
+
+
+def _execute(action_source, rule, instance, company, context, user):
+    """Exécute UNE action (règle mono-action ou étape) et journalise son run."""
     from . import actions
     # Marque la fenêtre d'exécution : tout ``instance.save()` déclenché par
     # l'action (SET_FIELD / ASSIGN_RECORD) ré-émet le post_save, mais
@@ -286,11 +302,65 @@ def run_action(rule, instance, company, *, context=None, user=None):
     previous = _in_automation()
     _GUARD.active = True
     try:
-        status, message = actions.run(rule, instance, company, context, user)
+        status, message = actions.run(
+            action_source, instance, company, context, user)
     finally:
         _GUARD.active = previous
     _log_run(rule, company, instance, status, message)
     return status, message
+
+
+def run_action(rule, instance, company, *, context=None, user=None):
+    """Exécute l'action d'une règle et journalise le résultat.
+
+    Utilisée par ``evaluate`` (immédiat) et par l'approbation (différée).
+
+    NTEXT4 — si la règle porte des ``AutomationStep``, la SÉQUENCE remplace
+    l'action unique : chaque étape est exécutée dans l'ordre et journalise son
+    PROPRE ``AutomationRun``. La valeur de retour est celle de la DERNIÈRE
+    étape exécutée. Sans étape, le comportement mono-action historique est
+    STRICTEMENT inchangé (une action, un run, même message).
+
+    ODX23 — si le module visé (déclencheur ou action, voir
+    :func:`_rule_disabled_module`) est désactivé ``ModuleToggle`` pour
+    ``company``, l'action n'est PAS exécutée : un run ``SKIPPED`` est
+    journalisé (« module désactivé ») à la place. Couvre le chemin immédiat
+    ET l'approbation différée (``run_approved`` appelle cette même fonction),
+    y compris le cas où le module a été désactivé ENTRE la demande
+    d'approbation et sa décision. Le contrôle est refait PAR ÉTAPE (une étape
+    qui écrit dans un module désactivé est ignorée sans stopper la séquence).
+    """
+    disabled_module = _rule_disabled_module(rule, instance, company)
+    if disabled_module:
+        message = f'Module désactivé ({disabled_module}) : automatisation ignorée.'
+        _log_run(rule, company, instance, AutomationRun.Status.SKIPPED, message)
+        return AutomationRun.Status.SKIPPED, message
+
+    steps = _rule_steps(rule)
+    if not steps:
+        return _execute(rule, rule, instance, company, context, user)
+
+    result = (AutomationRun.Status.NOOP, '')
+    for step in steps:
+        view = _StepView(rule, step)
+        step_disabled = _rule_disabled_module(view, instance, company)
+        if step_disabled:
+            message = (f'Module désactivé ({step_disabled}) : '
+                       f'automatisation ignorée.')
+            _log_run(rule, company, instance,
+                     AutomationRun.Status.SKIPPED, message)
+            result = (AutomationRun.Status.SKIPPED, message)
+            continue
+        try:
+            result = _execute(view, rule, instance, company, context, user)
+        except Exception as exc:  # best-effort PAR ÉTAPE : la suite continue
+            logger.exception(
+                'automation: étape %s de la règle %s échouée',
+                step.pk, rule.pk)
+            _log_run(rule, company, instance,
+                     AutomationRun.Status.FAILED, str(exc))
+            result = (AutomationRun.Status.FAILED, str(exc))
+    return result
 
 
 def run_approved(approval, *, user=None):

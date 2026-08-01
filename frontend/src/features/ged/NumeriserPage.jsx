@@ -18,6 +18,7 @@ import {
   SelectContent, SelectItem, Input, Textarea, toast, FloatingActionButton,
 } from '../../ui'
 import CameraCapture from '../pwa/CameraCapture.jsx'
+import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import { buildFolderTree, flattenVisible } from './tree.js'
 import {
   makeCapturedPage, rotatePageInList, removePageFromList, rotateImageBlob,
@@ -78,8 +79,13 @@ export default function NumeriserPage() {
     return flattenVisible(tree, new Set(folders.map((f) => f.id)))
   }, [folders])
 
-  const addPhoto = (file) => {
-    setPages((prev) => [...prev, makeCapturedPage(nextPageId++, file)])
+  // NTMOB12 — compresse AVANT d'ajouter à la liste (respecte la préférence
+  // « Qualité photo », Mes préférences) : réduit la consommation data et
+  // accélère l'upload final, la rotation (submit) opère sur le fichier déjà
+  // compressé sans perte perceptible supplémentaire.
+  const addPhoto = async (file) => {
+    const compressed = await compressPhotoForUpload(file)
+    setPages((prev) => [...prev, makeCapturedPage(nextPageId++, compressed)])
     setCameraOpen(false)
   }
 

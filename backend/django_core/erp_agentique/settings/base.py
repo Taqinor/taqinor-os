@@ -237,6 +237,11 @@ INSTALLED_APPS = [
     # prévisions glissantes, scénarios what-if, variance analysis. DISTINCT
     # du budget micro par chantier (gestion_projet.BudgetProjet, PROJ21/22).
     'apps.fpa',
+    # Groupe NTMIG — Kits de migration ERP sortants (Odoo/Sage/Excel) : projets
+    # + lots par entité + rapport de réconciliation obligatoire. Le chargement
+    # est DÉLÉGUÉ à apps.dataimport (jamais un 2e importateur) ; aucune
+    # écriture SQL vers Odoo (règle #1).
+    'apps.migration',
     # Groupe NTASS — Registre des assurances & sinistres d'entreprise (RC pro,
     # décennale, multirisque, cyber, homme-clé) ; distinct des polices/sinistres
     # véhicule (flotte) et des cautions bancaires marché (compta).
@@ -258,6 +263,10 @@ INSTALLED_APPS = [
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
     # la couche UX power-user (NTUX2-11). Additive, company-scopée.
     'apps.uxviews',
+    # NTUX7 — Corbeille transverse 30 jours : UNE table `ElementSupprime` pour
+    # tout le repo, alimentée par l'événement `core.events.record_soft_deleted`
+    # (aucune app émettrice n'importe la corbeille). Additive, company-scopée.
+    'apps.trash',
     # Groupe NTMAR — Facturation électronique DGI (schéma XML derrière flag,
     # dry-run/réel), scaffold de signature électronique et file d'attente de
     # transmission Simpl inerte (gated, voir EINVOICE_ENABLED).
@@ -265,6 +274,11 @@ INSTALLED_APPS = [
     # Groupe NTMAR — Calendrier fiscal marocain, attestations tenant, registre
     # UBO et veille réglementaire actionnable.
     'apps.fiscal',
+    # Groupe NTAI — couche AI-first posée AU-DESSUS de la fondation `core.ai`
+    # (fournisseurs OCR/STT/LLM key-gated, NO-OP-safe) : copilotes contextuels
+    # qui PROPOSENT des brouillons (jamais d'écriture métier implicite) et
+    # surveillance des modèles. Sans clé, chaque surface dégrade proprement.
+    'apps.ai_governance',
 ]
 
 MIDDLEWARE = [
@@ -559,6 +573,11 @@ REST_FRAMEWORK = {
         'automation_webhook': '60/minute',
         # XSAL8 — scan de carte de visite (OCR), par utilisateur authentifié.
         'crm_ocr_scan': '20/hour',
+        # Groupe NTAI — copilotes IA génératifs (brouillons), par utilisateur
+        # authentifié : borne le coût LLM d'un clic répété.
+        'ai_copilote': '60/hour',
+        # Groupe NTAI — transcription d'un mémo vocal (STT, plus coûteux).
+        'ai_transcription': '20/hour',
         # QX41 — scopes des throttles publics jusqu'ici codés inline, désormais
         # source de vérité UNIQUE ici (les classes lisent settings en priorité,
         # repli sur leur défaut). ``public_sharelink`` : liens publics
@@ -963,6 +982,12 @@ CELERY_TASK_ROUTES = {
     # WIR148 (NTPRO6) — génération quotidienne des échéances de loyer des baux
     # actifs : job beat, donc queue `scheduled`.
     'immobilier.generer_echeances_loyer': {'queue': 'scheduled'},
+    # NTOBS/NTREP — envoi horaire des abonnements de rapports planifiés : job
+    # beat, donc queue `scheduled`.
+    'reporting.envoyer_rapports_planifies': {'queue': 'scheduled'},
+    # NTIAG — surveillance mensuelle du drift des modèles IA : job beat, donc
+    # queue `scheduled`.
+    'ai_governance.surveiller_drift_mensuel': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

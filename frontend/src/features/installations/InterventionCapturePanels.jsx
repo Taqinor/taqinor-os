@@ -21,7 +21,7 @@ import {
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
-import { compressImage } from '../../ui/file-utils'
+import { compressPhotoForUpload } from '../../pages/preferences/prefs'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne).
@@ -74,9 +74,10 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
     setBusy(true)
     try {
       // VX77 — compresse la photo de plaque AVANT envoi (bord long ≤1600px,
-      // JPEG q0.75) : évite les minutes/timeout sur la 3G rurale.
+      // JPEG q0.75) : évite les minutes/timeout sur la 3G rurale. NTMOB12 —
+      // respecte la préférence « Qualité photo » (Mes préférences).
       const rawFile = fileRef.current?.files?.[0]
-      const file = rawFile ? await compressImage(rawFile) : rawFile
+      const file = rawFile ? await compressPhotoForUpload(rawFile) : rawFile
       await installationsApi.ajouterSerial(id, {
         designation, numero_serie: numero, file })
       setDesignation(''); setNumero('')
