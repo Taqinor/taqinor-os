@@ -11,6 +11,10 @@ import ventesApi from '../../../api/ventesApi'
 import installationsApi from '../../../api/installationsApi'
 import { formatMAD, formatDate, normalizeMaPhone } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
+// ROUND 5 — LE saut canonique (déplie toujours la section cible), partagé avec
+// le centre : le même clic donne désormais le même résultat des deux côtés.
+import { jumpToField } from './jumpToField'
+import { missingFieldTarget } from './missingFields'
 
 // LW21/LW22 — Onglet Devis : la chaîne document en cartes (StatusPill statut
 // devis — JAMAIS le funnel lead, règle #2) + le CTA « Devis automatique » qui
@@ -47,24 +51,15 @@ export function devisTrackCurrent(d) {
   return d?.chantier ? 'chantier' : 'accepte'
 }
 
-// LW21 — mapping labels backend (apps/crm/devis_auto.py `champs_manquants`,
+// LW21 — mapping libellés backend (apps/crm/devis_auto.py `champs_manquants`,
 // texte FR fixe — source unique règle serveur/UI) → id DOM du champ dans
-// SectionsPane (sections/SectionEnergie.jsx, ids `lf-*`). Logique pure
-// co-localisée, testable sans DOM.
-// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que ChatterTimeline.OUTCOME_LABELS
-export const DEVIS_AUTO_FIELD_IDS = {
-  'facture hiver': { field: 'lf-facture-hiver', section: 'energie' },
-  'facture été': { field: 'lf-facture-ete', section: 'energie' },
-  'consommation mensuelle (kWh)': { field: 'lf-conso-mensuelle', section: 'energie' },
-  'pompe (CV)': { field: 'lf-pompe-cv', section: 'pompage' },
-  HMT: { field: 'lf-pompe-hmt', section: 'pompage' },
-  'débit souhaité': { field: 'lf-pompe-debit', section: 'pompage' },
-}
-
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
-export function missingFieldTarget(label) {
-  return DEVIS_AUTO_FIELD_IDS[label] ?? null
-}
+// SectionsPane (ids `lf-*`).
+// ROUND 5 — la carte a DÉMÉNAGÉ dans `missingFields.js` : le bandeau « À
+// compléter » du centre doit pointer EXACTEMENT les mêmes champs que cet
+// onglet, et deux cartes divergentes seraient pires que pas de carte. On la
+// réexporte ici pour que rien de ce qui l'importait de `./DevisTab` ne bouge.
+// eslint-disable-next-line react-refresh/only-export-components -- réexport de logique pure (testable), même motif que ChatterTimeline.OUTCOME_LABELS
+export { DEVIS_AUTO_FIELD_IDS, missingFieldTarget } from './missingFields'
 
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
 export function waArmed(phone, selectedCount) {
@@ -84,22 +79,15 @@ export function devisIntent(mode, kwcCible) {
   return { mode, targetKwc: cible }
 }
 
-// Saute au champ manquant dans le centre et le focus ; si la section est
-// repliée (le champ n'est alors pas dans le DOM — SectionsPane.jsx est hors
-// périmètre de cette lane, aucun canal de dépli-à-distance n'existe encore),
-// on retombe sur un scroll jusqu'à l'en-tête de la section (voir le rapport
-// de fin de lane : câblage `SectionsPane` documenté, pas implémenté ici).
+// ROUND 5 — plus de saut maison : `jumpToField` DÉPLIE toujours la section
+// cible avant de scroller et de focaliser. Avant, ce chemin ne dépliait pas —
+// un champ dans une section repliée n'est pas dans le DOM, on retombait donc
+// sur l'en-tête de section et le même clic donnait deux résultats différents
+// selon l'état de repli. Un seul chemin, partagé avec le centre.
 function jumpToMissingField(label) {
   const target = missingFieldTarget(label)
   if (!target) return
-  const el = document.getElementById(target.field)
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    el.focus()
-    return
-  }
-  document.querySelector(`[data-nav-id="${target.section}"]`)
-    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  jumpToField(target)
 }
 
 export default function DevisTab({

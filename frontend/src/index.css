@@ -6498,6 +6498,79 @@ textarea.form-control {
   flex: 0 0 auto;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ROUND 5 — BANDEAU « À COMPLÉTER ».
+   L'ordre des sections ne bouge JAMAIS (mémoire spatiale : un formulaire qui
+   se réorganise selon le contexte se relit à chaque ouverture au lieu de
+   s'apprendre — Office 2000, Findlater & McGrenere, NN/g). L'intuition
+   fondateur « voir d'abord ce qui manque selon l'étape » est donc livrée par
+   ce bandeau, qui POINTE : les sections restent à leur place.
+   Il est ÉPINGLÉ juste sous le rail de sections (`.lw-secnav`, sticky top:0)
+   — d'où le `top` qui vaut la hauteur de ce rail : les deux ne se recouvrent
+   jamais, quel que soit le défilement.
+   Il n'existe QUE s'il a quelque chose à dire : rien n'est rendu quand tout
+   va bien (aucune règle « état vide » ici — c'est le JSX qui ne rend rien).
+   ══════════════════════════════════════════════════════════════════════════ */
+.lw-todo {
+  position: sticky;
+  /* Sous `.lw-secnav` (0.5rem + 0.5rem de padding + ~1.6rem de chip). */
+  top: 2.6rem;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  /* Teinte d'alerte DILUÉE dans la carte : le bandeau se remarque sans crier,
+     et le texte porte `--warning-text` — le token déjà validé AA sur fond
+     clair ET sombre (design/tokens.css), jamais une couleur locale. */
+  background: color-mix(in oklch, var(--warning) 18%, var(--card));
+  border-bottom: 1px solid color-mix(in oklch, var(--warning-text) 25%, transparent);
+}
+.lw-todo-label {
+  font-size: var(--text-small);
+  font-weight: 700;
+  color: var(--warning-text);
+  margin-right: 0.15rem;
+}
+.lw-todo-chip {
+  display: inline-flex;
+  align-items: center;
+  /* ≥44px sous le doigt : la hauteur vient du padding + min-height, jamais
+     d'une cible invisible plus grande que le dessin (piège d'accessibilité). */
+  min-height: 44px;
+  padding: 0.25rem 0.7rem;
+  border-radius: 9999px;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--warning-text);
+  background: var(--card);
+  border: 1px solid color-mix(in oklch, var(--warning-text) 35%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .lw-todo-chip:hover {
+    background: color-mix(in oklch, var(--warning-text) 12%, var(--card));
+  }
+}
+/* Au pointeur FIN, 44px de haut pour une chip textuelle est disproportionné :
+   la contrainte tactile ne s'applique qu'au doigt. */
+@media (pointer: fine) {
+  .lw-todo-chip { min-height: 28px; }
+}
+
+/* Coche « section complète » — un signe, jamais une boîte. Elle n'apparaît
+   que sur une section REPLIÉE : ouverte, la section se lit d'elle-même. */
+.lw-section-done {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--success);
+}
+
 /* Pile des sections. */
 .lw-sections {
   display: flex;

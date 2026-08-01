@@ -18,6 +18,17 @@ export const PIPELINE_STAGES = [
 // nouvelle liste d'étapes (check_stages.py ne contrôle que les listes).
 export const CONVERSION_STAGE = 'SIGNED'
 
+// Noms scalaires des 6 étapes — DÉRIVÉS de PIPELINE_STAGES, jamais réécrits :
+// il n'y a donc pas une seconde liste (check_stages.py ne contrôle que les
+// listes, et celle-ci n'en est pas une), et aucun littéral d'étape à maintenir.
+// Le miroir serveur (`apps/crm/stages.py`) expose déjà ses étapes nommées de la
+// même façon ; c'est ce qui permet à une règle métier d'écrire QUOTE_SENT_STAGE
+// au lieu de 'QUOTE_SENT' en dur. CONVERSION_STAGE ci-dessus est le précédent.
+export const [
+  NEW_STAGE, CONTACTED_STAGE, QUOTE_SENT_STAGE,
+  FOLLOW_UP_STAGE, SIGNED_STAGE, COLD_STAGE,
+] = PIPELINE_STAGES
+
 export const STAGE_LABELS = {
   NEW: 'Nouveau',
   CONTACTED: 'Contacté',

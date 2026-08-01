@@ -1,10 +1,13 @@
-import { createElement, useState, useRef, useEffect, useCallback } from 'react'
+import { createElement, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   User, TrendingUp, Zap, Droplet, Home, ClipboardList, Globe, FileText,
 } from 'lucide-react'
 import { ErrorBoundary } from '../../../ui'
 import { useKeyboardAwareScroll } from '../../../hooks/useKeyboardAwareScroll'
-import { getField, WEB_ORIGIN_FIELDS } from './draftCore'
+import { getField, WEB_ORIGIN_FIELDS, sectionAutoRepliee } from './draftCore'
+// ROUND 5 — « ce qui manque » : une source unique, partagée avec l'onglet Devis.
+import { chipsAComplete, sectionsPointees } from './missingFields'
+import { jumpToField } from './jumpToField'
 import SectionContact from './sections/SectionContact'
 import SectionPipeline from './sections/SectionPipeline'
 import SectionEnergie, { SectionPompage } from './sections/SectionEnergie'
@@ -27,7 +30,7 @@ const writeCollapsed = (map) => {
 }
 
 // Entête repliable + anchor de scroll-spy autour du contenu pur d'une section.
-function WorkspaceSection({ id, title, Icon, collapsed, onToggle, children }) {
+function WorkspaceSection({ id, title, Icon, collapsed, complete, onToggle, children }) {
   return (
     <section className="lw-section" data-nav-id={id}>
       <button
@@ -38,6 +41,15 @@ function WorkspaceSection({ id, title, Icon, collapsed, onToggle, children }) {
       >
         {Icon && <Icon className="lw-section-icon" aria-hidden="true" size={16} />}
         <span className="lw-section-title">{title}</span>
+        {/* ROUND 5 — un ✓ DISCRET sur une section repliée parce qu'elle est
+            faite : sans lui, « repliée » et « complète » sont visuellement le
+            même état, et on rouvre pour vérifier — ce qui annule tout le
+            bénéfice. Jamais une boîte, jamais un badge : une coche, ton
+            success, et rien du tout dès que la section est ouverte (elle se
+            lit alors d'elle-même). */}
+        {collapsed && complete && (
+          <span className="lw-section-done" title="Section complète" aria-label="Section complète">✓</span>
+        )}
         <span className="lw-section-chevron" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
       </button>
       {!collapsed && (
@@ -60,11 +72,6 @@ export default function SectionsPane({
   // recentrage, un champ bas de formulaire reste caché sous le clavier.
   // No-op silencieux ailleurs (visualViewport absent hors WebKit mobile).
   useKeyboardAwareScroll({ containerRef: scrollRef })
-  const [collapsed, setCollapsed] = useState(() => {
-    // « Origine web » repliée par défaut (blueprint) ; le reste ouvert.
-    const stored = readCollapsed()
-    return { origine: true, ...stored }
-  })
 
   const agricole = getField(state, 'type_installation') === 'agricole'
   const hasWebOrigin = WEB_ORIGIN_FIELDS.some((k) => {
@@ -87,6 +94,46 @@ export default function SectionsPane({
   ]
 
   const [active, setActive] = useState(registry[0]?.id ?? 'contact')
+  // Tête de registre, tenue à jour à chaque rendu : le scroll-spy la lit sans
+  // en dépendre (voir `onScroll`).
+  const premiereSectionRef = useRef(registry[0]?.id ?? 'contact')
+  const premiereSection = registry[0]?.id ?? 'contact'
+  useEffect(() => { premiereSectionRef.current = premiereSection })
+
+  /* ROUND 5 — LE BANDEAU « À COMPLÉTER ».
+     ---------------------------------------------------------------------
+     L'ordre des sections ne bouge JAMAIS (mémoire spatiale : un formulaire
+     qui se réorganise se relit à chaque ouverture au lieu de s'apprendre).
+     L'intuition « voir d'abord ce qui manque » est livrée par un bandeau
+     qui POINTE — les sections, elles, restent à leur place.
+     Calculé 100 % côté client à partir de la charge déjà reçue : zéro appel
+     réseau. Vide = AUCUN chrome rendu (voir plus bas) : pas de boîte « tout
+     est complet » qui occuperait la place en permanence pour ne rien dire —
+     la leçon de la « case grise » retirée au round 3. */
+  const chips = useMemo(() => chipsAComplete(state), [state])
+  const pointees = useMemo(() => sectionsPointees(chips), [chips])
+
+  /* ROUND 5 — REPLI AUTOMATIQUE, uniquement À L'OUVERTURE.
+     Jamais pendant la session : replier une section sous les doigts de
+     l'utilisatrice serait pire que ne rien faire. D'où l'initialiseur
+     paresseux — il ne s'exécute qu'au montage, et la suite de la session est
+     à elle seule.
+     Deux garanties sur SES choix : `stored` (le localStorage) est appliqué EN
+     DERNIER, donc ni un dépli qu'elle a persisté ne se referme, ni un repli
+     qu'elle a choisi ne s'ouvre ; et l'auto-repli n'ÉCRIT PAS dans
+     localStorage — c'est un état d'ouverture, pas une préférence. */
+  const [collapsed, setCollapsed] = useState(() => {
+    const stored = readCollapsed()
+    // « Origine web » repliée par défaut (blueprint).
+    const auto = { origine: true }
+    if (mode === 'edit') {
+      for (const s of registry) {
+        if (s.id === 'origine') continue
+        auto[s.id] = sectionAutoRepliee(state, s.id, { porteUnManquant: pointees.has(s.id) })
+      }
+    }
+    return { ...auto, ...stored }
+  })
 
   const toggle = useCallback((id) => {
     setCollapsed((prev) => {
@@ -96,13 +143,13 @@ export default function SectionsPane({
     })
   }, [])
 
-  const jumpTo = useCallback((id) => {
+  // ROUND 5 — un SEUL saut, celui que partage l'onglet Devis : il déplie
+  // toujours la section cible (via son en-tête, l'affordance publique) avant
+  // de scroller. `jumpTo(target)` reste le geste, à l'identique.
+  const jumpTo = useCallback((id, field = null) => {
     const box = scrollRef.current
-    const el = box?.querySelector(`[data-nav-id="${id}"]`)
-    if (!el) return
-    // Déplie la section ciblée avant d'y sauter.
-    setCollapsed((prev) => (prev[id] ? { ...prev, [id]: false } : prev))
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (!box) return
+    jumpToField({ section: id, field, root: box })
   }, [])
 
   // Scroll-spy throttlé rAF (corrige le smell recon 01 §6.11 : itération non
@@ -119,8 +166,12 @@ export default function SectionsPane({
       if (!box) return
       const nav = box.querySelector('.lw-secnav')
       const ref = (nav ? nav.getBoundingClientRect().bottom : box.getBoundingClientRect().top)
-      // 'contact' est toujours la 1re section (fallback stable — pas de dép registry).
-      let current = 'contact'
+      // ROUND 5 (hygiène) — le repli valait 'contact' EN DUR : une deuxième
+      // vérité sur « quelle est la première section », qui mentirait le jour
+      // où le registre changerait de tête. On lit le registre, via une ref
+      // pour garder ce callback sans dépendance (le spy ne doit pas se
+      // ré-attacher à chaque rendu).
+      let current = premiereSectionRef.current
       for (const el of box.querySelectorAll('[data-nav-id]')) {
         if (el.getBoundingClientRect().top - ref <= 90) current = el.dataset.navId
       }
@@ -181,6 +232,29 @@ export default function SectionsPane({
           </button>
         ))}
       </nav>
+      {/* ROUND 5 — bandeau « À compléter », épinglé SOUS le rail de sections
+          et rendu SEULEMENT s'il a quelque chose à dire. Zéro chrome quand
+          tout va bien : une boîte permanente qui affiche « rien à signaler »
+          coûte de la place à chaque ouverture et n'apprend rien (leçon de la
+          « case grise » du fondateur). Les chips ne déplacent RIEN — elles
+          pointent : chaque clic déplie la section concernée et focalise le
+          champ, l'ordre des sections reste immuable. */}
+      {mode === 'edit' && chips.length > 0 && (
+        <div className="lw-todo" role="group" aria-label="Informations à compléter">
+          <span className="lw-todo-label">À compléter</span>
+          {chips.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className="lw-todo-chip"
+              aria-label={`Compléter : ${c.label}`}
+              onClick={() => jumpTo(c.section, c.field)}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="lw-sections">
         {registry.map(({ id, label, Icon, Comp }) => (
           <WorkspaceSection
@@ -189,6 +263,7 @@ export default function SectionsPane({
             title={label}
             Icon={Icon}
             collapsed={!!collapsed[id]}
+            complete={!pointees.has(id) && sectionAutoRepliee(state, id, {})}
             onToggle={() => toggle(id)}
           >
             {/* createElement explicite — même faux positif compilateur que
