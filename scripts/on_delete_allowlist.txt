@@ -1498,7 +1498,7 @@ backend/django_core/apps/rh/models.py:944
 backend/django_core/apps/rh/models.py:946
 backend/django_core/apps/rh/models.py:96
 backend/django_core/apps/roles/models.py:382
-backend/django_core/apps/roles/models.py:419
+backend/django_core/apps/roles/models.py:485
 backend/django_core/apps/sante/models.py:154
 backend/django_core/apps/sante/models.py:157
 backend/django_core/apps/sante/models.py:212
