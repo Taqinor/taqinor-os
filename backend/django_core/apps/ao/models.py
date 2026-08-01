@@ -34,6 +34,15 @@ from django.db import models
 
 from core.models import TenantModel
 
+# AOF19 — géométrie PURE (repère local métrique, ordre des axes contractuel).
+# Ré-exports : l'implémentation n'existe qu'une fois, dans ``geometrie.py``.
+from .geometrie import (  # noqa: F401
+    aire_polygone_m2,
+    normaliser_orientation,
+    perimetre_polygone_m,
+    polygone_est_simple,
+)
+
 
 # ── FG222 — Gestion des appels d'offres (public/privé) ─────────────────────
 
@@ -442,83 +451,13 @@ CLAUSES_REFERENCE_CPS = (
 )
 
 
-# ── AOF18 — Bâtiments et toitures du projet ────────────────────────────────
-
-def polygone_est_simple(contour):
-    """Vrai si ``contour`` (liste de ``[x, y]`` en MÈTRES) est un polygone simple.
-
-    « Simple » = au moins 3 sommets DISTINCTS et aucun croisement d'arêtes non
-    adjacentes. Une enveloppe qui se croise produirait des rangées de modules
-    hors du bâtiment : c'est un refus de saisie, pas un avertissement.
-
-    Fonction PURE (aucune I/O, aucun accès base) — AOF19 la relogera dans
-    ``apps/ao/geometrie.py``, le module canonique du repère local métrique.
-    """
-    points = [tuple(p) for p in (contour or [])]
-    if len(points) > 1 and points[0] == points[-1]:
-        points = points[:-1]
-    if len(points) < 3:
-        return False
-    if len(set(points)) != len(points):
-        return False
-    n = len(points)
-    for i in range(n):
-        a1, a2 = points[i], points[(i + 1) % n]
-        for j in range(i + 1, n):
-            if j == i or (j + 1) % n == i or j == (i + 1) % n:
-                continue
-            b1, b2 = points[j], points[(j + 1) % n]
-            if _segments_se_croisent(a1, a2, b1, b2):
-                return False
-    return True
-
-
-def _orientation(p, q, r):
-    val = ((q[1] - p[1]) * (r[0] - q[0])) - ((q[0] - p[0]) * (r[1] - q[1]))
-    if abs(val) < 1e-12:
-        return 0
-    return 1 if val > 0 else 2
-
-
-def _sur_segment(p, q, r):
-    return (min(p[0], r[0]) <= q[0] <= max(p[0], r[0])
-            and min(p[1], r[1]) <= q[1] <= max(p[1], r[1]))
-
-
-def _segments_se_croisent(p1, q1, p2, q2):
-    o1, o2 = _orientation(p1, q1, p2), _orientation(p1, q1, q2)
-    o3, o4 = _orientation(p2, q2, p1), _orientation(p2, q2, q1)
-    if o1 != o2 and o3 != o4:
-        return True
-    if o1 == 0 and _sur_segment(p1, p2, q1):
-        return True
-    if o2 == 0 and _sur_segment(p1, q2, q1):
-        return True
-    if o3 == 0 and _sur_segment(p2, p1, q2):
-        return True
-    if o4 == 0 and _sur_segment(p2, q1, q2):
-        return True
-    return False
-
-
-def aire_polygone_m2(contour):
-    """Aire (m²) d'un contour en repère LOCAL MÉTRIQUE (formule du lacet).
-
-    Fonction PURE. Renvoie ``0.0`` pour moins de 3 sommets.
-    """
-    points = [tuple(float(c) for c in p) for p in (contour or [])]
-    if len(points) > 1 and points[0] == points[-1]:
-        points = points[:-1]
-    if len(points) < 3:
-        return 0.0
-    total = 0.0
-    n = len(points)
-    for i in range(n):
-        x1, y1 = points[i]
-        x2, y2 = points[(i + 1) % n]
-        total += (x1 * y2) - (x2 * y1)
-    return abs(total) / 2.0
-
+# ── AOF18/AOF19 — Bâtiments et toitures du projet ──────────────────────────
+#
+# AOF19 — les fonctions de géométrie vivent dans ``apps/ao/geometrie.py``, le
+# module PUR (stdlib seule, zéro Django, zéro I/O) qui porte le contrat d'ordre
+# des axes. Elles sont ré-exportées ici pour que ``from apps.ao.models import
+# polygone_est_simple`` reste valide, mais l'implémentation n'est écrite QU'UNE
+# fois — deux copies divergeraient au premier correctif.
 
 class BatimentAO(TenantModel):
     """Un bâtiment du projet (AOF18).
