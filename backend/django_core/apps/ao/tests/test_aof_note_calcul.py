@@ -73,7 +73,7 @@ def contexte_frdisi(**surcharges):
                 'tension_banc_v': Decimal('307.2'),
                 'besoin_nocturne_kwh': Decimal('284.5'),
                 'couverture_nocturne_pct': Decimal('100.0'),
-                'marge_kwh': Decimal('4.94'),
+                'excedent_nocturne_kwh': Decimal('4.94'),
             },
             'liaison_inter_sites': {
                 'nature': 'liaison enterrée AC',
@@ -117,7 +117,7 @@ class BilansDerivesTest(SimpleTestCase):
             'tension_banc_v': Decimal('341.3'),
             'besoin_nocturne_kwh': Decimal('284.5'),
             'couverture_nocturne_pct': Decimal('100.0'),
-            'marge_kwh': Decimal('38.06'),
+            'excedent_nocturne_kwh': Decimal('38.06'),
         }
         apres = construire_note_calcul(apres_ctx)
         self.assertNotEqual(avant['stockage']['kwh_installes'],
