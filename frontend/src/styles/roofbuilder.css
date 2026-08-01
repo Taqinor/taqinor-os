@@ -204,3 +204,50 @@
 .rp9-host .bg-nuit-800 { background: var(--rp-nuit-800); }
 .rp9-host .bg-nuit-900 { background: var(--rp-nuit-900); }
 .rp9-host .bg-nuit-800\/60 { background: rgb(12 18 38 / 0.6); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   AOF82 — Panneau « Reprendre depuis la carte » de l'atelier Toiture (AO).
+   Le lecteur de cartes EXISTANT (`@roofpro/captureBoot`) est monté dans un
+   `.rp9-host` réduit : seul l'échafaudage minimal qu'il interroge est rendu
+   (#rp9-map, #rp9-status, #rp9-finish, #rp9-undo-point, #rp9-clear,
+   #rp9-area-value). Sur la page ERP la hauteur de la carte venait d'une
+   utilitaire Tailwind du JSX ; ici on la donne explicitement, sinon la carte
+   se monte dans un conteneur de hauteur nulle et reste invisible.
+   Ajout PUREMENT additif, scopé `.ao-carte*` / `.rp9-host` — aucune règle
+   existante n'est modifiée, aucun style global touché.
+   ══════════════════════════════════════════════════════════════════════════ */
+.ao-carte { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.ao-carte-aide,
+.ao-carte-adresse { color: var(--muted-foreground); font-size: 0.875rem; margin: 0; }
+
+.rp9-host.ao-carte-host { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.rp9-host .ao-carte-map {
+  width: 100%;
+  height: 48vh;
+  min-height: 320px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ao-carte-statut { min-height: 1.25rem; margin: 0; font-size: 0.875rem; }
+
+.ao-carte-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ao-carte-surface { margin: 0 0 0 auto; font-size: 0.875rem; }
+
+/* État dégradé : la carte n'a pas pu démarrer (clé MapTiler absente ou montage
+   cassé). L'atelier reste utilisable — le repli vers le tracé manuel est ici. */
+.ao-carte-degrade {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+  background: var(--muted);
+}
+.ao-carte-degrade p { margin: 0 0 0.5rem; }
