@@ -59,6 +59,13 @@ import { useIsMobile } from '../../../../ui/ResponsiveDialog'
 // breakpoint qu'avant (768px, passé en paramètre) — comportement inchangé.
 const MOBILE_QUERY = '(max-width: 768px)'
 
+/* APX9 — palier de RENDU de la liste (le pendant de RENDER_CAP=40 du kanban).
+   Une ligne de tableau coûte bien moins qu'une carte, et la Liste EST la vue
+   dense (APX5) : la faire cliquer tous les 40 leads irait contre sa raison
+   d'être. 200 monte tout jusqu'à 200 leads — la très grande majorité des
+   pipelines — et borne le pire cas. */
+const LIST_RENDER_CAP = 200
+
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
 // LB4 — options d'étape calculées PAR LIGNE (dépendent de l'étape courante du
 // lead, pas une liste plate partagée) : `disabled` grise les transitions
@@ -772,7 +779,26 @@ export default function ListView({
     })
   }, [leads, sort])
 
-  const visibleIds = sorted.map((l) => l.id)
+  /* APX9 — PLAFOND DE RENDU (même principe que le kanban, taille adaptée).
+     -------------------------------------------------------------------------
+     `fetchLeads` charge toutes les pages en mémoire et cette vue montait
+     CHAQUE ligne. Le plafond ne touche que le RENDU : « Charger plus » découpe
+     plus loin dans le tableau DÉJÀ chargé — zéro appel réseau, zéro dépendance.
+     Palier de 200 (contre 40 pour le kanban) : une ligne de tableau coûte bien
+     moins qu'une carte, et la Liste EST la vue dense — la faire cliquer tous
+     les 40 leads irait contre sa raison d'être. */
+  const [limiteRendu, setLimiteRendu] = useState(LIST_RENDER_CAP)
+  const chargerPlus = () => setLimiteRendu((n) => n + LIST_RENDER_CAP)
+  // Un changement de tri/filtre/groupe repart du premier palier (sinon on
+  // garderait « 400 lignes montées » sur une liste qui n'en a plus que 12).
+  useEffect(() => { setLimiteRendu(LIST_RENDER_CAP) }, [sort, listGroup, leads])
+  const rendus = useMemo(() => sorted.slice(0, limiteRendu), [sorted, limiteRendu])
+  const restants = Math.max(0, sorted.length - limiteRendu)
+
+  // La sélection « tout » porte sur les lignes RENDUES (on ne coche jamais ce
+  // qui n'est pas à l'écran — même règle qu'avant, la liste rendue faisait
+  // simplement la totalité).
+  const visibleIds = rendus.map((l) => l.id)
   const allChecked = allVisibleSelected(selected, visibleIds)
   // LB19 — colonnes réellement rendues (modèle moins celles masquées par
   // l'utilisateur) : réutilisé par le <colgroup> ET le colSpan de l'état
@@ -791,11 +817,14 @@ export default function ListView({
   // pas pour les nôtres).
   const groupedRows = useMemo(() => {
     if (listGroup !== 'stage') return null
+    // APX9 — les COMPTEURS/TOTAUX de groupe restent ceux de `sorted` (totaux
+    // RÉELS de l'étape) ; seules les LIGNES sont bornées par le plafond.
     return groupLeadsByStage(sorted).map((g) => ({
       ...g,
-      leads: sorted.filter((l) => l.stage === g.key),
+      leads: sorted.filter((l) => l.stage === g.key).slice(0, limiteRendu),
+      restants: Math.max(0, sorted.filter((l) => l.stage === g.key).length - limiteRendu),
     }))
-  }, [sorted, listGroup])
+  }, [sorted, listGroup, limiteRendu])
 
   // LB20 — extrait pour être partagé entre le mode Plat (sorted.map) et le
   // mode Par étape (groupedRows[i].leads.map) : AUCUNE duplication du JSX
@@ -928,7 +957,7 @@ export default function ListView({
           )}
           {/* Mode Plat (défaut) : les 100 % des tests/e2e existants passent
               par ce chemin — tr.lv-row/.ie-cell/select.ie-input inchangés. */}
-          {!!sorted.length && listGroup !== 'stage' && sorted.map(renderRow)}
+          {!!sorted.length && listGroup !== 'stage' && rendus.map(renderRow)}
           {/* LB20 — mode « Par étape » : rangées de groupe collantes
               (tr.lv-group, sous le thead) au-dessus des lignes de CE
               groupe — repliables, ordre = l'ordre du funnel
@@ -953,8 +982,28 @@ export default function ListView({
                 </td>
               </tr>
               {!collapsedGroups.has(g.key) && g.leads.map(renderRow)}
+              {!collapsedGroups.has(g.key) && g.restants > 0 && (
+                <tr className="lv-charger-plus-row">
+                  <td colSpan={emptyColSpan}>
+                    <button type="button" className="lv-charger-plus" onClick={chargerPlus}>
+                      Charger plus ({g.restants} restant{g.restants > 1 ? 's' : ''})
+                    </button>
+                  </td>
+                </tr>
+              )}
             </Fragment>
           ))}
+          {/* APX9 — mode Plat : le même palier, en pied de tableau. Le tableau
+              est DÉJÀ chargé en mémoire — ce bouton ne déclenche aucun appel. */}
+          {!!sorted.length && listGroup !== 'stage' && restants > 0 && (
+            <tr className="lv-charger-plus-row">
+              <td colSpan={emptyColSpan}>
+                <button type="button" className="lv-charger-plus" onClick={chargerPlus}>
+                  Charger plus ({restants} restant{restants > 1 ? 's' : ''})
+                </button>
+              </td>
+            </tr>
+          )}
         </tbody>
         </table>
         {insightsLead && (

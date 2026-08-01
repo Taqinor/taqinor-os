@@ -53,7 +53,10 @@ test('LB20 : les rangées de groupe (tr.lv-group) sont collantes, précédées d
   // appellent tous deux `renderRow` (pas de second bloc <ListRow ... />).
   const listRowJsxCount = (SRC.match(/<ListRow$/gm) || []).length
   assert.equal(listRowJsxCount, 1, 'un seul site <ListRow ... /> doit exister (renderRow), pas un par mode')
-  assert.match(SRC, /sorted\.map\(renderRow\)/)
+  // APX9 — le mode Plat rend la TRANCHE bornée (`rendus`) et non plus `sorted`
+  // en entier (plafond de rendu) : c'est toujours le MÊME `renderRow`, appelé
+  // sur une liste tranchée — l'invariant « un seul JSX de ligne » est intact.
+  assert.match(SRC, /rendus\.map\(renderRow\)/)
   assert.match(SRC, /g\.leads\.map\(renderRow\)/)
 })
 

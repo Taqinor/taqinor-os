@@ -9535,3 +9535,45 @@ textarea.form-control {
     display: none;
   }
 }
+
+/* ===========================================================================
+   APX9 — « CHARGER PLUS » : plafond de RENDU, jamais de chargement.
+   ---------------------------------------------------------------------------
+   Les leads sont deja TOUS en memoire (`fetchAllPages`) : ce bouton ne fait
+   que decouper plus loin dans le tableau. Il est donc volontairement discret —
+   ce n'est pas une action metier, c'est un « voir la suite ». Cible >= 32 px,
+   pleine largeur de colonne (facile a viser au pouce comme a la souris).
+   =========================================================================== */
+.kb-charger-plus,
+.lv-charger-plus {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 0.35rem 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .kb-charger-plus:hover,
+  .lv-charger-plus:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+.kb-charger-plus:focus-visible,
+.lv-charger-plus:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.lv-charger-plus-row td {
+  text-align: center;
+}
+@media (pointer: coarse) {
+  .kb-charger-plus,
+  .lv-charger-plus { min-height: 44px; }
+}

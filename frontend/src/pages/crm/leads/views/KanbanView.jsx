@@ -200,6 +200,21 @@ export function repartitionActivite(leads) {
   return acc
 }
 
+/* APX9 — PLAFOND DE RENDU PAR COLONNE.
+   ---------------------------------------------------------------------------
+   `fetchLeads` charge TOUTES les pages en mémoire (`fetchAllPages`) et cette
+   vue montait ensuite CHAQUE carte (`col.leads.map`, aucun découpage). Sur
+   500+ leads cela fait des milliers de nœuds DOM ; densifier les cartes (APX2)
+   ne fait qu'atteindre ce mur plus tôt, puisqu'il en tient davantage à l'écran.
+
+   Le plafond ne touche QUE le RENDU : les données sont déjà là, « Charger
+   plus » ne fait que découper plus loin dans le tableau en mémoire — ZÉRO
+   appel réseau, ZÉRO dépendance (la virtualisation react-window reste
+   refusée : c'est une dépendance). Les compteurs et sommes d'en-tête restent
+   les totaux RÉELS de l'étape : on ne cache pas des leads, on en diffère
+   l'affichage. */
+export const RENDER_CAP = 40
+
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
 // LB9 — région nommée (axe/lecteur d'écran atteignent chaque colonne par son
 // libellé + compteur) ; en-têtes déjà épinglés hors du corps scrollant depuis
@@ -369,6 +384,15 @@ export default function KanbanView({
      mettre dans l'URL et à afficher en facette, pour un geste qui se défait
      d'un second clic. Re-cliquer le même segment l'enlève. */
   const [activiteParEtape, setActiviteParEtape] = useState({})
+  // APX9 — combien de cartes sont MONTÉES par étape (jamais combien sont
+  // chargées : tout est déjà en mémoire). Défaut RENDER_CAP.
+  const [limiteParEtape, setLimiteParEtape] = useState({})
+  const chargerPlus = useCallback((stageKey) => {
+    setLimiteParEtape((prev) => ({
+      ...prev,
+      [stageKey]: (prev[stageKey] ?? RENDER_CAP) + RENDER_CAP,
+    }))
+  }, [])
   const filtrerActivite = useCallback((stageKey, seau) => {
     setActiviteParEtape((prev) => (
       prev[stageKey] === seau
@@ -517,27 +541,47 @@ export default function KanbanView({
             {/* APX6 — le filtre d'activité ne masque QUE des cartes : les
                 compteurs et la somme de l'en-tête restent les totaux RÉELS de
                 l'étape (sinon cliquer un segment redessinerait la barre qu'on
-                vient de cliquer). */}
-            {(activiteParEtape[col.key]
-              ? col.leads.filter((l) => activiteSeau(l) === activiteParEtape[col.key])
-              : col.leads
-            ).map((lead) => (
-              <DraggableCard
-                key={lead.id}
-                lead={lead}
-                busy={lead.id === busyLeadId}
-                onOpen={onOpenLead}
-                onAutoQuote={onAutoQuote}
-                users={users}
-                onReassign={onReassign}
-                selected={selected.has(lead.id)}
-                selectionActive={selected.size > 0}
-                onToggleSelect={onToggleSelect}
-                onPlanifierRelance={onPlanifierRelance}
-                onInlineSave={onInlineSave}
-                onMarkPerdu={onMarkPerdu}
-              />
-            ))}
+                vient de cliquer).
+                APX9 — puis le plafond de RENDU : on ne monte que les N
+                premières cartes, le reste attend « Charger plus ». Les données
+                sont déjà en mémoire — aucun appel réseau ici. */}
+            {(() => {
+              const visibles = activiteParEtape[col.key]
+                ? col.leads.filter((l) => activiteSeau(l) === activiteParEtape[col.key])
+                : col.leads
+              const limite = limiteParEtape[col.key] ?? RENDER_CAP
+              const restants = Math.max(0, visibles.length - limite)
+              return (
+                <>
+                  {visibles.slice(0, limite).map((lead) => (
+                    <DraggableCard
+                      key={lead.id}
+                      lead={lead}
+                      busy={lead.id === busyLeadId}
+                      onOpen={onOpenLead}
+                      onAutoQuote={onAutoQuote}
+                      users={users}
+                      onReassign={onReassign}
+                      selected={selected.has(lead.id)}
+                      selectionActive={selected.size > 0}
+                      onToggleSelect={onToggleSelect}
+                      onPlanifierRelance={onPlanifierRelance}
+                      onInlineSave={onInlineSave}
+                      onMarkPerdu={onMarkPerdu}
+                    />
+                  ))}
+                  {restants > 0 && (
+                    <button
+                      type="button"
+                      className="kb-charger-plus"
+                      onClick={() => chargerPlus(col.key)}
+                    >
+                      Charger plus ({restants} restant{restants > 1 ? 's' : ''})
+                    </button>
+                  )}
+                </>
+              )
+            })()}
           </StageColumn>
         ))}
       </div>

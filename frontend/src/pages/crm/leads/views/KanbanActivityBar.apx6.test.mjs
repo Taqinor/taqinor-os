@@ -110,7 +110,9 @@ test('APX6 : le clic filtre la COLONNE, se defait au second clic, et ne fausse p
   assert.match(SRC, /prev\[stageKey\] === seau/)
   // Le filtre ne touche QUE les cartes montees — `col.count`/`col.totalDevis`
   // restent les totaux reels (sinon la barre se redessinerait sous le doigt).
-  assert.match(SRC, /\(activiteParEtape\[col\.key\]\s*\n\s*\? col\.leads\.filter\(\(l\) => activiteSeau\(l\) === activiteParEtape\[col\.key\]\)\s*\n\s*: col\.leads\s*\n\s*\)\.map/)
+  // APX9 a insere le plafond de rendu APRES ce filtre : la source de la
+  // tranche reste bien la liste filtree, jamais un autre tableau.
+  assert.match(SRC, /const visibles = activiteParEtape\[col\.key\]\s*\n\s*\? col\.leads\.filter\(\(l\) => activiteSeau\(l\) === activiteParEtape\[col\.key\]\)\s*\n\s*: col\.leads/)
   assert.match(SRC, /aria-label=\{`Étape \$\{col\.label\} — \$\{col\.count\} lead/)
 })
 
