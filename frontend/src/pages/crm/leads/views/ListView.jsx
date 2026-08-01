@@ -9,6 +9,9 @@ import { useIsAdmin } from '../../../../hooks/useHasPermission'
 import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
 import crmApi from '../../../../api/crmApi'
 import { toastWithUndo, toastError } from '../../../../lib/toast'
+// EZ14 — undo universel : « appliquer tout de suite + inverse à l'annulation »,
+// jamais le commit différé qui perd l'écriture au démontage d'un board.
+import { mutateWithUndo } from '../../../../lib/mutateWithUndo'
 import {
   PIPELINE_STAGES,
   STAGE_LABELS,
@@ -65,6 +68,17 @@ const MOBILE_QUERY = '(max-width: 768px)'
    d'être. 200 monte tout jusqu'à 200 leads — la très grande majorité des
    pipelines — et borne le pire cas. */
 const LIST_RENDER_CAP = 200
+
+/* EZ14 — champs éditables en place qui gagnent l'undo, et leur genre au
+   REGISTRE FERMÉ (lib/mutateWithUndo.js). Un champ absent d'ici s'enregistre
+   exactement comme avant : c'est le cas voulu pour `facture_hiver` (un montant)
+   et pour tout champ d'argent — jamais d'« Annuler » sur l'argent. */
+const CHAMPS_UNDO = {
+  stage: { kind: 'lead_stage', message: 'Étape modifiée.' },
+  priorite: { kind: 'lead_priorite', message: 'Priorité modifiée.' },
+  tags: { kind: 'lead_tags', message: 'Étiquettes modifiées.' },
+  relance_date: { kind: 'lead_relance', message: 'Relance modifiée.' },
+}
 
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
 // LB4 — options d'étape calculées PAR LIGNE (dépendent de l'étape courante du
@@ -697,39 +711,58 @@ export default function ListView({
   // inclus — la ligne se re-rend grisée/« Restaurer » SEULE, sans refetch) ;
   // plus de refetch intégral après ce PATCH mono-lead (I1). Catch externe
   // silencieux → toastError (I8) ; les catches internes (undo) toastaient déjà.
+  /* EZ14 — adoptions n°3 à 6 : l'édition en place des champs RÉVERSIBLES gagne
+     l'undo, d'un seul endroit. `onInlineSave(lead, champ, valeur)` est déjà le
+     point de passage unique ; on l'enveloppe ici, donc AUCUNE cellule n'a à
+     connaître l'undo, et une nouvelle colonne éditable ne peut pas l'oublier.
+
+     Le registre est FERMÉ (lib/mutateWithUndo.js) : un champ absent de
+     `CHAMPS_UNDO` (module, plus haut) s'enregistre EXACTEMENT comme avant, sans
+     toast d'annulation. C'est volontaire — `facture_hiver` (un montant) et tout
+     champ d'argent n'ont JAMAIS d'undo. */
+  const inlineSaveAvecUndo = useCallback(async (lead, champ, valeur) => {
+    if (!onInlineSave) return undefined
+    const conf = CHAMPS_UNDO[champ]
+    if (!conf) return onInlineSave(lead, champ, valeur)
+    const precedent = lead?.[champ] ?? null
+    // Enregistrer la MÊME valeur n'est pas une modification : pas de toast.
+    if (precedent === valeur) return onInlineSave(lead, champ, valeur)
+    await mutateWithUndo({
+      kind: conf.kind,
+      message: conf.message,
+      apply: () => onInlineSave(lead, champ, valeur),
+      revert: () => onInlineSave(lead, champ, precedent),
+    })
+    return undefined
+  }, [onInlineSave])
+
+  // EZ14 — adoption n°1/2 : archivage et restauration passent par l'util
+  // unique. Le comportement VX95 est conservé À L'IDENTIQUE (appliqué tout de
+  // suite, « Annuler » = l'action inverse) ; ce qui change, c'est qu'il n'y a
+  // plus une variante locale du motif par site d'appel.
   const onArchive = useCallback(async (lead) => {
     setBusyId(lead.id)
     try {
-      await dispatch(archiveLead(lead.id)).unwrap()
-      // VX95 — l'archivage est déjà commis côté serveur : « Annuler » relance
-      // l'action inverse (restaurerLead), pas un commit différé.
-      toastWithUndo({
+      await mutateWithUndo({
+        kind: 'lead_archive',
         message: 'Lead archivé.',
-        onUndo: async () => {
-          try {
-            await dispatch(restoreLead(lead.id)).unwrap()
-          } catch { toastError('Restauration impossible.') }
-        },
+        apply: () => dispatch(archiveLead(lead.id)).unwrap(),
+        revert: () => dispatch(restoreLead(lead.id)).unwrap(),
+        errorMessage: "L'archivage a échoué — réessayez.",
       })
-    } catch {
-      toastError("L'archivage a échoué — réessayez.")
     } finally { setBusyId(null) }
   }, [dispatch])
 
   const onRestore = useCallback(async (lead) => {
     setBusyId(lead.id)
     try {
-      await dispatch(restoreLead(lead.id)).unwrap()
-      toastWithUndo({
+      await mutateWithUndo({
+        kind: 'lead_archive',
         message: 'Lead restauré.',
-        onUndo: async () => {
-          try {
-            await dispatch(archiveLead(lead.id)).unwrap()
-          } catch { toastError('Archivage impossible.') }
-        },
+        apply: () => dispatch(restoreLead(lead.id)).unwrap(),
+        revert: () => dispatch(archiveLead(lead.id)).unwrap(),
+        errorMessage: 'La restauration a échoué — réessayez.',
       })
-    } catch {
-      toastError('La restauration a échoué — réessayez.')
     } finally { setBusyId(null) }
   }, [dispatch])
 
@@ -845,7 +878,7 @@ export default function ListView({
         onToggleSelect={onToggleSelect}
         onOpenLead={onOpenLead}
         armCallNudgeFor={armCallNudgeFor}
-        onInlineSave={onInlineSave}
+        onInlineSave={inlineSaveAvecUndo}
         users={users}
         onReassign={onReassign}
         onAutoQuote={onAutoQuote}

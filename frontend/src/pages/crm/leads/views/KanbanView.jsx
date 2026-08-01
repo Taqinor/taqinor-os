@@ -26,6 +26,9 @@ import { usePanScroll } from '../../../../features/kanban/usePanScroll'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
+// EZ14 — undo universel : appliquer tout de suite, inverser à l'annulation.
+// Un board se démonte au moindre changement de vue : aucun commit différé ici.
+import { mutateWithUndo } from '../../../../lib/mutateWithUndo'
 import { EmptyState, Button } from '../../../../ui'
 import { isSigneIntercept } from '../signeIntercept'
 import LeadCard from './LeadCard'
@@ -401,6 +404,45 @@ export default function KanbanView({
     ))
   }, [])
 
+  /* EZ14 — adoptions n°7 et 8 : sur le board, la RÉASSIGNATION et le
+     changement d'étape au CLAVIER (StageMover) gagnent l'undo.
+     C'est précisément ici que le commit différé était dangereux : un board se
+     démonte au moindre changement de vue ou de filtre. `mutateWithUndo`
+     applique tout de suite et propose l'appel INVERSE — il n'y a jamais rien
+     « en attente » à perdre. */
+  const reassignAvecUndo = useCallback(async (lead, nouvelId) => {
+    if (!onReassign) return
+    const precedent = lead?.owner ?? ''
+    if (String(precedent) === String(nouvelId)) return
+    await mutateWithUndo({
+      kind: 'lead_owner',
+      message: 'Responsable modifié.',
+      apply: () => onReassign(lead, nouvelId),
+      revert: () => onReassign(lead, precedent),
+    })
+  }, [onReassign])
+
+  const inlineSaveAvecUndo = useCallback(async (lead, champ, valeur) => {
+    if (!onInlineSave) return undefined
+    // Seule l'étape est réversible ici (le StageMover ne pilote que `stage`).
+    // Entrer en « Signé » est intercepté en amont (SigneDialog) : cette voie ne
+    // touche donc jamais au funnel d'argent.
+    if (champ !== 'stage') return onInlineSave(lead, champ, valeur)
+    const precedent = lead?.stage
+    if (precedent === valeur) return onInlineSave(lead, champ, valeur)
+    // On laisse l'erreur REMONTER (useOptimisticSave fait son rollback et
+    // SigneDialog s'appuie sur la sentinelle SIGNE_INTERCEPT) : c'est pourquoi
+    // `apply` est appelé directement ici plutôt qu'avalé par le toast.
+    const res = await onInlineSave(lead, champ, valeur)
+    await mutateWithUndo({
+      kind: 'lead_stage',
+      message: 'Étape modifiée.',
+      apply: () => Promise.resolve(res),
+      revert: () => onInlineSave(lead, champ, precedent),
+    })
+    return res
+  }, [onInlineSave])
+
   const [collapsedStages, setCollapsedStages] = useState(() => new Set(readCollapsedStages()))
   const toggleCollapsed = useCallback((stageKey) => {
     setCollapsedStages((prev) => {
@@ -561,12 +603,13 @@ export default function KanbanView({
                       onOpen={onOpenLead}
                       onAutoQuote={onAutoQuote}
                       users={users}
-                      onReassign={onReassign}
+                      // EZ14 — réassignation et étape passent par l'undo.
+                      onReassign={reassignAvecUndo}
                       selected={selected.has(lead.id)}
                       selectionActive={selected.size > 0}
                       onToggleSelect={onToggleSelect}
                       onPlanifierRelance={onPlanifierRelance}
-                      onInlineSave={onInlineSave}
+                      onInlineSave={inlineSaveAvecUndo}
                       onMarkPerdu={onMarkPerdu}
                     />
                   ))}
