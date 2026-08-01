@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taqinor.ma/schemas/calepinage/entree-v1.json",
+  "title": "EntreeCalepinage",
+  "description": "Contrat d'echange du moteur de calepinage (AOF57). Frontiere entre le moteur pur core.calepinage et toute persistance. Toutes les longueurs sont en METRES ; le hash d'entree les arrondit au MILLIMETRE avant hachage, jamais sur des floats bruts.",
+  "type": "object",
+  "required": ["schema_version", "repere", "surfaces", "kits", "parametres"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "integer", "minimum": 1},
+    "repere": {"type": "string"},
+    "surfaces": {"type": "array", "items": {"$ref": "#/$defs/surface"}},
+    "kits": {"type": "array", "items": {"$ref": "#/$defs/kit"}},
+    "parametres": {"$ref": "#/$defs/parametres"},
+    "obstacles": {"type": "array", "items": {"$ref": "#/$defs/obstacle"}},
+    "zones": {"type": "array", "items": {"$ref": "#/$defs/zone"}},
+    "engagements": {
+      "type": "array",
+      "description": "Couples (repere de surface, modules engages au bordereau).",
+      "items": {"type": "array", "minItems": 2, "maxItems": 2}
+    }
+  },
+  "$defs": {
+    "rives": {
+      "type": "object",
+      "description": "Les QUATRE rives nommees — jamais un parametre rive unique.",
+      "properties": {
+        "laterale_m": {"type": "number", "minimum": 0},
+        "extremite_m": {"type": "number", "minimum": 0},
+        "acrotere_m": {"type": "number", "minimum": 0},
+        "joint_m": {"type": "number", "minimum": 0}
+      }
+    },
+    "coupure": {
+      "type": "object",
+      "description": "Rupture infranchissable : changement de niveau, muret, joint.",
+      "required": ["repere", "axe", "position"],
+      "properties": {
+        "repere": {"type": "string"},
+        "axe": {"enum": ["x", "y"]},
+        "position": {"type": "number"},
+        "epaisseur_m": {"type": "number", "minimum": 0}
+      }
+    },
+    "surface": {
+      "type": "object",
+      "required": ["type", "repere"],
+      "properties": {
+        "type": {"enum": ["rectangle", "polygone", "arc", "multi_niveaux"]},
+        "repere": {"type": "string"},
+        "rives": {"$ref": "#/$defs/rives"},
+        "axe_rangee": {"enum": ["NORD_SUD", "EST_OUEST"]},
+        "niveau": {"type": "integer"},
+        "pente_deg": {"type": "number"},
+        "azimut_deg": {"type": "number"},
+        "origine": {"type": "array", "minItems": 2, "maxItems": 2},
+        "coupures": {"type": "array", "items": {"$ref": "#/$defs/coupure"}},
+        "longueur_m": {"type": "number", "exclusiveMinimum": 0},
+        "largeur_m": {"type": "number", "exclusiveMinimum": 0},
+        "contour": {"type": "array", "minItems": 3},
+        "trous": {"type": "array"},
+        "rayon_ext_m": {"type": "number", "exclusiveMinimum": 0},
+        "developpe_m": {"type": "number", "exclusiveMinimum": 0},
+        "paliers": {"type": "array"}
+      }
+    },
+    "kit": {
+      "type": "object",
+      "description": "Un type de table. L'emprise transversale est DERIVEE (2 x cote x cos(inclinaison) + faitage), jamais saisie.",
+      "required": ["code", "module_long_m", "module_court_m", "puissance_module_wc", "inclinaison_deg", "orientation"],
+      "properties": {
+        "code": {"type": "string"},
+        "libelle": {"type": "string"},
+        "module_long_m": {"type": "number", "exclusiveMinimum": 0},
+        "module_court_m": {"type": "number", "exclusiveMinimum": 0},
+        "puissance_module_wc": {"type": "number", "exclusiveMinimum": 0},
+        "inclinaison_deg": {"type": "number", "minimum": 0, "exclusiveMaximum": 90},
+        "orientation": {"enum": ["PORTRAIT", "PAYSAGE"]},
+        "modules_par_table": {"type": "integer", "minimum": 1},
+        "faitage_m": {"type": "number", "minimum": 0}
+      }
+    },
+    "obstacle": {
+      "type": "object",
+      "description": "Rectangle bloquant. degagement_m reste null tant que obstacles.appliquer_regles ne l'a pas DERIVE de (type, provenance).",
+      "required": ["repere", "x0", "x1", "y0", "y1"],
+      "properties": {
+        "repere": {"type": "string"},
+        "x0": {"type": "number"},
+        "x1": {"type": "number"},
+        "y0": {"type": "number"},
+        "y1": {"type": "number"},
+        "type_obstacle": {"type": "string"},
+        "provenance": {
+          "enum": ["RELEVE", "RELEVE_DOUTEUX", "DECLARE_CLIENT", "PLAN", "DEVINE", "ECARTE"]
+        },
+        "degagement_m": {"type": ["number", "null"], "minimum": 0},
+        "hauteur_m": {"type": ["number", "null"]},
+        "regle_appliquee": {"type": "string"}
+      }
+    },
+    "zone": {
+      "type": "object",
+      "required": ["repere", "nature", "sommets"],
+      "properties": {
+        "repere": {"type": "string"},
+        "nature": {"enum": ["ENVELOPPE", "INTERDITE", "RESERVEE", "PREFEREE"]},
+        "sommets": {"type": "array", "minItems": 3},
+        "hauteur_m": {"type": ["number", "null"]},
+        "retrait_m": {"type": "number", "minimum": 0}
+      }
+    },
+    "parametres": {
+      "type": "object",
+      "required": ["kits"],
+      "properties": {
+        "kits": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "rives": {"$ref": "#/$defs/rives"},
+        "axe_rangee": {"enum": ["NORD_SUD", "EST_OUEST"]},
+        "mode_pose": {"enum": ["rangees_explicites_dp", "rangees_uniformes_phase"]},
+        "allee_m": {"type": "number", "minimum": 0},
+        "degagement_defaut_m": {"type": "number", "minimum": 0},
+        "degagement_nature_inconnue_m": {"type": "number", "minimum": 0},
+        "pas_recherche_m": {"type": "number", "exclusiveMinimum": 0},
+        "engagement_modules": {"type": ["integer", "null"], "minimum": 0},
+        "plafond_kwc": {"type": ["number", "null"], "minimum": 0},
+        "marge_troncon_min_m": {"type": "number", "minimum": 0},
+        "marge_bande_min_m": {"type": "number", "minimum": 0},
+        "graine": {"type": "integer"}
+      }
+    }
+  }
+}
