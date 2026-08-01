@@ -5,6 +5,7 @@ import { cn } from '../../../lib/cn'
 import PlanLayer from './PlanLayer'
 import VerdictBar from './VerdictBar'
 import TiroirKits from './TiroirKits'
+import TiroirAllees from './TiroirAllees'
 import useCalepinage from './useCalepinage'
 
 /* ============================================================================
@@ -125,6 +126,12 @@ export default function CalepinageStudio({ calepinageId }) {
         <aside className="flex w-full flex-col gap-1 overflow-y-auto lg:w-96" aria-label="Tiroirs de paramètres">
           <TiroirKits
             donnees={resultat?.tiroirs?.kits}
+            valeurs={parametres || {}}
+            onChange={majParametres}
+            perime={perime}
+          />
+          <TiroirAllees
+            donnees={resultat?.tiroirs?.allees}
             valeurs={parametres || {}}
             onChange={majParametres}
             perime={perime}
