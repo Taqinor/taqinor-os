@@ -311,24 +311,76 @@ export default function CallLogPopover({
 // (un onglet resté en fond des heures ne doit pas surprendre au retour).
 const NUDGE_TIMEOUT_MS = 10 * 60 * 1000
 
+/* EZ2 — LE NUDGE MARCHE AUSSI AU BUREAU.
+   ---------------------------------------------------------------------------
+   État vérifié : le nudge ne dépendait QUE de `visibilitychange`. C'est exact
+   sur téléphone (l'OS bascule sur l'app Téléphone, l'onglet est masqué, puis
+   revient au raccroché) — mais sur POSTE FIXE un tap `tel:` ne masque rien :
+   au mieux il ouvre un softphone dans une autre FENÊTRE. L'onglet reste
+   « visible », l'événement ne part jamais, le nudge n'apparaît JAMAIS, et
+   noter l'appel repasse par la fiche (le repli à 7 clics).
+
+   Trois déclencheurs, LE PREMIER GAGNE — jamais deux nudges :
+     1. `visibilitychange` (téléphone, comportement d'origine intact) ;
+     2. le retour de FOCUS de la fenêtre (softphone/appli desktop dans une
+        autre fenêtre : l'onglet n'est jamais masqué, mais il perd le focus) ;
+     3. une TEMPORISATION (~45 s) — le cas du téléphone posé à côté du clavier,
+        où le navigateur ne voit strictement rien.
+
+   `delayMs` est INJECTABLE (et la gate e2e peut l'avancer avec `page.clock`) :
+   une gate ne doit pas attendre 45 secondes réelles pour prouver un nudge. */
+const NUDGE_DELAY_MS = 45 * 1000
+
 // eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé (dev HMR only)
-export function useCallEndedNudge() {
+export function useCallEndedNudge({ delayMs = NUDGE_DELAY_MS } = {}) {
   const [nudgeVisible, setNudgeVisible] = useState(false)
   const armedAt = useRef(null)
+  const timerRef = useRef(null)
 
-  const armCallNudge = () => { armedAt.current = Date.now() }
-  const dismissNudge = () => { setNudgeVisible(false); armedAt.current = null }
+  // Désarme TOUT (le premier déclencheur gagne — jamais deux nudges).
+  const desarmer = () => {
+    armedAt.current = null
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+  }
+
+  const declencher = () => {
+    if (!armedAt.current) return
+    const elapsed = Date.now() - armedAt.current
+    desarmer()
+    if (elapsed <= NUDGE_TIMEOUT_MS) setNudgeVisible(true)
+  }
+
+  const armCallNudge = () => {
+    desarmer()
+    armedAt.current = Date.now()
+    // Déclencheur 3 — la temporisation. `window.setTimeout` (jamais l'import
+    // global) pour rester interceptable par les horloges de test.
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null
+      declencher()
+    }, delayMs)
+  }
+
+  const dismissNudge = () => { setNudgeVisible(false); desarmer() }
 
   useEffect(() => {
+    // Déclencheur 1 — retour d'onglet (téléphone). Inchangé.
     const onVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return
-      if (!armedAt.current) return
-      const elapsed = Date.now() - armedAt.current
-      armedAt.current = null
-      if (elapsed <= NUDGE_TIMEOUT_MS) setNudgeVisible(true)
+      declencher()
     }
+    // Déclencheur 2 — retour de focus fenêtre (bureau : l'onglet n'a jamais
+    // été masqué, mais le focus est parti vers le softphone).
+    const onFocus = () => { declencher() }
     document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('focus', onFocus)
+      // Le démontage ne doit pas laisser un timer réveiller un composant mort.
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return { nudgeVisible, armCallNudge, dismissNudge }

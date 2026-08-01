@@ -670,6 +670,10 @@ export default function ListView({
   // VX87 — nudge post-appel : armé au tap tel: (mémorise QUEL lead a été
   // appelé, une table n'a qu'un seul nudge visible à la fois — comme un
   // vendeur ne passe qu'un appel à la fois), proposé au retour dans l'onglet.
+  // EZ2 — au BUREAU, un tap `tel:` ne masque jamais l'onglet : le hook arme
+  // désormais AUSSI un retour de focus fenêtre et une temporisation, le premier
+  // déclencheur gagnant. Rien à câbler ici — le comportement mobile est
+  // strictement inchangé.
   const { nudgeVisible, armCallNudge, dismissNudge } = useCallEndedNudge()
   const [nudgeLead, setNudgeLead] = useState(null)
   // LB6 — `armCallNudge` (renvoyé par useCallEndedNudge, features/crm/
