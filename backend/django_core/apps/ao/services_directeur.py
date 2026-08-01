@@ -98,3 +98,24 @@ def _journaliser_cible(cible, precedente, user):
         old_value=f'v{precedente.version}' if precedente else '',
         new_value=f'v{cible.version}', body=cible.motif or '',
         company=cible.company)
+
+
+def economie_du_projet(appel_offre_id):
+    """L'économie DIRECTEUR d'un AO + la référence à porter sur le classeur.
+
+    Point d'entrée unique de la tâche ``ao.produire_rentabilite_xlsx`` : elle
+    importait ce nom sans qu'il existe, et dégradait donc silencieusement en
+    « rien à produire » — le classeur de rentabilité n'était jamais généré.
+    Renvoie ``(None, '')`` quand l'AO n'a pas encore d'économie, ce que la
+    tâche sait traiter.
+    """
+    from .models import AppelOffre
+
+    ao = (AppelOffre.objects
+          .filter(pk=appel_offre_id)
+          .select_related('economie')
+          .first())
+    if ao is None:
+        return None, ''
+    economie = getattr(ao, 'economie', None)
+    return economie, (ao.reference or '')
