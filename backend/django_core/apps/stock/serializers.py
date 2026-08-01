@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -408,6 +409,10 @@ class ProduitSerializer(serializers.ModelSerializer):
         pct = (vente - achat) / vente * Decimal('100')
         return str(pct.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP))
 
+    # APX18 — drf-spectacular ne peut pas deviner le type de retour d'un
+    # SerializerMethodField : sans annotation il emet un avertissement de
+    # schema (garde YAPIC6). URL de telechargement, ou null sans photo.
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_image_url(self, obj):
         """APX18 — URL de téléchargement de la photo (MinIO), ou None.
 
