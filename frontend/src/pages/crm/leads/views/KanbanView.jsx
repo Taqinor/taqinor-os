@@ -1,14 +1,14 @@
 // Vue kanban des leads CRM, façon Odoo : 6 colonnes canoniques (stages.js,
 // miroir de STAGES.py — jamais de liste d'étapes en dur ici), glisser-déposer
 // via @dnd-kit/core. Le parent gère l'optimistic update : on ne mute rien.
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
 import { ChevronDown, LayoutGrid, X } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useDraggable,
   useDroppable,
@@ -390,13 +390,18 @@ export default function KanbanView({
      qui peut appeler preventDefault, et le navigateur perd son scroll natif.
      Sur pointeur GROSSIER on ne monte donc le sensor QUE si le « mode
      déplacement » est actif (entrée « Réorganiser par glisser » du menu ⋯
-     mobile, LeadsPage). Le desktop (souris, PointerSensor) est STRICTEMENT
+     mobile, LeadsPage). Le desktop (souris, MouseSensor) est STRICTEMENT
      inchangé, et le StageMover sous chaque carte reste le chemin sans-drag —
      réordonner reste possible au doigt sans jamais activer le mode. */
   const pointerCoarse = useIsMobile('(pointer: coarse)')
   const touchDragMonte = !pointerCoarse || dragMode
-  // distance 6px : un clic simple ouvre la fiche, le drag exige un mouvement.
-  const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  /* GESTES PURS — MouseSensor, PAS PointerSensor : les pointer events unifient
+     souris ET doigt, donc PointerSensor (distance 6px) saisissait la carte au
+     tout début d'un balayage tactile — la carte se soulevait une frame puis
+     retombait au pointercancel : le « leads collants » résiduel du retour
+     fondateur. MouseSensor n'écoute que la souris ; au doigt, seul le
+     TouchSensor (monté uniquement en mode déplacement) peut saisir. */
+  const pointerSensor = useSensor(MouseSensor, { activationConstraint: { distance: 6 } })
   const touchSensor = useSensor(TouchSensor, {
     activationConstraint: { delay: 300, tolerance: 5 },
   })
@@ -415,6 +420,18 @@ export default function KanbanView({
      le teardown de l'écouteur non passif. La clé est CONSTANTE au desktop :
      jamais de remontage là où rien ne change. */
   const dndKey = touchDragMonte ? 'dnd-tactile' : 'dnd-sans-tactile'
+  /* Le plaisir du balayage (VX42 haptique) : un souffle de 5 ms quand le pager
+     se POSE sur une colonne — le « clic » physique des pagers natifs. Écouteur
+     passif, au doigt seulement ; `scrollend` absent (vieux iOS) = silence
+     propre, `vibrate` absent (iOS) = no-op défensif, jamais une erreur. */
+  useEffect(() => {
+    const el = boardRef.current
+    if (!el || !pointerCoarse || !('onscrollend' in el)) return undefined
+    const onSettle = () => navigator.vibrate?.(5)
+    el.addEventListener('scrollend', onSettle, { passive: true })
+    return () => el.removeEventListener('scrollend', onSettle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boardRef est un ref stable
+  }, [pointerCoarse])
   const columns = useMemo(() => groupLeadsByStage(leads), [leads])
   const [activeLead, setActiveLead] = useState(null)
 

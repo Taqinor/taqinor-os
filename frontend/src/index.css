@@ -5234,6 +5234,33 @@ textarea.form-control {
   font-weight: 700;
 }
 
+/* RETOUR FONDATEUR (2026-08-01) — « je vois encore l'étape sur chaque lead » :
+   sur un kanban, la COLONNE est déjà l'étape ; le sélecteur d'étape par carte
+   (StageMover — chemin clavier/souris sans drag, gardes LB3/LB4 conservées)
+   n'a pas à occuper le repos de chaque carte. Replié à hauteur nulle au repos,
+   il se révèle au survol de la carte (pointeur fin) et — resté FOCALISABLE —
+   se déplie dès que le focus clavier l'atteint (:focus-within, la règle anti
+   « tabbable invisible » du contrat APX2). Au doigt (ni survol ni tab), il
+   disparaît : l'étape se change dans la fenêtre du lead (pilule) ou en mode
+   déplacement. Bonus densité : chaque carte rend ~34px au repos. */
+.kb-stage-mover {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  margin-top: 0;
+  transition: max-height 150ms ease, opacity 150ms ease, margin-top 150ms ease;
+}
+.kb-drag-wrap:hover .kb-stage-mover,
+.kb-drag-wrap:focus-within .kb-stage-mover {
+  max-height: 4rem;
+  opacity: 1;
+  margin-top: 0.28rem;
+  overflow: visible;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kb-stage-mover { transition: none; }
+}
+
 /* ---------- Mobile ---------- */
 
 @media (max-width: 768px) {
@@ -5243,25 +5270,30 @@ textarea.form-control {
      horizontal aimanté par scroll-snap natif ; la COLONNE redevient le
      scrolleur vertical (axes imbriqués : board = X aimanté, colonne = Y) —
      l'en-tête sticky se re-résout tout seul contre la colonne. */
-  /* (C) — `x mandatory` + `scroll-snap-align: center` VOLAIENT le geste
-     diagonal : le navigateur DOIT se poser sur un point d'ancrage, donc le
-     moindre composant horizontal d'un scroll vertical réaimantait la colonne
-     et coupait le geste. `proximity` n'aimante que si le doigt s'arrête déjà
-     près d'un point (l'affordance LB42 « une étape à la fois » est conservée,
-     elle cesse simplement d'être un péage), et `start` aligne le bord GAUCHE
-     de la colonne plutôt que son centre — un ancrage centré rejouait un décalage
-     à chaque micro-mouvement. */
+  /* (C, révisé — « make the sweep the most pleasant possible ») : le vol du
+     geste diagonal venait du CUMUL mandatory + gestionnaires JS tactiles
+     (swipe de carte, TouchSensor) qui empêchaient le navigateur de poser son
+     propre verrou d'axe. Ces gestionnaires ont TOUS disparu (gestes purs) :
+     le navigateur départage seul colonne-Y / board-X dès les premiers pixels,
+     et `mandatory` redevient ce qu'il est chez les pagers natifs — un
+     claquement de page NET, jamais un repos entre deux colonnes (le flou du
+     `proximity` essayé en premier). `snap-stop: always` interdit de sauter
+     plusieurs étapes sur un grand balan, `start` reste l'ancrage atteignable,
+     et `overscroll-behavior-x: contain` coupe le chaînage horizontal en bout
+     de funnel (le rebond local, lui, reste). */
   .kb-board {
     gap: 0.6rem;
     padding: 0.5rem;
     -webkit-overflow-scrolling: touch;
     overflow: scroll hidden;
-    scroll-snap-type: x proximity;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
   }
 
   .kb-col {
     flex: 0 0 90%;
     scroll-snap-align: start;
+    scroll-snap-stop: always;
     min-height: 0;
     overflow-y: auto;
     /* (D) — la règle VX175(b) plus haut couvre `.kb-board` (l'axe X) mais PAS
