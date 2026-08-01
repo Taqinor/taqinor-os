@@ -6,6 +6,8 @@ import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
   Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus,
 } from 'lucide-react'
+// APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
+import { INVENTAIRE_ACCENT_KEY } from './inventaireAccent'
 
 /* ============================================================================
    ARC48 — Migration des routes legacy Stock vers le registre de modules.
@@ -65,7 +67,10 @@ const config = {
   description: 'Gestion des stocks, mouvements et fournisseurs.',
   nav: {
     label: 'STOCK', labelKey: 'nav.section.stock',
-    accent: 'lune',
+    // APX22 - accent de la FAMILLE INVENTAIRE : Stock, Magasin et
+    // Logistique portent desormais la MEME cle (celle-ci, inchangee cote
+    // Stock). Source unique : `features/stock/inventaireAccent.js`.
+    accent: INVENTAIRE_ACCENT_KEY,
     items: [
       { to: '/stock',                label: 'Produits',         k: 'nav.produits',   icon: navIcon(Package),     roles: ['normal','responsable','admin'] },
       { to: '/stock/categories',     label: 'Catégories & marques', k: 'nav.categories', icon: navIcon(Boxes), roles: ['responsable','admin'] },

@@ -1,72 +1,82 @@
-import { Card } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { kanbanSummary } from './factureKanban'
 
 /* ZFAC9 — Vue kanban des factures par statut (pipeline visuel). Wiring/
    données ONLY : réutilise `filtered` déjà chargé par FactureList.jsx et la
    MÊME dérivation de colonne que les onglets (`factureKanban.js`, miroir de
-   `isOverdue`/`isPartiallyPaid`/`statutKey`) — aucun nouveau champ backend,
-   aucune refonte visuelle (mêmes StatusPill/formatMAD que la vue liste).
+   `isOverdue`/`isPartiallyPaid`/`statutKey`) — aucun nouveau champ backend.
    `onOpenFacture` réutilise la MÊME action que la ligne de la vue liste
    (`openEdit(f)` → dialogue d'édition existant) — pas de route de détail
-   séparée, cette vue n'invente aucune nouvelle navigation. */
+   séparée, cette vue n'invente aucune nouvelle navigation.
+
+   APX15(c) — cette vue était une grille STATIQUE en classes utilitaires sans
+   AUCUNE parenté avec le langage `kb-*` du board des leads : deux « kanban »
+   du même produit qui ne se ressemblaient pas. Elle parle désormais ce
+   langage (mêmes colonnes, mêmes cartes), avec le MONTANT en héros comme le
+   board devis — c'est l'app de l'argent. Les `data-testid` `fkb-*` sont
+   CONSERVÉS : ils sont le contrat de ses tests. Toujours AUCUN glisser-
+   déposer (`kb-board-static`) : encaisser/annuler restent des actions
+   explicites, jamais un drag. */
 export default function FactureKanbanBoard({ factures, today, onOpenFacture }) {
   const columns = kanbanSummary(factures, today)
 
   return (
-    <div
-      className="mt-4 grid gap-3 overflow-x-auto pb-2"
-      style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(220px, 1fr))` }}
-      data-testid="facture-kanban-board"
-    >
+    <div className="kb-board kb-board-static mt-4" data-testid="facture-kanban-board">
       {columns.map((col) => (
-        <div key={col.key} className="flex min-w-[220px] flex-col gap-2" data-testid={`fkb-column-${col.key}`}>
-          <div className="flex items-center justify-between gap-2 px-1">
-            <span className="text-sm font-medium text-foreground">{col.label}</span>
-            <span className="rounded bg-muted px-1.5 text-xs text-muted-foreground" data-testid={`fkb-count-${col.key}`}>
-              {col.count}
+        <section
+          key={col.key}
+          className="kb-col"
+          aria-label={`Statut ${col.label} — ${col.count} facture${col.count === 1 ? '' : 's'}`}
+          data-testid={`fkb-column-${col.key}`}
+        >
+          <header className="kb-col-header">
+            <div className="kb-col-title-row">
+              <span className="kb-col-title">{col.label}</span>
+              <span className="kb-col-count" data-testid={`fkb-count-${col.key}`}>
+                {col.count}
+              </span>
+            </div>
+            <span className="kb-col-money" data-testid={`fkb-total-${col.key}`}>
+              Total {formatMAD(col.total)}
             </span>
-          </div>
-          <div className="px-1 text-xs text-muted-foreground" data-testid={`fkb-total-${col.key}`}>
-            Total {formatMAD(col.total)}
-          </div>
-          <div className="flex flex-col gap-2">
+          </header>
+          <div className="kb-col-body">
             {col.factures.length === 0 ? (
-              <Card className="p-3 text-center text-xs text-muted-foreground">Aucune facture</Card>
+              <div className="kb-col-empty">Aucune facture</div>
             ) : (
               col.factures.map((f) => (
                 <button
                   key={f.id}
                   type="button"
-                  className="block w-full text-left"
+                  className="kb-card-open"
                   onClick={() => onOpenFacture?.(f)}
                 >
-                  <Card className="flex flex-col gap-1 p-3 text-sm transition-colors hover:bg-muted/40">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium">{f.reference}</span>
+                  <article className="kb-card">
+                    <div className="fkb-card-top">
+                      <span className="fkb-card-ref">{f.reference}</span>
                       {/* VX142(d) — la colonne EST déjà le statut : le StatusPill
                           répété sur chaque carte n'apporte rien. Remplacé par une
                           info utile (échéance si due, sinon montant dû). */}
                       {f.date_echeance ? (
-                        <span className="text-xs text-muted-foreground" title="Échéance">
+                        <span className="fkb-card-meta" title="Échéance">
                           {new Date(f.date_echeance).toLocaleDateString('fr-FR')}
                         </span>
                       ) : f.montant_du != null && Number(f.montant_du) > 0 ? (
-                        <span className="text-xs text-muted-foreground" title="Montant dû">
+                        <span className="fkb-card-meta" title="Montant dû">
                           Dû {formatMAD(f.montant_du)}
                         </span>
                       ) : null}
                     </div>
-                    <span className="text-xs text-muted-foreground">{f.client_nom}</span>
-                    <span className="tabular-nums font-medium">
+                    <div className="num fkb-card-amount">
                       {f.total_ttc != null ? formatMAD(f.total_ttc) : '—'}
-                    </span>
-                  </Card>
+                    </div>
+                    <span className="fkb-card-client">{f.client_nom}</span>
+                  </article>
                 </button>
               ))
             )}
           </div>
-        </div>
+        </section>
       ))}
     </div>
   )

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useIsAdmin } from '../../hooks/useHasPermission'
-import { Lock, Download, Snowflake } from 'lucide-react'
+import { Lock, Download, Snowflake,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import { downloadBlob, stampedFilename } from '../../utils/downloadBlob'
@@ -10,6 +11,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Form, FormField,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 /* WIR109 — XSTK13 : inventaire annuel légal FIGÉ (CGNC, support du bilan).
    LECTURE SEULE côté modèle : un snapshot n'est créé QUE par l'action
@@ -117,17 +122,19 @@ export default function InventairesAnnuels() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold tracking-tight">Inventaires annuels</h1>
-          <p className="text-sm text-muted-foreground">
-            Snapshot légal figé de la valorisation du stock (CGNC). Interne, jamais client-facing.
-          </p>
-        </div>
-        <Button onClick={() => setShowFiger(true)}>
-          <Snowflake className="size-4" /> Figer un exercice
-        </Button>
-      </header>
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={Lock}
+        title="Inventaires annuels"
+        subtitle="Snapshot légal figé de la valorisation du stock (CGNC). Interne, jamais client-facing."
+        actions={(
+          <Button onClick={() => setShowFiger(true)}>
+            <Snowflake className="size-4" /> Figer un exercice
+          </Button>
+        )}
+      />
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

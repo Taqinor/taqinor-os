@@ -50,6 +50,12 @@ import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 // ODY17 — identité de cockpit VX15 (bandeau KPI d'app), posée AU-DESSUS de
 // l'en-tête de liste existant (inchangé — il porte déjà les actions rapides).
 import { ModuleHero, ModuleDashboard } from '../../ui/module'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+// EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
+import { frenchError } from '../../lib/frenchError'
 
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
 const SL_ECRAN = 'stock.produits'
@@ -915,7 +921,7 @@ export default function StockList() {
     return (
       <div className="ui-root px-4 py-5 sm:px-5">
         <EmptyState icon={AlertTriangle} title="Erreur de chargement"
-                    description={`Erreur : ${JSON.stringify(error)}`} className="border-destructive/40" />
+                    description={frenchError(error, 'Chargement du catalogue impossible.')} className="border-destructive/40" />
       </div>
     )
   }
@@ -960,16 +966,24 @@ export default function StockList() {
       <ModuleHero
         title="Stock"
         subtitle="Gestion des stocks, mouvements et fournisseurs."
-        accent="var(--module-accent-lune)"
-        kpiSlot={<ModuleDashboard stats={heroStats} accent="var(--module-accent-lune)" />}
+        accent={INVENTAIRE_ACCENT}
+        kpiSlot={<ModuleDashboard stats={heroStats} accent={INVENTAIRE_ACCENT} />}
       />
 
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h2 className="font-display text-xl font-semibold tracking-tight">Produits en stock</h2>
-          {actifsCount > 0 && <Badge tone="primary">{actifsCount}</Badge>}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      {/* APX24 — en-tête UNIQUE de l'app (VX28) + icône et accent de la
+          famille inventaire (le ModuleHero ci-dessus reste le titre d'app). */}
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        icon={Package}
+        title={(
+          <>
+            Produits en stock
+            {actifsCount > 0 && <Badge tone="primary">{actifsCount}</Badge>}
+          </>
+        )}
+        actions={(
+          <>
           {lowCount > 0 && (
             <Button
               variant={filterLow ? 'destructive' : 'outline'} size="sm"
@@ -1076,8 +1090,9 @@ export default function StockList() {
               <Plus /> Nouveau produit
             </Button>
           )}
-        </div>
-      </header>
+          </>
+        )}
+      />
 
       {scanOpen && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-muted/40 px-4 py-3">

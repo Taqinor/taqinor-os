@@ -13,6 +13,9 @@ import {
 } from '../../ui'
 import { Table } from '../reporting/Table'
 import { formatMAD } from '../../lib/format'
+// APX11 — en-tête unique VX28 + accent de module (identité Ventes).
+import { PageHeader } from '../../ui/PageHeader'
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 
 const STATUT_TABS = [
   { key: 'tous', label: 'Tous' },
@@ -73,12 +76,19 @@ export default function AvoirsPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h2>
-          Avoirs (notes de crédit)
-          {avoirs.length > 0 && <Badge tone="primary" className="ml-2 align-middle">{avoirs.length}</Badge>}
-        </h2>
-        {avoirs.length > 0 && (
+      {/* APX11 — en-tête unique VX28 + accent Ventes. */}
+      <PageHeader
+        style={VENTES_ACCENT_STYLE}
+        className="app-accent-rail"
+        icon={FileX2}
+        title={(
+          <>
+            Avoirs (notes de crédit)
+            {avoirs.length > 0 && <Badge tone="primary" className="ml-2 align-middle">{avoirs.length}</Badge>}
+          </>
+        )}
+        subtitle="Notes de crédit émises sur les factures"
+        actions={avoirs.length > 0 ? (
           <Input
             type="search"
             className="w-full sm:w-64"
@@ -87,8 +97,8 @@ export default function AvoirsPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-        )}
-      </div>
+        ) : null}
+      />
 
       {actionError && (
         <div className="mt-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">

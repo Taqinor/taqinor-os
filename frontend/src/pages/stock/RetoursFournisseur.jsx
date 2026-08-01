@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Undo2 } from 'lucide-react'
+import { Undo2,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
   StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Button,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // L744 — Liste consultable des RETOURS FOURNISSEUR (RetourFournisseurViewSet
 // existait sans écran). Référence RF, fournisseur, statut, date + consultation
@@ -125,15 +130,14 @@ export default function RetoursFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Undo2 className="size-5 text-muted-foreground" aria-hidden="true" />
-          <div>
-            <h1 className="font-display text-xl font-semibold tracking-tight">Retours fournisseur</h1>
-            <p className="text-sm text-muted-foreground">{items.length} retour(s)</p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={Undo2}
+        title="Retours fournisseur"
+        subtitle={`${items.length} retour(s)`}
+      />
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

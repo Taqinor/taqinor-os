@@ -4,7 +4,7 @@ import reportingApi from '../api/reportingApi'
 import crmApi from '../api/crmApi'
 import MonthGrid from '../components/MonthGrid'
 import {
-  Button, Spinner, Input,
+  Button, Spinner, Input, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../ui'
 
@@ -246,8 +246,15 @@ export default function CalendarPage() {
 
       <MonthGrid initialMonth={monthStart} onMonthChange={setMonthStart} renderCell={renderCell} />
 
+      {/* APX32 — état vide COHÉRENT avec la vue Carte voisine : les deux
+          écrans transverses rendaient l'un un `<p>` nu, l'autre un
+          `<EmptyState>` illustré. Même primitif des deux côtés. */}
       {!loading && monthEmpty && (
-        <p className="cp-empty">Aucun évènement ce mois-ci</p>
+        <EmptyState
+          title="Aucun évènement ce mois-ci"
+          description="Les poses, mises en service et visites planifiées apparaîtront ici."
+          className="my-4"
+        />
       )}
     </div>
   )

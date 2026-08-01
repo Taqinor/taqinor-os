@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useIsAdmin } from '../../hooks/useHasPermission'
-import { Plus, CheckCircle2, Trash2 } from 'lucide-react'
+import { Plus, CheckCircle2, Trash2, TrendingUp,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import {
@@ -9,6 +10,10 @@ import {
   Form, FormField, Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 /* WIR109 — XSTK14 : revalorisation manuelle du stock (document tracé,
    admin-only, jamais client-facing). Corrige le COÛT MOYEN d'un produit sans
@@ -151,17 +156,19 @@ export default function RevalorisationsStock() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-semibold tracking-tight">Revalorisations de stock</h1>
-          <p className="text-sm text-muted-foreground">
-            Document tracé — corrige le coût moyen d&apos;un produit. Interne, jamais client-facing.
-          </p>
-        </div>
-        <Button onClick={() => setShowForm(true)}>
-          <Plus className="size-4" /> Nouvelle revalorisation
-        </Button>
-      </header>
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={TrendingUp}
+        title="Revalorisations de stock"
+        subtitle="Document tracé — corrige le coût moyen d'un produit. Interne, jamais client-facing."
+        actions={(
+          <Button onClick={() => setShowForm(true)}>
+            <Plus className="size-4" /> Nouvelle revalorisation
+          </Button>
+        )}
+      />
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

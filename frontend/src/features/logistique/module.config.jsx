@@ -4,6 +4,8 @@
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
 import { Truck, ClipboardList, ArrowLeftRight, Undo2 } from 'lucide-react'
+// APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
+import { INVENTAIRE_ACCENT_KEY } from '../stock/inventaireAccent'
 
 /* ============================================================================
    LOGISTIQUE (XSTK2) — configuration du module « Logistique » (auto-enregistrée).
@@ -28,7 +30,11 @@ const config = {
   order: 51,
   nav: {
     label: 'LOGISTIQUE',
-    accent: 'success', // VX8 — terrain/opérations = accent success (dérivé)
+    // APX22 — accent de la FAMILLE INVENTAIRE (Stock/Magasin/Logistique) :
+    // les trois portent la même clé, celle que Stock avait déjà (avant,
+    // Logistique partageait `success` avec les apps terrain/chantiers).
+    // Source unique : `features/stock/inventaireAccent.js`.
+    accent: INVENTAIRE_ACCENT_KEY,
     items: [
       { to: '/logistique', label: 'Cockpit', icon: <Truck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/logistique/livraisons', label: 'Livraisons', icon: <Truck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

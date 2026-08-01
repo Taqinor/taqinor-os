@@ -1,10 +1,11 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
   Copy, Send, X, Eye, Search, AlertTriangle, Box, ExternalLink,
   Link2, FolderKanban, MoreHorizontal, Printer, Bell, Share2,
+  LayoutList, LayoutGrid,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -19,6 +20,8 @@ import importApi from '../../api/importApi'
 import DevisForm from './DevisForm'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
+  // APX12 — le langage UNIQUE des KPI d'argent.
+  Stat,
   Skeleton, SkeletonTableRow,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
@@ -26,6 +29,8 @@ import {
   Textarea,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel,
+  // APX17 — les signaux secondaires du statut passent dans un Popover.
+  Popover, PopoverTrigger, PopoverContent,
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
 // VX156 — le devis envoyé porte la voix Taqinor (moment « devis envoyé »).
@@ -36,7 +41,7 @@ import { toastMilestone } from '../../lib/toast'
 // membres de cette équipe — filtre client-side, aucun endpoint nouveau.
 import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
-import { openPdfBlob, openPdfInGesture } from '../../utils/pdfBlob'
+import { openPdfBlob } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
@@ -59,6 +64,18 @@ import RoofViewer from './RoofViewer'
 import DevisSuiviPartagePanel from './DevisSuiviPartagePanel'
 import { StateBlock } from '../../components/StateBlock'
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
+// APX13 — la piste devis→BC→facture, définie UNE fois pour les 3 écrans.
+import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
+// APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
+import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
+// APX15 — le VRAI board Ventes : les devis par statut DOCUMENT (règle #4).
+import DevisKanbanBoard from './DevisKanbanBoard'
+// APX17 — confirmation maison (VX19/L152), jamais une popup du système.
+import { useConfirmDialog } from '../../ui/confirm'
+// APX11 — l'en-tête UNIQUE de l'app (VX28) remplace l'idiome legacy.
+import { PageHeader } from '../../ui/PageHeader'
+// APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
+import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -147,14 +164,8 @@ const STATUT_DISPLAY = {
 // uniquement — brouillon/envoyé/accepté puis BC/facturé/chantier. Jamais les
 // stages STAGES.py du funnel CRM (règle #2) : aucune clé de stage n'est
 // importée ici, les deux couches ne se mélangent jamais.
-const DOC_STATUT_TRACK = [
-  { key: 'brouillon', label: 'Brouillon' },
-  { key: 'envoye', label: 'Envoyé' },
-  { key: 'accepte', label: 'Accepté' },
-  { key: 'bc', label: 'BC' },
-  { key: 'facture', label: 'Facturé' },
-  { key: 'chantier', label: 'Chantier' },
-]
+// APX13 — la piste est désormais partagée avec FactureList et la liste des
+// bons de commande (`features/ventes/documentChain.js`) : UNE définition.
 
 // Filtres segmentés (statut) : « Tous » + les 5 statuts visibles.
 const STATUT_FILTERS = [
@@ -382,6 +393,54 @@ function DevisRow({ d, ctx }) {
             : d.bon_commande_etat?.exists ? 'bc'
               : 'accepte'
   const docTrackBlocked = d.bon_commande_etat?.mismatch ? ['bc'] : []
+
+  // APX17 — les signaux SECONDAIRES du statut, rassemblés au lieu d'être
+  // empilés dans la cellule (hauteur de ligne stable + scroll juste au-delà
+  // de ~100 devis). Aucun signal n'est perdu : ils sont tous dans le Popover
+  // « Détails », et l'anomalie de BC reste visible sur la ligne elle-même.
+  const statutDetails = [
+    d.statut === 'accepte' && d.option_acceptee ? (
+      <span className="text-success">
+        Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
+      </span>
+    ) : null,
+    /* QJ22 — « Proposition signée » : un DevisSignature (loi 53-05) existe. */
+    d.est_signe ? (
+      <span className="inline-flex items-center gap-1 font-medium text-success">
+        <Check className="size-3" aria-hidden="true" />
+        Proposition signée
+        {d.signature_info?.signataire_nom ? ` — ${d.signature_info.signataire_nom}` : ''}
+        {d.signature_info?.signed_at ? ` le ${formatDateTime(d.signature_info.signed_at)}` : ''}
+      </span>
+    ) : null,
+    /* U8 — état du bon de commande lié (lecture seule, OneToOne existant). */
+    d.bon_commande_etat?.exists ? (
+      <span className="text-muted-foreground">BC : {d.bon_commande_etat.statut_display}</span>
+    ) : null,
+    d.bon_commande_etat?.mismatch ? (
+      <span className="inline-flex items-start gap-1 font-medium text-warning">
+        <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+        {d.bon_commande_etat.exists
+          ? 'Devis accepté mais BC annulé'
+          : 'Devis accepté sans bon de commande'}
+      </span>
+    ) : null,
+    /* VX215 — boucle « pris en charge » après « Contacter mon supérieur ». */
+    superieurStatus[d.id]?.requested ? (
+      <span
+        data-testid={`superieur-status-${d.id}`}
+        className={`inline-flex items-center gap-1 font-medium ${
+          superieurStatus[d.id].seen ? 'text-success' : 'text-muted-foreground'
+        }`}
+      >
+        {superieurStatus[d.id].seen ? <Check className="size-3 shrink-0" aria-hidden="true" /> : null}
+        {superieurStatus[d.id].seen
+          ? `Pris en charge${superieurStatus[d.id].seen_by?.[0] ? ' par ' + superieurStatus[d.id].seen_by[0] : ''}`
+          : 'Avis demandé — en attente'}
+      </span>
+    ) : null,
+  ].filter(Boolean)
+
   const isGenerating = pdfGenerating[d.id]
   // VX132 — chargement long conscient : libellés honnêtes qui tournent
   // pendant la génération du PDF premium (jamais de fausse barre de progression).
@@ -589,6 +648,15 @@ function DevisRow({ d, ctx }) {
           </div>
         )}
       </td>
+      {/* APX17 — la cellule Statut empilait jusqu'à SIX blocs (pastille,
+          piste, option acceptée, proposition signée, état du BC, incohérence
+          BC, boucle « pris en charge ») : la hauteur de ligne variait du
+          simple au triple. Comme la liste tourne sur le moteur `ui/datatable`,
+          qui ESTIME une hauteur constante au-delà de ~100 lignes, cette
+          variabilité décalait aussi le scroll. La cellule est désormais
+          PLAFONNÉE à StatusPill + piste documentaire ; tout le reste vit dans
+          un Popover « Détails » — aucun CSS `<td>` artisanal, le contenu est
+          simplement borné. */}
       <td data-label="Statut">
         <StatusPill status={effStatut} label={STATUT_DISPLAY[effStatut] ?? STATUT_DISPLAY.brouillon} />
         {/* VX141 — le StatusPill est un fait isolé ; la piste ci-dessous
@@ -600,72 +668,23 @@ function DevisRow({ d, ctx }) {
           current={docTrackCurrent}
           blocked={docTrackBlocked}
         />
-        {d.statut === 'accepte' && d.option_acceptee && (
-          <div className="mt-1 text-xs text-success">
-            Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
-          </div>
-        )}
-        {/* QJ22 — Badge « Proposition signée » : affiché quand un
-            DevisSignature (loi 53-05) existe pour ce devis accepté.
-            Indique que la signature électronique légale a été
-            enregistrée + le PDF de proposition signé est disponible. */}
-        {d.est_signe && (
-          <div
-            className="mt-1 inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success"
-            title={
-              d.signature_info
-                ? [
-                    `Signé par : ${d.signature_info.signataire_nom || '—'}`,
-                    d.signature_info.signed_at
-                      ? `le ${formatDateTime(d.signature_info.signed_at)}`
-                      : null,
-                    d.signature_info.has_pdf
-                      ? 'PDF signé disponible'
-                      : null,
-                  ].filter(Boolean).join(' ')
-                : 'Proposition signée (loi 53-05)'
-            }
-          >
-            <Check className="size-3" aria-hidden="true" />
-            Proposition signée
-          </div>
-        )}
-        {/* U8 — état du bon de commande lié (lecture seule, depuis
-            le OneToOne existant) + avertissement d'incohérence
-            quand un devis accepté n'a pas de BC actif. */}
-        {d.bon_commande_etat?.exists && (
-          <div className="mt-1 text-xs text-muted-foreground">
-            BC : {d.bon_commande_etat.statut_display}
-          </div>
-        )}
-        {d.bon_commande_etat?.mismatch && (
-          <div className="mt-1 flex items-start gap-1 text-xs font-medium text-warning"
-               title="Devis accepté mais le bon de commande est annulé ou absent">
-            <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-            <span>
-              {d.bon_commande_etat.exists
-                ? 'Devis accepté mais BC annulé'
-                : 'Devis accepté sans bon de commande'}
-            </span>
-          </div>
-        )}
-        {/* VX215 — boucle de retour « pris en charge » : après « Contacter
-            mon supérieur », le vendeur voit si sa demande a été VUE (sondage
-            léger tant qu'elle ne l'est pas — voir superieurStatus). */}
-        {superieurStatus[d.id]?.requested && (
-          <div
-            data-testid={`superieur-status-${d.id}`}
-            className={`mt-1 flex items-center gap-1 text-xs font-medium ${
-              superieurStatus[d.id].seen ? 'text-success' : 'text-muted-foreground'
-            }`}
-          >
-            {superieurStatus[d.id].seen
-              ? <Check className="size-3 shrink-0" aria-hidden="true" />
-              : null}
-            {superieurStatus[d.id].seen
-              ? `Pris en charge${superieurStatus[d.id].seen_by?.[0] ? ' par ' + superieurStatus[d.id].seen_by[0] : ''}`
-              : 'Avis demandé — en attente'}
-          </div>
+        {statutDetails.length > 0 && (
+          <Popover>
+            <PopoverTrigger
+              className="mt-1 inline-flex cursor-pointer items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground"
+              aria-label={`Détails du statut — ${statutDetails.length} information(s)`}
+            >
+              Détails ({statutDetails.length})
+              {/* L'anomalie ne se cache JAMAIS : elle reste signalée sur la
+                  ligne, même repliée. */}
+              {d.bon_commande_etat?.mismatch && (
+                <AlertTriangle className="size-3 text-warning" aria-hidden="true" />
+              )}
+            </PopoverTrigger>
+            <PopoverContent className="max-w-xs space-y-1.5 text-xs">
+              {statutDetails.map((node, i) => <div key={i}>{node}</div>)}
+            </PopoverContent>
+          </Popover>
         )}
       </td>
       <td>
@@ -953,14 +972,7 @@ function DevisRow({ d, ctx }) {
                 <DropdownMenuItem
                   destructive
                   disabled={deletingId === d.id}
-                  onSelect={(e) => {
-                    e.preventDefault()
-                    if (window.confirm(
-                      `Supprimer le devis ${d.reference} ? Cette action est définitive et irréversible.`,
-                    )) {
-                      handleDelete(d)
-                    }
-                  }}
+                  onSelect={(e) => { e.preventDefault(); handleDelete(d) }}
                 >
                   Supprimer
                 </DropdownMenuItem>
@@ -1104,6 +1116,8 @@ export default function DevisList() {
   useDocumentTitle('Devis')
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  // APX17 — confirmations maison (VX19/L152) : plus une seule popup du système.
+  const { confirm, confirmDelete } = useConfirmDialog()
   const [searchParams, setSearchParams] = useSearchParams()
   const { devis, loading, error } = useSelector(s => s.ventes)
   const role = useSelector(s => s.auth.role)
@@ -1136,7 +1150,14 @@ export default function DevisList() {
   const [pdfSlowPoll, setPdfSlowPoll] = useState({}) // id → true
   const [pdfDownloading, setPdfDownloading] = useState({}) // id → true
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
-  const [previewingId, setPreviewingId] = useState(null) // aperçu PDF en cours
+  // APX14 — le devis dont l'aperçu inline est ouvert (null = panneau fermé).
+  // `previewingId` en dérive pour que le libellé « Aperçu du PDF… » de la
+  // ligne reste exactement celui d'avant.
+  const [previewDevis, setPreviewDevis] = useState(null)
+  const previewingId = previewDevis?.id ?? null
+  // APX15(b) — mode d'affichage de la liste : tableau ou board par statut
+  // DOCUMENT. Parité exacte avec la bascule Liste/Kanban des factures.
+  const [viewMode, setViewMode] = useState('liste')
   // Panneau « historique des versions » : id du devis dont la chaîne est ouverte.
   // QG10 — deep-link ?variantes=<id> ouvre directement la comparaison au montage.
   const [versionsOpenId, setVersionsOpenId] = useState(() => {
@@ -1469,7 +1490,15 @@ export default function DevisList() {
   const onSaved  = () => dispatch(fetchDevis())
 
   const [deletingId, setDeletingId] = useState(null)
+  // APX17 — la confirmation de suppression passe par le dialogue maison
+  // (AlertDialog Radix), plus par la popup du système. Elle vit ICI plutôt
+  // que dans la ligne : une seule définition, un seul libellé.
   const handleDelete = async (d) => {
+    const ok = await confirmDelete({
+      title: `Supprimer le devis ${d.reference} ?`,
+      description: 'Cette action est définitive et irréversible.',
+    })
+    if (!ok) return
     setDeletingId(d.id)
     try {
       await ventesApi.deleteDevis(d.id)
@@ -1512,6 +1541,33 @@ export default function DevisList() {
   // WhatsApp (whatsappPreviewDevis, lecture seule) mais en mode relance. Aucune
   // mutation tant que le vendeur n'a pas cliqué « Ouvrir WhatsApp ».
   const handleRelancer = (d) => { setRelanceMode(true); handleEnvoyer(d) }
+
+  // EZ3 — le panneau de succès du générateur enchaîne DIRECTEMENT sur l'action
+  // suivante : `?envoyer=1` ouvre l'aperçu WhatsApp du devis ciblé, `?apercu=1`
+  // ouvre l'aperçu PDF inline (APX14). Ce sont les flux EXISTANTS de cet écran
+  // — aucun second chemin d'envoi ni de PDF n'est créé. Ne se déclenche
+  // qu'UNE fois (le paramètre est consommé). Placé APRÈS `handleEnvoyer` :
+  // un effet ne doit pas référencer une liaison déclarée plus bas.
+  const enchaineFait = useRef(false)
+  useEffect(() => {
+    if (enchaineFait.current || !highlightId || loading) return
+    if (!highlightedDevis) return
+    const envoyer = searchParams.get('envoyer') === '1'
+    const apercu = searchParams.get('apercu') === '1'
+    if (!envoyer && !apercu) return
+    enchaineFait.current = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- enchaînement d'un deep-link, une seule exécution gardée par enchaineFait
+    if (envoyer) handleEnvoyer(highlightedDevis)
+    else setPreviewDevis(highlightedDevis)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('envoyer')
+      next.delete('apercu')
+      return next
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- enchaînement à UNE seule exécution
+  }, [highlightId, highlightedDevis, loading])
+
   const closeWaModal = () => {
     setWaTarget(null); setWaData(null); setWaSending(false); setRelanceMode(false)
   }
@@ -1664,9 +1720,19 @@ export default function DevisList() {
   // un nouvel onglet (mêmes params que la modale d'aperçu de la fiche lead).
   // VX48 — l'onglet est pré-ouvert SYNCHRONE dans le geste (avant l'await),
   // sinon Safari iOS bloque silencieusement le window.open post-await.
-  const handlePreview = async (d) => {
-    const pending = openPdfInGesture()
-    setPreviewingId(d.id)
+  // APX14 — « Aperçu » ne QUITTE plus l'écran : il ouvre le panneau inline
+  // (PdfCanvas, déjà consommé par 4 autres écrans, jamais par celui-ci).
+  // La SOURCE reste le moteur vendorisé `/proposal` — aucun chemin PDF
+  // nouveau, aucun changement de statut (règle #4). Télécharger et Ouvrir
+  // dans un onglet restent offerts DANS le panneau, en repli.
+  const handlePreview = (d) => { setPreviewDevis(d) }
+
+  // Récupère les octets du PDF de proposition du devis en aperçu. Passée au
+  // panneau, qui ne connaît aucune URL. Le message d'erreur reste celui,
+  // français, que la liste sait déjà produire (T11 — moteur sans onduleur).
+  const fetchDevisPreviewBlob = useCallback(async () => {
+    const d = previewDevis
+    if (!d) return null
     try {
       const params = proposalParams(
         'full',
@@ -1674,22 +1740,15 @@ export default function DevisList() {
           && !!(d.etude_params && Object.keys(d.etude_params).length > 0),
       )
       const res = await ventesApi.getProposalPdf(d.id, params)
-      const blob = pdfBlob(res.data)
-      if (!pending.deliver(blob, `${d.reference}.pdf`)) {
-        openPdfBlob(blob, `${d.reference}.pdf`)
-      }
+      return pdfBlob(res.data)
     } catch (err) {
-      // T11 — l'absence d'onduleur lève une ValueError côté moteur premium.
       const msg = frenchError(err, '')
       if (/onduleur|inverter/i.test(msg)) {
-        toast.error('Ce devis n\'a aucun onduleur — choisissez le format une page.')
-      } else {
-        toast.error(msg || 'Aperçu du PDF indisponible.')
+        throw new Error('Ce devis n\'a aucun onduleur — choisissez le format une page.')
       }
-    } finally {
-      setPreviewingId(null)
+      throw new Error(msg || 'Aperçu du PDF indisponible.')
     }
-  }
+  }, [previewDevis])
 
   const [chantierBusy, setChantierBusy] = useState(null)
   // « Créer le chantier » sur un devis accepté : crée (ou ouvre s'il existe
@@ -1727,7 +1786,12 @@ export default function DevisList() {
   }
 
   const handleConvertBC = async (d) => {
-    if (!window.confirm(`Convertir « ${d.reference} » en bon de commande ?`)) return
+    const ok = await confirm({
+      title: `Convertir « ${d.reference} » en bon de commande ?`,
+      confirmLabel: 'Convertir',
+      destructive: false,
+    })
+    if (!ok) return
     setConvertingId(d.id)
     try {
       await dispatch(convertirDevisEnBC(d.id)).unwrap()
@@ -2074,29 +2138,42 @@ export default function DevisList() {
 
   // J141 — l'en-tête de page reste TOUJOURS visible (chargement, erreur, données)
   // pour éviter le saut de mise en page. Le contenu interne varie selon l'état.
+  // APX11 — l'en-tête unique de l'app (VX28, `<h2>` conservé donc les ancres
+  // e2e `getByRole('heading')` sont inchangées) + icône et accent du module :
+  // l'œil doit dire « je suis dans Ventes » sans lire le fil d'Ariane.
   const pageHeader = (
-    <div className="page-header">
-      <h2>Devis</h2>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={loading || !!error || xlsxBusy}
-                onClick={() => {
-                  const pending = downloadBlobInGesture()
-                  setXlsxBusy(true)
-                  importApi.exportList('devis', devis.map(d => d.id))
-                    .then(r => pending.deliver(r.data, 'devis.xlsx'))
-                    .catch(() => {})
-                    .finally(() => setXlsxBusy(false))
-                }}>
-          {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
-        </Button>
-        {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
-            noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
-        <Button size="sm" variant="outline" onClick={() => window.print()}>
-          <Printer /> Imprimer
-        </Button>
-        <Button onClick={openNew}><Plus /> Nouveau devis</Button>
-      </div>
-    </div>
+    <PageHeader
+      style={VENTES_ACCENT_STYLE}
+      className="app-accent-rail"
+      icon={FileText}
+      title="Devis"
+      subtitle={
+        expiringSoon.length > 0
+          ? `${devis.length} devis · ${expiringSoon.length} à relancer (validité ≤ 7 jours)`
+          : `${devis.length} devis`
+      }
+      actions={(
+        <>
+          <Button size="sm" variant="outline" disabled={loading || !!error || xlsxBusy}
+                  onClick={() => {
+                    const pending = downloadBlobInGesture()
+                    setXlsxBusy(true)
+                    importApi.exportList('devis', devis.map(d => d.id))
+                      .then(r => pending.deliver(r.data, 'devis.xlsx'))
+                      .catch(() => {})
+                      .finally(() => setXlsxBusy(false))
+                  }}>
+            {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
+          </Button>
+          {/* VX80 — impression navigateur (feuille print.css : chrome masqué,
+              noir-sur-blanc, table complète). Distinct des PDF WeasyPrint. */}
+          <Button size="sm" variant="outline" onClick={() => window.print()}>
+            <Printer /> Imprimer
+          </Button>
+          <Button onClick={openNew}><Plus /> Nouveau devis</Button>
+        </>
+      )}
+    />
   )
 
   if (loading) {
@@ -2154,19 +2231,24 @@ export default function DevisList() {
         <DevisForm devis={editDevis} onClose={closeForm} onSaved={onSaved} />
       )}
 
-      {/* ── T6 — Résumé par statut (nombre + total TTC des devis chargés) ── */}
+      {/* ── T6 — Résumé par statut (nombre + total TTC des devis chargés) ──
+          APX12 — les 5 cartes étaient des `<div>` nus : elles passent au
+          langage UNIQUE des KPI d'argent (`<Stat>`, chiffres `.num`
+          tabulaires), comme le cockpit trésorerie et le rail du générateur. */}
       {devis.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {Object.keys(STATUT_DISPLAY).map(key => (
-            <div key={key} className="rounded-lg border border-border bg-card p-3">
-              <div className="flex items-center justify-between">
-                <StatusPill status={key} label={STATUT_DISPLAY[key]} />
-                <span className="text-sm font-semibold tabular-nums">{summary[key]?.count ?? 0}</span>
-              </div>
-              <div className="mt-1.5 text-xs tabular-nums text-muted-foreground">
-                {formatMAD(summary[key]?.total ?? 0)}
-              </div>
-            </div>
+            <Stat
+              key={key}
+              className="p-3 sm:p-3"
+              label={(
+                // `normal-case` : le libellé de Stat est en majuscules, la
+                // pastille de statut garde sa casse d'origine (« Brouillon »).
+                <StatusPill status={key} label={STATUT_DISPLAY[key]} className="normal-case tracking-normal" />
+              )}
+              value={summary[key]?.count ?? 0}
+              hint={formatMAD(summary[key]?.total ?? 0)}
+            />
           ))}
         </div>
       )}
@@ -2228,6 +2310,28 @@ export default function DevisList() {
                 : `Voir les versions remplacées (${supersededCount})`}
             </Button>
           )}
+          {/* APX15(b) — bascule Liste/Board, parité exacte avec celle des
+              factures (ZFAC9). Le board consomme `filteredDevis`, déjà en
+              mémoire : aucune donnée nouvelle, aucun appel réseau. */}
+          <div className="ml-auto flex items-center gap-1 rounded-md border border-border p-0.5"
+               role="group" aria-label="Mode d’affichage">
+            <Button
+              type="button" size="sm"
+              variant={viewMode === 'liste' ? 'secondary' : 'ghost'}
+              aria-pressed={viewMode === 'liste'}
+              onClick={() => setViewMode('liste')}
+            >
+              <LayoutList className="size-4" aria-hidden="true" /> Liste
+            </Button>
+            <Button
+              type="button" size="sm"
+              variant={viewMode === 'board' ? 'secondary' : 'ghost'}
+              aria-pressed={viewMode === 'board'}
+              onClick={() => setViewMode('board')}
+            >
+              <LayoutGrid className="size-4" aria-hidden="true" /> Board
+            </Button>
+          </div>
         </div>
       )}
 
@@ -2313,6 +2417,18 @@ export default function DevisList() {
             )}
           </div>
       </ResponsiveDialog>
+
+      {/* APX14 — l'aperçu du PDF de proposition, INLINE. Même source
+          `/proposal` que le téléchargement (règle #4 : le moteur vendorisé
+          reste le SEUL chemin PDF devis client, et il ne fait que RENDRE). */}
+      <PdfPreviewSheet
+        open={!!previewDevis}
+        onOpenChange={(o) => { if (!o) setPreviewDevis(null) }}
+        title={`Aperçu — ${previewDevis?.reference ?? ''}`}
+        description="Proposition client. Téléchargeable ou ouvrable dans un onglet."
+        filename={previewDevis ? `${previewDevis.reference}.pdf` : undefined}
+        fetchBlob={fetchDevisPreviewBlob}
+      />
 
       {/* VX155 — carte de victoire posée sur l'acceptation inline (montant
           réel ; pas de kWc dans cette vue liste). */}
@@ -2522,6 +2638,13 @@ export default function DevisList() {
           action={<Button onClick={openNew}><Plus /> Nouveau devis</Button>}
           className="mt-4"
         />
+      ) : viewMode === 'board' ? (
+        /* APX15(b) — LE board Ventes : colonnes = statuts DOCUMENT (règle #4),
+           montant en héros, et AUCUNE action d'état par glisser-déposer —
+           accepter/refuser restent des actions explicites de la vue liste. */
+        <div className="mt-4">
+          <DevisKanbanBoard devis={filteredDevis} onOpenDevis={openEdit} />
+        </div>
       ) : (
         <Card className="mt-4 overflow-hidden">
           <div className="overflow-x-auto">
@@ -2542,7 +2665,7 @@ export default function DevisList() {
               /* ── ARC49 — Tableau sur le frame `ui/datatable` (mode ligne custom).
                   L'écran garde 100 % de son DOM : `table.data-table`, son en-tête
                   8 colonnes, `<DevisRow>` verbatim (boutons à état, menu « Plus »
-                  VX20, confirmation window.confirm à la suppression,
+                  VX20, confirmation maison à la suppression (APX17),
                   panneaux versions/3D pilotés par l'état de page + deep-links), sa
                   sélection propre (`selectedIds`) et son flux PDF (règle #4). Le
                   moteur ne fait que dérouler le pipeline de lignes ; il n'ajoute

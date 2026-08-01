@@ -80,7 +80,10 @@ export default function CartePage() {
       lat: p.lat,
       lng: p.lng,
       label: p.label,
-      color: COLOR[p.type] || '#64748b',
+      // APX32 — le repli était un hex FIGÉ, en contradiction directe avec le
+      // commentaire VX32 en tête de ce fichier (« jamais de hex figé, s'adapte
+      // automatiquement en mode sombre »). Token de thème.
+      color: COLOR[p.type] || 'var(--muted-foreground)',
       detail_path: p.detail_path,
       // ERR26 — échapper chaque valeur serveur avant de l'injecter dans le HTML.
       // Classes Tailwind (tokens) plutôt qu'un style inline en hex : le popup
@@ -138,7 +141,9 @@ export default function CartePage() {
       </div>
 
       {err && <p className="text-destructive">{err}</p>}
-      {loading && <p className="page-loading">Chargement…</p>}
+      {/* APX32 — même état de chargement que la vue Calendrier voisine : le
+          Spinner manquait ici (texte nu d'un côté, Spinner de l'autre). */}
+      {loading && <p className="page-loading"><Spinner /> Chargement…</p>}
 
       {!loading && !err && markers.length === 0 && (
         // VX40 — pictogramme solaire illustré (l'un des 4-5 écrans les plus vus).

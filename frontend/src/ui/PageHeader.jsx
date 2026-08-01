@@ -12,7 +12,12 @@ import { cn } from '../lib/cn'
      - filters     : rangée sous le titre (segmented, recherche…).
      - icon        : icône lucide optionnelle devant le titre.
      - headingClassName / className : échappatoires.
-     - headingId   : id du <h2> (aria-labelledby éventuel). */
+     - headingId   : id du <h2> (aria-labelledby éventuel).
+     - headingAs   : APX24 — 'h1' | 'h2' (défaut 'h2', comportement
+                     historique inchangé pour les consommateurs existants).
+                     Les écrans balayés par APX24 portaient un <h1> écrit à la
+                     main : ils gardent leur niveau de titre au lieu d'être
+                     silencieusement rétrogradés. */
 export function PageHeader({
   title,
   subtitle,
@@ -22,14 +27,16 @@ export function PageHeader({
   className,
   headingClassName,
   headingId,
+  headingAs = 'h2',
   children,
   ...props
 }) {
+  const Heading = headingAs === 'h1' ? 'h1' : 'h2'
   return (
     <header className={cn('mb-6', className)} {...props}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2
+          <Heading
             id={headingId}
             className={cn(
               'flex items-center gap-2 font-display text-xl font-semibold leading-tight tracking-tight text-foreground',
@@ -38,7 +45,7 @@ export function PageHeader({
           >
             {Icon && <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />}
             {title}
-          </h2>
+          </Heading>
           {subtitle && (
             <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
           )}

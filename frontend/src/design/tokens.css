@@ -424,6 +424,10 @@
   --control-h-lg: 2.75rem;
   --control-px: 0.875rem;
   --field-gap: 0.75rem;       /* espace vertical entre champs d'un formulaire */
+  /* APX34 — ce token existait sans AUCUN consommateur : il pilote désormais
+     le padding vertical des tables CSS legacy `.data-table` (index.css), les
+     ~66 écrans que la préférence de densité ne touchait pas. Les écrans
+     DataTable gardent leur propre dérivation (`useDensity()`, 32/40 px). */
   --row-py: 0.625rem;         /* padding vertical des lignes de tableau */
   --ui-text: 0.9375rem;       /* 15px */
 }

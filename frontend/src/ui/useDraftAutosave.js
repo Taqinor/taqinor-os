@@ -49,6 +49,10 @@ export function useDraftAutosave(key, snapshot, { enabled = true } = {}) {
 
   // Lecture UNE fois au montage (avant tout écrasement par l'autosave).
   const [restored, setRestored] = useState(() => (storageKey ? safeGet(storageKey) : null))
+  // EZ4 — horodatage de la DERNIÈRE écriture réussie : la confiance vient de la
+  // continuité VISIBLE (« Brouillon enregistré à HH:MM », patron Docs/Notion).
+  // Ajout purement additif : les consommateurs existants l'ignorent.
+  const [savedAt, setSavedAt] = useState(null)
   const timerRef = useRef(null)
   // Tant que l'utilisateur n'a pas tranché (restaurer/ignorer), on ne réécrit pas
   // par-dessus le brouillon existant — sinon un montage vide l'effacerait aussitôt.
@@ -58,7 +62,9 @@ export function useDraftAutosave(key, snapshot, { enabled = true } = {}) {
     if (!storageKey || !enabled || !decidedRef.current) return undefined
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
-      safeSet(storageKey, { savedAt: new Date().toISOString(), data: snapshot })
+      const stamp = new Date().toISOString()
+      safeSet(storageKey, { savedAt: stamp, data: snapshot })
+      setSavedAt(stamp)
     }, DEBOUNCE_MS)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
   }, [storageKey, enabled, snapshot])
@@ -81,9 +87,10 @@ export function useDraftAutosave(key, snapshot, { enabled = true } = {}) {
     if (timerRef.current) clearTimeout(timerRef.current)
     decidedRef.current = true
     setRestored(null)
+    setSavedAt(null)
   }, [storageKey])
 
-  return { restored, restore, discard, clear }
+  return { restored, restore, discard, clear, savedAt }
 }
 
 export default useDraftAutosave

@@ -24,6 +24,12 @@ import {
    Les appels API sont mockés — aucun réseau. Tout écran utilisant <Link> /
    DataTable est enveloppé dans <MemoryRouter> + <ThemeProvider>. */
 
+// APX35 — le cockpit lit aussi la balance âgée (tranches d'ancienneté,
+// aucun endpoint nouveau) : on la mocke pour garder le test hors réseau.
+vi.mock('../../api/ventesApi', () => ({
+  default: { getBalanceAgee: () => Promise.resolve({ data: [] }) },
+}))
+
 // ── Mock du client API compta (aucun appel réseau réel) ──
 vi.mock('../../api/comptaApi', () => {
   const empty = () => Promise.resolve({ data: [] })

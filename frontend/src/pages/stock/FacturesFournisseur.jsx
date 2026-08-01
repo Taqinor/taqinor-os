@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ReceiptText, Plus, FileText, Building2 } from 'lucide-react'
+import { ReceiptText, Plus, FileText, Building2,
+} from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import comptaApi from '../../api/comptaApi'
 import { formatMAD } from '../../lib/format'
@@ -10,6 +11,10 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // G5 — Factures fournisseur / comptes à payer (AP).
 // Le solde dû = TTC − Σ paiements ; le statut de règlement est recalculé à
@@ -450,21 +455,19 @@ export default function FacturesFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <ReceiptText className="size-5 text-muted-foreground" aria-hidden="true" />
-          <div>
-            <h1 className="font-display text-xl font-semibold tracking-tight">Factures fournisseur</h1>
-            <p className="text-sm text-muted-foreground">
-              {items.length} facture(s)
-              {aPayerSeul && totalDu != null && ` · ${fmtMad(totalDu)} à payer`}
-            </p>
-          </div>
-        </div>
-        <Button onClick={() => setCreating(true)}>
-          <Plus /> Nouvelle facture
-        </Button>
-      </header>
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={ReceiptText}
+        title="Factures fournisseur"
+        subtitle={`${items.length} facture(s)${aPayerSeul && totalDu != null ? ` — ${fmtMad(totalDu)} à payer` : ''}`}
+        actions={(
+          <Button onClick={() => setCreating(true)}>
+            <Plus /> Nouvelle facture
+          </Button>
+        )}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         <Button variant={aPayerSeul ? 'secondary' : 'outline'} size="sm"

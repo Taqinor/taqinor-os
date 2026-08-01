@@ -1056,16 +1056,21 @@ button:active, [role="button"]:active, a.btn:active,
   flex-wrap: wrap;
 }
 .pageheader-heading { min-width: 0; }
+/* APX32 — LE bug transverse : ces deux couleurs étaient des hex NUS, sans
+   aucun override sombre. `ListShell` consomme ce PageHeader et compte 56
+   écrans : sur le fond nuit (oklch 15,7 %), le titre #0f172a et le sous-titre
+   #64748b étaient quasi invisibles. Tokens sémantiques désormais — clair ET
+   sombre suivent le thème, comme partout ailleurs. */
 .pageheader-title {
   font-size: 1.25rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--foreground);
   margin: 0;
 }
 .pageheader-subtitle {
   margin: 0.2rem 0 0;
   font-size: 0.85rem;
-  color: #64748b;
+  color: var(--muted-foreground);
 }
 .pageheader-actions {
   display: flex;
@@ -1209,9 +1214,18 @@ button:active, [role="button"]:active, a.btn:active,
   font-size: 0.875rem;
 }
 
+/* APX34 — les tables CSS legacy obéissent ENFIN à la préférence de densité.
+   `useDensity()` pilotait déjà les 56 écrans DataTable (32/40 px) et la densité
+   par vue est livrée (NTUX17) : le SEUL trou restant était ici, sur les ~66
+   écrans qui rendent encore une `<table className="data-table">` à la main —
+   basculer la préférence ne les changeait pas d'un pixel. Le padding vertical
+   dérive maintenant de `--row-py`, le token défini par `[data-density]` dans
+   tokens.css et qui n'avait JAMAIS eu de consommateur. Le padding horizontal
+   est inchangé (la densité ne joue que sur la hauteur de ligne). */
 .data-table th {
   background: var(--muted);
-  padding: 10px 14px;
+  padding-block: var(--row-py);
+  padding-inline: 14px;
   text-align: left;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1225,7 +1239,10 @@ button:active, [role="button"]:active, a.btn:active,
 }
 
 .data-table td {
-  padding: 11px 14px;
+  /* APX34 — même dérivation que `th` ci-dessus (les deux divergeaient de 1 px
+     sans raison : 10 vs 11). */
+  padding-block: var(--row-py);
+  padding-inline: 14px;
   border-bottom: 1px solid var(--border);
   color: var(--foreground);
   vertical-align: middle;
@@ -2668,6 +2685,12 @@ textarea.form-control {
     margin-bottom: 10px;
     padding: 8px 12px;
   }
+  /* APX34 — le MOBILE reste toujours au CONFORT : la préférence « compacte »
+     ne doit jamais rétrécir une cible tactile. La pile de cartes garde son
+     rythme propre (padding fixe ci-dessous, inchangé) et `--row-py` est réarmé
+     à la valeur confortable pour toute règle qui en dériverait sous ce
+     point de rupture. */
+  .data-table { --row-py: 0.625rem; }
   .data-table td {
     display: flex;
     justify-content: space-between;
@@ -8891,6 +8914,103 @@ textarea.form-control {
 }
 @media (max-width: 639px) {
   .header-app-pill { display: none; }
+}
+
+/* ==========================================================================
+   APX11 — Liseré d'accent de module (identité par app).
+   La teinte vient de --module-accent, déjà posée par la coquille (Header,
+   Sidebar, HomeMenu) ou par le conteneur local (features/ventes/accent.js).
+   Repli sur --border : jamais de couleur en dur, donc lisible clair ET sombre.
+   ========================================================================== */
+.app-accent-rail {
+  border-left: 3px solid var(--module-accent, var(--border));
+  padding-left: 0.75rem;
+}
+.app-accent-card {
+  border-left: 3px solid var(--module-accent, var(--border));
+}
+
+/* ==========================================================================
+   APX14 — Aperçu PDF inline (panneau latéral / tiroir bas).
+   `.ldp-pdfjs-wrap` est en position absolue (inset 0) : il lui faut un parent
+   positionné ET une hauteur explicite, sinon le canvas ne se voit pas.
+   ========================================================================== */
+.apx-pdf-preview-dialog {
+  max-width: min(56rem, 96vw);
+}
+.apx-pdf-preview {
+  position: relative;
+  height: min(70vh, 46rem);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--muted);
+}
+@media (max-width: 767px) {
+  .apx-pdf-preview {
+    height: min(60vh, 34rem);
+  }
+}
+
+/* ==========================================================================
+   APX15 — Boards VENTES au langage kb- du board leads, SANS glisser-déposer.
+   Un devis ne se signe pas en le faisant glisser : accepter/refuser restent
+   des actions explicites. `.kb-board-static` neutralise donc l'affordance de
+   glissé posée sur .kb-card (curseur grab + poignée) sans toucher AUCUNE
+   règle existante du board leads.
+   ========================================================================== */
+.kb-board-static {
+  max-height: min(70vh, 46rem);
+}
+.kb-board-static .kb-card {
+  cursor: pointer;
+  user-select: auto;
+  -webkit-user-select: auto;
+}
+.kb-board-static .kb-card::before {
+  content: none;
+}
+
+/* Carte de board VENTES : le MONTANT est le heros (app de l'argent). */
+.dkb-card-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--foreground);
+}
+.dkb-card-ref {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.dkb-card-client,
+.fkb-card-client {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fkb-card-amount {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--foreground);
+}
+.fkb-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.fkb-card-ref {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.fkb-card-meta {
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
 }
 
 /* ==========================================================================

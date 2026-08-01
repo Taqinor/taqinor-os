@@ -48,7 +48,10 @@ const DevisList = lazy(() => import('../../pages/ventes/DevisList'))
 // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
 const DevisActionBoardPage = lazy(() => import('../../pages/ventes/DevisActionBoardPage'))
 const DevisGenerator = lazy(() => import('../../pages/ventes/DevisGenerator'))
-const VentesKanban = lazy(() => import('../../pages/ventes/VentesKanban'))
+// APX15 — le fichier portait un nom qui MENTAIT (« VentesKanban ») alors
+// qu'il rend la LISTE des bons de commande : renomme honnetement, URL
+// `/ventes/bons-commande` strictement inchangee.
+const BonCommandeList = lazy(() => import('../../pages/ventes/BonCommandeList'))
 const FactureList = lazy(() => import('../../pages/ventes/FactureList'))
 const AvoirsPage = lazy(() => import('../../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../../pages/ventes/RelancesPage'))
@@ -105,7 +108,7 @@ const config = {
     // QX29 — « Relances du jour » : tableau d'action des devis (miroir ZSAV6).
     { path: '/ventes/devis/action-requise', component: DevisActionBoardPage },
     { path: '/ventes/devis/nouveau', component: DevisGenerator },
-    { path: '/ventes/bons-commande', component: VentesKanban },
+    { path: '/ventes/bons-commande', component: BonCommandeList },
     { path: '/ventes/factures', component: FactureList },
     { path: '/ventes/avoirs', component: AvoirsPage },
     { path: '/ventes/relances', component: RelancesPage },

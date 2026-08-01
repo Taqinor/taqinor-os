@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PackageCheck, Plus, ReceiptText, Tags } from 'lucide-react'
+import { PackageCheck, Plus, ReceiptText, Tags, ArrowRight,
+} from 'lucide-react'
+import { Link } from 'react-router-dom'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import { openPdfInGesture } from '../../utils/pdfBlob'
@@ -8,8 +10,13 @@ import {
   Button, StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Input, Textarea,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  // EZ10 — le sélecteur de bon de commande passe au Combobox (recherche).
+  Combobox,
 } from '../../ui'
+// APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
+// les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
 // La confirmation d'une réception incrémente le stock (MouvementStock ENTREE)
@@ -50,7 +57,10 @@ const resteLigne = (l) => Math.max((Number(l.quantite) || 0) - (Number(l.quantit
 function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   const [bonId, setBonId] = useState('')
   const [bon, setBon] = useState(null)
-  const [dateReception, setDateReception] = useState('')
+  // EZ10 — la date valait '' : il fallait la saisir alors que la reception
+  // se fait, dans la quasi-totalite des cas, LE JOUR MEME. Defaut = aujourd'hui
+  // (valider bat retaper — Fiori/Zuko) ; le champ reste librement modifiable.
+  const [dateReception, setDateReception] = useState(() => new Date().toISOString().slice(0, 10))
   const [note, setNote] = useState('')
   const [saisies, setSaisies] = useState({})   // { ligneCmdId: quantité }
   const [busy, setBusy] = useState(false)
@@ -63,7 +73,21 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
     if (!bonId) { setBon(null); setSaisies({}); return }
     let active = true
     stockApi.getBonCommandeFournisseur(bonId)
-      .then((r) => { if (active) { setBon(r.data); setSaisies({}) } })
+      .then((r) => {
+        if (!active) return
+        setBon(r.data)
+        // EZ10 — la quantite recue n'etait PAS pre-remplie : le magasinier
+        // retapait la commande ligne par ligne alors que la reception est
+        // conforme dans l'immense majorite des cas. Defaut = le RESTE
+        // commande ; il ne reste qu'a corriger les ecarts (1 saisie par
+        // ligne qui differe, zero sinon).
+        const prefill = {}
+        for (const l of (r.data?.lignes ?? [])) {
+          const reste = resteLigne(l)
+          if (reste > 0) prefill[l.id] = String(reste)
+        }
+        setSaisies(prefill)
+      })
       .catch(() => { if (active) setBon(null) })
     return () => { active = false }
   }, [bonId])
@@ -127,18 +151,21 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="rec-bon">Bon de commande</label>
-            <Select value={bonId ? String(bonId) : '__none'}
-                    onValueChange={(v) => setBonId(v === '__none' ? '' : v)}>
-              <SelectTrigger id="rec-bon"><SelectValue placeholder="— Choisir un bon de commande —" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">— Choisir un bon de commande —</SelectItem>
-                {bonsRecevables.map((b) => (
-                  <SelectItem key={b.id} value={String(b.id)}>
-                    {b.reference}{b.fournisseur_nom ? ` · ${b.fournisseur_nom}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* EZ10 — c'etait le Select sans recherche : sur un catalogue de
+                bons de commande, retrouver le bon exigeait de derouler toute la
+                liste. Le kit renvoie explicitement vers le Combobox EXISTANT
+                pour ce cas — zero composant nouveau. */}
+            <Combobox
+              id="rec-bon"
+              options={bonsRecevables.map((b) => ({
+                value: String(b.id),
+                label: `${b.reference}${b.fournisseur_nom ? ` · ${b.fournisseur_nom}` : ''}`,
+              }))}
+              value={bonId ? String(bonId) : null}
+              onChange={(v) => setBonId(v || '')}
+              placeholder="— Choisir un bon de commande —"
+              searchPlaceholder="Référence ou fournisseur…"
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="rec-date">Date de réception</label>
@@ -437,30 +464,44 @@ export default function ReceptionsFournisseur() {
 
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <PackageCheck className="size-5 text-muted-foreground" aria-hidden="true" />
-          <div>
-            <h1 className="font-display text-xl font-semibold tracking-tight">Réceptions fournisseur</h1>
-            <p className="text-sm text-muted-foreground">{items.length} réception(s)</p>
-          </div>
-        </div>
-        <Button onClick={() => setCreating(true)} disabled={bonsRecevables.length === 0}
-                title={bonsRecevables.length === 0
-                  ? 'Aucun bon de commande envoyé à réceptionner'
-                  : undefined}>
-          <Plus /> Nouvelle réception
-        </Button>
-      </header>
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        headingAs="h1"
+        icon={PackageCheck}
+        title="Réceptions fournisseur"
+        subtitle={`${items.length} réception(s)`}
+        actions={(
+          <Button onClick={() => setCreating(true)} disabled={bonsRecevables.length === 0}
+                  title={bonsRecevables.length === 0
+                    ? 'Aucun bon de commande envoyé à réceptionner'
+                    : undefined}>
+            <Plus /> Nouvelle réception
+          </Button>
+        )}
+      />
 
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           {error}
         </div>
       )}
+      {/* EZ10 — la bannière de succès ne proposait AUCUNE suite : réception
+          (Stock) et rangement (Magasin) étaient deux navigations sans lien,
+          alors que l'action suivante est toujours la même. Un tap suffit
+          désormais. Deep-link SIMPLE, sans pré-filtre : ni l'écran de
+          rangement ni `PutAwayViewSet` n'en supportent un aujourd'hui — on ne
+          promet donc pas un filtre qui n'existe pas. */}
       {info && (
-        <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-          {info}
+        <div
+          role="status"
+          data-testid="reception-succes"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success"
+        >
+          <span>{info}</span>
+          <Button asChild size="sm" variant="outline" data-testid="reception-ranger">
+            <Link to="/magasin/rangement">Ranger maintenant <ArrowRight /></Link>
+          </Button>
         </div>
       )}
 
