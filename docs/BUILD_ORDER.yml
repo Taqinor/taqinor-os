@@ -427,6 +427,10 @@ unmapped_ok:
   # 2026-08-01) : beauté/densité par app sur acquis LB/LW/VX, frontend
   # (1 seule tâche SCHEMA gatée), hors ordonnancement de vagues.
   - APX
+  # EZ — facilité employés (Groupe EZ de PLAN2, fondateur 2026-08-01) :
+  # 5 trajets quotidiens au budget de clics + undo/dictée/gardes, frontend
+  # (2 SCHEMA additifs), hors ordonnancement de vagues.
+  - EZ
   - QW
   - QX      # UI round-6 backlog (PR #350, landed after the SCA1 inventory) —
   - QXG     # pure frontend waves outside the noyau->floods ordering.
