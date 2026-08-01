@@ -3414,3 +3414,134 @@ class PieceAdministrative(TenantModel):
         if expiration is None or date_reference is None:
             return None
         return (expiration - date_reference).days
+
+
+# ── AOF140 — ``PlancheAO`` : indices AUTOMATIQUES + référence croisée ─────
+
+class PlancheAO(TenantModel):
+    """Une planche d'implantation, à indice AUTOMATIQUE (AOF140).
+
+    Constat : les codes ``05H`` / ``06H`` / ``06I`` du dossier réel SONT déjà
+    une numérotation d'indice faite à la main. L'automatiser supprime toute
+    une classe de défaut : « planche citée dans le mémoire à un indice qui
+    n'existe plus ».
+
+    Règle : **l'indice n'est jamais saisi**. Il s'incrémente SUR CHANGEMENT
+    D'EMPREINTE de la source (calepinage + paramètres de rendu) ; générer un
+    indice supérieur ARCHIVE le précédent, et la base interdit deux planches
+    ACTIVES de même code.
+
+    Le cartouche et le bandeau d'engagement sont portés ici comme DONNÉES —
+    le rendu de planche les consomme, il ne les rédige pas.
+    """
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        ARCHIVEE = 'archivee', 'Archivée'
+
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: planche fille d'un AO : aucune existence hors de son appel d'offres
+        related_name='planches',
+        verbose_name="Appel d'offres",
+    )
+    toiture = models.ForeignKey(
+        ToitureAO,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='planches', verbose_name='Toiture',
+    )
+    variante = models.ForeignKey(
+        VarianteCalepinage,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='planches', verbose_name='Variante représentée',
+    )
+    code_document = models.CharField(
+        max_length=20, verbose_name='Code document')
+    #: JAMAIS saisi : posé par ``services.generer_indice_planche``.
+    indice = models.CharField(
+        max_length=4, default='A', verbose_name='Indice')
+    empreinte = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Empreinte de la source')
+    motif_revision = models.TextField(
+        blank=True, default='', verbose_name='Motif de révision')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIVE,
+        verbose_name='Statut')
+    #: Données du cartouche et du bandeau d'engagement — CONSOMMÉES par le
+    #: rendu de planche, jamais écrites à la main sur le dessin.
+    cartouche = models.JSONField(
+        default=dict, blank=True, verbose_name='Données du cartouche')
+    bandeau_engagement = models.JSONField(
+        default=dict, blank=True, verbose_name="Bandeau d'engagement")
+    attachment = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='planches_ao', verbose_name='Planche rendue (MinIO)')
+
+    class Meta:
+        verbose_name = 'Planche (AO)'
+        verbose_name_plural = 'Planches (AO)'
+        db_table = 'ao_planche'
+        ordering = ['appel_offre', 'code_document', 'indice']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['appel_offre', 'code_document', 'indice'],
+                name='uniq_planche_code_indice'),
+            # Impossible d'avoir DEUX planches actives de même code : c'est la
+            # règle qui empêche le « fichier frère périmé » de coexister.
+            models.UniqueConstraint(
+                fields=['appel_offre', 'code_document'],
+                condition=models.Q(statut='active'),
+                name='uniq_planche_active_par_code'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'appel_offre', 'statut']),
+        ]
+
+    def __str__(self):
+        return f'{self.code_document}{self.indice} [{self.get_statut_display()}]'
+
+    @property
+    def reference_complete(self):
+        """``05H`` + indice — la référence telle que citée par le mémoire."""
+        return f'{self.code_document}{self.indice}'
+
+
+class CitationPlanche(TenantModel):
+    """Une CITATION de planche dans une section du mémoire (AOF140).
+
+    La référence croisée est une donnée, pas une relecture : c'est elle qui
+    permet de détecter qu'une planche est citée à un indice qui n'existe plus.
+    """
+
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: citation fille d'un AO : aucune existence hors de lui
+        related_name='citations_planches',
+        verbose_name="Appel d'offres",
+    )
+    section = models.ForeignKey(
+        SectionMemoire,
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='citations_planches', verbose_name='Section du mémoire',
+    )
+    code_document = models.CharField(
+        max_length=20, verbose_name='Code de la planche citée')
+    indice_cite = models.CharField(
+        max_length=4, blank=True, default='', verbose_name='Indice cité')
+    emplacement = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Emplacement de la citation')
+
+    class Meta:
+        verbose_name = 'Citation de planche (AO)'
+        verbose_name_plural = 'Citations de planche (AO)'
+        db_table = 'ao_citation_planche'
+        ordering = ['appel_offre', 'code_document', 'indice_cite']
+        indexes = [
+            models.Index(fields=['company', 'appel_offre', 'code_document']),
+        ]
+
+    def __str__(self):
+        return f'{self.code_document}{self.indice_cite} ({self.emplacement})'

@@ -1454,6 +1454,149 @@ def _journaliser_equipement(equipement, user):
         company=equipement.company)
 
 
+# ── AOF140 — Planches : indices AUTOMATIQUES et citations vérifiables ─────
+#
+# L'indice n'est JAMAIS saisi : il s'incrémente sur CHANGEMENT D'EMPREINTE.
+# Générer un indice supérieur archive le précédent ; la base interdit deux
+# planches actives de même code (``uniq_planche_active_par_code``).
+
+def indice_suivant(indice):
+    """``A`` → ``B`` … ``Z`` → ``AA`` (numérotation bijective base 26)."""
+    if not indice:
+        return 'A'
+    lettres = list(indice.upper())
+    position = len(lettres) - 1
+    while position >= 0:
+        if lettres[position] != 'Z':
+            lettres[position] = chr(ord(lettres[position]) + 1)
+            return ''.join(lettres)
+        lettres[position] = 'A'
+        position -= 1
+    return 'A' + ''.join(lettres)
+
+
+def planche_active(appel_offre, code_document):
+    """La planche ACTIVE d'un code, ou None."""
+    from .models import PlancheAO
+
+    return PlancheAO.objects.filter(
+        company=appel_offre.company, appel_offre=appel_offre,
+        code_document=code_document,
+        statut=PlancheAO.Statut.ACTIVE).first()
+
+
+def generer_indice_planche(appel_offre, code_document, *, empreinte,
+                           motif='', variante=None, toiture=None,
+                           cartouche=None, bandeau_engagement=None,
+                           user=None):
+    """Produit l'indice COURANT d'une planche (AOF140).
+
+    * empreinte INCHANGÉE → la planche active est rendue telle quelle
+      (``creee=False``) : on ne fabrique pas un indice pour rien ;
+    * empreinte DIFFÉRENTE → la planche active est ARCHIVÉE et un indice
+      supérieur est créé.
+
+    Renvoie ``(planche, creee)``. L'indice n'est jamais lu d'un paramètre.
+    """
+    from django.db import transaction
+
+    from .models import PlancheAO
+
+    with transaction.atomic():
+        courante = planche_active(appel_offre, code_document)
+        if courante is not None and courante.empreinte == (empreinte or ''):
+            return courante, False
+        nouvel_indice = indice_suivant(courante.indice) if courante else 'A'
+        if courante is not None:
+            courante.statut = PlancheAO.Statut.ARCHIVEE
+            courante.save(update_fields=['statut', 'updated_at'])
+        planche = PlancheAO.objects.create(
+            company=appel_offre.company, appel_offre=appel_offre,
+            toiture=toiture, variante=variante,
+            code_document=code_document, indice=nouvel_indice,
+            empreinte=empreinte or '', motif_revision=motif or '',
+            cartouche=cartouche or donnees_cartouche(
+                appel_offre, code_document, nouvel_indice),
+            bandeau_engagement=bandeau_engagement or donnees_bandeau(variante))
+    _journaliser_planche(planche, courante, user)
+    return planche, True
+
+
+def donnees_cartouche(appel_offre, code_document, indice):
+    """Le cartouche comme DONNÉES — jamais écrit à la main sur le dessin."""
+    return {
+        'code_document': code_document,
+        'indice': indice,
+        'objet': appel_offre.objet,
+        'maitre_ouvrage': appel_offre.maitre_ouvrage or appel_offre.acheteur,
+        'soumissionnaire': appel_offre.soumissionnaire
+        or appel_offre.company.nom,
+        'reference_marche': appel_offre.reference_acheteur
+        or appel_offre.reference,
+    }
+
+
+def donnees_bandeau(variante):
+    """Le bandeau d'engagement comme DONNÉES (vide sans variante)."""
+    if variante is None:
+        return {}
+    return {
+        'modules_engages': variante.total_modules,
+        'puissance_kwc': str(variante.puissance_kwc or ''),
+        'variante': variante.nom,
+        'methode': (variante.preuve or {}).get('methode', ''),
+    }
+
+
+def _journaliser_planche(planche, precedente, user):
+    """Trace la révision au chatter générique ``records`` (best-effort)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        planche.appel_offre, Activity.Kind.MODIFICATION, user=user,
+        field='planche', field_label=f'Planche {planche.code_document}',
+        old_value=precedente.reference_complete if precedente else '',
+        new_value=planche.reference_complete,
+        body=planche.motif_revision or '', company=planche.company)
+
+
+def citations_perimees(appel_offre):
+    """Citations de planche pointant un indice qui n'est PLUS actif (AOF140).
+
+    Renvoie une liste de dicts ``{citation_id, code_document, indice_cite,
+    indice_actif, message}``. Liste vide = le mémoire cite juste.
+    """
+    from .models import CitationPlanche
+
+    perimees = []
+    for citation in CitationPlanche.objects.filter(
+            company=appel_offre.company, appel_offre=appel_offre):
+        active = planche_active(appel_offre, citation.code_document)
+        indice_actif = active.indice if active else None
+        if indice_actif is not None and citation.indice_cite == indice_actif:
+            continue
+        if indice_actif is None:
+            message = (
+                f'La planche « {citation.code_document} » citée '
+                f'({citation.emplacement or "mémoire"}) n\'existe pas ou '
+                f'n\'a plus de version active.')
+        else:
+            message = (
+                f'La planche « {citation.code_document} » est citée à '
+                f'l\'indice {citation.indice_cite or "(aucun)"} alors que '
+                f'l\'indice courant est {indice_actif} '
+                f'({citation.emplacement or "mémoire"}).')
+        perimees.append({
+            'citation_id': citation.pk,
+            'code_document': citation.code_document,
+            'indice_cite': citation.indice_cite,
+            'indice_actif': indice_actif,
+            'message': message,
+        })
+    return perimees
+
+
 def totaux_bordereau(bordereau):
     """AOF120 — les totaux du bordereau, RECALCULÉS côté serveur.
 
