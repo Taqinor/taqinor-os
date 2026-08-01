@@ -47,12 +47,6 @@ const AffairesList = lazy(() => import('./AffairesList'))
 const AffaireDetail = lazy(() => import('./AffaireDetail'))
 const BibliothequePage = lazy(() => import('./bibliotheque/BibliothequePage'))
 
-// AOF161 (lane frontend/ao-directeur, seule tâche) — pré-câblé à son chemin
-// ET son fichier déclarés par sa propre tâche (Files: rentabilite/
-// RentabiliteRoute.jsx) ; tant qu'elle n'est pas livrée, l'import échoue au
-// RENDU (lazy), jamais au chargement du registre de modules.
-const RentabiliteRoute = lazy(() => import('./rentabilite/RentabiliteRoute'))
-
 // Squelette générique RÉUTILISABLE pour toute destination de nav dont
 // l'écran réel appartient à une AUTRE lane, non encore livré dans CE commit.
 // Zéro logique, zéro appel réseau — juste un état vide nommé (jamais une
@@ -120,8 +114,10 @@ const config = {
     { path: '/ao/bibliotheque', component: BibliothequePage, roles: ROLES },
     { path: '/ao/rentabilite', component: squelette('Rentabilité'), roles: ROLES_RENTABILITE, perm: PERM_RENTABILITE },
     // AOF161 (lane frontend/ao-directeur) — fiche rentabilité PAR AFFAIRE,
-    // deep-link (jamais d'item de nav : contextuel à une affaire).
-    { path: '/ao/:id/rentabilite', component: RentabiliteRoute, roles: ROLES_RENTABILITE, perm: PERM_RENTABILITE },
+    // deep-link (jamais d'item de nav : contextuel à une affaire). Squelette
+    // pour l'instant (même raison que toitures/calepinages/dossiers ci-dessus :
+    // `rentabilite/RentabiliteRoute.jsx` n'existe pas encore dans CE commit).
+    { path: '/ao/:id/rentabilite', component: squelette('Rentabilité'), roles: ROLES_RENTABILITE, perm: PERM_RENTABILITE },
   ],
 }
 
