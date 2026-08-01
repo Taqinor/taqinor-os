@@ -41,8 +41,13 @@ export default function WebsiteLeadPayloadsPage() {
 
   return (
     <div className="page max-w-[1100px]">
-      <div className="page-header">
-        <h2>Payloads leads site web</h2>
+      {/* APX10 — même grammaire que ses voisins CRM (ligne de contrôle LB43 +
+          pastille d'accent), plus un `page-header` legacy. */}
+      <div className="lp-controlbar crm-controlbar mb-3">
+        <h2 className="lp-cb-title">
+          <span className="crm-accent-dot" aria-hidden="true" />
+          Payloads leads site web
+        </h2>
       </div>
       <p className="mb-3 text-sm text-muted-foreground">
         Toute capture du site web est conservée AVANT tout mapping (« jamais perdre un lead »).

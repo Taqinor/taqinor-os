@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, Spinner } from '../../ui'
+import {
+  Badge, Button, Checkbox, Input, Label, Spinner,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '../../ui'
 import savApi from '../../api/savApi'
 
 /* ============================================================================
@@ -13,31 +16,40 @@ import savApi from '../../api/savApi'
    ========================================================================== */
 
 // Rend un champ typé selon sa définition de modèle.
+// APX31 — ce panneau sortait du kit : `form-label`/`form-control` et une
+// `<input type="checkbox">` NATIVE, là où tous ses voisins (checklist, détail
+// ticket, feuille de route) utilisent `Label`/`Input`/`Checkbox`. Résultat :
+// des hauteurs, des focus et des cases différents sur le MÊME écran. Il rejoint
+// le kit — même comportement, même apparence que le reste du ticket.
 function ChampInput({ champ, value, onChange, disabled }) {
   const id = `ws-${champ.cle}`
-  const label = (
-    <label className="form-label" htmlFor={id}>
-      {champ.libelle || champ.cle}{champ.requis ? ' *' : ''}
-      {champ.type === 'mesure' && champ.unite ? ` (${champ.unite})` : ''}
-    </label>
-  )
+  const texteLabel = `${champ.libelle || champ.cle}${champ.requis ? ' *' : ''}`
+    + (champ.type === 'mesure' && champ.unite ? ` (${champ.unite})` : '')
   if (champ.type === 'case') {
     return (
       <div className="flex items-center gap-2">
-        <input id={id} type="checkbox" disabled={disabled}
+        <Checkbox
+          id={id}
+          disabled={disabled}
           checked={value === true || value === 'true'}
-          onChange={(e) => onChange(e.target.checked)} />
-        {label}
+          onCheckedChange={(v) => onChange(v === true)}
+        />
+        <Label htmlFor={id}>{texteLabel}</Label>
       </div>
     )
   }
   const type = (champ.type === 'nombre' || champ.type === 'mesure') ? 'number' : 'text'
   return (
     <div className="flex flex-col gap-1">
-      {label}
-      <input id={id} type={type} step={type === 'number' ? 'any' : undefined}
-        className="form-control" disabled={disabled}
-        value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+      <Label htmlFor={id}>{texteLabel}</Label>
+      <Input
+        id={id}
+        type={type}
+        step={type === 'number' ? 'any' : undefined}
+        disabled={disabled}
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </div>
   )
 }
@@ -159,13 +171,20 @@ export default function TicketWorksheetPanel({ ticketId }) {
           </p>
         ) : (
           <div className="flex flex-wrap items-end gap-2">
+            {/* APX31 — le sélecteur rejoint lui aussi le kit (Label + Select),
+                comme celui de TicketChecklistPanel juste à côté. */}
             <div className="flex flex-col gap-1">
-              <label className="form-label" htmlFor="ws-modele">Modèle</label>
-              <select id="ws-modele" className="form-control" value={modeleId}
-                onChange={(e) => setModeleId(e.target.value)}>
-                <option value="">— Choisir —</option>
-                {modeles.map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}
-              </select>
+              <Label htmlFor="ws-modele">Modèle</Label>
+              <Select value={modeleId} onValueChange={setModeleId}>
+                <SelectTrigger id="ws-modele" className="min-w-[12rem]">
+                  <SelectValue placeholder="— Choisir —" />
+                </SelectTrigger>
+                <SelectContent>
+                  {modeles.map((m) => (
+                    <SelectItem key={m.id} value={String(m.id)}>{m.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <Button type="button" loading={busy} disabled={busy} onClick={creer}>
               Créer la feuille

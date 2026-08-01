@@ -19,7 +19,12 @@ import { Segmented } from '../../../ui'
 // eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (même motif que STAGE_PROBABILITY, KanbanView.jsx)
 export const VIEWS = [
   { value: 'kanban', label: 'Vue kanban', icon: LayoutGrid },
-  { value: 'liste', label: 'Vue liste', icon: List },
+  // APX5 — `hint` : complément d'infobulle OPTIONNEL. Le nom accessible
+  // (`label`) reste EXACTEMENT celui pinné par le blueprint (e2e
+  // helpers.js#setLeadsView) ; l'infobulle en est le PRÉFIXE, jamais un second
+  // libellé indépendant — l'invariant LB40 « les deux ne peuvent pas
+  // diverger » est préservé par construction (`${label} — ${hint}`).
+  { value: 'liste', label: 'Vue liste', icon: List, hint: 'la vue la plus dense' },
   { value: 'calendrier', label: 'Vue calendrier', icon: Calendar },
   { value: 'graphique', label: 'Vue graphique', icon: BarChart3 },
   { value: 'carte', label: 'Vue carte', icon: Map },  // FG37
@@ -37,12 +42,13 @@ export default function ViewSwitcher({ view, setView }) {
       // LB40 — `title` par radio : depuis LB32 les 6 libellés sont `.sr-only`
       // (présentation icône-seule), donc le nom accessible existait toujours
       // pour le clavier/lecteur d'écran mais RIEN ne s'affichait au survol
-      // souris — six icônes muettes. Même chaîne que le nom accessible
-      // (jamais un second libellé qui pourrait diverger).
-      options={VIEWS.map(({ value, label, icon }) => ({
+      // souris — six icônes muettes. L'infobulle DÉRIVE du nom accessible
+      // (jamais un second libellé indépendant qui pourrait diverger) : elle
+      // vaut `label`, éventuellement suivi du `hint` de la vue (APX5).
+      options={VIEWS.map(({ value, label, icon, hint }) => ({
         value,
         icon,
-        title: label,
+        title: hint ? `${label} — ${hint}` : label,
         label: <span className="sr-only">{label}</span>,
       }))}
     />

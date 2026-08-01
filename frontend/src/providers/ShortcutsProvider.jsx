@@ -19,7 +19,7 @@ import {
 } from '../ui/Dialog'
 import { Input } from '../ui/Input'
 import {
-  GOTO_SHORTCUTS, CREATE_SHORTCUTS, GLOBAL_SHORTCUTS, EDIT_SHORTCUTS,
+  GOTO_SHORTCUTS, CREATE_SHORTCUTS, GLOBAL_SHORTCUTS, EDIT_SHORTCUTS, LIST_SHORTCUTS,
   buildAppShortcuts, filterShortcutGroups, isTypingTarget,
 } from './shortcuts'
 import {
@@ -170,6 +170,8 @@ function ShortcutsCheatsheet({ open, onOpenChange, profile }) {
     { title: 'Navigation rapide', items: SEQUENCE_TABLES.g },
     { title: 'Créer', items: CREATE_SHORTCUTS },
     { title: 'Édition', items: EDIT_SHORTCUTS },
+    // APX31 — parcourir une liste au clavier (leads LW, tickets SAV).
+    { title: 'Listes', items: LIST_SHORTCUTS },
     // ODY28 — une collision (deux apps réclamant la même lettre, ou une app
     // réclamant une lettre du noyau) est AFFICHÉE plutôt qu'avalée : un
     // raccourci qui ne marche pas doit être visible, jamais mystérieux.

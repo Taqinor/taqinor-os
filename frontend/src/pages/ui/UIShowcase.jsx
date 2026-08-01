@@ -36,6 +36,10 @@ import {
   runValidation, errorSummary, isDirty, required, email,
 } from '../../ui/form-utils'
 import { ModuleDashboard, ListShell, EcheanceCenter, statusPill } from '../../ui/module'
+// EZ14 — la doctrine « quand undo, quand confirmer » est publiée ici, et le
+// registre AUTORISÉ est lu depuis le code : la vitrine ne peut pas mentir sur
+// ce que l'ERP annule réellement.
+import { UNDO_KINDS, UNDO_REGISTRY, UNDO_DURATION_MS } from '../../lib/mutateWithUndo'
 
 // Données de démonstration pour les sélecteurs G23.
 const VILLES = [
@@ -551,6 +555,49 @@ export function UIShowcase() {
                   Enregistrement optimiste + rollback (<Code>useOptimisticSave</Code>)
                 </h3>
                 <ErrorBoundary><OptimisticSaveDemo /></ErrorBoundary>
+              </div>
+            </div>
+          </section>
+
+          {/* ── EZ14 — DOCTRINE « quand undo, quand confirmer » ──────────────
+              Publiée ici parce qu'un mécanisme d'undo sans doctrine finit en
+              « Annuler » posé sur un e-mail déjà parti. Le registre est FERMÉ
+              (lib/mutateWithUndo.js) : la liste ci-dessous EST le code. */}
+          <section id="undo" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              Annuler ou confirmer&nbsp;? (doctrine)
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              <Code>lib/mutateWithUndo.js</Code> applique la mutation <strong>tout de suite</strong>,
+              puis propose l’<strong>appel inverse</strong> pendant {UNDO_DURATION_MS / 1000}&nbsp;s.
+              Rien n’attend la fin du toast&nbsp;: naviguer, filtrer ou fermer l’onglet ne
+              peut donc <strong>rien perdre</strong>. À l’inverse, <Code>toastWithUndo</Code> avec
+              <Code> onCommit</Code> est un <em>commit différé</em>&nbsp;: sur un board qui se
+              démonte, l’écriture part avec la page.
+            </p>
+            <Separator className="my-3" />
+            <div className="flex flex-wrap items-start gap-4">
+              <div className="min-w-[16rem] flex-1">
+                <h3 className="text-sm font-semibold text-foreground">Undo — réversible</h3>
+                <ul className="mt-1 list-disc pl-5 text-sm text-muted-foreground">
+                  {UNDO_KINDS.map((k) => (
+                    <li key={k}><Code>{k}</Code> — {UNDO_REGISTRY[k]}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="min-w-[16rem] flex-1">
+                <h3 className="text-sm font-semibold text-foreground">Confirmer — jamais d’undo</h3>
+                <ul className="mt-1 list-disc pl-5 text-sm text-muted-foreground">
+                  <li>L’<strong>argent</strong> : devis, facture, paiement, remise, TVA.</li>
+                  <li>Les <strong>suppressions dures</strong> (la corbeille, elle, est réversible).</li>
+                  <li>Les <strong>envois</strong> : e-mail, WhatsApp, PDF au client. Un envoi ne se
+                    dé-envoie pas — proposer «&nbsp;Annuler&nbsp;» y serait un mensonge.</li>
+                </ul>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  L’annulation crée une <strong>seconde</strong> ligne d’historique
+                  («&nbsp;annulé&nbsp;»), elle n’efface pas la première&nbsp;: le chatter raconte ce
+                  qui s’est passé.
+                </p>
               </div>
             </div>
           </section>

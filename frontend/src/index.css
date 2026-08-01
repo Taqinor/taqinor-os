@@ -9370,3 +9370,775 @@ textarea.form-control {
   background: var(--muted);
   display: block;
 }
+
+/* ===========================================================================
+   APX2 — LA CARTE LEAD AU REPOS : 3 lignes, <= 76 px, BUDGET DE SIGNAUX FERME.
+   (fondateur 2026-08-01 : « lead view really nice like in Odoo — we see a lot
+   of leads at once, phone and computer ».)
+   ---------------------------------------------------------------------------
+   Mesure d'etat avant : ~120-150 px par carte au repos (5 zones empilees),
+   soit 3-4 cartes visibles par colonne en 1366x768 contre ~60-70 px chez Odoo.
+   Ce bloc REMPLACE le contrat LB13 « 4 zones » par un contrat a 3 lignes :
+
+     L1  nom + societe (tronques)          .kb-card-head
+     L2  montant .num + budget de signaux  .kb-card-value
+     L3  points de tags + age + avatar 16  .kb-card-foot
+
+   RIEN NE DISPARAIT, TOUT SE CONDENSE : le texte de la ligne d'action, le chip
+   de type, canal/ville, les micro-icones de readiness, les libelles de tags en
+   clair et les actions rapides vivent dans `.kb-card-reveal`, depliee au
+   survol (hover:hover) ou au focus clavier (:focus-within, a TOUTE largeur).
+   Le budget de signaux garde AU REPOS ce qui doit rester distinguable sans
+   survol : icone coloree de la ligne d'action, micro-badge de score (VX221),
+   pastille de rotting (rampe LB14).
+
+   SCOPE : tout est sous `.kb-card--lead`. `.kb-card` est partage avec le
+   kanban Installations et `ui/StatusAccentCard` (autres lanes) — pas un pixel
+   n'y bouge.
+   =========================================================================== */
+
+.kb-card--lead {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: 0.36rem 0.5rem;
+}
+
+/* ---- L1 — nom + societe sur UNE ligne tronquee ---- */
+.kb-card--lead .kb-card-head {
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.kb-card--lead .kb-card-name {
+  flex: 0 1 auto;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}
+.kb-card--lead .kb-card-societe {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-card--lead .kb-card-societe::before {
+  content: '\00b7';
+  margin-right: 0.25rem;
+}
+
+/* ---- L2 — montant + BUDGET DE SIGNAUX (jamais supprime au repos) ---- */
+.kb-card--lead .kb-card-value {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  margin-top: 0;
+  min-height: 1.05rem;
+}
+.kb-card--lead .kb-card-montant {
+  font-size: 0.82rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.kb-card--lead .kb-card-signals {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* L'ICONE D'ACTION — la seule chose qui remplace un texte au repos. Les
+   tonalites reutilisent EXACTEMENT les tokens de `.kb-actionline-*` : le
+   contraste AA clair/sombre est donc celui, deja valide, de la ligne d'action. */
+.kb-card-signal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0.95rem;
+  font-size: 0.78rem;
+  line-height: 1;
+  font-weight: 700;
+}
+.kb-signal-perdu,
+.kb-signal-danger { color: var(--destructive); }
+.kb-signal-warning { color: var(--warning-text); }
+.kb-signal-info { color: var(--info); }
+.kb-signal-success { color: var(--success); }
+.kb-signal-muted { color: var(--muted-foreground); }
+
+/* Micro-badge de score (VX221) — le composant partage ScoreBadge est intact,
+   seule son enveloppe porte la taille. */
+.kb-card--lead .kb-card-score-micro { display: inline-flex; }
+.kb-card--lead .kb-card-score-micro .lv-score-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35em;
+  padding: 0 0.24rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+/* Pastille de rotting (rampe LB14) — lisible au repos meme sans pill d'age. */
+.kb-rot-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+}
+.kb-card--lead[data-rot='warning'] .kb-rot-dot { background: var(--warning-text); }
+.kb-card--lead[data-rot='danger'] .kb-rot-dot { background: var(--destructive); }
+
+/* ---- L3 — points de tags + age + avatar 16 ---- */
+.kb-card--lead .kb-card-foot {
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  margin-top: 0;
+  min-height: 1rem;
+}
+.kb-tag-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.kb-tag-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+.kb-tag-dots-more {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+.kb-card--lead .kb-age-pill {
+  margin-left: auto;
+  font-size: 0.6rem;
+  padding: 0 0.35rem;
+  line-height: 1.5;
+}
+.kb-card--lead .kb-card-assignee {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+/* ---- ZONE REVELEE — depliee au survol (hover:hover) ET au focus clavier ----
+   Elle est le DERNIER enfant en flux : la carte grandit vers le BAS, donc un
+   controle revele n'apparait jamais sous la position de repos du curseur.
+   Pas de `visibility: hidden` : elle empecherait le focus d'entrer, donc
+   `:focus-within` ne pourrait JAMAIS deplier (impasse). Le depliage reel au
+   focus est ce qui garantit une bounding box non nulle a chaque controle
+   revele — l'anti-pattern « tabbable invisible » (LB17) ne revient pas. */
+.kb-card--lead .kb-card-reveal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  max-height: 0;
+  margin-top: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height var(--motion-base) ease, opacity var(--motion-base) ease,
+    margin-top var(--motion-base) ease;
+}
+@media (hover: hover) {
+  .kb-card--lead:hover > .kb-card-reveal {
+    max-height: 14rem;
+    margin-top: 0.28rem;
+    opacity: 1;
+    overflow: visible;
+  }
+}
+.kb-card--lead:focus-within > .kb-card-reveal {
+  max-height: 14rem;
+  margin-top: 0.28rem;
+  opacity: 1;
+  overflow: visible;
+}
+/* Pointeur grossier (telephone ET tablette — jamais un seuil de largeur) : la
+   zone reste depliee, faute de survol. APX7 y posera l'anatomie tactile. */
+@media (hover: none) {
+  .kb-card--lead > .kb-card-reveal {
+    max-height: none;
+    margin-top: 0.28rem;
+    opacity: 1;
+    overflow: visible;
+  }
+}
+.kb-card--lead .kb-card-reveal .kb-tags,
+.kb-card--lead .kb-card-reveal .kb-card-actionline {
+  margin-top: 0;
+}
+.kb-card--lead .kb-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* Mouvement reduit : le depliage devient instantane (jamais supprime — le
+   contenu doit rester atteignable). */
+@media (prefers-reduced-motion: reduce) {
+  .kb-card--lead .kb-card-reveal { transition: none; }
+}
+
+/* ===========================================================================
+   APX3 — REPRENDRE LE CHROME VERTICAL DU BOARD : 286 -> <= 240 px.
+   ---------------------------------------------------------------------------
+   Postes verifies avant : `.layout-content` padding 2rem sur les 4 cotes
+   (:365), `.lp-view-area` marge 12 + padding 12 (:4190), `.kb-board` padding
+   12 (:4745), `.kb-col-header` ~48 (:4802).
+
+   METHODE IMPOSEE — le discriminant `[data-view]` n'existe QUE sur LeadsPage
+   (verifie : `.lp-page` est AUSSI porte par Installations / Planification /
+   Interventions, qui appartiennent a d'autres lanes). Chaque regle ci-dessous
+   est donc prefixee `.lp-page[data-view]`, et le padding du shell est repris
+   par le meme idiome `:has()` que LB2/LB33. Zero pixel ne bouge sur les trois
+   autres pages `.lp-page`, ni sur aucune page sans board.
+
+   INTOUCHABLE — la chaine `:has()` de HAUTEUR de LB33 (`index.css` ~:7117 :
+   `.layout-content > .route-fade:has(> .lp-page) { height: 100% }` +
+   `.lp-page > .lp-view-area { flex: 1 1 auto }`). On ne touche ici QUE des
+   paddings/marges : la chaine de hauteur reste litteralement la meme, donc
+   l'invariant LB33 (« la page ne grandit pas au contenu, le board est borne »)
+   est preserve par construction.
+
+   BUDGET : haut  16 (layout) + 8 (view-area) + 4 (board) + 10 (en-tete) = 46
+            bas    8 (view-area) + 4 (board) = 12
+   -> 286 - 58 = ~228 px. La MESURE est la gate APX8.
+   =========================================================================== */
+
+/* Shell : seul le padding HAUT est repris (le bas/gauche/droite du shell est
+   partage par tout l'ERP — consigne explicite « ne toucher que le TOP »). */
+.layout-content:has(> .route-fade > .lp-page[data-view]) {
+  padding-top: 1rem;
+}
+
+/* Zone de vue : 12 + 12 -> 4 + 4 en haut, 12 -> 4 en bas. */
+.lp-page[data-view] > .lp-view-area {
+  margin-top: 0.25rem;
+  padding: 0.25rem;
+}
+
+/* Board : 12 -> 8 (les deux axes ; le gap entre colonnes appartient a APX4). */
+.lp-page[data-view] .kb-board {
+  padding: 0.5rem;
+}
+
+/* En-tete de colonne : ~48 -> ~38. Deux rangees conservees (titre+compteur,
+   puis montants LB9) — on ne supprime aucune information, on la resserre.
+   APX6 y ajoutera la barre segmentee d'activite. */
+.lp-page[data-view] .kb-col-header {
+  padding: 0.3rem 0.55rem 0.25rem;
+}
+.lp-page[data-view] .kb-col-title-row {
+  gap: 0.35rem;
+  min-height: 1.1rem;
+}
+.lp-page[data-view] .kb-col-collapse-btn {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+/* La cible tactile reste >= 44 px : la boite RETRECIT, la zone de frappe non
+   (meme idiome que `.kb-check-hit` en LB17 — overlay ::before, aucun decalage
+   de mise en page). */
+@media (pointer: coarse) {
+  .lp-page[data-view] .kb-col-collapse-btn { position: relative; }
+  .lp-page[data-view] .kb-col-collapse-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+.lp-page[data-view] .kb-col-title {
+  font-size: 0.8rem;
+  line-height: 1.2;
+}
+.lp-page[data-view] .kb-col-count {
+  padding: 0 0.4rem;
+  font-size: 0.66rem;
+  line-height: 1.4;
+}
+.lp-page[data-view] .kb-col-money {
+  margin-top: 0.05rem;
+  font-size: 0.62rem;
+  line-height: 1.25;
+}
+
+/* ===========================================================================
+   APX4 — LES 6 ETAPES DU FUNNEL VISIBLES : colonnes fluides 204 px + plein
+   ecran board.
+   ---------------------------------------------------------------------------
+   Etat verifie : `.kb-col { flex: 0 0 272px }` (:4763) + gap 12 (:4742). A
+   272 px fixes, 6 colonnes + 5 gouttieres reclament 1692 px de zone utile :
+   la 6e etape (COLD) tombait hors champ presque partout.
+
+   FIX = l'equivalent flex EXACT de `minmax(204px, 1fr)` :
+     flex: 1 1 204px + min-width: 204px, sur un board `nowrap`.
+   Au-dessus du seuil (6x204 + 5x12 = 1284 px utiles) les 6 colonnes se
+   PARTAGENT la largeur ; en dessous elles s'arretent a 204 px et le board
+   reprend EXACTEMENT son comportement actuel (scroll horizontal + drag-to-pan
+   LB11), rien d'autre ne change.
+
+   Arithmetique honnete : 1440 sidebar repliee -> ~1288 utiles -> 6/6 ok ;
+   1920 sidebar depliee -> 6/6 ok ; 1366 depliee reste a 4-5 colonnes (assume,
+   d'ou le pan LB11 et le bouton plein ecran ci-dessous).
+
+   Scope `.lp-page[data-view]` : `.kb-col` est partage avec Installations et
+   Interventions. `:not(.kb-col-collapsed)` : une colonne repliee reste le
+   rail de 44 px de LB10.
+   =========================================================================== */
+.lp-page[data-view] .kb-col:not(.kb-col-collapsed) {
+  flex: 1 1 204px;
+  min-width: 204px;
+}
+/* Palier iPad paysage de VX183(a) (900-1024px, colonnes a 150px) : conserve —
+   en dessous du seuil, l'ancien comportement prime. */
+@media (max-width: 1024px) and (min-width: 900px) {
+  .lp-page[data-view] .kb-col:not(.kb-col-collapsed) {
+    flex: 1 1 150px;
+    min-width: 150px;
+  }
+}
+
+/* ---- Bouton « plein ecran » de la zone de vue ---- */
+.lp-fullscreen-btn {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  /* Doit passer AU-DESSUS des en-tetes de colonne collants (`.kb-col-head`,
+     z-index 1) : le bouton est rendu AVANT le board, il perdrait l'egalite.
+     Reste sous `--z-sticky` pour ne jamais recouvrir l'en-tete de page. */
+  z-index: var(--z-dropdown);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--card);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+.lp-page[data-view] > .lp-view-area { position: relative; }
+@media (hover: hover) {
+  .lp-fullscreen-btn:hover { opacity: 1; color: var(--foreground); }
+}
+.lp-fullscreen-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  opacity: 1;
+}
+.lp-fullscreen-btn[aria-pressed='true'] {
+  opacity: 1;
+  color: var(--foreground);
+  border-color: color-mix(in srgb, var(--module-accent-azur) 45%, transparent);
+}
+
+/* ---- Le mode plein ecran lui-meme ----
+   La page devient un calque qui couvre le shell : toute la largeur de la
+   sidebar ET du header revient au board. On ne touche PAS a la preference
+   globale de sidebar (`taqinor.sidebar.collapsed`, propriete de Layout.jsx) —
+   ce mode est local a l'ecran leads et reversible (bouton ou Echap). */
+.lp-page--fullscreen {
+  position: fixed;
+  inset: 0;
+  /* `.header` est collant a `--z-sticky` (1100) : a 60 ce calque « plein
+     ecran » passait DESSOUS et ne couvrait pas l'en-tete. `--z-overlay` (1200)
+     le couvre tout en restant sous les modales (1300) et les toasts (1500),
+     pour qu'une boite de dialogue ouverte depuis le board reste au-dessus. */
+  z-index: var(--z-overlay);
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--background);
+  overflow: hidden;
+}
+
+/* ===========================================================================
+   APX5 — LA VUE LISTE ASSUME « JE VOIS TOUT » : UNE ligne par lead.
+   ---------------------------------------------------------------------------
+   Etat verifie : `.lv-table td` padding 8/12 CODE EN DUR (:5279) et cellule
+   Lead empilee sur 3 lignes (nom / societe / icones de contact, +1 si
+   archive) -> 33-65 px par ligne selon le lead. Consequence : la hauteur de
+   ligne dependait du CONTENU, donc deux lignes voisines n'avaient pas la meme
+   hauteur et le tableau paraissait bancal en plus d'etre peu dense.
+
+   FIX EN DEUX TEMPS :
+   1. La cellule Lead devient UNE rangee (nom · societe · pastille archive ·
+      icones tel/WhatsApp poussees a droite) -> une seule hauteur possible.
+   2. Le padding vertical passe sur `--row-py`, le MEME jeton de densite que
+      le reste de l'ERP (design/tokens.css F20, pilote par `data-density` que
+      `theme.js` pose sur <html>). La liste obeit donc a la preference de
+      densite de l'utilisateur comme tous les autres tableaux, au lieu d'un
+      8 px fige.
+
+   FRONTIERES : on branche `--row-py` sur `.lv-table td/th` UNIQUEMENT.
+   `.data-table` (le moteur ui/datatable) appartient a APX34 — le contredire
+   ici creerait deux sources de densite pour un meme tableau. `densityOverride`
+   (NTUX17, densite PAR VUE) n'est pas touche : ce bloc ne fait que consommer
+   le jeton que ce systeme resout deja.
+   =========================================================================== */
+.lv-table td {
+  padding: var(--row-py) 12px;
+}
+.lv-table th {
+  padding: var(--row-py) 12px;
+}
+
+/* La cellule Lead : de la colonne a la RANGEE. */
+.lv-lead-cell {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+}
+.lv-lead-cell .lv-lead-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lv-lead-cell .lv-lead-societe {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lv-lead-cell .lv-lead-societe::before {
+  content: '\00b7';
+  margin-right: 0.3rem;
+}
+/* « Archive » : pastille au lieu d'une 4e ligne — le detail « par X le Y »
+   reste accessible dans l'infobulle (VX243a preserve, juste condense). */
+.lv-lead-archived-by {
+  flex: 0 0 auto;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+/* Icones tel/WhatsApp (QX25) : a DROITE de la cellule, plus sous le nom. */
+.lv-lead-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* Le repli MOBILE (cartes empilees, `.lv-lead-cell { align-items: flex-end }`
+   plus haut) garde sa mise en colonne : sur telephone le tableau n'est plus un
+   tableau, la contrainte « une ligne » n'y a pas de sens. */
+@media (max-width: 768px) {
+  .lv-lead-cell {
+    flex-direction: column;
+    flex-wrap: wrap;
+  }
+  .lv-lead-cell .lv-lead-societe::before { content: none; margin-right: 0; }
+  .lv-lead-contact { margin-left: 0; }
+}
+
+/* ===========================================================================
+   APX6 — EN-TETES DE COLONNE : la barre segmentee d'activite (signature Odoo)
+   + la somme des montants a droite.
+   ---------------------------------------------------------------------------
+   VERIFIE D'ABORD : l'en-tete LB9 portait DEJA le compteur et la somme
+   (« total MAD · Prev. ponderee », UNE seule rangee — invariant conserve).
+   Ce qui manquait : lire d'un coup d'oeil l'ETAT D'ACTIVITE de l'etape.
+
+   La barre est une rangee flex de segments dont le `flex-grow` vaut le NOMBRE
+   de leads du seau : les largeurs sont donc exactement proportionnelles, sans
+   aucun calcul de pourcentage en JS. Un seau vide n'est pas rendu du tout
+   (jamais un segment de largeur nulle, ni un bouton tabbable invisible).
+
+   Tonalites = les memes jetons semantiques que la ligne d'action de la carte
+   (`.kb-actionline-*`) et la rampe LB14 : un « en retard » a la MEME couleur
+   partout dans l'ecran, en clair comme en sombre.
+   =========================================================================== */
+.lp-page[data-view] .kb-col-money {
+  text-align: right;
+}
+.lp-page[data-view] .kb-col-activite {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  margin-top: 0.2rem;
+  height: 4px;
+}
+.lp-page[data-view] .kb-act-seg {
+  flex-shrink: 1;
+  min-width: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  /* La cible visuelle fait 4 px de haut ; la zone de FRAPPE en fait 14 grace a
+     l'overlay ci-dessous — la barre reste fine sans devenir intouchable. */
+  position: relative;
+}
+.lp-page[data-view] .kb-act-seg::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 14px;
+  transform: translateY(-50%);
+}
+.lp-page[data-view] .kb-act-seg--danger { background: var(--destructive); }
+.lp-page[data-view] .kb-act-seg--warning { background: var(--warning-text); }
+.lp-page[data-view] .kb-act-seg--success { background: var(--success); }
+.lp-page[data-view] .kb-act-seg--muted {
+  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
+}
+/* Segment actif : le seul a garder son opacite pleine, les autres s'estompent
+   — l'etat du filtre se LIT sans lire un libelle. */
+.lp-page[data-view] .kb-col-activite:has(.kb-act-seg--on) .kb-act-seg:not(.kb-act-seg--on) {
+  opacity: 0.35;
+}
+.lp-page[data-view] .kb-act-seg--on {
+  outline: 1px solid var(--foreground);
+  outline-offset: 1px;
+}
+.lp-page[data-view] .kb-act-seg:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .lp-page[data-view] .kb-act-seg:hover { filter: brightness(1.15); }
+}
+
+/* ===========================================================================
+   APX7 — TELEPHONE ET TABLETTE : 5+ leads par etape, `hover:none` servi a
+   TOUTE largeur.
+   ---------------------------------------------------------------------------
+   Etat verifie : `.kb-quick` etait PERMANENT en `@media (hover: none)` (+36 px
+   par carte) et vivait dans la zone revelee, elle-meme depliee en permanence
+   au toucher depuis APX2 -> ~3 cartes sur un 390x844.
+
+   ANATOMIE TACTILE : la rangee d'actions remonte SUR LA LIGNE DU MONTANT (L2).
+   Au toucher, cette ligne DEVIENT la rangee d'actions 44x44 (appeler /
+   WhatsApp), tout le reste (texte d'action, chip de type, canal/ville,
+   readiness, tags en clair) reste derriere le menu ••• et la fiche. La carte
+   passe de ~125 px a ~90 px.
+
+   LA REGLE DURE : c'est `hover:none` qui decide, JAMAIS une largeur d'ecran.
+   Un iPad (projet Playwright `tablet`, WebKit `hover:none`) est large mais n'a
+   pas de survol : il herite donc exactement de l'anatomie du telephone, et ses
+   actions restent atteignables SANS survol (VX68). Aucune media query de
+   largeur dans ce bloc — c'est verifie par test.
+
+   INCHANGES : le snap LB42, la bande de swipe inerte LB17, le drag/clavier
+   LB12 et le contrat DOM e2e. Un SEUL exemplaire des liens tel/WhatsApp dans
+   le DOM — l'anatomie tactile ne duplique rien.
+   =========================================================================== */
+
+/* --- Pointeur FIN : les actions restent revelees (survol / focus). Dans une
+       rangee flex, `max-height: 0` ne suffit pas — il faut aussi annuler la
+       LARGEUR, sinon les boutons pousseraient le montant au repos. --- */
+@media (hover: hover) {
+  .kb-card--lead .kb-card-value > .kb-quick {
+    max-width: 0;
+    margin-top: 0;
+  }
+  .kb-card--lead:hover .kb-card-value > .kb-quick,
+  .kb-card--lead:focus-within .kb-card-value > .kb-quick {
+    max-width: none;
+    margin-top: 0;
+    margin-left: 0.35rem;
+  }
+}
+
+/* --- Pointeur GROSSIER (telephone ET tablette) : la ligne du montant EST la
+       rangee d'actions. --- */
+@media (hover: none) {
+  /* 1. La zone revelee se REFERME au toucher (APX2 la laissait ouverte, faute
+        de survol) : c'est elle qui coutait les ~36 px par carte. Le budget de
+        signaux de L2 garde l'etat lisible ; le menu ••• (permanent au toucher)
+        garde les actions. */
+  .kb-card--lead > .kb-card-reveal {
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+    overflow: hidden;
+  }
+  /* Le focus clavier DEPLIE toujours reellement — une tablette avec clavier
+     externe reste pilotable, et aucun controle n'est « tabbable invisible ». */
+  .kb-card--lead:focus-within > .kb-card-reveal {
+    max-height: 14rem;
+    margin-top: 0.28rem;
+    opacity: 1;
+    overflow: visible;
+  }
+  /* 2. Les actions vivent sur L2, collees a droite, en cibles 44x44. */
+  .kb-card--lead .kb-card-value > .kb-quick {
+    max-height: none;
+    max-width: none;
+    overflow: visible;
+    opacity: 1;
+    margin-top: 0;
+    margin-left: 0.35rem;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+  .kb-card--lead .kb-card-value {
+    min-height: 44px;
+  }
+  /* 3. « Devis auto » double l'item du menu ••• : la ligne tactile ne garde que
+        ce qui n'existe nulle part ailleurs (appeler / WhatsApp). */
+  .kb-card--lead .kb-card-value > .kb-quick > .kb-flash {
+    display: none;
+  }
+}
+
+/* ===========================================================================
+   APX9 — « CHARGER PLUS » : plafond de RENDU, jamais de chargement.
+   ---------------------------------------------------------------------------
+   Les leads sont deja TOUS en memoire (`fetchAllPages`) : ce bouton ne fait
+   que decouper plus loin dans le tableau. Il est donc volontairement discret —
+   ce n'est pas une action metier, c'est un « voir la suite ». Cible >= 32 px,
+   pleine largeur de colonne (facile a viser au pouce comme a la souris).
+   =========================================================================== */
+.kb-charger-plus,
+.lv-charger-plus {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 0.35rem 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .kb-charger-plus:hover,
+  .lv-charger-plus:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+.kb-charger-plus:focus-visible,
+.lv-charger-plus:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.lv-charger-plus-row td {
+  text-align: center;
+}
+@media (pointer: coarse) {
+  .kb-charger-plus,
+  .lv-charger-plus { min-height: 44px; }
+}
+
+/* ===========================================================================
+   APX10 — LE RESTE DU CRM REJOINT LE NIVEAU DES LEADS.
+   ---------------------------------------------------------------------------
+   Etat verifie : ClientList, Forecast et Ma file ouvraient sur un `<h2>` nu
+   dans un `page-header` generique, et `ModuleHero` (VX15) n'etait consomme par
+   AUCUN ecran crm — l'app la plus travaillee de l'ERP n'avait d'identite que
+   sur son board.
+
+   Deux grammaires, JAMAIS une troisieme :
+     - ModuleHero (VX15) pour les ecrans qui sont une DESTINATION (Forecast,
+       Ma file), comme le cockpit ODY15 ;
+     - la ligne de controle LB43 (`lp-controlbar`) pour les ecrans de LISTE
+       (Clients, Parrainage, Payloads), exactement comme le board des leads.
+
+   La pastille d'accent est le meme jeton azur que la nav CRM, le cockpit et
+   les heros : une seule couleur de module dans tout l'ecran.
+   =========================================================================== */
+.crm-controlbar .crm-accent-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.5rem;
+  border-radius: 999px;
+  background: var(--module-accent-azur);
+  vertical-align: middle;
+}
+/* La ligne de controle hors du board leads a besoin d'un peu d'air en bas
+   (sur `.lp-page` c'est la zone de vue qui le fournit). */
+.crm-controlbar {
+  margin-bottom: 0.75rem;
+}
+
+/* ===========================================================================
+   EZ1 — LE popover d'appel devient LE planificateur : date libre, objet
+   optionnel, et la relance existante AFFICHEE avec « Remplacer / Garder ».
+   ---------------------------------------------------------------------------
+   Etat verifie : le popover n'ecrivait qu'un `relance_date` via 4 offsets
+   figes, et ECRASAIT en silence une relance existante — jamais lue, jamais
+   affichee. Trois mecanismes rivaux se disputaient « planifier la suite » ;
+   il n'en reste qu'un pour la planification RAPIDE (le gabarit multi-etapes de
+   PlanActiviteDialog reste, c'est autre chose).
+   =========================================================================== */
+.clp-free-date,
+.clp-objet {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+}
+/* Le bloc de conflit est le seul endroit « attention » du popover : teinte
+   d'avertissement legere, jamais une alerte rouge (rien n'est casse — on
+   demande simplement une decision). */
+.clp-conflit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in srgb, var(--warning) 12%, var(--card));
+}
+.clp-conflit-texte {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--foreground);
+}
+.clp-conflit-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+/* EZ1 — ancre invisible du popover de planification ouvert depuis une carte
+   ou une ligne (il n'a pas de declencheur fixe a l'ecran). */
+.lp-relance-anchor {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+}

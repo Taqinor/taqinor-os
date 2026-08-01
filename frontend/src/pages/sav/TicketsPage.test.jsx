@@ -5,6 +5,8 @@ import {
   StatutPill,
   PrioriteBadge,
   TicketSlaBadge,
+  TicketSlaEcheanceChip,
+  TicketPremiereReponseChip,
   KanbanColumn,
 } from './TicketsPage.jsx'
 import {
@@ -102,6 +104,97 @@ describe('TicketSlaBadge (J144 — âge SLA, calculé à la lecture)', () => {
       <TicketSlaBadge ticket={{ statut: 'nouveau', priorite: 'normale', annule: false }} />,
     )
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+/* APX30 — les DEUX horloges SLA rendues. Les dates sont calculées à partir
+   d'un « aujourd'hui » lu au moment du test (jamais une date figée dans le
+   futur qui périmerait) : c'est l'écart en jours qui est vérifié, pas une
+   chaîne de date absolue. */
+describe('TicketSlaEcheanceChip (APX30 — échéance de résolution)', () => {
+  const dansNJours = (n) => {
+    const d = new Date()
+    d.setDate(d.getDate() + n)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+  const ouvert = { statut: 'en_cours', priorite: 'normale', annule: false }
+
+  it('ne rend rien quand la société n’a pas activé le SLA (aucune échéance)', () => {
+    const { container } = render(<TicketSlaEcheanceChip ticket={ouvert} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('annonce le délai restant sur un ticket ouvert dans les temps', () => {
+    render(<TicketSlaEcheanceChip ticket={{ ...ouvert, sla_due_at: dansNJours(3) }} />)
+    expect(screen.getByText(/à résoudre sous 3 j/i)).toBeInTheDocument()
+  })
+
+  it('dit « aujourd’hui » le jour de l’échéance', () => {
+    render(<TicketSlaEcheanceChip ticket={{ ...ouvert, sla_due_at: dansNJours(0) }} />)
+    expect(screen.getByText(/à résoudre aujourd'hui/i)).toBeInTheDocument()
+  })
+
+  it('passe en dépassement avec le nombre de jours de retard', () => {
+    render(<TicketSlaEcheanceChip ticket={{ ...ouvert, sla_due_at: dansNJours(-2) }} />)
+    expect(screen.getByText(/SLA dépassé — 2 j/i)).toBeInTheDocument()
+  })
+
+  it('GARDE la marque « SLA dépassé » après résolution (traçabilité)', () => {
+    render(
+      <TicketSlaEcheanceChip
+        ticket={{ ...ouvert, statut: 'resolu', sla_due_at: dansNJours(-9), sla_breach: true }}
+      />,
+    )
+    expect(screen.getByText(/SLA dépassé/i)).toBeInTheDocument()
+  })
+
+  it('ne marque JAMAIS un ticket résolu dans les temps', () => {
+    const { container } = render(
+      <TicketSlaEcheanceChip
+        ticket={{ ...ouvert, statut: 'resolu', sla_due_at: dansNJours(-9), sla_breach: false }}
+      />,
+    )
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('une pause client (XSAV5) décale l’échéance au lieu de compter un retard', () => {
+    render(
+      <TicketSlaEcheanceChip
+        ticket={{
+          ...ouvert,
+          sla_due_at: dansNJours(-4),
+          sla_due_at_effectif: dansNJours(3),
+          en_attente_client: true,
+        }}
+      />,
+    )
+    expect(screen.getByText(/en pause/i)).toBeInTheDocument()
+    expect(screen.queryByText(/SLA dépassé/i)).toBeNull()
+  })
+})
+
+describe('TicketPremiereReponseChip (APX30 — l’autre horloge)', () => {
+  const ouvert = { statut: 'nouveau', priorite: 'normale', annule: false }
+
+  it('réclame la 1ʳᵉ réponse tant qu’elle n’est pas posée', () => {
+    render(<TicketPremiereReponseChip ticket={ouvert} />)
+    expect(screen.getByText(/1ʳᵉ réponse à faire/i)).toBeInTheDocument()
+  })
+
+  it('disparaît dès que la 1ʳᵉ réponse est enregistrée', () => {
+    const { container } = render(
+      <TicketPremiereReponseChip
+        ticket={{ ...ouvert, date_premiere_reponse: '2026-07-31T09:00:00Z' }}
+      />,
+    )
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('ne réclame rien sur un ticket fermé ou annulé', () => {
+    for (const t of [{ ...ouvert, statut: 'cloture' }, { ...ouvert, annule: true }]) {
+      const { container } = render(<TicketPremiereReponseChip ticket={t} />)
+      expect(container).toBeEmptyDOMElement()
+    }
   })
 })
 

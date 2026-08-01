@@ -9,6 +9,9 @@ import { useIsAdmin } from '../../../../hooks/useHasPermission'
 import { archiveLead, restoreLead, deleteLead } from '../../../../features/crm/store/crmSlice'
 import crmApi from '../../../../api/crmApi'
 import { toastWithUndo, toastError } from '../../../../lib/toast'
+// EZ14 — undo universel : « appliquer tout de suite + inverse à l'annulation »,
+// jamais le commit différé qui perd l'écriture au démontage d'un board.
+import { mutateWithUndo } from '../../../../lib/mutateWithUndo'
 import {
   PIPELINE_STAGES,
   STAGE_LABELS,
@@ -58,6 +61,24 @@ import { useIsMobile } from '../../../../ui/ResponsiveDialog'
 // verbatim (identique à celles de FilterBar.jsx/ChartsView.jsx). Même
 // breakpoint qu'avant (768px, passé en paramètre) — comportement inchangé.
 const MOBILE_QUERY = '(max-width: 768px)'
+
+/* APX9 — palier de RENDU de la liste (le pendant de RENDER_CAP=40 du kanban).
+   Une ligne de tableau coûte bien moins qu'une carte, et la Liste EST la vue
+   dense (APX5) : la faire cliquer tous les 40 leads irait contre sa raison
+   d'être. 200 monte tout jusqu'à 200 leads — la très grande majorité des
+   pipelines — et borne le pire cas. */
+const LIST_RENDER_CAP = 200
+
+/* EZ14 — champs éditables en place qui gagnent l'undo, et leur genre au
+   REGISTRE FERMÉ (lib/mutateWithUndo.js). Un champ absent d'ici s'enregistre
+   exactement comme avant : c'est le cas voulu pour `facture_hiver` (un montant)
+   et pour tout champ d'argent — jamais d'« Annuler » sur l'argent. */
+const CHAMPS_UNDO = {
+  stage: { kind: 'lead_stage', message: 'Étape modifiée.' },
+  priorite: { kind: 'lead_priorite', message: 'Priorité modifiée.' },
+  tags: { kind: 'lead_tags', message: 'Étiquettes modifiées.' },
+  relance_date: { kind: 'lead_relance', message: 'Relance modifiée.' },
+}
 
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
 // LB4 — options d'étape calculées PAR LIGNE (dépendent de l'étape courante du
@@ -249,6 +270,13 @@ const ListRow = memo(function ListRow({
           />
         </td>
       )}
+      {/* APX5 — LA VUE LA PLUS DENSE : UNE ligne par lead. La cellule Lead
+          empilait jusqu'à 3 lignes (nom / société / icônes de contact, +1 si
+          archivé) → 33-65 px par ligne. Elle devient une rangée : nom · société
+          en clair, icônes tel/WhatsApp poussées à droite, « Archivé » condensé
+          en pastille (le détail « par X le Y » vit dans son infobulle, il n'est
+          pas perdu). La hauteur de ligne, elle, est pilotée par le MÊME système
+          de densité que le reste de l'ERP (`--row-py`, index.css). */}
       <td data-label="Lead" className="lv-sticky-name">
         <div className="lv-lead-cell">
           {/* LB21 — le nom devient un vrai élément interactif sémantique
@@ -264,14 +292,27 @@ const ListRow = memo(function ListRow({
             {perdu && <span className="lv-badge-perdu">Perdu</span>}
           </button>
           {lead.societe ? (
-            <span className="lv-lead-societe">{lead.societe}</span>
+            <span className="lv-lead-societe" title={lead.societe}>{lead.societe}</span>
           ) : null}
+          {/* VX243(a) — confiance au niveau du DOSSIER : QUI a archivé et QUAND
+              (archived_by/at étaient capturés serveur mais jamais rendus).
+              APX5 : condensé en pastille, le détail passe dans l'infobulle —
+              l'information reste, elle ne prend plus une ligne entière. */}
+          {lead.is_archived && (lead.archived_by_nom || lead.archived_at) && (
+            <span
+              className="lv-lead-archived-by"
+              title={`Archivé${lead.archived_by_nom ? ` par ${lead.archived_by_nom}` : ''}${lead.archived_at ? ` le ${formatDate(lead.archived_at)}` : ''}`}
+            >
+              Archivé
+            </span>
+          )}
           {/* QX25 — repli tap-to-call mobile : la colonne Téléphone
               (m-hide) disparaît sous 768px, ces icônes compactes
-              restent visibles dans la cellule Lead (jamais masquée). */}
+              restent visibles dans la cellule Lead (jamais masquée).
+              APX5 : poussées à DROITE de la cellule (marge auto par la
+              feuille de style), plus empilées sous le nom. */}
           {(telHref(lead.telephone) || waHref(lead.whatsapp)) && (
-            <span className="lv-lead-contact" style={{ display: 'inline-flex', gap: '8px', marginTop: '2px' }}
-                  onClick={(e) => e.stopPropagation()}>
+            <span className="lv-lead-contact" onClick={(e) => e.stopPropagation()}>
               {telHref(lead.telephone) && (
                 <a href={telHref(lead.telephone)} title="Appeler"
                    aria-label={`Appeler ${fullName(lead) || 'ce lead'}`}
@@ -287,15 +328,6 @@ const ListRow = memo(function ListRow({
                   <MessageCircle className="size-3.5" aria-hidden="true" />
                 </ExternalLink>
               )}
-            </span>
-          )}
-          {/* VX243(a) — confiance au niveau du DOSSIER : une ligne archivée
-              montre QUI l'a archivée et QUAND (archived_by/at étaient capturés
-              serveur mais jamais rendus). Silencieux sur un lead vivant. */}
-          {lead.is_archived && (lead.archived_by_nom || lead.archived_at) && (
-            <span className="lv-lead-archived-by text-xs text-muted-foreground">
-              Archivé{lead.archived_by_nom ? ` par ${lead.archived_by_nom}` : ''}
-              {lead.archived_at ? ` le ${formatDate(lead.archived_at)}` : ''}
             </span>
           )}
         </div>
@@ -652,6 +684,10 @@ export default function ListView({
   // VX87 — nudge post-appel : armé au tap tel: (mémorise QUEL lead a été
   // appelé, une table n'a qu'un seul nudge visible à la fois — comme un
   // vendeur ne passe qu'un appel à la fois), proposé au retour dans l'onglet.
+  // EZ2 — au BUREAU, un tap `tel:` ne masque jamais l'onglet : le hook arme
+  // désormais AUSSI un retour de focus fenêtre et une temporisation, le premier
+  // déclencheur gagnant. Rien à câbler ici — le comportement mobile est
+  // strictement inchangé.
   const { nudgeVisible, armCallNudge, dismissNudge } = useCallEndedNudge()
   const [nudgeLead, setNudgeLead] = useState(null)
   // LB6 — `armCallNudge` (renvoyé par useCallEndedNudge, features/crm/
@@ -675,39 +711,58 @@ export default function ListView({
   // inclus — la ligne se re-rend grisée/« Restaurer » SEULE, sans refetch) ;
   // plus de refetch intégral après ce PATCH mono-lead (I1). Catch externe
   // silencieux → toastError (I8) ; les catches internes (undo) toastaient déjà.
+  /* EZ14 — adoptions n°3 à 6 : l'édition en place des champs RÉVERSIBLES gagne
+     l'undo, d'un seul endroit. `onInlineSave(lead, champ, valeur)` est déjà le
+     point de passage unique ; on l'enveloppe ici, donc AUCUNE cellule n'a à
+     connaître l'undo, et une nouvelle colonne éditable ne peut pas l'oublier.
+
+     Le registre est FERMÉ (lib/mutateWithUndo.js) : un champ absent de
+     `CHAMPS_UNDO` (module, plus haut) s'enregistre EXACTEMENT comme avant, sans
+     toast d'annulation. C'est volontaire — `facture_hiver` (un montant) et tout
+     champ d'argent n'ont JAMAIS d'undo. */
+  const inlineSaveAvecUndo = useCallback(async (lead, champ, valeur) => {
+    if (!onInlineSave) return undefined
+    const conf = CHAMPS_UNDO[champ]
+    if (!conf) return onInlineSave(lead, champ, valeur)
+    const precedent = lead?.[champ] ?? null
+    // Enregistrer la MÊME valeur n'est pas une modification : pas de toast.
+    if (precedent === valeur) return onInlineSave(lead, champ, valeur)
+    await mutateWithUndo({
+      kind: conf.kind,
+      message: conf.message,
+      apply: () => onInlineSave(lead, champ, valeur),
+      revert: () => onInlineSave(lead, champ, precedent),
+    })
+    return undefined
+  }, [onInlineSave])
+
+  // EZ14 — adoption n°1/2 : archivage et restauration passent par l'util
+  // unique. Le comportement VX95 est conservé À L'IDENTIQUE (appliqué tout de
+  // suite, « Annuler » = l'action inverse) ; ce qui change, c'est qu'il n'y a
+  // plus une variante locale du motif par site d'appel.
   const onArchive = useCallback(async (lead) => {
     setBusyId(lead.id)
     try {
-      await dispatch(archiveLead(lead.id)).unwrap()
-      // VX95 — l'archivage est déjà commis côté serveur : « Annuler » relance
-      // l'action inverse (restaurerLead), pas un commit différé.
-      toastWithUndo({
+      await mutateWithUndo({
+        kind: 'lead_archive',
         message: 'Lead archivé.',
-        onUndo: async () => {
-          try {
-            await dispatch(restoreLead(lead.id)).unwrap()
-          } catch { toastError('Restauration impossible.') }
-        },
+        apply: () => dispatch(archiveLead(lead.id)).unwrap(),
+        revert: () => dispatch(restoreLead(lead.id)).unwrap(),
+        errorMessage: "L'archivage a échoué — réessayez.",
       })
-    } catch {
-      toastError("L'archivage a échoué — réessayez.")
     } finally { setBusyId(null) }
   }, [dispatch])
 
   const onRestore = useCallback(async (lead) => {
     setBusyId(lead.id)
     try {
-      await dispatch(restoreLead(lead.id)).unwrap()
-      toastWithUndo({
+      await mutateWithUndo({
+        kind: 'lead_archive',
         message: 'Lead restauré.',
-        onUndo: async () => {
-          try {
-            await dispatch(archiveLead(lead.id)).unwrap()
-          } catch { toastError('Archivage impossible.') }
-        },
+        apply: () => dispatch(restoreLead(lead.id)).unwrap(),
+        revert: () => dispatch(archiveLead(lead.id)).unwrap(),
+        errorMessage: 'La restauration a échoué — réessayez.',
       })
-    } catch {
-      toastError('La restauration a échoué — réessayez.')
     } finally { setBusyId(null) }
   }, [dispatch])
 
@@ -761,7 +816,26 @@ export default function ListView({
     })
   }, [leads, sort])
 
-  const visibleIds = sorted.map((l) => l.id)
+  /* APX9 — PLAFOND DE RENDU (même principe que le kanban, taille adaptée).
+     -------------------------------------------------------------------------
+     `fetchLeads` charge toutes les pages en mémoire et cette vue montait
+     CHAQUE ligne. Le plafond ne touche que le RENDU : « Charger plus » découpe
+     plus loin dans le tableau DÉJÀ chargé — zéro appel réseau, zéro dépendance.
+     Palier de 200 (contre 40 pour le kanban) : une ligne de tableau coûte bien
+     moins qu'une carte, et la Liste EST la vue dense — la faire cliquer tous
+     les 40 leads irait contre sa raison d'être. */
+  const [limiteRendu, setLimiteRendu] = useState(LIST_RENDER_CAP)
+  const chargerPlus = () => setLimiteRendu((n) => n + LIST_RENDER_CAP)
+  // Un changement de tri/filtre/groupe repart du premier palier (sinon on
+  // garderait « 400 lignes montées » sur une liste qui n'en a plus que 12).
+  useEffect(() => { setLimiteRendu(LIST_RENDER_CAP) }, [sort, listGroup, leads])
+  const rendus = useMemo(() => sorted.slice(0, limiteRendu), [sorted, limiteRendu])
+  const restants = Math.max(0, sorted.length - limiteRendu)
+
+  // La sélection « tout » porte sur les lignes RENDUES (on ne coche jamais ce
+  // qui n'est pas à l'écran — même règle qu'avant, la liste rendue faisait
+  // simplement la totalité).
+  const visibleIds = rendus.map((l) => l.id)
   const allChecked = allVisibleSelected(selected, visibleIds)
   // LB19 — colonnes réellement rendues (modèle moins celles masquées par
   // l'utilisateur) : réutilisé par le <colgroup> ET le colSpan de l'état
@@ -780,11 +854,14 @@ export default function ListView({
   // pas pour les nôtres).
   const groupedRows = useMemo(() => {
     if (listGroup !== 'stage') return null
+    // APX9 — les COMPTEURS/TOTAUX de groupe restent ceux de `sorted` (totaux
+    // RÉELS de l'étape) ; seules les LIGNES sont bornées par le plafond.
     return groupLeadsByStage(sorted).map((g) => ({
       ...g,
-      leads: sorted.filter((l) => l.stage === g.key),
+      leads: sorted.filter((l) => l.stage === g.key).slice(0, limiteRendu),
+      restants: Math.max(0, sorted.filter((l) => l.stage === g.key).length - limiteRendu),
     }))
-  }, [sorted, listGroup])
+  }, [sorted, listGroup, limiteRendu])
 
   // LB20 — extrait pour être partagé entre le mode Plat (sorted.map) et le
   // mode Par étape (groupedRows[i].leads.map) : AUCUNE duplication du JSX
@@ -801,7 +878,7 @@ export default function ListView({
         onToggleSelect={onToggleSelect}
         onOpenLead={onOpenLead}
         armCallNudgeFor={armCallNudgeFor}
-        onInlineSave={onInlineSave}
+        onInlineSave={inlineSaveAvecUndo}
         users={users}
         onReassign={onReassign}
         onAutoQuote={onAutoQuote}
@@ -917,7 +994,7 @@ export default function ListView({
           )}
           {/* Mode Plat (défaut) : les 100 % des tests/e2e existants passent
               par ce chemin — tr.lv-row/.ie-cell/select.ie-input inchangés. */}
-          {!!sorted.length && listGroup !== 'stage' && sorted.map(renderRow)}
+          {!!sorted.length && listGroup !== 'stage' && rendus.map(renderRow)}
           {/* LB20 — mode « Par étape » : rangées de groupe collantes
               (tr.lv-group, sous le thead) au-dessus des lignes de CE
               groupe — repliables, ordre = l'ordre du funnel
@@ -942,8 +1019,28 @@ export default function ListView({
                 </td>
               </tr>
               {!collapsedGroups.has(g.key) && g.leads.map(renderRow)}
+              {!collapsedGroups.has(g.key) && g.restants > 0 && (
+                <tr className="lv-charger-plus-row">
+                  <td colSpan={emptyColSpan}>
+                    <button type="button" className="lv-charger-plus" onClick={chargerPlus}>
+                      Charger plus ({g.restants} restant{g.restants > 1 ? 's' : ''})
+                    </button>
+                  </td>
+                </tr>
+              )}
             </Fragment>
           ))}
+          {/* APX9 — mode Plat : le même palier, en pied de tableau. Le tableau
+              est DÉJÀ chargé en mémoire — ce bouton ne déclenche aucun appel. */}
+          {!!sorted.length && listGroup !== 'stage' && restants > 0 && (
+            <tr className="lv-charger-plus-row">
+              <td colSpan={emptyColSpan}>
+                <button type="button" className="lv-charger-plus" onClick={chargerPlus}>
+                  Charger plus ({restants} restant{restants > 1 ? 's' : ''})
+                </button>
+              </td>
+            </tr>
+          )}
         </tbody>
         </table>
         {insightsLead && (
@@ -961,6 +1058,9 @@ export default function ListView({
             </span>
             <CallLogPopover
               leadId={nudgeLead.id}
+              // EZ1 — relance déjà posée transmise : affichée, jamais écrasée
+              // en silence.
+              relanceActuelle={nudgeLead.relance_date ?? null}
               trigger={<button type="button" className="lv-call-nudge-log">Noter</button>}
               onLogged={dismissNudge}
             />

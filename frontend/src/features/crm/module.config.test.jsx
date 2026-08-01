@@ -36,16 +36,25 @@ describe('crm — module.config (WIR15 Forecast)', () => {
 })
 
 describe('crm — module.config (ODY15 : cockpit + parité route↔nav)', () => {
-  it('déclare /crm/cockpit en route ET en PREMIER item du menu CRM (convention nav.items[0] = cockpit)', async () => {
+  /* APX1 (fondateur 2026-08-01) — cette assertion disait `items[0] === /crm/cockpit`.
+     Elle est RETOURNÉE : la porte du CRM est `/crm/leads`, donc c'est LUI qui
+     occupe `items[0]` (la convention « cockpit du module » lue par
+     AppLauncher/PinnedApps/prefs). Le cockpit reste déclaré en route ET en
+     entrée de nav — simplement plus en tête. Le verrou des 4 surfaces vit dans
+     `crm-porte.test.jsx`. */
+  it('déclare /crm/cockpit en route ET en entrée de menu (mais PAS en items[0] — APX1)', async () => {
     const { default: config } = await import('./module.config.jsx')
 
     const route = config.routes.find((r) => r.path === '/crm/cockpit')
     expect(route).toBeTruthy()
 
-    expect(config.nav.items[0].to).toBe('/crm/cockpit')
-    expect(config.nav.items[0].label).toBe('Cockpit')
-    expect(config.nav.items[0].roles).toEqual(['normal', 'responsable', 'admin'])
-    expect(config.nav.items[0].icon).toBeTruthy()
+    const navItem = config.nav.items.find((i) => i.to === '/crm/cockpit')
+    expect(navItem).toBeTruthy()
+    expect(navItem.label).toBe('Cockpit')
+    expect(navItem.roles).toEqual(['normal', 'responsable', 'admin'])
+    expect(navItem.icon).toBeTruthy()
+
+    expect(config.nav.items[0].to).not.toBe('/crm/cockpit')
   })
 
   it('/crm/payloads-site-web (QX16) a désormais une entrée de menu, réservée responsable/admin (miroir de la garde serveur)', async () => {

@@ -60,7 +60,15 @@ export default function ParrainagePage() {
 
   return (
     <div className="page max-w-[1000px]">
-      <div className="page-header"><h2>Parrainage</h2></div>
+      {/* APX10 — dernier `page-header` legacy de pages/crm/ : l'écran rejoint
+          la ligne de contrôle LB43 + la pastille d'accent CRM, comme ses
+          voisins (« zéro page-header legacy dans pages/crm/ »). */}
+      <div className="lp-controlbar crm-controlbar mb-3">
+        <h2 className="lp-cb-title">
+          <span className="crm-accent-dot" aria-hidden="true" />
+          Parrainage
+        </h2>
+      </div>
 
       {stats && (
         <div className="mb-4 flex flex-wrap gap-3">

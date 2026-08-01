@@ -56,11 +56,18 @@ test('LB40 : le DragOverlay passe au-dessus de la barre bulk pendant un glisser'
   assert.match(CSS, /\.lp-bulk-float \{[\s\S]{0,400}?z-index: var\(--z-sticky, 1100\);/)
 })
 
-test('LB40 : chaque radio du ViewSwitcher porte une infobulle — la MÊME chaîne que son nom accessible', () => {
-  assert.match(SWITCHER, /title: label,/)
+// APX5 — l'infobulle peut désormais porter un complément (`hint`, ex. « Vue
+// liste — la vue la plus dense »), mais elle reste DÉRIVÉE du nom accessible :
+// `label` en est toujours le préfixe littéral, donc les deux ne peuvent
+// toujours pas diverger — c'est l'invariant que LB40 protège.
+test('LB40/APX5 : chaque radio du ViewSwitcher porte une infobulle DÉRIVÉE de son nom accessible', () => {
+  assert.match(SWITCHER, /title: hint \? `\$\{label\} — \$\{hint\}` : label,/)
   assert.match(SWITCHER, /label: <span className="sr-only">\{label\}<\/span>,/)
   // Les 6 vues passent par ce seul `.map` : aucun libellé en double ailleurs.
-  assert.equal((SWITCHER.match(/title: label,/g) || []).length, 1)
+  assert.equal((SWITCHER.match(/title: hint \?/g) || []).length, 1)
+  // Aucun `title` littéral ailleurs : impossible de poser une infobulle qui ne
+  // commencerait pas par le nom accessible.
+  assert.doesNotMatch(SWITCHER, /title: '/)
 })
 
 test('LB40 : Segmented relaie `title` sur le bouton radio (ajout purement additif)', () => {

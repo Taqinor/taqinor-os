@@ -10,6 +10,13 @@ import {
   useSensor, useSensors,
 } from '@dnd-kit/core'
 import { Link, useSearchParams } from 'react-router-dom'
+// APX31 — MÊME garde champ-de-saisie que la file J/K des leads (LW) : une
+// seule définition dans tout l'ERP, jamais une copie locale.
+import { isTypingTarget } from '../../providers/shortcuts'
+// EZ15 — dictée INLINE navigateur, surface BUREAU uniquement (le terrain —
+// intervention, checklist — appartient à NTMOB30 et à sa transcription
+// serveur : jamais deux boutons micro sur un même champ).
+import { DictationButton, DICTATION_PRIVACY_FR } from '../../ui/DictationButton'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
@@ -40,6 +47,9 @@ import {
   TICKET_STATUSES,
   TICKET_STATUS_LABELS,
   TICKET_STATUS_COLORS,
+  // APX30 — la liste des statuts OUVERTS vient de la source unique
+  // (features/sav/ticketStatuses), jamais d'un littéral recopié ici.
+  TICKET_OPEN_STATUSES,
   TICKET_TYPES,
   TICKET_PRIORITES,
   TICKET_PRIORITE_LABELS,
@@ -57,6 +67,7 @@ import {
   TooltipProvider,
   Button,
   Badge,
+  HelpTip,
   StatusPill,
   Card,
   EmptyState,
@@ -185,6 +196,121 @@ export function TicketSlaBadge({ ticket }) {
   return (
     <Badge tone={SLA_TONES[level]}>
       <Clock className="size-3" aria-hidden="true" /> ouvert depuis {age} j
+    </Badge>
+  )
+}
+
+/* ============================================================================
+   APX30 — SLA PAR TICKET : échéance, compte-à-rebours, rouge PERSISTANT.
+   ----------------------------------------------------------------------------
+   État vérifié : l'écran ne montrait qu'un badge « ouvert depuis X j » ; les %
+   de SLA n'existaient qu'en agrégat admin (SavSlaReportPage). MAIS le
+   serializer expose DÉJÀ tout ce qu'il faut — `sla_due_at`,
+   `sla_due_at_effectif`, `sla_breach`, `jours_pause`, `en_attente_client`,
+   `attente_depuis`, `date_premiere_reponse` : cette tâche est 100 % frontend,
+   AUCUN travail backend, AUCUNE requête nouvelle.
+
+   DEUX HORLOGES DISTINCTES, jamais confondues (Odoo Helpdesk) :
+     1. la PREMIÈRE RÉPONSE — `date_premiere_reponse` (posée quand l'équipe
+        contacte le client). Tant qu'elle est nulle sur un ticket ouvert, elle
+        est DUE : c'est la promesse la plus visible pour le client.
+     2. la RÉSOLUTION — `sla_due_at_effectif` (échéance décalée du temps déjà
+        passé « en attente client », XSAV5), avec repli sur `sla_due_at`.
+
+   HONNÊTETÉ SUR LA PRÉCISION : `sla_due_at` est un DateField. On rend donc
+   « avant le <date> » et « −N j », jamais une heure — le libellé d'exemple
+   du plan (« répondre avant 16h ») supposerait un DateTimeField qui n'existe
+   pas. Inventer une heure serait mentir sur une donnée d'engagement.
+
+   LE ROUGE PERSISTE APRÈS RÉSOLUTION : `sla_breach` reste vrai une fois le
+   ticket résolu/clôturé, et le chip « SLA dépassé » reste rendu. C'est la
+   traçabilité — un dépassement ne s'efface pas parce qu'on a fini par
+   répondre.
+   ========================================================================== */
+
+/** Date locale du jour au format YYYY-MM-DD (comparaison de chaînes fiable). */
+function ymdLocal(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/**
+ * ticketSlaEcheance — état de l'horloge de RÉSOLUTION. Fonction PURE.
+ * @returns null si la société n'a pas activé le SLA (aucune échéance posée),
+ *   sinon `{ dueIso, jours, depasse, enPause, ouvert }` où `jours` est le
+ *   nombre de jours restants (négatif = retard).
+ */
+export function ticketSlaEcheance(ticket, now = new Date()) {
+  const dueIso = ticket?.sla_due_at_effectif || ticket?.sla_due_at || null
+  if (!dueIso) return null
+  const due = new Date(`${String(dueIso).slice(0, 10)}T00:00:00`)
+  if (Number.isNaN(due.getTime())) return null
+  const aujourdhui = new Date(`${ymdLocal(now)}T00:00:00`)
+  const jours = Math.round((due - aujourdhui) / 86400000)
+  const ouvert = !ticket?.annule && TICKET_OPEN_STATUSES.includes(ticket?.statut)
+  return {
+    dueIso: String(dueIso).slice(0, 10),
+    jours,
+    // Un ticket fermé n'est « en dépassement » que si le serveur l'a marqué
+    // (`sla_breach`) : on ne recalcule pas un retard après coup sur une date
+    // de clôture qu'on n'a pas.
+    depasse: ouvert ? jours < 0 : !!ticket?.sla_breach,
+    enPause: !!ticket?.en_attente_client,
+    ouvert,
+  }
+}
+
+/**
+ * ticketSlaTri — clé de TRI par échéance. Fonction PURE.
+ * Ordre voulu : les dépassements d'abord, puis l'échéance la plus proche, puis
+ * les tickets sans SLA (jamais mélangés au milieu de ceux qui en ont un).
+ */
+export function ticketSlaTri(ticket, now = new Date()) {
+  const e = ticketSlaEcheance(ticket, now)
+  if (!e) return Number.MAX_SAFE_INTEGER
+  return e.jours
+}
+
+/** Chip d'échéance de RÉSOLUTION — rendu en ligne, en carte et au détail. */
+export function TicketSlaEcheanceChip({ ticket }) {
+  const e = ticketSlaEcheance(ticket)
+  if (!e) return null
+  // Dépassement : rouge, et il RESTE après résolution/clôture.
+  if (e.depasse) {
+    return (
+      <Badge tone="danger">
+        <Clock className="size-3" aria-hidden="true" />
+        {e.ouvert ? `SLA dépassé — ${Math.abs(e.jours)} j` : 'SLA dépassé'}
+      </Badge>
+    )
+  }
+  if (!e.ouvert) return null
+  if (e.enPause) {
+    return (
+      <Badge tone="neutral" title={`Horloge en pause (attente client) — échéance décalée au ${e.dueIso}`}>
+        <Clock className="size-3" aria-hidden="true" /> en pause
+      </Badge>
+    )
+  }
+  return (
+    <Badge
+      tone={e.jours <= 1 ? 'warning' : 'neutral'}
+      title={`À résoudre avant le ${e.dueIso}`}
+    >
+      <Clock className="size-3" aria-hidden="true" />
+      {e.jours === 0 ? "à résoudre aujourd'hui" : `à résoudre sous ${e.jours} j`}
+    </Badge>
+  )
+}
+
+/** Chip de PREMIÈRE RÉPONSE — l'autre horloge, jamais confondue avec la
+    résolution : elle disparaît dès que la première réponse est posée. */
+export function TicketPremiereReponseChip({ ticket }) {
+  if (!ticket || ticket.annule) return null
+  if (ticket.date_premiere_reponse) return null
+  if (!TICKET_OPEN_STATUSES.includes(ticket.statut)) return null
+  return (
+    <Badge tone="warning" title="Aucune première réponse n’a encore été enregistrée pour ce ticket">
+      1ʳᵉ réponse à faire
     </Badge>
   )
 }
@@ -637,6 +763,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
       <StatutPill statut={current.statut} />
       {current.annule && <Badge tone="danger">Annulé</Badge>}
       <TicketSlaBadge ticket={current} />
+      {/* APX30 — les deux horloges, au détail comme en ligne et en carte. */}
+      <TicketPremiereReponseChip ticket={current} />
+      <TicketSlaEcheanceChip ticket={current} />
     </>
   )
 
@@ -759,8 +888,20 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               </Select>
             </FormField>
             <FormField label="Description" fullWidth>
-              <Textarea rows={2} value={fields.description ?? ''}
-                        onChange={(e) => set('description', e.target.value)} />
+              {/* EZ15 — dictée inline au BUREAU (le TERRAIN appartient à
+                  NTMOB30 : jamais deux boutons micro sur un même champ). Le
+                  bouton n'existe pas sur un navigateur sans Web Speech — le
+                  champ est alors strictement celui d'avant. */}
+              <div className="flex items-start gap-2">
+                <Textarea rows={2} className="flex-1" value={fields.description ?? ''}
+                          onChange={(e) => set('description', e.target.value)} />
+                <DictationButton
+                  label="Dicter la description du ticket"
+                  onText={(txt) => set('description', fields.description
+                    ? `${fields.description} ${txt}` : txt)}
+                />
+                <HelpTip label="Confidentialité de la dictée">{DICTATION_PRIVACY_FR}</HelpTip>
+              </div>
             </FormField>
           </FormSection>
 
@@ -1163,7 +1304,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     return (
       <aside
         aria-label={`Détail du ticket ${current.reference ?? ''}`}
-        className="flex w-[26rem] shrink-0 flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-card p-4 xl:sticky xl:top-1"
+        /* APX30 — 26rem → 32rem : le panneau porte désormais deux chips SLA de
+           plus en tête, et les sections de détail y respiraient mal. */
+        className="flex w-[32rem] shrink-0 flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-card p-4 xl:sticky xl:top-1"
       >
         <div className="flex flex-col gap-1.5 border-b border-border pb-3">
           <div className="flex flex-wrap items-center gap-2 font-display text-lg font-semibold">
@@ -1225,6 +1368,10 @@ export function KanbanColumn({ statut, tickets, onSelect }) {
             <span className="flex flex-wrap items-center gap-1">
               <PrioriteBadge value={t.priorite} />
               <TicketSlaBadge ticket={t} />
+              {/* APX30 — l'échéance est visible sur la CARTE aussi, pas
+                  seulement en ligne : c'est la vue du terrain. */}
+              <TicketPremiereReponseChip ticket={t} />
+              <TicketSlaEcheanceChip ticket={t} />
             </span>
           </button>
         ))}
@@ -1575,6 +1722,50 @@ export default function TicketsPage() {
   // L306/L314 — comptes par statut (ordre funnel) sur le jeu filtré.
   const counts = useMemo(() => statusCounts(rows), [rows])
 
+  /* APX31 — J/K + Entrée/Échap sur la liste des tickets.
+     -------------------------------------------------------------------------
+     Le patron existe déjà côté leads (LW, `LeadWorkspace.jsx`) mais AUCUNE
+     navigation clavier de liste n'existait côté SAV — or c'est l'agent qui en
+     traite 40 par jour qui en a le plus besoin. Mêmes gardes que LW :
+     `isTypingTarget` (on ne vole jamais une touche à un champ de saisie) et
+     aucun modificateur (⌘/Ctrl/Alt restent aux raccourcis du navigateur).
+       J = ticket suivant · K = précédent · Entrée = ouvrir · Échap = fermer.
+     J/K DÉPLACENT la sélection dans la liste FILTRÉE et TRIÉE affichée
+     (`rows`), donc ce que le clavier parcourt est exactement ce que l'œil voit.
+     Effet AVEC dep array (jamais un ré-abonnement à chaque rendu). */
+  const deplacerSelection = useCallback((pas) => {
+    if (!rows.length) return
+    const i = detailTicket ? rows.findIndex((r) => r.id === detailTicket.id) : -1
+    // Aucune sélection : J entre par le haut, K par le bas.
+    const cible = i < 0
+      ? (pas > 0 ? 0 : rows.length - 1)
+      : Math.min(Math.max(i + pas, 0), rows.length - 1)
+    setSelected(rows[cible])
+  }, [rows, detailTicket])
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      if (isTypingTarget(e.target)) return
+      if (e.key === 'j' || e.key === 'J') { e.preventDefault(); deplacerSelection(1) }
+      else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); deplacerSelection(-1) }
+      else if (e.key === 'Enter' && !detailTicket && rows.length) {
+        // Entrée ouvre le premier ticket quand rien n'est encore sélectionné ;
+        // avec une sélection, le panneau est DÉJÀ ouvert — on ne vole donc pas
+        // Entrée à un bouton ou un lien qui a le focus.
+        e.preventDefault()
+        setSelected(rows[0])
+      } else if (e.key === 'Escape' && detailTicket) {
+        closeDetail()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // `closeDetail` est recréé à chaque rendu (fermeture + nettoyage d'URL) :
+    // on dépend des valeurs qu'il lit, pas de son identité.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deplacerSelection, detailTicket, rows, searchParams])
+
   const hasFilters = filters.q || filters.statut || filters.type || filters.priorite
     || filters.technicien || filters.sous_garantie || filters.ouvert !== 'ouverts'
     || filters.annule || filters.urgent_garantie
@@ -1625,16 +1816,31 @@ export default function TicketsPage() {
     },
     {
       // L298 — colonne SLA/âge (badge escaladé pour les ouverts en retard).
+      // APX30 — la colonne porte désormais les DEUX horloges et devient
+      // TRIABLE PAR ÉCHÉANCE : `accessor` renvoie le nombre de jours restants
+      // (négatif = retard), donc un tri croissant remonte les dépassements en
+      // premier et laisse les tickets sans SLA en fin de liste.
       id: 'sla',
-      header: 'Âge',
-      width: 130,
+      header: 'SLA',
+      width: 200,
       searchable: false,
-      sortable: false,
-      cell: (_v, row) => <TicketSlaBadge ticket={row} />,
+      sortable: true,
+      accessor: (row) => ticketSlaTri(row),
+      cell: (_v, row) => (
+        <span className="flex flex-wrap items-center gap-1">
+          <TicketSlaBadge ticket={row} />
+          <TicketPremiereReponseChip ticket={row} />
+          <TicketSlaEcheanceChip ticket={row} />
+        </span>
+      ),
       exportValue: (row) => {
+        const e = ticketSlaEcheance(row)
         const age = ticketAgeDays(row)
-        return age != null && ['nouveau', 'planifie', 'en_cours'].includes(row.statut) && !row.annule
+        const ageTxt = age != null && TICKET_OPEN_STATUSES.includes(row.statut) && !row.annule
           ? `${age} j` : '—'
+        if (!e) return ageTxt
+        if (e.depasse) return `${ageTxt} · SLA dépassé`
+        return `${ageTxt} · échéance ${e.dueIso}`
       },
     },
     { id: 'type', header: 'Type', width: 110, accessor: (r) => r.type_display ?? r.type },

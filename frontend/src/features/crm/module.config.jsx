@@ -55,14 +55,25 @@ const config = {
   nav: {
     label: 'CRM', labelKey: 'nav.section.crm',
     accent: 'azur',
+    // APX1 — l'icône de l'APP est déclarée par le MODULE, jamais dérivée de
+    // `items[0].icon`. Sans ce champ, l'ordre des items décidait le glyphe
+    // affiché au lanceur / aux épinglés / au Menu d'accueil : remonter Leads en
+    // tête aurait suffi à changer l'icône du CRM. Le glyphe est désormais
+    // STABLE quel que soit le futur réordonnancement des items.
+    icon: navIcon(Target),
     items: [
-      // ODY15 — porte d'entrée de l'app : PREMIER item (convention
-      // `nav.items[0].to` déjà lue comme « cockpit du module » par
-      // AppLauncher/PinnedApps/la préférence d'atterrissage VX46).
+      // APX1 (fondateur 2026-08-01, « the Lead part is the opening of the
+      // CRM ») — LA PORTE du CRM est `/crm/leads`, donc `items[0]`.
+      // ATTENTION : `nav.items[0].to` est la convention « cockpit du module »
+      // lue par AppLauncher, PinnedApps ET la préférence d'atterrissage
+      // (`prefs.js` VX46) — trois surfaces corrigées par cette seule ligne.
+      // ODY15 avait mis `/crm/cockpit` ici ; le cockpit reste une entrée de
+      // nav parfaitement atteignable, simplement plus la porte d'entrée.
+      { to: '/crm/leads',            label: 'Leads',            k: 'nav.leads',      icon: navIcon(Target),        roles: ['normal','responsable','admin'] },
+      // ODY15 — cockpit CRM (ModuleHero + actions + KPI), désormais 2ᵉ.
       { to: '/crm/cockpit',          label: 'Cockpit',          k: 'nav.crm_cockpit', icon: navIcon(LayoutDashboard), roles: ['normal','responsable','admin'] },
       { to: '/calendrier',           label: 'Calendrier',       k: 'nav.calendrier', icon: navIcon(CalendarDays),   roles: ['normal','responsable','admin'] },
       { to: '/crm',                  label: 'Clients',          k: 'nav.clients',    icon: navIcon(Users),      roles: ['normal','responsable','admin'] },
-      { to: '/crm/leads',            label: 'Leads',            k: 'nav.leads',      icon: navIcon(Target),        roles: ['normal','responsable','admin'] },
       // ODY15 — fermait un trou réel (module.config.test.jsx le documentait
       // comme sans entrée de nav) : QX16, rejeu des leads site web en échec.
       { to: '/crm/payloads-site-web', label: 'Leads site web',  k: 'nav.leads_site_web', icon: navIcon(Globe), roles: ['responsable','admin'] },

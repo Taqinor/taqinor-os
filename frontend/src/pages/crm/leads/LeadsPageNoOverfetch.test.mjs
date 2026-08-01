@@ -54,18 +54,24 @@ test('LB7 : viewProps embarque toujours onRefetch — reste légitime pour bulk/
   assert.match(PAGE_SRC, /onDone=\{refetch\}/)
 })
 
-test('LB7 : ListView onArchive/onRestore ne refetch plus (le store patche déjà is_archived), toastent en échec', () => {
+// EZ14 — le message d'échec n'est plus toasté à la main : il est passé à
+// `mutateWithUndo` (`errorMessage`), qui l'affiche via `toastError`. Ce que LB7
+// protège est inchangé : PAS de refetch intégral après un PATCH mono-lead, et
+// un échec qui parle à l'utilisateur.
+test('LB7/EZ14 : ListView onArchive/onRestore ne refetch pas, et disent leur échec', () => {
   const archiveStart = LIST_SRC.indexOf('const onArchive = useCallback(')
   const archiveEnd = LIST_SRC.indexOf('}, [dispatch])', archiveStart)
   const archiveBody = LIST_SRC.slice(archiveStart, archiveEnd)
   assert.doesNotMatch(archiveBody, /onRefetch\?\.\(\)/)
-  assert.match(archiveBody, /toastError\("L'archivage a échoué/)
+  assert.match(archiveBody, /errorMessage: "L'archivage a échoué/)
 
   const restoreStart = LIST_SRC.indexOf('const onRestore = useCallback(')
   const restoreEnd = LIST_SRC.indexOf('}, [dispatch])', restoreStart)
   const restoreBody = LIST_SRC.slice(restoreStart, restoreEnd)
   assert.doesNotMatch(restoreBody, /onRefetch\?\.\(\)/)
-  assert.match(restoreBody, /toastError\('La restauration a échoué/)
+  assert.match(restoreBody, /errorMessage: 'La restauration a échoué/)
+  // `errorMessage` finit bien dans un toast d'erreur (util, testé à part).
+  assert.match(LIST_SRC, /import \{ mutateWithUndo \}/)
 })
 
 test('LB7 : ListView onDelete GARDE son onRefetch (corbeille → restaurerCorbeille n\'a pas de reducer de ré-insertion)', () => {
