@@ -145,7 +145,7 @@ class Feuille:
     """
 
     def __init__(self, titre, sous_titre, xlim, ylim, format_nom=FORMAT_DEFAUT,
-                 dpi=170, couleur_titre="black", couleur_sous_titre="#333333",
+                 dpi=170, couleur_titre="black", couleur_sous_titre=None,
                  marge_titre=0.015, hauteur_titre=0.975,
                  hauteur_sous_titre=0.952):
         self._format = format_feuille(format_nom)
@@ -165,8 +165,11 @@ class Feuille:
             self._figure.text(marge_titre, hauteur_titre, titre, fontsize=13,
                               fontweight="bold", va="top", color=couleur_titre)
         if sous_titre:
-            self._figure.text(marge_titre, hauteur_sous_titre, sous_titre,
-                              fontsize=8.5, va="top", color=couleur_sous_titre)
+            self._figure.text(
+                marge_titre, hauteur_sous_titre, sous_titre, fontsize=8.5,
+                va="top",
+                color=couleur_titre if couleur_sous_titre is None
+                else couleur_sous_titre)
 
     # ------------------------------------------------------------ cycle de vie
     def __enter__(self):
