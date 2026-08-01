@@ -8,6 +8,7 @@ import TiroirKits from './TiroirKits'
 import TiroirAllees from './TiroirAllees'
 import TiroirRives from './TiroirRives'
 import TiroirOrientation from './TiroirOrientation'
+import TiroirElectrique from './TiroirElectrique'
 import useCalepinage from './useCalepinage'
 
 /* ============================================================================
@@ -37,7 +38,7 @@ const PAS_ZOOM = 1.25
 
 const borne = (valeur) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, valeur))
 
-export default function CalepinageStudio({ calepinageId }) {
+export default function CalepinageStudio({ calepinageId, onConformite }) {
   const [zoom, setZoom] = useState(1)
   const [parametres, setParametres] = useState(null)
 
@@ -147,6 +148,12 @@ export default function CalepinageStudio({ calepinageId }) {
             donnees={resultat?.tiroirs?.orientation}
             valeurs={parametres || {}}
             onChange={majParametres}
+          />
+          <TiroirElectrique
+            donnees={resultat?.tiroirs?.electrique}
+            valeurs={parametres || {}}
+            onChange={majParametres}
+            onConformite={onConformite}
           />
         </aside>
       </div>
