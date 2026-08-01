@@ -234,3 +234,15 @@ def produire_rentabilite_xlsx_task(job_id=None, company_id=None,
     if job is not None:
         job.marquer_termine()
     return {'produit': True, 'octets': len(octets), 'visibilite': 'directeur'}
+
+
+# AOF61 — le calepinage lourd vit dans son propre module (``calepinage_tasks``)
+# pour ne pas grossir ce fichier partagé par trois lanes. L'autodécouverte
+# Celery n'importe QUE ``<app>.tasks`` : ce ré-export est ce qui enregistre la
+# tâche ``ao.calculer_calepinage`` auprès du worker.
+from .calepinage_tasks import calculer_calepinage  # noqa: E402,F401
+
+# AOF71 — même raison pour l'ingestion d'un support de plan (rastérisation PDF
+# / normalisation d'image) : le corps vit dans ``ingestion_tasks``, ce
+# ré-export enregistre ``ao.ingerer_plan`` auprès du worker.
+from .ingestion_tasks import ingerer_plan  # noqa: E402,F401

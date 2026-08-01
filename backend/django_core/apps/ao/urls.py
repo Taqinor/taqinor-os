@@ -117,3 +117,9 @@ urlpatterns = [
     path('contrat/', ContratApiAO.as_view(), name='ao-contrat'),
     path('', include(router.urls)),
 ]
+
+# AOF61/AOF62 — l'API de calepinage (calcul borné, job de fond, actions de
+# variante idempotentes) est routée par son PROPRE module. Ajout en fin de
+# fichier, sans toucher au routeur historique ci-dessus : celui-ci est
+# consommé tel quel par ``ContratApiAO`` et par ``apps.compta.urls``.
+urlpatterns += [path('', include('apps.ao.calepinage_urls'))]
