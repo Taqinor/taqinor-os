@@ -67,11 +67,17 @@ test('APX7 : au TOUCHER la zone revelee se referme (c\'est elle qui coutait ~36 
   assert.match(touch, /\.kb-card--lead \.kb-card-value \{[^}]*min-height: 44px;/s)
 })
 
-test('APX7 : le focus clavier DEPLIE toujours reellement, meme en pointeur grossier', () => {
+test('APX7 : le focus CLAVIER DEPLIE toujours reellement, meme en pointeur grossier', () => {
   // Tablette + clavier externe : rien ne doit devenir « tabbable invisible ».
+  // (F) — mais `:focus-within` ne distinguait pas le clavier du DOIGT : sur
+  // iOS, taper un controle interne lui donne le focus, et la carte depliait
+  // ses 14rem animees sous le pouce a chaque tap. `:has(:focus-visible)` porte
+  // exactement l'intention d'origine (le focus que le navigateur juge devoir
+  // MONTRER = clavier externe, pas le tap).
   const d = declarations()
   const touch = d.slice(d.indexOf('@media (hover: none)'))
-  assert.match(touch, /\.kb-card--lead:focus-within > \.kb-card-reveal \{[^}]*max-height: 14rem;/s)
+  assert.match(touch, /\.kb-card--lead:has\(:focus-visible\) > \.kb-card-reveal \{[^}]*max-height: 14rem;/s)
+  assert.doesNotMatch(touch, /:focus-within > \.kb-card-reveal/)
 })
 
 test('APX7 : en pointeur FIN, les actions n\'occupent aucune largeur au repos', () => {

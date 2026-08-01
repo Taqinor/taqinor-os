@@ -10144,9 +10144,16 @@ textarea.form-control {
     opacity: 0;
     overflow: hidden;
   }
-  /* Le focus clavier DEPLIE toujours reellement — une tablette avec clavier
-     externe reste pilotable, et aucun controle n'est « tabbable invisible ». */
-  .kb-card--lead:focus-within > .kb-card-reveal {
+  /* Le focus CLAVIER DEPLIE toujours reellement — une tablette avec clavier
+     externe reste pilotable, et aucun controle n'est « tabbable invisible ».
+     (F) — mais `:focus-within` ne distingue pas le clavier du DOIGT : sur iOS,
+     taper un controle interne (case, menu, ☎) lui donne le focus, et la carte
+     depliait ses 14rem animees sous le pouce a chaque tap. `:has(:focus-visible)`
+     porte exactement l'intention ecrite ci-dessus — `:focus-visible` est
+     precisement le focus que le navigateur juge devoir MONTRER, c'est-a-dire le
+     clavier externe et pas le tap. Le depliage reste un vrai depliage
+     (max-height + opacity, jamais visibility: hidden). */
+  .kb-card--lead:has(:focus-visible) > .kb-card-reveal {
     max-height: 14rem;
     margin-top: 0.28rem;
     opacity: 1;
