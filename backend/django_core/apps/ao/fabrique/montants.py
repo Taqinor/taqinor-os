@@ -30,7 +30,8 @@ from decimal import Decimal
 from typing import Optional, Tuple
 
 from core.formats_fr import formater_montant
-from core.nombre_lettres import montant_en_lettres
+from core.nombre_lettres import (montant_en_lettres,
+                                 montant_en_lettres_administratif)
 
 MODE_ADMINISTRATIF = 'administratif'
 DEVISE_DEFAUT = 'dirhams'
@@ -80,6 +81,25 @@ def en_chiffres(montant, *, devise='DH', espace=None):
     if valeur is None:
         return ''
     return formater_montant(valeur, devise=devise, espace=espace)
+
+
+def duree_en_lettres(quantite, *, unite='jours', unite_singulier='jour',
+                     majuscules=False):
+    """Durée → « Soixante-quinze jours ». Recalculée comme un montant.
+
+    Les CPS marocains écrivent aussi les DÉLAIS en toutes lettres (validité de
+    l'offre, délai d'exécution). C'est la même conversion, avec un mot d'unité
+    au lieu d'une devise — et la même règle : jamais stockée.
+
+    Le singulier est passé explicitement plutôt que deviné : « un mois » ne se
+    déduit pas de « mois » par une règle mécanique.
+    """
+    if quantite in (None, ''):
+        return ''
+    entier = Decimal(str(quantite)).quantize(Decimal('1'))
+    mot = unite if abs(entier) >= 2 else (unite_singulier or unite)
+    return montant_en_lettres_administratif(
+        entier, devise=mot, majuscules=majuscules, liaison_de=False)
 
 
 @dataclass(frozen=True)

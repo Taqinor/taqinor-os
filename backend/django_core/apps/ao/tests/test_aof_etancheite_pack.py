@@ -28,7 +28,7 @@ from openpyxl import load_workbook
 
 from apps.ao.fabrique import approvisionnement, bibliotheque_prix
 from apps.ao.fabrique.contexte import construire_contexte
-from apps.ao.fabrique.rendus import bordereau_pdf, bordereau_xlsx
+from apps.ao.fabrique.rendus import bordereau_pdf, bordereau_xlsx, lettre
 from apps.ao.tests.aof_fixtures import (bordereau_depose, contexte_dossier,
                                         rendre_gabarit)
 
@@ -152,6 +152,12 @@ def artefact_bordereau_xlsx():
     return bordereau_xlsx.rendre(lignes, contexte)
 
 
+def artefact_lettre_soumission():
+    lignes, contexte = _lignes_et_contexte()
+    return rendre_gabarit(lettre.NOM_GABARIT,
+                          lettre.contexte_gabarit(lignes, contexte))
+
+
 def artefact_contexte_dossier():
     _, contexte = _lignes_et_contexte()
     return dict(contexte)
@@ -185,6 +191,7 @@ def artefact_proposition_de_prix():
 ARTEFACTS_COUVERTS = (
     ('bordereau des prix — PDF (HTML rendu)', artefact_bordereau_pdf),
     ('bordereau des prix — classeur XLSX', artefact_bordereau_xlsx),
+    ('lettre de soumission — PDF (HTML rendu)', artefact_lettre_soumission),
     ('contexte de dossier — charge utile API non-directeur',
      artefact_contexte_dossier),
     ("contrôle d'approvisionnement — charge utile API",
