@@ -13,15 +13,29 @@ Frontière cross-app (CLAUDE.md) : ``ao`` ne lit crm/ventes QUE via leurs
 d'import de leurs ``models`` (le lead est référencé par ``lead_id``). Tout est
 multi-société : chaque modèle porte un FK ``company`` posé côté serveur (jamais
 lu du corps de requête).
+
+AOF4 — les 8 modèles legacy héritent désormais de ``core.models.TenantModel``
+(socle ARC1 : FK ``company`` + ``created_at``/``updated_at``). Chacun REDÉCLARE
+``company`` DANS SON CORPS : c'est le motif documenté de préservation du
+``related_name`` historique (``appels_offres``, ``lignes_bordereau``,
+``cautions_soumission``…) — jamais un renommage d'accesseur. Les ``db_table =
+'compta_*'`` restent STRICTEMENT inchangés (migrations
+``SeparateDatabaseAndState`` d'ODX11) : la migration ``0002_tenantmodel`` est
+purement ADDITIVE (deux horodatages par table) et ne contient AUCUN
+``AlterModelTable`` — un renommage de table en production serait irréversible.
+``date_creation`` (historique) est CONSERVÉ tel quel : il porte des données
+existantes et reste le champ d'ordonnancement.
 """
 from decimal import Decimal
 
 from django.db import models
 
+from core.models import TenantModel
+
 
 # ── FG222 — Gestion des appels d'offres (public/privé) ─────────────────────
 
-class AppelOffre(models.Model):
+class AppelOffre(TenantModel):
     """Objet appel d'offres (AO) public/privé (FG222).
 
     Acheteur, deadline, lot, caution… L'industriel/agricole passe par des
@@ -91,7 +105,7 @@ class AppelOffre(models.Model):
 
 # ── FG223 — Bordereau des prix (BOQ) d'appel d'offres ──────────────────────
 
-class BordereauPrix(models.Model):
+class BordereauPrix(TenantModel):
     """Bordereau des prix (BOQ) d'un AO (FG223), séparé du devis client.
 
     Chiffrage interne ligne à ligne de l'AO. Distinct du devis : sert au
@@ -131,7 +145,7 @@ class BordereauPrix(models.Model):
         return total
 
 
-class LigneBordereau(models.Model):
+class LigneBordereau(TenantModel):
     """Une ligne chiffrée d'un BOQ (FG223)."""
     company = models.ForeignKey(
         'authentication.Company',
@@ -173,7 +187,7 @@ class LigneBordereau(models.Model):
 
 # ── FG224 — Suivi des cautions & garanties de soumission ───────────────────
 
-class CautionSoumission(models.Model):
+class CautionSoumission(TenantModel):
     """Caution/garantie de soumission d'un AO (FG224).
 
     Provisoire ou définitive : montant, banque, échéance, restitution. Distincte
@@ -234,7 +248,7 @@ class CautionSoumission(models.Model):
 
 # ── FG225 — Dossier de soumission (pièces administratives) ─────────────────
 
-class DossierSoumission(models.Model):
+class DossierSoumission(TenantModel):
     """Dossier de soumission d'un AO (FG225) : checklist + dépôt des pièces.
 
     Attestations fiscale/CNSS, RC, déclaration sur l'honneur… Le dossier
@@ -274,7 +288,7 @@ class DossierSoumission(models.Model):
         return not obligatoires.filter(fournie=False).exists()
 
 
-class PieceSoumission(models.Model):
+class PieceSoumission(TenantModel):
     """Une pièce administrative d'un dossier de soumission (FG225)."""
     company = models.ForeignKey(
         'authentication.Company',
@@ -311,7 +325,7 @@ class PieceSoumission(models.Model):
 
 # ── FG226 — Échéancier & alertes de deadline d'AO ──────────────────────────
 
-class EcheanceAO(models.Model):
+class EcheanceAO(TenantModel):
     """Date clé d'un AO avec rappel (FG226).
 
     Remise des plis, ouverture, validité de l'offre… ``rappel_jours`` avant
@@ -360,7 +374,7 @@ class EcheanceAO(models.Model):
 
 # ── FG227 — Analyse gagné/perdu des appels d'offres ────────────────────────
 
-class ResultatAO(models.Model):
+class ResultatAO(TenantModel):
     """Résultat d'un AO pour l'analyse gagné/perdu (FG227).
 
     Attributaire, prix gagnant, écart vs notre offre. Agrégé pour le taux de
