@@ -3147,6 +3147,12 @@ textarea.form-control {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+  /* ORDRE FONDATEUR 2026-08-01 — la note est devenue un champ MULTILIGNE qui
+     grandit : sans cet alignement, l'étirement par défaut (`stretch`) ferait
+     grandir avec elle le bouton « Noter », le trombone et la dictée — trois
+     boutons de 6 cm de haut. Ancrés en bas, ils restent à leur taille et sous
+     le pouce, là où la ligne de saisie se termine. */
+  align-items: flex-end;
 }
 
 /* VX111 — attacher une pièce jointe à une note du chatter (input natif
@@ -3182,6 +3188,28 @@ textarea.form-control {
 }
 
 .chatter-note-box .form-control { flex: 1; }
+
+/* ORDRE FONDATEUR 2026-08-01 — « la zone de NOTE de la fenêtre lead est trop
+   petite ». C'était une ligne unique de 36 px pour y écrire le compte rendu
+   d'un appel : on ne relisait jamais que les derniers mots tapés.
+   Elle S'OUVRE sur 3 lignes et grandit jusqu'à 8, puis défile. Les bornes
+   vivent ICI et pas en JS, en `em` : elles suivent la taille de police et le
+   zoom du navigateur (une borne en px se décale au premier réglage
+   d'accessibilité). Le JS ne fait que poser la hauteur du contenu entre les
+   deux — c'est le `max-height` qui produit le défilement interne, sans aucun
+   comptage de lignes.
+   `resize: none` (au lieu du `resize: vertical` hérité de textarea.form-control)
+   : la poignée de redimensionnement et l'autosize se battraient pour la même
+   propriété, et la frappe suivante effacerait le réglage manuel.
+   Mesure tactile : 3 lignes ≈ 74 px, largement au-dessus des 44 px. */
+.chatter-note-box textarea.chatter-note-input {
+  line-height: 1.45;
+  padding: 8px 10px;
+  min-height: calc(3 * 1.45em + 18px);
+  max-height: calc(8 * 1.45em + 18px);
+  overflow-y: auto;
+  resize: none;
+}
 
 .chatter-timeline {
   display: flex;
