@@ -1,0 +1,36 @@
+{
+  "id": "VILLA_PLATE_14x10",
+  "commentaire": "Toiture villa PLATE 14 x 10 m (Mohammedia) — un edicule 1,2 x 1,0 a 3 m a l'est du centre. Contour en [lng, lat] (convention roofPro11).",
+  "flat": true,
+  "tilt": 0.0,
+  "azimuth": 180.0,
+  "polygon": [
+    [
+      -7.383075571,
+      33.685955084
+    ],
+    [
+      -7.382924429,
+      33.685955084
+    ],
+    [
+      -7.382924429,
+      33.686044916
+    ],
+    [
+      -7.383075571,
+      33.686044916
+    ]
+  ],
+  "obstacles": [
+    {
+      "id": "EDICULE",
+      "center": [
+        -7.382967612,
+        33.686
+      ],
+      "widthM": 1.2,
+      "heightM": 1.0
+    }
+  ]
+}
