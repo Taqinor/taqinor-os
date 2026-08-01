@@ -8892,3 +8892,34 @@ textarea.form-control {
 @media (max-width: 639px) {
   .header-app-pill { display: none; }
 }
+
+/* ── APX23 — Le scan qui repond (feedback fort, sans son nouveau) ─────────
+   Bloc APPEND-ONLY. Flash plein ecran 150 ms accepte (succes)/refuse
+   (destructive) sur ReceptionScanPanel, pointer-events: none (jamais un
+   obstacle au prochain scan). Sous prefers-reduced-motion, le mouvement
+   n'a pas de version "figee" credible : on SUPPRIME le flash plein ecran
+   et on bascule sur une bordure statique (memes tokens de couleur) posee
+   sur la carte du panneau via `.apx23-scan-flash-border--*`, deja rendue
+   par le composant a chaque scan (transparente hors reduced-motion, donc
+   invisible et sans effet de bord tant que la preference est absente). */
+.apx23-scan-flash {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-toast);
+  pointer-events: none;
+  opacity: 0.5;
+  animation: apx23-scan-flash-fade 150ms ease-out forwards;
+}
+.apx23-scan-flash--accept { background: var(--success); }
+.apx23-scan-flash--reject { background: var(--destructive); }
+@keyframes apx23-scan-flash-fade {
+  from { opacity: 0.5; }
+  to { opacity: 0; }
+}
+.apx23-scan-flash-border { border-color: transparent; }
+@media (prefers-reduced-motion: reduce) {
+  .apx23-scan-flash { display: none; }
+  .apx23-scan-flash-border { border-width: 3px; }
+  .apx23-scan-flash-border--accept { border-color: var(--success); }
+  .apx23-scan-flash-border--reject { border-color: var(--destructive); }
+}

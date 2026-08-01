@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Card, Badge, Checkbox, Button, Segmented, EmptyState,
+  Card, Badge, Checkbox, Button, Segmented, EmptyState, Progress,
 } from '../../ui'
 import { ListShell } from '../../ui/module'
 import installationsApi from '../../api/installationsApi'
@@ -66,13 +66,22 @@ function PickListDetail({ pickList, onClose, onChanged }) {
   return (
     <Card className="p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div className="min-w-[14rem] flex-1">
           <h3 className="font-display text-base font-semibold tracking-tight">
             {pickList.reference}
           </h3>
           <p className="text-sm text-muted-foreground">
             {progress.done}/{progress.total} ligne(s) prélevée(s) ({progress.pct}%)
           </p>
+          {/* APX23 — la progression textuelle avait deja les chiffres exacts ;
+              la Progress (meme composant que ChantierChecklist) la rend
+              lisible d'un coup d'oeil, terrain compris. */}
+          <Progress
+            value={progress.pct}
+            tone={progress.pct === 100 ? 'success' : 'primary'}
+            className="mt-1.5 max-w-xs"
+            aria-label={`Prélèvement ${pickList.reference} : ${progress.pct}%`}
+          />
         </div>
         <div className="flex items-center gap-2">
           <PickListStatutPill status={pickList.statut} />

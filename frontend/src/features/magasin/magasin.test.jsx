@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -140,6 +141,34 @@ describe('PickListScreen', () => {
     withProviders(<PickListScreen />)
     expect(screen.getByText('Bons de prélèvement')).toBeInTheDocument()
     await waitFor(() => expect(installationsApi.getPickLists).toHaveBeenCalled())
+  })
+
+  // APX23 — la progression du bon (X/Y lignes) devient AUSSI une barre
+  // `Progress` (comme ChantierChecklist), pas seulement le texte "X/Y (Z%)".
+  it('ouvrir un bon affiche sa progression en Progress (pas seulement en texte)', async () => {
+    const user = userEvent.setup()
+    const row = {
+      id: 7, reference: 'PRE-2026-0007', installation_nom: 'Chantier Test',
+      lignes: [{ id: 1 }, { id: 2 }], statut: 'en_cours', date_creation: '2026-08-01',
+    }
+    const detail = {
+      ...row,
+      lignes: [
+        { id: 1, produit_nom: 'Onduleur', quantite_demandee: 2, quantite_prelevee: 2, preleve: true, ordre: 1 },
+        { id: 2, produit_nom: 'Panneau', quantite_demandee: 4, quantite_prelevee: 0, preleve: false, ordre: 2 },
+      ],
+    }
+    installationsApi.getPickLists.mockResolvedValueOnce({ data: [row] })
+    installationsApi.getPickList.mockResolvedValueOnce({ data: detail })
+
+    withProviders(<PickListScreen />)
+    await screen.findByText('PRE-2026-0007')
+
+    await user.click(screen.getByText('PRE-2026-0007'))
+
+    await screen.findByText('1/2 ligne(s) prélevée(s) (50%)')
+    const progress = screen.getByRole('progressbar')
+    expect(progress).toHaveAttribute('aria-valuenow', '50')
   })
 })
 
