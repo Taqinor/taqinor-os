@@ -1433,30 +1433,6 @@ export default function DevisList() {
     if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [highlightId, loading, devis])
 
-  // EZ3 — le panneau de succès du générateur enchaîne DIRECTEMENT sur l'action
-  // suivante : `?envoyer=1` ouvre l'aperçu WhatsApp du devis ciblé, `?apercu=1`
-  // ouvre l'aperçu PDF inline (APX14). Ce sont les flux EXISTANTS de cet écran
-  // — aucun second chemin d'envoi ni de PDF n'est créé. Ne se déclenche
-  // qu'UNE fois (le paramètre est consommé).
-  const enchaineFait = useRef(false)
-  useEffect(() => {
-    if (enchaineFait.current || !highlightId || loading) return
-    if (!highlightedDevis) return
-    const envoyer = searchParams.get('envoyer') === '1'
-    const apercu = searchParams.get('apercu') === '1'
-    if (!envoyer && !apercu) return
-    enchaineFait.current = true
-    if (envoyer) handleEnvoyer(highlightedDevis)
-    else setPreviewDevis(highlightedDevis)
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev)
-      next.delete('envoyer')
-      next.delete('apercu')
-      return next
-    }, { replace: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- enchaînement à UNE seule exécution
-  }, [highlightId, highlightedDevis, loading])
-
   // VX79 — lien INTERNE partageable d'un devis : /ventes/devis?devis=<pk> (miroir
   // du deep-link QX12 déjà supporté au montage). Distinct du lien PUBLIC de
   // proposition (règle #4 — handleCopierLienProposition, intouché) : celui-ci
@@ -1565,6 +1541,33 @@ export default function DevisList() {
   // WhatsApp (whatsappPreviewDevis, lecture seule) mais en mode relance. Aucune
   // mutation tant que le vendeur n'a pas cliqué « Ouvrir WhatsApp ».
   const handleRelancer = (d) => { setRelanceMode(true); handleEnvoyer(d) }
+
+  // EZ3 — le panneau de succès du générateur enchaîne DIRECTEMENT sur l'action
+  // suivante : `?envoyer=1` ouvre l'aperçu WhatsApp du devis ciblé, `?apercu=1`
+  // ouvre l'aperçu PDF inline (APX14). Ce sont les flux EXISTANTS de cet écran
+  // — aucun second chemin d'envoi ni de PDF n'est créé. Ne se déclenche
+  // qu'UNE fois (le paramètre est consommé). Placé APRÈS `handleEnvoyer` :
+  // un effet ne doit pas référencer une liaison déclarée plus bas.
+  const enchaineFait = useRef(false)
+  useEffect(() => {
+    if (enchaineFait.current || !highlightId || loading) return
+    if (!highlightedDevis) return
+    const envoyer = searchParams.get('envoyer') === '1'
+    const apercu = searchParams.get('apercu') === '1'
+    if (!envoyer && !apercu) return
+    enchaineFait.current = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- enchaînement d'un deep-link, une seule exécution gardée par enchaineFait
+    if (envoyer) handleEnvoyer(highlightedDevis)
+    else setPreviewDevis(highlightedDevis)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('envoyer')
+      next.delete('apercu')
+      return next
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- enchaînement à UNE seule exécution
+  }, [highlightId, highlightedDevis, loading])
+
   const closeWaModal = () => {
     setWaTarget(null); setWaData(null); setWaSending(false); setRelanceMode(false)
   }

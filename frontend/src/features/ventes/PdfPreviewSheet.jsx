@@ -63,6 +63,10 @@ export default function PdfPreviewSheet({
 
   useEffect(() => {
     if (!open) {
+      // Fermeture : on relâche les octets du PDF (un blob multi-Mo n'a rien à
+      // faire en mémoire une fois le panneau fermé) et on repart d'un état
+      // propre — la réouverture recharge.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- purge à la fermeture, aucune cascade
       setBlob(null)
       setError(null)
       setRenderFailed(false)
