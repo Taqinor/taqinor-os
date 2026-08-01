@@ -9,6 +9,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
+// APX33 — le tableau PARTAGÉ de la compta (tri + export CSV) remplace les
+// tables écrites à la main.
+import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
@@ -81,32 +84,28 @@ function SuggestionsDialog({ rapprochement, onClose }) {
         ) : !suggestions.length ? (
           <EmptyState title="Aucune suggestion" description="Rien à apparier automatiquement pour l’instant." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-2 py-2">Ligne relevé</th>
-                  <th className="px-2 py-2">Ligne GL</th>
-                  <th className="px-2 py-2 text-right">Confiance</th>
-                  <th className="px-2 py-2 text-right">Ambiguë</th>
-                </tr>
-              </thead>
-              <tbody>
-                {suggestions.map((s, i) => (
-                  <tr key={i} className="border-b last:border-0">
-                    <td className="px-2 py-1.5">{s.ligne_releve_libelle || s.ligne_releve || '—'}</td>
-                    <td className="px-2 py-1.5">{s.ligne_gl_libelle || s.ligne_gl || '—'}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">
-                      {s.confiance != null ? `${Math.round(s.confiance * 100)} %` : '—'}
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      {s.ambigue ? <Badge tone="warning">Oui</Badge> : <Badge tone="success">Non</Badge>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ComptaTable
+            aria-label="Suggestions d’appariement"
+            exportName="suggestions-appariement"
+            rows={suggestions}
+            getRowKey={(s, i) => i}
+            columns={[
+              { key: 'ligne_releve', label: 'Ligne relevé',
+                sortValue: (s) => s.ligne_releve_libelle || s.ligne_releve || '',
+                cell: (s) => s.ligne_releve_libelle || s.ligne_releve || '—' },
+              { key: 'ligne_gl', label: 'Ligne GL',
+                sortValue: (s) => s.ligne_gl_libelle || s.ligne_gl || '',
+                cell: (s) => s.ligne_gl_libelle || s.ligne_gl || '—' },
+              { key: 'confiance', label: 'Confiance', align: 'right', numeric: true,
+                sortValue: (s) => Number(s.confiance) || 0,
+                cell: (s) => (s.confiance != null ? `${Math.round(s.confiance * 100)} %` : '—') },
+              { key: 'ambigue', label: 'Ambiguë', align: 'right',
+                sortValue: (s) => (s.ambigue ? 1 : 0),
+                cell: (s) => (s.ambigue
+                  ? <Badge tone="warning">Oui</Badge>
+                  : <Badge tone="success">Non</Badge>) },
+            ]}
+          />
         )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Fermer</Button>

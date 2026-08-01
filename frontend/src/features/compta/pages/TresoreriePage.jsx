@@ -8,6 +8,9 @@ import {
   Input, Label,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
+// APX33 — le tableau PARTAGÉ de la compta (tri + export CSV) remplace les
+// tables écrites à la main.
+import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
@@ -140,23 +143,19 @@ function PositionPanel() {
         {!comptes.length ? (
           <EmptyState title="Aucune donnée" description="Aucun compte de trésorerie." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-2 py-2">Compte</th>
-                  <th className="px-2 py-2 text-right">Solde</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comptes.map((c, i) => (
-                  <tr key={c.id ?? i} className="border-b last:border-0">
-                    <td className="px-2 py-1.5">{c.libelle || `Compte #${c.id}`}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{formatMAD(c.solde)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div>
+            <ComptaTable
+              aria-label="Position consolidée"
+              exportName="position-consolidee"
+              rows={comptes}
+              getRowKey={(c, i) => c.id ?? i}
+              columns={[
+                { key: 'libelle', label: 'Compte', sortValue: (c) => c.libelle || `Compte #${c.id}`,
+                  cell: (c) => c.libelle || `Compte #${c.id}` },
+                { key: 'solde', label: 'Solde', align: 'right', numeric: true,
+                  sortValue: (c) => Number(c.solde) || 0, cell: (c) => formatMAD(c.solde) },
+              ]}
+            />
             <div className="mt-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
               <span className="text-muted-foreground">Total</span>
               <strong className="tabular-nums">{formatMAD(position.total)}</strong>
@@ -170,26 +169,20 @@ function PositionPanel() {
         {!semaines.length ? (
           <EmptyState title="Aucune donnée" description="Aucune ligne prévisionnelle." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-2 py-2">Semaine</th>
-                  <th className="px-2 py-2 text-right">Solde projeté</th>
-                </tr>
-              </thead>
-              <tbody>
-                {semaines.map((s, i) => (
-                  <tr key={i} className="border-b last:border-0">
-                    <td className="px-2 py-1.5">{s.date_debut || s.semaine || `S${i + 1}`}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">
-                      {formatMAD(s.solde_projete ?? s.solde ?? s.montant)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ComptaTable
+            aria-label="Prévisionnel roulant"
+            exportName="previsionnel-13-semaines"
+            rows={semaines}
+            getRowKey={(s, i) => i}
+            columns={[
+              { key: 'semaine', label: 'Semaine',
+                sortValue: (s) => s.date_debut || s.semaine || '',
+                cell: (s, i) => s.date_debut || s.semaine || `S${i + 1}` },
+              { key: 'solde_projete', label: 'Solde projeté', align: 'right', numeric: true,
+                sortValue: (s) => Number(s.solde_projete ?? s.solde ?? s.montant) || 0,
+                cell: (s) => formatMAD(s.solde_projete ?? s.solde ?? s.montant) },
+            ]}
+          />
         )}
       </Card>
     </div>
@@ -268,27 +261,23 @@ function CaisseJournalDialog({ caisse, onClose }) {
         ) : !mouvements.length ? (
           <EmptyState title="Aucun mouvement" description="Aucun mouvement d’espèces enregistré." />
         ) : (
-          <div className="max-h-60 overflow-y-auto overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-2 py-2">Date</th>
-                  <th className="px-2 py-2">Sens</th>
-                  <th className="px-2 py-2">Motif</th>
-                  <th className="px-2 py-2 text-right">Montant</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mouvements.map((m, i) => (
-                  <tr key={m.id ?? i} className="border-b last:border-0">
-                    <td className="px-2 py-1.5">{formatDate(m.date || m.date_mouvement)}</td>
-                    <td className="px-2 py-1.5">{m.sens === 'entree' ? 'Entrée' : 'Sortie'}</td>
-                    <td className="px-2 py-1.5">{m.motif || '—'}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{formatMAD(m.montant)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="max-h-60 overflow-y-auto">
+            <ComptaTable
+              aria-label="Journal de caisse"
+              exportName="journal-caisse"
+              rows={mouvements}
+              getRowKey={(m, i) => m.id ?? i}
+              columns={[
+                { key: 'date', label: 'Date',
+                  sortValue: (m) => m.date || m.date_mouvement || '',
+                  cell: (m) => formatDate(m.date || m.date_mouvement) },
+                { key: 'sens', label: 'Sens',
+                  cell: (m) => (m.sens === 'entree' ? 'Entrée' : 'Sortie') },
+                { key: 'motif', label: 'Motif', cell: (m) => m.motif || '—' },
+                { key: 'montant', label: 'Montant', align: 'right', numeric: true,
+                  sortValue: (m) => Number(m.montant) || 0, cell: (m) => formatMAD(m.montant) },
+              ]}
+            />
           </div>
         )}
 

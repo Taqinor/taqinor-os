@@ -6,6 +6,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, toast,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
+// APX33 — le tableau PARTAGÉ de la compta (tri + export CSV) remplace les
+// tables écrites à la main.
+import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
@@ -63,33 +66,23 @@ function PlanAmortissementDialog({ immo, onClose }) {
             description="Cette immobilisation n’a pas encore de plan généré."
           />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-2 py-2">Année</th>
-                  <th className="px-2 py-2">Date</th>
-                  <th className="px-2 py-2 text-right">Dotation</th>
-                  <th className="px-2 py-2 text-right">Cumul</th>
-                  <th className="px-2 py-2 text-right">Valeur nette</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dotations.map((d) => (
-                  <tr key={d.id ?? d.annee} className="border-b last:border-0 tabular-nums">
-                    <td className="px-2 py-1.5">{d.annee}</td>
-                    <td className="px-2 py-1.5">{formatDate(d.date_dotation)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatMAD(d.montant)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatMAD(d.cumul)}</td>
-                    <td className="px-2 py-1.5 text-right">{formatMAD(d.valeur_nette)}</td>
-                  </tr>
-                ))}
-                {!dotations.length && (
-                  <tr><td colSpan={5} className="px-2 py-4 text-center text-muted-foreground">Aucune dotation.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ComptaTable
+            aria-label="Plan d’amortissement"
+            exportName="plan-amortissement"
+            rows={dotations}
+            getRowKey={(d) => d.id ?? d.annee}
+            columns={[
+              { key: 'annee', label: 'Année', sortValue: (d) => Number(d.annee) || 0,
+                cell: (d) => d.annee },
+              { key: 'date_dotation', label: 'Date', cell: (d) => formatDate(d.date_dotation) },
+              { key: 'montant', label: 'Dotation', align: 'right', numeric: true,
+                sortValue: (d) => Number(d.montant) || 0, cell: (d) => formatMAD(d.montant) },
+              { key: 'cumul', label: 'Cumul', align: 'right', numeric: true,
+                sortValue: (d) => Number(d.cumul) || 0, cell: (d) => formatMAD(d.cumul) },
+              { key: 'valeur_nette', label: 'Valeur nette', align: 'right', numeric: true,
+                sortValue: (d) => Number(d.valeur_nette) || 0, cell: (d) => formatMAD(d.valeur_nette) },
+            ]}
+          />
         )}
       </DialogContent>
     </Dialog>

@@ -11,6 +11,9 @@ import { formatMAD, formatDate } from '../../../lib/format'
 import { stampedFilename } from '../../../utils/downloadBlob'
 import { store } from '../../../store'
 import api from '../../../api/axios'
+// APX33 — le tableau PARTAGÉ de la compta (tri + export CSV) remplace les
+// tables écrites à la main.
+import ComptaTable from '../ComptaTable'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
 import CrudDialog from '../components/CrudDialog.jsx'
@@ -465,26 +468,18 @@ function ProvisionsPeriodePanel() {
       {!items.length ? (
         <EmptyState title="Aucune provision" description="Aucune provision FNP/FAE sur la période." />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-2 py-2">Type</th>
-                <th className="px-2 py-2">Libellé</th>
-                <th className="px-2 py-2 text-right">Montant</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((li, i) => (
-                <tr key={i} className="border-b last:border-0">
-                  <td className="px-2 py-1.5">{li.type || li.nature || '—'}</td>
-                  <td className="px-2 py-1.5">{li.libelle || '—'}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{formatMAD(li.montant)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ComptaTable
+          aria-label="Provisions FNP / FAE"
+          rows={items}
+          getRowKey={(li, i) => i}
+          columns={[
+            { key: 'type', label: 'Type', sortValue: (li) => li.type || li.nature || '',
+              cell: (li) => li.type || li.nature || '—' },
+            { key: 'libelle', label: 'Libellé', cell: (li) => li.libelle || '—' },
+            { key: 'montant', label: 'Montant', align: 'right', numeric: true,
+              sortValue: (li) => Number(li.montant) || 0, cell: (li) => formatMAD(li.montant) },
+          ]}
+        />
       )}
     </Card>
   )
