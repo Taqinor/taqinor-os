@@ -192,9 +192,12 @@ export function StudioShell({
     )
     : null
 
+  // `.pageheader` porte `margin-bottom: 1.5rem` en CSS NON layerisé (index.css) :
+  // seule la forme `!important` de Tailwind v4 (`mb-0!`) la neutralise — un
+  // `mb-0` ordinaire perdrait la cascade face à une règle non layerisée.
   const barreHaute = (
     <PageHeader
-      className="mb-0"
+      className="mb-0! shrink-0"
       title={titre}
       subtitle={sousTitre}
       actions={(
