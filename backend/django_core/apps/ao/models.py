@@ -1068,6 +1068,10 @@ class ObstacleAO(TenantModel):
     actif = models.BooleanField(default=True, verbose_name='Actif')
     decision = models.TextField(
         blank=True, default='', verbose_name='Décision (écart / confirmation)')
+    # AOF25 — le lien vers la QUESTION qui porte cet obstacle existe, mais dans
+    # l'autre sens : ``QuestionAO.obstacle`` (accesseur inverse
+    # ``obstacle.questions``). Une seconde FK ici créerait deux vérités pour le
+    # même lien — et un jour elles divergeraient.
 
     class Meta:
         verbose_name = 'Obstacle de toiture (AO)'
@@ -1144,6 +1148,159 @@ class ObstacleAO(TenantModel):
                 'Une surcharge de dégagement exige un motif : une valeur '
                 "retouchée sans justification n'est pas défendable devant le "
                 'maître d\'ouvrage.'
+            )})
+
+
+# ── AOF25 — Le workflow Q/R sur documents annotés ──────────────────────────
+
+class SerieQuestions(TenantModel):
+    """Une série de questions envoyée au client/à l'acheteur (AOF25).
+
+    Constat MESURÉ : trois séries de questions chiffrées sur images annotées
+    ont fait passer un site de 512 → 522 → 562 → 618 modules posables. La
+    série 2 a supprimé quatre souches inventées et rouvert les allées ; la
+    série 3 a récupéré un grand rectangle « NÉANT », un angle SE droit et une
+    structure de rive hors zone PV. Poser les bonnes questions est donc une
+    opération PRODUCTIVE, pas de la paperasse — d'où sa modélisation.
+    """
+
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Courriel'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        COURRIER = 'courrier', 'Courrier'
+        REUNION = 'reunion', 'Réunion'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les series suivent la societe
+        related_name='series_questions_ao',
+        verbose_name='Société',
+    )
+    appel_offre = models.ForeignKey(
+        AppelOffre,
+        on_delete=models.CASCADE,  # on_delete: serie fille d'un AO : aucune existence hors de son appel d'offres
+        related_name='series_questions',
+        verbose_name="Appel d'offres",
+    )
+    numero = models.PositiveIntegerField(default=1, verbose_name='Numéro')
+    date_envoi = models.DateField(
+        null=True, blank=True, verbose_name="Date d'envoi")
+    canal = models.CharField(
+        max_length=10, choices=Canal.choices, default=Canal.EMAIL,
+        verbose_name='Canal')
+    destinataire = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Destinataire')
+
+    class Meta:
+        verbose_name = 'Série de questions (AO)'
+        verbose_name_plural = 'Séries de questions (AO)'
+        db_table = 'ao_serie_questions'
+        ordering = ['appel_offre', 'numero']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'appel_offre', 'numero'],
+                name='uniq_serie_questions_numero',
+            ),
+        ]
+        indexes = [models.Index(fields=['company', 'appel_offre'])]
+
+    def __str__(self):
+        return f'Série {self.numero} — {self.get_canal_display()}'
+
+    @property
+    def impact_total_modules(self):
+        """Fourchette d'impact CUMULÉE de la série, en modules."""
+        mini = maxi = 0
+        for question in self.questions.all():
+            mini += question.impact_min_modules or 0
+            maxi += question.impact_max_modules or 0
+        return {'min': mini, 'max': maxi}
+
+
+class QuestionAO(TenantModel):
+    """Une question chiffrée sur un document annoté (AOF25).
+
+    **Règle produit gravée : une question ne se pose QUE si sa réponse change
+    le compte.** Une question sans impact chiffré prévisionnel est REFUSÉE —
+    sinon la série devient un questionnaire administratif que personne ne
+    remplit, et les vraies questions s'y noient.
+    """
+
+    class Statut(models.TextChoices):
+        POSEE = 'posee', 'Posée'
+        REPONDUE = 'repondue', 'Répondue'
+        TRANCHEE = 'tranchee', 'Tranchée'
+        SANS_SUITE = 'sans_suite', 'Sans suite'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les questions suivent la societe
+        related_name='questions_ao',
+        verbose_name='Société',
+    )
+    serie = models.ForeignKey(
+        SerieQuestions,
+        on_delete=models.CASCADE,  # on_delete: question fille d'une serie : aucune existence hors d'elle
+        related_name='questions',
+        verbose_name='Série',
+    )
+    repere = models.CharField(
+        max_length=4, blank=True, default='',
+        verbose_name='Repère sur l\'image (A–K)')
+    image = models.ForeignKey(
+        'records.Attachment',
+        on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='questions_ao', verbose_name='Image annotée')
+    texte = models.CharField(max_length=500, verbose_name='Question')
+    #: Impact PRÉVISIONNEL en modules — la raison d'être de la question.
+    impact_min_modules = models.IntegerField(
+        null=True, blank=True, verbose_name='Impact minimal (modules)')
+    impact_max_modules = models.IntegerField(
+        null=True, blank=True, verbose_name='Impact maximal (modules)')
+    reponse = models.TextField(blank=True, default='', verbose_name='Réponse')
+    decision = models.TextField(
+        blank=True, default='', verbose_name='Décision retenue')
+    date_decision = models.DateField(
+        null=True, blank=True, verbose_name='Date de la décision')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.POSEE,
+        verbose_name='Statut')
+    #: Objets CONCERNÉS — c'est ce qui rend la décision applicable.
+    obstacle = models.ForeignKey(
+        ObstacleAO, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='questions', verbose_name='Obstacle concerné')
+    chaine = models.ForeignKey(
+        ChaineCotes, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='questions', verbose_name='Chaîne de cotes concernée')
+
+    class Meta:
+        verbose_name = 'Question (AO)'
+        verbose_name_plural = 'Questions (AO)'
+        db_table = 'ao_question'
+        ordering = ['serie', 'repere', 'id']
+        indexes = [
+            models.Index(fields=['company', 'serie']),
+            models.Index(fields=['company', 'statut']),
+        ]
+
+    def __str__(self):
+        return f'{self.repere or "?"} — {self.texte[:60]}'
+
+    @property
+    def a_un_impact_chiffre(self):
+        return not (self.impact_min_modules is None
+                    and self.impact_max_modules is None)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if not self.a_un_impact_chiffre:
+            raise ValidationError({'impact_min_modules': (
+                "Une question ne se pose QUE si sa réponse change le compte : "
+                "chiffrez son impact prévisionnel en modules (minimum et/ou "
+                "maximum), sinon la série devient un questionnaire "
+                "administratif où les vraies questions se noient."
             )})
 
 

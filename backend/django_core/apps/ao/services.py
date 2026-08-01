@@ -403,6 +403,123 @@ def cautions_expirant_avant_ouverture(appel_offre):
     ]
 
 
+# ── AOF25 — Trancher une question APPLIQUE la décision ─────────────────────
+#
+# Une question tranchée qui ne modifie rien ne sert à rien : la décision doit
+# retomber sur l'objet concerné (obstacle écarté/confirmé, cote requalifiée) ET
+# périmer les variantes de calepinage qui s'appuyaient sur l'ancien état.
+
+#: Actions applicables au moment de trancher une question.
+ACTIONS_QUESTION = (
+    'ecarter_obstacle', 'confirmer_obstacle', 'requalifier_cote', 'aucune',
+)
+
+
+def trancher_question(question, *, decision, action='aucune',
+                      statut_cote=None, provenance=None, user=None):
+    """Tranche une question et APPLIQUE sa décision (AOF25).
+
+    Args:
+        question: la ``QuestionAO`` à trancher.
+        decision: la décision retenue, en clair (journalisée).
+        action: ``ecarter_obstacle`` | ``confirmer_obstacle`` |
+            ``requalifier_cote`` | ``aucune``.
+        statut_cote: nouveau statut des cotes de la chaîne liée
+            (``requalifier_cote``).
+        provenance: nouvelle provenance de l'obstacle (``confirmer_obstacle``).
+
+    Returns:
+        ``(question, variantes_perimees)``.
+
+    Raises:
+        ValidationError: action inconnue, ou objet lié manquant pour l'action.
+    """
+    if action not in ACTIONS_QUESTION:
+        raise ValidationError({'action': (
+            f"Action inconnue : « {action} ». Attendu l'une de "
+            f"{', '.join(ACTIONS_QUESTION)}."
+        )})
+
+    toitures = set()
+    if action in ('ecarter_obstacle', 'confirmer_obstacle'):
+        if question.obstacle_id is None:
+            raise ValidationError({'obstacle': (
+                "Cette action exige une question rattachée à un obstacle."
+            )})
+        obstacle = question.obstacle
+        toitures.add(obstacle.toiture_id)
+        if action == 'ecarter_obstacle':
+            ecarter_obstacle(obstacle, motif=decision, user=user)
+        else:
+            requalifier_provenance(
+                obstacle, provenance or obstacle.Provenance.MESURE,
+                user=user, motif=decision)
+    elif action == 'requalifier_cote':
+        if question.chaine_id is None:
+            raise ValidationError({'chaine': (
+                "Cette action exige une question rattachée à une chaîne de "
+                "cotes."
+            )})
+        chaine = question.chaine
+        toitures.add(chaine.toiture_id)
+        _requalifier_cotes(chaine, statut_cote or StatutCote.MESURE)
+
+    question.decision = decision
+    question.statut = question.Statut.TRANCHEE
+    question.date_decision = timezone.now().date()
+    question.save(update_fields=[
+        'decision', 'statut', 'date_decision', 'updated_at'])
+
+    perimees = 0
+    for toiture_id in toitures:
+        perimees += perimer_variantes_de_toiture(toiture_id)
+
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        question.serie.appel_offre, Activity.Kind.MODIFICATION, user=user,
+        field='question', field_label=f'Question {question.repere or ""}',
+        old_value=question.texte[:80], new_value=decision[:80],
+        body=(
+            f'Impact prévisionnel {question.impact_min_modules}→'
+            f'{question.impact_max_modules} modules ; action « {action} » ; '
+            f'{perimees} variante(s) périmée(s).'
+        ),
+        company=question.company)
+    return question, perimees
+
+
+def _requalifier_cotes(chaine, statut):
+    """Repose le statut de TOUTES les cotes d'une chaîne (AOF25)."""
+    segments = [dict(s) for s in (chaine.segments or [])]
+    for segment in segments:
+        segment['statut'] = str(statut)
+    chaine.segments = segments
+    chaine.recalculer_fermeture()
+    chaine.save(update_fields=[
+        'segments', 'residu_m', 'residu_pct', 'verdict', 'updated_at'])
+    return chaine
+
+
+def perimer_variantes_de_toiture(toiture_id):
+    """Marque PÉRIMÉES les variantes de calepinage d'une toiture (AOF25/AOF29).
+
+    Résolution PARESSEUSE du modèle : ``VarianteCalepinage`` arrive avec AOF28
+    et ce service doit continuer de fonctionner AVANT comme APRÈS, sans import
+    conditionnel enfoui dans un appelant. Renvoie le nombre de variantes
+    marquées (0 tant que le modèle n'existe pas).
+    """
+    from django.apps import apps as django_apps
+
+    try:
+        modele = django_apps.get_model('ao', 'VarianteCalepinage')
+    except LookupError:
+        return 0
+    return modele.objects.filter(toiture_id=toiture_id).exclude(
+        statut='perime').update(statut='perime')
+
+
 # ── AOF23 — Fermetures de chaînes : la déduction PRIME sur l'annoncé ───────
 
 def recalculer_chaine(chaine):

@@ -23,7 +23,9 @@ from .models import (
     PieceSoumission,
     PlanSource,
     ReleveAO,
+    QuestionAO,
     ResultatAO,
+    SerieQuestions,
     ToitureAO,
 )
 
@@ -108,6 +110,53 @@ class ToitureAOSerializer(serializers.ModelSerializer):
         sonde = ToitureAO(**donnees)
         sonde.clean()
         return attrs
+
+
+class QuestionAOSerializer(serializers.ModelSerializer):
+    """AOF25 — une question ne se pose QUE si sa réponse change le compte."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    a_un_impact_chiffre = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = QuestionAO
+        fields = [
+            'id', 'serie', 'repere', 'image', 'texte', 'impact_min_modules',
+            'impact_max_modules', 'a_un_impact_chiffre', 'reponse',
+            'decision', 'date_decision', 'statut', 'statut_display',
+            'obstacle', 'chaine',
+        ]
+
+    def validate(self, attrs):
+        mini = attrs.get(
+            'impact_min_modules',
+            getattr(self.instance, 'impact_min_modules', None))
+        maxi = attrs.get(
+            'impact_max_modules',
+            getattr(self.instance, 'impact_max_modules', None))
+        if mini is None and maxi is None:
+            raise serializers.ValidationError({'impact_min_modules': (
+                'Une question ne se pose QUE si sa réponse change le compte : '
+                'chiffrez son impact prévisionnel en modules (minimum et/ou '
+                'maximum), sinon la série devient un questionnaire '
+                'administratif où les vraies questions se noient.'
+            )})
+        return attrs
+
+
+class SerieQuestionsSerializer(serializers.ModelSerializer):
+    canal_display = serializers.CharField(
+        source='get_canal_display', read_only=True)
+    questions = QuestionAOSerializer(many=True, read_only=True)
+    impact_total_modules = serializers.DictField(read_only=True)
+
+    class Meta:
+        model = SerieQuestions
+        fields = [
+            'id', 'appel_offre', 'numero', 'date_envoi', 'canal',
+            'canal_display', 'destinataire', 'questions',
+            'impact_total_modules',
+        ]
 
 
 class ReleveAOSerializer(serializers.ModelSerializer):

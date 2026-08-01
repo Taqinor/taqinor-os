@@ -41,7 +41,9 @@ from .models import (
     PieceSoumission,
     PlanSource,
     ReleveAO,
+    QuestionAO,
     ResultatAO,
+    SerieQuestions,
     ToitureAO,
 )
 from .serializers import (
@@ -59,7 +61,9 @@ from .serializers import (
     PieceSoumissionSerializer,
     PlanSourceSerializer,
     ReleveAOSerializer,
+    QuestionAOSerializer,
     ResultatAOSerializer,
+    SerieQuestionsSerializer,
     ToitureAOSerializer,
 )
 from .viewsets import AoBaseViewSet
@@ -254,6 +258,67 @@ class ToitureAOViewSet(AoBaseViewSet):
     def _recalculer(toiture):
         toiture.recalculer_surface()
         toiture.save(update_fields=['surface_m2', 'updated_at'])
+
+
+class SerieQuestionsViewSet(AoBaseViewSet):
+    """Séries de questions chiffrées sur documents annotés (AOF25)."""
+    queryset = SerieQuestions.objects.prefetch_related('questions').all()
+    serializer_class = SerieQuestionsSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero', 'date_envoi']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'canal'))
+
+
+class QuestionAOViewSet(AoBaseViewSet):
+    """Questions chiffrées (AOF25).
+
+    ``trancher`` APPLIQUE la décision : l'objet lié est mis à jour (obstacle
+    écarté/confirmé, cote requalifiée) et les variantes de calepinage
+    dépendantes basculent ``PERIME``. Une décision qui ne modifierait rien ne
+    servirait à rien.
+    """
+    queryset = QuestionAO.objects.all()
+    serializer_class = QuestionAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['repere', 'texte']
+    ordering_fields = ['repere', 'statut']
+
+    def get_queryset(self):
+        qs = _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('serie', 'statut', 'obstacle', 'chaine'))
+        appel_offre = self.request.query_params.get('appel_offre')
+        if appel_offre not in (None, ''):
+            qs = qs.filter(serie__appel_offre_id=appel_offre) \
+                if str(appel_offre).isdigit() else qs.none()
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='trancher')
+    def trancher(self, request, pk=None):
+        decision = (request.data.get('decision') or '').strip()
+        if not decision:
+            return Response(
+                {'decision': 'Trancher une question exige une décision '
+                             'écrite.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            question, perimees = services.trancher_question(
+                self.get_object(), decision=decision,
+                action=(request.data.get('action') or 'aucune'),
+                statut_cote=request.data.get('statut_cote'),
+                provenance=request.data.get('provenance'),
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(exc.message_dict if hasattr(exc, 'message_dict')
+                            else {'action': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        donnees = self.get_serializer(question).data
+        donnees['variantes_perimees'] = perimees
+        return Response(donnees)
 
 
 class ReleveAOViewSet(AoBaseViewSet):
