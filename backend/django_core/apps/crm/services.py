@@ -2512,12 +2512,23 @@ BULK_ADMIN_ONLY = {'delete'}
 
 
 def _bulk_stage_allowed(current, target):
-    """Le funnel n'avance jamais EN ARRIÈRE en masse (même règle qu'un edit).
+    """Le funnel n'avance jamais EN ARRIÈRE en masse.
 
     - même étape → non (rien à faire) ;
     - Froid → n'importe quelle étape active → oui (réactivation) ;
     - vers Froid → oui (mise au parking, autorisée depuis n'importe où) ;
     - sinon → uniquement vers une étape PLUS avancée.
+
+    INCHANGÉ par l'ordre fondateur 2026-08-01 (« les leads doivent pouvoir
+    revenir en arrière d'étape, avec une confirmation avant ») : LE BULK RESTE
+    EN AVANT SEULEMENT. Cette fonction reste la définition PURE de « ce qui
+    avance », et elle demeure l'unique source du garde funnel — le
+    ``LeadSerializer`` continue de l'appeler telle quelle pour un PATCH
+    unitaire, puis décide seul d'accepter un recul quand l'utilisatrice l'a
+    confirmé (champ write-only ``confirme_recul``). Une confirmation vise UN
+    lead nommé, avec ses deux étapes affichées ; il n'existe aucune boîte de
+    dialogue capable de faire assumer sincèrement le recul de 200 leads d'un
+    coup — l'action de masse ne gagne donc pas d'échappatoire.
     """
     if current == target:
         return False

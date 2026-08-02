@@ -14,7 +14,7 @@
 // VX187/LB6 — memo() : chaque frappe dans la recherche/un filtre re-rendait
 // TOUTES les cartes visibles. Ne tient que si les callbacks parents sont
 // stables (useCallback sur onOpenLead/onAutoQuote/changeStage/… dans LeadsPage).
-import { useRef, useState, memo } from 'react'
+import { useState, memo } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
 import { Zap, MapPin, FileText, MoreHorizontal, Lock } from 'lucide-react'
 import {
@@ -47,78 +47,14 @@ import {
 // LB15 — flux « Marquer perdu » partagé (fin de la triplication carte/liste).
 import PerduPopover from '../PerduPopover'
 
-// VX43 — Swipe-to-action horizontal maison (touchstart/move/end, zéro
-// dépendance). Les liens tel:/wa.me sont révélés en GRAND (≥44px) par un
-// balayage vers la gauche, le geste iOS/Android attendu sur une liste de cartes.
-//
-// Seuil de distance anti-scroll : le geste ne s'engage QUE si le mouvement est
-// nettement plus horizontal que vertical (sinon un swipe raté couperait le
-// scroll vertical du kanban/de la liste). Fonctions pures locales (le test
-// node en garde une copie exacte — un fichier de composant n'exporte que des
-// composants, règle react-refresh).
-const SWIPE_REVEAL_PX = 96 // largeur du panneau d'actions révélé
-
-/** Le geste ne s'arme que si le mouvement est majoritairement horizontal
-    (anti-scroll vertical) et dépasse un petit seuil d'intention (5px). */
-function shouldArmSwipe(deltaX, deltaY) {
-  if (Math.abs(deltaX) < 5) return false
-  return Math.abs(deltaX) > Math.abs(deltaY)
-}
-
-/** Distance de traînée bornée à [-SWIPE_REVEAL_PX, 0] (on ne révèle que vers
-    la gauche ; un balayage vers la droite ne fait rien — pas d'action là). */
-function clampSwipeOffset(deltaX, maxReveal = SWIPE_REVEAL_PX) {
-  return Math.max(-maxReveal, Math.min(0, deltaX))
-}
-
-/** Lâcher au-delà de la moitié du panneau → reste ouvert (aimanté) ; sinon
-    referme (aimanté à 0). */
-function resolveSwipeSnap(offset, maxReveal = SWIPE_REVEAL_PX) {
-  return Math.abs(offset) >= maxReveal / 2 ? -maxReveal : 0
-}
-
-/** Hook local : expose `offset` (px, ≤0) + les handlers tactiles à poser sur
-    la carte. `enabled=false` (pas de tel/wa) désactive tout le geste. */
-function useSwipeReveal(enabled) {
-  const [offset, setOffset] = useState(0)
-  const start = useRef(null)
-  const armed = useRef(false)
-
-  const onTouchStart = (e) => {
-    if (!enabled) return
-    const t = e.touches?.[0]
-    if (!t) return
-    start.current = { x: t.clientX, y: t.clientY }
-    armed.current = false
-  }
-  const onTouchMove = (e) => {
-    if (!enabled || !start.current) return
-    const t = e.touches?.[0]
-    if (!t) return
-    const deltaX = t.clientX - start.current.x
-    const deltaY = t.clientY - start.current.y
-    if (!armed.current) {
-      if (!shouldArmSwipe(deltaX, deltaY)) return
-      armed.current = true
-    }
-    setOffset(clampSwipeOffset(deltaX))
-  }
-  const onTouchEnd = () => {
-    if (!enabled) return
-    start.current = null
-    if (armed.current) {
-      armed.current = false
-      setOffset((prev) => resolveSwipeSnap(prev))
-    }
-  }
-  const close = () => setOffset(0)
-
-  return {
-    offset,
-    close,
-    handlers: { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel: onTouchEnd },
-  }
-}
+// GESTES PURS (retour fondateur 2026-08-01, « make the sweep the most pleasant
+// possible ») — le swipe-to-action VX43/LB17 est RETIRÉ : sa bande ☎/💬 était
+// devenue redondante (la rangée .kb-quick de la carte porte déjà ces boutons
+// en 44px, APX7) et son gestionnaire touchmove disputait le geste horizontal
+// au PAGER de colonnes — la cause du « leads collants ». La grammaire tactile
+// du board est désormais : vertical = scroll de colonne, horizontal = changer
+// de colonne, appui long en mode déplacement = drag. Aucun handler tactile ne
+// vit sur la carte.
 
 // VX223 — canal léger « focus au prochain ouvert », posé par le lien
 // « → Renseigner la facture » ci-dessous SANS ajouter de prop de navigation
@@ -342,7 +278,6 @@ function LeadCard({
 
   // VX43 — le geste ne s'active que si au moins une action est disponible
   // (sinon rien à révéler derrière la carte).
-  const swipe = useSwipeReveal(!!(tel || wa))
 
   // VX87 — nudge post-appel : armé juste avant d'ouvrir tel:, proposé au
   // retour dans l'onglet (visibilitychange).
@@ -355,65 +290,11 @@ function LeadCard({
   const [perduOpen, setPerduOpen] = useState(false)
 
   return (
-    <div className="kb-swipe-wrap" style={{ position: 'relative' }}>
-      {(tel || wa) && (
-        <div
-          className="kb-swipe-actions"
-          aria-hidden={swipe.offset === 0}
-          // LB17 — bande cachée réellement inerte : l'aria-hidden seul laissait
-          // les <a> tabbables (recon-05). `inert` (React 19) les sort du tab
-          // order ET de l'interaction tant que le panneau n'est pas révélé.
-          inert={swipe.offset === 0}
-          style={{
-            position: 'absolute', inset: 0, display: 'flex',
-            justifyContent: 'flex-end', alignItems: 'stretch',
-            overflow: 'hidden', borderRadius: 'var(--radius, 10px)',
-          }}
-        >
-          {tel && (
-            <a
-              href={tel}
-              aria-label="Appeler (glissement)"
-              title="Appeler"
-              onClick={(e) => { e.stopPropagation(); swipe.close(); armCallNudge() }}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
-                background: 'var(--success)', color: 'var(--success-foreground)',
-                fontSize: '18px', textDecoration: 'none',
-              }}
-            >
-              ☎
-            </a>
-          )}
-          {wa && (
-            <ExternalLink
-              href={wa}
-              aria-label="Ouvrir WhatsApp (glissement)"
-              title="Ouvrir WhatsApp"
-              onClick={(e) => { e.stopPropagation(); swipe.close() }}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: `${SWIPE_REVEAL_PX / (tel && wa ? 2 : 1)}px`, minHeight: '44px',
-                background: 'var(--brand-whatsapp)', color: 'var(--brand-whatsapp-foreground)',
-                fontSize: '18px', textDecoration: 'none',
-              }}
-            >
-              💬
-            </ExternalLink>
-          )}
-        </div>
-      )}
+    <>
       <article
         className={classes}
         data-rot={rot}
         onClick={onOpen ? () => onOpen(lead) : undefined}
-        {...swipe.handlers}
-        style={{
-          transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined,
-          transition: 'transform 150ms ease',
-          position: 'relative',
-        }}
       >
         {/* ── L1 / TÊTE : checkbox (révélée) · nom · société · menu (révélé) ──
             APX2 : le ScoreBadge a quitté la tête pour le micro-badge de L2 (le
@@ -849,7 +730,7 @@ function LeadCard({
           </div>
         )}
       </article>
-    </div>
+    </>
   )
 }
 

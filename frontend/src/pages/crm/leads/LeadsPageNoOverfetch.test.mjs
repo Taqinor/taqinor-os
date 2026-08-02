@@ -20,7 +20,14 @@ test('LB7 : onInlineSave ne refetch plus après un PATCH mono-lead', () => {
   const end = PAGE_SRC.indexOf('}, [dispatch])', start)
   const body = PAGE_SRC.slice(start, end)
   assert.doesNotMatch(body, /refetch\(\)/)
-  assert.match(body, /dispatch\(updateLead\(\{ id: lead\.id, data: \{ \[field\]: value \} \}\)\)\.unwrap\(\)/)
+  assert.match(body, /const data = \{ \[field\]: value \}/)
+  assert.match(body, /dispatch\(updateLead\(\{ id: lead\.id, data \}\)\)\.unwrap\(\)/)
+  // ORDRE FONDATEUR 2026-08-01 — 4e argument `opts` : les marqueurs write-only
+  // du serializer (jamais des champs de lead). OMIS quand ils sont faux : un
+  // `confirme_recul: false` traînant dans chaque PATCH banaliserait le
+  // marqueur, et le corps doit rester exactement le champ édité par défaut.
+  assert.match(body, /if \(opts\.confirmeRecul\) data\.confirme_recul = true/)
+  assert.match(body, /if \(opts\.undo\) data\.undo = true/)
 })
 
 test('LB7 : reassign ne refetch plus et toaste en échec (bugs #5/#11)', () => {

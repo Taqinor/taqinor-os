@@ -668,6 +668,8 @@ function OngletContacts({ fournisseurId, canWrite }) {
       .catch((e) => setError(frErr(e, 'Contacts indisponibles.')))
   }
 
+  // `reload` est recréé à chaque rendu ; ne rejouer qu'au changement de fournisseur.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload recréé par rendu
   useEffect(() => { reload() }, [fournisseurId])
 
   const supprimer = async (c) => {

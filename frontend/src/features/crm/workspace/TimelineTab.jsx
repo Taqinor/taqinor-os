@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
+import { useMemo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { Paperclip } from 'lucide-react'
 import { Button, IconButton, HelpTip } from '../../../ui'
 // EZ15 — dictée INLINE navigateur (bureau). Frontière avec NTMOB30, qui
@@ -141,6 +141,23 @@ export default function TimelineTab({
   const [posting, setPosting] = useState(false)
   const [callLogOpen, setCallLogOpen] = useState(false)
 
+  /* ORDRE FONDATEUR 2026-08-01 — la zone de note grandit avec ce qu'on y
+     écrit. On remet la hauteur à `auto` AVANT de lire `scrollHeight` : sans
+     ça on mesure la hauteur qu'on a soi-même posée au frame précédent, et le
+     champ ne peut plus jamais RÉTRÉCIR (l'erreur classique de l'autosize).
+     Les BORNES ne sont pas ici : `min-height`/`max-height` vivent en CSS, en
+     `em`, donc solidaires de la taille de police et du zoom — et c'est le
+     `max-height` qui produit le défilement interne au-delà de ~8 lignes,
+     sans aucun calcul de lignes en JS. `useLayoutEffect` (et non `useEffect`)
+     : la mesure se fait avant la peinture, le champ ne saute jamais. */
+  const noteRef = useRef(null)
+  useLayoutEffect(() => {
+    const el = noteRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [composer.note])
+
   const postNote = useCallback(() => {
     if (!leadId) return
     const body = (composer.note || '').trim()
@@ -196,12 +213,30 @@ export default function TimelineTab({
       </div>
 
       <div className="chatter-note-box">
-        <input
-          className="form-control"
+        {/* ORDRE FONDATEUR 2026-08-01 — « la zone de NOTE est trop petite ».
+            C'était une <input> d'UNE ligne de 36 px : on y écrit le compte
+            rendu d'un appel, et on ne relisait jamais que les huit derniers
+            mots tapés. C'est un <textarea> qui s'ouvre sur TROIS lignes et
+            grandit avec le texte jusqu'à huit, puis défile — les bornes
+            vivent en CSS (en `em`, donc solidaires de la taille de police),
+            le JS ne fait que suivre le contenu.
+            Conséquence directe : Entrée écrit une NOUVELLE LIGNE (sinon une
+            note multiligne serait impossible à taper). L'envoi passe par
+            Ctrl/⌘+Entrée — la convention de tous les composers — et par le
+            bouton « Noter », qui n'a jamais bougé. */}
+        <textarea
+          ref={noteRef}
+          className="form-control chatter-note-input"
+          rows={3}
           placeholder="Écrire une note (appel, commentaire…)"
           value={composer.note}
           onChange={(e) => setComposer({ note: e.target.value })}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault()
+              postNote()
+            }
+          }}
         />
         {/* EZ15 — dictée inline au BUREAU. Le bouton n'existe pas sur un
             navigateur sans Web Speech (Firefox) : le champ est alors

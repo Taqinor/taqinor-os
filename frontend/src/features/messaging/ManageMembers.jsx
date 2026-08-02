@@ -44,7 +44,6 @@ export default function ManageMembers({ open, onOpenChange, conversation, curren
     setName(conversation?.name ?? '')
     setEditingName(false)
     setToAdd([])
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du Sheet
     setAlias(conversation?.alias_email ?? '')
     setEditingAlias(false)
     let alive = true

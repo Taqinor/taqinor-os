@@ -1,13 +1,14 @@
 // Vue kanban des leads CRM, façon Odoo : 6 colonnes canoniques (stages.js,
 // miroir de STAGES.py — jamais de liste d'étapes en dur ici), glisser-déposer
 // via @dnd-kit/core. Le parent gère l'optimistic update : on ne mute rien.
-import { memo, useCallback, useMemo, useState } from 'react'
-import { ChevronDown, LayoutGrid } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+// VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
+import { ChevronDown, LayoutGrid, X } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useDraggable,
   useDroppable,
@@ -15,7 +16,8 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import {
-  formatMAD, groupLeadsByStage, isStageMoveAllowed, PIPELINE_STAGES, STAGE_LABELS,
+  formatMAD, groupLeadsByStage, isStageMoveAllowed, isStageMoveBackward,
+  PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
 import {
   buildKanbanAnnouncements,
@@ -26,10 +28,17 @@ import { usePanScroll } from '../../../../features/kanban/usePanScroll'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
+// ORDRE FONDATEUR 2026-08-01 — un recul d'étape se DEMANDE. La formulation
+// (elle nomme le lead et les deux étapes) est mutualisée avec la fenêtre lead :
+// une seule phrase pour tous les gestes qui font reculer un lead.
+import { useConfirmerRecul } from '../../../../features/crm/confirmRecul'
 // EZ14 — undo universel : appliquer tout de suite, inverser à l'annulation.
 // Un board se démonte au moindre changement de vue : aucun commit différé ici.
 import { mutateWithUndo } from '../../../../lib/mutateWithUndo'
 import { EmptyState, Button } from '../../../../ui'
+// Hook média CANONIQUE (le même que LeadsPage) : ici interrogé sur
+// `(pointer: coarse)` — c'est le POINTEUR qui décide, jamais une largeur.
+import { useIsMobile } from '../../../../ui/ResponsiveDialog'
 import { isSigneIntercept } from '../signeIntercept'
 import LeadCard from './LeadCard'
 
@@ -62,11 +71,19 @@ export function StageMover({ lead, onInlineSave }) {
       },
     },
   )
+  const confirmerRecul = useConfirmerRecul()
   if (!onInlineSave) return null
-  const onChange = (e) => {
+  const onChange = async (e) => {
     const next = e.target.value
     if (next === value) return
-    save(next, (v) => onInlineSave(lead, 'stage', v))
+    // Ordre fondateur 2026-08-01 : le sélecteur ne grise plus les options
+    // arrière (voir plus bas) — c'est la CONFIRMATION qui tient le rôle de
+    // garde-fou, ici comme au glisser-déposer. Refusée, on ne touche à rien :
+    // `save` n'est même pas appelé, donc pas d'optimiste à annuler et le
+    // <select> revient de lui-même à l'étape réelle (il est contrôlé).
+    const enArriere = isStageMoveBackward(value, next)
+    if (enArriere && !(await confirmerRecul(lead, next))) return
+    save(next, (v) => onInlineSave(lead, 'stage', v, { confirmeRecul: enArriere }))
   }
   // stopPropagation : interagir avec le select ne doit jamais démarrer un drag.
   return (
@@ -87,15 +104,19 @@ export function StageMover({ lead, onInlineSave }) {
         disabled={isSaving}
         onChange={onChange}
       >
-        {/* LB4 — options interdites grisées : MÊME garde que le drag
-            (isStageMoveAllowed, miroir _bulk_stage_allowed) — le chemin
-            clavier ne pouvait auparavant PAS reproduire le recul-guard
-            (bug #8). L'étape courante reste toujours sélectionnable. */}
+        {/* LB4 puis ordre fondateur 2026-08-01 — les options ARRIÈRE ne sont
+            PLUS grisées : reculer est désormais légitime, sous confirmation
+            (`onChange` ci-dessus). Griser reste la bonne réponse pour la seule
+            option qui ne veut rien dire — l'étape COURANTE. Le garde-fou n'a
+            pas disparu, il a changé de forme : d'un « impossible » silencieux
+            (un <option disabled> n'explique rien) à une question qui nomme le
+            lead et les deux étapes. Le chemin clavier et le glisser-déposer
+            obtiennent toujours la MÊME réponse (l'invariant du bug #8). */}
         {STAGE_MOVE_OPTIONS.map((o) => (
           <option
             key={o.value}
             value={o.value}
-            disabled={o.value !== lead.stage && !isStageMoveAllowed(lead.stage, o.value)}
+            disabled={o.value === lead.stage}
           >
             {o.label}
           </option>
@@ -167,47 +188,11 @@ const DraggableCard = memo(function DraggableCard({
   )
 })
 
-/* APX6 — LA BARRE D'ACTIVITÉ SEGMENTÉE (la signature Odoo des en-têtes de
-   colonne).
-   ---------------------------------------------------------------------------
-   VÉRIFICATION D'ABORD (exigée par la tâche) : l'en-tête LB9 portait déjà le
-   compteur ET la somme (« total MAD · Prév. pondéré », UNE seule rangée). Ce
-   qui manquait, c'est la lecture d'un coup d'œil de l'ÉTAT D'ACTIVITÉ de
-   l'étape : combien de leads y sont en retard, dus aujourd'hui, planifiés, ou
-   sans aucune activité prévue.
-
-   Les quatre seaux dérivent de `lead.next_activity.state`, DÉJÀ présent dans
-   la charge utile lue par la carte (LeadCard `kb-act-${state}`) : zéro requête
-   nouvelle, zéro champ serveur nouveau. Les clés d'étape, elles, viennent
-   toujours de `stages.js` (miroir de STAGES.py, règle #2) — aucune liste
-   d'étapes n'apparaît ici. */
-const ACTIVITE_SEAUX = [
-  { key: 'overdue', label: 'en retard', tone: 'danger' },
-  { key: 'today', label: 'aujourd’hui', tone: 'warning' },
-  { key: 'upcoming', label: 'planifié', tone: 'success' },
-  { key: 'none', label: 'sans activité', tone: 'muted' },
-]
-
-/** activiteSeau — seau d'activité d'un lead. `next_activity` absente = « sans
-    activité » (le seau qui compte : c'est celui-là qu'un commercial doit vider). */
-// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
-// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
-// eslint-disable-next-line react-refresh/only-export-components
-export function activiteSeau(lead) {
-  const state = lead?.next_activity?.state
-  return ACTIVITE_SEAUX.some((s) => s.key === state) ? state : 'none'
-}
-
-/** repartitionActivite — {overdue, today, upcoming, none} pour une colonne.
-    Fonction PURE (testable sans React ni navigateur). */
-// Helper PUR co-localise avec le composant qui l'utilise ; l'extraire casserait
-// les tests sonde qui epinglent le texte source de CE fichier. Regle HMR de dev.
-// eslint-disable-next-line react-refresh/only-export-components
-export function repartitionActivite(leads) {
-  const acc = { overdue: 0, today: 0, upcoming: 0, none: 0 }
-  for (const lead of leads ?? []) acc[activiteSeau(lead)] += 1
-  return acc
-}
+/* APX6 — RETIRÉ sur ordre fondateur (2026-08-01, « enlève ça ») : la barre
+   segmentée d'activité des en-têtes de colonne (la « case grise, parfois
+   grise/rouge ») encombrait chaque étape sur téléphone. La somme `.num` de
+   l'en-tête (LB9) reste ; le contrat d'absence vit dans
+   KanbanActivityBar.apx6.test.mjs. */
 
 /* APX9 — PLAFOND DE RENDU PAR COLONNE.
    ---------------------------------------------------------------------------
@@ -223,6 +208,20 @@ export function repartitionActivite(leads) {
    les totaux RÉELS de l'étape : on ne cache pas des leads, on en diffère
    l'affichage. */
 export const RENDER_CAP = 40
+/* ORDRE FONDATEUR 2026-08-01 : « pourquoi Charger plus ? mets-les TOUS —
+   l'utilisateur balaie vers le bas de toute façon ».
+   ---------------------------------------------------------------------------
+   Le plafond tactile de 10 cartes par étape est RETIRÉ — constante ET bouton.
+   Il avait été posé pour alléger le geste, mais il payait le mauvais prix : au
+   téléphone la colonne est un rouleau qu'on parcourt AU POUCE — un bouton qui coupe ce
+   rouleau tous les 10 leads est exactement l'interruption qu'on cherche à
+   supprimer, et il rendait le pipeline illisible (on ne voit plus la fin de
+   son étape). Le vrai poids du balayage était ailleurs et il est corrigé
+   (round 4 : la colonne ne vole plus le geste ; round 3 : StageMover non
+   monté au doigt). AU POINTEUR GROSSIER ON MONTE DONC TOUT, sans plafond ni
+   bouton. Le desktop garde APX9 intact (RENDER_CAP = 40 + « Charger plus »),
+   parce que là 6 colonnes sont visibles EN MÊME TEMPS — le mur de nœuds y est
+   réel, alors que le pager mobile n'en montre qu'une. */
 
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
 // LB9 — région nommée (axe/lecteur d'écran atteignent chaque colonne par son
@@ -234,13 +233,10 @@ export const RENDER_CAP = 40
 // cartes (`children`) ne sont même pas montées — mais le `<section>` garde
 // EXACTEMENT le même `ref={setNodeRef}`/`id: col.key` qu'en dépliée : elle
 // reste une zone droppable à part entière (surbrillance `kb-over` incluse).
-function StageColumn({ col, collapsed, onToggleCollapse, children, activiteFiltre, onFiltrerActivite }) {
+function StageColumn({ col, collapsed, onToggleCollapse, children }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.key })
   // Prévisionnel pondéré : total devis × probabilité de l'étape.
   const forecast = col.totalDevis * (STAGE_PROBABILITY[col.key] ?? 0)
-  // APX6 — répartition d'activité de l'étape (mémoïsée : la colonne se rend à
-  // chaque frappe de recherche, VX187/LB6).
-  const repartition = useMemo(() => repartitionActivite(col.leads), [col.leads])
   const chevronLabel = collapsed
     ? `Déplier la colonne ${col.label}`
     : `Replier la colonne ${col.label}`
@@ -287,35 +283,6 @@ function StageColumn({ col, collapsed, onToggleCollapse, children, activiteFiltr
             {formatMAD(col.totalDevis)} · Prév. {formatMAD(forecast)}
           </span>
         )}
-        {/* APX6 — barre segmentée d'activité, proportionnelle au nombre de
-            leads de l'étape. Chaque segment est un BOUTON : il filtre la
-            colonne (et seulement elle) sur ce seau ; re-cliquer l'enlève. Un
-            seau vide n'est pas rendu (jamais un segment de largeur nulle et
-            tabbable). Le libellé accessible porte le compte : la couleur n'est
-            jamais le seul porteur de sens. */}
-        {!collapsed && col.count > 0 && (
-          <div
-            className="kb-col-activite"
-            role="group"
-            aria-label={`Activité de l’étape ${col.label}`}
-          >
-            {ACTIVITE_SEAUX.filter((s) => repartition[s.key] > 0).map((s) => (
-              <button
-                key={s.key}
-                type="button"
-                className={`kb-act-seg kb-act-seg--${s.tone}${activiteFiltre === s.key ? ' kb-act-seg--on' : ''}`}
-                style={{ flexGrow: repartition[s.key] }}
-                aria-pressed={activiteFiltre === s.key}
-                title={`${repartition[s.key]} lead${repartition[s.key] > 1 ? 's' : ''} ${s.label} — cliquer pour filtrer cette étape`}
-                onClick={() => onFiltrerActivite?.(col.key, s.key)}
-              >
-                <span className="sr-only">
-                  {repartition[s.key]} lead{repartition[s.key] > 1 ? 's' : ''} {s.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
       </header>
       {collapsed ? (
         <div className="kb-col-rail-label">{col.label}</div>
@@ -358,6 +325,12 @@ export default function KanbanView({
   onClearFilters,
   onNewLead,
   onImportLeads,
+  // (B1) — « mode déplacement » possédé par LeadsPage (entrée du menu ⋯
+  // mobile). NON persisté : il retombe OFF à la navigation. Absent = OFF,
+  // donc un consommateur qui ne le câble pas garde exactement l'ancien
+  // comportement au desktop et perd seulement le drag tactile.
+  dragMode = false,
+  onExitDragMode,
 }) {
   // VX135 — préférence reduced-motion lue en JS : le tilt (transform statique
   // posé par dnd-kit/CSS) et le dropAnimation (JS pur) échappent tous deux au
@@ -367,18 +340,66 @@ export default function KanbanView({
   // usePanScroll.js) : ref à poser sur `.kb-board`, aucun autre câblage —
   // le hook attache lui-même ses écouteurs natifs pointerdown/move/up/cancel.
   const boardRef = usePanScroll()
-  // Message éphémère « On ne recule pas une étape » lors d'un drag refusé.
-  const [reculMsg, setReculMsg] = useState(false)
-  // distance 6px : un clic simple ouvre la fiche, le drag exige un mouvement ;
-  // sur mobile, appui long 150 ms pour glisser, le scroll reste naturel.
+  // ORDRE FONDATEUR 2026-08-01 — le bandeau éphémère « On ne recule pas une
+  // étape » DISPARAÎT : il annonçait un refus qui n'existe plus. Un recul se
+  // demande maintenant (useConfirmerRecul), il ne se signale plus après coup.
+  const confirmerRecul = useConfirmerRecul()
+  /* PHYSIQUE TACTILE (B1/B2) — deux défauts du TouchSensor, corrigés ensemble.
+     B2 : `{ delay: 150, tolerance: 8 }` armait un drag pendant un scroll LENT
+     (150 ms de contact, 8 px de tolérance : un pouce qui démarre doucement
+     reste dedans). → `{ delay: 300, tolerance: 5 }`, l'appui long devient une
+     intention, plus un accident.
+     B1 : `TouchSensor.setup()` (dnd-kit) installe un `touchmove` NON PASSIF
+     permanent sur `window` dès que le sensor est MONTÉ — donc même sans le
+     moindre drag, tout le scroll au doigt de la page passe par un écouteur
+     qui peut appeler preventDefault, et le navigateur perd son scroll natif.
+     Sur pointeur GROSSIER on ne monte donc le sensor QUE si le « mode
+     déplacement » est actif (entrée « Réorganiser par glisser » du menu ⋯
+     mobile, LeadsPage). Le desktop (souris, MouseSensor) est STRICTEMENT
+     inchangé, et le StageMover sous chaque carte reste le chemin sans-drag —
+     réordonner reste possible au doigt sans jamais activer le mode. */
+  const pointerCoarse = useIsMobile('(pointer: coarse)')
+  const touchDragMonte = !pointerCoarse || dragMode
+  /* GESTES PURS — MouseSensor, PAS PointerSensor : les pointer events unifient
+     souris ET doigt, donc PointerSensor (distance 6px) saisissait la carte au
+     tout début d'un balayage tactile — la carte se soulevait une frame puis
+     retombait au pointercancel : le « leads collants » résiduel du retour
+     fondateur. MouseSensor n'écoute que la souris ; au doigt, seul le
+     TouchSensor (monté uniquement en mode déplacement) peut saisir. */
+  const pointerSensor = useSensor(MouseSensor, { activationConstraint: { distance: 6 } })
+  const touchSensor = useSensor(TouchSensor, {
+    activationConstraint: { delay: 300, tolerance: 5 },
+  })
+  // VX192 — sensor clavier natif (@dnd-kit/core), 0 dépendance.
+  const keyboardSensor = useSensor(KeyboardSensor)
+  // `useSensors` filtre les entrées nulles : l'arité de l'appel (donc ses
+  // dépendances) reste constante, seul le tableau produit rétrécit.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 150, tolerance: 8 },
-    }),
-    // VX192 — sensor clavier natif (@dnd-kit/core), 0 dépendance.
-    useSensor(KeyboardSensor),
+    pointerSensor,
+    touchDragMonte ? touchSensor : null,
+    keyboardSensor,
   )
+  /* Le NOMBRE de sensors change quand le mode bascule ; dnd-kit dérive de ce
+     tableau les dépendances de `useSensorSetup`, qui doivent rester de taille
+     constante. On remonte donc proprement le contexte — ce qui garantit aussi
+     le teardown de l'écouteur non passif. La clé est CONSTANTE au desktop :
+     jamais de remontage là où rien ne change. */
+  const dndKey = touchDragMonte ? 'dnd-tactile' : 'dnd-sans-tactile'
+  /* Le plaisir du balayage (VX42 haptique) : un souffle de 5 ms quand le pager
+     se POSE sur une colonne — le « clic » physique des pagers natifs. Écouteur
+     passif, au doigt seulement ; `scrollend` absent (vieux iOS) = silence
+     propre, `vibrate` absent (iOS) = no-op défensif, jamais une erreur. */
+  useEffect(() => {
+    // `boardRef` est la FONCTION callback-ref d'usePanScroll — le nœud vit
+    // sur `boardRef.node` (lire `.current` sur la fonction = undefined muet :
+    // le haptique était mort-né au round 2, attrapé par l'audit).
+    const el = boardRef.node?.current
+    if (!el || !pointerCoarse || !('onscrollend' in el)) return undefined
+    const onSettle = () => navigator.vibrate?.(5)
+    el.addEventListener('scrollend', onSettle, { passive: true })
+    return () => el.removeEventListener('scrollend', onSettle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boardRef est un ref stable
+  }, [pointerCoarse])
   const columns = useMemo(() => groupLeadsByStage(leads), [leads])
   const [activeLead, setActiveLead] = useState(null)
 
@@ -386,28 +407,16 @@ export default function KanbanView({
   // collapsedColumns.js) : lu UNE FOIS au montage (lazy useState — jamais de
   // repli par défaut, `readCollapsedStages()` renvoie `[]` tant que
   // l'utilisatrice n'a jamais replié une colonne), écrit à chaque bascule.
-  /* APX6 — filtre d'activité PAR COLONNE (`{ [stageKey]: seau }`). Volontairement
-     LOCAL et éphémère : c'est un coup de projecteur sur une étape (« montre-moi
-     les 7 en retard de Devis envoyé »), pas une 7ᵉ dimension du jeu de filtres
-     global — l'ajouter à `EMPTY_FILTERS` en ferait une chose à persister, à
-     mettre dans l'URL et à afficher en facette, pour un geste qui se défait
-     d'un second clic. Re-cliquer le même segment l'enlève. */
-  const [activiteParEtape, setActiviteParEtape] = useState({})
   // APX9 — combien de cartes sont MONTÉES par étape (jamais combien sont
   // chargées : tout est déjà en mémoire). Défaut RENDER_CAP.
+  // Cet état ne sert QU'AU DESKTOP : au doigt on monte tout (ordre fondateur
+  // 2026-08-01), il n'y a donc ni plafond à repousser ni bouton pour le faire.
   const [limiteParEtape, setLimiteParEtape] = useState({})
   const chargerPlus = useCallback((stageKey) => {
     setLimiteParEtape((prev) => ({
       ...prev,
       [stageKey]: (prev[stageKey] ?? RENDER_CAP) + RENDER_CAP,
     }))
-  }, [])
-  const filtrerActivite = useCallback((stageKey, seau) => {
-    setActiviteParEtape((prev) => (
-      prev[stageKey] === seau
-        ? (() => { const next = { ...prev }; delete next[stageKey]; return next })()
-        : { ...prev, [stageKey]: seau }
-    ))
   }, [])
 
   /* EZ14 — adoptions n°7 et 8 : sur le board, la RÉASSIGNATION et le
@@ -428,23 +437,30 @@ export default function KanbanView({
     })
   }, [onReassign])
 
-  const inlineSaveAvecUndo = useCallback(async (lead, champ, valeur) => {
+  const inlineSaveAvecUndo = useCallback(async (lead, champ, valeur, opts) => {
     if (!onInlineSave) return undefined
     // Seule l'étape est réversible ici (le StageMover ne pilote que `stage`).
     // Entrer en « Signé » est intercepté en amont (SigneDialog) : cette voie ne
     // touche donc jamais au funnel d'argent.
-    if (champ !== 'stage') return onInlineSave(lead, champ, valeur)
+    if (champ !== 'stage') return onInlineSave(lead, champ, valeur, opts)
     const precedent = lead?.stage
-    if (precedent === valeur) return onInlineSave(lead, champ, valeur)
+    if (precedent === valeur) return onInlineSave(lead, champ, valeur, opts)
     // On laisse l'erreur REMONTER (useOptimisticSave fait son rollback et
     // SigneDialog s'appuie sur la sentinelle SIGNE_INTERCEPT) : c'est pourquoi
     // `apply` est appelé directement ici plutôt qu'avalé par le toast.
-    const res = await onInlineSave(lead, champ, valeur)
+    const res = await onInlineSave(lead, champ, valeur, opts)
     await mutateWithUndo({
       kind: 'lead_stage',
       message: 'Étape modifiée.',
       apply: () => Promise.resolve(res),
-      revert: () => onInlineSave(lead, champ, precedent),
+      // L'annulation d'une AVANCÉE recule : sans marqueur elle se prend le 400
+      // de la garde funnel — exactement le bug LB39, qui avait été corrigé sur
+      // le chemin du DROP (LeadsPage.changeStage) mais jamais sur celui du
+      // StageMover, faute d'un argument pour porter le marqueur. Il existe
+      // maintenant : `undo` (l'annulation, revérifiée serveur contre le
+      // chatter) et non `confirmeRecul` — personne n'a confirmé quoi que ce
+      // soit, l'utilisatrice défait sa propre action.
+      revert: () => onInlineSave(lead, champ, precedent, { undo: true }),
     })
     return res
   }, [onInlineSave])
@@ -475,7 +491,7 @@ export default function KanbanView({
     setActiveLead(active.data.current?.lead ?? null)
   }
 
-  const handleDragEnd = ({ active, over }) => {
+  const handleDragEnd = async ({ active, over }) => {
     setActiveLead(null)
     const lead = active.data.current?.lead
     if (!lead || !over || over.id === lead.stage) return
@@ -484,12 +500,18 @@ export default function KanbanView({
     // `stageRank` local classait COLD au rang le plus HAUT → tout drag
     // COLD→actif était refusé comme un recul, alors que le serveur autorise
     // DÉJÀ cette réactivation (COLD est un parking, pas un rang avancé).
-    if (!isStageMoveAllowed(lead.stage, over.id)) {
-      setReculMsg(true)
-      window.setTimeout(() => setReculMsg(false), 4000)
-      return // l'étape reste inchangée
-    }
-    onChangeStage(lead, over.id)
+    // ORDRE FONDATEUR 2026-08-01 — un drop EN ARRIÈRE n'est plus refusé : il
+    // pose une question. Confirmée, elle emprunte le MÊME chemin
+    // d'enregistrement avec le marqueur `confirmeRecul` (que LeadsPage traduit
+    // en `confirme_recul` dans le PATCH) ; annulée, on ne touche à rien — la
+    // carte n'a jamais quitté sa colonne (aucun optimiste n'a été dispatché).
+    // Les deux prédicats sont exclusifs et couvrent tout couple distinct : ce
+    // `return` défensif ne se déclenche donc jamais en pratique.
+    const enAvant = isStageMoveAllowed(lead.stage, over.id)
+    const enArriere = isStageMoveBackward(lead.stage, over.id)
+    if (!enAvant && !enArriere) return
+    if (enArriere && !(await confirmerRecul(lead, over.id))) return
+    onChangeStage(lead, over.id, { confirmeRecul: enArriere })
     // LB12 — la carte déposée se RE-PARENTE dans sa nouvelle colonne (React
     // démonte/remonte l'instance — un `key={lead.id}` qui change de tableau
     // parent n'est jamais un simple déplacement DOM) : sans ça, le focus
@@ -551,6 +573,7 @@ export default function KanbanView({
 
   return (
     <DndContext
+      key={dndKey} // (B1) — remontage propre quand le jeu de sensors change
       sensors={sensors}
       accessibility={{
         announcements,
@@ -565,12 +588,24 @@ export default function KanbanView({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      {reculMsg && (
+      {/* (B1) — sortie du mode déplacement, à portée de pouce. Rendue
+          UNIQUEMENT en pointeur grossier : au desktop le drag souris n'a
+          jamais été conditionné, il n'y a donc rien à désactiver. */}
+      {pointerCoarse && dragMode && (
         <div
-          className="kb-recul-msg mb-2 rounded-lg border border-destructive/30 bg-destructive/12 px-3 py-1.5 text-[13px] font-semibold text-destructive"
+          className="kb-dragmode-chip mb-2 flex w-fit items-center gap-1 rounded-lg border border-border bg-muted pl-3 text-[13px] font-semibold"
           role="status"
         >
-          On ne recule pas une étape
+          <span>Déplacement activé</span>
+          <button
+            type="button"
+            className="kb-dragmode-exit inline-flex min-h-[44px] min-w-[44px] items-center justify-center"
+            aria-label="Désactiver le mode déplacement"
+            title="Désactiver le mode déplacement"
+            onClick={onExitDragMode}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
         </div>
       )}
       {/* LB41 — le board est LE scrolleur (2 axes) : focalisable pour le
@@ -583,21 +618,16 @@ export default function KanbanView({
             col={col}
             collapsed={collapsedStages.has(col.key)}
             onToggleCollapse={() => toggleCollapsed(col.key)}
-            activiteFiltre={activiteParEtape[col.key] ?? null}
-            onFiltrerActivite={filtrerActivite}
           >
-            {/* APX6 — le filtre d'activité ne masque QUE des cartes : les
-                compteurs et la somme de l'en-tête restent les totaux RÉELS de
-                l'étape (sinon cliquer un segment redessinerait la barre qu'on
-                vient de cliquer).
-                APX9 — puis le plafond de RENDU : on ne monte que les N
+            {/* APX9 — plafond de RENDU au DESKTOP : on ne monte que les N
                 premières cartes, le reste attend « Charger plus ». Les données
-                sont déjà en mémoire — aucun appel réseau ici. */}
+                sont déjà en mémoire — aucun appel réseau ici.
+                AU DOIGT : aucun plafond (ordre fondateur 2026-08-01) — la
+                colonne est un rouleau qu'on parcourt au pouce, `restants`
+                vaut donc 0 et le bouton n'est jamais rendu. */}
             {(() => {
-              const visibles = activiteParEtape[col.key]
-                ? col.leads.filter((l) => activiteSeau(l) === activiteParEtape[col.key])
-                : col.leads
-              const limite = limiteParEtape[col.key] ?? RENDER_CAP
+              const visibles = col.leads
+              const limite = pointerCoarse ? visibles.length : (limiteParEtape[col.key] ?? RENDER_CAP)
               const restants = Math.max(0, visibles.length - limite)
               return (
                 <>
@@ -615,7 +645,12 @@ export default function KanbanView({
                       selectionActive={selected.size > 0}
                       onToggleSelect={onToggleSelect}
                       onPlanifierRelance={onPlanifierRelance}
-                      onInlineSave={inlineSaveAvecUndo}
+                      // Au doigt le StageMover n'est même plus MONTÉ (déjà
+                      // inatteignable — :has(:focus-visible) + hover — mais il
+                      // coûtait 9 nœuds + un <select> natif par carte).
+                      // `undefined` est stable : memo intact. Chemins restants
+                      // tactile-clavier : KeyboardSensor + pilule de la fenêtre.
+                      onInlineSave={pointerCoarse ? undefined : inlineSaveAvecUndo}
                       onMarkPerdu={onMarkPerdu}
                     />
                   ))}

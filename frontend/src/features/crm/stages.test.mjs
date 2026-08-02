@@ -16,6 +16,7 @@ import {
   EMPTY_FILTERS,
   funnelRank,
   isStageMoveAllowed,
+  isStageMoveBackward,
 } from './stages.js'
 
 test('les 6 étapes canoniques, dans l’ordre de l’entonnoir (STAGES.py)', () => {
@@ -200,6 +201,37 @@ test('LB4 : isStageMoveAllowed — miroir byte-à-byte de _bulk_stage_allowed', 
   assert.equal(isStageMoveAllowed('FOLLOW_UP', 'NEW'), false) // recul refusé
   assert.equal(isStageMoveAllowed('SIGNED', 'CONTACTED'), false) // recul refusé
   assert.equal(isStageMoveAllowed('QUOTE_SENT', 'FOLLOW_UP'), true)
+})
+
+test("ordre fondateur 2026-08-01 : isStageMoveBackward — « ce mouvement RECULE ? »", () => {
+  // Question COMPLÉMENTAIRE, jamais un élargissement d'isStageMoveAllowed :
+  // celui-ci reste le miroir byte-à-byte de _bulk_stage_allowed (le bulk
+  // demeure en avant seulement).
+  assert.equal(isStageMoveBackward('NEW', 'NEW'), false)
+  assert.equal(isStageMoveBackward('FOLLOW_UP', 'NEW'), true)
+  assert.equal(isStageMoveBackward('SIGNED', 'CONTACTED'), true)
+  assert.equal(isStageMoveBackward('CONTACTED', 'QUOTE_SENT'), false)
+  // COLD est HORS recul dans les DEUX sens : y aller est un parking, en venir
+  // est une réactivation — isStageMoveAllowed les autorise déjà, ils n'ont
+  // donc JAMAIS besoin d'une confirmation (c'est le piège du bug #7, où COLD
+  // classé au rang le plus haut faisait passer COLD→actif pour un recul).
+  assert.equal(isStageMoveBackward('SIGNED', 'COLD'), false)
+  assert.equal(isStageMoveBackward('COLD', 'NEW'), false)
+  assert.equal(isStageMoveBackward('COLD', 'SIGNED'), false)
+})
+
+test('ordre fondateur 2026-08-01 : les deux prédicats sont EXCLUSIFS et COUVRANTS', () => {
+  // C'est l'invariant sur lequel reposent les trois surfaces (drag, sélecteur
+  // de carte, liste) : « autorisé = avance OU recul-confirmé » ne peut laisser
+  // aucun couple d'étapes sans réponse, ni en donner deux contradictoires.
+  for (const a of PIPELINE_STAGES) {
+    for (const b of PIPELINE_STAGES) {
+      const avance = isStageMoveAllowed(a, b)
+      const recule = isStageMoveBackward(a, b)
+      assert.ok(!(avance && recule), `${a}→${b} classé dans les DEUX sens`)
+      assert.equal(avance || recule, a !== b, `${a}→${b} sans réponse`)
+    }
+  }
 })
 
 test('LB24 : filterLeads — relance "aujourdhui" (tuile KPI « Dû aujourd\'hui »)', () => {

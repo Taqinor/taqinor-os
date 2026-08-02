@@ -144,24 +144,57 @@ describe('LW20 — composer (état MOTEUR via props, jamais local)', () => {
     expect(setComposer).toHaveBeenCalledWith({ note: 'Bonjour' })
   })
 
-  it('Entrée poste la note (composer.note fourni par le moteur) puis vide via resetComposer', async () => {
-    const { resetComposer, refreshHistorique } = renderTab({ composer: composerBase({ note: 'Bonjour client' }) })
+  /* ORDRE FONDATEUR 2026-08-01 — « la zone de NOTE est trop petite ».
+     Le champ est passé d'une <input> d'UNE ligne à un <textarea> de trois qui
+     grandit jusqu'à huit. Conséquence directe et non négociable : Entrée écrit
+     une NOUVELLE LIGNE, sinon une note multiligne serait impossible à taper.
+     L'envoi passe par Ctrl/⌘+Entrée (la convention de tous les composers) et
+     par le bouton « Noter », qui n'a jamais bougé. */
+  it("ordre fondateur 2026-08-01 : le champ est un textarea de 3 lignes, jamais une ligne unique", () => {
+    renderTab()
+    const champ = screen.getByPlaceholderText('Écrire une note (appel, commentaire…)')
+    expect(champ.tagName).toBe('TEXTAREA')
+    expect(champ).toHaveAttribute('rows', '3')
+    // Les bornes (min/max-height) vivent en CSS, en `em` — pas en JS.
+    expect(champ).toHaveClass('chatter-note-input')
+  })
+
+  it("ordre fondateur 2026-08-01 : Entrée SEULE ne poste rien (elle écrit une nouvelle ligne)", () => {
+    renderTab({ composer: composerBase({ note: 'Ligne 1' }) })
     fireEvent.keyDown(screen.getByPlaceholderText('Écrire une note (appel, commentaire…)'), { key: 'Enter' })
+    expect(apiPost).not.toHaveBeenCalled()
+  })
+
+  it('⌘+Entrée poste aussi (macOS), pas seulement Ctrl+Entrée', async () => {
+    renderTab({ composer: composerBase({ note: 'Depuis un Mac' }) })
+    fireEvent.keyDown(screen.getByPlaceholderText('Écrire une note (appel, commentaire…)'), { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/crm/leads/7/noter/', { body: 'Depuis un Mac' }))
+  })
+
+  it('le bouton « Noter » poste toujours — le chemin sans raccourci reste entier', async () => {
+    renderTab({ composer: composerBase({ note: 'Via le bouton' }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Noter' }))
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/crm/leads/7/noter/', { body: 'Via le bouton' }))
+  })
+
+  it('Ctrl+Entrée poste la note (composer.note fourni par le moteur) puis vide via resetComposer', async () => {
+    const { resetComposer, refreshHistorique } = renderTab({ composer: composerBase({ note: 'Bonjour client' }) })
+    fireEvent.keyDown(screen.getByPlaceholderText('Écrire une note (appel, commentaire…)'), { key: 'Enter', ctrlKey: true })
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/crm/leads/7/noter/', { body: 'Bonjour client' }))
     await waitFor(() => expect(resetComposer).toHaveBeenCalled())
     expect(refreshHistorique).toHaveBeenCalled()
   })
 
-  it('note vide et sans fichier : Entrée ne poste rien', () => {
+  it('note vide et sans fichier : Ctrl+Entrée ne poste rien', () => {
     renderTab({ composer: composerBase() })
-    fireEvent.keyDown(screen.getByPlaceholderText('Écrire une note (appel, commentaire…)'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByPlaceholderText('Écrire une note (appel, commentaire…)'), { key: 'Enter', ctrlKey: true })
     expect(apiPost).not.toHaveBeenCalled()
   })
 
   it('échec de la note : toast, jamais avalé', async () => {
     apiPost.mockRejectedValueOnce({ response: { data: {} } })
     const { resetComposer } = renderTab({ composer: composerBase({ note: 'Bonjour' }) })
-    fireEvent.keyDown(screen.getByPlaceholderText('Écrire une note (appel, commentaire…)'), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByPlaceholderText('Écrire une note (appel, commentaire…)'), { key: 'Enter', ctrlKey: true })
     await waitFor(() => expect(toastError).toHaveBeenCalled())
     expect(resetComposer).not.toHaveBeenCalled()
   })

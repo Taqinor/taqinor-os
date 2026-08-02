@@ -3147,6 +3147,12 @@ textarea.form-control {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+  /* ORDRE FONDATEUR 2026-08-01 — la note est devenue un champ MULTILIGNE qui
+     grandit : sans cet alignement, l'étirement par défaut (`stretch`) ferait
+     grandir avec elle le bouton « Noter », le trombone et la dictée — trois
+     boutons de 6 cm de haut. Ancrés en bas, ils restent à leur taille et sous
+     le pouce, là où la ligne de saisie se termine. */
+  align-items: flex-end;
 }
 
 /* VX111 — attacher une pièce jointe à une note du chatter (input natif
@@ -3182,6 +3188,28 @@ textarea.form-control {
 }
 
 .chatter-note-box .form-control { flex: 1; }
+
+/* ORDRE FONDATEUR 2026-08-01 — « la zone de NOTE de la fenêtre lead est trop
+   petite ». C'était une ligne unique de 36 px pour y écrire le compte rendu
+   d'un appel : on ne relisait jamais que les derniers mots tapés.
+   Elle S'OUVRE sur 3 lignes et grandit jusqu'à 8, puis défile. Les bornes
+   vivent ICI et pas en JS, en `em` : elles suivent la taille de police et le
+   zoom du navigateur (une borne en px se décale au premier réglage
+   d'accessibilité). Le JS ne fait que poser la hauteur du contenu entre les
+   deux — c'est le `max-height` qui produit le défilement interne, sans aucun
+   comptage de lignes.
+   `resize: none` (au lieu du `resize: vertical` hérité de textarea.form-control)
+   : la poignée de redimensionnement et l'autosize se battraient pour la même
+   propriété, et la frappe suivante effacerait le réglage manuel.
+   Mesure tactile : 3 lignes ≈ 74 px, largement au-dessus des 44 px. */
+.chatter-note-box textarea.chatter-note-input {
+  line-height: 1.45;
+  padding: 8px 10px;
+  min-height: calc(3 * 1.45em + 18px);
+  max-height: calc(8 * 1.45em + 18px);
+  overflow-y: auto;
+  resize: none;
+}
 
 .chatter-timeline {
   display: flex;
@@ -4881,6 +4909,19 @@ textarea.form-control {
   /* LB41 — le corps ne scrolle PLUS (le board est l'unique scrolleur) ;
      flex:1 le fait remplir la colonne étirée → colonne courte = zone de
      dépôt pleine hauteur quand même. */
+  /* HYGIÈNE D'AXE (round 4, même règle qu'au bloc mobile de `.kb-col`) :
+     ce corps est volontairement SANS `overflow` — il n'est donc pas un
+     conteneur de défilement et ne peut voler aucun geste. Si quelqu'un lui
+     rend un jour un `overflow-y: auto` (c'était son état d'avant LB41), il
+     DOIT écrire `overflow-x: clip` dans le même bloc : sinon l'axe X est
+     CALCULÉ en `auto` (spec Overflow niv. 3) et la première carte qui
+     déborde d'1 px rend la colonne balayable horizontalement — exactement
+     le bug « je balaie les leads au lieu des étapes ». Le seul scrolleur de
+     cartes du desktop est `.kb-board`, dont les DEUX axes sont déjà
+     explicites (`overflow: auto` desktop, `overflow: scroll hidden` mobile).
+     On ne pose pas `clip` ici : sans overflow il n'y a rien à corriger, et
+     un contexte de rognage raboterait l'ombre de survol et l'anneau de
+     focus des cartes (le padding latéral du corps est plus étroit qu'eux). */
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -4909,6 +4950,19 @@ textarea.form-control {
 .kb-drag-wrap:focus-visible {
   outline: 2px solid var(--ring, #f5a623);
   outline-offset: 2px;
+}
+
+/* (E) — la carte ne « pop » plus au contact du doigt. `useDraggable` (dnd-kit)
+   pose `role="button"` sur l'enveloppe de la carte : la règle M155
+   `[role="button"]:active { transform: scale(0.985) }` — écrite pour de vrais
+   boutons — s'y appliquait donc, et `:active` remontant aussi la chaîne des
+   ancêtres, le moindre tap SUR un contrôle interne faisait sauter la carte
+   entière. Règle ajoutée (jamais une modification de M155, qui reste juste
+   pour les boutons) ; sa spécificité (0,3,0) l'emporte sur (0,2,0), donc
+   l'ordre dans le fichier n'y change rien. Les vrais <button> de la carte
+   gardent leur retour tactile via le sélecteur `button:active` de M155. */
+.kb-drag-wrap [role="button"]:active {
+  transform: none;
 }
 
 /* VX192 — carte chantier ouvrable au clavier : un <button> transparent qui
@@ -5221,6 +5275,44 @@ textarea.form-control {
   font-weight: 700;
 }
 
+/* RETOUR FONDATEUR (2026-08-01) — « je vois encore l'étape sur chaque lead » :
+   sur un kanban, la COLONNE est déjà l'étape ; le sélecteur d'étape par carte
+   (StageMover — chemin clavier/souris sans drag, gardes LB3/LB4 conservées)
+   n'a pas à occuper le repos de chaque carte. Replié à hauteur nulle au repos,
+   il se révèle au survol de la carte (pointeur fin) et — resté FOCALISABLE —
+   se déplie dès que le focus CLAVIER l'atteint (:has(:focus-visible) : un TAP
+   iOS donne le focus au wrapper tabbable dnd-kit et dépliait le sélecteur
+   sous le doigt — :focus-visible ne s'allume pas au tap ; règle anti
+   « tabbable invisible » du contrat APX2 préservée au clavier). Au doigt, il
+   disparaît : l'étape se change dans la fenêtre du lead (pilule) ou en mode
+   déplacement. Bonus densité : chaque carte rend ~34px au repos. */
+.kb-stage-mover {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  margin-top: 0;
+  transition: max-height 150ms ease, opacity 150ms ease, margin-top 150ms ease;
+}
+.kb-drag-wrap:has(:focus-visible) .kb-stage-mover {
+  max-height: 4rem;
+  opacity: 1;
+  margin-top: 0.28rem;
+  overflow: visible;
+}
+/* Le survol ne révèle qu'en pointeur fin (garde hover-compat du repo) ; le
+   chemin clavier (:focus-within, ci-dessus) marche sur TOUT appareil. */
+@media (hover: hover) {
+  .kb-drag-wrap:hover .kb-stage-mover {
+    max-height: 4rem;
+    opacity: 1;
+    margin-top: 0.28rem;
+    overflow: visible;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kb-stage-mover { transition: none; }
+}
+
 /* ---------- Mobile ---------- */
 
 @media (max-width: 768px) {
@@ -5230,19 +5322,68 @@ textarea.form-control {
      horizontal aimanté par scroll-snap natif ; la COLONNE redevient le
      scrolleur vertical (axes imbriqués : board = X aimanté, colonne = Y) —
      l'en-tête sticky se re-résout tout seul contre la colonne. */
+  /* (C, révisé — « make the sweep the most pleasant possible ») : le vol du
+     geste diagonal venait du CUMUL mandatory + gestionnaires JS tactiles
+     (swipe de carte, TouchSensor) qui empêchaient le navigateur de poser son
+     propre verrou d'axe. Ces gestionnaires ont TOUS disparu (gestes purs) :
+     le navigateur départage seul colonne-Y / board-X dès les premiers pixels,
+     et `mandatory` redevient ce qu'il est chez les pagers natifs — un
+     claquement de page NET, jamais un repos entre deux colonnes (le flou du
+     `proximity` essayé en premier). `snap-stop: always` interdit de sauter
+     plusieurs étapes sur un grand balan, `start` reste l'ancrage atteignable,
+     et `overscroll-behavior-x: contain` coupe le chaînage horizontal en bout
+     de funnel (le rebond local, lui, reste). */
   .kb-board {
     gap: 0.6rem;
     padding: 0.5rem;
     -webkit-overflow-scrolling: touch;
     overflow: scroll hidden;
     scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    /* L'axe de snap est X : sans `scroll-padding-left`, la position `start`
+       de la 1ʳᵉ colonne vaut scrollLeft = 8 px (le padding du board fait
+       partie du contenu scrollable) — `mandatory` TIRAIT le board de 0 à 8 px
+       dès la pose. Aligné sur le padding : chaque étape se pose avec la même
+       gouttière, zéro micro-correction. */
+    scroll-padding-left: 0.5rem;
   }
 
   .kb-col {
     flex: 0 0 90%;
-    scroll-snap-align: center;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
     min-height: 0;
     overflow-y: auto;
+    /* ┌───────────────────────────────────────────────────────────────────┐
+       │ NE RETIRE JAMAIS CETTE LIGNE. Règle CSS (spec Overflow niv. 3) :  │
+       │ dès qu'UN axe vaut autre chose que `visible`, l'AUTRE axe encore  │
+       │ à `visible` est CALCULÉ en `auto`. `overflow-y: auto` ci-dessus   │
+       │ transformait donc AUSSI `.kb-col` en scrolleur HORIZONTAL — et il │
+       │ suffisait qu'une carte déborde d'1 px en largeur (les cartes AVEC │
+       │ devis : rangée L2 montant + budget de signaux) pour que la        │
+       │ colonne AVALE le balayage gauche/droite destiné au pager du board.│
+       │ Symptôme fondateur (2026-08-01) : « dans Devis envoyé / Relance   │
+       │ je finis par balayer les LEADS dans l'étape » — Nouveau/Contacté  │
+       │ (cartes sans montant, donc sans débord) marchaient bien.          │
+       │ `clip` et non `hidden` : `hidden` crée un vrai conteneur de       │
+       │ défilement (scrollable par programme, et il redevient une cible   │
+       │ de geste sur certains moteurs) ; `clip` n'en crée AUCUN — l'axe X │
+       │ ne peut plus jamais devenir un scrolleur ici.                     │
+       │ Le débord lui-même est étranglé à la source sur `.kb-card-value`  │
+       │ / `.kb-card-foot` (bloc APX2) — ceinture ET bretelles.            │
+       └───────────────────────────────────────────────────────────────────┘ */
+    overflow-x: clip;
+    /* (D) — la règle VX175(b) plus haut couvre `.kb-board` (l'axe X) mais PAS
+       `.kb-col`, qui est pourtant LE scrolleur vertical au téléphone : sans
+       `-webkit-overflow-scrolling: touch` le défilement de la colonne saccade
+       « pas à pas » sur Safari iOS (aucune inertie), et sans
+       `overscroll-behavior-y` il CHAÎNE — arrivé en bas de la colonne, la
+       poussée continue dans la page puis dans le pull-to-refresh. `contain`
+       (et non `none`) coupe uniquement le chaînage : le rebond élastique
+       LOCAL de la colonne, lui, reste — c'est l'accusé de réception « tu es
+       au bout », on ne le supprime pas. */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
     /* La colonne est ICI le scrolleur : même règle que .kb-board — un
        scrollIntoView n'enterre jamais le haut d'une carte sous l'en-tête
        sticky (cause du rouge MB6 mobile-safari en CI). */
@@ -6357,6 +6498,79 @@ textarea.form-control {
   flex: 0 0 auto;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   ROUND 5 — BANDEAU « À COMPLÉTER ».
+   L'ordre des sections ne bouge JAMAIS (mémoire spatiale : un formulaire qui
+   se réorganise selon le contexte se relit à chaque ouverture au lieu de
+   s'apprendre — Office 2000, Findlater & McGrenere, NN/g). L'intuition
+   fondateur « voir d'abord ce qui manque selon l'étape » est donc livrée par
+   ce bandeau, qui POINTE : les sections restent à leur place.
+   Il est ÉPINGLÉ juste sous le rail de sections (`.lw-secnav`, sticky top:0)
+   — d'où le `top` qui vaut la hauteur de ce rail : les deux ne se recouvrent
+   jamais, quel que soit le défilement.
+   Il n'existe QUE s'il a quelque chose à dire : rien n'est rendu quand tout
+   va bien (aucune règle « état vide » ici — c'est le JSX qui ne rend rien).
+   ══════════════════════════════════════════════════════════════════════════ */
+.lw-todo {
+  position: sticky;
+  /* Sous `.lw-secnav` (0.5rem + 0.5rem de padding + ~1.6rem de chip). */
+  top: 2.6rem;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  /* Teinte d'alerte DILUÉE dans la carte : le bandeau se remarque sans crier,
+     et le texte porte `--warning-text` — le token déjà validé AA sur fond
+     clair ET sombre (design/tokens.css), jamais une couleur locale. */
+  background: color-mix(in oklch, var(--warning) 18%, var(--card));
+  border-bottom: 1px solid color-mix(in oklch, var(--warning-text) 25%, transparent);
+}
+.lw-todo-label {
+  font-size: var(--text-small);
+  font-weight: 700;
+  color: var(--warning-text);
+  margin-right: 0.15rem;
+}
+.lw-todo-chip {
+  display: inline-flex;
+  align-items: center;
+  /* ≥44px sous le doigt : la hauteur vient du padding + min-height, jamais
+     d'une cible invisible plus grande que le dessin (piège d'accessibilité). */
+  min-height: 44px;
+  padding: 0.25rem 0.7rem;
+  border-radius: 9999px;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--warning-text);
+  background: var(--card);
+  border: 1px solid color-mix(in oklch, var(--warning-text) 35%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .lw-todo-chip:hover {
+    background: color-mix(in oklch, var(--warning-text) 12%, var(--card));
+  }
+}
+/* Au pointeur FIN, 44px de haut pour une chip textuelle est disproportionné :
+   la contrainte tactile ne s'applique qu'au doigt. */
+@media (pointer: fine) {
+  .lw-todo-chip { min-height: 28px; }
+}
+
+/* Coche « section complète » — un signe, jamais une boîte. Elle n'apparaît
+   que sur une section REPLIÉE : ouverte, la section se lit d'elle-même. */
+.lw-section-done {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--success);
+}
+
 /* Pile des sections. */
 .lw-sections {
   display: flex;
@@ -6496,14 +6710,89 @@ textarea.form-control {
   margin-bottom: 0.85rem;
 }
 
-.lw-rail-actions {
+/* LWC2 — bande « Faits clés » : l'information que la pile de boutons occupait
+   sans la donner (montant du dernier devis, canal, dernier échange). Tokens
+   sémantiques uniquement → lisible en clair comme en sombre. */
+.lw-facts {
   display: flex;
   flex-direction: column;
+  gap: 0.3rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.lw-facts-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.lw-facts-label {
+  flex: 0 0 auto;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.lw-facts-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--foreground);
+  text-align: right;
+}
+.lw-facts-amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lw-facts-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+}
+
+/* LWC2 — 2 CTA côte à côte + menu « ⋯ » (au lieu de 6 boutons empilés). */
+.lw-rail-actions {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
 }
 .lw-rail-actions > * {
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
   justify-content: center;
+}
+.lw-rail-actions-more {
+  flex: 0 0 auto;
+  width: 44px;
+  min-width: 44px;
+  font-size: var(--text-body);
+  line-height: 1;
+}
+.lw-rail-actions-menu [role="menuitem"] {
+  min-height: 44px;
+}
+/* Sous 768 px, la barre-pouce (.lw-thumbbar) porte déjà WhatsApp : ce bouton
+   serait un doublon dans le rail. */
+@media (max-width: 767px) {
+  .lw-rail-actions-wa {
+    display: none;
+  }
 }
 
 /* ── LW15 : triade (responsable · prochaine action · relance) ──────────────── */
@@ -6557,44 +6846,57 @@ textarea.form-control {
   text-decoration: underline;
 }
 
-/* ── LW16 : StageControl — rangée d'étapes + pourrissement (rotting) ───────── */
+/* ── LW16/LWC1 : StageControl — UNE pilule compacte + menu ▾ des autres ────── */
 
 .lw-stage {
-  margin-bottom: 0.85rem;
+  margin-bottom: 0.6rem;
 }
-.lw-stage-row {
+/* LWC1 — la rangée des 6 pastilles (90-120 px) devient une seule ligne de
+   ≤44 px : pilule de l'étape courante + « depuis X j » inline + chevron. Toute
+   la ligne est le déclencheur du menu (cible tactile pleine largeur). */
+.lw-stagepill {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.lw-stage-pill {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  line-height: 0;
-}
-.lw-stage-pill--ghost {
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  border-radius: 9999px;
-  opacity: 0.75;
-  transition: opacity var(--motion-fast) var(--ease-standard);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 @media (hover: hover) {
-  .lw-stage-pill--ghost:hover {
-    opacity: 1;
+  .lw-stagepill:hover {
+    background: color-mix(in oklch, var(--muted-foreground) 8%, transparent);
   }
 }
-.lw-stage-pill--current {
-  cursor: default;
+@media (prefers-reduced-motion: reduce) {
+  .lw-stagepill {
+    transition: none;
+  }
+}
+.lw-stagepill-chev {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: var(--text-small);
+  line-height: 1;
 }
 /* Ancienneté d'étape : neutre par défaut, chauffe avec la rampe rotting. Le
    compteur de jours passe par `.num` dans le JSX (StageControl.jsx, LW33) —
    ce `font-variant-numeric` reste pour le mot « depuis…j » hors du span.num. */
 .lw-stage-since {
-  margin: 0.35rem 0 0;
+  margin: 0;
+  min-width: 0;
   font-size: var(--text-small);
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .lw-stage-since--warning {
   display: inline-block;
@@ -6612,6 +6914,11 @@ textarea.form-control {
   border-radius: 9999px;
   color: var(--destructive);
   background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}
+/* Menu des AUTRES étapes : items ≥44 px (tactile), pastille de couleur gardée
+   pour que l'identité visuelle d'une étape survive au compactage. */
+.lw-stage-menu [role="menuitem"] {
+  min-height: 44px;
 }
 
 /* ── LW17 : score expliqué (popover des raisons) ──────────────────────────── */
@@ -9554,7 +9861,19 @@ textarea.form-control {
   margin-right: 0.25rem;
 }
 
-/* ---- L2 — montant + BUDGET DE SIGNAUX (jamais supprime au repos) ---- */
+/* ---- L2 — montant + BUDGET DE SIGNAUX (jamais supprime au repos) ----
+   LA SOURCE DU DÉBORD (round 4). Cette rangee est `flex-wrap: nowrap` avec un
+   montant `white-space: nowrap` : un flex-item a `min-width: auto` par defaut,
+   c.-a-d. « jamais plus etroit que mon contenu » — un gros montant (ou une
+   locale qui ecrit `1 234 567 MAD`) POUSSAIT donc la rangee au-dela de la
+   carte. Ce debord de quelques px est ce qui, combine au `overflow-y: auto`
+   du bloc mobile de `.kb-col`, faisait de la colonne un scrolleur horizontal
+   qui volait le balayage d'etape (voir le pave encadre la-bas). On l'etrangle
+   ICI, a la source : `min-width: 0` rend le montant reellement compressible,
+   il s'ellipse au lieu de pousser ; le budget de signaux (`flex: 0 0 auto`)
+   reste intouchable — c'est lui la donnee non negociable au repos. Le `clip`
+   de la rangee est la ceinture : meme un enfant futur mal borne ne peut plus
+   elargir la carte (et `clip` n'ouvre AUCUN contexte de defilement). */
 .kb-card--lead .kb-card-value {
   display: flex;
   align-items: center;
@@ -9562,11 +9881,16 @@ textarea.form-control {
   gap: 0.35rem;
   margin-top: 0;
   min-height: 1.05rem;
+  min-width: 0;
+  overflow: clip;
 }
 .kb-card--lead .kb-card-montant {
   font-size: 0.82rem;
   line-height: 1.2;
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .kb-card--lead .kb-card-signals {
   display: inline-flex;
@@ -9622,19 +9946,31 @@ textarea.form-control {
 .kb-card--lead[data-rot='warning'] .kb-rot-dot { background: var(--warning-text); }
 .kb-card--lead[data-rot='danger'] .kb-rot-dot { background: var(--destructive); }
 
-/* ---- L3 — points de tags + age + avatar 16 ---- */
+/* ---- L3 — points de tags + age + avatar 16 ----
+   Meme traitement qu'en L2 (round 4) : `nowrap` + une bande de points de tags
+   `flex: 0 0 auto` = une rangee qui POUSSE des qu'un lead porte beaucoup
+   d'etiquettes. On la borne au lieu de la laisser elargir la carte : les
+   points se compriment (`min-width: 0` + `overflow: clip` sur la bande, le
+   compteur `+N` reste lisible), la pilule d'age et l'avatar restent entiers. */
 .kb-card--lead .kb-card-foot {
   align-items: center;
   flex-wrap: nowrap;
   gap: 0.3rem;
   margin-top: 0;
   min-height: 1rem;
+  min-width: 0;
+  overflow: clip;
 }
 .kb-tag-dots {
   display: inline-flex;
   align-items: center;
   gap: 3px;
   flex: 0 0 auto;
+}
+.kb-card--lead .kb-tag-dots {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: clip;
 }
 .kb-tag-dot {
   display: inline-block;
@@ -10008,55 +10344,9 @@ textarea.form-control {
 .lp-page[data-view] .kb-col-money {
   text-align: right;
 }
-.lp-page[data-view] .kb-col-activite {
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  margin-top: 0.2rem;
-  height: 4px;
-}
-.lp-page[data-view] .kb-act-seg {
-  flex-shrink: 1;
-  min-width: 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  cursor: pointer;
-  /* La cible visuelle fait 4 px de haut ; la zone de FRAPPE en fait 14 grace a
-     l'overlay ci-dessous — la barre reste fine sans devenir intouchable. */
-  position: relative;
-}
-.lp-page[data-view] .kb-act-seg::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 14px;
-  transform: translateY(-50%);
-}
-.lp-page[data-view] .kb-act-seg--danger { background: var(--destructive); }
-.lp-page[data-view] .kb-act-seg--warning { background: var(--warning-text); }
-.lp-page[data-view] .kb-act-seg--success { background: var(--success); }
-.lp-page[data-view] .kb-act-seg--muted {
-  background: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
-}
-/* Segment actif : le seul a garder son opacite pleine, les autres s'estompent
-   — l'etat du filtre se LIT sans lire un libelle. */
-.lp-page[data-view] .kb-col-activite:has(.kb-act-seg--on) .kb-act-seg:not(.kb-act-seg--on) {
-  opacity: 0.35;
-}
-.lp-page[data-view] .kb-act-seg--on {
-  outline: 1px solid var(--foreground);
-  outline-offset: 1px;
-}
-.lp-page[data-view] .kb-act-seg:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-@media (hover: hover) {
-  .lp-page[data-view] .kb-act-seg:hover { filter: brightness(1.15); }
-}
+/* APX6 — barre segmentée RETIRÉE sur ordre fondateur (2026-08-01, « enlève
+   ça ») : la « case grise » au-dessus de chaque étape. `.kb-col-money` (LB9)
+   reste seule dans l'en-tête. */
 
 /* ===========================================================================
    APX7 — TELEPHONE ET TABLETTE : 5+ leads par etape, `hover:none` servi a
@@ -10112,9 +10402,16 @@ textarea.form-control {
     opacity: 0;
     overflow: hidden;
   }
-  /* Le focus clavier DEPLIE toujours reellement — une tablette avec clavier
-     externe reste pilotable, et aucun controle n'est « tabbable invisible ». */
-  .kb-card--lead:focus-within > .kb-card-reveal {
+  /* Le focus CLAVIER DEPLIE toujours reellement — une tablette avec clavier
+     externe reste pilotable, et aucun controle n'est « tabbable invisible ».
+     (F) — mais `:focus-within` ne distingue pas le clavier du DOIGT : sur iOS,
+     taper un controle interne (case, menu, ☎) lui donne le focus, et la carte
+     depliait ses 14rem animees sous le pouce a chaque tap. `:has(:focus-visible)`
+     porte exactement l'intention ecrite ci-dessus — `:focus-visible` est
+     precisement le focus que le navigateur juge devoir MONTRER, c'est-a-dire le
+     clavier externe et pas le tap. Le depliage reste un vrai depliage
+     (max-height + opacity, jamais visibility: hidden). */
+  .kb-card--lead:has(:focus-visible) > .kb-card-reveal {
     max-height: 14rem;
     margin-top: 0.28rem;
     opacity: 1;

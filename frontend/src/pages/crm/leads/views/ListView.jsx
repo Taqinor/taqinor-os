@@ -19,7 +19,7 @@ import {
   PRIORITE_LABELS,
   PRIORITE_STARS,
   isPerdu,
-  isStageMoveAllowed,
+  isStageMoveBackward,
   tagList,
   tagColor,
   // LB20 — option « Par étape » : MÊME agrégation que le kanban (count +
@@ -27,6 +27,8 @@ import {
   // mêmes nombres.
   groupLeadsByStage,
 } from '../../../../features/crm/stages'
+// ORDRE FONDATEUR 2026-08-01 — la MÊME question qu'au board avant un recul.
+import { useConfirmerRecul } from '../../../../features/crm/confirmRecul'
 import { formatDate } from '../../../../lib/format'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
@@ -82,13 +84,18 @@ const CHAMPS_UNDO = {
 
 // Options des sélecteurs d'édition en place (libellés FR depuis stages.js).
 // LB4 — options d'étape calculées PAR LIGNE (dépendent de l'étape courante du
-// lead, pas une liste plate partagée) : `disabled` grise les transitions
-// interdites, MÊME garde que le drag kanban (isStageMoveAllowed) — le chemin
-// clavier/souris de la liste obtient désormais la même réponse (bug #8).
+// lead, pas une liste plate partagée) — le chemin clavier/souris de la liste
+// obtient la MÊME réponse que le drag kanban (bug #8).
+// ORDRE FONDATEUR 2026-08-01 — les options ARRIÈRE ne sont plus grisées :
+// reculer est légitime, sous confirmation (voir `onSave` de la cellule Stade).
+// Reste grisée la seule option qui ne veut rien dire : l'étape COURANTE.
+// L'invariant du bug #8 tient toujours — les trois surfaces (drag, StageMover,
+// liste) composent les deux mêmes prédicats de stages.js, aucune ne redérive
+// un rang de funnel localement.
 const stageOptionsFor = (currentStage) => PIPELINE_STAGES.map((s) => ({
   value: s,
   label: STAGE_LABELS[s] ?? s,
-  disabled: s !== currentStage && !isStageMoveAllowed(currentStage, s),
+  disabled: s === currentStage,
 }))
 const PRIORITE_OPTIONS = [
   { value: 'basse', label: PRIORITE_LABELS.basse },
@@ -238,6 +245,9 @@ const ListRow = memo(function ListRow({
   const perdu = isPerdu(lead)
   const stars = PRIORITE_STARS[lead.priorite] ?? 1
   const tags = tagList(lead)
+  // Ordre fondateur 2026-08-01 — question partagée avec le board avant tout
+  // recul d'étape (cellule Stade plus bas).
+  const confirmerRecul = useConfirmerRecul()
   const enRetard = lead.relance_date && lead.relance_date < today
   // LB21 — ligne ouvrable au clavier (recon-05 a11y #5 : onClick sur <tr>,
   // aucun tabIndex/role/onKeyDown). Enter/Espace ouvrent la fiche SEULEMENT
@@ -351,9 +361,17 @@ const ListRow = memo(function ListRow({
           // sentinelle rejetée (LB3) — l'avaler ICI, sinon InlineEdit peint
           // un faux « Échec de l'enregistrement » rouge PERSISTANT sur un
           // chemin de succès (l'affichage suit déjà la prop, rien à annuler).
-          onSave={(v) => onInlineSave(lead, 'stage', v).catch((e) => {
-            if (!isSigneIntercept(e)) throw e
-          })}
+          // ORDRE FONDATEUR 2026-08-01 — un recul demande d'abord confirmation
+          // (même question que le board : elle nomme le lead et les deux
+          // étapes), puis emprunte le MÊME chemin d'enregistrement avec le
+          // marqueur. Annulé, aucun PATCH n'est émis et InlineEdit repose la
+          // valeur affichée (elle suit la prop `value`, rien à annuler).
+          onSave={async (v) => {
+            const enArriere = isStageMoveBackward(lead.stage, v)
+            if (enArriere && !(await confirmerRecul(lead, v))) return
+            await onInlineSave(lead, 'stage', v, { confirmeRecul: enArriere })
+              .catch((e) => { if (!isSigneIntercept(e)) throw e })
+          }}
         />
       </td>
       {!hiddenCols.score && (

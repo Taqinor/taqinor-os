@@ -53,7 +53,12 @@ export default function ContextRail({
     const openNote = () => {
       changeTab('historique')
       requestAnimationFrame(() => {
-        document.querySelector('.lw-context-timeline .chatter-note-box input.form-control')?.focus()
+        // ORDRE FONDATEUR 2026-08-01 — le composer de note est passé d'une
+        // <input> d'une ligne à un <textarea> de trois : ce sélecteur DOIT
+        // suivre, sinon le bouton « 📝 Note » du thumbbar ouvre le bon onglet
+        // et ne focalise plus rien — un no-op parfaitement silencieux (c'est
+        // exactement le bug LW44, sur l'autre composer).
+        document.querySelector('.lw-context-timeline .chatter-note-box textarea.chatter-note-input')?.focus()
       })
     }
     const openWa = () => {

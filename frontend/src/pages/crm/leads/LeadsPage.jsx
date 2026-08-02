@@ -6,7 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 // VX45 — ⚡/🔀 (emoji fonctionnels, rendu variable selon l'OS) remplacés par
 // Zap/GitMerge (GitMerge = même icône que la section « Doublons » de
 // LeadForm.jsx, features/crm/stages : un seul vocabulaire visuel).
-import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge, Maximize2, Minimize2 } from 'lucide-react'
+import { Upload, Download, X, Plus, MoreHorizontal, Zap, GitMerge, Maximize2, Minimize2, Move } from 'lucide-react'
 import { useIsAdmin } from '../../../hooks/useHasPermission'
 import StateBlock from '../../../components/StateBlock'
 import { fetchLeads, updateLead, leadStagePatched } from '../../../features/crm/store/crmSlice'
@@ -218,6 +218,18 @@ export default function LeadsPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [boardFullscreen])
+
+  /* (B1) — « MODE DÉPLACEMENT » du board au doigt. Le TouchSensor de dnd-kit
+     pose un `touchmove` NON PASSIF permanent sur `window` dès qu'il est monté,
+     ce qui alourdit TOUT le défilement au doigt de la page, drag ou pas. On ne
+     le monte donc, en pointeur grossier, que lorsque ce mode est actif —
+     allumé par l'entrée « Réorganiser par glisser » du menu ⋯ ci-dessous,
+     éteint par la chip du board. Volontairement NON persisté : il retombe OFF
+     à la navigation (ce n'est pas une préférence, c'est un geste). */
+  const [dragMode, setDragMode] = useState(false)
+  const exitDragMode = useCallback(() => setDragMode(false), [])
+  // L'entrée n'a de sens que sur le board : les autres vues n'ont pas de drag.
+  const dragModeOffert = view === 'kanban'
 
   // Filtres partagés par les quatre vues — persistés en localStorage (comme la
   // vue active) pour survivre à un rechargement de page.
@@ -643,12 +655,25 @@ export default function LeadsPage() {
   // COMPLET dans le store (score recalculé, stage_since_days, devis…) — le
   // `.then(() => refetch())` re-déclenchait un GET /leads ENTIER pour un
   // changement d'UN champ sur UN lead, en pure perte réseau.
-  const onInlineSave = useCallback((lead, field, value) => {
+  // ORDRE FONDATEUR 2026-08-01 — 4e argument `opts` : les MARQUEURS de la
+  // famille write-only du LeadSerializer (jamais des champs de lead ; le
+  // serveur les pop() dans validate() et ne les persiste jamais).
+  //   • confirmeRecul → `confirme_recul` : l'utilisatrice a confirmé un retour
+  //     en arrière d'étape dans une boîte de dialogue qui nommait le lead et
+  //     les deux étapes ;
+  //   • undo → `undo` (LB39) : annulation du dernier mouvement, revérifiée
+  //     serveur contre le chatter.
+  // Ils restent OMIS du corps quand ils sont faux — un `confirme_recul: false`
+  // traînant dans chaque PATCH banaliserait le marqueur.
+  const onInlineSave = useCallback((lead, field, value, opts = {}) => {
     if (field === 'stage' && value === CONVERSION_STAGE) {
       setSigneLead(lead)
       return Promise.reject(SIGNE_INTERCEPT)
     }
-    return dispatch(updateLead({ id: lead.id, data: { [field]: value } })).unwrap()
+    const data = { [field]: value }
+    if (opts.confirmeRecul) data.confirme_recul = true
+    if (opts.undo) data.undo = true
+    return dispatch(updateLead({ id: lead.id, data })).unwrap()
   }, [dispatch])
 
   // LB5 — « ✗ Perdu » passe ENFIN par le store (blueprint I2, bug #3) :
@@ -673,7 +698,11 @@ export default function LeadsPage() {
   // passé à chaque carte/ligne comme `onChangeStage`. Seule dépendance externe
   // réelle : `dispatch` (stable, useDispatch) — `setStageError`/`setBusyLeadId`
   // sont des setters `useState`, également stables.
-  const changeStage = useCallback(async (lead, newStage) => {
+  // ORDRE FONDATEUR 2026-08-01 — 3e argument `{ confirmeRecul }` : le drop
+  // kanban peut désormais aller EN ARRIÈRE, à condition que KanbanView ait
+  // obtenu un oui explicite avant d'appeler (la garde n'a pas disparu, elle
+  // est devenue une question). Sans le marqueur, le serveur 400 toujours.
+  const changeStage = useCallback(async (lead, newStage, { confirmeRecul = false } = {}) => {
     if (!lead || lead.stage === newStage) return
     // A2 — déplacer un lead dans « Signé » exige de choisir le devis accepté
     // et l'option : on ouvre le dialogue au lieu de déplacer l'étape.
@@ -685,12 +714,15 @@ export default function LeadsPage() {
     setBusyLeadId(lead.id)
     dispatch(leadStagePatched({ id: lead.id, stage: newStage }))
     try {
-      await dispatch(updateLead({ id: lead.id, data: { stage: newStage } })).unwrap()
-      // VX95 — ce chemin n'est atteint QUE par le drop kanban (drag-and-drop
-      // en avant, jamais un recul — gardé par KanbanView avant l'appel, ni
-      // SIGNED — gardé ci-dessus par SigneDialog). « Annuler » restaure
-      // l'étape antérieure EXACTE : c'est l'undo de sa propre action, pas un
-      // recul manuel.
+      const data = { stage: newStage }
+      if (confirmeRecul) data.confirme_recul = true
+      await dispatch(updateLead({ id: lead.id, data })).unwrap()
+      // VX95 — ce chemin est atteint par le drop kanban (jamais SIGNED —
+      // gardé ci-dessus par SigneDialog). « Annuler » restaure l'étape
+      // antérieure EXACTE : c'est l'undo de sa propre action, pas un recul
+      // manuel. Le marqueur `undo` suffit dans les DEUX sens : annuler une
+      // avancée recule (c'est le cas LB39 d'origine), annuler un recul
+      // confirmé ré-avance (que la garde funnel autorise nativement).
       // LB39 — jusqu'ici ce PATCH arrière se prenait un 400 SYSTÉMATIQUE de la
       // garde funnel du serializer : chaque « Annuler » finissait en
       // « Annulation impossible » (l'undo VX95 était mort en production, le
@@ -882,6 +914,20 @@ export default function LeadsPage() {
                       </DropdownMenuItem>
                     )
                   })}
+                  {/* (B1) — le drag tactile du board coûte un écouteur
+                      `touchmove` non passif permanent : il s'allume à la
+                      demande, et seulement là où il sert. */}
+                  {dragModeOffert && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => setDragMode((v) => !v)}
+                        aria-current={dragMode ? 'true' : undefined}
+                      >
+                        <Move aria-hidden="true" /> Réorganiser par glisser{dragMode ? ' ✓' : ''}
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </>
               )}
             </DropdownMenuContent>
@@ -1027,6 +1073,9 @@ export default function LeadsPage() {
                masque proprement l'action quand la prop est absente. */
             onNewLead={isMobile ? undefined : openNew}
             onImportLeads={() => setShowImport(true)}
+            /* (B1) — mode déplacement au doigt (menu ⋯ ci-dessus). */
+            dragMode={dragMode}
+            onExitDragMode={exitDragMode}
           />
         )}
         {/* VX186 — Suspense autour des vues lazy uniquement (Kanban reste

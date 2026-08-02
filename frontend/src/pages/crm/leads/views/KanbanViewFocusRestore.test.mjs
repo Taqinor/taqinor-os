@@ -38,22 +38,39 @@ test('LB12 : `data-lead-id` posé sur le MÊME nœud que `{...listeners} {...att
 
 test('LB12 : un déplacement RÉUSSI programme requestAnimationFrame → querySelector(data-lead-id) → focus()', () => {
   const block = dragEndBody()
-  const idx = block.indexOf('onChangeStage(lead, over.id)')
+  const idx = block.indexOf('onChangeStage(lead, over.id, { confirmeRecul: enArriere })')
   assert.ok(idx > 0, 'appel onChangeStage introuvable')
   const after = block.slice(idx, idx + 950)
   assert.match(after, /requestAnimationFrame\(\(\) => \{/)
   assert.match(after, /document\.querySelector\(`\[data-lead-id="\$\{lead\.id\}"\]`\)\?\.focus\(\)/)
 })
 
-test('LB12 : les sorties anticipées (pas de over / drop sur place / recul refusé) ne touchent PAS au focus — le nœud d’origine n’est jamais démonté', () => {
+test('LB12 : les sorties anticipées (pas de over / drop sur place / recul ANNULÉ) ne touchent PAS au focus — le nœud d’origine n’est jamais démonté', () => {
   const block = dragEndBody()
   const guardIdx = block.indexOf('if (!lead || !over || over.id === lead.stage) return')
-  const reculIdx = block.indexOf('if (!isStageMoveAllowed(lead.stage, over.id)) {')
+  // ORDRE FONDATEUR 2026-08-01 — la 2ᵉ sortie anticipée n'est plus « recul
+  // REFUSÉ » mais « recul ANNULÉ par l'utilisatrice » : même effet sur le
+  // focus (la carte n'a jamais quitté sa colonne, rien n'est démonté).
+  const reculIdx = block.indexOf('if (enArriere && !(await confirmerRecul(lead, over.id))) return')
   const focusIdx = block.indexOf('requestAnimationFrame(')
   assert.ok(guardIdx > 0 && reculIdx > guardIdx, 'ordre des gardes inattendu')
   // Le `requestAnimationFrame` de restauration de focus vient APRÈS les deux
   // gardes — aucune des deux sorties anticipées ne l'atteint jamais.
   assert.ok(focusIdx > reculIdx, 'la restauration de focus doit suivre les gardes, pas les précéder')
+})
+
+test('ordre fondateur 2026-08-01 : un drop en ARRIÈRE demande, il ne refuse plus', () => {
+  const block = dragEndBody()
+  // Les deux prédicats de stages.js, jamais un rang de funnel redérivé ici.
+  assert.match(block, /const enAvant = isStageMoveAllowed\(lead\.stage, over\.id\)/)
+  assert.match(block, /const enArriere = isStageMoveBackward\(lead\.stage, over\.id\)/)
+  // Le bandeau « On ne recule pas une étape » a disparu du board : il
+  // annonçait un refus qui n'existe plus.
+  assert.doesNotMatch(KANBAN, /On ne recule pas une étape/)
+  assert.doesNotMatch(KANBAN, /reculMsg/)
+  // La question vient de la source PARTAGÉE avec la liste et la fenêtre lead.
+  assert.match(KANBAN, /import \{ useConfirmerRecul \} from '\.\.\/\.\.\/\.\.\/\.\.\/features\/crm\/confirmRecul'/)
+  assert.doesNotMatch(KANBAN, /window\.confirm/)
 })
 
 test('LB12 : même handler pour la souris ET le clavier — un seul handleDragEnd, câblé sur DndContext', () => {

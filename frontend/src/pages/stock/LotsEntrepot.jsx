@@ -229,7 +229,6 @@ export default function LotsEntrepot() {
         ) : null
       ) },
   // canWrite stable au sein d'une session.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [canWrite])
 
   return (

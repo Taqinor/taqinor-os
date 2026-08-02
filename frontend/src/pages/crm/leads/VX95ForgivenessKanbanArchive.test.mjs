@@ -61,21 +61,25 @@ test('LeadsPage.changeStage : le drop kanban en avant réussi affiche toastWithU
   // Le serveur revérifie le marqueur (mouvement inverse exact + fenêtre
   // courte) — il n'autorise rien à lui seul.
   assert.match(block, /updateLead\(\{\s*id: lead\.id, data: \{ stage: prev, undo: true \},\s*\}\)/)
-  // Le chemin AVANT (le drop lui-même) ne porte JAMAIS le marqueur.
+  // Le chemin AVANT (le drop lui-même) ne porte JAMAIS le marqueur d'undo.
   const forward = block.slice(0, block.indexOf('toastWithUndo('))
-  assert.match(forward, /data: \{ stage: newStage \}/)
+  assert.match(forward, /const data = \{ stage: newStage \}/)
   assert.doesNotMatch(forward, /undo: true/)
+  // ORDRE FONDATEUR 2026-08-01 — le marqueur de RECUL CONFIRMÉ n'est ajouté au
+  // corps que si l'appelant l'a demandé : un drop en avant reste un PATCH nu.
+  assert.match(forward, /if \(confirmeRecul\) data\.confirme_recul = true/)
 })
 
-test('LeadsPage.changeStage : le recul-guard manuel (KanbanView) reste en amont — cette fonction ne le duplique pas', () => {
-  // Le garde-fou anti-recul vit dans KanbanView.handleDragEnd, AVANT l'appel à
-  // onChangeStage/changeStage : changeStage ne doit contenir aucune nouvelle
-  // logique de blocage de recul (l'undo restaure `prev`, ce qui est un recul
-  // volontaire de sa PROPRE action, pas un recul manuel).
+test('LeadsPage.changeStage : la DÉCISION de sens reste en amont (KanbanView) — cette fonction ne la duplique pas', () => {
+  // Le sens du mouvement se juge dans KanbanView.handleDragEnd, AVANT l'appel
+  // à onChangeStage/changeStage — qui ne fait que TRANSPORTER la réponse.
+  // changeStage ne contient donc aucune logique de rang de funnel : ni un
+  // `stageRank` local (bug #7), ni un appel aux prédicats de stages.js.
   const start = LEADS_PAGE.indexOf('const changeStage =')
   const end = LEADS_PAGE.indexOf('\n  }', start)
   const block = LEADS_PAGE.slice(start, end)
   assert.doesNotMatch(block, /stageRank/)
+  assert.doesNotMatch(block, /isStageMove(Allowed|Backward)/)
 })
 
 test('StockList : archiver un produit (delete → archived) affiche toastWithUndo restaurant via unarchiveProduit', () => {

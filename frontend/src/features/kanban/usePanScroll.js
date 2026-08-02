@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import {
   shouldIgnorePanStart,
   isPannablePointerType,
@@ -34,7 +34,11 @@ export function usePanScroll() {
   // résultat) : le nouveau `.kb-board` remontait SANS listeners et le
   // drag-to-pan mourait en silence pour la session (le curseur `grab`
   // continuait de le promettre). Le callback ref attache/détache PAR NŒUD.
-  const attach = useCallback((board) => {
+  /* useMemo (et non useCallback) : la propriété `node` doit être posée À LA
+     CRÉATION de la fonction — `react-hooks/immutability` interdit, à raison,
+     de muter une valeur de hook après coup. */
+  const attach = useMemo(() => {
+    const fn = (board) => {
     if (cleanupRef.current) {
       cleanupRef.current()
       cleanupRef.current = null
@@ -91,10 +95,17 @@ export function usePanScroll() {
       board.removeEventListener('pointerup', release)
       board.removeEventListener('pointercancel', release)
     }
+    }
+    // Le consommateur pose `ref={attach}` sur `.kb-board` (React appelle un
+    // callback ref avec le nœud au montage et `null` au démontage).
+    // `fn.node` expose le ref INTERNE en lecture : `attach` est une FONCTION,
+    // pas un objet ref — lire `attach.current` vaut undefined en silence
+    // (classe de bug #43, sens inverse : c'est le lecteur qui se trompe). Le
+    // haptique de pose du board l'a appris à ses dépens.
+    fn.node = boardRef
+    return fn
   }, [])
 
-  // Le consommateur pose `ref={attach}` sur `.kb-board` (React appelle un
-  // callback ref avec le nœud au montage et `null` au démontage).
   return attach
 }
 

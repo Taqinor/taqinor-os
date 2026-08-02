@@ -863,9 +863,9 @@ export default function DevisGenerator({
     ventesApi.getPrefillSite(clientId)
       .then((res) => applySiteProfile(res?.data?.profil))
       .catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pré-remplissage
-    // au montage uniquement (garde `sitePrefillDone`) ; rejouer à chaque
-    // changement d'état écraserait la saisie en cours.
+    // Pré-remplissage au montage uniquement (garde `sitePrefillDone`) ;
+    // rejouer à chaque changement d'état écraserait la saisie en cours.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- montage seul
   }, [clientId, leadId])
 
   // ── Devis automatique (bouton « ⚡ Devis auto » du lead) ──
