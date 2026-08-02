@@ -18,6 +18,14 @@
 //     donc accessible au clavier (ODY13) ;
 //   • fond signature « Lumière sur Nuit » : halo brass ≤8 % sur la surface —
 //     seul écran autorisé au dégradé avec ModuleHero (contrainte VXD).
+//
+// ODY33 (fondateur 2026-08-02, « cet écran et les icônes des apps ne sont PAS
+// DU TOUT comme celles d'Odoo ») — le portail est désormais un écran NUIT
+// plein écran, dans les DEUX thèmes. Ce n'est pas un oubli du mode clair :
+// c'est un seuil, pas un espace de travail, et les tuiles saturées (ODY33,
+// ui/AppIcon) n'ont leur éclat que sur la nuit. Tout le contraste de texte du
+// portail est donc repris dans index.css (gris lune sur nuit, 6,7 à 14,1:1) au
+// lieu des jetons de thème, qui seraient illisibles en clair.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
@@ -118,7 +126,19 @@ function CelluleApp({
         onKeyDown={(e) => onKeyDownTuile(e, index)}
       >
         <span className="home-menu-tile-iconwrap">
-          <AppIcon icon={app.icon} accent={app.accent} size="sm" />
+          {/* ODY33 — la tuile du portail est la plus grande des quatre
+              surfaces ODY9 : `size="lg"` garde le contrat (64 px, et c'est
+              cette valeur qui sert de repli), et `--app-icon-size` est
+              rehaussé à la taille du portail — une VARIABLE définie sur
+              `.home-menu` (76 px bureau / 64 px au pouce), jamais un nombre
+              écrit ici. `appKey` fixe la variante de teinte de l'app. */}
+          <AppIcon
+            icon={app.icon}
+            accent={app.accent}
+            appKey={app.key}
+            size="lg"
+            style={{ '--app-icon-size': 'var(--home-tile-size, 64px)' }}
+          />
           {/* ODY10 — badge vivant : rendu APRÈS la grille (la réponse fédérée
               arrive plus tard), jamais un « 0 », et absent pour une app dont
               le module est désactivé (le serveur ne l'émet même pas). */}
