@@ -142,11 +142,11 @@
 
      Calibrage (script de contraste, sRGB) — les 21 couleurs sont DANS le gamut
      sRGB (aucune ne dépend du gamut-mapping du navigateur), et :
-       • glyphe blanc / fond de tuile : 3,89:1 à 5,79:1, et jamais moins de
+       • glyphe blanc / fond de tuile : 3,89:1 à 5,83:1, et jamais moins de
          3,20:1 même tout en HAUT du dégradé de relief → ≥ 3:1 partout, le
          seuil WCAG 1.4.11 des objets graphiques (un glyphe n'est pas du texte) ;
-       • tuile / nuit du portail : ≥ 3,37:1 — la tuile se détache du fond ;
-       • tuile / carte claire (lanceur, épinglés) : ≥ 3,9:1.
+       • tuile / nuit du portail : ≥ 3,35:1 — la tuile se détache du fond ;
+       • tuile / carte claire (lanceur, épinglés) : ≥ 3,89:1.
      Chaque chroma est poussé au MAXIMUM que le gamut sRGB autorise à cette
      clarté et cette teinte : c'est ce qui sépare une couleur « franche » d'un
      lavis. Le bleu est le plus contraint (sRGB s'y resserre), d'où une clarté
@@ -171,12 +171,21 @@
   --app-tile-lune-1: oklch(57.5% 0.175 292);
   --app-tile-lune-2: oklch(57.5% 0.175 283);
   --app-tile-lune-3: oklch(57.5% 0.175 301);
-  /* `nuit` = la voie GRAPHITE (chroma quasi nul) : c'est elle qui empêche
-     Administration/Compta de se confondre avec la voie azur — deux bleus de
-     clarté voisine ne se distinguent pas, un bleu et un graphite si. */
-  --app-tile-nuit-1: oklch(52% 0.028 270);
-  --app-tile-nuit-2: oklch(52% 0.028 240);
-  --app-tile-nuit-3: oklch(52% 0.028 300);
+  /* `nuit` = la voie BLEU-NUIT (indigo). Elle était GRAPHITE (chroma 0,028) :
+     à l'écran, Comptabilité, Immobilier et Tiers avaient l'air DÉSACTIVÉES au
+     milieu de tuiles franches — un gris n'est pas une couleur d'app, c'est
+     l'état « indisponible ». Le chroma passe donc à 0,115 sur une teinte
+     indigo (277°), assez loin de l'azur (257°, chroma 0,160 : un bleu franc et
+     plus saturé) et de la lune (292°, chroma 0,175 : un violet nettement plus
+     clair) pour rester reconnaissable — la distance perceptuelle azur↔nuit
+     (ΔEok 0,047) est du même ordre que celle, déjà admise, entre brass et
+     warning (0,041). La clarté ne DESCEND pas malgré le mot « nuit » : sous
+     51 %, la tuile ne tiendrait plus les 3:1 avec le fond du portail.
+     L'écart de teinte entre variantes retombe de ±30° à ±8° : ±30° n'était
+     invisible que parce que la voie était grise. */
+  --app-tile-nuit-1: oklch(51.5% 0.115 277);
+  --app-tile-nuit-2: oklch(51.5% 0.115 269);
+  --app-tile-nuit-3: oklch(51.5% 0.115 285);
   --app-tile-primary-1: var(--app-tile-brass-2);
   --app-tile-primary-2: var(--app-tile-brass-3);
   --app-tile-primary-3: var(--app-tile-brass-1);
