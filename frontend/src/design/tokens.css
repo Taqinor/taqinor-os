@@ -140,36 +140,40 @@
      `primary` est un ALIAS de `brass` (c'est le même or de marque) avec un
      décalage de variante, pour ne pas inventer une 8ᵉ teinte.
 
-     Calibrage (script de contraste, sRGB) — chaque couleur est DANS le gamut,
-     bas et haut de dégradé compris, et :
-       • glyphe blanc / fond de tuile : 3,39:1 à 5,06:1 → ≥ 3:1 partout,
-         le seuil WCAG 1.4.11 des objets graphiques (un glyphe n'est pas du
-         texte) ; ≥ 4:1 sur 5 voies sur 7 ;
-       • tuile / nuit du portail : ≥ 3,2:1 — la tuile se détache du fond ;
+     Calibrage (script de contraste, sRGB) — les 21 couleurs sont DANS le gamut
+     sRGB (aucune ne dépend du gamut-mapping du navigateur), et :
+       • glyphe blanc / fond de tuile : 3,89:1 à 5,79:1, et jamais moins de
+         3,20:1 même tout en HAUT du dégradé de relief → ≥ 3:1 partout, le
+         seuil WCAG 1.4.11 des objets graphiques (un glyphe n'est pas du texte) ;
+       • tuile / nuit du portail : ≥ 3,37:1 — la tuile se détache du fond ;
        • tuile / carte claire (lanceur, épinglés) : ≥ 3,9:1.
+     Chaque chroma est poussé au MAXIMUM que le gamut sRGB autorise à cette
+     clarté et cette teinte : c'est ce qui sépare une couleur « franche » d'un
+     lavis. Le bleu est le plus contraint (sRGB s'y resserre), d'où une clarté
+     un peu plus basse pour la voie azur.
      Ces valeurs ne changent PAS entre clair et sombre : la couleur d'une app
      est son identité, pas un état du thème (`.dark` ne les redéfinit pas). */
-  --app-tile-brass-1: oklch(60% 0.121 78);
-  --app-tile-brass-2: oklch(60% 0.121 69);
-  --app-tile-brass-3: oklch(60% 0.121 87);
+  --app-tile-brass-1: oklch(60% 0.122 78);
+  --app-tile-brass-2: oklch(60% 0.122 69);
+  --app-tile-brass-3: oklch(60% 0.122 87);
   --app-tile-warning-1: oklch(61.5% 0.146 48);
   --app-tile-warning-2: oklch(61.5% 0.146 40);
   --app-tile-warning-3: oklch(61.5% 0.146 56);
-  --app-tile-destructive-1: oklch(56.5% 0.175 28);
-  --app-tile-destructive-2: oklch(56.5% 0.175 19);
-  --app-tile-destructive-3: oklch(56.5% 0.175 37);
-  --app-tile-success-1: oklch(53% 0.115 152);
-  --app-tile-success-2: oklch(53% 0.115 142);
-  --app-tile-success-3: oklch(53% 0.115 162);
-  --app-tile-azur-1: oklch(52.5% 0.112 264);
-  --app-tile-azur-2: oklch(52.5% 0.112 257);
-  --app-tile-azur-3: oklch(52.5% 0.112 271);
-  --app-tile-lune-1: oklch(57.5% 0.155 292);
-  --app-tile-lune-2: oklch(57.5% 0.155 283);
-  --app-tile-lune-3: oklch(57.5% 0.155 301);
+  --app-tile-destructive-1: oklch(56.5% 0.19 28);
+  --app-tile-destructive-2: oklch(56.5% 0.19 19);
+  --app-tile-destructive-3: oklch(56.5% 0.19 37);
+  --app-tile-success-1: oklch(53% 0.12 152);
+  --app-tile-success-2: oklch(53% 0.12 142);
+  --app-tile-success-3: oklch(53% 0.12 160);
+  --app-tile-azur-1: oklch(51.5% 0.16 257);
+  --app-tile-azur-2: oklch(51.5% 0.16 265);
+  --app-tile-azur-3: oklch(51.5% 0.16 253);
+  --app-tile-lune-1: oklch(57.5% 0.175 292);
+  --app-tile-lune-2: oklch(57.5% 0.175 283);
+  --app-tile-lune-3: oklch(57.5% 0.175 301);
   /* `nuit` = la voie GRAPHITE (chroma quasi nul) : c'est elle qui empêche
-     Administration/Compta de se confondre avec la voie azur, le bleu sRGB étant
-     trop borné en chroma à cette clarté pour que deux bleus se distinguent. */
+     Administration/Compta de se confondre avec la voie azur — deux bleus de
+     clarté voisine ne se distinguent pas, un bleu et un graphite si. */
   --app-tile-nuit-1: oklch(52% 0.028 270);
   --app-tile-nuit-2: oklch(52% 0.028 240);
   --app-tile-nuit-3: oklch(52% 0.028 300);
@@ -181,7 +185,10 @@
   /* Glyphe : blanc franc, comme Odoo — jamais l'accent, jamais un gris.
      `--app-tile-glyph` sert AUSSI de pôle CLAIR au dégradé de relief, et
      `--app-tile-shade` de pôle SOMBRE : les deux extrêmes du dégradé restent
-     ainsi des jetons (aucune couleur littérale hors de ce bloc). */
+     ainsi des jetons (aucune couleur littérale hors de ce bloc). Le dégradé
+     les pose en CALQUE ALPHA par-dessus la couleur d'app, jamais en mélange :
+     un mélange vers le blanc ferait sortir du gamut sRGB les chromas élevés
+     ci-dessus, donc obligerait à désaturer toute la palette. */
   --app-tile-glyph: #ffffff;
   --app-tile-shade: oklch(0% 0 0);
   /* Ombre portée douce des tuiles (teintée nuit, comme l'échelle d'ombres). */
