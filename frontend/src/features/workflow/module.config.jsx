@@ -3,7 +3,8 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Workflow, CalendarClock } from 'lucide-react'
+import { Workflow, CalendarClock, GitBranch } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    WORKFLOW (XPLT8) — configuration du module « Workflows & tâches planifiées »
@@ -33,6 +34,11 @@ const config = {
   order: 55,
   nav: {
     label: 'WORKFLOW',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(GitBranch),
     accent: 'warning', // VX8 — pilotage/process = accent warning (dérivé)
     items: [
       {

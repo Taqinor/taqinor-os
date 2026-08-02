@@ -6,6 +6,7 @@ import {
   BedDouble, CalendarCog, ClipboardList, Handshake, Receipt, ShieldCheck,
   Stethoscope, UserPlus,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    NTSAN — Config du module Santé (cabinet/clinique), auto-enregistrée.
@@ -37,6 +38,11 @@ const config = {
   order: 95,
   nav: {
     label: 'SANTÉ',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Stethoscope),
     accent: 'primary',
     items: [
       {

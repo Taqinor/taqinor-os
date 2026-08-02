@@ -106,7 +106,7 @@ export default function PinnedApps({ collapsed }) {
           >
             {/* ODY9 — LE composant d'icône d'app, identique aux trois autres
                 surfaces (Menu d'accueil, lanceur VX9, écran Applications). */}
-            <AppIcon icon={entry.icon} accent={entry.accent} size="xs" className="sidebar-pinned-icon" />
+            <AppIcon icon={entry.icon} accent={entry.accent} appKey={entry.key} size="xs" className="sidebar-pinned-icon" />
           </NavLink>
         ))}
         <button

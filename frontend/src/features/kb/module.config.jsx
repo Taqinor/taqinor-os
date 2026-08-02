@@ -3,6 +3,7 @@
    de composants : le fast-refresh ne s'y applique pas (cf. moduleRoutes.jsx). */
 import { lazy } from 'react'
 import { BookOpen, GraduationCap } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    UX43 — Config du module Base de connaissances (auto-enregistrée).
@@ -24,6 +25,11 @@ const config = {
   order: 85,
   nav: {
     label: 'BASE DE CONNAISSANCES',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(BookOpen),
     accent: 'lune', // VX8 — documentaire = accent lune (dérivé)
     items: [
       {

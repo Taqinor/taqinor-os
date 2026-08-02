@@ -6,7 +6,9 @@ import { lazy } from 'react'
 import {
   LayoutDashboard, CalendarDays, Megaphone, Workflow, Users2, ListChecks,
   CalendarClock, ClipboardList, Gift, FormInput, PhoneCall,
+  Send,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    MARKETING (XMKT30, NTMKT1) — configuration du module « Marketing »
@@ -66,6 +68,11 @@ const config = {
   order: 55,
   nav: {
     label: 'MARKETING',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Send),
     accent: 'brass', // VX8 — commercial/croissance = accent brass (dérivé)
     items: [
       { to: '/marketing/campagnes', label: 'Campagnes', icon: <Megaphone size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

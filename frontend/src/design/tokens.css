@@ -117,6 +117,92 @@
   --module-accent-destructive: var(--destructive); /* Après-vente/SAV — #b3402a */
   --module-accent-warning: var(--warning);         /* Analyse/reporting — #c8870f */
   --module-accent-lune: var(--color-lune-faint);   /* Documents/Intelligence — #8d96b4 */
+  /* ODY33 — 8ᵉ clé. Cinq module.config (education, hospitality, innovation,
+     migration, sante) déclaraient déjà `accent: 'primary'` alors que le jeton
+     n'existait pas : `var(--module-accent-primary)` était donc invalide, ce qui
+     rendait invalide-au-calcul TOUTE déclaration qui l'utilisait — ces cinq
+     apps se retrouvaient SANS fond de pastille. Le jeton dit ce que la clé a
+     toujours voulu dire : l'or de marque, en variante TEXTE (AA sur fond clair,
+     même règle que --primary-text). */
+  --module-accent-primary: var(--primary-text);
+
+  /* ── ODY33 — Palette des TUILES d'application (écran d'accueil) ─────────────
+     Différente, et volontairement, des `--module-accent-*` ci-dessus : ceux-là
+     sont des couleurs de PREMIER PLAN (liseré, glyphe filaire, texte d'accent),
+     ceux-ci sont des couleurs de REMPLISSAGE saturé portant un glyphe BLANC.
+     Une couleur de premier plan pâlit dès qu'on la dilue à 12 % en fond — c'est
+     exactement ce qui rendait la grille d'accueil terne.
+
+     7 VOIES × 3 VARIANTES = 21 couleurs. La voie vient de la clé d'accent du
+     module ; la variante d'un hachage STABLE de la clé du module (ui/AppIcon),
+     donc deux apps voisines de la même famille ne sont jamais identiques et une
+     app garde SA couleur sur les quatre surfaces ODY9 comme d'un jour à l'autre.
+     `primary` est un ALIAS de `brass` (c'est le même or de marque) avec un
+     décalage de variante, pour ne pas inventer une 8ᵉ teinte.
+
+     Calibrage (script de contraste, sRGB) — les 21 couleurs sont DANS le gamut
+     sRGB (aucune ne dépend du gamut-mapping du navigateur), et :
+       • glyphe blanc / fond de tuile : 3,89:1 à 5,83:1, et jamais moins de
+         3,20:1 même tout en HAUT du dégradé de relief → ≥ 3:1 partout, le
+         seuil WCAG 1.4.11 des objets graphiques (un glyphe n'est pas du texte) ;
+       • tuile / nuit du portail : ≥ 3,35:1 — la tuile se détache du fond ;
+       • tuile / carte claire (lanceur, épinglés) : ≥ 3,89:1.
+     Chaque chroma est poussé au MAXIMUM que le gamut sRGB autorise à cette
+     clarté et cette teinte : c'est ce qui sépare une couleur « franche » d'un
+     lavis. Le bleu est le plus contraint (sRGB s'y resserre), d'où une clarté
+     un peu plus basse pour la voie azur.
+     Ces valeurs ne changent PAS entre clair et sombre : la couleur d'une app
+     est son identité, pas un état du thème (`.dark` ne les redéfinit pas). */
+  --app-tile-brass-1: oklch(60% 0.122 78);
+  --app-tile-brass-2: oklch(60% 0.122 69);
+  --app-tile-brass-3: oklch(60% 0.122 87);
+  --app-tile-warning-1: oklch(61.5% 0.146 48);
+  --app-tile-warning-2: oklch(61.5% 0.146 40);
+  --app-tile-warning-3: oklch(61.5% 0.146 56);
+  --app-tile-destructive-1: oklch(56.5% 0.19 28);
+  --app-tile-destructive-2: oklch(56.5% 0.19 19);
+  --app-tile-destructive-3: oklch(56.5% 0.19 37);
+  --app-tile-success-1: oklch(53% 0.12 152);
+  --app-tile-success-2: oklch(53% 0.12 142);
+  --app-tile-success-3: oklch(53% 0.12 160);
+  --app-tile-azur-1: oklch(51.5% 0.16 257);
+  --app-tile-azur-2: oklch(51.5% 0.16 265);
+  --app-tile-azur-3: oklch(51.5% 0.16 253);
+  --app-tile-lune-1: oklch(57.5% 0.175 292);
+  --app-tile-lune-2: oklch(57.5% 0.175 283);
+  --app-tile-lune-3: oklch(57.5% 0.175 301);
+  /* `nuit` = la voie BLEU-NUIT (indigo). Elle était GRAPHITE (chroma 0,028) :
+     à l'écran, Comptabilité, Immobilier et Tiers avaient l'air DÉSACTIVÉES au
+     milieu de tuiles franches — un gris n'est pas une couleur d'app, c'est
+     l'état « indisponible ». Le chroma passe donc à 0,115 sur une teinte
+     indigo (277°), assez loin de l'azur (257°, chroma 0,160 : un bleu franc et
+     plus saturé) et de la lune (292°, chroma 0,175 : un violet nettement plus
+     clair) pour rester reconnaissable — la distance perceptuelle azur↔nuit
+     (ΔEok 0,047) est du même ordre que celle, déjà admise, entre brass et
+     warning (0,041). La clarté ne DESCEND pas malgré le mot « nuit » : sous
+     51 %, la tuile ne tiendrait plus les 3:1 avec le fond du portail.
+     L'écart de teinte entre variantes retombe de ±30° à ±8° : ±30° n'était
+     invisible que parce que la voie était grise. */
+  --app-tile-nuit-1: oklch(51.5% 0.115 277);
+  --app-tile-nuit-2: oklch(51.5% 0.115 269);
+  --app-tile-nuit-3: oklch(51.5% 0.115 285);
+  --app-tile-primary-1: var(--app-tile-brass-2);
+  --app-tile-primary-2: var(--app-tile-brass-3);
+  --app-tile-primary-3: var(--app-tile-brass-1);
+  /* Repli d'une clé d'accent inconnue (ou absente) : la voie graphite. */
+  --app-tile-defaut: var(--app-tile-nuit-1);
+  /* Glyphe : blanc franc, comme Odoo — jamais l'accent, jamais un gris.
+     `--app-tile-glyph` sert AUSSI de pôle CLAIR au dégradé de relief, et
+     `--app-tile-shade` de pôle SOMBRE : les deux extrêmes du dégradé restent
+     ainsi des jetons (aucune couleur littérale hors de ce bloc). Le dégradé
+     les pose en CALQUE ALPHA par-dessus la couleur d'app, jamais en mélange :
+     un mélange vers le blanc ferait sortir du gamut sRGB les chromas élevés
+     ci-dessus, donc obligerait à désaturer toute la palette. */
+  --app-tile-glyph: #ffffff;
+  --app-tile-shade: oklch(0% 0 0);
+  /* Ombre portée douce des tuiles (teintée nuit, comme l'échelle d'ombres). */
+  --shadow-tile: 0 6px 14px -6px rgb(12 19 53 / 0.45), 0 2px 4px -2px rgb(12 19 53 / 0.30);
+  --shadow-tile-hover: 0 12px 22px -8px rgb(12 19 53 / 0.55), 0 4px 8px -4px rgb(12 19 53 / 0.35);
 
   /* VX1 — un seul or, un seul navy : les jetons « catalogue/générateur » du
      langage navy/or (devis premium) pointent désormais sur la signature de
@@ -351,6 +437,11 @@
   --module-accent-destructive: var(--destructive); /* Après-vente/SAV — #e06a52 */
   --module-accent-warning: var(--warning);         /* Analyse/reporting — brass-300 */
   --module-accent-lune: var(--color-lune-faint);   /* Documents/Intelligence — #8d96b4 */
+  /* ODY33 — 8ᵉ clé (cf. la note du bloc clair) : sur navy, l'or n'a pas besoin
+     d'être assombri, `--primary-text` pointe déjà sur `--primary`. */
+  --module-accent-primary: var(--primary-text);
+  /* Les jetons `--app-tile-*` NE sont volontairement PAS redéfinis ici : la
+     couleur d'une app est son identité, elle ne bascule pas avec le thème. */
 
   /* LB16 — pastilles de TAG en sombre : fonds sombres + texte clair (AA sur le
      fond navy). Mêmes 10 buckets/hues que le clair. */

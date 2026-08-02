@@ -37,7 +37,7 @@ vi.mock('../router/moduleRoutes', () => ({
   ],
 }))
 
-import AppIcon from './AppIcon'
+import AppIcon, { varianteTuile } from './AppIcon'
 import { iconNodeForApp, accentForApp } from '../lib/apps/appIcon'
 import HomeMenu from '../pages/home/HomeMenu'
 import PinnedApps from '../components/layout/PinnedApps'
@@ -88,6 +88,55 @@ describe('ODY9 — AppIcon (pastille)', () => {
       expect(container.querySelector('.app-icon').style.getPropertyValue('--app-icon-size')).toBe(px)
       unmount()
     })
+  })
+})
+
+/* ODY33 — la tuile RICHE : un remplissage de couleur d'app, pas un lavis
+   d'accent. Ce qui est garanti ici, c'est le CONTRAT de la variable : la
+   couleur elle-même vit dans design/tokens.css (et n'est donc jamais écrite en
+   dur dans un composant). */
+describe('ODY33 — AppIcon, remplissage de tuile', () => {
+  it('pose --app-tile sur la voie de l’accent, avec repli si la clé est inconnue', () => {
+    const { container } = render(<AppIcon icon={SENTINEL} accent="azur" appKey="crm" />)
+    const tuile = container.querySelector('.app-icon').style.getPropertyValue('--app-tile')
+    expect(tuile).toMatch(/^var\(--app-tile-azur-[123], var\(--app-tile-defaut\)\)$/)
+  })
+
+  it('sans accent : la voie nuit, mais avec SA variante (ODY34)', () => {
+    // Avant ODY34, aucun remplissage n'était posé et le CSS retombait sur
+    // `--app-tile-defaut` — le MÊME pour tous : Immobilier et Tiers rendaient
+    // exactement la couleur de Comptabilité et Paramètres. Un module sans
+    // accent prend désormais sa propre variante de la voie nuit ; seul le
+    // `--module-accent` (liseré) reste absent, faute d'accent déclaré.
+    const { container } = render(<AppIcon icon={SENTINEL} appKey="immobilier" />)
+    const icone = container.querySelector('.app-icon')
+    expect(icone.style.getPropertyValue('--app-tile'))
+      .toMatch(/^var\(--app-tile-nuit-[123], var\(--app-tile-defaut\)\)$/)
+    expect(icone.style.getPropertyValue('--module-accent')).toBe('')
+  })
+
+  it('la variante est DÉTERMINISTE : même clé ⇒ même couleur, toujours', () => {
+    // Deux rendus successifs, et la fonction pure elle-même : aucune part
+    // d'aléatoire, sinon une app changerait de couleur à chaque rendu.
+    const lire = () => {
+      const { container, unmount } = render(<AppIcon icon={SENTINEL} accent="lune" appKey="ged" />)
+      const v = container.querySelector('.app-icon').style.getPropertyValue('--app-tile')
+      unmount()
+      return v
+    }
+    expect(lire()).toBe(lire())
+    expect(varianteTuile('ged')).toBe(varianteTuile('ged'))
+  })
+
+  it('varianteTuile : toujours 1, 2 ou 3 — et 1 sans clé', () => {
+    expect(varianteTuile('')).toBe(1)
+    expect(varianteTuile(undefined)).toBe(1)
+    const cles = ['crm', 'ventes', 'stock', 'ged', 'kb', 'contrats', 'rh', 'paie', 'sav', 'compta']
+    cles.forEach((k) => expect([1, 2, 3]).toContain(varianteTuile(k)))
+    // Et elle DISTINGUE : les apps d'une même voie ne tombent pas toutes sur
+    // la même variante (c'est tout l'intérêt — sinon 13 apps « lune »
+    // identiques côte à côte).
+    expect(new Set(cles.map(varianteTuile)).size).toBeGreaterThan(1)
   })
 })
 

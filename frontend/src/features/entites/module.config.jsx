@@ -4,6 +4,7 @@
    `router/moduleRoutes.jsx`). */
 import { lazy } from 'react'
 import { Network } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    NTADM4/30 — Configuration du module « Entités » (structure organisationnelle
@@ -22,6 +23,11 @@ export default {
   order: 92,
   nav: {
     label: 'ENTITÉS',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Network),
     accent: 'lune',
     items: [
       { to: '/parametres/entites', label: 'Entités', icon: NW, roles: ROLES },

@@ -7,6 +7,7 @@ import {
   CalendarCheck, CalendarDays, ClipboardCheck, GraduationCap, School,
   ShieldAlert, Upload, Users, Utensils, Wallet,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    WIR143 — Configuration du module « Éducation » (école/établissement
@@ -40,6 +41,11 @@ const config = {
   order: 96,
   nav: {
     label: 'ÉDUCATION',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(GraduationCap),
     accent: 'primary',
     items: [
       { to: '/education/structure', label: 'Structure', icon: <School size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },

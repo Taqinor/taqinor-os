@@ -5,6 +5,7 @@ import { lazy } from 'react'
 import {
   FolderKanban, CalendarRange, Users, Wallet, ShieldAlert, Clock3, ListChecks,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    UX38–UX42 — Configuration du module « Gestion de projet ».
@@ -35,6 +36,11 @@ export default {
   order: 55,
   nav: {
     label: 'PROJETS',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(FolderKanban),
     accent: 'warning', // VX8 — pilotage/reporting = accent warning (dérivé)
     items: [
       { to: '/projets', label: 'Projets', icon: <FolderKanban size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

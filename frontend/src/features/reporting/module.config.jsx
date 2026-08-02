@@ -3,6 +3,7 @@
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
 import { BarChart3, Inbox, Tv, ScrollText } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Reporting vers le registre (phase 2,
@@ -76,6 +77,11 @@ const config = {
   order: 70,
   nav: {
     label: 'ANALYSE', labelKey: 'nav.section.analyse',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(BarChart3),
     accent: 'warning',
     items: [
       { to: '/reporting',            label: 'Reporting',        k: 'nav.reporting',  icon: navIcon(BarChart3),    roles: ['responsable','admin'] },

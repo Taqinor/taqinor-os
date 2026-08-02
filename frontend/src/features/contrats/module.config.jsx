@@ -6,6 +6,7 @@ import { lazy } from 'react'
 import {
   FileSignature, LibraryBig, BellRing, Wallet, PackageOpen, LayoutDashboard,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    UX34–UX37 — Configuration du module ERP « Contrats » (CLM).
@@ -44,6 +45,11 @@ export default {
   order: 70,
   nav: {
     label: 'CONTRATS',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(FileSignature),
     accent: 'lune', // VX8 — documentaire/juridique = accent lune (dérivé)
     items: [
       { to: '/contrats/tableau-de-bord', label: 'Tableau de bord', icon: LD, roles: ROLES },

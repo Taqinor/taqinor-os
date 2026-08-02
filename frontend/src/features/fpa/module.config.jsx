@@ -6,6 +6,7 @@ import { lazy } from 'react'
 import {
   Table2, TrendingUp, GitCompareArrows, Scale, LayoutDashboard,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    NTFPA30 — Configuration du module ERP « FP&A » (budgets & prévisions).
@@ -39,6 +40,11 @@ export default {
   order: 75,
   nav: {
     label: 'FP&A',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(TrendingUp),
     accent: 'lune',
     items: [
       { to: '/fpa/dashboard', label: 'Tableau de bord', icon: LD, roles: ROLES },

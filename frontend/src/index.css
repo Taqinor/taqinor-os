@@ -8708,9 +8708,36 @@ textarea.form-control {
    dessus : les libelles gardent `--foreground` / `--muted-foreground`, donc
    le contraste AA reste celui du theme, en clair comme en sombre.
    ========================================================================== */
+/* ODY33 (fondateur 2026-08-02) — le PORTAIL. L'accueil n'est plus une page de
+   l'ERP posée sur le canevas courant : c'est un ecran a part, nuit et plein
+   ecran, ou les apps sont les seuls objets lumineux. Choix assume et
+   DOCUMENTE : il reste sombre dans les DEUX themes, exactement comme Odoo —
+   c'est un seuil, pas un espace de travail, et le basculer en clair rendrait
+   les tuiles saturees criardes. Toutes les couleurs de texte du portail sont
+   donc reprises ICI (les jetons de theme y seraient illisibles en clair) et
+   verifiees sur la nuit : lune 14,1:1, lune-soft 9,6:1, lune-faint 6,7:1. */
 .home-menu {
   position: relative;
   min-height: 100%;
+  /* Taille des tuiles, consommee par AppIcon via --app-icon-size (inline). */
+  --home-tile-size: 4.75rem;   /* 76 px */
+  --portal-fg: var(--color-lune);
+  --portal-fg-soft: var(--color-lune-soft);
+  --portal-fg-faint: var(--color-lune-faint);
+  --portal-field: color-mix(in oklch, var(--color-lune) 9%, transparent);
+  --portal-line: color-mix(in oklch, var(--color-lune) 18%, transparent);
+  padding: 2rem;
+  background:
+    radial-gradient(125% 80% at 50% -8%, var(--color-nuit-700) 0%, var(--color-nuit) 62%),
+    var(--color-nuit);
+  color: var(--portal-fg);
+}
+
+/* Plein ecran : le portail reprend le rembourrage du scrolleur de la coquille
+   pour que la nuit aille jusqu'aux bords. Meme idiome `:has()` que APX3 —
+   `.home-menu` n'existe que sur /apps, aucune autre page n'est touchee. */
+.layout-content:has(.home-menu) {
+  padding: 0;
 }
 
 .home-menu-glow {
@@ -8731,23 +8758,25 @@ textarea.form-control {
 .home-menu-inner {
   position: relative;
   z-index: 1;
+  max-width: 76rem;
+  margin-inline: auto;
 }
 
 .home-menu-head {
-  margin-bottom: 1rem;
+  margin-bottom: 1.35rem;
 }
 
 .home-menu-title {
-  font-size: 1.35rem;
+  font-size: 1.6rem;
   font-weight: 650;
-  letter-spacing: -0.01em;
-  color: var(--foreground);
+  letter-spacing: -0.015em;
+  color: var(--portal-fg);
 }
 
 .home-menu-subtitle {
-  margin-top: 0.15rem;
-  font-size: 0.82rem;
-  color: var(--muted-foreground);
+  margin-top: 0.25rem;
+  font-size: 0.86rem;
+  color: var(--portal-fg-soft);
 }
 
 .home-menu-searchbar {
@@ -8755,12 +8784,12 @@ textarea.form-control {
   align-items: center;
   gap: 0.5rem;
   max-width: 26rem;
-  margin-bottom: 1.35rem;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--muted-foreground);
+  margin-bottom: 2rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--portal-line);
+  border-radius: 999px;
+  background: var(--portal-field);
+  color: var(--portal-fg-soft);
 }
 
 .home-menu-searchbar:focus-within {
@@ -8775,60 +8804,63 @@ textarea.form-control {
   outline: none;
   background: transparent;
   font-size: 0.88rem;
-  color: var(--foreground);
+  color: var(--portal-fg);
+}
+
+.home-menu-search-input::placeholder {
+  color: var(--portal-fg-faint);
 }
 
 .home-menu-section + .home-menu-section {
-  margin-top: 1.5rem;
+  margin-top: 2.25rem;
 }
 
 .home-menu-section-title {
-  margin-bottom: 0.55rem;
+  margin-bottom: 1rem;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--portal-fg-soft);
 }
 
+/* Grille AEREE : ce sont les gaps, autant que la taille des tuiles, qui font
+   qu'un ecran d'apps « respire ». Colonnes calees sur la tuile + son libelle. */
 .home-menu-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8.25rem, 1fr));
-  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 2rem 1.5rem;
+  justify-items: center;
 }
 
 .home-menu-cell {
   position: relative;
   display: flex;
+  width: 100%;
+  max-width: 8.5rem;
 }
 
+/* La tuile n'est plus une CARTE (bordure + fond) : la carte, c'est l'icone.
+   Le bouton n'est plus qu'une zone de clic autour d'elle et de son libelle. */
 .home-menu-tile {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.45rem;
-  padding: 1rem 0.6rem 0.85rem;
-  border: 1px solid var(--border);
+  gap: 0.6rem;
+  padding: 0.5rem 0.25rem 0.4rem;
+  border: 0;
   border-radius: 14px;
-  background: var(--card);
-  color: var(--foreground);
+  background: transparent;
+  color: var(--portal-fg);
   cursor: pointer;
   text-align: center;
-  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
-}
-
-@media (hover: hover) {
-  .home-menu-tile:hover {
-    border-color: var(--module-accent, var(--primary));
-    box-shadow: 0 6px 18px -12px color-mix(in srgb, var(--foreground) 55%, transparent);
-    transform: translateY(-1px);
-  }
+  transition: color 140ms ease;
 }
 
 .home-menu-tile:focus-visible {
-  outline: 2px solid var(--ring, var(--primary));
-  outline-offset: 2px;
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
 }
 
 .home-menu-tile-icon {
@@ -8843,20 +8875,21 @@ textarea.form-control {
 }
 
 .home-menu-tile-label {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 550;
-  line-height: 1.2;
-  color: var(--foreground);
+  line-height: 1.25;
+  color: var(--portal-fg);
 }
 
 .home-menu-tile-pin {
   position: absolute;
-  top: 0.3rem;
-  right: 0.35rem;
+  top: -0.15rem;
+  right: 0.1rem;
   display: inline-flex;
-  padding: 0.15rem;
-  border-radius: 6px;
-  color: var(--muted-foreground);
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-nuit) 72%, transparent);
+  color: var(--portal-fg-soft);
   opacity: 0;
   cursor: pointer;
   transition: opacity 120ms ease;
@@ -8884,19 +8917,32 @@ textarea.form-control {
 
 @media (max-width: 768px) {
   /* ODY2 — au pouce : 3-4 colonnes, tuiles plus compactes, favoris toujours
-     accessibles (l'etoile reste visible faute de survol sur tactile). */
+     accessibles (l'etoile reste visible faute de survol sur tactile).
+     ODY33 — la tuile descend a 64 px mais la CIBLE reste >= 44 px de loin
+     (64 px d'icone + le libelle sous elle). */
+  .home-menu {
+    --home-tile-size: 4rem;   /* 64 px */
+    padding: 1.1rem 0.9rem 1.6rem;
+  }
+  .home-menu-title {
+    font-size: 1.3rem;
+  }
   .home-menu-grid {
-    grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
-    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(5.25rem, 1fr));
+    gap: 1.35rem 0.75rem;
   }
-  .home-menu-tile {
-    padding: 0.8rem 0.35rem 0.65rem;
+  .home-menu-cell {
+    max-width: 6.5rem;
   }
-  .home-menu-tile-pin {
-    opacity: 0.55;
+  .home-menu-section + .home-menu-section {
+    margin-top: 1.6rem;
   }
   .home-menu-searchbar {
     max-width: none;
+    margin-bottom: 1.5rem;
+  }
+  .home-menu-tile-pin {
+    opacity: 0.7;
   }
 }
 
@@ -8905,20 +8951,25 @@ textarea.form-control {
   .home-menu-tile-pin {
     transition: none;
   }
-  .home-menu-tile:hover {
-    transform: none;
-  }
 }
 
 /* ==========================================================================
    ODY9 — AppIcon : UNE pastille d'app, QUATRE surfaces (Menu d'accueil,
-   lanceur VX9, epingles VX10, ecran Applications ODX5). Bloc APPEND-ONLY.
-   Arrondi « superellipse » derive de `--radius` (jamais un rayon en dur),
-   fond = teinte de l'accent module (VX8) a 12 %, glyphe a l'accent plein :
-   contraste AA en clair comme en sombre puisque l'accent est une couleur de
-   premier plan du theme.
+   lanceur VX9, epingles VX10, ecran Applications ODX5).
+   ODY33 (fondateur 2026-08-02) — v2 « TUILE RICHE ». La v1 posait l'accent
+   module a 12 % en fond avec un glyphe FILAIRE : pale et generique, quarante
+   apps s'y ressemblaient. La v2 :
+     • fond = couleur d'app PLEINE et saturee (`--app-tile`, tokens.css) ;
+     • degrade vertical (haut eclairci, bas assombri) = le relief ;
+     • ombre portee douce (`--shadow-tile`) = la tuile pose sur la surface ;
+     • glyphe BLANC au trait epaissi (2.5) — la regle CSS bat l'attribut de
+       presentation `stroke-width` que pose lucide, donc aucun appelant n'a a
+       changer sa declaration d'icone.
+   L'arrondi « superellipse » est inchange (derive de `--radius`, jamais un
+   rayon en dur) et les tailles du contrat (64/56/48/30) non plus.
    ========================================================================== */
 .app-icon {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -8927,9 +8978,22 @@ textarea.form-control {
   height: var(--app-icon-size, 56px);
   /* Superellipse : le rayon suit l'echelle du kit et grandit avec la taille. */
   border-radius: calc(var(--radius) + var(--app-icon-size, 56px) * 0.14);
-  background: color-mix(in srgb, var(--module-accent, var(--primary)) 12%, transparent);
-  color: var(--module-accent, var(--primary));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--module-accent, var(--primary)) 22%, transparent);
+  background-color: var(--app-tile, var(--app-tile-defaut));
+  /* Relief : un CALQUE alpha (13 % de clair en haut, 12 % de sombre en bas)
+     par-dessus la couleur d'app — jamais un melange de couleurs, qui ferait
+     sortir du gamut sRGB les chromas eleves de la palette et obligerait a la
+     desaturer entierement. Le haut du degrade reste >= 3:1 avec le glyphe
+     blanc (3,20:1 au pire — cf. la note de calibrage dans tokens.css). */
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--app-tile-glyph) 13%, transparent) 0%,
+    transparent 52%,
+    color-mix(in oklch, var(--app-tile-shade) 12%, transparent) 100%
+  );
+  color: var(--app-tile-glyph);
+  box-shadow:
+    var(--shadow-tile),
+    inset 0 1px 0 color-mix(in oklch, var(--app-tile-glyph) 26%, transparent);
   transition: box-shadow 140ms ease, transform 140ms ease;
 }
 
@@ -8937,21 +9001,28 @@ textarea.form-control {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: var(--app-tile-glyph);
 }
 
 /* Le glyphe suit la taille de la pastille (les icones lucide portent un
-   `size` en px : on le neutralise pour que les 4 surfaces soient identiques). */
+   `size` en px : on le neutralise pour que les 4 surfaces soient identiques).
+   ODY33 — 0.46 au lieu de 0.42 : un glyphe plus present, comme Odoo. */
 .app-icon-glyph > svg {
-  width: calc(var(--app-icon-size, 56px) * 0.42);
-  height: calc(var(--app-icon-size, 56px) * 0.42);
+  width: calc(var(--app-icon-size, 56px) * 0.46);
+  height: calc(var(--app-icon-size, 56px) * 0.46);
+  /* Bat l'attribut `stroke-width` de lucide (une regle CSS l'emporte toujours
+     sur un attribut de presentation) : trait plein, lisible en blanc. */
+  stroke-width: 2.5;
+  /* Detache le trait blanc du haut de degrade sur les voies les plus claires. */
+  filter: drop-shadow(0 1px 1px color-mix(in oklch, var(--app-tile-shade) 22%, transparent));
 }
 
 @media (hover: hover) {
   .app-icon--interactive:hover {
     box-shadow:
-      inset 0 0 0 2px var(--module-accent, var(--primary)),
-      0 6px 16px -12px color-mix(in srgb, var(--foreground) 60%, transparent);
-    transform: translateY(-1px);
+      var(--shadow-tile-hover),
+      inset 0 1px 0 color-mix(in oklch, var(--app-tile-glyph) 34%, transparent);
+    transform: translateY(-2px) scale(1.03);
   }
 }
 
@@ -8959,12 +9030,17 @@ textarea.form-control {
    visuelle, quel que soit l'element reellement survole. */
 .home-menu-tile:focus-visible .app-icon,
 .app-launcher-tile:focus-visible .app-icon {
-  box-shadow: inset 0 0 0 2px var(--module-accent, var(--primary));
+  box-shadow:
+    var(--shadow-tile-hover),
+    inset 0 0 0 2px color-mix(in oklch, var(--app-tile-glyph) 85%, transparent);
 }
 @media (hover: hover) {
   .home-menu-tile:hover .app-icon,
   .app-launcher-tile:hover .app-icon {
-    box-shadow: inset 0 0 0 2px var(--module-accent, var(--primary));
+    box-shadow:
+      var(--shadow-tile-hover),
+      inset 0 1px 0 color-mix(in oklch, var(--app-tile-glyph) 34%, transparent);
+    transform: translateY(-2px) scale(1.03);
   }
 }
 
@@ -8972,7 +9048,9 @@ textarea.form-control {
   .app-icon {
     transition: none;
   }
-  .app-icon--interactive:hover {
+  .app-icon--interactive:hover,
+  .home-menu-tile:hover .app-icon,
+  .app-launcher-tile:hover .app-icon {
     transform: none;
   }
 }
@@ -9021,12 +9099,15 @@ textarea.form-control {
    ========================================================================== */
 .home-menu-tile-grip {
   position: absolute;
-  top: 0.3rem;
-  left: 0.35rem;
+  top: -0.15rem;
+  left: 0.1rem;
   display: inline-flex;
-  padding: 0.15rem;
-  border-radius: 6px;
-  color: var(--muted-foreground);
+  padding: 0.2rem;
+  border-radius: 999px;
+  /* ODY33 — sur la nuit du portail, `--muted-foreground` (gris de theme clair)
+     disparaissait : on prend les gris LUNE, verifies sur nuit (6,7:1). */
+  background: color-mix(in oklch, var(--color-nuit) 72%, transparent);
+  color: var(--portal-fg-soft);
   opacity: 0;
   cursor: grab;
   transition: opacity 120ms ease;
@@ -9051,15 +9132,18 @@ textarea.form-control {
   opacity: 0.4;
 }
 
+/* ODY33 — la tuile n'a plus de bordure de carte : la cible de depot se signale
+   par un liseré brass autour de la CELLULE (visible sur la nuit du portail). */
 .home-menu-cell--over .home-menu-tile {
-  border-color: var(--module-accent, var(--primary));
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--module-accent, var(--primary)) 45%, transparent);
+  outline: 2px dashed var(--primary);
+  outline-offset: 2px;
+  border-radius: 16px;
 }
 
 @media (max-width: 768px) {
   /* Au pouce : la poignee reste visible (aucun survol sur tactile). */
   .home-menu-tile-grip {
-    opacity: 0.55;
+    opacity: 0.7;
   }
 }
 
@@ -9096,8 +9180,14 @@ textarea.form-control {
   font-size: 0.68rem;
   font-weight: 650;
   line-height: 1;
-  /* Detache le badge de la pastille quel que soit le fond (clair/sombre). */
+  /* Detache le badge de la pastille quel que soit le fond (clair/sombre).
+     ODY33 — sur le portail, ce fond est la NUIT dans les deux themes : un
+     liseré `--card` (blanc en clair) y ferait une auréole. */
   box-shadow: 0 0 0 2px var(--card);
+}
+
+.home-menu .home-menu-tile-badge {
+  box-shadow: 0 0 0 2px var(--color-nuit);
 }
 
 /* ── ODY4 — Coquille d'APP (mode immersion) ────────────────────────────────
@@ -9516,8 +9606,10 @@ textarea.form-control {
   max-width: calc(100% - 0.7rem);
   padding: 0.05rem 0.35rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--module-accent, var(--primary)) 14%, transparent);
-  color: var(--module-accent, var(--primary));
+  /* ODY33 — pastille CLAIRE sur la nuit du portail : l'accent module a 14 %
+     sur fond transparent devenait invisible depuis que le fond est sombre. */
+  background: color-mix(in oklch, var(--color-lune) 16%, transparent);
+  color: var(--color-lune);
   font-size: 0.62rem;
   font-weight: 600;
   line-height: 1.5;
@@ -9532,13 +9624,13 @@ textarea.form-control {
 }
 
 .home-menu-tile-resume:focus-visible {
-  outline: 2px solid var(--ring, var(--primary));
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 
 @media (hover: hover) {
   .home-menu-tile-resume:hover {
-    background: color-mix(in srgb, var(--module-accent, var(--primary)) 24%, transparent);
+    background: color-mix(in oklch, var(--color-lune) 28%, transparent);
   }
 }
 
@@ -10577,4 +10669,53 @@ textarea.form-control {
 }
 .lw-devis-kwc-input.lw-devis-kwc-input {
   width: 5.5rem;
+}
+
+/* ==========================================================================
+   ODY33 — Banc d'essai des TUILES d'apps dans la vitrine /ui. Bloc
+   APPEND-ONLY. La scene est volontairement NUIT dans les deux themes : c'est
+   le fond reel du portail d'accueil, donc le seul ou juger la palette.
+   ========================================================================== */
+.ody33-demo-scene {
+  padding: 1.5rem 1.25rem;
+  border-radius: 16px;
+  background:
+    radial-gradient(125% 90% at 50% -10%, var(--color-nuit-700) 0%, var(--color-nuit) 62%),
+    var(--color-nuit);
+  color: var(--color-lune);
+}
+
+.ody33-demo-legend {
+  margin-bottom: 0.9rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-lune-soft);
+}
+
+.ody33-demo-legend + .ody33-demo-grid + .ody33-demo-legend {
+  margin-top: 1.75rem;
+}
+
+.ody33-demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 1.75rem 1.25rem;
+  justify-items: center;
+}
+
+.ody33-demo-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: center;
+}
+
+.ody33-demo-label {
+  font-size: 0.78rem;
+  font-weight: 550;
+  line-height: 1.25;
+  color: var(--color-lune);
 }

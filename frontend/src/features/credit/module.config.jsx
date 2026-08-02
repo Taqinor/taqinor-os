@@ -3,7 +3,8 @@
    de composants : le fast-refresh ne s'y applique pas (même contrat que
    `router/moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Wallet, ShieldAlert } from 'lucide-react'
+import { Wallet, ShieldAlert, CreditCard } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    WIR55 — Configuration du module ERP « Crédit client » (limites, exposition,
@@ -37,6 +38,11 @@ export default {
   order: 76,
   nav: {
     label: 'CRÉDIT CLIENT',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(CreditCard),
     accent: 'lune', // financier = accent lune (dérivé), comme Assurances/Compta
     items: [
       { to: '/credit/exposition', label: 'Exposition', icon: IconWallet, roles: ROLES },

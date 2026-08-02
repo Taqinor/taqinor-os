@@ -639,6 +639,7 @@ export default function RolesManagement() {
                         <AppIcon
                           icon={app.icon}
                           accent={app.accent}
+                          appKey={app.key}
                           size="xs"
                           className="shrink-0"
                         />

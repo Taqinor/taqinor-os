@@ -3,6 +3,7 @@
    de composants : le fast-refresh ne s'y applique pas — comme moduleRoutes.jsx. */
 import { lazy } from 'react'
 import { Wallet, FileText, SlidersHorizontal, Banknote, ReceiptText } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    Module PAIE (paie marocaine) — configuration auto-enregistrée.
@@ -29,6 +30,11 @@ export default {
   order: 30,
   nav: {
     label: 'PAIE',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Banknote),
     accent: 'azur', // VX8 — RH/paie = accent azur (dérivé)
     items: [
       { to: '/paie', label: 'Run de paie',

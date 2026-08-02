@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Users, CalendarDays, Clock,
   GraduationCap, Briefcase, ShieldAlert, UserCircle,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    UX21–UX28 — Registre du module RH (ressources humaines).
@@ -36,6 +37,11 @@ export default {
   order: 40,
   nav: {
     label: 'RH',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Users),
     accent: 'azur', // VX8 — RH/paie = accent azur (dérivé)
     items: [
       { to: '/rh', label: 'Cockpit RH', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: RH },

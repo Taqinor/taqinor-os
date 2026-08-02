@@ -2,7 +2,12 @@ import { useState } from 'react'
 import {
   Trash2, Plus, Settings, Search, Download, Inbox, Pencil, Bell, Save,
   Check, CheckCircle2, AlertCircle, Loader2,
+  // ODY33 — glyphes de l'echantillon de tuiles d'apps (memes composants lucide
+  // que les `module.config` reels, pour que la vitrine ne mente pas).
+  Handshake, FileText, Boxes, Banknote, Wrench, BarChart3, Sprout, FolderOpen,
+  Users, Stethoscope,
 } from 'lucide-react'
+import AppIcon from '../../ui/AppIcon'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useDensity } from '../../design/theme-context'
 import { formatMAD, formatNumber, formatPercent, formatDate, formatPhoneMA } from '../../lib/format'
@@ -99,6 +104,45 @@ function Swatch({ token, role, varName }) {
         <span className="text-xs font-medium text-foreground">{role}</span>
         <Code>{token}</Code>
       </div>
+    </div>
+  )
+}
+
+/* ── ODY33 · Banc d'essai : les tuiles d'apps de l'ecran d'accueil ──────────
+   Echantillon representatif = les 8 clés d'accent (donc les 7 voies de couleur,
+   `primary` etant l'alias de `brass`) portees par de VRAIES cles de module :
+   la variante de teinte affichee ici est donc exactement celle que l'app aura
+   sur l'accueil. Rendu sur un fond NUIT de demonstration, parce que c'est le
+   fond reel du portail dans les deux themes. */
+const TUILES_DEMO = [
+  { key: 'crm', label: 'CRM', accent: 'azur', icon: <Handshake /> },
+  { key: 'ventes', label: 'Ventes', accent: 'brass', icon: <FileText /> },
+  { key: 'stock', label: 'Stock', accent: 'lune', icon: <Boxes /> },
+  { key: 'compta', label: 'Comptabilité', accent: 'nuit', icon: <Banknote /> },
+  { key: 'sav', label: 'Après-vente', accent: 'destructive', icon: <Wrench /> },
+  { key: 'reporting', label: 'Analyse', accent: 'warning', icon: <BarChart3 /> },
+  { key: 'installations', label: 'Chantiers', accent: 'success', icon: <Sprout /> },
+  { key: 'ged', label: 'Documents', accent: 'lune', icon: <FolderOpen /> },
+  { key: 'rh', label: 'Ressources humaines', accent: 'azur', icon: <Users /> },
+  { key: 'sante', label: 'Santé', accent: 'primary', icon: <Stethoscope /> },
+]
+
+function AppTilesDemo({ size }) {
+  return (
+    <div className="ody33-demo-grid">
+      {TUILES_DEMO.map((t) => (
+        <span key={`${size}-${t.key}`} className="ody33-demo-cell">
+          <AppIcon
+            icon={t.icon}
+            accent={t.accent}
+            appKey={t.key}
+            size={size}
+            label={t.label}
+            interactive
+          />
+          <span className="ody33-demo-label">{t.label}</span>
+        </span>
+      ))}
     </div>
   )
 }
@@ -600,6 +644,47 @@ export function UIShowcase() {
                 </p>
               </div>
             </div>
+          </section>
+
+          {/* ── ODY33 — Tuiles d'applications (ecran d'accueil) ──────────── */}
+          <section id="app-tiles" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              Tuiles d’applications (accueil)
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Le même composant <Code>ui/AppIcon</Code> sur les quatre surfaces ODY9.
+              Fond = couleur d’app pleine (<Code>--app-tile-*</Code>), léger dégradé
+              vertical pour le relief, ombre douce, glyphe blanc au trait épaissi.
+              Chaque app tire sa <strong className="text-foreground">variante de teinte</strong> d’un
+              hachage stable de sa clé de module : jamais aléatoire, donc jamais deux
+              voisines identiques et jamais une couleur qui change d’un écran à l’autre.
+            </p>
+            <Separator className="my-3" />
+            <div className="ody33-demo-scene">
+              <p className="ody33-demo-legend">Grande (accueil) — <Code>size=&quot;lg&quot;</Code></p>
+              <AppTilesDemo size="lg" />
+              <p className="ody33-demo-legend">Moyenne (lanceur, écran Applications) — <Code>size=&quot;md&quot;</Code></p>
+              <AppTilesDemo size="md" />
+            </div>
+            <ul className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+              <DoneItem>
+                Glyphe blanc sur fond de tuile : contraste mesuré 3,89 à 5,79:1, et
+                jamais moins de 3,20:1 en haut du dégradé — au-dessus du seuil WCAG
+                1.4.11 des objets graphiques (3:1) sur les 21 couleurs.
+              </DoneItem>
+              <DoneItem>
+                Palette identique en clair et en sombre : la couleur d’une app est son
+                identité, pas un état du thème.
+              </DoneItem>
+              <DoneItem>
+                Survol = élévation + micro-agrandissement, neutralisés sous
+                <Code>prefers-reduced-motion</Code>.
+              </DoneItem>
+              <DoneItem>
+                La voie <Code>nuit</Code> est graphite à dessein : deux bleus de clarté
+                voisine ne se distinguent pas, un bleu et un graphite si.
+              </DoneItem>
+            </ul>
           </section>
 
           <Section id="buttons" title="Boutons">
