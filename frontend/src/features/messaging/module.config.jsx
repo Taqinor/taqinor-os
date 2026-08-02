@@ -1,4 +1,5 @@
 import { MessageSquare } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    ODY22 — Config du module « Messages » (messagerie interne / Discuss).
@@ -33,6 +34,11 @@ const config = {
   order: 15,
   nav: {
     label: 'MESSAGES',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(MessageSquare),
     accent: 'azur', // VX8 — communication/info = accent azur (dérivé)
     items: [
       {

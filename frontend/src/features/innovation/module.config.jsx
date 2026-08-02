@@ -3,6 +3,7 @@
    de composants : le fast-refresh ne s'y applique pas (cf. moduleRoutes.jsx). */
 import { lazy } from 'react'
 import { Lightbulb, Megaphone, Inbox, MapPin } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    Groupe NTIDE — Config du module Innovation (boîte à idées interne, auto-
@@ -35,6 +36,11 @@ const config = {
   order: 92,
   nav: {
     label: 'INNOVATION',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Lightbulb),
     accent: 'primary',
     items: [
       {

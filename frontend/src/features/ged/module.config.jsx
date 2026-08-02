@@ -5,7 +5,9 @@
 import { lazy } from 'react'
 import {
   FolderOpen, FileSignature, ShieldCheck, Tags, ScanLine, Trash2, ClipboardList,
+  Files,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    UX45-UX47 - Config du module GED (base + avance).
@@ -51,6 +53,11 @@ export default {
   order: 80,
   nav: {
     label: 'DOCUMENTS',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Files),
     accent: 'lune', // VX8 — documentaire = accent lune (dérivé)
     items: [
       // ODY22 — /ged (DocumentsPage) déjà routé ailleurs (router/index.jsx) :

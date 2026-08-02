@@ -4,6 +4,7 @@
    `router/moduleRoutes.jsx`). */
 import { lazy } from 'react'
 import { Phone, PhoneCall, Settings } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    WIR160 — Configuration du module ERP « Téléphonie / Softphone VoIP ».
@@ -32,6 +33,11 @@ export default {
   order: 77,
   nav: {
     label: 'TÉLÉPHONIE',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(PhoneCall),
     accent: 'lune',
     items: [
       { to: '/voip', label: 'Journal & appel', icon: IconCall, roles: TOUS },

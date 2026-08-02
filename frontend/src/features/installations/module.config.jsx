@@ -3,6 +3,7 @@
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
 import { CalendarClock, HardHat, ClipboardList, Wrench, Boxes, BarChart3, MapPin } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Chantiers / Installations / Production
@@ -77,6 +78,11 @@ const config = {
   // copier-lien, bascule de vue) reste « actions rapides + KPI » de fait.
   nav: {
     label: 'CHANTIERS', labelKey: 'nav.section.chantiers',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(HardHat),
     accent: 'success',
     items: [
       { to: '/ma-journee',           label: 'Ma journée',       k: 'nav.ma_journee', icon: navIcon(CalendarClock),       roles: ['normal','responsable','admin'] },

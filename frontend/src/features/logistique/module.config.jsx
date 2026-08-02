@@ -4,6 +4,7 @@
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
 import { Truck, ClipboardList, ArrowLeftRight, Undo2 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 // APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
 import { INVENTAIRE_ACCENT_KEY } from '../stock/inventaireAccent'
 
@@ -30,6 +31,11 @@ const config = {
   order: 51,
   nav: {
     label: 'LOGISTIQUE',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Truck),
     // APX22 — accent de la FAMILLE INVENTAIRE (Stock/Magasin/Logistique) :
     // les trois portent la même clé, celle que Stock avait déjà (avant,
     // Logistique partageait `success` avec les apps terrain/chantiers).

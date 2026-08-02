@@ -4,6 +4,7 @@
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
 import { ShoppingCart } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    POS (XPOS2) — configuration du module « Caisse » (auto-enregistrée).
@@ -30,6 +31,11 @@ const config = {
   order: 15,
   nav: {
     label: 'CAISSE',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(ShoppingCart),
     accent: 'brass', // VX8 — commercial/vente = accent brass (dérivé)
     items: [
       { to: '/pos', label: 'Caisse', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

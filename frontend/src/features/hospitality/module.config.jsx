@@ -7,6 +7,7 @@ import {
   LayoutDashboard, BedDouble, CalendarDays, ClipboardList, Sparkles,
   DoorOpen, UtensilsCrossed, PartyPopper,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    WIR57 — Config du module Hôtellerie (auto-enregistrée).
@@ -40,6 +41,11 @@ const config = {
   order: 96,
   nav: {
     label: 'HÔTELLERIE',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(BedDouble),
     accent: 'primary',
     items: [
       {

@@ -4,6 +4,7 @@
    `features/flotte/module.config.jsx`. */
 import { lazy } from 'react'
 import { Sprout, Beaker, Wrench } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    NTAGR4/NTAGR8 — configuration du module « Agriculture » (auto-enregistrée).
@@ -27,6 +28,11 @@ const config = {
   order: 60,
   nav: {
     label: 'AGRICULTURE',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Sprout),
     accent: 'success',
     items: [
       { to: '/agriculture/parcelles', label: 'Parcelles', icon: <Sprout size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

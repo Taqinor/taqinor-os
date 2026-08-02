@@ -4,6 +4,7 @@
    fast-refresh ne s'y applique pas. */
 import { lazy } from 'react'
 import { Leaf, Gauge } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    NTESG6 — Configuration du module ESG / RSE (reporting ESG/durabilité
@@ -27,6 +28,11 @@ const config = {
   order: 62,
   nav: {
     label: 'ESG / RSE',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Leaf),
     accent: 'success',
     items: [
       { to: '/esg', label: 'Cockpit ESG', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

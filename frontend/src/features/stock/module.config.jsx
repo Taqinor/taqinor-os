@@ -6,6 +6,7 @@ import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
   Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 // APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
 import { INVENTAIRE_ACCENT_KEY } from './inventaireAccent'
 
@@ -67,6 +68,11 @@ const config = {
   description: 'Gestion des stocks, mouvements et fournisseurs.',
   nav: {
     label: 'STOCK', labelKey: 'nav.section.stock',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Boxes),
     // APX22 - accent de la FAMILLE INVENTAIRE : Stock, Magasin et
     // Logistique portent desormais la MEME cle (celle-ci, inchangee cote
     // Stock). Source unique : `features/stock/inventaireAccent.js`.

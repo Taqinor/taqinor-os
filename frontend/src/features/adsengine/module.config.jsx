@@ -10,6 +10,7 @@ import {
   SlidersHorizontal, MonitorPlay, BarChart3, MessagesSquare, Camera,
   Gauge, GitBranch, Table2, Scale, ShieldCheck, Palette, Binoculars,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 // PUB47 — enveloppe d'impression (bouton « Imprimer / PDF » + print.css
 // globale) posée UNIQUEMENT au point d'enregistrement de route, sans toucher
 // au corps d'AdsCockpitScreen (lane distincte).
@@ -89,6 +90,11 @@ const config = {
   order: 56, // juste après Marketing (55) — même famille croissance/commercial.
   nav: {
     label: 'PUBLICITÉ',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Megaphone),
     accent: 'brass', // VX8 — croissance/commercial = accent brass (dérivé).
     items: [
       // PUB42 — point d'entrée du matin, en tête de nav (badge de comptage

@@ -3,7 +3,8 @@
    `router/moduleRoutes.jsx` via glob — même dérogation que
    `features/agriculture/module.config.jsx`. */
 import { lazy } from 'react'
-import { Users } from 'lucide-react'
+import { Users, Contact } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    WIR152 — configuration du module « Tiers » (auto-enregistrée).
@@ -27,6 +28,11 @@ const config = {
   order: 65,
   nav: {
     label: 'TIERS',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Contact),
     items: [
       { to: '/tiers', label: 'Répertoire', icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],

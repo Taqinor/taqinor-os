@@ -6,6 +6,7 @@ import { lazy } from 'react'
 import {
   ShieldCheck, AlertOctagon, ClipboardCheck, ShieldAlert, Leaf, Star, UserCheck,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    UX29–UX33 — Configuration du module QHSE (Qualité · Hygiène · Sécurité ·
@@ -31,6 +32,11 @@ const config = {
   order: 60,
   nav: {
     label: 'QHSE',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(ShieldCheck),
     accent: 'destructive', // VX8 — sécurité/risque = accent destructive (dérivé)
     items: [
       { to: '/qhse', label: 'Cockpit QHSE', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

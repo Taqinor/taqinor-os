@@ -6,6 +6,7 @@ import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Paramètres vers le registre (phase 2,
@@ -111,6 +112,11 @@ const config = {
   order: 90,
   nav: {
     label: 'PARAMÈTRES',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Settings),
     accent: 'nuit',
     items: [
       // ODY23(a) — cockpit de l'app (1er item = lien du cockpit).

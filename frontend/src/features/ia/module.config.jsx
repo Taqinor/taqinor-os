@@ -3,7 +3,8 @@
    `router/moduleRoutes.jsx` via glob — pas un module de composants : le
    fast-refresh ne s'y applique pas. */
 import { lazy } from 'react'
-import { Cpu, Search, Bot, ListChecks } from 'lucide-react'
+import { Cpu, Search, Bot, ListChecks, BrainCircuit } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    ODY23 — Configuration du module « Intelligence » (IA / OCR / agent), NOUVEAU
@@ -34,6 +35,11 @@ const config = {
   order: 65,
   nav: {
     label: 'INTELLIGENCE', labelKey: 'nav.section.intelligence',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(BrainCircuit),
     accent: 'lune', // VX8 — tokens.css: --module-accent-lune = « Documents/Intelligence »
     items: [
       { to: '/ia', label: 'Cockpit IA', icon: <Cpu size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['normal', 'responsable', 'admin'] },

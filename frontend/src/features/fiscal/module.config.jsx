@@ -2,7 +2,8 @@
    Fichier de configuration de module (données + composants lazy), collecté par
    `router/moduleRoutes.jsx` via glob — pas un module de composants. */
 import { lazy } from 'react'
-import { ShieldCheck } from 'lucide-react'
+import { ShieldCheck, Scale } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    WIR106 — Module Conformité fiscale (NTMAR). Écran « Calendrier fiscal /
@@ -20,6 +21,11 @@ const config = {
   order: 63,
   nav: {
     label: 'Conformité fiscale',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Scale),
     accent: 'warning',
     items: [
       { to: '/fiscal/conformite', label: 'Conformité fiscale', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

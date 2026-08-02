@@ -5,7 +5,9 @@
 import { lazy } from 'react'
 import {
   Truck, Users, Wrench, ShieldCheck, Fuel, LineChart, ClipboardCheck, MapPin,
+  Car,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    FLOTTE (UX15–UX20) — configuration du module « Flotte » (auto-enregistrée).
@@ -33,6 +35,11 @@ const config = {
   order: 50,
   nav: {
     label: 'FLOTTE',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Car),
     accent: 'success', // VX8 — terrain/opérations = accent success (dérivé)
     items: [
       { to: '/flotte', label: 'Cockpit', icon: <Truck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

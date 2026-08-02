@@ -3,7 +3,8 @@
    de composants : le fast-refresh ne s'y applique pas (même contrat que
    `router/moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { ShieldCheck, ShieldAlert, LayoutDashboard, ClipboardCheck } from 'lucide-react'
+import { ShieldCheck, ShieldAlert, LayoutDashboard, ClipboardCheck, Umbrella } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    NTASS25 — Configuration du module ERP « Assurances » (registre des polices
@@ -37,6 +38,11 @@ export default {
   order: 75,
   nav: {
     label: 'ASSURANCES',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Umbrella),
     accent: 'lune', // documentaire/financier = accent lune (dérivé)
     items: [
       { to: '/assurances', label: 'Polices', icon: SC, roles: ROLES },

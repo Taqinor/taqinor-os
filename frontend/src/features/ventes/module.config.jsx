@@ -5,7 +5,9 @@ import { lazy } from 'react'
 import {
   FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock, AlertTriangle, Tags,
   LayoutDashboard,
+  HandCoins,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Ventes vers le registre (phase 2, après
@@ -67,6 +69,11 @@ const config = {
   order: 50,
   nav: {
     label: 'VENTES', labelKey: 'nav.section.ventes',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(HandCoins),
     accent: 'brass',
     items: [
       // ODY16 — porte d'entrée de l'app : PREMIER item (convention

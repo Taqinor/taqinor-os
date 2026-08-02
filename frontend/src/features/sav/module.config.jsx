@@ -3,6 +3,7 @@
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
 import { Boxes, Wrench, LayoutDashboard } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    ARC48 — Migration des routes legacy SAV (Après-vente) vers le registre.
@@ -85,6 +86,11 @@ const config = {
   order: 30,
   nav: {
     label: 'APRÈS-VENTE', labelKey: 'nav.section.apres_vente',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Wrench),
     // ODY19 — vérifié VX8 : accent cohérent avec les autres apps « risque/
     // urgence » (litiges, qhse) — un ticket SAV ouvert EST une urgence client.
     accent: 'destructive',

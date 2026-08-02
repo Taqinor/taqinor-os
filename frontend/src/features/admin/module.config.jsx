@@ -3,6 +3,7 @@
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
 import { LayoutDashboard } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    ARC54 — Migration des routes legacy Administration vers le registre (phase
@@ -51,6 +52,11 @@ const config = {
   order: 80,
   nav: {
     label: 'TABLEAU DE BORD', labelKey: 'nav.section.dashboard',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(LayoutDashboard),
     // VX8 — l'une des 7 clés --module-accent-* réelles de tokens.css (pas
     // 'primary', qui n'en fait pas partie malgré son usage dans quelques
     // module.config verticaux préexistants).

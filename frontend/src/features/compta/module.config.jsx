@@ -6,7 +6,9 @@ import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat,
+  Calculator,
 } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    UX2–UX9 — Enregistrement du module « Comptabilité » (coquille ERP).
@@ -46,6 +48,11 @@ const config = {
   order: 10,
   nav: {
     label: 'COMPTABILITÉ',
+    // ODY34 — glyphe d’APP (contrat APX1 `nav.icon`, prioritaire sur
+    // `items[0].icon`) : le portail montre le métier du module, jamais
+    // l’icône de son premier écran. Unique sur tout le portail — garanti
+    // par `lib/apps/appGlyph.test.jsx`.
+    icon: appGlyph(Calculator),
     accent: 'nuit', // VX8 — finance = accent nuit (dérivé, cf. tokens.css)
     items: [
       { to: '/comptabilite', label: 'Cockpit', icon: icon(LayoutDashboard), roles: ROLES },
