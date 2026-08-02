@@ -63,7 +63,7 @@
 
 /* ── Couche sémantique : variables runtime (clair = défaut) ──────────────── */
 :root {
-  --background: #f6f8fc;
+  --background: oklch(96.6% 0.011 85); /* PROTO — canevas ivoire chaud : la Lumière du brass, séparée des cartes blanches */
   --foreground: #0c1335;
 
   --surface: #ffffff;          /* alias historique de --card */
@@ -86,9 +86,9 @@
 
   --secondary: #eef2fb;
   --secondary-foreground: #0f1c54;
-  --muted: #eef1f8;
+  --muted: oklch(94.8% 0.014 85); /* PROTO */
   --muted-foreground: #5a6488;
-  --accent: #eef2fb;
+  --accent: oklch(94% 0.03 85); /* PROTO — lavage brass pour hover/sélection */
   --accent-foreground: #0f1c54;
 
   --destructive: #b3402a;
@@ -117,6 +117,76 @@
   --module-accent-destructive: var(--destructive); /* Après-vente/SAV — #b3402a */
   --module-accent-warning: var(--warning);         /* Analyse/reporting — #c8870f */
   --module-accent-lune: var(--color-lune-faint);   /* Documents/Intelligence — #8d96b4 */
+  /* ODY33 — 8ᵉ clé. Cinq module.config (education, hospitality, innovation,
+     migration, sante) déclaraient déjà `accent: 'primary'` alors que le jeton
+     n'existait pas : `var(--module-accent-primary)` était donc invalide, ce qui
+     rendait invalide-au-calcul TOUTE déclaration qui l'utilisait — ces cinq
+     apps se retrouvaient SANS fond de pastille. Le jeton dit ce que la clé a
+     toujours voulu dire : l'or de marque, en variante TEXTE (AA sur fond clair,
+     même règle que --primary-text). */
+  --module-accent-primary: var(--primary-text);
+
+  /* ── ODY33 — Palette des TUILES d'application (écran d'accueil) ─────────────
+     Différente, et volontairement, des `--module-accent-*` ci-dessus : ceux-là
+     sont des couleurs de PREMIER PLAN (liseré, glyphe filaire, texte d'accent),
+     ceux-ci sont des couleurs de REMPLISSAGE saturé portant un glyphe BLANC.
+     Une couleur de premier plan pâlit dès qu'on la dilue à 12 % en fond — c'est
+     exactement ce qui rendait la grille d'accueil terne.
+
+     7 VOIES × 3 VARIANTES = 21 couleurs. La voie vient de la clé d'accent du
+     module ; la variante d'un hachage STABLE de la clé du module (ui/AppIcon),
+     donc deux apps voisines de la même famille ne sont jamais identiques et une
+     app garde SA couleur sur les quatre surfaces ODY9 comme d'un jour à l'autre.
+     `primary` est un ALIAS de `brass` (c'est le même or de marque) avec un
+     décalage de variante, pour ne pas inventer une 8ᵉ teinte.
+
+     Calibrage (script de contraste, sRGB) — chaque couleur est DANS le gamut,
+     bas et haut de dégradé compris, et :
+       • glyphe blanc / fond de tuile : 3,39:1 à 5,06:1 → ≥ 3:1 partout,
+         le seuil WCAG 1.4.11 des objets graphiques (un glyphe n'est pas du
+         texte) ; ≥ 4:1 sur 5 voies sur 7 ;
+       • tuile / nuit du portail : ≥ 3,2:1 — la tuile se détache du fond ;
+       • tuile / carte claire (lanceur, épinglés) : ≥ 3,9:1.
+     Ces valeurs ne changent PAS entre clair et sombre : la couleur d'une app
+     est son identité, pas un état du thème (`.dark` ne les redéfinit pas). */
+  --app-tile-brass-1: oklch(60% 0.121 78);
+  --app-tile-brass-2: oklch(60% 0.121 69);
+  --app-tile-brass-3: oklch(60% 0.121 87);
+  --app-tile-warning-1: oklch(61.5% 0.146 48);
+  --app-tile-warning-2: oklch(61.5% 0.146 40);
+  --app-tile-warning-3: oklch(61.5% 0.146 56);
+  --app-tile-destructive-1: oklch(56.5% 0.175 28);
+  --app-tile-destructive-2: oklch(56.5% 0.175 19);
+  --app-tile-destructive-3: oklch(56.5% 0.175 37);
+  --app-tile-success-1: oklch(53% 0.115 152);
+  --app-tile-success-2: oklch(53% 0.115 142);
+  --app-tile-success-3: oklch(53% 0.115 162);
+  --app-tile-azur-1: oklch(52.5% 0.112 264);
+  --app-tile-azur-2: oklch(52.5% 0.112 257);
+  --app-tile-azur-3: oklch(52.5% 0.112 271);
+  --app-tile-lune-1: oklch(57.5% 0.155 292);
+  --app-tile-lune-2: oklch(57.5% 0.155 283);
+  --app-tile-lune-3: oklch(57.5% 0.155 301);
+  /* `nuit` = la voie GRAPHITE (chroma quasi nul) : c'est elle qui empêche
+     Administration/Compta de se confondre avec la voie azur, le bleu sRGB étant
+     trop borné en chroma à cette clarté pour que deux bleus se distinguent. */
+  --app-tile-nuit-1: oklch(52% 0.028 270);
+  --app-tile-nuit-2: oklch(52% 0.028 240);
+  --app-tile-nuit-3: oklch(52% 0.028 300);
+  --app-tile-primary-1: var(--app-tile-brass-2);
+  --app-tile-primary-2: var(--app-tile-brass-3);
+  --app-tile-primary-3: var(--app-tile-brass-1);
+  /* Repli d'une clé d'accent inconnue (ou absente) : la voie graphite. */
+  --app-tile-defaut: var(--app-tile-nuit-1);
+  /* Glyphe : blanc franc, comme Odoo — jamais l'accent, jamais un gris.
+     `--app-tile-glyph` sert AUSSI de pôle CLAIR au dégradé de relief, et
+     `--app-tile-shade` de pôle SOMBRE : les deux extrêmes du dégradé restent
+     ainsi des jetons (aucune couleur littérale hors de ce bloc). */
+  --app-tile-glyph: #ffffff;
+  --app-tile-shade: oklch(0% 0 0);
+  /* Ombre portée douce des tuiles (teintée nuit, comme l'échelle d'ombres). */
+  --shadow-tile: 0 6px 14px -6px rgb(12 19 53 / 0.45), 0 2px 4px -2px rgb(12 19 53 / 0.30);
+  --shadow-tile-hover: 0 12px 22px -8px rgb(12 19 53 / 0.55), 0 4px 8px -4px rgb(12 19 53 / 0.35);
 
   /* VX1 — un seul or, un seul navy : les jetons « catalogue/générateur » du
      langage navy/or (devis premium) pointent désormais sur la signature de
@@ -334,6 +404,11 @@
   --module-accent-destructive: var(--destructive); /* Après-vente/SAV — #e06a52 */
   --module-accent-warning: var(--warning);         /* Analyse/reporting — brass-300 */
   --module-accent-lune: var(--color-lune-faint);   /* Documents/Intelligence — #8d96b4 */
+  /* ODY33 — 8ᵉ clé (cf. la note du bloc clair) : sur navy, l'or n'a pas besoin
+     d'être assombri, `--primary-text` pointe déjà sur `--primary`. */
+  --module-accent-primary: var(--primary-text);
+  /* Les jetons `--app-tile-*` NE sont volontairement PAS redéfinis ici : la
+     couleur d'une app est son identité, elle ne bascule pas avec le thème. */
 
   /* LB16 — pastilles de TAG en sombre : fonds sombres + texte clair (AA sur le
      fond navy). Mêmes 10 buckets/hues que le clair. */
