@@ -38,6 +38,26 @@ const SIZES = { lg: 64, md: 56, sm: 48, xs: 30 }
 // seraient rigoureusement identiques côte à côte dans la grille.
 const VARIANTES_TUILE = 3
 
+// ODY34 — GRAINE du hachage. djb2 démarre traditionnellement à 5381 ; ce
+// nombre-là n'a aucune vertu ici, et le tirage qu'il donnait posait
+// 13 paires de tuiles JUMELLES contiguës dans le portail par défaut (dont
+// Assurances+FP&A et Santé+Éducation côte à côte, exactement ce que la
+// variante existe pour éviter). La graine ci-dessous est CHOISIE : sur l'ordre
+// du registre, elle ne laisse AUCUNE paire d'apps consécutives de la même
+// couleur — donc jamais deux tuiles identiques côte à côte, quelle que soit la
+// largeur de la grille (3 colonnes au pouce, 4, jusqu'à 8+ en bureau) — et il
+// ne reste qu'une seule coïncidence VERTICALE, à 4 colonnes. Rien d'autre ne
+// change : le hachage reste djb2, donc toujours pur, stable d'une session à
+// l'autre et identique sur les quatre surfaces ODY9. Voir
+// `AppIcon.voisinage.test.jsx`, qui rejoue l'invariant sur le registre réel.
+const GRAINE_TUILE = 67372
+
+// Voie utilisée quand un module ne déclare PAS d'accent (`immobilier`,
+// `tiers`…). Avant ODY34 ils partageaient tous LE MÊME `--app-tile-defaut`,
+// donc quatre tuiles rigoureusement identiques dans la grille ; ils prennent
+// désormais leur propre variante de la voie nuit, comme n'importe quelle app.
+const VOIE_SANS_ACCENT = 'nuit'
+
 /**
  * varianteTuile — 1, 2 ou 3, DÉTERMINÉ par la clé de module (djb2 32 bits).
  * Jamais aléatoire : la même app garde la même couleur d'une session à l'autre
@@ -45,7 +65,7 @@ const VARIANTES_TUILE = 3
  */
 export function varianteTuile(cle) {
   if (!cle) return 1
-  let h = 5381
+  let h = GRAINE_TUILE
   for (let i = 0; i < cle.length; i += 1) {
     h = ((h * 33) ^ cle.charCodeAt(i)) >>> 0
   }
@@ -80,13 +100,15 @@ export function AppIcon({
       style={{
         '--app-icon-size': `${px}px`,
         // `--module-accent` reste posé tel quel : il sert encore aux surfaces
-        // qui entourent la pastille (liseré de cellule, survol de tuile).
-        // `--app-tile` est le NOUVEAU remplissage ; une clé d'accent inconnue
-        // retombe proprement sur la voie graphite.
-        ...(accent ? {
-          '--module-accent': `var(--module-accent-${accent})`,
-          '--app-tile': `var(--app-tile-${accent}-${varianteTuile(appKey)}, var(--app-tile-defaut))`,
-        } : null),
+        // qui entourent la pastille (liseré de cellule, survol de tuile). Il
+        // n'existe QUE si le module déclare un accent — pas de repli inventé.
+        ...(accent ? { '--module-accent': `var(--module-accent-${accent})` } : null),
+        // `--app-tile` est le remplissage, et il est TOUJOURS posé : un module
+        // sans accent prend sa propre variante de la voie nuit (ODY34) au lieu
+        // du `--app-tile-defaut` partagé, qui rendait Immobilier et Tiers
+        // strictement identiques à Comptabilité et Paramètres. Une clé
+        // d'accent inconnue, elle, retombe toujours sur `--app-tile-defaut`.
+        '--app-tile': `var(--app-tile-${accent || VOIE_SANS_ACCENT}-${varianteTuile(appKey)}, var(--app-tile-defaut))`,
         ...style,
       }}
       data-app-icon-size={size}

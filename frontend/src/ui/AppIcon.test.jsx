@@ -102,9 +102,17 @@ describe('ODY33 — AppIcon, remplissage de tuile', () => {
     expect(tuile).toMatch(/^var\(--app-tile-azur-[123], var\(--app-tile-defaut\)\)$/)
   })
 
-  it('sans accent, aucun remplissage posé : le CSS applique la voie par défaut', () => {
-    const { container } = render(<AppIcon icon={SENTINEL} />)
-    expect(container.querySelector('.app-icon').style.getPropertyValue('--app-tile')).toBe('')
+  it('sans accent : la voie nuit, mais avec SA variante (ODY34)', () => {
+    // Avant ODY34, aucun remplissage n'était posé et le CSS retombait sur
+    // `--app-tile-defaut` — le MÊME pour tous : Immobilier et Tiers rendaient
+    // exactement la couleur de Comptabilité et Paramètres. Un module sans
+    // accent prend désormais sa propre variante de la voie nuit ; seul le
+    // `--module-accent` (liseré) reste absent, faute d'accent déclaré.
+    const { container } = render(<AppIcon icon={SENTINEL} appKey="immobilier" />)
+    const icone = container.querySelector('.app-icon')
+    expect(icone.style.getPropertyValue('--app-tile'))
+      .toMatch(/^var\(--app-tile-nuit-[123], var\(--app-tile-defaut\)\)$/)
+    expect(icone.style.getPropertyValue('--module-accent')).toBe('')
   })
 
   it('la variante est DÉTERMINISTE : même clé ⇒ même couleur, toujours', () => {
