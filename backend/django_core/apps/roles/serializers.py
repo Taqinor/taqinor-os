@@ -46,7 +46,9 @@ class RoleSerializer(serializers.ModelSerializer):
         # ── Anti-escalade (ERR5) ──────────────────────────────────────────
         # Seul un administrateur (porteur de ``roles_gerer``, ou superuser)
         # peut octroyer une permission ÉLEVÉE (roles_gerer / prix_achat_voir /
-        # journal_activite_voir). On bloque l'AJOUT d'une telle permission par
+        # journal_activite_voir / marge_voir / cout_non_qualite_voir /
+        # ao_rentabilite_voir — AOF2, l'économie d'un appel d'offres).
+        # On bloque l'AJOUT d'une telle permission par
         # un non-admin : sans cela, un Responsable coche ``roles_gerer`` sur son
         # rôle et s'auto-promeut Administrateur. On compare aux permissions
         # déjà posées (PATCH partiel : on ne pénalise pas un rôle qui les avait

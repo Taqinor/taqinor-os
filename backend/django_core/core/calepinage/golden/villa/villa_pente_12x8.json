@@ -1,0 +1,26 @@
+{
+  "id": "VILLA_PENTE_12x8",
+  "commentaire": "Toiture villa EN PENTE 12 x 8 m a 13 degres, plein sud, sans obstacle — pose affleurante.",
+  "flat": false,
+  "tilt": 13.0,
+  "azimuth": 180.0,
+  "polygon": [
+    [
+      -7.383064775,
+      33.685964067
+    ],
+    [
+      -7.382935225,
+      33.685964067
+    ],
+    [
+      -7.382935225,
+      33.686035933
+    ],
+    [
+      -7.383064775,
+      33.686035933
+    ]
+  ],
+  "obstacles": []
+}

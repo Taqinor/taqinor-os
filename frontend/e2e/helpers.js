@@ -141,3 +141,125 @@ export async function generateAutoDevis(page) {
   await expect(page.locator('.ldp-pdf-area canvas').first()).toBeVisible({ timeout: 45_000 })
   await expect(page.locator('.ldp-fallback')).toHaveCount(0)
 }
+
+// ── AOF187 — AO (Appel d'offres) ────────────────────────────────────────────
+// Selectors lean on the STABLE `data-ao-*` hook contract frozen in AOF8
+// (frontend/src/features/ao/E2E_HOOKS.md : -canvas, -outil, -verdict, -compte,
+// -tiroir, -variante, -piece, -controle, -repere, -provenance, -etat) rather
+// than on route/label guesses that will drift as the ao-toiture/ao-calepinage/
+// ao-dossier screens land. Deliberately avoids the two flaky causes already
+// catalogued in this repo: no date-of-day math (a "today" comparison flakes at
+// midnight) and no accessible name derived from an icon/emoji (an icon swap
+// silently breaks a `getByRole` name match) — every lookup here is either a
+// `data-ao-*` attribute or a plain, stable FR string.
+export const AO_ROUTES = {
+  dashboard: '/ao',
+  affaires: '/ao/affaires',
+  toitures: '/ao/toitures',
+  calepinages: '/ao/calepinages',
+  dossiers: '/ao/dossiers',
+  bibliotheque: '/ao/bibliotheque',
+}
+
+// Nom stable planté par `seed_ao_demo` (AOF186, rejouable, construit DEPUIS les
+// goldens FRDISI d'AOF183) — on ne matche qu'une SOUS-CHAÎNE pour tolérer un
+// préfixe/suffixe de référence sans casser le spec si la fabrique de référence
+// change son format exact.
+export const AO_DEMO_MARKER = 'FRDISI'
+
+export async function gotoAo(page, path) {
+  await page.goto(path)
+  await expect(page.locator('.header-title')).toBeVisible()
+}
+
+// Ouvre l'affaire de démonstration plantée par `seed_ao_demo` depuis la liste
+// des affaires (recherche par sous-chaîne stable, jamais par position/index).
+//
+// `visible=true` n'est PAS de la ceinture-bretelles : le `DataTable` (M154)
+// monte DEUX arbres pour les mêmes lignes — la table bureau
+// (`hidden … dt-desktop:block`, donc `display:none` sous 768 px) PUIS, plus
+// bas dans le DOM, les cartes mobiles (`data-dt-cards`, `dt-desktop:hidden`).
+// `getByText(...)` matche indifféremment les deux (la visibilité n'est
+// évaluée qu'au moment de l'action), donc `.first()` désignait, en viewport
+// téléphone, la cellule MASQUÉE de la table bureau : un clic qui ne devient
+// jamais actionnable et expire au bout du timeout, sans jamais dire pourquoi.
+// On ne retient donc que l'occurrence réellement PEINTE — un seul et même
+// helper reste juste sur les deux viewports.
+export async function openAoDemoAffaire(page) {
+  await gotoAo(page, AO_ROUTES.affaires)
+  const affaire = page
+    .getByText(AO_DEMO_MARKER, { exact: false })
+    .locator('visible=true')
+    .first()
+  // Assertion AVANT le clic : si le seed n'a pas tourné (ou si la liste
+  // n'imprime plus la référence acheteur), le rouge NOMME la cause au lieu de
+  // se présenter comme un « locator.click a expiré » muet.
+  await expect(
+    affaire,
+    `l'affaire de démonstration « ${AO_DEMO_MARKER} » est listée sur ${AO_ROUTES.affaires}`
+    + ' (manage.py seed_ao_demo --confirmer)',
+  ).toBeVisible()
+  await affaire.click()
+}
+
+// Rejoint l'atelier « Toitures & relevés » DEPUIS LE POUCE (paradigme ODY6 :
+// sur mobile, la nav de l'app active EST la barre basse).
+//
+// Pourquoi pas un `getByRole('link', { name: /Toiture/ })` global : sous
+// 768 px la coquille rend DEUX destinations portant ce nom accessible — le
+// lien de la Sidebar (tiroir hors-champ par `transform: translateX(-105%)`,
+// donc toujours présent dans l'arbre d'accessibilité) ET l'onglet de
+// `nav.bottom-tabbar`. Un locator global viole le mode strict de Playwright ;
+// sur bureau il n'en voyait qu'un (`.bottom-tabbar { display: none }`), d'où
+// une ambiguïté qui n'apparaît QUE sur les projets mobiles.
+//
+// L'onglet direct existe toujours : `BottomTabBar.splitAppTabs` garde les 3
+// premières sections de l'app en accès direct dès qu'elle en a plus de 4, et
+// « Toitures & relevés » est la 3e entrée de nav du module AO.
+export async function ouvrirAoToituresMobile(page) {
+  const tabbar = page.locator('nav.bottom-tabbar')
+  await expect(tabbar, "la barre d'onglets de l'app AO est rendue au pouce").toBeVisible()
+  await tabbar.getByRole('link', { name: /Toiture/ }).click()
+  await expect(page).toHaveURL(/\/ao\/toitures/)
+}
+
+// Sélectionne un outil de l'atelier toiture/calepinage (`data-ao-outil="…"`).
+export async function selectAoOutil(page, outil) {
+  await page.locator(`[data-ao-outil="${outil}"]`).click()
+}
+
+// Pose un point sur le canvas de traçage/relevé (`data-ao-canvas`) à des
+// coordonnées RELATIVES à sa boîte — jamais des pixels d'écran absolus.
+export async function clickAoCanvas(page, { x, y }) {
+  await page.locator('[data-ao-canvas]').click({ position: { x, y } })
+}
+
+// Ouvre un tiroir de paramètres nommé (`data-ao-tiroir="…"`).
+export async function openAoTiroir(page, nom) {
+  await page.locator(`[data-ao-tiroir="${nom}"]`).click()
+}
+
+// Attend le verdict du calepinage — un recalcul SERVEUR, jamais un chiffre
+// estimé côté client, donc potentiellement asynchrone — et renvoie son état
+// (`data-ao-etat` : 'ok' | 'avertissement' | 'bloquant').
+export async function waitAoVerdict(page) {
+  const verdict = page.locator('[data-ao-verdict]')
+  await expect(verdict).toBeVisible({ timeout: 30_000 })
+  return verdict.getAttribute('data-ao-etat')
+}
+
+// Cartes de variante (`data-ao-variante="…"` : ex. 'retenue' | 'alternative').
+export function aoVariante(page, cle) {
+  return page.locator(`[data-ao-variante="${cle}"]`)
+}
+
+// Lignes de pièce du dossier (`data-ao-piece`, état `data-ao-etat`).
+export function aoPiece(page, cle) {
+  return page.locator(`[data-ao-piece="${cle}"]`)
+}
+
+// Premier contrôle de cohérence à l'état BLOQUANT dans le dossier
+// (`data-ao-controle[data-ao-etat="bloquant"]`).
+export function firstAoControleBloquant(page) {
+  return page.locator('[data-ao-controle][data-ao-etat="bloquant"]').first()
+}

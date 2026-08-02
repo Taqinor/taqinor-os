@@ -2,12 +2,15 @@
 
 Couvre : (1) non-régression stricte — le ``set`` résolu par la vue paresseuse
 ``_LazyTargets`` est EXACTEMENT identique à la référence figée
-``HISTORICAL_TARGETS`` (les 8 clés ``FIELD_MAPS`` d'avant ARC32 + les cibles
-ajoutées DÉLIBÉRÉMENT depuis, chacune nommée), chaque cible étant déclarée par
+``EXPECTED_TARGETS`` (les 8 clés ``FIELD_MAPS`` d'avant ARC32 + les cibles
+ajoutées DÉLIBÉRÉMENT depuis, chacune nommée : ``HISTORICAL_TARGETS`` pour
+celles que dataimport lit lui-même, ``REGISTRY_ONLY_TARGETS`` pour celles dont
+l'app propriétaire porte son propre lecteur), chaque cible étant déclarée par
 son app propriétaire dans son ``platform.py`` ; (2) l'API existante (``in``, itération, ``len``, ``sorted``)
 se comporte à l'identique (DROP-IN replacement) ; (3) chaque cible historique
 est bien déclarée dans un manifeste plateforme (``import_specs``) ET conserve
-son mapping d'en-têtes dans ``FIELD_MAPS`` ; (4) une nouvelle cible déclarée
+son mapping d'en-têtes dans ``FIELD_MAPS`` (les cibles à lecteur propre, elles,
+restent DEHORS de ``FIELD_MAPS`` — vérifié) ; (4) une nouvelle cible déclarée
 UNIQUEMENT dans un manifeste fictif apparaît dans ``TARGETS`` sans toucher
 ``apps/dataimport/services.py`` — preuve que la résolution suit vraiment
 ``core.platform.import_specs()`` ; (5) les 6+2 cibles restent inchangées côté
@@ -35,6 +38,28 @@ HISTORICAL_TARGETS = {
     'eleves_education',
 }
 
+# Cibles déclarées au registre par une app qui porte son PROPRE lecteur de
+# fichier — donc SANS entrée dans ``dataimport.FIELD_MAPS``. Elles apparaissent
+# légitimement dans ``TARGETS`` (l'union paresseuse) mais pas dans les mappings
+# d'en-têtes de dataimport : les deux ensembles ne coïncident plus, et c'est le
+# comportement voulu du registre réparti.
+#
+#   AOF30/AOF165/AOF169 — 'obstacles', 'chaines', 'avis' : déclarées par
+#   ``apps/ao/platform.py`` et servies par ``apps/ao/imports.py``
+#   (``FIELD_MAPS_AO``, ses propres en-têtes et ses propres validations
+#   géométriques). Les deux premières ouvrent l'import d'un relevé de toiture
+#   saisi sur tableur, hors ligne, par un technicien sans tablette ; la
+#   troisième importe les AVIS de marchés publiés (l'amont du tunnel AO).
+#   Aucune n'est un import générique dataimport : leur écriture passe par les
+#   modèles AO, pas par ``dataimport.services``.
+REGISTRY_ONLY_TARGETS = {
+    'obstacles', 'chaines', 'avis',
+}
+
+# Référence de non-régression du set RÉSOLU par ``_LazyTargets`` : les cibles
+# FIELD_MAPS de dataimport ∪ les cibles déclarées par une app à lecteur propre.
+EXPECTED_TARGETS = HISTORICAL_TARGETS | REGISTRY_ONLY_TARGETS
+
 # Cible → app propriétaire attendue (déclarante dans son platform.py).
 TARGET_OWNER_MODULE = {
     'leads': 'crm', 'clients': 'crm',
@@ -44,6 +69,7 @@ TARGET_OWNER_MODULE = {
     'contrats': 'contrats',
     'dossiers_rh': 'rh',
     'eleves_education': 'education',
+    'obstacles': 'ao', 'chaines': 'ao', 'avis': 'ao',
 }
 
 
@@ -53,15 +79,15 @@ class TestTargetsNonRegression(SimpleTestCase):
     def test_resolved_set_matches_historical_literal_exactly(self):
         resolved = set(TARGETS)
         self.assertEqual(
-            resolved, HISTORICAL_TARGETS,
-            f"Divergence — manquants: {HISTORICAL_TARGETS - resolved}, "
-            f"en trop: {resolved - HISTORICAL_TARGETS}")
+            resolved, EXPECTED_TARGETS,
+            f"Divergence — manquants: {EXPECTED_TARGETS - resolved}, "
+            f"en trop: {resolved - EXPECTED_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(TARGETS), len(HISTORICAL_TARGETS))
+        self.assertEqual(len(TARGETS), len(EXPECTED_TARGETS))
 
     def test_contains_works_for_each_historical_target(self):
-        for cible in HISTORICAL_TARGETS:
+        for cible in EXPECTED_TARGETS:
             self.assertIn(cible, TARGETS, cible)
 
     def test_unknown_target_not_contained(self):
@@ -70,7 +96,7 @@ class TestTargetsNonRegression(SimpleTestCase):
     def test_sorted_and_iteration_still_work(self):
         # Les vues (views.py) font ``', '.join(sorted(services.TARGETS))`` — le
         # DROP-IN doit rester itérable et triable.
-        self.assertEqual(sorted(TARGETS), sorted(HISTORICAL_TARGETS))
+        self.assertEqual(sorted(TARGETS), sorted(EXPECTED_TARGETS))
 
     def test_repeated_access_is_stable(self):
         first = set(TARGETS)
@@ -89,6 +115,18 @@ class TestFieldMapsUnchanged(SimpleTestCase):
         for cible in HISTORICAL_TARGETS:
             self.assertIn(cible, FIELD_MAPS, cible)
             self.assertTrue(FIELD_MAPS[cible], cible)
+
+    def test_registry_only_targets_stay_out_of_field_maps(self):
+        """Une cible à lecteur propre ne se glisse pas dans ``FIELD_MAPS``.
+
+        Le cliquet reste serré dans les DEUX sens : si l'une de ces cibles
+        gagnait un mapping dataimport, elle appartiendrait à
+        ``HISTORICAL_TARGETS`` et devrait y être nommée."""
+        intruses = REGISTRY_ONLY_TARGETS & set(FIELD_MAPS)
+        self.assertEqual(
+            intruses, set(),
+            f"Ces cibles ont désormais un mapping dataimport : {intruses} — "
+            "déplacez-les dans HISTORICAL_TARGETS.")
 
 
 class TestTargetsDeclaredByOwnerManifests(SimpleTestCase):
@@ -110,9 +148,9 @@ class TestTargetsDeclaredByOwnerManifests(SimpleTestCase):
 
         declares = platform.import_specs(company=None)
         self.assertTrue(
-            HISTORICAL_TARGETS.issubset(declares),
+            EXPECTED_TARGETS.issubset(declares),
             f"Cibles non déclarées au registre : "
-            f"{HISTORICAL_TARGETS - set(declares)}")
+            f"{EXPECTED_TARGETS - set(declares)}")
 
 
 class TestNewManifestTargetAppearsWithoutTouchingServices(SimpleTestCase):
@@ -138,13 +176,13 @@ class TestNewManifestTargetAppearsWithoutTouchingServices(SimpleTestCase):
                 side_effect=lambda: faux):
             resolved = _LazyTargets()._resolve()
         self.assertIn('machin_arc32', resolved)
-        # Les 8 cibles historiques restent présentes (union, pas remplacement).
-        self.assertTrue(HISTORICAL_TARGETS.issubset(resolved))
+        # Les cibles attendues restent présentes (union, pas remplacement).
+        self.assertTrue(EXPECTED_TARGETS.issubset(resolved))
 
     def test_export_registry_bridge_reads_declared_import_specs(self):
         from apps.dataimport.export_registry import declared_import_specs
 
         declared = declared_import_specs()
         self.assertTrue(
-            HISTORICAL_TARGETS.issubset(declared),
-            f"Bridge export incomplet : {HISTORICAL_TARGETS - declared}")
+            EXPECTED_TARGETS.issubset(declared),
+            f"Bridge export incomplet : {EXPECTED_TARGETS - declared}")

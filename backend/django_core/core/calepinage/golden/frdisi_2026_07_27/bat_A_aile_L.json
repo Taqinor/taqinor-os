@@ -1,0 +1,472 @@
+{
+  "engagements": [
+    [
+      "BAT_A_AILE_L",
+      152
+    ]
+  ],
+  "golden": {
+    "commentaire": "Bâtiment A (aile en L) — relevé contradictoire du 27/07/2026. GRECT (deviné) et PAN (venu du plan) sont CONSERVÉS dans le compte et identifiés par leur provenance.",
+    "compte_temoin": 148,
+    "engagement": 152,
+    "hash_entree": "b6510992ac911401c37b25abd6c8a7f44c6b576b82541a327f051dbb96b99988",
+    "rangees_retenues": [
+      0.35,
+      5.65,
+      12.8,
+      20.65,
+      25.95,
+      31.25,
+      36.55,
+      41.85
+    ]
+  },
+  "kits": [
+    {
+      "code": "AO_PORTRAIT",
+      "faitage_m": 0.098,
+      "inclinaison_deg": 15.0,
+      "libelle": "Table dos-à-dos 2 modules 625 Wc — portrait (1,134 × 4,70)",
+      "module_court_m": 1.134,
+      "module_long_m": 2.382,
+      "modules_par_table": 2,
+      "orientation": "PORTRAIT",
+      "puissance_module_wc": 625.0
+    }
+  ],
+  "obstacles": [
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR1 : 0.30 m",
+      "repere": "BAR1",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 3.77,
+      "x1": 4.92,
+      "y0": 3.39,
+      "y1": 4.7
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR2 : 0.30 m",
+      "repere": "BAR2",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 3.84,
+      "x1": 4.98,
+      "y0": 11.17,
+      "y1": 12.5
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR3 : 0.30 m",
+      "repere": "BAR3",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 3.33,
+      "x1": 4.34,
+      "y0": 19.05,
+      "y1": 20.35
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR4 : 0.30 m",
+      "repere": "BAR4",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 5.91,
+      "x1": 7.02,
+      "y0": 3.16,
+      "y1": 4.27
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR5 : 0.30 m",
+      "repere": "BAR5",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 6.08,
+      "x1": 7.38,
+      "y0": 8.03,
+      "y1": 9.14
+    },
+    {
+      "degagement_m": 0.5,
+      "hauteur_m": null,
+      "provenance": "RELEVE_DOUTEUX",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR6 : 0.50 m",
+      "repere": "BAR6",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 8.43,
+      "x1": 9.06,
+      "y0": 16.52,
+      "y1": 17.32
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR7 : 0.30 m",
+      "repere": "BAR7",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 6.02,
+      "x1": 7.46,
+      "y0": 18.92,
+      "y1": 20.35
+    },
+    {
+      "degagement_m": 0.5,
+      "hauteur_m": null,
+      "provenance": "RELEVE_DOUTEUX",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR8 : 0.50 m",
+      "repere": "BAR8",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 6.82,
+      "x1": 7.46,
+      "y0": 24.86,
+      "y1": 26.41
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR9 : 0.30 m",
+      "repere": "BAR9",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 6.53,
+      "x1": 7.08,
+      "y0": 27.06,
+      "y1": 27.92
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR10 : 0.30 m",
+      "repere": "BAR10",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 6.14,
+      "x1": 6.98,
+      "y0": 32.53,
+      "y1": 33.03
+    },
+    {
+      "degagement_m": 0.5,
+      "hauteur_m": null,
+      "provenance": "RELEVE_DOUTEUX",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR11 : 0.50 m",
+      "repere": "BAR11",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 6.41,
+      "x1": 6.88,
+      "y0": 33.68,
+      "y1": 34.63
+    },
+    {
+      "degagement_m": 0.5,
+      "hauteur_m": null,
+      "provenance": "RELEVE_DOUTEUX",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR12 : 0.50 m",
+      "repere": "BAR12",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 6.61,
+      "x1": 7.07,
+      "y0": 39.5,
+      "y1": 40.48
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR13 : 0.30 m",
+      "repere": "BAR13",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 6.18,
+      "x1": 7.05,
+      "y0": 43.975,
+      "y1": 44.515
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR14 : 0.30 m",
+      "repere": "BAR14",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 3.74,
+      "x1": 4.73,
+      "y0": 32.18,
+      "y1": 32.88
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR15 : 0.30 m",
+      "repere": "BAR15",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 3.75,
+      "x1": 4.65,
+      "y0": 39.31,
+      "y1": 40.72
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle BAR16 : 0.30 m",
+      "repere": "BAR16",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 3.75,
+      "x1": 4.81,
+      "y0": 45.68,
+      "y1": 46.98
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle CAGE : 0.30 m",
+      "repere": "CAGE",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 6.13,
+      "x1": 10.76,
+      "y0": 12.23,
+      "y1": 14.7
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle DECN : 0.30 m",
+      "repere": "DECN",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 9.61,
+      "x1": 10.76,
+      "y0": 14.7,
+      "y1": 17.47
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle NOTCH : 0.35 m",
+      "repere": "NOTCH",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 0.0,
+      "x1": 0.74,
+      "y0": 31.28,
+      "y1": 32.82
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle EDIC : 0.30 m",
+      "repere": "EDIC",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 0.0,
+      "x1": 0.74,
+      "y0": 30.21,
+      "y1": 31.13
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle LEG1 : 0.30 m",
+      "repere": "LEG1",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": -26.36,
+      "x1": -25.01,
+      "y0": 3.78,
+      "y1": 4.93
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle LEG2 : 0.30 m",
+      "repere": "LEG2",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": -18.47,
+      "x1": -17.12,
+      "y0": 3.78,
+      "y1": 4.93
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle LEG3 : 0.30 m",
+      "repere": "LEG3",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": -26.36,
+      "x1": -25.01,
+      "y0": 6.33,
+      "y1": 7.48
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle LEG4 : 0.30 m",
+      "repere": "LEG4",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": -18.34,
+      "x1": -16.99,
+      "y0": 6.33,
+      "y1": 7.48
+    },
+    {
+      "degagement_m": 0.5,
+      "hauteur_m": null,
+      "provenance": "RELEVE_DOUTEUX",
+      "regle_appliquee": "surcharge explicite de l'obstacle LEG5 : 0.50 m",
+      "repere": "LEG5",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": -10.45,
+      "x1": -9.24,
+      "y0": 3.78,
+      "y1": 4.85
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle LEG6 : 0.30 m",
+      "repere": "LEG6",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": -1.87,
+      "x1": -1.45,
+      "y0": 3.72,
+      "y1": 4.82
+    },
+    {
+      "degagement_m": 0.5,
+      "hauteur_m": null,
+      "provenance": "RELEVE_DOUTEUX",
+      "regle_appliquee": "surcharge explicite de l'obstacle LEG7 : 0.50 m",
+      "repere": "LEG7",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": -10.26,
+      "x1": -9.63,
+      "y0": 6.4,
+      "y1": 7.2
+    },
+    {
+      "degagement_m": 0.5,
+      "hauteur_m": null,
+      "provenance": "RELEVE_DOUTEUX",
+      "regle_appliquee": "surcharge explicite de l'obstacle LEG8 : 0.50 m",
+      "repere": "LEG8",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": -10.4,
+      "x1": -9.7,
+      "y0": 7.35,
+      "y1": 7.75
+    },
+    {
+      "degagement_m": 0.5,
+      "hauteur_m": null,
+      "provenance": "DEVINE",
+      "regle_appliquee": "surcharge explicite de l'obstacle GRECT : 0.50 m",
+      "repere": "GRECT",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": -1.7,
+      "x1": -0.4,
+      "y0": 4.95,
+      "y1": 7.16
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "PLAN",
+      "regle_appliquee": "surcharge explicite de l'obstacle PAN : 0.35 m",
+      "repere": "PAN",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": -29.74,
+      "x1": -25.7,
+      "y0": 9.02,
+      "y1": 11.2
+    }
+  ],
+  "parametres": {
+    "allee_m": 0.6,
+    "axe_rangee": "NORD_SUD",
+    "degagement_defaut_m": 0.3,
+    "degagement_nature_inconnue_m": 0.5,
+    "engagement_modules": 152,
+    "graine": 0,
+    "kits": [
+      "AO_PORTRAIT"
+    ],
+    "marge_bande_min_m": 0.04,
+    "marge_troncon_min_m": 0.02,
+    "mode_pose": "rangees_explicites_dp",
+    "pas_recherche_m": 0.01,
+    "plafond_kwc": null,
+    "rives": {
+      "acrotere_m": 0.0,
+      "extremite_m": 0.35,
+      "joint_m": 0.0,
+      "laterale_m": 0.35
+    }
+  },
+  "repere": "BAT_A_AILE_L",
+  "schema_version": 1,
+  "surfaces": [
+    {
+      "axe_rangee": "NORD_SUD",
+      "azimut_deg": 180.0,
+      "contour": [
+        [
+          10.76,
+          0.0
+        ],
+        [
+          10.76,
+          47.08
+        ],
+        [
+          0.0,
+          47.08
+        ],
+        [
+          0.0,
+          10.85
+        ],
+        [
+          -29.74,
+          10.85
+        ],
+        [
+          -29.74,
+          0.0
+        ]
+      ],
+      "coupures": [],
+      "niveau": 0,
+      "origine": [
+        0.0,
+        0.0
+      ],
+      "pente_deg": 0.0,
+      "repere": "BAT_A_AILE_L",
+      "rives": {
+        "acrotere_m": 0.0,
+        "extremite_m": 0.35,
+        "joint_m": 0.0,
+        "laterale_m": 0.35
+      },
+      "trous": [],
+      "type": "polygone"
+    }
+  ],
+  "zones": []
+}

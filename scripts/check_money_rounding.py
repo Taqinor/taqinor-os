@@ -56,13 +56,20 @@ BASELINE_ALLOWLIST = {
     # same NPS/ROI/percentage round() sites, unmoved logic, verified by AST
     # arg-text diff against origin/main — identical, uniform -3 shift, NOT
     # new sites — bug-class #34).
-    "backend/django_core/apps/compta/services.py:9655",
-    "backend/django_core/apps/compta/services.py:7599",
-    "backend/django_core/apps/compta/services.py:7602",
-    "backend/django_core/apps/compta/services.py:12123",
-    "backend/django_core/apps/compta/services.py:12525",
-    "backend/django_core/apps/compta/services.py:8908",
-    "backend/django_core/apps/compta/services.py:8912",
+    # RE-BASED AGAIN 2026-08-01 (AOF1) : le corps des deux services AO
+    # (``echeances_ao_dues``/``taux_reussite_ao``, ~44 lignes) est relogé dans
+    # ``apps/ao/services.py`` et remplacé par un shim de ré-export ; l'import
+    # de tête perd 2 noms et gagne 2 lignes de commentaire. Décalage uniforme
+    # +2 avant le bloc retiré, -30 après. MÊMES sites de round() (NPS / ROI /
+    # pourcentages), aucune logique déplacée, aucun NOUVEAU site —
+    # bug-class #34.
+    "backend/django_core/apps/compta/services.py:9625",
+    "backend/django_core/apps/compta/services.py:7601",
+    "backend/django_core/apps/compta/services.py:7604",
+    "backend/django_core/apps/compta/services.py:12093",
+    "backend/django_core/apps/compta/services.py:12495",
+    "backend/django_core/apps/compta/services.py:8910",
+    "backend/django_core/apps/compta/services.py:8914",
     # XSAL14 (2026-07-16) — builder.py edits shifted existing display-round
     # sites; re-based 1:1 (premium engine, sanctioned rounding).
     "backend/django_core/apps/ventes/quote_engine/builder.py:1285",

@@ -170,6 +170,11 @@ jobs:
           python manage.py migrate --noinput
           python manage.py seed_demo
           python manage.py seed_catalogue
+          # AOF186/AOF190 — fixture des specs `ao-*.spec.js` (l'affaire de
+          # démonstration `FRDISI`, construite DEPUIS les goldens AOF183).
+          # La matrice complète ci-dessous inclut `mobile-safari`, donc la
+          # même dépendance qu'en CI : sans ce seed, les specs AO expirent.
+          python manage.py seed_ao_demo --company taqinor-demo --confirmer
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci

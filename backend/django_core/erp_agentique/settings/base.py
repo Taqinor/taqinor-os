@@ -656,6 +656,12 @@ SPECTACULAR_SETTINGS = {
     # `unite`/`periodicite` ont les mêmes couples valeur/libellé), d'où un nom
     # neutre qui convient aux deux.
     'ENUM_NAME_OVERRIDES': {
+        # portrait / paysage — jeu IDENTIQUE porté par
+        # ventes.RoofLayout.Orientation (pose d'un panneau sur un
+        # toit) et ao.KitCalepinage.Orientation (orientation du kit
+        # de table). Un seul nom d'énumération pour les deux.
+        'OrientationPanneauEnum':
+            'apps.ventes.models.RoofLayout.Orientation',
         # neuf / bon / usage_normal / degrade
         'EtatGeneralPieceEnum':
             'apps.immobilier.models.PieceEtatLieux.EtatGeneral',
@@ -988,6 +994,11 @@ CELERY_TASK_ROUTES = {
     # NTIAG — surveillance mensuelle du drift des modèles IA : job beat, donc
     # queue `scheduled`.
     'ai_governance.surveiller_drift_mensuel': {'queue': 'scheduled'},
+    # AOF15 — rappels quotidiens des échéances d'appel d'offres (remise des
+    # plis, ouverture, fin de validité), planifiés au beat à 6 h 30 : job beat,
+    # donc queue `scheduled`. Les autres tâches AO sont, elles, déclenchées à
+    # la demande (cf. ON_DEMAND_ALLOWLIST du garde QX11).
+    'ao.rappeler_echeances': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

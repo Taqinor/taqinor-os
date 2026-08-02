@@ -1,6 +1,16 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+# AOF1 — les 8 ViewSets AO sont relogés dans ``apps.ao.views`` ; les routes
+# historiques ``/api/django/compta/…`` restent enregistrées à l'IDENTIQUE
+# (mêmes préfixes, mêmes basenames dérivés du queryset) en important la classe
+# à sa nouvelle adresse plutôt que via le shim de ré-export de ``.views``.
+from apps.ao.views import (
+    AppelOffreViewSet, BordereauPrixViewSet, LigneBordereauViewSet,
+    CautionSoumissionViewSet, DossierSoumissionViewSet, PieceSoumissionViewSet,
+    EcheanceAOViewSet, ResultatAOViewSet,
+)
+
 from .views import (
     desinscription_publique, double_optin_confirmer,
     redirection_lien_tracke,
@@ -50,9 +60,7 @@ from .views import (
     DocumentPropositionViewSet, SimulationPubliqueViewSet,
     SimulationFinancementViewSet, OffreFinancementViewSet,
     LigneIncitationViewSet, EcheancierPaiementViewSet, TranchePaiementViewSet,
-    ComparateurCashFinancementViewSet, AppelOffreViewSet, BordereauPrixViewSet,
-    LigneBordereauViewSet, CautionSoumissionViewSet, DossierSoumissionViewSet,
-    PieceSoumissionViewSet, EcheanceAOViewSet, ResultatAOViewSet,
+    ComparateurCashFinancementViewSet,
     ComptePortailClientViewSet, AcceptationDevisPortailViewSet,
     PaiementFacturePortailViewSet, DocumentClientPortailViewSet,
     JalonChantierPortailViewSet, DemandeTicketPortailViewSet,

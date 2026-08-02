@@ -59,7 +59,9 @@ from .models import (
     RapprochementBancaire, RelanceDevisAbandonne, RetenueSource,
     RetenueGarantie, TimbreFiscal,
     TravauxEnCours, VirementInterne,
-    EcheanceAO, ResultatAO, ComptePortailClient,
+    # AOF1 — EcheanceAO/ResultatAO ne sont plus référencés ici : leurs services
+    # vivent dans ``apps.ao.services`` (shim de ré-export inverse plus bas).
+    ComptePortailClient,
     PaiementFacturePortail,
     MappingCompte, CompteAuxiliaire,
     PisteAuditComptable,
@@ -9297,49 +9299,17 @@ def comparer_cash_vs_financement(montant, duree_mois, taux_annuel,
     }
 
 
-# ── FG226 — Échéances d'AO dues (rappels) ──────────────────────────────────
-
-def echeances_ao_dues(company, *, a_la_date=None):
-    """Liste les échéances d'AO dont le rappel est dû (FG226), NON traitées.
-
-    Une échéance est due quand ``date_echeance - rappel_jours <= a_la_date`` et
-    qu'elle n'est pas encore traitée. Calcul pur (aucun envoi réseau) — sert au
-    moteur d'alertes et aux tests.
-    """
-    a_la_date = a_la_date or timezone.now().date()
-    dues = []
-    qs = EcheanceAO.objects.filter(
-        company=company, traitee=False).order_by('date_echeance')
-    for ech in qs:
-        seuil = ech.date_echeance - timezone.timedelta(days=ech.rappel_jours)
-        if seuil <= a_la_date:
-            dues.append(ech)
-    return dues
-
-
-# ── FG227 — Taux de réussite des appels d'offres ───────────────────────────
-
-def taux_reussite_ao(company):
-    """Taux de réussite gagné/perdu des AO (FG227).
-
-    Compte les résultats par issue et calcule le taux = gagnés / (gagnés +
-    perdus). Renvoie un dict d'agrégats. Lecture seule.
-    """
-    resultats = ResultatAO.objects.filter(company=company)
-    gagnes = resultats.filter(issue=ResultatAO.Issue.GAGNE).count()
-    perdus = resultats.filter(issue=ResultatAO.Issue.PERDU).count()
-    total_decides = gagnes + perdus
-    taux = Decimal('0.00')
-    if total_decides > 0:
-        taux = (Decimal(gagnes) / Decimal(total_decides) * Decimal('100')
-                ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-    return {
-        'gagnes': gagnes,
-        'perdus': perdus,
-        'total_decides': total_decides,
-        'total_resultats': resultats.count(),
-        'taux_reussite_pct': taux,
-    }
+# ── FG226/FG227 — Services d'AO : shim de ré-export INVERSE (AOF1) ─────────
+#
+# Le CORPS de ``echeances_ao_dues`` et ``taux_reussite_ao`` vit désormais dans
+# ``apps.ao.services`` (AOF1). Ce shim INVERSE (compta ← ao) préserve les
+# imports historiques ``from apps.compta.services import echeances_ao_dues``.
+# ODX22 (RETRAIT des shims transitoires) reste ouvert et aura celui-ci à
+# retirer, dans le sens inverse d'avant.
+from apps.ao.services import (  # noqa: E402,F401
+    echeances_ao_dues,
+    taux_reussite_ao,
+)
 
 
 # ── FG228 — Provisionnement (gated) d'un compte portail client ─────────────
