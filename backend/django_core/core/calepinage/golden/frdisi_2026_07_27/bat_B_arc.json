@@ -1,0 +1,458 @@
+{
+  "engagements": [
+    [
+      "BAT_B_ARC",
+      120
+    ]
+  ],
+  "golden": {
+    "commentaire": "Bâtiment B (arc) — 3 segments séparés par des murets au ras (0,45) ; chaque segment a SON plan de pose.",
+    "compte_temoin": 120,
+    "engagement": 120,
+    "segments": [
+      {
+        "compte_moteur": 48,
+        "hash_entree": "a42a136d25f8868e281cd0ac6c6b033595d4a22c9695ca0c644760d9bca791c9",
+        "kit": "AO_PORTRAIT",
+        "obstacles": [
+          "S1_C1",
+          "S1_C2",
+          "S1_C3"
+        ],
+        "rangees_retenues": [
+          0.55,
+          5.85
+        ],
+        "repere": "BAT_B_ARC_S1"
+      },
+      {
+        "compte_moteur": 34,
+        "hash_entree": "0c6ce9d1202b6b7747dc64e75a72bfeb3e49aa0b82a485acb5143b52fcec44bb",
+        "kit": "AO_PAYSAGE",
+        "obstacles": [
+          "S2_cage",
+          "S2_K1",
+          "S2_K2",
+          "S2_K3",
+          "S2_K4",
+          "S2_K5",
+          "S2_K6",
+          "S2_K7"
+        ],
+        "rangees_retenues": [
+          0.8,
+          5.2,
+          8.3
+        ],
+        "repere": "BAT_B_ARC_S2"
+      },
+      {
+        "compte_moteur": 38,
+        "hash_entree": "26548be2b5cd4de0fadf462d80ec3b66e0ae10ef33674f93ab9c002e723958ca",
+        "kit": "AO_PAYSAGE",
+        "obstacles": [
+          "S3_A",
+          "S3_B",
+          "S3_X",
+          "S3_N1",
+          "S3_N2",
+          "S3_C",
+          "S3_D",
+          "S3_E",
+          "S3_G",
+          "S3_F",
+          "S3_H"
+        ],
+        "rangees_retenues": [
+          1.0,
+          5.1,
+          8.3
+        ],
+        "repere": "BAT_B_ARC_S3"
+      }
+    ]
+  },
+  "kits": [
+    {
+      "code": "AO_PORTRAIT",
+      "faitage_m": 0.098,
+      "inclinaison_deg": 15.0,
+      "libelle": "Table dos-à-dos 2 modules 625 Wc — portrait (1,134 × 4,70)",
+      "module_court_m": 1.134,
+      "module_long_m": 2.382,
+      "modules_par_table": 2,
+      "orientation": "PORTRAIT",
+      "puissance_module_wc": 625.0
+    },
+    {
+      "code": "AO_PAYSAGE",
+      "faitage_m": 0.059,
+      "inclinaison_deg": 15.0,
+      "libelle": "Table dos-à-dos 2 modules 625 Wc — paysage (2,382 × 2,25)",
+      "module_court_m": 1.134,
+      "module_long_m": 2.382,
+      "modules_par_table": 2,
+      "orientation": "PAYSAGE",
+      "puissance_module_wc": 625.0
+    }
+  ],
+  "obstacles": [
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle C1 : 0.35 m",
+      "repere": "S1_C1",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 3.27,
+      "x1": 4.63,
+      "y0": 6.180000000000001,
+      "y1": 7.08
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle C2 : 0.35 m",
+      "repere": "S1_C2",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 15.54,
+      "x1": 17.09,
+      "y0": 4.8,
+      "y1": 5.76
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle C3 : 0.35 m",
+      "repere": "S1_C3",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 12.78,
+      "x1": 14.14,
+      "y0": 4.2,
+      "y1": 5.15
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle cage : 0.35 m",
+      "repere": "S2_cage",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 0.0,
+      "x1": 4.98,
+      "y0": 4.970000000000001,
+      "y1": 10.9
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle K1 : 0.35 m",
+      "repere": "S2_K1",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 6.28,
+      "x1": 7.28,
+      "y0": 6.23,
+      "y1": 7.130000000000001
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle K2 : 0.35 m",
+      "repere": "S2_K2",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 8.58,
+      "x1": 9.78,
+      "y0": 6.7,
+      "y1": 7.5
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle K3 : 0.35 m",
+      "repere": "S2_K3",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 8.18,
+      "x1": 9.43,
+      "y0": 3.5,
+      "y1": 4.3
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle K4 : 0.35 m",
+      "repere": "S2_K4",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 15.97,
+      "x1": 17.42,
+      "y0": 3.85,
+      "y1": 4.75
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle K5 : 0.35 m",
+      "repere": "S2_K5",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 11.34,
+      "x1": 13.14,
+      "y0": 7.9,
+      "y1": 8.9
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle K6 : 0.35 m",
+      "repere": "S2_K6",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 20.0,
+      "x1": 21.5,
+      "y0": 6.220000000000001,
+      "y1": 7.120000000000001
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle K7 : 0.35 m",
+      "repere": "S2_K7",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 20.1,
+      "x1": 21.6,
+      "y0": 3.86,
+      "y1": 4.72
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle A : 0.35 m",
+      "repere": "S3_A",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 3.3,
+      "x1": 4.57,
+      "y0": 6.71,
+      "y1": 7.290000000000001
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle B : 0.35 m",
+      "repere": "S3_B",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 2.5,
+      "x1": 3.55,
+      "y0": 3.7,
+      "y1": 5.33
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle X : 0.35 m",
+      "repere": "S3_X",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 4.62,
+      "x1": 5.32,
+      "y0": 4.2,
+      "y1": 5.3
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle N1 : 0.35 m",
+      "repere": "S3_N1",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 4.92,
+      "x1": 8.15,
+      "y0": 9.200000000000001,
+      "y1": 10.9
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle N2 : 0.35 m",
+      "repere": "S3_N2",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 8.15,
+      "x1": 10.72,
+      "y0": 7.75,
+      "y1": 10.9
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle C : 0.35 m",
+      "repere": "S3_C",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 9.05,
+      "x1": 10.59,
+      "y0": 3.681,
+      "y1": 4.701
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle D : 0.35 m",
+      "repere": "S3_D",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 9.6,
+      "x1": 10.44,
+      "y0": 6.2,
+      "y1": 6.970000000000001
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle E : 0.35 m",
+      "repere": "S3_E",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 10.72,
+      "x1": 12.52,
+      "y0": 6.0600000000000005,
+      "y1": 7.16
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle G : 0.35 m",
+      "repere": "S3_G",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 10.9,
+      "x1": 12.43,
+      "y0": 3.77,
+      "y1": 4.67
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle F : 0.35 m",
+      "repere": "S3_F",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 19.05,
+      "x1": 20.27,
+      "y0": 6.21,
+      "y1": 7.050000000000001
+    },
+    {
+      "degagement_m": 0.35,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle H : 0.35 m",
+      "repere": "S3_H",
+      "type_obstacle": "NATURE_INCONNUE",
+      "x0": 18.99,
+      "x1": 20.34,
+      "y0": 3.83,
+      "y1": 4.69
+    }
+  ],
+  "parametres": {
+    "allee_m": 0.6,
+    "axe_rangee": "NORD_SUD",
+    "degagement_defaut_m": 0.3,
+    "degagement_nature_inconnue_m": 0.5,
+    "engagement_modules": null,
+    "graine": 0,
+    "kits": [
+      "AO_PORTRAIT"
+    ],
+    "marge_bande_min_m": 0.04,
+    "marge_troncon_min_m": 0.02,
+    "mode_pose": "rangees_explicites_dp",
+    "pas_recherche_m": 0.01,
+    "plafond_kwc": null,
+    "rives": {
+      "acrotere_m": 0.0,
+      "extremite_m": 0.35,
+      "joint_m": 0.0,
+      "laterale_m": 0.35
+    }
+  },
+  "repere": "BAT_B_ARC",
+  "schema_version": 1,
+  "surfaces": [
+    {
+      "axe_rangee": "NORD_SUD",
+      "azimut_deg": 180.0,
+      "coupures": [],
+      "developpe_m": 20.55,
+      "largeur_m": 10.9,
+      "niveau": 0,
+      "origine": [
+        0.0,
+        0.0
+      ],
+      "pente_deg": 0.0,
+      "rayon_ext_m": 274.0,
+      "repere": "BAT_B_ARC_S1",
+      "rives": {
+        "acrotere_m": 0.0,
+        "extremite_m": 0.35,
+        "joint_m": 0.0,
+        "laterale_m": 0.35
+      },
+      "type": "arc"
+    },
+    {
+      "axe_rangee": "NORD_SUD",
+      "azimut_deg": 180.0,
+      "coupures": [],
+      "developpe_m": 23.0,
+      "largeur_m": 10.9,
+      "niveau": 0,
+      "origine": [
+        0.0,
+        0.0
+      ],
+      "pente_deg": 0.0,
+      "rayon_ext_m": 274.0,
+      "repere": "BAT_B_ARC_S2",
+      "rives": {
+        "acrotere_m": 0.0,
+        "extremite_m": 0.35,
+        "joint_m": 0.0,
+        "laterale_m": 0.35
+      },
+      "type": "arc"
+    },
+    {
+      "axe_rangee": "NORD_SUD",
+      "azimut_deg": 180.0,
+      "coupures": [],
+      "developpe_m": 23.6,
+      "largeur_m": 10.9,
+      "niveau": 0,
+      "origine": [
+        0.0,
+        0.0
+      ],
+      "pente_deg": 0.0,
+      "rayon_ext_m": 274.0,
+      "repere": "BAT_B_ARC_S3",
+      "rives": {
+        "acrotere_m": 0.0,
+        "extremite_m": 0.35,
+        "joint_m": 0.0,
+        "laterale_m": 0.35
+      },
+      "type": "arc"
+    }
+  ],
+  "zones": []
+}

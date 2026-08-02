@@ -1,0 +1,191 @@
+{
+  "engagements": [
+    [
+      "BAT_C_ECOLE",
+      288
+    ]
+  ],
+  "golden": {
+    "commentaire": "Bâtiment C (école SUPTECH). Les 4 souches provisoires figurent en provenance ECARTE : elles ne comptent pas et leur géométrie n'a jamais été relevée.",
+    "compte_temoin": 314,
+    "engagement": 288,
+    "hash_entree": "7a74fc0e5bfac38819a9275e4488c25c53734bf379fcf40e7f2336b4701bbc90",
+    "rangees_retenues": [
+      0.35,
+      6.95,
+      13.55,
+      20.15
+    ]
+  },
+  "kits": [
+    {
+      "code": "AO_PORTRAIT",
+      "faitage_m": 0.098,
+      "inclinaison_deg": 15.0,
+      "libelle": "Table dos-à-dos 2 modules 625 Wc — portrait (1,134 × 4,70)",
+      "module_court_m": 1.134,
+      "module_long_m": 2.382,
+      "modules_par_table": 2,
+      "orientation": "PORTRAIT",
+      "puissance_module_wc": 625.0
+    }
+  ],
+  "obstacles": [
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle NIVEAU : 0.30 m",
+      "repere": "NIVEAU",
+      "type_obstacle": "JOINT_DILATATION",
+      "x0": 31.740000000000002,
+      "x1": 31.740000000000002,
+      "y0": 0.0,
+      "y1": 25.62
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle JOG : 0.30 m",
+      "repere": "JOG",
+      "type_obstacle": "ACROTERE",
+      "x0": 31.290000000000003,
+      "x1": 31.740000000000002,
+      "y0": 13.18,
+      "y1": 14.09
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle CAGE : 0.30 m",
+      "repere": "CAGE",
+      "type_obstacle": "CAGE_ESCALIER",
+      "x0": 22.92,
+      "x1": 31.740000000000002,
+      "y0": 14.09,
+      "y1": 18.2
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "RELEVE",
+      "regle_appliquee": "surcharge explicite de l'obstacle LOCAL : 0.30 m",
+      "repere": "LOCAL",
+      "type_obstacle": "EDICULE",
+      "x0": 10.500000000000002,
+      "x1": 15.000000000000002,
+      "y0": 13.95,
+      "y1": 18.13
+    },
+    {
+      "degagement_m": 0.3,
+      "hauteur_m": null,
+      "provenance": "DECLARE_CLIENT",
+      "regle_appliquee": "surcharge explicite de l'obstacle GENE : 0.30 m",
+      "repere": "GENE",
+      "type_obstacle": "CLIMATISEUR",
+      "x0": 13.3,
+      "x1": 14.7,
+      "y0": 19.12,
+      "y1": 24.3
+    },
+    {
+      "degagement_m": 0.0,
+      "hauteur_m": null,
+      "provenance": "ECARTE",
+      "regle_appliquee": "souche provisoire ÉCARTÉE (réponse client du 27/07 : aucune souche sur le toit) — géométrie NON RELEVÉE, volontairement non inventée — obstacle ÉCARTÉ : géométrie conservée, hors du compte et sans dégagement",
+      "repere": "SOUCHE_1",
+      "type_obstacle": "SOUCHE",
+      "x0": 0.0,
+      "x1": 0.0,
+      "y0": 0.0,
+      "y1": 0.0
+    },
+    {
+      "degagement_m": 0.0,
+      "hauteur_m": null,
+      "provenance": "ECARTE",
+      "regle_appliquee": "souche provisoire ÉCARTÉE (réponse client du 27/07 : aucune souche sur le toit) — géométrie NON RELEVÉE, volontairement non inventée — obstacle ÉCARTÉ : géométrie conservée, hors du compte et sans dégagement",
+      "repere": "SOUCHE_2",
+      "type_obstacle": "SOUCHE",
+      "x0": 0.0,
+      "x1": 0.0,
+      "y0": 0.0,
+      "y1": 0.0
+    },
+    {
+      "degagement_m": 0.0,
+      "hauteur_m": null,
+      "provenance": "ECARTE",
+      "regle_appliquee": "souche provisoire ÉCARTÉE (réponse client du 27/07 : aucune souche sur le toit) — géométrie NON RELEVÉE, volontairement non inventée — obstacle ÉCARTÉ : géométrie conservée, hors du compte et sans dégagement",
+      "repere": "SOUCHE_3",
+      "type_obstacle": "SOUCHE",
+      "x0": 0.0,
+      "x1": 0.0,
+      "y0": 0.0,
+      "y1": 0.0
+    },
+    {
+      "degagement_m": 0.0,
+      "hauteur_m": null,
+      "provenance": "ECARTE",
+      "regle_appliquee": "souche provisoire ÉCARTÉE (réponse client du 27/07 : aucune souche sur le toit) — géométrie NON RELEVÉE, volontairement non inventée — obstacle ÉCARTÉ : géométrie conservée, hors du compte et sans dégagement",
+      "repere": "SOUCHE_4",
+      "type_obstacle": "SOUCHE",
+      "x0": 0.0,
+      "x1": 0.0,
+      "y0": 0.0,
+      "y1": 0.0
+    }
+  ],
+  "parametres": {
+    "allee_m": 0.6,
+    "axe_rangee": "NORD_SUD",
+    "degagement_defaut_m": 0.3,
+    "degagement_nature_inconnue_m": 0.5,
+    "engagement_modules": 288,
+    "graine": 0,
+    "kits": [
+      "AO_PORTRAIT"
+    ],
+    "marge_bande_min_m": 0.04,
+    "marge_troncon_min_m": 0.02,
+    "mode_pose": "rangees_explicites_dp",
+    "pas_recherche_m": 0.01,
+    "plafond_kwc": null,
+    "rives": {
+      "acrotere_m": 0.0,
+      "extremite_m": 0.35,
+      "joint_m": 0.0,
+      "laterale_m": 0.35
+    }
+  },
+  "repere": "BAT_C_ECOLE",
+  "schema_version": 1,
+  "surfaces": [
+    {
+      "axe_rangee": "NORD_SUD",
+      "azimut_deg": 180.0,
+      "coupures": [],
+      "largeur_m": 25.62,
+      "longueur_m": 51.1,
+      "niveau": 0,
+      "origine": [
+        0.0,
+        0.0
+      ],
+      "pente_deg": 0.0,
+      "repere": "BAT_C_ECOLE",
+      "rives": {
+        "acrotere_m": 0.0,
+        "extremite_m": 0.35,
+        "joint_m": 0.0,
+        "laterale_m": 0.35
+      },
+      "type": "rectangle"
+    }
+  ],
+  "zones": []
+}

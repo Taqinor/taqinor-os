@@ -14,13 +14,15 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from core.events import (
-    appointment_effectue, devis_accepted, devis_refused, devis_sent,
-    lead_stage_changed, ticket_resolu,
+    ao_depose, ao_gagne, appointment_effectue, devis_accepted, devis_refused,
+    devis_sent, lead_stage_changed, ticket_resolu,
 )
 
+from . import stages
 from .models import Appointment, LeadActivity
 from .services import (
     _CONTACT_KINDS,
+    avancer_stage_lead_vers,
     avancer_stage_new_vers_contacted,
     avancer_stage_pour_devis,
     generer_playbook_progress,
@@ -212,6 +214,61 @@ def _chatter_on_ticket_resolu(sender, ticket, company, user, ancien_statut,
         logger.warning(
             'ARC37 : chatter ARC8 échoué sur ticket_resolu pour ticket #%s',
             getattr(ticket, 'pk', '?'), exc_info=True)
+
+
+# ── AOF13 — Appels d'offres : le funnel CRM suit le dossier ─────────────────
+#
+# ``crm`` n'importe JAMAIS ``apps.ao`` : le signal porte l'instance, et le lead
+# n'est connu de l'AO que par ``lead_id`` (entier OPAQUE, jamais une FK — c'est
+# ce qui tient le contrat import-linter ``ao-models-decoupled``).
+
+def _lead_de_l_appel_offre(appel_offre, company):
+    """Résout le lead lié à un AO, ou ``None``. Jamais d'exception."""
+    lead_id = getattr(appel_offre, 'lead_id', None)
+    if not lead_id:
+        return None
+    from .models import Lead
+    return Lead.objects.filter(pk=lead_id, company=company).first()
+
+
+@receiver(ao_depose, dispatch_uid="crm_advance_stage_on_ao_depose")
+def _avancer_stage_on_ao_depose(sender, appel_offre, company, user,
+                                ancien_statut, **kwargs):
+    """Au DÉPÔT d'un dossier d'appel d'offres, avance le lead → QUOTE_SENT.
+
+    Une offre remise à un acheteur EST, au sens du funnel, un devis envoyé.
+    ``avancer_stage_lead_vers`` ne recule jamais et est idempotent : un lead
+    déjà ≥ QUOTE_SENT ne bouge pas. Best-effort — le dépôt, lui, est déjà acté.
+    """
+    lead = _lead_de_l_appel_offre(appel_offre, company)
+    if lead is None or lead.perdu:
+        return
+    try:
+        avancer_stage_lead_vers(lead, user, stages.QUOTE_SENT)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            "AOF13 : avance de funnel échouée sur ao_depose pour l'AO #%s",
+            getattr(appel_offre, 'pk', '?'), exc_info=True)
+
+
+@receiver(ao_gagne, dispatch_uid="crm_advance_stage_on_ao_gagne")
+def _avancer_stage_on_ao_gagne(sender, appel_offre, company, user,
+                               ancien_statut, **kwargs):
+    """À l'ATTRIBUTION d'un appel d'offres, avance le lead → SIGNED.
+
+    Même garde-fou que ci-dessus (jamais en arrière, jamais sur un lead perdu,
+    best-effort). Règle #2 : les clés d'étape viennent de ``STAGES.py``, jamais
+    d'un littéral.
+    """
+    lead = _lead_de_l_appel_offre(appel_offre, company)
+    if lead is None or lead.perdu:
+        return
+    try:
+        avancer_stage_lead_vers(lead, user, stages.SIGNED)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            "AOF13 : avance de funnel échouée sur ao_gagne pour l'AO #%s",
+            getattr(appel_offre, 'pk', '?'), exc_info=True)
 
 
 # ── PUB30 — appointment_effectue : transition GÉNUINE Appointment → EFFECTUE ──

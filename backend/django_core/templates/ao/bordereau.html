@@ -1,0 +1,83 @@
+{# AOF128 — bordereau des prix. Aucun chiffre littéral : toutes les valeurs
+   viennent du contexte de dossier (AOF111) et de `bordereau_pdf.contexte_gabarit`,
+   qui les a DÉJÀ calculées et formatées. Le gabarit ne fait aucune arithmétique. #}
+{% extends "ao/_base.html" %}
+
+{% block corps %}
+<table class="ao-tableau">
+  <thead>
+    <tr>
+      <th>N°</th>
+      <th>Désignation</th>
+      <th>Unité</th>
+      <th>Quantité</th>
+      <th>Prix unitaire HT</th>
+      <th>Prix unitaire en toutes lettres</th>
+      <th>Total HT</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for section in sections %}
+      {% if section.libelle %}
+      <tr class="ao-section-titre">
+        <td colspan="7">{{ section.libelle }}</td>
+      </tr>
+      {% endif %}
+      {% for ligne in section.lignes %}
+      <tr>
+        <td class="ao-num">{{ ligne.numero }}</td>
+        <td>{{ ligne.designation }}</td>
+        <td class="ao-num">{{ ligne.unite }}</td>
+        <td class="ao-montant">{{ ligne.quantite_texte }}</td>
+        <td class="ao-montant">{{ ligne.prix_unitaire_texte }}</td>
+        <td class="ao-lettres">{{ ligne.prix_unitaire_lettres }}</td>
+        <td class="ao-montant">{{ ligne.total_texte }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="ao-sous-total">
+        <td colspan="6">Sous-total {{ section.libelle }}</td>
+        <td class="ao-montant">{{ section.sous_total_texte }}</td>
+      </tr>
+    {% endfor %}
+
+    <tr class="ao-sous-total">
+      <td colspan="6">Sous-total HT</td>
+      <td class="ao-montant">{{ sous_total_ht_texte }}</td>
+    </tr>
+    {% if avec_remise %}
+    <tr>
+      <td colspan="6">Remise</td>
+      <td class="ao-montant">{{ remise_texte }}</td>
+    </tr>
+    {% endif %}
+    <tr class="ao-sous-total">
+      <td colspan="6">Total HT</td>
+      <td class="ao-montant">{{ total_ht_texte }}</td>
+    </tr>
+    <tr>
+      <td colspan="6">TVA ({{ taux_tva }} %)</td>
+      <td class="ao-montant">{{ tva_texte }}</td>
+    </tr>
+    <tr class="ao-total">
+      <td colspan="6">Total TTC</td>
+      <td class="ao-montant">{{ total_ttc_texte }}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="ao-arrete">{{ arrete }}</div>
+
+<div class="ao-clause">{{ clause_reserve }}</div>
+{% endblock %}
+
+{% block signature %}
+<div class="ao-signature">
+  <div>Fait à {{ contexte.identite.ville }}, le {{ date_offre_texte }}</div>
+  <div>{{ contexte.identite.signataire }}
+    {% if contexte.identite.qualite_signataire %}
+      — {{ contexte.identite.qualite_signataire }}
+    {% endif %}
+  </div>
+  <div class="ao-cadre"></div>
+</div>
+{% endblock %}

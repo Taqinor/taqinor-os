@@ -1,0 +1,109 @@
+{# AOF131 — lettre de soumission. Aucun chiffre littéral : montants, durées et
+   dates viennent de `rendus/lettre.contexte_gabarit`, qui les a calculés et
+   formatés. Le gabarit ne fait aucune arithmétique et ne formate rien. #}
+{% extends "ao/_base.html" %}
+
+{% block corps %}
+<div class="ao-section">
+  <div class="ao-champ">
+    <span class="ao-etiquette">Maître d'ouvrage :</span>
+    <span class="ao-valeur">{{ contexte.acheteur.nom }}</span>
+    {% if contexte.acheteur.adresse %} — {{ contexte.acheteur.adresse }}{% endif %}
+  </div>
+  <div class="ao-champ">
+    <span class="ao-etiquette">Objet :</span>
+    <span class="ao-valeur">{{ contexte.marche.objet }}</span>
+  </div>
+  {% if contexte.marche.reference_acheteur %}
+  <div class="ao-champ">
+    <span class="ao-etiquette">Référence de la consultation :</span>
+    <span class="ao-valeur">{{ contexte.marche.reference_acheteur }}</span>
+  </div>
+  {% endif %}
+  {% if contexte.marche.mode_passation %}
+  <div class="ao-champ">
+    <span class="ao-etiquette">Mode de passation :</span>
+    {{ contexte.marche.mode_passation }}
+  </div>
+  {% endif %}
+</div>
+
+<div class="ao-section">
+  <p>
+    Je soussigné {{ contexte.identite.signataire }}, agissant en qualité de
+    {{ contexte.identite.qualite_signataire }} de la société
+    {{ contexte.identite.raison_sociale }}
+    {% if contexte.identite.forme_juridique %}
+      ({{ contexte.identite.forme_juridique }}){% endif %},
+    dont le siège est à {{ contexte.identite.adresse }}
+    {% if contexte.identite.ville %}, {{ contexte.identite.ville }}{% endif %},
+    immatriculée au registre du commerce sous le numéro
+    {{ contexte.identite.rc }}, identifiant fiscal
+    {{ contexte.identite.if_fiscal }}, ICE {{ contexte.identite.ice }},
+    {% if contexte.identite.cnss %}affiliée à la CNSS sous le numéro
+      {{ contexte.identite.cnss }},{% endif %}
+  </p>
+  <p>
+    après avoir pris pleine connaissance du dossier de consultation, des lieux
+    d'exécution et de l'ensemble des pièces du marché, me soumets et m'engage
+    à exécuter les prestations objet de la présente consultation,
+    conformément au cahier des prescriptions spéciales, moyennant les prix
+    unitaires portés au bordereau des prix joint à la présente offre.
+  </p>
+</div>
+
+<div class="ao-section">
+  <h2>Montant de l'offre</h2>
+  <div class="ao-champ">
+    <span class="ao-etiquette">Total hors taxes :</span>
+    <span class="ao-valeur">{{ total_ht_texte }}</span>
+  </div>
+  <div class="ao-champ">
+    <span class="ao-etiquette">TVA ({{ taux_tva }} %) :</span>
+    <span class="ao-valeur">{{ tva_texte }}</span>
+  </div>
+  <div class="ao-champ">
+    <span class="ao-etiquette">Total toutes taxes comprises :</span>
+    <span class="ao-valeur">{{ total_ttc_texte }}</span>
+  </div>
+  <div class="ao-arrete">{{ arrete }}</div>
+</div>
+
+<div class="ao-section">
+  <h2>Engagements</h2>
+  {% if delai_jours %}
+  <div class="ao-champ">
+    <span class="ao-etiquette">Délai d'exécution :</span>
+    <span class="ao-valeur">{{ delai_jours }} jours</span>
+    ({{ delai_lettres }})
+  </div>
+  {% endif %}
+  <div class="ao-champ">
+    <span class="ao-etiquette">Validité de la présente offre :</span>
+    <span class="ao-valeur">{{ validite_jours }} jours</span>
+    ({{ validite_lettres }}) à compter de la date d'ouverture des plis
+  </div>
+  {% if contexte.identite.rib %}
+  <div class="ao-champ">
+    <span class="ao-etiquette">Compte bancaire :</span>
+    {{ contexte.identite.rib }}
+    {% if contexte.identite.banque %} — {{ contexte.identite.banque }}{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="ao-clause">{{ clause_reserve }}</div>
+{% endblock %}
+
+{% block signature %}
+<div class="ao-signature">
+  <div>Fait à {{ contexte.identite.ville }}, le {{ date_offre_texte }}</div>
+  <div>{{ contexte.identite.signataire }}
+    {% if contexte.identite.qualite_signataire %}
+      — {{ contexte.identite.qualite_signataire }}
+    {% endif %}
+  </div>
+  <div>(signature et cachet du soumissionnaire)</div>
+  <div class="ao-cadre"></div>
+</div>
+{% endblock %}

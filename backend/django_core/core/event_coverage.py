@@ -300,6 +300,21 @@ NO_STATIC_EMITTER = {
     # qu'un catalogue qui prétend une parité invérifiable ; à retirer dès le
     # premier émetteur réel, exactement comme ``document_produit`` ci-dessus.
     "record_soft_deleted",
+    # ``ao_depose`` / ``ao_gagne`` (AOF13) : émetteur RÉEL et unique
+    # (``apps/ao/services.py::changer_statut_ao``), mais émis par TABLE DE
+    # DISPATCH — ``signal = _SIGNAUX_PAR_STATUT.get(nouveau_statut)`` puis
+    # ``signal.send(...)``. Le scanner de parité ne résout que
+    # ``<signal_importé>.send(...)`` ou ``events.<nom>.send(...)`` : un appel
+    # porté par une VARIABLE lui est invisible, il verrait donc « zéro clé »
+    # et signalerait une fausse divergence. Réservation explicite plutôt que
+    # de déformer le service (dérouler la table en deux ``send`` littéraux
+    # juste pour plaire à un scanner statique serait la queue qui remue le
+    # chien). Les clés cataloguées restent le contrat : ``appel_offre``,
+    # ``company``, ``user``, ``ancien_statut`` — exactement les kwargs du
+    # ``send`` unique, et la docstring du signal dans ``core/events.py`` dit
+    # la même chose.
+    "ao_depose",
+    "ao_gagne",
 }
 
 

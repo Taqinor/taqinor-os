@@ -50,6 +50,7 @@ Error|CommentListView|unable to guess serializer. This is graceful fallback hand
 Error|CommentPrivateReplyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CommentReplyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ComparateurCashFinancementViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ContratApiAO|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ComparateurDevisViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConfigurateurDemarrerView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConfigurateurGenererDevisView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base

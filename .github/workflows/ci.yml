@@ -556,6 +556,12 @@ jobs:
           # The simulator catalogue (defaults to the seeded `taqinor-demo`
           # company) is what the auto-devis sizing matches against.
           python manage.py seed_catalogue
+          # AOF186/AOF190 — the AO demo affaire (marker `FRDISI`, built FROM
+          # the AOF183 goldens) is the fixture every `ao-*.spec.js` opens via
+          # `openAoDemoAffaire`. `seed_demo` does NOT create it: without this
+          # line the AO specs time out looking for an affaire nobody seeded —
+          # a red that says nothing about the code under test.
+          python manage.py seed_ao_demo --company taqinor-demo --confirmer
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci

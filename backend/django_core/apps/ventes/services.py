@@ -449,6 +449,168 @@ def validate_composition_for_layout(layout, company):
     return errors if errors else None
 
 
+# ── AOF164 — bascule du calcul résidentiel sur le MOTEUR PARTAGÉ ────────────
+#
+# Le compte de panneaux du devis résidentiel vient aujourd'hui du cerveau
+# TypeScript de roofPro11 (``layout['result']['panels']``). Le moteur
+# ``core/calepinage`` sait faire le même travail, en exact et avec sa preuve —
+# mais on ne remplace pas un calcul en production sur une intuition : la
+# bascule vit derrière un DRAPEAU (défaut OFF) et se juge sur des écarts
+# JOURNALISÉS, pas sur une conviction.
+#
+# Trois invariants tiennent cette tâche :
+#   * drapeau OFF -> comportement BIT-IDENTIQUE (retour immédiat, avant tout
+#     appel moteur et avant toute écriture de journal) ;
+#   * un devis DÉJÀ ÉMIS n'est jamais recalculé (voir
+#     ``apps.ventes.selectors.comparaison_calepinage_devis``) ;
+#   * une panne du moteur ne fait JAMAIS échouer une création de devis : on
+#     journalise et on garde le compte historique.
+#
+# Les mots-clés de classification (panneau / onduleur réseau|injection|hybride
+# / batterie) ne bougent pas : ils sont le contrat d'alignement avec
+# ``quote_engine/builder.py`` dont dépend le découpage des options du PDF
+# (CLAUDE.md, règle #4). Cette tâche ne touche QUE le COMPTE.
+
+#: Nom du drapeau — lu par ``getattr`` pour que l'ABSENCE du réglage vaille OFF.
+DRAPEAU_MOTEUR_CALEPINAGE = 'USE_MOTEUR_CALEPINAGE'
+
+
+def moteur_calepinage_actif():
+    """Le drapeau de bascule est-il levé ? ABSENT = OFF (jamais l'inverse)."""
+    from django.conf import settings
+
+    return bool(getattr(settings, DRAPEAU_MOTEUR_CALEPINAGE, False))
+
+
+def _zone_villa_depuis_pan(pan):
+    """``AreaRecord`` roofPro11 -> ``AreaRecord`` attendu par l'adaptateur villa.
+
+    roofPro11 sérialise ``vertices: LngLat[]`` (``[lng, lat]``) et des obstacles
+    ``{centerLng, centerLat, lengthM (nord-sud), widthM (est-ouest)}``.
+    L'adaptateur d'AOF162 attend ``polygon`` / ``center`` / ``widthM`` /
+    ``heightM`` avec ``heightM`` = étendue NORD-SUD : la correspondance est
+    faite ICI, explicitement, et jamais devinée ailleurs.
+
+    Rend ``None`` quand le pan ne porte pas de contour exploitable — un layout
+    sans géométrie n'est pas une erreur, c'est simplement un cas où le moteur
+    n'a rien à dire.
+    """
+    if not isinstance(pan, dict):
+        return None
+    sommets = pan.get('vertices') or pan.get('polygon') or pan.get('points')
+    if not isinstance(sommets, (list, tuple)) or len(sommets) < 3:
+        return None
+
+    obstacles = []
+    for brut in (pan.get('obstacles') or ()):
+        if not isinstance(brut, dict):
+            continue
+        lng = brut.get('centerLng')
+        lat = brut.get('centerLat')
+        if lng is None or lat is None:
+            continue
+        obstacles.append({
+            'id': brut.get('id') or 'OBS',
+            'center': [lng, lat],
+            # widthM = est-ouest (axe x du moteur villa) ;
+            # lengthM = nord-sud (axe y).
+            'widthM': brut.get('widthM') or 1.0,
+            'heightM': brut.get('lengthM') or brut.get('heightM') or 1.0,
+        })
+
+    type_toit = (pan.get('roofType') or '').lower()
+    pente = pan.get('pitchDeg')
+    if pente is None:
+        pente = pan.get('pitch') or 0.0
+    azimut = pan.get('facingAzimuthDeg')
+    if azimut is None:
+        azimut = pan.get('aspect')
+    return {
+        'id': str(pan.get('id') or pan.get('label') or 'ZONE'),
+        'polygon': [list(p) for p in sommets],
+        'flat': type_toit != 'pitched',
+        'tilt': float(pente or 0.0),
+        'azimuth': float(azimut if azimut is not None else 180.0),
+        'obstacles': obstacles,
+    }
+
+
+def compte_moteur_du_layout(layout):
+    """Compte de modules rendu par le MOTEUR pour ce layout, ou ``None``.
+
+    Somme les pans : chacun passe par ``apps.ao.selectors.calepinage_villa``
+    (lecture cross-app sanctionnée — jamais ``apps.ao.models``), qui délègue au
+    moteur partagé d'AOF163. Aucune ligne AO n'est créée.
+
+    Rend ``None`` (et jamais une exception) dès que la géométrie manque ou que
+    le moteur refuse : l'appelant garde alors le compte historique.
+    """
+    pans = ((layout or {}).get('areas') or (layout or {}).get('zones')
+            or (layout or {}).get('pans') or [])
+    if not isinstance(pans, list) or not pans:
+        return None
+
+    from apps.ao.selectors import calepinage_villa
+
+    modules = 0
+    detail = []
+    for pan in pans:
+        zone = _zone_villa_depuis_pan(pan)
+        if zone is None:
+            continue
+        try:
+            sortie = calepinage_villa(zone, ordre='lnglat')
+        except Exception:
+            logger.warning(
+                'AOF164: le moteur a refusé le pan %s — compte historique '
+                'conservé pour ce pan', zone.get('id'), exc_info=True)
+            continue
+        resultat = sortie['resultat']
+        modules += int(resultat.modules)
+        detail.append({
+            'zone': zone['id'],
+            'modules': int(resultat.modules),
+            'hash_entree': resultat.hash_entree,
+            'version_moteur': resultat.version_moteur,
+            'methode': sortie['preuve']['methode'],
+            'compte_optimal': sortie['preuve']['compte_optimal'],
+        })
+    if not detail:
+        return None
+    return {'modules': modules, 'pans': tuple(detail)}
+
+
+def arbitrer_compte_calepinage(layout, compte_historique):
+    """Compare ancien et nouveau compte et JOURNALISE l'écart, ou rend ``None``.
+
+    ``None`` signifie « ne change rien » : drapeau baissé (cas par défaut,
+    retour AVANT tout calcul et tout journal) ou moteur sans réponse.
+    Sinon rend ``{'ancien', 'nouveau', 'ecart', 'retenu', 'pans'}`` où
+    ``retenu`` est le compte du MOTEUR — c'est le sens même de la bascule.
+    """
+    if not moteur_calepinage_actif():
+        return None
+    try:
+        mesure = compte_moteur_du_layout(layout)
+    except Exception:
+        # Une panne du moteur ne fait JAMAIS échouer une création de devis :
+        # on journalise et on garde le compte historique.
+        logger.warning('AOF164: moteur indisponible — compte historique '
+                       'conservé pour ce devis', exc_info=True)
+        return None
+    if mesure is None:
+        return None
+    ancien = int(compte_historique or 0)
+    nouveau = int(mesure['modules'])
+    ecart = nouveau - ancien
+    logger.info(
+        'AOF164: bascule moteur ACTIVE — compte TypeScript %d, compte moteur '
+        '%d, écart %+d (%d pan(s) calepiné(s))',
+        ancien, nouveau, ecart, len(mesure['pans']))
+    return {'ancien': ancien, 'nouveau': nouveau, 'ecart': ecart,
+            'retenu': nouveau, 'pans': mesure['pans']}
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0')):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
@@ -497,6 +659,22 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             nb_panneaux = int(toiture['nb_panneaux'])
         if not kwc and toiture.get('kwc'):
             kwc = float(toiture['kwc'])
+
+    # AOF164 — BASCULE A/B sur le moteur de calepinage partagé, derrière le
+    # drapeau ``USE_MOTEUR_CALEPINAGE`` (défaut OFF). Drapeau OFF : la fonction
+    # rend ``None`` AVANT tout calcul — aucun appel moteur, aucun journal,
+    # comportement bit-identique à aujourd'hui. Drapeau ON : le compte vient du
+    # moteur et l'écart ancien/nouveau est journalisé pour arbitrage.
+    arbitrage = arbitrer_compte_calepinage(layout, nb_panneaux)
+    if arbitrage is not None and arbitrage['retenu'] != nb_panneaux:
+        watt_reference = layout.get('panelWatt') or layout.get('watt')
+        if not watt_reference and nb_panneaux and kwc:
+            watt_reference = kwc * 1000.0 / nb_panneaux
+        nb_panneaux = arbitrage['retenu']
+        # Le kWc SUIT le compte : laisser l'ancien kWc face au nouveau compte
+        # produirait un devis dont la puissance ne correspond plus aux panneaux.
+        if watt_reference:
+            kwc = round(nb_panneaux * float(watt_reference) / 1000.0, 3)
 
     # Panel wattage: prefer an explicit hint, else derive from kWc / panels.
     watt = layout.get('panelWatt') or layout.get('watt')
