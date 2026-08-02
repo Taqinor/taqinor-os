@@ -3,7 +3,8 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { LayoutDashboard, Briefcase, Building2, LayoutGrid, FolderKanban, BookOpen, Wallet, Gavel } from 'lucide-react'
+import { Trophy, LayoutDashboard, Briefcase, Building2, LayoutGrid, FolderKanban, BookOpen, Wallet, Gavel } from 'lucide-react'
+import { appGlyph } from '../../lib/apps/appGlyph'
 import { EmptyState } from '../../ui'
 
 /* ============================================================================
@@ -79,6 +80,9 @@ const config = {
   key: 'ao',
   order: 57,
   nav: {
+    // Glyphe d'APP (contrat ODY34/appGlyph — unique sur tout le portail) :
+    // le trophée = l'appel d'offres GAGNÉ, distinct du Briefcase des affaires.
+    icon: appGlyph(Trophy),
     label: "APPELS D'OFFRES",
     accent: 'brass',
     items: [
