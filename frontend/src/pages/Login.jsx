@@ -15,6 +15,8 @@ import { normalizeTenantTheme } from '../design/tenantTheme'
 // résolution passe par `lib/apps/landing.js`, partagé avec la garde `/` du
 // routeur pour que les deux ne divergent jamais.
 import { resolveLandingFromAuth } from '../lib/apps/landing'
+// VX154 — le mot-symbole de marque (soleil brass + éclair azur), tokenisé.
+import TaqinorMark from '../ui/TaqinorMark'
 
 // VX34 — Login = premier pixel de la marque. On garde EXACTEMENT les teintes de
 // marque (#1863DC azur, #F5C100 laiton, #050e1f nuit) mais on les fait entrer
@@ -28,6 +30,9 @@ const BRAND_TOKENS = `
     --login-azur: oklch(53.1% 0.1985 260.25);      /* #1863DC */
     --login-azur-bright: oklch(58.3% 0.2259 264.10);/* #326CFE */
     --login-brass: oklch(83.4% 0.1704 88.96);       /* #F5C100 */
+    /* ODY33 — pôle foncé du dégradé du bouton de marque (même teinte que
+       --login-brass, clarté abaissée) : un aplat plat ferait moins « objet ». */
+    --login-brass-deep: oklch(72.5% 0.1512 84);
     --login-nuit: oklch(16.5% 0.0389 260.32);       /* #050e1f */
     --login-nuit-mid: oklch(26.1% 0.0924 263.49);   /* #0b2050 */
   }
@@ -46,7 +51,21 @@ const BRAND_TOKENS = `
 // choisirait, ce qui ferait de l'endpoint un énumérateur de tenants. Sur le
 // domaine générique, aucun thème ne correspond : l'écran reste EXACTEMENT
 // celui d'aujourd'hui.
-const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'ERP'
+//
+// ODY33 (fondateur, 2026-08-02) — le REPLI, lui, n'a jamais eu de raison d'être
+// neutre : sans domaine white-label, ce portail est le NÔTRE, et il affichait
+// un carré bleu « E » plus une étiquette « ERP » qui n'appartiennent à
+// personne. Le repli porte désormais le mot-symbole Taqinor et le bouton de
+// marque en brass. Ce que SCA24 protège vraiment — la marque d'un client n'est
+// jamais recouverte par la nôtre — est intact et testé : dès qu'un TenantTheme
+// répond (logo, nom d'affichage ou couleur primaire), l'écran est exactement
+// celui d'avant, sans une occurrence de « Taqinor ».
+const PRODUCT_NAME = import.meta.env.VITE_PRODUCT_NAME || 'Taqinor'
+
+/** marqueDeTenant — ce domaine porte-t-il la marque d'une société cliente ? */
+function marqueDeTenant(marque) {
+  return !!(marque?.logoUrl || marque?.nomAffichage || marque?.couleurPrimaire)
+}
 
 function ProductBrand({ marque }) {
   const nom = marque?.nomAffichage || PRODUCT_NAME
@@ -66,16 +85,19 @@ function ProductBrand({ marque }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       gap: 10, height: 52,
     }}>
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        width: 40, height: 40, borderRadius: 10,
-        background: marque?.couleurPrimaire
-          ? marque.couleurPrimaire
-          : 'linear-gradient(135deg, var(--login-azur) 0%, var(--login-azur-bright) 100%)',
-        color: '#fff', fontWeight: 800, fontSize: 18,
-      }} aria-hidden="true">
-        {nom.charAt(0).toUpperCase()}
-      </span>
+      {marqueDeTenant(marque) ? (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 40, height: 40, borderRadius: 10,
+          background: marque.couleurPrimaire
+            || 'linear-gradient(135deg, var(--login-azur) 0%, var(--login-azur-bright) 100%)',
+          color: '#fff', fontWeight: 800, fontSize: 18,
+        }} aria-hidden="true">
+          {nom.charAt(0).toUpperCase()}
+        </span>
+      ) : (
+        <TaqinorMark size={40} />
+      )}
       {/* VX150 — le wordmark utilise la POLICE DE MARQUE (var(--font-display),
           Archivo — la même que les headings/logo), au lieu d'hériter la police
           de corps ou d'un « Arial Black » hors-système. Dernier delta non
@@ -154,6 +176,7 @@ export default function Login() {
   // écran STRICTEMENT identique à aujourd'hui. Un échec réseau/permission ne
   // doit jamais empêcher de se connecter : on retombe en silence.
   const [marque, setMarque] = useState(null)
+  const marqueTenant = marqueDeTenant(marque)
   useEffect(() => {
     let annule = false
     portailApi.themePublic()
@@ -370,13 +393,27 @@ export default function Login() {
             style={{
               marginTop: 4, width: '100%', padding: '13px 0',
               borderRadius: 12, border: 'none',
-              background: loading
-                ? '#93c5fd'
-                : 'linear-gradient(135deg, var(--login-azur) 0%, var(--login-azur-bright) 100%)',
-              color: '#fff', fontWeight: 700, fontSize: 15,
+              // ODY33 — brass (notre primaire) sur le portail générique ; l'azur
+              // reste INCHANGÉ dès qu'un domaine porte la marque d'un client.
+              ...(marqueTenant ? {
+                background: loading
+                  ? '#93c5fd'
+                  : 'linear-gradient(135deg, var(--login-azur) 0%, var(--login-azur-bright) 100%)',
+                color: '#fff',
+                boxShadow: loading ? 'none' : '0 4px 18px rgba(24,99,220,0.45)',
+              } : {
+                background: loading
+                  ? 'color-mix(in oklch, var(--login-brass) 45%, transparent)'
+                  : 'linear-gradient(135deg, var(--login-brass) 0%, var(--login-brass-deep) 100%)',
+                // Texte NUIT sur l'or : ~11:1. Du blanc sur du brass échouerait.
+                color: 'var(--login-nuit)',
+                boxShadow: loading
+                  ? 'none'
+                  : '0 4px 18px color-mix(in oklch, var(--login-brass) 45%, transparent)',
+              }),
+              fontWeight: 700, fontSize: 15,
               cursor: loading ? 'not-allowed' : 'pointer',
               letterSpacing: '0.03em',
-              boxShadow: loading ? 'none' : '0 4px 18px rgba(24,99,220,0.45)',
               transition: 'opacity 0.2s, box-shadow 0.2s',
               fontFamily: 'inherit',
             }}
