@@ -12,6 +12,15 @@ changement d'étape de ce lead et qu'elle date de moins de
 ``LeadSerializer.UNDO_WINDOW_SECONDS``. Toute autre marche arrière — y compris
 avec ``undo=true`` — reste refusée : le marqueur n'autorise rien à lui seul.
 
+ORDRE FONDATEUR 2026-08-01 — second marqueur, ``confirme_recul`` : « les leads
+doivent pouvoir REVENIR EN ARRIÈRE d'étape, avec une confirmation avant ». Là
+où ``undo`` est une annulation MACHINE revérifiée contre le chatter,
+``confirme_recul`` porte une DÉCISION HUMAINE (le client a montré une boîte
+nommant le lead et les deux étapes) : rien à revérifier dans l'historique. Il
+n'ouvre QUE le garde funnel — le verrou du lead perdu, le cloisonnement
+multi-tenant et le refus par défaut d'un recul nu restent intacts, et l'action
+de MASSE reste en avant seulement. Couvert par ``TestReculConfirme``.
+
 Les clés d'étape suivent la convention des tests existants ; la source
 canonique reste STAGES.py (règle #2).
 
@@ -201,3 +210,141 @@ class TestUndoStageChange(UndoStageBase):
         self.assertIn(
             derniere.new_value,
             (stages.STAGE_LABELS[stages.NEW], stages.NEW))
+
+
+class TestReculConfirme(UndoStageBase):
+    """ORDRE FONDATEUR 2026-08-01 — « les leads doivent pouvoir REVENIR EN
+    ARRIÈRE d'étape, avec une confirmation avant ».
+
+    Le marqueur ``confirme_recul`` porte une DÉCISION HUMAINE, là où ``undo``
+    porte une annulation machine revérifiée contre le chatter. Il est donc
+    délibérément plus large — mais il n'ouvre que le garde funnel : le verrou
+    du lead perdu, le cloisonnement multi-tenant et le refus par défaut d'un
+    recul nu restent intacts.
+    """
+
+    def test_recul_nu_reste_refuse(self):
+        """Sans le marqueur, RIEN ne change : le refus par défaut protège le
+        pipeline d'un glisser-déposer maladroit."""
+        api = auth(self.user)
+        self.avance(api, stages.QUOTE_SENT)
+
+        r = api.patch(self.url(), {'stage': stages.CONTACTED}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(
+            str(r.data['stage'][0]), "On ne recule pas une étape.")
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.QUOTE_SENT)
+
+    def test_recul_confirme_aboutit(self):
+        """Confirmé, le recul passe et l'étape change réellement."""
+        api = auth(self.user)
+        self.avance(api, stages.QUOTE_SENT)
+
+        r = api.patch(
+            self.url(), {'stage': stages.CONTACTED, 'confirme_recul': True},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
+
+    def test_recul_confirme_est_journalise_au_chatter(self):
+        """Un recul assumé reste une modification TRACÉE : le chatter porte le
+        mouvement, jamais un saut silencieux dans l'historique."""
+        api = auth(self.user)
+        self.avance(api, stages.QUOTE_SENT)
+        avant = LeadActivity.objects.filter(
+            lead=self.lead, field='stage').count()
+
+        r = api.patch(
+            self.url(), {'stage': stages.CONTACTED, 'confirme_recul': True},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+
+        entrees = list(
+            LeadActivity.objects
+            .filter(lead=self.lead, field='stage')
+            .order_by('created_at', 'id'))
+        self.assertEqual(len(entrees), avant + 1)
+        derniere = entrees[-1]
+        self.assertEqual(derniere.kind, LeadActivity.Kind.MODIFICATION)
+        self.assertIn(
+            derniere.old_value,
+            (stages.STAGE_LABELS[stages.QUOTE_SENT], stages.QUOTE_SENT))
+        self.assertIn(
+            derniere.new_value,
+            (stages.STAGE_LABELS[stages.CONTACTED], stages.CONTACTED))
+
+    def test_recul_confirme_depuis_signe(self):
+        """Un « Signé » se dénoue : c'est LE cas qui motive l'ordre — un
+        chantier qui capote doit pouvoir retomber en relance."""
+        api = auth(self.user)
+        self.avance(api, stages.CONTACTED)
+        self.avance(api, stages.QUOTE_SENT)
+        self.avance(api, stages.FOLLOW_UP)
+        self.avance(api, stages.SIGNED)
+
+        r = api.patch(
+            self.url(), {'stage': stages.FOLLOW_UP, 'confirme_recul': True},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.FOLLOW_UP)
+
+    def test_lead_perdu_reste_verrouille_meme_confirme(self):
+        """Le verrou du lead perdu PRÉCÈDE toute échappatoire — exactement
+        comme pour ``undo``."""
+        api = auth(self.user)
+        self.avance(api, stages.QUOTE_SENT)
+        Lead.objects.filter(pk=self.lead.pk).update(perdu=True)
+
+        r = api.patch(
+            self.url(), {'stage': stages.CONTACTED, 'confirme_recul': True},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(
+            str(r.data['stage'][0]), 'Lead perdu — étape non modifiable.')
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.QUOTE_SENT)
+
+    def test_le_marqueur_nest_jamais_persiste(self):
+        """Champ HORS modèle : il ne ressort pas en réponse et n'atteint
+        jamais ``.save()``."""
+        api = auth(self.user)
+        self.avance(api, stages.QUOTE_SENT)
+        r = api.patch(
+            self.url(), {'stage': stages.CONTACTED, 'confirme_recul': True},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertNotIn('confirme_recul', r.data)
+        self.assertFalse(
+            hasattr(Lead.objects.get(pk=self.lead.pk), 'confirme_recul'))
+
+    def test_le_marqueur_ne_franchit_pas_la_frontiere_de_societe(self):
+        """Multi-tenant : un lead d'une AUTRE société reste invisible — la
+        confirmation ne change rien à ce filtrage (404, jamais 200)."""
+        autre = Lead.objects.create(
+            company=self.other_company, nom='Autre', prenom='Tenant',
+            stage=stages.QUOTE_SENT)
+
+        api = auth(self.user)
+        r = api.patch(
+            self.url(autre),
+            {'stage': stages.CONTACTED, 'confirme_recul': True},
+            format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        autre.refresh_from_db()
+        self.assertEqual(autre.stage, stages.QUOTE_SENT)
+
+    def test_le_bulk_reste_en_avant_seulement(self):
+        """La règle de MASSE est délibérément inchangée : aucune boîte de
+        dialogue ne fait assumer sincèrement le recul de 200 leads d'un coup.
+        ``_bulk_stage_allowed`` reste la définition pure de « ce qui avance »."""
+        from apps.crm.services import _bulk_stage_allowed
+        self.assertFalse(
+            _bulk_stage_allowed(stages.QUOTE_SENT, stages.CONTACTED))
+        self.assertTrue(
+            _bulk_stage_allowed(stages.CONTACTED, stages.QUOTE_SENT))
+        # Le parking Froid reste ouvert dans les deux sens (réactivation).
+        self.assertTrue(_bulk_stage_allowed(stages.COLD, stages.NEW))
+        self.assertTrue(_bulk_stage_allowed(stages.SIGNED, stages.COLD))

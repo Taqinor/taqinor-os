@@ -125,7 +125,10 @@ describe('LW21 — CTA devis automatique', () => {
       })
       expect(screen.queryByRole('button', { name: /Devis automatique/ })).toBeNull()
       await user.click(screen.getByText('facture hiver'))
-      expect(focusSpy).toHaveBeenCalled()
+      // ROUND 5 — le saut canonique DÉPLIE d'abord la section cible, puis
+      // scrolle/focalise au frame SUIVANT (le champ n'existe pas encore au
+      // moment du clic quand la section était repliée). D'où l'attente.
+      await waitFor(() => expect(focusSpy).toHaveBeenCalled())
     } finally {
       input.remove()
     }

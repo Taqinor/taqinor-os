@@ -210,15 +210,23 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
   // `stage` n'entre jamais dans le draft : on vide d'abord les éditions en
   // cours, puis PATCH {stage} dédié. Le succès met à jour server.stage SEUL.
   // SIGNED est intercepté en amont par StageControl (SigneDialog). Un recul de
-  // funnel remonte un 400 côté serveur — géré ICI, UN SEUL endroit pour les
-  // DEUX appelants (raccourci clavier « 1-4 » LW23, StageControl LW16) :
-  // jamais dupliqué au point d'appel.
-  const changeStage = useCallback(async (newStage) => {
+  // funnel NON confirmé remonte un 400 côté serveur — géré ICI, UN SEUL
+  // endroit pour les DEUX appelants (raccourci clavier « 1-4 » LW23,
+  // StageControl LW16) : jamais dupliqué au point d'appel.
+  // ORDRE FONDATEUR 2026-08-01 — 2e argument `{ confirmeRecul }` : le moteur ne
+  // POSE pas la question (il n'a pas d'UI), il TRANSPORTE la réponse. C'est
+  // LeadWorkspace qui confirme avant d'appeler — un seul endroit pour les deux
+  // entrées (menu d'étape LW16 et raccourcis « 1-4 » LW23), exactement comme
+  // le 400 est géré ici et non au point d'appel. Le marqueur est write-only
+  // côté serveur : il n'est jamais persisté sur le lead.
+  const changeStage = useCallback(async (newStage, { confirmeRecul = false } = {}) => {
     const st = stateRef.current
     if (st.mode !== 'edit' || getField(st, 'stage') === newStage) return
     await flush({})
     try {
-      const res = (await crmApi.updateLead(st.leadId, { stage: newStage })).data
+      const corps = { stage: newStage }
+      if (confirmeRecul) corps.confirme_recul = true
+      const res = (await crmApi.updateLead(st.leadId, corps)).data
       dispatch({ type: 'SET_SERVER', res })
       if (res) setOpenedAt(res.id, res.date_modification)
       onSavedRef.current?.()

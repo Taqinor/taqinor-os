@@ -16,7 +16,8 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import {
-  formatMAD, groupLeadsByStage, isStageMoveAllowed, PIPELINE_STAGES, STAGE_LABELS,
+  formatMAD, groupLeadsByStage, isStageMoveAllowed, isStageMoveBackward,
+  PIPELINE_STAGES, STAGE_LABELS,
 } from '../../../../features/crm/stages'
 import {
   buildKanbanAnnouncements,
@@ -27,6 +28,10 @@ import { usePanScroll } from '../../../../features/kanban/usePanScroll'
 import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
 import { toast } from '../../../../ui/confirm'
+// ORDRE FONDATEUR 2026-08-01 — un recul d'étape se DEMANDE. La formulation
+// (elle nomme le lead et les deux étapes) est mutualisée avec la fenêtre lead :
+// une seule phrase pour tous les gestes qui font reculer un lead.
+import { useConfirmerRecul } from '../../../../features/crm/confirmRecul'
 // EZ14 — undo universel : appliquer tout de suite, inverser à l'annulation.
 // Un board se démonte au moindre changement de vue : aucun commit différé ici.
 import { mutateWithUndo } from '../../../../lib/mutateWithUndo'
@@ -66,11 +71,19 @@ export function StageMover({ lead, onInlineSave }) {
       },
     },
   )
+  const confirmerRecul = useConfirmerRecul()
   if (!onInlineSave) return null
-  const onChange = (e) => {
+  const onChange = async (e) => {
     const next = e.target.value
     if (next === value) return
-    save(next, (v) => onInlineSave(lead, 'stage', v))
+    // Ordre fondateur 2026-08-01 : le sélecteur ne grise plus les options
+    // arrière (voir plus bas) — c'est la CONFIRMATION qui tient le rôle de
+    // garde-fou, ici comme au glisser-déposer. Refusée, on ne touche à rien :
+    // `save` n'est même pas appelé, donc pas d'optimiste à annuler et le
+    // <select> revient de lui-même à l'étape réelle (il est contrôlé).
+    const enArriere = isStageMoveBackward(value, next)
+    if (enArriere && !(await confirmerRecul(lead, next))) return
+    save(next, (v) => onInlineSave(lead, 'stage', v, { confirmeRecul: enArriere }))
   }
   // stopPropagation : interagir avec le select ne doit jamais démarrer un drag.
   return (
@@ -91,15 +104,19 @@ export function StageMover({ lead, onInlineSave }) {
         disabled={isSaving}
         onChange={onChange}
       >
-        {/* LB4 — options interdites grisées : MÊME garde que le drag
-            (isStageMoveAllowed, miroir _bulk_stage_allowed) — le chemin
-            clavier ne pouvait auparavant PAS reproduire le recul-guard
-            (bug #8). L'étape courante reste toujours sélectionnable. */}
+        {/* LB4 puis ordre fondateur 2026-08-01 — les options ARRIÈRE ne sont
+            PLUS grisées : reculer est désormais légitime, sous confirmation
+            (`onChange` ci-dessus). Griser reste la bonne réponse pour la seule
+            option qui ne veut rien dire — l'étape COURANTE. Le garde-fou n'a
+            pas disparu, il a changé de forme : d'un « impossible » silencieux
+            (un <option disabled> n'explique rien) à une question qui nomme le
+            lead et les deux étapes. Le chemin clavier et le glisser-déposer
+            obtiennent toujours la MÊME réponse (l'invariant du bug #8). */}
         {STAGE_MOVE_OPTIONS.map((o) => (
           <option
             key={o.value}
             value={o.value}
-            disabled={o.value !== lead.stage && !isStageMoveAllowed(lead.stage, o.value)}
+            disabled={o.value === lead.stage}
           >
             {o.label}
           </option>
@@ -191,12 +208,20 @@ const DraggableCard = memo(function DraggableCard({
    les totaux RÉELS de l'étape : on ne cache pas des leads, on en diffère
    l'affichage. */
 export const RENDER_CAP = 40
-/* Le pager mobile ne montre QU'UNE colonne mais les 6 sont montées : 6×40
-   cartes × ~66 nœuds ≈ 15 000 éléments sous le doigt (dont 240 <select> du
-   StageMover). Au pointeur grossier on monte 10 cartes par étape (≈ 1,5
-   écran de colonne) — « Charger plus » reste l'échappatoire, les données
-   sont déjà en mémoire. Le poids n°1 du balayage (audit 2026-08-01). */
-export const RENDER_CAP_TACTILE = 10
+/* ORDRE FONDATEUR 2026-08-01 : « pourquoi Charger plus ? mets-les TOUS —
+   l'utilisateur balaie vers le bas de toute façon ».
+   ---------------------------------------------------------------------------
+   Le plafond tactile de 10 cartes par étape est RETIRÉ — constante ET bouton.
+   Il avait été posé pour alléger le geste, mais il payait le mauvais prix : au
+   téléphone la colonne est un rouleau qu'on parcourt AU POUCE — un bouton qui coupe ce
+   rouleau tous les 10 leads est exactement l'interruption qu'on cherche à
+   supprimer, et il rendait le pipeline illisible (on ne voit plus la fin de
+   son étape). Le vrai poids du balayage était ailleurs et il est corrigé
+   (round 4 : la colonne ne vole plus le geste ; round 3 : StageMover non
+   monté au doigt). AU POINTEUR GROSSIER ON MONTE DONC TOUT, sans plafond ni
+   bouton. Le desktop garde APX9 intact (RENDER_CAP = 40 + « Charger plus »),
+   parce que là 6 colonnes sont visibles EN MÊME TEMPS — le mur de nœuds y est
+   réel, alors que le pager mobile n'en montre qu'une. */
 
 // Colonne d'étape : zone droppable, accent couleur, compteur, total devis.
 // LB9 — région nommée (axe/lecteur d'écran atteignent chaque colonne par son
@@ -315,8 +340,10 @@ export default function KanbanView({
   // usePanScroll.js) : ref à poser sur `.kb-board`, aucun autre câblage —
   // le hook attache lui-même ses écouteurs natifs pointerdown/move/up/cancel.
   const boardRef = usePanScroll()
-  // Message éphémère « On ne recule pas une étape » lors d'un drag refusé.
-  const [reculMsg, setReculMsg] = useState(false)
+  // ORDRE FONDATEUR 2026-08-01 — le bandeau éphémère « On ne recule pas une
+  // étape » DISPARAÎT : il annonçait un refus qui n'existe plus. Un recul se
+  // demande maintenant (useConfirmerRecul), il ne se signale plus après coup.
+  const confirmerRecul = useConfirmerRecul()
   /* PHYSIQUE TACTILE (B1/B2) — deux défauts du TouchSensor, corrigés ensemble.
      B2 : `{ delay: 150, tolerance: 8 }` armait un drag pendant un scroll LENT
      (150 ms de contact, 8 px de tolérance : un pouce qui démarre doucement
@@ -382,17 +409,15 @@ export default function KanbanView({
   // l'utilisatrice n'a jamais replié une colonne), écrit à chaque bascule.
   // APX9 — combien de cartes sont MONTÉES par étape (jamais combien sont
   // chargées : tout est déjà en mémoire). Défaut RENDER_CAP.
+  // Cet état ne sert QU'AU DESKTOP : au doigt on monte tout (ordre fondateur
+  // 2026-08-01), il n'y a donc ni plafond à repousser ni bouton pour le faire.
   const [limiteParEtape, setLimiteParEtape] = useState({})
-  const capActif = pointerCoarse ? RENDER_CAP_TACTILE : RENDER_CAP
   const chargerPlus = useCallback((stageKey) => {
     setLimiteParEtape((prev) => ({
       ...prev,
-      // Le pas d'extension reste RENDER_CAP (40) ; la BASE, elle, dépend du
-      // pointeur (10 au doigt) — sans quoi le premier « Charger plus » tactile
-      // sauterait de 10 à 80 (base desktop 40 + pas 40).
-      [stageKey]: (prev[stageKey] ?? capActif) + RENDER_CAP,
+      [stageKey]: (prev[stageKey] ?? RENDER_CAP) + RENDER_CAP,
     }))
-  }, [capActif])
+  }, [])
 
   /* EZ14 — adoptions n°7 et 8 : sur le board, la RÉASSIGNATION et le
      changement d'étape au CLAVIER (StageMover) gagnent l'undo.
@@ -412,23 +437,30 @@ export default function KanbanView({
     })
   }, [onReassign])
 
-  const inlineSaveAvecUndo = useCallback(async (lead, champ, valeur) => {
+  const inlineSaveAvecUndo = useCallback(async (lead, champ, valeur, opts) => {
     if (!onInlineSave) return undefined
     // Seule l'étape est réversible ici (le StageMover ne pilote que `stage`).
     // Entrer en « Signé » est intercepté en amont (SigneDialog) : cette voie ne
     // touche donc jamais au funnel d'argent.
-    if (champ !== 'stage') return onInlineSave(lead, champ, valeur)
+    if (champ !== 'stage') return onInlineSave(lead, champ, valeur, opts)
     const precedent = lead?.stage
-    if (precedent === valeur) return onInlineSave(lead, champ, valeur)
+    if (precedent === valeur) return onInlineSave(lead, champ, valeur, opts)
     // On laisse l'erreur REMONTER (useOptimisticSave fait son rollback et
     // SigneDialog s'appuie sur la sentinelle SIGNE_INTERCEPT) : c'est pourquoi
     // `apply` est appelé directement ici plutôt qu'avalé par le toast.
-    const res = await onInlineSave(lead, champ, valeur)
+    const res = await onInlineSave(lead, champ, valeur, opts)
     await mutateWithUndo({
       kind: 'lead_stage',
       message: 'Étape modifiée.',
       apply: () => Promise.resolve(res),
-      revert: () => onInlineSave(lead, champ, precedent),
+      // L'annulation d'une AVANCÉE recule : sans marqueur elle se prend le 400
+      // de la garde funnel — exactement le bug LB39, qui avait été corrigé sur
+      // le chemin du DROP (LeadsPage.changeStage) mais jamais sur celui du
+      // StageMover, faute d'un argument pour porter le marqueur. Il existe
+      // maintenant : `undo` (l'annulation, revérifiée serveur contre le
+      // chatter) et non `confirmeRecul` — personne n'a confirmé quoi que ce
+      // soit, l'utilisatrice défait sa propre action.
+      revert: () => onInlineSave(lead, champ, precedent, { undo: true }),
     })
     return res
   }, [onInlineSave])
@@ -459,7 +491,7 @@ export default function KanbanView({
     setActiveLead(active.data.current?.lead ?? null)
   }
 
-  const handleDragEnd = ({ active, over }) => {
+  const handleDragEnd = async ({ active, over }) => {
     setActiveLead(null)
     const lead = active.data.current?.lead
     if (!lead || !over || over.id === lead.stage) return
@@ -468,12 +500,18 @@ export default function KanbanView({
     // `stageRank` local classait COLD au rang le plus HAUT → tout drag
     // COLD→actif était refusé comme un recul, alors que le serveur autorise
     // DÉJÀ cette réactivation (COLD est un parking, pas un rang avancé).
-    if (!isStageMoveAllowed(lead.stage, over.id)) {
-      setReculMsg(true)
-      window.setTimeout(() => setReculMsg(false), 4000)
-      return // l'étape reste inchangée
-    }
-    onChangeStage(lead, over.id)
+    // ORDRE FONDATEUR 2026-08-01 — un drop EN ARRIÈRE n'est plus refusé : il
+    // pose une question. Confirmée, elle emprunte le MÊME chemin
+    // d'enregistrement avec le marqueur `confirmeRecul` (que LeadsPage traduit
+    // en `confirme_recul` dans le PATCH) ; annulée, on ne touche à rien — la
+    // carte n'a jamais quitté sa colonne (aucun optimiste n'a été dispatché).
+    // Les deux prédicats sont exclusifs et couvrent tout couple distinct : ce
+    // `return` défensif ne se déclenche donc jamais en pratique.
+    const enAvant = isStageMoveAllowed(lead.stage, over.id)
+    const enArriere = isStageMoveBackward(lead.stage, over.id)
+    if (!enAvant && !enArriere) return
+    if (enArriere && !(await confirmerRecul(lead, over.id))) return
+    onChangeStage(lead, over.id, { confirmeRecul: enArriere })
     // LB12 — la carte déposée se RE-PARENTE dans sa nouvelle colonne (React
     // démonte/remonte l'instance — un `key={lead.id}` qui change de tableau
     // parent n'est jamais un simple déplacement DOM) : sans ça, le focus
@@ -570,14 +608,6 @@ export default function KanbanView({
           </button>
         </div>
       )}
-      {reculMsg && (
-        <div
-          className="kb-recul-msg mb-2 rounded-lg border border-destructive/30 bg-destructive/12 px-3 py-1.5 text-[13px] font-semibold text-destructive"
-          role="status"
-        >
-          On ne recule pas une étape
-        </div>
-      )}
       {/* LB41 — le board est LE scrolleur (2 axes) : focalisable pour le
           défilement clavier (l'ancien tabindex des corps de colonne l'a
           rejoint — ils ne scrollent plus). */}
@@ -589,12 +619,15 @@ export default function KanbanView({
             collapsed={collapsedStages.has(col.key)}
             onToggleCollapse={() => toggleCollapsed(col.key)}
           >
-            {/* APX9 — plafond de RENDU : on ne monte que les N premières
-                cartes, le reste attend « Charger plus ». Les données sont déjà
-                en mémoire — aucun appel réseau ici. */}
+            {/* APX9 — plafond de RENDU au DESKTOP : on ne monte que les N
+                premières cartes, le reste attend « Charger plus ». Les données
+                sont déjà en mémoire — aucun appel réseau ici.
+                AU DOIGT : aucun plafond (ordre fondateur 2026-08-01) — la
+                colonne est un rouleau qu'on parcourt au pouce, `restants`
+                vaut donc 0 et le bouton n'est jamais rendu. */}
             {(() => {
               const visibles = col.leads
-              const limite = limiteParEtape[col.key] ?? capActif
+              const limite = pointerCoarse ? visibles.length : (limiteParEtape[col.key] ?? RENDER_CAP)
               const restants = Math.max(0, visibles.length - limite)
               return (
                 <>

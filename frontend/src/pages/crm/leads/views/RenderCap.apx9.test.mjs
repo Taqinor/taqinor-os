@@ -56,22 +56,36 @@ test('APX9 : le plafond kanban est 40 et borne le RENDU', () => {
 
 test('APX9 : ZERO appel reseau — « Charger plus » ne fait que decouper la memoire', () => {
   const chargerPlus = KANBAN.slice(KANBAN.indexOf('const chargerPlus = useCallback'))
-  const corps = chargerPlus.slice(0, chargerPlus.indexOf('}, [capActif])'))
+  const corps = chargerPlus.slice(0, chargerPlus.indexOf('}, [])'))
   assert.doesNotMatch(corps, /fetch|crmApi|dispatch|await/)
-  // Audit balayage 2026-08-01 : la BASE depend du pointeur (capActif = 10 au
-  // doigt, 40 a la souris) ; le PAS d'extension reste RENDER_CAP.
-  assert.match(corps, /\(prev\[stageKey\] \?\? capActif\) \+ RENDER_CAP/)
+  // Le bouton est une affaire de DESKTOP uniquement : base ET pas valent
+  // RENDER_CAP, et la fermeture n'a plus aucune dependance (`}, [])`).
+  assert.match(corps, /\(prev\[stageKey\] \?\? RENDER_CAP\) \+ RENDER_CAP/)
   // Idem cote liste.
   assert.match(LISTE, /const chargerPlus = \(\) => setLimiteRendu\(\(n\) => n \+ LIST_RENDER_CAP\)/)
 })
 
-test('APX9-tactile (audit balayage) : 10 cartes par etape au pointeur grossier', () => {
-  // 6×40 cartes montees (~15 000 noeuds) etaient LE poids n°1 du geste : au
-  // doigt on monte 10 cartes/etape, et le StageMover (9 noeuds + <select>
-  // natif par carte, inatteignable au toucher) n'est plus monte du tout.
-  assert.match(KANBAN, /export const RENDER_CAP_TACTILE = 10/)
-  assert.match(KANBAN, /const capActif = pointerCoarse \? RENDER_CAP_TACTILE : RENDER_CAP/)
-  assert.match(KANBAN, /limiteParEtape\[col\.key\] \?\? capActif/)
+test("ordre fondateur 2026-08-01 : au doigt on monte TOUT, le bouton n'existe pas", () => {
+  // « pourquoi Charger plus ? mets-les TOUS — l'utilisateur balaie vers le bas
+  // de toute facon ». Au pointeur grossier la limite EST la longueur de la
+  // colonne : `restants` vaut donc toujours 0 et le bouton n'est jamais rendu
+  // (il n'y a plus rien a « charger »). Le plafond tactile a disparu.
+  assert.doesNotMatch(KANBAN, /RENDER_CAP_TACTILE/)
+  assert.doesNotMatch(KANBAN, /capActif/)
+  assert.match(
+    KANBAN,
+    /const limite = pointerCoarse \? visibles\.length : \(limiteParEtape\[col\.key\] \?\? RENDER_CAP\)/,
+  )
+  // Rejoue la regle : au doigt, quelle que soit la taille de l'etape, 0 reste.
+  const limiteTactile = (n) => n
+  for (const n of [0, 1, 10, 41, 300]) {
+    assert.equal(Math.max(0, n - limiteTactile(n)), 0)
+  }
+  // APX9 desktop INCHANGE : le plafond 40 et le bouton restent (6 colonnes
+  // visibles en meme temps — le mur de noeuds y est reel).
+  assert.match(KANBAN, /export const RENDER_CAP = 40/)
+  assert.match(KANBAN, /\{restants > 0 && \(/)
+  // L'autre allegement tactile du round 3 reste en place.
   assert.match(KANBAN, /onInlineSave=\{pointerCoarse \? undefined : inlineSaveAvecUndo\}/)
 })
 

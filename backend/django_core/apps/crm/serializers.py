@@ -224,6 +224,20 @@ class LeadSerializer(serializers.ModelSerializer):
     # Fenêtre d'annulation, alignée sur la durée d'affichage du toast
     # « Annuler » côté client (VX95) avec une marge confortable.
     UNDO_WINDOW_SECONDS = 300
+    # ORDRE FONDATEUR 2026-08-01 — « les leads doivent pouvoir REVENIR EN
+    # ARRIÈRE d'étape, avec une confirmation avant ». Même patron que ``undo``
+    # (champ HORS MODÈLE, write-only, retiré dans validate(), jamais persisté),
+    # mais une sémantique différente et volontairement plus large :
+    #   • ``undo`` = annulation MACHINE du dernier mouvement, revérifiée contre
+    #     le chatter et bornée dans le temps — l'utilisatrice n'affirme rien ;
+    #   • ``confirme_recul`` = décision HUMAINE explicite. Le client a montré
+    #     une boîte de confirmation nommant le lead et les deux étapes, et
+    #     l'utilisatrice a dit oui. Il n'y a donc rien à revérifier contre
+    #     l'historique : un recul volontaire est un fait métier légitime (un
+    #     devis retombe en relance, un « signé » se dénoue), pas un accident.
+    # Ce qu'il n'ouvre PAS : le verrou du lead perdu (vérifié AVANT, comme pour
+    # ``undo``) et les actions en MASSE (voir la garde funnel plus bas).
+    confirme_recul = serializers.BooleanField(write_only=True, required=False)
 
     @staticmethod
     def _canonical_phone(value):
@@ -414,23 +428,37 @@ class LeadSerializer(serializers.ModelSerializer):
         # LB39 — marqueur d'annulation : jamais persisté (champ hors modèle),
         # retiré ici pour ne jamais atteindre ``.save()``.
         undo = bool(attrs.pop('undo', False))
+        # Ordre fondateur 2026-08-01 : confirmation humaine d'un recul. Jamais
+        # persisté non plus (champ hors modèle) — retiré ici comme ``undo``.
+        confirme_recul = bool(attrs.pop('confirme_recul', False))
         # Garde funnel côté serveur (aligné sur la règle bulk _bulk_stage_allowed):
-        # en MISE À JOUR, un lead perdu ne change pas d'étape, et on ne recule
-        # jamais dans l'entonnoir (Froid = parking, jamais une régression).
+        # en MISE À JOUR, un lead perdu ne change pas d'étape, et un recul dans
+        # l'entonnoir doit être EXPLICITEMENT assumé (Froid = parking, jamais
+        # une régression : _bulk_stage_allowed l'autorise déjà des deux côtés).
         if self.instance is not None and 'stage' in attrs:
             from .services import _bulk_stage_allowed
             current = self.instance.stage
             target = attrs['stage']
             if target != current:
+                # Verrou du lead perdu : il PRÉCÈDE toute échappatoire — ni
+                # ``undo`` ni ``confirme_recul`` ne le déverrouillent.
                 if self.instance.perdu:
                     raise serializers.ValidationError(
                         {'stage': 'Lead perdu — étape non modifiable.'})
                 if not _bulk_stage_allowed(current, target):
-                    # LB39 — SEULE exception : l'annulation, validée serveur,
-                    # du dernier changement d'étape de ce lead (le toast
-                    # « Annuler » de VX95 PATCHait en arrière et se prenait un
-                    # 400 systématique — l'undo était mort en production).
-                    if not (undo and self._undo_of_last_stage_change(current, target)):
+                    # DEUX échappatoires, et deux seulement :
+                    # LB39 — l'annulation, validée serveur, du dernier
+                    # changement d'étape de ce lead (le toast « Annuler » de
+                    # VX95 PATCHait en arrière et se prenait un 400
+                    # systématique — l'undo était mort en production) ;
+                    # ordre fondateur 2026-08-01 — la confirmation humaine
+                    # explicite d'un recul volontaire (le client a montré une
+                    # boîte nommant le lead et les deux étapes). Sans l'un des
+                    # deux, un recul nu reste un 400 : le refus par défaut est
+                    # inchangé, c'est la seule manière d'empêcher un
+                    # glisser-déposer maladroit de défaire un pipeline.
+                    if not (confirme_recul
+                            or (undo and self._undo_of_last_stage_change(current, target))):
                         raise serializers.ValidationError(
                             {'stage': "On ne recule pas une étape."})
         # Champs personnalisés (T11) : valider/nettoyer contre les définitions

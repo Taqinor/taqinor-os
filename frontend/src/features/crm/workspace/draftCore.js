@@ -118,6 +118,104 @@ export function isSuggested(state, key) {
     && !!(state.server && state.server[key])
 }
 
+/* ── Modèle de SECTION (round 5) ──────────────────────────────────────────────
+   L'ORDRE DES SECTIONS NE BOUGE JAMAIS. C'est le verdict de la recherche
+   design (Salesforce Path, HubSpot required-per-stage, et la littérature
+   anti-réordonnancement : les menus adaptatifs d'Office 2000, Findlater &
+   McGrenere, la mémoire spatiale chez NN/g) : un formulaire qui se réorganise
+   selon le contexte détruit l'apprentissage moteur — on ne sait plus « où
+   est » un champ, chaque ouverture est une relecture. L'intuition fondateur
+   (« voir d'abord ce qui manque selon l'étape ») se livre donc autrement :
+   un bandeau épinglé qui POINTE, et un repli automatique qui met de côté ce
+   qui est fini. Jamais un déplacement.
+
+   Ces trois tables sont PURES et vivent ici, avec `TRACKED_KEYS` dont elles
+   sont le regroupement — les commentaires de section y étaient déjà, elles ne
+   font que les rendre exécutables. Aucun import : le module reste testable en
+   `node --test`. */
+
+// Les champs éditables de chaque section du centre (regroupement de
+// TRACKED_KEYS). `origine` en est absente : elle n'affiche que des données
+// serveur, jamais un champ — et elle est déjà repliée par défaut.
+export const SECTION_FIELDS = {
+  contact: ['nom', 'prenom', 'societe', 'email', 'telephone', 'whatsapp',
+    'adresse', 'ville', 'gps_lat', 'gps_lng'],
+  pipeline: ['owner', 'canal', 'contact_preference', 'priorite',
+    'langue_preferee', 'tags', 'motif_perte', 'relance_date',
+    'type_installation', 'montant_estime', 'date_cloture_prevue'],
+  energie: ['facture_hiver', 'facture_ete', 'ete_differente',
+    'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221'],
+  pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h'],
+  toiture: ['type_toiture', 'surface_toiture_m2', 'orientation',
+    'inclinaison_deg', 'ombrage', 'ombrage_notes', 'nb_etages',
+    'structure_pref', 'taille_souhaitee_kwc', 'batterie_souhaitee'],
+  visite: ['visite_prevue_le', 'visite_effectuee', 'visite_notes'],
+  divers: ['note', 'custom_data'],
+}
+
+// La section de TRAVAIL : on n'y touche jamais automatiquement. C'est là qu'on
+// pilote l'affaire (étape, relance, montant) — la replier « parce qu'elle est
+// remplie » reviendrait à ranger l'outil qu'on a en main.
+export const SECTION_TRAVAIL = 'pipeline'
+
+// Le « cœur » d'une section : le peu sans quoi elle n'est pas faite. Ce n'est
+// PAS la liste de ses champs — remplir `ombrage_notes` ne rend pas une toiture
+// renseignée. Une section sans cœur déclaré (visite, divers) se juge sur le
+// VIDE : rien dedans = rien à voir pour l'instant.
+const SECTION_COEUR = {
+  contact: ['telephone', 'ville'],
+  toiture: ['surface_toiture_m2', 'orientation', 'type_toiture'],
+  pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h'],
+  visite: [],
+  divers: [],
+}
+
+// Miroir EXACT de apps/crm/devis_auto.py `champs_manquants` (mêmes modes,
+// même couplage été/hiver) : le cœur « énergie » dépend du marché. La règle
+// serveur reste la source unique — on la reflète, on ne la réinvente pas.
+const MODES_ETUDE = ['commercial', 'industriel']
+const MODE_AGRICOLE = 'agricole'
+
+export function sectionCoeurKeys(state, id) {
+  if (id !== 'energie') return SECTION_COEUR[id] ?? []
+  const mode = getField(state, 'type_installation') || 'residentiel'
+  // En agricole, l'énergie ne se saisit pas ici : tout est dans « Pompage ».
+  if (mode === MODE_AGRICOLE) return []
+  if (MODES_ETUDE.includes(mode)) return ['conso_mensuelle_kwh']
+  return getField(state, 'ete_differente')
+    ? ['facture_hiver', 'facture_ete']
+    : ['facture_hiver']
+}
+
+export function sectionEstVide(state, id) {
+  return (SECTION_FIELDS[id] ?? []).every((k) => isEmpty(getField(state, k)))
+}
+
+/**
+ * sectionAutoRepliee — cette section doit-elle s'ouvrir REPLIÉE ?
+ *
+ * Uniquement consultée AU MONTAGE (SectionsPane) : replier une section pendant
+ * que l'utilisatrice travaille dedans serait le pire des deux mondes — la
+ * stabilité est la règle d'or, l'automatisme n'a droit qu'à l'instant zéro.
+ *
+ * @param {object} state        état du moteur (draft ∪ serveur)
+ * @param {string} id           id de section du registre
+ * @param {{porteUnManquant?: boolean}} ctx  la section est pointée par le bandeau
+ * @returns {boolean}
+ */
+export function sectionAutoRepliee(state, id, { porteUnManquant = false } = {}) {
+  // (0) la zone de travail ne se replie jamais toute seule.
+  if (id === SECTION_TRAVAIL) return false
+  // (0 bis) une section que le bandeau montre du doigt reste OUVERTE : la
+  // replier serait se contredire dans le même écran.
+  if (porteUnManquant) return false
+  const coeur = sectionCoeurKeys(state, id)
+  // (a) son cœur est complet — il n'y a plus rien à y faire pour l'instant.
+  if (coeur.length) return coeur.every((k) => !isEmpty(getField(state, k)))
+  // (b) pas de cœur déclaré : elle se replie si elle est VIDE.
+  return sectionEstVide(state, id)
+}
+
 // ── Transformation de charge utile (PATCH partiel / création) ────────────────
 // Miroir du transform de LeadForm.handleSubmit : '' | undefined → null, les
 // booléens passent tels quels, et l'été suit l'hiver quand `ete_differente`
