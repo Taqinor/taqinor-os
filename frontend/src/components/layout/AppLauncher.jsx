@@ -211,7 +211,7 @@ function AppLauncherSection({ title, entries, pinned, onOpen, onTogglePin }) {
           >
             {/* ODY9 — LE composant d'icône d'app (même pastille que le Menu
                 d'accueil, les épinglés et l'écran Applications). */}
-            <AppIcon icon={entry.icon} accent={entry.accent} size="sm" />
+            <AppIcon icon={entry.icon} accent={entry.accent} appKey={entry.key} size="sm" />
             <span className="app-launcher-tile-label">{entry.label}</span>
             <span
               className="app-launcher-tile-pin"

@@ -395,6 +395,7 @@ export default function ApplicationsSection() {
                       <AppIcon
                         icon={glypheModule(mod)}
                         accent={accentForApp(mod.key)}
+                        appKey={mod.key}
                         size="sm"
                         className="shrink-0"
                       />

@@ -8912,13 +8912,21 @@ textarea.form-control {
 
 /* ==========================================================================
    ODY9 — AppIcon : UNE pastille d'app, QUATRE surfaces (Menu d'accueil,
-   lanceur VX9, epingles VX10, ecran Applications ODX5). Bloc APPEND-ONLY.
-   Arrondi « superellipse » derive de `--radius` (jamais un rayon en dur),
-   fond = teinte de l'accent module (VX8) a 12 %, glyphe a l'accent plein :
-   contraste AA en clair comme en sombre puisque l'accent est une couleur de
-   premier plan du theme.
+   lanceur VX9, epingles VX10, ecran Applications ODX5).
+   ODY33 (fondateur 2026-08-02) — v2 « TUILE RICHE ». La v1 posait l'accent
+   module a 12 % en fond avec un glyphe FILAIRE : pale et generique, quarante
+   apps s'y ressemblaient. La v2 :
+     • fond = couleur d'app PLEINE et saturee (`--app-tile`, tokens.css) ;
+     • degrade vertical (haut eclairci, bas assombri) = le relief ;
+     • ombre portee douce (`--shadow-tile`) = la tuile pose sur la surface ;
+     • glyphe BLANC au trait epaissi (2.5) — la regle CSS bat l'attribut de
+       presentation `stroke-width` que pose lucide, donc aucun appelant n'a a
+       changer sa declaration d'icone.
+   L'arrondi « superellipse » est inchange (derive de `--radius`, jamais un
+   rayon en dur) et les tailles du contrat (64/56/48/30) non plus.
    ========================================================================== */
 .app-icon {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -8927,9 +8935,20 @@ textarea.form-control {
   height: var(--app-icon-size, 56px);
   /* Superellipse : le rayon suit l'echelle du kit et grandit avec la taille. */
   border-radius: calc(var(--radius) + var(--app-icon-size, 56px) * 0.14);
-  background: color-mix(in srgb, var(--module-accent, var(--primary)) 12%, transparent);
-  color: var(--module-accent, var(--primary));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--module-accent, var(--primary)) 22%, transparent);
+  background-color: var(--app-tile, var(--app-tile-defaut));
+  /* Relief : ~+4 pts de clarte en haut, ~-3 en bas. Assez pour que la tuile
+     soit un OBJET, trop peu pour degrader le contraste du glyphe (le haut du
+     degrade reste >= 3:1 avec le blanc — cf. la note de calibrage tokens.css). */
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--app-tile, var(--app-tile-defaut)) 91%, var(--app-tile-glyph)) 0%,
+    var(--app-tile, var(--app-tile-defaut)) 55%,
+    color-mix(in oklch, var(--app-tile, var(--app-tile-defaut)) 92%, var(--app-tile-shade)) 100%
+  );
+  color: var(--app-tile-glyph);
+  box-shadow:
+    var(--shadow-tile),
+    inset 0 1px 0 color-mix(in oklch, var(--app-tile-glyph) 26%, transparent);
   transition: box-shadow 140ms ease, transform 140ms ease;
 }
 
@@ -8937,21 +8956,28 @@ textarea.form-control {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: var(--app-tile-glyph);
 }
 
 /* Le glyphe suit la taille de la pastille (les icones lucide portent un
-   `size` en px : on le neutralise pour que les 4 surfaces soient identiques). */
+   `size` en px : on le neutralise pour que les 4 surfaces soient identiques).
+   ODY33 — 0.46 au lieu de 0.42 : un glyphe plus present, comme Odoo. */
 .app-icon-glyph > svg {
-  width: calc(var(--app-icon-size, 56px) * 0.42);
-  height: calc(var(--app-icon-size, 56px) * 0.42);
+  width: calc(var(--app-icon-size, 56px) * 0.46);
+  height: calc(var(--app-icon-size, 56px) * 0.46);
+  /* Bat l'attribut `stroke-width` de lucide (une regle CSS l'emporte toujours
+     sur un attribut de presentation) : trait plein, lisible en blanc. */
+  stroke-width: 2.5;
+  /* Detache le trait blanc du haut de degrade sur les voies les plus claires. */
+  filter: drop-shadow(0 1px 1px color-mix(in oklch, var(--app-tile-shade) 22%, transparent));
 }
 
 @media (hover: hover) {
   .app-icon--interactive:hover {
     box-shadow:
-      inset 0 0 0 2px var(--module-accent, var(--primary)),
-      0 6px 16px -12px color-mix(in srgb, var(--foreground) 60%, transparent);
-    transform: translateY(-1px);
+      var(--shadow-tile-hover),
+      inset 0 1px 0 color-mix(in oklch, var(--app-tile-glyph) 34%, transparent);
+    transform: translateY(-2px) scale(1.03);
   }
 }
 
@@ -8959,12 +8985,17 @@ textarea.form-control {
    visuelle, quel que soit l'element reellement survole. */
 .home-menu-tile:focus-visible .app-icon,
 .app-launcher-tile:focus-visible .app-icon {
-  box-shadow: inset 0 0 0 2px var(--module-accent, var(--primary));
+  box-shadow:
+    var(--shadow-tile-hover),
+    inset 0 0 0 2px color-mix(in oklch, var(--app-tile-glyph) 85%, transparent);
 }
 @media (hover: hover) {
   .home-menu-tile:hover .app-icon,
   .app-launcher-tile:hover .app-icon {
-    box-shadow: inset 0 0 0 2px var(--module-accent, var(--primary));
+    box-shadow:
+      var(--shadow-tile-hover),
+      inset 0 1px 0 color-mix(in oklch, var(--app-tile-glyph) 34%, transparent);
+    transform: translateY(-2px) scale(1.03);
   }
 }
 
@@ -8972,7 +9003,9 @@ textarea.form-control {
   .app-icon {
     transition: none;
   }
-  .app-icon--interactive:hover {
+  .app-icon--interactive:hover,
+  .home-menu-tile:hover .app-icon,
+  .app-launcher-tile:hover .app-icon {
     transform: none;
   }
 }
