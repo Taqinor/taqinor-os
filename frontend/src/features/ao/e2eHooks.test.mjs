@@ -184,6 +184,9 @@ export const ALL_HOOKS = [
   'data-ao-l-regle',
   'data-ao-l-sommets',
   'data-ao-l-valider',
+
+  // ── Fiche affaire : frontière de chargement d'un panneau — 03/08/2026 ────
+  'data-ao-panneau-differe',
 ]
 
 function readDoc() {
