@@ -66,6 +66,20 @@ const DossierPage = lazy(() => import('./dossier/DossierPage'))
 const SeriesPage = lazy(() => import('./questions/SeriesPage')
   .then((m) => ({ default: m.SeriesPage })))
 
+/* ── SECONDE VAGUE, 03/08/2026 — les 3 derniers écrans que RIEN n'atteignait ─
+   `AdministratifPage`, `EquipementsPage` et `ExigencesPage` existent, sont
+   testés, et n'étaient importés nulle part : aucune route du menu, aucun
+   onglet. Ils rejoignent les 7 onglets EXISTANTS sans en changer l'ordre ni le
+   contenu. Même patron que ci-dessus : `lazy` + `PanneauDiffere`.
+
+   Ces trois panneaux sont sûrs vis-à-vis de l'en-tête du groupe : aucun
+   n'importe l'économie du dossier (`EquipementsPage` dit lui-même « AUCUN
+   COÛT » : ni prix d'achat, ni marge, ni coût de revient — ni à l'écran, ni
+   dans le corps d'une requête). */
+const AdministratifPage = lazy(() => import('./administratif/AdministratifPage'))
+const EquipementsPage = lazy(() => import('./equipements/EquipementsPage'))
+const ExigencesPage = lazy(() => import('./cps/ExigencesPage'))
+
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const VERDICT_TONE = { confirme: 'success', tendu: 'warning' }
@@ -439,6 +453,48 @@ export default function AffaireDetail() {
           value: 'historique',
           label: 'Historique',
           content: <ChatterTimeline entries={chatterEntries} attachments={attachments} />,
+        },
+        /* ── Les 3 onglets ajoutés le 03/08/2026, APRÈS les 7 ci-dessus ──── */
+        {
+          value: 'administratif',
+          label: 'Administratif',
+          /* `affaireId` passé EXPLICITEMENT. `AdministratifPage` retombe sur
+             `useParams().id` quand on ne lui passe rien : ici ce paramètre
+             SE TROUVE être l'id de l'affaire, donc le repli marcherait — par
+             coïncidence de nommage, pas par contrat. Une fiche montée sous une
+             autre route (ou un onglet imbriqué) le casserait en silence. */
+          content: (
+            <PanneauDiffere>
+              <AdministratifPage affaireId={id} />
+            </PanneauDiffere>
+          ),
+        },
+        {
+          value: 'equipements',
+          label: 'Équipements',
+          /* Signature déclarée : `({ affaireId })` — aucun repli `useParams`.
+             Le panneau filtre `?appel_offre=` (le champ réel du modèle
+             `EquipementAO`, honoré par `EquipementAOViewSet.get_queryset`). */
+          content: (
+            <PanneauDiffere>
+              <EquipementsPage affaireId={id} />
+            </PanneauDiffere>
+          ),
+        },
+        {
+          value: 'cps',
+          label: 'CPS & exigences',
+          /* BUG BLOQUANT CORRIGÉ AVANT DE MONTER CET ONGLET (voir
+             `cps/ExigencesPage.jsx`) : l'écran listait ses clauses avec
+             `?affaire=`, un paramètre que `ExigenceCPSViewSet` n'honore PAS et
+             ignore sans rien dire — il aurait affiché les clauses de TOUTES les
+             affaires de la société sous le titre de celle-ci. Le filtre est
+             désormais `?appel_offre=`, vérifié dans `apps/ao/views.py`. */
+          content: (
+            <PanneauDiffere>
+              <ExigencesPage affaireId={id} />
+            </PanneauDiffere>
+          ),
         },
       ]}
     />

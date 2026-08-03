@@ -22,6 +22,12 @@ const mocks = vi.hoisted(() => ({
   seriesCreate: vi.fn(),
   calepinageGet: vi.fn(),
   calepinageCalculer: vi.fn(),
+  // Seconde vague 03/08/2026 — les 3 derniers écrans inatteignables.
+  batimentsList: vi.fn(),
+  toituresCreate: vi.fn(),
+  equipementsList: vi.fn(),
+  exigencesList: vi.fn(),
+  exigencesCreate: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -33,12 +39,23 @@ vi.mock('../../api/aoApi', () => ({
   default: {
     affaires: { get: mocks.get, list: mocks.affairesList },
     // Ce que le serveur persiste réellement pour un calepinage (AOF28).
-    toitures: { list: mocks.toituresList },
+    toitures: { list: mocks.toituresList, create: mocks.toituresCreate },
+    // Le panneau Toitures ouvre le wizard de création : une toiture se
+    // rattache à un BÂTIMENT (ToitureAO n'a aucune FK vers l'affaire).
+    batiments: { list: mocks.batimentsList },
     variantes: { list: mocks.variantesList },
     dossiers: { list: mocks.dossiersList, get: mocks.dossierGet, genererPiece: mocks.genererPiece },
     seriesQR: { list: mocks.seriesList, create: mocks.seriesCreate },
     calepinages: { get: mocks.calepinageGet, calculer: mocks.calepinageCalculer },
+    equipements: { list: mocks.equipementsList, bascule: vi.fn() },
+    exigencesCps: { list: mocks.exigencesList, create: mocks.exigencesCreate },
   },
+}))
+
+// L'aperçu du CPS (AOF175) importe pdfjs : hors sujet ici, on prouve seulement
+// que l'onglet monte le VRAI ExigencesPage (même bouchon que son propre test).
+vi.mock('./dossier/PiecePreview', () => ({
+  default: ({ piece }) => <div data-testid="apercu-cps">{piece ? piece.libelle : 'aucune pièce'}</div>,
 }))
 
 vi.mock('../../api/recordsApi', () => ({
@@ -117,7 +134,19 @@ beforeEach(() => {
   mocks.calepinageGet.mockResolvedValue({ data: PLAN })
   mocks.toituresList.mockResolvedValue({ data: [] })
   mocks.affairesList.mockResolvedValue({ data: [] })
+  mocks.batimentsList.mockResolvedValue({ data: [] })
+  mocks.toituresCreate.mockResolvedValue({ data: { id: 900 } })
+  mocks.equipementsList.mockResolvedValue({ data: [] })
+  mocks.exigencesList.mockResolvedValue({ data: [] })
 })
+
+// Les 10 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, puis les
+// 3 ajoutés le 03/08/2026 — l'ordre des 7 premiers ne bouge jamais.
+const ONGLETS = [
+  'Synthèse', 'Toitures & relevés', 'Calepinages', 'Bordereau',
+  'Dossier', 'Questions terrain', 'Historique',
+  'Administratif', 'Équipements', 'CPS & exigences',
+]
 
 describe('AffaireDetail', () => {
   it('charge la fiche via aoApi.affaires.get(id) et affiche référence/objet/statut', async () => {
@@ -137,6 +166,16 @@ describe('AffaireDetail', () => {
     ]) {
       expect(screen.getByRole('tab', { name: label })).toBeInTheDocument()
     }
+  })
+
+  it('ajoute les 3 onglets du 03/08/2026 APRÈS les 7, sans toucher à leur ordre', async () => {
+    renderScreen()
+    await screen.findByText('AO-2026-001')
+    for (const label of ['Administratif', 'Équipements', 'CPS & exigences']) {
+      expect(screen.getByRole('tab', { name: label })).toBeInTheDocument()
+    }
+    // L'ordre RENDU est l'ordre déclaré : les 7 d'origine d'abord, intacts.
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(ONGLETS)
   })
 
   it('n’a JAMAIS un onglet ou un mot « rentabilité » dans l’arbre (route séparée AOF161)', async () => {
@@ -298,6 +337,77 @@ describe('AffaireDetail', () => {
     })
   })
 
+  /* ══ SECONDE VAGUE 03/08/2026 — les 3 derniers écrans que rien n'atteignait ══
+     `AdministratifPage`, `EquipementsPage` et `ExigencesPage` étaient importés
+     NULLE PART : ni route, ni onglet. Chaque test ci-dessous épingle le panneau
+     RÉEL et, surtout, le NOM DU FILTRE SERVEUR — c'est là que se cache le
+     défaut silencieux (un filtre inconnu est ignoré, jamais refusé). */
+  describe('les 3 onglets ajoutés', () => {
+    it('« Administratif » monte le VRAI panneau avec un affaireId EXPLICITE', async () => {
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Administratif'))
+
+      expect(await screen.findByRole('heading', { name: 'Administratif' }, { timeout: 15000 }))
+        .toBeInTheDocument()
+      // Titre + états vides propres à AdministratifPage (aucun placeholder).
+      expect(screen.getByText('Aucune pièce administrative')).toBeInTheDocument()
+      // La propriété est passée explicitement, jamais laissée au repli
+      // `useParams()` interne (juste ici par pure coïncidence de nommage).
+      expect(codeSeul).toMatch(/<AdministratifPage\s+affaireId=\{id\}/)
+    })
+
+    it('« Équipements » monte le VRAI panneau, filtré sur appel_offre (jamais toute la société)', async () => {
+      mocks.equipementsList.mockResolvedValue({
+        data: [{ id: 3, role: 'onduleur', designation: 'Onduleur 60 kW', marque: 'Deye' }],
+      })
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Équipements'))
+
+      await waitFor(
+        () => expect(mocks.equipementsList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      expect(await screen.findByRole('heading', { name: 'Équipements retenus' })).toBeInTheDocument()
+      expect(screen.getByText('Onduleur 60 kW')).toBeInTheDocument()
+      // Signature déclarée par le panneau : `({ affaireId })`.
+      expect(codeSeul).toMatch(/<EquipementsPage\s+affaireId=\{id\}/)
+    })
+
+    it('« Équipements » affiche un état vide EXPLICITE quand l’affaire n’en a aucun', async () => {
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Équipements'))
+
+      expect(await screen.findByText('Aucun équipement retenu', {}, { timeout: 15000 }))
+        .toBeInTheDocument()
+    })
+
+    it('« CPS & exigences » filtre sur appel_offre — JAMAIS `affaire`, que le serveur ignore', async () => {
+      mocks.exigencesList.mockResolvedValue({
+        data: [{ id: 8, code: 'DCAC', libelle: 'Ratio DC/AC admissible', bloquant: true }],
+      })
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('CPS & exigences'))
+
+      // LE point de la réparation : `ExigenceCPSViewSet.get_queryset` n'honore
+      // que ('appel_offre', 'type_exigence', 'bloquant', 'a_reverifier',
+      // 'piece_consultation'). `affaire` était ignoré EN SILENCE → les clauses
+      // de toutes les affaires de la société sous le titre d'une seule.
+      await waitFor(
+        () => expect(mocks.exigencesList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      for (const appel of mocks.exigencesList.mock.calls) {
+        expect(appel[0]).not.toHaveProperty('affaire')
+      }
+      expect(await screen.findByRole('heading', { name: 'CPS & exigences' })).toBeInTheDocument()
+      expect(screen.getByText('Ratio DC/AC admissible')).toBeInTheDocument()
+    })
+  })
+
   describe('gardes de structure', () => {
     it('plus AUCUN TabPlaceholder ne subsiste dans la fiche', () => {
       expect(codeSeul).not.toMatch(/TabPlaceholder/)
@@ -307,13 +417,16 @@ describe('AffaireDetail', () => {
       expect(codeSeul).not.toMatch(/lane distincte du Groupe AOF/)
     })
 
-    it('les 4 panneaux réels sont chargés PARESSEUSEMENT (lazy + import dynamique), jamais en import statique', () => {
+    it('les panneaux réels sont chargés PARESSEUSEMENT (lazy + import dynamique), jamais en import statique', () => {
       for (const chemin of [
         './toiture/ToituresPage',
         './calepinage/CalepinageStudio',
         './bordereau/BordereauPage',
         './dossier/DossierPage',
         './questions/SeriesPage',
+        './administratif/AdministratifPage',
+        './equipements/EquipementsPage',
+        './cps/ExigencesPage',
       ]) {
         // lazy(() => import('<chemin>')…
         expect(codeSeul).toMatch(
@@ -332,18 +445,25 @@ describe('AffaireDetail', () => {
       // Autant de montages de panneau différé que de panneaux lazy déclarés.
       const lazyDeclares = codeSeul.match(/=\s*lazy\(/g) || []
       const montages = codeSeul.match(/<PanneauDiffere>/g) || []
-      expect(lazyDeclares.length).toBe(5)
+      // 5 panneaux de la 1re vague + 3 de la 2de (Administratif, Équipements,
+      // CPS & exigences) — l'ÉGALITÉ est la garde : un panneau déclaré `lazy`
+      // et monté hors Suspense ferait planter la fiche entière.
+      expect(lazyDeclares.length).toBe(8)
       expect(montages.length).toBe(lazyDeclares.length)
     })
 
     it('l’onglet Rentabilité n’apparaît dans AUCUN rendu, onglet par onglet', async () => {
       renderScreen()
       await screen.findByText('AO-2026-001')
-      for (const label of [
-        'Synthèse', 'Toitures & relevés', 'Calepinages', 'Bordereau',
-        'Dossier', 'Questions terrain', 'Historique',
-      ]) {
+      // Les 10 onglets, y compris les 3 ajoutés le 03/08/2026 : un panneau
+      // nouvellement branché ne doit pas ramener l'économie du dossier par la
+      // fenêtre. Chaque panneau est DIFFÉRÉ, d'où l'attente explicite.
+      for (const label of ONGLETS) {
         await userEvent.click(onglet(label))
+        await waitFor(
+          () => expect(document.querySelector('[data-ao-panneau-differe]')).toBeNull(),
+          { timeout: 15000 },
+        )
         expect(screen.queryByRole('tab', { name: /rentabilit/i })).toBeNull()
         expect(screen.queryByText(/rentabilit/i)).toBeNull()
       }
