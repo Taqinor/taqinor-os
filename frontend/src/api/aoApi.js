@@ -274,14 +274,35 @@ const aoApi = {
    ----------------------------------------------------------------------------
    `ao_rentabilite_voir` est une ELEVATED_PERMISSION (en-tête du Groupe AOF) :
    importer `aoApi` seul ne doit exposer AUCUN chemin réseau vers cet
-   endpoint. Miroir du chemin déclaré par AOF161 (`/ao/:id/rentabilite`,
-   lane `frontend/ao-directeur`).
+   endpoint.
+
+   LA CIBLE A ÉTÉ TRANCHÉE (le test de garde d'hier disait qu'il faudrait la
+   trancher, pas la découvrir en production). AOF161 avait déclaré côté front
+   `/ao/:id/rentabilite/` — un chemin que le routeur n'a JAMAIS servi : il n'y
+   a aucune ressource montée à la racine `/ao/<id>/`, et l'économie n'est pas
+   indexée par l'id d'affaire. La route RÉELLE, enregistrée par
+   `apps/ao/urls.py` (AOF157, `router.register(r'economie', EconomieAOViewSet)`),
+   est `/ao/economie/<id>/`, indexée par l'économie elle-même et filtrable par
+   `?appel_offre=` — c'est ce que ce client appelle désormais.
    ========================================================================== */
 export const aoRentabiliteApi = {
-  get: (affaireId) => api.get(`/ao/${affaireId}/rentabilite/`),
-  update: (affaireId, data) => api.patch(`/ao/${affaireId}/rentabilite/`, data),
-  // Téléchargement du document interne (URL signée — jamais un lien MinIO direct).
-  download: (affaireId) => api.get(`/ao/${affaireId}/rentabilite/telecharger/`),
+  // Depuis un écran d'affaire on ne connaît QUE l'id de l'AO : le serveur
+  // expose exactement ce filtre (`EconomieAOViewSet.get_queryset`), donc on
+  // le lit au lieu de deviner un id d'économie. Renvoie une LISTE paginée.
+  parAffaire: (affaireId) => api.get('/ao/economie/', { params: { appel_offre: affaireId } }),
+  get: (economieId) => api.get(`/ao/economie/${economieId}/`),
+  update: (economieId, data) => api.patch(`/ao/economie/${economieId}/`, data),
+
+  /* Le classeur interne se PRODUIT (job de fond) avant de se retirer : il
+     n'est jamais rendu dans le temps d'une requête. `produireClasseur` renvoie
+     202 + l'id du job, `statutClasseur` suit l'avancement, `download` retire
+     les octets — relayés par l'endpoint directeur lui-même, donc jamais un
+     lien MinIO direct. */
+  produireClasseur: (economieId) => api.post(`/ao/economie/${economieId}/telecharger/`),
+  statutClasseur: (economieId, jobId) => api.get(`/ao/economie/${economieId}/telecharger/`,
+    { params: { job: jobId } }),
+  download: (economieId, jobId) => api.get(`/ao/economie/${economieId}/telecharger/`,
+    { params: { job: jobId, fichier: 1 }, responseType: 'blob' }),
 }
 
 export default aoApi

@@ -206,16 +206,30 @@ def produire_rentabilite_xlsx_task(job_id=None, company_id=None,
     tirer AOF152 filtrent sur la visibilité). Sa distribution se fait par URL
     signée à durée courte — une clé d'objet devinée ou partagée contournerait
     sinon toute la permission.
+
+    L'ARTEFACT EST DÉPOSÉ, pas jeté (AOF161). La tâche écrivait le classeur
+    dans un tampon mémoire puis retournait sa TAILLE : rien n'était conservé,
+    donc rien n'était téléchargeable. Les octets partent désormais dans le
+    stockage objet par ``apps.records.storage.store_export_result`` (livrable
+    de job, clé préfixée par société) et la clé est posée sur le
+    ``BackgroundJob`` — c'est elle que l'endpoint directeur relaie.
+
+    Il est DÉLIBÉRÉ que ce livrable ne soit pas une ``records.Attachment`` : la
+    liste générique des pièces jointes (``/api/django/records/attachments/``)
+    est ouverte à TOUT rôle (``IsAnyRole``) et sert le fichier par son action
+    ``download`` — y déposer le coût de revient l'offrirait à un
+    non-directeur, c'est-à-dire exactement la fuite que ``ao_rentabilite_voir``
+    existe pour fermer.
     """
     import io
 
     from core.models import BackgroundJob
 
-    from .fabrique.rendus.rentabilite_xlsx import ecrire_classeur
+    from .fabrique.rendus.rentabilite_xlsx import MIME_XLSX, ecrire_classeur
 
     job = BackgroundJob.objects.filter(pk=job_id).first() if job_id else None
     try:
-        from .services_directeur import economie_du_projet
+        from .services_directeur import donnees_du_classeur, economie_du_projet
     except ImportError:
         economie_du_projet = None
     if economie_du_projet is None:
@@ -228,12 +242,40 @@ def produire_rentabilite_xlsx_task(job_id=None, company_id=None,
         return {'produit': False, 'motif': message}
 
     economie, reference = economie_du_projet(projet_id)
-    tampon = io.BytesIO()
-    ecrire_classeur(economie, tampon, reference_dossier=reference)
-    octets = tampon.getvalue()
+    if economie is None:
+        message = ("Cet appel d'offres n'a pas d'économie directeur : il n'y "
+                   'a aucun coût de revient à mettre en classeur.')
+        logger.info('ao.produire_rentabilite_xlsx : %s', message)
+        if job is not None:
+            job.marquer_echec(message)
+        return {'produit': False, 'motif': message}
+
+    try:
+        donnees = donnees_du_classeur(economie)
+        tampon = io.BytesIO()
+        ecrire_classeur(donnees, tampon, reference_dossier=reference)
+        octets = tampon.getvalue()
+    except Exception as erreur:  # noqa: BLE001 — le job porte le motif.
+        message = str(erreur) or erreur.__class__.__name__
+        logger.warning('ao.produire_rentabilite_xlsx : %s', message)
+        if job is not None:
+            job.marquer_echec(message)
+        return {'produit': False, 'motif': message}
+
+    cle = ''
     if job is not None:
-        job.marquer_termine()
-    return {'produit': True, 'octets': len(octets), 'visibilite': 'directeur'}
+        from apps.records.storage import store_export_result
+
+        # La clé PORTE le dossier produit (``<job>-ao<id>.xlsx``) : l'endpoint
+        # directeur refuse ainsi de servir, sous le nom d'un AO, le classeur
+        # d'un AUTRE — un fichier étiqueté faux ne se voit pas à l'usage.
+        cle = store_export_result(
+            octets, company_id=(company_id or job.company_id),
+            job_id=f'{job.pk}-ao{economie.appel_offre_id}',
+            ext='xlsx', content_type=MIME_XLSX)
+        job.marquer_termine(cle)
+    return {'produit': True, 'octets': len(octets), 'visibilite': 'directeur',
+            'cle': cle}
 
 
 # AOF61 — le calepinage lourd vit dans son propre module (``calepinage_tasks``)

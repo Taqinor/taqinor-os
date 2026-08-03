@@ -204,14 +204,34 @@ test('GARDE — un endpoint listé comme MANQUANT doit encore l’être', async 
   }
 })
 
-test('GARDE — `aoRentabiliteApi` cible un chemin qui n’existe pas non plus (AOF161)', () => {
-  // Hors des neuf chemins de l'inventaire, mais du même défaut : le routeur
+test('GARDE — la LECTURE de la rentabilité cible la ressource RÉELLE `economie` (AOF161 tranché)', async () => {
+  // La cible a été tranchée, comme l'exigeait le test d'hier : le routeur
   // publie `economie`/`lignes-cout-revient`/`cibles-financieres`, jamais
-  // `/ao/<id>/rentabilite/`. Aucun écran ne l'importe aujourd'hui ; le jour
-  // où l'un le fera, il faudra trancher la cible (l'économie est indexée par
-  // `economie`, pas par l'id d'affaire) — ce test est là pour que ce soit un
-  // choix, pas une découverte en production.
-  assert.match(src, /\/ao\/\$\{affaireId\}\/rentabilite\//)
+  // `/ao/<id>/rentabilite/`. Le préfixe est RELU dans `apps/ao/urls.py`, pas
+  // supposé ici. (Le TÉLÉCHARGEMENT est traité à part : voir plus bas.)
+  const { prefixesRoutesAo } = await import('../test/contratServeur.js')
+  assert.ok(prefixesRoutesAo().has('economie'),
+    'le routeur AO ne publie plus `economie` : la cible est à re-trancher')
+  assert.doesNotMatch(sansCommentaires(src), /\/ao\/\$\{affaireId\}\/rentabilite\//)
+})
+
+test('AOF161 — le classeur directeur passe par un JOB, jamais un rendu synchrone', () => {
+  // `telecharger` est une @action du VRAI ViewSet (`EconomieAOViewSet`), lue
+  // dans la source serveur : POST = production, GET = suivi, GET+fichier =
+  // retrait des octets.
+  assert.match(src, /produireClasseur:\s*\(economieId\)\s*=>\s*api\.post\(`\/ao\/economie\/\$\{economieId\}\/telecharger\/`\)/)
+  assert.match(src, /statutClasseur:\s*\(economieId,\s*jobId\)\s*=>\s*api\.get\(`\/ao\/economie\/\$\{economieId\}\/telecharger\/`/)
+  assert.match(src, /download:\s*\(economieId,\s*jobId\)\s*=>\s*api\.get\(`\/ao\/economie\/\$\{economieId\}\/telecharger\/`/)
+  // Les octets sont binaires : sans `blob`, axios corromprait le classeur.
+  assert.match(src, /responseType:\s*'blob'/)
+})
+
+test('AOF161 — l’action `telecharger` existe RÉELLEMENT sur EconomieAOViewSet', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { fichierAo } = await import('../test/contratServeur.js')
+  const serveur = readFileSync(fichierAo('views_directeur.py'), 'utf8')
+  assert.match(serveur, /class EconomieAOViewSet\(/)
+  assert.match(serveur, /@action\(detail=True, methods=\['get', 'post'\], url_path='telecharger'\)/)
 })
 
 test('ISOLEMENT — le corps de `aoApi` ne mentionne JAMAIS "rentabilite" (aucun chemin réseau mêlé)', () => {
@@ -219,11 +239,14 @@ test('ISOLEMENT — le corps de `aoApi` ne mentionne JAMAIS "rentabilite" (aucun
   assert.doesNotMatch(body, /rentabilite/i)
 })
 
-test('aoRentabiliteApi est un export SÉPARÉ (jamais une clé de aoApi), avec get/update/download', () => {
+test('aoRentabiliteApi est un export SÉPARÉ (jamais une clé de aoApi), avec parAffaire/get/update/download', () => {
   assert.match(src, /export const aoRentabiliteApi = \{/)
-  assert.match(src, /get:\s*\(affaireId\)\s*=>\s*api\.get\(`\/ao\/\$\{affaireId\}\/rentabilite\/`\)/)
-  assert.match(src, /update:\s*\(affaireId,\s*data\)\s*=>\s*api\.patch\(`\/ao\/\$\{affaireId\}\/rentabilite\/`,\s*data\)/)
-  assert.match(src, /download:\s*\(affaireId\)\s*=>/)
+  // L'écran d'affaire ne connaît que l'id d'AO : il passe par le filtre
+  // `?appel_offre=` RÉELLEMENT implémenté par `EconomieAOViewSet`.
+  assert.match(src, /parAffaire:\s*\(affaireId\)\s*=>\s*api\.get\('\/ao\/economie\/',\s*\{\s*params:\s*\{\s*appel_offre:\s*affaireId\s*\}\s*\}\)/)
+  assert.match(src, /get:\s*\(economieId\)\s*=>\s*api\.get\(`\/ao\/economie\/\$\{economieId\}\/`\)/)
+  assert.match(src, /update:\s*\(economieId,\s*data\)\s*=>\s*api\.patch\(`\/ao\/economie\/\$\{economieId\}\/`,\s*data\)/)
+  assert.match(src, /download:\s*\(economieId,\s*jobId\)\s*=>/)
 })
 
 test('aoApi et aoRentabiliteApi sont bien DEUX exports distincts (default + const nommée)', () => {

@@ -40,6 +40,7 @@ __all__ = [
     'VISIBILITE',
     'FORMAT_MONTANT',
     'FORMAT_TAUX',
+    'MIME_XLSX',
     'ControleTresorerieRouge',
     'construire_economie',
     'ecrire_classeur',
@@ -48,6 +49,10 @@ __all__ = [
 VISIBILITE = 'directeur'
 FORMAT_MONTANT = '# ##0,00 "DH"'
 FORMAT_TAUX = '0,0 %'
+#: Type MIME du classeur — déclaré ICI (le rendu possède son format) pour que
+#: le dépôt de l'artefact et son relais HTTP ne puissent pas diverger.
+MIME_XLSX = ('application/vnd.openxmlformats-officedocument'
+             '.spreadsheetml.sheet')
 CENTIME = Decimal('0.01')
 
 #: Taux de TVA de vente applicable aux panneaux dans la VARIANTE étudiée

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-__all__ = ['creer_economie', 'nouvelle_cible']
+__all__ = ['creer_economie', 'donnees_du_classeur', 'economie_du_projet',
+           'nouvelle_cible']
 
 
 def creer_economie(appel_offre, *, benefice_net_cible_ht=None, user=None,
@@ -119,3 +120,43 @@ def economie_du_projet(appel_offre_id):
         return None, ''
     economie = getattr(ao, 'economie', None)
     return economie, (ao.reference or '')
+
+
+def donnees_du_classeur(economie):
+    """Traduit l'``EconomieAO`` en la structure attendue par le rendu XLSX.
+
+    ``fabrique.rendus.rentabilite_xlsx.ecrire_classeur`` consomme le
+    DICTIONNAIRE calculé par ``construire_economie`` (``economie['postes']``,
+    ``economie['controle_tresorerie']``…), pas une instance de modèle. La tâche
+    ``ao.produire_rentabilite_xlsx`` lui passait l'instance : le classeur ne
+    pouvait pas être produit — il n'a jamais existé qu'en théorie. Ce
+    traducteur est la pièce qui manquait entre les deux moitiés déjà écrites.
+
+    Le TAUX de TVA sur achats est celui du RÉGIME de la ligne (réduit pour les
+    panneaux, standard pour le reste) : c'est la différenciation qui rend la
+    TVA nette à reverser juste, et donc le contrôle de trésorerie vérifiable.
+    Les taux sont stockés en POURCENTAGE sur l'économie et attendus en FRACTION
+    par le rendu — la division par 100 est faite ici, une seule fois.
+
+    Raises:
+        ControleTresorerieRouge: aucun poste de coût, ou ventilation de TVA
+            incohérente (le rendu refuse de produire un classeur faux).
+    """
+    from .fabrique.rendus.rentabilite_xlsx import construire_economie
+    from .models import LigneCoutRevient
+
+    cent = Decimal('100')
+    postes = []
+    for ligne in economie.lignes.all():
+        reduit = ligne.regime_tva == LigneCoutRevient.RegimeTVA.REDUIT
+        taux = (economie.taux_tva_achat_reduit if reduit
+                else economie.taux_tva_achat_standard)
+        postes.append({
+            'libelle': ligne.designation or ligne.get_poste_display(),
+            'montant_ht': ligne.montant_ht,
+            'taux_tva_achat': Decimal(str(taux)) / cent,
+        })
+    return construire_economie(
+        postes,
+        total_vente_ht=economie.total_ht,
+        taux_tva_vente=Decimal(str(economie.taux_tva_vente)) / cent)
