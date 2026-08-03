@@ -18,6 +18,7 @@ from .models import (
     DossierAO,
     DossierSoumission,
     EcheanceAO,
+    EquipementAO,
     LigneChecklistPartenaire,
     ModelePack,
     PieceAdministrative,
@@ -696,6 +697,68 @@ class DossierAOSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['statut', 'created_at', 'updated_at']
+
+
+# ── AOF118/AOF141 — Équipements engagés : snapshot figé, AUCUN prix ────────
+
+class EquipementAOSerializer(serializers.ModelSerializer):
+    """L'équipement ENGAGÉ tel que l'écran Équipements du dossier le montre.
+
+    **Aucun montant ne traverse ce sérialiseur.** Le produit du catalogue porte
+    un prix d'achat et un prix de vente ; l'équipement d'AO, lui, alimente des
+    pièces remises au maître d'ouvrage, et un chiffre d'approvisionnement qui
+    fuirait par cette surface n'aurait aucune chance d'être rattrapé plus loin.
+    Les seuls champs publiés sont ceux du modèle (qui n'en porte aucun, gardé
+    par ``test_equipements``) et trois DÉRIVÉS de lecture — un test
+    d'introspection le vérifie sur la sortie RÉELLE, pas sur l'intention.
+
+    ``produit_designation`` est la désignation COURANTE du catalogue, à côté de
+    la désignation FIGÉE : c'est ce qui rend visible la dérive entre le
+    catalogue d'aujourd'hui et ce que le dossier a engagé — le seul moyen de
+    voir qu'une bascule est nécessaire avant que le maître d'ouvrage ne la
+    voie. Elle est lue par la string-FK, jamais par un import de
+    ``apps.stock.models`` (contrat ``ao-models-decoupled``).
+    """
+
+    role_display = serializers.CharField(
+        source='get_role_display', read_only=True)
+    produit_designation = serializers.SerializerMethodField()
+    fiche_technique_nom = serializers.SerializerMethodField()
+    puissance_totale_w = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EquipementAO
+        fields = [
+            'id', 'appel_offre', 'batiment', 'role', 'role_display',
+            'produit', 'produit_designation', 'designation', 'marque',
+            'reference_constructeur', 'caracteristiques', 'quantite', 'unite',
+            'fiche_technique', 'fiche_technique_nom', 'remplace', 'actif',
+            'snapshot_le', 'puissance_totale_w',
+        ]
+        #: Le snapshot est figé par le service d'engagement (AOF118) et par la
+        #: bascule (AOF141) — jamais par une écriture directe du client.
+        read_only_fields = ['snapshot_le', 'remplace']
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_produit_designation(self, obj):
+        produit = obj.produit
+        return getattr(produit, 'nom', None) if produit is not None else None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_fiche_technique_nom(self, obj):
+        fiche = obj.fiche_technique
+        return getattr(fiche, 'filename', None) if fiche is not None else None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_puissance_totale_w(self, obj):
+        """Puissance cumulée DÉRIVÉE du snapshot — chaîne, jamais un flottant.
+
+        Publiée en texte pour la même raison que les totaux du bordereau : un
+        flottant JSON perd des décimales en route, et cette grandeur est
+        reprise telle quelle dans des pièces du dossier.
+        """
+        valeur = obj.puissance_totale_w
+        return None if valeur is None else str(valeur)
 
 
 # ── AOF116/AOF173 — Bibliothèque : gabarits de pack, textes normalisés ─────

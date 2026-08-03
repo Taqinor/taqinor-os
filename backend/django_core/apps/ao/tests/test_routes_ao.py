@@ -38,7 +38,8 @@ PREFIXES_DOMAINE = {
     'series-questions', 'questions', 'kits-calepinage', 'presets-calepinage',
     'modeles-pack', 'sections-memoire',
     'variantes-calepinage', 'bordereaux-prix', 'sections-bordereau',
-    'lignes-bordereau', 'cautions-soumission', 'dossiers-soumission',
+    'lignes-bordereau', 'equipements',
+    'cautions-soumission', 'dossiers-soumission',
     'pieces-soumission', 'echeances-ao', 'resultats-ao', 'dossiers-ao',
     'pieces-dossier-ao', 'checklist-partenaire', 'pieces-administratives',
 }

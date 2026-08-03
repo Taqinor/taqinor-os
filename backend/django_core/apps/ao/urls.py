@@ -29,6 +29,7 @@ from .views import (
     ChaineCotesViewSet,
     DossierSoumissionViewSet,
     EcheanceAOViewSet,
+    EquipementAOViewSet,
     ExigenceCPSViewSet,
     KitCalepinageViewSet,
     LigneBordereauViewSet,
@@ -98,6 +99,11 @@ router.register(r'lignes-bordereau', LigneBordereauViewSet,
 # AOF120 — sections du bordereau (une par bâtiment + prestations communes).
 router.register(r'sections-bordereau', SectionBordereauViewSet,
                 basename='ao-section-bordereau')
+# AOF118/AOF141 — équipements engagés (snapshot figé) et leur bascule. Le
+# modèle existait depuis AOF118 sans qu'AUCUNE route ne l'expose : l'écran
+# Équipements n'avait rien à appeler (03/08/2026).
+router.register(r'equipements', EquipementAOViewSet,
+                basename='ao-equipement')
 router.register(r'cautions-soumission', CautionSoumissionViewSet,
                 basename='ao-caution-soumission')
 router.register(r'dossiers-soumission', DossierSoumissionViewSet,

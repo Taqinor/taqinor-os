@@ -1713,6 +1713,285 @@ def aligner_quantite_modules(appel_offre, *, user=None):
         equipement.save(update_fields=['quantite', 'updated_at'])
         touches += 1
     return Decimal(total), touches
+
+
+# ── AOF141 — Bascule d'équipement : UNE transaction, ou RIEN ───────────────
+#
+# ``fabrique/bascule_rapport.py`` DÉCRIT ce contrat depuis AOF142 sans que
+# personne ne l'applique : « l'application atomique de la bascule est le rôle
+# de ``services.basculer_equipement`` ». Le défaut réel qu'il combat est une
+# bascule PARTIELLE — le dossier du 27/07 a changé de batterie, le montant a
+# cascadé, et la fiche technique annexée comme la justification d'un texte
+# sont restées sur l'ancien matériel. Une bascule à moitié faite est PIRE que
+# pas de bascule : le pli part avec deux vérités contradictoires.
+#
+# D'où la règle de ce module : les six gestes (snapshot figé, grandeurs
+# dérivées, fiche annexée ajoutée, ancienne retirée, chaînage ``remplace``,
+# péremption des artefacts) tiennent dans UNE ``transaction.atomic()``. Si
+# l'un échoue, AUCUN n'est écrit — pas de dossier à demi basculé.
+#
+# Aucun PRIX n'entre ni ne sort d'ici : un équipement d'AO alimente des pièces
+# remises au maître d'ouvrage. Les dicts ``ancien``/``nouveau`` remis au
+# rapport ne portent DÉLIBÉRÉMENT aucune clé de prix (le détecteur de prix
+# resté en arrière est donc muet par construction, plutôt que nourri d'un coût
+# qui n'a rien à faire là).
+
+
+def _identifiant(valeur, champ):
+    """Identifiant ENTIER, ou un 400 motivé — jamais une erreur 500 de l'ORM.
+
+    ``Produit.objects.filter(id='abc')`` lève une ``ValueError`` que DRF ne
+    rattrape pas : un corps de requête fautif rendrait un 500 muet là où la
+    faute est côté client.
+    """
+    try:
+        return int(valeur)
+    except (TypeError, ValueError) as exc:
+        raise ValidationError({champ: (
+            f'Identifiant « {valeur} » invalide : un entier est attendu.'
+        )}) from exc
+
+
+def _fiches_annexees(appel_offre):
+    """Les fiches techniques ANNEXÉES aujourd'hui, au format ``annexes``.
+
+    Format d'entrée de ``fabrique/annexes.py`` : une fiche cite l'équipement
+    qu'elle documente par sa RÉFÉRENCE constructeur.
+    """
+    from .models import EquipementAO
+
+    return [
+        {'reference_equipement': equipement.reference_constructeur,
+         'titre': equipement.designation,
+         'attachment': equipement.fiche_technique_id}
+        for equipement in EquipementAO.objects.filter(
+            company=appel_offre.company, appel_offre=appel_offre,
+            actif=True).exclude(fiche_technique__isnull=True)
+    ]
+
+
+def _textes_libres_du_dossier(appel_offre):
+    """Textes libres du dossier où une référence peut être restée en arrière.
+
+    Les deux gisements RÉELS du défaut : les désignations du bordereau (qui
+    nomment le matériel) et les textes normalisés du mémoire (où une
+    justification se fige à la main). Chacun est cité avec son emplacement,
+    pour que le rapport dise OÙ regarder et pas seulement QUE quelque chose
+    cloche.
+    """
+    from .models import LigneBordereau, SectionMemoire
+
+    textes = []
+    for ligne in LigneBordereau.objects.filter(
+            company=appel_offre.company,
+            bordereau__appel_offre=appel_offre).select_related('bordereau'):
+        textes.append({
+            'emplacement': f'bordereau ligne {ligne.numero}',
+            'texte': ligne.designation or '',
+        })
+    for section in SectionMemoire.objects.filter(
+            company=appel_offre.company, actif=True):
+        textes.append({
+            'emplacement': f'mémoire §{section.code}',
+            'texte': section.corps or '',
+        })
+    return textes
+
+
+def _perimer_artefacts_du_dossier(appel_offre):
+    """PÉRIME les artefacts que la bascule vient de rendre faux (AOF146).
+
+    Rien n'est recodé : l'empreinte de dossier et la passe de cohérence
+    EXISTENT (``fabrique/coherence.py``). L'empreinte inclut les équipements
+    actifs, donc une bascule la fait bouger mécaniquement — toute pièce
+    produite sous l'empreinte antérieure devient PÉRIMÉE, et la passe
+    rejouée l'inscrit en base (règle ``AO_ARTEFACT_PERIME``) au lieu de
+    laisser un fichier frère attendre d'être déposé à la place du bon.
+
+    Renvoie la liste des pièces périmées (vide si le dossier n'existe pas
+    encore : un AO sans dossier de dépôt n'a aucun artefact à périmer).
+    """
+    from .fabrique.coherence import empreinte_dossier, passer_controle
+
+    dossier = getattr(appel_offre, 'dossier_ao', None)
+    if dossier is None:
+        return []
+    courante = empreinte_dossier(dossier)
+    perimees = [
+        {'code': piece.code, 'libelle': piece.libelle,
+         'empreinte_source': piece.empreinte_source,
+         'empreinte_courante': courante}
+        for piece in dossier.pieces.all()
+        if piece.empreinte_source and piece.empreinte_source != courante
+    ]
+    passer_controle(dossier)
+    return perimees
+
+
+def basculer_equipement(equipement, nouveau_produit, *, user=None,
+                        fiche_technique=None, motif=''):
+    """AOF141 — remplace un équipement engagé par un autre produit, EN UNE FOIS.
+
+    ``nouveau_produit`` : identifiant (ou objet portant un ``pk``) d'un produit
+    du catalogue de la MÊME société — lu par ``apps.stock.selectors`` via
+    ``snapshot_produit``, jamais par un import de ``apps.stock.models``.
+    ``fiche_technique`` : ``records.Attachment`` de la fiche du NOUVEAU
+    matériel ; l'ancienne est retirée de l'annexe dans le même geste.
+
+    Les six gestes, dans UNE transaction :
+
+    1. le NOUVEAU snapshot est FIGÉ depuis le produit cible (désignation,
+       marque, référence, caractéristiques) — jamais recalculé ensuite ;
+    2. les grandeurs DÉRIVÉES qui en dépendent sont recalculées (la quantité
+       de modules se redérive des variantes retenues, elle ne se saisit pas) ;
+    3. la nouvelle fiche technique est ANNEXÉE ;
+    4. l'ancienne est RETIRÉE — le même appel fait les deux moitiés, parce que
+       c'est leur séparation qui produit le dossier à deux fiches ;
+    5. ``remplace`` chaîne le nouvel équipement à son prédécesseur, désactivé ;
+    6. les artefacts documentaires impactés sont PÉRIMÉS.
+
+    Renvoie ``{'equipement', 'ancien', 'rapport', 'artefacts_perimes'}``. Le
+    rapport est celui d'AOF142 : ce qui a changé ET les textes qui portent
+    ENCORE l'ancienne référence — ils ne sont pas réécrits d'office, ils sont
+    NOMMÉS avec leur extrait.
+    """
+    from django.db import transaction
+
+    from .fabrique import annexes
+    from .fabrique.bascule_rapport import rapport_bascule
+    from .models import EquipementAO, VarianteCalepinage
+
+    appel_offre = equipement.appel_offre
+    company = equipement.company
+    if not equipement.actif:
+        raise ValidationError({'equipement': (
+            "Cet équipement n'est plus actif : il a déjà été basculé. "
+            "Basculer un équipement retiré créerait une deuxième chaîne de "
+            "remplacement et le dossier ne saurait plus quel matériel il "
+            "engage.")})
+    produit_id = getattr(nouveau_produit, 'pk', nouveau_produit)
+    if produit_id in (None, ''):
+        raise ValidationError({'produit': (
+            "Aucun produit cible : une bascule doit NOMMER le matériel qui "
+            "remplace l'ancien.")})
+    produit_id = _identifiant(produit_id, 'produit')
+    if equipement.produit_id and equipement.produit_id == produit_id:
+        raise ValidationError({'produit': (
+            "L'équipement porte déjà ce produit : la bascule n'aurait rien à "
+            "figer et laisserait une chaîne de remplacement vide.")})
+    instantane = snapshot_produit(company, produit_id)
+    if not instantane:
+        raise ValidationError({'produit': (
+            "Produit introuvable dans le catalogue de cette société : le "
+            "snapshot serait vide, donc le dossier engagerait un matériel "
+            "sans désignation.")})
+
+    attachement = None
+    if fiche_technique not in (None, ''):
+        from apps.records.models import Attachment
+
+        attachement = Attachment.objects.filter(
+            pk=_identifiant(getattr(fiche_technique, 'pk', fiche_technique),
+                            'fiche_technique'),
+            company=company).first()
+        if attachement is None:
+            raise ValidationError({'fiche_technique': (
+                "Fiche technique introuvable pour cette société.")})
+
+    ancien_snapshot = {
+        'designation': equipement.designation,
+        'reference': equipement.reference_constructeur,
+        'marque': equipement.marque,
+        'unite': equipement.unite,
+        'caracteristiques': dict(equipement.caracteristiques or {}),
+    }
+    nouveau_snapshot = {
+        'designation': instantane.get('designation', ''),
+        'reference': instantane.get('reference_constructeur', ''),
+        'marque': instantane.get('marque', ''),
+        'unite': equipement.unite,
+        'caracteristiques': dict(instantane.get('caracteristiques') or {}),
+    }
+
+    with transaction.atomic():
+        nouveau = engager_equipement(
+            appel_offre, role=equipement.role, produit_id=produit_id,
+            quantite=equipement.quantite, batiment=equipement.batiment,
+            user=user, unite=equipement.unite, remplace=equipement,
+            fiche_technique=attachement)
+        emplacements = [f'équipement {equipement.role} (snapshot figé)']
+
+        # 3 + 4 — les DEUX moitiés de l'annexe dans le MÊME appel.
+        nouvelle_fiche = None
+        if attachement is not None:
+            nouvelle_fiche = {
+                'reference_equipement': nouveau.reference_constructeur,
+                'titre': nouveau.designation,
+                'attachment': attachement.pk,
+            }
+        try:
+            restantes = annexes.appliquer_bascule(
+                _fiches_annexees(appel_offre),
+                ancienne_reference=equipement.reference_constructeur,
+                nouvelle_fiche=nouvelle_fiche)
+        except ValueError as exc:
+            # Une fiche qui ne cite aucun équipement serait orpheline dès son
+            # ajout : on REFUSE la bascule entière plutôt que d'annexer un
+            # document que rien ne rattache au matériel fourni.
+            raise ValidationError({'fiche_technique': str(exc)}) from exc
+        annexees = {str(fiche.get('reference_equipement'))
+                    for fiche in restantes}
+
+        # 5 — le prédécesseur sort du dossier, et sa fiche sort de l'annexe.
+        champs = ['actif', 'updated_at']
+        equipement.actif = False
+        if str(equipement.reference_constructeur) not in annexees:
+            equipement.fiche_technique = None
+            champs.insert(1, 'fiche_technique')
+        equipement.save(update_fields=champs)
+        emplacements.append('annexe des fiches techniques')
+
+        # 2 — grandeurs DÉRIVÉES. L'alignement n'est joué QUE s'il existe une
+        # variante retenue : sans variante, le total dérivé vaut zéro et
+        # écraserait une quantité légitime par un chiffre faux.
+        if nouveau.role == EquipementAO.Role.MODULE and \
+                VarianteCalepinage.objects.filter(
+                    company=company, appel_offre=appel_offre,
+                    est_retenue=True).exists():
+            aligner_quantite_modules(appel_offre, user=user)
+            nouveau.refresh_from_db()
+            emplacements.append('quantité de modules (dérivée du calepinage)')
+
+        # 6 — péremption des artefacts que la bascule vient de rendre faux.
+        perimes = _perimer_artefacts_du_dossier(appel_offre)
+        emplacements.extend(f'pièce {piece["code"]}' for piece in perimes)
+
+        rapport = rapport_bascule(
+            ancien_snapshot, nouveau_snapshot,
+            emplacements_modifies=emplacements,
+            textes=_textes_libres_du_dossier(appel_offre))
+        _journaliser_bascule(equipement, nouveau, user, motif)
+
+    return {
+        'equipement': nouveau,
+        'ancien': equipement,
+        'rapport': rapport,
+        'artefacts_perimes': perimes,
+    }
+
+
+def _journaliser_bascule(ancien, nouveau, user, motif):
+    """Trace la bascule au chatter générique ``records`` (jamais une classe maison)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        nouveau.appel_offre, Activity.Kind.MODIFICATION, user=user,
+        field='equipement_bascule', field_label="Bascule d'équipement",
+        old_value=str(ancien), new_value=str(nouveau),
+        body=motif or '', company=nouveau.company)
+
+
 # ── AOF163 — Point d'entrée VILLA du moteur PARTAGÉ, sans projet AO ────────
 #
 # Le moteur ``core/calepinage`` a DEUX consommateurs qui ne peuvent pas
