@@ -238,6 +238,11 @@ export default function TimelineTab({
             }
           }}
         />
+        {/* ORDRE FONDATEUR 2026-08-02 — « il faut que ça tienne sur TOUTE la
+            ligne » : le champ occupe seul sa rangée (pleine largeur), les
+            actions (dictée · trombone · Noter) vivent sur une rangée dédiée
+            en dessous, alignées à droite sous la fin du texte. */}
+        <div className="chatter-note-actions">
         {/* EZ15 — dictée inline au BUREAU. Le bouton n'existe pas sur un
             navigateur sans Web Speech (Firefox) : le champ est alors
             strictement celui d'avant. Le texte s'AJOUTE (jamais un
@@ -274,6 +279,7 @@ export default function TimelineTab({
           onOpenChange={setCallLogOpen}
           onLogged={refreshHistorique}
         />
+        </div>
       </div>
       {composer.file && (
         <p className="chatter-note-file-preview" data-testid="chatter-note-file-preview">

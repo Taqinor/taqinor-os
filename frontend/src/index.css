@@ -3144,15 +3144,23 @@ textarea.form-control {
 
 /* ── Historique chatter (lead) ─────────────────────────────── */
 .chatter-note-box {
+  /* ORDRE FONDATEUR 2026-08-02 — « il faut que ça tienne sur TOUTE la ligne » :
+     le champ de note occupe SEUL sa rangée (largeur pleine), et les actions
+     (dictée · trombone · Noter) descendent sur leur propre rangée, alignées à
+     droite. La colonne remplace l'ancienne rangée champ+boutons qui rognait
+     la zone d'écriture d'un tiers. */
   display: flex;
-  gap: 0.5rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
   margin-bottom: 0.75rem;
-  /* ORDRE FONDATEUR 2026-08-01 — la note est devenue un champ MULTILIGNE qui
-     grandit : sans cet alignement, l'étirement par défaut (`stretch`) ferait
-     grandir avec elle le bouton « Noter », le trombone et la dictée — trois
-     boutons de 6 cm de haut. Ancrés en bas, ils restent à leur taille et sous
-     le pouce, là où la ligne de saisie se termine. */
-  align-items: flex-end;
+}
+
+.chatter-note-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 
 /* VX111 — attacher une pièce jointe à une note du chatter (input natif
@@ -3187,7 +3195,7 @@ textarea.form-control {
   padding: 0 2px;
 }
 
-.chatter-note-box .form-control { flex: 1; }
+.chatter-note-box .form-control { width: 100%; }
 
 /* ORDRE FONDATEUR 2026-08-01 — « la zone de NOTE de la fenêtre lead est trop
    petite ». C'était une ligne unique de 36 px pour y écrire le compte rendu
@@ -5273,44 +5281,6 @@ textarea.form-control {
   color: var(--primary-foreground, #fff);
   font-size: 0.62rem;
   font-weight: 700;
-}
-
-/* RETOUR FONDATEUR (2026-08-01) — « je vois encore l'étape sur chaque lead » :
-   sur un kanban, la COLONNE est déjà l'étape ; le sélecteur d'étape par carte
-   (StageMover — chemin clavier/souris sans drag, gardes LB3/LB4 conservées)
-   n'a pas à occuper le repos de chaque carte. Replié à hauteur nulle au repos,
-   il se révèle au survol de la carte (pointeur fin) et — resté FOCALISABLE —
-   se déplie dès que le focus CLAVIER l'atteint (:has(:focus-visible) : un TAP
-   iOS donne le focus au wrapper tabbable dnd-kit et dépliait le sélecteur
-   sous le doigt — :focus-visible ne s'allume pas au tap ; règle anti
-   « tabbable invisible » du contrat APX2 préservée au clavier). Au doigt, il
-   disparaît : l'étape se change dans la fenêtre du lead (pilule) ou en mode
-   déplacement. Bonus densité : chaque carte rend ~34px au repos. */
-.kb-stage-mover {
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  margin-top: 0;
-  transition: max-height 150ms ease, opacity 150ms ease, margin-top 150ms ease;
-}
-.kb-drag-wrap:has(:focus-visible) .kb-stage-mover {
-  max-height: 4rem;
-  opacity: 1;
-  margin-top: 0.28rem;
-  overflow: visible;
-}
-/* Le survol ne révèle qu'en pointeur fin (garde hover-compat du repo) ; le
-   chemin clavier (:focus-within, ci-dessus) marche sur TOUT appareil. */
-@media (hover: hover) {
-  .kb-drag-wrap:hover .kb-stage-mover {
-    max-height: 4rem;
-    opacity: 1;
-    margin-top: 0.28rem;
-    overflow: visible;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .kb-stage-mover { transition: none; }
 }
 
 /* ---------- Mobile ---------- */
@@ -7778,8 +7748,8 @@ textarea.form-control {
 }
 
 /* ===== LB28 — Prévision (ForecastView) : parité clavier KanbanView =====
-   Équivalent clavier du glisser (<select> mois, MÊME motif que
-   `.kb-stage-mover`/StageMover) + hint de drop en pointillés pour une
+   Équivalent clavier du glisser (<select> mois — l'ex-motif StageMover,
+   supprimé côté étapes le 2026-08-02) + hint de drop en pointillés pour une
    colonne-mois vide (« Non daté » garde son texte neutre — jamais une cible
    valide, cf. handleDragEnd). */
 .fv-month-mover {
