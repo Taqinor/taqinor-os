@@ -222,6 +222,16 @@ jobs:
         run: python scripts/check_tenant_isolation.py
       - name: Test the tenant-isolation checker itself (YDATA21)
         run: python -m unittest scripts.tests.test_check_tenant_isolation -v
+      # Incident du 03/08/2026 (production) : les lanes frontend/ao et
+      # backend/ao ont ete construites en parallele avec des contrats
+      # DIFFERENTS — l'ecran Bibliotheque appelait /ao/bibliotheque/, route
+      # jamais enregistree : 404 en production. Les tests vitest n'ont rien vu
+      # (ils mockent l'API avec la forme SUPPOSEE par le front). Cette etape
+      # compare statiquement les chemins appeles par frontend/src/api/aoApi.js
+      # aux routes reellement enregistrees par apps/ao/urls.py. NE PAS
+      # DESACTIVER : corriger le client (ou creer la route), pas la garde.
+      - name: Check ao API contract — frontend calls vs registered routes
+        run: python scripts/check_ao_api_contract.py
       # YAPIC6 — le schéma OpenAPI (YAPIC5) doit rester GÉNÉRABLE, VALIDE
       # (validation OpenAPI 3 de drf-spectacular) et sans NOUVEL avertissement
       # de génération : un serializer non résolu ou une collision d'operationId
