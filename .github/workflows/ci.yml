@@ -432,6 +432,23 @@ jobs:
         run: python scripts/check_stages.py
       - name: Check module registry <-> frontend consistency (ODX21)
         run: python scripts/check_modules.py
+      # CONTRAT FRONT<->BACK (incident du 03/08/2026 : l'écran AO Bibliothèque
+      # appelait /ao/bibliotheque/, une route jamais enregistrée -> 404 en
+      # production ; 8 autres ressources du même module étaient dans le même
+      # cas). Résolution statique de l'URLconf Django + des routers FastAPI,
+      # confrontée aux chemins réellement appelés par frontend/src : tout appel
+      # sans route correspondante échoue. Dette historique gelée dans
+      # scripts/api_contract_allow.txt (elle ne peut que RÉTRÉCIR).
+      #
+      # ICI et pas dans `backend-lint` À DESSEIN : `backend-lint` est gaté sur
+      # `backend == true`, donc une PR qui ne touche QUE le frontend (le cas
+      # exact de aoApi.js) ne le déclenche pas. `stage-names` est le seul job
+      # non gaté — et ce contrôle est en stdlib pure, sans base de données ni
+      # dépendance, comme les autres check_*.py de ce job (~25 s).
+      - name: Check front<->back API contract (aucun appel vers une route inexistante)
+        run: python scripts/check_api_contract.py
+      - name: Test the API-contract checker itself
+        run: python -m unittest scripts.tests.test_check_api_contract -v
       - name: Check no raw JSON / bare error object is shown to the user (EZ16)
         run: python scripts/check_frontend_errors.py
       - name: Test the anti-jargon checker itself (EZ16)
