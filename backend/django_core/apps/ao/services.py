@@ -137,8 +137,11 @@ def dupliquer_appel_offre(appel_offre, *, user=None, objet='', copier=None):
     champs['statut'] = nouvelle['statut']
 
     with transaction.atomic():
-        copie = create_with_reference(
-            AppelOffre, PREFIXE_REFERENCE_AO, societe,
+        # Le couple (modèle, préfixe) de NOTRE numérotation n'est écrit qu'à un
+        # seul endroit : ``creer_appel_offre_avec_reference``. Le redire ici
+        # créerait une deuxième vérité à changer le jour où elle bouge.
+        copie = creer_appel_offre_avec_reference(
+            societe,
             lambda reference: AppelOffre.objects.create(
                 company=societe, reference=reference, **champs))
         ExigenceCPS.objects.bulk_create([
