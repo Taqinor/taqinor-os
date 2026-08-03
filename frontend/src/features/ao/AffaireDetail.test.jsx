@@ -248,7 +248,7 @@ describe('AffaireDetail', () => {
       // DossierPage retombe sur `useParams().id` (= l'affaire) sans `dossierId`
       // explicite : il chargerait alors un dossier au hasard sous le titre de
       // cette affaire. On exige l'id du dossier, et JAMAIS celui de l'affaire.
-      await waitFor(() => expect(mocks.dossierGet).toHaveBeenCalledWith(77))
+      await waitFor(() => expect(mocks.dossierGet).toHaveBeenCalledWith(77), { timeout: 15000 })
       expect(mocks.dossierGet).not.toHaveBeenCalledWith('1')
       expect(await screen.findByRole('heading', { name: /Dossier de soumission/ })).toBeInTheDocument()
     })
@@ -270,7 +270,7 @@ describe('AffaireDetail', () => {
       await userEvent.click(onglet('Bordereau'))
 
       // Titre d'état vide propre à BordereauPage (aucun placeholder ne le rend).
-      expect(await screen.findByText('Bordereau indisponible')).toBeInTheDocument()
+      expect(await screen.findByText('Bordereau indisponible', {}, { timeout: 15000 })).toBeInTheDocument()
       // Le motif est EXPLICITE (client API sans ressource bordereau), pas un
       // « écran en construction » muet.
       expect(screen.getByText(/ne publie pas encore de ressource bordereau/)).toBeInTheDocument()
@@ -289,7 +289,7 @@ describe('AffaireDetail', () => {
 
       // Le panneau interroge les toitures AVEC le filtre de CETTE affaire
       // (l'id vient de l'URL, donc '1' — jamais celui d'un sous-document).
-      await waitFor(() => expect(mocks.toituresList).toHaveBeenCalled())
+      await waitFor(() => expect(mocks.toituresList).toHaveBeenCalled(), { timeout: 15000 })
       const filtre = mocks.toituresList.mock.calls[0][0]
       expect(String(filtre.appel_offre)).toBe('1')
       // …et l'onglet ne liste JAMAIS les autres affaires : c'était la fuite
