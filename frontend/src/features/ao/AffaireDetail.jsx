@@ -162,31 +162,32 @@ function OngletToitures({ affaireId }) {
 }
 
 /* ── Onglet « Calepinages » ───────────────────────────────────────────────
-   `CalepinageStudio` attend l'id d'un CALEPINAGE, pas d'une affaire. Ce que
-   le serveur persiste réellement, ce sont des VARIANTES de calepinage
-   (`variantes-calepinage`, filtrable `?appel_offre=`) : c'est cette liste-là
-   qui alimente le choix — `aoApi.calepinages.list` est explicitement NON
-   CONSTRUIT (aucun modèle `Calepinage` côté serveur) et refuserait avec son
-   motif sans même émettre de requête.
+   CONTRAT CORRIGÉ AU FOLD, 03/08/2026 — à ne pas re-casser. Cet onglet a
+   d'abord listé les VARIANTES et passé une variante en `calepinageId`. Le même
+   jour, l'atelier a été rebranché sur les VRAIES routes du serveur
+   (`/ao/calepinage/calculer|lancer|resultat`) et pilote désormais une
+   TOITURE : sa signature est `({ toitureId })`. Les deux moitiés ont été
+   écrites en parallèle et ne se sont pas parlé — exactement le défaut que la
+   journée entière a servi à corriger. L'atelier aurait reçu `undefined`.
 
-   Conséquence assumée et NON maquillée : tant qu'aucune route ne sert
-   `/ao/calepinages/<id>/`, l'atelier monté affichera SON état d'échec, qui
-   NOMME l'endpoint manquant (`endpointNonConstruit`) — très exactement le
-   « dis pourquoi » exigé, et infiniment plus utile qu'un placeholder muet.
+   On liste donc les TOITURES de l'affaire (`aoApi.toitures`, filtre serveur
+   `appel_offre`, le même que l'onglet Toitures) et on passe l'id de la toiture
+   choisie. `aoApi.calepinages` (au pluriel) reste NON CONSTRUIT et n'est pas
+   consulté : aucun modèle `Calepinage` n'existe côté serveur.
 
    `onConformite` n'est pas passé : il sert à BLOQUER la publication d'un
-   dossier en amont, et aucune porte de publication ne vit dans cette fiche —
-   y brancher un consommateur décoratif serait la façade qu'on répare. */
+   dossier, et aucune porte de publication ne vit dans cette fiche — y brancher
+   un consommateur décoratif serait la façade qu'on répare. */
 function OngletCalepinages({ affaireId }) {
   const params = useMemo(() => ({ appel_offre: affaireId }), [affaireId])
-  const [choisi, setChoisi] = useState(null)
+  const [choisie, setChoisie] = useState(null)
 
-  const { data: variantes, loading, error } = useResource(
-    () => aoApi.variantes.list(params), params,
+  const { data: toitures, loading, error } = useResource(
+    () => aoApi.toitures.list(params), params,
     {
       initialData: [],
       select: unwrapList,
-      errorMessage: 'Impossible de charger les calepinages de cette affaire.',
+      errorMessage: 'Impossible de charger les toitures de cette affaire.',
     },
   )
 
@@ -194,32 +195,32 @@ function OngletCalepinages({ affaireId }) {
   if (error) {
     return <EmptyState icon={LayoutGrid} tone="error" title="Calepinages indisponibles" description={error} />
   }
-  if (!variantes.length) {
+  if (!toitures.length) {
     return (
       <EmptyState
         icon={LayoutGrid}
-        title="Aucun calepinage pour cette affaire"
-        description={'Aucune variante de calepinage n’a encore été calculée et enregistrée pour '
-          + 'cette affaire — l’atelier s’ouvrira dès qu’il y en aura une.'}
+        title="Aucune toiture à calepiner"
+        description={'Le calepinage se calcule SUR une toiture : relevez-en une dans l’onglet '
+          + '« Toitures & relevés », et l’atelier s’ouvrira ici.'}
       />
     )
   }
 
-  // Choix explicite prioritaire, sinon la première variante — dérivé AU RENDU
+  // Choix explicite prioritaire, sinon la première toiture — dérivé AU RENDU
   // (jamais un état recopié dans un effet).
-  const courant = choisi ?? variantes[0].id
+  const courante = choisie ?? toitures[0].id
 
   return (
     <div className="flex flex-col gap-3">
       <SelecteurEnfant
-        id="ao-affaire-calepinage"
-        label="Calepinage"
-        valeur={courant}
-        onChange={setChoisi}
-        options={variantes.map((v) => ({ value: v.id, label: v.nom || `Calepinage #${v.id}` }))}
+        id="ao-affaire-toiture-calepinage"
+        label="Toiture"
+        valeur={courante}
+        onChange={setChoisie}
+        options={toitures.map((t) => ({ value: t.id, label: t.nom || t.libelle || `Toiture #${t.id}` }))}
       />
       <PanneauDiffere>
-        <CalepinageStudio calepinageId={courant} />
+        <CalepinageStudio toitureId={courante} />
       </PanneauDiffere>
     </div>
   )

@@ -200,30 +200,43 @@ describe('AffaireDetail', () => {
       expect(screen.getByRole('button', { name: /Nouvelle série/ })).toBeInTheDocument()
     })
 
-    it('« Calepinages » liste les variantes de l’affaire et monte le VRAI CalepinageStudio', async () => {
+    // CONTRAT CORRIGÉ 03/08/2026 : l'atelier pilote une TOITURE, pas une
+    // variante. L'onglet et l'atelier avaient été écrits en parallèle et ne se
+    // parlaient pas — l'atelier recevait `undefined`. Ces tests épinglent
+    // désormais le contrat RÉEL, des deux côtés.
+    it('« Calepinages » liste les TOITURES de l’affaire et monte le VRAI atelier', async () => {
+      mocks.toituresList.mockResolvedValue({ data: [{ id: 42, nom: 'Toiture bâtiment C' }] })
       renderScreen()
       await screen.findByText('AO-2026-001')
       await userEvent.click(onglet('Calepinages'))
 
-      await waitFor(() => expect(mocks.variantesList).toHaveBeenCalledWith({ appel_offre: '1' }))
-      // Le studio prend l'id d'un CALEPINAGE (la variante 42), jamais celui
-      // de l'affaire (1) — c'est tout le sens du sélecteur.
-      await waitFor(() => expect(mocks.calepinageGet).toHaveBeenCalledWith(42))
-      expect(mocks.calepinageGet).not.toHaveBeenCalledWith('1')
-      expect(await screen.findByRole('heading', { name: 'Atelier de calepinage' })).toBeInTheDocument()
-      expect(screen.getByLabelText('Calepinage')).toBeInTheDocument()
+      await waitFor(() => expect(mocks.toituresList).toHaveBeenCalledWith({ appel_offre: '1' }))
+      // Le sélecteur porte sur la TOITURE, pas sur un « calepinage » — il
+      // n'existe aucun modèle `Calepinage` côté serveur.
+      expect(await screen.findByLabelText('Toiture')).toBeInTheDocument()
+      // Et l'onglet n'interroge JAMAIS la ressource fictive `calepinages`.
+      expect(mocks.calepinageGet).not.toHaveBeenCalled()
     })
 
-    it('« Calepinages » affiche un état vide qui DIT qu’aucun calepinage n’existe (jamais un écran blanc)', async () => {
-      mocks.variantesList.mockResolvedValue({ data: [] })
+    // Garde de CONTRAT ENTRE LES DEUX MOITIÉS : le nom de la propriété passée
+    // à l'atelier doit être celui que l'atelier déclare. C'est exactement ce
+    // qui a failli partir en silence (l'onglet passait `calepinageId`, l'atelier
+    // attendait `toitureId` → `undefined`, aucun test ne le voyait).
+    it('l’onglet passe à l’atelier la propriété que l’atelier DÉCLARE (toitureId)', () => {
+      const studio = readFileSync(join(here, 'calepinage/CalepinageStudio.jsx'), 'utf8')
+      const declaree = studio.match(/export default function CalepinageStudio\(\{\s*([A-Za-z]+)/)
+      expect(declaree, 'signature de CalepinageStudio illisible').not.toBeNull()
+      expect(codeSeul).toMatch(new RegExp(`<CalepinageStudio\\s+${declaree[1]}=`))
+    })
+
+    it('« Calepinages » affiche un état vide qui DIT pourquoi (jamais un écran blanc)', async () => {
+      mocks.toituresList.mockResolvedValue({ data: [] })
       renderScreen()
       await screen.findByText('AO-2026-001')
       await userEvent.click(onglet('Calepinages'))
 
-      expect(await screen.findByText('Aucun calepinage pour cette affaire')).toBeInTheDocument()
-      expect(screen.getByText(/n’a encore été calculée/)).toBeInTheDocument()
-      // Aucun id inventé n'est envoyé à l'atelier quand il n'y a rien à ouvrir.
-      expect(mocks.calepinageGet).not.toHaveBeenCalled()
+      expect(await screen.findByText('Aucune toiture à calepiner')).toBeInTheDocument()
+      expect(screen.getByText(/se calcule SUR une toiture/)).toBeInTheDocument()
     })
 
     it('« Dossier » monte le VRAI DossierPage avec l’id du DOSSIER, jamais celui de l’affaire (piège useParams)', async () => {
