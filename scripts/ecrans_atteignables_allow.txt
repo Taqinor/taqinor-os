@@ -15,37 +15,19 @@
 #
 # La signature est le CHEMIN (jamais `fichier:ligne`) : deplacer du code ne doit
 # pas invalider la base.
-bouchon-onglet|frontend/src/features/ao/AffaireDetail.jsx::bordereau
-bouchon-onglet|frontend/src/features/ao/AffaireDetail.jsx::calepinages
-bouchon-onglet|frontend/src/features/ao/AffaireDetail.jsx::dossier
-bouchon-onglet|frontend/src/features/ao/AffaireDetail.jsx::questions-terrain
-bouchon-onglet|frontend/src/features/ao/AffaireDetail.jsx::toitures-releves
 bouchon-route|frontend/src/features/ao/module.config.jsx::/ao/calepinages
 bouchon-route|frontend/src/features/ao/module.config.jsx::/ao/dossiers
 inatteignable|frontend/src/features/adsengine/LeadRetentionNotice.jsx
 inatteignable|frontend/src/features/ao/administratif/AdministratifPage.jsx
-inatteignable|frontend/src/features/ao/bordereau/BordereauPage.jsx
-inatteignable|frontend/src/features/ao/bordereau/LigneRow.jsx
-inatteignable|frontend/src/features/ao/calepinage/AlleeGratuiteChart.jsx
-inatteignable|frontend/src/features/ao/calepinage/CalepinageStudio.jsx
 inatteignable|frontend/src/features/ao/calepinage/ModeExpert.jsx
-inatteignable|frontend/src/features/ao/calepinage/PlanLayer.jsx
 inatteignable|frontend/src/features/ao/calepinage/RobustesseBadges.jsx
 inatteignable|frontend/src/features/ao/calepinage/SuggestionsPanel.jsx
-inatteignable|frontend/src/features/ao/calepinage/TiroirAllees.jsx
-inatteignable|frontend/src/features/ao/calepinage/TiroirElectrique.jsx
-inatteignable|frontend/src/features/ao/calepinage/TiroirKits.jsx
-inatteignable|frontend/src/features/ao/calepinage/TiroirOrientation.jsx
-inatteignable|frontend/src/features/ao/calepinage/TiroirRives.jsx
-inatteignable|frontend/src/features/ao/calepinage/VerdictBar.jsx
 inatteignable|frontend/src/features/ao/components/ProvenanceBadge.jsx
 inatteignable|frontend/src/features/ao/cps/ConformiteTable.jsx
 inatteignable|frontend/src/features/ao/cps/ExigencesPage.jsx
 inatteignable|frontend/src/features/ao/dossier/ControlesAvantDepot.jsx
-inatteignable|frontend/src/features/ao/dossier/DossierPage.jsx
 inatteignable|frontend/src/features/ao/dossier/EcheancesDossier.jsx
 inatteignable|frontend/src/features/ao/dossier/PiecePreview.jsx
-inatteignable|frontend/src/features/ao/dossier/PieceRow.jsx
 inatteignable|frontend/src/features/ao/dossier/ZipButton.jsx
 inatteignable|frontend/src/features/ao/equipements/BasculeAssistant.jsx
 inatteignable|frontend/src/features/ao/equipements/EquipementsPage.jsx
@@ -54,7 +36,6 @@ inatteignable|frontend/src/features/ao/questions/Annotateur.jsx
 inatteignable|frontend/src/features/ao/questions/ExportQR.jsx
 inatteignable|frontend/src/features/ao/questions/QuestionFiche.jsx
 inatteignable|frontend/src/features/ao/questions/RepereMarker.jsx
-inatteignable|frontend/src/features/ao/questions/SeriesPage.jsx
 inatteignable|frontend/src/features/ao/studio/BarreEtat.jsx
 inatteignable|frontend/src/features/ao/studio/CanvasSvg.jsx
 inatteignable|frontend/src/features/ao/studio/Selection.jsx
