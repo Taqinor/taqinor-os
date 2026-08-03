@@ -5,19 +5,19 @@ import { makeResourceFactory } from './resource'
    AOF11 — Client API du module Appels d'offres (`apps/ao`).
    ----------------------------------------------------------------------------
    ARC44 — factory CRUD partagée (`api/resource.js`), jamais un `axios.get`
-   direct dans `features/ao/`. Miroir FIN des ressources REST du domaine
-   (calepinage prouvé multi-kits/arc, dossier de dépôt niveau FRDISI) — ce
-   fichier PUBLIE le contrat d'API que le backend (lane `backend/ao`, AOF31)
-   enregistre ensuite (viewsets/filtres/pagination) : les noms de ressources
-   ci-dessous sont la référence, pas un miroir a posteriori.
+   direct dans `features/ao/`.
 
-   `affaires`/`pieces`/`dossiers` pointent sur les 3 ViewSets LEGACY déjà
-   enregistrés (ODX11, `apps/ao/urls.py` : `appels-offres`/`pieces-soumission`/
-   `dossiers-soumission`) — le terme métier « affaire » est une lecture FRONT,
-   la route serveur ne change pas. Les autres ressources (bâtiments, toitures,
-   plans sources, relevés, obstacles, zones, chaînes, calepinages, variantes,
-   séries Q/R, équipements, exigences CPS, bibliothèque) sont NOUVELLES —
-   livrées par la lane `backend/ao` au fil du Groupe AOF.
+   **LA VÉRITÉ EST `backend/django_core/apps/ao/urls.py`, PAS CE FICHIER.**
+   Ce fichier a longtemps prétendu « publier le contrat que le backend
+   enregistre ensuite » : construites en parallèle, les deux lanes ont divergé
+   et neuf chemins appelés ici n'existaient sous AUCUNE route (404 constatée
+   en production le 03/08/2026 sur la Bibliothèque). Chaque chemin ci-dessous
+   est désormais RELU dans le routeur serveur ; quand un endpoint manque
+   vraiment, il est NOMMÉ en commentaire plutôt que deviné.
+
+   `affaires`/`pieces`/`dossiers` pointent sur les 3 ViewSets LEGACY (ODX11 :
+   `appels-offres`/`pieces-soumission`/`dossiers-soumission`) — le terme
+   métier « affaire » est une lecture FRONT, la route serveur ne change pas.
 
    **RÈGLE #4 / en-tête du groupe : L'ÉCONOMIE EST RÉSERVÉE AU DIRECTEUR.**
    `aoRentabiliteApi` est un export **SÉPARÉ**, jamais mélangé aux ressources
@@ -27,6 +27,35 @@ import { makeResourceFactory } from './resource'
 
 // ARC44 — Fabrique CRUD standard sur `/ao/<ressource>/`.
 const crud = makeResourceFactory(api, '/ao')
+
+/* ── AOF173 — La bibliothèque est une FAÇADE, pas une ressource serveur ────
+   Les quatre catégories de l'écran Bibliothèque correspondent à quatre
+   ressources RÉELLES du routeur AO. `list({ type })` choisit la bonne ; le
+   `type` n'est donc jamais envoyé au serveur (aucune de ces ressources ne
+   connaît ce filtre — l'envoyer produirait un filtre ignoré, c.-à-d. une
+   liste fausse qui a l'air juste). */
+export const BIBLIOTHEQUE_RESSOURCES = {
+  kit: 'kits-calepinage',
+  preset: 'presets-calepinage',
+  gabarit_pack: 'modeles-pack',
+  texte_normalise: 'sections-memoire',
+}
+
+const bibliothequeParType = Object.fromEntries(
+  Object.entries(BIBLIOTHEQUE_RESSOURCES).map(([type, chemin]) => [type, crud(chemin)]),
+)
+
+const ressourceBibliotheque = (type) => {
+  const ressource = bibliothequeParType[type]
+  if (!ressource) throw new Error(`Catégorie de bibliothèque inconnue : ${type}`)
+  return ressource
+}
+
+const bibliothequeFacade = {
+  list: ({ type, ...params } = {}) => ressourceBibliotheque(type).list(params),
+  get: (type, id) => ressourceBibliotheque(type).get(id),
+  update: (type, id, data) => ressourceBibliotheque(type).update(id, data),
+}
 
 const aoApi = {
   // ── Affaire (AppelOffre — ViewSet legacy ODX11 `appels-offres`) ──
@@ -90,15 +119,21 @@ const aoApi = {
   pieces: crud('pieces-soumission'),
 
   // ── Bibliothèque : kits, presets, gabarits, textes normalisés ──
+  //
+  // RÉPARATION 03/08/2026 — `crud('bibliotheque')` appelait
+  // `/ao/bibliotheque/`, une route que le backend n'a JAMAIS enregistrée :
+  // 404 constatée en production. Les quatre catégories de l'écran sont
+  // QUATRE ressources réelles (`apps/ao/urls.py`), et la bibliothèque n'est
+  // qu'une façade de lecture par-dessus. Aucune n'est agrégée côté serveur :
+  // un agrégat aurait imposé un identifiant composite inventé, alors que
+  // « modifier un texte normalisé » est très exactement un PATCH sur
+  // `sections-memoire/<id>/`.
   bibliotheque: {
-    ...crud('bibliotheque'),
-    // AOF173 — appliquer un jeu de paramètres/kit : UN clic, UN appel, tracé
-    // côté serveur (qui/quand/quoi). Modifier un texte normalisé PARTAGÉ
-    // réutilise `update()` ci-dessus (PATCH sur le MÊME id — jamais de
-    // duplication silencieuse) ; `dossiersImpactes()` liste les dossiers qui
-    // le reprennent, à afficher AVANT toute validation.
-    appliquer: (id) => api.post(`/ao/bibliotheque/${id}/appliquer/`),
-    dossiersImpactes: (id) => api.get(`/ao/bibliotheque/${id}/dossiers-impactes/`),
+    ...bibliothequeFacade,
+    // AOF173 — les dossiers qui reprennent ce texte, à afficher AVANT toute
+    // validation. La liste est calculée côté serveur avec la MÊME règle
+    // d'inclusion que le rendu du mémoire (jamais une estimation d'écran).
+    dossiersImpactes: (id) => api.get(`/ao/sections-memoire/${id}/dossiers-impactes/`),
   },
 
   // AOF172/AOF166 — appel agrégé UNIQUE du tableau de bord (nom d'endpoint +

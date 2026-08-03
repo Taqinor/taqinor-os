@@ -14,6 +14,12 @@ const src = readFileSync(join(here, 'aoApi.js'), 'utf8')
 
 // Isole le corps de `const aoApi = { ... }` (avant l'export séparé de
 // rentabilité) pour les assertions d'isolement ci-dessous.
+// Les commentaires de ce fichier CITENT les mauvais chemins d'hier pour
+// expliquer la réparation : ils ne doivent pas être lus comme du code.
+function sansCommentaires(texte) {
+  return texte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+}
+
 function aoApiBody() {
   const start = src.indexOf('const aoApi = {')
   assert.ok(start > -1, 'const aoApi = { introuvable')
@@ -69,10 +75,18 @@ test('AOF172 — tableauMarches() appelle GET /ao/tableau-marches/ (endpoint AOF
   assert.match(body, /tableauMarches:\s*\(\)\s*=>\s*api\.get\('\/ao\/tableau-marches\/'\)/)
 })
 
-test('AOF173 — bibliotheque.appliquer()/dossiersImpactes() existent', () => {
+test('AOF173 — la bibliothèque est une FAÇADE sur 4 ressources routées, plus jamais /ao/bibliotheque/', () => {
+  // Le bug de production du 03/08/2026 : `crud('bibliotheque')` appelait une
+  // route jamais enregistrée. Aucun chemin `/ao/bibliotheque/` ne doit revenir.
+  assert.doesNotMatch(sansCommentaires(src), /\/ao\/bibliotheque\//)
+  assert.doesNotMatch(sansCommentaires(src), /crud\('bibliotheque'\)/)
+  assert.match(src, /export const BIBLIOTHEQUE_RESSOURCES = \{/)
+  for (const chemin of ['kits-calepinage', 'presets-calepinage', 'modeles-pack',
+    'sections-memoire']) {
+    assert.ok(src.includes(`'${chemin}'`), `catégorie non câblée : ${chemin}`)
+  }
   const body = aoApiBody()
-  assert.match(body, /appliquer:\s*\(id\)\s*=>\s*api\.post\(`\/ao\/bibliotheque\/\$\{id\}\/appliquer\/`\)/)
-  assert.match(body, /dossiersImpactes:\s*\(id\)\s*=>\s*api\.get\(`\/ao\/bibliotheque\/\$\{id\}\/dossiers-impactes\/`\)/)
+  assert.match(body, /dossiersImpactes:\s*\(id\)\s*=>\s*api\.get\(`\/ao\/sections-memoire\/\$\{id\}\/dossiers-impactes\/`\)/)
 })
 
 test('ISOLEMENT — le corps de `aoApi` ne mentionne JAMAIS "rentabilite" (aucun chemin réseau mêlé)', () => {

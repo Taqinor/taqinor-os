@@ -12,19 +12,25 @@ import {
    AOF173 — Bibliothèque : kits, presets, gabarits de dossier, textes
    normalisés.
    ----------------------------------------------------------------------------
-   Un seul type de ressource serveur (`aoApi.bibliotheque`, AOF11), filtré par
-   `type` ('kit' | 'preset' | 'gabarit_pack' | 'texte_normalise').
+   RÉPARATION 03/08/2026 — cet écran appelait `/ao/bibliotheque/`, une route
+   INEXISTANTE côté serveur (404 en production). Les quatre catégories sont
+   quatre ressources RÉELLES (`kits-calepinage`, `presets-calepinage`,
+   `modeles-pack`, `sections-memoire`) : `aoApi.bibliotheque` n'est qu'une
+   façade de lecture qui choisit la bonne, et cet écran consomme la FORME
+   réelle de chaque sérialiseur (`code`/`libelle`, `nom`, `titre`/`corps`) —
+   plus aucun champ supposé.
 
-   « Appliquer » (kits/presets) est UN clic → UN appel réseau tracé côté
-   serveur (`appliquer()`) : aucun assistant multi-étapes ici, le service
-   serveur porte la traçabilité (qui/quand/quoi).
+   « Modifier » un texte normalisé PARTAGÉ charge et affiche la liste des
+   dossiers impactés (`dossiersImpactes()`) AVANT toute validation possible —
+   le bouton Enregistrer reste désactivé tant que cette liste n'a pas fini de
+   charger. La sauvegarde est un PATCH sur le MÊME `id` (`update()`, jamais
+   `create()`) : aucune duplication silencieuse de texte.
 
-   « Modifier » un texte normalisé PARTAGÉ (repris dans plusieurs dossiers)
-   charge et affiche la liste des dossiers impactés (`dossiersImpactes()`)
-   AVANT toute validation possible — le bouton Enregistrer reste désactivé
-   tant que cette liste n'a pas fini de charger. La sauvegarde est un PATCH
-   sur le MÊME `id` (`update()`, jamais `create()`) : aucune duplication
-   silencieuse de texte.
+   « Appliquer » n'existe PLUS ici : côté serveur, appliquer un jeu de
+   paramètres écrit sur une TOITURE (`services.appliquer_preset`) et cet écran
+   global n'en désigne aucune. Le bouton d'origine appelait un endpoint
+   inventé ; plutôt que de deviner une cible, l'écran dit d'où l'application
+   se fait réellement. Endpoint à construire le jour où la cible est tranchée.
    ========================================================================== */
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
@@ -36,6 +42,17 @@ const CATEGORIES = [
   { value: 'texte_normalise', label: 'Textes normalisés', icon: ClipboardList },
 ]
 
+/* Chaque ressource a SES champs — la bibliothèque ne les renomme pas côté
+   serveur, c'est donc l'écran qui lit la forme réelle de chacune. */
+const LECTURES = {
+  kit: (r) => ({ nom: r.libelle || r.code, description: r.code }),
+  preset: (r) => ({ nom: r.nom, description: r.description }),
+  gabarit_pack: (r) => ({ nom: r.libelle || r.code, description: r.description }),
+  texte_normalise: (r) => ({ nom: r.titre || r.code, description: '', corps: r.corps }),
+}
+
+const normaliser = (type) => (r) => ({ ...r, ...LECTURES[type](r) })
+
 export default function BibliothequePage() {
   const [categorie, setCategorie] = useState(CATEGORIES[0].value)
   const [editing, setEditing] = useState(null) // item texte_normalise en édition
@@ -43,17 +60,12 @@ export default function BibliothequePage() {
   const params = useMemo(() => ({ type: categorie }), [categorie])
   const { data: items, loading, error, refetch } = useResource(
     () => aoApi.bibliotheque.list(params), params,
-    { initialData: [], select: unwrapList, errorMessage: 'Impossible de charger la bibliothèque.' },
+    {
+      initialData: [],
+      select: (res) => unwrapList(res).map(normaliser(categorie)),
+      errorMessage: 'Impossible de charger la bibliothèque.',
+    },
   )
-
-  const appliquer = async (item) => {
-    try {
-      await aoApi.bibliotheque.appliquer(item.id)
-      toast.success(`« ${item.nom} » appliqué.`)
-    } catch (e) {
-      toast.error(errMsg(e, 'Application impossible.'))
-    }
-  }
 
   const activeCategory = CATEGORIES.find((c) => c.value === categorie)
   const Icon = activeCategory.icon
@@ -92,16 +104,16 @@ export default function BibliothequePage() {
             <Card key={item.id} className="flex flex-col gap-2 p-4">
               <div className="flex items-start justify-between gap-2">
                 <span className="font-medium">{item.nom}</span>
-                {item.dossiers_utilisant_count > 0 && (
-                  <Badge tone="info">{item.dossiers_utilisant_count} dossier(s)</Badge>
-                )}
+                {item.actif === false && <Badge tone="neutral">Retiré</Badge>}
               </div>
               {item.description && <p className="text-sm text-muted-foreground">{item.description}</p>}
-              <div className="mt-1 flex justify-end gap-2">
+              <div className="mt-1 flex items-center justify-end gap-2">
                 {isTexte ? (
                   <Button size="sm" variant="outline" onClick={() => setEditing(item)}>Modifier</Button>
                 ) : (
-                  <Button size="sm" onClick={() => appliquer(item)}>Appliquer</Button>
+                  <span className="text-xs text-muted-foreground">
+                    Application depuis la toiture concernée
+                  </span>
                 )}
               </div>
             </Card>
@@ -135,9 +147,9 @@ function ModifierTexteDialog({ item, onClose, onSaved }) {
     e.preventDefault()
     setSaving(true)
     try {
-      // PATCH sur le MÊME id — jamais un `create()` : aucune duplication
-      // silencieuse de texte.
-      await aoApi.bibliotheque.update(item.id, { corps })
+      // PATCH sur le MÊME id de la ressource RÉELLE (`sections-memoire`) —
+      // jamais un `create()` : aucune duplication silencieuse de texte.
+      await aoApi.bibliotheque.update('texte_normalise', item.id, { corps })
       toast.success('Texte normalisé mis à jour.')
       onSaved()
     } catch (e2) {
@@ -167,7 +179,7 @@ function ModifierTexteDialog({ item, onClose, onSaved }) {
               <ul className="flex flex-wrap gap-1.5">
                 {dossiersImpactes.map((d) => (
                   <li key={d.id}>
-                    <Badge tone="warning">{d.reference || d.affaire_reference || `#${d.id}`}</Badge>
+                    <Badge tone="warning">{d.reference || `#${d.id}`}</Badge>
                   </li>
                 ))}
               </ul>

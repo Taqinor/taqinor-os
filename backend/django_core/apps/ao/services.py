@@ -550,6 +550,45 @@ def seeder_presets(company):
     return crees
 
 
+# ── AOF173 — Qui reprend ce texte normalisé ? ──────────────────────────────
+
+def dossiers_impactes_par_section(section):
+    """Les dossiers d'AO dont le mémoire REPREND cette section (AOF173).
+
+    La réponse n'est pas une estimation : elle rejoue la MÊME règle
+    déclarative que le rendu (``fabrique.rendus.memoire.sections_a_inclure``).
+    Réimplémenter le filtre ici le ferait diverger — et l'écran
+    d'avertissement dirait « aucun dossier » pendant que douze mémoires
+    changeraient.
+
+    Une section INACTIVE n'entre dans aucun mémoire ; une section SANS
+    condition d'inclusion entre dans TOUS (aucun contexte à construire, donc
+    aucune requête inutile pour le cas le plus fréquent).
+    """
+    from .fabrique.rendus.memoire import contexte_memoire, sections_a_inclure
+    from .models import AppelOffre
+
+    if not section.actif:
+        return []
+    dossiers = AppelOffre.objects.filter(
+        company=section.company).order_by('-id')
+    conditions = section.conditions_inclusion or {}
+    impactes = []
+    for appel_offre in dossiers:
+        if conditions:
+            retenues = sections_a_inclure(appel_offre.company,
+                                          contexte_memoire(appel_offre))
+            if section.pk not in {s.pk for s in retenues}:
+                continue
+        impactes.append({
+            'id': appel_offre.pk,
+            'reference': appel_offre.reference,
+            'objet': appel_offre.objet,
+            'statut': appel_offre.statut,
+        })
+    return impactes
+
+
 # ── AOF25 — Trancher une question APPLIQUE la décision ─────────────────────
 #
 # Une question tranchée qui ne modifie rien ne sert à rien : la décision doit

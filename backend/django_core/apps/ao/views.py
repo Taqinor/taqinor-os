@@ -46,6 +46,7 @@ from .models import (
     ExigenceCPS,
     KitCalepinage,
     LigneBordereau,
+    ModelePack,
     ObstacleAO,
     PieceConsultation,
     PieceSoumission,
@@ -55,6 +56,7 @@ from .models import (
     QuestionAO,
     ResultatAO,
     SectionBordereau,
+    SectionMemoire,
     SerieQuestions,
     ToitureAO,
     VarianteCalepinage,
@@ -70,6 +72,7 @@ from .serializers import (
     ExigenceCPSSerializer,
     KitCalepinageSerializer,
     LigneBordereauSerializer,
+    ModelePackSerializer,
     ObstacleAOSerializer,
     PieceConsultationSerializer,
     PieceSoumissionSerializer,
@@ -79,6 +82,7 @@ from .serializers import (
     QuestionAOSerializer,
     ResultatAOSerializer,
     SectionBordereauSerializer,
+    SectionMemoireSerializer,
     SerieQuestionsSerializer,
     ToitureAOSerializer,
     VarianteCalepinageSerializer,
@@ -730,6 +734,54 @@ class KitCalepinageViewSet(AoBaseViewSet):
         kit.appliquer_emprise()
         kit.save(update_fields=[
             'emprise_transversale_m', 'ecart_emprise_m', 'updated_at'])
+
+
+# ── AOF116/AOF173 — Bibliothèque : gabarits de pack, textes normalisés ─────
+#
+# L'écran Bibliothèque appelait ``/api/django/ao/bibliotheque/`` : cette route
+# n'a JAMAIS existé (404 constatée en production le 03/08/2026). Les quatre
+# catégories de l'écran sont quatre ressources RÉELLES — kits (``kits-
+# calepinage``), jeux de paramètres (``presets-calepinage``), gabarits de pack
+# et textes normalisés. Les deux dernières manquaient : les voici, en
+# ressources REST ordinaires du socle AO (jamais un agrégat à identifiant
+# composite inventé).
+
+class ModelePackViewSet(AoBaseViewSet):
+    """Gabarits de pack (AOF116) : la liste ORDONNÉE des pièces d'un dossier."""
+    queryset = ModelePack.objects.all()
+    serializer_class = ModelePackSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle', 'description']
+    ordering_fields = ['code', 'libelle', 'actif']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params, ('actif',))
+
+
+class SectionMemoireViewSet(AoBaseViewSet):
+    """Textes normalisés du mémoire (AOF116/AOF133) + dossiers impactés.
+
+    ``dossiers-impactes`` répond à la question que l'écran d'AOF173 pose AVANT
+    toute modification : « qui reprend ce texte ? ». La réponse n'est pas
+    estimée — elle rejoue la MÊME règle d'inclusion déclarative que le rendu du
+    mémoire (``services.dossiers_impactes_par_section``).
+    """
+    queryset = SectionMemoire.objects.all()
+    serializer_class = SectionMemoireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'titre', 'corps']
+    ordering_fields = ['ordre', 'code', 'titre']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params, ('actif',))
+
+    @action(detail=True, methods=['get'], url_path='dossiers-impactes')
+    def dossiers_impactes(self, request, pk=None):
+        """Les dossiers d'AO dont le mémoire REPREND cette section."""
+        return Response(
+            services.dossiers_impactes_par_section(self.get_object()))
 
 
 # ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────
