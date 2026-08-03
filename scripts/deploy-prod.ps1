@@ -108,7 +108,15 @@ if [ "$MIGRATE_RC" != "0" ]; then
 fi
 # WOW26 — verifie que TOUTES les migrations sont appliquees (un up -d partiel /
 # un set -e interrompu laissait des migrations non appliquees + un 502 silencieux).
-UNAPPLIED=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py showmigrations --plan 2>/dev/null | grep -c '\[ \]')
+# ATTENTION `|| true` OBLIGATOIRE : `grep -c` sort en 1 quand il compte ZERO
+# occurrence. Sous `set -e`, l'affectation mourait donc EXACTEMENT quand tout
+# etait applique — c'est-a-dire a chaque deploiement PROPRE. Le script sautait
+# alors init_roles / restart nginx / reload caddy / prechauffage / healthcheck,
+# sortait non-zero, et l'enveloppe PowerShell annoncait « HEALTHCHECK ECHEC -
+# rollback » alors que la sonde n'avait jamais ete interrogee (elle repondait
+# « ok »). Diagnostic 2026-08-02 : la sortie SSH s'arretait net apres « No
+# migrations to apply ».
+UNAPPLIED=$(docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core python manage.py showmigrations --plan 2>/dev/null | grep -c '\[ \]' || true)
 echo "Migrations non appliquees restantes: $UNAPPLIED"
 if [ "$UNAPPLIED" != "0" ]; then echo "MIGRATIONS INCOMPLETES ($UNAPPLIED) -> echec deploiement (relancer deploy-prod.ps1)"; exit 1; fi
 # Synchronise les permissions des roles systeme (Admin/Responsable/Utilisateur)
