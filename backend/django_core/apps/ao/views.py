@@ -46,6 +46,7 @@ from .models import (
     ExigenceCPS,
     KitCalepinage,
     LigneBordereau,
+    ModelePack,
     ObstacleAO,
     PieceConsultation,
     PieceSoumission,
@@ -55,6 +56,7 @@ from .models import (
     QuestionAO,
     ResultatAO,
     SectionBordereau,
+    SectionMemoire,
     SerieQuestions,
     ToitureAO,
     VarianteCalepinage,
@@ -70,6 +72,7 @@ from .serializers import (
     ExigenceCPSSerializer,
     KitCalepinageSerializer,
     LigneBordereauSerializer,
+    ModelePackSerializer,
     ObstacleAOSerializer,
     PieceConsultationSerializer,
     PieceSoumissionSerializer,
@@ -79,6 +82,7 @@ from .serializers import (
     QuestionAOSerializer,
     ResultatAOSerializer,
     SectionBordereauSerializer,
+    SectionMemoireSerializer,
     SerieQuestionsSerializer,
     ToitureAOSerializer,
     VarianteCalepinageSerializer,
@@ -390,6 +394,46 @@ class SerieQuestionsViewSet(AoBaseViewSet):
         return _filtres_exacts(
             super().get_queryset(), self.request.query_params,
             ('appel_offre', 'canal'))
+
+    def perform_create(self, serializer):
+        """Le NUMÉRO de série est attribué côté serveur (AOF25).
+
+        ``numero`` a un défaut de 1 et une contrainte d'unicité
+        ``(company, appel_offre, numero)`` : sans attribution, la DEUXIÈME
+        série d'un dossier crée une IntegrityError (500) — et laisser l'écran
+        proposer le numéro reviendrait à ``count()+1``, la faute exacte que le
+        dépôt interdit (une série supprimée ferait recollisionner le compte).
+
+        Le numéro est donc le PLUS HAUT UTILISÉ + 1, sur le couple
+        (société, appel d'offres), avec point de sauvegarde et rejeu en cas de
+        course — même patron que ``apps.ventes.utils.references``.
+        """
+        if serializer.validated_data.get('numero'):
+            return super().perform_create(serializer)
+
+        from django.db import IntegrityError, transaction
+        from django.db.models import Max
+
+        company = self.request.user.company
+        appel_offre = serializer.validated_data.get('appel_offre')
+        for _essai in range(5):
+            plus_haut = SerieQuestions.objects.filter(
+                company=company, appel_offre=appel_offre,
+            ).aggregate(m=Max('numero'))['m'] or 0
+            try:
+                with transaction.atomic():
+                    serializer.save(company=company, numero=plus_haut + 1)
+                return
+            except IntegrityError as erreur:
+                # SEULE la collision de numéro se rejoue. Avaler toute
+                # IntegrityError transformerait une vraie erreur d'intégrité
+                # (FK absente, société nulle…) en « réessayez » — un message
+                # faux, exactement le défaut qu'on répare.
+                if 'uniq_serie_questions_numero' not in str(erreur):
+                    raise
+        raise DrfValidationError(
+            {'numero': ["Impossible d'attribuer un numéro de série : "
+                        'réessayez.']})
 
 
 class QuestionAOViewSet(AoBaseViewSet):
@@ -730,6 +774,54 @@ class KitCalepinageViewSet(AoBaseViewSet):
         kit.appliquer_emprise()
         kit.save(update_fields=[
             'emprise_transversale_m', 'ecart_emprise_m', 'updated_at'])
+
+
+# ── AOF116/AOF173 — Bibliothèque : gabarits de pack, textes normalisés ─────
+#
+# L'écran Bibliothèque appelait ``/api/django/ao/bibliotheque/`` : cette route
+# n'a JAMAIS existé (404 constatée en production le 03/08/2026). Les quatre
+# catégories de l'écran sont quatre ressources RÉELLES — kits (``kits-
+# calepinage``), jeux de paramètres (``presets-calepinage``), gabarits de pack
+# et textes normalisés. Les deux dernières manquaient : les voici, en
+# ressources REST ordinaires du socle AO (jamais un agrégat à identifiant
+# composite inventé).
+
+class ModelePackViewSet(AoBaseViewSet):
+    """Gabarits de pack (AOF116) : la liste ORDONNÉE des pièces d'un dossier."""
+    queryset = ModelePack.objects.all()
+    serializer_class = ModelePackSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle', 'description']
+    ordering_fields = ['code', 'libelle', 'actif']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params, ('actif',))
+
+
+class SectionMemoireViewSet(AoBaseViewSet):
+    """Textes normalisés du mémoire (AOF116/AOF133) + dossiers impactés.
+
+    ``dossiers-impactes`` répond à la question que l'écran d'AOF173 pose AVANT
+    toute modification : « qui reprend ce texte ? ». La réponse n'est pas
+    estimée — elle rejoue la MÊME règle d'inclusion déclarative que le rendu du
+    mémoire (``services.dossiers_impactes_par_section``).
+    """
+    queryset = SectionMemoire.objects.all()
+    serializer_class = SectionMemoireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'titre', 'corps']
+    ordering_fields = ['ordre', 'code', 'titre']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params, ('actif',))
+
+    @action(detail=True, methods=['get'], url_path='dossiers-impactes')
+    def dossiers_impactes(self, request, pk=None):
+        """Les dossiers d'AO dont le mémoire REPREND cette section."""
+        return Response(
+            services.dossiers_impactes_par_section(self.get_object()))
 
 
 # ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────

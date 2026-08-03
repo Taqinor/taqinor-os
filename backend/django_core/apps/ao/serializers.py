@@ -19,6 +19,7 @@ from .models import (
     DossierSoumission,
     EcheanceAO,
     LigneChecklistPartenaire,
+    ModelePack,
     PieceAdministrative,
     PieceDossierAO,
     ExigenceCPS,
@@ -33,6 +34,7 @@ from .models import (
     QuestionAO,
     ResultatAO,
     SectionBordereau,
+    SectionMemoire,
     SerieQuestions,
     ToitureAO,
     VarianteCalepinage,
@@ -694,3 +696,36 @@ class DossierAOSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['statut', 'created_at', 'updated_at']
+
+
+# ── AOF116/AOF173 — Bibliothèque : gabarits de pack, textes normalisés ─────
+#
+# Ces deux modèles existaient (seedés par ``seed_pack_ao`` et
+# ``seed_sections_memoire``) mais n'étaient exposés par AUCUNE route : l'écran
+# Bibliothèque appelait ``/ao/bibliotheque/``, qui n'a jamais existé côté
+# serveur — 404 en production. Ce sont des ressources REST ORDINAIRES, pas un
+# agrégat : un agrégat aurait imposé un identifiant composite inventé, alors
+# que « modifier un texte normalisé » est très exactement un PATCH sur
+# ``SectionMemoire.corps``.
+
+class ModelePackSerializer(serializers.ModelSerializer):
+    """AOF116 — gabarit de PACK : la liste ORDONNÉE des pièces d'un dossier."""
+
+    class Meta:
+        model = ModelePack
+        fields = ['id', 'code', 'libelle', 'description', 'actif']
+
+
+class SectionMemoireSerializer(serializers.ModelSerializer):
+    """AOF116/AOF133 — texte normalisé (section composable du mémoire).
+
+    ``corps`` porte des ``{{ placeholders }}`` : c'est le champ que l'écran
+    Bibliothèque modifie, sur le MÊME identifiant (jamais une duplication).
+    """
+
+    class Meta:
+        model = SectionMemoire
+        fields = [
+            'id', 'code', 'titre', 'corps', 'ordre', 'conditions_inclusion',
+            'actif',
+        ]

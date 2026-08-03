@@ -23,12 +23,18 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  retenir: vi.fn(),
   hasPermission: vi.fn(),
   colonneProps: [],
 }))
 
 vi.mock('../../../api/aoApi', () => ({
-  default: { variantes: { list: mocks.list, create: mocks.create, update: mocks.update } },
+  default: {
+    variantes: {
+      list: mocks.list, create: mocks.create, update: mocks.update,
+      retenir: mocks.retenir,
+    },
+  },
 }))
 
 vi.mock('../../../hooks/useHasPermission', () => ({
@@ -48,15 +54,13 @@ vi.mock('./VarianteColonne', () => ({
         <button type="button" onClick={() => props.onDefinirRetenue?.(props.variante)}>
           {`Retenir ${props.variante.nom}`}
         </button>
-        <button type="button" onClick={() => props.onDupliquer?.(props.variante)}>
-          {`Copier ${props.variante.nom}`}
-        </button>
       </div>
     )
   },
 }))
 
 import VariantesCompare, { CLES_ECONOMIE, retirerEconomie } from './VariantesCompare'
+import { champsServeur } from '../../../test/contratServeur'
 
 const technique = (compte) => ({
   compte_modules: compte,
@@ -81,10 +85,20 @@ const conformite = {
   marge_engagement: { statut: 'avertissement', detail: '+2 modules seulement.' },
 }
 
+/* RÉPARATION 03/08/2026 — les champs SERVEUR (`VarianteCalepinageSerializer`)
+   sont `est_retenue`, `total_modules`, `puissance_kwc`, `score`, `statut`… Le
+   comparateur lisait `retenue`, qui n'existe pas : la colonne « retenue »
+   était donc TOUJOURS vide, et l'écran filtrait sur `affaire`, un paramètre
+   ignoré par le ViewSet (il remontait les variantes de TOUS les dossiers).
+
+   `technique`, `conformite`, `miniature_svg` et `epinglee` restent des champs
+   que le serveur NE PRODUIT PAS : la bande conformité et la miniature sont une
+   dette de conception assumée et NOMMÉE (garde ci-dessous), pas quelque chose
+   que ce correctif prétend avoir résolu. */
 const VARIANTES = [
-  { id: 1, nom: 'Variante A', statut: 'calcule', retenue: false, epinglee: false, miniature_svg: '<svg/>', technique: technique(314), conformite },
-  { id: 2, nom: 'Variante B', statut: 'publiable', retenue: true, epinglee: false, miniature_svg: '<svg/>', technique: technique(302), conformite },
-  { id: 3, nom: 'Variante C', statut: 'brouillon', retenue: false, epinglee: false, miniature_svg: null, technique: technique(288), conformite },
+  { id: 1, nom: 'Variante A', toiture: 3, appel_offre: 7, role: 'ALTERNATIVE', statut: 'calculee', est_retenue: false, est_recommandee: false, total_modules: 314, puissance_kwc: 172.7, score: 0.9, epinglee: false, miniature_svg: '<svg/>', technique: technique(314), conformite },
+  { id: 2, nom: 'Variante B', toiture: 3, appel_offre: 7, role: 'RETENUE', statut: 'publiable', est_retenue: true, est_recommandee: true, total_modules: 302, puissance_kwc: 166.1, score: 0.8, epinglee: false, miniature_svg: '<svg/>', technique: technique(302), conformite },
+  { id: 3, nom: 'Variante C', toiture: 3, appel_offre: 7, role: 'ALTERNATIVE', statut: 'brouillon', est_retenue: false, est_recommandee: false, total_modules: 288, puissance_kwc: 158.4, score: 0.6, epinglee: false, miniature_svg: null, technique: technique(288), conformite },
 ]
 
 // Payload HOSTILE : le serveur renvoie de l'économie alors que la permission
@@ -102,9 +116,34 @@ beforeEach(() => {
   mocks.list.mockResolvedValue({ data: VARIANTES })
   mocks.update.mockResolvedValue({ data: {} })
   mocks.create.mockResolvedValue({ data: {} })
+  mocks.retenir.mockResolvedValue({ data: {} })
 })
 
 const renderCompare = (props = {}) => render(<VariantesCompare affaireId={7} {...props} />)
+
+describe('GARDE de contrat — ce que le serveur produit VRAIMENT', () => {
+  const champs = () => champsServeur('VarianteCalepinageSerializer')
+
+  it('les champs que le comparateur exploite existent bien côté serveur', () => {
+    const declares = champs()
+    for (const cle of ['id', 'nom', 'statut', 'est_retenue', 'appel_offre',
+      'toiture', 'role', 'total_modules', 'puissance_kwc', 'score']) {
+      expect(declares.has(cle), `champ absent du sérialiseur : ${cle}`).toBe(true)
+    }
+    // Le champ du bug : il n'a jamais existé.
+    expect(declares.has('retenue')).toBe(false)
+  })
+
+  it('DETTE NOMMÉE — 4 champs lus par la colonne restent absents du sérialiseur', () => {
+    // Ce test échouera le jour où le serveur les publiera : c'est voulu, il
+    // faudra alors relire la colonne au lieu de la laisser deviner.
+    const declares = champs()
+    for (const manquant of ['technique', 'conformite', 'miniature_svg', 'epinglee']) {
+      expect(declares.has(manquant),
+        `${manquant} est désormais servi : réaligner VarianteColonne`).toBe(false)
+    }
+  })
+})
 
 describe('retirerEconomie — le nettoyage pur', () => {
   it('retire les clés d’économie à TOUTE profondeur, sans muter l’entrée', () => {
@@ -154,19 +193,22 @@ describe('VariantesCompare — colonnes et sélection', () => {
 describe('VariantesCompare — une seule variante retenue', () => {
   it('marque exactement UNE variante retenue, même si le payload en marque deux', async () => {
     mocks.list.mockResolvedValue({
-      data: VARIANTES.map((v) => ({ ...v, retenue: v.id === 1 || v.id === 2 })),
+      data: VARIANTES.map((v) => ({ ...v, est_retenue: v.id === 1 || v.id === 2 })),
     })
     renderCompare()
     await screen.findByText('Colonne Variante A')
     expect(screen.getAllByText('Colonne retenue')).toHaveLength(1)
   })
 
-  it('« Définir comme retenue » PATCHe la variante puis recharge (le serveur reste l’autorité)', async () => {
+  it('« Définir comme retenue » appelle l’ACTION serveur `retenir` — jamais un PATCH', async () => {
     const user = userEvent.setup()
     renderCompare()
     await screen.findByText('Colonne Variante A')
     await user.click(screen.getByRole('button', { name: 'Retenir Variante A' }))
-    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(1, { retenue: true }))
+    // C'est `retenir` qui dé-retient la précédente : un PATCH de
+    // `est_retenue` laisserait DEUX variantes retenues sur la toiture.
+    await waitFor(() => expect(mocks.retenir).toHaveBeenCalledWith(1))
+    expect(mocks.update).not.toHaveBeenCalled()
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
   })
 
@@ -185,7 +227,9 @@ describe('VariantesCompare — économie réservée au directeur', () => {
     await screen.findByText('Colonne Variante A')
     expect(mocks.hasPermission).toHaveBeenCalledWith('ao_rentabilite_voir')
     const params = mocks.list.mock.calls[0][0]
-    expect(params).toEqual({ affaire: 7 })
+    // `appel_offre` : le nom du filtre SERVEUR. `affaire` était ignoré, donc
+    // la liste mélangeait les variantes de tous les dossiers de la société.
+    expect(params).toEqual({ appel_offre: 7 })
     expect(params).not.toHaveProperty('avec_economie')
   })
 
@@ -224,7 +268,7 @@ describe('VariantesCompare — économie réservée au directeur', () => {
     mocks.list.mockResolvedValue({ data: VARIANTES_AVEC_ECONOMIE })
     renderCompare()
     await screen.findByText('Colonne Variante A')
-    expect(mocks.list.mock.calls[0][0]).toEqual({ affaire: 7, avec_economie: 1 })
+    expect(mocks.list.mock.calls[0][0]).toEqual({ appel_offre: 7, avec_economie: 1 })
     const col = mocks.colonneProps.find((p) => p.variante.id === 1)
     expect(col.peutVoirEconomie).toBe(true)
     expect(col.variante.economie.marge_mad).toBe(89012)
@@ -246,13 +290,15 @@ describe('VariantesCompare — miniature INJECTÉE (svgToPng/AOF75 hors de cette
   })
 })
 
-describe('VariantesCompare — duplication', () => {
-  it('duplique via l’API puis recharge la liste', async () => {
-    const user = userEvent.setup()
+describe('VariantesCompare — deux actions RETIRÉES faute d’endpoint', () => {
+  it('ne propose ni duplication ni épinglage : aucun appel réseau ne peut les honorer', async () => {
     renderCompare()
     await screen.findByText('Colonne Variante A')
-    await user.click(screen.getByRole('button', { name: 'Copier Variante A' }))
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ dupliquer_de: 1, affaire: 7 }))
+    // `dupliquer_de`/`epinglee` n'existent nulle part côté serveur ; un PATCH
+    // d'un champ inconnu répond 200 SANS RIEN ÉCRIRE — le bouton mentait.
+    expect(mocks.colonneProps.every((p) => p.onDupliquer === undefined)).toBe(true)
+    expect(mocks.colonneProps.every((p) => p.onEpingler === undefined)).toBe(true)
+    expect(mocks.create).not.toHaveBeenCalled()
   })
 })
 
@@ -292,11 +338,29 @@ describe('VarianteColonne (composant réel)', () => {
   })
 
   it('porte le hook de contrat `data-ao-variante` et signale la variante retenue', () => {
-    const { container } = render(<VarianteColonne variante={{ ...VARIANTES[1] }} />)
+    // `retenue` est une prop DÉRIVÉE par le comparateur (unicité garantie au
+    // rendu), pas un champ serveur — le champ serveur est `est_retenue`.
+    const { container } = render(
+      <VarianteColonne variante={{ ...VARIANTES[1], retenue: true }} />)
     const carte = container.querySelector('[data-ao-variante="publiable"]')
     expect(carte).not.toBeNull()
     expect(carte.getAttribute('aria-current')).toBe('true')
     expect(screen.getByText('Alimente le bordereau et les planches.')).toBeInTheDocument()
+  })
+
+  it('n’affiche « Dupliquer »/« Épingler » que si un gestionnaire est fourni', () => {
+    const { unmount } = render(<VarianteColonne variante={VARIANTES[0]} />)
+    expect(screen.queryByRole('button', { name: /Dupliquer/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Épingler/ })).toBeNull()
+    unmount()
+    render(
+      <VarianteColonne
+        variante={VARIANTES[0]}
+        onDupliquer={() => {}}
+        onEpingler={() => {}}
+      />)
+    expect(screen.getByRole('button', { name: /Dupliquer/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Épingler/ })).toBeInTheDocument()
   })
 
   it('le verdict affiche le LIBELLÉ SERVEUR, jamais une phrase rédigée côté front', () => {
