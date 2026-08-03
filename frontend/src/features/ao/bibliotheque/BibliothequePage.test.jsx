@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
-import process from 'node:process'
+import { champsServeur, ressourcesRoutees } from '../../../test/contratServeur'
 
 /* ============================================================================
    AOF173 — Bibliothèque : le test parle la langue du SERVEUR.
@@ -21,33 +19,6 @@ import process from 'node:process'
       qu'une fixture porte une clé que le serveur ne produit pas (ou que le
       serveur cesse de produire).
    ========================================================================== */
-
-/* Vitest ne garantit pas un `import.meta.url` en `file:` (le module est
-   transformé) : on remonte depuis le CWD jusqu'à la racine du dépôt. */
-function racineDepot() {
-  let dossier = resolve(process.cwd())
-  for (let i = 0; i < 6; i += 1) {
-    if (existsSync(join(dossier, 'backend', 'django_core'))) return dossier
-    dossier = dirname(dossier)
-  }
-  throw new Error('Racine du dépôt introuvable depuis ' + process.cwd())
-}
-
-const fichierAo = (nom) =>
-  join(racineDepot(), 'backend', 'django_core', 'apps', 'ao', nom)
-
-const SERIALIZERS_PY = fichierAo('serializers.py')
-
-/** Champs déclarés par un `Meta.fields = [...]` de sérialiseur DRF. */
-function champsServeur(nomClasse) {
-  const source = readFileSync(SERIALIZERS_PY, 'utf8')
-  const debut = source.indexOf(`class ${nomClasse}(`)
-  if (debut < 0) throw new Error(`Sérialiseur introuvable côté serveur : ${nomClasse}`)
-  const bloc = source.slice(debut, debut + 4000)
-  const champs = bloc.match(/\n\s+fields = \[([\s\S]*?)\]/)
-  if (!champs) throw new Error(`Meta.fields introuvable pour ${nomClasse}`)
-  return new Set([...champs[1].matchAll(/'([^']+)'/g)].map((m) => m[1]))
-}
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -143,10 +114,7 @@ describe('GARDE de contrat — les fixtures ne peuvent pas inventer de champ', (
   })
 
   it('les 4 catégories de l’écran pointent 4 ressources RÉELLEMENT routées', async () => {
-    const urls = readFileSync(fichierAo('urls.py'), 'utf8')
-    const routees = new Set(
-      [...urls.matchAll(/router\.register\(\s*r'([^']+)'/g)].map((m) => m[1]),
-    )
+    const routees = ressourcesRoutees()
     const { BIBLIOTHEQUE_RESSOURCES } = await import('../../../api/aoApi')
     for (const chemin of Object.values(BIBLIOTHEQUE_RESSOURCES)) {
       expect(routees.has(chemin), `route absente de urls.py : ${chemin}`).toBe(true)

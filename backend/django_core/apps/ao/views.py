@@ -395,6 +395,41 @@ class SerieQuestionsViewSet(AoBaseViewSet):
             super().get_queryset(), self.request.query_params,
             ('appel_offre', 'canal'))
 
+    def perform_create(self, serializer):
+        """Le NUMÉRO de série est attribué côté serveur (AOF25).
+
+        ``numero`` a un défaut de 1 et une contrainte d'unicité
+        ``(company, appel_offre, numero)`` : sans attribution, la DEUXIÈME
+        série d'un dossier crée une IntegrityError (500) — et laisser l'écran
+        proposer le numéro reviendrait à ``count()+1``, la faute exacte que le
+        dépôt interdit (une série supprimée ferait recollisionner le compte).
+
+        Le numéro est donc le PLUS HAUT UTILISÉ + 1, sur le couple
+        (société, appel d'offres), avec point de sauvegarde et rejeu en cas de
+        course — même patron que ``apps.ventes.utils.references``.
+        """
+        if serializer.validated_data.get('numero'):
+            return super().perform_create(serializer)
+
+        from django.db import IntegrityError, transaction
+        from django.db.models import Max
+
+        company = self.request.user.company
+        appel_offre = serializer.validated_data.get('appel_offre')
+        for _essai in range(5):
+            plus_haut = SerieQuestions.objects.filter(
+                company=company, appel_offre=appel_offre,
+            ).aggregate(m=Max('numero'))['m'] or 0
+            try:
+                with transaction.atomic():
+                    serializer.save(company=company, numero=plus_haut + 1)
+                return
+            except IntegrityError:
+                continue
+        raise DrfValidationError(
+            {'numero': ["Impossible d'attribuer un numéro de série : "
+                        'réessayez.']})
+
 
 class QuestionAOViewSet(AoBaseViewSet):
     """Questions chiffrées (AOF25).

@@ -104,7 +104,10 @@ const aoApi = {
   },
 
   // ── Bordereau / équipements / exigences CPS ──
-  seriesQR: crud('series-qr'),
+  // RÉPARATION 03/08/2026 — le routeur publie `series-questions` ; le front
+  // appelait `series-qr` (404), et filtrait sur `affaire` alors que le
+  // ViewSet ne connaît que `appel_offre`.
+  seriesQR: crud('series-questions'),
   equipements: {
     ...crud('equipements'),
     // Bascule ATOMIQUE d'équipement (référence + prix + grandeurs dérivées

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { readFileSync } from 'node:fs'
+import { champsServeur, fichierAo } from '../../../test/contratServeur'
 
 /* ============================================================================
    AOF106 — Done = 10 repères posés en moins de deux minutes, rendu net en
@@ -19,7 +21,7 @@ vi.mock('../../../api/aoApi', () => ({
 
 import Annotateur, { TAILLE } from './Annotateur'
 import { lettreDe, deplacer, redimensionner, RAYON_MIN, RAYON_MAX, PAS_DEPLACEMENT } from './RepereMarker'
-import SeriesPage from './SeriesPage'
+import SeriesPage, { CANAUX } from './SeriesPage'
 
 const IMAGE = 'data:image/png;base64,AAAA'
 
@@ -184,19 +186,40 @@ describe('Annotateur — glisser à la souris', () => {
   })
 })
 
-/* ── SeriesPage : les trois séries d'un cas réel se saisissent et se relisent ─ */
+/* ── SeriesPage : la forme est celle de `SerieQuestionsSerializer` ────────────
+   RÉPARATION 03/08/2026. Les fixtures d'origine inventaient `date`, `objet`,
+   `questions_count`, `reponses_count`, `impact_constate_modules` et
+   `echanges` : le serveur n'a JAMAIS produit un seul de ces champs, et
+   l'écran appelait `/ao/series-qr/`, une route inexistante. Le test était
+   vert parce qu'il se mockait lui-même.
+   Ci-dessous : la réponse RÉELLE (`numero`, `date_envoi`, `canal_display`,
+   `destinataire`, `questions` imbriquées, `impact_total_modules {min,max}`),
+   plus une GARDE qui relit `serializers.py` et `models.py`. */
 
 const SERIES = [
   {
-    id: 1, date: '2026-07-20', objet: 'Relevé bâtiment C', questions_count: 4, reponses_count: 4,
-    impact_constate_modules: 14,
-    echanges: [
-      { id: 11, date: '2026-07-20', sens: 'envoye', resume: 'Envoi des 4 questions annotées.' },
-      { id: 12, date: '2026-07-22', sens: 'recu', resume: 'Réponses reçues, muret est écarté.' },
+    id: 1, appel_offre: 7, numero: 1, date_envoi: '2026-07-20', canal: 'email',
+    canal_display: 'Courriel', destinataire: 'Maîtrise d’œuvre',
+    impact_total_modules: { min: 10, max: 14 },
+    questions: [
+      {
+        id: 11, serie: 1, repere: 'A', texte: 'Les 4 souches sont-elles réelles ?',
+        impact_min_modules: 6, impact_max_modules: 8, a_un_impact_chiffre: true,
+        reponse: 'Souches inexistantes — à écarter.', statut: 'tranchee',
+        statut_display: 'Tranchée',
+      },
+      {
+        id: 12, serie: 1, repere: 'B', texte: 'L’allée centrale est-elle imposée ?',
+        impact_min_modules: 4, impact_max_modules: 6, a_un_impact_chiffre: true,
+        reponse: '', statut: 'posee', statut_display: 'Posée',
+      },
     ],
   },
-  { id: 2, date: '2026-07-24', objet: 'Aile L — arc', questions_count: 3, reponses_count: 1, impact_constate_modules: -2, echanges: [] },
-  { id: 3, date: '2026-07-27', objet: 'Résidence — implantation', questions_count: 3, reponses_count: 0, impact_constate_modules: null, echanges: [] },
+  {
+    id: 2, appel_offre: 7, numero: 2, date_envoi: null, canal: 'whatsapp',
+    canal_display: 'WhatsApp', destinataire: 'Conducteur de travaux',
+    impact_total_modules: { min: 0, max: 0 }, questions: [],
+  },
 ]
 
 beforeEach(() => {
@@ -205,35 +228,77 @@ beforeEach(() => {
   mocks.create.mockResolvedValue({ data: {} })
 })
 
+describe('GARDE de contrat — les fixtures de séries ne peuvent pas inventer de champ', () => {
+  it('chaque clé mockée est déclarée par le sérialiseur serveur', () => {
+    const serie = champsServeur('SerieQuestionsSerializer')
+    const question = champsServeur('QuestionAOSerializer')
+    for (const cle of Object.keys(SERIES[0])) {
+      expect(serie.has(cle), `SerieQuestionsSerializer ne produit pas « ${cle} »`).toBe(true)
+    }
+    for (const cle of Object.keys(SERIES[0].questions[0])) {
+      expect(question.has(cle), `QuestionAOSerializer ne produit pas « ${cle} »`).toBe(true)
+    }
+    // Les six champs du bug : le serveur ne les a jamais eus.
+    for (const invente of ['date', 'objet', 'questions_count', 'reponses_count',
+      'impact_constate_modules', 'echanges']) {
+      expect(serie.has(invente)).toBe(false)
+    }
+  })
+
+  it('les canaux proposés à l’écran sont EXACTEMENT ceux du modèle', () => {
+    const models = readFileSync(fichierAo('models.py'), 'utf8')
+    const debut = models.indexOf('class SerieQuestions(')
+    const bloc = models.slice(debut, models.indexOf('class Meta:', debut))
+    const duModele = [...bloc.matchAll(/=\s*'([a-z_]+)',\s*'[^']*'/g)].map((m) => m[1])
+    expect(CANAUX.map((c) => c.value)).toEqual(duModele)
+  })
+})
+
 describe('SeriesPage — séries datées', () => {
-  it('relit les trois séries du cas réel avec leur impact CONSTATÉ', async () => {
+  it('filtre sur `appel_offre` (le ViewSet ignore « affaire ») et relit la forme serveur', async () => {
     render(<SeriesPage affaireId={7} />)
-    expect(await screen.findByText('Relevé bâtiment C')).toBeInTheDocument()
-    expect(screen.getByText('Aile L — arc')).toBeInTheDocument()
-    expect(screen.getByText('Résidence — implantation')).toBeInTheDocument()
-    expect(screen.getByText('+14 module(s)')).toBeInTheDocument()
-    expect(screen.getByText('-2 module(s)')).toBeInTheDocument()
-    // Impact non encore constaté : jamais un « 0 » qui se lirait comme « sans effet ».
-    expect(screen.getByText('en attente')).toBeInTheDocument()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ appel_offre: 7 }))
+    expect(await screen.findByText('Série 1')).toBeInTheDocument()
+    expect(screen.getByText('Maîtrise d’œuvre')).toBeInTheDocument()
+    expect(screen.getByText('WhatsApp')).toBeInTheDocument()
+    // Fourchette PRÉVISIONNELLE du serveur — jamais un « constaté » inventé.
+    expect(screen.getByText('+10 à +14 module(s)')).toBeInTheDocument()
+    // Série sans question : on le dit, on n'affiche pas un « 0 » qui se
+    // lirait comme « sans effet ».
+    expect(screen.getByText('aucune question')).toBeInTheDocument()
+    expect(screen.getByText('non envoyée')).toBeInTheDocument()
   })
 
-  it('déplie la timeline des échanges d’une série', async () => {
+  it('les compteurs sont la LECTURE de la liste imbriquée (2 questions, 1 répondue)', async () => {
+    render(<SeriesPage affaireId={7} />)
+    await screen.findByText('Série 1')
+    const ligne = screen.getByText('Série 1').closest('tr')
+    const cellules = [...ligne.querySelectorAll('td')].map((c) => c.textContent)
+    expect(cellules).toContain('2') // questions
+    expect(cellules).toContain('1') // réponses non vides
+  })
+
+  it('déplie les QUESTIONS de la série (aucune timeline d’échanges n’existe côté serveur)', async () => {
     const user = userEvent.setup()
     render(<SeriesPage affaireId={7} />)
-    await screen.findByText('Relevé bâtiment C')
+    await screen.findByText('Série 1')
     await user.click(screen.getAllByRole('button', { name: 'Voir' })[0])
-    expect(await screen.findByText('Envoi des 4 questions annotées.')).toBeInTheDocument()
-    expect(screen.getByText('Réponses reçues, muret est écarté.')).toBeInTheDocument()
+    expect(await screen.findByText('Les 4 souches sont-elles réelles ?')).toBeInTheDocument()
+    expect(screen.getByText('Réponse : Souches inexistantes — à écarter.')).toBeInTheDocument()
+    expect(screen.getByText('Sans réponse à ce jour.')).toBeInTheDocument()
   })
 
-  it('crée une série via l’API puis recharge', async () => {
+  it('crée une série avec les champs RÉELS — jamais un numéro proposé par l’écran', async () => {
     const user = userEvent.setup()
     render(<SeriesPage affaireId={7} />)
-    await screen.findByText('Relevé bâtiment C')
+    await screen.findByText('Série 1')
     await user.click(screen.getByRole('button', { name: /Nouvelle série/ }))
-    await user.type(await screen.findByLabelText('Objet de la série'), 'Toiture arc')
+    await user.type(await screen.findByLabelText('Destinataire de la série'), 'Architecte')
     await user.click(screen.getByRole('button', { name: 'Créer la série' }))
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ affaire: 7, objet: 'Toiture arc' }))
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({
+      appel_offre: 7, canal: 'email', destinataire: 'Architecte',
+    }))
+    expect(mocks.create.mock.calls[0][0]).not.toHaveProperty('numero')
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))
   })
 
