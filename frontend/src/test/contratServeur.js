@@ -51,3 +51,23 @@ export function ressourcesRoutees() {
     [...source.matchAll(/router\.register\(\s*r'([^']+)'/g)].map((m) => m[1]),
   )
 }
+
+/**
+ * Le PREMIER SEGMENT de tout ce que le module AO sert sous `/api/django/ao/` :
+ * ressources du routeur DRF **et** `path()` écrits à la main (`contrat/`,
+ * `tableau-marches/`, la famille `calepinage/…`). C'est la référence contre
+ * laquelle un chemin appelé par `aoApi.js` est déclaré réel ou inventé.
+ */
+export function prefixesRoutesAo() {
+  const source = readFileSync(fichierAo('urls.py'), 'utf8')
+    + readFileSync(fichierAo('calepinage_urls.py'), 'utf8')
+  const prefixes = new Set()
+  for (const m of source.matchAll(/router\.register\(\s*r'([^']+)'/g)) {
+    prefixes.add(m[1].split('/')[0])
+  }
+  for (const m of source.matchAll(/\bpath\(\s*'([^']*)'/g)) {
+    const premier = m[1].split('/')[0]
+    if (premier) prefixes.add(premier)
+  }
+  return prefixes
+}

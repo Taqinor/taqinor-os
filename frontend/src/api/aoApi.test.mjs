@@ -73,7 +73,7 @@ test('AOF89 — `zones` n’est PAS publiée : aucun modèle ni route ne persist
   assert.doesNotMatch(sansCommentaires(src), /'\/ao\/zones\//)
 })
 
-test('les actions non-CRUD nommées (calculer/suggestions/sensibilités/décomposition/allée-gratuite/générer-pièce/statut-de-job/zip/contrôles-avant-dépôt/bascule) sont toutes déclarées', () => {
+test('les actions non-CRUD nommées par AOF11 sont toutes déclarées', () => {
   const body = aoApiBody()
   const actions = [
     'calculer:', 'suggestions:', 'sensibilites:', 'decomposition:',
@@ -82,6 +82,47 @@ test('les actions non-CRUD nommées (calculer/suggestions/sensibilités/décompo
   ]
   for (const action of actions) {
     assert.ok(body.includes(action), `action manquante : ${action}`)
+  }
+})
+
+test('AOF61/AOF62 — le calepinage expose les VRAIES routes (calcul SANS ÉTAT, actions sur la VARIANTE)', () => {
+  const body = aoApiBody()
+  assert.match(body, /calculer:\s*\(corps\)\s*=>\s*api\.post\('\/ao\/calepinage\/calculer\/', corps\)/)
+  assert.match(body, /lancer:\s*\(corps\)\s*=>\s*api\.post\('\/ao\/calepinage\/lancer\/', corps\)/)
+  assert.match(body, /resultat:\s*\(jobId\)\s*=>\s*api\.get\(`\/ao\/calepinage\/resultat\/\$\{jobId\}\/`\)/)
+  for (const action of ['retenir', 'sensibilites', 'marches', 'comparer']) {
+    assert.ok(body.includes(`/ao/calepinage/variantes/`), 'actions de variante absentes')
+    assert.ok(body.includes(`${action}:`), `action de variante manquante : ${action}`)
+  }
+})
+
+test('un endpoint NON CONSTRUIT échoue avec son MOTIF, sans émettre de requête', async () => {
+  // Le contraire du bug d'origine : plus jamais un 404 anonyme sur une URL
+  // devinée. Le rejet est au format d'erreur axios, donc les écrans affichent
+  // la raison exacte sans être modifiés.
+  const { endpointNonConstruit } = await import('./endpointNonConstruit.js')
+  const appel = endpointNonConstruit('/ao/equipements/', 'ni ViewSet ni route')
+  await assert.rejects(appel(), (erreur) => {
+    assert.equal(erreur.message,
+      'Endpoint non construit — /ao/equipements/ : ni ViewSet ni route')
+    assert.equal(erreur.response.status, 501)
+    assert.equal(erreur.response.data.detail, erreur.message)
+    return true
+  })
+})
+
+test('les surfaces sans endpoint utilisent le rejet NOMMÉ, jamais un chemin deviné', () => {
+  const body = aoApiBody()
+  // `calepinages` (atelier non recâblé) et `equipements` (modèle sans route)
+  // ne doivent produire AUCUN `api.get/post/patch` : chacun de leurs membres
+  // passe par `nonConstruit`.
+  for (const bloc of ['calepinages', 'equipements']) {
+    const debut = body.indexOf(`  ${bloc}: {`)
+    assert.ok(debut > -1, `bloc introuvable : ${bloc}`)
+    const corps = body.slice(debut, body.indexOf('\n  },', debut))
+    assert.doesNotMatch(corps, /api\.(get|post|patch|delete)\(/,
+      `${bloc} émet encore une requête vers une route inexistante`)
+    assert.match(corps, /nonConstruit\(/)
   }
 })
 
@@ -114,6 +155,63 @@ test('AOF173 — la bibliothèque est une FAÇADE sur 4 ressources routées, plu
   }
   const body = aoApiBody()
   assert.match(body, /dossiersImpactes:\s*\(id\)\s*=>\s*api\.get\(`\/ao\/sections-memoire\/\$\{id\}\/dossiers-impactes\/`\)/)
+})
+
+/* ============================================================================
+   LA GARDE PRINCIPALE — un chemin de ce fichier est RELU dans le routeur.
+   ----------------------------------------------------------------------------
+   C'est la garde qui manquait le 03/08/2026 : neuf chemins étaient appelés
+   sans qu'aucune route ne les serve, et rien ne le disait. Elle mord dans les
+   DEUX SENS : un chemin nouveau doit exister côté serveur, et un endpoint
+   listé comme manquant doit encore l'être (sinon la dette est réglée et la
+   liste doit maigrir).
+   ========================================================================== */
+
+// Chemins CITÉS par `aoApi.js` alors qu'AUCUNE route ne les sert. Ils ne sont
+// jamais appelés (ils passent par `nonConstruit`) : ils sont ici pour que la
+// dette soit COMPTÉE, pas pour être tolérée.
+const MANQUANTS_CONNUS = {
+  calepinages: "aucun modèle Calepinage : l'atelier attend un recâblage sur "
+    + 'le calcul sans état (/ao/calepinage/…) ou un modèle à construire',
+  equipements: 'EquipementAO existe en modèle, sans sérialiseur ni ViewSet ni '
+    + 'route, et services.basculer_equipement (AOF141) n’est pas écrit',
+}
+
+function cheminsUtilises() {
+  const code = sansCommentaires(src)
+  const utilises = new Set()
+  for (const m of code.matchAll(/crud\('([^']+)'\)/g)) utilises.add(m[1].split('/')[0])
+  for (const m of code.matchAll(/\/ao\/([^/`'$]+)\//g)) utilises.add(m[1])
+  return utilises
+}
+
+test('GARDE — chaque chemin appelé par aoApi existe dans le routeur serveur', async () => {
+  const { prefixesRoutesAo } = await import('../test/contratServeur.js')
+  const routes = prefixesRoutesAo()
+  const inconnus = [...cheminsUtilises()].filter(
+    (prefixe) => !routes.has(prefixe) && !(prefixe in MANQUANTS_CONNUS))
+  assert.deepEqual(inconnus, [],
+    `chemins sans route serveur (apps/ao/urls.py) : ${inconnus.join(', ')}`)
+})
+
+test('GARDE — un endpoint listé comme MANQUANT doit encore l’être', async () => {
+  const { prefixesRoutesAo } = await import('../test/contratServeur.js')
+  const routes = prefixesRoutesAo()
+  for (const [prefixe, raison] of Object.entries(MANQUANTS_CONNUS)) {
+    assert.ok(!routes.has(prefixe),
+      `/ao/${prefixe}/ est désormais routé : câbler l'écran et retirer cette `
+      + `entrée (raison enregistrée : ${raison})`)
+  }
+})
+
+test('GARDE — `aoRentabiliteApi` cible un chemin qui n’existe pas non plus (AOF161)', () => {
+  // Hors des neuf chemins de l'inventaire, mais du même défaut : le routeur
+  // publie `economie`/`lignes-cout-revient`/`cibles-financieres`, jamais
+  // `/ao/<id>/rentabilite/`. Aucun écran ne l'importe aujourd'hui ; le jour
+  // où l'un le fera, il faudra trancher la cible (l'économie est indexée par
+  // `economie`, pas par l'id d'affaire) — ce test est là pour que ce soit un
+  // choix, pas une découverte en production.
+  assert.match(src, /\/ao\/\$\{affaireId\}\/rentabilite\//)
 })
 
 test('ISOLEMENT — le corps de `aoApi` ne mentionne JAMAIS "rentabilite" (aucun chemin réseau mêlé)', () => {

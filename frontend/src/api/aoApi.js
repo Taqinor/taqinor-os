@@ -1,5 +1,6 @@
 import api from './axios'
 import { makeResourceFactory } from './resource'
+import { endpointNonConstruit } from './endpointNonConstruit'
 
 /* ============================================================================
    AOF11 — Client API du module Appels d'offres (`apps/ao`).
@@ -57,6 +58,11 @@ const bibliothequeFacade = {
   update: (type, id, data) => ressourceBibliotheque(type).update(id, data),
 }
 
+/* ── Endpoints que le backend N'A PAS construits ───────────────────────────
+   Ne JAMAIS remplacer ces appels par un chemin deviné : une URL inventée
+   produit un 404 anonyme (voir `api/endpointNonConstruit.js`). */
+const nonConstruit = endpointNonConstruit
+
 const aoApi = {
   // ── Affaire (AppelOffre — ViewSet legacy ODX11 `appels-offres`) ──
   affaires: {
@@ -86,17 +92,62 @@ const aoApi = {
   // Publier ici un `crud('zones')` ferait croire à un stockage qui n'existe
   // pas ; le jour où le modèle est créé, la ressource revient ici.
 
-  // ── Calepinage / variantes (moteur `core/calepinage/`, partagé villas) ──
+  /* ── Calepinage (moteur `core/calepinage/`) ─────────────────────────────
+     LES VRAIES ROUTES, telles que `apps/ao/calepinage_urls.py` les publie.
+     Le calepinage n'est PAS une ressource : il n'existe aucun modèle
+     `Calepinage`, donc aucun `/ao/calepinages/<id>/`. Le calcul est SANS
+     ÉTAT (on lui donne une toiture + des paramètres, ou un document
+     d'entrée), et ce qui est PERSISTÉ est une `VarianteCalepinage`. */
+  calepinage: {
+    // Calcul synchrone borné. Corps : `{toiture, params}` ou `{entree}`.
+    // 202 = le travail dépasse le budget synchrone → passer par `lancer`.
+    calculer: (corps) => api.post('/ao/calepinage/calculer/', corps),
+    // Calcul en tâche de fond (`core.jobs`) → renvoie l'id du job.
+    lancer: (corps) => api.post('/ao/calepinage/lancer/', corps),
+    // Suivi + résultat du job de fond.
+    resultat: (jobId) => api.get(`/ao/calepinage/resultat/${jobId}/`),
+    // Actions AOF62, portées par la VARIANTE (jamais par un « calepinage »).
+    variantes: {
+      retenir: (id) => api.post(`/ao/calepinage/variantes/${id}/retenir/`),
+      sensibilites: (id) => api.post(`/ao/calepinage/variantes/${id}/sensibilites/`),
+      marches: (id) => api.get(`/ao/calepinage/variantes/${id}/marches/`),
+      comparer: (ids) => api.get('/ao/calepinage/variantes/comparer/',
+        { params: { ids: [].concat(ids).join(',') } }),
+    },
+  },
+
+  /* `calepinages` (au pluriel) — ATELIER NON RECÂBLÉ, 03/08/2026.
+     L'atelier (`useCalepinage`, `HistoriqueVersions`, `SensibilitesPanel`)
+     est écrit contre un document `calepinage` PERSISTÉ, avec un identifiant,
+     un historique de versions et un `patch_entree` rejoué : rien de tout cela
+     n'existe côté serveur. Ce n'est donc PAS un renommage — c'est soit un
+     modèle à construire, soit un recâblage de l'atelier sur le calcul sans
+     état ci-dessus (`toitureId` au lieu de `calepinageId`). Les deux
+     dépassent une correction de chemin, et deviner l'un des deux ferait
+     exactement le mal qu'on répare.
+     En attendant, chaque appel échoue AVEC SON MOTIF, sans requête réseau. */
   calepinages: {
-    ...crud('calepinages'),
-    // AOF11 — actions non-CRUD nommées de l'atelier de calepinage. `patch_entree`
-    // est TOUJOURS REJOUÉ côté serveur (jamais estimé côté front, en-tête du
-    // groupe « CHOIX MAXIMUM + RECOMMANDATIONS »).
-    calculer: (id, params) => api.post(`/ao/calepinages/${id}/calculer/`, params),
-    suggestions: (id) => api.get(`/ao/calepinages/${id}/suggestions/`),
-    sensibilites: (id, params) => api.get(`/ao/calepinages/${id}/sensibilites/`, { params }),
-    alleeGratuite: (id, params) => api.get(`/ao/calepinages/${id}/allee-gratuite/`, { params }),
-    statutJob: (id, jobId) => api.get(`/ao/calepinages/${id}/statut-de-job/${jobId}/`),
+    get: nonConstruit('/ao/calepinages/<id>/',
+      "aucun modèle Calepinage n'existe ; ce qui est persisté est une "
+      + 'VarianteCalepinage (/ao/variantes-calepinage/)'),
+    list: nonConstruit('/ao/calepinages/?versions_de=<id>',
+      "l'historique de versions d'un calepinage n'est pas modélisé"),
+    update: nonConstruit('/ao/calepinages/<id>/',
+      "la restauration d'une version n'existe pas côté serveur"),
+    calculer: nonConstruit('/ao/calepinages/<id>/calculer/',
+      'le calcul est SANS ÉTAT : utiliser aoApi.calepinage.calculer('
+      + '{toiture, params})'),
+    suggestions: nonConstruit('/ao/calepinages/<id>/suggestions/',
+      'aucune route ne publie les recommandations du moteur'),
+    sensibilites: nonConstruit('/ao/calepinages/<id>/sensibilites/',
+      'les sensibilités se calculent sur une VARIANTE : utiliser '
+      + 'aoApi.calepinage.variantes.sensibilites(varianteId) — la réponse '
+      + 'porte reference_modules/plancher_modules/engagement_modules/'
+      + 'verdict/sensibilites, pas lignes/plancher'),
+    alleeGratuite: nonConstruit('/ao/calepinages/<id>/allee-gratuite/',
+      "l'allée gratuite n'est publiée par aucune route"),
+    statutJob: nonConstruit('/ao/calepinages/<id>/statut-de-job/<jobId>/',
+      'le suivi de job est aoApi.calepinage.resultat(jobId)'),
   },
   // RÉPARATION 03/08/2026 — le CRUD des variantes est routé sous
   // `variantes-calepinage` (AOF28) ; `variantes` n'a jamais existé. Et
@@ -118,12 +169,32 @@ const aoApi = {
   // appelait `series-qr` (404), et filtrait sur `affaire` alors que le
   // ViewSet ne connaît que `appel_offre`.
   seriesQR: crud('series-questions'),
+  /* `equipements` — ENDPOINT À CONSTRUIRE (03/08/2026), pas un renommage.
+     Le modèle `EquipementAO` existe (AOF118 : snapshot figé, string-FK vers
+     `stock.Produit`) et la mécanique de bascule est écrite dans
+     `apps/ao/fabrique/bascule_rapport.py` + `fabrique/annexes.py`. Mais il
+     n'y a NI sérialiseur, NI ViewSet, NI route, NI le `services.
+     basculer_equipement` que le module de rapport cite lui-même comme
+     manquant. Aucune ressource du routeur ne sert les équipements sous un
+     autre nom — l'écran ne peut donc pas être « recâblé », il attend un
+     endpoint. Le construire à la va-vite serait pire : la bascule doit être
+     ATOMIQUE (référence + grandeurs dérivées + fiche annexée ajoutée +
+     ancienne retirée, en une transaction), c'est une tâche entière. */
   equipements: {
-    ...crud('equipements'),
-    // Bascule ATOMIQUE d'équipement (référence + prix + grandeurs dérivées
-    // recalculées + fiche annexée AJOUTÉE + ancienne RETIRÉE — en-tête du
-    // groupe « QUALITÉ DOCUMENTAIRE NIVEAU FRDISI »).
-    bascule: (id, data) => api.post(`/ao/equipements/${id}/bascule/`, data),
+    list: nonConstruit('/ao/equipements/',
+      "le modèle EquipementAO existe mais n'a ni sérialiseur ni ViewSet ni "
+      + 'route'),
+    get: nonConstruit('/ao/equipements/<id>/', "aucune route n'expose "
+      + 'EquipementAO'),
+    create: nonConstruit('/ao/equipements/', "aucune route n'expose "
+      + 'EquipementAO'),
+    update: nonConstruit('/ao/equipements/<id>/', "aucune route n'expose "
+      + 'EquipementAO'),
+    remove: nonConstruit('/ao/equipements/<id>/', "aucune route n'expose "
+      + 'EquipementAO'),
+    bascule: nonConstruit('/ao/equipements/<id>/bascule/',
+      'services.basculer_equipement (AOF141) n’est pas écrit — seul le '
+      + 'RAPPORT de bascule (fabrique/bascule_rapport.py) existe'),
   },
   exigencesCps: crud('exigences-cps'),
 
