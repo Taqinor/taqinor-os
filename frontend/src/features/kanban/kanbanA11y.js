@@ -6,9 +6,10 @@
 // humain (référence, nom du lead, libellé d'étape…), de sorte que les
 // annonces restent en français et parlantes quel que soit le module.
 //
-// Complète — ne remplace pas — l'alternative <select> déjà offerte sous chaque
-// carte (StageMover/StatutMover) : au clavier seul on peut soit changer
-// l'étape via le sélecteur, soit saisir/déplacer/déposer une carte au clavier
+// Le clavier a DEUX chemins : saisir/déplacer/déposer une carte ici même
+// (KeyboardSensor), ou changer l'étape depuis la fenêtre du lead (pilule).
+// (Le <select> par carte — StageMover — a été SUPPRIMÉ sur ordre fondateur
+// 2026-08-02 ; ces instructions sont désormais le seul mode d'emploi.)
 // avec ces annonces.
 
 // Instructions lues au focus d'un élément déplaçable (fr).

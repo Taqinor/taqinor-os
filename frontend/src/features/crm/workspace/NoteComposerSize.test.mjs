@@ -41,7 +41,13 @@ test("les boutons du composer ne grandissent PAS avec le champ", () => {
   const regle = CSS.slice(debut, CSS.indexOf('}', debut))
   // Sans ça, l'étirement flex par défaut donnerait un bouton « Noter » aussi
   // haut que la zone de saisie.
-  assert.match(regle, /align-items:\s*flex-end/)
+  // ORDRE FONDATEUR 2026-08-02 — « toute la ligne » : la boîte est une
+  // COLONNE (champ pleine largeur seul sur sa rangée), les actions descendent
+  // sur une rangée dédiée alignée à droite. L'ancien `align-items: flex-end`
+  // (rangée champ+boutons) est le contrat inverse : il ne doit PAS revenir.
+  assert.match(regle, /flex-direction:\s*column/)
+  assert.match(regle, /align-items:\s*stretch/)
+  assert.doesNotMatch(regle, /align-items:\s*flex-end/)
 })
 
 test("l'autosize mesure le contenu, jamais sa propre hauteur", () => {
@@ -72,4 +78,8 @@ test("le bouton « 📝 Note » du thumbbar focalise toujours le champ (classe d
   assert.match(RAIL, /\.chatter-note-box textarea\.chatter-note-input/)
   // L'ancien sélecteur visait une <input> : il ne matcherait plus rien.
   assert.doesNotMatch(RAIL, /\.chatter-note-box input\.form-control/)
+  // Pleine largeur réelle + rangée d'actions dédiée (contrat CSS, ordre
+  // fondateur 2026-08-02 « toute la ligne »).
+  assert.match(CSS, /\.chatter-note-box \.form-control \{ width: 100%; \}/)
+  assert.match(CSS, /\.chatter-note-actions \{/)
 })

@@ -47,13 +47,17 @@ test('EZ14 : les adoptions sont REELLEMENT cablees dans les deux vues', () => {
   for (const champ of ['stage', 'priorite', 'tags', 'relance_date']) {
     assert.match(LISTE, new RegExp(`^\\s*${champ}: \\{ kind: 'lead_`, 'm'), `champ ${champ} absent de CHAMPS_UNDO`)
   }
-  assert.match(LISTE, /onInlineSave=\{inlineSaveAvecUndo\}/)
+  // (l'adoption « étape au clavier » est morte avec le StageMover, ordre
+  // fondateur 2026-08-02 — l'étape ne se change plus que par drag/fenêtre.)
+  assert.doesNotMatch(KANBAN, /inlineSaveAvecUndo/)
   // Kanban : reassignation + etape.
   assert.match(KANBAN, /kind: 'lead_owner'/)
-  assert.match(KANBAN, /kind: 'lead_stage'/)
+  assert.doesNotMatch(KANBAN, /kind: 'lead_stage'/)
   assert.match(KANBAN, /onReassign=\{reassignAvecUndo\}/)
   // Round 3 (balayage) : au doigt le StageMover n'est plus monté — l'undo reste câblé souris+clavier.
-  assert.match(KANBAN, /onInlineSave=\{pointerCoarse \? undefined : inlineSaveAvecUndo\}/)
+  // (l'adoption « étape au clavier » est morte avec le StageMover, ordre
+  // fondateur 2026-08-02 — l'étape ne se change plus que par drag/fenêtre.)
+  assert.doesNotMatch(KANBAN, /inlineSaveAvecUndo/)
 })
 
 test('EZ14 : ZERO undo sur l\'argent — le grep du registre', () => {
