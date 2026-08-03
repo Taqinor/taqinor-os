@@ -252,6 +252,37 @@ class AppelOffreViewSet(AoBaseViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(appel_offre).data)
 
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """AOF130 — duplique l'affaire en gabarit ; AUCUN résultat n'est hérité.
+
+        Écriture ⇒ ``ao_gerer`` et scoping société : les deux viennent
+        d'``AoBaseViewSet`` (``ScopedPermission`` route POST vers
+        ``write_permission``). La société n'est JAMAIS lue du corps — elle est
+        celle de l'affaire source, elle-même déjà scopée par ``get_object()``.
+
+        La réponse porte la copie sérialisée (l'écran navigue vers son ``id``)
+        ET le plan de duplication : ce qui a été écarté est NOMMÉ, jamais tu.
+        """
+        from .fabrique.duplication import OptionDeCopieInconnue
+
+        appel_offre = self.get_object()
+        try:
+            copie, plan = services.dupliquer_appel_offre(
+                appel_offre, user=request.user,
+                objet=request.data.get('objet') or '',
+                copier=request.data.get('copier'))
+        except OptionDeCopieInconnue as exc:
+            return Response({'copier': [str(exc)]},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as exc:
+            return Response(getattr(exc, 'message_dict', None)
+                            or {'duplication': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        donnees = self.get_serializer(copie).data
+        donnees['duplication'] = plan.vers_dict()
+        return Response(donnees, status=status.HTTP_201_CREATED)
+
     def perform_create(self, serializer):
         """AOF5 — référence auto ``AO-YYYYMM-0001`` quand elle n'est pas fournie.
 

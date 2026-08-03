@@ -198,16 +198,49 @@ const aoApi = {
   },
   exigencesCps: crud('exigences-cps'),
 
-  // ── Dossier de soumission (pièces — ViewSet legacy ODX11 `pieces-soumission`) ──
+  // ── Dossier de DÉPÔT (AOF115 — `dossiers-ao`, kit `core/documents.py`) ──
+  //
+  // RÉPARATION 03/08/2026 — `dossiers` visait `dossiers-soumission`, qui est
+  // une AUTRE ressource : `DossierSoumission` (FG225) est la checklist
+  // administrative HISTORIQUE, sans statut, sans empreinte, et ses
+  // `PieceSoumission` n'ont PAS de `visibilite`. Or les écrans du dossier
+  // lisent `piece.visibilite` (DossierPage.utils `piecesVisibles`), l'état de
+  // contrôle et les pièces hors contrôle : tout cela n'existe que sur
+  // `DossierAO`/`PieceDossierAO`. Les deux tables ont des identifiants
+  // DISTINCTS — `get(7)` sur l'une et une action sur l'autre auraient désigné
+  // deux dossiers différents, ce qui est pire qu'un 404 : silencieux.
   dossiers: {
-    ...crud('dossiers-soumission'),
-    genererPiece: (id, typePiece) =>
-      api.post(`/ao/dossiers-soumission/${id}/generer-piece/`, { type: typePiece }),
+    ...crud('dossiers-ao'),
     controlesAvantDepot: (id) =>
-      api.get(`/ao/dossiers-soumission/${id}/controles-avant-depot/`),
-    // Génération asynchrone (job Celery) du pack + ZIP de dépôt.
-    zip: (id) => api.post(`/ao/dossiers-soumission/${id}/zip/`),
-    statutJob: (id, jobId) => api.get(`/ao/dossiers-soumission/${id}/statut-de-job/${jobId}/`),
+      api.get(`/ao/dossiers-ao/${id}/controles-avant-depot/`),
+    // ENDPOINT À CONSTRUIRE — pas un renommage. Vérifié le 03/08/2026 : AUCUN
+    // producteur de pièce n'existe côté serveur. Les rendus
+    // (`fabrique/rendus/*`) prennent tous un CONTEXTE déjà assemblé, et le
+    // monteur qui assemblerait ce contexte depuis un `DossierAO`
+    // (`services.producteurs_de_pack`) n'est pas écrit — `apps/ao/tasks.py` le
+    // dit lui-même dans sa docstring. Deviner une URL ici ne ferait
+    // qu'échanger un 404 anonyme contre un autre.
+    genererPiece: nonConstruit('/ao/dossiers-ao/<id>/generer-piece/',
+      'aucun producteur de pièce : les rendus attendent un contexte que '
+      + 'personne n’assemble (services.producteurs_de_pack manque)'),
+    // ENDPOINT À CONSTRUIRE — et c'est le cas où ouvrir la porte serait PIRE
+    // que la laisser fermée. La fabrique sait ÉCRIRE le ZIP
+    // (`fabrique/pack_zip.ecrire_pack_zip`, testé, refus motivé si un contrôle
+    // est rouge) et `tasks.produire_pack` sait l'orchestrer de façon
+    // idempotente — mais RIEN ne leur fournit les pièces. Une @action `zip`
+    // rendrait donc un job qui se termine « terminé » avec zéro pièce, et
+    // `useGenerationJob` appellerait `onSucces` : « pack prêt » sur un pack
+    // vide. Un faux succès est pire qu'un 404 — il se dépose.
+    zip: nonConstruit('/ao/dossiers-ao/<id>/zip/',
+      'le ZIP et son job existent mais aucun monteur ne leur passe les '
+      + 'pièces (services.producteurs_de_pack manque)'),
+    // ENDPOINT À CONSTRUIRE, par conséquence directe de `zip` ci-dessus :
+    // aucun job de pack ne peut être lancé, donc il n'y en a aucun à suivre.
+    // Le patron de suivi est déjà écrit et servira tel quel le jour où le
+    // monteur existe : `ResultatCalepinageView` (job scopé société, introuvable
+    // — 404, jamais « interdit » — pour une autre société).
+    statutJob: nonConstruit('/ao/dossiers-ao/<id>/statut-de-job/<jobId>/',
+      'aucun job de pack ne peut être lancé tant que `zip` ne construit rien'),
   },
   pieces: crud('pieces-soumission'),
 
