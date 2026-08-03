@@ -71,7 +71,71 @@ if [ -n "$ORPHELINS" ]; then
   echo "Conteneurs renommes par un arret rate, on les retire : $ORPHELINS"
   echo "$ORPHELINS" | xargs -r docker rm -f || true
 fi
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
+# ── CONSTRUCTION SELECTIVE (03/08/2026) — la plus grosse economie du script ──
+# CONSTAT MESURE : en production, le code backend est MONTE par-dessus /app
+# (bind `/opt/taqinor-os/backend/django_core -> /app`, verifie sur le conteneur
+# en cours). La couche `COPY . /app/` des images Django/FastAPI est donc
+# TOTALEMENT IGNOREE a l'execution : reconstruire ces images a chaque
+# deploiement de code ne change strictement RIEN a ce qui tourne.
+# Elles ne doivent etre reconstruites que si leur Dockerfile ou leurs
+# dependances changent. Le FRONTEND, lui, compile ses fichiers DANS l'image
+# (aucun montage) : il se reconstruit des que son code bouge.
+#
+# Politique : on liste ce qui a change entre l'ancien commit et le nouveau, et
+# on ne reconstruit que les services concernes. EN CAS DE DOUTE -> tout
+# reconstruire (premier deploiement, commit precedent inconnu, comparaison
+# impossible) : un deploiement lent est benin, un deploiement qui livre une
+# image perimee ne l'est pas.
+CHANGES=$(git diff --name-only "$PREV_SHA" HEAD 2>/dev/null || echo "__INCONNU__")
+A_CONSTRUIRE=""
+if [ "$CHANGES" = "__INCONNU__" ] || [ -z "$PREV_SHA" ]; then
+  echo "Commit precedent inconnu -> reconstruction COMPLETE (choix prudent)."
+else
+  # ATTENTION `if ... then` et JAMAIS `grep -q … && VAR=…` : sous `set -e`, un
+  # `grep` qui ne trouve RIEN sort en 1, le `&&` propage ce 1 comme statut de la
+  # commande, et le script MEURT ICI. C'est exactement l'incident du 2026-07-09
+  # (`grep -c` renvoyant 1 quand il comptait zero occurrence) qui tuait le
+  # deploiement precisement quand tout allait bien. Ne pas reintroduire.
+  if echo "$CHANGES" | grep -qE '^backend/django_core/(Dockerfile|requirements.*\.txt)$'; then
+    A_CONSTRUIRE="$A_CONSTRUIRE django_core"
+  fi
+  if echo "$CHANGES" | grep -qE '^backend/fastapi_ia/(Dockerfile|requirements.*\.txt)$'; then
+    A_CONSTRUIRE="$A_CONSTRUIRE fastapi_ia"
+  fi
+  if echo "$CHANGES" | grep -qE '^(frontend/|apps/web/src/|package(-lock)?\.json)'; then
+    A_CONSTRUIRE="$A_CONSTRUIRE frontend"
+  fi
+  if echo "$CHANGES" | grep -qE '(nginx)'; then
+    A_CONSTRUIRE="$A_CONSTRUIRE nginx"
+  fi
+  # Le compose lui-meme a bouge : on ne parie pas, on reconstruit tout.
+  if echo "$CHANGES" | grep -qE '^docker-compose(\.prod)?\.yml$'; then
+    A_CONSTRUIRE="__TOUT__"
+  fi
+fi
+
+# FILET : si l'une des images attendues MANQUE (cache purge, disque nettoye,
+# premier deploiement sur une machine neuve), sauter la construction ferait
+# tenter un `pull` d'une image qui n'existe sur aucun registre -> echec. On
+# reconstruit tout dans ce cas, sans discuter.
+for IMG in erp-agentique-django_core erp-agentique-fastapi_ia erp-agentique-frontend erp-agentique-nginx; do
+  if ! docker image inspect "$IMG" >/dev/null 2>&1; then
+    echo "Image absente : $IMG -> reconstruction COMPLETE (filet)."
+    A_CONSTRUIRE="__TOUT__"
+  fi
+done
+
+if [ "$A_CONSTRUIRE" = "__TOUT__" ] || [ "$CHANGES" = "__INCONNU__" ] || [ -z "$PREV_SHA" ]; then
+  echo "Construction COMPLETE."
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+elif [ -n "$A_CONSTRUIRE" ]; then
+  echo "Construction CIBLEE :$A_CONSTRUIRE"
+  # shellcheck disable=SC2086
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml build $A_CONSTRUIRE
+else
+  echo "Aucune image a reconstruire (code seul, monte par bind) — on saute la construction."
+fi
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
 # GARDE DB (incident 2026-07-10) : un changement du CONTENU d'un fichier
 # bind-monte (ex. backend/db/postgresql.conf) ne change PAS le hash de config
 # compose -> le conteneur db n'est PAS recree et Postgres tourne avec

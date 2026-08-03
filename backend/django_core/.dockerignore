@@ -1,0 +1,41 @@
+# Contexte de build de l'image Django — 03/08/2026.
+#
+# MESURÉ SUR LE SERVEUR : ce contexte pesait 96 Mo, dont 199 dossiers
+# `__pycache__` écrits par les conteneurs dans le dossier monté, plus
+# `staticfiles/` (3,9 Mo). Tout cela partait au démon Docker et entrait dans
+# la couche `COPY . /app/` À CHAQUE construction — donc à chaque déploiement,
+# puisque cette couche est invalidée dès qu'un fichier source change.
+#
+# `staticfiles/` n'est PAS suivi par git et n'a rien à faire dans l'image :
+# `docker-compose.prod.yml` lance `collectstatic` AU DÉMARRAGE du conteneur.
+#
+# Rien d'exclu ici n'est nécessaire à l'exécution : en production le code est
+# de toute façon monté par-dessus /app (bind vérifié sur le conteneur).
+
+# Artefacts Python régénérés à l'exécution
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Généré au démarrage du conteneur, jamais versionné
+staticfiles/
+media/
+
+# Environnements et bases locales — jamais dans une image
+.venv/
+venv/
+*.sqlite3
+db.sqlite3
+
+# Journaux et fichiers temporaires
+*.log
+.coverage
+htmlcov/
+
+# Secrets : ne doivent JAMAIS entrer dans une couche d'image
+.env
+.env.*
+!.env.example

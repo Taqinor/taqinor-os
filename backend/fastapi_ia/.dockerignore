@@ -1,0 +1,28 @@
+# Contexte de build du service IA — 03/08/2026.
+#
+# Ce contexte est petit (788 Ko sur le serveur), mais les caches Python écrits
+# par le conteneur dans le dossier monté invalident la couche `COPY . /app/`
+# sans raison. Rien d'exclu ici n'est nécessaire à l'exécution : en production
+# le code est monté par-dessus /app.
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.venv/
+venv/
+
+*.log
+.coverage
+
+# Modèles téléchargés à l'exécution (cache HuggingFace) : jamais dans l'image
+.cache/
+models/
+
+# Secrets : ne doivent JAMAIS entrer dans une couche d'image
+.env
+.env.*
+!.env.example
