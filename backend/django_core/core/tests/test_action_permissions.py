@@ -37,7 +37,26 @@ UNGUARDED_ACTION_BASELINE = {
     # il ne suit pas l'héritage, et encore moins vers un AUTRE fichier
     # (``viewsets.py``) : d'où 19 en dette COARSE apparente, pas un trou de
     # garde. Même forme que qhse/assurances/gestion_projet ci-dessus.
-    "ao": 19,
+    # PACT16 — 19->22 : trois @action ajoutées en réparant les chemins morts du
+    # module, TOUTES dans ``apps/ao/views.py`` (le seul fichier que ce scanner
+    # lit pour cette app — vérifié en l'exécutant, pas supposé) :
+    #   * ``AppelOffreViewSet.dupliquer``            (POST -> écriture)
+    #   * ``EquipementAOViewSet.bascule``            (POST -> écriture)
+    #   * ``SectionMemoireViewSet.dossiers_impactes`` (GET  -> lecture)
+    # Les trois portent sur des viewsets héritant d'``AoBaseViewSet``, dont la
+    # ``get_permissions`` applique TOUJOURS ``ScopedPermission`` (lecture
+    # ``ao_voir``, écriture ``ao_gerer``) et CUMULE les permissions déclarées
+    # par action au lieu de les substituer (``core/permissions.
+    # declared_action_permissions``) — elles sont donc réellement gardées.
+    # Leur coller un ``permission_classes=[ScopedPermission]`` par action ferait
+    # taire le scanner SANS rien resserrer, puisque la classe l'applique déjà :
+    # le cran est monté honnêtement plutôt que contourné par un décorateur
+    # décoratif. Deux autres @action ajoutées par le même lot ne bougent PAS ce
+    # compteur car elles vivent hors du fichier scanné
+    # (``DossierAOViewSet.controles_avant_depot`` dans ``viewsets.py``,
+    # ``EconomieAOViewSet.telecharger`` dans ``views_directeur.py``).
+    # Un vrai fine-grain de tout ``ao`` reste un chantier à part (YRBAC3).
+    "ao": 22,
     # NTASS — les viewsets assurances héritent de ``_AssurancesBaseViewSet``
     # (WriteScopedPermissionMixin + CompanyScopedModelViewSet) : gardés au
     # niveau CLASSE (read/write assurances_voir/gerer, company-scopé, zéro fuite

@@ -126,11 +126,22 @@ test('les surfaces sans endpoint utilisent le rejet NOMMÉ, jamais un chemin dev
   }
 })
 
-test('affaires/pieces/dossiers pointent sur les ViewSets legacy ODX11 (appels-offres/pieces-soumission/dossiers-soumission)', () => {
+// PACT16 (2026-08-03) — `dossiers` NE pointe PLUS sur `dossiers-soumission`.
+// Les deux tables coexistent et ont des ESPACES D'IDENTIFIANTS DISTINCTS :
+// `dossiers-soumission` est la checklist administrative héritée (FG225), sans
+// statut de contrôle ni visibilité de pièce ; `dossiers-ao` (AOF115) porte les
+// données que l'écran affiche réellement. Viser la mauvaise table faisait donc
+// désigner DEUX dossiers différents avec le même numéro — plus dangereux qu'un
+// 404 parce que silencieux. L'épingle vise désormais la bonne table et
+// interdit explicitement le retour en arrière.
+test('affaires/pieces pointent sur les ViewSets legacy ODX11, dossiers sur dossiers-ao (PACT16)', () => {
   const body = aoApiBody()
   assert.match(body, /affaires:\s*\{[\s\S]*?\.\.\.crud\('appels-offres'\)/)
   assert.match(body, /pieces:\s*crud\('pieces-soumission'\)/)
-  assert.match(body, /\.\.\.crud\('dossiers-soumission'\)/)
+  assert.match(body, /\.\.\.crud\('dossiers-ao'\)/)
+  assert.doesNotMatch(body, /crud\('dossiers-soumission'\)/,
+    "régression PACT16 : `dossiers` vise la checklist héritée, dont les identifiants "
+    + 'désignent un AUTRE enregistrement que celui que l’écran affiche')
 })
 
 test('AOF170 — affaires.dupliquer() existe (action de ligne « dupliquer », AOF130)', () => {
