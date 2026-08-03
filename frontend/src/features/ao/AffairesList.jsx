@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Copy, Archive } from 'lucide-react'
+import { Copy, Archive, Plus } from 'lucide-react'
 import aoApi from '../../api/aoApi'
 import useResource from '../../hooks/useResource'
 import { unwrapList } from '../../api/resource'
-import { Badge, toast } from '../../ui'
+import { Badge, Button, toast } from '../../ui'
 import { ListShell, daysUntil, urgencyLevel, urgencyTone, urgencyLabel } from '../../ui/module'
 import { formatDate, formatMAD } from '../../lib/format'
 import { StatutAffaire } from './statusAo'
@@ -199,6 +199,15 @@ export default function AffairesList() {
     <ListShell
       title="Affaires"
       subtitle="Appels d'offres publics/privés — identifié → en préparation → déposé → gagné/perdu/abandonné."
+      // AOF — 194 tâches du groupe avaient été livrées SANS jamais construire
+      // l'écran de création (`AffaireForm.jsx`) : la liste n'avait AUCUN moyen
+      // d'ouvrir une affaire. `actions` (prop `ListShell`, passe-plat vers
+      // `PageHeader`) accepte un nœud — bouton réel, jamais une façade.
+      actions={(
+        <Button onClick={() => navigate('/ao/affaires/nouveau')}>
+          <Plus className="size-4" /> Nouvelle affaire
+        </Button>
+      )}
       columns={columns}
       rows={rows}
       loading={loading}
