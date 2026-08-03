@@ -48,6 +48,123 @@ def creer_appel_offre_avec_reference(company, save_fn):
         AppelOffre, PREFIXE_REFERENCE_AO, company, save_fn)
 
 
+# ── AOF130 — Duplication d'affaire (gabarit d'affaire réutilisable) ────────
+#
+# La POLITIQUE — « ce qu'une duplication reprend, ce qu'elle ne reprend
+# JAMAIS » — vit dans le module PUR ``fabrique/duplication.py``, déjà écrit et
+# couvert par ses tests. Ce service est la couche Django qui lui manquait : il
+# traduit l'affaire en mapping, lui demande le plan, VÉRIFIE qu'aucun résultat
+# n'a survécu (``controler_absence_de_resultats``), puis persiste — référence
+# via ``core.numbering`` (jamais ``count()+1``) et trace au chatter ``records``
+# (jamais une classe ``*Activity`` maison).
+
+#: Colonnes d'EN-TÊTE reprises : l'IDENTITÉ de l'affaire et la façon dont elle
+#: se passe. Tout le reste est écarté pour l'une de deux raisons, et il faut
+#: les distinguer :
+#:
+#: * c'est un RÉSULTAT de notre travail (``reference``, ``statut``,
+#:   ``montant_offre_ht/ttc``, ``engagement_modules``, ``lead_id``) — c'est
+#:   exactement ce que ``duplication.JAMAIS_COPIES`` interdit d'hériter ;
+#: * c'est propre à LA CONSULTATION SOURCE (``reference_acheteur``,
+#:   ``date_limite``, ``date_ouverture_plis``, ``montant_estime``,
+#:   ``caution_provisoire``) : ces valeurs sont imposées par le CPS d'un autre
+#:   marché. Une copie qui les héritait mentirait sur deux dossiers à la fois —
+#:   et la date de remise héritée est celle qui fait rater un dépôt.
+CHAMPS_COPIABLES_AO = (
+    'acheteur', 'type_marche', 'lot', 'maitre_ouvrage', 'soumissionnaire',
+    'marque_blanche', 'groupement', 'groupement_membres', 'site_adresse',
+    'site_gps_lat', 'site_gps_lng', 'mode_passation', 'reference_cps',
+    'validite_offre_jours', 'delai_execution_jours', 'nombre_exemplaires',
+)
+
+#: Colonnes d'``ExigenceCPS`` reprises (``exigences`` est explicitement listé
+#: dans ``duplication.COPIABLES``). Deux champs sont volontairement absents :
+#: ``piece_consultation`` (la pièce du DCE appartient à la consultation source
+#: — « page 33 du CPS » ne désignerait plus aucun document existant) et
+#: ``a_reverifier`` (un additif reçu sur l'AUTRE affaire ne dit rien de
+#: celle-ci).
+CHAMPS_COPIABLES_EXIGENCE = (
+    'code', 'libelle', 'type_exigence', 'valeur_num', 'valeur_max_num',
+    'unite', 'valeur_texte', 'source_piece', 'source_page', 'bloquant',
+    'commentaire',
+)
+
+
+def dupliquer_appel_offre(appel_offre, *, user=None, objet='', copier=None):
+    """AOF130 — duplique une affaire en GABARIT : structure oui, résultats non.
+
+    :param objet: objet du nouveau marché ; vide ⇒ celui de la source suffixé
+        « (copie) » par la fabrique — jamais une affaire anonyme.
+    :param copier: sous-ensemble de ``duplication.COPIABLES`` ; ``None`` ⇒ tout
+        le copiable. Une option inconnue lève ``OptionDeCopieInconnue``.
+    :returns: ``(copie, plan)`` — le plan NOMME ce qui a été écarté.
+    :raises ValidationError: si un résultat a survécu au plan. On échoue à la
+        création plutôt que de découvrir un calepinage hérité au dépôt.
+    """
+    from django.db import transaction
+
+    from .fabrique import duplication
+    from .models import ExigenceCPS
+
+    societe = appel_offre.company
+    source = {champ: getattr(appel_offre, champ)
+              for champ in CHAMPS_COPIABLES_AO}
+    source['objet'] = appel_offre.objet
+    source['exigences'] = [
+        {champ: getattr(exigence, champ)
+         for champ in CHAMPS_COPIABLES_EXIGENCE}
+        for exigence in appel_offre.exigences_cps.all()
+    ]
+    # Ce que la source PORTE de résultats est DÉCLARÉ, pas tu : le plan les
+    # liste alors comme écartés (``plan.ecarte``) au lieu de laisser croire
+    # qu'ils n'existaient pas.
+    source['reference'] = appel_offre.reference
+    source['statut'] = appel_offre.statut
+
+    nouvelle, plan = duplication.dupliquer_affaire(
+        source,
+        copier=duplication.COPIABLES if copier is None else copier,
+        objet=(objet or '').strip() or None)
+
+    fautes = duplication.controler_absence_de_resultats(nouvelle)
+    if fautes:
+        raise ValidationError({'duplication': [
+            'Un résultat a survécu à la duplication : %s.' % ', '.join(fautes)
+        ]})
+
+    champs = {champ: source[champ] for champ in CHAMPS_COPIABLES_AO}
+    champs['objet'] = nouvelle['objet']
+    champs['statut'] = nouvelle['statut']
+
+    with transaction.atomic():
+        copie = create_with_reference(
+            AppelOffre, PREFIXE_REFERENCE_AO, societe,
+            lambda reference: AppelOffre.objects.create(
+                company=societe, reference=reference, **champs))
+        ExigenceCPS.objects.bulk_create([
+            ExigenceCPS(company=societe, appel_offre=copie, **exigence)
+            for exigence in nouvelle.get('exigences') or ()
+        ])
+    _journaliser_duplication(appel_offre, copie, plan, user)
+    return copie, plan
+
+
+def _journaliser_duplication(source, copie, plan, user):
+    """Trace la duplication au chatter générique ``records`` (best-effort).
+
+    La phrase est GÉNÉRÉE par le plan (``plan.resume``), jamais rédigée ici :
+    le nombre de lignes de cadre acheteur écartées et de quantités à
+    recalculer vient de la fabrique qui a pris la décision.
+    """
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    log_activity(
+        copie, Activity.Kind.NOTE, user=user,
+        body='%s Source : %s.' % (plan.resume, source.reference or source.pk),
+        company=copie.company)
+
+
 # ── AOF13 — Table de transitions DÉCLARATIVE + service de changement ───────
 #
 # La table est la seule description du cycle : aucune règle de statut n'est
