@@ -16,6 +16,9 @@ sous les pièces qui la citent.
 """
 from __future__ import annotations
 
+import re
+
+from django.http import Http404, HttpResponse
 from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -23,6 +26,7 @@ from rest_framework.response import Response
 
 from core.viewsets import CompanyScopedModelViewSet
 
+from .fabrique.rendus.rentabilite_xlsx import MIME_XLSX
 from .models import CibleFinanciere, EconomieAO, LigneCoutRevient
 from .permissions import CanViewAoRentabilite
 from .serializers_directeur import (
@@ -31,10 +35,17 @@ from .serializers_directeur import (
 )
 
 __all__ = [
+    'KIND_RENTABILITE_XLSX',
     'CibleFinanciereViewSet',
     'EconomieAOViewSet',
     'LigneCoutRevientViewSet',
 ]
+
+#: Type logique du job de production du classeur (``BackgroundJob.kind``).
+KIND_RENTABILITE_XLSX = 'ao_rentabilite_xlsx'
+
+#: Caractères conservés dans le nom de fichier proposé au navigateur.
+_NOM_SUR = re.compile(r'[^A-Za-z0-9._-]+')
 
 
 class _BaseDirecteurViewSet(CompanyScopedModelViewSet):
@@ -96,6 +107,128 @@ class EconomieAOViewSet(_BaseDirecteurViewSet):
             'ecart_tresorerie': str(economie.ecart_tresorerie),
             'sous_seuil_psychologique': economie.sous_seuil_psychologique,
         })
+
+    @action(detail=True, methods=['get', 'post'], url_path='telecharger')
+    def telecharger(self, request, pk=None):
+        """AOF161 — le classeur DIRECTEUR de rentabilité : JOB puis ARTEFACT.
+
+        Le front appelait ``/ao/<id>/rentabilite/telecharger/``, une route que
+        personne n'a jamais enregistrée. Le SERVICE, lui, existait des deux
+        côtés sans être relié : le rendu ``fabrique.rendus.rentabilite_xlsx``
+        et la tâche ``ao.produire_rentabilite_xlsx``. Cette action est le
+        chaînon manquant — elle n'invente aucun calcul.
+
+        * ``POST`` lance la production (``core.jobs.submit`` — jamais une file
+          maison) et renvoie **202** avec l'identifiant du ``BackgroundJob`` ;
+        * ``GET ?job=<id>`` renvoie l'état d'avancement (JSON) ;
+        * ``GET ?job=<id>&fichier=1`` relaie les octets du classeur.
+
+        JAMAIS de rendu synchrone dans la requête : un classeur qui parcourt
+        tous les postes de coût n'a pas sa place dans le temps d'une requête
+        HTTP, et le patron des exports lourds du dépôt est le job de fond.
+
+        Le fichier est relayé PAR CETTE VUE (même origine, ``ao_rentabilite_
+        voir`` revérifié à chaque octet par ``get_permissions``) et non par une
+        URL présignée remise au navigateur : une clé d'objet partagée
+        contournerait toute la permission — et l'hôte MinIO interne est de
+        toute façon injoignable depuis un navigateur (leçon B1).
+        """
+        economie = self.get_object()  # scopé société par CompanyScopedModelViewSet
+        if request.method == 'POST':
+            return self._lancer_production(request, economie)
+        return self._suivre_ou_servir(request, economie)
+
+    def _lancer_production(self, request, economie):
+        from core.jobs import submit
+
+        from . import tasks
+
+        try:
+            job = submit(
+                KIND_RENTABILITE_XLSX, tasks.produire_rentabilite_xlsx_task,
+                company=economie.company, user=request.user,
+                projet_id=economie.appel_offre_id)
+        except Exception:  # noqa: BLE001 — broker injoignable : 503, pas 500.
+            return Response(
+                {'detail': "La file de traitement est injoignable : le "
+                           "classeur n'a pas pu être lancé. Réessayez."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(
+            {'job': job.pk, 'statut': job.statut,
+             'progress_pct': job.progress_pct, 'message_erreur': '',
+             'pret': False},
+            status=status.HTTP_202_ACCEPTED)
+
+    def _suivre_ou_servir(self, request, economie):
+        from core.models import BackgroundJob
+
+        job = self._job_demande(request, economie)
+        pret = (job.statut == BackgroundJob.STATUT_DONE
+                and bool(job.result_file_key))
+        etat = {'job': job.pk, 'statut': job.statut,
+                'progress_pct': job.progress_pct,
+                'message_erreur': job.message_erreur, 'pret': pret}
+        if request.query_params.get('fichier') in (None, '', '0', 'false'):
+            return Response(etat)
+        if not pret:
+            etat['detail'] = ("Le classeur n'est pas encore prêt : suivez le "
+                              'job avant de le télécharger.')
+            return Response(etat, status=status.HTTP_202_ACCEPTED)
+        return self._servir_classeur(job, economie)
+
+    def _job_demande(self, request, economie):
+        """Le job de production visé, ou 404 — jamais celui d'un autre.
+
+        Le job est borné à la SOCIÉTÉ de l'économie, à l'utilisateur qui l'a
+        lancé et au type de job : le classeur d'une autre société est
+        introuvable, pas « interdit » (la réponse ne confirme pas son
+        existence).
+        """
+        from core.models import BackgroundJob
+
+        brut = request.query_params.get('job')
+        try:
+            job_id = int(brut)
+        except (TypeError, ValueError):
+            raise Http404(
+                "Indiquez le job renvoyé par le POST sur cette même économie "
+                '(paramètre « job »).')
+        job = BackgroundJob.objects.filter(
+            pk=job_id, company=economie.company, user=request.user,
+            kind=KIND_RENTABILITE_XLSX).first()
+        if job is None:
+            raise Http404('Production de classeur introuvable.')
+        return job
+
+    def _servir_classeur(self, job, economie):
+        """Relaie les octets — après avoir vérifié QUEL dossier ils décrivent.
+
+        La clé de l'artefact porte l'appel d'offres produit (``…-ao<id>.xlsx``,
+        posée par la tâche). Sans cette vérification, un id de job appartenant
+        à un AUTRE dossier de la même société servirait le classeur de cet
+        autre dossier sous le NOM de celui-ci : pas une fuite de permission
+        (l'économie est company-wide pour un directeur), mais un fichier
+        étiqueté faux — le pire des deux, parce qu'il ne se voit pas.
+        """
+        from apps.records.storage import fetch_attachment
+
+        if not job.result_file_key.endswith(
+                f'-ao{economie.appel_offre_id}.xlsx'):
+            raise Http404("Ce job n'a pas produit le classeur de cet appel "
+                          "d'offres.")
+        octets, erreur = fetch_attachment(job.result_file_key)
+        if erreur or not octets:
+            return Response(
+                {'detail': "Le classeur produit est introuvable dans le "
+                           'stockage : relancez la production.'},
+                status=status.HTTP_404_NOT_FOUND)
+        reference = _NOM_SUR.sub('-', economie.appel_offre.reference or '')
+        nom = f'rentabilite-{reference or economie.pk}.xlsx'
+        reponse = HttpResponse(octets, content_type=MIME_XLSX)
+        # PIÈCE INTERNE : téléchargement forcé, jamais un aperçu en ligne.
+        reponse['Content-Disposition'] = f'attachment; filename="{nom}"'
+        reponse['X-Content-Type-Options'] = 'nosniff'
+        return reponse
 
     @action(detail=True, methods=['post'])
     def verrouiller(self, request, pk=None):

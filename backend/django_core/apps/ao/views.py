@@ -43,9 +43,11 @@ from .models import (
     ChaineCotes,
     DossierSoumission,
     EcheanceAO,
+    EquipementAO,
     ExigenceCPS,
     KitCalepinage,
     LigneBordereau,
+    ModelePack,
     ObstacleAO,
     PieceConsultation,
     PieceSoumission,
@@ -55,6 +57,7 @@ from .models import (
     QuestionAO,
     ResultatAO,
     SectionBordereau,
+    SectionMemoire,
     SerieQuestions,
     ToitureAO,
     VarianteCalepinage,
@@ -67,9 +70,11 @@ from .serializers import (
     ChaineCotesSerializer,
     DossierSoumissionSerializer,
     EcheanceAOSerializer,
+    EquipementAOSerializer,
     ExigenceCPSSerializer,
     KitCalepinageSerializer,
     LigneBordereauSerializer,
+    ModelePackSerializer,
     ObstacleAOSerializer,
     PieceConsultationSerializer,
     PieceSoumissionSerializer,
@@ -79,6 +84,7 @@ from .serializers import (
     QuestionAOSerializer,
     ResultatAOSerializer,
     SectionBordereauSerializer,
+    SectionMemoireSerializer,
     SerieQuestionsSerializer,
     ToitureAOSerializer,
     VarianteCalepinageSerializer,
@@ -248,6 +254,37 @@ class AppelOffreViewSet(AoBaseViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(appel_offre).data)
 
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, pk=None):
+        """AOF130 — duplique l'affaire en gabarit ; AUCUN résultat n'est hérité.
+
+        Écriture ⇒ ``ao_gerer`` et scoping société : les deux viennent
+        d'``AoBaseViewSet`` (``ScopedPermission`` route POST vers
+        ``write_permission``). La société n'est JAMAIS lue du corps — elle est
+        celle de l'affaire source, elle-même déjà scopée par ``get_object()``.
+
+        La réponse porte la copie sérialisée (l'écran navigue vers son ``id``)
+        ET le plan de duplication : ce qui a été écarté est NOMMÉ, jamais tu.
+        """
+        from .fabrique.duplication import OptionDeCopieInconnue
+
+        appel_offre = self.get_object()
+        try:
+            copie, plan = services.dupliquer_appel_offre(
+                appel_offre, user=request.user,
+                objet=request.data.get('objet') or '',
+                copier=request.data.get('copier'))
+        except OptionDeCopieInconnue as exc:
+            return Response({'copier': [str(exc)]},
+                            status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as exc:
+            return Response(getattr(exc, 'message_dict', None)
+                            or {'duplication': exc.messages},
+                            status=status.HTTP_400_BAD_REQUEST)
+        donnees = self.get_serializer(copie).data
+        donnees['duplication'] = plan.vers_dict()
+        return Response(donnees, status=status.HTTP_201_CREATED)
+
     def perform_create(self, serializer):
         """AOF5 — référence auto ``AO-YYYYMM-0001`` quand elle n'est pas fournie.
 
@@ -390,6 +427,46 @@ class SerieQuestionsViewSet(AoBaseViewSet):
         return _filtres_exacts(
             super().get_queryset(), self.request.query_params,
             ('appel_offre', 'canal'))
+
+    def perform_create(self, serializer):
+        """Le NUMÉRO de série est attribué côté serveur (AOF25).
+
+        ``numero`` a un défaut de 1 et une contrainte d'unicité
+        ``(company, appel_offre, numero)`` : sans attribution, la DEUXIÈME
+        série d'un dossier crée une IntegrityError (500) — et laisser l'écran
+        proposer le numéro reviendrait à ``count()+1``, la faute exacte que le
+        dépôt interdit (une série supprimée ferait recollisionner le compte).
+
+        Le numéro est donc le PLUS HAUT UTILISÉ + 1, sur le couple
+        (société, appel d'offres), avec point de sauvegarde et rejeu en cas de
+        course — même patron que ``apps.ventes.utils.references``.
+        """
+        if serializer.validated_data.get('numero'):
+            return super().perform_create(serializer)
+
+        from django.db import IntegrityError, transaction
+        from django.db.models import Max
+
+        company = self.request.user.company
+        appel_offre = serializer.validated_data.get('appel_offre')
+        for _essai in range(5):
+            plus_haut = SerieQuestions.objects.filter(
+                company=company, appel_offre=appel_offre,
+            ).aggregate(m=Max('numero'))['m'] or 0
+            try:
+                with transaction.atomic():
+                    serializer.save(company=company, numero=plus_haut + 1)
+                return
+            except IntegrityError as erreur:
+                # SEULE la collision de numéro se rejoue. Avaler toute
+                # IntegrityError transformerait une vraie erreur d'intégrité
+                # (FK absente, société nulle…) en « réessayez » — un message
+                # faux, exactement le défaut qu'on répare.
+                if 'uniq_serie_questions_numero' not in str(erreur):
+                    raise
+        raise DrfValidationError(
+            {'numero': ["Impossible d'attribuer un numéro de série : "
+                        'réessayez.']})
 
 
 class QuestionAOViewSet(AoBaseViewSet):
@@ -732,6 +809,54 @@ class KitCalepinageViewSet(AoBaseViewSet):
             'emprise_transversale_m', 'ecart_emprise_m', 'updated_at'])
 
 
+# ── AOF116/AOF173 — Bibliothèque : gabarits de pack, textes normalisés ─────
+#
+# L'écran Bibliothèque appelait ``/api/django/ao/bibliotheque/`` : cette route
+# n'a JAMAIS existé (404 constatée en production le 03/08/2026). Les quatre
+# catégories de l'écran sont quatre ressources RÉELLES — kits (``kits-
+# calepinage``), jeux de paramètres (``presets-calepinage``), gabarits de pack
+# et textes normalisés. Les deux dernières manquaient : les voici, en
+# ressources REST ordinaires du socle AO (jamais un agrégat à identifiant
+# composite inventé).
+
+class ModelePackViewSet(AoBaseViewSet):
+    """Gabarits de pack (AOF116) : la liste ORDONNÉE des pièces d'un dossier."""
+    queryset = ModelePack.objects.all()
+    serializer_class = ModelePackSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle', 'description']
+    ordering_fields = ['code', 'libelle', 'actif']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params, ('actif',))
+
+
+class SectionMemoireViewSet(AoBaseViewSet):
+    """Textes normalisés du mémoire (AOF116/AOF133) + dossiers impactés.
+
+    ``dossiers-impactes`` répond à la question que l'écran d'AOF173 pose AVANT
+    toute modification : « qui reprend ce texte ? ». La réponse n'est pas
+    estimée — elle rejoue la MÊME règle d'inclusion déclarative que le rendu du
+    mémoire (``services.dossiers_impactes_par_section``).
+    """
+    queryset = SectionMemoire.objects.all()
+    serializer_class = SectionMemoireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'titre', 'corps']
+    ordering_fields = ['ordre', 'code', 'titre']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params, ('actif',))
+
+    @action(detail=True, methods=['get'], url_path='dossiers-impactes')
+    def dossiers_impactes(self, request, pk=None):
+        """Les dossiers d'AO dont le mémoire REPREND cette section."""
+        return Response(
+            services.dossiers_impactes_par_section(self.get_object()))
+
+
 # ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────
 
 class BordereauPrixViewSet(AoBaseViewSet):
@@ -791,6 +916,75 @@ class LigneBordereauViewSet(AoBaseViewSet):
         return _filtres_exacts(
             super().get_queryset(), self.request.query_params,
             ('bordereau', 'section', 'batiment', 'quantite_source'))
+
+
+# ── AOF118/AOF141 — Équipements engagés et leur BASCULE ────────────────────
+#
+# Le modèle ``EquipementAO`` existait depuis AOF118 (snapshot figé, string-FK
+# catalogue) et la mécanique de RAPPORT de bascule depuis AOF142 — mais aucune
+# route ne les exposait : l'écran Équipements du dossier n'avait rien à
+# appeler, et le client d'API avait dû poser un rejet nommé à la place d'un
+# chemin (``api/endpointNonConstruit.js``, 03/08/2026). Voici la ressource,
+# sur le socle AO ordinaire.
+
+class EquipementAOViewSet(AoBaseViewSet):
+    """Équipements engagés par le dossier (AOF118) + bascule ATOMIQUE (AOF141).
+
+    Le snapshot (désignation, marque, référence, caractéristiques) est FIGÉ à
+    l'engagement : il ne se modifie pas au fil de l'eau, sinon un re-seed du
+    catalogue ferait bouger un dossier déjà déposé. Changer de matériel se
+    fait donc par l'action ``bascule`` — jamais par un PATCH de la
+    désignation, qui laisserait la fiche technique annexée, les grandeurs
+    dérivées et les pièces déjà produites en arrière.
+    """
+    queryset = EquipementAO.objects.select_related(
+        'produit', 'fiche_technique', 'batiment').all()
+    serializer_class = EquipementAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['designation', 'marque', 'reference_constructeur']
+    ordering_fields = ['role', 'designation', 'quantite']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'batiment', 'role', 'actif'))
+
+    @action(detail=True, methods=['post'], url_path='bascule')
+    def bascule(self, request, pk=None):
+        """AOF141 — bascule vers un autre produit, en UNE transaction.
+
+        Écriture, donc gardée par ``ao_gerer`` : le socle route toute méthode
+        non sûre sur ``write_permission`` (cf. ``core.permissions``).
+
+        Corps : ``produit`` (obligatoire), ``fiche_technique`` (identifiant
+        d'une ``records.Attachment``), ``motif``. La réponse porte le nouvel
+        équipement, celui qu'il remplace, le RAPPORT de bascule (ce qui a
+        changé ET les textes qui portent encore l'ancienne référence) et les
+        artefacts périmés — refuser en silence ou réécrire d'office les textes
+        seraient les deux mauvaises réponses.
+
+        Traitement BORNÉ (quelques écritures + une passe de contrôle), donc
+        synchrone. Ce qui est LONG n'est délibérément pas fait ici : la
+        bascule PÉRIME les pièces déjà produites, elle ne refabrique aucun
+        pack ni aucun PDF — cette régénération-là reste un travail de fond
+        (``core.jobs``), sur ses propres endpoints.
+        """
+        equipement = self.get_object()
+        try:
+            resultat = services.basculer_equipement(
+                equipement, request.data.get('produit'), user=request.user,
+                fiche_technique=request.data.get('fiche_technique'),
+                motif=(request.data.get('motif') or '').strip())
+        except DjangoValidationError as exc:
+            donnees = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(donnees, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'equipement': self.get_serializer(resultat['equipement']).data,
+            'remplace': self.get_serializer(resultat['ancien']).data,
+            'rapport': resultat['rapport'],
+            'artefacts_perimes': resultat['artefacts_perimes'],
+        })
 
 
 # ── FG224 — Cautions & garanties de soumission ─────────────────────────────

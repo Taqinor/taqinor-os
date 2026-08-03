@@ -57,7 +57,12 @@ waves:
       no platform prerequisite by design (selectors-only cross-app reads,
       key-gated integrations), its internal order lives in its @lane/@after
       tags, not in wave edges.
-    groups: [ARC-noyau, SCA-gov, SCA-capacity, SCA-lifecycle, SCA-whitelabel, SCA-perf, SCA-revenue, SCA-moat, ENG, WIR]
+      PACT (2026-08-03, pacte front<->back : gardes de contrat et de forme,
+      methode contrat-d-abord, passif verifie, backlog des ecrans manquants)
+      rides here with NO prerequisite, and deliberately so: its guards freeze
+      the present, so anything that gates them lets the defect recur once more.
+      Its internal order lives in its @after tags, not in wave edges.
+    groups: [ARC-noyau, SCA-gov, SCA-capacity, SCA-lifecycle, SCA-whitelabel, SCA-perf, SCA-revenue, SCA-moat, ENG, WIR, PACT]
   A2:
     order: 2
     description: >-

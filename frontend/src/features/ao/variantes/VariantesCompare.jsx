@@ -93,11 +93,19 @@ export function VariantesCompare({ affaireId, exporterImage = null }) {
   const [miniatures, setMiniatures] = useState({})
   const [enCours, setEnCours] = useState(false)
 
-  // La requête elle-même ne demande l'économie que si la permission est portée.
+  // RÉPARATION 03/08/2026 — le filtre serveur s'appelle `appel_offre`
+  // (`VarianteCalepinageViewSet`). `affaire` était IGNORÉ en silence : la
+  // liste remontait les variantes de TOUS les dossiers de la société, une
+  // liste fausse qui avait l'air juste.
+  //
+  // La requête ne demande l'économie que si la permission est portée (verrou
+  // n°1 de l'en-tête). Le sérialiseur AO ne publie de toute façon AUCUN champ
+  // d'économie — le verrou n°2 (`retirerEconomie`) reste la garde réelle
+  // contre un serveur bavard.
   const params = useMemo(
     () => (peutVoirEconomie
-      ? { affaire: affaireId, avec_economie: 1 }
-      : { affaire: affaireId }),
+      ? { appel_offre: affaireId, avec_economie: 1 }
+      : { appel_offre: affaireId }),
     [affaireId, peutVoirEconomie],
   )
 
@@ -132,8 +140,11 @@ export function VariantesCompare({ affaireId, exporterImage = null }) {
     [variantes, selection],
   )
 
-  // Unicité de la variante retenue, garantie côté rendu (voir en-tête).
-  const retenueId = useMemo(() => variantes.find((v) => v.retenue)?.id ?? null, [variantes])
+  // Unicité de la variante retenue, garantie côté rendu (voir en-tête). Le
+  // champ serveur est `est_retenue` — `retenue` n'a jamais existé, la colonne
+  // « retenue » était donc TOUJOURS vide.
+  const retenueId = useMemo(
+    () => variantes.find((v) => v.est_retenue)?.id ?? null, [variantes])
 
   // Miniatures — via l'exporteur INJECTÉ (AOF75), jamais un import statique.
   useEffect(() => {
@@ -160,39 +171,29 @@ export function VariantesCompare({ affaireId, exporterImage = null }) {
       : prev.length >= MAX_COLONNES ? prev : [...prev, id]))
   }, [])
 
-  const dupliquer = useCallback(async (variante) => {
-    setEnCours(true)
-    try {
-      await aoApi.variantes.create({ dupliquer_de: variante.id, affaire: affaireId })
-      toast.success(`« ${variante.nom} » dupliquée.`)
-      await refetch()
-    } catch (e) {
-      toast.error(errMsg(e, 'Duplication impossible.'))
-    } finally {
-      setEnCours(false)
-    }
-  }, [affaireId, refetch])
+  /* ── DEUX ACTIONS RETIRÉES, PAS DÉPLACÉES (03/08/2026) ──────────────────
+     « Dupliquer » postait `{dupliquer_de, affaire}` : deux champs qu'aucun
+     sérialiseur ne connaît, sur une ressource dont `toiture` est obligatoire
+     — la création échouait à tous les coups. Aucune action `dupliquer`
+     n'existe sur `VarianteCalepinageViewSet` : c'est un endpoint à
+     construire, pas un renommage.
+     « Épingler » patchait `{epinglee}` : champ inexistant. DRF ignore un
+     champ inconnu et répond 200 — le bouton passait donc à « Épinglée »
+     alors que RIEN n'avait été écrit. Un mensonge silencieux est pire qu'une
+     erreur : les deux boutons ne sont plus proposés tant que le serveur ne
+     sait pas les honorer. */
 
   const definirRetenue = useCallback(async (variante) => {
     setEnCours(true)
     try {
-      await aoApi.variantes.update(variante.id, { retenue: true })
+      // ACTION serveur (`retenir`), pas un PATCH de `est_retenue` : c'est
+      // elle qui garantit l'unicité en dé-retenant la précédente. Un PATCH
+      // aurait laissé DEUX variantes retenues sur la même toiture.
+      await aoApi.variantes.retenir(variante.id)
       toast.success(`« ${variante.nom} » retenue — alimente le bordereau et les planches.`)
       await refetch()
     } catch (e) {
       toast.error(errMsg(e, 'Impossible de définir la variante retenue.'))
-    } finally {
-      setEnCours(false)
-    }
-  }, [refetch])
-
-  const epingler = useCallback(async (variante) => {
-    setEnCours(true)
-    try {
-      await aoApi.variantes.update(variante.id, { epinglee: !variante.epinglee })
-      await refetch()
-    } catch (e) {
-      toast.error(errMsg(e, 'Épinglage impossible.'))
     } finally {
       setEnCours(false)
     }
@@ -276,9 +277,7 @@ export function VariantesCompare({ affaireId, exporterImage = null }) {
                   ? 'Aperçu du plan non généré'
                   : 'Aperçu indisponible sur cet écran'
               }
-              onDupliquer={enCours ? undefined : dupliquer}
               onDefinirRetenue={enCours ? undefined : definirRetenue}
-              onEpingler={enCours ? undefined : epingler}
             />
           ))}
         </div>

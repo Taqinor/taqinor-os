@@ -1,0 +1,16 @@
+# Base de reference de check_api_contract.py — DETTE HISTORIQUE, RIEN D'AUTRE.
+#
+# Chaque ligne est un chemin normalise appele par le frontend et qui ne
+# correspond a AUCUNE route backend enregistree : un ecran deja mort. La garde
+# n'echoue que sur une occurrence ABSENTE de cette liste.
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - corriger un appel puis `python scripts/check_api_contract.py
+#     --write-baseline` retire sa ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne. Ajouter une dette exige
+#     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
+#
+# La signature est le CHEMIN, jamais `fichier:ligne` : un deplacement de ligne
+# ne doit pas invalider la base (lecon du depot).
+/api/django/rh/demandes-conge/<>/soumettre
+/api/public/openapi.json

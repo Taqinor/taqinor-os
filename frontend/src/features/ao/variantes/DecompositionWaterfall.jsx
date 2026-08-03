@@ -8,9 +8,22 @@ import { formatNumber } from '../../../lib/format'
    ----------------------------------------------------------------------------
    Raconte le passage du calcul HISTORIQUE au calcul COURANT marche par marche
    (« 112 → 126 » sur le cas réel), chaque marche portant sa lettre, son
-   libellé et son delta SIGNÉ. Tous ces chiffres viennent du serveur
-   (`GET /ao/variantes/:id/decomposition/`, AOF11) : ce composant ne calcule
-   que la GÉOMÉTRIE du dessin, jamais une valeur métier.
+   libellé et son delta SIGNÉ. Tous ces chiffres viennent du serveur : ce
+   composant ne calcule que la GÉOMÉTRIE du dessin, jamais une valeur métier.
+
+   ── D'OÙ VIENNENT LES CHIFFRES (corrigé le 03/08/2026) ────────────────────
+   L'endpoint RÉEL est `GET /ao/calepinage/variantes/:id/marches/` (AOF62,
+   `calepinage_service.calculer_marches`) — et NON `/ao/variantes/:id/
+   decomposition/`, qui n'a jamais été routé. `aoApi.variantes.decomposition()`
+   pointe désormais la bonne URL.
+
+   ATTENTION, le contrat n'est PAS encore aligné et ce composant n'est branché
+   à aucun écran : le serveur renvoie `depart`/`arrivee` en ENTIERS,
+   `marches: [{code, libelle, modules, delta, attendu}]` et un booléen
+   `honnete` + ses `motifs`, alors que ce composant attend `depart.valeur`,
+   `marche.valeur_apres`, `marche.reproduit` et `verifie`. Il manque donc un
+   adaptateur (ou un alignement des noms côté serveur) : il n'est PAS écrit
+   ici plutôt que deviné à la va-vite, et surtout pas caché.
 
    ── LA GARDE D'HONNÊTETÉ (le cœur de la tâche) ────────────────────────────
    Le serveur signale, marche par marche (`reproduit: false`) et globalement

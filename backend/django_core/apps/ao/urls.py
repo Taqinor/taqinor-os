@@ -29,9 +29,11 @@ from .views import (
     ChaineCotesViewSet,
     DossierSoumissionViewSet,
     EcheanceAOViewSet,
+    EquipementAOViewSet,
     ExigenceCPSViewSet,
     KitCalepinageViewSet,
     LigneBordereauViewSet,
+    ModelePackViewSet,
     ObstacleAOViewSet,
     PieceConsultationViewSet,
     PieceSoumissionViewSet,
@@ -39,6 +41,7 @@ from .views import (
     PresetCalepinageViewSet,
     ReleveAOViewSet,
     SectionBordereauViewSet,
+    SectionMemoireViewSet,
     QuestionAOViewSet,
     ResultatAOViewSet,
     SerieQuestionsViewSet,
@@ -81,6 +84,14 @@ router.register(r'presets-calepinage', PresetCalepinageViewSet,
                 basename='ao-preset-calepinage')
 router.register(r'variantes-calepinage', VarianteCalepinageViewSet,
                 basename='ao-variante-calepinage')
+# AOF116/AOF173 — les deux dernières catégories de la BIBLIOTHÈQUE. Les kits
+# et les jeux de paramètres étaient déjà routés ci-dessus ; les gabarits de
+# pack et les textes normalisés ne l'étaient PAS, et l'écran Bibliothèque
+# appelait à leur place un ``/ao/bibliotheque/`` inexistant (404 en prod).
+router.register(r'modeles-pack', ModelePackViewSet,
+                basename='ao-modele-pack')
+router.register(r'sections-memoire', SectionMemoireViewSet,
+                basename='ao-section-memoire')
 router.register(r'bordereaux-prix', BordereauPrixViewSet,
                 basename='ao-bordereau-prix')
 router.register(r'lignes-bordereau', LigneBordereauViewSet,
@@ -88,6 +99,11 @@ router.register(r'lignes-bordereau', LigneBordereauViewSet,
 # AOF120 — sections du bordereau (une par bâtiment + prestations communes).
 router.register(r'sections-bordereau', SectionBordereauViewSet,
                 basename='ao-section-bordereau')
+# AOF118/AOF141 — équipements engagés (snapshot figé) et leur bascule. Le
+# modèle existait depuis AOF118 sans qu'AUCUNE route ne l'expose : l'écran
+# Équipements n'avait rien à appeler (03/08/2026).
+router.register(r'equipements', EquipementAOViewSet,
+                basename='ao-equipement')
 router.register(r'cautions-soumission', CautionSoumissionViewSet,
                 basename='ao-caution-soumission')
 router.register(r'dossiers-soumission', DossierSoumissionViewSet,

@@ -222,6 +222,16 @@ jobs:
         run: python scripts/check_tenant_isolation.py
       - name: Test the tenant-isolation checker itself (YDATA21)
         run: python -m unittest scripts.tests.test_check_tenant_isolation -v
+      # Incident du 03/08/2026 (production) : les lanes frontend/ao et
+      # backend/ao ont ete construites en parallele avec des contrats
+      # DIFFERENTS — l'ecran Bibliotheque appelait /ao/bibliotheque/, route
+      # jamais enregistree : 404 en production. Les tests vitest n'ont rien vu
+      # (ils mockent l'API avec la forme SUPPOSEE par le front). Cette etape
+      # compare statiquement les chemins appeles par frontend/src/api/aoApi.js
+      # aux routes reellement enregistrees par apps/ao/urls.py. NE PAS
+      # DESACTIVER : corriger le client (ou creer la route), pas la garde.
+      - name: Check ao API contract — frontend calls vs registered routes
+        run: python scripts/check_ao_api_contract.py
       # YAPIC6 — le schéma OpenAPI (YAPIC5) doit rester GÉNÉRABLE, VALIDE
       # (validation OpenAPI 3 de drf-spectacular) et sans NOUVEL avertissement
       # de génération : un serializer non résolu ou une collision d'operationId
@@ -432,6 +442,36 @@ jobs:
         run: python scripts/check_stages.py
       - name: Check module registry <-> frontend consistency (ODX21)
         run: python scripts/check_modules.py
+      # CONTRAT FRONT<->BACK (incident du 03/08/2026 : l'écran AO Bibliothèque
+      # appelait /ao/bibliotheque/, une route jamais enregistrée -> 404 en
+      # production ; 8 autres ressources du même module étaient dans le même
+      # cas). Résolution statique de l'URLconf Django + des routers FastAPI,
+      # confrontée aux chemins réellement appelés par frontend/src : tout appel
+      # sans route correspondante échoue. Dette historique gelée dans
+      # scripts/api_contract_allow.txt (elle ne peut que RÉTRÉCIR).
+      #
+      # ICI et pas dans `backend-lint` À DESSEIN : `backend-lint` est gaté sur
+      # `backend == true`, donc une PR qui ne touche QUE le frontend (le cas
+      # exact de aoApi.js) ne le déclenche pas. `stage-names` est le seul job
+      # non gaté — et ce contrôle est en stdlib pure, sans base de données ni
+      # dépendance, comme les autres check_*.py de ce job (~25 s).
+      - name: Check front<->back API contract (aucun appel vers une route inexistante)
+        run: python scripts/check_api_contract.py
+      - name: Test the API-contract checker itself
+        run: python -m unittest scripts.tests.test_check_api_contract -v
+      # FORME DES RÉPONSES (même incident du 03/08/2026 : l'écran AO Tableau de
+      # bord a planté alors que sa route existait, parce que son test mockait
+      # l'INVERSE EXACT de ce que le serveur renvoie — `echeances_dues` est un
+      # entier côté serveur, un tableau dans le mock ; 6 lectures sur 6 étaient
+      # fausses, les deux suites vertes). Le contrat est dérivé du CODE serveur
+      # et versionné dans docs/api-contracts.md ; un mock qui le contredit
+      # échoue. Le schéma OpenAPI ne peut PAS jouer ce rôle (l'endpoint qui a
+      # planté y est documenté `type: object` sans aucune propriété) — voir
+      # l'en-tête du script.
+      - name: Check API response shapes (aucun mock ne contredit le serveur)
+        run: python scripts/check_api_shapes.py
+      - name: Test the API-shapes checker itself
+        run: python -m unittest scripts.tests.test_check_api_shapes -v
       - name: Check no raw JSON / bare error object is shown to the user (EZ16)
         run: python scripts/check_frontend_errors.py
       - name: Test the anti-jargon checker itself (EZ16)

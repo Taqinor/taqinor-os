@@ -188,7 +188,10 @@ class TestTrancherApplique(BaseQuestions):
             services.perimer_variantes_de_toiture(self.toiture.id), 0)
 
 
-class TestApiQuestions(TestCase):
+class BaseApiQuestions(TestCase):
+    """Socle d'API partagé — AUCUN test ici (sinon les sous-classes les
+    rejoueraient à l'identique)."""
+
     def setUp(self):
         self.company = Company.objects.create(nom='AOF25 API', slug='aof25-api')
         role = Role.objects.create(
@@ -209,6 +212,8 @@ class TestApiQuestions(TestCase):
         self.serie = SerieQuestions.objects.create(
             company=self.company, appel_offre=self.ao, numero=1)
 
+
+class TestApiQuestions(BaseApiQuestions):
     def test_creation_scopee(self):
         r = self.api.post(URL_QUESTIONS, {
             'serie': self.serie.id, 'repere': 'A',
@@ -290,3 +295,66 @@ class TestApiQuestions(TestCase):
         lignes = r.data['results'] if isinstance(r.data, dict) \
             and 'results' in r.data else r.data
         self.assertEqual(lignes, [])
+
+
+class TestCreationSerieNumero(BaseApiQuestions):
+    """AOF25 — le NUMÉRO de série est attribué CÔTÉ SERVEUR.
+
+    Réparation du 03/08/2026. L'écran « Questions terrain » postait
+    ``{affaire, objet}`` sur ``/ao/series-qr/`` : une route inexistante, deux
+    champs inexistants. Une fois le chemin corrigé, un second défaut
+    apparaissait : ``numero`` a un défaut de 1 et une contrainte d'unicité
+    ``(company, appel_offre, numero)`` — la DEUXIÈME série d'un dossier
+    plantait. Le numéro est donc posé par le serveur (plus haut utilisé + 1),
+    jamais proposé par l'écran : ce serait un ``count()+1``, la faute que le
+    dépôt interdit (une série supprimée ferait recollisionner le compte).
+    """
+
+    def test_le_serveur_numerote_les_series_successives(self):
+        # ``self.serie`` occupe déjà le numéro 1 pour cet appel d'offres.
+        premiere = self.api.post(URL_SERIES, {
+            'appel_offre': self.ao.id, 'canal': 'email',
+            'destinataire': 'Maîtrise d’œuvre'}, format='json')
+        self.assertEqual(premiere.status_code, 201, premiere.data)
+        self.assertEqual(premiere.data['numero'], 2)
+
+        seconde = self.api.post(URL_SERIES, {
+            'appel_offre': self.ao.id, 'canal': 'whatsapp',
+            'destinataire': 'Conducteur'}, format='json')
+        self.assertEqual(seconde.status_code, 201, seconde.data)
+        self.assertEqual(seconde.data['numero'], 3)
+
+    def test_une_serie_supprimee_ne_fait_pas_recollisionner_le_numero(self):
+        """Le PLUS HAUT UTILISÉ + 1, jamais ``count() + 1``."""
+        deux = SerieQuestions.objects.create(
+            company=self.company, appel_offre=self.ao, numero=2)
+        SerieQuestions.objects.create(
+            company=self.company, appel_offre=self.ao, numero=3)
+        deux.delete()  # restent 1 et 3 : ``count() + 1`` donnerait 3
+        cree = self.api.post(URL_SERIES, {
+            'appel_offre': self.ao.id, 'canal': 'email'}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        self.assertEqual(cree.data['numero'], 4)
+
+    def test_la_numerotation_est_par_appel_offre(self):
+        autre_ao = AppelOffre.objects.create(
+            company=self.company, reference='AO-25-API-2', objet='Second')
+        cree = self.api.post(URL_SERIES, {
+            'appel_offre': autre_ao.id, 'canal': 'email'}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        self.assertEqual(cree.data['numero'], 1)
+
+    def test_un_numero_explicite_est_respecte(self):
+        cree = self.api.post(URL_SERIES, {
+            'appel_offre': self.ao.id, 'numero': 9,
+            'canal': 'email'}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        self.assertEqual(cree.data['numero'], 9)
+
+    def test_la_serie_creee_est_scopee_a_la_societe_de_l_appelant(self):
+        cree = self.api.post(URL_SERIES, {
+            'appel_offre': self.ao.id, 'canal': 'email'}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        self.assertEqual(
+            SerieQuestions.objects.get(pk=cree.data['id']).company_id,
+            self.company.id)

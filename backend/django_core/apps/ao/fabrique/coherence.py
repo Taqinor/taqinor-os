@@ -22,6 +22,7 @@ __all__ = [
     'contexte_controle',
     'controles_bloquants',
     'empreinte_dossier',
+    'passe_en_lecture',
     'passer_controle',
     'pieces_hors_controle',
 ]
@@ -150,3 +151,47 @@ def controles_bloquants(dossier):
     contexte = contexte_controle(dossier)
     return [item for item in controles.executer_regles(contexte)
             if item['severite'] == controles.BLOQUANT]
+
+
+def _libelle_de_regle(code):
+    """Le libellé du REGISTRE — l'écran n'invente jamais un titre de règle."""
+    regle = controles.REGLES.get(code)
+    return regle.libelle if regle is not None else code
+
+
+def passe_en_lecture(dossier):
+    """La MÊME passe que ``passer_controle``, sans écrire une seule ligne.
+
+    Un GET ne persiste rien : l'écran « Contrôles avant dépôt » (AOF176) LIT
+    l'état du dossier, il ne le fige pas. ``passer_controle`` reste le seul
+    chemin qui REMPLACE les ``ControleCoherence`` — c'est lui la photographie
+    opposable, et il se déclenche explicitement.
+
+    Le rapport porte les mêmes pièces HORS CONTRÔLE (AOF149) que la passe
+    persistante : un dossier « tout vert » dont un tiers n'a jamais été
+    vérifié est plus dangereux qu'un dossier orange, et l'omettre ici aurait
+    reconstruit exactement ce piège côté écran.
+    """
+    contexte = contexte_controle(dossier)
+    resultats = controles.executer_regles(contexte)
+    hors = pieces_hors_controle(dossier)
+    return {
+        'empreinte': contexte['empreinte'],
+        'bloquant': any(item['severite'] == controles.BLOQUANT
+                        for item in resultats),
+        'controles': [
+            {'code': item['code_regle'],
+             'code_regle': item['code_regle'],
+             'libelle': _libelle_de_regle(item['code_regle']),
+             'severite': item['severite'],
+             'message': item['message'],
+             'objet': item['objet']}
+            for item in resultats
+        ],
+        'pieces_hors_controle': [
+            {'code': piece.code, 'libelle': piece.libelle,
+             'motif': piece.motif, 'etat': piece.etat_controle}
+            for piece in hors
+        ],
+        'nombre_hors_controle': len(hors),
+    }

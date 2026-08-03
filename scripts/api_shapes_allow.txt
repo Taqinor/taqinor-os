@@ -1,0 +1,12 @@
+# Base de reference de check_api_shapes.py — DETTE HISTORIQUE, RIEN D'AUTRE.
+#
+# Chaque ligne est un mock de test qui contredit la forme reellement renvoyee
+# par le serveur. La garde n'echoue que sur une occurrence ABSENTE de cette
+# liste.
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR. `--write-baseline` refuse
+# d'ajouter une ligne ; il faut `--autoriser-croissance` (fondateur), visible
+# en revue. La signature est `fonction|champ`, jamais `fichier:ligne` : un
+# deplacement de ligne ne doit pas invalider la base.
+getFournisseur360|solde_total_du
+performanceFournisseur|total_achats_ht
