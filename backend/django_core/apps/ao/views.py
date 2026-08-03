@@ -424,8 +424,13 @@ class SerieQuestionsViewSet(AoBaseViewSet):
                 with transaction.atomic():
                     serializer.save(company=company, numero=plus_haut + 1)
                 return
-            except IntegrityError:
-                continue
+            except IntegrityError as erreur:
+                # SEULE la collision de numéro se rejoue. Avaler toute
+                # IntegrityError transformerait une vraie erreur d'intégrité
+                # (FK absente, société nulle…) en « réessayez » — un message
+                # faux, exactement le défaut qu'on répare.
+                if 'uniq_serie_questions_numero' not in str(erreur):
+                    raise
         raise DrfValidationError(
             {'numero': ["Impossible d'attribuer un numéro de série : "
                         'réessayez.']})
