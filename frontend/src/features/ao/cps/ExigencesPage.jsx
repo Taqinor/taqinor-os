@@ -173,7 +173,16 @@ export default function ExigencesPage({
   const id = affaireId ?? routeParams.id
   const [depot, setDepot] = useState(false)
 
-  const params = useMemo(() => (id ? { affaire: id } : undefined), [id])
+  /* RÉPARATION 03/08/2026 — le filtre s'appelle `appel_offre`, PAS `affaire`.
+     Vérifié dans le code serveur : `ExigenceCPSViewSet.get_queryset`
+     (`apps/ao/views.py`) n'honore que ('appel_offre', 'type_exigence',
+     'bloquant', 'a_reverifier', 'piece_consultation') via `_filtres_exacts`,
+     qui LIT les noms qu'il connaît et IGNORE tout le reste — aucun 400, aucune
+     trace. `?affaire=` renvoyait donc les clauses de TOUTES les affaires de la
+     société sous le titre d'une seule : un filtre ignoré ne se voit pas, à la
+     différence d'un 404. (`ExigenceCPS.appel_offre` est bien le nom du champ
+     du modèle.) */
+  const params = useMemo(() => (id ? { appel_offre: id } : undefined), [id])
   const { data: exigences, loading, error, refetch } = useResource(
     (p) => aoApi.exigencesCps.list(p), params,
     {
