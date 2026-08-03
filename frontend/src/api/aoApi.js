@@ -169,32 +169,27 @@ const aoApi = {
   // appelait `series-qr` (404), et filtrait sur `affaire` alors que le
   // ViewSet ne connaît que `appel_offre`.
   seriesQR: crud('series-questions'),
-  /* `equipements` — ENDPOINT À CONSTRUIRE (03/08/2026), pas un renommage.
-     Le modèle `EquipementAO` existe (AOF118 : snapshot figé, string-FK vers
-     `stock.Produit`) et la mécanique de bascule est écrite dans
-     `apps/ao/fabrique/bascule_rapport.py` + `fabrique/annexes.py`. Mais il
-     n'y a NI sérialiseur, NI ViewSet, NI route, NI le `services.
-     basculer_equipement` que le module de rapport cite lui-même comme
-     manquant. Aucune ressource du routeur ne sert les équipements sous un
-     autre nom — l'écran ne peut donc pas être « recâblé », il attend un
-     endpoint. Le construire à la va-vite serait pire : la bascule doit être
-     ATOMIQUE (référence + grandeurs dérivées + fiche annexée ajoutée +
-     ancienne retirée, en une transaction), c'est une tâche entière. */
+  /* ── `equipements` — CONSTRUIT le 03/08/2026 (AOF118 + AOF141) ───────────
+     Le trou est comblé : `EquipementAO` a désormais son sérialiseur, son
+     ViewSet `equipements` et l'action atomique `bascule`
+     (`services.basculer_equipement`, posée par la lane backend jumelle du
+     même commit). Le client repasse donc par la factory CRUD partagée.
+
+     **Le filtre de liste est `?appel_offre=<id>`** — le nom du CHAMP DU
+     MODÈLE (`EquipementAO.appel_offre`) et la convention de toutes les
+     ressources filles du routeur AO (`ToitureAOViewSet`, `ReleveAOViewSet`…
+     lisent `query_params['appel_offre']`). L'écran envoyait `?projet=` :
+     personne ne l'aurait vu échouer, un filtre inconnu est simplement IGNORÉ
+     par le ViewSet — c'est-à-dire la liste de TOUTE la société avec l'air
+     d'être filtrée sur un dossier. Un 404 se voit ; un filtre ignoré, non.
+
+     `bascule` est une ACTION, jamais un PATCH : elle doit être ATOMIQUE
+     (référence + grandeurs dérivées + lignes de bordereau + fiche annexée
+     ajoutée ET ancienne retirée, en une transaction). Sa réponse porte le
+     rapport de `fabrique/bascule_rapport.py`. */
   equipements: {
-    list: nonConstruit('/ao/equipements/',
-      "le modèle EquipementAO existe mais n'a ni sérialiseur ni ViewSet ni "
-      + 'route'),
-    get: nonConstruit('/ao/equipements/<id>/', "aucune route n'expose "
-      + 'EquipementAO'),
-    create: nonConstruit('/ao/equipements/', "aucune route n'expose "
-      + 'EquipementAO'),
-    update: nonConstruit('/ao/equipements/<id>/', "aucune route n'expose "
-      + 'EquipementAO'),
-    remove: nonConstruit('/ao/equipements/<id>/', "aucune route n'expose "
-      + 'EquipementAO'),
-    bascule: nonConstruit('/ao/equipements/<id>/bascule/',
-      'services.basculer_equipement (AOF141) n’est pas écrit — seul le '
-      + 'RAPPORT de bascule (fabrique/bascule_rapport.py) existe'),
+    ...crud('equipements'),
+    bascule: (id, corps) => api.post(`/ao/equipements/${id}/bascule/`, corps),
   },
   exigencesCps: crud('exigences-cps'),
 

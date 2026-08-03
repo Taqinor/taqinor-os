@@ -39,7 +39,7 @@ test('les ressources CRUD dont la route SERVEUR existe sont toutes déclarées',
     'affaires', 'batiments', 'toitures', 'plansSources', 'releves',
     'obstacles', 'chaines', 'variantes',
     'seriesQR', 'exigencesCps', 'dossiers', 'pieces',
-    'bibliotheque',
+    'bibliotheque', 'equipements',
   ]
   for (const key of resources) {
     assert.match(body, new RegExp(`\\b${key}:`), `ressource manquante : ${key}`)
@@ -113,10 +113,10 @@ test('un endpoint NON CONSTRUIT échoue avec son MOTIF, sans émettre de requêt
 
 test('les surfaces sans endpoint utilisent le rejet NOMMÉ, jamais un chemin deviné', () => {
   const body = aoApiBody()
-  // `calepinages` (atelier non recâblé) et `equipements` (modèle sans route)
-  // ne doivent produire AUCUN `api.get/post/patch` : chacun de leurs membres
-  // passe par `nonConstruit`.
-  for (const bloc of ['calepinages', 'equipements']) {
+  // `calepinages` (atelier non recâblé) ne doit produire AUCUN
+  // `api.get/post/patch` : chacun de ses membres passe par `nonConstruit`.
+  // (`equipements` a QUITTÉ cette liste le 03/08/2026 : sa route existe.)
+  for (const bloc of ['calepinages']) {
     const debut = body.indexOf(`  ${bloc}: {`)
     assert.ok(debut > -1, `bloc introuvable : ${bloc}`)
     const corps = body.slice(debut, body.indexOf('\n  },', debut))
@@ -173,8 +173,11 @@ test('AOF173 — la bibliothèque est une FAÇADE sur 4 ressources routées, plu
 const MANQUANTS_CONNUS = {
   calepinages: "aucun modèle Calepinage : l'atelier attend un recâblage sur "
     + 'le calcul sans état (/ao/calepinage/…) ou un modèle à construire',
-  equipements: 'EquipementAO existe en modèle, sans sérialiseur ni ViewSet ni '
-    + 'route, et services.basculer_equipement (AOF141) n’est pas écrit',
+  // `equipements` a été RETIRÉ le 03/08/2026 : la dette est réglée (AOF118 +
+  // AOF141 — sérialiseur, ViewSet `equipements`, action `bascule`). La garde
+  // ci-dessous mord donc désormais dessus dans l'autre sens : si elle le
+  // signale « sans route serveur », c'est que la lane BACKEND jumelle n'est
+  // pas encore repliée dans cet arbre — le seul état transitoire attendu.
 }
 
 function cheminsUtilises() {
@@ -191,7 +194,23 @@ test('GARDE — chaque chemin appelé par aoApi existe dans le routeur serveur',
   const inconnus = [...cheminsUtilises()].filter(
     (prefixe) => !routes.has(prefixe) && !(prefixe in MANQUANTS_CONNUS))
   assert.deepEqual(inconnus, [],
-    `chemins sans route serveur (apps/ao/urls.py) : ${inconnus.join(', ')}`)
+    `chemins sans route serveur (apps/ao/urls.py) : ${inconnus.join(', ')}`
+    + ' — si « equipements » figure ici, la lane BACKEND jumelle (sérialiseur'
+    + ' + ViewSet + route AOF118/AOF141) n’est pas encore repliée dans cet'
+    + ' arbre ; c’est le SEUL manque attendu, tout autre nom est un chemin'
+    + ' inventé à corriger.')
+})
+
+test('AOF118/AOF141 — les équipements passent par la factory CRUD et une ACTION `bascule`', () => {
+  const body = aoApiBody()
+  assert.match(body, /equipements:\s*\{\s*\n\s*\.\.\.crud\('equipements'\)/)
+  assert.match(body, /bascule:\s*\(id,\s*corps\)\s*=>\s*api\.post\(`\/ao\/equipements\/\$\{id\}\/bascule\/`,\s*corps\)/)
+  // La bascule est ATOMIQUE : une ACTION, jamais un PATCH de ressource.
+  assert.doesNotMatch(body, /api\.patch\(`\/ao\/equipements\/\$\{id\}\/bascule\//)
+  // Aucune donnée de coût ne peut être citée par le client d'API.
+  const debut = body.indexOf('  equipements: {')
+  const corps = body.slice(debut, body.indexOf('\n  },', debut))
+  assert.doesNotMatch(corps, /prix_achat|marge|cout|coût/i)
 })
 
 test('GARDE — un endpoint listé comme MANQUANT doit encore l’être', async () => {

@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Boxes, CheckCircle2 } from 'lucide-react'
+import { Boxes } from 'lucide-react'
 import aoApi from '../../../api/aoApi'
 import useResource from '../../../hooks/useResource'
 import { unwrapList } from '../../../api/resource'
 import { Badge, Button, Card, EmptyState, Skeleton, toast } from '../../../ui'
 import BasculeAssistant from './BasculeAssistant'
 import RapportBascule from './RapportBascule'
-import { ROLES } from './EquipementsPage.utils'
+import { ROLES, GRAVITE_TONE, GRAVITE_LABEL } from './EquipementsPage.utils'
 
 /* ============================================================================
    AOF180 — Écran « Équipements retenus » (+ bascule + rapport).
@@ -14,13 +14,25 @@ import { ROLES } from './EquipementsPage.utils'
    AOF118 fige un SNAPSHOT du catalogue par équipement (désignation, marque,
    référence constructeur, caractéristiques) : c'est CE snapshot qu'on affiche,
    jamais une relecture du catalogue — sinon un re-seed ferait bouger la
-   désignation d'un matériel dans un dossier DÉJÀ DÉPOSÉ.
+   désignation d'un matériel dans un dossier DÉJÀ DÉPOSÉ. Le repli
+   `e.produit_designation` a donc été retiré : il n'existe dans aucun
+   sérialiseur, et il aurait rouvert par la fenêtre la relecture catalogue que
+   le snapshot ferme par la porte.
 
-   AOF119 ajoute le statut d'APPROVISIONNEMENT (lu via `stock.selectors` côté
-   serveur) : un produit archivé ou sans prix retenu dans un dossier remonte en
-   avertissement, et **l'argument « aucun approvisionnement nouveau » n'est
-   affiché QUE si le serveur le confirme** — sur la planche réelle, cette phrase
-   était affirmée à la main.
+   AOF119 ajoute le contrôle d'APPROVISIONNEMENT. Sa forme réelle
+   (`fabrique/approvisionnement.py`) est un CONSTAT par équipement :
+   `{gravite, motif}` avec `gravite ∈ {info, avertissement, blocage}` — pas un
+   `statut`/`libelle`/`delai_jours`, qui n'existent nulle part côté serveur.
+
+   **L'ARGUMENT « aucun approvisionnement nouveau » N'EST PAS RENDU ICI**, et
+   c'est délibéré. `argument_aucun_approvisionnement()` est une décision de
+   DOSSIER : elle n'est vraie que si AUCUN équipement du dossier ne la
+   contredit, et son texte est une CONSTANTE (`PHRASE_ARGUMENT`) que le module
+   interdit de reformuler. Une liste PAGINÉE ne peut pas la prouver — un
+   `every()` sur la page 1 affirmerait l'argument alors que la batterie
+   archivée est en page 2. C'est exactement la phrase « écrite à la main » que
+   AOF119 existe pour empêcher ; elle appartient à la génération de la pièce,
+   pas à cet écran.
 
    **AUCUN COÛT.** Ni `prix_achat`, ni marge, ni coût de revient : ni à
    l'écran, ni dans le corps d'une requête (cf. `payloadBascule`).
@@ -28,21 +40,20 @@ import { ROLES } from './EquipementsPage.utils'
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
-const APPRO_TONE = {
-  disponible: 'success',
-  a_commander: 'info',
-  archive: 'warning',
-  sans_prix: 'warning',
-  rupture: 'danger',
-}
-
 function Appro({ appro }) {
-  if (!appro) return <span className="text-xs text-muted-foreground">approvisionnement inconnu</span>
+  const gravite = appro?.gravite
+  if (!gravite) {
+    return <span className="text-xs text-muted-foreground">approvisionnement non contrôlé</span>
+  }
   return (
-    <Badge tone={APPRO_TONE[appro.statut] ?? 'neutral'}>
-      {appro.libelle || appro.statut}
-      {appro.delai_jours != null ? ` — ${appro.delai_jours} j` : ''}
-    </Badge>
+    <div className="flex max-w-64 flex-col items-end gap-0.5">
+      <Badge tone={GRAVITE_TONE[gravite] ?? 'neutral'}>
+        {GRAVITE_LABEL[gravite] ?? gravite}
+      </Badge>
+      {appro.motif ? (
+        <span className="text-right text-xs text-muted-foreground">{appro.motif}</span>
+      ) : null}
+    </div>
   )
 }
 
@@ -61,11 +72,17 @@ function Caracteristiques({ valeurs }) {
   )
 }
 
-export default function EquipementsPage({ projetId }) {
+export default function EquipementsPage({ affaireId }) {
   const [enBascule, setEnBascule] = useState(null)
   const [rapport, setRapport] = useState(null)
+  const [motifRapport, setMotifRapport] = useState('')
 
-  const params = useMemo(() => (projetId ? { projet: projetId } : undefined), [projetId])
+  // `?appel_offre=` — le nom du CHAMP DU MODÈLE et la convention de toutes les
+  // ressources filles du routeur AO. `?projet=` était un filtre inconnu : le
+  // ViewSet l'ignore en silence et renvoie TOUTE la société.
+  const params = useMemo(
+    () => (affaireId ? { appel_offre: affaireId } : undefined), [affaireId],
+  )
   const { data: equipements, loading, error, refetch } = useResource(
     (p) => aoApi.equipements.list(p), params,
     { initialData: [], select: unwrapList, errorMessage: 'Impossible de charger les équipements retenus.' },
@@ -74,6 +91,7 @@ export default function EquipementsPage({ projetId }) {
   const basculer = useCallback(async (equipement, corps) => {
     const res = await aoApi.equipements.bascule(equipement.id, corps)
     setRapport(res?.data?.rapport ?? res?.data ?? null)
+    setMotifRapport(corps?.motif ?? '')
     toast.success('Bascule effectuée — vérifiez les emplacements suspects.')
     refetch()
   }, [refetch])
@@ -87,10 +105,6 @@ export default function EquipementsPage({ projetId }) {
     }
     return carte
   }, [equipements])
-
-  // L'argument commercial n'est disponible que si le SERVEUR l'a confirmé.
-  const argumentAppro = equipements.length > 0
-    && equipements.every((e) => e.approvisionnement?.aucun_appro_nouveau === true)
 
   if (loading && equipements.length === 0) {
     return <div className="flex flex-col gap-3"><Skeleton className="h-8 w-64" /><Skeleton className="h-40 w-full" /></div>
@@ -116,19 +130,10 @@ export default function EquipementsPage({ projetId }) {
       <div>
         <h1 className="font-display text-xl font-semibold tracking-tight">Équipements retenus</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Caractéristiques figées au moment du choix (snapshot catalogue) et statut d’approvisionnement.
+          Caractéristiques figées au moment du choix (snapshot catalogue) et contrôle
+          d’approvisionnement.
         </p>
       </div>
-
-      {argumentAppro && (
-        <Card className="flex items-start gap-2 border-success/40 bg-success/5 p-3">
-          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
-          <p className="text-sm">
-            <span className="font-medium text-success">Aucun approvisionnement nouveau</span>
-            {' '}— confirmé par le contrôle d’approvisionnement pour tous les matériels retenus.
-          </p>
-        </Card>
-      )}
 
       {[...rolesPresents, ...roleInconnus.map((c) => [c, c])].map(([cle, libelle]) => (
         <Card key={cle} className="flex flex-col gap-2 p-4">
@@ -137,17 +142,15 @@ export default function EquipementsPage({ projetId }) {
             {(parRole.get(cle) ?? []).map((e) => (
               <li key={e.id} className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border p-2.5">
                 <div className="flex min-w-0 flex-col gap-1">
-                  <span className="text-sm font-medium">
-                    {e.designation || e.produit_designation}
-                  </span>
+                  <span className="text-sm font-medium">{e.designation}</span>
                   <span className="text-xs text-muted-foreground">
                     {e.marque || '—'}
                     {e.reference_constructeur ? ` · réf. ${e.reference_constructeur}` : ''}
-                    {e.quantite != null ? ` · qté ${e.quantite}` : ''}
+                    {e.quantite != null ? ` · qté ${e.quantite} ${e.unite || ''}`.trimEnd() : ''}
                   </span>
                   <Caracteristiques valeurs={e.caracteristiques} />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-start gap-2">
                   <Appro appro={e.approvisionnement} />
                   <Button
                     size="sm" variant="outline"
@@ -162,7 +165,7 @@ export default function EquipementsPage({ projetId }) {
         </Card>
       ))}
 
-      {rapport && <RapportBascule rapport={rapport} />}
+      {rapport && <RapportBascule rapport={rapport} motif={motifRapport} />}
 
       {enBascule && (
         <BasculeAssistant
