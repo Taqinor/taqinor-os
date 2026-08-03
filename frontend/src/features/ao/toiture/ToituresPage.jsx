@@ -100,9 +100,18 @@ function FicheToitures({ toitures, loading, error }) {
   )
 }
 
-export default function ToituresPage() {
+export default function ToituresPage({ affaireId } = {}) {
   const surTelephone = useIsMobile(REQUETE_TELEPHONE)
   const [affaireChoisie, setAffaireChoisie] = useState('')
+
+  // Encastrement dans un onglet de fiche affaire (AffaireDetail — hors
+  // périmètre de ce fichier, câblé par une autre lane) : `affaireId` FOURNI
+  // impose CETTE affaire, sans jamais lister les autres ni retomber sur une
+  // autre — un repli silencieux afficherait les toitures d'une AUTRE affaire
+  // sous le titre de celle-ci. `affaireId` ABSENT : comportement de la page
+  // pleine largeur `/ao/toitures` strictement inchangé (sélecteur + repli sur
+  // la première affaire chargée).
+  const encastre = affaireId !== undefined && affaireId !== null && affaireId !== ''
 
   const { data: affaires } = useResource(
     () => aoApi.affaires.list(),
@@ -111,13 +120,19 @@ export default function ToituresPage() {
       initialData: [],
       select: unwrapList,
       errorMessage: 'Impossible de charger les affaires.',
+      // Encastré : l'affaire est déjà choisie par la fiche — lister TOUTES
+      // les affaires de la société ne nourrirait qu'un sélecteur qui ne se
+      // rend pas, pour le prix d'une requête réseau inutile.
+      enabled: !encastre,
     },
   )
 
   // Affaire courante DÉRIVÉE au rendu (jamais un état recopié dans un effet,
-  // react-hooks/set-state-in-effect) : le choix explicite gagne, sinon la
-  // première affaire chargée.
-  const affaireCourante = affaireChoisie || affaires[0]?.id || ''
+  // react-hooks/set-state-in-effect) : encastré → `affaireId` imposé SANS
+  // repli ; sinon le choix explicite gagne, sinon la première affaire chargée.
+  const affaireCourante = encastre
+    ? affaireId
+    : (affaireChoisie || affaires[0]?.id || '')
 
   const { data: toitures, loading, error } = useResource(
     (id) => aoApi.toitures.list(id ? { appel_offre: id } : undefined),
@@ -145,7 +160,10 @@ export default function ToituresPage() {
 
   const lecture = <FicheToitures toitures={toitures} loading={loading} error={error} />
 
-  const selecteurAffaire = (
+  // Encastré dans une fiche : l'affaire est DÉJÀ choisie par l'onglet — un
+  // sélecteur qui proposerait d'en changer serait le piège que l'encastrement
+  // doit précisément éviter (affaires MÉLANGÉES sous le titre d'une seule).
+  const selecteurAffaire = encastre ? null : (
     <div className="flex flex-wrap items-center gap-2">
       <label htmlFor="ao-toitures-affaire" className="text-xs text-muted-foreground">
         Affaire
