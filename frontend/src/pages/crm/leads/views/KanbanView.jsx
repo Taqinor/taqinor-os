@@ -25,9 +25,7 @@ import {
 } from '../../../../features/kanban/kanbanA11y'
 import { readCollapsedStages, writeCollapsedStages } from '../../../../features/kanban/collapsedColumns'
 import { usePanScroll } from '../../../../features/kanban/usePanScroll'
-import { useOptimisticSave } from '../../../../hooks/useOptimisticSave'
 import { usePrefersReducedMotion } from '../../../../hooks/usePrefersReducedMotion'
-import { toast } from '../../../../ui/confirm'
 // ORDRE FONDATEUR 2026-08-01 — un recul d'étape se DEMANDE. La formulation
 // (elle nomme le lead et les deux étapes) est mutualisée avec la fenêtre lead :
 // une seule phrase pour tous les gestes qui font reculer un lead.
@@ -39,7 +37,6 @@ import { EmptyState, Button } from '../../../../ui'
 // Hook média CANONIQUE (le même que LeadsPage) : ici interrogé sur
 // `(pointer: coarse)` — c'est le POINTEUR qui décide, jamais une largeur.
 import { useIsMobile } from '../../../../ui/ResponsiveDialog'
-import { isSigneIntercept } from '../signeIntercept'
 import LeadCard from './LeadCard'
 
 // VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
@@ -48,88 +45,12 @@ import LeadCard from './LeadCard'
 const DROP_ANIMATION = { duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
 const DROP_ANIMATION_REDUCED = { duration: 1, easing: 'linear' }
 
-// J140 + L151 — alternative CLAVIER au glisser-déposer : un sélecteur d'étape
-// accessible sous chaque carte. Enregistrement OPTIMISTE avec rollback via
-// useOptimisticSave (n'utilise que le commit existant `onInlineSave` → thunk
-// updateLead). Affiche le libellé inline « Enregistrement… / Enregistré » et
-// estompe la carte pendant le commit (affordance « ligne en cours »).
-const STAGE_MOVE_OPTIONS = PIPELINE_STAGES.map(
-  (s) => ({ value: s, label: STAGE_LABELS[s] ?? s }),
-)
-
-export function StageMover({ lead, onInlineSave }) {
-  // LB3 — l'entrée dans SIGNED rejette avec la sentinelle SIGNE_INTERCEPT
-  // (signeIntercept.js) : ce n'est PAS une erreur (SigneDialog vient de
-  // s'ouvrir, useOptimisticSave fait son rollback normal — le select revient
-  // à l'étape réelle), donc on ne toaste QUE les vrais échecs réseau.
-  const { value, statusLabel, isSaving, rowProps, save } = useOptimisticSave(
-    lead.stage,
-    {
-      onError: (err) => {
-        if (isSigneIntercept(err)) return
-        toast.error("Changement d'étape non enregistré — réessayez.")
-      },
-    },
-  )
-  const confirmerRecul = useConfirmerRecul()
-  if (!onInlineSave) return null
-  const onChange = async (e) => {
-    const next = e.target.value
-    if (next === value) return
-    // Ordre fondateur 2026-08-01 : le sélecteur ne grise plus les options
-    // arrière (voir plus bas) — c'est la CONFIRMATION qui tient le rôle de
-    // garde-fou, ici comme au glisser-déposer. Refusée, on ne touche à rien :
-    // `save` n'est même pas appelé, donc pas d'optimiste à annuler et le
-    // <select> revient de lui-même à l'étape réelle (il est contrôlé).
-    const enArriere = isStageMoveBackward(value, next)
-    if (enArriere && !(await confirmerRecul(lead, next))) return
-    save(next, (v) => onInlineSave(lead, 'stage', v, { confirmeRecul: enArriere }))
-  }
-  // stopPropagation : interagir avec le select ne doit jamais démarrer un drag.
-  return (
-    <div
-      className="kb-stage-mover"
-      {...rowProps}
-      onClick={(e) => e.stopPropagation()}
-      onPointerDown={(e) => e.stopPropagation()}
-      onTouchStart={(e) => e.stopPropagation()}
-    >
-      <label className="sr-only" htmlFor={`kb-stage-${lead.id}`}>
-        Changer l'étape de {lead.nom || 'ce lead'}
-      </label>
-      <select
-        id={`kb-stage-${lead.id}`}
-        className="form-control kb-stage-select"
-        value={value}
-        disabled={isSaving}
-        onChange={onChange}
-      >
-        {/* LB4 puis ordre fondateur 2026-08-01 — les options ARRIÈRE ne sont
-            PLUS grisées : reculer est désormais légitime, sous confirmation
-            (`onChange` ci-dessus). Griser reste la bonne réponse pour la seule
-            option qui ne veut rien dire — l'étape COURANTE. Le garde-fou n'a
-            pas disparu, il a changé de forme : d'un « impossible » silencieux
-            (un <option disabled> n'explique rien) à une question qui nomme le
-            lead et les deux étapes. Le chemin clavier et le glisser-déposer
-            obtiennent toujours la MÊME réponse (l'invariant du bug #8). */}
-        {STAGE_MOVE_OPTIONS.map((o) => (
-          <option
-            key={o.value}
-            value={o.value}
-            disabled={o.value === lead.stage}
-          >
-            {o.label}
-          </option>
-        ))}
-      </select>
-      {statusLabel && (
-        <span className="kb-stage-status text-xs text-muted-foreground">
-          {statusLabel}
-        </span>
-      )}
-    </div>
-  )
-}
+/* ORDRE FONDATEUR 2026-08-02 — le sélecteur d'étape par carte (StageMover,
+   J140/L151/LB3/LB4) est SUPPRIMÉ, pas caché : « ne la cache pas, supprime-la
+   complètement ». Les deux chemins restants pour changer d'étape : le
+   glisser-déposer (souris/clavier via KeyboardSensor, garde LB4 + recul
+   confirmé round 4) et la pilule d'étape de la fenêtre du lead. Le contrat
+   d'absence vit dans KanbanView.test.jsx. */
 
 // Probabilité de conversion par étape (entonnoir) — UI seulement, sert au
 // prévisionnel pondéré (proba × total devis). Les leads perdus comptent 0.
@@ -155,7 +76,7 @@ export const STAGE_PROBABILITY = {
 // re-rendu mais pas le travail de DraggableCard lui-même en amont.
 const DraggableCard = memo(function DraggableCard({
   lead, busy, onOpen, onAutoQuote, users, onReassign,
-  selected, onToggleSelect, onPlanifierRelance, onInlineSave, onMarkPerdu,
+  selected, onToggleSelect, onPlanifierRelance, onMarkPerdu,
   // LB38 — booléen « une sélection est en cours quelque part sur le board »
   // (jamais le `Set` entier) : révèle la case de TOUTES les cartes pendant
   // qu'on constitue une sélection (blueprint D3). Primitive → memo intact.
@@ -171,9 +92,7 @@ const DraggableCard = memo(function DraggableCard({
       ref={setNodeRef}
       className={isDragging ? 'kb-drag-wrap kb-drag-source' : 'kb-drag-wrap'}
     >
-      {/* Le drag n'est rattaché qu'à la carte ; le sélecteur d'étape (clavier)
-          vit hors de la poignée pour rester utilisable au clavier/souris.
-          LB12 — `data-lead-id` sur ce MÊME nœud (celui qui porte réellement
+      {/* LB12 — `data-lead-id` sur ce MÊME nœud (celui qui porte réellement
           `tabIndex`/`role` via `attributes` dnd-kit) : c'est lui que
           `handleDragEnd` refocalise après un déplacement réussi. */}
       <div data-lead-id={lead.id} {...listeners} {...attributes}>
@@ -183,7 +102,6 @@ const DraggableCard = memo(function DraggableCard({
                   selectionActive={selectionActive}
                   onPlanifierRelance={onPlanifierRelance} onMarkPerdu={onMarkPerdu} />
       </div>
-      <StageMover lead={lead} onInlineSave={onInlineSave} />
     </div>
   )
 })
@@ -312,7 +230,6 @@ export default function KanbanView({
   selected = new Set(),
   onToggleSelect,
   onPlanifierRelance,
-  onInlineSave,
   onMarkPerdu,
   // LB9 — coach d'état vide à DEUX paliers, même idiome que ChartsView
   // (totalLeads/onClearFilters déjà câblés là-bas sur `leads.length`/
@@ -419,12 +336,11 @@ export default function KanbanView({
     }))
   }, [])
 
-  /* EZ14 — adoptions n°7 et 8 : sur le board, la RÉASSIGNATION et le
-     changement d'étape au CLAVIER (StageMover) gagnent l'undo.
-     C'est précisément ici que le commit différé était dangereux : un board se
-     démonte au moindre changement de vue ou de filtre. `mutateWithUndo`
-     applique tout de suite et propose l'appel INVERSE — il n'y a jamais rien
-     « en attente » à perdre. */
+  /* EZ14 — adoption n°7 : sur le board, la RÉASSIGNATION gagne l'undo.
+     (L'adoption n°8 — l'étape au clavier via StageMover — est morte avec le
+     StageMover, ordre fondateur 2026-08-02 ; l'étape se change par drag ou
+     dans la fenêtre du lead.) Un board se démonte au moindre changement de
+     vue : `mutateWithUndo` applique tout de suite, jamais rien en attente. */
   const reassignAvecUndo = useCallback(async (lead, nouvelId) => {
     if (!onReassign) return
     const precedent = lead?.owner ?? ''
@@ -437,33 +353,6 @@ export default function KanbanView({
     })
   }, [onReassign])
 
-  const inlineSaveAvecUndo = useCallback(async (lead, champ, valeur, opts) => {
-    if (!onInlineSave) return undefined
-    // Seule l'étape est réversible ici (le StageMover ne pilote que `stage`).
-    // Entrer en « Signé » est intercepté en amont (SigneDialog) : cette voie ne
-    // touche donc jamais au funnel d'argent.
-    if (champ !== 'stage') return onInlineSave(lead, champ, valeur, opts)
-    const precedent = lead?.stage
-    if (precedent === valeur) return onInlineSave(lead, champ, valeur, opts)
-    // On laisse l'erreur REMONTER (useOptimisticSave fait son rollback et
-    // SigneDialog s'appuie sur la sentinelle SIGNE_INTERCEPT) : c'est pourquoi
-    // `apply` est appelé directement ici plutôt qu'avalé par le toast.
-    const res = await onInlineSave(lead, champ, valeur, opts)
-    await mutateWithUndo({
-      kind: 'lead_stage',
-      message: 'Étape modifiée.',
-      apply: () => Promise.resolve(res),
-      // L'annulation d'une AVANCÉE recule : sans marqueur elle se prend le 400
-      // de la garde funnel — exactement le bug LB39, qui avait été corrigé sur
-      // le chemin du DROP (LeadsPage.changeStage) mais jamais sur celui du
-      // StageMover, faute d'un argument pour porter le marqueur. Il existe
-      // maintenant : `undo` (l'annulation, revérifiée serveur contre le
-      // chatter) et non `confirmeRecul` — personne n'a confirmé quoi que ce
-      // soit, l'utilisatrice défait sa propre action.
-      revert: () => onInlineSave(lead, champ, precedent, { undo: true }),
-    })
-    return res
-  }, [onInlineSave])
 
   const [collapsedStages, setCollapsedStages] = useState(() => new Set(readCollapsedStages()))
   const toggleCollapsed = useCallback((stageKey) => {
@@ -645,12 +534,6 @@ export default function KanbanView({
                       selectionActive={selected.size > 0}
                       onToggleSelect={onToggleSelect}
                       onPlanifierRelance={onPlanifierRelance}
-                      // Au doigt le StageMover n'est même plus MONTÉ (déjà
-                      // inatteignable — :has(:focus-visible) + hover — mais il
-                      // coûtait 9 nœuds + un <select> natif par carte).
-                      // `undefined` est stable : memo intact. Chemins restants
-                      // tactile-clavier : KeyboardSensor + pilule de la fenêtre.
-                      onInlineSave={pointerCoarse ? undefined : inlineSaveAvecUndo}
                       onMarkPerdu={onMarkPerdu}
                     />
                   ))}

@@ -85,8 +85,11 @@ test("ordre fondateur 2026-08-01 : au doigt on monte TOUT, le bouton n'existe pa
   // visibles en meme temps — le mur de noeuds y est reel).
   assert.match(KANBAN, /export const RENDER_CAP = 40/)
   assert.match(KANBAN, /\{restants > 0 && \(/)
-  // L'autre allegement tactile du round 3 reste en place.
-  assert.match(KANBAN, /onInlineSave=\{pointerCoarse \? undefined : inlineSaveAvecUndo\}/)
+  // Round 3 allegait le StageMover au doigt ; depuis l'ordre fondateur
+  // 2026-08-02 il n'existe PLUS DU TOUT (aucune surface, aucun pointeur).
+  // (le MOT StageMover survit dans les commentaires d'archéologie — l'épingle
+  // vise les formes de CODE : balise JSX, export, câblage.)
+  assert.doesNotMatch(KANBAN, /<StageMover|export function StageMover|inlineSaveAvecUndo/)
 })
 
 test('APX9 : les compteurs et sommes d\'en-tete restent les totaux REELS', () => {
