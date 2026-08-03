@@ -28,6 +28,12 @@ import { payloadBascule } from './BasculeAssistant.utils'
    marge et sans coût de revient, et le corps de la requête est construit par
    une ALLOWLIST explicite (`payloadBascule`) — jamais par diffusion d'un objet
    produit, qui embarquerait `prix_achat` sans que personne le voie.
+
+   **La référence catalogue est `sku`, pas `reference`.** `ProduitSerializer`
+   (`apps/stock/serializers.py`, `Meta.fields`) publie `sku` — `reference`
+   n'existe pas sur `stock.Produit`. L'écran affichait donc « réf. undefined »,
+   c'est-à-dire rien du tout, sur la ligne même qui sert à identifier le
+   matériel qu'on s'apprête à substituer.
    ========================================================================== */
 
 function CatalogueItem({ produit, onChoisir }) {
@@ -42,7 +48,7 @@ function CatalogueItem({ produit, onChoisir }) {
         <span className="text-sm font-medium">{produit.nom}</span>
         <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           {produit.marque || '—'}
-          {produit.reference ? ` · réf. ${produit.reference}` : ''}
+          {produit.sku ? ` · réf. ${produit.sku}` : ''}
           {produit.is_archived && <Badge tone="warning">archivé</Badge>}
           {sansPrix && <Badge tone="warning">prix à renseigner</Badge>}
         </span>
@@ -85,7 +91,7 @@ export default function BasculeAssistant({ equipement, onFermer, onBasculer }) {
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            Basculer « {equipement.designation || equipement.produit_designation} »
+            Basculer « {equipement.designation} »
           </DialogTitle>
         </DialogHeader>
 
@@ -121,7 +127,7 @@ export default function BasculeAssistant({ equipement, onFermer, onBasculer }) {
             <>
               <p className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="text-muted-foreground">
-                  {equipement.designation || equipement.produit_designation}
+                  {equipement.designation}
                 </span>
                 <ArrowRightLeft className="size-4" aria-hidden="true" />
                 <span className="font-medium">{nouveau.nom}</span>
