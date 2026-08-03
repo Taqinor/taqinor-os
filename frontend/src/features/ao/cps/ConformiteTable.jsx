@@ -22,10 +22,25 @@ import { NON_EVALUE, severiteAffichee, valeurExigee } from './ConformiteTable.ut
 
    Hook e2e : `data-ao-controle` (contrat AOF8) — une ligne de ce tableau EST un
    contrôle individuel de la porte avant dépôt ; aucun nouveau `data-ao-*`.
+
+   ── RÉPARATION 03/08/2026 : deux colonnes ne pouvaient JAMAIS se remplir ───
+   « Constaté » lisait `conformite.valeur_constatee` et « Origine du constat »
+   `conformite.origine_label` / `conformite.origine`. Or `ExigenceCPSSerializer`
+   ne déclare pas `conformite` et aucun code d'`apps/ao` ne le produit : les
+   deux colonnes affichaient « — » sur CHAQUE ligne, définitivement. Elles sont
+   retirées — un placeholder perpétuel occupe la largeur d'une vraie donnée et
+   fait croire à une mesure absente plutôt qu'à une mesure inexistante. Le
+   verdict lui-même (colonne « Conformité ») est conservé : « Non évalué » est
+   l'état RÉEL et honnête tant qu'AOF99/AOF146 n'annotent pas les clauses
+   (cf. la note sur `statutConformite` dans `ConformiteTable.utils.js`).
+   Retirés aussi : `exigence.source` (le sérialiseur ne sert que `source_piece`)
+   et `exigence.erratum_ref`, qui n'existe nulle part — la référence de
+   l'erratum n'est pas portée par la clause, seul le drapeau `a_reverifier`
+   l'est.
    ========================================================================== */
 
 function SourceDce({ exigence }) {
-  const piece = exigence.source_piece || exigence.source
+  const piece = exigence.source_piece
   if (!piece) return <span className="text-muted-foreground">—</span>
   return (
     <span>
@@ -56,22 +71,13 @@ function LigneExigence({ exigence }) {
             <Badge tone="warning">
               <RefreshCcw className="size-3" aria-hidden="true" />
               À revérifier
-              {exigence.erratum_ref ? ` — erratum ${exigence.erratum_ref}` : ''}
             </Badge>
           )}
         </div>
       </td>
       <td className="px-2 py-2 text-sm tabular-nums">{valeurExigee(exigence)}</td>
-      <td className="px-2 py-2 text-sm tabular-nums">
-        {conformite.valeur_constatee != null && conformite.valeur_constatee !== ''
-          ? String(conformite.valeur_constatee)
-          : <span className="text-muted-foreground">—</span>}
-      </td>
       <td className="px-2 py-2 text-xs text-muted-foreground">
         <SourceDce exigence={exigence} />
-      </td>
-      <td className="px-2 py-2 text-xs text-muted-foreground">
-        {conformite.origine_label || conformite.origine || '—'}
       </td>
       <td className="px-2 py-2">
         {severite
@@ -100,7 +106,7 @@ export default function ConformiteTable({ exigences = [] }) {
 
   return (
     <Card className="overflow-x-auto p-0">
-      <table className="w-full min-w-[52rem] text-left">
+      <table className="w-full min-w-[36rem] text-left">
         <caption className="px-3 py-2 text-left text-xs text-muted-foreground">
           Conformité évaluée par le serveur (chaîne électrique et contrôleur avant dépôt) —
           aucune valeur n’est recalculée à l’écran.
@@ -109,9 +115,7 @@ export default function ConformiteTable({ exigences = [] }) {
           <tr className="border-b border-border">
             <th scope="col" className="px-2 py-2 font-medium">Clause</th>
             <th scope="col" className="px-2 py-2 font-medium">Exigé</th>
-            <th scope="col" className="px-2 py-2 font-medium">Constaté</th>
             <th scope="col" className="px-2 py-2 font-medium">Source (DCE)</th>
-            <th scope="col" className="px-2 py-2 font-medium">Origine du constat</th>
             <th scope="col" className="px-2 py-2 font-medium">Conformité</th>
           </tr>
         </thead>

@@ -235,6 +235,12 @@ le singulier une occurrence (`data-ao-zone` = une zone).
 | `data-ao-l-sommets` | Enveloppe en L (AOF91) | Le polygone UNIQUE du contour, valué par son nombre de sommets. |
 | `data-ao-l-valider` | Enveloppe en L (AOF91) | Le bouton de validation de l'enveloppe en L. |
 
+### 2.14 Fiche affaire : panneaux d'onglet en chargement différé — 03/08/2026 (`AffaireDetail.jsx`)
+
+| Hook | Porté par | Sémantique |
+|---|---|---|
+| `data-ao-panneau-differe` | Le repli squelette de `PanneauDiffere` | Le panneau de cet onglet est en cours de chargement (`lazy` + `Suspense`). Repère destiné au balayage e2e : un onglet doit finir par REMPLACER ce repère par son contenu réel — s'il persiste, le panneau ne se monte pas. |
+
 ## Règle de non-invention
 
 Un écran AO qui a besoin d'un hook e2e stable choisit **d'abord un nom du

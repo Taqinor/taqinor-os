@@ -48,9 +48,16 @@ const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const POLL_MS = 30000
 
+/* RÉPARATION 03/08/2026 — le type par défaut valait `plafond`, que le serveur
+   REFUSE : il n'est pas dans `ExigenceCPS.TypeExigence` (cf. la liste réelle
+   dans `ExigencesPage.utils.js`). Une clause soumise sans toucher au sélecteur
+   partait donc systématiquement en erreur. Le défaut est désormais `autre`, le
+   choix le plus neutre du modèle — il existe, il est même le `default` du champ
+   côté Django, et il n'impose aucune sémantique à une clause qu'on n'a pas
+   encore qualifiée. Sa valeur part en `valeur_texte` (type non chiffrable). */
 const FORM_VIDE = {
   libelle: '',
-  type: 'plafond',
+  type: 'autre',
   valeur: '',
   valeurMax: '',
   unite: '',
@@ -173,7 +180,16 @@ export default function ExigencesPage({
   const id = affaireId ?? routeParams.id
   const [depot, setDepot] = useState(false)
 
-  const params = useMemo(() => (id ? { affaire: id } : undefined), [id])
+  /* RÉPARATION 03/08/2026 — le filtre s'appelle `appel_offre`, PAS `affaire`.
+     Vérifié dans le code serveur : `ExigenceCPSViewSet.get_queryset`
+     (`apps/ao/views.py`) n'honore que ('appel_offre', 'type_exigence',
+     'bloquant', 'a_reverifier', 'piece_consultation') via `_filtres_exacts`,
+     qui LIT les noms qu'il connaît et IGNORE tout le reste — aucun 400, aucune
+     trace. `?affaire=` renvoyait donc les clauses de TOUTES les affaires de la
+     société sous le titre d'une seule : un filtre ignoré ne se voit pas, à la
+     différence d'un 404. (`ExigenceCPS.appel_offre` est bien le nom du champ
+     du modèle.) */
+  const params = useMemo(() => (id ? { appel_offre: id } : undefined), [id])
   const { data: exigences, loading, error, refetch } = useResource(
     (p) => aoApi.exigencesCps.list(p), params,
     {
@@ -237,10 +253,14 @@ export default function ExigencesPage({
               Exigences à revérifier après erratum
             </p>
             <ul className="mt-1 flex flex-col gap-0.5">
+              {/* RÉPARATION 03/08/2026 — `e.erratum_ref` n'existe pas : le
+                  sérialiseur ne porte que le drapeau `a_reverifier`, jamais la
+                  référence de l'additif. La mention était donc toujours vide.
+                  Retirée : la pièce qui a déclenché la revérification se lit
+                  sur l'onglet des pièces du DCE, pas ici. */}
               {aReverifier.map((e) => (
                 <li key={e.id ?? e.code} className="text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">{e.libelle || e.code}</span>
-                  {e.erratum_ref ? ` — erratum ${e.erratum_ref}` : ''}
                 </li>
               ))}
             </ul>

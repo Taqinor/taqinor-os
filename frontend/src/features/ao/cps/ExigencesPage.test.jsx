@@ -2,16 +2,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 
 /* AOF181 — l'analyse du cahier des charges devient un écran.
-   Trois garanties prouvées ici :
-     1. le jeu de clauses FRDISI se saisit INTÉGRALEMENT (ratio DC/AC 0,75-1,
-        plafond 60 kWc/onduleur, caution provisoire en montant ABSOLU, validité
-        75 jours) — avec sa source (pièce du DCE + page) et son caractère
-        bloquant, et sans qu'aucun nombre tapé ne soit normalisé ;
-     2. une clause bloquante non satisfaite s'affiche en rouge et EMPÊCHE
-        `pret_a_deposer`, motif écrit sur le bouton ;
-     3. aucun chiffre de conformité n'est calculé côté front : une clause que le
-        serveur n'a pas évaluée reste « Non évalué », même quand la valeur
-        constatée est là et qu'une comparaison serait « évidente ». */
+
+   ── RÉPARATION 03/08/2026 : ces tests ÉPINGLAIENT un contrat inventé ───────
+   Les fixtures étaient bâties sur `type: 'intervalle' | 'plafond' | 'montant'
+   | 'duree' | 'texte'` et sur `valeur` / `valeur_min` / `valeur_max` — un
+   vocabulaire et des champs qu'`ExigenceCPSSerializer` n'a JAMAIS servis. Le
+   code de l'écran lisait les mêmes noms fantômes : test et code étaient donc
+   d'accord entre eux et faux tous les deux, ce qui est exactement pourquoi la
+   panne (aucune valeur chiffrée affichée, aucun préfixe « ≤ ») a survécu à la
+   relecture. Les fixtures ci-dessous ne portent plus QUE des clés réellement
+   servies, listées dans `CHAMPS_SERIALISEUR`.
+
+   Quatre garanties prouvées ici :
+     1. le jeu de clauses FRDISI se saisit INTÉGRALEMENT, avec sa source (pièce
+        du DCE + page) et son caractère bloquant, sans qu'aucun nombre tapé ne
+        soit normalisé ;
+     2. `payloadClause` n'émet AUCUNE clé absente du sérialiseur — la garde qui
+        manquait, et sans laquelle cinq clés inconnues sont parties en silence ;
+     3. sur des données RÉELLES (clés du sérialiseur seules), l'écran affiche
+        les valeurs chiffrées et « Non évalué », et ne bloque pas le dépôt ;
+     4. les verdicts restent des fonctions PURES : aucun chiffre de conformité
+        n'est calculé côté front. */
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn() }))
 const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
@@ -39,50 +50,67 @@ vi.mock('../dossier/PiecePreview', () => ({
 }))
 
 import ExigencesPage from './ExigencesPage'
-import { payloadClause, estIntervalle } from './ExigencesPage.utils'
+import { payloadClause, estIntervalle, estTexte, TYPES_CLAUSE } from './ExigencesPage.utils'
 import {
   statutConformite, severiteAffichee, exigencesBloquantes, motifBlocageDepot, valeurExigee,
 } from './ConformiteTable.utils'
 
-// Le jeu de clauses FRDISI, tel qu'il sera saisi par l'écran.
+/* La liste EXACTE des champs déclarés par `ExigenceCPSSerializer`
+   (`backend/django_core/apps/ao/serializers.py`). Toute clé hors de cette
+   liste est un champ fantôme : le serveur ne la lit pas en écriture (DRF
+   l'ignore en silence) et ne la sert pas en lecture. */
+const CHAMPS_SERIALISEUR = [
+  'id', 'appel_offre', 'code', 'libelle', 'type_exigence', 'type_exigence_display',
+  'valeur_num', 'valeur_max_num', 'est_intervalle', 'unite', 'valeur_texte',
+  'source_piece', 'source_page', 'piece_consultation', 'a_reverifier', 'bloquant',
+  'commentaire',
+]
+
+/* Le jeu de clauses FRDISI, aux noms de champs RÉELS. `est_intervalle` est
+   DÉRIVÉ côté serveur (`valeur_max_num is not None`) : il est servi en
+   lecture, jamais envoyé. */
 const RATIO = {
-  id: 1, code: 'ratio_dc_ac', libelle: 'Ratio DC/AC admissible', type: 'intervalle',
-  valeur_min: '0,75', valeur_max: '1', bloquant: true,
-  source_piece: 'CPS — article 12', source_page: '34',
-  conformite: {
-    statut: 'conforme', valeur_constatee: '0,92',
-    origine_label: 'Chaîne électrique', message: null,
-  },
+  id: 1, appel_offre: 7, code: 'RATIO_DC_AC', libelle: 'Ratio DC/AC admissible',
+  type_exigence: 'ratio_dc_ac', type_exigence_display: 'Ratio DC/AC (min–max)',
+  valeur_num: '0,75', valeur_max_num: '1', est_intervalle: true, unite: '',
+  bloquant: true, source_piece: 'CPS — article 12', source_page: 34,
 }
 const PLAFOND = {
-  id: 2, code: 'plafond_onduleur', libelle: 'Puissance maximale par onduleur',
-  type: 'plafond', valeur: '60', unite: 'kWc/onduleur', bloquant: true,
-  source_piece: 'CPS — article 12', source_page: '35',
-  conformite: {
-    statut: 'non_conforme', valeur_constatee: '66 kWc',
-    origine_label: 'Chaîne électrique',
-    message: 'Un onduleur du bâtiment C dépasse le plafond : 66 kWc pour 60 admis.',
-  },
+  id: 2, appel_offre: 7, code: 'ONDULEUR_KWC_MAX',
+  libelle: 'Puissance maximale par onduleur',
+  type_exigence: 'puissance_onduleur_max',
+  type_exigence_display: "Puissance unitaire max d'onduleur",
+  valeur_num: '60', est_intervalle: false, unite: 'kWc/onduleur', bloquant: true,
+  source_piece: 'CPS — article 12', source_page: 35,
 }
 const CAUTION = {
-  id: 3, code: 'caution_provisoire', libelle: 'Caution provisoire',
-  type: 'montant', valeur: '40000', unite: 'MAD', bloquant: true,
-  source_piece: "Règlement de consultation", source_page: '8',
-  conformite: { statut: 'conforme', valeur_constatee: '40 000 MAD', origine_label: 'Contrôleur avant dépôt' },
+  id: 3, appel_offre: 7, code: 'CAUTION_PROVISOIRE', libelle: 'Caution provisoire',
+  type_exigence: 'caution_provisoire',
+  type_exigence_display: 'Caution provisoire (montant absolu)',
+  valeur_num: '40000', est_intervalle: false, unite: 'MAD', bloquant: true,
+  source_piece: 'Règlement de consultation', source_page: 8,
 }
 const VALIDITE = {
-  id: 4, code: 'validite_offre', libelle: 'Validité des offres', type: 'duree',
-  valeur: '75', unite: 'jours', bloquant: false,
-  source_piece: 'Règlement de consultation', source_page: '9',
-  a_reverifier: true, erratum_ref: 'n° 2/2026',
-  conformite: { statut: 'non_conforme', message: 'La lettre de soumission annonce 60 jours.' },
+  id: 4, appel_offre: 7, code: 'VALIDITE_OFFRE', libelle: 'Validité des offres',
+  type_exigence: 'validite_offre', type_exigence_display: "Validité de l'offre",
+  valeur_num: '75', est_intervalle: false, unite: 'jours', bloquant: false,
+  source_piece: 'Règlement de consultation', source_page: 9, a_reverifier: true,
 }
-// Clause NON évaluée par le serveur : le front ne doit RIEN en conclure.
-const NON_EVALUEE = {
-  id: 5, code: 'garantie_decennale', libelle: 'Garantie décennale', type: 'texte',
-  valeur_texte: 'Exigée', bloquant: true, source_piece: 'CPS — article 30',
-  conformite: { valeur_constatee: 'Fournie' },
+// Clause non chiffrable : sa valeur vit dans `valeur_texte`.
+const TEXTUELLE = {
+  id: 5, appel_offre: 7, code: 'GARANTIE_DECENNALE', libelle: 'Garantie décennale',
+  type_exigence: 'piece_administrative',
+  type_exigence_display: 'Pièce administrative exigée',
+  valeur_texte: 'Exigée', est_intervalle: false, bloquant: true,
+  source_piece: 'CPS — article 30',
 }
+
+/* Le verdict de conformité n'est PAS servi à ce jour (cf. la note sur
+   `statutConformite`) : les tests de verdict ci-dessous SIMULENT l'annotation
+   qu'AOF99/AOF146 produiront, pour prouver que la logique de porte est juste
+   le jour où elle arrivera. Aucun test de RENDU ne s'en sert : les tests
+   d'écran n'utilisent que des données réellement servies. */
+const avecVerdict = (clause, conformite) => ({ ...clause, conformite })
 
 const liste = (items) => ({ data: { results: items } })
 
@@ -94,51 +122,55 @@ beforeEach(() => {
 })
 
 describe('ExigencesPage (AOF181)', () => {
-  it('affiche le tableau de conformité avec la source DCE et l’origine du constat', async () => {
+  it('affiche les valeurs chiffrées et la source DCE à partir des champs RÉELS', async () => {
     render(<ExigencesPage />)
     expect(await screen.findByText('Ratio DC/AC admissible')).toBeInTheDocument()
+    // `valeur_num` + `valeur_max_num` → intervalle, virgule décimale intacte.
     expect(screen.getByText('0,75 – 1')).toBeInTheDocument()
+    // Préfixe « ≤ » : la direction est portée par le modèle pour ce type seul.
     expect(screen.getByText('≤ 60 kWc/onduleur')).toBeInTheDocument()
+    // Aucune direction dans le modèle pour `validite_offre` → aucun préfixe.
+    expect(screen.getByText('75 jours')).toBeInTheDocument()
+    expect(screen.getByText('40000 MAD')).toBeInTheDocument()
     expect(screen.getAllByText(/CPS — article 12, p\. 3[45]/)).toHaveLength(2)
-    expect(screen.getAllByText('Chaîne électrique')).toHaveLength(2)
     expect(document.querySelectorAll('[data-ao-controle]')).toHaveLength(4)
   })
 
-  it('une clause bloquante non satisfaite est rouge et EMPÊCHE « prêt à déposer », motif écrit sur le bouton', async () => {
+  it('l’écran filtre par `appel_offre` — le nom que le serveur honore', async () => {
     render(<ExigencesPage />)
-    const bouton = await screen.findByRole('button', { name: /^Dépôt bloqué —/ })
-    expect(bouton).toBeDisabled()
-    expect(bouton).toHaveAccessibleName(/66 kWc pour 60 admis/)
-    // La ligne fautive porte la pastille « Bloquant » du socle partagé.
-    expect(screen.getByText('Bloquant')).toBeInTheDocument()
-    expect(mocks.update).not.toHaveBeenCalled()
+    await screen.findByText('Ratio DC/AC admissible')
+    expect(mocks.list).toHaveBeenCalledWith({ appel_offre: '7' })
   })
 
-  it('sans clause bloquante non satisfaite, le dépôt redevient possible', async () => {
-    mocks.list.mockResolvedValue(liste([RATIO, CAUTION, VALIDITE]))
-    const onPretADeposer = vi.fn().mockResolvedValue({})
-    render(<ExigencesPage onPretADeposer={onPretADeposer} />)
-    const bouton = await screen.findByRole('button', { name: 'Marquer « prêt à déposer »' })
-    expect(bouton).toBeEnabled()
-    fireEvent.click(bouton)
-    await waitFor(() => expect(onPretADeposer).toHaveBeenCalled())
-  })
-
-  it('aucun chiffre de conformité côté front : une clause non évaluée reste « Non évalué »', async () => {
-    mocks.list.mockResolvedValue(liste([NON_EVALUEE]))
+  it('sur des données réelles, tout est « Non évalué » et le dépôt n’est pas bloqué', async () => {
+    // Le serveur ne sert AUCUN verdict de conformité aujourd'hui : l'écran doit
+    // le dire honnêtement, et surtout ne rien conclure — ni « conforme », ni
+    // « bloquant ». C'est le serveur qui reste la porte (AOF146).
     render(<ExigencesPage />)
-    expect(await screen.findByText('Non évalué')).toBeInTheDocument()
-    // Une valeur constatée présente ne suffit JAMAIS à conclure « conforme ».
-    expect(screen.queryByText('OK')).not.toBeInTheDocument()
-    // …et une clause bloquante non évaluée ne bloque pas non plus (le verdict
-    // appartient au serveur, dans les deux sens).
     expect(await screen.findByRole('button', { name: 'Marquer « prêt à déposer »' })).toBeEnabled()
+    expect(screen.getAllByText('Non évalué')).toHaveLength(4)
+    expect(screen.queryByText('OK')).not.toBeInTheDocument()
+    expect(screen.queryByText('Bloquant')).not.toBeInTheDocument()
+  })
+
+  it('aucune colonne ne peut afficher un tiret perpétuel', async () => {
+    // Les colonnes « Constaté » et « Origine du constat » lisaient une
+    // annotation jamais servie : elles affichaient « — » sur chaque ligne.
+    render(<ExigencesPage />)
+    await screen.findByText('Ratio DC/AC admissible')
+    expect(screen.queryByRole('columnheader', { name: 'Constaté' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Origine du constat' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('columnheader').map((c) => c.textContent))
+      .toEqual(['Clause', 'Exigé', 'Source (DCE)', 'Conformité'])
   })
 
   it('signale les exigences à revérifier après erratum', async () => {
     render(<ExigencesPage />)
     expect(await screen.findByText('Exigences à revérifier après erratum')).toBeInTheDocument()
-    expect(screen.getAllByText(/erratum n° 2\/2026/).length).toBeGreaterThan(0)
+    // `a_reverifier` est le SEUL signal servi : la référence de l'additif
+    // (`erratum_ref`) n'existe pas au contrat et n'est plus prétendue.
+    expect(screen.getAllByText('Validité des offres').length).toBeGreaterThan(0)
+    expect(screen.queryByText(/erratum n°/)).not.toBeInTheDocument()
   })
 
   it('le jeu de clauses FRDISI se saisit intégralement, valeurs NON normalisées', async () => {
@@ -165,47 +197,70 @@ describe('ExigencesPage (AOF181)', () => {
       await waitFor(() => expect(screen.getByLabelText(/Intitulé de la clause/)).toHaveValue(''))
     }
 
-    // 1. Ratio DC/AC 0,75-1 — un intervalle, virgule décimale intacte.
+    // 1. Ratio DC/AC 0,75-1 — le seul intervalle, virgule décimale intacte.
     await saisir({
-      type: 'intervalle', libelle: 'Ratio DC/AC admissible',
+      type: 'ratio_dc_ac', libelle: 'Ratio DC/AC admissible',
       valeur: '0,75', valeurMax: '1', source: 'CPS — article 12', page: '34',
     }, { intervalle: true })
     await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1))
     expect(mocks.create.mock.calls[0][0]).toEqual({
-      affaire: '7', libelle: 'Ratio DC/AC admissible', type: 'intervalle', bloquant: true,
-      source_piece: 'CPS — article 12', source_page: '34', unite: null,
-      valeur_min: '0,75', valeur_max: '1',
+      appel_offre: '7', code: 'Ratio DC/AC admissible', libelle: 'Ratio DC/AC admissible',
+      type_exigence: 'ratio_dc_ac', bloquant: true,
+      source_piece: 'CPS — article 12', source_page: '34', unite: '',
+      valeur_num: '0,75', valeur_max_num: '1',
     })
 
     // 2. Plafond 60 kWc par onduleur.
     await saisir({
-      type: 'plafond', libelle: 'Puissance maximale par onduleur',
+      type: 'puissance_onduleur_max', libelle: 'Puissance maximale par onduleur',
       valeur: '60', unite: 'kWc/onduleur', source: 'CPS — article 12', page: '35',
     })
     await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(2))
     expect(mocks.create.mock.calls[1][0]).toMatchObject({
-      type: 'plafond', valeur: '60', unite: 'kWc/onduleur', bloquant: true,
+      type_exigence: 'puissance_onduleur_max', valeur_num: '60', unite: 'kWc/onduleur',
+      bloquant: true,
     })
 
     // 3. Caution provisoire en MONTANT ABSOLU (jamais un pourcentage déduit).
     await saisir({
-      type: 'montant', libelle: 'Caution provisoire',
+      type: 'caution_provisoire', libelle: 'Caution provisoire',
       valeur: '40000', unite: 'MAD', source: 'Règlement de consultation', page: '8',
     })
     await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(3))
     expect(mocks.create.mock.calls[2][0]).toMatchObject({
-      type: 'montant', valeur: '40000', unite: 'MAD',
+      type_exigence: 'caution_provisoire', valeur_num: '40000', unite: 'MAD',
     })
 
     // 4. Validité des offres 75 jours, clause NON bloquante.
     await saisir({
-      type: 'duree', libelle: 'Validité des offres',
+      type: 'validite_offre', libelle: 'Validité des offres',
       valeur: '75', unite: 'jours', source: 'Règlement de consultation', page: '9',
     }, { bloquant: false })
     await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(4))
     expect(mocks.create.mock.calls[3][0]).toMatchObject({
-      type: 'duree', valeur: '75', unite: 'jours', bloquant: false,
+      type_exigence: 'validite_offre', valeur_num: '75', unite: 'jours', bloquant: false,
     })
+
+    // 5. Clause non chiffrable : la valeur part en `valeur_texte`.
+    await saisir({
+      type: 'piece_administrative', libelle: 'Attestation fiscale',
+      valeur: 'Exigée, moins d’un an', source: 'Règlement de consultation', page: '4',
+    })
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(5))
+    expect(mocks.create.mock.calls[4][0]).toMatchObject({
+      type_exigence: 'piece_administrative', valeur_texte: 'Exigée, moins d’un an',
+    })
+    expect(mocks.create.mock.calls[4][0]).not.toHaveProperty('valeur_num')
+  })
+
+  it('un refus serveur s’affiche tel quel', async () => {
+    mocks.create.mockRejectedValue({ response: { data: { detail: 'Code déjà utilisé.' } } })
+    render(<ExigencesPage />)
+    await screen.findByText('Ratio DC/AC admissible')
+    fireEvent.change(screen.getByLabelText(/Intitulé de la clause/), { target: { value: 'X' } })
+    fireEvent.change(screen.getByLabelText(/Pièce du DCE/), { target: { value: 'CPS' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter la clause' }))
+    await waitFor(() => expect(toastMocks.error).toHaveBeenCalledWith('Code déjà utilisé.'))
   })
 
   it('l’aperçu du CPS est branché sur le composant partagé (AOF175), pas réécrit', async () => {
@@ -214,46 +269,126 @@ describe('ExigencesPage (AOF181)', () => {
   })
 })
 
+describe('payloadClause — garde de contrat (la garde qui manquait)', () => {
+  const formulaire = (type) => ({
+    libelle: ' Clause de test ', type, valeur: '0,75', valeurMax: '1',
+    unite: ' kWc ', sourcePiece: ' CPS ', sourcePage: ' 12 ', bloquant: true,
+  })
+
+  it('n’émet AUCUNE clé absente du sérialiseur, pour CHAQUE type du modèle', () => {
+    for (const { value } of TYPES_CLAUSE) {
+      const corps = payloadClause(formulaire(value), 12)
+      const intrus = Object.keys(corps).filter((k) => !CHAMPS_SERIALISEUR.includes(k))
+      expect(intrus, `type « ${value} » : clés inconnues du sérialiseur`).toEqual([])
+    }
+  })
+
+  it('n’envoie JAMAIS `company` ni `est_intervalle` (dérivé, lecture seule)', () => {
+    for (const { value } of TYPES_CLAUSE) {
+      const corps = payloadClause(formulaire(value), 12)
+      expect(corps).not.toHaveProperty('company')
+      expect(corps).not.toHaveProperty('est_intervalle')
+    }
+  })
+
+  it('n’envoie plus aucune des cinq clés fantômes de l’ancien contrat', () => {
+    for (const { value } of TYPES_CLAUSE) {
+      const corps = payloadClause(formulaire(value), 12)
+      for (const fantome of ['affaire', 'type', 'valeur', 'valeur_min', 'valeur_max']) {
+        expect(corps, `type « ${value} »`).not.toHaveProperty(fantome)
+      }
+    }
+  })
+
+  it('porte toujours `appel_offre` — la clé obligatoire qui manquait', () => {
+    for (const { value } of TYPES_CLAUSE) {
+      expect(payloadClause(formulaire(value), 12).appel_offre).toBe(12)
+    }
+  })
+
+  it('le corps envoyé ne retouche aucun nombre', () => {
+    expect(payloadClause({
+      libelle: ' Ratio ', type: 'ratio_dc_ac', valeur: '0,75', valeurMax: '1',
+      unite: '', sourcePiece: ' CPS ', sourcePage: '', bloquant: true,
+    }, 12)).toEqual({
+      appel_offre: 12, code: 'Ratio', libelle: 'Ratio', type_exigence: 'ratio_dc_ac',
+      bloquant: true, source_piece: 'CPS', source_page: null, unite: '',
+      valeur_num: '0,75', valeur_max_num: '1',
+    })
+  })
+
+  it('estIntervalle / estTexte suivent les types RÉELS du modèle', () => {
+    expect(estIntervalle('ratio_dc_ac')).toBe(true)
+    expect(estIntervalle('puissance_onduleur_max')).toBe(false)
+    // Les types inventés ne sont plus reconnus par rien.
+    expect(estIntervalle('intervalle')).toBe(false)
+    expect(estTexte('autre')).toBe(true)
+    expect(estTexte('piece_administrative')).toBe(true)
+    expect(estTexte('caution_provisoire')).toBe(false)
+  })
+
+  it('les types proposés sont EXACTEMENT ceux de `ExigenceCPS.TypeExigence`', () => {
+    expect(TYPES_CLAUSE.map((t) => t.value)).toEqual([
+      'ratio_dc_ac', 'puissance_onduleur_max', 'caution_provisoire',
+      'caution_definitive_taux', 'validite_offre', 'penalite_retard',
+      'piece_administrative', 'reference_normative', 'autre',
+    ])
+  })
+})
+
 describe('ConformiteTable — verdicts purs (AOF181)', () => {
   it('le statut vient du serveur, jamais d’une comparaison locale', () => {
-    expect(statutConformite(PLAFOND)).toBe('non_conforme')
+    expect(statutConformite(avecVerdict(PLAFOND, { statut: 'non_conforme' }))).toBe('non_conforme')
     expect(statutConformite({ statut_conformite: 'conforme' })).toBe('conforme')
-    expect(statutConformite(NON_EVALUEE)).toBe('non_evalue')
+    // Une clause RÉELLE (clés du sérialiseur seules) n'est jamais évaluée.
+    expect(statutConformite(PLAFOND)).toBe('non_evalue')
+    expect(statutConformite(TEXTUELLE)).toBe('non_evalue')
     expect(statutConformite({})).toBe('non_evalue')
   })
 
   it('sévérité affichée : bloquante non satisfaite = bloquant, non bloquante = avertissement', () => {
-    expect(severiteAffichee(RATIO)).toBe('ok')
-    expect(severiteAffichee(PLAFOND)).toBe('bloquant')
-    expect(severiteAffichee(VALIDITE)).toBe('avertissement')
-    expect(severiteAffichee(NON_EVALUEE)).toBeNull()
+    expect(severiteAffichee(avecVerdict(RATIO, { statut: 'conforme' }))).toBe('ok')
+    expect(severiteAffichee(avecVerdict(PLAFOND, { statut: 'non_conforme' }))).toBe('bloquant')
+    expect(severiteAffichee(avecVerdict(VALIDITE, { statut: 'non_conforme' }))).toBe('avertissement')
+    expect(severiteAffichee(PLAFOND)).toBeNull()
   })
 
   it('motifBlocageDepot ne retient que les bloquantes non satisfaites', () => {
-    expect(exigencesBloquantes([RATIO, PLAFOND, VALIDITE])).toEqual([PLAFOND])
-    expect(motifBlocageDepot([RATIO, PLAFOND])).toBe(PLAFOND.conformite.message)
+    const faute = avecVerdict(PLAFOND, {
+      statut: 'non_conforme',
+      message: 'Un onduleur du bâtiment C dépasse le plafond : 66 kWc pour 60 admis.',
+    })
+    expect(exigencesBloquantes([RATIO, faute, VALIDITE])).toEqual([faute])
+    expect(motifBlocageDepot([RATIO, faute])).toBe(faute.conformite.message)
     expect(motifBlocageDepot([RATIO, CAUTION, VALIDITE])).toBeNull()
-    expect(motifBlocageDepot([NON_EVALUEE])).toBeNull()
+    // Une clause bloquante NON évaluée ne bloque pas : le verdict appartient au
+    // serveur, dans les deux sens.
+    expect(motifBlocageDepot([TEXTUELLE])).toBeNull()
   })
 
-  it('valeurExigee assemble du TEXTE, sans arithmétique', () => {
+  it('valeurExigee lit les champs RÉELS et assemble du TEXTE, sans arithmétique', () => {
     expect(valeurExigee(RATIO)).toBe('0,75 – 1')
     expect(valeurExigee(PLAFOND)).toBe('≤ 60 kWc/onduleur')
-    expect(valeurExigee({ type: 'plancher', valeur: '3', unite: 'ans' })).toBe('≥ 3 ans')
-    expect(valeurExigee(NON_EVALUEE)).toBe('Exigée')
+    expect(valeurExigee(CAUTION)).toBe('40000 MAD')
+    expect(valeurExigee(TEXTUELLE)).toBe('Exigée')
     expect(valeurExigee({})).toBe('—')
+    expect(valeurExigee(null)).toBe('—')
   })
 
-  it('estIntervalle / payloadClause : le corps envoyé ne retouche aucun nombre', () => {
-    expect(estIntervalle('intervalle')).toBe(true)
-    expect(estIntervalle('plafond')).toBe(false)
-    expect(payloadClause({
-      libelle: ' Ratio ', type: 'intervalle', valeur: '0,75', valeurMax: '1',
-      unite: '', sourcePiece: ' CPS ', sourcePage: '', bloquant: true,
-    }, 12)).toEqual({
-      affaire: 12, libelle: 'Ratio', type: 'intervalle', bloquant: true,
-      source_piece: 'CPS', source_page: null, unite: null,
-      valeur_min: '0,75', valeur_max: '1',
-    })
+  it('aucun préfixe inventé : seul le type dont le modèle porte la direction en reçoit un', () => {
+    // `validite_offre` : le modèle n'écrit AUCUNE direction — pas de « ≥ ».
+    expect(valeurExigee(VALIDITE)).toBe('75 jours')
+    // Les types inventés d'hier ne produisent plus rien de spécial.
+    expect(valeurExigee({ type_exigence: 'plancher', valeur_num: '3', unite: 'ans' })).toBe('3 ans')
+    expect(valeurExigee({ type_exigence: 'plafond', valeur_num: '3' })).toBe('3')
+    // Et l'ancien champ `type` ne décide plus de rien.
+    expect(valeurExigee({ type: 'puissance_onduleur_max', valeur_num: '60' })).toBe('60')
+  })
+
+  it('une valeur seule sur `valeur_num` s’affiche — c’était le défaut silencieux', () => {
+    // Avant réparation : `valeur_num` n'était pas lu, donc « — » perpétuel sur
+    // TOUTE clause chiffrée.
+    expect(valeurExigee({ type_exigence: 'autre', valeur_num: '0' })).toBe('0')
+    expect(valeurExigee({ type_exigence: 'autre', valeur_num: '', unite: 'MAD' })).toBe('—')
   })
 })

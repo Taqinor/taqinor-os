@@ -1,0 +1,70 @@
+# Base de reference de check_ecrans_atteignables.py — DETTE HISTORIQUE, RIEN D'AUTRE.
+#
+# Chaque ligne est un ecran livre puis jamais branche au menu (« inatteignable »),
+# ou un placeholder rendu devant un vrai ecran du meme sujet (« bouchon-* »).
+# Cette liste est l'inventaire VERIFIE de la dette du 03/08/2026 : 68 ecrans sur
+# le disque dans features/ao, 7 atteignables, 61 non. La garde n'echoue que sur
+# une occurrence ABSENTE de cette liste : elle empeche la RECIDIVE, elle ne
+# repare pas le passif.
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - brancher un ecran puis `python scripts/check_ecrans_atteignables.py
+#     --write-baseline` retire sa ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne. Ajouter une dette exige
+#     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
+#
+# La signature est le CHEMIN (jamais `fichier:ligne`) : deplacer du code ne doit
+# pas invalider la base.
+bouchon-route|frontend/src/features/ao/module.config.jsx::/ao/calepinages
+bouchon-route|frontend/src/features/ao/module.config.jsx::/ao/dossiers
+inatteignable|frontend/src/features/adsengine/LeadRetentionNotice.jsx
+inatteignable|frontend/src/features/ao/calepinage/ModeExpert.jsx
+inatteignable|frontend/src/features/ao/calepinage/RobustesseBadges.jsx
+inatteignable|frontend/src/features/ao/calepinage/SuggestionsPanel.jsx
+inatteignable|frontend/src/features/ao/components/ProvenanceBadge.jsx
+inatteignable|frontend/src/features/ao/dossier/ControlesAvantDepot.jsx
+inatteignable|frontend/src/features/ao/dossier/EcheancesDossier.jsx
+inatteignable|frontend/src/features/ao/dossier/ZipButton.jsx
+inatteignable|frontend/src/features/ao/questions/Annotateur.jsx
+inatteignable|frontend/src/features/ao/questions/ExportQR.jsx
+inatteignable|frontend/src/features/ao/questions/QuestionFiche.jsx
+inatteignable|frontend/src/features/ao/questions/RepereMarker.jsx
+inatteignable|frontend/src/features/ao/studio/BarreEtat.jsx
+inatteignable|frontend/src/features/ao/studio/CanvasSvg.jsx
+inatteignable|frontend/src/features/ao/studio/Selection.jsx
+inatteignable|frontend/src/features/ao/studio/StudioShell.jsx
+inatteignable|frontend/src/features/ao/studio/TableauGeometrie.jsx
+inatteignable|frontend/src/features/ao/toiture/Calibration.jsx
+inatteignable|frontend/src/features/ao/toiture/ChainesCotes.jsx
+inatteignable|frontend/src/features/ao/toiture/Cote.jsx
+inatteignable|frontend/src/features/ao/toiture/EnveloppeArc.jsx
+inatteignable|frontend/src/features/ao/toiture/EnveloppeL.jsx
+inatteignable|frontend/src/features/ao/toiture/FermeturesPanel.jsx
+inatteignable|frontend/src/features/ao/toiture/ImportDxf.jsx
+inatteignable|frontend/src/features/ao/toiture/ObstacleInspecteur.jsx
+inatteignable|frontend/src/features/ao/toiture/ObstaclesList.jsx
+inatteignable|frontend/src/features/ao/toiture/OutilTrace.jsx
+inatteignable|frontend/src/features/ao/toiture/OutilsObstacles.jsx
+inatteignable|frontend/src/features/ao/toiture/OutilsZones.jsx
+inatteignable|frontend/src/features/ao/toiture/PointsALever.jsx
+inatteignable|frontend/src/features/ao/toiture/RepriseCarte.jsx
+inatteignable|frontend/src/features/ao/toiture/UnderlayImage.jsx
+inatteignable|frontend/src/features/ao/toiture/UnderlayPdf.jsx
+inatteignable|frontend/src/features/ao/variantes/DecompositionWaterfall.jsx
+inatteignable|frontend/src/features/ao/variantes/DiffPlan.jsx
+inatteignable|frontend/src/features/ao/variantes/HistoriqueVersions.jsx
+inatteignable|frontend/src/features/ao/variantes/SensibilitesPanel.jsx
+inatteignable|frontend/src/features/ao/variantes/VarianteColonne.jsx
+inatteignable|frontend/src/features/ao/variantes/VariantesCompare.jsx
+inatteignable|frontend/src/features/compta/components/EcritureSourceLink.jsx
+inatteignable|frontend/src/features/credit/CreditBadge.jsx
+inatteignable|frontend/src/features/credit/CreditWarningBanner.jsx
+inatteignable|frontend/src/features/credit/DemandeDerogationWizard.jsx
+inatteignable|frontend/src/features/magasin/scan/ComptageScanPanel.jsx
+inatteignable|frontend/src/features/magasin/scan/PickingScanPanel.jsx
+inatteignable|frontend/src/features/magasin/scan/ReceptionScanPanel.jsx
+inatteignable|frontend/src/features/magasin/scan/ScanInputBar.jsx
+inatteignable|frontend/src/features/marketing/CampagnesScreen.jsx
+inatteignable|frontend/src/features/messaging/RecordCard.jsx
+inatteignable|frontend/src/features/messaging/ShareRecord.jsx
+inatteignable|frontend/src/features/messaging/VoiceRecorder.jsx
