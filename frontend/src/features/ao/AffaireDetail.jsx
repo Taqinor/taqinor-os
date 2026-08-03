@@ -1,6 +1,8 @@
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { Building2, LayoutGrid, ClipboardList, FolderKanban, MessagesSquare } from 'lucide-react'
+import { lazy, Suspense, useMemo, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+// `ClipboardList`/`MessagesSquare` ne sont plus importés : les panneaux réels
+// du Bordereau et des Questions terrain portent leur propre iconographie.
+import { Building2, LayoutGrid, FolderKanban } from 'lucide-react'
 import aoApi from '../../api/aoApi'
 import recordsApi from '../../api/recordsApi'
 import useResource from '../../hooks/useResource'
@@ -27,7 +29,8 @@ import { StatutAffaire } from './statusAo'
    propre écran ; ce composant ne la référence NULLE PART (aucun lien, aucun
    onglet) — masquer un onglet ne protège rien si les données voyagent dans
    le payload de la fiche (en-tête du groupe), donc la fiche n'a même pas le
-   VOCABULAIRE « rentabilité » dans son arbre.
+   VOCABULAIRE « rentabilité » dans son arbre. Aucun panneau branché ci-dessous
+   n'importe `aoRentabiliteApi` (export SÉPARÉ d'`aoApi`, jamais mélangé).
 
    Bandeau de verdict/échéance/complétude/issue : champs AGRÉGÉS lus tels
    quels depuis `affaire` (aucun calcul de KPI côté front) — noms de champs
@@ -35,11 +38,49 @@ import { StatutAffaire } from './statusAo'
    `resultat_issue_display`), pas encore posés par le serializer legacy ODX11
    (`apps/ao/serializers.py`) — livrés par la lane `backend/ao`. Rendu
    défensif (« — » si absent).
+
+   ── RÉPARATION 03/08/2026 — les 5 onglets morts sont BRANCHÉS ─────────────
+   Cinq des sept onglets rendaient un `TabPlaceholder` muet (« écran dédié en
+   construction ») alors que les VRAIS panneaux existaient sur le disque, dans
+   ce même dossier, importés NULLE PART : 61 écrans du module étaient
+   inatteignables depuis la fiche. Chaque onglet monte désormais son panneau
+   réel, en CHARGEMENT DIFFÉRÉ (`lazy` + `Suspense`, même patron que
+   `module.config.jsx`) — la fiche ne tire pas l'atelier de calepinage, le
+   bordereau et le dossier au premier rendu ; Radix démonte le panneau inactif,
+   donc l'`import()` d'un onglet ne part qu'à son ouverture.
+
+   La règle qui gouverne les cas bancals : **un panneau qui ne peut pas être
+   monté honnêtement affiche un état vide qui DIT POURQUOI** — jamais un
+   placeholder muet, jamais une page blanche, et jamais un panneau qui aurait
+   l'air juste en montrant les données d'une AUTRE affaire.
    ========================================================================== */
+
+/* ── Panneaux réels, chargés à l'ouverture de leur onglet ──────────────────
+   `SeriesPage` est un export NOMMÉ (`export function SeriesPage`) : on le
+   remappe en `default` pour `lazy`, au lieu de compter sur le `export default`
+   d'appoint du même fichier. */
+const CalepinageStudio = lazy(() => import('./calepinage/CalepinageStudio'))
+const BordereauPage = lazy(() => import('./bordereau/BordereauPage'))
+const DossierPage = lazy(() => import('./dossier/DossierPage'))
+const SeriesPage = lazy(() => import('./questions/SeriesPage')
+  .then((m) => ({ default: m.SeriesPage })))
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const VERDICT_TONE = { confirme: 'success', tendu: 'warning' }
+
+/* Le bordereau des prix EXISTE côté serveur (`bordereaux-prix`, AOF120), mais
+   `api/aoApi.js` ne publie AUCUNE ressource bordereau — et ce client a un seul
+   propriétaire (lane `frontend/ao-socle`), retouché nulle part ailleurs. On
+   monte donc le VRAI `BordereauPage` avec son motif d'indisponibilité plutôt
+   que d'inventer ici un chemin réseau : un `axios` direct dans `features/ao/`
+   est interdit (ARC44), et une URL devinée produirait le 404 anonyme que
+   `endpointNonConstruit` a précisément été écrit pour supprimer. Le jour où
+   `aoApi.bordereaux` existe, ce panneau se branche en trois lignes. */
+const MOTIF_BORDEREAU = "Le client API du module (api/aoApi.js) ne publie pas encore de "
+  + "ressource bordereau : la route serveur « bordereaux-prix » existe, mais aucun appel "
+  + "n'est déclaré côté front. Rien n'est deviné ici — le panneau reste vide tant que la "
+  + 'ressource n’est pas publiée.'
 
 function VerdictBandeau({ affaire }) {
   const verdictTone = VERDICT_TONE[affaire.verdict_global] ?? 'neutral'
@@ -71,13 +112,177 @@ function Info({ label, value, meta, tone }) {
   )
 }
 
-function TabPlaceholder({ icon: Icon, title }) {
+/* Frontière de chargement d'un panneau : repli SQUELETTE (jamais un spinner
+   nu, jamais une page blanche) — même contrat que les routes du routeur. */
+function PanneauDiffere({ children }) {
+  return (
+    <Suspense fallback={<Skeleton className="h-64 w-full" data-ao-panneau-differe />}>
+      {children}
+    </Suspense>
+  )
+}
+
+/* Sélecteur d'enfant d'affaire (calepinage, dossier) : un panneau qui prend
+   l'id d'un SOUS-DOCUMENT ne peut pas se contenter de l'id de l'affaire. */
+function SelecteurEnfant({ id, label, valeur, onChange, options }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <label htmlFor={id} className="text-xs text-muted-foreground">{label}</label>
+      <select
+        id={id}
+        className="h-9 min-w-0 max-w-full rounded-md border border-input bg-card px-2 text-sm text-foreground focus-ring"
+        value={String(valeur ?? '')}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+/* ── Onglet « Toitures & relevés » ────────────────────────────────────────
+   `ToituresPage` (déjà routé en pleine page sur `/ao/toitures`) NE PREND
+   AUCUNE PROPRIÉTÉ : il liste toutes les affaires de la société et retombe sur
+   la PREMIÈRE. L'encastrer ici afficherait, sous le titre de CETTE affaire,
+   les toitures d'une AUTRE — un écran faux a l'air juste, ce qui est pire
+   qu'un onglet vide. On ne force donc pas : on nomme l'empêchement et on
+   envoie vers l'écran pleine page, où le sélecteur d'affaire est explicite. */
+function OngletToitures() {
   return (
     <EmptyState
-      icon={Icon}
-      title={title}
-      description="Écran dédié en construction (lane distincte du Groupe AOF)."
+      icon={Building2}
+      title="Toitures & relevés — sur l’écran pleine page"
+      description={"L’écran « Toitures & relevés » choisit lui-même son affaire (il n’accepte "
+        + 'aucune propriété de filtrage) : l’encastrer ici montrerait les toitures d’une autre '
+        + 'affaire. Ouvrez-le en pleine page et sélectionnez cette affaire dans son sélecteur.'}
+      action={(
+        <Button asChild variant="outline" size="sm">
+          <Link to="/ao/toitures">Ouvrir Toitures &amp; relevés</Link>
+        </Button>
+      )}
     />
+  )
+}
+
+/* ── Onglet « Calepinages » ───────────────────────────────────────────────
+   `CalepinageStudio` attend l'id d'un CALEPINAGE, pas d'une affaire. Ce que
+   le serveur persiste réellement, ce sont des VARIANTES de calepinage
+   (`variantes-calepinage`, filtrable `?appel_offre=`) : c'est cette liste-là
+   qui alimente le choix — `aoApi.calepinages.list` est explicitement NON
+   CONSTRUIT (aucun modèle `Calepinage` côté serveur) et refuserait avec son
+   motif sans même émettre de requête.
+
+   Conséquence assumée et NON maquillée : tant qu'aucune route ne sert
+   `/ao/calepinages/<id>/`, l'atelier monté affichera SON état d'échec, qui
+   NOMME l'endpoint manquant (`endpointNonConstruit`) — très exactement le
+   « dis pourquoi » exigé, et infiniment plus utile qu'un placeholder muet.
+
+   `onConformite` n'est pas passé : il sert à BLOQUER la publication d'un
+   dossier en amont, et aucune porte de publication ne vit dans cette fiche —
+   y brancher un consommateur décoratif serait la façade qu'on répare. */
+function OngletCalepinages({ affaireId }) {
+  const params = useMemo(() => ({ appel_offre: affaireId }), [affaireId])
+  const [choisi, setChoisi] = useState(null)
+
+  const { data: variantes, loading, error } = useResource(
+    () => aoApi.variantes.list(params), params,
+    {
+      initialData: [],
+      select: unwrapList,
+      errorMessage: 'Impossible de charger les calepinages de cette affaire.',
+    },
+  )
+
+  if (loading) return <Skeleton className="h-64 w-full" />
+  if (error) {
+    return <EmptyState icon={LayoutGrid} tone="error" title="Calepinages indisponibles" description={error} />
+  }
+  if (!variantes.length) {
+    return (
+      <EmptyState
+        icon={LayoutGrid}
+        title="Aucun calepinage pour cette affaire"
+        description={'Aucune variante de calepinage n’a encore été calculée et enregistrée pour '
+          + 'cette affaire — l’atelier s’ouvrira dès qu’il y en aura une.'}
+      />
+    )
+  }
+
+  // Choix explicite prioritaire, sinon la première variante — dérivé AU RENDU
+  // (jamais un état recopié dans un effet).
+  const courant = choisi ?? variantes[0].id
+
+  return (
+    <div className="flex flex-col gap-3">
+      <SelecteurEnfant
+        id="ao-affaire-calepinage"
+        label="Calepinage"
+        valeur={courant}
+        onChange={setChoisi}
+        options={variantes.map((v) => ({ value: v.id, label: v.nom || `Calepinage #${v.id}` }))}
+      />
+      <PanneauDiffere>
+        <CalepinageStudio calepinageId={courant} />
+      </PanneauDiffere>
+    </div>
+  )
+}
+
+/* ── Onglet « Dossier » ───────────────────────────────────────────────────
+   PIÈGE FERMÉ ICI : `DossierPage` retombe sur `useParams().id` quand aucun
+   `dossierId` ne lui est passé. Dans cette fiche, ce paramètre de route est
+   l'id de l'AFFAIRE — le laisser faire appellerait `dossiers-ao/<id d'affaire>/`,
+   c'est-à-dire un dossier au hasard (ou un 404) présenté comme celui de cette
+   affaire. On lui passe donc TOUJOURS un `dossierId` explicite, résolu depuis
+   la liste des dossiers de l'affaire (`?appel_offre=`), et on ne le monte pas
+   du tout tant qu'il n'y en a aucun. */
+function OngletDossier({ affaireId }) {
+  const params = useMemo(() => ({ appel_offre: affaireId }), [affaireId])
+  const [choisi, setChoisi] = useState(null)
+
+  const { data: dossiers, loading, error } = useResource(
+    () => aoApi.dossiers.list(params), params,
+    {
+      initialData: [],
+      select: unwrapList,
+      errorMessage: 'Impossible de charger les dossiers de soumission de cette affaire.',
+    },
+  )
+
+  if (loading) return <Skeleton className="h-64 w-full" />
+  if (error) {
+    return <EmptyState icon={FolderKanban} tone="error" title="Dossiers indisponibles" description={error} />
+  }
+  if (!dossiers.length) {
+    return (
+      <EmptyState
+        icon={FolderKanban}
+        title="Aucun dossier de soumission"
+        description={'Cette affaire n’a pas encore de dossier de dépôt : rien à afficher tant '
+          + 'qu’un dossier n’a pas été créé pour elle.'}
+      />
+    )
+  }
+
+  const courant = choisi ?? dossiers[0].id
+
+  return (
+    <div className="flex flex-col gap-3">
+      {dossiers.length > 1 && (
+        <SelecteurEnfant
+          id="ao-affaire-dossier"
+          label="Dossier"
+          valeur={courant}
+          onChange={setChoisi}
+          options={dossiers.map((d) => ({ value: d.id, label: d.reference || `Dossier #${d.id}` }))}
+        />
+      )}
+      <PanneauDiffere>
+        <DossierPage dossierId={courant} />
+      </PanneauDiffere>
+    </div>
   )
 }
 
@@ -204,27 +409,35 @@ export default function AffaireDetail() {
         {
           value: 'toitures',
           label: 'Toitures & relevés',
-          content: <TabPlaceholder icon={Building2} title="Toitures & relevés" />,
+          content: <OngletToitures />,
         },
         {
           value: 'calepinages',
           label: 'Calepinages',
-          content: <TabPlaceholder icon={LayoutGrid} title="Calepinages" />,
+          content: <OngletCalepinages affaireId={id} />,
         },
         {
           value: 'bordereau',
           label: 'Bordereau',
-          content: <TabPlaceholder icon={ClipboardList} title="Bordereau" />,
+          content: (
+            <PanneauDiffere>
+              <BordereauPage bordereau={null} error={MOTIF_BORDEREAU} />
+            </PanneauDiffere>
+          ),
         },
         {
           value: 'dossier',
           label: 'Dossier',
-          content: <TabPlaceholder icon={FolderKanban} title="Dossier" />,
+          content: <OngletDossier affaireId={id} />,
         },
         {
           value: 'questions_terrain',
           label: 'Questions terrain',
-          content: <TabPlaceholder icon={MessagesSquare} title="Questions terrain" />,
+          content: (
+            <PanneauDiffere>
+              <SeriesPage affaireId={id} />
+            </PanneauDiffere>
+          ),
         },
         {
           value: 'historique',
