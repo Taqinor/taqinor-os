@@ -153,6 +153,11 @@ class BackendRoutes:
         self.root = django_root
         self.routes: set[tuple] = set()
         self.opaque: set[tuple] = set()
+        # route -> (module, ('fonction'|'classe'|'action', ...)) : QUI sert la
+        # route. Inutilise par cette garde ; c'est le chainon dont
+        # check_api_shapes.py a besoin pour remonter du chemin appele jusqu'au
+        # dictionnaire reellement renvoye.
+        self.views: dict[tuple, tuple] = {}
         self._modules: dict[str, tuple] = {}      # dotted -> (path, tree)
         self._classes: dict[str, list] = {}       # nom simple -> [(dotted, node)]
         self._class_by_module: dict[str, dict] = {}
@@ -299,7 +304,7 @@ class BackendRoutes:
                         else:
                             known = False
                 if known:
-                    actions.append((detail, url_path))
+                    actions.append((detail, url_path, module, item.name))
                 else:
                     complete = False
         for base in node.bases:
@@ -412,6 +417,7 @@ class BackendRoutes:
                 self._walk_include(view, here, module, routers, lists)
             else:
                 self.routes.add(here)
+                self.views[here] = (module, _view_reference(view))
                 self.stats["vues"] += 1
 
     def _walk_include(self, call, prefix, module, routers, lists):
@@ -458,13 +464,14 @@ class BackendRoutes:
                 self._mark_opaque(base)
                 continue
             actions, complete = self.actions_of(viewset, module)
-            for detail, url_path in actions:
+            for detail, url_path, owner, method in actions:
                 sub, sub_opaque = normalise_route(url_path)
                 target = base + ((ANY,) if detail else ()) + tuple(sub)
                 if sub_opaque:
                     self._mark_opaque(target)
                 else:
                     self.routes.add(target)
+                    self.views[target] = (owner, ("action", viewset, method))
             if not complete:
                 self._mark_opaque(base)
 
@@ -484,6 +491,20 @@ def _call_name(node: ast.Call) -> str:
     if isinstance(func, ast.Attribute):
         return func.attr
     return ""
+
+
+def _view_reference(view):
+    """('fonction', nom) / ('classe', nom) / None — QUI sert cette route."""
+    if isinstance(view, ast.Name):
+        return ("fonction", view.id)
+    if isinstance(view, ast.Call) and isinstance(view.func, ast.Attribute) \
+            and view.func.attr == "as_view":
+        target = view.func.value
+        if isinstance(target, ast.Name):
+            return ("classe", target.id)
+        if isinstance(target, ast.Attribute):
+            return ("classe", target.attr)
+    return None
 
 
 def _resolve_name(node, constants: dict) -> str | None:

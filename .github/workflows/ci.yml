@@ -449,6 +449,19 @@ jobs:
         run: python scripts/check_api_contract.py
       - name: Test the API-contract checker itself
         run: python -m unittest scripts.tests.test_check_api_contract -v
+      # FORME DES RÉPONSES (même incident du 03/08/2026 : l'écran AO Tableau de
+      # bord a planté alors que sa route existait, parce que son test mockait
+      # l'INVERSE EXACT de ce que le serveur renvoie — `echeances_dues` est un
+      # entier côté serveur, un tableau dans le mock ; 6 lectures sur 6 étaient
+      # fausses, les deux suites vertes). Le contrat est dérivé du CODE serveur
+      # et versionné dans docs/api-contracts.md ; un mock qui le contredit
+      # échoue. Le schéma OpenAPI ne peut PAS jouer ce rôle (l'endpoint qui a
+      # planté y est documenté `type: object` sans aucune propriété) — voir
+      # l'en-tête du script.
+      - name: Check API response shapes (aucun mock ne contredit le serveur)
+        run: python scripts/check_api_shapes.py
+      - name: Test the API-shapes checker itself
+        run: python -m unittest scripts.tests.test_check_api_shapes -v
       - name: Check no raw JSON / bare error object is shown to the user (EZ16)
         run: python scripts/check_frontend_errors.py
       - name: Test the anti-jargon checker itself (EZ16)
