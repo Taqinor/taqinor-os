@@ -116,29 +116,43 @@ const aoApi = {
     },
   },
 
-  /* `calepinages` (au pluriel) — ATELIER NON RECÂBLÉ, 03/08/2026.
-     L'atelier (`useCalepinage`, `HistoriqueVersions`, `SensibilitesPanel`)
-     est écrit contre un document `calepinage` PERSISTÉ, avec un identifiant,
-     un historique de versions et un `patch_entree` rejoué : rien de tout cela
-     n'existe côté serveur. Ce n'est donc PAS un renommage — c'est soit un
-     modèle à construire, soit un recâblage de l'atelier sur le calcul sans
-     état ci-dessus (`toitureId` au lieu de `calepinageId`). Les deux
-     dépassent une correction de chemin, et deviner l'un des deux ferait
-     exactement le mal qu'on répare.
-     En attendant, chaque appel échoue AVEC SON MOTIF, sans requête réseau. */
+  /* `calepinages` (au pluriel) — LA FICTION, ce qu'il en RESTE. 03/08/2026.
+     ------------------------------------------------------------------------
+     L'ATELIER EST RECÂBLÉ (même jour) : `useCalepinage` + `CalepinageStudio`
+     n'appellent plus une seule de ces entrées — ils passent par
+     `aoApi.calepinage` ci-dessus, c'est-à-dire par les routes que
+     `apps/ao/calepinage_urls.py` publie réellement. Le studio est piloté par
+     un `toitureId`, jamais par un `calepinageId` : le calcul est SANS ÉTAT,
+     il n'y a rien à charger par identifiant.
+
+     Ce bloc n'est donc plus une impasse à l'usage — il ne subsiste que pour
+     les écrans encore écrits contre le document persisté imaginaire :
+     `variantes/HistoriqueVersions.jsx` (`list`, `update`) et
+     `variantes/SensibilitesPanel.jsx` (`sensibilites`). Chaque entrée reste
+     un 501 MOTIVÉ, sans requête réseau : un 404 anonyme est précisément ce
+     qu'on répare, et une URL devinée le recréerait. */
   calepinages: {
+    // Plus AUCUN appelant depuis le 03/08/2026 (l'atelier est recâblé).
     get: nonConstruit('/ao/calepinages/<id>/',
-      "aucun modèle Calepinage n'existe ; ce qui est persisté est une "
-      + 'VarianteCalepinage (/ao/variantes-calepinage/)'),
+      "aucun modèle Calepinage n'existe ; un calepinage se CALCULE "
+      + '(aoApi.calepinage.calculer({toiture, params})) et ce qui est '
+      + 'persisté est une VarianteCalepinage (/ao/variantes-calepinage/)'),
+    // Appelé par variantes/HistoriqueVersions.jsx — À CONSTRUIRE.
     list: nonConstruit('/ao/calepinages/?versions_de=<id>',
       "l'historique de versions d'un calepinage n'est pas modélisé"),
+    // Appelé par variantes/HistoriqueVersions.jsx — À CONSTRUIRE.
     update: nonConstruit('/ao/calepinages/<id>/',
       "la restauration d'une version n'existe pas côté serveur"),
+    // Plus AUCUN appelant depuis le 03/08/2026.
     calculer: nonConstruit('/ao/calepinages/<id>/calculer/',
       'le calcul est SANS ÉTAT : utiliser aoApi.calepinage.calculer('
-      + '{toiture, params})'),
+      + '{toiture, params}), puis aoApi.calepinage.lancer/resultat au-delà '
+      + 'du budget synchrone (202)'),
+    // À CONSTRUIRE : `core/calepinage/recommandations.py` existe, mais AUCUNE
+    // route ne le publie — l'atelier n'affiche donc aucune suggestion.
     suggestions: nonConstruit('/ao/calepinages/<id>/suggestions/',
       'aucune route ne publie les recommandations du moteur'),
+    // Appelé par variantes/SensibilitesPanel.jsx.
     sensibilites: nonConstruit('/ao/calepinages/<id>/sensibilites/',
       'les sensibilités se calculent sur une VARIANTE : utiliser '
       + 'aoApi.calepinage.variantes.sensibilites(varianteId) — la réponse '
@@ -146,6 +160,8 @@ const aoApi = {
       + 'verdict/sensibilites, pas lignes/plancher'),
     alleeGratuite: nonConstruit('/ao/calepinages/<id>/allee-gratuite/',
       "l'allée gratuite n'est publiée par aucune route"),
+    // Plus AUCUN appelant : le suivi de job de l'atelier passe par
+    // aoApi.calepinage.resultat(jobId) (route RÉELLE).
     statutJob: nonConstruit('/ao/calepinages/<id>/statut-de-job/<jobId>/',
       'le suivi de job est aoApi.calepinage.resultat(jobId)'),
   },

@@ -5,101 +5,109 @@ import { cn } from '../../../lib/cn'
 /* ============================================================================
    AOF93 — Barre de verdict PERMANENTE de l'atelier de calepinage.
    ----------------------------------------------------------------------------
-   Toujours visible, elle répond en un coup d'œil à la seule question qui
-   compte avant un dépôt : « ce qu'on dessine tient-il l'engagement du
-   marché ? ».
+   RECÂBLAGE DU 03/08/2026 — CE QUI A CHANGÉ, ET POURQUOI.
+   Cette barre consommait un contrat inventé : `{modules: {valeur, texte},
+   puissance, engagement, marge: {signe}, verdict: {code}, sceau,
+   ligne_ajustement}`, avec des textes déjà formatés par le serveur. AUCUNE
+   route ne publie cela. Le seul producteur de résultat de calepinage,
+   `POST /ao/calepinage/calculer/` (sérialiseur `ResultatCalepinageSerializer`,
+   corps bâti par `apps/ao/calepinage_io.resultat_vers_json` +
+   `preuve_vers_json`), publie exactement ceci :
 
-   **Aucune valeur n'est calculée ni rédigée ici.** Le serveur renvoie, pour
-   chaque grandeur, le couple `{ valeur, texte }` — `texte` étant déjà formaté
-   par `core.formats_fr` (le MÊME formateur que les pièces imprimées, donc
-   aucune divergence écran/PDF possible). Le verdict lui-même est un CODE
-   serveur (`confirme` / `tendu`) accompagné de son libellé et de son motif :
-   le front n'en choisit que la couleur.
+     { repere, hash_entree, version_moteur, schema_version,
+       total_modules, kwc, engageable, motifs_non_engageable,
+       engagement_modules, plans[], rangees[], depuis_cache,
+       preuve: { total_retenu, total_optimal, methode, methode_exacte,
+                 optimal, libelle, pas_cm, nb_optima, borne_superieure,
+                 marge_troncon_min, marge_bande_min, rangee_critique,
+                 obstacle_critique, controles[], version_moteur } }
 
-   Deux garde-fous portés par cette barre :
-   • le badge « optimum prouvé — programmation dynamique au pas de 1 cm » ne
-     s'affiche QUE si le régime de preuve du moteur l'autorise (AOF44) ; une
-     recherche heuristique n'a pas le droit de se présenter comme prouvée ;
-   • quand la capacité passe sous l'engagement, la mention de LIGNE
-     D'AJUSTEMENT est affichée automatiquement — c'est le serveur qui décide
-     (`ligne_ajustement.requise`), jamais une comparaison écrite ici.
+   La barre affiche donc CES champs, tels quels. Elle ne calcule rien.
 
-   `perime` (piloté par `useCalepinage`, AOF94) estompe TOUTES les grandeurs
-   dérivées et affiche « recalcul… » : on n'affiche jamais l'ancien chiffre
-   comme s'il était courant.
+   DEUX GRANDEURS DE L'ANCIENNE BARRE N'EXISTENT PAS CÔTÉ SERVEUR, et elles ne
+   sont PAS reconstituées ici :
+   • la MARGE (engagement − capacité) — le serveur ne la publie pas ; la
+     soustraire ici serait très exactement le chiffre métier calculé côté
+     client que la garde d'AOF94 interdit. La barre affiche les deux comptes
+     côte à côte et laisse la comparaison au lecteur ;
+   • le VERDICT capacité-vs-engagement (`confirme`/`tendu`) et la mention de
+     LIGNE D'AJUSTEMENT qui en découle — même raison : c'est une décision, et
+     aucune route ne la rend. (Le moteur sait la produire —
+     `core/calepinage/types.py::verdict`, `sensibilites.py` — mais elle ne
+     sort que par les sensibilités d'une VARIANTE, pas par le calcul.)
 
-   ── Contrat de charge utile ───────────────────────────────────────────────
-   resultat = {
-     modules:    { valeur, texte },              // ex. « 314 modules »
-     puissance:  { valeur, texte },              // ex. « 196,3 kWc »
-     engagement: { valeur, texte },              // engagement au marché
-     marge:      { valeur, texte, signe: 'positif'|'nul'|'negatif' },
-     verdict:    { code: 'confirme'|'tendu', libelle, motif? },
-     preuve?:    { prouve: bool, badge },        // AOF44 — régime de preuve
-     sceau?:     { dessine_compte: bool, libelle },
-     ligne_ajustement?: { requise: bool, mention },
-   }
+   CE QUI EST BIEN UN VERDICT SERVEUR, et que la barre affiche : `engageable`
+   + `motifs_non_engageable` (`core/calepinage/obstacles.engageable` : un
+   compte n'est engageable que s'il repose sur du RELEVÉ). Le front n'en
+   choisit que la couleur.
+
+   AOF44 — le badge de preuve n'apparaît QUE si le régime de preuve du moteur
+   l'autorise (`preuve.methode_exacte`) : une recherche heuristique n'a pas le
+   droit de se présenter comme prouvée. Le texte affiché est `preuve.libelle`,
+   généré par le moteur.
+
+   `perime` (piloté par `useCalepinage`) estompe TOUTES les grandeurs et
+   affiche « recalcul… » : on n'affiche jamais l'ancien chiffre comme s'il
+   était courant.
    ========================================================================== */
 
-const TONS_VERDICT = {
-  confirme: { tone: 'success', icone: ShieldCheck },
-  tendu: { tone: 'warning', icone: TriangleAlert },
-}
+const estNombre = (valeur) => typeof valeur === 'number' && Number.isFinite(valeur)
 
-const TONS_MARGE = {
-  positif: 'text-success',
-  nul: 'text-muted-foreground',
-  negatif: 'text-destructive',
-}
-
-function Grandeur({ libelle, valeur, perime, className, ...rest }) {
-  if (!valeur?.texte) return null
+function Grandeur({ libelle, valeur, unite, perime, ...rest }) {
+  if (!estNombre(valeur)) return null
   return (
     <div className="flex flex-col" {...rest}>
       <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{libelle}</span>
       <span
-        className={cn('font-display text-base font-semibold tabular-nums', className, perime && 'opacity-40')}
+        className={cn('font-display text-base font-semibold tabular-nums', perime && 'opacity-40')}
         data-perime={perime ? 'true' : undefined}
         title={perime ? 'Valeur en cours de recalcul — non courante' : undefined}
       >
-        {valeur.texte}
+        {valeur}{unite ? ` ${unite}` : ''}
       </span>
     </div>
   )
 }
 
 /**
- * @param {object}  resultat  Résultat serveur (contrat ci-dessus).
- * @param {boolean} [perime]  Un recalcul est en vol : les grandeurs affichées
- *                            ne sont plus courantes (AOF94).
+ * @param {object}  resultat  Corps de `/ao/calepinage/calculer/` (contrat ci-dessus).
+ * @param {boolean} [perime]  Un calcul est en vol : les grandeurs affichées ne
+ *                            sont plus courantes (AOF94).
  */
 export default function VerdictBar({ resultat, perime = false }) {
-  if (!resultat?.verdict?.code) return null
+  if (!resultat || !estNombre(resultat.total_modules)) return null
 
-  const { verdict, preuve, sceau, ligne_ajustement: ligneAjustement } = resultat
-  const style = TONS_VERDICT[verdict.code] || { tone: 'neutral', icone: ShieldCheck }
-  const Icone = style.icone
+  const preuve = resultat.preuve || null
+  // `engageable` est le SEUL verdict que cette route publie. Une réponse qui
+  // ne le porte pas n'est pas « engageable » : on n'affiche alors AUCUN
+  // verdict, plutôt qu'un vert rassurant sans fondement.
+  const engageable = typeof resultat.engageable === 'boolean' ? resultat.engageable : null
+  const motifs = Array.isArray(resultat.motifs_non_engageable) ? resultat.motifs_non_engageable : []
+  const style = engageable
+    ? { tone: 'success', Icone: ShieldCheck, libelle: 'Compte engageable' }
+    : { tone: 'warning', Icone: TriangleAlert, libelle: 'Compte non engageable' }
+  const { Icone } = style
 
   return (
     <div
-      data-ao-verdict={verdict.code}
+      data-ao-verdict={engageable === null ? undefined : String(engageable)}
       role="status"
       aria-live="polite"
       aria-busy={perime ? 'true' : 'false'}
       className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-md border border-border bg-card px-4 py-3"
     >
       <div data-ao-compte="modules">
-        <Grandeur libelle="Modules" valeur={resultat.modules} perime={perime} />
+        <Grandeur libelle="Modules" valeur={resultat.total_modules} perime={perime} />
       </div>
-      <Grandeur libelle="Puissance" valeur={resultat.puissance} perime={perime} />
-      <Grandeur libelle="Engagement au marché" valeur={resultat.engagement} perime={perime} />
-      <Grandeur
-        libelle="Marge"
-        valeur={resultat.marge}
-        perime={perime}
-        data-marge-signe={resultat.marge?.signe}
-        className={TONS_MARGE[resultat.marge?.signe] || 'text-foreground'}
-      />
+      <Grandeur libelle="Puissance" valeur={resultat.kwc} unite="kWc" perime={perime} />
+      <div data-ao-compte="engagement">
+        <Grandeur
+          libelle="Engagement au marché"
+          valeur={resultat.engagement_modules}
+          unite="modules"
+          perime={perime}
+        />
+      </div>
 
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {perime && (
@@ -108,31 +116,29 @@ export default function VerdictBar({ resultat, perime = false }) {
             recalcul…
           </Badge>
         )}
-        {/* AOF44 — badge de preuve : jamais affiché sur une méthode heuristique. */}
-        {preuve?.prouve && preuve.badge && (
+        {resultat.depuis_cache && (
+          <Badge tone="outline" data-depuis-cache="true">résultat en cache</Badge>
+        )}
+        {/* AOF44 — jamais affiché sur une méthode heuristique. */}
+        {preuve?.methode_exacte && preuve.libelle && (
           <Badge tone="info" data-preuve="prouve">
             <BadgeCheck className="size-3" aria-hidden="true" />
-            {preuve.badge}
+            {preuve.libelle}
           </Badge>
         )}
-        {sceau?.dessine_compte && sceau.libelle && (
-          <Badge tone="outline" data-sceau="dessine-compte">{sceau.libelle} ✓</Badge>
+        {engageable !== null && (
+          <Badge tone={style.tone} data-verdict={String(engageable)}>
+            <Icone className="size-3.5" aria-hidden="true" />
+            {style.libelle}
+          </Badge>
         )}
-        <Badge tone={style.tone} data-verdict={verdict.code}>
-          <Icone className="size-3.5" aria-hidden="true" />
-          {verdict.libelle}
-        </Badge>
       </div>
 
-      {verdict.motif && (
-        <p className="w-full text-xs text-muted-foreground">{verdict.motif}</p>
-      )}
-
-      {/* Mention automatique de la ligne d'ajustement — décidée par le serveur. */}
-      {ligneAjustement?.requise && ligneAjustement.mention && (
-        <p className="w-full text-xs font-medium text-destructive" data-ligne-ajustement="requise">
-          {ligneAjustement.mention}
-        </p>
+      {/* Motifs de non-engageabilité : phrases du MOTEUR, affichées verbatim. */}
+      {motifs.length > 0 && (
+        <ul className="w-full list-disc pl-5 text-xs text-muted-foreground" data-motifs="non-engageable">
+          {motifs.map((motif) => <li key={motif}>{motif}</li>)}
+        </ul>
       )}
     </div>
   )

@@ -3,118 +3,229 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, relative } from 'node:path'
+import resultatReel from './resultatReel.fixture'
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), calculer: vi.fn() }))
-vi.mock('../../../api/aoApi', () => ({
-  default: { calepinages: { get: mocks.get, calculer: mocks.calculer } },
+/* ============================================================================
+   AOF94 — `useCalepinage`, recâblé sur les ROUTES RÉELLES (03/08/2026).
+   ----------------------------------------------------------------------------
+   Ces tests mockent le CLIENT AXIOS, pas `aoApi` : c'est le seul niveau où
+   l'URL RÉELLEMENT appelée est observable. Le bug qu'on répare était
+   précisément une URL — `/ao/calepinages/<id>/` — que le serveur n'a jamais
+   servie ; un mock de `aoApi` l'aurait laissée passer.
+
+   Les charges utiles viennent de `resultatReel.fixture.js`, capturé en
+   exécutant le moteur du dépôt (voir l'en-tête de la fixture) — jamais écrit
+   à la main.
+   ========================================================================== */
+
+const axiosMock = vi.hoisted(() => ({
+  get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(),
 }))
+vi.mock('../../../api/axios', () => ({ default: axiosMock }))
 
 import useCalepinage from './useCalepinage'
 
-const charge = (texte, parametres) => ({
+const CALCULER = '/ao/calepinage/calculer/'
+const LANCER = '/ao/calepinage/lancer/'
+const RESULTAT = '/ao/calepinage/resultat/42/'
+
+// Réponse 200 de `CalculerCalepinageView` : le résultat + `depuis_cache`.
+const ok = (surcharge = {}) => ({
+  status: 200,
+  data: { ...resultatReel, depuis_cache: false, ...surcharge },
+})
+
+// Réponse 202 : le travail dépasse le budget synchrone (corps littéral de
+// `CalculerCalepinageView.post`).
+const horsBudget = () => ({
+  status: 202,
   data: {
-    plan: { cadre: { x_min: 0, y_min: 0, largeur_m: 10, hauteur_m: 10 }, rangees: [] },
-    resultat: { modules: { valeur: 1, texte }, verdict: { code: 'confirme', libelle: 'CONFIRMÉ' } },
-    parametres,
+    detail: 'Ce calepinage dépasse le budget de calcul synchrone : lancez-le en '
+      + 'tâche de fond via /api/django/ao/calepinage/lancer/, puis suivez-le sur '
+      + '/api/django/ao/calepinage/resultat/<job_id>/.',
+    cout_estime: { positions: 1200, kits: 1, appels: 1200, millisecondes: 4200.0, motif: 'positions' },
+    asynchrone: '/api/django/ao/calepinage/lancer/',
   },
 })
 
-const P0 = { allee_m: 0.6 }
-const P1 = { allee_m: 1.9 }
-const P2 = { allee_m: 1.94 }
+// Réponse 202 de `LancerCalepinageView` puis 200 de `ResultatCalepinageView`
+// (corps littéraux de ces deux vues ; statuts de `core.models.BackgroundJob`).
+const jobLance = () => ({
+  status: 202,
+  data: { id: 42, kind: 'ao_calepinage', statut: 'queued', progress_pct: 0, message_erreur: '', resultat: null, variante: null },
+})
+const jobSuivi = (statut, pct, extra = {}) => ({
+  status: 200,
+  data: { id: 42, kind: 'ao_calepinage', statut, progress_pct: pct, message_erreur: '', resultat: null, variante: null, ...extra },
+})
 
-const monter = (initial = P0) => renderHook(
-  ({ p }) => useCalepinage(7, p, { delai: 0 }),
+const P0 = { allee_min_m: 0.6 }
+const P1 = { allee_min_m: 1.9 }
+const P2 = { allee_min_m: 1.94 }
+
+const monter = (initial = null, options = {}) => renderHook(
+  ({ p }) => useCalepinage(7, p, { delai: 0, sondage: 0, ...options }),
   { initialProps: { p: initial } },
 )
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.get.mockResolvedValue(charge('314 modules', P0))
-  mocks.calculer.mockResolvedValue(charge('318 modules', P1))
+  axiosMock.post.mockResolvedValue(ok())
+  axiosMock.get.mockResolvedValue(jobSuivi('done', 100))
 })
 
-describe('useCalepinage (AOF94) — cycle paramètre → recalcul serveur → résultat', () => {
-  it('charge le calepinage existant, puis recalcule côté SERVEUR à chaque changement', async () => {
-    const { result, rerender } = monter()
+describe('useCalepinage — les ROUTES réellement appelées', () => {
+  it("appelle /ao/calepinage/calculer/ et JAMAIS /ao/calepinages/…", async () => {
+    const { result } = monter()
     await waitFor(() => expect(result.current.resultat).toBeTruthy())
-    expect(mocks.get).toHaveBeenCalledWith(7)
-    expect(result.current.perime).toBe(false)
 
-    rerender({ p: P1 })
-    await waitFor(() => expect(mocks.calculer).toHaveBeenCalledWith(7, P1))
-    await waitFor(() => expect(result.current.resultat.modules.texte).toBe('318 modules'))
+    expect(axiosMock.post).toHaveBeenCalledWith(CALCULER, { toiture: 7 })
+    const urls = [...axiosMock.post.mock.calls, ...axiosMock.get.mock.calls].map(([url]) => url)
+    expect(urls.some((url) => url.includes('/ao/calepinages'))).toBe(false)
   })
 
-  it('PÉRIMÉ dès la frappe : le chiffre affiché n\'est jamais présenté comme courant', async () => {
-    const { result, rerender } = monter()
-    await waitFor(() => expect(result.current.perime).toBe(false))
+  it("n'envoie JAMAIS `company` (le serveur la résout depuis l'utilisateur)", async () => {
+    const { result } = monter(P0)
+    await waitFor(() => expect(result.current.resultat).toBeTruthy())
+    for (const [, corps] of axiosMock.post.mock.calls) {
+      expect(JSON.stringify(corps ?? {})).not.toContain('company')
+    }
+  })
+
+  it('publie le résultat SERVEUR tel quel (aucun chiffre recomposé)', async () => {
+    const { result } = monter()
+    await waitFor(() => expect(result.current.resultat).toBeTruthy())
+    expect(result.current.resultat.total_modules).toBe(resultatReel.total_modules)
+    expect(result.current.resultat.kwc).toBe(resultatReel.kwc)
+    expect(result.current.resultat.preuve.libelle).toBe(resultatReel.preuve.libelle)
+    expect(result.current.perime).toBe(false)
+  })
+
+  it('envoie `params` dès qu’un tiroir pilote des paramètres', async () => {
+    const { result, rerender } = monter(P0)
+    await waitFor(() => expect(result.current.resultat).toBeTruthy())
+    expect(axiosMock.post).toHaveBeenCalledWith(CALCULER, { toiture: 7, params: P0 })
 
     rerender({ p: P1 })
-    // Sans attendre quoi que ce soit : l'ancien chiffre est DÉJÀ marqué périmé.
-    expect(result.current.perime).toBe(true)
-    expect(result.current.resultat.modules.texte).toBe('314 modules')
+    await waitFor(() => expect(axiosMock.post).toHaveBeenCalledWith(CALCULER, { toiture: 7, params: P1 }))
+  })
+})
 
+describe('useCalepinage — le 202 est une CONSIGNE, pas une erreur', () => {
+  it('bascule sur lancer + resultat/<job>/ et publie la progression du JOB', async () => {
+    axiosMock.post
+      .mockResolvedValueOnce(horsBudget())
+      .mockResolvedValueOnce(jobLance())
+    axiosMock.get
+      .mockResolvedValueOnce(jobSuivi('running', 25))
+      .mockResolvedValueOnce(jobSuivi('done', 100, { resultat: { ...resultatReel } }))
+
+    const { result } = monter()
+    await waitFor(() => expect(result.current.resultat).toBeTruthy())
+
+    expect(axiosMock.post).toHaveBeenNthCalledWith(1, CALCULER, { toiture: 7 })
+    expect(axiosMock.post).toHaveBeenNthCalledWith(2, LANCER, { toiture: 7 })
+    expect(axiosMock.get).toHaveBeenCalledWith(RESULTAT)
+    expect(result.current.resultat.total_modules).toBe(resultatReel.total_modules)
+    expect(result.current.erreur).toBeNull()
+  })
+
+  it("un job en ÉCHEC affiche le motif du serveur, jamais un écran blanc", async () => {
+    axiosMock.post
+      .mockResolvedValueOnce(horsBudget())
+      .mockResolvedValueOnce(jobLance())
+    axiosMock.get.mockResolvedValueOnce(
+      jobSuivi('failed', 40, { message_erreur: "L'enveloppe de la toiture est vide : au moins 3 sommets sont nécessaires pour calepiner." }),
+    )
+
+    const { result } = monter()
+    await waitFor(() => expect(result.current.erreur).toBe(
+      "L'enveloppe de la toiture est vide : au moins 3 sommets sont nécessaires pour calepiner.",
+    ))
+    expect(result.current.resultat).toBeNull()
+  })
+})
+
+describe('useCalepinage — les erreurs serveur s’affichent TELLES QUELLES', () => {
+  it('400 NOMMÉ : le champ fautif est conservé (`{entree: [...]}`)', async () => {
+    axiosMock.post.mockRejectedValueOnce({
+      response: { status: 400, data: { entree: ["Aucun kit de calepinage actif n'est disponible pour cette toiture : le calcul n'a rien à poser."] } },
+    })
+    const { result } = monter()
+    await waitFor(() => expect(result.current.erreur).toBe(
+      "entree : Aucun kit de calepinage actif n'est disponible pour cette toiture : le calcul n'a rien à poser.",
+    ))
+  })
+
+  it('404 : le `detail` de DRF est affiché mot pour mot', async () => {
+    axiosMock.post.mockRejectedValueOnce({
+      response: { status: 404, data: { detail: 'Toiture introuvable dans cette société.' } },
+    })
+    const { result } = monter()
+    await waitFor(() => expect(result.current.erreur).toBe('Toiture introuvable dans cette société.'))
+  })
+
+  it("l'erreur ne détruit pas le résultat précédent, qui reste marqué PÉRIMÉ", async () => {
+    const { result, rerender } = monter(P0)
+    await waitFor(() => expect(result.current.resultat).toBeTruthy())
+    axiosMock.post.mockRejectedValueOnce({
+      response: { status: 400, data: { calepinage: ['Contrôle « rive_laterale » en échec.'], controle: 'rive_laterale', repere: '05H' } },
+    })
+    rerender({ p: P1 })
+    await waitFor(() => expect(result.current.erreur).toContain('rive_laterale'))
+    expect(result.current.resultat.total_modules).toBe(resultatReel.total_modules)
+    expect(result.current.perime).toBe(true)
+  })
+})
+
+describe('useCalepinage — aucun chiffre fantôme', () => {
+  it('PÉRIMÉ dès la frappe : le chiffre affiché n’est jamais présenté comme courant', async () => {
+    const { result, rerender } = monter(P0)
     await waitFor(() => expect(result.current.perime).toBe(false))
-    expect(result.current.resultat.modules.texte).toBe('318 modules')
+    rerender({ p: P1 })
+    expect(result.current.perime).toBe(true)
+    await waitFor(() => expect(result.current.perime).toBe(false))
   })
 
   it('ne recalcule pas quand les paramètres reviennent à leur valeur affichée', async () => {
-    const { result, rerender } = monter()
+    const { result, rerender } = monter(P0)
     await waitFor(() => expect(result.current.resultat).toBeTruthy())
-    rerender({ p: { allee_m: 0.6 } }) // objet neuf, MÊME valeur
+    expect(axiosMock.post).toHaveBeenCalledTimes(1)
+    rerender({ p: { allee_min_m: 0.6 } }) // objet neuf, MÊME valeur
     await waitFor(() => expect(result.current.perime).toBe(false))
-    expect(mocks.calculer).not.toHaveBeenCalled()
+    expect(axiosMock.post).toHaveBeenCalledTimes(1)
   })
 
-  it('une réponse DOUBLÉE en vol est ignorée — aucun chiffre fantôme', async () => {
+  it('une réponse DOUBLÉE en vol est ignorée', async () => {
     let resoudre1
-    mocks.calculer
+    axiosMock.post
+      .mockResolvedValueOnce(ok())
       .mockImplementationOnce(() => new Promise((resolve) => { resoudre1 = resolve }))
-      .mockImplementationOnce(() => Promise.resolve(charge('322 modules', P2)))
+      .mockImplementationOnce(() => Promise.resolve(ok({ total_modules: 322 })))
 
-    const { result, rerender } = monter()
+    const { result, rerender } = monter(P0)
     await waitFor(() => expect(result.current.resultat).toBeTruthy())
 
-    rerender({ p: P1 })                                    // requête 1 (en vol)
-    await waitFor(() => expect(mocks.calculer).toHaveBeenCalledTimes(1))
-    rerender({ p: P2 })                                    // requête 2 la double
-    await waitFor(() => expect(mocks.calculer).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(result.current.resultat.modules.texte).toBe('322 modules'))
+    rerender({ p: P1 })
+    await waitFor(() => expect(axiosMock.post).toHaveBeenCalledTimes(2))
+    rerender({ p: P2 })
+    await waitFor(() => expect(axiosMock.post).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(result.current.resultat.total_modules).toBe(322))
 
-    // La réponse de la requête 1 arrive APRÈS : elle doit être jetée.
-    resoudre1(charge('999 modules', P1))
+    resoudre1(ok({ total_modules: 999 }))
     await new Promise((resolve) => { setTimeout(resolve, 0) })
-    expect(result.current.resultat.modules.texte).toBe('322 modules')
+    expect(result.current.resultat.total_modules).toBe(322)
     expect(result.current.perime).toBe(false)
   })
 
   it('une réponse qui arrive après le démontage ne provoque aucune mise à jour', async () => {
     let resoudre
-    mocks.get.mockImplementationOnce(() => new Promise((resolve) => { resoudre = resolve }))
+    axiosMock.post.mockImplementationOnce(() => new Promise((resolve) => { resoudre = resolve }))
     const { result, unmount } = monter()
     unmount()
-    resoudre(charge('314 modules', P0))
+    resoudre(ok())
     await new Promise((resolve) => { setTimeout(resolve, 0) })
     expect(result.current.resultat).toBeNull()
-  })
-
-  it('une erreur de recalcul est signalée SANS inventer de résultat', async () => {
-    mocks.calculer.mockRejectedValueOnce({ response: { data: { detail: 'Orientation refusée.' } } })
-    const { result, rerender } = monter()
-    await waitFor(() => expect(result.current.resultat).toBeTruthy())
-    rerender({ p: P1 })
-    await waitFor(() => expect(result.current.erreur).toBe('Orientation refusée.'))
-    // Le résultat périmé reste visible… mais reste marqué périmé.
-    expect(result.current.resultat.modules.texte).toBe('314 modules')
-    expect(result.current.perime).toBe(true)
-  })
-
-  it('appliquer() rejoue le patch CÔTÉ SERVEUR (jamais un gain estimé côté front)', async () => {
-    const { result } = monter()
-    await waitFor(() => expect(result.current.resultat).toBeTruthy())
-    await result.current.appliquer({ rive_est_m: 0.5 })
-    expect(mocks.calculer).toHaveBeenCalledWith(7, { allee_m: 0.6, patch_entree: { rive_est_m: 0.5 } })
   })
 })
 
