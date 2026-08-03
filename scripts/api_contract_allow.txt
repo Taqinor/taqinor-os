@@ -1,0 +1,35 @@
+# Base de reference de check_api_contract.py — DETTE HISTORIQUE, RIEN D'AUTRE.
+#
+# Chaque ligne est un chemin normalise appele par le frontend et qui ne
+# correspond a AUCUNE route backend enregistree : un ecran deja mort. La garde
+# n'echoue que sur une occurrence ABSENTE de cette liste.
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - corriger un appel puis `python scripts/check_api_contract.py
+#     --write-baseline` retire sa ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne. Ajouter une dette exige
+#     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
+#
+# La signature est le CHEMIN, jamais `fichier:ligne` : un deplacement de ligne
+# ne doit pas invalider la base (lecon du depot).
+/api/django/ao/<>/rentabilite/telecharger
+/api/django/ao/appels-offres/<>/dupliquer
+/api/django/ao/bibliotheque/<>/appliquer
+/api/django/ao/bibliotheque/<>/dossiers-impactes
+/api/django/ao/calepinages/<>/allee-gratuite
+/api/django/ao/calepinages/<>/calculer
+/api/django/ao/calepinages/<>/sensibilites
+/api/django/ao/calepinages/<>/statut-de-job/<>
+/api/django/ao/calepinages/<>/suggestions
+/api/django/ao/chaines
+/api/django/ao/dossiers-soumission/<>/controles-avant-depot
+/api/django/ao/dossiers-soumission/<>/generer-piece
+/api/django/ao/dossiers-soumission/<>/statut-de-job/<>
+/api/django/ao/dossiers-soumission/<>/zip
+/api/django/ao/equipements/<>/bascule
+/api/django/ao/plans-sources
+/api/django/ao/series-qr
+/api/django/ao/variantes/<>/decomposition
+/api/django/ao/zones
+/api/django/rh/demandes-conge/<>/soumettre
+/api/public/openapi.json
