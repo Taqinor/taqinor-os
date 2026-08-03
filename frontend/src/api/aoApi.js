@@ -259,8 +259,17 @@ export const aoRentabiliteApi = {
   parAffaire: (affaireId) => api.get('/ao/economie/', { params: { appel_offre: affaireId } }),
   get: (economieId) => api.get(`/ao/economie/${economieId}/`),
   update: (economieId, data) => api.patch(`/ao/economie/${economieId}/`, data),
-  // Téléchargement du document interne (URL signée — jamais un lien MinIO direct).
-  download: (affaireId) => api.get(`/ao/${affaireId}/rentabilite/telecharger/`),
+
+  /* Le classeur interne se PRODUIT (job de fond) avant de se retirer : il
+     n'est jamais rendu dans le temps d'une requête. `produireClasseur` renvoie
+     202 + l'id du job, `statutClasseur` suit l'avancement, `download` retire
+     les octets — relayés par l'endpoint directeur lui-même, donc jamais un
+     lien MinIO direct. */
+  produireClasseur: (economieId) => api.post(`/ao/economie/${economieId}/telecharger/`),
+  statutClasseur: (economieId, jobId) => api.get(`/ao/economie/${economieId}/telecharger/`,
+    { params: { job: jobId } }),
+  download: (economieId, jobId) => api.get(`/ao/economie/${economieId}/telecharger/`,
+    { params: { job: jobId, fichier: 1 }, responseType: 'blob' }),
 }
 
 export default aoApi

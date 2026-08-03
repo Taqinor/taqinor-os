@@ -212,7 +212,26 @@ test('GARDE — la LECTURE de la rentabilité cible la ressource RÉELLE `econom
   const { prefixesRoutesAo } = await import('../test/contratServeur.js')
   assert.ok(prefixesRoutesAo().has('economie'),
     'le routeur AO ne publie plus `economie` : la cible est à re-trancher')
-  assert.doesNotMatch(sansCommentaires(src), /api\.(get|patch)\(`\/ao\/\$\{affaireId\}\/rentabilite\/`/)
+  assert.doesNotMatch(sansCommentaires(src), /\/ao\/\$\{affaireId\}\/rentabilite\//)
+})
+
+test('AOF161 — le classeur directeur passe par un JOB, jamais un rendu synchrone', () => {
+  // `telecharger` est une @action du VRAI ViewSet (`EconomieAOViewSet`), lue
+  // dans la source serveur : POST = production, GET = suivi, GET+fichier =
+  // retrait des octets.
+  assert.match(src, /produireClasseur:\s*\(economieId\)\s*=>\s*api\.post\(`\/ao\/economie\/\$\{economieId\}\/telecharger\/`\)/)
+  assert.match(src, /statutClasseur:\s*\(economieId,\s*jobId\)\s*=>\s*api\.get\(`\/ao\/economie\/\$\{economieId\}\/telecharger\/`/)
+  assert.match(src, /download:\s*\(economieId,\s*jobId\)\s*=>\s*api\.get\(`\/ao\/economie\/\$\{economieId\}\/telecharger\/`/)
+  // Les octets sont binaires : sans `blob`, axios corromprait le classeur.
+  assert.match(src, /responseType:\s*'blob'/)
+})
+
+test('AOF161 — l’action `telecharger` existe RÉELLEMENT sur EconomieAOViewSet', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { fichierAo } = await import('../test/contratServeur.js')
+  const serveur = readFileSync(fichierAo('views_directeur.py'), 'utf8')
+  assert.match(serveur, /class EconomieAOViewSet\(/)
+  assert.match(serveur, /@action\(detail=True, methods=\['get', 'post'\], url_path='telecharger'\)/)
 })
 
 test('ISOLEMENT — le corps de `aoApi` ne mentionne JAMAIS "rentabilite" (aucun chemin réseau mêlé)', () => {
@@ -227,7 +246,7 @@ test('aoRentabiliteApi est un export SÉPARÉ (jamais une clé de aoApi), avec p
   assert.match(src, /parAffaire:\s*\(affaireId\)\s*=>\s*api\.get\('\/ao\/economie\/',\s*\{\s*params:\s*\{\s*appel_offre:\s*affaireId\s*\}\s*\}\)/)
   assert.match(src, /get:\s*\(economieId\)\s*=>\s*api\.get\(`\/ao\/economie\/\$\{economieId\}\/`\)/)
   assert.match(src, /update:\s*\(economieId,\s*data\)\s*=>\s*api\.patch\(`\/ao\/economie\/\$\{economieId\}\/`,\s*data\)/)
-  assert.match(src, /download:\s*\(/)
+  assert.match(src, /download:\s*\(economieId,\s*jobId\)\s*=>/)
 })
 
 test('aoApi et aoRentabiliteApi sont bien DEUX exports distincts (default + const nommée)', () => {
