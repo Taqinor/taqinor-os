@@ -234,7 +234,13 @@ const aoApi = {
     zip: nonConstruit('/ao/dossiers-ao/<id>/zip/',
       'le ZIP et son job existent mais aucun monteur ne leur passe les '
       + 'pièces (services.producteurs_de_pack manque)'),
-    statutJob: (id, jobId) => api.get(`/ao/dossiers-soumission/${id}/statut-de-job/${jobId}/`),
+    // ENDPOINT À CONSTRUIRE, par conséquence directe de `zip` ci-dessus :
+    // aucun job de pack ne peut être lancé, donc il n'y en a aucun à suivre.
+    // Le patron de suivi est déjà écrit et servira tel quel le jour où le
+    // monteur existe : `ResultatCalepinageView` (job scopé société, introuvable
+    // — 404, jamais « interdit » — pour une autre société).
+    statutJob: nonConstruit('/ao/dossiers-ao/<id>/statut-de-job/<jobId>/',
+      'aucun job de pack ne peut être lancé tant que `zip` ne construit rien'),
   },
   pieces: crud('pieces-soumission'),
 
