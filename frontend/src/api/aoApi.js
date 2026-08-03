@@ -223,8 +223,17 @@ const aoApi = {
     genererPiece: nonConstruit('/ao/dossiers-ao/<id>/generer-piece/',
       'aucun producteur de pièce : les rendus attendent un contexte que '
       + 'personne n’assemble (services.producteurs_de_pack manque)'),
-    // Génération asynchrone (job Celery) du pack + ZIP de dépôt.
-    zip: (id) => api.post(`/ao/dossiers-soumission/${id}/zip/`),
+    // ENDPOINT À CONSTRUIRE — et c'est le cas où ouvrir la porte serait PIRE
+    // que la laisser fermée. La fabrique sait ÉCRIRE le ZIP
+    // (`fabrique/pack_zip.ecrire_pack_zip`, testé, refus motivé si un contrôle
+    // est rouge) et `tasks.produire_pack` sait l'orchestrer de façon
+    // idempotente — mais RIEN ne leur fournit les pièces. Une @action `zip`
+    // rendrait donc un job qui se termine « terminé » avec zéro pièce, et
+    // `useGenerationJob` appellerait `onSucces` : « pack prêt » sur un pack
+    // vide. Un faux succès est pire qu'un 404 — il se dépose.
+    zip: nonConstruit('/ao/dossiers-ao/<id>/zip/',
+      'le ZIP et son job existent mais aucun monteur ne leur passe les '
+      + 'pièces (services.producteurs_de_pack manque)'),
     statutJob: (id, jobId) => api.get(`/ao/dossiers-soumission/${id}/statut-de-job/${jobId}/`),
   },
   pieces: crud('pieces-soumission'),
