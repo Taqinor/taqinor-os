@@ -59,6 +59,7 @@ import { StatutAffaire } from './statusAo'
    `SeriesPage` est un export NOMMÉ (`export function SeriesPage`) : on le
    remappe en `default` pour `lazy`, au lieu de compter sur le `export default`
    d'appoint du même fichier. */
+const ToituresPage = lazy(() => import('./toiture/ToituresPage'))
 const CalepinageStudio = lazy(() => import('./calepinage/CalepinageStudio'))
 const BordereauPage = lazy(() => import('./bordereau/BordereauPage'))
 const DossierPage = lazy(() => import('./dossier/DossierPage'))
@@ -143,26 +144,20 @@ function SelecteurEnfant({ id, label, valeur, onChange, options }) {
 }
 
 /* ── Onglet « Toitures & relevés » ────────────────────────────────────────
-   `ToituresPage` (déjà routé en pleine page sur `/ao/toitures`) NE PREND
-   AUCUNE PROPRIÉTÉ : il liste toutes les affaires de la société et retombe sur
-   la PREMIÈRE. L'encastrer ici afficherait, sous le titre de CETTE affaire,
-   les toitures d'une AUTRE — un écran faux a l'air juste, ce qui est pire
-   qu'un onglet vide. On ne force donc pas : on nomme l'empêchement et on
-   envoie vers l'écran pleine page, où le sélecteur d'affaire est explicite. */
-function OngletToitures() {
+   HISTORIQUE (03/08/2026) : cet onglet a d'abord affiché un état vide, parce
+   que `ToituresPage` ne prenait AUCUNE propriété — il listait toutes les
+   affaires de la société et retombait sur la PREMIÈRE. L'encastrer tel quel
+   aurait montré, sous le titre de CETTE affaire, les toitures d'une AUTRE :
+   un écran faux a l'air juste, ce qui est pire qu'un onglet vide.
+   L'empêchement a été LEVÉ À LA SOURCE (`ToituresPage` accepte désormais
+   `affaireId` : affaire imposée, aucun appel à la liste des affaires, aucun
+   sélecteur rendu). On monte donc le vrai panneau. Ne PAS revenir à un
+   `ToituresPage` sans `affaireId` ici — ce serait rouvrir la fuite d'affaire.*/
+function OngletToitures({ affaireId }) {
   return (
-    <EmptyState
-      icon={Building2}
-      title="Toitures & relevés — sur l’écran pleine page"
-      description={"L’écran « Toitures & relevés » choisit lui-même son affaire (il n’accepte "
-        + 'aucune propriété de filtrage) : l’encastrer ici montrerait les toitures d’une autre '
-        + 'affaire. Ouvrez-le en pleine page et sélectionnez cette affaire dans son sélecteur.'}
-      action={(
-        <Button asChild variant="outline" size="sm">
-          <Link to="/ao/toitures">Ouvrir Toitures &amp; relevés</Link>
-        </Button>
-      )}
-    />
+    <PanneauDiffere>
+      <ToituresPage affaireId={affaireId} />
+    </PanneauDiffere>
   )
 }
 
@@ -409,7 +404,7 @@ export default function AffaireDetail() {
         {
           value: 'toitures',
           label: 'Toitures & relevés',
-          content: <OngletToitures />,
+          content: <OngletToitures affaireId={id} />,
         },
         {
           value: 'calepinages',

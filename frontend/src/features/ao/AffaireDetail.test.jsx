@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   getAttachments: vi.fn(),
   createComment: vi.fn(),
   uploadAttachment: vi.fn(),
+  affairesList: vi.fn(),
+  toituresList: vi.fn(),
   variantesList: vi.fn(),
   dossiersList: vi.fn(),
   dossierGet: vi.fn(),
@@ -29,8 +31,9 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('../../api/aoApi', () => ({
   default: {
-    affaires: { get: mocks.get },
+    affaires: { get: mocks.get, list: mocks.affairesList },
     // Ce que le serveur persiste réellement pour un calepinage (AOF28).
+    toitures: { list: mocks.toituresList },
     variantes: { list: mocks.variantesList },
     dossiers: { list: mocks.dossiersList, get: mocks.dossierGet, genererPiece: mocks.genererPiece },
     seriesQR: { list: mocks.seriesList, create: mocks.seriesCreate },
@@ -112,6 +115,8 @@ beforeEach(() => {
   mocks.dossierGet.mockResolvedValue({ data: DOSSIER })
   mocks.seriesList.mockResolvedValue({ data: [] })
   mocks.calepinageGet.mockResolvedValue({ data: PLAN })
+  mocks.toituresList.mockResolvedValue({ data: [] })
+  mocks.affairesList.mockResolvedValue({ data: [] })
 })
 
 describe('AffaireDetail', () => {
@@ -258,13 +263,25 @@ describe('AffaireDetail', () => {
       expect(screen.getByText(/ne publie pas encore de ressource bordereau/)).toBeInTheDocument()
     })
 
-    it('« Toitures & relevés » ne montre PAS les toitures d’une autre affaire : motif + lien pleine page', async () => {
+    // 03/08/2026 — CE TEST A CHANGÉ DE SENS, volontairement. Il épinglait
+    // l'état vide affiché tant que `ToituresPage` n'acceptait aucun filtre.
+    // L'empêchement a été levé à la source (propriété `affaireId`), donc le
+    // vrai panneau est monté. La propriété à garder n'est PAS « un état vide
+    // s'affiche » — c'est « les toitures d'une AUTRE affaire ne fuitent
+    // jamais ici », qui est la seule chose qui protégeait l'utilisateur.
+    it('« Toitures & relevés » monte le vrai panneau, filtré sur CETTE affaire (aucune fuite)', async () => {
       renderScreen()
       await screen.findByText('AO-2026-001')
       await userEvent.click(onglet('Toitures & relevés'))
 
-      expect(await screen.findByText(/choisit lui-même son affaire/)).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: /Ouvrir Toitures/ })).toHaveAttribute('href', '/ao/toitures')
+      // Le panneau interroge les toitures AVEC le filtre de CETTE affaire
+      // (l'id vient de l'URL, donc '1' — jamais celui d'un sous-document).
+      await waitFor(() => expect(mocks.toituresList).toHaveBeenCalled())
+      const filtre = mocks.toituresList.mock.calls[0][0]
+      expect(String(filtre.appel_offre)).toBe('1')
+      // …et l'onglet ne liste JAMAIS les autres affaires : c'était la fuite
+      // d'origine — l'écran retombait sur la PREMIÈRE affaire de la société.
+      expect(mocks.affairesList).not.toHaveBeenCalled()
     })
   })
 
@@ -279,6 +296,7 @@ describe('AffaireDetail', () => {
 
     it('les 4 panneaux réels sont chargés PARESSEUSEMENT (lazy + import dynamique), jamais en import statique', () => {
       for (const chemin of [
+        './toiture/ToituresPage',
         './calepinage/CalepinageStudio',
         './bordereau/BordereauPage',
         './dossier/DossierPage',
@@ -301,7 +319,7 @@ describe('AffaireDetail', () => {
       // Autant de montages de panneau différé que de panneaux lazy déclarés.
       const lazyDeclares = codeSeul.match(/=\s*lazy\(/g) || []
       const montages = codeSeul.match(/<PanneauDiffere>/g) || []
-      expect(lazyDeclares.length).toBe(4)
+      expect(lazyDeclares.length).toBe(5)
       expect(montages.length).toBe(lazyDeclares.length)
     })
 
