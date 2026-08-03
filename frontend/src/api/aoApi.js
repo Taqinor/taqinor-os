@@ -213,8 +213,16 @@ const aoApi = {
     ...crud('dossiers-ao'),
     controlesAvantDepot: (id) =>
       api.get(`/ao/dossiers-ao/${id}/controles-avant-depot/`),
-    genererPiece: (id, typePiece) =>
-      api.post(`/ao/dossiers-soumission/${id}/generer-piece/`, { type: typePiece }),
+    // ENDPOINT À CONSTRUIRE — pas un renommage. Vérifié le 03/08/2026 : AUCUN
+    // producteur de pièce n'existe côté serveur. Les rendus
+    // (`fabrique/rendus/*`) prennent tous un CONTEXTE déjà assemblé, et le
+    // monteur qui assemblerait ce contexte depuis un `DossierAO`
+    // (`services.producteurs_de_pack`) n'est pas écrit — `apps/ao/tasks.py` le
+    // dit lui-même dans sa docstring. Deviner une URL ici ne ferait
+    // qu'échanger un 404 anonyme contre un autre.
+    genererPiece: nonConstruit('/ao/dossiers-ao/<id>/generer-piece/',
+      'aucun producteur de pièce : les rendus attendent un contexte que '
+      + 'personne n’assemble (services.producteurs_de_pack manque)'),
     // Génération asynchrone (job Celery) du pack + ZIP de dépôt.
     zip: (id) => api.post(`/ao/dossiers-soumission/${id}/zip/`),
     statutJob: (id, jobId) => api.get(`/ao/dossiers-soumission/${id}/statut-de-job/${jobId}/`),
