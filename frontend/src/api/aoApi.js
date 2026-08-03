@@ -71,11 +71,20 @@ const aoApi = {
   // ── Toiture / relevé (portes 1-2-3 : plan fourni, from-scratch, carte) ──
   batiments: crud('batiments'),
   toitures: crud('toitures'),
-  plansSources: crud('plans-sources'),
+  // RÉPARATION 03/08/2026 — le routeur enregistre `plans-source` et
+  // `chaines-cotes` (AU SINGULIER pour le premier) ; le front appelait
+  // `plans-sources` et `chaines`, deux 404 silencieuses.
+  plansSources: crud('plans-source'),
   releves: crud('releves'),
   obstacles: crud('obstacles'),
-  zones: crud('zones'),
-  chaines: crud('chaines'),
+  chaines: crud('chaines-cotes'),
+  //
+  // `zones:` A ÉTÉ RETIRÉ — ENDPOINT À CONSTRUIRE, pas un renommage.
+  // L'outil de saisie des zones (AOF89 : interdite / réservée / préférée)
+  // existe côté écran, mais AUCUN modèle ni route ne les persiste, et
+  // `calepinage_io.document_entree()` envoie `'zones': []` en dur au moteur.
+  // Publier ici un `crud('zones')` ferait croire à un stockage qui n'existe
+  // pas ; le jour où le modèle est créé, la ressource revient ici.
 
   // ── Calepinage / variantes (moteur `core/calepinage/`, partagé villas) ──
   calepinages: {

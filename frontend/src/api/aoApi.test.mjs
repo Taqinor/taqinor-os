@@ -33,17 +33,32 @@ test('aoApi utilise la factory partagée (ARC44), jamais un axios.get direct au 
   assert.match(src, /const crud = makeResourceFactory\(api, '\/ao'\)/)
 })
 
-test('les ressources CRUD nommées par AOF11 sont toutes déclarées', () => {
+test('les ressources CRUD dont la route SERVEUR existe sont toutes déclarées', () => {
   const body = aoApiBody()
   const resources = [
     'affaires', 'batiments', 'toitures', 'plansSources', 'releves',
-    'obstacles', 'zones', 'chaines', 'calepinages', 'variantes',
-    'seriesQR', 'equipements', 'exigencesCps', 'dossiers', 'pieces',
+    'obstacles', 'chaines', 'variantes',
+    'seriesQR', 'exigencesCps', 'dossiers', 'pieces',
     'bibliotheque',
   ]
   for (const key of resources) {
     assert.match(body, new RegExp(`\\b${key}:`), `ressource manquante : ${key}`)
   }
+})
+
+test('les ressources de relevé pointent le NOM SERVEUR (plans-source au singulier, chaines-cotes)', () => {
+  const body = aoApiBody()
+  assert.match(body, /plansSources:\s*crud\('plans-source'\)/)
+  assert.match(body, /chaines:\s*crud\('chaines-cotes'\)/)
+  assert.doesNotMatch(sansCommentaires(src), /crud\('plans-sources'\)/)
+  assert.doesNotMatch(sansCommentaires(src), /crud\('chaines'\)/)
+})
+
+test('AOF89 — `zones` n’est PAS publiée : aucun modèle ni route ne persiste les zones', () => {
+  // Le moteur reçoit `'zones': []` en dur (`calepinage_io.document_entree`).
+  // Republier `crud('zones')` ferait croire à un stockage inexistant.
+  assert.doesNotMatch(sansCommentaires(src), /\bzones:\s*crud\(/)
+  assert.doesNotMatch(sansCommentaires(src), /'\/ao\/zones\//)
 })
 
 test('les actions non-CRUD nommées (calculer/suggestions/sensibilités/décomposition/allée-gratuite/générer-pièce/statut-de-job/zip/contrôles-avant-dépôt/bascule) sont toutes déclarées', () => {
