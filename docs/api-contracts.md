@@ -20,6 +20,12 @@
     results:inconnu
 - frontend/src/api/agricultureApi.js :: coutIrrigation -> /api/django/agriculture/campagnes/<>/cout-irrigation
     cout_irrigation_mad:inconnu, volume_irrigation_solaire_m3:inconnu
+- frontend/src/api/aoApi.js :: controlesAvantDepot -> /api/django/ao/dossiers-ao/<>/controles-avant-depot
+    bloquant:inconnu, controles:liste, empreinte:inconnu, nombre_hors_controle:nombre, pieces_hors_controle:liste
+- frontend/src/api/aoApi.js :: lancer -> /api/django/ao/calepinage/lancer
+    id:inconnu, kind:inconnu, message_erreur:texte, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
+- frontend/src/api/aoApi.js :: resultat -> /api/django/ao/calepinage/resultat/<>
+    id:inconnu, kind:inconnu, message_erreur:inconnu, progress_pct:inconnu, resultat:inconnu, statut:inconnu, variante:inconnu
 - frontend/src/api/aoApi.js :: tableauMarches -> /api/django/ao/tableau-marches
     capacite:objet, cautions:objet, echeances_dues:nombre, en_cours:objet, marches_en_execution:objet, reussite:objet
 - frontend/src/api/auditApi.js :: getMeta -> /api/django/audit/meta

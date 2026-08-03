@@ -10,9 +10,3 @@
 # deplacement de ligne ne doit pas invalider la base.
 getFournisseur360|solde_total_du
 performanceFournisseur|total_achats_ht
-tableauMarches|ao_en_cours
-tableauMarches|capacite_vs_engagement
-tableauMarches|cautions_immobilisees
-tableauMarches|echeances_dues
-tableauMarches|marches_en_execution
-tableauMarches|taux_reussite
