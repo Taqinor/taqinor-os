@@ -48,9 +48,16 @@ const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const POLL_MS = 30000
 
+/* RÉPARATION 03/08/2026 — le type par défaut valait `plafond`, que le serveur
+   REFUSE : il n'est pas dans `ExigenceCPS.TypeExigence` (cf. la liste réelle
+   dans `ExigencesPage.utils.js`). Une clause soumise sans toucher au sélecteur
+   partait donc systématiquement en erreur. Le défaut est désormais `autre`, le
+   choix le plus neutre du modèle — il existe, il est même le `default` du champ
+   côté Django, et il n'impose aucune sémantique à une clause qu'on n'a pas
+   encore qualifiée. Sa valeur part en `valeur_texte` (type non chiffrable). */
 const FORM_VIDE = {
   libelle: '',
-  type: 'plafond',
+  type: 'autre',
   valeur: '',
   valeurMax: '',
   unite: '',
@@ -246,10 +253,14 @@ export default function ExigencesPage({
               Exigences à revérifier après erratum
             </p>
             <ul className="mt-1 flex flex-col gap-0.5">
+              {/* RÉPARATION 03/08/2026 — `e.erratum_ref` n'existe pas : le
+                  sérialiseur ne porte que le drapeau `a_reverifier`, jamais la
+                  référence de l'additif. La mention était donc toujours vide.
+                  Retirée : la pièce qui a déclenché la revérification se lit
+                  sur l'onglet des pièces du DCE, pas ici. */}
               {aReverifier.map((e) => (
                 <li key={e.id ?? e.code} className="text-xs text-muted-foreground">
                   <span className="font-medium text-foreground">{e.libelle || e.code}</span>
-                  {e.erratum_ref ? ` — erratum ${e.erratum_ref}` : ''}
                 </li>
               ))}
             </ul>
