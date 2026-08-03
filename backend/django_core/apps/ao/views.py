@@ -43,6 +43,7 @@ from .models import (
     ChaineCotes,
     DossierSoumission,
     EcheanceAO,
+    EquipementAO,
     ExigenceCPS,
     KitCalepinage,
     LigneBordereau,
@@ -69,6 +70,7 @@ from .serializers import (
     ChaineCotesSerializer,
     DossierSoumissionSerializer,
     EcheanceAOSerializer,
+    EquipementAOSerializer,
     ExigenceCPSSerializer,
     KitCalepinageSerializer,
     LigneBordereauSerializer,
@@ -914,6 +916,75 @@ class LigneBordereauViewSet(AoBaseViewSet):
         return _filtres_exacts(
             super().get_queryset(), self.request.query_params,
             ('bordereau', 'section', 'batiment', 'quantite_source'))
+
+
+# ── AOF118/AOF141 — Équipements engagés et leur BASCULE ────────────────────
+#
+# Le modèle ``EquipementAO`` existait depuis AOF118 (snapshot figé, string-FK
+# catalogue) et la mécanique de RAPPORT de bascule depuis AOF142 — mais aucune
+# route ne les exposait : l'écran Équipements du dossier n'avait rien à
+# appeler, et le client d'API avait dû poser un rejet nommé à la place d'un
+# chemin (``api/endpointNonConstruit.js``, 03/08/2026). Voici la ressource,
+# sur le socle AO ordinaire.
+
+class EquipementAOViewSet(AoBaseViewSet):
+    """Équipements engagés par le dossier (AOF118) + bascule ATOMIQUE (AOF141).
+
+    Le snapshot (désignation, marque, référence, caractéristiques) est FIGÉ à
+    l'engagement : il ne se modifie pas au fil de l'eau, sinon un re-seed du
+    catalogue ferait bouger un dossier déjà déposé. Changer de matériel se
+    fait donc par l'action ``bascule`` — jamais par un PATCH de la
+    désignation, qui laisserait la fiche technique annexée, les grandeurs
+    dérivées et les pièces déjà produites en arrière.
+    """
+    queryset = EquipementAO.objects.select_related(
+        'produit', 'fiche_technique', 'batiment').all()
+    serializer_class = EquipementAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['designation', 'marque', 'reference_constructeur']
+    ordering_fields = ['role', 'designation', 'quantite']
+
+    def get_queryset(self):
+        return _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('appel_offre', 'batiment', 'role', 'actif'))
+
+    @action(detail=True, methods=['post'], url_path='bascule')
+    def bascule(self, request, pk=None):
+        """AOF141 — bascule vers un autre produit, en UNE transaction.
+
+        Écriture, donc gardée par ``ao_gerer`` : le socle route toute méthode
+        non sûre sur ``write_permission`` (cf. ``core.permissions``).
+
+        Corps : ``produit`` (obligatoire), ``fiche_technique`` (identifiant
+        d'une ``records.Attachment``), ``motif``. La réponse porte le nouvel
+        équipement, celui qu'il remplace, le RAPPORT de bascule (ce qui a
+        changé ET les textes qui portent encore l'ancienne référence) et les
+        artefacts périmés — refuser en silence ou réécrire d'office les textes
+        seraient les deux mauvaises réponses.
+
+        Traitement BORNÉ (quelques écritures + une passe de contrôle), donc
+        synchrone. Ce qui est LONG n'est délibérément pas fait ici : la
+        bascule PÉRIME les pièces déjà produites, elle ne refabrique aucun
+        pack ni aucun PDF — cette régénération-là reste un travail de fond
+        (``core.jobs``), sur ses propres endpoints.
+        """
+        equipement = self.get_object()
+        try:
+            resultat = services.basculer_equipement(
+                equipement, request.data.get('produit'), user=request.user,
+                fiche_technique=request.data.get('fiche_technique'),
+                motif=(request.data.get('motif') or '').strip())
+        except DjangoValidationError as exc:
+            donnees = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(donnees, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'equipement': self.get_serializer(resultat['equipement']).data,
+            'remplace': self.get_serializer(resultat['ancien']).data,
+            'rapport': resultat['rapport'],
+            'artefacts_perimes': resultat['artefacts_perimes'],
+        })
 
 
 # ── FG224 — Cautions & garanties de soumission ─────────────────────────────
