@@ -25,6 +25,9 @@ services:
 
   django_core:
     build: ./backend/django_core
+    # Tag EXPLICITE : les 3 services Celery ci-dessous réutilisent CETTE image
+    # au lieu d'en reconstruire trois copies identiques (voir leur commentaire).
+    image: erp-agentique-django_core
     # SCA16 — GUNICORN_WORKERS/GUNICORN_THREADS surchargeables via .env sans
     # éditer ce compose. Défauts = comportement ACTUEL (4 workers, pas de
     # --threads posé en dev — --worker-class sync reste sync même avec
@@ -101,7 +104,17 @@ services:
     # Utilise le code Django (django_core) car le worker a besoin des modules Django.
     # Le dossier backend/celery_worker/ contient des tâches Celery additionnelles
     # à intégrer dans django_core/erp_agentique/celery.py si nécessaire.
-    build: ./backend/django_core
+    # ── UNE SEULE image pour les 4 services Django (03/08/2026) ────────────
+    # Les 4 déclaraient `build: ./backend/django_core` — MÊME contexte, MÊME
+    # Dockerfile, AUCUN argument distinct : Docker fabriquait donc QUATRE
+    # images identiques de 1,76 Go, avec quatre cycles complets de
+    # construction, d'export et de décompression à chaque déploiement.
+    # Elles réutilisent maintenant l'image construite par `django_core`.
+    # Sûr ici : en production le code source est monté par-dessus /app
+    # (bind `/opt/taqinor-os/backend/django_core -> /app`, vérifié sur le
+    # conteneur en cours), donc le contenu de l'image est de toute façon
+    # le même pour les quatre — seule la commande de démarrage diffère.
+    image: erp-agentique-django_core
     # YOPSB9/SCA9 — ce worker consomme désormais SEULEMENT `default,scheduled`
     # (cf. CELERY_TASK_ROUTES dans settings/base.py) : la queue `interactive`
     # (rendus PDF déclenchés par un clic commercial, transcription vocale) est
@@ -152,7 +165,17 @@ services:
     # direct par un commercial. Concurrency explicite (pas le défaut
     # cpu_count()) car ce worker n'a besoin que d'absorber quelques rendus
     # PDF simultanés, pas de saturer la boîte.
-    build: ./backend/django_core
+    # ── UNE SEULE image pour les 4 services Django (03/08/2026) ────────────
+    # Les 4 déclaraient `build: ./backend/django_core` — MÊME contexte, MÊME
+    # Dockerfile, AUCUN argument distinct : Docker fabriquait donc QUATRE
+    # images identiques de 1,76 Go, avec quatre cycles complets de
+    # construction, d'export et de décompression à chaque déploiement.
+    # Elles réutilisent maintenant l'image construite par `django_core`.
+    # Sûr ici : en production le code source est monté par-dessus /app
+    # (bind `/opt/taqinor-os/backend/django_core -> /app`, vérifié sur le
+    # conteneur en cours), donc le contenu de l'image est de toute façon
+    # le même pour les quatre — seule la commande de démarrage diffère.
+    image: erp-agentique-django_core
     command: celery -A erp_agentique worker -l info -Q interactive
              --concurrency=${CELERY_INTERACTIVE_CONCURRENCY:-2}
     volumes:
@@ -181,7 +204,17 @@ services:
     # Planificateur Celery Beat : déclenche les tâches périodiques définies dans
     # erp_agentique/celery.py (factures en retard, relances, récapitulatifs N76,
     # rapports planifiés N79). Même image/env que le worker ; un SEUL beat suffit.
-    build: ./backend/django_core
+    # ── UNE SEULE image pour les 4 services Django (03/08/2026) ────────────
+    # Les 4 déclaraient `build: ./backend/django_core` — MÊME contexte, MÊME
+    # Dockerfile, AUCUN argument distinct : Docker fabriquait donc QUATRE
+    # images identiques de 1,76 Go, avec quatre cycles complets de
+    # construction, d'export et de décompression à chaque déploiement.
+    # Elles réutilisent maintenant l'image construite par `django_core`.
+    # Sûr ici : en production le code source est monté par-dessus /app
+    # (bind `/opt/taqinor-os/backend/django_core -> /app`, vérifié sur le
+    # conteneur en cours), donc le contenu de l'image est de toute façon
+    # le même pour les quatre — seule la commande de démarrage diffère.
+    image: erp-agentique-django_core
     command: celery -A erp_agentique beat -l info
     volumes:
       - ./backend/django_core:/app
