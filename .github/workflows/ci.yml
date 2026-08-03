@@ -472,6 +472,28 @@ jobs:
         run: python scripts/check_api_shapes.py
       - name: Test the API-shapes checker itself
         run: python -m unittest scripts.tests.test_check_api_shapes -v
+      # ÉCRANS ATTEIGNABLES (incident du 03/08/2026, troisième défaut du même
+      # jour) : le module « Appels d'offres » a été livré et déclaré TERMINÉ —
+      # 194 tâches cochées, CI verte, déployé — alors que 68 écrans existaient
+      # sur le disque dans frontend/src/features/ao/, 7 seulement atteignables
+      # depuis le menu, 61 non. Cause racine identique au défaut front<->back :
+      # les écrans sont construits par des lanes PARALLÈLES, mais le SEUL
+      # fichier qui les relie au menu (`features/<app>/module.config.jsx`) a un
+      # propriétaire UNIQUE — chaque lane livre son écran, personne ne revient
+      # le brancher. Un écran orphelin compile, passe eslint et ses propres
+      # tests : aucune autre étape de CI ne peut le voir.
+      #
+      # ICI et pas dans `frontend-lint` À DESSEIN : `frontend-lint` est gaté sur
+      # `frontend == true`, donc une PR qui ne touche QUE le backend (ou que les
+      # docs) ne le déclenche pas, alors qu'un module.config peut se périmer
+      # depuis n'importe où. `stage-names` est le seul job non gaté — et ce
+      # contrôle est en stdlib pure, sans node, sans build (~11 s).
+      # Passif du 03/08/2026 gelé dans scripts/ecrans_atteignables_allow.txt
+      # (80 entrées : il ne peut que RÉTRÉCIR).
+      - name: Check écrans atteignables (aucun écran livré hors du menu)
+        run: python scripts/check_ecrans_atteignables.py
+      - name: Test the reachable-screens checker itself
+        run: python -m unittest scripts.tests.test_check_ecrans_atteignables -v
       - name: Check no raw JSON / bare error object is shown to the user (EZ16)
         run: python scripts/check_frontend_errors.py
       - name: Test the anti-jargon checker itself (EZ16)
