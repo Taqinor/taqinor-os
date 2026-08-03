@@ -339,22 +339,50 @@ class DepotReelTests(unittest.TestCase):
                          if c[0] == "inatteignable" and c[2] in sains)
         self.assertEqual(fautifs, [])
 
-    def test_le_passif_ao_mesure_le_03_08_2026(self):
-        """68 fichiers .jsx dans features/ao, 67 ecrans (hors module.config),
-        7 atteignables, 60 non — la mesure du fondateur."""
+    def test_le_passif_ao_ne_peut_que_diminuer(self):
+        """Le passif AO du 03/08/2026 : 67 ecrans, 60 inatteignables.
+
+        CE TEST A ETE REECRIT LE MEME JOUR, et le pourquoi compte : sa
+        premiere version FIGEAIT ces deux nombres (``assertEqual(67)`` /
+        ``assertEqual(60)``). Elle epinglait donc la MALADIE, pas la garde :
+        des que la reparation a branche des ecrans, le test est devenu ROUGE
+        pour cause de PROGRES. Un test qui punit la guerison est un test faux.
+
+        L'invariant reel est un SENS DE VARIATION : le nombre d'ecrans AO
+        inatteignables ne doit jamais REMONTER au-dessus du passif mesure.
+        Ajouter un ecran non branche le fait croitre -> rouge legitime ; en
+        brancher un le fait decroitre -> vert.
+        """
         constats, _ = analyse_reelle()
         ao = [c for c in constats if c[0] == "inatteignable" and c[2] == "ao"]
         total = [p for p in cea.ecrans_de_features()
                  if p.relative_to(cea.FEATURES).parts[0] == "ao"]
-        self.assertEqual(len(total), 67)
-        self.assertEqual(len(ao), 60)
+        self.assertGreater(len(total), 0, "aucun ecran AO trouve : scan casse")
+        self.assertLessEqual(
+            len(ao), 60,
+            "le nombre d'ecrans AO inatteignables a AUGMENTE depuis le passif "
+            "mesure le 03/08/2026 (60) : un ecran a ete livre sans etre branche",
+        )
 
-    def test_les_cinq_onglets_bouches_de_la_fiche_affaire(self):
+    def test_aucun_onglet_bouche_ne_subsiste_dans_la_fiche_affaire(self):
+        """Meme correction que ci-dessus : ce test AFFIRMAIT que les cinq
+        onglets de la fiche affaire etaient bouches. C'etait vrai le matin du
+        03/08/2026 et faux le soir — le reparer a rendu le test rouge.
+
+        L'invariant utile est l'inverse de ce qu'il epinglait : la fiche
+        affaire ne doit plus JAMAIS rendre un bouchon devant un ecran reel.
+        Le pouvoir de DETECTION du detecteur, lui, est prouve par les
+        controles negatifs sur module jetable (voir plus haut) — pas en
+        gardant le depot malade pour avoir de quoi detecter.
+        """
         constats, _ = analyse_reelle()
         onglets = sorted(c[1].split("::")[1] for c in constats
                          if c[0] == "bouchon-onglet" and "AffaireDetail" in c[1])
-        self.assertEqual(onglets, ["bordereau", "calepinages", "dossier",
-                                   "questions-terrain", "toitures-releves"])
+        self.assertEqual(
+            onglets, [],
+            "un onglet de la fiche affaire rend a nouveau un bouchon alors "
+            "que le vrai panneau existe",
+        )
 
     def test_les_routes_squelettes_du_menu_ao(self):
         """Calepinages/Dossiers cachent un vrai ecran ; Rentabilite non —
