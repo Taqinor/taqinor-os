@@ -133,6 +133,14 @@ services:
       - redis
       - redis_cache
       - django_core
+    # ARRET PROPRE (incident 02/08/2026) : sans ce reglage Docker n'accorde
+    # que 10 s. Un worker Celery fait un warm shutdown — il TERMINE la tache
+    # en cours avant de sortir — et un rendu PDF, un import de masse ou un
+    # calepinage depassent 10 s. Docker tuait donc le conteneur
+    # (« Error while Stopping »), compose avait deja renomme l'ancien en
+    # <hash>_<nom>, et la creation du neuf echouait sur « container name
+    # already in use » -> deploiement en echec ET tache en vol PERDUE.
+    stop_grace_period: 90s
     restart: always
 
   celery_worker_interactive:
@@ -159,6 +167,14 @@ services:
       - redis
       - redis_cache
       - django_core
+    # ARRET PROPRE (incident 02/08/2026) : sans ce reglage Docker n'accorde
+    # que 10 s. Un worker Celery fait un warm shutdown — il TERMINE la tache
+    # en cours avant de sortir — et un rendu PDF, un import de masse ou un
+    # calepinage depassent 10 s. Docker tuait donc le conteneur
+    # (« Error while Stopping »), compose avait deja renomme l'ancien en
+    # <hash>_<nom>, et la creation du neuf echouait sur « container name
+    # already in use » -> deploiement en echec ET tache en vol PERDUE.
+    stop_grace_period: 90s
     restart: always
 
   celery_beat:
@@ -175,6 +191,10 @@ services:
     depends_on:
       - redis
       - django_core
+    # ARRET PROPRE (incident 02/08/2026) : beat n'execute aucune tache, il
+    # ne fait qu'ordonnancer — 30 s suffisent largement pour qu'il ecrive
+    # son fichier d'horaire et sorte sans etre tue.
+    stop_grace_period: 30s
     restart: always
 
   frontend:

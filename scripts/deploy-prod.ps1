@@ -58,6 +58,19 @@ git reset --hard origin/main
 # Ici, avant build : seulement les images dangling (sans effet sur le cache).
 echo "Espace disque avant build :"; df -h / | tail -1
 docker image prune -f || true
+# FILET « container name already in use » (incident 02/08/2026). Quand un
+# conteneur met trop de temps a s'arreter, compose l'a deja RENOMME en
+# <hash>_<nom> avant de creer le neuf ; si l'arret echoue, l'ancien garde le
+# nom et la creation echoue. La vraie correction est `stop_grace_period` sur
+# les services celery (docker-compose.yml) ; ceci est le filet : on retire les
+# survivants renommes AVANT de recreer, sinon un seul incident bloque tous les
+# deploiements suivants. Ne touche QUE les noms prefixes d'un hash — jamais un
+# conteneur sain.
+ORPHELINS=$(docker ps -a --format '{{.Names}}' | grep -E '^[0-9a-f]{12}_erp-agentique-' || true)
+if [ -n "$ORPHELINS" ]; then
+  echo "Conteneurs renommes par un arret rate, on les retire : $ORPHELINS"
+  echo "$ORPHELINS" | xargs -r docker rm -f || true
+fi
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --remove-orphans
 # GARDE DB (incident 2026-07-10) : un changement du CONTENU d'un fichier
 # bind-monte (ex. backend/db/postgresql.conf) ne change PAS le hash de config
