@@ -198,13 +198,23 @@ const aoApi = {
   },
   exigencesCps: crud('exigences-cps'),
 
-  // ── Dossier de soumission (pièces — ViewSet legacy ODX11 `pieces-soumission`) ──
+  // ── Dossier de DÉPÔT (AOF115 — `dossiers-ao`, kit `core/documents.py`) ──
+  //
+  // RÉPARATION 03/08/2026 — `dossiers` visait `dossiers-soumission`, qui est
+  // une AUTRE ressource : `DossierSoumission` (FG225) est la checklist
+  // administrative HISTORIQUE, sans statut, sans empreinte, et ses
+  // `PieceSoumission` n'ont PAS de `visibilite`. Or les écrans du dossier
+  // lisent `piece.visibilite` (DossierPage.utils `piecesVisibles`), l'état de
+  // contrôle et les pièces hors contrôle : tout cela n'existe que sur
+  // `DossierAO`/`PieceDossierAO`. Les deux tables ont des identifiants
+  // DISTINCTS — `get(7)` sur l'une et une action sur l'autre auraient désigné
+  // deux dossiers différents, ce qui est pire qu'un 404 : silencieux.
   dossiers: {
-    ...crud('dossiers-soumission'),
+    ...crud('dossiers-ao'),
+    controlesAvantDepot: (id) =>
+      api.get(`/ao/dossiers-ao/${id}/controles-avant-depot/`),
     genererPiece: (id, typePiece) =>
       api.post(`/ao/dossiers-soumission/${id}/generer-piece/`, { type: typePiece }),
-    controlesAvantDepot: (id) =>
-      api.get(`/ao/dossiers-soumission/${id}/controles-avant-depot/`),
     // Génération asynchrone (job Celery) du pack + ZIP de dépôt.
     zip: (id) => api.post(`/ao/dossiers-soumission/${id}/zip/`),
     statutJob: (id, jobId) => api.get(`/ao/dossiers-soumission/${id}/statut-de-job/${jobId}/`),

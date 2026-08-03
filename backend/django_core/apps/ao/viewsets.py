@@ -164,6 +164,20 @@ class DossierAOViewSet(AoBaseViewSet):
             'hors_controle': passe['hors_controle'],
         })
 
+    @action(detail=True, methods=['get'], url_path='controles-avant-depot')
+    def controles_avant_depot(self, request, pk=None):
+        """AOF176 — la passe de cohérence en LECTURE : un GET n'écrit rien.
+
+        ``controler`` (POST, ci-dessus) reste le chemin qui FIGE la passe en
+        base ; celui-ci la rejoue pour l'écran sans toucher une ligne. Les
+        deux répondent des mêmes règles et des mêmes pièces hors contrôle —
+        un écran qui verrait une autre vérité que la porte de statut serait
+        pire qu'un écran absent.
+        """
+        from .fabrique.coherence import passe_en_lecture
+
+        return Response(passe_en_lecture(self.get_object()))
+
     @action(detail=True, methods=['get'], url_path='controle-administratif')
     def controle_administratif(self, request, pk=None):
         """AOF137 — péremption contrôlée à la DATE DE REMISE DES PLIS."""
