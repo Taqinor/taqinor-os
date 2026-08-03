@@ -189,10 +189,17 @@ export function VarianteColonne({
         )}
 
         {/* ── Actions ─────────────────────────────────────────────────────── */}
+        {/* RÉPARATION 03/08/2026 — « Dupliquer » et « Épingler » ne sont plus
+            rendus D'OFFICE : le serveur n'expose ni action de duplication ni
+            champ `epinglee`, et un bouton qui ne peut rien honorer ment. Ils
+            réapparaissent dès qu'un appelant fournit le gestionnaire — donc
+            dès que l'endpoint existe. */}
         <div className="mt-auto flex flex-wrap gap-2 border-t border-border pt-2">
-          <Button size="sm" variant="outline" onClick={() => onDupliquer?.(variante)}>
-            <Copy size={14} aria-hidden="true" /> Dupliquer
-          </Button>
+          {onDupliquer && (
+            <Button size="sm" variant="outline" onClick={() => onDupliquer(variante)}>
+              <Copy size={14} aria-hidden="true" /> Dupliquer
+            </Button>
+          )}
           <Button
             size="sm"
             variant={retenue ? 'secondary' : 'default'}
@@ -201,14 +208,16 @@ export function VarianteColonne({
           >
             {retenue ? 'Variante retenue' : 'Définir comme retenue'}
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-pressed={Boolean(variante.epinglee)}
-            onClick={() => onEpingler?.(variante)}
-          >
-            <Pin size={14} aria-hidden="true" /> {variante.epinglee ? 'Épinglée' : 'Épingler'}
-          </Button>
+          {onEpingler && (
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-pressed={Boolean(variante.epinglee)}
+              onClick={() => onEpingler(variante)}
+            >
+              <Pin size={14} aria-hidden="true" /> {variante.epinglee ? 'Épinglée' : 'Épingler'}
+            </Button>
+          )}
         </div>
 
         {retenue && (

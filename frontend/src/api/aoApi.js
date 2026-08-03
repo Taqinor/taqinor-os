@@ -98,9 +98,19 @@ const aoApi = {
     alleeGratuite: (id, params) => api.get(`/ao/calepinages/${id}/allee-gratuite/`, { params }),
     statutJob: (id, jobId) => api.get(`/ao/calepinages/${id}/statut-de-job/${jobId}/`),
   },
+  // RÉPARATION 03/08/2026 — le CRUD des variantes est routé sous
+  // `variantes-calepinage` (AOF28) ; `variantes` n'a jamais existé. Et
+  // l'échelle de décomposition n'est pas une action de ce ViewSet : c'est
+  // `marches` sur le viewset d'actions d'AOF62
+  // (`/ao/calepinage/variantes/<id>/marches/`), qui rejoue les deltas SIGNÉS
+  // à partir des comptes persistés.
   variantes: {
-    ...crud('variantes'),
-    decomposition: (id) => api.get(`/ao/variantes/${id}/decomposition/`),
+    ...crud('variantes-calepinage'),
+    decomposition: (id) => api.get(`/ao/calepinage/variantes/${id}/marches/`),
+    // Actions RÉELLES du CRUD (AOF28) : `publier` refuse tant que la preuve
+    // ne tient pas, `retenir` désigne l'unique variante retenue.
+    publier: (id) => api.post(`/ao/variantes-calepinage/${id}/publier/`),
+    retenir: (id) => api.post(`/ao/variantes-calepinage/${id}/retenir/`),
   },
 
   // ── Bordereau / équipements / exigences CPS ──

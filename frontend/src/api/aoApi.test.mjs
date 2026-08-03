@@ -46,6 +46,18 @@ test('les ressources CRUD dont la route SERVEUR existe sont toutes déclarées',
   }
 })
 
+test('AOF28/AOF62 — les variantes pointent `variantes-calepinage`, et l’échelle est `marches`', () => {
+  const body = aoApiBody()
+  assert.match(body, /\.\.\.crud\('variantes-calepinage'\)/)
+  assert.doesNotMatch(sansCommentaires(src), /crud\('variantes'\)/)
+  // `decomposition` n'a jamais été routé : la vraie action est `marches`, sur
+  // le viewset d'actions de calepinage.
+  assert.match(body, /decomposition:\s*\(id\)\s*=>\s*api\.get\(`\/ao\/calepinage\/variantes\/\$\{id\}\/marches\/`\)/)
+  assert.doesNotMatch(sansCommentaires(src), /\/ao\/variantes\/\$\{id\}\/decomposition\//)
+  // `retenir` est une ACTION (elle dé-retient la précédente) — pas un PATCH.
+  assert.match(body, /retenir:\s*\(id\)\s*=>\s*api\.post\(`\/ao\/variantes-calepinage\/\$\{id\}\/retenir\/`\)/)
+})
+
 test('les ressources de relevé pointent le NOM SERVEUR (plans-source au singulier, chaines-cotes)', () => {
   const body = aoApiBody()
   assert.match(body, /plansSources:\s*crud\('plans-source'\)/)
