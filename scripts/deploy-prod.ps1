@@ -167,8 +167,27 @@ elif [ -n "$A_CONSTRUIRE" ]; then
   docker compose -f docker-compose.yml -f docker-compose.prod.yml build $A_CONSTRUIRE
 else
   echo "Aucune image a reconstruire (code seul, monte par bind) — on saute la construction."
+  RIEN_CONSTRUIT=1
 fi
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+# ── PIEGE DE LA CONSTRUCTION SAUTEE — NE PAS RETIRER ────────────────────────
+# Quand on saute la construction, AUCUNE image ne change d'identifiant, donc
+# `up -d` ne recree AUCUN conteneur (compose compare la config et l'image, pas
+# le contenu d'un bind-mount). Or gunicorn tourne SANS --reload en production :
+# le code Python fraichement recupere par `git reset` resterait dans le dossier
+# monte sans jamais etre charge. Le deploiement serait RAPIDE ET INERTE — pire
+# qu'un deploiement lent, parce qu'il annonce « OK » sans rien livrer.
+# AVANT cette optimisation, le probleme n'existait pas par accident : la couche
+# `COPY . /app/` changeait a chaque commit, donc l'image changeait, donc
+# compose recreait. C'est cet effet de bord qui portait la mise a jour.
+# On redemarre donc explicitement les services qui servent du code MONTE.
+# Le frontend et nginx ne sont PAS concernes : leur contenu vit dans l'image,
+# et si elle a change ils ont deja ete recrees par `up -d` ci-dessus.
+if [ "${RIEN_CONSTRUIT:-0}" = "1" ]; then
+  echo "Redemarrage des services qui servent du code monte (gunicorn n'a pas de --reload)..."
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml restart \
+    django_core celery_worker celery_worker_interactive celery_beat fastapi_ia
+fi
 # GARDE DB (incident 2026-07-10) : un changement du CONTENU d'un fichier
 # bind-monte (ex. backend/db/postgresql.conf) ne change PAS le hash de config
 # compose -> le conteneur db n'est PAS recree et Postgres tourne avec
