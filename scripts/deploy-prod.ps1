@@ -36,7 +36,48 @@ $Key = "$env:USERPROFILE\.ssh\taqinor_hetzner"
 
 $remote = @'
 set -e
+# ── VERROU PARTAGE AVEC L'AUTO-DEPLOIEMENT (incident du 04/08/2026) ─────────
+# Le serveur porte un service `taqinor-autodeploy` qui deploie TOUT SEUL des
+# que `origin/main` bouge — donc a CHAQUE fusion. Il prend un verrou
+# (`flock -n` sur /opt/autodeploy/deploy.lock) qui empeche deux
+# auto-deploiements de se chevaucher, mais le deploiement MANUEL ne le prenait
+# pas : rien n'empechait la collision.
+#
+# CE QUE CA A COUTE, mesure dans /opt/autodeploy/deploy.log : l'auto-deploiement
+# de la fusion precedente a tourne de 23h43 a 00h27 (44 min). Un deploiement
+# manuel lance a 00h09 a construit la BONNE image (2,71 Go, torch CPU) ;
+# l'auto-deploiement, parti d'un commit ANTERIEUR, a fini EN DERNIER et a
+# reecrit l'etiquette avec son ancienne image de 9,25 Go. Le dernier arrive
+# gagne, meme s'il porte du code plus vieux. Pire : le `git reset --hard`
+# ci-dessous change le code SOUS une construction en cours — d'ou la prise du
+# verrou AVANT lui, jamais apres.
+#
+# Ici on ATTEND (45 min max) au lieu de sortir en silence : un deploiement
+# manuel est un ordre explicite, on ne l'abandonne pas sans le dire. Si le
+# verrou ne vient pas, on sort SANS avoir rien touche.
+mkdir -p /opt/autodeploy
+exec 9>/opt/autodeploy/deploy.lock
+if ! flock -n 9; then
+  echo "Un deploiement tourne DEJA (auto-deploiement ou autre session)."
+  echo "Dernieres lignes de son journal :"
+  tail -3 /opt/autodeploy/deploy.log 2>/dev/null || echo "  (journal indisponible)"
+  echo "Attente du verrou (45 min max) — rien n'a encore ete modifie..."
+  if ! flock -w 2700 9; then
+    echo "VERROU TOUJOURS PRIS APRES 45 MIN -> on n'a RIEN touche."
+    echo "Verifier: systemctl status taqinor-autodeploy ; tail /opt/autodeploy/deploy.log"
+    exit 1
+  fi
+  echo "Verrou obtenu, le deploiement precedent est termine. On continue."
+fi
 cd /opt/taqinor-os
+# ── AMORCAGE DE L'AUTO-DEPLOIEMENT VERSIONNE (04/08/2026) ───────────────────
+# `/opt/autodeploy/auto-deploy.sh` vivait UNIQUEMENT sur le serveur : ni relu,
+# ni sauvegarde, ni versionne, alors qu'il pilote la production a chaque
+# fusion. Sa copie de reference est desormais `scripts/auto-deploy.sh` dans le
+# depot. Il sait se mettre a jour tout seul apres un deploiement reussi, mais
+# il faut bien l'amorcer une premiere fois : ce deploiement manuel l'installe.
+# Fait APRES le `git reset` ci-dessous, donc plus bas — ici on note seulement
+# l'intention pour que la lecture du script reste lineaire.
 # YHARD11 — capture le commit courant AVANT le reset, pour un rollback exact
 # si le healthcheck post-deploiement echoue plus bas.
 PREV_SHA=$(git rev-parse HEAD)
@@ -56,6 +97,17 @@ git reset --hard origin/main
 # --keep-storage : les couches encore utiles survivent, le vieux cache part, le
 # disque reste borne et un deploiement code-seul redevient chaud (~2-4 min).
 # Ici, avant build : seulement les images dangling (sans effet sur le cache).
+# Installe la copie de reference de l'auto-deploiement (voir la note plus haut).
+# Le `git reset` vient de la mettre a jour dans le depot ; on la pose sur le
+# serveur pour que le prochain cycle automatique tourne la BONNE version.
+if [ -f scripts/auto-deploy.sh ]; then
+  mkdir -p /opt/autodeploy
+  if ! cmp -s scripts/auto-deploy.sh /opt/autodeploy/auto-deploy.sh; then
+    cp scripts/auto-deploy.sh /opt/autodeploy/auto-deploy.sh
+    chmod +x /opt/autodeploy/auto-deploy.sh
+    echo "auto-deploy.sh du serveur mis a jour depuis le depot."
+  fi
+fi
 echo "Espace disque avant build :"; df -h / | tail -1
 docker image prune -f || true
 # FILET « container name already in use » (incident 02/08/2026). Quand un
@@ -134,8 +186,27 @@ elif [ -n "$A_CONSTRUIRE" ]; then
   docker compose -f docker-compose.yml -f docker-compose.prod.yml build $A_CONSTRUIRE
 else
   echo "Aucune image a reconstruire (code seul, monte par bind) — on saute la construction."
+  RIEN_CONSTRUIT=1
 fi
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+# ── PIEGE DE LA CONSTRUCTION SAUTEE — NE PAS RETIRER ────────────────────────
+# Quand on saute la construction, AUCUNE image ne change d'identifiant, donc
+# `up -d` ne recree AUCUN conteneur (compose compare la config et l'image, pas
+# le contenu d'un bind-mount). Or gunicorn tourne SANS --reload en production :
+# le code Python fraichement recupere par `git reset` resterait dans le dossier
+# monte sans jamais etre charge. Le deploiement serait RAPIDE ET INERTE — pire
+# qu'un deploiement lent, parce qu'il annonce « OK » sans rien livrer.
+# AVANT cette optimisation, le probleme n'existait pas par accident : la couche
+# `COPY . /app/` changeait a chaque commit, donc l'image changeait, donc
+# compose recreait. C'est cet effet de bord qui portait la mise a jour.
+# On redemarre donc explicitement les services qui servent du code MONTE.
+# Le frontend et nginx ne sont PAS concernes : leur contenu vit dans l'image,
+# et si elle a change ils ont deja ete recrees par `up -d` ci-dessus.
+if [ "${RIEN_CONSTRUIT:-0}" = "1" ]; then
+  echo "Redemarrage des services qui servent du code monte (gunicorn n'a pas de --reload)..."
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml restart \
+    django_core celery_worker celery_worker_interactive celery_beat fastapi_ia
+fi
 # GARDE DB (incident 2026-07-10) : un changement du CONTENU d'un fichier
 # bind-monte (ex. backend/db/postgresql.conf) ne change PAS le hash de config
 # compose -> le conteneur db n'est PAS recree et Postgres tourne avec
