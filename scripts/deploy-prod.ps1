@@ -70,6 +70,14 @@ if ! flock -n 9; then
   echo "Verrou obtenu, le deploiement precedent est termine. On continue."
 fi
 cd /opt/taqinor-os
+# ── AMORCAGE DE L'AUTO-DEPLOIEMENT VERSIONNE (04/08/2026) ───────────────────
+# `/opt/autodeploy/auto-deploy.sh` vivait UNIQUEMENT sur le serveur : ni relu,
+# ni sauvegarde, ni versionne, alors qu'il pilote la production a chaque
+# fusion. Sa copie de reference est desormais `scripts/auto-deploy.sh` dans le
+# depot. Il sait se mettre a jour tout seul apres un deploiement reussi, mais
+# il faut bien l'amorcer une premiere fois : ce deploiement manuel l'installe.
+# Fait APRES le `git reset` ci-dessous, donc plus bas — ici on note seulement
+# l'intention pour que la lecture du script reste lineaire.
 # YHARD11 — capture le commit courant AVANT le reset, pour un rollback exact
 # si le healthcheck post-deploiement echoue plus bas.
 PREV_SHA=$(git rev-parse HEAD)
@@ -89,6 +97,17 @@ git reset --hard origin/main
 # --keep-storage : les couches encore utiles survivent, le vieux cache part, le
 # disque reste borne et un deploiement code-seul redevient chaud (~2-4 min).
 # Ici, avant build : seulement les images dangling (sans effet sur le cache).
+# Installe la copie de reference de l'auto-deploiement (voir la note plus haut).
+# Le `git reset` vient de la mettre a jour dans le depot ; on la pose sur le
+# serveur pour que le prochain cycle automatique tourne la BONNE version.
+if [ -f scripts/auto-deploy.sh ]; then
+  mkdir -p /opt/autodeploy
+  if ! cmp -s scripts/auto-deploy.sh /opt/autodeploy/auto-deploy.sh; then
+    cp scripts/auto-deploy.sh /opt/autodeploy/auto-deploy.sh
+    chmod +x /opt/autodeploy/auto-deploy.sh
+    echo "auto-deploy.sh du serveur mis a jour depuis le depot."
+  fi
+fi
 echo "Espace disque avant build :"; df -h / | tail -1
 docker image prune -f || true
 # FILET « container name already in use » (incident 02/08/2026). Quand un
