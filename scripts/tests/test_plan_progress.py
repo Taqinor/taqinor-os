@@ -148,5 +148,69 @@ class PlanProgressTests(unittest.TestCase):
         self.assertGreaterEqual(data["SCA"]["total"], 45)
 
 
+LEDGER_FIXTURE = """\
+# Done tasks archive (condensed)
+
+> prose intro, ignored by the parser.
+
+<!-- plan-progress-ledger v1 — NE PAS ÉDITER À LA MAIN.
+     prose lines inside the block are ignored too.
+ARC=56
+FE-XFLT=3
+SCA=2
+-->
+
+## Archived from docs/PLAN.md
+ARC=999 (outside the block: never parsed)
+"""
+
+
+class LedgerTest(unittest.TestCase):
+    """The done_task.md archived-done ledger folds back into the default
+    surface so "clean the plans" never lowers BUILD_ORDER.yml completion."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self._old_ledger = pp.LEDGER_FILE
+        self._old_defaults = pp.DEFAULT_PLAN_FILES
+
+    def tearDown(self):
+        pp.LEDGER_FILE = self._old_ledger
+        pp.DEFAULT_PLAN_FILES = self._old_defaults
+        self._tmp.cleanup()
+
+    def _write(self, name: str, content: str) -> Path:
+        p = self.tmp / name
+        p.write_text(content, encoding="utf-8")
+        return p
+
+    def test_read_ledger_parses_block_only(self):
+        ledger = pp.read_ledger(self._write("done_task.md", LEDGER_FIXTURE))
+        self.assertEqual(ledger, {"ARC": 56, "FE-XFLT": 3, "SCA": 2})
+
+    def test_read_ledger_missing_file_is_empty(self):
+        self.assertEqual(pp.read_ledger(self.tmp / "absent.md"), {})
+
+    def test_default_surface_folds_ledger_in(self):
+        pp.DEFAULT_PLAN_FILES = [self._write("plan.md", CHECKBOX_FIXTURE)]
+        pp.LEDGER_FILE = self._write("done_task.md", LEDGER_FIXTURE)
+        data = pp.progress()  # default surface -> ledger applies
+        # CHECKBOX_FIXTURE: ARC 1 done / 4 total; ledger adds 56 archived-done.
+        self.assertEqual(data["ARC"], {"done": 57, "total": 60, "pct": 95.0})
+        # SCA: 0/1 in-file + 2 archived -> 2/3.
+        self.assertEqual(data["SCA"]["done"], 2)
+        self.assertEqual(data["SCA"]["total"], 3)
+        # Prefix present ONLY in the ledger surfaces at 100% (drained group).
+        self.assertEqual(data["FE-XFLT"], {"done": 3, "total": 3, "pct": 100.0})
+
+    def test_explicit_files_override_never_applies_ledger(self):
+        plan = self._write("plan.md", CHECKBOX_FIXTURE)
+        pp.LEDGER_FILE = self._write("done_task.md", LEDGER_FIXTURE)
+        data = pp.progress([plan])
+        self.assertEqual(data["ARC"]["total"], 4)
+        self.assertNotIn("FE-XFLT", data)
+
+
 if __name__ == "__main__":
     unittest.main()

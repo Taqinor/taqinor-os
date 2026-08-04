@@ -530,45 +530,63 @@ Append them as `[ ]` lines to `docs/WEB_PLAN.md`'s BUILD QUEUE (there is no WEB_
 on `dev` and self-merge to `main`. Confirm in one line which file you appended to.
 
 ### "clean the plans"
-Pure plan-file housekeeping. This command **NEVER builds, edits, or implements any task**, never runs
-a feature/dependency/database/CI change, and makes **no code changes** of any kind. It **NEVER
-changes the wording of a task, its ID, or its gating tag**; it **NEVER reorders tasks**; it **NEVER
-moves a not-done task from one queue to another**; it **NEVER decides priorities**. It does exactly
-one thing: it **relocates COMPLETED tasks** out of the active plan files into a single archive, leaving
-every not-done task exactly where — and in the order — it already is.
-- **What counts as DONE.** A task is DONE only if it is **explicitly checked complete** — a `[x]`
-  checkbox or an equivalent explicit "done/shipped" mark. Anything unchecked `[ ]`, `[BLOCKED…]`,
-  `[SKIP]`, gated, or ambiguous is **NOT done** and stays in its active plan file, untouched. **When
-  in doubt, treat a task as NOT done and leave it where it is.**
-- **Move (do not copy) into one archive.** Move every DONE task from **every active plan file**
-  (`docs/PLAN.md`, `docs/PLAN2.md`, `docs/WEB_PLAN.md`, and any other `docs/PLAN*.md`) into
-  **`docs/DONE.md`** (create it if missing), **grouped under a heading per source file** (e.g.
-  `## Archived from PLAN.md`), **preserving each task's original text verbatim** (for a header-format
-  task that is the `###` header **and** its body). After the move, that done task **no longer appears**
-  in the active plan file. If a **DONE LOG / done section** already exists inside a plan file, **fold
-  those entries into `docs/DONE.md` too** (under a per-file heading), so done history lives in one
-  place — keep the DONE LOG **header + scaffolding** in the active file so future runs can still append.
-- **Touch nothing else.** The active plan files keep **all their structure** — headers, HOW TO RUN,
-  STANDING RULES, GATED/MANUAL sections, cross-cutting constraint notes, dividers, and every not-done
-  task — **exactly as written**. Only completed task **lines/blocks** are removed. **Do not delete or
-  reword any rule, header, prose note, or not-done task.** (Emptying a section of its done tasks is
-  fine — the header stays.)
-- **Reconcile — never guess.** Confirm **no task was lost or duplicated**: the count of (done tasks now
-  in `docs/DONE.md`) **plus** (not-done tasks still in the active files) must equal the total task count
-  **before** you started. The strongest check is line-level: every original line must end up in exactly
-  one place (active file or `docs/DONE.md`), none lost, none duplicated, none altered. **If the numbers
-  do not reconcile, STOP and report — do not guess.**
-- **Fingerprint.** Moving done tasks out of `docs/PLAN.md` / `docs/PLAN2.md` changes the
-  **plan-fingerprint surface**, so refresh §10 "Plan status" of `docs/CODEMAP.md` (paste `python
-  scripts/codemap_fingerprint.py --print-plan-status` + its totals/stamp) and re-run `python
-  scripts/codemap_fingerprint.py --write` **in the same commit** — this is a legitimate plan edit, not
-  a code change — then confirm `python scripts/codemap_fingerprint.py --check` and `python
-  scripts/check_stages.py` are green. (`docs/WEB_PLAN.md` is **not** in the plan-fingerprint surface.)
-  If unsure whether re-stamping is correct, STOP and ask rather than forcing it.
-- **Land it.** Commit on `dev`, get the required CI checks green (a docs-only change runs only
-  `stage-names`; the heavy jobs skip), then **self-merge `dev` → `main` exactly once** (one merge
-  commit, no PR, sync-safe per the STANDING RULES). If CI is red, do **not** merge — report what failed
-  and stop.
-- **Report** in plain language only (no diffs, no hashes): per file, **how many done tasks were
-  archived** to `docs/DONE.md` and **how many not-done tasks remain**, and confirm nothing was
-  reordered, reworded, re-prioritized, or built. It never reports code changes because it makes none.
+Structural plan-file housekeeping (founder rewrite 2026-08-04). This command **NEVER builds, edits,
+or implements any task** and makes **no code changes** of any kind. For **PENDING work** the old
+guarantees still hold absolutely: it **never rewords a pending task, its ID, or its gating tag**,
+**never reorders pending tasks**, **never moves a pending task between queues**, **never decides
+priorities**. What changed: it now **restructures** the active files — done tasks leave **with their
+emptied menus**, stale scaffolding is condensed out, and the archive is a **condensed story**, not a
+verbatim ledger.
+- **Scope.** ALL active plan files: `docs/PLAN.md`, `docs/PLAN2.md`, `docs/WEB_PLAN.md`,
+  `docs/ERROR_PLAN.md`, `docs/WEB_ERROR_PLAN.md`, `docs/new_tasks_plan.md`,
+  `docs/FRONTEND_GAP_PLAN.md`, every `docs/plans/PLAN_*.md` domain file, and any other
+  `docs/PLAN*.md` (not `PLAN_HOWTO.md`).
+- **What counts as DONE.** Only explicitly checked complete — `[x]` or an equivalent explicit
+  "done/shipped" mark. Anything `[ ]`, `[BLOCKED…]`, `[SKIP]`, gated, or ambiguous is NOT done and
+  stays, byte-identical. **When in doubt, treat as NOT done and leave it.**
+- **Archive condensed into ONE file: `docs/done_task.md`** (create if missing). Done tasks are
+  REMOVED from the active file and SUMMARIZED there — per source file, per group/menu: the group
+  title, a 1-3 line story (what shipped, when, PR # when noted), then **one short line per task ID**
+  (ID + a clause saying what it was) for small/heterogeneous groups — large homogeneous groups
+  compress to **explicit ID ranges** (e.g. `FG1–FG106 — module feature-gap audit, all shipped`) with
+  a theme summary. Long bodies, acceptance criteria, and evidence paragraphs are
+  dropped — `git` history keeps every verbatim word; `done_task.md` keeps just enough to understand
+  the story and MUST stay small (target well under ~1,000 lines total; tighten summaries rather than
+  grow it). In-file **DONE LOG entries** fold in the same condensed way (keep one empty `## DONE LOG`
+  header per active file so future runs can append). The legacy verbatim `docs/DONE.md` is folded in
+  condensed too, then **deleted** — its full text stays in git history.
+- **Clean the menus.** A group/menu header whose tasks are ALL archived is removed with them (its
+  story lives in `done_task.md`). Prose/preamble that refers ONLY to archived work condenses out.
+  KEEP: every header that still owns at least one pending task; HOW TO RUN / STANDING RULES /
+  ALREADY LIVE / NE PAS FAIRE / GATED sections and every rule, constraint, or note a future run
+  needs; all pending tasks in their original order. When unsure whether prose is still load-bearing,
+  keep it.
+- **Wave-gate ledger (the machinery must never notice the archive).** `docs/done_task.md` opens
+  with a machine-readable `plan-progress-ledger` block (`PREFIX=N` lines) counting the archived
+  `[x]` tasks per id-prefix from the files `scripts/plan_progress.py` scans; `plan_progress.py`
+  folds it back into the default surface, so archiving NEVER lowers a group's `BUILD_ORDER.yml`
+  completion (an absent prefix would read 0.0% and re-gate every downstream wave). Every clean run
+  recomputes the ledger by diffing the pre-clean files (git HEAD) with
+  `plan_progress.count_file` and MUST prove per-prefix done/total/pct equivalence before landing.
+- **Model routing (per the model-selection rules).** The ORCHESTRATOR (session model) rewrites
+  nothing by hand at scale: it dispatches **one subagent per plan file** (file-disjoint, parallel,
+  `sonnet` — condensation is synthesis work; `haiku` only for pure counting/inventory scouting),
+  then itself does the judgment: adversarial review of each cleaned file, reconciliation, fingerprint,
+  the single merge. Subagents never inherit the session model.
+- **Reconcile — mechanical, never guessed.** Before dispatch, snapshot every pending-task line
+  (`[ ]`/`[BLOCKED…]`/gated) per file. After: (a) the pending-line set per file is **byte-identical**
+  to the snapshot; (b) zero `[x]` tasks remain in active files; (c) every archived task ID is
+  covered in `docs/done_task.md` — individually or by an explicit ID range. Any mismatch → STOP and
+  report — do not guess.
+- **Fingerprint.** `docs/PLAN.md` / `docs/PLAN2.md` / `docs/ERROR_PLAN.md` are in the
+  plan-fingerprint surface: refresh §10 "Plan status" of `docs/CODEMAP.md` (paste
+  `python scripts/codemap_fingerprint.py --print-plan-status` — `PYTHONIOENCODING=utf-8` on Windows)
+  and re-run `python scripts/codemap_fingerprint.py --write` **in the same commit**, then confirm
+  `--check` and `python scripts/check_stages.py` green. (`WEB_PLAN.md`, `new_tasks_plan.md`, and the
+  `docs/plans/*` domain files are NOT in the surface.)
+- **Land it.** Commit on `dev`, get the required CI checks green (docs-only → only the fast gates
+  run), then **one sync-safe self-merge to `main`** (merge commit, never squash). If CI is red, do
+  not merge — report and stop. No deploy (docs-only; Reda deploys).
+- **Report** in plain language: per file, how many done tasks were archived and how many pending
+  remain; the size of `done_task.md`; confirm no pending task was reworded, reordered,
+  re-prioritized, or built.
