@@ -39,9 +39,12 @@ const SENTIMENTS = [
 // backend), pour l'affichage « Feedback : Devis #123 ».
 const CONTEXT_LABELS = { devis: 'Devis', ticket: 'Ticket SAV', chantier: 'Chantier' }
 
-export default function FeedbackButton() {
+/* ORDRE FONDATEUR 2026-08-04 — « les deux parties en bas sont bien mais pas
+   là tout le temps : garde-les dans profil ou paramètres ». Le bouton FLOTTANT
+   est supprimé ; la modale devient PILOTABLE (props `open`/`onOpenChange`) et
+   son unique point d'entrée est le menu profil du Header. */
+export default function FeedbackButton({ open, onOpenChange }) {
   const location = useLocation()
-  const [open, setOpen] = useState(false)
   const [titre, setTitre] = useState('')
   const [description, setDescription] = useState('')
   const [theme, setTheme] = useState('autre')
@@ -72,7 +75,7 @@ export default function FeedbackButton() {
       })
       toast.success('Merci pour votre retour !')
       setTitre(''); setDescription(''); setTheme('autre'); setSentiment('')
-      setOpen(false)
+      onOpenChange?.(false)
     } catch {
       toast.error('Impossible d\'envoyer ce retour — réessayez.')
     } finally {
@@ -82,22 +85,8 @@ export default function FeedbackButton() {
 
   return (
     <>
-      {/* Masqué sous `md` : même garde que SuggestionCTA (NTIDE9) — sur
-          mobile un second bouton flottant recouvrirait le contenu. */}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Envoyer un retour"
-        title="Envoyer un retour"
-        className="hidden md:inline-flex fixed bottom-5 left-5 z-[var(--z-modal)] items-center gap-2
-                   rounded-full border border-border bg-card px-4 py-2.5 text-sm font-medium
-                   text-foreground shadow-ui-md transition-colors hover:bg-accent focus-ring"
-      >
-        <MessageCircle className="size-4" aria-hidden="true" />
-        <span className="hidden sm:inline">Envoyer un retour</span>
-      </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Envoyer un retour</DialogTitle>
@@ -152,7 +141,7 @@ export default function FeedbackButton() {
               </select>
             </div>
             <div className="flex items-center justify-end gap-2 pt-1">
-              <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={submitting}>
+              <Button type="button" variant="ghost" onClick={() => onOpenChange?.(false)} disabled={submitting}>
                 Annuler
               </Button>
               <Button type="submit" disabled={submitting}>

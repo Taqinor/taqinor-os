@@ -47,12 +47,10 @@ const CopilotPanel = lazy(() => import('../../features/ia/CopilotPanel'))
 // NTIDE9 — CTA « Suggérer une amélioration » (Intercom-style), chargé
 // paresseusement comme le copilote : n'ajoute rien au chemin froid pour un
 // utilisateur qui ne l'ouvre jamais.
-const SuggestionCTA = lazy(() => import('../../features/innovation/SuggestionCTA'))
 
 // NTIDE37 — bouton discret « Envoyer un retour » (canal feedback produit,
 // FeedbackProduit — distinct de la boîte à idées ci-dessus), même patron de
 // chargement paresseux.
-const FeedbackButton = lazy(() => import('../../features/innovation/FeedbackButton'))
 
 function readCollapsed() {
   try {
@@ -168,19 +166,10 @@ export default function Layout({ children }) {
           qu'à la première visite (drapeau localStorage) et rejouable depuis
           les Paramètres. Rend null le reste du temps. */}
       <OnboardingCoachmarks />
-      {/* NTIDE9 — CTA « Suggérer une amélioration », visible sur chaque écran
-          authentifié. Chargé paresseusement (fallback null le temps du
-          chunk) ; toujours monté (contrairement au copilote) car LE bouton
-          lui-même est le déclencheur, pas un panneau ouvert d'ailleurs. */}
-      <Suspense fallback={null}>
-        <SuggestionCTA />
-      </Suspense>
-      {/* NTIDE37 — bouton « Envoyer un retour », même patron de montage que
-          SuggestionCTA ci-dessus (canal distinct : feedback produit 1→N
-          founder, pas la boîte à idées). */}
-      <Suspense fallback={null}>
-        <FeedbackButton />
-      </Suspense>
+      {/* NTIDE9/NTIDE37 — ORDRE FONDATEUR 2026-08-04 : les deux boutons
+          flottants (« Suggérer une amélioration », « Envoyer un retour »)
+          quittent l'écran — leurs modales vivent désormais dans le menu
+          PROFIL du Header. Canaux inchangés (idées 1→N vs feedback produit). */}
     </div>
   )
 }

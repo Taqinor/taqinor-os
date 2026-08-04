@@ -1,9 +1,9 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 // VX154 — mot-symbole soleil-éclair de la marque (remplace le <Zap> générique).
 import TaqinorMark from '../../ui/TaqinorMark'
-import {
+import { Lightbulb, MessageCircle,
   Menu, Search, LogOut, User as UserIcon, Settings, Bot, LayoutGrid,
   SlidersHorizontal, Sun, Moon, Monitor,
 } from 'lucide-react'
@@ -42,6 +42,12 @@ import { getCurrentTenantTheme, subscribeTenantTheme } from '../../design/tenant
 // VX46 — « Mes préférences » : panneau ouvert depuis le menu utilisateur.
 import PreferencesPanel from '../../pages/preferences/PreferencesPanel'
 import { initPreferences } from '../../pages/preferences/prefs'
+// ORDRE FONDATEUR 2026-08-04 — les modales « Suggérer une amélioration »
+// (NTIDE9) et « Envoyer un retour » (NTIDE37) vivent ici, dans le menu
+// PROFIL — plus jamais en boutons flottants permanents. Chargées
+// paresseusement : rien n'est payé tant qu'on n'ouvre pas.
+const SuggestionCTA = lazy(() => import('../../features/innovation/SuggestionCTA'))
+const FeedbackButton = lazy(() => import('../../features/innovation/FeedbackButton'))
 
 // SCA24 — marque produit neutre par défaut (build-time), écrasée par le
 // `nom_affichage` du TenantTheme de la société quand il est renseigné.
@@ -77,6 +83,9 @@ export default function Header({ onMenu }) {
   // authentifié — thème/densité ont leur propre init via <ThemeProvider>).
   useEffect(() => { initPreferences() }, [])
   const [prefsOpen, setPrefsOpen] = useState(false)
+  // ORDRE FONDATEUR 2026-08-04 — entrées « retour / amélioration » du menu profil.
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   // N93 — titre de page traduit via t() ; FR reste le repli (titleFor accepte
   // le traducteur et retombe sur le libellé FR pour tout titre non couvert).
@@ -258,12 +267,32 @@ export default function Header({ onMenu }) {
                 <UserIcon aria-hidden="true" /> Utilisateurs
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setSuggestOpen(true)}>
+                <Lightbulb aria-hidden="true" /> Suggérer une amélioration
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setFeedbackOpen(true)}>
+                <MessageCircle aria-hidden="true" /> Envoyer un retour
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem destructive onSelect={handleLogout}>
                 <LogOut aria-hidden="true" /> Déconnexion
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <PreferencesPanel open={prefsOpen} onOpenChange={setPrefsOpen} />
+          {/* Montées seulement quand ouvertes : le chunk innovation ne se
+              charge qu'au premier clic du menu profil (ordre fondateur
+              2026-08-04 — fini les boutons flottants permanents). */}
+          {suggestOpen && (
+            <Suspense fallback={null}>
+              <SuggestionCTA open={suggestOpen} onOpenChange={setSuggestOpen} />
+            </Suspense>
+          )}
+          {feedbackOpen && (
+            <Suspense fallback={null}>
+              <FeedbackButton open={feedbackOpen} onOpenChange={setFeedbackOpen} />
+            </Suspense>
+          )}
         </div>
       </div>
     </header>

@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+// Ordre fondateur 2026-08-04 — on teste le CÂBLAGE menu→modale, pas la chaîne
+// innovation entière (même convention de stub que Layout.test.jsx).
+vi.mock('../../features/innovation/SuggestionCTA', () => ({
+  default: ({ open }) => (open ? <div data-testid="stub-suggestion-ouverte" /> : null),
+}))
+vi.mock('../../features/innovation/FeedbackButton', () => ({
+  default: ({ open }) => (open ? <div data-testid="stub-feedback-ouvert" /> : null),
+}))
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -185,5 +193,19 @@ describe('Header — U3 layout mobile : rangée plate sans chevauchement', () =>
     // Aucun <header> imbriqué (cela créerait deux landmarks header).
     const headers = container.querySelectorAll('header')
     expect(headers.length).toBe(1)
+  })
+})
+
+describe('Header · retour & amélioration dans le menu PROFIL (ordre fondateur 2026-08-04)', () => {
+  // Les deux boutons flottants (NTIDE9/NTIDE37) ont quitté l'écran : leur
+  // unique porte est ici. Ce test rougit si les entrées disparaissent du menu.
+  it('le menu utilisateur porte les deux entrées et ouvre la modale idée', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByRole('button', { name: 'Menu utilisateur' }))
+    expect(await screen.findByText('Suggérer une amélioration')).toBeInTheDocument()
+    expect(screen.getByText('Envoyer un retour')).toBeInTheDocument()
+    await userEvent.click(screen.getByText('Suggérer une amélioration'))
+    // Le stub monte avec open=true : le câblage menu → état → modale est réel.
+    expect(await screen.findByTestId('stub-suggestion-ouverte')).toBeInTheDocument()
   })
 })

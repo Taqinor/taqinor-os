@@ -9,13 +9,9 @@ vi.mock('./Sidebar', () => ({ default: () => <div className="sidebar" /> }))
 vi.mock('./Header', () => ({ default: () => <header className="header" /> }))
 vi.mock('./BottomTabBar', () => ({ default: () => null }))
 vi.mock('../../features/ia/CopilotPanel', () => ({ default: () => null }))
-// NTIDE9 — CTA « Suggérer une amélioration », chargé paresseusement comme le
-// copilote : neutralisé ici pour ne pas tirer son arbre d'import réel (axios,
-// Radix Dialog) dans ce test de coquille de mise en page.
-vi.mock('../../features/innovation/SuggestionCTA', () => ({ default: () => null }))
-// NTIDE37 — bouton « Envoyer un retour », même patron/raison que SuggestionCTA
-// ci-dessus.
-vi.mock('../../features/innovation/FeedbackButton', () => ({ default: () => null }))
+// NTIDE9/NTIDE37 — les deux CTA innovation ont quitté la coquille Layout le
+// 2026-08-04 (ordre fondateur) : leur porte est le menu profil du Header, plus
+// aucun mock à neutraliser ici.
 vi.mock('../../ui/OfflineState', () => ({ OfflineBanner: () => null }))
 vi.mock('react-router-dom', async (orig) => ({
   ...(await orig()),
