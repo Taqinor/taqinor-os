@@ -494,6 +494,30 @@ jobs:
         run: python scripts/check_ecrans_atteignables.py
       - name: Test the reachable-screens checker itself
         run: python -m unittest scripts.tests.test_check_ecrans_atteignables -v
+      # TÂCHES DE PLAN QUI COMMANDENT DU TRAVAIL MORT (même incident du
+      # 03/08/2026, pris UN CRAN PLUS HAUT). check_ecrans_atteignables /
+      # check_api_contract attrapent l'écran orphelin et la route inexistante
+      # APRÈS leur livraison ; cette garde-ci lit le TEXTE DES TÂCHES, là où le
+      # défaut naît. Une tâche qui dit « crée features/<app>/MonEcran.jsx » sans
+      # nommer son fichier de montage INTERDIT à l'agent de le brancher (règle
+      # « touche uniquement les fichiers nommés ») : l'agent qui obéit livre
+      # mécaniquement un écran mort. Deux formes bloquent — écran sans câblage,
+      # et deux moitiés backend+frontend sans contrat partagé ; deux autres sont
+      # mesurées mais NON bloquantes (backend sans consommateur, composant
+      # redéfini) parce que leur taux de faux positifs a été MESURÉ trop élevé
+      # (64 % sur les doublons, vérifié à la lecture du code) — voir l'en-tête
+      # du script. Passif gelé dans scripts/taches_cablage_allow.txt (175
+      # entrées : il ne peut que RÉTRÉCIR).
+      #
+      # ICI et pas dans `backend-lint` À DESSEIN : `backend-lint` est gaté sur
+      # `backend == true`, donc une PR qui ne touche QUE des fichiers de plan
+      # (le cas exact de cette garde) ne le déclencherait jamais.
+      # `stage-names` est le seul job non gaté — et ce contrôle est en stdlib
+      # pure, sans base de données ni dépendance, comme les autres check_*.py.
+      - name: Check tâches de plan (aucune ne commande du travail mort)
+        run: python scripts/check_taches_cablage.py
+      - name: Test the plan-task wiring checker itself
+        run: python -m unittest scripts.tests.test_check_taches_cablage -v
       - name: Check no raw JSON / bare error object is shown to the user (EZ16)
         run: python scripts/check_frontend_errors.py
       - name: Test the anti-jargon checker itself (EZ16)
