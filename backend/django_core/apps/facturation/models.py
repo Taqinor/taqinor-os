@@ -300,6 +300,22 @@ class Facture(models.Model):
         related_name='factures_modifiees',
     )
 
+    # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
+    # filiale / agence, cf. apps.entites). NULL = « non affecté » : aucun
+    # backfill, aucune liste filtrée d'office — comportement STRICTEMENT
+    # identique tant que le champ n'est pas renseigné. FK-STRING cross-app :
+    # jamais d'import de ``apps.entites.models`` ici.
+    entite = models.ForeignKey(
+        'entites.Entite',
+        # on_delete: supprimer une entité ne doit JAMAIS effacer une facture —
+        # la ligne redevient « non affectée » (SET_NULL), jamais une cascade
+        # sur une pièce comptable.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='facturation_factures',
+        verbose_name='Entité',
+    )
+
     class Meta:
         verbose_name = 'Facture'
         verbose_name_plural = 'Factures'
