@@ -53,6 +53,41 @@ DEFAULT_PLAN_FILES = [
     ROOT / "docs" / "FRONTEND_GAP_PLAN.md",
 ]
 
+# "clean the plans" (2026-08-04) relocates completed ``[x]`` tasks out of the
+# plan files into ``docs/done_task.md``. An absent prefix reads 0.0% here, so
+# archiving a fully-drained group would silently re-gate every BUILD_ORDER.yml
+# wave behind it. The archive therefore carries a machine-readable ledger of
+# archived-done counts per prefix (one ``PREFIX=N`` line inside a
+# ``<!-- plan-progress-ledger`` comment block) which this module adds back
+# into the default-surface counts. No ledger, or no archive file, means zero
+# behaviour change; explicit ``--files`` overrides never apply the ledger.
+LEDGER_FILE = ROOT / "docs" / "done_task.md"
+_LEDGER_OPEN_RE = re.compile(r"^<!--\s*plan-progress-ledger\b")
+_LEDGER_LINE_RE = re.compile(r"^([A-Z]+(?:-[A-Z]+)?)=(\d+)$")
+
+
+def read_ledger(path: Path | None = None) -> dict[str, int]:
+    """Archived-done counts per prefix from the done_task.md ledger block."""
+    p = LEDGER_FILE if path is None else path
+    counts: dict[str, int] = {}
+    if not p.is_file():
+        return counts
+    inside = False
+    for line in p.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not inside:
+            if _LEDGER_OPEN_RE.match(stripped):
+                inside = True
+            continue
+        if stripped == "-->":
+            break
+        m = _LEDGER_LINE_RE.match(stripped)
+        if m:
+            counts[m.group(1)] = counts.get(m.group(1), 0) + int(m.group(2))
+    return counts
+
+
+
 # ``- [ ] ARC1 — ...`` / ``- [x] **NTIDE1** — ...`` / ``- [ ] FE-XFLT4 — ...``
 # Prefix group ``compound`` = a dash-joined lane id like ``FE-XFLT`` (used by
 # docs/FRONTEND_GAP_PLAN.md); group ``plain`` = the bare letter-prefix task id
@@ -126,7 +161,15 @@ def with_pct(counts: dict[str, dict[str, int]]) -> dict[str, dict[str, float]]:
 
 def progress(paths: list[Path] | None = None) -> dict[str, dict[str, float]]:
     """Public entry point other scripts (plan_lanes.py) import."""
-    return with_pct(aggregate(paths if paths is not None else DEFAULT_PLAN_FILES))
+    counts = aggregate(paths if paths is not None else DEFAULT_PLAN_FILES)
+    if paths is None:
+        # Default surface only: fold the archived-done ledger back in so a
+        # drained group keeps its true completion after "clean the plans".
+        for prefix, archived in read_ledger().items():
+            bucket = counts.setdefault(prefix, {"done": 0, "total": 0})
+            bucket["done"] += archived
+            bucket["total"] += archived
+    return with_pct(counts)
 
 
 def group_pct(prefix: str, paths: list[Path] | None = None) -> float:
@@ -154,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    paths = [Path(f) for f in args.files] if args.files else DEFAULT_PLAN_FILES
+    paths = [Path(f) for f in args.files] if args.files else None
     data = progress(paths)
 
     if args.prefix is not None:

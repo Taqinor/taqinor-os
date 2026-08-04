@@ -219,7 +219,6 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-ZSAL1/XSAL17 — suggested follow-up activity prompt in `MesActivitesPage.jsx` + `{lien_rdv}` placeholder in template editor. (@lane: frontend/crm)
 
 ## Lane `frontend/reporting` (systemic offender — many [x] reports backend-only)
-- [x] FE-XKB1-3/ZCTR7-9 — **standalone Approvals inbox** `pages/approbations/ApprobationsPage.jsx` calling `reporting/approbations-en-attente/` UNFILTERED (all 5 sources: automation/contrats/ged/installations/workflow) + decide/bulk/filter/sort + route/nav (today only the narrow `source=workflow` slice is shown). (@lane: frontend/reporting) (opus) — **vérifié livré 2026-07-18** (WIR79 : `ApprobationsPage.jsx` agrège bien les 5 sources non filtrées, décision unitaire + en masse, route `/approbations` + nav enregistrées dans `features/reporting/module.config.jsx`).
 - [ ] FE-XPLT6 — "Alertes KPI" CRUD under parametres (`reporting/kpi-alertes/`). (@lane: frontend/reporting)
 - [ ] FE-XPLT10 — dashboard share/revoke UI + `/dashboards-tv` public kiosk route (`core/dashboards-partages`). (@lane: frontend/reporting)
 - [ ] FE-XPLT22 — `ClasseurPage.jsx` (live-data spreadsheet) + `reportingApi.js` client. (@lane: frontend/reporting)
@@ -229,7 +228,6 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## Lane `frontend/platform` (agent / dataimport / audit / privacy)
 - [ ] FE-XPLT18 — propose→confirm "Générer une règle" UI in `AutomatisationsSection.jsx` (`agent/actions/automation-draft`). (@lane: frontend/platform)
-- [x] FE-YHARD2 — "Historique / annuler" tab in `AgentActions.jsx` (`agent logs/` + undo). (@lane: frontend/platform) — **vérifié livré 2026-07-18** (WIR79 : onglet admin/Directeur-only, `GET agent/logs/` + `POST logs/{id}/annuler/`, garde `is_undoable`/`undone_at`).
 - [ ] FE-XPLT1-2 — import upsert mode + saved-mapping picker + error-CSV link in `ExcelImport.jsx` (`importApi.js` mode/external_id/saveMapping/jobErreursCsv). (@lane: frontend/platform)
 - [ ] FE-XPLT23 — "Confidentialité" tab under parametres: CNDP `registre-traitements` CRUD + `dsr-requests` (DSR) submission/tracking. (@lane: frontend/platform)
 - [ ] FE-YHARD3 — "Historique à cette date" (as-of) view on record detail / `Journal.jsx` (admin/Directeur). (@lane: frontend/platform)
@@ -239,10 +237,6 @@ a focused test, calling the EXISTING backend endpoint.
 - Domains CLEAN (fully wired, no gaps): **litiges, monitoring, publicapi, audit** baseline screens.
 - Legitimately backend-only (no UI ever promised): YAPIC7-10, YHARD1 (versioning/webhooks/idempotency/encryption).
 - `ODX5` (Applications catalogue) still `[ ]` in PLAN.md — normal backlog, not a gap.
-
-## DONE LOG
-<!-- one dated line per shipped task -->
-
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
