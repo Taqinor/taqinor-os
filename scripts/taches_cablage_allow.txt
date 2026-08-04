@@ -1,0 +1,207 @@
+# Base de reference de check_taches_cablage.py — DETTE HISTORIQUE, RIEN D'AUTRE.
+#
+# Chaque ligne est `<forme>|<cible>` : du travail mort deja commande ou deja
+# ecrit le 03/08/2026.
+#   ecran-sans-cablage  : une tache OUVERTE cree un ecran sans nommer son
+#                         fichier de montage ni exiger route / nav / onglet.
+#   contrat-absent      : une tache OUVERTE nomme les DEUX moities (backend +
+#                         frontend) sans exiger de contrat partage verifiable.
+#   composant-redefini  : un composant possede son fichier `<X>.jsx` et un
+#                         AUTRE fichier le redefinit au lieu de l'importer.
+# (La forme `backend-sans-consommateur` est mesuree mais NON bloquante — voir
+#  l'en-tete du script : elle n'atteint pas le zero faux positif.)
+#
+# Un agent qui execute une telle tache A LA LETTRE produit mecaniquement du
+# travail invisible : c'est ainsi que 61 des 68 ecrans du module « Appels
+# d'offres » sont devenus inatteignables et que 206 ressources backend sont
+# restees sans consommateur, le 03/08/2026.
+#
+# Cette liste est le gel de la dette mesuree ce jour-la. La garde n'echoue que
+# sur une cible ABSENTE de cette liste : elle empeche la RECIDIVE, elle ne
+# reecrit pas ce qui est deja ecrit.
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - corriger une tache (ou importer le composant partage au lieu de le
+#     redefinir) puis
+#     `python scripts/check_taches_cablage.py --write-baseline` retire sa ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne. Ajouter une dette exige
+#     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
+#
+# La signature est l'IDENTIFIANT DE TACHE (ou <Composant>|<fichier>), jamais
+# `fichier:ligne` : une tache qui se decale, ou un composant qui descend de
+# vingt lignes, ne doit pas invalider la base.
+contrat-absent|NTAGR27
+contrat-absent|NTCOL15
+contrat-absent|NTCON14
+contrat-absent|NTCON24
+contrat-absent|NTCON25
+contrat-absent|NTCON36
+contrat-absent|NTCPQ12
+contrat-absent|NTCPQ21
+contrat-absent|NTCPQ23
+contrat-absent|NTCPQ27
+contrat-absent|NTCPQ29
+contrat-absent|NTCPQ30
+contrat-absent|NTDMO26
+contrat-absent|NTDST15
+contrat-absent|NTDST29
+contrat-absent|NTDST8
+contrat-absent|NTESG19
+contrat-absent|NTESG20
+contrat-absent|NTESG34
+contrat-absent|NTFSM1
+contrat-absent|NTFSM16
+contrat-absent|NTFSM25
+contrat-absent|NTFSM26
+contrat-absent|NTFSM27
+contrat-absent|NTFSM31
+contrat-absent|NTFSM33
+contrat-absent|NTFSM4
+contrat-absent|NTFSM7
+contrat-absent|NTHCM2
+contrat-absent|NTHCM20
+contrat-absent|NTHCM22
+contrat-absent|NTHCM26
+contrat-absent|NTHCM3
+contrat-absent|NTHCM30
+contrat-absent|NTHCM6
+contrat-absent|NTHCM9
+contrat-absent|NTHOT15
+contrat-absent|NTHOT23
+contrat-absent|NTMFG18
+contrat-absent|NTMFG21
+contrat-absent|NTMFG22
+contrat-absent|NTMFG28
+contrat-absent|NTMFG29
+contrat-absent|NTMFG38
+contrat-absent|NTMFG8
+contrat-absent|NTMKT15
+contrat-absent|NTOBS11
+contrat-absent|NTOBS33
+contrat-absent|NTOBS5
+contrat-absent|NTOBS7
+contrat-absent|NTOBS8
+contrat-absent|NTPRJ12
+contrat-absent|NTPRJ6
+contrat-absent|NTPRJ9
+contrat-absent|NTPRO23
+contrat-absent|NTPRO31
+contrat-absent|NTRET1
+contrat-absent|NTRET16
+contrat-absent|NTRET3
+contrat-absent|NTRET31
+contrat-absent|NTSRV29
+contrat-absent|NTSRV33
+contrat-absent|NTSVC12
+contrat-absent|NTSVC14
+contrat-absent|NTSVC18
+contrat-absent|NTSVC21
+contrat-absent|NTSVC22
+contrat-absent|NTSVC25
+contrat-absent|NTSVC30
+contrat-absent|NTSVC7
+contrat-absent|NTWFL12
+contrat-absent|PACT164
+contrat-absent|PACT25
+ecran-sans-cablage|NTAGR17
+ecran-sans-cablage|NTAGR20
+ecran-sans-cablage|NTAGR25
+ecran-sans-cablage|NTAGR30
+ecran-sans-cablage|NTCOL13
+ecran-sans-cablage|NTCOL15
+ecran-sans-cablage|NTCOL6
+ecran-sans-cablage|NTCON21
+ecran-sans-cablage|NTCON23
+ecran-sans-cablage|NTCON24
+ecran-sans-cablage|NTCON25
+ecran-sans-cablage|NTCON36
+ecran-sans-cablage|NTCPQ12
+ecran-sans-cablage|NTCPQ23
+ecran-sans-cablage|NTCPQ27
+ecran-sans-cablage|NTCPQ30
+ecran-sans-cablage|NTDMO25
+ecran-sans-cablage|NTDMO26
+ecran-sans-cablage|NTDST15
+ecran-sans-cablage|NTDST20
+ecran-sans-cablage|NTDST27
+ecran-sans-cablage|NTDST28
+ecran-sans-cablage|NTDST29
+ecran-sans-cablage|NTDST7
+ecran-sans-cablage|NTESG18
+ecran-sans-cablage|NTESG19
+ecran-sans-cablage|NTESG20
+ecran-sans-cablage|NTFSM1
+ecran-sans-cablage|NTFSM26
+ecran-sans-cablage|NTFSM31
+ecran-sans-cablage|NTFSM33
+ecran-sans-cablage|NTFSM7
+ecran-sans-cablage|NTFSM8
+ecran-sans-cablage|NTHCM18
+ecran-sans-cablage|NTHCM2
+ecran-sans-cablage|NTHCM20
+ecran-sans-cablage|NTHCM26
+ecran-sans-cablage|NTHCM30
+ecran-sans-cablage|NTHCM6
+ecran-sans-cablage|NTHCM9
+ecran-sans-cablage|NTHOT15
+ecran-sans-cablage|NTHOT22
+ecran-sans-cablage|NTHOT23
+ecran-sans-cablage|NTJUR21
+ecran-sans-cablage|NTJUR22
+ecran-sans-cablage|NTJUR31
+ecran-sans-cablage|NTJUR32
+ecran-sans-cablage|NTMFG27
+ecran-sans-cablage|NTMFG28
+ecran-sans-cablage|NTMFG29
+ecran-sans-cablage|NTMFG8
+ecran-sans-cablage|NTMKT25
+ecran-sans-cablage|NTMKT29
+ecran-sans-cablage|NTMKT30
+ecran-sans-cablage|NTMKT32
+ecran-sans-cablage|NTNRG17
+ecran-sans-cablage|NTNRG21
+ecran-sans-cablage|NTNRG25
+ecran-sans-cablage|NTNRG31
+ecran-sans-cablage|NTNRG34
+ecran-sans-cablage|NTNRG9
+ecran-sans-cablage|NTOBS11
+ecran-sans-cablage|NTOBS19
+ecran-sans-cablage|NTOBS5
+ecran-sans-cablage|NTOBS7
+ecran-sans-cablage|NTOBS8
+ecran-sans-cablage|NTPRJ17
+ecran-sans-cablage|NTPRJ20
+ecran-sans-cablage|NTPRJ39
+ecran-sans-cablage|NTPRJ6
+ecran-sans-cablage|NTPRJ9
+ecran-sans-cablage|NTPRO18
+ecran-sans-cablage|NTPRO22
+ecran-sans-cablage|NTPRO26
+ecran-sans-cablage|NTPRO31
+ecran-sans-cablage|NTRET16
+ecran-sans-cablage|NTRET22
+ecran-sans-cablage|NTRET3
+ecran-sans-cablage|NTRET31
+ecran-sans-cablage|NTSRV31
+ecran-sans-cablage|NTSRV32
+ecran-sans-cablage|NTSRV33
+ecran-sans-cablage|NTSRV4
+ecran-sans-cablage|NTSRV9
+ecran-sans-cablage|NTSUB17
+ecran-sans-cablage|NTSVC14
+ecran-sans-cablage|NTSVC18
+ecran-sans-cablage|NTSVC21
+ecran-sans-cablage|NTSVC28
+ecran-sans-cablage|NTSVC29
+ecran-sans-cablage|NTSVC30
+ecran-sans-cablage|NTSVC7
+ecran-sans-cablage|NTWFL12
+ecran-sans-cablage|NTWFL14
+ecran-sans-cablage|NTWFL19
+ecran-sans-cablage|NTWFL24
+ecran-sans-cablage|NTWFL32
+ecran-sans-cablage|NTWFL6
+ecran-sans-cablage|PACT160
+ecran-sans-cablage|VAO33
+ecran-sans-cablage|VAO35
+ecran-sans-cablage|VAO36
