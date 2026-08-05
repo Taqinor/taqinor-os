@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import CustomUser, Company, UserSession
 
@@ -352,6 +353,19 @@ class UserSerializer(serializers.ModelSerializer):
                 and not getattr(actor, 'is_admin_role', False):
             raise serializers.ValidationError(
                 "Seul un administrateur peut assigner un rôle administrateur.")
+        # NTADM21 — garde-fou de délégation : un acteur dont le rôle porte un
+        # PÉRIMÈTRE (Admin RH / Admin Ventes) ne peut assigner qu'un rôle dont
+        # les permissions restent DANS ce périmètre. Périmètre nul (Directeur,
+        # Administrateur, tout compte existant) → aucune vérification, matrice
+        # d'accès strictement inchangée. ``PermissionDenied`` (403, et non 400)
+        # : c'est un refus d'autorisation, pas une donnée invalide.
+        from apps.roles.models import perimetre_de, permissions_hors_perimetre
+        hors = permissions_hors_perimetre(
+            perimetre_de(actor), value.permissions or [])
+        if hors:
+            raise PermissionDenied(
+                "Ce rôle sort de votre périmètre de délégation : "
+                f"{hors}.")
         return value
 
     def validate_supervisor(self, value):

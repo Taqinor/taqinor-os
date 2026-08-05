@@ -473,6 +473,129 @@ VIEWER_PERMISSIONS = [
     SCOPE_TEAM,
 ]
 
+# ── NTADM20 — Administration DÉLÉGUÉE par domaine ──────────────────────────
+# Deux rôles système de plus, bâtis sur le MÊME moteur JSON que les sept
+# précédents (``Role.permissions``) : aucun nouveau moteur, aucune table de
+# plus — juste deux presets semés par ``init_roles``.
+#
+# Ce qui les distingue d'un Administrateur : ils ne portent PAS
+# ``roles_gerer``. C'est le signal FAISANT AUTORITÉ du palier
+# (``authentication.role_tiers``) : sans lui, et AVEC ``users_voir``, le
+# porteur relève du palier « responsable » — il ouvre donc l'écran
+# Utilisateurs mais JAMAIS l'administration globale (rôles/permissions,
+# Paramètres → Société, console tenants). Ils ne portent pas non plus
+# ``parametres_voir``/``parametres_modifier`` : les réglages de la société
+# restent hors de leur portée.
+#
+# NE JAMAIS y ajouter : ``stock_creer`` (politique QG4 — réservé à Directeur
+# + Commercial responsable, verrouillée par un test) ni
+# ``adsengine_autonomy_toggle`` (admin-seul, ADSENG47).
+
+# Admin RH : le domaine RH/Paie/recrutement + la gestion des comptes, rien
+# d'autre. ``salaires_voir`` lui donne la rémunération (besoin métier
+# central) ; il n'a aucun droit CRM/Ventes/Stock.
+ADMIN_RH_PERMISSIONS = [
+    'users_voir', 'users_gerer',
+    'paie_voir', 'paie_gerer',
+    'salaires_voir',
+    'reporting_voir',
+    'kb_voir',
+    'projet_voir',
+    'qhse_voir',
+]
+
+# Admin Ventes : CRM + Ventes + Stock (sans la création de produits, QG4) et
+# les rapports commerciaux. Aucun réglage global de la société, aucune paie.
+ADMIN_VENTES_PERMISSIONS = [
+    'crm_voir', 'crm_creer', 'crm_modifier', 'crm_supprimer', 'crm_export',
+    'crm_reassign',
+    'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_supprimer',
+    'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
+    'stock_voir', 'stock_modifier', 'stock_supprimer', 'stock_mouvement',
+    'stock_export',
+    'client_pii_voir',
+    'users_voir',
+    'reporting_voir', 'reporting_export',
+    'kb_voir',
+]
+
+ROLE_ADMIN_RH = 'Admin RH'
+ROLE_ADMIN_VENTES = 'Admin Ventes'
+
+# ── NTADM21 — Garde-fou de la délégation ────────────────────────────────────
+# Un administrateur délégué doit pouvoir gérer SON domaine sans jamais pouvoir
+# fabriquer (ou distribuer) un rôle plus large que le sien. Le PÉRIMÈTRE porté
+# par son propre rôle borne exactement ce qu'il peut créer, éditer et assigner.
+#
+# ``perimetre = NULL`` = GLOBAL = comportement historique : Directeur,
+# Administrateur, et absolument tous les rôles existants restent inchangés.
+PERIMETRE_RH = 'rh'
+PERIMETRE_VENTES = 'ventes'
+PERIMETRE_CHOICES = [
+    (PERIMETRE_RH, 'RH & Paie'),
+    (PERIMETRE_VENTES, 'Ventes & CRM'),
+]
+
+# Ce que chaque périmètre AUTORISE — dérivé des presets NTADM20, jamais une
+# seconde liste à garder synchrone à la main.
+PERIMETRE_PERMISSIONS = {
+    PERIMETRE_RH: frozenset(ADMIN_RH_PERMISSIONS),
+    PERIMETRE_VENTES: frozenset(ADMIN_VENTES_PERMISSIONS),
+}
+
+# Périmètre semé sur les rôles système d'administration déléguée.
+SYSTEM_ROLE_PERIMETRES = {
+    ROLE_ADMIN_RH: PERIMETRE_RH,
+    ROLE_ADMIN_VENTES: PERIMETRE_VENTES,
+}
+
+
+def perimetre_de(user):
+    """Périmètre de délégation de ``user`` (``None`` = global).
+
+    ``None`` pour un anonyme, un superuser, un compte sans rôle fin, ou tout
+    rôle dont ``perimetre`` est vide — c'est-à-dire tous les comptes existants.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return None
+    if getattr(user, 'is_superuser', False):
+        return None
+    role = getattr(user, 'role', None)
+    if role is None:
+        return None
+    return getattr(role, 'perimetre', None) or None
+
+
+def permissions_hors_perimetre(perimetre, permissions):
+    """Codes de ``permissions`` qui SORTENT de ``perimetre``, triés.
+
+    Liste vide quand ``perimetre`` est nul/inconnu (délégation globale =
+    comportement historique). Les marqueurs qui RESTREIGNENT au lieu
+    d'accorder — portée d'enregistrements (``records_scope_*``) et visibilité
+    d'app (``app_<clé>_voir``, ODY26) — ne sortent jamais d'un périmètre :
+    les refuser reviendrait à interdire de RÉDUIRE un rôle.
+    """
+    if not perimetre:
+        return []
+    autorisees = PERIMETRE_PERMISSIONS.get(perimetre)
+    if autorisees is None:
+        return []
+    return sorted(
+        code for code in set(permissions or [])
+        if code not in autorisees
+        and not code.startswith('records_scope')
+        and not est_permission_app(code)
+    )
+
+
+# Les 2 rôles d'administration déléguée (nom → permissions), semés par
+# ``init_roles`` au même titre que les rôles canoniques.
+CANONICAL_DELEGUE_ROLES = [
+    (ROLE_ADMIN_RH, ADMIN_RH_PERMISSIONS),
+    (ROLE_ADMIN_VENTES, ADMIN_VENTES_PERMISSIONS),
+]
+
+
 # ── NTPRT1 — Rôles système du Portail EXTERNE (self-service) ────────────────
 # AXE DE PERMISSION SÉPARÉ du catalogue interne ``ALL_PERMISSIONS`` : ces codes
 # ``portail_*_acces`` n'apparaissent JAMAIS dans la grille de rôles interne
@@ -520,6 +643,10 @@ CANONICAL_SYSTEM_ROLES = [
     # Rôles légacy conservés pour les comptes/données déjà en place.
     ('Responsable', RESPONSABLE_PERMISSIONS),
     ('Utilisateur', UTILISATEUR_PERMISSIONS),
+    # NTADM20 — administration DÉLÉGUÉE par domaine (RH / Ventes). Semés
+    # exactement comme les autres rôles système (est_systeme=True,
+    # idempotent) ; ils ne portent jamais ``roles_gerer``.
+    *CANONICAL_DELEGUE_ROLES,
     # NTPRT1 — rôles système du Portail externe (client/fournisseur/partenaire).
     # Un même axe que les rôles internes pour le SEEDING (est_systeme=True,
     # idempotent), mais des permissions portail-seules (jamais internes).
@@ -539,6 +666,33 @@ class Role(models.Model):
     nom = models.CharField(max_length=100)
     permissions = models.JSONField(default=list)
     est_systeme = models.BooleanField(default=False)
+    # ── NTADM3 — Périmètre de DONNÉES par entité ────────────────────────────
+    # Narrowing OPT-IN, exactement le patron déjà utilisé pour
+    # ``records_scope_*`` (portée par propriétaire) et ``app_<clé>_voir``
+    # (visibilité d'app) : VIDE = aucune restriction, le rôle voit toutes les
+    # entités — c'est l'état de TOUS les rôles existants, donc zéro
+    # régression. Dès qu'au moins une entité est cochée, la liste devient une
+    # LISTE BLANCHE (cf. ``core.entite_scoping``) : les lignes « non
+    # affectées » (``entite IS NULL``) restent visibles de tous, celles d'une
+    # entité hors périmètre disparaissent et ne peuvent plus être créées.
+    # FK-STRING cross-app : jamais d'import de ``apps.entites.models`` ici.
+    entites_visibles = models.ManyToManyField(
+        'entites.Entite',
+        blank=True,
+        related_name='roles_visibles',
+        verbose_name='Entités visibles',
+        help_text="Vide = toutes les entités sont visibles (défaut).",
+    )
+    # ── NTADM21 — Garde-fou de la délégation ────────────────────────────────
+    # NULL = GLOBAL = comportement historique (Directeur, Administrateur, et
+    # tous les rôles existants). Rempli, il BORNE ce que le porteur peut
+    # créer, éditer et assigner comme rôle (cf. ``permissions_hors_perimetre``
+    # et les gardes de ``RoleViewSet`` / ``UserSerializer.validate_role``).
+    perimetre = models.CharField(
+        'Périmètre de délégation', max_length=10,
+        choices=PERIMETRE_CHOICES, null=True, blank=True, default=None,
+        help_text="Vide = délégation globale (aucune restriction).",
+    )
 
     class Meta:
         unique_together = [('company', 'nom')]

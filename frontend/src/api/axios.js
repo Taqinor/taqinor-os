@@ -7,6 +7,8 @@ import { originFrom } from './origin'
 // L53 (toast d'erreur global) + L57 (session expirée). Ces modules sont
 // volontairement sans React : ils émettent un toast / un événement window.
 import { errorMessageFrom, toastError } from '../lib/toast'
+// NTADM26 — entité active (filtre d'affichage, module pur sans React ici).
+import { lireEntiteActive } from '../lib/entiteActive'
 import { emitSessionExpired } from '../providers/session-bridge'
 // VX161 — refresh 401 partagé avec iaApi.js (une seule promesse en vol,
 // jamais un POST /token/refresh/ par requête en échec).
@@ -25,11 +27,33 @@ const api = axios.create({
   timeout: REQUEST_TIMEOUT_MS,
 })
 
+// NTADM26 — listes sur lesquelles l'ENTITÉ ACTIVE de l'en-tête pose le filtre
+// `?entite=` de NTADM2. Liste BLANCHE volontairement courte : les modèles que
+// NTADM2 sait rattacher à une entité, et RIEN d'autre (jamais un paramètre
+// posé au hasard sur une route qui l'ignorerait).
+const ENDPOINTS_ENTITE = [
+  /\/crm\/leads\/$/,
+  /\/ventes\/devis\/$/,
+  /\/ventes\/factures\/$/,
+  /\/stock\/produits\/$/,
+]
+
 // ── Requete : prefixe /api/django uniquement ──────────────────
 // Plus d'injection manuelle du token — le cookie est envoye automatiquement
 api.interceptors.request.use((config) => {
   if (config.url && !config.url.startsWith('/api/')) {
     config.url = '/api/django' + config.url
+  }
+  // NTADM26 — filtre d'AFFICHAGE, jamais une garde : il ne fait que poser le
+  // paramètre optionnel `?entite=` que le serveur applique en plus de son
+  // propre scoping. Un appelant qui passe `entite` explicitement gagne
+  // TOUJOURS (y compris `entite: ''` pour dire « toutes entités »).
+  const methode = (config.method || 'get').toLowerCase()
+  const chemin = (config.url || '').split('?')[0]
+  if (methode === 'get' && ENDPOINTS_ENTITE.some((r) => r.test(chemin))
+      && (config.params == null || config.params.entite === undefined)) {
+    const active = lireEntiteActive()
+    if (active) config.params = { ...(config.params || {}), entite: active }
   }
   return config
 })

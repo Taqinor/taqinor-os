@@ -3,20 +3,24 @@
    de composants : le fast-refresh ne s'y applique pas (même contrat que
    `router/moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Network } from 'lucide-react'
+import { Network, Columns3 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
    NTADM4/30 — Configuration du module « Entités » (structure organisationnelle
    intra-tenant). Nav gatée Administrateur ; écran de gestion de l'arbre +
    assistant guidé de création.
+   NTADM25 — s'y ajoute la vue consolidée « Groupe » (lecture seule) : une
+   colonne de KPI par entité active + un total.
    ========================================================================== */
 
 const ROLES = ['admin']
 
 const EntitesPage = lazy(() => import('./EntitesPage'))
+const GroupePage = lazy(() => import('./GroupePage'))
 
 const NW = <Network size={17} strokeWidth={1.75} aria-hidden="true" />
+const GR = <Columns3 size={17} strokeWidth={1.75} aria-hidden="true" />
 
 export default {
   key: 'entites',
@@ -31,13 +35,16 @@ export default {
     accent: 'lune',
     items: [
       { to: '/parametres/entites', label: 'Entités', icon: NW, roles: ROLES },
+      { to: '/admin/groupe', label: 'Vue Groupe', icon: GR, roles: ROLES },
     ],
   },
   titles: [
     ['/parametres/entites', 'Entités (structure)'],
+    ['/admin/groupe', 'Vue Groupe (consolidée)'],
   ],
   sectionLabels: { entites: 'Entités' },
   routes: [
     { path: '/parametres/entites', component: EntitesPage, roles: ROLES },
+    { path: '/admin/groupe', component: GroupePage, roles: ROLES },
   ],
 }

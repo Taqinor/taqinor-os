@@ -317,6 +317,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             'quantite_stock', 'seuil_alerte', 'is_archived',
             # Relations (lecture imbriquée + écriture par *_id)
             'categorie', 'categorie_id', 'fournisseur', 'fournisseur_id',
+            # NTADM2 — entité de rattachement (optionnelle ; NULL = non affecté)
+            'entite',
             # Garanties
             'garantie', 'garantie_mois', 'garantie_production_mois',
             # XPOS9 — suivi par n° de série à la vente comptoir

@@ -789,6 +789,22 @@ class Produit(models.Model):
         help_text="Si activé, empêche l'acceptation/facturation sans override "
                   "responsable/admin.")
 
+    # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
+    # filiale / agence, cf. apps.entites). NULL = « non affecté » : aucun
+    # backfill, aucun catalogue filtré d'office — comportement STRICTEMENT
+    # identique tant que le champ n'est pas renseigné. FK-STRING cross-app :
+    # jamais d'import de ``apps.entites.models`` ici.
+    entite = models.ForeignKey(
+        'entites.Entite',
+        # on_delete: supprimer une entité ne doit JAMAIS effacer une fiche
+        # produit (ni son stock) — la ligne redevient « non affectée »
+        # (SET_NULL), jamais une cascade sur du catalogue.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='stock_produits',
+        verbose_name='Entité',
+    )
+
     class Meta:
         verbose_name = "Produit"
         verbose_name_plural = "Produits"
