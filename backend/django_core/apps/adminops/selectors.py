@@ -80,6 +80,16 @@ def kpi_adminops(company):
     ]
 
 
+def plan_par_id(plan_id):
+    """NTADM41 — lecture d'un ``PlanLicence`` par id (utilisé par
+    ``apps.parametres`` pour journaliser/notifier un changement de plan sans
+    importer directement le modèle d'une autre app)."""
+    if not plan_id:
+        return None
+    from .models import PlanLicence
+    return PlanLicence.objects.filter(pk=plan_id).first()
+
+
 def diagnostic_tenant(company):
     """NTADM23 — instantané non-sensible du tenant courant, strictement
     scopé société."""

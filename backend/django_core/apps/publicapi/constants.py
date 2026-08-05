@@ -65,6 +65,11 @@ EVENT_TICKET_RESOLVED = 'ticket.resolved'
 # XSTK23 — évènements inventaire.
 EVENT_STOCK_SEUIL_ATTEINT = 'stock.seuil_atteint'
 EVENT_LIVRAISON_LIVREE = 'livraison.livree'
+# NTADM41 — évènements « licences & sièges » (adminops). Payload JAMAIS de
+# donnée client — uniquement company_id + plan/sièges (voir
+# apps.parametres.services_licence / apps.adminops.receivers).
+EVENT_PLAN_CHANGED = 'plan.changed'
+EVENT_SIEGES_QUOTA_ATTEINT = 'sieges.quota_atteint'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -81,6 +86,8 @@ EVENT_CHOICES = [
     (EVENT_TICKET_RESOLVED, 'Ticket SAV résolu'),
     (EVENT_STOCK_SEUIL_ATTEINT, 'Stock — seuil atteint'),
     (EVENT_LIVRAISON_LIVREE, 'Livraison — livrée'),
+    (EVENT_PLAN_CHANGED, 'Plan de licence — changé'),
+    (EVENT_SIEGES_QUOTA_ATTEINT, 'Sièges — quota atteint'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 

@@ -8,7 +8,11 @@ société. JAMAIS BLOQUANT : la création du compte a déjà réussi quand ce
 récepteur s'exécute (``post_save``) — aucune exception ici ne peut l'annuler.
 ``authentication`` est une app de FONDATION (exempte de la frontière
 cross-app inter-domaines métier) : l'import direct de son modèle est
-autorisé."""
+autorisé.
+
+NTADM41 — le même franchissement déclenche AUSSI le webhook sortant
+``sieges.quota_atteint`` (``apps.publicapi``), payload {company_id,
+sieges_utilises, sieges_max} — JAMAIS de donnée client."""
 from django.db.models.signals import post_save
 
 
@@ -41,6 +45,22 @@ def _alerter_administrateurs(company, utilises, max_sieges):
         pass
 
 
+def _dispatch_webhook_quota(company, utilises, max_sieges):
+    """NTADM41 — webhook sortant `sieges.quota_atteint`. Jamais de donnée
+    client dans le payload."""
+    try:
+        from apps.publicapi import delivery
+        from apps.publicapi.constants import EVENT_SIEGES_QUOTA_ATTEINT
+        delivery.dispatch_event(company.id, EVENT_SIEGES_QUOTA_ATTEINT, {
+            'event': EVENT_SIEGES_QUOTA_ATTEINT,
+            'company_id': company.id,
+            'sieges_utilises': utilises,
+            'sieges_max': max_sieges,
+        })
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        pass
+
+
 def user_post_save_quota_sieges(sender, instance, created, **kwargs):
     if not created or not instance.is_active:
         return
@@ -55,6 +75,7 @@ def user_post_save_quota_sieges(sender, instance, created, **kwargs):
         return
     utilises, max_sieges = resultat
     _alerter_administrateurs(company, utilises, max_sieges)
+    _dispatch_webhook_quota(company, utilises, max_sieges)
 
 
 def connect():
