@@ -18,6 +18,14 @@
     created:inconnu
 - frontend/src/api/accessReviewApi.js :: violations -> /api/django/accessreview/sod-rules/violations
     results:inconnu
+- frontend/src/api/adminopsApi.js :: ciblesImpersonation -> /api/django/adminops/impersonation/cibles
+    societes:liste, utilisateurs:liste
+- frontend/src/api/adminopsApi.js :: demarrerImpersonation -> /api/django/adminops/impersonation/<>/demarrer
+    access:inconnu, detail:texte, session:inconnu
+- frontend/src/api/adminopsApi.js :: listAnnonces -> /api/django/adminops/annonces
+    non_lues:nombre, results:inconnu
+- frontend/src/api/adminopsApi.js :: sessionImpersonationActive -> /api/django/adminops/impersonation/session-active
+    active:booleen, expire_le:inconnu, id:inconnu, message:texte, motif:inconnu, support_nom:inconnu
 - frontend/src/api/agricultureApi.js :: coutIrrigation -> /api/django/agriculture/campagnes/<>/cout-irrigation
     cout_irrigation_mad:inconnu, volume_irrigation_solaire_m3:inconnu
 - frontend/src/api/aoApi.js :: controlesAvantDepot -> /api/django/ao/dossiers-ao/<>/controles-avant-depot
@@ -445,7 +453,7 @@
 - frontend/src/api/publicapiApi.js :: getChangelog -> /api/public/changelog
     results:liste
 - frontend/src/api/publicapiApi.js :: getDocs -> /api/django/publicapi/docs
-    authentification:objet, base_url:texte, endpoints:liste, endpoints_bulk:objet, endpoints_ecriture:objet, introduction:texte, parametres_communs:objet, scopes:liste, titre:texte, version:texte, webhooks:objet
+    authentification:objet, base_url:texte, endpoints:liste, endpoints_bulk:objet, endpoints_ecriture:objet, endpoints_lecture_simple:objet, introduction:texte, parametres_communs:objet, scopes:liste, titre:texte, version:texte, webhooks:objet
 - frontend/src/api/publicapiApi.js :: ocrToCrm -> /api/django/publicapi/ocr-to-crm
     detail:texte, lead_id:inconnu, mode:inconnu
 - frontend/src/api/publicapiApi.js :: sandboxTry -> /api/django/publicapi/sandbox/try

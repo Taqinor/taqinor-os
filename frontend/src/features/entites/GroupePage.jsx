@@ -3,6 +3,7 @@ import entitesApi from './entitesApi'
 import PageHeader from '../../components/layout/PageHeader'
 import { Card, EmptyState, Spinner } from '../../ui'
 import { toastError } from '../../lib/toast'
+import { formatMAD } from '../../lib/format'
 
 /* ============================================================================
    NTADM25 — Vue consolidée « Groupe », LECTURE SEULE.
@@ -35,10 +36,7 @@ function valeurAffichee(colonne, ligne) {
   if (!ligne.money) return brut
   const nombre = Number(brut)
   if (Number.isNaN(nombre)) return brut
-  return `${nombre.toLocaleString('fr-MA', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })} MAD`
+  return formatMAD(nombre)
 }
 
 export default function GroupePage() {

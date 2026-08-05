@@ -2,7 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import AnnoncesTab, { renderMarkdownSimple } from './AnnoncesTab'
+import AnnoncesTab from './AnnoncesTab'
+import { renderMarkdownSimple } from '../../lib/markdownSimple'
 
 afterEach(() => {
   cleanup()

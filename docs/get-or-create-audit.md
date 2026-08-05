@@ -123,8 +123,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/services.py:105` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
 | `backend/django_core/apps/crm/services.py:3620` | get_or_create | MessageTemplate.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:1468` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:1520` | get_or_create | Canal.objects | cle, company |
+| `backend/django_core/apps/crm/views.py:1469` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:1521` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/dataimport/services.py:282` | update_or_create | ImportMapping.objects | company, entity, nom |
 | `backend/django_core/apps/dataimport/services.py:328` | get_or_create | ExternalRef.objects | company, external_id, external_system |
 | `backend/django_core/apps/education/models.py:772` | get_or_create | cls.objects | company |
@@ -220,8 +220,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/paie/services.py:5681` | get_or_create | StructurePaie.objects | code, company |
 | `backend/django_core/apps/paie/services.py:5691` | get_or_create | StructurePaieRubrique.objects | rubrique, structure |
 | `backend/django_core/apps/paie/services.py:5717` | get_or_create | RubriqueEmploye.objects | profil, rubrique |
-| `backend/django_core/apps/parametres/models_company.py:671` | get_or_create | cls.objects | company |
-| `backend/django_core/apps/parametres/models_company.py:676` | get_or_create | cls.objects | pk |
+| `backend/django_core/apps/parametres/models_company.py:707` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/parametres/models_company.py:712` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_documents.py:102` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |
@@ -266,7 +266,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/rh/services.py:2671` | get_or_create | EvaluationEmploye.objects | campagne, company, employe |
 | `backend/django_core/apps/rh/views.py:1782` | get_or_create | ReglageRH.objects | company |
 | `backend/django_core/apps/rh/views.py:3949` | update_or_create | NoteEntretien.objects | entretien, evaluateur |
-| `backend/django_core/apps/roles/management/commands/init_roles.py:53` | get_or_create | Role.objects | company, nom |
+| `backend/django_core/apps/roles/management/commands/init_roles.py:54` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/sante/models.py:728` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/models.py:138` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/sav/services.py:1080` | get_or_create | TicketFollower.objects | company, ticket, user |

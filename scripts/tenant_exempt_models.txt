@@ -40,3 +40,4 @@ adminops.LectureAnnonce
 # société ; il est de plus PARQUÉ par défaut (TENANT_SIGNUP_ENABLED, 404 quand
 # éteint). Reviewed global-by-design 2026-08-05.
 adminops.DemandeInscription
+adminops.PlanLicence
