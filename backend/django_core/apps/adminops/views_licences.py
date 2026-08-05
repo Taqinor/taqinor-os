@@ -26,7 +26,7 @@ from rest_framework.response import Response
 from apps.parametres.models import CompanyProfile
 from authentication.services import sieges_utilises as _sieges_utilises
 
-from .permissions import IsAdministrateur
+from .permissions import ADMINOPS_LICENCES_VOIR, IsAdministrateur, a_permission_fine
 
 
 def _statut_sieges(company, profile):
@@ -76,6 +76,11 @@ def _historique_plan(company):
 def licence_statut_view(request):
     """NTADM8/9 — statut de licence complet : plan, modules inclus, sièges
     utilisés/max, historique des changements de plan."""
+    # NTADM39 — resserrement fin (au-delà de IsAdministrateur, déjà acquis).
+    if not a_permission_fine(request.user, ADMINOPS_LICENCES_VOIR):
+        return Response(
+            {'detail': "Permission 'adminops_licences_voir' requise."},
+            status=403)
     company = request.user.company
     profile = CompanyProfile.get(company=company)
     return Response({
@@ -112,6 +117,12 @@ def licence_pdf_view(request):
     """NTADM29 — instantané daté imprimable : plan, sièges utilisés/max, liste
     nominative des comptes actifs + dernière connexion. Moteur interne
     WeasyPrint (``core.pdf.render_pdf``) — jamais le moteur de devis."""
+    # NTADM39 — même resserrement fin que licence_statut_view (l'export PDF
+    # est aussi une forme de consultation de la licence).
+    if not a_permission_fine(request.user, ADMINOPS_LICENCES_VOIR):
+        return Response(
+            {'detail': "Permission 'adminops_licences_voir' requise."},
+            status=403)
     from core.pdf import render_pdf
 
     company = request.user.company

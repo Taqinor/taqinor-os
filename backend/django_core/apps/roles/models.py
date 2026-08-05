@@ -211,6 +211,29 @@ ALL_PERMISSIONS = [
     'ao_voir',
     'ao_gerer',
     'ao_rentabilite_voir',
+    # ── NTADM39 — permissions fines de apps.adminops. Toutes gardées DERRIÈRE
+    # ``IsAdministrateur`` (palier admin déjà requis) — ces codes RESSERRENT
+    # encore l'accès au sein de ce palier : un rôle admin-tier CUSTOM
+    # (``est_systeme=False``) doit porter le code précis pour agir ; les rôles
+    # SYSTÈME (``est_systeme=True``, Directeur/Administrateur…) et les comptes
+    # hérités sans Role fin gardent leur comportement actuel (rétrocompat —
+    # voir ``apps.adminops.permissions.verifier_permission_fine``). Nommage
+    # ``adminops_<objet>_<action>`` (jamais ``adminops.<objet>.<action>`` —
+    # ce dépôt n'utilise QUE le underscore ; et ``_voir`` — jamais ``_consulter``
+    # — pour rester lu comme LECTURE par
+    # ``authentication.CustomUser._role_grants_write``).
+    #   * ``adminops_entites_gerer``          — éditer une Entité (apps/entites,
+    #     câblage HORS PÉRIMÈTRE de cette tâche : apps/entites appartient à une
+    #     autre lane — le code est déclaré ici, prêt à être consommé).
+    #   * ``adminops_sandbox_creer``          — créer un environnement sandbox.
+    #   * ``adminops_config_package_exporter``— exporter un package de config.
+    #   * ``adminops_config_package_importer``— appliquer (importer) un package.
+    #   * ``adminops_licences_voir``          — consulter l'écran Licences & sièges.
+    'adminops_entites_gerer',
+    'adminops_sandbox_creer',
+    'adminops_config_package_exporter',
+    'adminops_config_package_importer',
+    'adminops_licences_voir',
 ]
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
