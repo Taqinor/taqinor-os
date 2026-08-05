@@ -15,6 +15,8 @@ const entitesApi = {
   desactiver: (id) => api.post(`/entites/entites/${id}/desactiver/`),
   historique: (id) => api.get(`/entites/entites/${id}/historique/`),
   noter: (id, body) => api.post(`/entites/entites/${id}/noter/`, { body }),
+  // NTADM25 — vue consolidée « Groupe » (lecture seule, Administrateur).
+  groupe: () => api.get('/entites/entites/groupe/'),
   // NTADM28 — export xlsx du référentiel (téléchargement binaire).
   export: () =>
     api.get('/entites/entites/export/', { responseType: 'blob' }),

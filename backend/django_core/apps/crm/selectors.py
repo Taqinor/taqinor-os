@@ -2348,3 +2348,46 @@ def resume_portail_partenaire(company, partenaire_id):
         'commissions_dues': _somme(CommissionPartenaire.Statut.DUE),
         'commissions_payees': _somme(CommissionPartenaire.Statut.PAYEE),
     }
+
+
+def pipeline_pondere_par_entite(company, entite_ids):
+    """NTADM25 — pipeline PONDÉRÉ-PROBABILITÉ agrégé PAR ENTITÉ (NTADM2).
+
+    Point d'entrée cross-app sanctionné pour ``apps.entites`` (vue consolidée
+    « Groupe ») : FP&A/entités ne lisent jamais ``crm.models`` directement.
+    RÉUTILISE les scorers déjà en place (``apps.reporting.pipeline.
+    _lead_forecast_value`` × ``_lead_win_weight``, cf.
+    ``revenu_pipeline_pondere_par_mois``) — aucune logique dupliquée.
+
+    Renvoie ``{entite_id: {'pipeline': Decimal, 'nb_leads': int}}`` pour les
+    seules entités porteuses de leads OUVERTS (ni signés, ni perdus, ni
+    archivés).
+    """
+    from decimal import Decimal
+
+    from apps.reporting.pipeline import _lead_forecast_value, _lead_win_weight
+
+    from . import stages as stage_mod
+    from .models import Lead
+
+    ids = [i for i in (entite_ids or []) if i is not None]
+    if not ids:
+        return {}
+
+    ouvertes = [
+        k for k in stage_mod.STAGES
+        if k not in (stage_mod.SIGNED, stage_mod.COLD)
+    ]
+    qs = (
+        Lead.objects
+        .filter(company=company, entite_id__in=ids, is_archived=False,
+                perdu=False, stage__in=ouvertes)
+        .prefetch_related('devis')
+    )
+    out = {}
+    for lead in qs:
+        entry = out.setdefault(
+            lead.entite_id, {'pipeline': Decimal('0'), 'nb_leads': 0})
+        entry['pipeline'] += _lead_forecast_value(lead) * _lead_win_weight(lead)
+        entry['nb_leads'] += 1
+    return out

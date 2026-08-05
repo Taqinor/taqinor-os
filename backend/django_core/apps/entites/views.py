@@ -106,6 +106,18 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         return Response({'ok': True})
 
     @action(detail=False, methods=['get'], permission_classes=[IsAdministrateur])
+    def groupe(self, request):
+        """NTADM25 — vue consolidée « Groupe », LECTURE SEULE (Administrateur).
+
+        Une colonne de KPI par entité ACTIVE + une colonne Total. Pure lecture
+        cross-app via les sélecteurs de ventes/crm/stock filtrés sur le champ
+        ``entite`` de NTADM2 — aucun calcul nouveau, aucune écriture, et ce
+        n'est PAS une consolidation comptable. ``disponible`` reste False tant
+        que la société compte moins de deux entités actives.
+        """
+        return Response(selectors.consolidation_groupe(request.user.company))
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAdministrateur])
     def export(self, request):
         """NTADM28 — export xlsx du référentiel (code/nom/parent/actif).
 
