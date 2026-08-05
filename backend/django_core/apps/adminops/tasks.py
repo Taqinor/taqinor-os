@@ -111,6 +111,27 @@ def purger_config_packages_anciens():
         contenu={}, contenu_purge=True)
 
 
+@shared_task(name='adminops.perimer_demandes_impersonation')
+def perimer_demandes_impersonation():
+    """NTADM37 — quotidien : périme les demandes d'impersonation non consenties
+    dont l'échéance est passée.
+
+    Une demande périmée ne peut PLUS être autorisée rétroactivement (le service
+    `donner_consentement` refuse indépendamment de ce job — celui-ci ne fait
+    qu'aligner l'état stocké sur l'état logique, pour que la console et le
+    tenant voient « Expirée » sans attendre une lecture).
+
+    Ne touche JAMAIS une demande déjà consentie : une session en cours n'est
+    pas interrompue par ce job (elle meurt d'elle-même à son échéance)."""
+    from .models import SessionImpersonation
+
+    return SessionImpersonation.objects.filter(
+        consentement_donne=False,
+        expiree=False,
+        expire_le__lte=timezone.now(),
+    ).update(expiree=True)
+
+
 @shared_task(name='adminops.purger_evenements_usage')
 def purger_evenements_usage():
     """NTADM16 — purge des `EvenementUsage` au-delà de la rétention configurée

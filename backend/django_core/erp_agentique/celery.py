@@ -656,6 +656,13 @@ app.conf.beat_schedule = {
         'task': 'adminops.purger_evenements_usage',
         'schedule': crontab(hour=3, minute=50),
     },
+    # NTADM37 — péremption quotidienne des demandes d'impersonation restées
+    # sans consentement au-delà de leur échéance, 03:55. Une demande périmée
+    # ne peut jamais être autorisée rétroactivement.
+    'adminops-perimer-demandes-impersonation': {
+        'task': 'adminops.perimer_demandes_impersonation',
+        'schedule': crontab(hour=3, minute=55),
+    },
     # NTEDU22 — matérialise les séances de la semaine à venir depuis l'emploi
     # du temps actif. Dimanche soir (heure creuse), avant la semaine ciblée.
     'education-generer-seances-semaine': {

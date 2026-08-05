@@ -970,6 +970,8 @@ CELERY_TASK_ROUTES = {
     'adminops.recalculer_health_score_tenants': {'queue': 'scheduled'},
     'adminops.purger_config_packages_anciens': {'queue': 'scheduled'},
     'adminops.purger_evenements_usage': {'queue': 'scheduled'},
+    # NTADM37 — péremption des demandes d'impersonation non consenties.
+    'adminops.perimer_demandes_impersonation': {'queue': 'scheduled'},
     # NTEDU22 — matérialisation hebdomadaire des séances (emploi du temps).
     'education.generer_seances_semaine': {'queue': 'scheduled'},
     # NTIDE40 — digest feedback produit non-lu, gated par société.

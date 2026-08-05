@@ -238,6 +238,42 @@ class ImpersonationAuditTests(TestCase):
         self.assertIn(f'session={demande.pk}', ligne.detail)
         self.assertIn(self.support.username, ligne.detail)
 
+    def test_purge_ntadm37_perime_les_demandes_sans_consentement(self):
+        """NTADM37 — le job quotidien périme les demandes hors délai, et une
+        demande périmée n'est jamais autorisable rétroactivement."""
+        from ..tasks import perimer_demandes_impersonation
+
+        demande = impersonation_service.demander_impersonation(
+            utilisateur_cible=self.cible, initiee_par=self.support,
+            motif='Diagnostic')
+        SessionImpersonation.objects.filter(pk=demande.pk).update(
+            expire_le=timezone.now() - timezone.timedelta(minutes=5))
+
+        perimer_demandes_impersonation()
+
+        demande.refresh_from_db()
+        self.assertTrue(demande.expiree)
+        self.assertEqual(demande.statut, 'expiree')
+        with self.assertRaises(impersonation_service.ImpersonationRefusee):
+            impersonation_service.donner_consentement(demande, par=self.admin)
+        with self.assertRaises(impersonation_service.ImpersonationRefusee):
+            impersonation_service.emettre_jeton_impersonation(demande)
+
+    def test_purge_ntadm37_epargne_une_session_consentie(self):
+        """Une session en cours n'est jamais interrompue par le job."""
+        from ..tasks import perimer_demandes_impersonation
+
+        demande = impersonation_service.demander_impersonation(
+            utilisateur_cible=self.cible, initiee_par=self.support,
+            motif='Diagnostic')
+        impersonation_service.donner_consentement(demande, par=self.admin)
+
+        perimer_demandes_impersonation()
+
+        demande.refresh_from_db()
+        self.assertFalse(demande.expiree)
+        self.assertTrue(demande.est_active())
+
     def test_ligne_daudit_non_marquee_hors_session(self):
         from apps.audit.models import AuditLog
         from apps.audit.recorder import begin_request, end_request, record
