@@ -4,6 +4,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+from core.entite_scoping import EntiteScopeMixin
 from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
@@ -450,7 +451,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         return Response({'segment': segment, 'count': len(result), 'results': result})
 
 
-class LeadViewSet(CompanyScopedModelViewSet):
+class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).
 
     L'utilisateur acteur et la société viennent toujours de la requête côté

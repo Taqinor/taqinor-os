@@ -71,6 +71,40 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         return super().get_queryset().prefetch_related('users')
 
+    def _perimetre_acteur(self):
+        """NTADM21 — périmètre de délégation de l'acteur (None = global)."""
+        from .models import perimetre_de
+        return perimetre_de(self.request.user)
+
+    def _guard_perimetre(self, *jeux_de_permissions):
+        """NTADM21 — 403 si l'acteur DÉLÉGUÉ touche des permissions hors de son
+        périmètre.
+
+        Vérifie l'ANCIEN et le NOUVEAU jeu : un délégué RH ne peut ni fabriquer
+        un rôle plus large que le sien, ni éditer un rôle global existant pour
+        s'y ajouter des droits. Acteur au périmètre nul (Directeur /
+        Administrateur / compte légacy) → aucune vérification, comportement
+        strictement inchangé.
+
+        La garde vit ICI (couche de validation) et non dans une
+        ``permission_classes`` d'``@action`` : ce viewset surcharge
+        ``get_permissions``, qui PRIME et rendrait une telle garde muette.
+        """
+        from .models import permissions_hors_perimetre
+        perimetre = self._perimetre_acteur()
+        if not perimetre:
+            return
+        hors = sorted({
+            code
+            for jeu in jeux_de_permissions
+            for code in permissions_hors_perimetre(perimetre, jeu)
+        })
+        if hors:
+            raise PermissionDenied(
+                "Votre périmètre de délégation ne couvre pas ces "
+                f"permissions : {hors}."
+            )
+
     def _audit(self, field, label, old, new):
         """Écrit une ligne d'audit company-scopée pour le rôle agissant."""
         user = self.request.user
@@ -80,8 +114,17 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
+        # NTADM21 — un acteur délégué ne fabrique jamais un rôle plus large
+        # que le sien, et le rôle qu'il crée HÉRITE de son périmètre (sans
+        # quoi il suffirait de créer un rôle « global » pour s'échapper).
+        self._guard_perimetre(serializer.validated_data.get('permissions'))
+        extra = {}
+        perimetre = self._perimetre_acteur()
+        if perimetre:
+            extra['perimetre'] = perimetre
         # TenantMixin force la société côté serveur (jamais depuis la requête).
-        instance = serializer.save(company=self.request.user.company)
+        instance = serializer.save(
+            company=self.request.user.company, **extra)
         ajoutees, _retirees = _perms_diff([], instance.permissions)
         self._audit(
             field=f'role:{instance.nom}',
@@ -111,9 +154,19 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
                     "Vous ne pouvez pas modifier les permissions de votre "
                     "propre rôle."
                 )
+        # NTADM21 — l'ancien ET le nouveau jeu doivent tenir dans le périmètre
+        # de l'acteur : éditer un rôle global existant est aussi une escalade.
+        self._guard_perimetre(
+            instance0.permissions,
+            serializer.validated_data.get('permissions'))
         old_nom = serializer.instance.nom
         old_perms = sorted(serializer.instance.permissions or [])
-        instance = serializer.save(company=self.request.user.company)
+        extra = {}
+        perimetre = self._perimetre_acteur()
+        if perimetre:
+            extra['perimetre'] = perimetre
+        instance = serializer.save(
+            company=self.request.user.company, **extra)
         new_perms = sorted(instance.permissions or [])
         if old_perms != new_perms or old_nom != instance.nom:
             ajoutees, retirees = _perms_diff(old_perms, new_perms)

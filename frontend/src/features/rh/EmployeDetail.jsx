@@ -88,8 +88,8 @@ export default function EmployeDetail() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
     setLoading(true)
     setError(null)
-    rhApi.getEmploye(id)
-      .then((res) => { if (vivant) setEmp(res.data) })
+    Promise.resolve(rhApi.getEmploye?.(id))
+      .then((res) => { if (vivant && res) setEmp(res.data) })
       .catch(() => {
         if (!vivant) return
         setError('Employé introuvable.')

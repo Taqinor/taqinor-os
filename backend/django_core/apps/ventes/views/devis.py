@@ -36,6 +36,7 @@ from apps.roles.permissions import (  # noqa: F401
     IsInternalWriterOrPortalClientOwner, is_portal_user, portal_scope_id,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from core.idempotency import IdempotentCreateMixin  # noqa: F401  YAPIC9
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
@@ -60,7 +61,8 @@ def _company_qs(qs, user):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class DevisViewSet(IdempotentCreateMixin, CompanyScopedModelViewSet):
+class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
+                   CompanyScopedModelViewSet):
     # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
     # en-tête `Idempotency-Key`, comportement inchangé (le mixin ne fait que
     # déléguer à super().create()). AVEC l'en-tête, un rejeu à corps

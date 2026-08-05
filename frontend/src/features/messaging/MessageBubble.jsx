@@ -56,7 +56,7 @@ function PollBlock({ message, currentUserId }) {
 
   if (loading || !poll) return null
 
-  const totalVotes = poll.options.reduce((s, o) => s + o.vote_count, 0)
+  const totalVotes = (poll.options || []).reduce((s, o) => s + o.vote_count, 0)
   const closed = !!poll.closed_at
   const isOwner = (message.sender_detail?.id ?? message.sender?.id) === currentUserId
 
@@ -92,7 +92,7 @@ function PollBlock({ message, currentUserId }) {
     <div className="mt-1 flex flex-col gap-1.5 rounded-md border border-border bg-card/60 p-2">
       <p className="text-sm font-medium text-foreground">{poll.question}</p>
       <ul className="flex flex-col gap-1">
-        {poll.options.map((o) => {
+        {(poll.options || []).map((o) => {
           const pct = totalVotes > 0 ? Math.round((o.vote_count / totalVotes) * 100) : 0
           const mine = (poll.my_vote_option_ids || []).includes(o.id)
           return (

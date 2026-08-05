@@ -7,6 +7,7 @@ from drf_spectacular.views import (
     SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView,
 )
 from apps.publicapi.openapi import PublicOpenApiSchemaView
+from apps.adminops.views_signup import SignupDemandeView
 
 _ADMIN_URL = os.environ.get('DJANGO_ADMIN_URL', 'api/django/admin/')
 
@@ -136,6 +137,15 @@ _APP_URLS = [
     # Groupe NTADM — Administration enterprise.
     path('entites/', include('apps.entites.urls')),
     path('adminops/', include('apps.adminops.urls')),
+    # N101(b) — dépôt PUBLIC d'une demande d'inscription self-service, PARQUÉ
+    # par défaut (TENANT_SIGNUP_ENABLED : 404 quand éteint) et incapable de
+    # créer un compte ou une société. Composé ICI parce que la vue vit dans
+    # `apps.adminops` (une demande n'est pas un compte) alors que le chemin
+    # appartient à l'espace `auth/` : l'urlconf racine est le seul endroit
+    # légitime pour ce recollement, `authentication` étant une app de
+    # FONDATION qui ne doit pas importer une app satellite.
+    path('auth/signup-demande/',
+         SignupDemandeView.as_view(), name='auth_signup_demande'),
     # NTEDU1 — Éducation (établissement scolaire).
     path('education/', include('apps.education.urls')),
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).

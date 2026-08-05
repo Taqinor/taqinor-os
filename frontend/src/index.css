@@ -3648,6 +3648,25 @@ textarea.form-control {
   display: flex; align-items: center; justify-content: center;
 }
 .nb-tab-active .nb-tab-count { background: #1d4ed8; }
+/* NTADM19 — onglet « Annonces » : nouveautés produit de l'éditeur, rendues
+   en markdown simple. Une annonce non lue porte un liseré d'accent. */
+.nb-annonce {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.nb-annonce:last-child { border-bottom: none; }
+.nb-annonce-non-lue { border-left: 3px solid #1d4ed8; }
+.nb-annonce-entete {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; font-size: 0.78rem;
+}
+.nb-annonce-corps { font-size: 0.74rem; color: #475569; }
+.nb-annonce-titre {
+  font-size: 0.74rem; font-weight: 600; color: #334155;
+  margin: 6px 0 2px;
+}
+.nb-annonce-para { margin: 2px 0; }
+.nb-annonce-liste { margin: 2px 0; padding-left: 16px; list-style: disc; }
 .nb-group { padding: 4px 0; }
 .nb-group-title {
   display: flex; align-items: center; gap: 6px;

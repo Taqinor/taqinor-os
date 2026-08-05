@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { UserPlus, Users, Pencil, Trash2, ShieldCheck, UserCheck, UserX } from 'lucide-react'
+import { UserPlus, Users, Pencil, Trash2, ShieldCheck, UserCheck, UserX, AlertTriangle } from 'lucide-react'
 import api from '../../api/axios'
 import rolesApi from '../../api/rolesApi'
+import adminopsApi from '../../features/adminops/adminopsApi'
 import Avatar from '../../components/Avatar'
 import {
   Button, Badge,
@@ -51,6 +52,9 @@ export default function UsersManagement() {
   const [roles, setRoles] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // NTADM8 — statut des sièges (bannière NON bloquante, jamais d'empêchement
+  // de création). null tant que non chargé / indisponible (silencieux).
+  const [licenceStatut, setLicenceStatut] = useState(null)
   const [showForm, setShowForm] = useState(false)
   // VX104 — `supervisor` réglable dès la création (auparavant seul
   // EquipeSection.jsx le permettait, après coup — hiérarchie oubliée en
@@ -156,6 +160,14 @@ export default function UsersManagement() {
   }
 
   useEffect(() => { load() }, []) // eslint-disable-line
+
+  // NTADM8 — statut des sièges pour la bannière (best-effort, silencieux si
+  // l'endpoint échoue — jamais bloquant pour l'écran Utilisateurs).
+  useEffect(() => {
+    adminopsApi.licenceStatut()
+      .then((res) => setLicenceStatut(res.data))
+      .catch(() => setLicenceStatut(null))
+  }, [])
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -380,6 +392,18 @@ export default function UsersManagement() {
             </Button>
           )}
         </div>
+
+        {/* NTADM8 — bannière NON bloquante de quota de sièges : informe
+            seulement, la création d'un compte reste toujours possible. */}
+        {licenceStatut?.quota_atteint && (
+          <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>
+              Vous avez atteint votre quota de {licenceStatut.sieges_max} sièges —
+              contactez-nous pour l&apos;augmenter.
+            </span>
+          </p>
+        )}
 
         {/* ── Formulaire de création ── */}
         {showForm && (

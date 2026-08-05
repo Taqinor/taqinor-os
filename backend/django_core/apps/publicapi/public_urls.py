@@ -19,6 +19,7 @@ from .bulk_views import (
 )
 from .public_sandbox_views import SandboxResetView
 from .public_changelog_views import PublicChangelogView
+from .public_licence_views import PublicLicenceStatutView
 
 router = DefaultRouter()
 router.register(r'leads', PublicLeadViewSet, basename='public-lead')
@@ -53,5 +54,8 @@ urlpatterns = [
     # NTAPI24 — fil « changelog API » dédié (public, aucune clé requise).
     path('changelog/', PublicChangelogView.as_view(),
          name='public-changelog'),
+    # NTADM42 — statut de licence (plan/modules/sièges) de la société de la clé.
+    path('v1/licence/statut/', PublicLicenceStatutView.as_view(),
+         name='public-licence-statut'),
     path('', include(router.urls)),
 ]

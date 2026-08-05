@@ -21,6 +21,9 @@ import { logoutUser } from '../../features/auth/store/authSlice'
 import { toggleCopilot } from '../../features/ia/store/iaSlice'
 import GlobalSearch from './GlobalSearch'
 import CompanySwitcher from './CompanySwitcher'
+// NTADM26 — bascule d'ENTITÉ active (filtre d'affichage ; rend `null` tant
+// que l'utilisateur n'a pas accès à 2 entités ou plus).
+import EntiteSwitcher from '../../features/entites/EntiteSwitcher'
 import NotificationBell from './NotificationBell'
 import ChatBell from './ChatBell'
 import BackgroundJobsBell from './BackgroundJobsBell'
@@ -219,6 +222,9 @@ export default function Header({ onMenu }) {
         <div className="header-user header-cluster header-cluster-account">
           {/* XPLT19 — sélecteur de société active (multi-sociétés uniquement). */}
           <CompanySwitcher />
+          {/* NTADM26 — bascule d'entité affichée (2 entités accessibles ou
+              plus). Filtre de confort : ne change AUCUN droit. */}
+          <EntiteSwitcher />
           {/* N93 — sélecteur de langue d'interface (FR / EN / العربية). */}
           <LanguageSwitcher />
           {/* VX181 — `.header-right` débordait à 320-375px (9 cibles

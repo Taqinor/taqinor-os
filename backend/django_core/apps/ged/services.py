@@ -20,6 +20,20 @@ from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumenta
 logger = logging.getLogger(__name__)
 
 
+def _nom_societe(company):
+    """N100(c) white-label — nom affiché de la société pour les sorties CLIENT
+    (emails/SMS de signature) : identité du profil (``parametres``) sinon
+    ``Company.nom``. Jamais une marque codée en dur, jamais bloquant."""
+    try:
+        from apps.parametres.selectors import company_identity
+        nom = (company_identity(company).get('nom') or '').strip()
+        if nom:
+            return nom
+    except Exception:  # noqa: BLE001 — un envoi ne casse jamais sur ce point
+        pass
+    return (getattr(company, 'nom', '') or '').strip()
+
+
 def update_search_vector(document):
     """GED11 — Recalcule le tsvector plein-texte d'un document.
 
@@ -2836,7 +2850,7 @@ def _send_signataire_email(signataire, demande, *, relance=False):
             f'Un document « {demande.document.nom} » requiert votre '
             f'{"attention" if signataire.role != "signataire" else "signature"}.\n'
             f'Lien : /ged/signature/{signataire.token}/\n\n'
-            "Cordialement,\nL'équipe TAQINOR"
+            f"Cordialement,\nL'équipe {_nom_societe(demande.company)}".rstrip()
         )
         send_mail(sujet, corps, from_email, [signataire.email], fail_silently=False)
         return True
@@ -3016,7 +3030,7 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
         code = _generer_code_otp()
         resultat = send_sms(
             company, telephone,
-            f'TAQINOR — votre code de signature : {code}')
+            f'{_nom_societe(company)} — votre code de signature : {code}')
         if not resultat.sent:
             # Passerelle absente/non configurée → dégrade proprement en
             # « aucune » (jamais bloquant, jamais un faux OTP requis).
@@ -3046,7 +3060,8 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
             settings, 'DEFAULT_FROM_EMAIL', 'no-reply@taqinor.ma')
         try:
             send_mail(
-                'TAQINOR — code de signature', f'Votre code : {code}',
+                f'{_nom_societe(signataire.demande.company)} — code de '
+                'signature', f'Votre code : {code}',
                 from_email, [email], fail_silently=False)
         except Exception as exc:  # noqa: BLE001 — dégrade, jamais bloquant.
             return {'envoye': False, 'mode': 'aucune',

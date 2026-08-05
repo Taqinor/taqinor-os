@@ -1,6 +1,94 @@
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
-from .models import AdminOpsSettings, ConfigPackage, SandboxEnvironment
+from .models import (
+    AdminOpsSettings, AnnonceProduit, ConfigPackage, DemandeInscription,
+    FactureLicence, SandboxEnvironment, SessionImpersonation,
+)
+
+
+class DemandeInscriptionSerializer(serializers.ModelSerializer):
+    """N101(b) — lecture SEULE : le dépôt public et les décisions du fondateur
+    passent par leurs endpoints dédiés."""
+
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = DemandeInscription
+        fields = [
+            'id', 'societe', 'nom', 'email', 'telephone', 'statut',
+            'statut_libelle', 'notes', 'traite_le', 'traite_par',
+            'company_creee', 'created_at',
+        ]
+        read_only_fields = fields
+
+
+class FactureLicenceSerializer(serializers.ModelSerializer):
+    """N100(e) — lecture SEULE : les écritures passent par les endpoints
+    dédiés de la console (création / pointage « payée »)."""
+
+    societe_nom = serializers.CharField(
+        source='company.nom', read_only=True, default='')
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = FactureLicence
+        fields = [
+            'id', 'company', 'societe_nom', 'reference', 'periode',
+            'plan_code', 'montant_ht', 'tva', 'montant_ttc', 'statut',
+            'statut_libelle', 'date_emission', 'date_paiement', 'notes',
+            'created_at',
+        ]
+        read_only_fields = fields
+
+
+@extend_schema_serializer(component_name='AnnonceProduitPlateforme')
+class AnnonceProduitSerializer(serializers.ModelSerializer):
+    """NTADM18 — annonce produit + état de lecture du DEMANDEUR.
+
+    `lu` est calculé depuis `context['lues']` (l'ensemble des annonces déjà
+    lues par l'utilisateur courant) : jamais une requête par ligne."""
+
+    lu = serializers.SerializerMethodField()
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+
+    class Meta:
+        model = AnnonceProduit
+        fields = [
+            'id', 'titre', 'corps', 'date_publication', 'cible_roles',
+            'auteur', 'auteur_nom', 'lu', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_lu(self, obj) -> bool:
+        return obj.pk in (self.context.get('lues') or set())
+
+
+class SessionImpersonationSerializer(serializers.ModelSerializer):
+    """NTADM22 — lecture SEULE : une session ne se crée/modifie QUE par les
+    endpoints dédiés (consentement obligatoire), jamais par un PATCH générique."""
+
+    statut = serializers.CharField(read_only=True)
+    cible_nom = serializers.CharField(
+        source='utilisateur_cible.username', read_only=True, default='')
+    support_nom = serializers.CharField(
+        source='initiee_par.username', read_only=True, default='')
+    societe_nom = serializers.CharField(
+        source='company.nom', read_only=True, default='')
+
+    class Meta:
+        model = SessionImpersonation
+        fields = [
+            'id', 'company', 'societe_nom', 'utilisateur_cible', 'cible_nom',
+            'initiee_par', 'support_nom', 'motif', 'consentement_donne',
+            'consentement_le', 'consentement_par', 'refusee', 'refus_le',
+            'expire_le', 'demarree_le', 'terminee_le', 'expiree', 'statut',
+            'created_at',
+        ]
+        read_only_fields = fields
 
 
 class SandboxEnvironmentSerializer(serializers.ModelSerializer):

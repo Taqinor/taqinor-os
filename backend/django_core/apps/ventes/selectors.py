@@ -1602,3 +1602,55 @@ def comparaison_calepinage_devis(devis):
         'compte_moteur': int(mesure['modules']),
         'ecart': int(mesure['modules']) - stocke,
     }
+
+
+def ca_par_entite(company, entite_ids):
+    """NTADM25 — CA (devis retenus + factures) agrégé PAR ENTITÉ (NTADM2).
+
+    Point d'entrée cross-app sanctionné pour ``apps.entites`` (vue consolidée
+    « Groupe »), jamais un import direct de ``ventes.models``. MÊME règle de
+    calcul que ``ca_devis_factures_par_clients`` — aucune logique dupliquée :
+    devis REFUSÉS et factures ANNULÉES exclus, ``total_ttc`` sommé tel quel.
+
+    Renvoie ``{entite_id: {'ca_devis': Decimal, 'ca_factures': Decimal,
+    'nb_devis': int, 'nb_factures': int}}`` ; une entité sans document
+    n'apparaît PAS (l'appelant fournit un défaut à zéro). Lecture seule,
+    bornée à ``company`` — jamais de fuite cross-société.
+    """
+    from decimal import Decimal
+
+    from .models import Devis, Facture
+
+    ids = [i for i in (entite_ids or []) if i is not None]
+    if not ids:
+        return {}
+
+    def _vide():
+        return {
+            'ca_devis': Decimal('0'), 'ca_factures': Decimal('0'),
+            'nb_devis': 0, 'nb_factures': 0,
+        }
+
+    out = {}
+    devis_qs = (Devis.objects
+                .filter(company=company, entite_id__in=ids)
+                .exclude(statut=Devis.Statut.REFUSE))
+    for devis in devis_qs:
+        entry = out.setdefault(devis.entite_id, _vide())
+        try:
+            entry['ca_devis'] += Decimal(str(devis.total_ttc or 0))
+        except Exception:  # noqa: BLE001 — jamais casser la consolidation
+            pass
+        entry['nb_devis'] += 1
+
+    facture_qs = (Facture.objects
+                  .filter(company=company, entite_id__in=ids)
+                  .exclude(statut=Facture.Statut.ANNULEE))
+    for facture in facture_qs:
+        entry = out.setdefault(facture.entite_id, _vide())
+        try:
+            entry['ca_factures'] += Decimal(str(facture.total_ttc or 0))
+        except Exception:  # noqa: BLE001 — jamais casser la consolidation
+            pass
+        entry['nb_factures'] += 1
+    return out

@@ -229,6 +229,22 @@ class Devis(models.Model):
         related_name='devis_modifies',
     )
 
+    # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
+    # filiale / agence, cf. apps.entites). NULL = « non affecté » : aucun
+    # backfill, aucune liste filtrée d'office — le comportement reste
+    # STRICTEMENT identique tant que personne ne renseigne le champ. FK-STRING
+    # cross-app : jamais d'import de ``apps.entites.models`` ici.
+    entite = models.ForeignKey(
+        'entites.Entite',
+        # on_delete: désactiver/supprimer une entité ne doit JAMAIS effacer un
+        # document d'argent — le devis redevient « non affecté » (SET_NULL),
+        # jamais une cascade sur du CA.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ventes_devis',
+        verbose_name='Entité',
+    )
+
     class Meta:
         verbose_name = 'Devis'
         verbose_name_plural = 'Devis'

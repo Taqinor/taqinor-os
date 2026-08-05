@@ -1172,3 +1172,25 @@ def resume_portail_fournisseur(company, fournisseur_id):
         'factures_a_payer': factures.count(),
         'montant_a_payer': str(montant),
     }
+
+
+def nb_produits_par_entite(company, entite_ids):
+    """NTADM25 — nombre de produits ACTIFS par entité (NTADM2).
+
+    Point d'entrée cross-app sanctionné pour ``apps.entites`` (vue consolidée
+    « Groupe »), jamais un import direct de ``stock.models``. Les produits
+    archivés sont exclus (même règle que la liste catalogue). Renvoie
+    ``{entite_id: int}`` — une entité sans produit n'apparaît pas.
+    """
+    from django.db.models import Count
+
+    from .models import Produit
+
+    ids = [i for i in (entite_ids or []) if i is not None]
+    if not ids:
+        return {}
+    lignes = (Produit.objects
+              .filter(company=company, entite_id__in=ids, is_archived=False)
+              .values('entite_id')
+              .annotate(nb=Count('id')))
+    return {ligne['entite_id']: ligne['nb'] for ligne in lignes}

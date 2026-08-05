@@ -786,6 +786,22 @@ class Lead(SoftDeleteModel):
         max_length=254, blank=True, default='', db_index=True,
         verbose_name='Email normalisé (dédup)')
 
+    # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
+    # filiale / agence, cf. apps.entites). NULL = « non affecté » : aucun
+    # backfill, aucune liste filtrée d'office — comportement STRICTEMENT
+    # identique tant que le champ n'est pas renseigné. FK-STRING cross-app :
+    # jamais d'import de ``apps.entites.models`` ici.
+    entite = models.ForeignKey(
+        'entites.Entite',
+        # on_delete: supprimer une entité ne doit JAMAIS effacer un lead — la
+        # ligne redevient « non affectée » (SET_NULL), jamais une cascade sur
+        # du pipeline commercial.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='crm_leads',
+        verbose_name='Entité',
+    )
+
     def save(self, *args, **kwargs):
         # QW10 — maintient les colonnes de dédup normalisées à chaque save,
         # quelle que soit la voie d'écriture (webhook, admin, API, import) —

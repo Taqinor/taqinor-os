@@ -29,6 +29,12 @@ const adminopsApi = {
     api.post('/adminops/config-packages/previsualiser/', { contenu }),
   appliquerPackage: (contenu) =>
     api.post('/adminops/config-packages/appliquer/', { contenu }),
+
+  // Licences & sièges (NTADM8/9) — plan, modules inclus, sièges utilisés/max,
+  // historique des changements de plan.
+  licenceStatut: () => api.get('/adminops/licences/'),
+  // NTADM29 — export PDF imprimable (instantané daté, RH/direction interne).
+  licencePdf: () => api.get('/adminops/licences/pdf/', { responseType: 'blob' }),
 }
 
 export default adminopsApi

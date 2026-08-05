@@ -982,7 +982,8 @@ def request_esign_otp(link):
     if phone:
         sent = _send_otp_whatsapp(phone=phone, code=code, devis_ref=devis.reference)
     if not sent:
-        sent = _send_otp_email(email=email, code=code, devis_ref=devis.reference)
+        sent = _send_otp_email(email=email, code=code, devis_ref=devis.reference,
+                               company=devis.company)
 
     if not sent:
         logger.warning(
@@ -1065,11 +1066,16 @@ def _send_otp_whatsapp(phone, code, devis_ref):
     return False
 
 
-def _send_otp_email(email, code, devis_ref):
-    """Envoie le code OTP par email. Best-effort → bool."""
+def _send_otp_email(email, code, devis_ref, company=None):
+    """Envoie le code OTP par email. Best-effort → bool.
+
+    N100(c) white-label : la signature vient de la société du devis
+    (``email_service._signature`` — BrandedTemplate ou « L'équipe {nom} »),
+    jamais d'une marque codée en dur."""
     try:
         from django.core.mail import send_mail
         from django.conf import settings
+        from .email_service import _signature
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
         sujet = f'Code de confirmation — devis {devis_ref}'
         corps = (
@@ -1077,7 +1083,7 @@ def _send_otp_email(email, code, devis_ref):
             f'    {code}\n\n'
             f'Ce code est valable 10 minutes.\n\n'
             f'Si vous n\'avez pas demandé ce code, ignorez ce message.\n\n'
-            f"Cordialement,\nL'équipe TAQINOR"
+            f"Cordialement,\n{_signature(company)}"
         )
         send_mail(sujet, corps, from_email, [email], fail_silently=False)
         return True
@@ -1212,6 +1218,7 @@ def _send_acceptance_emails(*, devis, user):
     """
     try:
         from apps.ventes.email_service import send_document_email
+        from apps.ventes.email_service import _signature as _signature_societe
         client = getattr(devis, 'client', None)
         dest = (getattr(client, 'email', '') or '').strip()
         nom_client = ''
@@ -1234,7 +1241,7 @@ def _send_acceptance_emails(*, devis, user):
             f"{acompte_bloc}"
             f"Vous trouverez ci-joint votre exemplaire signé pour vos archives.\n\n"
             f"Merci pour votre confiance.\n\n"
-            f"Cordialement,\nL'équipe TAQINOR"
+            f"Cordialement,\n{_signature_societe(devis.company)}"
         )
         if dest:
             send_document_email(
