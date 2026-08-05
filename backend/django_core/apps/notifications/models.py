@@ -231,6 +231,18 @@ class EventType(models.TextChoices):
     IDEA_RECEIVED = 'idea_received', 'Idée reçue (bienvenue)'
     IDEA_RETAINED = 'idea_retenue', 'Idée retenue'
     IDEA_REALIZED = 'idea_realisee', 'Idée réalisée'
+    # NTADM22 — le support de l'éditeur DEMANDE à ouvrir une session
+    # d'assistance sur ce tenant. Notifie les Administrateurs du tenant CIBLE,
+    # qui seuls peuvent autoriser : sans leur clic explicite, aucune session
+    # n'est ouverte (cf. apps.adminops.impersonation_service).
+    IMPERSONATION_REQUESTED = (
+        'impersonation_requested', 'Demande de session support')
+    # NTADM18 — annonce PRODUIT publiée par l'éditeur (nouveautés de l'ERP,
+    # « Quoi de neuf »). Distincte de ANNONCE_PUBLISHED, qui porte les annonces
+    # INTERNES d'un tenant à ses propres équipes : ici l'émetteur est l'éditeur
+    # et l'audience traverse les sociétés.
+    PRODUCT_ANNOUNCEMENT = (
+        'product_announcement', 'Nouveauté produit')
 
 
 class Channel(models.TextChoices):

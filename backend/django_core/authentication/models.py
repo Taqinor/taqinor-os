@@ -208,6 +208,16 @@ class CustomUser(AbstractUser):
     # récupération passe par l'accès SSH au serveur (management command), pas
     # par un secret en dur. Additif, défaut False.
     is_protected = models.BooleanField(default=False)
+    # NTADM22 — membre du STAFF SUPPORT de l'éditeur (Taqinor), habilité à
+    # DEMANDER une session d'impersonation sur un tenant client. Volontairement
+    # SÉPARÉ des rôles métier (`role`/`role_legacy`) et de `is_staff` : ce n'est
+    # pas un privilège dans la société de l'utilisateur, c'est une habilitation
+    # côté ÉDITEUR. Ne donne AUCUN accès par lui-même — sans le consentement
+    # explicite de l'Administrateur du tenant cible, aucune session n'existe
+    # (cf. `apps.adminops.impersonation_service`). Additif, défaut False : aucun
+    # compte existant ne devient support par cette migration.
+    is_taqinor_support = models.BooleanField(
+        default=False, verbose_name='Staff support éditeur')
     # Superviseur direct (hiérarchie d'équipe, Feature E). Auto-référence
     # nullable : un Directeur/Admin l'assigne dans Paramètres → Équipe. L'« équipe »
     # d'un utilisateur = tous ceux partageant son superviseur direct (ses pairs),

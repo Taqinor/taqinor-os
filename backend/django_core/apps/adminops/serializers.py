@@ -1,6 +1,32 @@
 from rest_framework import serializers
 
-from .models import AdminOpsSettings, ConfigPackage, SandboxEnvironment
+from .models import (
+    AdminOpsSettings, ConfigPackage, SandboxEnvironment, SessionImpersonation,
+)
+
+
+class SessionImpersonationSerializer(serializers.ModelSerializer):
+    """NTADM22 — lecture SEULE : une session ne se crée/modifie QUE par les
+    endpoints dédiés (consentement obligatoire), jamais par un PATCH générique."""
+
+    statut = serializers.CharField(read_only=True)
+    cible_nom = serializers.CharField(
+        source='utilisateur_cible.username', read_only=True, default='')
+    support_nom = serializers.CharField(
+        source='initiee_par.username', read_only=True, default='')
+    societe_nom = serializers.CharField(
+        source='company.nom', read_only=True, default='')
+
+    class Meta:
+        model = SessionImpersonation
+        fields = [
+            'id', 'company', 'societe_nom', 'utilisateur_cible', 'cible_nom',
+            'initiee_par', 'support_nom', 'motif', 'consentement_donne',
+            'consentement_le', 'consentement_par', 'refusee', 'refus_le',
+            'expire_le', 'demarree_le', 'terminee_le', 'expiree', 'statut',
+            'created_at',
+        ]
+        read_only_fields = fields
 
 
 class SandboxEnvironmentSerializer(serializers.ModelSerializer):

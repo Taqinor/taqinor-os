@@ -1,10 +1,26 @@
 """apps.adminops — Health score, sandbox, packages de config, adoption,
 diagnostic support (Groupe NTADM). Additif — aucun modèle métier existant
 n'est modifié."""
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
+
+#: NTADM22 — fenêtre par défaut d'une demande d'impersonation. Passé ce délai
+#: sans consentement, la demande est périmée et ne peut PLUS être autorisée
+#: rétroactivement (NTADM37 la marque `expiree`).
+DUREE_DEMANDE_IMPERSONATION = timedelta(minutes=30)
+
+
+def default_expiration_impersonation():
+    """Échéance par défaut d'une demande d'impersonation (now + 30 min).
+
+    Fonction nommée au niveau module (et non un ``lambda``) pour être
+    sérialisable par les migrations Django."""
+    return timezone.now() + DUREE_DEMANDE_IMPERSONATION
 
 
 class HealthScoreSnapshot(TenantModel):
@@ -126,6 +142,95 @@ class EvenementUsage(TenantModel):
 
     def __str__(self):
         return f'{self.module}/{self.ecran} — {self.utilisateur_id}'
+
+
+class SessionImpersonation(TenantModel):
+    """NTADM22 — session de support « se connecter en tant que », SOUS CONSENTEMENT.
+
+    `company` (TenantModel) = le tenant CIBLE (celui qui subit l'assistance) —
+    c'est lui qui doit consentir, et c'est dans son journal que tout apparaît.
+
+    Invariant central, garanti par le service ET par la base : **sans
+    consentement explicite, aucune session n'existe**. Une demande naît
+    `consentement_donne=False` et ne devient exploitable que si l'Administrateur
+    du tenant cible clique « Autoriser » AVANT `expire_le`. Une demande périmée
+    (`expiree=True`, NTADM37) ne peut JAMAIS être autorisée rétroactivement.
+    """
+
+    utilisateur_cible = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: la session n'a plus d'objet sans son utilisateur cible (composition)
+        related_name='impersonations_subies',
+        verbose_name='Utilisateur assisté')
+    initiee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: la trace d'audit survit à la suppression du compte support
+        related_name='impersonations_initiees',
+        verbose_name='Demandée par (support)')
+    motif = models.TextField(
+        verbose_name='Motif',
+        help_text="Obligatoire — affiché tel quel au tenant dans la demande "
+                  "de consentement.")
+    consentement_donne = models.BooleanField(
+        default=False, verbose_name='Consentement donné')
+    consentement_le = models.DateTimeField(null=True, blank=True)
+    consentement_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: la preuve de consentement reste lisible même si son auteur est supprimé
+        related_name='impersonations_consenties',
+        verbose_name='Consentement donné par')
+    refusee = models.BooleanField(default=False, verbose_name='Refusée')
+    refus_le = models.DateTimeField(null=True, blank=True)
+    expire_le = models.DateTimeField(
+        default=default_expiration_impersonation,
+        verbose_name="Échéance de la demande")
+    demarree_le = models.DateTimeField(null=True, blank=True)
+    terminee_le = models.DateTimeField(null=True, blank=True)
+    expiree = models.BooleanField(default=False, verbose_name='Périmée')
+
+    class Meta:
+        verbose_name = "Session d'impersonation"
+        verbose_name_plural = "Sessions d'impersonation"
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'consentement_donne'],
+                         name='adminops_imp_co_consent'),
+        ]
+
+    def __str__(self):
+        return f'Impersonation {self.utilisateur_cible_id} ({self.statut})'
+
+    # ── Lecture d'état (aucune écriture ici) ────────────────────────────────
+    def est_perimee(self, now=None):
+        """True si la fenêtre de consentement est passée sans consentement."""
+        if self.consentement_donne:
+            return False
+        return (now or timezone.now()) >= self.expire_le
+
+    def est_active(self, now=None):
+        """True SEULEMENT si une session utilisable existe à cet instant.
+
+        Exige le consentement, l'absence de refus/péremption/clôture, et une
+        échéance non atteinte. C'est l'unique porte d'entrée : tout le reste
+        du code demande `est_active()`, jamais `consentement_donne` seul."""
+        now = now or timezone.now()
+        return bool(
+            self.consentement_donne
+            and not self.refusee
+            and not self.expiree
+            and self.terminee_le is None
+            and now < self.expire_le
+        )
+
+    @property
+    def statut(self):
+        """Libellé français de l'état courant (jamais stocké — dérivé)."""
+        if self.refusee:
+            return 'refusee'
+        if self.terminee_le is not None:
+            return 'terminee'
+        if self.expiree or self.est_perimee():
+            return 'expiree'
+        if self.consentement_donne:
+            return 'active'
+        return 'en_attente'
 
 
 class AdminOpsSettings(TenantModel):
