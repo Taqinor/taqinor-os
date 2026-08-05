@@ -671,9 +671,9 @@ class CompanyProfile(models.Model):
         null=True, blank=True,
         related_name='+',
         verbose_name='Plan de licence',
-        help_text='Palier de licence TAQINOR assigné à cette société. Vide = '
-                  'accès complet (comportement actuel). Assignation réservée '
-                  'au founder.',
+        help_text='Palier de licence assigné à cette société. Vide = accès '
+                  'complet (comportement actuel). Assignation réservée au '
+                  'founder.',
     )
 
     # ── NTADM8 — Gestion des licences/sièges ────────────────────────────────

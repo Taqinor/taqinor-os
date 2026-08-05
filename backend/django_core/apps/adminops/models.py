@@ -160,10 +160,11 @@ class AdminOpsSettings(TenantModel):
 
 # ── NTADM7 — Catalogue des paliers de licence TAQINOR ───────────────────────
 class PlanLicence(TimestampedModel):
-    """NTADM7 — catalogue des paliers de licence TAQINOR (starter/pro/enterprise).
+    """NTADM7 — catalogue des paliers de licence de l'éditeur du logiciel
+    (starter/pro/enterprise).
 
-    GLOBAL, PAS multi-tenant : ce catalogue appartient à TAQINOR elle-même (les
-    offres LOGICIEL que TAQINOR vend à SES clients tenants) — jamais à un
+    GLOBAL, PAS multi-tenant : ce catalogue appartient à l'éditeur lui-même
+    (les offres LOGICIEL qu'il vend à SES clients tenants) — jamais à un
     ``company`` particulier, donc AUCUNE FK ``company`` (aucun scoping société,
     à la différence de tout modèle métier du reste de cette app).
     ``CompanyProfile.plan`` (FK nullable, ``apps.parametres``) rattache CHAQUE

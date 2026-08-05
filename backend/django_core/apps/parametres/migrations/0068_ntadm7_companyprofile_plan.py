@@ -18,6 +18,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='companyprofile',
             name='plan',
-            field=models.ForeignKey(blank=True, help_text='Palier de licence TAQINOR assigné à cette société. Vide = accès complet (comportement actuel). Assignation réservée au founder.', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='adminops.planlicence', verbose_name='Plan de licence'),
+            field=models.ForeignKey(blank=True, help_text='Palier de licence assigné à cette société. Vide = accès complet (comportement actuel). Assignation réservée au founder.', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='adminops.planlicence', verbose_name='Plan de licence'),
         ),
     ]

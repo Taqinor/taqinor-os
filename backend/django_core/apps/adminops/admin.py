@@ -5,7 +5,7 @@ from .models import PlanLicence
 
 @admin.register(PlanLicence)
 class PlanLicenceAdmin(admin.ModelAdmin):
-    """NTADM7 — catalogue des paliers de licence TAQINOR. Édition RÉSERVÉE au
+    """NTADM7 — catalogue des paliers de licence. Édition RÉSERVÉE au
     founder (seul superuser Django accède à cet admin) — jamais un écran
     tenant-facing."""
 
