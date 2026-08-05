@@ -30,7 +30,9 @@ def has_feature(company, module_key):
     if company is None:
         return True
     from .models import CompanyProfile
-    profile = CompanyProfile.get(company=company)
+    # Lecture PURE : jamais ``CompanyProfile.get`` (get-or-CREATE) — un simple
+    # contrôle de flag ne doit pas écrire une ligne en effet de bord.
+    profile = CompanyProfile.objects.filter(company=company).first()
     plan = getattr(profile, 'plan', None)
     if plan is None:
         return True

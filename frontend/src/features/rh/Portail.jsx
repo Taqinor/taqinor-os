@@ -71,8 +71,8 @@ export default function Portail() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
     setLoading(true)
     setSansDossier(false)
-    rhApi.getMesInfos()
-      .then((res) => { if (vivant) setInfos(res.data) })
+    Promise.resolve(rhApi.getMesInfos?.())
+      .then((res) => { if (vivant && res) setInfos(res.data) })
       .catch((err) => {
         if (!vivant) return
         // 404 = aucun dossier employé lié au compte.

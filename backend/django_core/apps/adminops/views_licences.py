@@ -20,6 +20,9 @@ reste de cette app) ; NTADM39 affine l'accès fin (``adminops_licences_voir``,
 rétrocompat rôles système — voir ``permissions.py``)."""
 from django.http import HttpResponse
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -71,6 +74,13 @@ def _historique_plan(company):
     ]
 
 
+@extend_schema(responses=inline_serializer('LicenceStatut', {
+    'sieges_utilises': drf_serializers.IntegerField(),
+    'sieges_max': drf_serializers.IntegerField(allow_null=True),
+    'quota_atteint': drf_serializers.BooleanField(),
+    'plan': drf_serializers.JSONField(allow_null=True),
+    'historique': drf_serializers.JSONField(),
+}))
 @api_view(['GET'])
 @permission_classes([IsAdministrateur])
 def licence_statut_view(request):
@@ -111,6 +121,7 @@ def _comptes_actifs_nominatifs(company):
     ]
 
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAdministrateur])
 def licence_pdf_view(request):

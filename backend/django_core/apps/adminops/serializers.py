@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from .models import (
@@ -43,6 +44,7 @@ class FactureLicenceSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+@extend_schema_serializer(component_name='AnnonceProduitPlateforme')
 class AnnonceProduitSerializer(serializers.ModelSerializer):
     """NTADM18 — annonce produit + état de lecture du DEMANDEUR.
 
@@ -61,7 +63,7 @@ class AnnonceProduitSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_lu(self, obj):
+    def get_lu(self, obj) -> bool:
         return obj.pk in (self.context.get('lues') or set())
 
 

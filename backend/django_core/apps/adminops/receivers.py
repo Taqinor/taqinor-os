@@ -50,7 +50,12 @@ def _statut_sieges(company):
     from apps.parametres.models import CompanyProfile
     from authentication.services import sieges_utilises
 
-    profile = CompanyProfile.get(company=company)
+    # JAMAIS ``CompanyProfile.get`` ici : ce classmethod get-or-CREATE, et un
+    # signal ne doit jamais écrire une ligne en effet de bord (collision
+    # « profile existe déjà » dans tout test qui crée le sien explicitement).
+    profile = CompanyProfile.objects.filter(company=company).first()
+    if profile is None:
+        return None  # pas de profil = pas de quota configuré
     max_sieges = profile.nb_sieges_max
     if not max_sieges:
         return None  # illimité (défaut) — rien à signaler

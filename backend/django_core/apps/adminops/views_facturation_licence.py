@@ -19,6 +19,8 @@ from datetime import date
 
 from django.http import HttpResponse
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -156,6 +158,7 @@ class FactureLicenceExportCsvView(APIView):
 
     permission_classes = [IsSuperuserConsole]
 
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
     def get(self, request):
         qs = FactureLicence.objects.select_related('company').order_by(
             '-periode', '-id')

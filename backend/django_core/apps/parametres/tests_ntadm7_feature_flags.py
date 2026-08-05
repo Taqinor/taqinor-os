@@ -30,8 +30,11 @@ class HasFeatureTests(TestCase):
     def test_plan_starter_restreint_aux_modules_inclus(self):
         from apps.adminops.models import PlanLicence
         company = _company(slug='ntadm7-co-2', nom='NTADM7 Co 2')
-        plan = PlanLicence.objects.create(
-            code='starter', nom='Starter', modules_inclus=['crm', 'ventes'])
+        # Le palier starter est SEEDÉ par adminops.0003 : ne jamais le
+        # re-créer (collision unique sur code) — on le reconfigure.
+        plan, _ = PlanLicence.objects.update_or_create(
+            code='starter',
+            defaults={'nom': 'Starter', 'modules_inclus': ['crm', 'ventes']})
         profile = CompanyProfile.get(company=company)
         profile.plan = plan
         profile.save(update_fields=['plan'])

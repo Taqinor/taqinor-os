@@ -169,7 +169,8 @@ class TestPublicDocumentEndpoint(TestCase):
         self.assertEqual(resp.status_code, 404)
         detail = resp.data['detail']
         self.assertIn('expiré', detail)
-        self.assertIn('TAQINOR', detail)
+        # N100(c) white-label : l'avis est NEUTRE (jamais de marque en dur).
+        self.assertIn('votre installateur', detail)
         # Aucune fuite de donnée interne dans l'avis.
         self.assertNotIn(self.devis.reference, detail)
 

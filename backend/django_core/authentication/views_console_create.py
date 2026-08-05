@@ -23,6 +23,8 @@ import logging
 
 from django.utils.crypto import get_random_string
 from django.utils.text import slugify
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -77,6 +79,15 @@ class TenantConsoleCreateView(APIView):
 
     permission_classes = [IsSuperuserConsole]
 
+    @extend_schema(
+        request=inline_serializer('TenantConsoleCreateRequete', {
+            'nom': drf_serializers.CharField(),
+            'email': drf_serializers.EmailField(),
+        }),
+        responses=inline_serializer('TenantConsoleCreateReponse', {
+            'company': drf_serializers.JSONField(),
+            'admin': drf_serializers.JSONField(),
+        }))
     def post(self, request):
         nom = (request.data.get('nom') or '').strip()
         email = (request.data.get('email') or '').strip()

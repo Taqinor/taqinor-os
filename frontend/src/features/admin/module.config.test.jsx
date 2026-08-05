@@ -31,12 +31,17 @@ describe('admin — module.config (ODY23 Tableau de bord)', () => {
   it('garde ses 5 routes Administration historiques inchangées', async () => {
     const { default: config } = await import('./module.config.jsx')
     const paths = config.routes.map((r) => r.path).sort()
-    expect(paths).toEqual([
+    // Les 5 routes historiques restent présentes et non renommées ; le module
+    // peut en GAGNER (NTADM22/32 ont ajouté l'impersonation) sans casser la
+    // garde — on épingle l'inclusion, pas l'égalité stricte (classe #22).
+    expect(paths).toEqual(expect.arrayContaining([
       '/admin/gouvernance-acces',
       '/admin/roles',
       '/admin/securite-identite',
       '/admin/tenants',
       '/admin/users',
-    ])
+    ]))
+    expect(paths).toContain('/admin/impersonation')
+    expect(paths).toContain('/admin/impersonation/demander')
   })
 })

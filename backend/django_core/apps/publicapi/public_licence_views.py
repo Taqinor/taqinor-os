@@ -3,6 +3,8 @@
 la société de la clé (jamais un paramètre client). Renvoie SEULEMENT
 ``plan_code``/``modules_inclus``/``sieges_max``/``sieges_utilises`` — aucun
 champ interne (prix, historique de changement de plan)."""
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -23,6 +25,13 @@ class PublicLicenceStatutView(PublicApiResponseMixin, APIView):
     throttle_classes = [ApiKeyRateThrottle]
     required_scope = SCOPE_READ_LICENCE
 
+    @extend_schema(responses=inline_serializer('LicenceStatutPublic', {
+        'plan_code': drf_serializers.CharField(allow_null=True),
+        'modules_inclus': drf_serializers.ListField(
+            child=drf_serializers.CharField()),
+        'sieges_max': drf_serializers.IntegerField(allow_null=True),
+        'sieges_utilises': drf_serializers.IntegerField(),
+    }))
     def get(self, request):
         company = request.auth.company
         profile = CompanyProfile.get(company=company)

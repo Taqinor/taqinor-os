@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import logging
 
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
@@ -108,6 +110,10 @@ class ImpersonationCiblesView(APIView):
 
     permission_classes = [IsTaqinorSupport]
 
+    @extend_schema(responses=inline_serializer('ImpersonationCibles', {
+        'societes': drf_serializers.JSONField(),
+        'utilisateurs': drf_serializers.JSONField(),
+    }))
     def get(self, request):
         from authentication.models import Company, CustomUser
 
