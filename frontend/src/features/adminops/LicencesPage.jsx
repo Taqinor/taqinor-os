@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react'
 import adminopsApi from './adminopsApi'
 import PageHeader from '../../components/layout/PageHeader'
-import { Badge, Card, EmptyState, Spinner, StatusPill } from '../../ui'
+import { Badge, Button, Card, EmptyState, Spinner, StatusPill } from '../../ui'
 import { formatDate } from '../../lib/format'
 import { toastError } from '../../lib/toast'
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 
 /* ============================================================================
    NTADM9 — Écran admin « Licences & sièges » : palier de licence, modules
    inclus, sièges utilisés/max, historique des changements de plan. Lecture
    seule — un changement de plan reste une action manuelle du founder.
+   NTADM29 — bouton « Exporter PDF » : instantané daté imprimable (usage RH/
+   direction interne).
    ========================================================================== */
 
 export default function LicencesPage() {
   const [statut, setStatut] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [pdfBusy, setPdfBusy] = useState(false)
 
   useEffect(() => {
     adminopsApi
@@ -22,6 +26,15 @@ export default function LicencesPage() {
       .catch(() => toastError('Impossible de charger le statut de licence.'))
       .finally(() => setLoading(false))
   }, [])
+
+  const exporterPdf = () => {
+    const pending = downloadBlobInGesture()
+    setPdfBusy(true)
+    adminopsApi.licencePdf()
+      .then((res) => pending.deliver(res.data, 'utilisation-sieges.pdf'))
+      .catch(() => toastError('Export PDF impossible.'))
+      .finally(() => setPdfBusy(false))
+  }
 
   if (loading) return <Spinner />
   if (!statut) {
@@ -41,6 +54,11 @@ export default function LicencesPage() {
       <PageHeader
         title="Licences & sièges"
         subtitle="Palier de licence, modules inclus et utilisation des sièges"
+        actions={(
+          <Button variant="outline" onClick={exporterPdf} disabled={pdfBusy}>
+            {pdfBusy ? 'Génération…' : 'Exporter PDF'}
+          </Button>
+        )}
       />
 
       <Card className="p-6">

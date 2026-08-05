@@ -20,5 +20,8 @@ urlpatterns = [
     # NTADM8/9 — statut de licence (plan, modules, sièges, historique).
     path('licences/', views_licences.licence_statut_view,
          name='adminops-licence-statut'),
+    # NTADM29 — export PDF imprimable du statut de licence/sièges.
+    path('licences/pdf/', views_licences.licence_pdf_view,
+         name='adminops-licence-pdf'),
     path('', include(router.urls)),
 ]
