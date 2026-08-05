@@ -10,6 +10,6 @@ class CompanyProfileAdmin(admin.ModelAdmin):
     jamais un écran tenant-facing (le tenant voit son profil en lecture via
     ``GET /parametres/profile/``, plan y compris — jamais en écriture)."""
 
-    list_display = ('nom', 'company', 'plan')
+    list_display = ('nom', 'company', 'plan', 'nb_sieges_max')
     list_filter = ('plan',)
     search_fields = ('nom',)

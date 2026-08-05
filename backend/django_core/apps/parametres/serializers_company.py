@@ -36,11 +36,12 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
         # ERR25 — ``company`` est l'ancre multi-tenant du profil : la repointer
         # via un PATCH `{"company": <autre_id>}` détournerait le profil de
         # l'appelant. Elle est posée côté serveur (jamais depuis le corps).
-        # NTADM7 — ``plan`` est une donnée de LICENCE (assignation réservée au
-        # founder, admin Django) : visible en lecture ici (écran Paramètres/
-        # Licences), jamais éditable par le tenant via ce PATCH générique.
+        # NTADM7/8 — ``plan``/``nb_sieges_max`` sont des données de LICENCE
+        # (assignation réservée au founder, admin Django) : visibles en
+        # lecture ici (écran Paramètres/Licences), jamais éditables par le
+        # tenant via ce PATCH générique.
         read_only_fields = [
-            'logo_key', 'signature_key', 'company', 'plan',
+            'logo_key', 'signature_key', 'company', 'plan', 'nb_sieges_max',
         ]
 
     def validate_responsable_defaut_leads(self, value):

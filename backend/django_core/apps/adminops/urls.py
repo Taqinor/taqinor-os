@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from . import views
+from . import views, views_licences
 
 router = DefaultRouter()
 router.register(r'sandbox', views.SandboxEnvironmentViewSet, basename='sandboxenvironment')
@@ -17,5 +17,8 @@ urlpatterns = [
          name='adminops-support-bundle'),
     path('rapports/journal-admin/', views.journal_admin_pdf_view,
          name='adminops-journal-admin'),
+    # NTADM8/9 — statut de licence (plan, modules, sièges, historique).
+    path('licences/', views_licences.licence_statut_view,
+         name='adminops-licence-statut'),
     path('', include(router.urls)),
 ]

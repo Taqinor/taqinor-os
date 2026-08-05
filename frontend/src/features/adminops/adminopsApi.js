@@ -29,6 +29,10 @@ const adminopsApi = {
     api.post('/adminops/config-packages/previsualiser/', { contenu }),
   appliquerPackage: (contenu) =>
     api.post('/adminops/config-packages/appliquer/', { contenu }),
+
+  // Licences & sièges (NTADM8/9) — plan, modules inclus, sièges utilisés/max,
+  // historique des changements de plan.
+  licenceStatut: () => api.get('/adminops/licences/'),
 }
 
 export default adminopsApi
