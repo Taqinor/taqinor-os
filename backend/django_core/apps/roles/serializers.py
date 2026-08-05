@@ -13,9 +13,12 @@ class RoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Role
         fields = ('id', 'nom', 'permissions', 'est_systeme',
-                  'users_count', 'users', 'entites_visibles')
+                  'users_count', 'users', 'entites_visibles', 'perimetre')
         read_only_fields = ('id', 'est_systeme', 'users_count', 'users')
-        extra_kwargs = {'entites_visibles': {'required': False}}
+        extra_kwargs = {
+            'entites_visibles': {'required': False},
+            'perimetre': {'required': False},
+        }
 
     def get_users_count(self, obj):
         return obj.users.count()

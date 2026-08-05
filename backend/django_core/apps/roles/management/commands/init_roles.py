@@ -27,6 +27,7 @@ class Command(BaseCommand):
         from apps.roles.models import (
             Role,
             CANONICAL_SYSTEM_ROLES,
+            SYSTEM_ROLE_PERIMETRES,
             RESPONSABLE_PERMISSIONS,
             UTILISATEUR_PERMISSIONS,
             ADMIN_PERMISSIONS,
@@ -68,6 +69,14 @@ class Command(BaseCommand):
                         role.permissions != list(perms):
                     role.permissions = list(perms)
                     role.save(update_fields=['permissions'])
+                # NTADM21 — le périmètre de délégation d'un rôle système est
+                # une politique, pas une donnée éditée : on le (re)pose depuis
+                # la table canonique. None pour les 13 autres rôles (délégation
+                # globale, comportement historique) — donc aucune écriture.
+                perimetre_attendu = SYSTEM_ROLE_PERIMETRES.get(nom)
+                if role.perimetre != perimetre_attendu:
+                    role.perimetre = perimetre_attendu
+                    role.save(update_fields=['perimetre'])
                 roles[nom] = role
                 self.stdout.write(
                     f'  Rôle "{nom}" : {"créé" if created else "à jour"}')
