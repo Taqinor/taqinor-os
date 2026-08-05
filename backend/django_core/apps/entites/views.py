@@ -1,4 +1,5 @@
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
@@ -31,6 +32,22 @@ class EntiteViewSet(CompanyScopedModelViewSet):
     def get_queryset(self):
         return Entite.objects.filter(
             company=self.request.user.company).select_related('parent')
+
+    def initial(self, request, *args, **kwargs):
+        # NTADM39 — permission fine `adminops_entites_gerer` sur toute
+        # ÉCRITURE (le palier IsAdministrateur reste acquis en amont ; ce
+        # contrôle RESSERRE pour les rôles custom, rétrocompat es_systeme).
+        # Contrôle EXPLICITE ici, jamais via get_permissions (bug-class #25).
+        super().initial(request, *args, **kwargs)
+        if (request.method in ('POST', 'PUT', 'PATCH', 'DELETE')
+                and getattr(self, 'action', None) != 'noter'):
+            # `noter` = note de chatter (records), pas une édition d'Entité —
+            # hors du champ de la clé fine.
+            from apps.adminops.permissions import (
+                ADMINOPS_ENTITES_GERER, a_permission_fine)
+            if not a_permission_fine(request.user, ADMINOPS_ENTITES_GERER):
+                raise PermissionDenied(
+                    "Permission 'adminops_entites_gerer' requise.")
 
     def list(self, request, *args, **kwargs):
         if request.query_params.get('tree') == '1':
