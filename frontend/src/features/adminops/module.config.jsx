@@ -2,13 +2,13 @@
    Fichier de configuration de module (données + composants lazy), pas un module
    de composants : le fast-refresh ne s'y applique pas. */
 import { createElement, lazy } from 'react'
-import { HeartPulse, FlaskConical, Package, BarChart3, Settings, Stethoscope, ServerCog } from 'lucide-react'
+import { HeartPulse, FlaskConical, Package, BarChart3, Settings, Stethoscope, ServerCog, KeyRound } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
-   NTADM6/12/15/17/23/33 — Configuration du module « Administration ». Nav gatée
-   Administrateur : health score, sandbox, packages de config, adoption,
-   diagnostic, réglages.
+   NTADM6/9/12/15/17/23/33 — Configuration du module « Administration ». Nav
+   gatée Administrateur : health score, sandbox, packages de config, adoption,
+   diagnostic, réglages, licences & sièges.
    ========================================================================== */
 
 const ROLES = ['admin']
@@ -19,6 +19,7 @@ const ConfigPackagesPage = lazy(() => import('./ConfigPackagesPage'))
 const AdoptionPage = lazy(() => import('./AdoptionPage'))
 const DiagnosticPage = lazy(() => import('./DiagnosticPage'))
 const AdminSettingsPage = lazy(() => import('./AdminSettingsPage'))
+const LicencesPage = lazy(() => import('./LicencesPage'))
 
 // createElement pour ne PAS déclarer de « composant » dans un fichier de config.
 const icon = (Comp) =>
@@ -41,6 +42,7 @@ export default {
       { to: '/admin/config-packages', label: 'Packages config', icon: icon(Package), roles: ROLES },
       { to: '/admin/adoption', label: 'Adoption', icon: icon(BarChart3), roles: ROLES },
       { to: '/admin/diagnostic', label: 'Diagnostic', icon: icon(Stethoscope), roles: ROLES },
+      { to: '/admin/licences', label: 'Licences & sièges', icon: icon(KeyRound), roles: ROLES },
       { to: '/admin/reglages-admin', label: 'Réglages admin', icon: icon(Settings), roles: ROLES },
     ],
   },
@@ -50,6 +52,7 @@ export default {
     ['/admin/config-packages', 'Packages de configuration'],
     ['/admin/adoption', "Analytics d'adoption"],
     ['/admin/diagnostic', 'Diagnostic tenant'],
+    ['/admin/licences', 'Licences & sièges'],
     ['/admin/reglages-admin', 'Réglages Administration'],
   ],
   sectionLabels: { admin: 'Administration' },
@@ -59,6 +62,7 @@ export default {
     { path: '/admin/config-packages', component: ConfigPackagesPage, roles: ROLES },
     { path: '/admin/adoption', component: AdoptionPage, roles: ROLES },
     { path: '/admin/diagnostic', component: DiagnosticPage, roles: ROLES },
+    { path: '/admin/licences', component: LicencesPage, roles: ROLES },
     { path: '/admin/reglages-admin', component: AdminSettingsPage, roles: ROLES },
   ],
 }
