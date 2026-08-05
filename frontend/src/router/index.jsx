@@ -21,6 +21,9 @@ import RouteErrorBoundary from '../components/RouteErrorBoundary'
 // UX1 — Registre de modules : chaque module « coquille » (Compta, Paie, RH,
 // Flotte, QHSE, Contrats, Projet, GED, KB, Litiges…) enregistre ses routes via
 // un fichier `features/<module>/module.config.jsx`, sans toucher ce fichier.
+// NTADM26 — entité affichée (filtre de confort) : entre dans la clé de
+// remontage de l'écran pour que la bascule filtre les listes sans reload.
+import { useEntiteActive } from '../lib/entiteActive'
 import { buildModuleRoutes } from './moduleRoutes'
 // ODX6 — source unique des modules désactivés (état /auth/me/ → store).
 import { isModuleDisabled } from './moduleGating'
@@ -267,17 +270,23 @@ function WithLayout({ children }) {
   // erreur est survenue — recharger ») au lieu d'une app blanche, et naviguer
   // ailleurs réinitialise la barrière (nouvelle key).
   const { pathname } = useLocation()
+  // NTADM26 — l'entité affichée fait partie de la CLÉ de remontage : basculer
+  // d'entité dans l'en-tête refait immédiatement les listes de l'écran courant
+  // (l'intercepteur axios pose alors `?entite=`), SANS rechargement de page.
+  // `null` (toutes entités) laisse la clé exactement telle qu'avant.
+  const entiteActive = useEntiteActive()
+  const cleEcran = entiteActive ? `${pathname}|e${entiteActive}` : pathname
   return (
     <ShortcutsProvider>
       <Layout>
-        <RouteErrorBoundary key={pathname}>
+        <RouteErrorBoundary key={cleEcran}>
           <Suspense fallback={<Fallback />}>
             {/* VX134(c) — le contenu de route post-Suspense apparaissait en cut
                 dur ; même pattern de remontage par `key={pathname}` que
                 RouteErrorBoundary ci-dessus, ici pour rejouer un fondu court
                 à chaque navigation (View Transition API notée en option
                 future — pas nécessaire pour ce simple fondu). */}
-            <div key={pathname} className="route-fade">{children}</div>
+            <div key={cleEcran} className="route-fade">{children}</div>
           </Suspense>
         </RouteErrorBoundary>
       </Layout>

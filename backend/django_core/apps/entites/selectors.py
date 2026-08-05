@@ -36,6 +36,24 @@ def entites_actives_count(company):
     return Entite.objects.filter(company=company, actif=True).count()
 
 
+def entites_accessibles(user, company):
+    """NTADM26 — entités ACTIVES accessibles à ``user``, pour la bascule de
+    l'en-tête (id/code/nom seulement).
+
+    Un rôle SANS périmètre (tous les comptes existants) reçoit toutes les
+    entités actives ; un rôle restreint (NTADM3) ne reçoit que les siennes.
+    La liste sert à décider si la bascule s'affiche (≥ 2) et à la remplir —
+    elle n'accorde aucun droit : le serveur reste seul juge à chaque requête.
+    """
+    from core.entite_scoping import entites_visibles_ids
+
+    qs = Entite.objects.filter(company=company, actif=True).order_by('code')
+    ids = entites_visibles_ids(user)
+    if ids is not None:
+        qs = qs.filter(id__in=ids)
+    return [{'id': e.id, 'code': e.code, 'nom': e.nom} for e in qs]
+
+
 def _montant(valeur):
     """Montant rendu en CHAÎNE à 2 décimales (jamais un float : pas de dérive
     de virgule flottante sur de l'argent)."""

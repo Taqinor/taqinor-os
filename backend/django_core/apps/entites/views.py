@@ -1,6 +1,7 @@
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from authentication.permissions import IsAnyRole
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import import_service, selectors, services
@@ -104,6 +105,20 @@ class EntiteViewSet(CompanyScopedModelViewSet):
         from apps.records.services import log_note
         log_note(entite, request.user, body)
         return Response({'ok': True})
+
+    @action(detail=False, methods=['get'], url_path='mes-entites',
+            permission_classes=[IsAnyRole])
+    def mes_entites(self, request):
+        """NTADM26 — entités ACTIVES accessibles à l'appelant (id/code/nom).
+
+        Alimente la bascule d'entité de l'en-tête, donc ouverte à TOUT
+        collaborateur interne (le reste du viewset reste Administrateur).
+        Lecture minimale et scopée : société de la requête + périmètre de rôle
+        NTADM3. Ce n'est PAS une garde — la bascule n'est qu'un filtre
+        d'affichage ; chaque endpoint refait son propre scoping.
+        """
+        return Response(selectors.entites_accessibles(
+            request.user, request.user.company))
 
     @action(detail=False, methods=['get'], permission_classes=[IsAdministrateur])
     def groupe(self, request):
