@@ -450,6 +450,63 @@ VIEWER_PERMISSIONS = [
     SCOPE_TEAM,
 ]
 
+# ── NTADM20 — Administration DÉLÉGUÉE par domaine ──────────────────────────
+# Deux rôles système de plus, bâtis sur le MÊME moteur JSON que les sept
+# précédents (``Role.permissions``) : aucun nouveau moteur, aucune table de
+# plus — juste deux presets semés par ``init_roles``.
+#
+# Ce qui les distingue d'un Administrateur : ils ne portent PAS
+# ``roles_gerer``. C'est le signal FAISANT AUTORITÉ du palier
+# (``authentication.role_tiers``) : sans lui, et AVEC ``users_voir``, le
+# porteur relève du palier « responsable » — il ouvre donc l'écran
+# Utilisateurs mais JAMAIS l'administration globale (rôles/permissions,
+# Paramètres → Société, console tenants). Ils ne portent pas non plus
+# ``parametres_voir``/``parametres_modifier`` : les réglages de la société
+# restent hors de leur portée.
+#
+# NE JAMAIS y ajouter : ``stock_creer`` (politique QG4 — réservé à Directeur
+# + Commercial responsable, verrouillée par un test) ni
+# ``adsengine_autonomy_toggle`` (admin-seul, ADSENG47).
+
+# Admin RH : le domaine RH/Paie/recrutement + la gestion des comptes, rien
+# d'autre. ``salaires_voir`` lui donne la rémunération (besoin métier
+# central) ; il n'a aucun droit CRM/Ventes/Stock.
+ADMIN_RH_PERMISSIONS = [
+    'users_voir', 'users_gerer',
+    'paie_voir', 'paie_gerer',
+    'salaires_voir',
+    'reporting_voir',
+    'kb_voir',
+    'projet_voir',
+    'qhse_voir',
+]
+
+# Admin Ventes : CRM + Ventes + Stock (sans la création de produits, QG4) et
+# les rapports commerciaux. Aucun réglage global de la société, aucune paie.
+ADMIN_VENTES_PERMISSIONS = [
+    'crm_voir', 'crm_creer', 'crm_modifier', 'crm_supprimer', 'crm_export',
+    'crm_reassign',
+    'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_supprimer',
+    'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
+    'stock_voir', 'stock_modifier', 'stock_supprimer', 'stock_mouvement',
+    'stock_export',
+    'client_pii_voir',
+    'users_voir',
+    'reporting_voir', 'reporting_export',
+    'kb_voir',
+]
+
+ROLE_ADMIN_RH = 'Admin RH'
+ROLE_ADMIN_VENTES = 'Admin Ventes'
+
+# Les 2 rôles d'administration déléguée (nom → permissions), semés par
+# ``init_roles`` au même titre que les rôles canoniques.
+CANONICAL_DELEGUE_ROLES = [
+    (ROLE_ADMIN_RH, ADMIN_RH_PERMISSIONS),
+    (ROLE_ADMIN_VENTES, ADMIN_VENTES_PERMISSIONS),
+]
+
+
 # ── NTPRT1 — Rôles système du Portail EXTERNE (self-service) ────────────────
 # AXE DE PERMISSION SÉPARÉ du catalogue interne ``ALL_PERMISSIONS`` : ces codes
 # ``portail_*_acces`` n'apparaissent JAMAIS dans la grille de rôles interne
@@ -497,6 +554,10 @@ CANONICAL_SYSTEM_ROLES = [
     # Rôles légacy conservés pour les comptes/données déjà en place.
     ('Responsable', RESPONSABLE_PERMISSIONS),
     ('Utilisateur', UTILISATEUR_PERMISSIONS),
+    # NTADM20 — administration DÉLÉGUÉE par domaine (RH / Ventes). Semés
+    # exactement comme les autres rôles système (est_systeme=True,
+    # idempotent) ; ils ne portent jamais ``roles_gerer``.
+    *CANONICAL_DELEGUE_ROLES,
     # NTPRT1 — rôles système du Portail externe (client/fournisseur/partenaire).
     # Un même axe que les rôles internes pour le SEEDING (est_systeme=True,
     # idempotent), mais des permissions portail-seules (jamais internes).
