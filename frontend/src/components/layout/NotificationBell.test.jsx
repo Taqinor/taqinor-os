@@ -24,6 +24,14 @@ vi.mock('../../api/notificationsApi', () => ({
     attentionSummary: vi.fn(() => Promise.resolve({ data: { approbations: 0 } })),
   },
 }))
+// NTADM19 — la cloche charge paresseusement les annonces produit à
+// l'ouverture : on la mocke pour garder ce test hors réseau et déterministe.
+vi.mock('../../api/adminopsApi', () => ({
+  default: {
+    listAnnonces: vi.fn(() => Promise.resolve({ data: { results: [], non_lues: 0 } })),
+    marquerAnnonceLue: vi.fn(() => Promise.resolve({ data: {} })),
+  },
+}))
 
 import notificationsApi from '../../api/notificationsApi'
 import NotificationBell from './NotificationBell'

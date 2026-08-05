@@ -31,6 +31,9 @@ import { useApprobationsCount } from '../../hooks/useApprobationsCount'
 import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
 // VX217(a) — aperçu sans naviguer (survol desktop / appui long mobile).
 import AttentionPeek from '../../features/queue/AttentionPeek'
+// NTADM19 — onglet « Annonces » (nouveautés produit de l'éditeur, NTADM18).
+import adminopsApi from '../../api/adminopsApi'
+import AnnoncesTab from './AnnoncesTab'
 
 // Bip court (Web Audio) joué à l'arrivée d'une nouvelle notification quand
 // l'app est ouverte. Best-effort : échoue silencieusement si l'autoplay audio
@@ -173,6 +176,17 @@ const NOTIF_TABS = [
     groups: ['factures_impayees'],
     count: (ctx, vis) => (vis('factures_impayees') ? (ctx.data?.factures_impayees?.length ?? 0) : 0),
   },
+  // NTADM19 — « Quoi de neuf » : annonces PRODUIT de l'éditeur (NTADM18).
+  // `toujoursVisible` : cet onglet ne dépend d'AUCUNE app métier (il ne peut
+  // donc pas être masqué par ODY1) — une nouveauté de l'ERP concerne tout
+  // utilisateur interne, quel que soit son périmètre d'apps.
+  {
+    id: 'annonces',
+    label: 'Annonces',
+    groups: [],
+    toujoursVisible: true,
+    count: (ctx) => ctx.annoncesNonLues ?? 0,
+  },
 ]
 
 export default function NotificationBell() {
@@ -189,6 +203,12 @@ export default function NotificationBell() {
   const [feedActionsUnread, setFeedActionsUnread] = useState(0)
   const [feedInfosUnread, setFeedInfosUnread] = useState(0)
   const [open, setOpen] = useState(false)
+  // NTADM19 — annonces produit. Chargées PARESSEUSEMENT à la première
+  // ouverture du panneau (jamais au montage) : la cloche vit sur toute la
+  // coquille, on ne paie pas une requête de plus à chaque chargement de page.
+  // Elles sont INFORMATIVES : comme les DIGEST (VX208(b)), elles ne gonflent
+  // jamais le badge ACTIONS rouge de la cloche.
+  const [annonces, setAnnonces] = useState([])
   // VX14 — onglet interne actif du panneau (déclaratif, voir NOTIF_TABS).
   const [activeTab, setActiveTab] = useState(NOTIF_TABS[0].id)
   // VX204 — compteur d'échecs consécutifs du sondage léger (`checkUnread`) :
@@ -215,7 +235,8 @@ export default function NotificationBell() {
   // Un onglet dont TOUS les groupes appartiennent à des apps absentes n'a plus
   // rien à montrer : il disparaît (jamais un onglet vide pour rien).
   const visibleTabs = useMemo(
-    () => NOTIF_TABS.filter((t) => t.groups.some(isGroupVisible)),
+    () => NOTIF_TABS.filter(
+      (t) => t.toujoursVisible || t.groups.some(isGroupVisible)),
     [isGroupVisible],
   )
   // Onglet réellement affiché : si l'onglet sélectionné vient de disparaître
@@ -232,6 +253,29 @@ export default function NotificationBell() {
   // total cohérent affiché partout.
   const { total: approbationsTotal, loading: approbationsLoading, error: approbationsError } = useApprobationsCount()
   const showApprobationsRow = !approbationsLoading && !approbationsError && approbationsTotal > 0
+
+  // NTADM19 — (re)charge les annonces produit. Best-effort et sans toast :
+  // un échec laisse simplement l'onglet vide (cf. `adminopsApi`).
+  const refreshAnnonces = useCallback(() => {
+    adminopsApi.listAnnonces()
+      .then((r) => {
+        const items = r.data?.results ?? r.data ?? []
+        setAnnonces(Array.isArray(items) ? items : [])
+      })
+      .catch(() => setAnnonces([]))
+  }, [])
+
+  const annoncesNonLues = annonces.filter((a) => !a.lu).length
+
+  const marquerAnnonceLue = (id) => {
+    // Optimiste : la pastille « Nouveau » retombe tout de suite, puis on
+    // resynchronise sur la vérité serveur.
+    setAnnonces((liste) => liste.map(
+      (a) => (a.id === id ? { ...a, lu: true } : a)))
+    adminopsApi.marquerAnnonceLue(id)
+      .then(() => refreshAnnonces())
+      .catch(() => { /* best-effort : l'état optimiste reste affiché */ })
+  }
 
   // Recharge la liste in-app persistée (best-effort).
   const refreshFeed = () => {
@@ -372,6 +416,12 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', onDoc)
   }, [])
 
+  // NTADM19 — chargement PARESSEUX des annonces : uniquement quand le panneau
+  // est ouvert (jamais au montage de la coquille).
+  useEffect(() => {
+    if (open) refreshAnnonces()
+  }, [open, refreshAnnonces])
+
   const derivedTotal = data?.total ?? 0
   // Le compteur de la cloche cumule les alertes dérivées et les notifications
   // in-app persistées non lues. VX207 — inclut désormais les approbations en
@@ -484,7 +534,11 @@ export default function NotificationBell() {
             <div className="nb-empty nb-error" role="alert">
               Notifications indisponibles
             </div>
-          ) : feed.length === 0 && (!data || derivedTotal === 0) && !showApprobationsRow ? (
+          ) : feed.length === 0 && (!data || derivedTotal === 0) && !showApprobationsRow
+              // NTADM19 — une nouveauté produit non lue suffit à ouvrir le
+              // panneau : sans cette condition, l'onglet « Annonces » serait
+              // inatteignable sur un compte par ailleurs à jour.
+              && annoncesNonLues === 0 ? (
             <div className="nb-empty">Rien à signaler 🎉</div>
           ) : (
             <>
@@ -494,7 +548,7 @@ export default function NotificationBell() {
               <div className="nb-tabs" role="tablist" aria-label="Catégories de notifications">
                 {visibleTabs.map((tab) => {
                   const n = tab.count(
-                    { data, feedActionsUnread, showApprobationsRow, approbationsTotal },
+                    { data, feedActionsUnread, showApprobationsRow, approbationsTotal, annoncesNonLues },
                     isGroupVisible,
                   )
                   return (
@@ -760,10 +814,20 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
+              {/* NTADM19 — « Quoi de neuf » : les nouveautés produit de
+                  l'éditeur, avec rendu markdown simple et marquage « lu ».
+                  Porte son propre état vide, d'où l'exclusion du repli
+                  générique « Rien à signaler ici » ci-dessous. */}
+              {currentTab === 'annonces' && (
+                <AnnoncesTab
+                  annonces={annonces}
+                  onMarquerLu={marquerAnnonceLue}
+                />
+              )}
               {/* VX14 — onglet actif sans le moindre élément : message dédié
                   plutôt qu'un panneau vide silencieux. */}
-              {visibleTabs.find((t) => t.id === currentTab)?.count(
-                { data, feedActionsUnread, showApprobationsRow, approbationsTotal },
+              {currentTab !== 'annonces' && visibleTabs.find((t) => t.id === currentTab)?.count(
+                { data, feedActionsUnread, showApprobationsRow, approbationsTotal, annoncesNonLues },
                 isGroupVisible,
               ) === 0 && (
                 <div className="nb-empty">Rien à signaler ici</div>

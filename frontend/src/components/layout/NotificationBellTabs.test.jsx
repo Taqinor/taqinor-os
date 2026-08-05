@@ -6,10 +6,16 @@ import { configureStore } from '@reduxjs/toolkit'
 
 /* VX14 — Centre de notifications : le panneau groupait DÉJÀ par domaine en
    sections empilées (Activités en retard / Garanties / Factures impayées /
-   Contrats à renouveler). On vérifie ici le passage à 3 onglets internes
+   Contrats à renouveler). On vérifie ici le passage aux onglets internes
    déclaratifs (Activités / Échéances / Financier) avec compteur correct
    (somme des groupes qu'ils contiennent), et que seul le groupe de l'onglet
-   actif est rendu à la fois. */
+   actif est rendu à la fois.
+
+   NTADM19 — un 4e onglet « Annonces » (nouveautés produit de l'éditeur) s'est
+   ajouté depuis. Il est `toujoursVisible` (il ne dépend d'aucune app métier),
+   d'où 4 onglets attendus ici. Ses annonces sont INFORMATIVES : elles ne
+   gonflent jamais le badge ACTIONS de la cloche — l'assertion
+   « Notifications (3) » plus bas le vérifie. */
 
 vi.mock('../../api/reportingApi', () => ({
   default: {
@@ -33,6 +39,14 @@ vi.mock('../../api/notificationsApi', () => ({
     markRead: vi.fn(),
     markAllRead: vi.fn(),
     attentionSummary: vi.fn(() => Promise.resolve({ data: { approbations: 0 } })),
+  },
+}))
+// NTADM19 — la cloche charge paresseusement les annonces produit à
+// l'ouverture : on la mocke pour garder ce test hors réseau et déterministe.
+vi.mock('../../api/adminopsApi', () => ({
+  default: {
+    listAnnonces: vi.fn(() => Promise.resolve({ data: { results: [], non_lues: 0 } })),
+    marquerAnnonceLue: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -71,18 +85,19 @@ describe('NotificationBell — onglets internes déclaratifs (VX14)', () => {
     vi.restoreAllMocks()
   })
 
-  it('affiche 3 onglets, un seul groupe actif à la fois, compteurs corrects', async () => {
+  it('affiche 4 onglets, un seul groupe actif à la fois, compteurs corrects', async () => {
     renderBell()
     fireEvent.click(screen.getByRole('button', { name: /Notifications/ }))
 
     await act(async () => { await Promise.resolve() })
 
-    // Les 3 onglets déclarés existent.
+    // Les onglets déclarés existent (3 métier + « Annonces », NTADM19).
     const tabs = screen.getAllByRole('tab')
-    expect(tabs).toHaveLength(3)
+    expect(tabs).toHaveLength(4)
     expect(screen.getByRole('tab', { name: /Activités/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Échéances/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Financier/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Annonces/ })).toBeInTheDocument()
 
     // Onglet par défaut = Activités : le groupe "Activités en retard" est visible,
     // "Garanties" et "Factures impayées" ne le sont pas.

@@ -26,6 +26,16 @@ const adminopsApi = {
     api.post(`/adminops/impersonation/${id}/demarrer/`),
   terminerImpersonation: (id) =>
     api.post(`/adminops/impersonation/${id}/terminer/`),
+
+  // ── Annonces produit (NTADM18 / NTADM19) ─────────────────────────────────
+  // `suppressErrorToast` : ces deux appels vivent dans la CLOCHE, montée sur
+  // toute la coquille. Un échec réseau ne doit jamais y faire surgir un toast
+  // d'erreur global — l'onglet se contente d'être vide.
+  listAnnonces: () =>
+    api.get('/adminops/annonces/', { suppressErrorToast: true }),
+  marquerAnnonceLue: (id) =>
+    api.post(`/adminops/annonces/${id}/marquer-lu/`, null,
+      { suppressErrorToast: true }),
 }
 
 export default adminopsApi
