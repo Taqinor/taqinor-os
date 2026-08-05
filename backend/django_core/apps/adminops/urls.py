@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from . import views, views_impersonation
+from . import views, views_annonces, views_impersonation
 
 router = DefaultRouter()
 router.register(r'sandbox', views.SandboxEnvironmentViewSet, basename='sandboxenvironment')
@@ -42,5 +42,11 @@ urlpatterns = [
     path('impersonation/<int:pk>/terminer/',
          views_impersonation.ImpersonationTerminerView.as_view(),
          name='adminops-impersonation-terminer'),
+    # NTADM18 — centre de notifications produit (annonces de l'éditeur).
+    path('annonces/', views_annonces.AnnonceProduitListView.as_view(),
+         name='adminops-annonces'),
+    path('annonces/<int:pk>/marquer-lu/',
+         views_annonces.AnnonceProduitMarquerLuView.as_view(),
+         name='adminops-annonce-marquer-lu'),
     path('', include(router.urls)),
 ]

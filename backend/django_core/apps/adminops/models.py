@@ -233,6 +233,76 @@ class SessionImpersonation(TenantModel):
         return 'en_attente'
 
 
+class AnnonceProduit(models.Model):
+    """NTADM18 — annonce PRODUIT de l'éditeur : le référentiel PLATEFORME.
+
+    GLOBAL PAR CONCEPTION — volontairement SANS FK ``company`` (exempté du
+    garde YDATA4, cf. ``scripts/tenant_exempt_models.txt``) : une nouveauté de
+    l'ERP est publiée UNE fois par l'éditeur et concerne toutes les sociétés.
+    Ce n'est pas de la donnée métier d'un tenant ; aucune société n'en est
+    propriétaire.
+
+    À ne pas confondre avec ses deux voisines, qui restent distinctes :
+      * ``notifications.Annonce`` — annonces INTERNES d'un tenant à ses propres
+        équipes (RH/organisation), scopées société ;
+      * ``innovation.AnnonceProduit`` — repli LOCAL et volontairement simple
+        que sa propre docstring décrit comme provisoire « tant que le
+        référentiel plateforme (NTADM18) n'est pas bâti », et qu'elle interdit
+        explicitement de fusionner avec celui-ci.
+
+    La publication n'est PAS ouverte aux Administrateurs de tenant : diffuser à
+    toutes les sociétés est une action d'éditeur (cf. ``views_annonces``).
+    """
+
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    corps = models.TextField(
+        blank=True, default='', verbose_name='Corps (markdown court)')
+    date_publication = models.DateTimeField(
+        default=timezone.now, verbose_name='Date de publication')
+    #: Ciblage optionnel. VIDE = tout le monde (comportement par défaut).
+    cible_roles = models.ManyToManyField(
+        'roles.Role', blank=True, related_name='annonces_produit_plateforme',
+        verbose_name='Rôles ciblés')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: l'annonce publiée survit à la suppression de son auteur
+        related_name='annonces_produit_publiees', verbose_name='Publiée par')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Annonce produit'
+        verbose_name_plural = 'Annonces produit'
+        ordering = ['-date_publication', '-id']
+
+    def __str__(self):
+        return self.titre
+
+
+class LectureAnnonce(models.Model):
+    """NTADM18 — accusé de lecture d'une annonce produit par UN utilisateur.
+
+    Global comme l'annonce qu'il référence (pas de FK ``company`` : la société
+    de l'utilisateur est déjà portée par ``utilisateur.company``). Le couple
+    (utilisateur, annonce) est unique : marquer lu deux fois est sans effet."""
+
+    annonce = models.ForeignKey(
+        AnnonceProduit, on_delete=models.CASCADE,  # on_delete: composition — un accusé de lecture n'a aucun sens sans son annonce
+        related_name='lectures', verbose_name='Annonce')
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition — l'accusé disparaît avec le compte qui l'a posé
+        related_name='lectures_annonces_produit', verbose_name='Utilisateur')
+    lu_le = models.DateTimeField(auto_now_add=True, verbose_name='Lu le')
+
+    class Meta:
+        verbose_name = "Lecture d'annonce produit"
+        verbose_name_plural = "Lectures d'annonces produit"
+        ordering = ['-lu_le', '-id']
+        unique_together = [('utilisateur', 'annonce')]
+
+    def __str__(self):
+        return f'{self.utilisateur_id} a lu {self.annonce_id}'
+
+
 class AdminOpsSettings(TenantModel):
     """NTADM33 — réglages transverses de ce groupe, tous à défaut =
     comportement documenté existant (jamais restrictif par défaut)."""

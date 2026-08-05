@@ -22,3 +22,14 @@ publicapi.WebhookDeliveryArchive
 # materialisation/installation (which IS company-scoped) is a separate brick
 # (NTEXT14, unbuilt). Reviewed global-by-design 2026-07-16.
 extensions.ExtensionPackage
+# NTADM18 — référentiel PLATEFORME des annonces produit de l'éditeur (« Quoi de
+# neuf » de l'ERP) + leurs accusés de lecture. Global par conception : une
+# nouveauté produit est publiée UNE fois par l'éditeur et concerne toutes les
+# sociétés — aucune n'en est propriétaire, ce n'est pas de la donnée métier de
+# tenant. La société du lecteur reste portée par `utilisateur.company`. Les
+# annonces INTERNES d'un tenant à ses équipes restent, elles, scopées société
+# (`notifications.Annonce`). Publication réservée à l'éditeur (superuser /
+# is_taqinor_support) : un Administrateur de tenant ne peut jamais diffuser
+# vers les autres sociétés. Reviewed global-by-design 2026-08-05.
+adminops.AnnonceProduit
+adminops.LectureAnnonce

@@ -1,8 +1,31 @@
 from rest_framework import serializers
 
 from .models import (
-    AdminOpsSettings, ConfigPackage, SandboxEnvironment, SessionImpersonation,
+    AdminOpsSettings, AnnonceProduit, ConfigPackage, SandboxEnvironment,
+    SessionImpersonation,
 )
+
+
+class AnnonceProduitSerializer(serializers.ModelSerializer):
+    """NTADM18 — annonce produit + état de lecture du DEMANDEUR.
+
+    `lu` est calculé depuis `context['lues']` (l'ensemble des annonces déjà
+    lues par l'utilisateur courant) : jamais une requête par ligne."""
+
+    lu = serializers.SerializerMethodField()
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+
+    class Meta:
+        model = AnnonceProduit
+        fields = [
+            'id', 'titre', 'corps', 'date_publication', 'cible_roles',
+            'auteur', 'auteur_nom', 'lu', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_lu(self, obj):
+        return obj.pk in (self.context.get('lues') or set())
 
 
 class SessionImpersonationSerializer(serializers.ModelSerializer):
