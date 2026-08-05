@@ -38,11 +38,13 @@ MOROCCO_SOLAR_MONTHLY_WEIGHTS = [round(g / _GHI_SUM, 6) for g in _GHI_MONTHLY]
 
 
 # Avis FR clair montré quand le lien est expiré ou introuvable. Aucune donnée
-# interne n'est exposée : le client est simplement invité à demander un lien
-# frais à TAQINOR (L854).
+# interne n'est exposée ; formulation NEUTRE (N100(c) white-label — le lien
+# invalide ne permet pas toujours de résoudre la société, donc jamais de
+# marque codée en dur ici) (L854).
 LINK_EXPIRED_MESSAGE = (
     "Ce lien de partage a expiré ou n'est plus valide. "
-    "Merci de demander un nouveau lien à TAQINOR pour consulter votre document."
+    "Merci de demander un nouveau lien à votre installateur pour consulter "
+    "votre document."
 )
 
 
