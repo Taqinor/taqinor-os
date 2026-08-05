@@ -1,9 +1,29 @@
 from rest_framework import serializers
 
 from .models import (
-    AdminOpsSettings, AnnonceProduit, ConfigPackage, SandboxEnvironment,
-    SessionImpersonation,
+    AdminOpsSettings, AnnonceProduit, ConfigPackage, FactureLicence,
+    SandboxEnvironment, SessionImpersonation,
 )
+
+
+class FactureLicenceSerializer(serializers.ModelSerializer):
+    """N100(e) — lecture SEULE : les écritures passent par les endpoints
+    dédiés de la console (création / pointage « payée »)."""
+
+    societe_nom = serializers.CharField(
+        source='company.nom', read_only=True, default='')
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = FactureLicence
+        fields = [
+            'id', 'company', 'societe_nom', 'reference', 'periode',
+            'plan_code', 'montant_ht', 'tva', 'montant_ttc', 'statut',
+            'statut_libelle', 'date_emission', 'date_paiement', 'notes',
+            'created_at',
+        ]
+        read_only_fields = fields
 
 
 class AnnonceProduitSerializer(serializers.ModelSerializer):

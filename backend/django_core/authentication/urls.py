@@ -18,6 +18,7 @@ from .views import (
     ChangePasswordView,
     SwitchCompanyView,
 )
+from .views_console_create import TenantConsoleCreateView
 from .views_console import (
     TenantConsoleListView,
     TenantConsoleStatutView,
@@ -63,5 +64,8 @@ urlpatterns = [
          TenantConsoleStatutView.as_view(), name='auth_console_tenant_statut'),
     path('auth/console/tenants/<int:pk>/note/',
          TenantConsoleNoteView.as_view(), name='auth_console_tenant_note'),
+    # N100(b) — création administrée d'un tenant depuis la console fondateur.
+    path('auth/console/tenants/creer/', TenantConsoleCreateView.as_view(),
+         name='auth_console_tenant_creer'),
     path('', include(router.urls)),
 ]

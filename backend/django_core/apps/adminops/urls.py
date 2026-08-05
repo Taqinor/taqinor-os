@@ -1,7 +1,9 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from . import views, views_annonces, views_impersonation
+from . import (
+    views, views_annonces, views_facturation_licence, views_impersonation,
+)
 
 router = DefaultRouter()
 router.register(r'sandbox', views.SandboxEnvironmentViewSet, basename='sandboxenvironment')
@@ -48,5 +50,15 @@ urlpatterns = [
     path('annonces/<int:pk>/marquer-lu/',
          views_annonces.AnnonceProduitMarquerLuView.as_view(),
          name='adminops-annonce-marquer-lu'),
+    # N100(e) — registre de facturation de licence (console fondateur).
+    path('facturation-licences/',
+         views_facturation_licence.FactureLicenceListView.as_view(),
+         name='adminops-facturation-licences'),
+    path('facturation-licences/export-csv/',
+         views_facturation_licence.FactureLicenceExportCsvView.as_view(),
+         name='adminops-facturation-licences-csv'),
+    path('facturation-licences/<int:pk>/marquer-payee/',
+         views_facturation_licence.FactureLicenceMarquerPayeeView.as_view(),
+         name='adminops-facturation-licence-payee'),
     path('', include(router.urls)),
 ]

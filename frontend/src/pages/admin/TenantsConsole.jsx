@@ -21,6 +21,12 @@ export default function TenantsConsole() {
   const [erreur, setErreur] = useState('')
   const [chargement, setChargement] = useState(true)
   const [notes, setNotes] = useState({})
+  // N100(b) — formulaire « Nouveau tenant ». Le mot de passe provisoire n'est
+  // renvoyé qu'UNE fois par le serveur : on le garde en mémoire le temps que
+  // le fondateur le copie, jamais persisté.
+  const [creation, setCreation] = useState({ nom: '', email: '' })
+  const [creationEnCours, setCreationEnCours] = useState(false)
+  const [nouveauTenant, setNouveauTenant] = useState(null)
 
   // NB : fetch en chaîne de promesses (pas de setState synchrone dans l'effet,
   // règle react-hooks) — l'état « chargement » démarre à true et n'est éteint
@@ -65,6 +71,33 @@ export default function TenantsConsole() {
     }
   }
 
+  const creerTenant = async (e) => {
+    e.preventDefault()
+    const nom = creation.nom.trim()
+    const email = creation.email.trim()
+    if (!nom || !email) {
+      setErreur('Nom de société et email de l’administrateur sont requis.')
+      return
+    }
+    setCreationEnCours(true)
+    try {
+      const { data } = await api.post('/auth/console/tenants/creer/', {
+        nom, email,
+      })
+      setNouveauTenant(data)
+      setCreation({ nom: '', email: '' })
+      setErreur('')
+      await charger()
+    } catch (e2) {
+      setErreur(
+        e2?.response?.data?.detail
+        || 'Échec de la création du tenant.'
+      )
+    } finally {
+      setCreationEnCours(false)
+    }
+  }
+
   if (chargement) return <div className="page-pad">Chargement…</div>
   if (erreur && tenants.length === 0) {
     return <div className="page-pad" role="alert">{erreur}</div>
@@ -78,6 +111,60 @@ export default function TenantsConsole() {
         société bloque immédiatement sa connexion et son API.
       </p>
       {erreur && <div role="alert" className="text-danger">{erreur}</div>}
+
+      {/* N100(b) — provisionnement administré d'une nouvelle société. */}
+      <form onSubmit={creerTenant} data-testid="tenant-creation-form">
+        <h3>Nouveau tenant</h3>
+        <label htmlFor="tenant-nom">Nom de la société</label>
+        <input
+          id="tenant-nom"
+          value={creation.nom}
+          onChange={(e) => setCreation((c) => ({ ...c, nom: e.target.value }))}
+          placeholder="Installateur Nord"
+        />
+        <label htmlFor="tenant-email">Email de l&apos;administrateur</label>
+        <input
+          id="tenant-email"
+          type="email"
+          value={creation.email}
+          onChange={(e) => setCreation((c) => ({ ...c, email: e.target.value }))}
+          placeholder="chef@exemple.ma"
+        />
+        <button type="submit" disabled={creationEnCours}>
+          Créer le tenant
+        </button>
+      </form>
+
+      {nouveauTenant && (
+        <div role="status" data-testid="tenant-cree">
+          {nouveauTenant.deja_existant ? (
+            <p>
+              La société « {nouveauTenant.nom} » existait déjà — rien n&apos;a
+              été recréé.
+            </p>
+          ) : (
+            <>
+              <p>
+                Société « {nouveauTenant.nom} » créée. Transmettez ces accès à
+                son administrateur : le mot de passe devra être changé à la
+                première connexion.
+              </p>
+              <p>
+                Identifiant : <code>{nouveauTenant.admin?.username}</code>
+                {' — '}
+                Mot de passe provisoire :{' '}
+                <code data-testid="mot-de-passe-provisoire">
+                  {nouveauTenant.mot_de_passe_provisoire}
+                </code>
+              </p>
+              <p className="text-muted">
+                Ce mot de passe n&apos;est affiché qu&apos;une seule fois.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       <div style={{ overflowX: 'auto' }}>
         <table className="data-table" data-testid="tenants-console-table">
           <thead>

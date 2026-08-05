@@ -233,6 +233,64 @@ class SessionImpersonation(TenantModel):
         return 'en_attente'
 
 
+class FactureLicence(TenantModel):
+    """N100(e) — registre de FACTURATION DE LICENCE, côté ÉDITEUR uniquement.
+
+    Ce que ce modèle EST : le journal minimal par lequel le fondateur suit ce
+    que chaque tenant lui doit pour l'usage de l'ERP (période, plan, montants,
+    encaissement). Consultable et modifiable UNIQUEMENT depuis la console
+    fondateur (superuser) — jamais exposé au tenant lui-même.
+
+    Ce que ce modèle N'EST PAS — et ne doit jamais devenir :
+      * une facture MÉTIER du tenant à SES clients : celles-ci vivent dans
+        `apps.ventes` et n'ont rien à voir ici. Les deux ne se mélangent
+        jamais, d'où ce modèle dans `adminops` et pas dans `ventes` ;
+      * une passerelle de paiement : aucun encaissement automatique, aucun
+        prestataire. Le fondateur pointe manuellement « payée ».
+
+    `company` (TenantModel) = le tenant FACTURÉ. La référence est produite par
+    `core.numbering.next_reference` (jamais un count()+1).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EMISE = 'emise', 'Émise'
+        PAYEE = 'payee', 'Payée'
+
+    reference = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Référence')
+    #: Premier jour du mois facturé (une ligne par période et par tenant).
+    periode = models.DateField(verbose_name='Période facturée')
+    #: Copie FIGÉE du code de plan au moment de l'émission — le plan courant
+    #: peut changer ensuite sans réécrire l'histoire de la facturation.
+    plan_code = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Plan (snapshot)')
+    montant_ht = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Montant HT')
+    tva = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='TVA')
+    montant_ttc = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Montant TTC')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    date_emission = models.DateField(null=True, blank=True)
+    date_paiement = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True, default='', verbose_name='Notes')
+
+    class Meta:
+        verbose_name = 'Facture de licence'
+        verbose_name_plural = 'Factures de licence'
+        ordering = ['-periode', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='adminops_lic_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "(brouillon)"} — {self.company_id}'
+
+
 class AnnonceProduit(models.Model):
     """NTADM18 — annonce PRODUIT de l'éditeur : le référentiel PLATEFORME.
 
