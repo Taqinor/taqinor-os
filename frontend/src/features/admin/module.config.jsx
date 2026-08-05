@@ -46,6 +46,11 @@ const TenantsConsole = lazy(() => import('../../pages/admin/TenantsConsole'))
 const SecuriteIdentitePage = lazy(() => import('../../pages/admin/SecuriteIdentitePage'))
 // WIR135 — écran « Gouvernance des accès » (accessreview + rapport roles).
 const GouvernanceAccesPage = lazy(() => import('../../pages/admin/GouvernanceAccesPage'))
+// NTADM32 — assistant « Demander une session support » (le serveur exige
+// `is_taqinor_support` : 403 sinon).
+const ImpersonationWizard = lazy(() => import('../../pages/admin/ImpersonationWizard'))
+// NTADM22 — consentement du tenant : autoriser / refuser une session support.
+const ImpersonationConsentement = lazy(() => import('../../pages/admin/ImpersonationConsentement'))
 
 const config = {
   key: 'admin',
@@ -73,6 +78,10 @@ const config = {
     { path: '/admin/securite-identite', component: SecuriteIdentitePage, roles: ['admin'] },
     // WIR135 — Gouvernance des accès (admin only : le backend exige IsAdminRole).
     { path: '/admin/gouvernance-acces', component: GouvernanceAccesPage, roles: ['admin'] },
+    // NTADM32 — demande de session support (le serveur exige is_taqinor_support).
+    { path: '/admin/impersonation/demander', component: ImpersonationWizard, roles: ['admin'] },
+    // NTADM22 — consentement du tenant (le serveur exige l'Administrateur).
+    { path: '/admin/impersonation', component: ImpersonationConsentement, roles: ['admin'] },
   ],
 }
 

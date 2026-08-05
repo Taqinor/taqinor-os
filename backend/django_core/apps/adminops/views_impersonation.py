@@ -99,6 +99,43 @@ class ImpersonationDemandeView(APIView):
                         status=status.HTTP_201_CREATED)
 
 
+class ImpersonationCiblesView(APIView):
+    """GET — sociétés + utilisateurs assistables (assistant NTADM32).
+
+    Réservé au support. N'expose QUE l'identité minimale nécessaire pour
+    choisir une cible (id / nom d'utilisateur / société) — jamais de donnée
+    métier ni de coordonnées client."""
+
+    permission_classes = [IsTaqinorSupport]
+
+    def get(self, request):
+        from authentication.models import Company, CustomUser
+
+        societes = Company.objects.filter(actif=True).order_by('nom')
+        societe_id = request.query_params.get('societe')
+        utilisateurs = CustomUser.objects.filter(
+            is_active=True, company__isnull=False)
+        if societe_id:
+            utilisateurs = utilisateurs.filter(company_id=societe_id)
+        utilisateurs = utilisateurs.select_related('company').order_by(
+            'company__nom', 'username')[:200]
+
+        return Response({
+            'societes': [
+                {'id': c.pk, 'nom': c.nom, 'slug': c.slug} for c in societes
+            ],
+            'utilisateurs': [
+                {
+                    'id': u.pk,
+                    'username': u.username,
+                    'company': u.company_id,
+                    'societe_nom': u.company.nom if u.company else '',
+                }
+                for u in utilisateurs
+            ],
+        })
+
+
 class ImpersonationEnAttenteView(APIView):
     """GET — demandes visant MA société, à autoriser (Administrateur)."""
 
