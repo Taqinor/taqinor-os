@@ -970,6 +970,8 @@ CELERY_TASK_ROUTES = {
     'adminops.recalculer_health_score_tenants': {'queue': 'scheduled'},
     'adminops.purger_config_packages_anciens': {'queue': 'scheduled'},
     'adminops.purger_evenements_usage': {'queue': 'scheduled'},
+    # NTADM37 — péremption des demandes d'impersonation non consenties.
+    'adminops.perimer_demandes_impersonation': {'queue': 'scheduled'},
     # NTEDU22 — matérialisation hebdomadaire des séances (emploi du temps).
     'education.generer_seances_semaine': {'queue': 'scheduled'},
     # NTIDE40 — digest feedback produit non-lu, gated par société.
@@ -1061,6 +1063,13 @@ NOTIFICATIONS_QUIET_HOURS_ENABLED = (
 # endpoints (list + apply) return 404. Founder decision to expose (or not)
 # recruitment publicly. Flip to '1' to re-enable.
 CAREERS_ENABLED = os.environ.get('CAREERS_ENABLED', '0') == '1'
+
+# N101(b) — inscription self-service des installateurs pilotes, PARQUÉE (OFF)
+# par défaut (même patron que CONTACT_FORM_ENABLED). Éteint, l'endpoint public
+# /api/django/auth/signup-demande/ renvoie 404 et n'enregistre rien. Même
+# allumé il ne crée JAMAIS de compte ni de société : il dépose une demande que
+# le fondateur approuve ensuite dans la console. Passer à '1' pour ouvrir.
+TENANT_SIGNUP_ENABLED = os.environ.get('TENANT_SIGNUP_ENABLED', '0') == '1'
 
 # Récepteur des leads du site public taqinor.ma (apps/crm/webhooks.py).
 # Sans secret configuré, le endpoint répond 401 à tout — fermé par défaut.

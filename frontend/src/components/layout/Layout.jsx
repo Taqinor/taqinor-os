@@ -11,6 +11,7 @@ import UsageTracker from './UsageTracker'
 import OnboardingCoachmarks from '../../features/onboarding/OnboardingCoachmarks'
 import { OfflineBanner } from '../../ui/OfflineState'
 import PresentationModeBanner from './PresentationModeBanner'
+import ImpersonationBanner from './ImpersonationBanner'
 import coreApi from '../../api/coreApi'
 import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
 
@@ -126,6 +127,10 @@ export default function Layout({ children }) {
         <Header onMenu={() => setDrawerOpen(v => !v)} />
         {/* NTDMO10 — bandeau « mode présentation » (rend null hors mode). */}
         <PresentationModeBanner />
+        {/* NTADM22 — bandeau permanent « session support active » : l'utilisateur
+            assisté doit toujours savoir qu'un tiers agit dans son espace
+            (rend null hors session d'impersonation). */}
+        <ImpersonationBanner />
         {/* M61 — Bannière hors-ligne visible sur tous les écrans authentifiés.
             Inerte tant que la connexion est présente (rend null en ligne). */}
         <OfflineBanner />

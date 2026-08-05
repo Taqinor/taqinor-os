@@ -21,6 +21,14 @@ export default function TenantsConsole() {
   const [erreur, setErreur] = useState('')
   const [chargement, setChargement] = useState(true)
   const [notes, setNotes] = useState({})
+  // N100(b) — formulaire « Nouveau tenant ». Le mot de passe provisoire n'est
+  // renvoyé qu'UNE fois par le serveur : on le garde en mémoire le temps que
+  // le fondateur le copie, jamais persisté.
+  const [creation, setCreation] = useState({ nom: '', email: '' })
+  const [creationEnCours, setCreationEnCours] = useState(false)
+  const [nouveauTenant, setNouveauTenant] = useState(null)
+  // N101(b) — file d'approbation des demandes d'inscription self-service.
+  const [demandes, setDemandes] = useState([])
 
   // NB : fetch en chaîne de promesses (pas de setState synchrone dans l'effet,
   // règle react-hooks) — l'état « chargement » démarre à true et n'est éteint
@@ -42,7 +50,30 @@ export default function TenantsConsole() {
       .finally(() => setChargement(false))
   ), [])
 
+  // N101(b) — la file d'approbation est best-effort : elle ne doit jamais
+  // empêcher la console de s'afficher (l'inscription self-service peut être
+  // parquée, auquel cas il n'y a simplement aucune demande).
+  const chargerDemandes = useCallback(() => (
+    api.get('/adminops/demandes-inscription/?statut=en_attente')
+      .then(({ data }) => setDemandes(data?.results ?? []))
+      .catch(() => setDemandes([]))
+  ), [])
+
   useEffect(() => { charger() }, [charger])
+  useEffect(() => { chargerDemandes() }, [chargerDemandes])
+
+  const deciderDemande = async (demande, action) => {
+    try {
+      await api.post(
+        `/adminops/demandes-inscription/${demande.id}/${action}/`)
+      await chargerDemandes()
+      await charger()
+    } catch (e) {
+      setErreur(
+        e?.response?.data?.detail || 'Décision impossible sur cette demande.'
+      )
+    }
+  }
 
   const changerStatut = async (tenant, statut) => {
     if (statut === tenant.statut) return
@@ -65,6 +96,33 @@ export default function TenantsConsole() {
     }
   }
 
+  const creerTenant = async (e) => {
+    e.preventDefault()
+    const nom = creation.nom.trim()
+    const email = creation.email.trim()
+    if (!nom || !email) {
+      setErreur('Nom de société et email de l’administrateur sont requis.')
+      return
+    }
+    setCreationEnCours(true)
+    try {
+      const { data } = await api.post('/auth/console/tenants/creer/', {
+        nom, email,
+      })
+      setNouveauTenant(data)
+      setCreation({ nom: '', email: '' })
+      setErreur('')
+      await charger()
+    } catch (e2) {
+      setErreur(
+        e2?.response?.data?.detail
+        || 'Échec de la création du tenant.'
+      )
+    } finally {
+      setCreationEnCours(false)
+    }
+  }
+
   if (chargement) return <div className="page-pad">Chargement…</div>
   if (erreur && tenants.length === 0) {
     return <div className="page-pad" role="alert">{erreur}</div>
@@ -78,6 +136,93 @@ export default function TenantsConsole() {
         société bloque immédiatement sa connexion et son API.
       </p>
       {erreur && <div role="alert" className="text-danger">{erreur}</div>}
+
+      {/* N101(b) — file d'approbation des demandes d'inscription. Rien ne
+          s'affiche quand l'inscription self-service est parquée. */}
+      {demandes.length > 0 && (
+        <section data-testid="file-demandes-inscription">
+          <h3>Demandes d&apos;inscription ({demandes.length})</h3>
+          <p className="text-muted">
+            Approuver crée la société et son premier administrateur.
+          </p>
+          <ul>
+            {demandes.map((d) => (
+              <li key={d.id}>
+                <strong>{d.societe}</strong> — {d.nom} ({d.email})
+                {' '}
+                <button
+                  type="button"
+                  onClick={() => deciderDemande(d, 'approuver')}
+                  aria-label={`Approuver la demande de ${d.societe}`}
+                >
+                  Approuver
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deciderDemande(d, 'refuser')}
+                  aria-label={`Refuser la demande de ${d.societe}`}
+                >
+                  Refuser
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* N100(b) — provisionnement administré d'une nouvelle société. */}
+      <form onSubmit={creerTenant} data-testid="tenant-creation-form">
+        <h3>Nouveau tenant</h3>
+        <label htmlFor="tenant-nom">Nom de la société</label>
+        <input
+          id="tenant-nom"
+          value={creation.nom}
+          onChange={(e) => setCreation((c) => ({ ...c, nom: e.target.value }))}
+          placeholder="Installateur Nord"
+        />
+        <label htmlFor="tenant-email">Email de l&apos;administrateur</label>
+        <input
+          id="tenant-email"
+          type="email"
+          value={creation.email}
+          onChange={(e) => setCreation((c) => ({ ...c, email: e.target.value }))}
+          placeholder="chef@exemple.ma"
+        />
+        <button type="submit" disabled={creationEnCours}>
+          Créer le tenant
+        </button>
+      </form>
+
+      {nouveauTenant && (
+        <div role="status" data-testid="tenant-cree">
+          {nouveauTenant.deja_existant ? (
+            <p>
+              La société « {nouveauTenant.nom} » existait déjà — rien n&apos;a
+              été recréé.
+            </p>
+          ) : (
+            <>
+              <p>
+                Société « {nouveauTenant.nom} » créée. Transmettez ces accès à
+                son administrateur : le mot de passe devra être changé à la
+                première connexion.
+              </p>
+              <p>
+                Identifiant : <code>{nouveauTenant.admin?.username}</code>
+                {' — '}
+                Mot de passe provisoire :{' '}
+                <code data-testid="mot-de-passe-provisoire">
+                  {nouveauTenant.mot_de_passe_provisoire}
+                </code>
+              </p>
+              <p className="text-muted">
+                Ce mot de passe n&apos;est affiché qu&apos;une seule fois.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       <div style={{ overflowX: 'auto' }}>
         <table className="data-table" data-testid="tenants-console-table">
           <thead>
@@ -87,8 +232,14 @@ export default function TenantsConsole() {
               <th>Utilisateurs</th>
               <th>Devis</th>
               <th>Factures</th>
+              {/* N101(a) — cockpit fondateur : santé + licences. Les colonnes
+                  plan/sièges apparaîtront d'elles-mêmes quand la lane
+                  PlanLicence sera fondue (le serveur omet les clés d'ici là). */}
+              <th>Santé</th>
+              <th>Licences dues</th>
               <th>Note (plan)</th>
               <th>Créée le</th>
+              <th>Support</th>
             </tr>
           </thead>
           <tbody>
@@ -109,9 +260,18 @@ export default function TenantsConsole() {
                     ))}
                   </select>
                 </td>
-                <td>{t.usage?.users ?? '—'}</td>
+                <td>
+                  {t.usage?.users ?? '—'}
+                  {t.sieges_utilises != null && ` / ${t.sieges_utilises}`}
+                </td>
                 <td>{t.usage?.devis ?? '—'}</td>
                 <td>{t.usage?.factures ?? '—'}</td>
+                <td>{t.health_score != null ? `${t.health_score}/100` : '—'}</td>
+                <td>
+                  {t.licences_impayees
+                    ? `${t.licences_impayees} (${t.licences_du_ttc} MAD)`
+                    : '—'}
+                </td>
                 <td>
                   <input
                     aria-label={`Note de plan de ${t.nom}`}
@@ -126,6 +286,14 @@ export default function TenantsConsole() {
                   {t.date_creation
                     ? new Date(t.date_creation).toLocaleDateString('fr-FR')
                     : '—'}
+                </td>
+                <td>
+                  {/* NTADM32 — l'assistance passe TOUJOURS par une demande
+                      soumise au consentement du tenant, jamais par un accès
+                      direct depuis cette console. */}
+                  <a href="/admin/impersonation/demander">
+                    Demander une session
+                  </a>
                 </td>
               </tr>
             ))}
