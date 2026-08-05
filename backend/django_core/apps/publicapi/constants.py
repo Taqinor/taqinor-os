@@ -13,6 +13,10 @@ SCOPE_READ_CHANTIERS = 'read:chantiers'
 # XSTK23 — lecture produits (disponibilité) : SKU/nom/marque/catégorie/quantité
 # disponible UNIQUEMENT. Ni prix_achat ni prix_vente ni aucun coût.
 SCOPE_READ_STOCK = 'read:stock'
+# NTADM42 — statut de licence de la société porteuse de la clé
+# (plan_code/modules_inclus/sieges_max/sieges_utilises UNIQUEMENT — jamais de
+# prix ni d'historique).
+SCOPE_READ_LICENCE = 'read:licence'
 
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
@@ -27,6 +31,7 @@ SCOPE_CHOICES = [
     (SCOPE_READ_FACTURES, 'Lire les factures'),
     (SCOPE_READ_CHANTIERS, 'Lire les chantiers'),
     (SCOPE_READ_STOCK, 'Lire le stock (disponibilité, sans coûts)'),
+    (SCOPE_READ_LICENCE, 'Lire le statut de licence (plan, modules, sièges)'),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
 ]
@@ -65,6 +70,11 @@ EVENT_TICKET_RESOLVED = 'ticket.resolved'
 # XSTK23 — évènements inventaire.
 EVENT_STOCK_SEUIL_ATTEINT = 'stock.seuil_atteint'
 EVENT_LIVRAISON_LIVREE = 'livraison.livree'
+# NTADM41 — évènements « licences & sièges » (adminops). Payload JAMAIS de
+# donnée client — uniquement company_id + plan/sièges (voir
+# apps.parametres.services_licence / apps.adminops.receivers).
+EVENT_PLAN_CHANGED = 'plan.changed'
+EVENT_SIEGES_QUOTA_ATTEINT = 'sieges.quota_atteint'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -81,6 +91,8 @@ EVENT_CHOICES = [
     (EVENT_TICKET_RESOLVED, 'Ticket SAV résolu'),
     (EVENT_STOCK_SEUIL_ATTEINT, 'Stock — seuil atteint'),
     (EVENT_LIVRAISON_LIVREE, 'Livraison — livrée'),
+    (EVENT_PLAN_CHANGED, 'Plan de licence — changé'),
+    (EVENT_SIEGES_QUOTA_ATTEINT, 'Sièges — quota atteint'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 

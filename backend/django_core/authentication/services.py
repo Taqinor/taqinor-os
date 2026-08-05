@@ -146,3 +146,16 @@ def _journaliser(company, user, message):
                detail=message)
     except Exception:
         pass
+
+
+# ── NTADM8 — Gestion des licences/sièges ─────────────────────────────────────
+def sieges_utilises(company):
+    """Nombre de sièges UTILISÉS par ``company`` — comptes actifs (``is_active``)
+    de la société. Utilisé par ``apps.adminops`` (bannière/alerte de quota,
+    écran Licences NTADM9) — jamais bloquant, purement informatif : dépasser
+    ``CompanyProfile.nb_sieges_max`` n'empêche jamais la création d'un compte
+    (voir ``apps.adminops.receivers`` pour l'alerte de franchissement)."""
+    if company is None:
+        return 0
+    from authentication.models import CustomUser
+    return CustomUser.objects.filter(company=company, is_active=True).count()

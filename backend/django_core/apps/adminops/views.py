@@ -12,7 +12,11 @@ from rest_framework.views import APIView
 from . import config_package_service, sandbox_service, selectors
 from .health_score import calculer_health_score
 from .models import AdminOpsSettings, ConfigPackage, SandboxEnvironment
-from .permissions import IsAdministrateur, IsTaqinorSupportOuAdministrateur
+from .permissions import (
+    ADMINOPS_CONFIG_PACKAGE_EXPORTER, ADMINOPS_CONFIG_PACKAGE_IMPORTER,
+    ADMINOPS_SANDBOX_CREER, IsAdministrateur, IsTaqinorSupportOuAdministrateur,
+    a_permission_fine,
+)
 from .serializers import (
     AdminOpsSettingsSerializer, ConfigPackageSerializer,
     SandboxEnvironmentSerializer,
@@ -67,6 +71,14 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'])
     def creer(self, request):
+        # NTADM39 — resserrement fin (au-delà de IsAdministrateur, déjà
+        # acquis) : cf. bug-class #25, contrôle EXPLICITE dans le corps de
+        # l'action, jamais via un get_permissions() qui écraserait
+        # silencieusement les permission_classes par @action.
+        if not a_permission_fine(request.user, ADMINOPS_SANDBOX_CREER):
+            return Response(
+                {'detail': "Permission 'adminops_sandbox_creer' requise."},
+                status=403)
         try:
             env = sandbox_service.creer_sandbox(request.user.company, request.user)
         except sandbox_service.SandboxNonAutorise as exc:
@@ -120,6 +132,11 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'])
     def exporter(self, request):
+        # NTADM39 — resserrement fin, cf. commentaire de SandboxEnvironmentViewSet.creer.
+        if not a_permission_fine(request.user, ADMINOPS_CONFIG_PACKAGE_EXPORTER):
+            return Response(
+                {'detail': "Permission 'adminops_config_package_exporter' requise."},
+                status=403)
         nom = request.data.get('nom', 'Configuration')
         package = config_package_service.exporter_config(
             request.user.company, nom=nom, user=request.user)
@@ -145,6 +162,11 @@ class ConfigPackageViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=['post'])
     def appliquer(self, request):
+        # NTADM39 — resserrement fin, cf. commentaire de SandboxEnvironmentViewSet.creer.
+        if not a_permission_fine(request.user, ADMINOPS_CONFIG_PACKAGE_IMPORTER):
+            return Response(
+                {'detail': "Permission 'adminops_config_package_importer' requise."},
+                status=403)
         contenu = request.data.get('contenu')
         if not isinstance(contenu, dict):
             return Response({'detail': 'contenu (JSON) requis.'}, status=400)

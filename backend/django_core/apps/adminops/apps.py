@@ -18,4 +18,6 @@ class AdminopsConfig(AppConfig):
     }
 
     def ready(self):
-        from . import receivers  # noqa: F401
+        # NTADM8 — alerte de franchissement du quota de sièges (best-effort).
+        from . import receivers
+        receivers.connect()

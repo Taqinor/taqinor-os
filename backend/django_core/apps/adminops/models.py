@@ -4,7 +4,7 @@ n'est modifié."""
 from django.conf import settings
 from django.db import models
 
-from core.models import TenantModel
+from core.models import TenantModel, TimestampedModel
 
 
 class HealthScoreSnapshot(TenantModel):
@@ -156,3 +156,54 @@ class AdminOpsSettings(TenantModel):
             return cls.objects.get(company=company)
         except cls.DoesNotExist:
             return cls(company=company)
+
+
+# ── NTADM7 — Catalogue des paliers de licence TAQINOR ───────────────────────
+class PlanLicence(TimestampedModel):
+    """NTADM7 — catalogue des paliers de licence de l'éditeur du logiciel
+    (starter/pro/enterprise).
+
+    GLOBAL, PAS multi-tenant : ce catalogue appartient à l'éditeur lui-même
+    (les offres LOGICIEL qu'il vend à SES clients tenants) — jamais à un
+    ``company`` particulier, donc AUCUNE FK ``company`` (aucun scoping société,
+    à la différence de tout modèle métier du reste de cette app).
+    ``CompanyProfile.plan`` (FK nullable, ``apps.parametres``) rattache CHAQUE
+    société à l'un de ces paliers ; NULL = accès complet (comportement actuel,
+    jamais restrictif par défaut — voir ``apps.parametres.feature_flags``).
+
+    **Note de nommage (ne pas confondre)** — distinct de
+    ``contrats.PlanAbonnement`` (NTSUB1), qui est le catalogue d'offres
+    commerciales qu'un TENANT vend à SES PROPRES clients (maintenance,
+    monitoring, location). Aucune relation entre les deux modèles.
+
+    ``modules_inclus`` liste les clés de module
+    (``AppConfig.module_manifest['key']``, ex. ``'crm'``/``'ventes'``/
+    ``'stock'``) inclus dans ce palier — lu par
+    ``apps.parametres.feature_flags.has_feature``. Câbler ce contrôle dans le
+    masquage de nav (FG391/ODX) ou dans des endpoints reste HORS PÉRIMÈTRE de
+    NTADM7 — fondation seule, aucun comportement existant n'est modifié tant
+    qu'aucune société ne porte de plan.
+    """
+
+    class Code(models.TextChoices):
+        STARTER = 'starter', 'Starter'
+        PRO = 'pro', 'Pro'
+        ENTERPRISE = 'enterprise', 'Enterprise'
+
+    code = models.CharField(
+        max_length=20, choices=Code.choices, unique=True,
+        help_text='Palier commercial (starter/pro/enterprise).')
+    nom = models.CharField(max_length=100)
+    modules_inclus = models.JSONField(
+        default=list, blank=True,
+        help_text="Clés de module (AppConfig.module_manifest['key']) incluses "
+                  "dans ce palier — ex. ['crm', 'ventes', 'stock'].")
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Plan de licence'
+        verbose_name_plural = 'Plans de licence'
+        ordering = ['id']
+
+    def __str__(self):
+        return self.nom

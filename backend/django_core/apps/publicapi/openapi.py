@@ -175,6 +175,24 @@ def _write_operation(write_endpoint):
     }
 
 
+def _simple_read_operation(entry):
+    """NTADM42 — opération pour un endpoint `endpoints_lecture_simple` : un
+    OBJET UNIQUE (jamais une liste), sans pagination/tri/filtre — contrairement
+    à `_list_operation`/`_retrieve_operation` (ressources paginées avec `<id>`)."""
+    return {
+        'summary': entry['description'],
+        'security': [{'ApiKeyAuth': []}],
+        'responses': {
+            '200': {
+                'description': 'Objet trouvé.',
+                'headers': _RATE_LIMIT_HEADERS,
+                'content': {'application/json': {'schema': {'type': 'object'}}},
+            },
+            **_common_error_responses(),
+        },
+    }
+
+
 def _bulk_operation(entry):
     """NTAPI14/15/16/43/30 — opération générique pour un endpoint
     `endpoints_bulk` (export/import/jobs/pull CSV). Contrairement à
@@ -247,6 +265,10 @@ def build_openapi_schema():
         method = bulk_endpoint['methode'].lower()
         paths.setdefault(openapi_path, {})[method] = _bulk_operation(
             bulk_endpoint)
+
+    for simple_endpoint in ref.get('endpoints_lecture_simple', {}).get('liste', []):
+        paths[simple_endpoint['chemin']] = {
+            'get': _simple_read_operation(simple_endpoint)}
 
     return {
         'openapi': OPENAPI_VERSION,
