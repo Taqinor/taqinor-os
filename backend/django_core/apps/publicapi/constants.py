@@ -13,6 +13,10 @@ SCOPE_READ_CHANTIERS = 'read:chantiers'
 # XSTK23 — lecture produits (disponibilité) : SKU/nom/marque/catégorie/quantité
 # disponible UNIQUEMENT. Ni prix_achat ni prix_vente ni aucun coût.
 SCOPE_READ_STOCK = 'read:stock'
+# NTADM42 — statut de licence de la société porteuse de la clé
+# (plan_code/modules_inclus/sieges_max/sieges_utilises UNIQUEMENT — jamais de
+# prix ni d'historique).
+SCOPE_READ_LICENCE = 'read:licence'
 
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
@@ -27,6 +31,7 @@ SCOPE_CHOICES = [
     (SCOPE_READ_FACTURES, 'Lire les factures'),
     (SCOPE_READ_CHANTIERS, 'Lire les chantiers'),
     (SCOPE_READ_STOCK, 'Lire le stock (disponibilité, sans coûts)'),
+    (SCOPE_READ_LICENCE, 'Lire le statut de licence (plan, modules, sièges)'),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
 ]

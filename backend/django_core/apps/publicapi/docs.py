@@ -265,6 +265,24 @@ def public_api_reference():
                 },
             ],
         },
+        'endpoints_lecture_simple': {
+            'description': (
+                "NTADM42 — endpoints de lecture simple : un OBJET UNIQUE "
+                "(jamais une liste paginée), scopé société. Pas de "
+                "pagination/tri/filtre."
+            ),
+            'liste': [
+                {
+                    'chemin': '/api/public/v1/licence/statut/',
+                    'scope': 'read:licence',
+                    'description': (
+                        "Statut de licence de la société (plan_code, "
+                        "modules_inclus, sieges_max, sieges_utilises). "
+                        "Aucun champ interne (prix, historique)."
+                    ),
+                },
+            ],
+        },
         'webhooks': {
             'description': (
                 "Notifications HTTP POST signées (HMAC-SHA256) vers une URL "
