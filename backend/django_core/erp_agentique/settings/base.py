@@ -1064,6 +1064,13 @@ NOTIFICATIONS_QUIET_HOURS_ENABLED = (
 # recruitment publicly. Flip to '1' to re-enable.
 CAREERS_ENABLED = os.environ.get('CAREERS_ENABLED', '0') == '1'
 
+# N101(b) — inscription self-service des installateurs pilotes, PARQUÉE (OFF)
+# par défaut (même patron que CONTACT_FORM_ENABLED). Éteint, l'endpoint public
+# /api/django/auth/signup-demande/ renvoie 404 et n'enregistre rien. Même
+# allumé il ne crée JAMAIS de compte ni de société : il dépose une demande que
+# le fondateur approuve ensuite dans la console. Passer à '1' pour ouvrir.
+TENANT_SIGNUP_ENABLED = os.environ.get('TENANT_SIGNUP_ENABLED', '0') == '1'
+
 # Récepteur des leads du site public taqinor.ma (apps/crm/webhooks.py).
 # Sans secret configuré, le endpoint répond 401 à tout — fermé par défaut.
 WEBSITE_LEAD_WEBHOOK_SECRET = os.environ.get('WEBSITE_LEAD_WEBHOOK_SECRET', '')

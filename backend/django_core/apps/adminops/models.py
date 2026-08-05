@@ -233,6 +233,59 @@ class SessionImpersonation(TenantModel):
         return 'en_attente'
 
 
+class DemandeInscription(models.Model):
+    """N101(b) — demande d'inscription self-service d'un installateur pilote.
+
+    GLOBAL PAR CONCEPTION (aucune FK ``company``, exempté du garde YDATA4) : au
+    moment où elle est déposée, la société N'EXISTE PAS ENCORE — c'est
+    précisément ce que le fondateur va décider de créer ou non. Rattacher cette
+    table à un tenant serait un contresens.
+
+    Elle vit dans ``adminops`` et non dans ``authentication`` pour garder la
+    surface d'authentification minimale : une demande n'est pas un compte.
+
+    Invariant de sécurité : **l'endpoint public ne crée JAMAIS de compte ni de
+    société.** Il ne fait qu'enregistrer une intention. Seul le fondateur, dans
+    la console, approuve — et c'est cette approbation qui déclenche le flux de
+    création N100(b). L'endpoint est en outre PARQUÉ par défaut
+    (``TENANT_SIGNUP_ENABLED``, 404 quand il est éteint).
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    societe = models.CharField(max_length=200, verbose_name='Société')
+    nom = models.CharField(max_length=150, verbose_name='Nom du contact')
+    email = models.EmailField(verbose_name='Email')
+    telephone = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Téléphone')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    notes = models.TextField(blank=True, default='', verbose_name='Notes')
+    traite_le = models.DateTimeField(null=True, blank=True)
+    traite_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: la décision reste tracée même si son auteur est supprimé
+        related_name='demandes_inscription_traitees',
+        verbose_name='Traitée par')
+    #: Société effectivement créée à l'approbation (N100b), si elle l'a été.
+    company_creee = models.ForeignKey(
+        'authentication.Company', on_delete=models.SET_NULL, null=True, blank=True,  # on_delete: la demande historique survit à la fermeture du tenant créé
+        related_name='demandes_inscription', verbose_name='Société créée')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Demande d'inscription"
+        verbose_name_plural = "Demandes d'inscription"
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f'{self.societe} — {self.statut}'
+
+
 class FactureLicence(TenantModel):
     """N100(e) — registre de FACTURATION DE LICENCE, côté ÉDITEUR uniquement.
 

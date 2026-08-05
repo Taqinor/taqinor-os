@@ -27,6 +27,8 @@ export default function TenantsConsole() {
   const [creation, setCreation] = useState({ nom: '', email: '' })
   const [creationEnCours, setCreationEnCours] = useState(false)
   const [nouveauTenant, setNouveauTenant] = useState(null)
+  // N101(b) — file d'approbation des demandes d'inscription self-service.
+  const [demandes, setDemandes] = useState([])
 
   // NB : fetch en chaîne de promesses (pas de setState synchrone dans l'effet,
   // règle react-hooks) — l'état « chargement » démarre à true et n'est éteint
@@ -48,7 +50,30 @@ export default function TenantsConsole() {
       .finally(() => setChargement(false))
   ), [])
 
+  // N101(b) — la file d'approbation est best-effort : elle ne doit jamais
+  // empêcher la console de s'afficher (l'inscription self-service peut être
+  // parquée, auquel cas il n'y a simplement aucune demande).
+  const chargerDemandes = useCallback(() => (
+    api.get('/adminops/demandes-inscription/?statut=en_attente')
+      .then(({ data }) => setDemandes(data?.results ?? []))
+      .catch(() => setDemandes([]))
+  ), [])
+
   useEffect(() => { charger() }, [charger])
+  useEffect(() => { chargerDemandes() }, [chargerDemandes])
+
+  const deciderDemande = async (demande, action) => {
+    try {
+      await api.post(
+        `/adminops/demandes-inscription/${demande.id}/${action}/`)
+      await chargerDemandes()
+      await charger()
+    } catch (e) {
+      setErreur(
+        e?.response?.data?.detail || 'Décision impossible sur cette demande.'
+      )
+    }
+  }
 
   const changerStatut = async (tenant, statut) => {
     if (statut === tenant.statut) return
@@ -112,6 +137,39 @@ export default function TenantsConsole() {
       </p>
       {erreur && <div role="alert" className="text-danger">{erreur}</div>}
 
+      {/* N101(b) — file d'approbation des demandes d'inscription. Rien ne
+          s'affiche quand l'inscription self-service est parquée. */}
+      {demandes.length > 0 && (
+        <section data-testid="file-demandes-inscription">
+          <h3>Demandes d&apos;inscription ({demandes.length})</h3>
+          <p className="text-muted">
+            Approuver crée la société et son premier administrateur.
+          </p>
+          <ul>
+            {demandes.map((d) => (
+              <li key={d.id}>
+                <strong>{d.societe}</strong> — {d.nom} ({d.email})
+                {' '}
+                <button
+                  type="button"
+                  onClick={() => deciderDemande(d, 'approuver')}
+                  aria-label={`Approuver la demande de ${d.societe}`}
+                >
+                  Approuver
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deciderDemande(d, 'refuser')}
+                  aria-label={`Refuser la demande de ${d.societe}`}
+                >
+                  Refuser
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* N100(b) — provisionnement administré d'une nouvelle société. */}
       <form onSubmit={creerTenant} data-testid="tenant-creation-form">
         <h3>Nouveau tenant</h3>
@@ -174,8 +232,14 @@ export default function TenantsConsole() {
               <th>Utilisateurs</th>
               <th>Devis</th>
               <th>Factures</th>
+              {/* N101(a) — cockpit fondateur : santé + licences. Les colonnes
+                  plan/sièges apparaîtront d'elles-mêmes quand la lane
+                  PlanLicence sera fondue (le serveur omet les clés d'ici là). */}
+              <th>Santé</th>
+              <th>Licences dues</th>
               <th>Note (plan)</th>
               <th>Créée le</th>
+              <th>Support</th>
             </tr>
           </thead>
           <tbody>
@@ -196,9 +260,18 @@ export default function TenantsConsole() {
                     ))}
                   </select>
                 </td>
-                <td>{t.usage?.users ?? '—'}</td>
+                <td>
+                  {t.usage?.users ?? '—'}
+                  {t.sieges_utilises != null && ` / ${t.sieges_utilises}`}
+                </td>
                 <td>{t.usage?.devis ?? '—'}</td>
                 <td>{t.usage?.factures ?? '—'}</td>
+                <td>{t.health_score != null ? `${t.health_score}/100` : '—'}</td>
+                <td>
+                  {t.licences_impayees
+                    ? `${t.licences_impayees} (${t.licences_du_ttc} MAD)`
+                    : '—'}
+                </td>
                 <td>
                   <input
                     aria-label={`Note de plan de ${t.nom}`}
@@ -213,6 +286,14 @@ export default function TenantsConsole() {
                   {t.date_creation
                     ? new Date(t.date_creation).toLocaleDateString('fr-FR')
                     : '—'}
+                </td>
+                <td>
+                  {/* NTADM32 — l'assistance passe TOUJOURS par une demande
+                      soumise au consentement du tenant, jamais par un accès
+                      direct depuis cette console. */}
+                  <a href="/admin/impersonation/demander">
+                    Demander une session
+                  </a>
                 </td>
               </tr>
             ))}

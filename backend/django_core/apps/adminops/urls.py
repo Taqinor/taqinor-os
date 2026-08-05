@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from . import (
     views, views_annonces, views_facturation_licence, views_impersonation,
+    views_signup,
 )
 
 router = DefaultRouter()
@@ -60,5 +61,17 @@ urlpatterns = [
     path('facturation-licences/<int:pk>/marquer-payee/',
          views_facturation_licence.FactureLicenceMarquerPayeeView.as_view(),
          name='adminops-facturation-licence-payee'),
+    # N101(b) — file d'approbation des demandes d'inscription (fondateur).
+    path('demandes-inscription/',
+         views_signup.DemandeInscriptionListView.as_view(),
+         name='adminops-demandes-inscription'),
+    path('demandes-inscription/<int:pk>/approuver/',
+         views_signup.DemandeInscriptionDecisionView.as_view(),
+         {'action': 'approuver'},
+         name='adminops-demande-inscription-approuver'),
+    path('demandes-inscription/<int:pk>/refuser/',
+         views_signup.DemandeInscriptionDecisionView.as_view(),
+         {'action': 'refuser'},
+         name='adminops-demande-inscription-refuser'),
     path('', include(router.urls)),
 ]

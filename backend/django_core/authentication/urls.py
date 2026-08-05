@@ -67,5 +67,11 @@ urlpatterns = [
     # N100(b) — création administrée d'un tenant depuis la console fondateur.
     path('auth/console/tenants/creer/', TenantConsoleCreateView.as_view(),
          name='auth_console_tenant_creer'),
+    # N101(b) — le dépôt PUBLIC d'une demande d'inscription
+    # (`auth/signup-demande/`) est monté dans l'urlconf RACINE : sa vue vit
+    # dans `apps.adminops` (une demande n'est pas un compte — la surface
+    # d'authentification reste minimale), et cette app de FONDATION ne doit pas
+    # importer une app satellite. La composition inter-apps est le rôle de
+    # l'urlconf racine.
     path('', include(router.urls)),
 ]

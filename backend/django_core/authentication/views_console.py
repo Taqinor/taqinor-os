@@ -46,6 +46,47 @@ def _usage_counts(company):
     return {'users': users, 'devis': devis, 'factures': factures}
 
 
+def _plan_et_sieges(company):
+    """N101(a) — plan + sièges, lus DERRIÈRE UNE GARDE D'IMPORT.
+
+    `PlanLicence` / `has_feature` / `sieges_utilises` appartiennent à une AUTRE
+    lane. Tant qu'elle n'est pas fondue, ces clés sont simplement ABSENTES de
+    la charge utile (jamais un substitut local hand-roulé, jamais une erreur) —
+    et elles apparaîtront d'elles-mêmes une fois la lane fondue, sans retoucher
+    ce fichier."""
+    infos = {}
+    try:
+        from apps.parametres.feature_flags import plan_code_for_company
+        infos['plan_code'] = plan_code_for_company(company) or ''
+    except Exception:  # noqa: BLE001 — lane plan pas encore fondue
+        pass
+    try:
+        from authentication import services
+        infos['sieges_utilises'] = services.sieges_utilises(company)
+    except Exception:  # noqa: BLE001 — idem
+        pass
+    return infos
+
+
+def _sante_et_licence(company):
+    """N101(a) — health score + état de facturation de licence (best-effort)."""
+    infos = {}
+    try:
+        from apps.adminops.health_score import calculer_health_score
+        infos['health_score'] = calculer_health_score(company).get('score')
+    except Exception:  # noqa: BLE001 — un module absent ne casse pas la console
+        pass
+    try:
+        from apps.adminops.models import FactureLicence
+        impayees = FactureLicence.objects.filter(company=company).exclude(
+            statut=FactureLicence.Statut.PAYEE)
+        infos['licences_impayees'] = impayees.count()
+        infos['licences_du_ttc'] = sum(f.montant_ttc for f in impayees)
+    except Exception:  # noqa: BLE001
+        pass
+    return infos
+
+
 def _tenant_payload(company):
     return {
         'id': company.id,
@@ -59,6 +100,8 @@ def _tenant_payload(company):
         'date_creation': company.date_creation,
         'date_fermeture': company.date_fermeture,
         'usage': _usage_counts(company),
+        **_plan_et_sieges(company),
+        **_sante_et_licence(company),
     }
 
 

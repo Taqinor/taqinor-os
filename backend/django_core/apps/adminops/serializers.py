@@ -1,9 +1,26 @@
 from rest_framework import serializers
 
 from .models import (
-    AdminOpsSettings, AnnonceProduit, ConfigPackage, FactureLicence,
-    SandboxEnvironment, SessionImpersonation,
+    AdminOpsSettings, AnnonceProduit, ConfigPackage, DemandeInscription,
+    FactureLicence, SandboxEnvironment, SessionImpersonation,
 )
+
+
+class DemandeInscriptionSerializer(serializers.ModelSerializer):
+    """N101(b) — lecture SEULE : le dépôt public et les décisions du fondateur
+    passent par leurs endpoints dédiés."""
+
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = DemandeInscription
+        fields = [
+            'id', 'societe', 'nom', 'email', 'telephone', 'statut',
+            'statut_libelle', 'notes', 'traite_le', 'traite_par',
+            'company_creee', 'created_at',
+        ]
+        read_only_fields = fields
 
 
 class FactureLicenceSerializer(serializers.ModelSerializer):
