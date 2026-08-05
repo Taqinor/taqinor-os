@@ -85,12 +85,15 @@ class AnnonceProduitListView(APIView):
             date_publication__lte=timezone.now()).prefetch_related('cible_roles')
 
         role_id = getattr(request.user, 'role_id', None)
-        visibles = [
-            a for a in annonces
-            if not a.cible_roles.exists()
-            or (role_id is not None
-                and a.cible_roles.filter(pk=role_id).exists())
-        ]
+        # `a.cible_roles.all()` consomme le cache de `prefetch_related` ; un
+        # `.exists()`/`.filter()` ici relancerait une requête PAR annonce et
+        # rendrait le prefetch inutile.
+        visibles = []
+        for annonce in annonces:
+            roles_cibles = {r.pk for r in annonce.cible_roles.all()}
+            if not roles_cibles or (role_id is not None
+                                    and role_id in roles_cibles):
+                visibles.append(annonce)
         # Non lues d'abord, puis les plus récentes.
         visibles.sort(
             key=lambda a: (a.pk in lues, -a.date_publication.timestamp()))

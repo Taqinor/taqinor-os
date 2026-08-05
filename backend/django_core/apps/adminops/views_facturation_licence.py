@@ -33,7 +33,11 @@ logger = logging.getLogger(__name__)
 
 
 def _premier_jour(valeur):
-    """Normalise une période en 1er du mois (``YYYY-MM`` ou ``YYYY-MM-DD``)."""
+    """Normalise une PÉRIODE en 1er du mois (``YYYY-MM`` ou ``YYYY-MM-DD``).
+
+    Réservé à ``periode`` — une période de facturation est un mois entier. Ne
+    JAMAIS l'utiliser pour une date réelle (``date_paiement``) : elle écraserait
+    le jour. Voir ``_date_exacte``."""
     texte = (valeur or '').strip()
     if not texte:
         return None
@@ -43,6 +47,18 @@ def _premier_jour(valeur):
         mois = int(morceaux[1]) if len(morceaux) > 1 else 1
         return date(annee, mois, 1)
     except (ValueError, IndexError):
+        return None
+
+
+def _date_exacte(valeur):
+    """Date réelle ``YYYY-MM-DD`` — le JOUR est conservé tel quel."""
+    texte = (valeur or '').strip()
+    if not texte:
+        return None
+    try:
+        annee, mois, jour = (int(p) for p in texte.split('-')[:3])
+        return date(annee, mois, jour)
+    except (ValueError, TypeError):
         return None
 
 
@@ -129,7 +145,7 @@ class FactureLicenceMarquerPayeeView(APIView):
                 facture.date_emission = timezone.localdate()
             facture.statut = FactureLicence.Statut.PAYEE
             facture.date_paiement = (
-                _premier_jour(request.data.get('date_paiement'))
+                _date_exacte(request.data.get('date_paiement'))
                 or timezone.localdate())
             facture.save()
         return Response(FactureLicenceSerializer(facture).data)

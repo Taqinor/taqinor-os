@@ -110,6 +110,20 @@ class FacturationLicenceTests(TestCase):
         # Le second pointage ne réécrit pas la date d'encaissement.
         self.assertEqual(second.data['date_paiement'], date_paiement)
 
+    def test_date_paiement_conserve_le_jour(self):
+        """Une date d'encaissement est une VRAIE date : le jour ne doit pas
+        être écrasé par la normalisation « 1er du mois » des périodes."""
+        facture = FactureLicence.objects.create(
+            company=self.tenant, periode=date(2026, 8, 1),
+            statut=FactureLicence.Statut.EMISE, reference='LIC-202608-0009')
+        resp = self._api(self.fondateur).post(
+            f'/api/django/adminops/facturation-licences/{facture.pk}/marquer-payee/',
+            {'date_paiement': '2026-08-17'}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['date_paiement'], '2026-08-17')
+        # La période, elle, reste bien normalisée au 1er du mois.
+        self.assertEqual(resp.data['periode'], '2026-08-01')
+
     def test_total_du_exclut_les_factures_payees(self):
         FactureLicence.objects.create(
             company=self.tenant, periode=date(2026, 7, 1),
