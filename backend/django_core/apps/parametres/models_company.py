@@ -655,6 +655,27 @@ class CompanyProfile(models.Model):
                   "passer au statut « Terminée ». Désactivé par défaut : la "
                   'signature reste possible mais facultative.')
 
+    # ── NTADM7 — Palier de licence TAQINOR (fondation) ──────────────────────
+    # FK nullable vers le catalogue GLOBAL ``adminops.PlanLicence`` (starter/
+    # pro/enterprise). NULL (défaut, comportement de TOUTE société existante)
+    # = accès complet — ``apps.parametres.feature_flags.has_feature`` ne
+    # devient restrictif QUE si un plan est explicitement assigné. Assignation
+    # RÉSERVÉE au founder (admin Django ``apps.parametres.admin`` — jamais un
+    # champ éditable par le tenant via ``update_profile``, voir
+    # ``read_only_fields`` du sérialiseur). ``on_delete=SET_NULL`` : supprimer
+    # un palier du catalogue ne doit jamais faire disparaître une société —
+    # elle retombe simplement en accès complet (jamais restrictif par défaut).
+    plan = models.ForeignKey(
+        'adminops.PlanLicence',
+        on_delete=models.SET_NULL,  # on_delete: un palier supprimé du catalogue ne doit jamais emporter la société — repli sur l'accès complet (jamais restrictif par défaut)
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Plan de licence',
+        help_text='Palier de licence TAQINOR assigné à cette société. Vide = '
+                  'accès complet (comportement actuel). Assignation réservée '
+                  'au founder.',
+    )
+
     class Meta:
         verbose_name = 'Profil entreprise'
 
