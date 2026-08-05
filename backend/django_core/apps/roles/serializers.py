@@ -13,8 +13,9 @@ class RoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Role
         fields = ('id', 'nom', 'permissions', 'est_systeme',
-                  'users_count', 'users')
+                  'users_count', 'users', 'entites_visibles')
         read_only_fields = ('id', 'est_systeme', 'users_count', 'users')
+        extra_kwargs = {'entites_visibles': {'required': False}}
 
     def get_users_count(self, obj):
         return obj.users.count()
@@ -85,6 +86,25 @@ class RoleSerializer(serializers.ModelSerializer):
                     "Seul un administrateur peut modifier un rôle système."
                 )
         return attrs
+
+    def validate_entites_visibles(self, value):
+        """NTADM3 — le périmètre ne peut porter que des entités de LA société
+        de l'acteur.
+
+        ``ModelSerializer`` dérive un ``PrimaryKeyRelatedField`` sur TOUTES
+        les entités : sans ce contrôle, un id d'une AUTRE société serait
+        accepté (fuite multi-tenant). Liste vide = aucune restriction, le
+        rôle voit toutes les entités (comportement historique)."""
+        user = self._request_user()
+        company = getattr(user, 'company', None)
+        if company is None:
+            return value
+        etrangeres = [e.code for e in value if e.company_id != company.id]
+        if etrangeres:
+            raise serializers.ValidationError(
+                "Ces entités n'appartiennent pas à votre entreprise : "
+                f"{sorted(etrangeres)}.")
+        return value
 
     def validate_nom(self, value):
         if not value.strip():

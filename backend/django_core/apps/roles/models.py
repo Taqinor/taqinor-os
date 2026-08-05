@@ -516,6 +516,23 @@ class Role(models.Model):
     nom = models.CharField(max_length=100)
     permissions = models.JSONField(default=list)
     est_systeme = models.BooleanField(default=False)
+    # ── NTADM3 — Périmètre de DONNÉES par entité ────────────────────────────
+    # Narrowing OPT-IN, exactement le patron déjà utilisé pour
+    # ``records_scope_*`` (portée par propriétaire) et ``app_<clé>_voir``
+    # (visibilité d'app) : VIDE = aucune restriction, le rôle voit toutes les
+    # entités — c'est l'état de TOUS les rôles existants, donc zéro
+    # régression. Dès qu'au moins une entité est cochée, la liste devient une
+    # LISTE BLANCHE (cf. ``core.entite_scoping``) : les lignes « non
+    # affectées » (``entite IS NULL``) restent visibles de tous, celles d'une
+    # entité hors périmètre disparaissent et ne peuvent plus être créées.
+    # FK-STRING cross-app : jamais d'import de ``apps.entites.models`` ici.
+    entites_visibles = models.ManyToManyField(
+        'entites.Entite',
+        blank=True,
+        related_name='roles_visibles',
+        verbose_name='Entités visibles',
+        help_text="Vide = toutes les entités sont visibles (défaut).",
+    )
 
     class Meta:
         unique_together = [('company', 'nom')]
