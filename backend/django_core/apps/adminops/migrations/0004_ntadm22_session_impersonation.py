@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ('adminops', '0001_initial'),
+        ('adminops', '0003_ntadm7_seed_plans'),
         ('authentication', '0027_ntadm22_customuser_is_taqinor_support'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]

@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ('adminops', '0004_n100e_facture_licence'),
+        ('adminops', '0006_n100e_facture_licence'),
         ('authentication', '0027_ntadm22_customuser_is_taqinor_support'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]

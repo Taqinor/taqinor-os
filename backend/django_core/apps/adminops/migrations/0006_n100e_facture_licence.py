@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ('adminops', '0003_ntadm18_annonce_produit'),
+        ('adminops', '0005_ntadm18_annonce_produit'),
         ('authentication', '0027_ntadm22_customuser_is_taqinor_support'),
     ]
 

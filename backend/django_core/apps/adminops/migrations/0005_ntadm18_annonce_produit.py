@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ('adminops', '0002_ntadm22_session_impersonation'),
+        ('adminops', '0004_ntadm22_session_impersonation'),
         ('roles', '0001_initial'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
