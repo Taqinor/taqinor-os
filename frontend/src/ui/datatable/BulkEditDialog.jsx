@@ -9,10 +9,14 @@
 // appliquées, les lignes en échec sont listées avec leur raison.
 import { useState } from 'react'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+// PACT174 — imports DIRECTS (jamais le baril `..`) : `ui/index.js` réexporte
+// `./datatable`, donc passer par le baril refermerait un cycle
+// DataTable → BulkEditDialog → ui/index → datatable/index → DataTable dès que
+// le moteur monte ce tiroir.
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Button,
-} from '..'
+} from '../Dialog'
+import { Button } from '../Button'
 
 export default function BulkEditDialog({
   open, onOpenChange, rows = [], fieldLabel,

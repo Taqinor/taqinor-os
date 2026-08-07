@@ -4,7 +4,12 @@
 // sous-groupes (niveau 2) ; un sous-groupe ne contient QUE des conditions
 // (jamais de 3e niveau — bouton « + Groupe » masqué à l'intérieur).
 import { Plus, X } from 'lucide-react'
-import { Button, IconButton, Input, Segmented } from '..'
+// PACT174 — imports DIRECTS (jamais le baril `..`), cf. BulkEditDialog.jsx :
+// le baril `ui/index.js` réexporte `./datatable` et refermerait un cycle.
+import { Button } from '../Button'
+import { IconButton } from '../IconButton'
+import { Input } from '../Input'
+import { Segmented } from '../Segmented'
 import {
   operatorsForType, emptyCondition, emptyGroup, isGroup, leafNeedsValue,
 } from './filterLogic'
