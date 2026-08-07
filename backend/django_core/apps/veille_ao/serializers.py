@@ -1,18 +1,64 @@
-"""Serializers du module « veille_ao » (généré par startapp_erp — ARC42).
+"""Sérialiseurs du module « Veille appels d'offres » (``apps.veille_ao``).
 
-RAPPEL multi-tenant : ne JAMAIS exposer ``company`` en écriture — elle est
-toujours forcée côté serveur (``CompanyScopedModelViewSet.perform_create``).
-Mettre ``company`` en ``read_only`` (ou l'omettre des ``fields``).
+Règle multi-tenant (ARC2) : ``company`` n'est JAMAIS lue du corps de la
+requête — elle est forcée côté serveur par
+``core.viewsets.CompanyScopedModelViewSet.perform_create``. Elle est donc
+absente des champs ici, jamais simplement « en lecture seule ».
+
+Le statut d'un avis n'est pas modifiable par écriture directe : il ne bouge
+que par le service unique de transition (VAO14).
 """
-from rest_framework import serializers  # noqa: F401
+from rest_framework import serializers
+
+from .models import AvisMarche, SourceVeille
 
 
-# Exemple (décommenter quand ``models.Exemple`` existe) :
-#
-# from .models import Exemple
-#
-# class ExempleSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Exemple
-#         fields = ['id', 'nom', 'reference', 'created_at']
-#         read_only_fields = ['reference', 'created_at']
+class SourceVeilleSerializer(serializers.ModelSerializer):
+    type_source_libelle = serializers.CharField(
+        source='get_type_source_display', read_only=True)
+    est_collectable_automatiquement = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = SourceVeille
+        fields = [
+            'id', 'code', 'libelle', 'type_source', 'type_source_libelle',
+            'url_base', 'actif', 'cadence_heures',
+            'derniere_collecte_reussie', 'est_collectable_automatiquement',
+            'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['derniere_collecte_reussie', 'created_at',
+                            'updated_at']
+
+
+class AvisMarcheSerializer(serializers.ModelSerializer):
+    source_libelle = serializers.CharField(
+        source='source.libelle', read_only=True)
+    type_source = serializers.CharField(
+        source='source.type_source', read_only=True)
+    statut_libelle = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    categorie_libelle = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    est_depasse = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = AvisMarche
+        fields = [
+            'id', 'source', 'source_libelle', 'type_source',
+            'ref_consultation', 'org_acronyme', 'reference_avis',
+            'objet', 'acheteur', 'lieu', 'region', 'procedure',
+            'categorie', 'categorie_libelle', 'lot',
+            'date_publication', 'date_limite_remise', 'date_ouverture',
+            'montant_estime', 'caution_provisoire', 'url_detail',
+            'mots_cles_declenches', 'score',
+            'statut', 'statut_libelle', 'est_depasse',
+            'appel_offre_id', 'donnees_brutes',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            # Le statut ne bouge QUE par le service de transition (VAO14) ;
+            # le score et les mots-clés déclenchés sont calculés (VAO9) ;
+            # l'identifiant d'appel d'offres est posé par la conversion.
+            'statut', 'score', 'mots_cles_declenches', 'appel_offre_id',
+            'donnees_brutes', 'created_at', 'updated_at',
+        ]

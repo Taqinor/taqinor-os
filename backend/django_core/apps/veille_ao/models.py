@@ -8,6 +8,7 @@ c'est ce qui garde les deux apps découplées (contrat import-linter) et laisse
 la chaîne de migrations d'``apps.ao`` mono-écrivain pour le groupe AOF.
 """
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
 
@@ -123,3 +124,172 @@ class SourceVeille(TenantModel):
             and self.type_source in TYPES_COLLECTABLES
             and bool(self.url_base)
         )
+
+
+class StatutAvis(models.TextChoices):
+    """Le cycle de vie d'un avis DANS LE SAS.
+
+    Ces statuts ne sont pas ceux d'un appel d'offres : un avis est un signal
+    à trier, pas une affaire. La conversion en ``AppelOffre`` est un acte
+    HUMAIN (statut ``converti``), jamais un effet de bord de la collecte.
+    """
+
+    NOUVEAU = 'nouveau', 'Nouveau'
+    RETENU = 'retenu', 'Retenu'
+    IGNORE = 'ignore', 'Ignoré'
+    CONVERTI = 'converti', 'Converti en appel d\'offres'
+    EXPIRE = 'expire', 'Expiré'
+
+
+#: Statuts encore « vivants » : seuls ceux-là peuvent expirer.
+STATUTS_OUVERTS = (StatutAvis.NOUVEAU, StatutAvis.RETENU)
+
+
+class CategorieAvis(models.TextChoices):
+    TRAVAUX = 'travaux', 'Travaux'
+    FOURNITURES = 'fournitures', 'Fournitures'
+    SERVICES = 'services', 'Services'
+    AUTRE = 'autre', 'Autre / non précisée'
+
+
+class AvisMarcheQuerySet(models.QuerySet):
+    def ouverts(self):
+        return self.filter(statut__in=STATUTS_OUVERTS)
+
+    def depasses(self, maintenant=None):
+        """Les avis encore ouverts dont la date limite est passée.
+
+        LECTURE SEULE — la bascule est faite par ``expirer_les_depasses``.
+        """
+        maintenant = maintenant or timezone.now()
+        return self.ouverts().filter(
+            date_limite_remise__isnull=False,
+            date_limite_remise__lt=maintenant)
+
+    def expirer_les_depasses(self, maintenant=None):
+        """Bascule en ``expire`` tout avis ouvert dont la date limite est
+        dépassée. Renvoie le nombre d'avis basculés.
+
+        Un avis sans date limite n'expire jamais tout seul : on ne devine pas
+        une échéance qu'on n'a pas lue.
+        """
+        bascules = 0
+        for avis in self.depasses(maintenant):
+            avis.statut = StatutAvis.EXPIRE
+            avis.save(update_fields=['statut', 'updated_at'])
+            bascules += 1
+        return bascules
+
+
+class AvisMarche(TenantModel):
+    """Le SAS — la table où atterrissent TOUS les avis, quelle que soit la
+    porte d'entrée (portail public, tuyau partenaire, import de fichier).
+
+    **JAMAIS de création automatique d'``AppelOffre``.** Le portail contient
+    beaucoup de bruit : un avis est un signal, un humain tranche. Le lien vers
+    l'affaire créée est un **entier opaque** (``appel_offre_id``), jamais une
+    FK vers ``apps.ao`` — c'est ce qui garde les deux apps découplées et le
+    contrat import-linter vert.
+
+    Aucun champ de coût ni de marge ne vit ici : le sas décrit un avis
+    PUBLIC, pas une affaire chiffrée. ``montant_estime`` et
+    ``caution_provisoire`` sont des montants publiés PAR L'ACHETEUR, lus sur
+    l'avis — jamais un prix de revient Taqinor.
+    """
+
+    source = models.ForeignKey(
+        'veille_ao.SourceVeille', on_delete=models.PROTECT,
+        related_name='avis', verbose_name='Source')
+
+    # ── Identité d'origine (le portail expose ces deux-là dans l'URL de
+    # détail : refConsultation + orgAcronyme). Vides pour une saisie
+    # manuelle ou un import — c'est normal, le filet de dédoublonnage de
+    # niveau 2 prend alors le relais (VAO11).
+    ref_consultation = models.CharField(
+        'Référence de consultation', max_length=60, blank=True, default='')
+    org_acronyme = models.CharField(
+        "Acronyme de l'organisme", max_length=60, blank=True, default='')
+    reference_avis = models.CharField(
+        "Référence de l'avis", max_length=120, blank=True, default='')
+
+    # ── Le fond de l'avis
+    objet = models.TextField('Objet')
+    acheteur = models.CharField('Acheteur public', max_length=255, blank=True,
+                                default='')
+    lieu = models.CharField("Lieu d'exécution", max_length=255, blank=True,
+                            default='')
+    region = models.CharField('Région', max_length=120, blank=True,
+                              default='')
+    procedure = models.CharField('Procédure', max_length=160, blank=True,
+                                 default='')
+    categorie = models.CharField(
+        'Catégorie', max_length=20, choices=CategorieAvis.choices,
+        default=CategorieAvis.AUTRE)
+    lot = models.CharField('Lot', max_length=160, blank=True, default='')
+
+    # ── Les dates. La date de PUBLICATION est lue sur la ligne de résultat
+    # (« Publié le ») — le filtre de dates du formulaire du portail a été
+    # mesuré peu fiable, on ne s'en sert pas.
+    date_publication = models.DateField('Publié le', null=True, blank=True)
+    date_limite_remise = models.DateTimeField(
+        'Date limite de remise', null=True, blank=True)
+    date_ouverture = models.DateTimeField(
+        "Date d'ouverture des plis", null=True, blank=True)
+
+    # ── Les montants PUBLIÉS PAR L'ACHETEUR (jamais un coût interne)
+    montant_estime = models.DecimalField(
+        'Montant estimé (MAD)', max_digits=14, decimal_places=2,
+        null=True, blank=True)
+    caution_provisoire = models.DecimalField(
+        'Caution provisoire (MAD)', max_digits=14, decimal_places=2,
+        null=True, blank=True)
+
+    url_detail = models.URLField("URL de la page de détail", max_length=500,
+                                 blank=True, default='')
+
+    # ── Pourquoi cet avis est remonté (VAO9 remplit ces deux champs)
+    mots_cles_declenches = models.JSONField(
+        'Mots-clés déclenchés', default=list, blank=True,
+        help_text="La liste des mots qui ont fait remonter l'avis : "
+                  "l'utilisateur doit voir POURQUOI il le voit.")
+    score = models.PositiveIntegerField('Score', default=0)
+
+    statut = models.CharField(
+        'Statut', max_length=20, choices=StatutAvis.choices,
+        default=StatutAvis.NOUVEAU)
+
+    appel_offre_id = models.PositiveIntegerField(
+        "Appel d'offres créé", null=True, blank=True,
+        help_text="Entier OPAQUE vers apps.ao — jamais une clé étrangère : "
+                  "les deux apps restent découplées.")
+
+    donnees_brutes = models.JSONField(
+        'Données brutes', default=dict, blank=True,
+        help_text="Ce qui a été lu tel quel, pour pouvoir rejouer une "
+                  "analyse sans retourner sur la source.")
+
+    objects = AvisMarcheQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = 'Avis de marché'
+        verbose_name_plural = 'Avis de marché'
+        ordering = ['-date_publication', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='veille_ao_avis_co_statut_idx'),
+            models.Index(fields=['company', 'date_limite_remise'],
+                         name='veille_ao_avis_co_limite_idx'),
+            models.Index(fields=['company', '-score'],
+                         name='veille_ao_avis_co_score_idx'),
+        ]
+
+    def __str__(self):
+        return (self.reference_avis or self.ref_consultation
+                or self.objet[:60])
+
+    @property
+    def est_depasse(self):
+        """La date limite est-elle passée ? (lecture pure, sans écriture)"""
+        if not self.date_limite_remise:
+            return False
+        return self.date_limite_remise < timezone.now()

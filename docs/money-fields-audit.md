@@ -335,6 +335,7 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/stock/models.py:1504` | InventaireAnnuel.total_valeur | 16 | 2 |
 | `backend/django_core/apps/stock/models.py:1546` | RevalorisationStock.ancien_cout | 10 | 2 |
 | `backend/django_core/apps/stock/models.py:1549` | RevalorisationStock.nouveau_cout | 10 | 2 |
+| `backend/django_core/apps/veille_ao/models.py:240` | AvisMarche.montant_estime | 14 | 2 |
 | `backend/django_core/apps/ventes/models.py:46` | Devis.taux_tva | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:49` | Devis.remise_globale | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:124` | Devis.acompte_pct | 5 | 2 |
