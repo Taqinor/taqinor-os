@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
-  Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent,
+  Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -51,8 +51,16 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    SCA22, superuser serveur — jamais eu d'entrée de menu, on ne l'invente pas
    ici) ; `/parametres/notifications` (atteint depuis `NotificationBell.jsx`,
    pas le menu app) ; `/parametres/marketing` (nav déjà dans
-   `features/marketing/module.config.jsx`) ; `/parametres/achats` (domaine
-   Stock/Achats, lane ODY17 — hors périmètre ODY23).
+   `features/marketing/module.config.jsx`).
+
+   PACT150 (07/08/2026) — route != menu : la garde d'atteignabilité vérifie
+   désormais aussi l'entrée de nav (`nav.items[].to`/lien entrant réel/
+   `// contextuelle:`), pas seulement la route. `/parametres/achats`
+   (`AchatsParametresPage`, 182 lignes, WIR26) avait une route ici depuis
+   ODY23 (alors notée « hors périmètre », domaine Stock/Achats lane ODY17)
+   mais AUCUNE entrée de menu ni lien entrant réel n'y menait nulle part —
+   un écran réel et fonctionnel, invisible. Ajouté à `nav.items` ci-dessous,
+   même patron que le groupe ODY23(c).
 
    Gating préservé à l'identique (index.jsx:153-160 `roleLoader`) :
    - `/parametres`, `/parametres/alertes-kpi` (XPLT6) :
@@ -140,6 +148,9 @@ const config = {
       { to: '/parametres/export', label: 'Export / Sauvegarde', icon: <DownloadCloud size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/parametres/alertes-kpi', label: 'Alertes KPI', icon: <AlertTriangle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/parametres/hospitality/taxe-sejour', label: 'Taxe de séjour', icon: <Percent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // PACT150 — même défaut que ODY23(c) : route déclarée (WIR26), aucune
+      // entrée de menu, écran réel de 182 lignes invisible pour toujours.
+      { to: '/parametres/achats', label: 'Achats', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
   routes: [
