@@ -130,4 +130,32 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
       badge: 3, beneficiaire: 7, message: '',
     }))
   })
+
+  it('le menu de motif de sortie ⊆ DossierEmploye.MotifSortie — chaque option aboutit (PACT156)', async () => {
+    // Valeurs réelles du modèle (backend/django_core/apps/rh/models.py:209-215) :
+    // rh/views.py:518 refuse (400) tout `motif` hors de cette liste.
+    const MOTIF_SORTIE_VALUES = [
+      'demission', 'licenciement', 'fin_contrat', 'retraite', 'rupture_essai', 'autre',
+    ]
+    rhApi.getEmploye.mockResolvedValueOnce({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    renderDetail()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Sortie/ }))
+    const select = screen.getByLabelText('Motif')
+    const optionValues = Array.from(select.querySelectorAll('option'))
+      .map((o) => o.value)
+      .filter((v) => v !== '')
+    expect(optionValues.length).toBeGreaterThan(0)
+    optionValues.forEach((v) => expect(MOTIF_SORTIE_VALUES).toContain(v))
+
+    fireEvent.change(screen.getByLabelText('Date de sortie'), { target: { value: '2026-08-07' } })
+    fireEvent.change(select, { target: { value: 'rupture_essai' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la sortie' }))
+
+    await waitFor(() => expect(rhApi.sortirEmploye).toHaveBeenCalledWith(
+      7, expect.objectContaining({ motif: 'rupture_essai' }),
+    ))
+  })
 })
