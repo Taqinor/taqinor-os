@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -22,7 +22,7 @@ beforeAll(() => {
 const {
   changerStatut, ceder, vehiculeHistorique, vehiculeLedger, contratsList,
   actifsList, detenteursCourants, remisesList, remisesCreate, conducteursList,
-  vehiculeEcoConduite, empty,
+  vehiculeEcoConduite, vehiculeAmortissement, empty,
 } = vi.hoisted(() => ({
   changerStatut: vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'actif' } })),
   ceder: vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'vendu' } })),
@@ -37,6 +37,7 @@ const {
   remisesCreate: vi.fn(() => Promise.resolve({ data: { id: 5 } })),
   conducteursList: vi.fn(() => Promise.resolve({ data: [{ id: 1, nom: 'Karim' }] })),
   vehiculeEcoConduite: vi.fn(() => Promise.resolve({ data: null })),
+  vehiculeAmortissement: vi.fn(() => Promise.resolve({ data: null })),
   empty: () => Promise.resolve({ data: null }),
 }))
 
@@ -49,7 +50,7 @@ vi.mock('../../api/flotteApi', () => ({
     vehiculeTco: empty,
     vehiculeTsav: empty,
     vehiculeEcoConduite: (...args) => vehiculeEcoConduite(...args),
-    vehiculeAmortissement: empty,
+    vehiculeAmortissement: (...args) => vehiculeAmortissement(...args),
     contratsVehicule: { list: (...args) => contratsList(...args) },
     actifs: {
       list: (...args) => actifsList(...args),
@@ -164,6 +165,41 @@ describe('VehiculeDetail — Éco-conduite (PACT21)', () => {
     await waitFor(() => expect(screen.getByText('6,8 L/100km', { exact: false })).toBeInTheDocument())
     expect(screen.getByText('42,3 kg', { exact: false })).toBeInTheDocument()
     expect(screen.getByText('87,5', { exact: false })).toBeInTheDocument()
+  })
+})
+
+describe('VehiculeDetail — Amortissement (PACT187)', () => {
+  it('affiche les 4 lignes sur un véhicule amortissable, avec la forme réelle de selectors.amortissement_vehicule', async () => {
+    const user = userEvent.setup()
+    vehiculeAmortissement.mockImplementationOnce(() => Promise.resolve({
+      data: {
+        // Forme réelle assemblée par la vue `amortissement` (views.py:264-269) :
+        // amortissement_vehicule (valeur_origine/cumul_amortissements/
+        // valeur_nette_comptable/amortissable) fusionné avec
+        // part_non_deductible_amortissement (part_non_deductible, déjà
+        // correcte — ne pas y toucher). Jamais les noms valeur_acquisition/
+        // amortissement_cumule/vnc qu'écrivait l'écran avant PACT187.
+        vehicule_id: 42, immobilisation_id: 9,
+        valeur_origine: 900, cumul_amortissements: 400,
+        valeur_nette_comptable: 500, derniere_annee: 2025, amortissable: true,
+        part_non_deductible: 0, plafond_ttc: 400000, assujetti_plafond_cgi: false,
+      },
+    }))
+    withProviders(<VehiculeDetail vehicule={VEHICULE} onClose={() => {}} />)
+
+    await user.click(screen.getByRole('tab', { name: 'Amortissement' }))
+    await waitFor(() => expect(vehiculeAmortissement).toHaveBeenCalledWith(42))
+
+    const panel = screen.getByRole('tabpanel')
+    // Correspondance EXACTE (pas exact:false) : "0 MAD" est une sous-chaîne
+    // de "900/400/500 MAD", une comparaison partielle donnerait de faux positifs.
+    await waitFor(() => expect(within(panel).getByText('900 MAD')).toBeInTheDocument())
+    expect(within(panel).getByText('400 MAD')).toBeInTheDocument()
+    expect(within(panel).getByText('500 MAD')).toBeInTheDocument()
+    // 4e ligne (part_non_deductible) déjà correcte avant PACT187 — non touchée,
+    // reste affichée (0 MAD, pas un tiret).
+    expect(within(panel).getByText('0 MAD')).toBeInTheDocument()
+    expect(within(panel).queryByText('—')).not.toBeInTheDocument()
   })
 })
 
