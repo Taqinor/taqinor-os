@@ -47,7 +47,7 @@ const publicapiApi = {
 
   // NTAPI20/21 — document OpenAPI 3.1 public + essai de démonstration
   // (session admin, scopé au bac à sable NTAPI27 côté serveur).
-  getOpenApiSchema: () => api.get('/api/public/openapi.json'),
+  getOpenApiSchema: () => api.get('/api/public/v1/openapi.json'),
   sandboxTry: (resource) => api.post('/publicapi/sandbox/try/', { resource }),
 }
 
