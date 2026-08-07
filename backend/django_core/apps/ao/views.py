@@ -24,7 +24,8 @@ from django.core.exceptions import (
     FieldDoesNotExist, ValidationError as DjangoValidationError,
 )
 from django.db import models
-from rest_framework import filters, status
+from drf_spectacular.utils import extend_schema
+from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DrfValidationError
 from rest_framework.response import Response
@@ -989,12 +990,77 @@ class EquipementAOViewSet(AoBaseViewSet):
 
 # ── FG224 — Cautions & garanties de soumission ─────────────────────────────
 
+class DeriverCautionDefinitiveSerializer(serializers.Serializer):
+    """Entrée de ``cautions-soumission/deriver-definitive`` (AOF16).
+
+    Le TAUX n'est délibérément PAS un champ : il se lit dans la clause
+    ``CAUTION_DEFINITIVE_TAUX`` du CPS de l'appel d'offres. L'exposer ici
+    rouvrirait exactement la porte que ``services.taux_caution_definitive``
+    ferme — une caution définitive calculée sur une hypothèse d'écran plutôt
+    que sur le marché.
+
+    ``montant_marche`` reste facultatif : sans lui, la base est le montant HT
+    de NOTRE offre, qui est la valeur juste dans le cas courant.
+    """
+    appel_offre = serializers.IntegerField(label="Appel d'offres")
+    montant_marche = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True,
+        label='Montant du marché (MAD HT)')
+    banque = serializers.CharField(
+        max_length=200, required=False, allow_blank=True, label='Banque')
+    date_echeance = serializers.DateField(
+        required=False, allow_null=True, label="Date d'échéance")
+
+
 class CautionSoumissionViewSet(AoBaseViewSet):
-    """Cautions de soumission (provisoires/définitives) d'AO (FG224)."""
+    """Cautions de soumission (provisoires/définitives) d'AO (FG224).
+
+    ``deriver-definitive`` (AOF16) est le SEUL chemin d'écriture du montant
+    définitif : il le dérive du taux du CPS au lieu de le laisser saisir à la
+    main, et la règle de cohérence ``AO_CAUTION_EXPIREE`` surveille en aval
+    les échéances qui tomberaient avant l'ouverture des plis.
+    """
     queryset = CautionSoumission.objects.all()
     serializer_class = CautionSoumissionSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation', 'date_echeance', 'statut']
+
+    @extend_schema(request=DeriverCautionDefinitiveSerializer,
+                   responses=CautionSoumissionSerializer)
+    @action(detail=False, methods=['post'], url_path='deriver-definitive')
+    def deriver_definitive(self, request):
+        """AOF16 — dérive (ou MET À JOUR) la caution DÉFINITIVE du taux CPS.
+
+        IDEMPOTENT : un second appel ne crée pas une seconde caution, il
+        recalcule celle qui existe. Sans clause ``CAUTION_DEFINITIVE_TAUX``
+        saisie, l'appel est REFUSÉ en 400 motivé — mieux vaut un blocage
+        explicite qu'une caution posée sur un taux inventé.
+
+        L'action est ``detail=False`` parce que la caution définitive n'existe
+        pas forcément encore : la dérivation la CRÉE au premier appel.
+        """
+        entree = DeriverCautionDefinitiveSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        donnees = entree.validated_data
+        appel_offre = AppelOffre.objects.filter(
+            pk=donnees['appel_offre'],
+            company=request.user.company).first()
+        if appel_offre is None:
+            return Response(
+                {'appel_offre': "Appel d'offres introuvable pour cette "
+                                'société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            caution = services.deriver_caution_definitive(
+                appel_offre,
+                montant_marche=donnees.get('montant_marche'),
+                banque=donnees.get('banque') or '',
+                date_echeance=donnees.get('date_echeance'))
+        except DjangoValidationError as exc:
+            erreurs = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(caution).data)
 
 
 # ── FG225 — Dossier de soumission (pièces administratives) ─────────────────
